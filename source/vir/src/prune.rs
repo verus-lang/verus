@@ -1102,19 +1102,19 @@ pub fn prune_krate_for_module_or_krate(
                     reach(
                         &mut state.reached_functions,
                         &mut state.worklist_functions,
-                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "view"),
+                        &crate::type_path_fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "view"),
                     );
 
                     reach(
                         &mut state.reached_functions,
                         &mut state.worklist_functions,
-                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "awaited"),
+                        &crate::type_path_fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "awaited"),
                     );
 
                     reach(
                         &mut state.reached_functions,
                         &mut state.worklist_functions,
-                        &crate::fun!(CrateId::Vstd => "future", "exec_await"),
+                        &crate::type_path_fun!(CrateId::Vstd => "future"; "exec_await"),
                     );
                 }
             }

@@ -1222,7 +1222,7 @@ pub fn fn_branch_bool() -> Fun {
 }
 
 pub fn result_type_path() -> Path {
-    path!(CrateId::Core => "result", "Result")
+    crate::type_path!(CrateId::Core => "result", "Result")
 }
 
 pub fn strslice_module_path() -> Path {
@@ -1311,10 +1311,7 @@ pub fn unique_var_name(
 pub fn exec_await_path() -> Path {
     Arc::new(PathX {
         krate: CrateId::Vstd,
-        segments: Arc::new(vec![
-            Arc::new("future".to_string()),
-            Arc::new("exec_await".to_string()),
-        ]),
+        segments: Arc::new(vec![in_type_ns("future"), Arc::new("exec_await".to_string())]),
     })
 }
 
@@ -1364,38 +1361,45 @@ pub fn autospec_return_clause_spec_fn_name(path: &Path) -> Fun {
 pub fn fn_fp_postcondition_name(op: UninterpretedFloatBinaryOp) -> Fun {
     match op {
         UninterpretedFloatBinaryOp::Add => {
-            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "add_ensures")
+            crate::type_path_fun!(CrateId::Vstd => "std_specs", "ops"; "add_ensures")
         }
         UninterpretedFloatBinaryOp::Sub => {
-            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "sub_ensures")
+            crate::type_path_fun!(CrateId::Vstd => "std_specs", "ops"; "sub_ensures")
         }
         UninterpretedFloatBinaryOp::Mul => {
-            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "mul_ensures")
+            crate::type_path_fun!(CrateId::Vstd => "std_specs", "ops"; "mul_ensures")
         }
         UninterpretedFloatBinaryOp::Div => {
-            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "div_ensures")
+            crate::type_path_fun!(CrateId::Vstd => "std_specs", "ops"; "div_ensures")
         }
         UninterpretedFloatBinaryOp::Eq => {
-            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "eq_ensures")
+            crate::type_path_fun!(CrateId::Vstd => "std_specs", "cmp"; "eq_ensures")
         }
         UninterpretedFloatBinaryOp::Ne => {
-            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "ne_ensures")
+            crate::type_path_fun!(CrateId::Vstd => "std_specs", "cmp"; "ne_ensures")
         }
         UninterpretedFloatBinaryOp::Lt => {
-            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "lt_ensures")
+            crate::type_path_fun!(CrateId::Vstd => "std_specs", "cmp"; "lt_ensures")
         }
         UninterpretedFloatBinaryOp::Gt => {
-            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "gt_ensures")
+            crate::type_path_fun!(CrateId::Vstd => "std_specs", "cmp"; "gt_ensures")
         }
         UninterpretedFloatBinaryOp::Le => {
-            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "le_ensures")
+            crate::type_path_fun!(CrateId::Vstd => "std_specs", "cmp"; "le_ensures")
         }
         UninterpretedFloatBinaryOp::Ge => {
-            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "ge_ensures")
+            crate::type_path_fun!(CrateId::Vstd => "std_specs", "cmp"; "ge_ensures")
         }
     }
 }
 
 pub fn in_type_ns(s: &str) -> Ident {
     Arc::new(RUST_DEF_TYPE_NS.to_string() + s)
+}
+
+// Recover the Rust name of a path segment that lives in the type namespace
+// (e.g. for names that are not themselves paths, like datatype variant names,
+// or for names shown to the user).
+pub fn strip_type_ns(s: &str) -> &str {
+    s.strip_prefix(RUST_DEF_TYPE_NS).unwrap_or(s)
 }
