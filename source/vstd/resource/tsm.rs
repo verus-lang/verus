@@ -50,6 +50,24 @@ impl PCM for CountRA {
     }
 }
 
+/// Value observer of a checked field token.
+///
+/// Generated tokens implement this trait instead of declaring an inherent `value`,
+/// as the trusted macro does with `ValueToken`. An inherent spec fn whose result type
+/// has a typing invariant (e.g. `nat`, or a datatype with `nat` fields) gets its own
+/// result-typing axiom, triggered on every call, in every client context that mentions
+/// the token. A trait method implementation adds no axiom: calls share the trait
+/// declaration's single generic one. In the verified allocator that per-token axiom
+/// doubled the cost of unrelated client proofs (`span_queue_delete`, `page_queue_remove`).
+pub trait TokenValue<V> {
+    spec fn value(&self) -> V;
+}
+
+/// Count observer of a checked field token; see [`TokenValue`].
+pub trait TokenCount {
+    spec fn count(&self) -> nat;
+}
+
 /// A machine's mathematical state and separable fragment representation.
 ///
 /// `Fragment::valid` is not used by this construction: only the total monoid laws

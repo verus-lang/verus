@@ -20,6 +20,11 @@ pub fn append(output: TokenStream, api: TokenStream) -> Result<TokenStream, Erro
                 .last()
                 .is_some_and(|s| s.ident == "verus")
             {
+                // Token observers are trait methods (`vstd::resource::tsm::TokenValue`).
+                item.mac.tokens.extend(quote! {
+                    #[allow(unused_imports)]
+                    use ::vstd::resource::tsm::{TokenValue as _, TokenCount as _};
+                });
                 item.mac.tokens.extend(api);
                 return Ok(quote! {#module});
             }
@@ -251,7 +256,6 @@ pub fn output(sm: &SM) -> Result<TokenStream, Error> {
                     && self.raw.fragment()==Fragment #expr::#factory(self.raw.fragment().#value())
                 }
                 pub closed spec fn instance_id(&self)->::vstd::resource::Loc {self.raw.loc()}
-                pub closed spec fn value(&self)->#ty {self.raw.fragment().#value()}
                 /// Borrow the actual current resource for low-level checked observation.
                 pub proof fn borrow_token(tracked &self)->(tracked out:&Token #types)
                     ensures out.loc()==self.instance_id(),
@@ -261,6 +265,10 @@ pub fn output(sm: &SM) -> Result<TokenStream, Error> {
                     requires raw.fragment().#owns(),raw.fragment()==Fragment #expr::#factory(raw.fragment().#value())
                     ensures out.instance_id()==raw.loc(),out.value()==raw.fragment().#value()
                 {Self{raw}}
+            }
+            // A trait method, not an inherent one: see `vstd::resource::tsm::TokenValue`.
+            impl #decl ::vstd::resource::tsm::TokenValue<#ty> for #n #types #wc {
+                closed spec fn value(&self)->#ty {self.raw.fragment().#value()}
             }
         });
     }
@@ -549,6 +557,11 @@ fn count_output(sm: &SM) -> Result<TokenStream, Error> {
         } else {
             format_ident!("value")
         };
+        let observer = if matches!(f.stype, ShardableType::Count) {
+            quote! {::vstd::resource::tsm::TokenCount}
+        } else {
+            quote! {::vstd::resource::tsm::TokenValue<#ty>}
+        };
         let tag = if matches!(f.stype, ShardableType::Count) {
             quote! {true}
         } else {
@@ -571,7 +584,6 @@ fn count_output(sm: &SM) -> Result<TokenStream, Error> {
             impl #decl #n #types #wc {
                 #[verifier::type_invariant] spec fn invariant(self)->bool {#tag && self.raw.fragment()==Fragment #expr::#factory(self.raw.fragment().#getter())}
                 pub closed spec fn instance_id(&self)->::vstd::resource::Loc {self.raw.loc()}
-                pub closed spec fn #name(&self)->#ty {self.raw.fragment().#getter()}
                 pub proof fn borrow_token(tracked &self)->(tracked out:&Token #types)
                     ensures out.loc()==self.instance_id(),out.fragment()==Fragment #expr::#factory(self.#name())
                 {::vstd::prelude::use_type_invariant(self);&self.raw}
@@ -580,6 +592,10 @@ fn count_output(sm: &SM) -> Result<TokenStream, Error> {
                     ensures out.instance_id()==raw.loc(),out.#name()==raw.fragment().#getter()
                 {Self{raw}}
                 #mono
+            }
+            // A trait method, not an inherent one: see `vstd::resource::tsm::TokenValue`.
+            impl #decl #observer for #n #types #wc {
+                closed spec fn #name(&self)->#ty {self.raw.fragment().#getter()}
             }
         });
     }
