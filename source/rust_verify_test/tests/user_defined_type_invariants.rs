@@ -2801,3 +2801,63 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant")
 }
+
+test_verify_one_file! {
+    #[test] assignment_in_use_type_invariant_issue3137 verus_code! {
+        tracked struct T {
+            ghost i: int,
+        }
+
+        impl T {
+            #[verifier::type_invariant]
+            spec fn inv(self) -> bool {
+                self.i == 0
+            }
+        }
+
+        proof fn f()
+            ensures
+                false,
+        {
+            let tracked mut t = T { i: 0 };
+            use_type_invariant(
+                {
+                    t.i = 1; // FAILS
+                    &t
+                },
+            );
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] atmoic_invariant_early_exit_issue3137 verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        tracked struct T {
+            ghost i: int,
+        }
+
+        impl T {
+            #[verifier::type_invariant]
+            spec fn inv(self) -> bool {
+                self.i == 0
+            }
+        }
+
+        #[allow(unreachable_code)]
+        proof fn test<A, B: InvariantPredicate<A, u8>>(tracked a: &AtomicInvariant<A, u8, B>, tracked credit: OpenInvariantCredit)
+            opens_invariants any
+        {
+            open_atomic_invariant_in_proof!(credit => a => inner => {
+                let tracked t = T { i: 0 };
+                use_type_invariant({
+                    return;
+                    &t
+                });
+                ()
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
+}
