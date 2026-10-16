@@ -5,9 +5,12 @@ use crate::external::CrateItems;
 use crate::import_export::ImportOutput;
 use crate::rust_to_vir_func::FunctionOrConstInfo;
 use crate::rust_to_vir_func::finish_item;
+use crate::verifier::FuncDetails;
 use air::messages::Diagnostics;
+use std::borrow::BorrowMut;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::sync::Mutex;
 use vir::ast::{CrateId, Datatype, Fun, Function, FunctionStub, Krate, Path, VirErr, VirErrAs};
 use vir::context::WarningCtx;
 use vir::messages::{MessageLevel, ToAny};
@@ -68,13 +71,14 @@ pub(crate) struct Query<'r, 'tcx> {
     /// Errors found along the way
     pub encountered_blocking_vir_error: bool,
     pub encountered_non_blocking_vir_error: bool,
-    pub func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
+    pub func_details: Arc<Mutex<HashMap<Fun, FuncDetails>>>,
 }
 
 impl<'r, 'tcx> Query<'r, 'tcx> {
     pub fn new(
         args: Args,
         reporter: &'r dyn Diagnostics,
+        func_details: Arc<Mutex<HashMap<Fun, FuncDetails>>>,
         other_vir_crates: Vec<Krate>,
         pre_crate: PreCrate<'tcx>,
         crate_id: CrateId,
@@ -98,7 +102,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
 
             encountered_blocking_vir_error: false,
             encountered_non_blocking_vir_error: false,
-            func_failed_proof_notes: HashMap::new(),
+            func_details,
         }
     }
 
@@ -138,16 +142,26 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
             self.emit_error(err);
         }
         if let Some(fun) = fun {
-            self.record_failed_proof_notes(&fun, func_failed_proof_notes);
+            self.record_func_failed_proof_notes(&fun, func_failed_proof_notes);
         } else {
             assert!(func_failed_proof_notes.is_empty());
         }
         QueryError { _i_just_emitted_an_error: () }
     }
 
-    fn record_failed_proof_notes(&mut self, fun: &Fun, func_failed_proof_notes: HashSet<String>) {
-        for x in func_failed_proof_notes.iter() {
-            self.func_failed_proof_notes.entry(fun.clone()).or_default().insert(x.clone());
+    fn record_func_failed_proof_notes(&mut self, func: &Fun, failed_proof_notes: HashSet<String>) {
+        use std::collections::hash_map::Entry;
+        let mut func_details = self.func_details.lock().unwrap();
+        match func_details.entry(func.clone()) {
+            Entry::Occupied(mut occupied_entry) => {
+                occupied_entry.get_mut().failed_proof_notes.extend(failed_proof_notes);
+            }
+            Entry::Vacant(vacant_entry) => {
+                let _ = vacant_entry.insert(FuncDetails {
+                    failed_proof_notes: failed_proof_notes,
+                    ..Default::default()
+                });
+            }
         }
     }
 
@@ -423,7 +437,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
             func_failed_proof_notes,
             dyn_compatability_checks,
         } = wf;
-        self.record_failed_proof_notes(fun, func_failed_proof_notes);
+        self.record_func_failed_proof_notes(fun, func_failed_proof_notes);
 
         // Autospec
 

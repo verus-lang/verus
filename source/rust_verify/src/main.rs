@@ -519,7 +519,7 @@ pub fn main() {
     if verifier.args.output_json {
         // Render function verification details as JSON.
         let mut func_details: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
-        for (func, details) in &verifier.func_details {
+        for (func, details) in verifier.func_details.lock().unwrap().iter() {
             let name = vir::ast_util::fun_as_friendly_rust_name(&func);
             func_details.insert(name, details.to_json());
         }
