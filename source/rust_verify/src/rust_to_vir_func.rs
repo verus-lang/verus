@@ -113,10 +113,6 @@ impl<'tcx> FnOrConstSig<'tcx> {
     }
 }
 
-pub(crate) fn autospec_fun(module_path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
-    module_path.push_segment(Arc::new(method_name))
-}
-
 struct Autospec {
     /// This function should redirect to the following function:
     redirect_to: Option<vir::ast::Fun>,
@@ -126,10 +122,58 @@ struct Autospec {
     new_func: Option<vir::ast::FunctionStub>,
 }
 
+fn get_sibling<'tcx>(
+    ctxt: &Context<'tcx>,
+    span: Span,
+    def_id: DefId,
+    name: &str,
+) -> Result<DefId, VirErr> {
+    let tcx = ctxt.tcx;
+    if let Some(impl_id) = tcx.impl_of_assoc(def_id)
+        && !tcx.impl_is_of_trait(impl_id)
+    {
+        let symbol = rustc_span::Symbol::intern(&*name);
+        let c: Vec<_> = tcx.associated_items(impl_id).filter_by_name_unhygienic(symbol).collect();
+        if c.len() == 1 {
+            return Ok(c[0].def_id);
+        } else if c.len() == 0 {
+            return err_span(
+                span,
+                format!(
+                    "unable to find sibling impl item of name {name:} (should be in the same `impl` block)"
+                ),
+            );
+        } else {
+            return err_span(span, format!("sibling impl item of name {name:} is ambiguous"));
+        }
+    }
+
+    let module = tcx.parent_module_from_def_id(def_id.expect_local());
+    for item_id in tcx.hir_module_items(module).free_items() {
+        let item = tcx.hir_item(item_id);
+        match item.kind {
+            rustc_hir::ItemKind::Fn { ident, .. } if ident.name.as_str() == name => {
+                return Ok(item.owner_id.to_def_id());
+            }
+            rustc_hir::ItemKind::Const(ident, ..) if ident.name.as_str() == name => {
+                return Ok(item.owner_id.to_def_id());
+            }
+            _ => {}
+        }
+    }
+
+    return err_span(
+        span,
+        format!(
+            "unable to find item of name {name:} in this module (should be a top-level item in the module)"
+        ),
+    );
+}
+
 fn handle_autospec<'tcx>(
     ctxt: &Context<'tcx>,
     span: Span,
-    _def_id: DefId,
+    def_id: DefId,
     vattrs: &VerifierAttrs,
     functionx: &FunctionStubX,
 ) -> Result<Autospec, VirErr> {
@@ -140,8 +184,8 @@ fn handle_autospec<'tcx>(
                 format!("a function cannot be marked both `when_used_as_spec` and `allow_in_spec`"),
             );
         }
-        let module = functionx.owning_module.clone().unwrap();
-        let path = autospec_fun(&module, method_name.clone());
+        let sibling_def_id = get_sibling(ctxt, span, def_id, &method_name)?;
+        let path = ctxt.def_id_to_vir_path(sibling_def_id);
         Ok(Autospec { redirect_to: Some(Arc::new(FunX { path })), new_func: None })
     } else if vattrs.allow_in_spec {
         if functionx.mode != Mode::Exec {
@@ -1266,11 +1310,8 @@ fn assume_specification_mismatch_type_error<'tcx, A>(
     t1: String,
     t2: String,
 ) -> Result<A, VirErr> {
-    let ex = crate::rust_to_vir_base::def_id_to_friendly(
-        ctxt.tcx,
-        &ctxt.verus_items,
-        external_def_id,
-    );
+    let ex =
+        crate::rust_to_vir_base::def_id_to_friendly(ctxt.tcx, &ctxt.verus_items, external_def_id);
     err_span(
         span,
         format!(
