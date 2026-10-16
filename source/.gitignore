@@ -5,3 +5,5 @@ target/
 doc/
 /coverage/
 /target-verus/
+/mcdc-out/
+/mutrun-data/

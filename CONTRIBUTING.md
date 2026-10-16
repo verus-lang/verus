@@ -184,6 +184,10 @@ The tests run the verifier as a spawned subprocess, so the script instruments
 that `rust_verify` binary (not the test binary), and gathers coverage from those
 processes.
 
+`tools/mcdc.sh` measures MC/DC (modified condition/decision coverage) of the
+verifier crates by the same suite and lists the conditions it does not cover; see
+`tools/mcdc/README.md`.
+
 ### Line count tests
 
 Some of the tests for the `line_count` tool (located in `source/tools/line_count`) use [`cargo-insta`]( https://docs.jj-vcs.dev/latest/templates/#commit-keywords
