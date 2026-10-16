@@ -370,6 +370,19 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             items.push(token_type(f));
             items.push(collection_helpers(f));
         }
+        // The trusted macro's collection aliases.
+        let n = &f.name;
+        match &f.stype {
+            ShardableType::Map(k, v) => {
+                let alias = format_ident!("{}_map", n);
+                items.push(quote! {#[allow(non_camel_case_types)] pub type #alias = ::vstd::tokens::MapToken<#k, #v, #n>;});
+            }
+            ShardableType::Set(e) => {
+                let alias = format_ident!("{}_set", n);
+                items.push(quote! {#[allow(non_camel_case_types)] pub type #alias = ::vstd::tokens::SetToken<#e, #n>;});
+            }
+            _ => {}
+        }
     }
     items.push(quote! {
         #[allow(non_camel_case_types)]
@@ -398,6 +411,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
         }
         let n = &f.name;
         let fname = format_ident!("unit_from_{}", n);
+        let fclone = format_ident!("clone_{}", n);
         let (tr_path, observers): (TokenStream, Vec<Ident>) = match &f.stype {
             ShardableType::Map(k, v) => (quote! {::vstd::tokens::KeyValueToken<#k, #v>},
                 vec![format_ident!("key"), format_ident!("value")]),
@@ -409,6 +423,51 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
         let same: Vec<_> = observers.iter().map(|o| quote! {
             <#n as #tr_path>::#o(&*final(t)) == <#n as #tr_path>::#o(&*old(t))
         }).collect();
+        if kind(f) == Some(Kind::PersistentOption) {
+            let v = &token_data(f)[0].1;
+            unit_fns.push(quote! {
+                /// Duplicate a persistent token, using a unit token of its instance.
+                pub proof fn #fclone(tracked &self, tracked t: &#n, tracked u: Unit) -> (tracked out: #n)
+                    requires <#n as ::vstd::tokens::ValueToken<#v>>::instance_id(t) == self.id(), u.instance_id() == self.id(),
+                    ensures <#n as ::vstd::tokens::ValueToken<#v>>::instance_id(&out) == self.id(),
+                        <#n as ::vstd::tokens::ValueToken<#v>>::value(&out) == <#n as ::vstd::tokens::ValueToken<#v>>::value(t),
+                {
+                    hide(State::invariant);
+                    assert(t.__id() == <#n as ::vstd::tokens::ValueToken<#v>>::instance_id(t));
+                    t.__lemma_id(self.__loc);
+                    ::vstd::prelude::use_type_invariant(&u);
+                    ::vstd::resource::tsm_instance_id_injective(u.raw.loc(), false, self.__loc, false);
+                    let tracked Unit {raw: unit} = u;
+                    let tracked obs = t.raw.tracked_borrow().observe();
+                    let f = obs.fragment();
+                    f.op_unit();
+                    Fragment::unit().op_unit();
+                    Fragment::commutative(Fragment::unit(), f);
+                    assert(Fragment::op(f, f) == f);
+                    let empty = ::vstd::imap::IMap::<__StorageKey, __StorageValue>::empty();
+                    assert(::vstd::resource::tsm_storage::frame_exchange::<Protocol>(
+                        Fragment::op(Fragment::unit(), f), empty, Fragment::op(f, f), empty)) by {
+                        assert forall|frame: Fragment, state: State|
+                            <Protocol as ::vstd::resource::tsm::Machine>::invariant(state)
+                            && Fragment::op(Fragment::op(Fragment::unit(), f), frame)
+                                == <Protocol as ::vstd::resource::tsm::Machine>::embed(state)
+                            implies Protocol::storage(state).dom().disjoint(empty.dom())
+                                && empty.submap_of(Protocol::storage(state).union_prefer_right(empty))
+                                && exists|next: State| <Protocol as ::vstd::resource::tsm::Machine>::invariant(next)
+                                    && Fragment::op(Fragment::op(f, f), frame) == <Protocol as ::vstd::resource::tsm::Machine>::embed(next)
+                                    && Protocol::storage(next)
+                                        == Protocol::storage(state).union_prefer_right(empty).remove_keys(empty.dom()) by {
+                            assert(::vstd::prelude::ext_equal(
+                                Protocol::storage(state).union_prefer_right(empty).remove_keys(empty.dom()),
+                                Protocol::storage(state)));
+                        }
+                    }
+                    let tracked (raw, _w) = unit.exchange_with_observation(&obs,
+                        ::vstd::imap::IMap::tracked_empty(), f, ::vstd::imap::IMap::empty());
+                    #n::__from_raw(raw, t.__v)
+                }
+            });
+        }
         unit_fns.push(quote! {
             /// Split the unit resource off a token of this instance.
             pub proof fn #fname(tracked &self, tracked t: &mut #n) -> (tracked u: Unit)
@@ -794,6 +853,93 @@ fn collection_input(f: &Field, pname: &Ident, loc: &TokenStream, e: &Expr) -> Re
     }
 }
 
+/// A borrowed-tokens-only operation: its facts hold in any completion state.
+fn read_only_method(
+    sm: &SM,
+    tr: &Transition,
+    parts: &crate::concurrency_tokens::ExchangeParts,
+    take_shared: &[(Ident, TokenStream)],
+    frames: &[(TokenStream, TokenStream)],
+    shared_frags: &[TokenStream],
+    ret: TokenStream,
+    req: TokenStream,
+    ens: TokenStream,
+) -> Result<TokenStream, Error> {
+    let name = &parts.exch_name;
+    let in_params = &parts.in_params;
+    let gen = if parts.use_explicit_lifetime { quote! {<'a>} } else { quote! {} };
+    let pn: Vec<_> = tr.params.iter().map(|p| &p.name).collect();
+    let mut early = vec![];
+    let mut skipped = false;
+    lets(&parts.body, false, &mut early, &mut skipped);
+    let mut late = vec![];
+    let mut skipped2 = false;
+    lets(&parts.body, true, &mut late, &mut skipped2);
+    let shared_ident = format_ident!("__tsm_shared", span = Span::mixed_site());
+    let mut joins = vec![];
+    for (i, (obs, take)) in take_shared.iter().enumerate() {
+        let hacc = format_ident!("__tsm_hacc_{}", i);
+        joins.push(take.clone());
+        if i == 0 {
+            joins.push(quote! {let tracked #shared_ident = #obs; let ghost #hacc = #shared_ident.fragment();});
+        } else {
+            joins.push(quote! {let tracked #shared_ident = #shared_ident.join(&#obs); let ghost #hacc = #shared_ident.fragment();});
+        }
+    }
+    let t = quote! {::vstd::resource::tsm};
+    let hs: Vec<Ident> = (0..shared_frags.len()).map(|i| format_ident!("__tsm_hacc_{}", i)).collect();
+    let mut incl = vec![];
+    for (i, sf) in shared_frags.iter().enumerate() {
+        if i == 0 {
+            incl.push(quote! {#t::fragment_included_reflexive::<Protocol>(#sf);});
+        }
+        for j in (i + 1)..shared_frags.len() {
+            let (b, c) = (&hs[j - 1], &hs[j]);
+            incl.push(quote! {#t::fragment_included_transitive::<Protocol>(#sf, #b, #c);});
+        }
+    }
+    let frames_at: Vec<_> = frames.iter().map(|(frag, lemma)| quote! {{
+        let __tsm_full = #t::fragment_included_completion::<Protocol>(#frag, #shared_ident.fragment(), __tsm_z, pre);
+        #lemma
+    }}).collect();
+    let safety = format_ident!("{}_safety", tr.name);
+    let nondet: Vec<_> = sm.fields.iter()
+        .filter(|f| parts.out_params.iter().any(|o| o.0.to_string() == format!("original_field_{}", f.name)))
+        .map(|f| {
+            let n = format_ident!("original_field_{}", f.name);
+            let fname = &f.name;
+            quote! {let #n = pre.#fname;}
+        }).collect();
+    let ret_vals: Vec<_> = parts.out_params.iter().map(|o| {
+        let n = &o.0;
+        quote! {Ghost(#n)}
+    }).collect();
+    let result = match parts.out_params.len() {
+        0 => quote! {},
+        1 => quote! {#(#ret_vals)*},
+        _ => quote! {(#(#ret_vals),*)},
+    };
+    Ok(quote! {
+        #[verifier::spinoff_prover]
+        pub proof fn #name #gen (#(#in_params),*) #ret #req #ens {
+            hide(State::invariant);
+            broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
+                ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas};
+            #(#early)*
+            #(#joins)*
+            #(#incl)*
+            #shared_ident.validate();
+            let (__tsm_z, pre) = choose|__tsm_z: Fragment, pre: State| pre.invariant()
+                && Fragment::op(#shared_ident.fragment(), __tsm_z) == <Protocol as ::vstd::resource::tsm::Machine>::embed(pre);
+            #(#frames_at)*
+            State::#safety(pre, #(#pn),*);
+            #(#nondet)*
+            #(#late)*
+            #result
+        }
+    })
+}
+
 struct Param<'a> {
     field: &'a Field,
     p: &'a TokenParam,
@@ -907,6 +1053,15 @@ fn method(bundle: &SMBundle, tr: &Transition) -> Result<TokenStream, Error> {
         }
     }
     let _ = (owned_count, shared_count, fields);
+    // Read-only operations (only borrowed tokens, no outputs or storage
+    // changes) need no exchange: validate the borrowed tokens and reason
+    // about a completion state.
+    let read_only = take_owned.is_empty() && coll_owned.is_empty() && !guard
+        && params.iter().all(|q| q.p.inout_type == InoutType::BorrowIn)
+        && parts.out_params.iter().all(|o| matches!(o.2, crate::concurrency_tokens::Mode::Ghost));
+    if read_only {
+        return read_only_method(sm, tr, &parts, &take_shared, &frames, &shared_frags, ret, req, ens);
+    }
     // Without any owned token, the method takes a unit token.
     let mut in_params = in_params.clone();
     let needs_unit = take_owned.is_empty() && !guard;
