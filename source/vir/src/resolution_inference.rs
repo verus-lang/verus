@@ -779,10 +779,17 @@ impl<'a> Builder<'a> {
             | ExprX::Nondeterministic => Maybe::Some(bb),
 
             ExprX::AssertAssume { .. }
-            | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
             | ExprX::AssertBy { .. }
             | ExprX::AssertQuery { .. }
             | ExprX::AssertCompute(..) => {
+                let idx = self.basic_blocks[bb].instructions.len();
+                self.asserts.push(((bb, idx), expr.clone()));
+                Maybe::Some(bb)
+            }
+
+            ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: _, expr, fun: _ } => {
+                bb = unwrap!(self.build(expr, bb));
+
                 let idx = self.basic_blocks[bb].instructions.len();
                 self.asserts.push(((bb, idx), expr.clone()));
                 Maybe::Some(bb)

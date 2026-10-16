@@ -86,6 +86,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Block(..)
             | ExprX::MatchGuardFreeze(..)
             | ExprX::ShrRefStructWrap(..)
+            | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
             | ExprX::Await(_) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)
@@ -97,7 +98,6 @@ fn expr_get_early_exits_rec(
             | ExprX::Fuel(..)
             | ExprX::Header(..)
             | ExprX::AssertAssume { .. }
-            | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
             | ExprX::AssertBy { .. }
             | ExprX::RevealString(_)
             | ExprX::RevealByteString(_)
