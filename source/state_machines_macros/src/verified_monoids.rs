@@ -461,6 +461,48 @@ fn replacement_order(
     Ok(stages)
 }
 
+// Whether every modifying path removes exactly once and then adds exactly once
+// (stage 0: unmodified, 1: removed, 2: removed then added).
+fn single_replacement(s: &TransitionStmt, target: &Ident, mut stages: HashSet<u8>) -> Option<HashSet<u8>> {
+    match s {
+        TransitionStmt::Block(_, children) => {
+            for child in children {
+                stages = single_replacement(child, target, stages)?;
+            }
+        }
+        TransitionStmt::Split(_, kind, children) => {
+            if let SplitKind::Special(n, op, _, _) = &**kind {
+                if n == target && op.is_modifier() {
+                    let (before, after) = if op.is_remove() { (0, 1) } else { (1, 2) };
+                    if stages.iter().any(|stage| *stage != before) {
+                        return None;
+                    }
+                    stages = HashSet::from([after]);
+                }
+            }
+            match &**kind {
+                SplitKind::If(_) | SplitKind::Match(..) => {
+                    let mut outcomes = HashSet::new();
+                    if matches!(&**kind, SplitKind::If(_)) && children.len() == 1 {
+                        outcomes.extend(stages.clone());
+                    }
+                    for child in children {
+                        outcomes.extend(single_replacement(child, target, stages.clone())?);
+                    }
+                    stages = outcomes;
+                }
+                _ => {
+                    for child in children {
+                        stages = single_replacement(child, target, stages)?;
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    Some(stages)
+}
+
 // Effect selectors reconstruct element bindings from the initial mathematical
 // state. A value still present after earlier removals equals its initial
 // value, so only an earlier addition to the source field can change it.
@@ -526,14 +568,19 @@ pub fn analyze(tr: &Transition, fields: &HashMap<String, Field>) -> Result<Vec<E
             replacement_order(&tr.body,&field.name,HashSet::from([0]))?;
             let old=effect_expression(&tr.body,&field,EffectOp::Remove)?;
             let new=effect_expression(&tr.body,&field,EffectOp::Add)?;
-            // A path that only removes (or only adds) uses the unit for the other part.
-            let unit=unit_element(&field.stype);
-            let removed=format_ident!("__tsm_removed",span=proc_macro2::Span::mixed_site());
-            let added=format_ident!("__tsm_added",span=proc_macro2::Span::mixed_site());
-            quote!{match #old {
-                Some(#removed)=>match #new {Some(#added)=>Some((#removed,#added)),None=>Some((#removed,#unit))},
-                None=>match #new {Some(#added)=>Some((#unit,#added)),None=>None},
-            }}
+            if single_replacement(&tr.body,&field.name,HashSet::from([0])).map_or(false,|stages|!stages.contains(&1)) {
+                // One removal then one addition on every modifying path.
+                quote!{match (#old,#new){(Some(old),Some(new))=>Some((old,new)),_=>None}}
+            } else {
+                // A path that only removes (or only adds) uses the unit for the other part.
+                let unit=unit_element(&field.stype);
+                let removed=format_ident!("__tsm_removed",span=proc_macro2::Span::mixed_site());
+                let added=format_ident!("__tsm_added",span=proc_macro2::Span::mixed_site());
+                quote!{match #old {
+                    Some(#removed)=>match #new {Some(#added)=>Some((#removed,#added)),None=>Some((#removed,#unit))},
+                    None=>match #new {Some(#added)=>Some((#unit,#added)),None=>None},
+                }}
+            }
         }else{
             effect_expression(&tr.body,&field,op)?
         };
