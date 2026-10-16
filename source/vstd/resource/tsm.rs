@@ -83,10 +83,13 @@ impl<M: Machine> ResourceAlgebra for Inved<M> {
     }
 
     open spec fn op(a: Self, b: Self) -> Self {
-        match (a, b) {
-            (Self::Unit, _) => b,
-            (_, Self::Unit) => a,
-            (Self::Value(x), Self::Value(y)) => Self::Value(M::Fragment::op(x, y)),
+        // Avoid matching on `(a, b)`: each unfolding would build a tuple term.
+        if a is Unit {
+            b
+        } else if b is Unit {
+            a
+        } else {
+            Self::Value(M::Fragment::op(a->Value_0, b->Value_0))
         }
     }
 

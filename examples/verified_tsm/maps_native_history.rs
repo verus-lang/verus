@@ -82,6 +82,8 @@ fn main() {
             assert(token1.key() == 1 && !token1.value());
             map.insert(token);
             map.insert(token1);
+            assert(map.map().contains_key(0) && map.map()[0] == true);
+            assert(map.map().contains_key(1) && map.map()[1] == false);
             let state = instance.observe(&m, &map);
             assert(state.invariant());
             assert(state.m == 2);

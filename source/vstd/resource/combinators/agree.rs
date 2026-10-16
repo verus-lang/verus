@@ -24,9 +24,11 @@ impl<T> ResourceAlgebra for AgreementRA<T> {
     }
 
     open spec fn op(a: Self, b: Self) -> Self {
-        match (a, b) {
-            (AgreementRA::Agree(a), AgreementRA::Agree(b)) if a == b => AgreementRA::Agree(a),
-            _ => AgreementRA::Invalid,
+        // Avoid matching on `(a, b)`: each unfolding would build a tuple term.
+        if a is Agree && b is Agree && a->Agree_0 == b->Agree_0 {
+            a
+        } else {
+            AgreementRA::Invalid
         }
     }
 
