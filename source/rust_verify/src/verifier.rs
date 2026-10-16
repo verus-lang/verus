@@ -396,7 +396,12 @@ pub(crate) fn io_vir_err(msg: String, err: std::io::Error) -> VirErr {
 }
 
 pub fn module_name(module: &vir::ast::Path) -> String {
-    module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::")
+    module
+        .segments
+        .iter()
+        .map(|s| vir::def::strip_type_ns(s).to_string())
+        .collect::<Vec<_>>()
+        .join("::")
 }
 
 mod util {
