@@ -210,6 +210,15 @@ fn gen_generics(
     };
     for b in typ_bounds.iter() {
         match &**b {
+            GenericBoundX::Trait(TraitId::Path(path), _)
+            | GenericBoundX::TypEquality(path, _, _, _)
+                if &**path != &tuple_trait_path
+                    && state.known_traits.as_ref().is_some_and(|k| !k.contains(path)) =>
+            {
+                // The checked program has no declaration for this trait. Dropping the bound
+                // lets impls apply to more types, so it can only expose more overlaps.
+                continue;
+            }
             GenericBoundX::Trait(TraitId::Path(path), typs) => {
                 let typ = gen_typ(state, &typs[0]);
                 if is_option_clone_destruct_bound(is_impl, path) {
@@ -321,6 +330,7 @@ pub(crate) fn gen_check_trait_impl_conflicts(
     vir_crate: &vir::ast::Krate,
     state: &mut State,
 ) {
+    state.known_traits = Some(vir_crate.traits.iter().map(|t| t.x.name.clone()).collect());
     for d in &vir_crate.datatypes {
         let Dt::Path(path) = &d.x.name else {
             panic!("Verus internal error: gen_check_trait_impl_conflicts expects Dt::Path");
