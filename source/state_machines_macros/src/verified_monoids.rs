@@ -332,6 +332,12 @@ fn sequential(f: &Field, a: TokenStream, b: TokenStream) -> TokenStream {
         }
         _ => quote! {#x.union_prefer_right(#y)},
     };
+    // Integer literal operands need their type before they are combined.
+    let (a, b) = if matches!(f.stype, ShardableType::Count | ShardableType::PersistentCount) {
+        (quote! {{let #x: Option<nat> = #a; #x}}, quote! {{let #y: Option<nat> = #b; #y}})
+    } else {
+        (a, b)
+    };
     // Nested rather than tuple matches: see the vstd resource-algebra ops.
     quote! {match #a {
         Some(#x) => match #b { Some(#y) => Some(#combine), None => Some(#x) },
