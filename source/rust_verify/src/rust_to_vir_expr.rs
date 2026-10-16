@@ -383,7 +383,28 @@ pub(crate) fn add_param_decls(
     if param_decls.is_empty() {
         return Ok(());
     }
-    if header.atomic_update.is_some() {
+    let vir::headers::Header {
+        require,
+        recommend,
+        ensure,
+        returns,
+        decrease,
+        decrease_when,
+        invariant_mask,
+        atomic_update,
+        unwind_spec,
+        invariant_except_break: _,
+        invariant: _,
+        atomic_call_loop: _,
+        no_method_body: _,
+        unwrap_parameters: _,
+        hidden: _,
+        ensure_id_typ: _,
+        decrease_by: _,
+        extra_dependencies: _,
+        open_visibility_qualifier: _,
+    } = header;
+    if atomic_update.is_some() {
         return err_span(span, "atomic specifications are not supported with parameter patterns");
     }
     let (body_decls, spec_decls): (Vec<_>, Vec<_>) = param_decls.into_iter().unzip();
@@ -392,22 +413,24 @@ pub(crate) fn add_param_decls(
         ctxt.spanned_typed_new_vir(&e.span, &e.typ, ExprX::Block(decls, Some(e.clone())))
     };
     let wrap_all = |es: &vir::ast::Exprs| Arc::new(es.iter().map(wrap).collect::<Vec<_>>());
-    header.require = wrap_all(&header.require);
-    header.recommend = wrap_all(&header.recommend);
-    header.ensure = (wrap_all(&header.ensure.0), wrap_all(&header.ensure.1));
-    header.returns = header.returns.as_ref().map(wrap);
-    header.decrease = wrap_all(&header.decrease);
-    header.decrease_when = header.decrease_when.as_ref().map(wrap);
-    header.invariant_mask = header.invariant_mask.as_ref().map(|mask| match mask {
+    *require = wrap_all(require);
+    *recommend = wrap_all(recommend);
+    *ensure = (wrap_all(&ensure.0), wrap_all(&ensure.1));
+    *returns = returns.as_ref().map(wrap);
+    *decrease = wrap_all(decrease);
+    *decrease_when = decrease_when.as_ref().map(wrap);
+    *invariant_mask = invariant_mask.as_ref().map(|mask| match mask {
         MaskSpec::InvariantOpens(span, es) => MaskSpec::InvariantOpens(span.clone(), wrap_all(es)),
         MaskSpec::InvariantOpensExcept(span, es) => {
             MaskSpec::InvariantOpensExcept(span.clone(), wrap_all(es))
         }
         MaskSpec::InvariantOpensSet(e) => MaskSpec::InvariantOpensSet(wrap(e)),
     });
-    if let Some(UnwindSpec::NoUnwindWhen(e)) = &header.unwind_spec {
-        header.unwind_spec = Some(UnwindSpec::NoUnwindWhen(wrap(e)));
-    }
+    *unwind_spec = unwind_spec.as_ref().map(|spec| match spec {
+        UnwindSpec::NoUnwind => UnwindSpec::NoUnwind,
+        UnwindSpec::NoUnwindWhen(e) => UnwindSpec::NoUnwindWhen(wrap(e)),
+        UnwindSpec::MayUnwind => UnwindSpec::MayUnwind,
+    });
     *body = ctxt.spanned_typed_new_vir(
         &body.span,
         &body.typ,

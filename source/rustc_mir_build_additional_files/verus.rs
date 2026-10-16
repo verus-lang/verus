@@ -752,8 +752,19 @@ pub(crate) fn erase_pat<'tcx>(cx: &mut ThirBuildCx<'tcx>, pat: Box<Pat<'tcx>>) -
 
     let mut p = pat;
     // Only ghost code uses the `__verus_param_N @` the macros add to complex parameter patterns
+    // of functions, so we can strip them.
     if let PatKind::Binding { var, subpattern: subpattern @ Some(_), .. } = &mut p.kind
         && is_verus_param_binder(&cx.tcx.hir_ident(var.0))
+        && match cx.tcx.parent_hir_node(var.0) {
+            hir::Node::Param(_) => {
+                matches!(
+                    cx.tcx.def_kind(cx.body_owner),
+                    hir::def::DefKind::Fn | hir::def::DefKind::AssocFn
+                )
+            }
+            hir::Node::LetStmt(local) => matches!(local.source, hir::LocalSource::AsyncFn),
+            _ => false,
+        }
     {
         p = subpattern.take().unwrap();
     }
