@@ -70,8 +70,8 @@ pub(crate) struct Query<'r, 'tcx> {
 
     /// Errors found along the way
     pub encountered_blocking_vir_error: bool,
-    pub encountered_non_blocking_vir_error: bool,
     pub func_details: Arc<Mutex<HashMap<Fun, FuncDetails>>>,
+    pub deferred_errors: Arc<Mutex<Vec<VirErr>>>,
 }
 
 impl<'r, 'tcx> Query<'r, 'tcx> {
@@ -79,6 +79,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         args: Args,
         reporter: &'r dyn Diagnostics,
         func_details: Arc<Mutex<HashMap<Fun, FuncDetails>>>,
+        deferred_errors: Arc<Mutex<Vec<VirErr>>>,
         other_vir_crates: Vec<Krate>,
         pre_crate: PreCrate<'tcx>,
         crate_id: CrateId,
@@ -101,7 +102,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
             cache_erasure_modes: None,
 
             encountered_blocking_vir_error: false,
-            encountered_non_blocking_vir_error: false,
+            deferred_errors,
             func_details,
         }
     }
@@ -166,10 +167,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
     }
 
     fn emit_non_blocking_errors(&mut self, errs: Vec<VirErr>) {
-        self.encountered_non_blocking_vir_error = true;
-        for err in errs {
-            self.reporter.report_now(&err.to_any());
-        }
+        self.deferred_errors.lock().unwrap().extend(errs);
     }
 
     fn emit_diags(&mut self, diags: Vec<VirErrAs>) {
