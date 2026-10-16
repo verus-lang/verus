@@ -402,3 +402,45 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+test_verify_one_file! {
+    // Adaptors over an iterator without the prophetic laws: the closure must accept every
+    // item, since `remaining()` need not describe what `next` yields. An impl that defines
+    // `remaining()` as empty while `next` yields 200 used to let `find` call a
+    // closure requiring `x < 4` on 200.
+    #[test] test_adaptor_requires_without_laws verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpecImpl;
+        pub struct It { n: u8 }
+        impl Iterator for It {
+            type Item = u8;
+            fn next(&mut self) -> Option<u8> {
+                if self.n == 0 { None } else { self.n = self.n - 1; Some(200) }
+            }
+        }
+        impl IteratorSpecImpl for It {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool { false }
+            open spec fn remaining(&self) -> Seq<u8> { Seq::empty() }
+            open spec fn will_return_none(&self) -> bool { true }
+            open spec fn decrease(&self) -> Option<nat> { None }
+            open spec fn peek(&self, index: int) -> Option<u8> { None }
+        }
+        fn ok(it: It) -> Option<u8> {
+            let mut it = it;
+            it.find(|x: &u8| *x > 1)
+        }
+        fn bad(it: It) -> Option<u8> {
+            let arr = [0u8; 4];
+            let mut it = it;
+            it.find(|x: &u8| -> (b: bool) requires *x < 4 { arr[*x as usize] == 0 }) // FAILS
+        }
+        fn bad_find_map(it: It) -> Option<u8> {
+            let arr = [0u8; 4];
+            let mut it = it;
+            it.find_map(|x: u8| -> (r: Option<u8>) requires x < 4 { Some(arr[x as usize]) }) // FAILS
+        }
+        fn bad_position(it: It) -> Option<usize> {
+            let mut it = it;
+            it.position(|x: u8| x > 1) // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
