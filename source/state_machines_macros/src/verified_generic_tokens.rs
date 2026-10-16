@@ -407,7 +407,7 @@ fn fake_parts(f: &Field) -> (TokenStream, TokenStream, TokenStream) {
             (data.iter().map(|(_, t)| quote! {#t}).collect(), data.iter().map(|(n, _)| quote! {self.#n}).collect())
         };
         return (
-            quote! {&'static #pcm<Option<::vstd::resource::agree::AgreementRA<(#(#tys,)*)>>>},
+            quote! {#pcm<Option<::vstd::resource::agree::AgreementRA<(#(#tys,)*)>>>},
             quote! {Some(::vstd::resource::agree::AgreementRA::Agree((#(#vals,)*)))},
             quote! {},
         );
@@ -470,8 +470,14 @@ fn token_type(f: &Field, store: &Store, generic: bool) -> TokenStream {
     let pdata: Vec<_> = names.iter().map(|n| quote! {#n}).collect();
     let pfrag = single_fragment(f, &pdata);
     let me_extra = extra_wf(f, &quote! {self});
-    let p_extra = if k == Kind::PersistentCount { quote! {__n <= __m,} } else { quote! {} };
+    let p_extra = if k == Kind::PersistentCount {
+        let (a, b) = (&names[0], &names[1]);
+        quote! {#a <= #b,}
+    } else {
+        quote! {}
+    };
     let raw_ty = if persistent { quote! {&'static Token} } else { quote! {Token} };
+    let fake_field = if persistent { quote! {&'static #fake} } else { quote! {#fake} };
     let real_loc = quote! {self.raw->Some_0.loc()};
     let fake_loc = quote! {self.fake->Some_0.loc()};
     let instance_id = quote! {
@@ -544,7 +550,7 @@ fn token_type(f: &Field, store: &Store, generic: bool) -> TokenStream {
         #derive
         pub tracked struct #n {
             tracked raw: Option<#raw_ty>,
-            tracked fake: Option<#fake>,
+            tracked fake: Option<#fake_field>,
             #(#data_decl,)*
         }
         impl #nt {
@@ -1905,7 +1911,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         let gvals: Vec<TokenStream> = data.iter().map(|(d, _)| quote! {#ghost.#d}).collect();
         let tok_frag_ghost = single_fragment(f, &gvals);
         let incl_lemma_ghost = included_lemma(f, &gvals, quote! {#tok_frag_ghost}, None);
-        if kind(f) == Some(Kind::PersistentCount) {
+        if kind(f) == Some(Kind::PersistentCount) && matches!(q.p.inout_type, InoutType::In | InoutType::BorrowIn) {
             extra_reqs.push(quote! {#pname.__n <= #pname.__m});
         }
         match q.p.inout_type {
@@ -2007,6 +2013,11 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         req
     };
     let mut join_owned = vec![];
+    if needs_unit && !coll_owned.is_empty() {
+        // The accumulator starts as the unit; collections are joined onto it.
+        owned_frags.push(quote! {Fragment::unit()});
+        owned_frags_body.push(quote! {Fragment::unit()});
+    }
     for (_, frag) in &coll_owned {
         owned_frags.push(frag.clone());
         owned_frags_body.push(in_body(frag.clone()));
