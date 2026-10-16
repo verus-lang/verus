@@ -448,6 +448,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
             function_stubs.clone(),
             initial_wf.lookup.clone(),
             &function,
+            &lookup,
         )
         .map_err(|e| self.emit_errors(e))?;
         let erasure_modes = Arc::new(erasure_modes);

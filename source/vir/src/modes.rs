@@ -11,6 +11,7 @@ use crate::def::{Spanned, user_local_name};
 use crate::messages::{Span, error, internal_error};
 use crate::messages::{error_bare, error_with_label};
 use crate::resolution_inference::ResolutionInfo;
+use crate::traits::{DemoteTraitLookup, method_if_not_demoted};
 use crate::util::vec_map_result;
 use crate::well_formed::WfLookup;
 use air::scope_map::ScopeMap;
@@ -3709,6 +3710,7 @@ fn check_function_inner(
     record: &mut Record,
     typing: &mut Typing,
     function: &mut Function,
+    demote_trait_lookup: &DemoteTraitLookup,
 ) -> Result<bool, VirErr> {
     let Record {
         // Global fields
@@ -3742,11 +3744,16 @@ fn check_function_inner(
         }
     }
 
-    if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
+    if let Some(method) = method_if_not_demoted(demote_trait_lookup, function) {
+        let trait_path = match &function.x.kind {
+            FunctionKind::TraitMethodImpl { trait_path, .. }
+            | FunctionKind::ForeignTraitMethodImpl { trait_path, .. } => trait_path,
+            _ => unreachable!(),
+        };
         let our_trait = ctxt.lookup.merged_traits.trait_map.contains_key(trait_path);
         let (expected_params, expected_ret_mode, expected_proph): (Vec<Mode>, Mode, bool) =
             if our_trait {
-                let trait_method = &ctxt.funs[method];
+                let trait_method = &ctxt.funs[&method];
                 let expect_mode = trait_method.x.mode;
                 let expect_proph = trait_method.x.attrs.prophecy_dependent;
                 if function.x.mode != expect_mode {
@@ -4068,6 +4075,7 @@ pub fn check_function(
     funs: Arc<HashMap<Fun, FunctionStub>>,
     lookup: Arc<WfLookup>,
     function: &Function,
+    demote_trait_lookup: &DemoteTraitLookup,
 ) -> Result<(Function, ErasureModes, Option<ResolutionInfo>), Vec<VirErr>> {
     let erasure_modes =
         ErasureModes { local_modes: vec![], binder_modes: vec![], ctor_modes: vec![] };
@@ -4103,8 +4111,9 @@ pub fn check_function(
     };
     let mut typing = Typing::new(&mut state);
     let mut function = function.clone();
-    let dual_mode = check_function_inner(&ctxt, &mut record, &mut typing, &mut function)
-        .map_err(|e| vec![e])?;
+    let dual_mode =
+        check_function_inner(&ctxt, &mut record, &mut typing, &mut function, demote_trait_lookup)
+            .map_err(|e| vec![e])?;
 
     let mut resolution_info = None;
     if function.x.mode != Mode::Spec || function.x.outer_ret.x.mode != Mode::Spec {
