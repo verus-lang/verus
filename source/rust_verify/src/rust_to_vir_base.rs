@@ -6,7 +6,7 @@ use crate::util::err_span;
 use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::{BindingMode, ByRef, Mutability};
-use rustc_hir::definitions::{DefPath};
+use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
@@ -62,7 +62,7 @@ pub(crate) fn def_id_to_vir_path_option<'tcx>(
     verus_items: &crate::verus_items::VerusItems,
     def_id: DefId,
 ) -> Option<Path> {
-    let result = checked_def_id_to_vir_path(tcx, verus_items, def_id);
+    let result = remapped_def_id_to_vir_path(tcx, verus_items, def_id);
     if let Some(path) = &result {
         register_friendly_path_as_rust_name(tcx, verus_items, def_id, path);
     }
@@ -71,7 +71,12 @@ pub(crate) fn def_id_to_vir_path_option<'tcx>(
 
 // Register an alternative "friendly" paths for printing better error messages
 // or for the command-line --verify-function arguments.
-fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, verus_items: &crate::verus_items::VerusItems, def_id: DefId, path: &Path) {
+fn register_friendly_path_as_rust_name<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    verus_items: &crate::verus_items::VerusItems,
+    def_id: DefId,
+    path: &Path,
+) {
     let hir_id = if let Some(local_id) = def_id.as_local() {
         tcx.local_def_id_to_hir_id(local_id)
     } else {
@@ -99,7 +104,7 @@ fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, verus_items: &cr
             rustc_hir::TyKind::Path(QPath::Resolved(
                 None,
                 rustc_hir::Path { res: rustc_hir::def::Res::Def(_, self_def_id), .. },
-            )) => checked_def_id_to_vir_path(tcx, verus_items, *self_def_id),
+            )) => remapped_def_id_to_vir_path(tcx, verus_items, *self_def_id),
             _ => {
                 // To handle cases like [T] which are not syntactically datatypes
                 // but converted into VIR datatypes.
@@ -133,6 +138,24 @@ fn def_to_friendly_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> vir::as
     }
 }
 
+fn remapped_def_id_to_vir_path<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    verus_items: &crate::verus_items::VerusItems,
+    def_id: DefId,
+) -> Option<Path> {
+    use crate::verus_items::RustPrivate;
+    let verus_item = verus_items.id_to_name.get(&def_id);
+    if let Some(VerusItem::RustPrivate(RustPrivate::Path(path))) = verus_item {
+        return Some(path.clone());
+    }
+    if let Some(v @ VerusItem::RustPrivate(_)) = verus_item {
+        if let Some(id) = verus_items.name_to_rust_private_id.get(v) {
+            return checked_def_id_to_vir_path(tcx, verus_items, *id);
+        }
+    }
+    return checked_def_id_to_vir_path(tcx, verus_items, def_id);
+}
+
 /// We want to translate the DefPaths to nice-looking-paths, when possible,
 /// which means throwing out the disambiguators. However, if we screw up, we could get
 /// conflicting paths. So we keep a map of all the translations we to do double-check.
@@ -140,7 +163,7 @@ fn def_to_friendly_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> vir::as
 /// (Note: we still need to keep the mapping deterministic so it's consistent across
 /// Verus runs for different crates. So don't try anything clever like "only add disambiguators
 /// when necessary".)
-pub(crate) fn checked_def_id_to_vir_path<'tcx>(
+fn checked_def_id_to_vir_path<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
     def_id: DefId,
@@ -179,7 +202,6 @@ fn unchecked_def_id_to_vir_path<'tcx>(
     verus_items: &crate::verus_items::VerusItems,
     def_id: DefId,
 ) -> Option<Path> {
-    use crate::verus_items::RustPrivate;
     let verus_item = verus_items.id_to_name.get(&def_id);
     if let Some(VerusItem::Vstd(_, Some(fn_name))) = verus_item {
         // interpreter.rs and def.rs refer directly to some impl methods,
@@ -187,21 +209,10 @@ fn unchecked_def_id_to_vir_path<'tcx>(
         let segments = fn_name.split("::").map(|x| Arc::new(x.to_string())).collect();
         return Some(Arc::new(PathX { krate: CrateId::Vstd, segments: Arc::new(segments) }));
     }
-    if let Some(VerusItem::RustPrivate(RustPrivate::Path(path))) = verus_item {
-        return Some(path.clone());
-    }
-    if let Some(v @ VerusItem::RustPrivate(_)) = verus_item {
-        if let Some(id) = verus_items.name_to_rust_private_id.get(v) {
-            return def_path_to_vir_path(tcx, tcx.def_path(*id));
-        }
-    }
     def_path_to_vir_path(tcx, tcx.def_path(def_id))
 }
 
-fn def_path_to_vir_path<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    def_path: DefPath,
-) -> Option<Path> {
+fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
     let krate = mk_crate_id(tcx, def_path.krate);
     let mut segments: Vec<vir::ast::Ident> = Vec::new();
     for d in def_path.data.iter() {
@@ -217,7 +228,8 @@ fn def_path_to_vir_path<'tcx>(
                 }
             }
             DefPathData::TypeNs(symbol) => {
-                segments.push(Arc::new(vir::def::RUST_DEF_TYPE_NS.to_string() + symbol.as_str()));
+                //segments.push(Arc::new(vir::def::RUST_DEF_TYPE_NS.to_string() + symbol.as_str()));
+                segments.push(Arc::new(symbol.to_string()));
             }
             DefPathData::Ctor => {
                 segments.push(Arc::new(vir::def::RUST_DEF_CTOR.to_string()));
