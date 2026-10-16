@@ -633,9 +633,10 @@ fn methods_with_basis(sm:&SM,tr:&Transition,ops:&Ops,cx:&Context<'_>,
             #readiness_assertion
         };
     }};
+    // Do not hide the requirement and output relations here: any hidden
+    // function makes Verus add a per-function fuel quantifier, which
+    // dominated these proofs.
     let body=quote!{
-        hide(Protocol::#req);
-        hide(Protocol::#outputs);
         Fragment #expr::unit().op_unit();
         #(#take)*let tracked #owned=#first;#(#joins)*let #initial=#owned.fragment();
         #observe #shared_fragment

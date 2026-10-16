@@ -1185,22 +1185,16 @@ fn methods_with_basis(sm:&SM,tr:&Transition,ops:&Ops,cx:&Context<'_>,
     // the original owned-post relation for their logical output normalization.
     let isolated_caller_boundary=isolated_output_witness &&
         (!deposits.is_empty() || !withdrawals.is_empty() || added.is_empty());
-    let hide_strong=if isolated_caller_boundary {quote!{hide(State::invariant);hide(State::#strong);}}
-        else if deposits.is_empty()&&withdrawals.is_empty(){quote!{hide(State::#strong);}}else{quote!{}};
-    let hide_owned_post=if isolated_caller_boundary {
-        let owned_post=format_ident!("{name}_owned_post");
-        quote!{hide(Protocol::#owned_post);}
-    }else{quote!{}};
-    let hide_remainders:Vec<_>=sm.fields.iter()
-        .filter(|f|mutable.contains(&f.name.to_string())||added.contains_key(&f.name.to_string()))
-        .map(|f|{let without=format_ident!("without_{}",f.name);quote!{hide(Fragment::#without);}})
-        .collect();
+    // Hide at most the invariant: each additional hidden function adds a
+    // disjunct to Verus's per-function fuel quantifier, and with several
+    // disjuncts that quantifier dominated these proofs.
+    let hide_strong=if isolated_caller_boundary {quote!{hide(State::invariant);}}else{quote!{}};
+    let hide_owned_post=quote!{};
+    let hide_remainders:Vec<TokenStream>=vec![];
     let body=quote!{
         #hide_strong
         #hide_owned_post
         #(#hide_remainders)*
-        hide(Protocol::#req);
-        hide(Protocol::#outputs);
         Fragment #expr::unit().op_unit();
         #(#take)*let tracked #owned=#first;#(#joins)*let #initial=#owned.fragment();
         #observe #shared_fragment
