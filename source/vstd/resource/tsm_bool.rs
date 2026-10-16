@@ -12,6 +12,17 @@ pub open spec fn bool_frag(value: bool) -> CountRA {
     CountRA { count: if value { 1 } else { 0 } }
 }
 
+/// A bool token stays exact in any included upper fragment.
+pub proof fn bool_included_owned(owned: CountRA, rest: CountRA, frame: CountRA, whole: bool)
+    requires
+        CountRA::op(CountRA::op(owned, rest), frame) == bool_frag(whole),
+        owned.count == 1,
+    ensures
+        CountRA::op(owned, rest).count == 1,
+        whole,
+{
+}
+
 pub proof fn bool_owned_frame(owned: CountRA, frame: CountRA, whole: bool)
     requires
         CountRA::op(owned, frame) == bool_frag(whole),

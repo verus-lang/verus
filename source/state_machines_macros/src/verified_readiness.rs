@@ -11,6 +11,7 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
     let mut selected = HashSet::new();
     let mut field_optin=false;
     let mut raw_optout=false;
+    let mut generic=false;
     let mut names = vec![];
     let mut remaining = vec![];
     for attr in parsed.attrs {
@@ -24,6 +25,11 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
             if !matches!(attr.meta,verus_syn::Meta::Path(_)){return Err(Error::new(attr.path().segments[0].ident.span(),"field facade attribute takes no arguments"));}
             if raw_optout {return Err(Error::new(attr.path().segments[0].ident.span(),"field facade and raw token attributes cannot be combined"));}
             field_optin=true;
+        } else if attribute_name == "verified_generic_tokens" {
+            if field_optin || raw_optout || generic {return Err(Error::new(attr.path().segments[0].ident.span(),"generic field tokens cannot be combined with another token attribute"));}
+            if !matches!(attr.meta,verus_syn::Meta::Path(_)){return Err(Error::new(attr.path().segments[0].ident.span(),"generic field tokens attribute takes no arguments"));}
+            generic=true;
+            raw_optout=true;
         } else if attribute_name == "verified_raw_tokens" {
             if raw_optout {return Err(Error::new(attr.path().segments[0].ident.span(),"duplicate raw token attribute"));}
             if !matches!(attr.meta,verus_syn::Meta::Path(_)){return Err(Error::new(attr.path().segments[0].ident.span(),"raw token attribute takes no arguments"));}
@@ -102,6 +108,14 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
             let api = crate::verified_field_storage_wide::output(&bundle.sm, &selected)?;
             let output = crate::verified_general::output(bundle)?;
             return crate::verified_field_tokens::append(output, api);
+        }
+        if generic {
+            if !names.is_empty() {
+                return Err(Error::new(bundle.name.span(), "generic field tokens do not combine with selected physical readiness"));
+            }
+            let api=crate::verified_generic_tokens::output(&bundle)?;
+            let output=crate::verified_tokens::output(bundle)?;
+            return crate::verified_generic_tokens::append_tokens(output,api);
         }
         let api=if typed {Some(crate::verified_field_tokens::output(&bundle.sm)?)}else{None};
         let output=if typed && bundle.sm.fields.len()==1 && matches!(bundle.sm.fields[0].stype,ShardableType::Count) {

@@ -680,6 +680,22 @@ pub proof fn fragment_included_transitive<M: Machine>(
 }
 
 /// Complete a smaller fragment using an inclusion remainder and a full-state frame.
+/// Each operand is included in a composition.
+pub proof fn fragment_included_op_left<M: Machine>(a: M::Fragment, b: M::Fragment)
+    ensures
+        fragment_included::<M>(a, M::Fragment::op(a, b)),
+{
+    assert(M::Fragment::op(a, b) == M::Fragment::op(a, b));
+}
+
+pub proof fn fragment_included_op_right<M: Machine>(a: M::Fragment, b: M::Fragment)
+    ensures
+        fragment_included::<M>(b, M::Fragment::op(a, b)),
+{
+    M::Fragment::commutative(a, b);
+    assert(M::Fragment::op(b, a) == M::Fragment::op(a, b));
+}
+
 pub proof fn fragment_included_completion<M: Machine>(
     source: M::Fragment,
     upper: M::Fragment,

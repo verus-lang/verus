@@ -429,7 +429,7 @@ pub fn output_token_types_and_fns(
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum InoutType {
+pub(crate) enum InoutType {
     In,
     Out,
     InOut,
@@ -437,7 +437,7 @@ enum InoutType {
     BorrowOut,
 }
 
-struct TokenParam {
+pub(crate) struct TokenParam {
     pub inout_type: InoutType,
     pub name: Ident,
     pub ty: Type,
@@ -445,6 +445,11 @@ struct TokenParam {
     /// of the generated types? i.e., as opposed to just a single token,
     /// or opposed to a collection of external tokens.
     pub is_collection: bool,
+    /// The operation that created this param and its element, with field
+    /// reads translated to token values (used by the checked facade).
+    pub stmt: Option<MonoidStmtType>,
+    pub elt: Option<MonoidElt>,
+    pub pat: Option<Pat>,
 }
 
 /// Context object for the complex task of translating a single
@@ -503,7 +508,7 @@ impl Ctxt {
     }
 }
 
-enum Mode {
+pub(crate) enum Mode {
     Ghost,
     Tracked,
 }
@@ -520,11 +525,11 @@ enum Mode {
 ///
 /// When possible, we use &mut arguments (i.e., if a given token is
 /// both an input and an output).
-pub fn exchange_stream(
+pub(crate) fn exchange_parts(
     bundle: &SMBundle,
     tr: &Transition,
     safety_condition_lemmas: &HashMap<String, Ident>,
-) -> parse::Result<TokenStream> {
+) -> parse::Result<ExchangeParts> {
     let sm = &bundle.sm;
 
     let is_init = tr.kind == TransitionKind::Init;
@@ -945,8 +950,41 @@ pub fn exchange_stream(
     let mut enss = inst_eq_enss;
     enss.extend(ctxt.ensures);
 
-    let exch_name = exchange_name(&tr);
+    let extra_deps = get_extra_deps(bundle, &tr, safety_condition_lemmas);
+    let params = ctxt.params;
+    Ok(ExchangeParts {
+        exch_name: exchange_name(&tr),
+        use_explicit_lifetime,
+        in_params,
+        out_params,
+        reqs,
+        enss,
+        extra_deps,
+        params,
+        body: tr.body,
+    })
+}
 
+/// The pieces of a token-exchange method: its signature and specification
+/// (shared by the trusted macro and the checked facade) and per-token-param
+/// metadata for generating a checked body.
+pub(crate) struct ExchangeParts {
+    pub exch_name: Ident,
+    pub use_explicit_lifetime: bool,
+    pub in_params: Vec<TokenStream>,
+    pub out_params: Vec<(TokenStream, TokenStream, Mode)>,
+    pub reqs: Vec<Expr>,
+    pub enss: Vec<Expr>,
+    pub extra_deps: TokenStream,
+    pub params: HashMap<String, Vec<TokenParam>>,
+    pub body: TransitionStmt,
+}
+
+/// The return type, requires, and ensures of an exchange method.
+pub(crate) fn signature_tokens(parts: &ExchangeParts) -> (TokenStream, TokenStream, TokenStream) {
+    let reqs = &parts.reqs;
+    let enss = &parts.enss;
+    let out_params = &parts.out_params;
     let req_stream = if reqs.len() > 0 {
         quote! {
             requires
@@ -1042,16 +1080,24 @@ pub fn exchange_stream(
         (quote! { -> (tracked tmp_tuple: #tup_typ) }, ens_stream)
     };
 
-    // Tie it all together
+    (out_params_ret, req_stream, ens_stream)
+}
 
-    let extra_deps = get_extra_deps(bundle, &tr, safety_condition_lemmas);
-
-    let gen = if use_explicit_lifetime {
+pub fn exchange_stream(
+    bundle: &SMBundle,
+    tr: &Transition,
+    safety_condition_lemmas: &HashMap<String, Ident>,
+) -> parse::Result<TokenStream> {
+    let parts = exchange_parts(bundle, tr, safety_condition_lemmas)?;
+    let (out_params_ret, req_stream, ens_stream) = signature_tokens(&parts);
+    let exch_name = &parts.exch_name;
+    let in_params = &parts.in_params;
+    let extra_deps = &parts.extra_deps;
+    let gen = if parts.use_explicit_lifetime {
         quote! { <'a> }
     } else {
         TokenStream::new()
     };
-
     return Ok(quote_vstd! { vstd =>
         #vstd::prelude::verus_impl!{
             #[cfg(verus_keep_ghost_body)]
@@ -2064,6 +2110,9 @@ fn translate_special_condition(
                 name: ident.clone(),
                 ty: ty,
                 is_collection,
+                stmt: Some(op.stmt.clone()),
+                pat: pat_opt.as_ref().map(|p| (**p).clone()),
+                elt: Some(elt.clone()),
             });
 
             Some(TransitionStmt::Require(
@@ -2088,6 +2137,9 @@ fn translate_special_condition(
                 name: ident.clone(),
                 ty: ty,
                 is_collection,
+                stmt: Some(op.stmt.clone()),
+                pat: pat_opt.as_ref().map(|p| (**p).clone()),
+                elt: Some(elt.clone()),
             });
 
             Some(TransitionStmt::PostCondition(
@@ -2112,6 +2164,9 @@ fn translate_special_condition(
                 name: ident.clone(),
                 ty: ty,
                 is_collection,
+                stmt: Some(op.stmt.clone()),
+                pat: pat_opt.as_ref().map(|p| (**p).clone()),
+                elt: Some(elt.clone()),
             });
 
             Some(TransitionStmt::Require(
@@ -2132,11 +2187,15 @@ fn translate_special_condition(
                 stored_object_type(&field)
             };
 
+            let translated = translate_elt(ctxt, elt, false, &mut Vec::new());
             ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
                 inout_type: InoutType::BorrowOut,
                 name: ident.clone(),
                 ty: ty,
                 is_collection: false,
+                stmt: Some(op.stmt.clone()),
+                pat: pat_opt.as_ref().map(|p| (**p).clone()),
+                elt: Some(translated),
             });
 
             Some(TransitionStmt::PostCondition(
@@ -2156,11 +2215,15 @@ fn translate_special_condition(
                 stored_object_type(&field)
             };
 
+            let translated = translate_elt(ctxt, elt, false, &mut Vec::new());
             ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
                 inout_type: InoutType::In,
                 name: ident.clone(),
                 ty: ty,
                 is_collection: false,
+                stmt: Some(op.stmt.clone()),
+                pat: pat_opt.as_ref().map(|p| (**p).clone()),
+                elt: Some(translated),
             });
 
             Some(TransitionStmt::Require(span, mk_eq(span, &Expr::Verbatim(quote! {#ident}), &e)))
@@ -2176,11 +2239,15 @@ fn translate_special_condition(
                 stored_object_type(&field)
             };
 
+            let translated = translate_elt(ctxt, elt, false, &mut Vec::new());
             ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
                 inout_type: InoutType::Out,
                 name: ident.clone(),
                 ty: ty,
                 is_collection: false,
+                stmt: Some(op.stmt.clone()),
+                pat: pat_opt.as_ref().map(|p| (**p).clone()),
+                elt: Some(translated),
             });
 
             if let Some(e) = e_opt {

@@ -668,6 +668,96 @@ pub proof fn set_owned_frame<K>(
     assert(SetFragment::op(owned, frame).at(key) == set_frag(set).at(key));
 }
 
+
+/// A token's exclusive map entry stays exact in any included upper fragment.
+pub proof fn map_included_owned_at<K, V>(
+    owned: MapFragment<K, V>, rest: MapFragment<K, V>, frame: MapFragment<K, V>,
+    map: IMap<K, V>, key: K, value: V,
+)
+    requires
+        MapFragment::op(MapFragment::op(owned, rest), frame) == map_frag(map),
+        owned.at(key) == Some(ExclusiveRA::Exclusive(value)),
+    ensures
+        MapFragment::op(owned, rest).at(key) == Some(ExclusiveRA::Exclusive(value)),
+        map.contains_key(key),
+        map[key] == value,
+{
+    assert(MapFragment::op(MapFragment::op(owned, rest), frame).at(key) == map_frag(map).at(key));
+}
+
+/// A token's exclusive set element stays exact in any included upper fragment.
+pub proof fn set_included_owned_at<K>(
+    owned: SetFragment<K>, rest: SetFragment<K>, frame: SetFragment<K>, set: ISet<K>, key: K,
+)
+    requires
+        SetFragment::op(SetFragment::op(owned, rest), frame) == set_frag(set),
+        owned.at(key) == Some(ExclusiveRA::Exclusive(())),
+    ensures
+        SetFragment::op(owned, rest).at(key) == Some(ExclusiveRA::Exclusive(())),
+        set.contains(key),
+{
+    assert(SetFragment::op(SetFragment::op(owned, rest), frame).at(key) == set_frag(set).at(key));
+}
+
+/// A token's agreed persistent value stays exact in any included upper fragment.
+pub proof fn persistent_option_included_owned<V>(
+    owned: PersistentOptionFragment<V>, rest: PersistentOptionFragment<V>,
+    frame: PersistentOptionFragment<V>, whole: Option<V>, value: V,
+)
+    requires
+        PersistentOptionFragment::op(PersistentOptionFragment::op(owned, rest), frame)
+            == persistent_option_frag(whole),
+        owned == Some(AgreementRA::Agree(value)),
+    ensures
+        PersistentOptionFragment::op(owned, rest) == Some(AgreementRA::Agree(value)),
+        whole == Some(value),
+{
+}
+
+/// The same for a map whose entries a collection token owns.
+pub proof fn map_included_owned_many<K, V>(
+    owned: MapFragment<K, V>, rest: MapFragment<K, V>, frame: MapFragment<K, V>,
+    map: IMap<K, V>, observed: IMap<K, V>,
+)
+    requires
+        MapFragment::op(MapFragment::op(owned, rest), frame) == map_frag(map),
+        forall|key: K| observed.contains_key(key)
+            ==> #[trigger] owned.at(key) == Some(ExclusiveRA::Exclusive(observed[key])),
+    ensures
+        forall|key: K| observed.contains_key(key)
+            ==> #[trigger] MapFragment::op(owned, rest).at(key) == Some(ExclusiveRA::Exclusive(observed[key])),
+        observed.submap_of(map),
+{
+    assert forall|key: K| observed.contains_key(key)
+        implies #[trigger] MapFragment::op(owned, rest).at(key) == Some(ExclusiveRA::Exclusive(observed[key]))
+            && map.contains_key(key) && map[key] == observed[key] by {
+        map_included_owned_at(owned, rest, frame, map, key, observed[key]);
+    }
+    MapFragment::associative(owned, rest, frame);
+    map_have_many_frame(owned, MapFragment::op(rest, frame), map, observed);
+}
+
+/// The same for a set whose elements a collection token owns.
+pub proof fn set_included_owned_many<K>(
+    owned: SetFragment<K>, rest: SetFragment<K>, frame: SetFragment<K>, set: ISet<K>, observed: ISet<K>,
+)
+    requires
+        SetFragment::op(SetFragment::op(owned, rest), frame) == set_frag(set),
+        forall|key: K| observed.contains(key) ==> #[trigger] owned.at(key) == Some(ExclusiveRA::Exclusive(())),
+    ensures
+        forall|key: K| observed.contains(key)
+            ==> #[trigger] SetFragment::op(owned, rest).at(key) == Some(ExclusiveRA::Exclusive(())),
+        observed.subset_of(set),
+{
+    assert forall|key: K| observed.contains(key)
+        implies #[trigger] SetFragment::op(owned, rest).at(key) == Some(ExclusiveRA::Exclusive(()))
+            && set.contains(key) by {
+        set_included_owned_at(owned, rest, frame, set, key);
+    }
+    SetFragment::associative(owned, rest, frame);
+    set_have_many_frame(owned, SetFragment::op(rest, frame), set, observed);
+}
+
 /// A whole exclusive observation justifies a general set Have operand.
 pub proof fn set_have_many_frame<K>(
     owned: SetFragment<K>,

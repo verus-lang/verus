@@ -26,6 +26,7 @@ mod token_transition_checks;
 mod transitions;
 mod util;
 mod verified_tokens;
+mod verified_generic_tokens;
 mod verified_general;
 mod verified_monoids;
 mod verified_ownership;
