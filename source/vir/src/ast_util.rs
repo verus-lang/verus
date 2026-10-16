@@ -402,7 +402,9 @@ pub(crate) fn path_as_friendly_rust_name_raw(path: &Path) -> String {
     let krate = crate::def::krate_to_string_ignore_stable_id(&path.krate);
     let mut strings: Vec<String> = vec![krate];
     for segment in path.segments.iter() {
-        strings.push(segment.to_string());
+        if !segment.starts_with(crate::def::RUST_DEF_FOREIGN_MOD) {
+            strings.push(segment.to_string());
+        }
     }
     strings.join("::")
 }

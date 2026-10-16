@@ -126,6 +126,7 @@ fn get_sibling<'tcx>(
     name: &str,
 ) -> Result<DefId, VirErr> {
     let tcx = ctxt.tcx;
+
     if let Some(impl_id) = tcx.impl_of_assoc(def_id)
         && !tcx.impl_is_of_trait(impl_id)
     {
@@ -137,11 +138,28 @@ fn get_sibling<'tcx>(
             return err_span(
                 span,
                 format!(
-                    "unable to find sibling impl item of name {name:} (should be in the same `impl` block)"
+                    "unable to find sibling impl item of name `{name:}` (should be in the same `impl` block)"
                 ),
             );
         } else {
-            return err_span(span, format!("sibling impl item of name {name:} is ambiguous"));
+            return err_span(span, format!("sibling impl item of name `{name:}` is ambiguous"));
+        }
+    }
+
+    if let Some(trait_id) = tcx.trait_of_assoc(def_id) {
+        let symbol = rustc_span::Symbol::intern(&*name);
+        let c: Vec<_> = tcx.associated_items(trait_id).filter_by_name_unhygienic(symbol).collect();
+        if c.len() == 1 {
+            return Ok(c[0].def_id);
+        } else if c.len() == 0 {
+            return err_span(
+                span,
+                format!(
+                    "unable to find sibling trait item of name `{name:}` (should be in the same trait declaration)"
+                ),
+            );
+        } else {
+            return err_span(span, format!("sibling trait item of name `{name:}` is ambiguous"));
         }
     }
 
@@ -162,7 +180,7 @@ fn get_sibling<'tcx>(
     return err_span(
         span,
         format!(
-            "unable to find item of name {name:} in this module (should be a top-level item in the module)"
+            "unable to find item of name `{name:}` in this module (should be a top-level item in the module)"
         ),
     );
 }
