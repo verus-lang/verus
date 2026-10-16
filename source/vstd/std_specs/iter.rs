@@ -392,13 +392,20 @@ pub assume_specification<I: Iterator>[ <I as IntoIterator>::into_iter ](i: I) ->
 // Uninterpreted function representing the sequence of elements that will be
 // produced by the iterator obtained from an IntoIterator value.
 // This avoids requiring IteratorSpec bounds in from_iter's ensures clause.
+#[verifier::prophetic]
 pub uninterp spec fn into_iter_remaining<A, T>(iter: T) -> Seq<A>;
+
+// Holds when into_iter_remaining(iter) is valid
+pub uninterp spec fn into_iter_remaining_guard<A, T>(iter: T) -> bool;
 
 // Connects into_iter_remaining to remaining() for types implementing Iterator + IteratorSpec.
 // This allows callers of from_iter to relate the result to the iterator's remaining elements.
 pub broadcast axiom fn axiom_from_iterator_ensures<A, I: Iterator<Item = A> + IteratorSpec>(iter: I)
+    requires
+        iter.obeys_prophetic_iter_laws(),
     ensures
-        #[trigger] into_iter_remaining::<A, I>(iter) == iter.remaining(),
+        #[trigger] into_iter_remaining_guard::<A, I>(iter),
+        into_iter_remaining::<A, I>(iter) == iter.remaining(),
 ;
 
 #[verifier::external_trait_specification]
@@ -412,7 +419,10 @@ pub trait ExFromIterator<A>: Sized {
     fn from_iter<T>(iter: T) -> (s: Self)
        where T: IntoIterator<Item = A>
         ensures
-            Self::from_iter_ensures(into_iter_remaining(iter), s),
+            into_iter_remaining_guard::<A, T>(iter) ==> Self::from_iter_ensures(
+                into_iter_remaining(iter),
+                s,
+            ),
     ;
 }
 
