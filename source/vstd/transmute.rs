@@ -3,46 +3,41 @@
 use super::prelude::*;
 use super::type_representation::*;
 use crate::vstd::group_vstd_default;
-use std::marker::MetaSized;
+use core::marker::MetaSized;
 
 verus! {
 
 broadcast use {group_vstd_default};
 
-pub trait TransmuteSpec where Self: TypeRepresentation {
-    open spec fn transmute_req<Dst: TypeRepresentation>(src: Self, dst: Dst) -> bool {
+pub trait TransmuteSpec<Dst: TypeRepresentation> where Self: TypeRepresentation {
+    open spec fn transmute_req(src: Self, src_shadow_data: ShadowData<Self>, dst: Dst, dst_shadow_data: ShadowData<Dst>) -> bool {
         &&& encode_decode::<Self, Dst>(src, arbitrary(), dst, arbitrary())
         &&& Self::can_be_encoded()
     }
 }
 
-impl TransmuteSpec for bool {}
-impl TransmuteSpec for u8 {}
-impl TransmuteSpec for u16 {}
-impl TransmuteSpec for u32 {}
-impl TransmuteSpec for u64 {}
-impl TransmuteSpec for u128 {}
-impl TransmuteSpec for usize {}
-impl TransmuteSpec for i8 {}
-impl TransmuteSpec for i16 {}
-impl TransmuteSpec for i32 {}
-impl TransmuteSpec for i64 {}
-impl TransmuteSpec for i128 {}
-impl TransmuteSpec for isize {}
-impl<T: ?Sized> TransmuteSpec for *mut T where <T as core::ptr::Pointee>::Metadata: TypeRepresentation {}
-impl<T: ?Sized> TransmuteSpec for *const T where <T as core::ptr::Pointee>::Metadata: TypeRepresentation {}
-impl TransmuteSpec for () {}
-
-pub trait TransmutePairwiseSpec<Dst: TypeRepresentation> where Self: TypeRepresentation {
-    spec fn transmute_req(src: Self, src_shadow_data: ShadowData<Self>, dst: Dst, dst_shadow_data: ShadowData<Dst>) -> bool;
-}
-
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for bool {}
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u8 {}
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u16 {}
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u32 {}
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u64 {}
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u128 {}
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for usize {}
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i8 {}
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i16 {}
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i32 {}
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i64 {}
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i128 {}
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for isize {}
+impl<T: ?Sized, Dst: TypeRepresentation> TransmuteSpec<Dst> for *mut T where <T as core::ptr::Pointee>::Metadata: TypeRepresentation {}
+impl<T: ?Sized, Dst: TypeRepresentation> TransmuteSpec<Dst> for *const T where <T as core::ptr::Pointee>::Metadata: TypeRepresentation {}
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for () {}
 // TODO - impl for sized types as well?
-impl<'a, T, U> TransmutePairwiseSpec<&'a U> for &'a T 
+impl<'a, T, U> TransmuteSpec<&'a U> for &'a T 
     where T: TypeRepresentationMetaSized + MetaSized, 
     U: TypeRepresentationMetaSized + MetaSized,
-    <T as std::ptr::Pointee>::Metadata: TypeRepresentation,
-    <U as std::ptr::Pointee>::Metadata: TypeRepresentation
+    <T as core::ptr::Pointee>::Metadata: TypeRepresentation,
+    <U as core::ptr::Pointee>::Metadata: TypeRepresentation
 {
     open spec fn transmute_req(src: &'a T, src_shadow_data: ShadowData<&'a T>, dst: &'a U, dst_shadow_data: ShadowData<&'a U>) -> bool {
         &&& encode_decode::<&'a T, &'a U>(src, src_shadow_data, dst, dst_shadow_data)
@@ -64,7 +59,7 @@ macro_rules! transmute_reflexive_injective_lemma {
                 requires
                     x == y
                 ensures
-                    <$typ as TransmuteSpec>::transmute_req(x, y),
+                    <$typ as TransmuteSpec<$typ>>::transmute_req(x, arbitrary(), y, arbitrary()),
             {
                 broadcast use group_type_representation_axioms;
 
@@ -76,7 +71,7 @@ macro_rules! transmute_reflexive_injective_lemma {
             /// When a `$typ` is transmuted to a `$typ`, the value can only be transmuted to itself.
             pub proof fn $injective_lemma(tracked x: $typ, y: $typ)
                 requires
-                    <$typ as TransmuteSpec>::transmute_req(x, y)
+                    <$typ as TransmuteSpec<$typ>>::transmute_req(x, arbitrary(), y, arbitrary())
                 ensures
                     x == y
             {
@@ -113,7 +108,7 @@ pub proof fn transmute_mut_ptr_reflexive<T: ?Sized>(tracked x: *mut T, y: *mut T
         <*mut T as TypeRepresentation>::can_be_encoded(),
         x@ == y@,
     ensures
-        <*mut T as TransmuteSpec>::transmute_req(x, y),
+        <*mut T as TransmuteSpec<*mut T>>::transmute_req(x, arbitrary(), y, arbitrary()),
 {
     broadcast use group_type_representation_axioms;
 
@@ -129,7 +124,7 @@ pub proof fn transmute_mut_ptr_reflexive<T: ?Sized>(tracked x: *mut T, y: *mut T
 /// When a `*mut T` is transmuted to a `*mut T` for `T: Sized`, a value can only be transmuted to itself.
 pub proof fn transmute_mut_ptr_sized_injective<T>(tracked x: *mut T, y: *mut T)
     requires
-        <*mut T as TransmuteSpec>::transmute_req(x, y),
+        <*mut T as TransmuteSpec<*mut T>>::transmute_req(x, arbitrary(), y, arbitrary()),
     ensures
         x@ == y@,
 {
@@ -140,9 +135,9 @@ pub proof fn transmute_mut_ptr_sized_injective<T>(tracked x: *mut T, y: *mut T)
 
 // TODO
 /// When a `*mut T` is transmuted to a `*mut T` for `T: Sized`, a value can only be transmuted to itself.
-pub proof fn transmute_mut_ptr_metasized_usize_injective<T: std::ptr::Pointee<Metadata = usize>>(tracked x: *mut T, y: *mut T)
+pub proof fn transmute_mut_ptr_metasized_usize_injective<T: core::ptr::Pointee<Metadata = usize>>(tracked x: *mut T, y: *mut T)
     requires
-        <*mut T as TransmuteSpec>::transmute_req(x, y),
+        <*mut T as TransmuteSpec<*mut T>>::transmute_req(x, arbitrary(), y, arbitrary()),
     ensures
         x@ == y@,
 {
@@ -159,7 +154,7 @@ pub proof fn transmute_const_ptr_reflexive<T: ?Sized>(tracked x: *const T, y: *c
         <*const T as TypeRepresentation>::can_be_encoded(),
         x@ == y@,
     ensures
-        <*const T as TransmuteSpec>::transmute_req(x, y),
+        <*const T as TransmuteSpec<*const T>>::transmute_req(x, arbitrary(), y, arbitrary()),
 {
     broadcast use group_type_representation_axioms;
 
@@ -175,7 +170,7 @@ pub proof fn transmute_const_ptr_reflexive<T: ?Sized>(tracked x: *const T, y: *c
 /// When a `*const T` is transmuted to a `*const T` for `T: Sized`, a value can only be transmuted to itself.
 pub proof fn transmute_const_ptr_sized_injective<T: Sized>(tracked x: *const T, y: *const T)
     requires
-        <*const T as TransmuteSpec>::transmute_req(x, y),
+        <*const T as TransmuteSpec<*const T>>::transmute_req(x, arbitrary(), y, arbitrary()),
     ensures
         x@ == y@,
 {
@@ -185,9 +180,9 @@ pub proof fn transmute_const_ptr_sized_injective<T: Sized>(tracked x: *const T, 
 }
 
 // TODO
-pub proof fn transmute_const_ptr_metasized_usize_injective<T: std::ptr::Pointee<Metadata = usize>>(tracked x: *const T, y: *const T)
+pub proof fn transmute_const_ptr_metasized_usize_injective<T: core::ptr::Pointee<Metadata = usize>>(tracked x: *const T, y: *const T)
     requires
-        <*const T as TransmuteSpec>::transmute_req(x, y),
+        <*const T as TransmuteSpec<*const T>>::transmute_req(x, arbitrary(), y, arbitrary()),
     ensures
         x@ == y@,
 {
