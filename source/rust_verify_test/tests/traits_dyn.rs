@@ -694,3 +694,35 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails_type_invariant_error(err, 1)
 }
+
+test_verify_one_file! {
+    // a trait whose supertrait Verus does not know (declared outside verus!, as for a
+    // dependency like serde) used to crash dyn-compatibility checking
+    #[test] test_unknown_supertrait_no_dyn code! {
+        use vstd::prelude::*;
+        pub trait Ser { fn ser(&self) -> u8; }
+        verus! {
+            pub trait Request: Ser {
+                fn path(&self) -> u8;
+            }
+            fn f() {}
+        }
+    } => Ok(err) => {
+        assert!(err.errors.len() == 0);
+        assert!(err.warnings.iter().any(|w| w.message.starts_with("cannot use external trait")));
+    }
+}
+
+test_verify_one_file! {
+    // ... and `dyn` of such a trait is rejected, since its supertrait cannot be checked
+    #[test] test_unknown_supertrait_dyn_rejected code! {
+        use vstd::prelude::*;
+        pub trait Ser { fn ser(&self) -> u8; }
+        verus! {
+            pub trait Request: Ser {
+                fn path(&self) -> u8;
+            }
+            fn g(r: &dyn Request) {}
+        }
+    } => Err(err) => assert_vir_error_msg(err, "is not known to Verus")
+}
