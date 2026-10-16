@@ -125,7 +125,9 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
         Seq::new(len as nat, |i: int| self.start.spec_forward_checked_int(i).unwrap())
     }
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    open spec fn will_return_none(&self) -> bool {
+        true
+    }
 
     open spec fn decrease(&self) -> Option<nat> {
         Some(self.start.spec_steps_between_int(self.end) as nat)
@@ -153,7 +155,9 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for RangeInclusive<A> {
         )
     }
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    open spec fn will_return_none(&self) -> bool {
+        true
+    }
 
     open spec fn decrease(&self) -> Option<nat> {
         Some((self@.start.spec_steps_between_int(self@.end) + 1) as nat)
