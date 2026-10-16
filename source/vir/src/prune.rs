@@ -453,6 +453,13 @@ fn maybe_reach_set_ops_for_call(
         if !caller_mask.is_all() && !callee_mask.is_none() {
             reach_set_ops(state, ctxt);
         }
+    } else {
+        // One side's mask could not be determined here: the caller is an impl of a trait
+        // method that is not in the map (e.g. `Drop::drop`, whose impl carries its own mask
+        // and is checked with it), or the callee is. The mask check in ast_to_sst may still
+        // emit set operations, so keep them (they are only definitions; reaching them is
+        // always safe). Previously this pruned them and crashed in poly.rs.
+        reach_set_ops(state, ctxt);
     }
 }
 

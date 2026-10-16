@@ -2023,3 +2023,22 @@ test_verify_one_file! {
         assert!(err.errors.iter().all(|e| e.rendered.contains("precondition not satisfied")));
     }
 }
+
+test_verify_one_file! {
+    // `Drop::drop` is not in the function map, so pruning could not determine its mask and
+    // dropped the invariant-mask set operations that the mask check below still uses (crash
+    // "unknown function: vstd::iset::ISet::subset_of" instead of this error)
+    #[test] drop_opens_invariants_none_calls_fn_with_default_mask verus_code! {
+        use vstd::prelude::*;
+        fn f() no_unwind {}
+        pub struct S;
+        impl Drop for S {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            {
+                f(); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
