@@ -1278,7 +1278,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     }
                     // If normalization isn't possible, return a projection type:
                     let assoc_item = tcx.associated_item(def_id);
-                    let name = Arc::new(assoc_item.name().to_string());
+                    let name = assoc_item_name(&assoc_item, span)?;
                     // Note: this looks like it would work, but trait_item_def_id is sometimes None:
                     //   use crate::rustc_middle::ty::DefIdTree;
                     //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
@@ -1938,7 +1938,7 @@ where
                 let substs = pred.projection_term.args;
                 let trait_def_id = pred.projection_term.trait_def_id(tcx);
                 let assoc_item = tcx.associated_item(item_def_id);
-                let name = Arc::new(assoc_item.name().to_string());
+                let name = assoc_item_name(&assoc_item, *span)?;
                 let generic_bound = check_generic_bound(
                     tcx,
                     verus_items,
@@ -2580,7 +2580,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                         let substs = pred.projection_term.args;
                         let trait_def_id = pred.projection_term.trait_def_id(ctxt.tcx);
                         let assoc_item = ctxt.tcx.associated_item(item_def_id);
-                        let name = Arc::new(assoc_item.name().to_string());
+                        let name = assoc_item_name(&assoc_item, span)?;
                         let generic_bound = check_generic_bound(
                             ctxt.tcx,
                             &ctxt.verus_items,
@@ -2854,4 +2854,19 @@ pub(crate) fn hack_fix_no_lifetime_opaque_ty_issue2541<'tcx>(
             region
         }
     })
+}
+
+/// The name of an associated item, or an unsupported-feature error for the associated types
+/// rustc synthesizes for `-> impl Trait` in traits and `async fn` in traits, which have none.
+pub(crate) fn assoc_item_name(
+    assoc_item: &rustc_middle::ty::AssocItem,
+    span: Span,
+) -> Result<vir::ast::Ident, VirErr> {
+    match assoc_item.opt_name() {
+        Some(name) => Ok(Arc::new(name.to_string())),
+        None => unsupported_err!(
+            span,
+            "return-position `impl Trait` in a trait, or `async fn` in a trait"
+        ),
+    }
 }
