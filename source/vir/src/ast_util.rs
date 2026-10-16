@@ -65,8 +65,9 @@ pub fn path_segments_match_prefix(target: &Idents, prefix: &Idents) -> bool {
 }
 
 pub fn parse_path_segments_from_user_str(s: &str) -> Result<Idents, crate::ast::VirErr> {
+    // The user writes a module path, whose segments are all in the type namespace
     let mut arg_segments: Vec<Ident> =
-        s.split("::").map(|s| Arc::new(s.to_string())).collect::<Vec<_>>();
+        s.split("::").map(|s| crate::def::in_type_ns(s)).collect::<Vec<_>>();
     if arg_segments.first().map(|x| **x == "") == Some(true) {
         arg_segments.remove(0);
     }
@@ -411,7 +412,9 @@ pub(crate) fn path_as_friendly_rust_name_raw(path: &Path) -> String {
     let mut strings: Vec<String> = vec![krate];
     for segment in path.segments.iter() {
         if !segment.starts_with(crate::def::RUST_DEF_FOREIGN_MOD) {
-            strings.push(segment.to_string());
+            // The t% prefix distinguishes the type namespace from the value namespace
+            // internally; it isn't part of the name the user wrote.
+            strings.push(crate::def::strip_type_ns(segment).to_string());
         }
     }
     strings.join("::")
@@ -1303,10 +1306,51 @@ macro_rules! path {
     };
 }
 
+// Like path!, but for paths where every segment is in the Rust type namespace
+// (modules, structs, traits), which is the usual case for hand-written paths
+// to core/std items.
+#[macro_export]
+macro_rules! type_path {
+    [ $krate:expr => $( $segment:literal ),* ] => {
+        ::std::sync::Arc::new($crate::ast::PathX {
+            krate: $krate,
+            segments: ::std::sync::Arc::new(
+                ::std::vec![
+                    $(
+                        $crate::def::in_type_ns($segment)
+                    ),*
+                ],
+            ),
+        })
+    };
+}
+
 #[macro_export]
 macro_rules! fun {
     [ $krate:expr => $( $segment:literal ),* ] => {
         Arc::new($crate::ast::FunX { path: $crate::path!($krate => $($segment),*) })
+    };
+}
+
+// Like fun!, but for a function whose enclosing segments (modules, types, traits)
+// are all in the Rust type namespace, with the function name itself,
+// written after the `;`, in the value namespace.
+#[macro_export]
+macro_rules! type_path_fun {
+    [ $krate:expr => $( $segment:literal ),* ; $name:literal ] => {
+        ::std::sync::Arc::new($crate::ast::FunX {
+            path: ::std::sync::Arc::new($crate::ast::PathX {
+                krate: $krate,
+                segments: ::std::sync::Arc::new(
+                    ::std::vec![
+                        $(
+                            $crate::def::in_type_ns($segment),
+                        )*
+                        ::std::sync::Arc::new($name.to_string()),
+                    ],
+                ),
+            }),
+        })
     };
 }
 
@@ -1530,9 +1574,9 @@ impl fmt::Display for ClosureKind {
 impl ClosureKind {
     pub(crate) fn trait_path(&self) -> Path {
         match self {
-            ClosureKind::Fn => crate::path![CrateId::Core => "ops", "function", "Fn"],
-            ClosureKind::FnMut => crate::path![CrateId::Core => "ops", "function", "FnMut"],
-            ClosureKind::FnOnce => crate::path![CrateId::Core => "ops", "function", "FnOnce"],
+            ClosureKind::Fn => crate::type_path![CrateId::Core => "ops", "function", "Fn"],
+            ClosureKind::FnMut => crate::type_path![CrateId::Core => "ops", "function", "FnMut"],
+            ClosureKind::FnOnce => crate::type_path![CrateId::Core => "ops", "function", "FnOnce"],
         }
     }
 }

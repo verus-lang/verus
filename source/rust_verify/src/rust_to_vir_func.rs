@@ -1740,11 +1740,8 @@ pub(crate) fn check_item_fn<'tcx>(
         let from_trait_id = ctxt.tcx.parent(id);
         let from_path = ctxt.def_id_to_vir_path(from_trait_id);
         let to_path = ctxt.def_id_to_vir_path(to_trait_id);
-        let to_spec_path = if let Some(name) = to_spec_name {
-            Some(from_path.pop_segment().push_segment(Arc::new(name.clone())))
-        } else {
-            None
-        };
+        let to_spec_path =
+            to_spec_name.map(|name| from_path.replace_last(vir::def::in_type_ns(&name)));
         Some((from_path, to_path, to_spec_path))
     } else {
         None
