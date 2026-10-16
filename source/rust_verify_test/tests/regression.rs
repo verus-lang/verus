@@ -1549,3 +1549,31 @@ test_verify_one_file_with_options! {
         pub struct X { pub a: u8 }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] path_collision_issue3144 verus_code! {
+        use vstd::prelude::*;
+
+        mod m {
+            #[verifier::external]
+            pub fn g() -> u8 {
+                2
+            }
+        }
+
+        // A function named like the module, with a nested function named like the module's function.
+        fn m() {
+            fn g() -> (r: u8)
+                ensures
+                    r == 1,
+            {
+                1
+            }
+        }
+
+        fn main() {
+            // rustc resolves `m::g` to the function in the module.
+            let x = m::g();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::m::g` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
+}
