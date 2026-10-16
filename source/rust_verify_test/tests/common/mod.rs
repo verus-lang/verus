@@ -296,6 +296,9 @@ pub fn run_verus(
     for option in options.iter() {
         if let Some(name) = option.strip_prefix("--crate-name=") {
             crate_name = name;
+        } else if let Some(module) = option.strip_prefix("--verify-only-module ") {
+            verus_args.push("--verify-only-module".to_string());
+            verus_args.push(module.to_string());
         } else if *option == "--expand-errors" {
             verus_args.push("--expand-errors".to_string());
             verus_args.push("--multiple-errors".to_string());
