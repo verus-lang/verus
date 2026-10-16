@@ -402,3 +402,489 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// `len` does not run the closure of a `Map`, so `remaining()` (which stops at a closure that fails to return)
+// may be shorter than `len`.  We can only equate them if the iterator will return None.
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3165
+    #[test] len_needs_will_return_none verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::{IteratorSpec, filter_keep};
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn diverge()
+            ensures
+                false,
+        {
+            let b: bool = true;
+            while b
+                invariant
+                    b,
+            {
+            }
+        }
+
+        fn len_direct() {
+            let v: Vec<u32> = vec![1, 2];
+            let it = v.into_iter();
+            let ghost g = it;
+            let f = |x: u32| -> (y: u32)
+                ensures
+                    x != 1,
+                {
+                    if x == 1 {
+                        diverge();
+                    }
+                    x
+                };
+            let ghost gf = f;
+            let mut m = it.map(f);
+            let ghost gm = m;
+            proof {
+                assert(g.remaining()[0] == 1);
+                if gm.remaining().len() > 0 {
+                    assert(call_ensures(gf, (g.remaining()[0],), gm.remaining()[0]));
+                    assert(false);
+                }
+                assert(gm.remaining().len() == 0);
+            }
+            let n = m.len();
+            assert(n == 0); // FAILS
+        }
+
+        fn len_skip() {
+            let v: Vec<u32> = vec![1, 2];
+            let it = v.into_iter();
+            let ghost g = it;
+            let f = |x: u32| -> (y: u32)
+                ensures
+                    x != 1,
+                {
+                    if x == 1 {
+                        diverge();
+                    }
+                    x
+                };
+            let ghost gf = f;
+            let mut m = it.map(f);
+            let ghost gm = m;
+            proof {
+                assert(g.remaining()[0] == 1);
+                if gm.remaining().len() > 0 {
+                    assert(call_ensures(gf, (g.remaining()[0],), gm.remaining()[0]));
+                    assert(false);
+                }
+                assert(gm.remaining().len() == 0);
+            }
+            let s = m.skip(1);
+            let n = s.len();
+            assert(n == 0); // FAILS
+        }
+
+        fn len_mut_ref() {
+            let v: Vec<u32> = vec![1, 2];
+            let it = v.into_iter();
+            let ghost g = it;
+            let f = |x: u32| -> (y: u32)
+                ensures
+                    x != 1,
+                {
+                    if x == 1 {
+                        diverge();
+                    }
+                    x
+                };
+            let ghost gf = f;
+            let mut m = it.map(f);
+            let ghost gm = m;
+            proof {
+                assert(g.remaining()[0] == 1);
+                if gm.remaining().len() > 0 {
+                    assert(call_ensures(gf, (g.remaining()[0],), gm.remaining()[0]));
+                    assert(false);
+                }
+                assert(gm.remaining().len() == 0);
+            }
+            let n = (&mut m).len();
+            assert(n == 0); // FAILS
+        }
+
+        fn len_rev() {
+            let v: Vec<u32> = vec![1, 2];
+            let it = v.into_iter();
+            let ghost g = it;
+            let f = |x: u32| -> (y: u32)
+                ensures
+                    x != 1,
+                {
+                    if x == 1 {
+                        diverge();
+                    }
+                    x
+                };
+            let ghost gf = f;
+            let mut m = it.map(f);
+            let ghost gm = m;
+            proof {
+                assert(g.remaining()[0] == 1);
+                if gm.remaining().len() > 0 {
+                    assert(call_ensures(gf, (g.remaining()[0],), gm.remaining()[0]));
+                    assert(false);
+                }
+                assert(gm.remaining().len() == 0);
+            }
+            let r = m.rev();
+            let n = r.len();
+            assert(n == 0); // FAILS
+        }
+
+        fn len_zip() {
+            let v: Vec<u32> = vec![1, 2];
+            let it = v.into_iter();
+            let ghost g = it;
+            let f = |x: u32| -> (y: u32)
+                ensures
+                    x != 1,
+                {
+                    if x == 1 {
+                        diverge();
+                    }
+                    x
+                };
+            let ghost gf = f;
+            let m = it.map(f);
+            let ghost gm = m;
+            proof {
+                assert(g.remaining()[0] == 1);
+                if gm.remaining().len() > 0 {
+                    assert(call_ensures(gf, (g.remaining()[0],), gm.remaining()[0]));
+                    assert(false);
+                }
+                assert(gm.remaining().len() == 0);
+            }
+            let mut w: Vec<u32> = vec![5, 6];
+            let z = w.iter_mut().zip(m);
+            let ghost gz = z;
+            proof {
+                assert(gz.remaining().len() == 0);
+            }
+            let n = z.len();
+            assert(n == 0); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+// `next_back` starts at the other end, so it can succeed even if `remaining()` was truncated by
+// a closure that fails to return on an earlier element.
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3165
+    #[test] next_back_needs_will_return_none verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::{IteratorSpec, filter_keep};
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn diverge()
+            ensures
+                false,
+        {
+            let b: bool = true;
+            while b
+                invariant
+                    b,
+            {
+            }
+        }
+
+        fn next_back_direct() {
+            let v: Vec<u32> = vec![1, 2];
+            let it = v.into_iter();
+            let ghost g = it;
+            let f = |x: u32| -> (y: u32)
+                ensures
+                    x != 1,
+                {
+                    if x == 1 {
+                        diverge();
+                    }
+                    x
+                };
+            let ghost gf = f;
+            let mut m = it.map(f);
+            let ghost gm = m;
+            proof {
+                assert(g.remaining()[0] == 1);
+                if gm.remaining().len() > 0 {
+                    assert(call_ensures(gf, (g.remaining()[0],), gm.remaining()[0]));
+                    assert(false);
+                }
+                assert(gm.remaining().len() == 0);
+            }
+            let r = m.next_back();
+            assert(r is None); // FAILS
+        }
+
+        fn next_back_skip() {
+            let v: Vec<u32> = vec![1, 2];
+            let it = v.into_iter();
+            let ghost g = it;
+            let f = |x: u32| -> (y: u32)
+                ensures
+                    x != 1,
+                {
+                    if x == 1 {
+                        diverge();
+                    }
+                    x
+                };
+            let ghost gf = f;
+            let mut m = it.map(f);
+            let ghost gm = m;
+            proof {
+                assert(g.remaining()[0] == 1);
+                if gm.remaining().len() > 0 {
+                    assert(call_ensures(gf, (g.remaining()[0],), gm.remaining()[0]));
+                    assert(false);
+                }
+                assert(gm.remaining().len() == 0);
+            }
+            let mut s = m.skip(0);
+            let r = s.next_back();
+            assert(r is None); // FAILS
+        }
+
+        fn next_back_mut_ref() {
+            let v: Vec<u32> = vec![1, 2];
+            let it = v.into_iter();
+            let ghost g = it;
+            let f = |x: u32| -> (y: u32)
+                ensures
+                    x != 1,
+                {
+                    if x == 1 {
+                        diverge();
+                    }
+                    x
+                };
+            let ghost gf = f;
+            let mut m = it.map(f);
+            let ghost gm = m;
+            proof {
+                assert(g.remaining()[0] == 1);
+                if gm.remaining().len() > 0 {
+                    assert(call_ensures(gf, (g.remaining()[0],), gm.remaining()[0]));
+                    assert(false);
+                }
+                assert(gm.remaining().len() == 0);
+            }
+            let r = (&mut m).next_back();
+            assert(r is None); // FAILS
+        }
+
+        fn filter_next_back() {
+            let v: Vec<u32> = vec![1, 2];
+            let it = v.into_iter();
+            let ghost g = it;
+            let p = |x: &u32| -> (b: bool)
+                ensures
+                    *x != 1,
+                {
+                    if *x == 1 {
+                        diverge();
+                    }
+                    true
+                };
+            let ghost gp = p;
+            let mut m = it.filter(p);
+            let ghost gm = m;
+            proof {
+                assert(g.remaining()[0] == 1);
+                assert(forall|k| #![auto] 0 <= k < g.remaining().len() ==> call_requires(gp, (&g.remaining()[k],)));
+                let keep = filter_keep(gm);
+                if keep.len() > 0 {
+                    assert(call_ensures(gp, (&g.remaining()[0],), keep[0]));
+                    assert(false);
+                }
+                assert(keep.len() == 0);
+                assert(gm.remaining().len() == 0);
+            }
+            let r = m.next_back();
+            assert(r is None); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+// `Rev` calls `next_back`, so its `remaining()` is only the reverse of the inner `remaining()`
+// if the inner iterator will return None.
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3165
+    #[test] rev_needs_will_return_none verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::{IteratorSpec, filter_keep};
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn diverge()
+            ensures
+                false,
+        {
+            let b: bool = true;
+            while b
+                invariant
+                    b,
+            {
+            }
+        }
+
+        fn rev_next() {
+            let v: Vec<u32> = vec![1, 2];
+            let it = v.into_iter();
+            let ghost g = it;
+            let f = |x: u32| -> (y: u32)
+                ensures
+                    x != 1,
+                {
+                    if x == 1 {
+                        diverge();
+                    }
+                    x
+                };
+            let ghost gf = f;
+            let mut m = it.map(f);
+            let ghost gm = m;
+            proof {
+                assert(g.remaining()[0] == 1);
+                if gm.remaining().len() > 0 {
+                    assert(call_ensures(gf, (g.remaining()[0],), gm.remaining()[0]));
+                    assert(false);
+                }
+                assert(gm.remaining().len() == 0);
+            }
+            let mut r = m.rev();
+            let x = r.next();
+            assert(x is None); // FAILS
+        }
+
+        fn rev_for_loop() {
+            let v: Vec<u32> = vec![1, 2];
+            let it = v.into_iter();
+            let ghost g = it;
+            let f = |x: u32| -> (y: u32)
+                ensures
+                    x != 1,
+                {
+                    if x == 1 {
+                        diverge();
+                    }
+                    x
+                };
+            let ghost gf = f;
+            let mut m = it.map(f);
+            let ghost gm = m;
+            proof {
+                assert(g.remaining()[0] == 1);
+                if gm.remaining().len() > 0 {
+                    assert(call_ensures(gf, (g.remaining()[0],), gm.remaining()[0]));
+                    assert(false);
+                }
+                assert(gm.remaining().len() == 0);
+            }
+            let r = m.rev();
+            let ghost gr = r;
+            proof {
+                assert(gr.remaining().len() == 0); // FAILS
+            }
+            for x in iter: r
+                invariant
+                    iter.seq() == gr.remaining(),
+                    gr.remaining().len() == 0,
+            {
+                // Reachable at runtime, since the closure returns on 2 (the first element of the reversed iterator)
+                assert(false);
+            }
+        }
+
+        fn rev_take_collect() {
+            let v: Vec<u32> = vec![1, 2];
+            let it = v.into_iter();
+            let ghost g = it;
+            let f = |x: u32| -> (y: u32)
+                ensures
+                    x != 1,
+                {
+                    if x == 1 {
+                        diverge();
+                    }
+                    x
+                };
+            let ghost gf = f;
+            let mut m = it.map(f);
+            let ghost gm = m;
+            proof {
+                assert(g.remaining()[0] == 1);
+                if gm.remaining().len() > 0 {
+                    assert(call_ensures(gf, (g.remaining()[0],), gm.remaining()[0]));
+                    assert(false);
+                }
+                assert(gm.remaining().len() == 0);
+            }
+            let c: Vec<u32> = m.rev().take(1).collect();
+            assert(c@.len() == 0); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+// Well-behaved iterators (which never run user closures) still get precise `len`/`next_back`/`rev` specs.
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3165
+    #[test] len_next_back_rev_precise_for_simple_iterators verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn vec_into_iter_next_back() {
+            let v: Vec<u32> = vec![1, 2];
+            let mut it = v.into_iter();
+            let r = it.next_back();
+            assert(r == Some(2u32));
+        }
+
+        fn vec_into_iter_len() {
+            let v: Vec<u32> = vec![1, 2];
+            let it = v.into_iter();
+            let n = it.len();
+            assert(n == 2);
+        }
+
+        fn vec_iter_next_back() {
+            let v: Vec<u32> = vec![1, 2];
+            let mut it = v.iter();
+            let r = it.next_back();
+            assert(r == Some(&2u32));
+        }
+
+        fn vec_iter_len() {
+            let v: Vec<u32> = vec![1, 2];
+            let it = v.iter();
+            let n = it.len();
+            assert(n == 2);
+        }
+
+        fn range_next_back() {
+            let mut it = 0..3u32;
+            let r = it.next_back();
+            assert(r == Some(2u32));
+        }
+
+        fn vec_into_iter_rev_next() {
+            let v: Vec<u32> = vec![1, 2];
+            let mut it = v.into_iter().rev();
+            let r = it.next();
+            assert(r == Some(2u32));
+        }
+
+        fn rev_after_collect_on_map() {
+            // `collect` establishes `will_return_none`, which makes the reversal precise
+            let v: Vec<u32> = vec![1, 2];
+            let w: Vec<u32> = v.into_iter().map(|x: u32| -> (y: u32) ensures y == x { x }).rev().collect();
+            assert(w@ == seq![2u32, 1u32]);
+        }
+    } => Ok(())
+}

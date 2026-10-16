@@ -434,7 +434,7 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-    uninterp spec fn will_return_none(&self) -> bool;
+    open spec fn will_return_none(&self) -> bool { true }
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -653,7 +653,7 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for Chunks<'a, T> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    open spec fn will_return_none(&self) -> bool { true }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 

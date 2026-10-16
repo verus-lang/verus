@@ -21,6 +21,12 @@ pub trait ExIterator {
     spec fn obeys_prophetic_iter_laws(&self) -> bool;
 
     /// Sequence of items that will (eventually) be returned
+    /// by repeated calls to `next()`.
+    /// If `will_return_none()` is false, this sequence may be a strict prefix of
+    /// the items the iterator would otherwise produce (e.g., a `Map` whose closure
+    /// fails to return on some element stops its `remaining()` before that element).
+    /// Operations that do not proceed strictly front-to-back (e.g., `len` and `next_back`)
+    /// can therefore only be related to `remaining()` when `will_return_none()` holds.
     #[verifier::prophetic]
     spec fn remaining(&self) -> Seq<Self::Item>;
 
@@ -330,8 +336,12 @@ pub trait ExDoubleEndedIterator : Iterator {
             <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) == <Self as IteratorSpec>::obeys_prophetic_iter_laws(old(self)),
             <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==> <Self as IteratorSpec>::will_return_none(final(self)) == <Self as IteratorSpec>::will_return_none(old(self)),
             <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==> (<Self as IteratorSpec>::decrease(old(self)) is Some <==> <Self as IteratorSpec>::decrease(final(self)) is Some),
-            // `next` pops the tail of the prophesized remaining(), or returns None
-            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==>
+            // `next_back` pops the tail of the prophesized remaining(), or returns None.
+            // Unlike `next`, `next_back` starts at the other end, so it can succeed even when
+            // user code (e.g., the closure in a `Map`) fails to return on an earlier element
+            // that truncates `remaining()`.  Hence, we can only relate `next_back` to
+            // `remaining()` if no such truncation can occur, i.e., if `will_return_none`.
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) && <Self as IteratorSpec>::will_return_none(old(self)) ==>
             ({
                 if <Self as IteratorSpec>::remaining(old(self)).len() > 0 {
                     <Self as IteratorSpec>::remaining(final(self)) == <Self as IteratorSpec>::remaining(old(self)).drop_last()
@@ -363,7 +373,11 @@ pub trait ExExactSizeIterator: Iterator {
 
     fn len(&self) -> (len: usize)
         ensures
-            self.obeys_prophetic_iter_laws() ==> len == self.exact_len() == self.remaining().len();
+            self.obeys_prophetic_iter_laws() ==> len == self.exact_len(),
+            // `len` does not run any user code (e.g., the closure in a `Map`), so it reflects the underlying
+            // number of elements, whereas `remaining()` may stop early at an element on which
+            // such code fails to return.  They only agree if the iterator will return `None`.
+            self.obeys_prophetic_iter_laws() && self.will_return_none() ==> len == self.remaining().len();
 }
 
 /********************************************************************************
@@ -627,7 +641,9 @@ pub broadcast axiom fn rev_postcondition<I: DoubleEndedIteratorSpec>(i: I, r: Re
     requires
         #[trigger] rev_post(i, r),
     ensures
-        IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
+        // `Rev::next` calls `next_back` on the inner iterator, which starts at the other end, so it can
+        // succeed even when `i.remaining()` is truncated by user code that fails to return.
+        i.will_return_none() ==> IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
         IteratorSpec::will_return_none(&r) == i.will_return_none(),
         IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
 ;
@@ -639,9 +655,7 @@ impl <I> IteratorSpecImpl for Rev<I>
     }
 
     #[verifier::prophetic]
-    closed spec fn remaining(&self) -> Seq<Self::Item> {
-        rev_iter(*self).remaining().reverse()
-    }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
     #[verifier::prophetic]
     closed spec fn will_return_none(&self) -> bool {
