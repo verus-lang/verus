@@ -2078,3 +2078,40 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] nonnull_specs verus_code! {
+        use vstd::prelude::*;
+        use core::ptr::NonNull;
+
+        fn roundtrip(ptr: *mut u8)
+            requires ptr@.addr != 0,
+        {
+            let nn = unsafe { NonNull::new_unchecked(ptr) };
+            let back = nn.as_ptr();
+            assert(back == ptr);
+        }
+
+        fn new_some(ptr: *mut u8)
+            requires ptr@.addr != 0,
+        {
+            let o = NonNull::new(ptr);
+            assert(o is Some);
+            if let Some(nn) = o {
+                assert(nn.as_ptr() == ptr);
+            }
+        }
+
+        fn new_none(ptr: *mut u8)
+            requires ptr@.addr == 0,
+        {
+            let o = NonNull::new(ptr);
+            assert(o is None);
+        }
+
+        fn invariant<T>(nn: NonNull<T>) {
+            broadcast use vstd::std_specs::ptr::axiom_nonnull_addr_nonzero;
+            assert(nn.as_ptr()@.addr != 0);
+        }
+    } => Ok(())
+}
