@@ -114,7 +114,8 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
                 return Err(Error::new(bundle.name.span(), "generic field tokens do not combine with selected physical readiness"));
             }
             let api=crate::verified_generic_tokens::output(&bundle)?;
-            let output=crate::verified_tokens::output(bundle)?;
+            if let Ok(path)=std::env::var("VERUS_TSM_GENERIC_DUMP") {let _=std::fs::write(path,api.to_string());}
+            let output=crate::verified_general::output(bundle)?;
             return crate::verified_generic_tokens::append_tokens(output,api);
         }
         let api=if typed {Some(crate::verified_field_tokens::output(&bundle.sm)?)}else{None};

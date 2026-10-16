@@ -673,6 +673,7 @@ pub(crate) fn exchange_parts(
 
     let mut inst_eq_reqs = Vec::new();
     let mut inst_eq_enss = Vec::new();
+    let mut var_updates = HashMap::new();
 
     // Whether or not to mark all borrows with a lifetime parameter 'a
     // We need to do this if there is any borrow in an out param
@@ -892,6 +893,7 @@ pub(crate) fn exchange_parts(
                         let e = e_opt.expect("get_post_value_for_variable");
                         let lhs = get_new_field_value(field);
                         ctxt.ensures.push(mk_eq(lhs.span(), &lhs, &e));
+                        var_updates.insert(field.name.to_string(), e);
                     }
                 }
                 ShardableType::Option(_)
@@ -962,6 +964,7 @@ pub(crate) fn exchange_parts(
         extra_deps,
         params,
         body: tr.body,
+        var_updates,
     })
 }
 
@@ -978,6 +981,8 @@ pub(crate) struct ExchangeParts {
     pub extra_deps: TokenStream,
     pub params: HashMap<String, Vec<TokenParam>>,
     pub body: TransitionStmt,
+    /// The new value of each updated `variable` field (checked facade only).
+    pub var_updates: HashMap<String, Expr>,
 }
 
 /// The return type, requires, and ensures of an exchange method.

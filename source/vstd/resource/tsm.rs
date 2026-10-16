@@ -799,6 +799,19 @@ impl<M: Machine> Token<M> {
         Observation { resource: &self.resource }
     }
 
+    /// Validate the separating composition with an actual borrowed observation.
+    pub proof fn validate_with_observation(tracked &mut self, tracked other: &Observation<M>)
+        requires
+            old(self).loc() == other.loc(),
+        ensures
+            *final(self) == *old(self),
+            completes::<M>(M::Fragment::op(final(self).fragment(), other.fragment())),
+    {
+        use_type_invariant(&*self);
+        use_type_invariant(other);
+        self.resource.validate_2(other.resource);
+    }
+
     /// Update actual owned rights while preserving a real borrowed observation.
     pub proof fn update_with_observation(
         tracked self,
