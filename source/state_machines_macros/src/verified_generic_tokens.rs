@@ -1807,7 +1807,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
         return Err(e);
     }
     items.push(quote! {impl Instance {#(#methods)*}});
-    let out = quote! {#(#items)*};
+    let out = ghostify(quote! {#(#items)*}, proc_macro2::Delimiter::None);
     Ok(match &sm.generics {
         None => resolve_types(out, None),
         Some(_) => {
@@ -3173,6 +3173,96 @@ fn init_method(
             #result
         }
     })
+}
+
+/// Store tokens' ghost data in `Ghost<..>` fields, so that persistent token
+/// types are `Copy` for any data type: declarations `ghost d: T` become
+/// `ghost d: Ghost<T>`, field reads `x.d` become `x.d@`, and field
+/// initializers `d: e` (or `d`) become `d: Ghost(e)`. The data names are
+/// generated (`__k`, `__v`, `__e`, `__n`, `__m`).
+fn ghostify(ts: TokenStream, delim: proc_macro2::Delimiter) -> TokenStream {
+    use proc_macro2::{Delimiter, Group, Punct, Spacing};
+    let data = ["__k", "__v", "__e", "__n", "__m"];
+    let trees: Vec<TokenTree> = ts.into_iter().collect();
+    let punct = |t: Option<&TokenTree>, c: char| matches!(t, Some(TokenTree::Punct(p)) if p.as_char() == c);
+    let mut out: Vec<TokenTree> = vec![];
+    let mut i = 0;
+    // The tokens up to the next top-level `,` (or the end).
+    // The tokens up to the next `,` outside angle brackets (or the end).
+    let until_comma = |j: usize| -> usize {
+        let mut k = j;
+        let mut depth = 0i32;
+        while k < trees.len() {
+            if let TokenTree::Punct(p) = &trees[k] {
+                let arrow = p.as_char() == '>' && k > 0 && matches!(&trees[k - 1], TokenTree::Punct(q) if q.as_char() == '-');
+                match p.as_char() {
+                    ',' if depth == 0 => break,
+                    '<' => depth += 1,
+                    '>' if !arrow => depth -= 1,
+                    _ => {}
+                }
+            }
+            k += 1;
+        }
+        k
+    };
+    while i < trees.len() {
+        if let TokenTree::Ident(id) = &trees[i] {
+            if data.contains(&id.to_string().as_str()) {
+                let prev = if i > 0 { trees.get(i - 1) } else { None };
+                let next = trees.get(i + 1);
+                let next2 = trees.get(i + 2);
+                // A single `:` (a `::` path separator starts with a joint `:`).
+                let is_field_colon = matches!(next, Some(TokenTree::Punct(p)) if p.as_char() == ':' && p.spacing() == Spacing::Alone);
+                let _ = next2;
+                if punct(prev, '.') {
+                    out.push(trees[i].clone());
+                    out.push(TokenTree::Punct(Punct::new('@', Spacing::Alone)));
+                    i += 1;
+                    continue;
+                }
+                if matches!(prev, Some(TokenTree::Ident(g)) if g == "ghost") && is_field_colon {
+                    let end = until_comma(i + 2);
+                    let ty: TokenStream = trees[i + 2..end].iter().cloned().collect();
+                    let ty = ghostify(ty, Delimiter::None);
+                    out.push(trees[i].clone());
+                    out.extend(quote! {: ::vstd::prelude::Ghost<#ty>});
+                    i = end;
+                    continue;
+                }
+                let after_let = matches!(prev, Some(TokenTree::Ident(g)) if g == "let" || g == "mut");
+                if delim == Delimiter::Brace && is_field_colon && !after_let {
+                    let end = until_comma(i + 2);
+                    let e: TokenStream = trees[i + 2..end].iter().cloned().collect();
+                    let e = ghostify(e, Delimiter::None);
+                    out.push(trees[i].clone());
+                    out.extend(quote! {: Ghost(#e)});
+                    i = end;
+                    continue;
+                }
+                if delim == Delimiter::Brace
+                    && (prev.is_none() || punct(prev, ','))
+                    && (next.is_none() || punct(next, ','))
+                {
+                    let name = trees[i].clone();
+                    out.push(name.clone());
+                    out.extend(quote! {: Ghost(#name)});
+                    i += 1;
+                    continue;
+                }
+            }
+        }
+        match &trees[i] {
+            TokenTree::Group(g) => {
+                let mut ng = Group::new(g.delimiter(), ghostify(g.stream(), g.delimiter()));
+                ng.set_span(g.span());
+                out.push(TokenTree::Group(ng));
+            }
+            t => out.push(t.clone()),
+        }
+        i += 1;
+    }
+    out.into_iter().collect()
 }
 
 /// Resolve the token type placeholders of `tyname`.
