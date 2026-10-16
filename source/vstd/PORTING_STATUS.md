@@ -211,6 +211,9 @@ The old `impl SeqPointsTo<u8>` is ported as `SeqPointsTo<T, PointsTo<T>>::from_u
   the generic `impl<T: ?Sized, PointsToPerm> SeqPointsTo<T, PointsToPerm>` block, i.e. whether
   they rely only on the generic structure (`ptr`, `seq_pt`, `wf_basic`, trait methods) rather than
   `PointsTo<T>`-specific specs (`value`, `typed_value`, alignment in `wf()`).
+  Assessment written up in [GENERALIZATION_ASSESSMENT.md](GENERALIZATION_ASSESSMENT.md), along
+  with the related `?Sized` and `PointsToUnaligned` questions and a proposed `TypedPointsTo` trait.
+  Its recommendations (not yet implemented) are the follow-ups.
 - [ ] (Lower priority) Add the unaligned conversions (`as_unaligned`, `into_unaligned`, ...) to
   `SeqPointsTo<T, PointsTo<T>>`, the counterparts of the ones on `PointsTo<T>`. These can wait until
   there is a `SeqPointsTo<T, PointsToUnaligned<T>>`.
