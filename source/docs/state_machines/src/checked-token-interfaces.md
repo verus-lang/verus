@@ -172,18 +172,20 @@ component into the product, with every other component the unit, and `e` is the
 singleton element given by the ghost data:
 
 * `Exclusive(v)` for a `variable` token;
-* `{k ↦ v}` for a `map` or `persistent_map` token;
-* `{x}` for a `set` or `persistent_set` token, and the one-element multiset
-  `{x}` for a `multiset` token;
+* `{k ↦ v}` for a `map`, `imap`, `persistent_map` or `persistent_imap` token;
+* `{x}` for a `set`, `iset`, `persistent_set` or `persistent_iset` token, and the
+  one-element multiset `{x}` for a `multiset` token;
 * `Some(v)` for an `option` or `persistent_option` token;
 * `true` for a `bool` or `persistent_bool` token;
 * `n` for a `count` token, and a lower bound `m ≥ n` for a `persistent_count`
   token that reports `n` (so that `weaken` needs no update).
 
 A field token is therefore ownership of `ι_i(e)` at `γ`. The collection types
-(`<field>_map`, a `vstd::tokens::MapToken`; `<field>_set`; `<field>_multiset`; and
-`Option<field>` for `option` and `bool` fields) are collections of such tokens.
-Their fragments compose to `ι_i(m)` for the whole collection `m`.
+(`<field>_map`, a `vstd::tokens::MapToken` or `IMapToken`; `<field>_set`;
+`<field>_multiset`; and `Option<field>` for `option` and `bool` fields) are
+collections of such tokens. Their fragments compose to `ι_i(m)` for the whole
+collection `m`. Collections are built and taken apart one token at a time, so they
+are finite; for `imap` and `iset` fields this is an added requirement (see below).
 
 Persistent tokens hold a leaked `&'static` raw token instead of an owned one. Their
 fragments are idempotent, so a shared reference is all an operation needs (they are
@@ -261,21 +263,32 @@ without storage fields uses the plain `vstd::resource::tsm::Token`.
   `ι_i(e) = ε · ι_i(e)`. In a machine without storage the unit is split off the
   instance's own token (`Token::empty`), so the signature is unchanged.
 * **`count` tokens** do not implement `CountToken` (see above).
+* **Finite `imap`/`iset` collections.** An operation that consumes or produces a
+  token collection of an `imap`, `iset`, `persistent_imap` or `persistent_iset`
+  field additionally requires the operand to be finite, and an initial value of
+  such a field must be provably finite in the generated proof (e.g. `IMap::empty()`
+  or finitely many `insert`s; not `ISet::full()`, nor `IMap::new` over a range).
+  Infinitely many tokens cannot be split off one resource.
 * **Type parameters.** If the machine has type parameters and a `constant` or
   persistent field, the generated items require the parameters to be `'static`
   (they hold `&'static` tokens).
 * **Supported fields.** The interface currently supports:
-  * `variable`, `constant`, `not_tokenized`, `option`, `persistent_option`, `map`,
-    `persistent_map`, `set`, `persistent_set`, `multiset`, `bool`,
-    `persistent_bool`, `count` and `persistent_count` fields;
-  * `storage_map`, `storage_imap` and `storage_option` fields, in any number;
+  * every sharding strategy: `variable`, `constant`, `not_tokenized`, `option`,
+    `persistent_option`, `map`, `persistent_map`, `imap`, `persistent_imap`, `set`,
+    `persistent_set`, `iset`, `persistent_iset`, `multiset`, `bool`,
+    `persistent_bool`, `count`, `persistent_count`, `storage_option`,
+    `storage_map` and `storage_imap`;
+  * any number of storage fields;
   * machines with or without type parameters;
-  * consumed token collections for `map`, `set`, `multiset`, `option` and `bool`
-    fields;
+  * consumed token collections for `map`, `imap`, `set`, `iset`, `multiset`,
+    `option` and `bool` fields, and produced collections for all collection
+    strategies;
   * guards with one output.
 
-  `imap`, `iset`, `persistent_imap` and `persistent_iset` fields, borrowed token
-  collections, and labels are rejected at expansion time.
+  Borrowed token collections (`have f >= (e)` for a collection strategy; the
+  `vstd::tokens` collection types give no access to their tokens through a shared
+  reference), general withdrawals from a tagged `storage_imap`, and labels are
+  rejected at expansion time.
 
 ## Comparison
 
