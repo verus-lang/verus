@@ -114,7 +114,7 @@ test_verify_one_file! {
             #[verifier::when_used_as_spec(f)]
             fn g(&self, k: u64) -> bool { true }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot find function referred to in when_used_as_spec")
+    } => Err(err) => assert_vir_error_msg(err, "unable to find sibling impl item of name `f`")
 }
 
 test_verify_one_file! {
@@ -125,7 +125,7 @@ test_verify_one_file! {
             #[verifier::when_used_as_spec(f)]
             fn g() -> bool { false }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot find function referred to in when_used_as_spec")
+    } => Err(err) => assert_vir_error_msg(err, "unable to find sibling trait item of name `f` (should be in the same trait declaration)")
 }
 
 test_verify_one_file! {
