@@ -499,8 +499,11 @@ fn check_function_access<'a>(
     span: &crate::messages::Span,
     emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
-    let _ = check_path_and_get_function(ctxt, x, disallow_private_access, span, emit)?;
-    Ok(())
+    match check_path_and_get_function(ctxt, x, disallow_private_access, span, emit) {
+        Err(err) => Err(err),
+        // Ok(Err(_)) case means an error was already emitted, so we can continue
+        Ok(Ok(_)) | Ok(Err(_)) => Ok(()),
+    }
 }
 
 fn check_one_expr(
