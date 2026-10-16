@@ -355,6 +355,64 @@ impl Store {
 }
 
 // ---------------------------------------------------------------------------
+// Constants
+
+/// A machine with `constant` fields: the instance and every token hold a
+/// shared, leaked descriptor `d` (an agreement resource on the constants and
+/// the protocol location), and every token and unit also holds its own copy of
+/// the constants' agreement fragment `κ` (its `base`). The descriptor's type
+/// involves no protocol type, so it needs no `'static` bound on the machine's
+/// type parameters unless a constant's type mentions them.
+struct Cm {
+    d: TokenStream,
+    consts: Vec<Field>,
+}
+
+impl Cm {
+    fn new(sm: &SM) -> Option<Cm> {
+        let consts: Vec<Field> = sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::Constant(_))).cloned().collect();
+        if consts.is_empty() {
+            return None;
+        }
+        let tys: Vec<_> = consts
+            .iter()
+            .map(|c| match &c.stype {
+                ShardableType::Constant(t) => quote! {#t},
+                _ => unreachable!(),
+            })
+            .collect();
+        let d = quote! {::vstd::resource::pcm::Resource<Option<::vstd::resource::agree::AgreementRA<((#(#tys,)*), ::vstd::resource::Loc)>>>};
+        Some(Cm { d, consts })
+    }
+    fn ok(&self, d: TokenStream) -> TokenStream {
+        quote! {((#d).value() is Some && (#d).value()->Some_0 is Agree)}
+    }
+    fn val(&self, d: TokenStream) -> TokenStream {
+        quote! {(#d).value()->Some_0->Agree_0}
+    }
+    fn ploc(&self, d: TokenStream) -> TokenStream {
+        let v = self.val(d);
+        quote! {(#v).1}
+    }
+    fn constant(&self, d: TokenStream, i: usize) -> TokenStream {
+        let v = self.val(d);
+        let i = verus_syn::Index::from(i);
+        quote! {((#v).0).#i}
+    }
+    /// `κ` for the constants of descriptor `d`.
+    fn kappa(&self, d: TokenStream) -> TokenStream {
+        let vals: Vec<_> = (0..self.consts.len()).map(|i| self.constant(d.clone(), i)).collect();
+        self.kappa_of(&vals)
+    }
+    fn kappa_of(&self, vals: &[TokenStream]) -> TokenStream {
+        self.consts.iter().zip(vals).fold(quote! {Fragment::unit()}, |acc, (c, v)| {
+            let w = format_ident!("with_{}", c.name);
+            quote! {#acc.#w(#v)}
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Per-kind representation
 
 /// The ghost data of a token: names and types. A `persistent_count` token
@@ -494,7 +552,7 @@ fn id_call(f: &Field, x: TokenStream) -> TokenStream {
     }
 }
 
-fn token_type(f: &Field, store: &Store, generic: bool) -> TokenStream {
+fn token_type(f: &Field, store: &Store, generic: bool, cm: &Option<Cm>) -> TokenStream {
     let n = &f.name;
     let nt = tyname(f);
     let k = kind(f).unwrap();
@@ -516,10 +574,12 @@ fn token_type(f: &Field, store: &Store, generic: bool) -> TokenStream {
     };
     let raw_ty = if persistent { quote! {&'static Token} } else { quote! {Token} };
     let fake_field = if persistent { quote! {&'static #fake} } else { quote! {#fake} };
-    let real_loc = quote! {self.raw->Some_0.loc()};
     let fake_loc = quote! {self.fake->Some_0.loc()};
+    // The location in a real token's instance id: the raw token's, or (with
+    // constants) the instance descriptor's.
+    let real_idloc = if cm.is_some() { quote! {self.desc->Some_0.loc()} } else { quote! {self.raw->Some_0.loc()} };
     let instance_id = quote! {
-        if self.raw is Some { ::vstd::resource::tsm_instance_id(#real_loc, false) }
+        if self.raw is Some { ::vstd::resource::tsm_instance_id(#real_idloc, false) }
         else { ::vstd::resource::tsm_instance_id(#fake_loc, true) }
     };
     // The placeholder's resource and data.
@@ -548,31 +608,11 @@ fn token_type(f: &Field, store: &Store, generic: bool) -> TokenStream {
             names.iter().map(|n| quote! {#n: arbitrary()}).collect(),
         )
     };
-    let wrap_raw = if persistent { quote! {::vstd::modes::tracked_static_ref(raw)} } else { quote! {raw} };
-    let borrow_raw = if persistent {
-        quote! {self.raw.tracked_unwrap()}
-    } else {
-        quote! {self.raw.tracked_borrow()}
-    };
-    let borrow_fake = if persistent {
-        quote! {self.fake.tracked_unwrap()}
-    } else {
-        quote! {self.fake.tracked_borrow()}
-    };
-    let into_raw = if persistent {
-        quote! {}
-    } else {
-        quote! {
-            proof fn __into_raw(tracked self, loc: ::vstd::resource::Loc) -> (tracked out: Token)
-                requires self.__id() == ::vstd::resource::tsm_instance_id(loc, false),
-                ensures out.loc() == loc, out.fragment() == #frag,
-            {
-                self.__lemma_id(loc);
-                let tracked Self {raw, ..} = self;
-                raw.tracked_unwrap()
-            }
-        }
-    };
+    let wrap = |x: TokenStream| if persistent { quote! {::vstd::modes::tracked_static_ref(#x)} } else { x };
+    let wrap_raw = wrap(quote! {raw});
+    let unwrap_field = |fld: TokenStream| if persistent { quote! {self.#fld.tracked_unwrap()} } else { quote! {self.#fld.tracked_borrow()} };
+    let borrow_raw = unwrap_field(quote! {raw});
+    let borrow_fake = unwrap_field(quote! {fake});
     let (derive, copy_impls) = copy_impls(&quote! {#nt}, persistent, generic);
     let clone = if persistent {
         quote! {
@@ -582,38 +622,167 @@ fn token_type(f: &Field, store: &Store, generic: bool) -> TokenStream {
     } else {
         quote! {}
     };
-    let trait_impls = token_traits(f, &instance_id, store);
+    let trait_impls = token_traits(f, &instance_id, store, cm);
+    // Mode-dependent parts: without constants a token's link to its instance
+    // is the location; with constants, the instance descriptor `d`, and the
+    // token also holds its own copy of the constants' fragment (`base`).
+    let (link_param, link_req, link_loc, extra_fields, real_extra, fake_extra, from_params, from_reqs, from_id, from_fields, lemma_ens, lemma_body, into_raw, borrow_base, link_body) =
+        match cm {
+            None => (
+                quote! {loc: ::vstd::resource::Loc},
+                quote! {self.__id() == ::vstd::resource::tsm_instance_id(loc, false)},
+                quote! {loc},
+                quote! {},
+                quote! {},
+                quote! {},
+                quote! {},
+                quote! {},
+                quote! {raw.loc()},
+                quote! {},
+                quote! {},
+                quote! {
+                    if self.fake is Some {
+                        ::vstd::resource::tsm_instance_id_injective(#fake_loc, true, loc, false);
+                    } else {
+                        ::vstd::resource::tsm_instance_id_injective(self.raw->Some_0.loc(), false, loc, false);
+                    }
+                },
+                if persistent {
+                    quote! {}
+                } else {
+                    quote! {
+                        proof fn __into_raw(tracked self, loc: ::vstd::resource::Loc) -> (tracked out: Token)
+                            requires self.__id() == ::vstd::resource::tsm_instance_id(loc, false),
+                            ensures out.loc() == loc, out.fragment() == #frag,
+                        {
+                            self.__lemma_id(loc);
+                            let tracked Self {raw, ..} = self;
+                            raw.tracked_unwrap()
+                        }
+                    }
+                },
+                quote! {},
+                quote! {
+                    let a = if self.raw is Some { self.raw->Some_0.loc() } else { self.fake->Some_0.loc() };
+                    let b = if other.raw is Some { other.raw->Some_0.loc() } else { other.fake->Some_0.loc() };
+                    ::vstd::resource::tsm_instance_id_injective(a, self.fake is Some, b, other.fake is Some);
+                },
+            ),
+            Some(cm) => {
+                let dty = &cm.d;
+                let d_ok = cm.ok(quote! {d});
+                let d_ploc = cm.ploc(quote! {d});
+                let d_kappa = cm.kappa(quote! {d});
+                let s_ok = cm.ok(quote! {self.desc->Some_0});
+                let s_ploc = cm.ploc(quote! {self.desc->Some_0});
+                let s_kappa = cm.kappa(quote! {self.desc->Some_0});
+                let desc_ok = cm.ok(quote! {desc});
+                let desc_ploc = cm.ploc(quote! {desc});
+                let desc_kappa = cm.kappa(quote! {desc});
+                let wrap_base = wrap(quote! {base});
+                let borrow_base_body = unwrap_field(quote! {base});
+                (
+                    quote! {tracked d: &#dty},
+                    quote! {self.__id() == ::vstd::resource::tsm_instance_id(d.loc(), false), #d_ok},
+                    d_ploc.clone(),
+                    quote! {tracked base: Option<#raw_ty>, tracked desc: Option<&'static #dty>,},
+                    quote! {&& self.base is Some && self.desc is Some && #s_ok
+                        && self.raw->Some_0.loc() == #s_ploc && self.base->Some_0.loc() == #s_ploc
+                        && self.base->Some_0.fragment() == #s_kappa},
+                    quote! {&& self.base is None && self.desc is None},
+                    quote! {tracked base: Token, tracked desc: &'static #dty,},
+                    quote! {#desc_ok, raw.loc() == #desc_ploc, base.loc() == #desc_ploc, base.fragment() == #desc_kappa,},
+                    quote! {desc.loc()},
+                    quote! {base: Some(#wrap_base), desc: Some(desc),},
+                    quote! {, self.base is Some, self.base->Some_0.loc() == #d_ploc, self.base->Some_0.fragment() == #d_kappa},
+                    quote! {
+                        if self.fake is Some {
+                            ::vstd::resource::tsm_instance_id_injective(#fake_loc, true, d.loc(), false);
+                        } else {
+                            ::vstd::resource::tsm_instance_id_injective(self.desc->Some_0.loc(), false, d.loc(), false);
+                            ::vstd::resource::tsm_generic::agreement_resources_agree(self.__desc(), d);
+                        }
+                    },
+                    if persistent {
+                        quote! {}
+                    } else {
+                        quote! {
+                            proof fn __into_raw(tracked self, tracked d: &#dty) -> (tracked out: (Token, Token))
+                                requires self.__id() == ::vstd::resource::tsm_instance_id(d.loc(), false), #d_ok,
+                                ensures out.0.loc() == #d_ploc, out.0.fragment() == #frag,
+                                    out.1.loc() == #d_ploc, out.1.fragment() == #d_kappa,
+                            {
+                                self.__lemma_id(d);
+                                let tracked Self {raw, base, ..} = self;
+                                (raw.tracked_unwrap(), base.tracked_unwrap())
+                            }
+                        }
+                    },
+                    quote! {
+                        proof fn __desc(tracked &self) -> (tracked out: &'static #dty)
+                            requires self.desc is Some,
+                            ensures *out == self.desc->Some_0,
+                        {self.desc.tracked_unwrap()}
+                        proof fn __borrow_base<'a>(tracked &'a self, tracked d: &#dty) -> (tracked out: &'a Token)
+                            requires self.__id() == ::vstd::resource::tsm_instance_id(d.loc(), false), #d_ok,
+                            ensures out.loc() == #d_ploc, out.fragment() == #d_kappa,
+                        {
+                            self.__lemma_id(d);
+                            #borrow_base_body
+                        }
+                    },
+                    quote! {
+                        let a = if self.raw is Some { self.desc->Some_0.loc() } else { self.fake->Some_0.loc() };
+                        let b = if other.raw is Some { other.desc->Some_0.loc() } else { other.fake->Some_0.loc() };
+                        ::vstd::resource::tsm_instance_id_injective(a, self.fake is Some, b, other.fake is Some);
+                        if self.__id() == other.__id() && self.raw is Some {
+                            ::vstd::resource::tsm_generic::agreement_resources_agree(self.__desc(), other.__desc());
+                        }
+                    },
+                )
+            }
+        };
+    let link_arg_self = if cm.is_some() { quote! {d} } else { quote! {loc} };
+    let fake_extra_fields = if cm.is_some() { quote! {base: None, desc: None,} } else { quote! {} };
     quote! {
         #[allow(non_camel_case_types)]
         #derive
         pub tracked struct #n {
             tracked raw: Option<#raw_ty>,
+            #extra_fields
             tracked fake: Option<#fake_field>,
             #(#data_decl,)*
         }
         impl #nt {
             #[verifier::type_invariant]
             spec fn __wf(self) -> bool {
-                (self.raw is Some && self.fake is None && self.raw->Some_0.fragment() == #frag #me_extra)
-                || (self.raw is None && self.fake is Some && self.fake->Some_0.value() == #fake_value #fake_data)
+                (self.raw is Some && self.fake is None && self.raw->Some_0.fragment() == #frag #me_extra #real_extra)
+                || (self.raw is None && self.fake is Some && self.fake->Some_0.value() == #fake_value #fake_data #fake_extra)
             }
             #clone
-            proof fn __from_raw(tracked raw: Token, #(#params),*) -> (tracked out: Self)
-                requires raw.fragment() == #pfrag, #p_extra
-                ensures out.__id() == ::vstd::resource::tsm_instance_id(raw.loc(), false),
+            proof fn __from_raw(tracked raw: Token, #from_params #(#params),*) -> (tracked out: Self)
+                requires raw.fragment() == #pfrag, #p_extra #from_reqs
+                ensures out.__id() == ::vstd::resource::tsm_instance_id(#from_id, false),
                     #(out.#names == #names,)*
-            {Self {raw: Some(#wrap_raw), fake: None, #(#pdata),*}}
+            {Self {raw: Some(#wrap_raw), #from_fields fake: None, #(#pdata),*}}
             spec fn __id(&self) -> ::vstd::resource::Loc {#instance_id}
-            proof fn __lemma_id(tracked &self, loc: ::vstd::resource::Loc)
-                requires self.__id() == ::vstd::resource::tsm_instance_id(loc, false),
-                ensures self.raw is Some, self.raw->Some_0.loc() == loc, self.raw->Some_0.fragment() == #frag #me_extra,
+            proof fn __lemma_id(tracked &self, #link_param)
+                requires #link_req,
+                ensures self.raw is Some, self.raw->Some_0.loc() == #link_loc, self.raw->Some_0.fragment() == #frag #me_extra #lemma_ens,
             {
                 ::vstd::prelude::use_type_invariant(self);
-                if self.fake is Some {
-                    ::vstd::resource::tsm_instance_id_injective(#fake_loc, true, loc, false);
-                } else {
-                    ::vstd::resource::tsm_instance_id_injective(#real_loc, false, loc, false);
-                }
+                #lemma_body
+            }
+            /// Two tokens with one instance id are both real (at one location) or
+            /// both placeholders (of one resource).
+            proof fn __link(tracked &self, tracked other: &Self)
+                ensures ::vstd::prelude::imply(self.__id() == other.__id(), (self.raw is Some) == (other.raw is Some)
+                    && ::vstd::prelude::imply(self.raw is Some, self.raw->Some_0.loc() == other.raw->Some_0.loc())
+                    && ::vstd::prelude::imply(self.fake is Some, self.fake->Some_0.loc() == other.fake->Some_0.loc())),
+            {
+                ::vstd::prelude::use_type_invariant(self);
+                ::vstd::prelude::use_type_invariant(other);
+                #link_body
             }
             proof fn __raw<'a>(tracked &'a self) -> (tracked out: &'a Token)
                 requires self.raw is Some,
@@ -624,16 +793,17 @@ fn token_type(f: &Field, store: &Store, generic: bool) -> TokenStream {
                 ensures *out == self.fake->Some_0,
             {#borrow_fake}
             #into_raw
-            proof fn __borrow_raw<'a>(tracked &'a self, loc: ::vstd::resource::Loc) -> (tracked out: &'a Token)
-                requires self.__id() == ::vstd::resource::tsm_instance_id(loc, false),
-                ensures out.loc() == loc, out.fragment() == #frag #me_extra,
+            #borrow_base
+            proof fn __borrow_raw<'a>(tracked &'a self, #link_param) -> (tracked out: &'a Token)
+                requires #link_req,
+                ensures out.loc() == #link_loc, out.fragment() == #frag #me_extra,
             {
-                self.__lemma_id(loc);
+                self.__lemma_id(#link_arg_self);
                 self.__raw()
             }
             proof fn __arbitrary() -> (tracked s: Self) {
                 #fake_new
-                Self {raw: None, fake: Some(fake), #(#arbitrary_fields),*}
+                Self {raw: None, #fake_extra_fields fake: Some(fake), #(#arbitrary_fields),*}
             }
         }
         #trait_impls
@@ -675,10 +845,12 @@ fn component(f: &Field, x: TokenStream, slot: &Option<TokenStream>) -> TokenStre
 }
 
 /// The vstd token trait implementations of one field token type.
-fn token_traits(f: &Field, instance_id: &TokenStream, _store: &Store) -> TokenStream {
+fn token_traits(f: &Field, instance_id: &TokenStream, _store: &Store, cm: &Option<Cm>) -> TokenStream {
     let n = &f.name;
     let nt = tyname(f);
     let k = kind(f).unwrap();
+    // The tracked fields besides `raw` and `fake` (with constants).
+    let pat_extra = if cm.is_some() { quote! {base, desc,} } else { quote! {} };
     let embed = |s: TokenStream| quote! {<Protocol as ::vstd::resource::tsm::Machine>::embed(#s)};
     let slot_of = |who: &str| -> Option<TokenStream> {
         let w = format_ident!("{}", who);
@@ -713,12 +885,10 @@ fn token_traits(f: &Field, instance_id: &TokenStream, _store: &Store) -> TokenSt
             ::vstd::modes::tracked_swap(self, &mut mine);
             ::vstd::prelude::use_type_invariant(&mine);
             ::vstd::prelude::use_type_invariant(other);
-            let a = if mine.raw is Some { mine.raw->Some_0.loc() } else { mine.fake->Some_0.loc() };
-            let b = if other.raw is Some { other.raw->Some_0.loc() } else { other.fake->Some_0.loc() };
-            ::vstd::resource::tsm_instance_id_injective(a, mine.fake is Some, b, other.fake is Some);
+            mine.__link(other);
             let same = mine.__id() == other.__id() && #same;
             let ghost saved = mine;
-            let tracked Self {raw, fake, ..} = mine;
+            let tracked Self {raw, fake, #pat_extra ..} = mine;
             let tracked mut raw = raw;
             let tracked mut fake = fake;
             if same {
@@ -730,7 +900,7 @@ fn token_traits(f: &Field, instance_id: &TokenStream, _store: &Store) -> TokenSt
                     fake = Some(x);
                 }
             }
-            let tracked mut back = Self {raw, fake, ..saved};
+            let tracked mut back = Self {raw, fake, #pat_extra ..saved};
             ::vstd::modes::tracked_swap(self, &mut back);
         }
     };
@@ -752,9 +922,7 @@ fn token_traits(f: &Field, instance_id: &TokenStream, _store: &Store) -> TokenSt
             ::vstd::prelude::use_type_invariant(self);
             ::vstd::prelude::use_type_invariant(other);
             if self.__id() == other.__id() #cond {
-                let a = if self.raw is Some { self.raw->Some_0.loc() } else { self.fake->Some_0.loc() };
-                let b = if other.raw is Some { other.raw->Some_0.loc() } else { other.fake->Some_0.loc() };
-                ::vstd::resource::tsm_instance_id_injective(a, self.fake is Some, b, other.fake is Some);
+                self.__link(other);
                 if self.raw is Some {
                     let (st, f1, f2) = self.__raw().compatible_with(other.__raw());
                     assert(#c1 == #ce);
@@ -854,20 +1022,39 @@ fn token_traits(f: &Field, instance_id: &TokenStream, _store: &Store) -> TokenSt
                 #unique
             }
         }
-        ShardableType::PersistentCount => quote! {
+        ShardableType::PersistentCount => {
+            let c_extra = if cm.is_some() { quote! {base: c.base, desc: c.desc,} } else { quote! {} };
+            quote! {
             impl ::vstd::tokens::MonotonicCountToken for #nt {
                 #id_fn
                 closed spec fn count(&self) -> ::vstd::prelude::nat {self.__n}
                 proof fn weaken(tracked &self, count: ::vstd::prelude::nat) -> (tracked s: Self) {
                     ::vstd::prelude::use_type_invariant(self);
                     let tracked c = *self;
-                    Self {raw: c.raw, fake: c.fake, __n: count, __m: c.__m}
+                    Self {raw: c.raw, #c_extra fake: c.fake, __n: count, __m: c.__m}
                 }
                 #arbitrary
             }
-        },
+        }},
         ShardableType::Count => {
             let factory = format_ident!("field_{}", n);
+            // With constants, a split token gets its own copy of `κ`.
+            let (split_base, base_a, base_b, pat_none) = match cm {
+                None => (quote! {}, quote! {}, quote! {}, quote! {}),
+                Some(cm) => {
+                    let kappa = cm.kappa(quote! {desc->Some_0});
+                    (
+                        quote! {
+                            let tracked bt = base.tracked_unwrap();
+                            assert(bt.fragment() == Fragment::op(#kappa, #kappa));
+                            let tracked (ba, bb) = bt.split(#kappa, #kappa);
+                        },
+                        quote! {base: Some(ba), desc,},
+                        quote! {base: Some(bb), desc,},
+                        quote! {base: None, desc: None,},
+                    )
+                }
+            };
             quote! {
                 /// `count` tokens provide the `vstd::tokens::CountToken` operations
                 /// except `weaken_shared`, as inherent methods (see the chapter
@@ -884,20 +1071,18 @@ fn token_traits(f: &Field, instance_id: &TokenStream, _store: &Store) -> TokenSt
                         ::vstd::modes::tracked_swap(self, &mut mine);
                         ::vstd::prelude::use_type_invariant(&mine);
                         ::vstd::prelude::use_type_invariant(&other);
-                        let a = if mine.raw is Some { mine.raw->Some_0.loc() } else { mine.fake->Some_0.loc() };
-                        let b = if other.raw is Some { other.raw->Some_0.loc() } else { other.fake->Some_0.loc() };
-                        ::vstd::resource::tsm_instance_id_injective(a, mine.fake is Some, b, other.fake is Some);
+                        mine.__link(&other);
                         let ghost total = mine.__n + other.__n;
-                        let tracked Self {raw, fake, ..} = mine;
+                        let tracked Self {raw, fake, #pat_extra ..} = mine;
                         let tracked Self {raw: oraw, fake: ofake, ..} = other;
                         let tracked mut back = if raw is Some {
                             Fragment::unit().op_unit();
                             let tracked r = raw.tracked_unwrap().join(oraw.tracked_unwrap());
                             assert(r.fragment() == Fragment::#factory(total));
-                            Self {raw: Some(r), fake: None, __n: total}
+                            Self {raw: Some(r), #pat_extra fake: None, __n: total}
                         } else {
                             let tracked r = fake.tracked_unwrap().join(ofake.tracked_unwrap());
-                            Self {raw: None, fake: Some(r), __n: total}
+                            Self {raw: None, #pat_extra fake: Some(r), __n: total}
                         };
                         ::vstd::modes::tracked_swap(self, &mut back);
                     }
@@ -912,17 +1097,18 @@ fn token_traits(f: &Field, instance_id: &TokenStream, _store: &Store) -> TokenSt
                         ::vstd::modes::tracked_swap(self, &mut mine);
                         ::vstd::prelude::use_type_invariant(&mine);
                         let ghost left = (mine.__n - count) as nat;
-                        let tracked Self {raw, fake, ..} = mine;
+                        let tracked Self {raw, fake, #pat_extra ..} = mine;
                         let tracked (mut back, token) = if raw is Some {
                             Fragment::unit().op_unit();
                             let tracked r = raw.tracked_unwrap();
                             assert(r.fragment() == Fragment::op(Fragment::#factory(left), Fragment::#factory(count)));
                             let tracked (a, b) = r.split(Fragment::#factory(left), Fragment::#factory(count));
-                            (Self {raw: Some(a), fake: None, __n: left}, Self {raw: Some(b), fake: None, __n: count})
+                            #split_base
+                            (Self {raw: Some(a), #base_a fake: None, __n: left}, Self {raw: Some(b), #base_b fake: None, __n: count})
                         } else {
                             let tracked (a, b) = fake.tracked_unwrap().split(
                                 ::vstd::resource::tsm::CountRA {count: left}, ::vstd::resource::tsm::CountRA {count: count});
-                            (Self {raw: None, fake: Some(a), __n: left}, Self {raw: None, fake: Some(b), __n: count})
+                            (Self {raw: None, #pat_none fake: Some(a), __n: left}, Self {raw: None, #pat_none fake: Some(b), __n: count})
                         };
                         ::vstd::modes::tracked_swap(self, &mut back);
                         token
@@ -940,7 +1126,7 @@ fn token_traits(f: &Field, instance_id: &TokenStream, _store: &Store) -> TokenSt
 
 /// Split a bulk token into single-value tokens, and the reverse join, for one
 /// collection field.
-fn collection_helpers(f: &Field) -> TokenStream {
+fn collection_helpers(f: &Field, cm: &Option<Cm>) -> TokenStream {
     let n = &f.name;
     let nt = tyname(f);
     let k = kind(f).unwrap();
@@ -951,6 +1137,54 @@ fn collection_helpers(f: &Field) -> TokenStream {
         ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};};
     let pointwise = quote! {::vstd::resource::tsm_collections::Pointwise};
     let id_of = |x: TokenStream| id_call(f, x);
+    // Mode-dependent pieces (see `Cm`): without constants a token is linked to
+    // its instance by the location; with constants, by the descriptor `d`, and
+    // each new token gets a copy of `κ`, split off `kappa`.
+    let (sid, split_params, split_reqs, take_kp, kp_args, rec_split, link_param, lloc, lid, larg, into_suffix) = match cm {
+        None => (
+            quote! {::vstd::resource::tsm_instance_id(raw.loc(), false)},
+            quote! {},
+            quote! {},
+            quote! {},
+            quote! {},
+            quote! {},
+            quote! {loc: ::vstd::resource::Loc},
+            quote! {loc},
+            quote! {loc},
+            quote! {loc},
+            quote! {},
+        ),
+        Some(cm) => {
+            let dty = &cm.d;
+            let d_ok = cm.ok(quote! {d});
+            let ploc = cm.ploc(quote! {d});
+            let kappa = cm.kappa(quote! {d});
+            (
+                quote! {::vstd::resource::tsm_instance_id(d.loc(), false)},
+                quote! {tracked kappa: Token, tracked d: &'static #dty,},
+                quote! {#d_ok, raw.loc() == #ploc, kappa.loc() == #ploc, kappa.fragment() == #kappa,},
+                quote! {
+                    Fragment::unit().op_unit();
+                    assert(kappa.fragment() == Fragment::op(#kappa, #kappa));
+                    let tracked (__tsm_kp, kappa) = kappa.split(#kappa, #kappa);
+                },
+                quote! {__tsm_kp, d,},
+                quote! {, kappa, d},
+                quote! {tracked d: &#dty},
+                ploc.clone(),
+                quote! {d.loc()},
+                quote! {d},
+                quote! {.0},
+            )
+        }
+    };
+    let lreq = match cm {
+        None => quote! {},
+        Some(cm) => {
+            let ok = cm.ok(quote! {d});
+            quote! {#ok,}
+        }
+    };
     // `imap`/`iset` collections use infinite maps and sets; splitting and
     // joining them recurses on a finite domain.
     let fin = !k.infinite();
@@ -972,14 +1206,14 @@ fn collection_helpers(f: &Field) -> TokenStream {
                 quote! {::vstd::imap::IMap::new(|__tsm_key: #kt| m.dom().contains(__tsm_key), #vals)}
             };
             let mut s = quote! {
-                proof fn #split(tracked raw: Token, m: #map_t<#kt, #v>)
+                proof fn #split(tracked raw: Token, m: #map_t<#kt, #v>, #split_params)
                     -> (tracked out: #map_t<#kt, #nt>)
-                    requires raw.fragment() == Fragment::#factory(m), #fin_m
+                    requires raw.fragment() == Fragment::#factory(m), #fin_m #split_reqs
                     ensures out.dom() == m.dom(),
                         forall|key: #kt| ::vstd::prelude::imply(#[trigger] out.dom().contains(key),
                             ::vstd::tokens::KeyValueToken::key(&out[key]) == key
                             && ::vstd::tokens::KeyValueToken::value(&out[key]) == m[key]
-                            && #out_id == ::vstd::resource::tsm_instance_id(raw.loc(), false)),
+                            && #out_id == #sid),
                     decreases #mlen,
                 {
                     #lemmas
@@ -999,8 +1233,9 @@ fn collection_helpers(f: &Field) -> TokenStream {
                             #pointwise::extensionality(raw.fragment().#n, Fragment::op(one, others).#n);
                         }
                         let tracked (a, b) = raw.split(one, others);
-                        let tracked mut out = Self::#split(b, rest);
-                        out.tracked_insert(key, Self::__from_raw(a, key, m[key]));
+                        #take_kp
+                        let tracked mut out = Self::#split(b, rest #rec_split);
+                        out.tracked_insert(key, Self::__from_raw(a, #kp_args key, m[key]));
                         assert(::vstd::prelude::ext_equal(out.dom(), m.dom()));
                         out
                     }
@@ -1008,13 +1243,13 @@ fn collection_helpers(f: &Field) -> TokenStream {
             };
             if !k.persistent() {
                 s.extend(quote! {
-                    proof fn #join(tracked acc: Token, tracked m: #map_t<#kt, #nt>, loc: ::vstd::resource::Loc)
+                    proof fn #join(tracked acc: Token, tracked m: #map_t<#kt, #nt>, #link_param)
                         -> (tracked out: Token)
-                        requires acc.loc() == loc, #fin_m
+                        requires acc.loc() == #lloc, #lreq #fin_m
                             forall|key: #kt| ::vstd::prelude::imply(#[trigger] m.dom().contains(key),
-                                m[key].__id() == ::vstd::resource::tsm_instance_id(loc, false)
+                                m[key].__id() == ::vstd::resource::tsm_instance_id(#lid, false)
                                 && ::vstd::tokens::KeyValueToken::key(&m[key]) == key),
-                        ensures out.loc() == loc,
+                        ensures out.loc() == #lloc,
                             out.fragment() == Fragment::op(acc.fragment(), Fragment::#factory(#all_vals)),
                         decreases #mlen,
                     {
@@ -1031,14 +1266,14 @@ fn collection_helpers(f: &Field) -> TokenStream {
                         } else {
                             let key = m.dom().choose();
                             assert(m.dom().contains(key));
-                            assert(m[key].__id() == ::vstd::resource::tsm_instance_id(loc, false));
+                            assert(m[key].__id() == ::vstd::resource::tsm_instance_id(#lid, false));
                             let tracked mut m = m;
                             let tracked t = m.tracked_remove(key);
                             let v = ::vstd::tokens::KeyValueToken::value(&t);
-                            let tracked raw = t.__into_raw(loc);
+                            let tracked raw = t.__into_raw(#larg)#into_suffix;
                             let tracked acc2 = acc.join(raw);
                             let rest = #all_vals;
-                            let tracked out = Self::#join(acc2, m, loc);
+                            let tracked out = Self::#join(acc2, m, #larg);
                             let one = Fragment::#factory(#map_t::empty().insert(key, v));
                             Fragment::unit().op_unit();
                             assert(Fragment::op(one, Fragment::#factory(rest)) == Fragment::#factory(all)) by {
@@ -1061,13 +1296,13 @@ fn collection_helpers(f: &Field) -> TokenStream {
         | ShardableType::ISet(e) | ShardableType::PersistentISet(e) => {
             let out_id = id_of(quote! {out[x]});
             let mut s = quote! {
-                proof fn #split(tracked raw: Token, s: #set_t<#e>)
+                proof fn #split(tracked raw: Token, s: #set_t<#e>, #split_params)
                     -> (tracked out: #map_t<#e, #nt>)
-                    requires raw.fragment() == Fragment::#factory(s), #fin_s
+                    requires raw.fragment() == Fragment::#factory(s), #fin_s #split_reqs
                     ensures out.dom() == s,
                         forall|x: #e| ::vstd::prelude::imply(#[trigger] out.dom().contains(x),
                             ::vstd::tokens::ElementToken::element(&out[x]) == x
-                            && #out_id == ::vstd::resource::tsm_instance_id(raw.loc(), false)),
+                            && #out_id == #sid),
                     decreases s.len(),
                 {
                     #lemmas
@@ -1087,8 +1322,9 @@ fn collection_helpers(f: &Field) -> TokenStream {
                             #pointwise::extensionality(raw.fragment().#n, Fragment::op(one, others).#n);
                         }
                         let tracked (a, b) = raw.split(one, others);
-                        let tracked mut out = Self::#split(b, rest);
-                        out.tracked_insert(x, Self::__from_raw(a, x));
+                        #take_kp
+                        let tracked mut out = Self::#split(b, rest #rec_split);
+                        out.tracked_insert(x, Self::__from_raw(a, #kp_args x));
                         assert(::vstd::prelude::ext_equal(out.dom(), s));
                         out
                     }
@@ -1096,13 +1332,13 @@ fn collection_helpers(f: &Field) -> TokenStream {
             };
             if !k.persistent() {
                 s.extend(quote! {
-                    proof fn #join(tracked acc: Token, tracked m: #map_t<#e, #nt>, loc: ::vstd::resource::Loc)
+                    proof fn #join(tracked acc: Token, tracked m: #map_t<#e, #nt>, #link_param)
                         -> (tracked out: Token)
-                        requires acc.loc() == loc, #fin_m
+                        requires acc.loc() == #lloc, #lreq #fin_m
                             forall|x: #e| ::vstd::prelude::imply(#[trigger] m.dom().contains(x),
-                                m[x].__id() == ::vstd::resource::tsm_instance_id(loc, false)
+                                m[x].__id() == ::vstd::resource::tsm_instance_id(#lid, false)
                                 && ::vstd::tokens::ElementToken::element(&m[x]) == x),
-                        ensures out.loc() == loc,
+                        ensures out.loc() == #lloc,
                             out.fragment() == Fragment::op(acc.fragment(), Fragment::#factory(m.dom())),
                         decreases #mlen,
                     {
@@ -1118,14 +1354,14 @@ fn collection_helpers(f: &Field) -> TokenStream {
                         } else {
                             let x = m.dom().choose();
                             assert(m.dom().contains(x));
-                            assert(m[x].__id() == ::vstd::resource::tsm_instance_id(loc, false));
+                            assert(m[x].__id() == ::vstd::resource::tsm_instance_id(#lid, false));
                             let all = m.dom();
                             let tracked mut m = m;
                             let tracked t = m.tracked_remove(x);
-                            let tracked raw = t.__into_raw(loc);
+                            let tracked raw = t.__into_raw(#larg)#into_suffix;
                             let tracked acc2 = acc.join(raw);
                             let rest = m.dom();
-                            let tracked out = Self::#join(acc2, m, loc);
+                            let tracked out = Self::#join(acc2, m, #larg);
                             let one = Fragment::#factory(#set_t::empty().insert(x));
                             Fragment::unit().op_unit();
                             assert(Fragment::op(one, Fragment::#factory(rest)) == Fragment::#factory(all)) by {
@@ -1150,16 +1386,16 @@ fn collection_helpers(f: &Field) -> TokenStream {
             let tok_expr = quote! {::vstd::tokens::MultisetToken::<#e, #nt>};
             quote! {
                 impl #nt {
-                    proof fn #split(tracked raw: Token, m: #ms) -> (tracked out: #tok)
-                        requires raw.fragment() == Fragment::#factory(m), m.len() >= 0,
+                    proof fn #split(tracked raw: Token, m: #ms, #split_params) -> (tracked out: #tok)
+                        requires raw.fragment() == Fragment::#factory(m), m.len() >= 0, #split_reqs
                         ensures out.multiset() == m,
-                            out.instance_id() == ::vstd::resource::tsm_instance_id(raw.loc(), false),
+                            out.instance_id() == #sid,
                         decreases m.len(),
                     {
                         #lemmas
                         if m.len() == 0 {
                             assert(::vstd::prelude::ext_equal(m, ::vstd::multiset::Multiset::empty()));
-                            #tok_expr::empty(::vstd::resource::tsm_instance_id(raw.loc(), false))
+                            #tok_expr::empty(#sid)
                         } else {
                             let x = m.choose();
                             let rest = m.remove(x);
@@ -1170,19 +1406,20 @@ fn collection_helpers(f: &Field) -> TokenStream {
                                 assert(::vstd::prelude::ext_equal(::vstd::multiset::Multiset::singleton(x).add(rest), m));
                             }
                             let tracked (a, b) = raw.split(one, others);
-                            let tracked mut out = Self::#split(b, rest);
-                            let tracked t = Self::__from_raw(a, x);
+                            #take_kp
+                            let tracked mut out = Self::#split(b, rest #rec_split);
+                            let tracked t = Self::__from_raw(a, #kp_args x);
                             assert(::vstd::tokens::ElementToken::instance_id(&t) == out.instance_id());
                             out.insert(t);
                             assert(::vstd::prelude::ext_equal(out.multiset(), m));
                             out
                         }
                     }
-                    proof fn #join(tracked acc: Token, tracked tokens: #tok, e: #ms, loc: ::vstd::resource::Loc)
+                    proof fn #join(tracked acc: Token, tracked tokens: #tok, e: #ms, #link_param)
                         -> (tracked out: Token)
-                        requires acc.loc() == loc, e.subset_of(tokens.multiset()),
-                            tokens.instance_id() == ::vstd::resource::tsm_instance_id(loc, false),
-                        ensures out.loc() == loc,
+                        requires acc.loc() == #lloc, #lreq e.subset_of(tokens.multiset()),
+                            tokens.instance_id() == ::vstd::resource::tsm_instance_id(#lid, false),
+                        ensures out.loc() == #lloc,
                             out.fragment() == Fragment::op(acc.fragment(), Fragment::#factory(e)),
                         decreases e.len(),
                     {
@@ -1197,11 +1434,11 @@ fn collection_helpers(f: &Field) -> TokenStream {
                             assert(e.count(x) > 0);
                             let tracked mut tokens = tokens;
                             let tracked t = tokens.remove(x);
-                            assert(t.__id() == ::vstd::resource::tsm_instance_id(loc, false));
-                            let tracked raw = t.__into_raw(loc);
+                            assert(t.__id() == ::vstd::resource::tsm_instance_id(#lid, false));
+                            let tracked raw = t.__into_raw(#larg)#into_suffix;
                             let tracked acc2 = acc.join(raw);
                             let rest = e.remove(x);
-                            let tracked out = Self::#join(acc2, tokens, rest, loc);
+                            let tracked out = Self::#join(acc2, tokens, rest, #larg);
                             let one = Fragment::#factory(::vstd::multiset::Multiset::singleton(x));
                             Fragment::unit().op_unit();
                             assert(Fragment::op(one, Fragment::#factory(rest)) == Fragment::#factory(e)) by {
@@ -1226,18 +1463,18 @@ fn collection_helpers(f: &Field) -> TokenStream {
                 (quote! {Option<#v>}, quote! {e is Some}, quote! {Some(e->Some_0)}, quote! {, e->Some_0})
             };
             let rel = if boolean {
-                quote! {::vstd::tokens::bool_value_eq_option_token(e, out, ::vstd::resource::tsm_instance_id(raw.loc(), false))}
+                quote! {::vstd::tokens::bool_value_eq_option_token(e, out, #sid)}
             } else {
-                quote! {::vstd::tokens::option_value_eq_option_token(e, out, ::vstd::resource::tsm_instance_id(raw.loc(), false))}
+                quote! {::vstd::tokens::option_value_eq_option_token(e, out, #sid)}
             };
             let mut s = quote! {
-                proof fn #split(tracked raw: Token, e: #ety) -> (tracked out: Option<#nt>)
-                    requires raw.fragment() == Fragment::#factory(e),
+                proof fn #split(tracked raw: Token, e: #ety, #split_params) -> (tracked out: Option<#nt>)
+                    requires raw.fragment() == Fragment::#factory(e), #split_reqs
                     ensures #rel,
                 {
                     if #is_some {
                         assert(Fragment::#factory(e) == Fragment::#factory(#value));
-                        Some(Self::__from_raw(raw #data))
+                        Some(Self::__from_raw(raw #rec_split #data))
                     } else {
                         None
                     }
@@ -1246,21 +1483,21 @@ fn collection_helpers(f: &Field) -> TokenStream {
             if !k.persistent() {
                 let id_t = id_call(f, quote! {t});
                 let le = if boolean {
-                    quote! {::vstd::tokens::bool_value_le_option_token(e, t, ::vstd::resource::tsm_instance_id(loc, false))}
+                    quote! {::vstd::tokens::bool_value_le_option_token(e, t, ::vstd::resource::tsm_instance_id(#lid, false))}
                 } else {
-                    quote! {::vstd::tokens::option_value_le_option_token(e, t, ::vstd::resource::tsm_instance_id(loc, false))}
+                    quote! {::vstd::tokens::option_value_le_option_token(e, t, ::vstd::resource::tsm_instance_id(#lid, false))}
                 };
                 s.extend(quote! {
-                    proof fn #join(tracked acc: Token, tracked t: Option<#nt>, e: #ety, loc: ::vstd::resource::Loc)
+                    proof fn #join(tracked acc: Token, tracked t: Option<#nt>, e: #ety, #link_param)
                         -> (tracked out: Token)
-                        requires acc.loc() == loc, #le,
-                        ensures out.loc() == loc, out.fragment() == Fragment::op(acc.fragment(), Fragment::#factory(e)),
+                        requires acc.loc() == #lloc, #lreq #le,
+                        ensures out.loc() == #lloc, out.fragment() == Fragment::op(acc.fragment(), Fragment::#factory(e)),
                     {
                         if #is_some {
                             let tracked t = t.tracked_unwrap();
                             assert(t.__id() == #id_t);
                             assert(Fragment::#factory(e) == Fragment::#factory(#value));
-                            acc.join(t.__into_raw(loc))
+                            acc.join(t.__into_raw(#larg)#into_suffix)
                         } else {
                             acc.fragment().op_unit();
                             acc
@@ -1530,8 +1767,11 @@ fn reads(sm: &SM, tr: &Transition) -> HashSet<String> {
 struct Ctx<'a> {
     sm: &'a SM,
     store: &'a Store,
-    /// The instance holds a `&'static` token with the constants (`__base`).
+    /// The instance holds a `&'static` token with the unit fragment (with
+    /// constants: `κ`), for operations of a machine without storage that
+    /// consume no token (`__base`).
     base: bool,
+    cm: &'a Option<Cm>,
 }
 
 fn is_read_only(parts: &ExchangeParts, params: &[Param]) -> bool {
@@ -1612,13 +1852,13 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     let sm = &bundle.sm;
     check_fields(sm)?;
     let store = Store::new(sm)?;
-    let constants: Vec<&Field> = sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::Constant(_))).collect();
+    let cm = Cm::new(sm);
     let mut any_unit = false;
     for tr in &sm.transitions {
         any_unit |= needs_unit(sm, bundle, tr)?;
     }
-    let base = !constants.is_empty() || (!store.has() && any_unit);
-    let ctx = Ctx { sm, store: &store, base };
+    let base = !store.has() && any_unit;
+    let ctx = Ctx { sm, store: &store, base, cm: &cm };
     // The trusted macro's specifications call the token traits' methods.
     let mut items = vec![quote! {
         #[allow(unused_imports)]
@@ -1629,8 +1869,8 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     }];
     for f in &sm.fields {
         if kind(f).is_some() {
-            items.push(token_type(f, &store, sm.generics.is_some()));
-            items.push(collection_helpers(f));
+            items.push(token_type(f, &store, sm.generics.is_some(), &cm));
+            items.push(collection_helpers(f, &cm));
         }
         // The trusted macro's collection aliases.
         let n = &f.name;
@@ -1659,69 +1899,113 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             _ => {}
         }
     }
-    // The instance: its location, and (if needed) a leaked token owning the
-    // constants' agreement fragment.
-    let base_frag = constants.iter().fold(quote! {Fragment::unit()}, |acc, c| {
-        let w = format_ident!("with_{}", c.name);
-        let n = &c.name;
-        quote! {#acc.#w(self.#n())}
-    });
-    let const_fns: Vec<_> = constants
-        .iter()
-        .map(|c| {
-            let n = &c.name;
-            let ShardableType::Constant(t) = &c.stype else { unreachable!() };
-            quote! {pub closed spec fn #n(&self) -> #t {self.__base.fragment().#n->Some_0->Agree_0}}
-        })
-        .collect();
-    let (base_field, base_inv) = if base {
-        (
-            quote! {tracked __base: &'static Token,},
-            quote! {
-                #[verifier::type_invariant]
-                spec fn __wf(self) -> bool {
-                    self.__base.loc() == self.__loc@ && self.__base.fragment() == #base_frag
-                }
-            },
-        )
-    } else {
-        (quote! {}, quote! {})
-    };
-    let (inst_derive, inst_copy) = copy_impls(&quote! {Instance}, true, sm.generics.is_some());
-    let phantom_field = match &sm.generics {
-        Some(g) if !base => {
-            let args = crate::to_token_stream::get_generic_args(&g.params);
-            quote! {ghost __tsm_phantom: ::core::marker::PhantomData<(#args,)>,}
-        }
+    // The instance: its location (or, with constants, the descriptor `d`),
+    // and (if an operation of a machine without storage needs a unit) a leaked
+    // token owning the unit fragment (with constants: `κ`).
+    let generic = sm.generics.is_some();
+    let (inst_derive, inst_copy) = copy_impls(&quote! {Instance}, true, generic);
+    let generic_args = sm.generics.as_ref().map(|g| crate::to_token_stream::get_generic_args(&g.params));
+    let phantom_field = match &generic_args {
+        Some(args) if !base => quote! {ghost __tsm_phantom: ::core::marker::PhantomData<(#args,)>,},
         _ => quote! {},
     };
+    let (loc_field, loc_spec, id_spec, const_fns, inst_inv, unit_def, base_kappa) = match &cm {
+        None => (
+            quote! {ghost __loc: Ghost<::vstd::resource::Loc>,},
+            quote! {self.__loc@},
+            quote! {::vstd::resource::tsm_instance_id(self.__loc@, false)},
+            vec![],
+            if base {
+                quote! {self.__base.loc() == self.__loc@ && self.__base.fragment() == Fragment::unit()}
+            } else {
+                quote! {true}
+            },
+            quote! {
+                /// A unit token: the identity resource of an instance, for operations
+                /// that consume no other token.
+                pub tracked struct Unit {tracked raw: Token}
+                impl Unit {
+                    #[verifier::type_invariant]
+                    spec fn __wf(self) -> bool {self.raw.fragment() == Fragment::unit()}
+                    pub closed spec fn instance_id(&self) -> ::vstd::tokens::InstanceId {
+                        ::vstd::resource::tsm_instance_id(self.raw.loc(), false)
+                    }
+                }
+            },
+            quote! {},
+        ),
+        Some(cm) => {
+            let dty = &cm.d;
+            let ok = cm.ok(quote! {self.__desc});
+            let ploc = cm.ploc(quote! {self.__desc});
+            let kappa = cm.kappa(quote! {self.__desc});
+            let const_fns: Vec<_> = cm
+                .consts
+                .iter()
+                .enumerate()
+                .map(|(i, c)| {
+                    let n = &c.name;
+                    let ShardableType::Constant(t) = &c.stype else { unreachable!() };
+                    let v = cm.constant(quote! {self.__desc}, i);
+                    quote! {pub closed spec fn #n(&self) -> #t {#v}}
+                })
+                .collect();
+            let u_ok = cm.ok(quote! {self.desc});
+            let u_ploc = cm.ploc(quote! {self.desc});
+            let u_kappa = cm.kappa(quote! {self.desc});
+            (
+                quote! {tracked __desc: &'static #dty,},
+                ploc.clone(),
+                quote! {::vstd::resource::tsm_instance_id(self.__desc.loc(), false)},
+                const_fns,
+                if base {
+                    quote! {#ok && self.__base.loc() == #ploc && self.__base.fragment() == #kappa}
+                } else {
+                    quote! {#ok}
+                },
+                quote! {
+                    /// A unit token: the identity resource of an instance, for operations
+                    /// that consume no other token (with a copy of the constants).
+                    pub tracked struct Unit {tracked raw: Token, tracked base: Token, tracked desc: &'static #dty}
+                    impl Unit {
+                        #[verifier::type_invariant]
+                        spec fn __wf(self) -> bool {
+                            self.raw.fragment() == Fragment::unit()
+                            && #u_ok
+                            && self.raw.loc() == #u_ploc && self.base.loc() == #u_ploc
+                            && self.base.fragment() == #u_kappa
+                        }
+                        pub closed spec fn instance_id(&self) -> ::vstd::tokens::InstanceId {
+                            ::vstd::resource::tsm_instance_id(self.desc.loc(), false)
+                        }
+                    }
+                },
+                kappa,
+            )
+        }
+    };
+    let base_field = if base { quote! {tracked __base: &'static Token,} } else { quote! {} };
     items.push(quote! {
-        /// The instance carries only its location (and a shared, leaked
-        /// token with the constants), so it is freely duplicable (`Copy`, as
-        /// in the trusted macro).
+        /// The instance carries only its location (and shared, leaked
+        /// resources), so it is freely duplicable (`Copy`, as in the trusted
+        /// macro).
         #[allow(non_camel_case_types)]
         #inst_derive
-        pub tracked struct Instance {ghost __loc: Ghost<::vstd::resource::Loc>, #base_field #phantom_field}
+        pub tracked struct Instance {#loc_field #base_field #phantom_field}
         #inst_copy
         impl Instance {
-            #base_inv
-            pub closed spec fn id(&self) -> ::vstd::tokens::InstanceId {
-                ::vstd::resource::tsm_instance_id(self.__loc@, false)
-            }
+            #[verifier::type_invariant]
+            spec fn __wf(self) -> bool {#inst_inv}
+            /// The protocol location.
+            spec fn __l(&self) -> ::vstd::resource::Loc {#loc_spec}
+            pub closed spec fn id(&self) -> ::vstd::tokens::InstanceId {#id_spec}
             pub proof fn clone(tracked &self) -> (tracked s: Self) ensures s == *self {*self}
             #(#const_fns)*
         }
-        /// A unit token: the identity resource of an instance, for operations
-        /// that consume no other token.
-        pub tracked struct Unit {tracked raw: Token}
-        impl Unit {
-            #[verifier::type_invariant]
-            spec fn __wf(self) -> bool {self.raw.fragment() == Fragment::unit()}
-            pub closed spec fn instance_id(&self) -> ::vstd::tokens::InstanceId {
-                ::vstd::resource::tsm_instance_id(self.raw.loc(), false)
-            }
-        }
+        #unit_def
     });
+    let link = if cm.is_some() { quote! {self.__desc} } else { quote! {self.__l()} };
+    let pat_extra = if cm.is_some() { quote! {base, desc,} } else { quote! {} };
     let mut unit_fns = vec![];
     for f in &sm.fields {
         let Some(k) = kind(f) else { continue };
@@ -1752,6 +2036,18 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             })
             .collect();
         let id_mine = id_call(f, quote! {mine});
+        let (split_base, unit_value, back_extra) = match &cm {
+            None => (quote! {}, quote! {Unit {raw: u}}, quote! {}),
+            Some(_) => (
+                quote! {
+                    let tracked b = base.tracked_unwrap();
+                    assert(b.fragment() == Fragment::op(#base_kappa, #base_kappa));
+                    let tracked (b1, b2) = b.split(#base_kappa, #base_kappa);
+                },
+                quote! {Unit {raw: u, base: b1, desc: self.__desc}},
+                quote! {base: Some(b2), desc,},
+            ),
+        };
         unit_fns.push(quote! {
             /// Split the unit resource off a token of this instance.
             pub proof fn #fname(tracked &self, tracked t: &mut #nt) -> (tracked u: Unit)
@@ -1759,32 +2055,43 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                 ensures #id_final == self.id(), #(#same,)*
                     u.instance_id() == self.id(),
             {
+                ::vstd::prelude::use_type_invariant(self);
                 let tracked mut mine = #nt::__arbitrary();
                 ::vstd::modes::tracked_swap(t, &mut mine);
                 assert(mine.__id() == #id_mine);
                 ::vstd::prelude::use_type_invariant(&mine);
-                mine.__lemma_id(self.__loc@);
+                mine.__lemma_id(#link);
                 let ghost saved = mine;
-                let tracked #nt {raw, fake, ..} = mine;
+                let tracked #nt {raw, fake, #pat_extra ..} = mine;
                 let tracked raw = raw.tracked_unwrap();
                 let f = raw.fragment();
                 f.op_unit();
                 Fragment::commutative(Fragment::unit(), f);
+                Fragment::unit().op_unit();
                 let tracked (u, raw) = raw.split(Fragment::unit(), f);
-                let tracked mut back = #nt {raw: Some(raw), fake, ..saved};
+                #split_base
+                let tracked mut back = #nt {raw: Some(raw), #back_extra fake, ..saved};
                 ::vstd::modes::tracked_swap(t, &mut back);
-                Unit {raw: u}
+                #unit_value
             }
         });
     }
     if base && !store.has() {
+        let unit_value = match &cm {
+            None => quote! {Unit {raw: self.__base.empty()}},
+            Some(_) => quote! {
+                Fragment::unit().op_unit();
+                assert(Fragment::op(#base_kappa, #base_kappa) == #base_kappa);
+                Unit {raw: self.__base.empty(), base: self.__base.duplicate(), desc: self.__desc}
+            },
+        };
         unit_fns.push(quote! {
             /// A unit token of this instance.
             pub proof fn unit(tracked &self) -> (tracked u: Unit)
                 ensures u.instance_id() == self.id(),
             {
                 ::vstd::prelude::use_type_invariant(self);
-                Unit {raw: self.__base.empty()}
+                #unit_value
             }
         });
     }
@@ -1820,7 +2127,18 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             let attrs = quote! {#(#attrs)*};
             // Leaked `&'static` tokens (the instance's base token and persistent
             // tokens) need the machine's type parameters to be `'static`.
-            let needs_static = base || sm.fields.iter().any(|f| kind(f).is_some_and(|k| k.persistent()));
+            // (The descriptor needs it only if a constant's type mentions them.)
+            fn mentions(ts: &TokenStream, names: &HashSet<String>) -> bool {
+                ts.clone().into_iter().any(|t| match t {
+                    TokenTree::Ident(id) => names.contains(&id.to_string()),
+                    TokenTree::Group(g) => mentions(&g.stream(), names),
+                    _ => false,
+                })
+            }
+            let params: HashSet<String> = args.iter().map(|a| quote! {#a}.to_string()).collect();
+            let needs_static = base
+                || sm.fields.iter().any(|f| kind(f).is_some_and(|k| k.persistent()))
+                || cm.as_ref().is_some_and(|cm| mentions(&cm.d, &params));
             let wc = if needs_static {
                 let bounds: Vec<_> = args.iter().map(|a| quote! {#a: 'static}).collect();
                 match &generics.as_ref().and_then(|g| g.where_clause.as_ref()) {
@@ -1978,7 +2296,14 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     let early_actual_helper: Vec<_> = early_actual.iter().map(|e| in_helper(e.clone())).collect();
     let late_body: Vec<_> = late.iter().map(|e| in_body(e.clone())).collect();
     let late_helper: Vec<_> = late.iter().map(|e| in_helper(e.clone())).collect();
-    let loc = quote! {self.__loc@};
+    let loc = quote! {self.__l()};
+    let cm = ctx.cm;
+    // A token's link to the instance (see `Cm`).
+    let link = if cm.is_some() { quote! {self.__desc} } else { quote! {self.__l()} };
+    // With constants: the first consumed token's copy of `κ`, and the first
+    // borrowed token (to observe its copy).
+    let mut kappa_from: Option<Ident> = None;
+    let mut first_borrow: Option<Ident> = None;
     let owned_ident = format_ident!("__tsm_owned", span = Span::mixed_site());
     let shared_ident = format_ident!("__tsm_shared", span = Span::mixed_site());
     let mut take_owned: Vec<(Ident, TokenStream)> = vec![];
@@ -2015,7 +2340,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 let Some(MonoidElt::General(e)) = q.p.elt.as_ref() else {
                     return err(f.name.span(), "unsupported consumed collection for generic field tokens");
                 };
-                let (coll_frag, join) = collection_input(f, pname, &loc, e)?;
+                let (coll_frag, join) = collection_input(f, pname, &link, e)?;
                 let e_body = in_body(quote! {#e});
                 coll_owned.push((in_body(join), coll_frag.clone()));
                 let observed = quote! {(#e)};
@@ -2025,7 +2350,15 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             }
             InoutType::In => {
                 let raw = format_ident!("__tsm_raw_{}", pname);
-                take_owned.push((raw.clone(), quote! {let tracked #raw = #pname.__into_raw(#loc);}));
+                let b = format_ident!("__tsm_base_{}", pname);
+                if cm.is_some() && kappa_from.is_none() {
+                    kappa_from = Some(b.clone());
+                }
+                take_owned.push((raw.clone(), if cm.is_some() {
+                    quote! {let tracked (#raw, #b) = #pname.__into_raw(#link);}
+                } else {
+                    quote! {let tracked #raw = #pname.__into_raw(#link);}
+                }));
                 owned_frags.push(tok_frag.clone());
                 owned_frags_body.push(tok_frag_ghost.clone());
                 incl_frames.push((tok_frag.clone(), incl_lemma));
@@ -2035,10 +2368,19 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 let raw = format_ident!("__tsm_raw_{}", pname);
                 let taken = format_ident!("__tsm_taken_{}", pname);
                 let ty = tyname(f);
+                let b = format_ident!("__tsm_base_{}", pname);
+                if cm.is_some() && kappa_from.is_none() {
+                    kappa_from = Some(b.clone());
+                }
+                let into = if cm.is_some() {
+                    quote! {let tracked (#raw, #b) = #taken.__into_raw(#link);}
+                } else {
+                    quote! {let tracked #raw = #taken.__into_raw(#link);}
+                };
                 take_owned.push((raw.clone(), quote! {
                     let tracked mut #taken = #ty::__arbitrary();
                     ::vstd::modes::tracked_swap(#pname, &mut #taken);
-                    let tracked #raw = #taken.__into_raw(#loc);
+                    #into
                 }));
                 owned_frags.push(tok_frag.clone());
                 owned_frags_body.push(tok_frag_ghost.clone());
@@ -2050,7 +2392,10 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                     return err(f.name.span(), "generic field tokens do not yet support borrowed token collections");
                 }
                 let obs = format_ident!("__tsm_obs_{}", pname);
-                take_shared.push((obs.clone(), quote! {let tracked #obs = #pname.__borrow_raw(#loc).observe();}));
+                if first_borrow.is_none() {
+                    first_borrow = Some(pname.clone());
+                }
+                take_shared.push((obs.clone(), quote! {let tracked #obs = #pname.__borrow_raw(#link).observe();}));
                 shared_frags.push(tok_frag.clone());
                 shared_frags_body.push(tok_frag_ghost.clone());
                 incl_frames.push((tok_frag.clone(), incl_lemma));
@@ -2074,9 +2419,18 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             quote! {#acc.#w((*self).#n())}
         });
         let obs = format_ident!("__tsm_obs_constants");
+        // The constants' fragment `κ`: a consumed token's (or the unit's) copy,
+        // else a borrowed token's.
+        let source = if kappa_from.is_some() || take_owned.is_empty() && !guard && !is_read_only(&parts, &params) {
+            quote! {let tracked #obs = __tsm_kappa.observe();}
+        } else if let Some(p) = &first_borrow {
+            quote! {let tracked #obs = #p.__borrow_base(#link).observe();}
+        } else {
+            return err(span, "generic field tokens: an operation reading a constant needs a token of the instance");
+        };
         take_shared.push((obs.clone(), quote! {
             ::vstd::prelude::use_type_invariant(self);
-            let tracked #obs = self.__base.observe();
+            #source
         }));
         shared_frags.push(base_frag.clone());
         shared_frags_body.push(base_frag.clone());
@@ -2085,6 +2439,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             incl_frames_body.push((base_frag.clone(), constant_lemma(c, &base_frag)));
         }
     }
+    let _ = &kappa_from;
     // Read-only operations (only borrowed tokens, no outputs or storage
     // changes) need no exchange: validate the borrowed tokens and reason
     // about a completion state.
@@ -2136,10 +2491,21 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     }
     if needs_unit {
         if unit_param {
-            join_owned.push(quote! {
-                ::vstd::prelude::use_type_invariant(&__tsm_unit);
-                ::vstd::resource::tsm_instance_id_injective(__tsm_unit.raw.loc(), false, #loc, false);
-                let tracked Unit {raw: __tsm_acc} = __tsm_unit;
+            join_owned.push(if cm.is_some() {
+                quote! {
+                    ::vstd::prelude::use_type_invariant(&__tsm_unit);
+                    ::vstd::prelude::use_type_invariant(self);
+                    ::vstd::resource::tsm_instance_id_injective(__tsm_unit.desc.loc(), false, self.__desc.loc(), false);
+                    ::vstd::resource::tsm_generic::agreement_resources_agree(__tsm_unit.desc, self.__desc);
+                    let tracked Unit {raw: __tsm_acc, base: __tsm_kappa, ..} = __tsm_unit;
+                }
+            } else {
+                quote! {
+                    ::vstd::prelude::use_type_invariant(&__tsm_unit);
+                    ::vstd::prelude::use_type_invariant(self);
+                    ::vstd::resource::tsm_instance_id_injective(__tsm_unit.raw.loc(), false, #loc, false);
+                    let tracked Unit {raw: __tsm_acc} = __tsm_unit;
+                }
             });
         } else {
             if !ctx.base {
@@ -2149,6 +2515,14 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 ::vstd::prelude::use_type_invariant(self);
                 let tracked __tsm_acc = self.__base.empty();
             });
+            if let Some(cm) = cm {
+                let kappa = cm.kappa(quote! {self.__desc});
+                join_owned.push(quote! {
+                    Fragment::unit().op_unit();
+                    assert(Fragment::op(#kappa, #kappa) == #kappa);
+                    let tracked __tsm_kappa = self.__base.duplicate();
+                });
+            }
         }
     } else {
         let mut first = true;
@@ -2160,6 +2534,9 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             } else {
                 join_owned.push(quote! {let tracked __tsm_acc = __tsm_acc.join(#raw);});
             }
+        }
+        if let Some(b) = &kappa_from {
+            join_owned.push(quote! {let tracked __tsm_kappa = #b;});
         }
     }
     for (join, _) in &coll_owned {
@@ -2246,7 +2623,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     let deposited = format_ident!("{}_deposited", tr.name);
     let owners = format_ident!("{}_owners_enabled", tr.name);
     let safety = format_ident!("{}_safety", tr.name);
-    let h = if has_shared { quote! {#shared_ident.fragment()} } else { quote! {Fragment::unit()} };
+    let h = if has_shared { quote! {__tsm_hv} } else { quote! {Fragment::unit()} };
     let h_param = format_ident!("__tsm_h", span = Span::mixed_site());
     let lemmas = quote! {broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
         ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};};
@@ -2324,6 +2701,22 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         let pname = &q.p.name;
         let ty = tyname(f);
         let factory = format_ident!("field_{}", f.name);
+        // With constants, each new token gets its own copy of `κ`.
+        let (kp, from_args, split_args) = match cm {
+            None => (quote! {}, quote! {}, quote! {}),
+            Some(cm) => {
+                let kappa = cm.kappa(quote! {self.__desc});
+                (
+                    quote! {
+                        Fragment::unit().op_unit();
+                        assert(__tsm_kappa.fragment() == Fragment::op(#kappa, #kappa));
+                        let tracked (__tsm_kp, __tsm_kappa) = __tsm_kappa.split(#kappa, #kappa);
+                    },
+                    quote! {__tsm_kp, self.__desc,},
+                    quote! {, __tsm_kp, self.__desc},
+                )
+            }
+        };
         if q.p.inout_type == InoutType::InOut {
             let Some(e) = parts.var_updates.get(&f.name.to_string()) else {
                 return err(f.name.span(), "internal: missing variable update");
@@ -2335,7 +2728,8 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 quote! {Fragment::#factory(#eh)},
                 quote! {Fragment::#factory(#eb)},
                 quote! {
-                    let tracked mut #new = #ty::__from_raw(__tsm_piece, #eb);
+                    #kp
+                    let tracked mut #new = #ty::__from_raw(__tsm_piece, #from_args #eb);
                     ::vstd::modes::tracked_swap(#pname, &mut #new);
                 },
             ));
@@ -2355,16 +2749,18 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             };
             let mk = if k.map_like() {
                 quote! {
-                    let tracked #pname = #mtok::from_map((*self).id(), #ty::#split(__tsm_piece, #e));
+                    #kp
+                    let tracked #pname = #mtok::from_map((*self).id(), #ty::#split(__tsm_piece, #e #split_args));
                     assert(::vstd::prelude::ext_equal(#pname.map(), #e));
                 }
             } else if k.set_like() {
                 quote! {
-                    let tracked #pname = #stok::from_map((*self).id(), #ty::#split(__tsm_piece, #e));
+                    #kp
+                    let tracked #pname = #stok::from_map((*self).id(), #ty::#split(__tsm_piece, #e #split_args));
                     assert(::vstd::prelude::ext_equal(#pname.set(), #e));
                 }
             } else if k == Kind::Multiset || k.option_like() {
-                quote! {let tracked #pname = #ty::#split(__tsm_piece, #e);}
+                quote! {#kp let tracked #pname = #ty::#split(__tsm_piece, #e #split_args);}
             } else {
                 return err(f.name.span(), "unsupported collection output for generic field tokens");
             };
@@ -2386,7 +2782,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         outs.push((
             in_helper(fr.clone()),
             in_body(fr),
-            in_body(quote! {let tracked #pname = #ty::__from_raw(__tsm_piece, #(#data),*);}),
+            in_body(quote! {#kp let tracked #pname = #ty::__from_raw(__tsm_piece, #from_args #(#data),*);}),
         ));
     }
     let expected_helper = outs.iter().rev().fold(quote! {Fragment::unit()}, |acc, (fr, _, _)| quote! {Fragment::op(#fr, #acc)});
@@ -2602,6 +2998,13 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     } else {
         (quote! {#h_param == Fragment::unit(),}, quote! {#owned_ident.op_unit();})
     };
+    // A deposit may depend on a transition's `assert`s (the API's precondition
+    // then only constrains it under them), which hold by the safety lemma.
+    let ready_safety = if store.has() && has_assert(&tr.body) {
+        quote! {State::#safety(pre, #(#pn),*);}
+    } else {
+        quote! {}
+    };
     let ready = quote! {
         #[verifier::spinoff_prover]
         proof fn #ready_fn(&self, #(#ghost_params,)* #(#tparams,)* #owned_ident: Fragment, #h_param: Fragment #dep_comma #dep_param)
@@ -2625,6 +3028,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                     #dep_goal
                     && State::#owners(pre, #owned_ident, #h_param, #(#pn),*) by {
                 #(#frames_ready)*
+                #ready_safety
                 #dep_ext
             }
         }
@@ -2721,6 +3125,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     } else {
         quote! {}
     };
+    let bind_h = if has_shared { quote! {let ghost __tsm_hv = #shared_ident.fragment();} } else { quote! {} };
     let post_args = if store.has() { quote! {__tsm_deposit, __tsm_withdrawn} } else { quote! {} };
     // The trusted macro's specifications use the old `&mut` postcondition style.
     let mut_style = if inouts.is_empty() {
@@ -2737,9 +3142,11 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             #lemmas
             #(#ghost_binds)*
             #(#use_invs)*
+            ::vstd::prelude::use_type_invariant(self);
             #(#early_body)*
             #(#join_owned)*
             #(#join_shared)*
+            #bind_h
             let #owned_ident = __tsm_acc.fragment();
             #incl
             #deposit_stmts
@@ -2853,6 +3260,7 @@ fn read_only_method(
             broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
                 ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};
             #use_invs
+            ::vstd::prelude::use_type_invariant(self);
             #(#early)*
             #(#joins)*
             #(#incl)*
@@ -2980,6 +3388,7 @@ fn guard_method(
         pub proof fn #name #gen (#(#in_params),*) #ret #req #ens {
             broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
                 ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};
+            ::vstd::prelude::use_type_invariant(self);
             #(#early)*
             #(#joins2)*
             #(#incl)*
@@ -3034,9 +3443,51 @@ fn init_method(
             __tsm_base.tracked_union_prefer_right(__tsm_packed);
         });
     }
-    let id = quote! {::vstd::resource::tsm_instance_id(__tsm_all.loc(), false)};
+    let cm = ctx.cm;
+    let id = if cm.is_some() {
+        quote! {::vstd::resource::tsm_instance_id(__tsm_desc.loc(), false)}
+    } else {
+        quote! {::vstd::resource::tsm_instance_id(__tsm_all.loc(), false)}
+    };
     let mut takes = vec![];
-    let mut base_parts = vec![];
+    // With constants: take their pieces first, join them into `κ`, and
+    // allocate the descriptor; every token then gets a copy of `κ`.
+    let (kp, from_args, split_args) = match cm {
+        None => (quote! {}, quote! {}, quote! {}),
+        Some(cm) => {
+            let mut pieces = vec![];
+            for c in &cm.consts {
+                let take = format_ident!("take_{}", c.name);
+                let piece = format_ident!("__tsm_const_{}", c.name);
+                takes.push(quote! {let tracked (#piece, __tsm_rest) = Protocol::#take(__tsm_rest);});
+                pieces.push(piece);
+            }
+            let first = &pieces[0];
+            takes.push(quote! {let tracked __tsm_kappa = #first;});
+            for p in &pieces[1..] {
+                takes.push(quote! {let tracked __tsm_kappa = __tsm_kappa.join(#p);});
+            }
+            let vals: Vec<_> = cm.consts.iter().map(|c| {
+                let n = &c.name;
+                quote! {post.#n}
+            }).collect();
+            let kappa = cm.kappa(quote! {__tsm_desc});
+            takes.push(quote! {
+                let tracked __tsm_desc = ::vstd::modes::tracked_static_ref(::vstd::resource::pcm::Resource::alloc(
+                    Some(::vstd::resource::agree::AgreementRA::Agree(((#(#vals,)*), __tsm_all_loc)))));
+                Fragment::unit().op_unit();
+                assert(__tsm_kappa.fragment() == #kappa);
+            });
+            (
+                quote! {
+                    assert(__tsm_kappa.fragment() == Fragment::op(#kappa, #kappa));
+                    let tracked (__tsm_kp, __tsm_kappa) = __tsm_kappa.split(#kappa, #kappa);
+                },
+                quote! {__tsm_kp, __tsm_desc,},
+                quote! {, __tsm_kp, __tsm_desc},
+            )
+        }
+    };
     for f in &sm.fields {
         let fname = &f.name;
         let arg = format_ident!("param_token_{}", fname);
@@ -3044,12 +3495,6 @@ fn init_method(
         let factory = format_ident!("field_{}", fname);
         let split = format_ident!("__split_{}", fname);
         let ty = tyname(f);
-        if matches!(f.stype, ShardableType::Constant(_)) {
-            let piece = format_ident!("__tsm_const_{}", fname);
-            takes.push(quote! {let tracked (#piece, __tsm_rest) = Protocol::#take(__tsm_rest);});
-            base_parts.push(piece);
-            continue;
-        }
         let Some(k) = kind(f) else { continue };
         takes.push(quote! {let tracked (__tsm_piece, __tsm_rest) = Protocol::#take(__tsm_rest);});
         let value = quote! {post.#fname};
@@ -3074,55 +3519,45 @@ fn init_method(
                         ::vstd::resource::tsm_collections::Pointwise::extensionality(
                             __tsm_piece.fragment().#fname, Fragment::#factory(#value).#fname);
                     }
-                    let tracked #arg = #coll(#id, #ty::#split(__tsm_piece, #value));
+                    #kp
+                    let tracked #arg = #coll(#id, #ty::#split(__tsm_piece, #value #split_args));
                 }
             }
-            Kind::Multiset => quote! {
+            Kind::Multiset | Kind::Option | Kind::PersistentOption | Kind::Bool | Kind::PersistentBool => quote! {
                 assert(__tsm_piece.fragment() == Fragment::#factory(#value));
-                let tracked #arg = #ty::#split(__tsm_piece, #value);
-            },
-            Kind::Option | Kind::PersistentOption | Kind::Bool | Kind::PersistentBool => quote! {
-                assert(__tsm_piece.fragment() == Fragment::#factory(#value));
-                let tracked #arg = #ty::#split(__tsm_piece, #value);
+                #kp
+                let tracked #arg = #ty::#split(__tsm_piece, #value #split_args);
             },
             Kind::Variable | Kind::Count => quote! {
                 assert(__tsm_piece.fragment() == Fragment::#factory(#value));
-                let tracked #arg = #ty::__from_raw(__tsm_piece, #value);
+                #kp
+                let tracked #arg = #ty::__from_raw(__tsm_piece, #from_args #value);
             },
             Kind::PersistentCount => quote! {
                 assert(__tsm_piece.fragment() == Fragment::#factory(#value));
-                let tracked #arg = #ty::__from_raw(__tsm_piece, #value, #value);
+                #kp
+                let tracked #arg = #ty::__from_raw(__tsm_piece, #from_args #value, #value);
             },
             _ => unreachable!(),
         };
         takes.push(stmt);
     }
-    let base_stmt = if ctx.base {
-        let mut s = quote! {};
-        if base_parts.is_empty() {
-            s.extend(quote! {let tracked __tsm_base_tok = __tsm_rest.empty();});
-        } else {
-            let first = &base_parts[0];
-            s.extend(quote! {let tracked __tsm_base_tok = #first;});
-            for p in &base_parts[1..] {
-                s.extend(quote! {let tracked __tsm_base_tok = __tsm_base_tok.join(#p);});
+    let phantom = if sm.generics.is_some() && !ctx.base { quote! {, __tsm_phantom: ::core::marker::PhantomData} } else { quote! {} };
+    let base_stmt = match (cm, ctx.base) {
+        (None, true) => quote! {
+            let tracked __tsm_base_tok = __tsm_rest.empty();
+            let tracked instance = Instance {__loc: Ghost(__tsm_all_loc), __base: ::vstd::modes::tracked_static_ref(__tsm_base_tok)};
+        },
+        (None, false) => quote! {let tracked instance = Instance {__loc: Ghost(__tsm_all_loc) #phantom};},
+        (Some(cm), true) => {
+            let kappa = cm.kappa(quote! {__tsm_desc});
+            quote! {
+                assert(__tsm_kappa.fragment() == Fragment::op(#kappa, #kappa));
+                let tracked (__tsm_base_tok, __tsm_kappa) = __tsm_kappa.split(#kappa, #kappa);
+                let tracked instance = Instance {__desc: __tsm_desc, __base: ::vstd::modes::tracked_static_ref(__tsm_base_tok)};
             }
         }
-        let constants: Vec<&Field> = sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::Constant(_))).collect();
-        let frag = constants.iter().fold(quote! {Fragment::unit()}, |acc, c| {
-            let w = format_ident!("with_{}", c.name);
-            let n = &c.name;
-            quote! {#acc.#w(post.#n)}
-        });
-        s.extend(quote! {
-            Fragment::unit().op_unit();
-            assert(__tsm_base_tok.fragment() == #frag);
-            let tracked instance = Instance {__loc: Ghost(__tsm_all_loc), __base: ::vstd::modes::tracked_static_ref(__tsm_base_tok)};
-        });
-        s
-    } else {
-        let phantom = if sm.generics.is_some() { quote! {, __tsm_phantom: ::core::marker::PhantomData} } else { quote! {} };
-        quote! {let tracked instance = Instance {__loc: Ghost(__tsm_all_loc) #phantom};}
+        (Some(_), false) => quote! {let tracked instance = Instance {__desc: __tsm_desc #phantom};},
     };
     let ret_vals: Vec<_> = parts
         .out_params

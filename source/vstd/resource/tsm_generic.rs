@@ -365,6 +365,28 @@ pub proof fn pointwise_map_split<K, P: PCM>(
     Pointwise::extensionality(Pointwise::<K, P>::op(one, others), whole);
 }
 
+/// Two agreement resources at one location hold the same value.
+pub proof fn agreement_resources_agree<V>(
+    tracked a: &super::pcm::Resource<Option<AgreementRA<V>>>,
+    tracked b: &super::pcm::Resource<Option<AgreementRA<V>>>,
+)
+    requires
+        a.loc() == b.loc(),
+        a.value() is Some && a.value()->Some_0 is Agree,
+        b.value() is Some && b.value()->Some_0 is Agree,
+    ensures
+        a.value() == b.value(),
+{
+    let tracked upper = a.join_shared(b);
+    upper.validate();
+    let left = choose|frame: Option<AgreementRA<V>>|
+        Option::<AgreementRA<V>>::op(a.value(), frame) == upper.value();
+    let right = choose|frame: Option<AgreementRA<V>>|
+        Option::<AgreementRA<V>>::op(b.value(), frame) == upper.value();
+    assert(upper.value() == a.value());
+    assert(upper.value() == b.value());
+}
+
 /// A tracked finite map as a tracked infinite map with the same entries.
 pub proof fn tracked_map_to_imap<K, V>(tracked m: Map<K, V>) -> (tracked out: IMap<K, V>)
     ensures

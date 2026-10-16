@@ -214,10 +214,19 @@ form `t.instance_id() == self.id()` implies that `t` owns a fragment at `γ`. Th
 trait lemmas hold for placeholders because each owns its own resource.
 
 `Instance` holds the ghost location `γ` and is `Copy`. It is not itself a resource.
-If the machine has `constant` fields, it also holds a leaked `&'static` raw token
-owning their agreement fragment `κ = ι_c(Agree(c))`; `inst.c()` reads `c` from it.
-An operation that reads a constant observes this token, so `κ` is part of its
-shared fragment and determines `s.c = c` in every completion.
+
+Constants need more. `inst.c()` must equal `s.c` in every completion `s` of an
+operation's fragments, so some fragment of the operation must contain the
+agreement element `κ = ι_c(Agree(c))`, and the instance must know `c`. A machine
+with `constant` fields therefore allocates, at initialization, a descriptor: an
+agreement resource on `(c, γ)` at a fresh location `δ`, leaked to a `&'static`
+reference. The instance holds the descriptor (so it stays `Copy`; the descriptor's
+type does not involve the machine's protocol types), `inst.c()` reads it, and
+instance identifiers are `tsm_instance_id(δ)`. Every token (and every `Unit`) holds
+the same descriptor and its own copy of `κ` (`κ · κ = κ`, so copies are split off
+freely): two holders of one identifier hold descriptors at `δ`, which agree, so
+their constants and locations agree. An operation that reads a constant observes a
+copy of `κ` from one of its tokens, so `κ` is part of its shared fragment.
 
 ### Operations
 
@@ -269,9 +278,10 @@ without storage fields uses the plain `vstd::resource::tsm::Token`.
   such a field must be provably finite in the generated proof (e.g. `IMap::empty()`
   or finitely many `insert`s; not `ISet::full()`, nor `IMap::new` over a range).
   Infinitely many tokens cannot be split off one resource.
-* **Type parameters.** If the machine has type parameters and a `constant` or
-  persistent field, the generated items require the parameters to be `'static`
-  (they hold `&'static` tokens).
+* **Type parameters.** A machine with type parameters and a persistent field (or a
+  constant whose type mentions a type parameter, or an operation without storage
+  that consumes no token) requires its type parameters to be `'static`: it holds
+  leaked `&'static` raw tokens.
 * **Supported fields.** The interface currently supports:
   * every sharding strategy: `variable`, `constant`, `not_tokenized`, `option`,
     `persistent_option`, `map`, `persistent_map`, `imap`, `persistent_imap`, `set`,
