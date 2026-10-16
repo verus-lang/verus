@@ -19,6 +19,7 @@ use rustc_errors::{Diag, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
 use rustc_session::config::ErrorOutputType;
+use std::sync::Mutex;
 
 use vir::messages::{
     Message, MessageLabel, MessageLevel, MessageX, ToAny, message, note, note_bare, warning,
@@ -319,7 +320,7 @@ pub struct Verifier {
     pub func_times: HashMap<BucketId, HashMap<Fun, FunctionSmtStats>>,
 
     /// Details about each function
-    pub func_details: HashMap<Fun, FuncDetails>,
+    pub func_details: Arc<Mutex<HashMap<Fun, FuncDetails>>>,
     /// Errors to report after verification has run
     deferred_errors: Vec<VirErr>,
 
@@ -348,7 +349,7 @@ pub struct Verifier {
     error_format: Option<ErrorOutputType>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Clone)]
 pub struct FuncDetails {
     pub obligation_proof_notes: HashSet<String>,
     pub failed_proof_notes: HashSet<String>,
@@ -513,7 +514,7 @@ impl Verifier {
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
 
-            func_details: HashMap::new(),
+            func_details: Arc::new(Mutex::new(HashMap::new())),
             deferred_errors: Vec::new(),
 
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
@@ -561,7 +562,7 @@ impl Verifier {
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
 
-            func_details: HashMap::new(),
+            func_details: Arc::new(Mutex::new(HashMap::new())),
             deferred_errors: Vec::new(),
 
             via_cargo_args: self.via_cargo_args.clone(),
@@ -594,7 +595,8 @@ impl Verifier {
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
         self.bucket_stats.extend(other.bucket_stats);
         self.func_times.extend(other.func_times);
-        self.func_details.absorb_with(other.func_details, |lhs, rhs| lhs.absorb(rhs));
+        let func_details = { (*other.func_details.lock().unwrap()).clone() };
+        self.func_details.lock().unwrap().absorb_with(func_details, |lhs, rhs| lhs.absorb(rhs));
         self.deferred_errors.extend(other.deferred_errors);
     }
 
@@ -2716,6 +2718,7 @@ impl Verifier {
         let mut query = Query::new(
             self.args.clone(),
             diagnostics,
+            self.func_details.clone(),
             other_vir_crates,
             pre_crate,
             self.crate_id.clone().unwrap(),
@@ -2738,10 +2741,6 @@ impl Verifier {
         let merged_crate = query.get_merged_crate().map_err(map_query_err)?;
         self.maybe_log_impl_names(&merged_crate).map_err(map_err_diagnostics)?;
         self.maybe_log_vir_crate(&merged_crate).map_err(map_err_diagnostics)?;
-
-        for (func, failed_proof_notes) in &query.func_failed_proof_notes {
-            self.record_func_failed_proof_notes(func.clone(), failed_proof_notes.clone());
-        }
 
         let user_filter =
             UserFilter::from_args(&self.args, &local_crate).map_err(map_err_diagnostics)?;
@@ -2799,7 +2798,8 @@ impl Verifier {
         obligation_proof_notes: HashSet<String>,
     ) {
         use std::collections::hash_map::Entry;
-        match self.func_details.entry(func) {
+        let mut func_details = self.func_details.lock().unwrap();
+        match func_details.entry(func) {
             Entry::Occupied(mut occupied_entry) => {
                 occupied_entry.get_mut().obligation_proof_notes.extend(obligation_proof_notes);
             }
@@ -2814,7 +2814,8 @@ impl Verifier {
 
     fn record_func_failed_proof_notes(&mut self, func: Fun, failed_proof_notes: HashSet<String>) {
         use std::collections::hash_map::Entry;
-        match self.func_details.entry(func) {
+        let mut func_details = self.func_details.lock().unwrap();
+        match func_details.entry(func) {
             Entry::Occupied(mut occupied_entry) => {
                 occupied_entry.get_mut().failed_proof_notes.extend(failed_proof_notes);
             }
