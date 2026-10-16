@@ -2970,7 +2970,9 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
                 let is_local = id.is_local();
                 let mut is_external_trait_private_bound = false;
                 let is_match = |ignore: &Vec<String>| -> bool {
-                    if let Some(path) = def_path_to_vir_path(tcx, tcx.def_path(id)) {
+                    if let Some(path) =
+                        def_path_to_vir_path(tcx, tcx.def_path(id), tcx.def_path_hash(id))
+                    {
                         ignore.len() == path.segments.len() + 1
                             && ignore[0] == krate_to_string_ignore_stable_id(&path.krate)
                             && (0..path.segments.len())

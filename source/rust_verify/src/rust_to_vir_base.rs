@@ -6,7 +6,7 @@ use crate::util::err_span;
 use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
 use crate::{internal_err, unsupported_err, unsupported_err_unless};
 use rustc_ast::{BindingMode, ByRef, Mutability};
-use rustc_hir::definitions::DefPath;
+use rustc_hir::definitions::{DefPath, DefPathHash};
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
@@ -42,14 +42,68 @@ pub(crate) fn mk_crate_id<'tcx>(tcx: TyCtxt<'tcx>, krate: CrateNum) -> CrateId {
     }
 }
 
-pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
+static DEF_PATH_TO_VIR_MAP: std::sync::Mutex<
+    Option<(HashMap<DefPathHash, Path>, HashMap<Path, DefPath>)>,
+> = std::sync::Mutex::new(None);
+
+/// We want to translate the DefPaths to nice-looking-paths, when possible,
+/// which means throwing out the disambiguators. However, if we screw up, we could get
+/// conflicting paths. So we keep a map of all the translations we to do double-check.
+///
+/// (Note: we still need to keep the mapping deterministic so it's consistent across
+/// Verus runs for different crates. So don't try anything clever like "only add disambiguators
+/// when necessary".)
+pub(crate) fn def_path_to_vir_path<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_path: DefPath,
+    def_path_hash: DefPathHash,
+) -> Option<Path> {
+    let mut maps = DEF_PATH_TO_VIR_MAP.lock().unwrap();
+    if maps.is_none() {
+        *maps = Some((HashMap::new(), HashMap::new()));
+    }
+    let maps = maps.as_mut().unwrap();
+
+    if let Some(path) = maps.0.get(&def_path_hash) {
+        return Some(path.clone());
+    }
+
+    let Some(path) = compute_def_path_to_vir_path(tcx, &def_path) else {
+        return None;
+    };
+
+    if let Some(other_def_path) = maps.1.get(&path) {
+        panic!(
+            "Verus Internal Error: collision for path mapping of {:?} and {:?}",
+            def_path, other_def_path
+        );
+    }
+    maps.0.insert(def_path_hash, path.clone());
+    maps.1.insert(path.clone(), def_path);
+    Some(path)
+}
+
+pub(crate) fn compute_def_path_to_vir_path<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_path: &DefPath,
+) -> Option<Path> {
     let krate = mk_crate_id(tcx, def_path.krate);
     let mut segments: Vec<vir::ast::Ident> = Vec::new();
+    //dbg!(&def_path);
     for d in def_path.data.iter() {
         use rustc_hir::definitions::DefPathData;
         match &d.data {
-            DefPathData::ValueNs(symbol) | DefPathData::TypeNs(symbol) => {
-                segments.push(Arc::new(symbol.to_string()));
+            DefPathData::ValueNs(symbol) => {
+                if symbol.as_str() == "_" {
+                    segments.push(Arc::new(
+                        vir::def::RUST_DEF_UNNAMED.to_string() + &d.disambiguator.to_string(),
+                    ));
+                } else {
+                    segments.push(Arc::new(symbol.to_string()));
+                }
+            }
+            DefPathData::TypeNs(symbol) => {
+                segments.push(Arc::new(vir::def::RUST_DEF_TYPE_NS.to_string() + symbol.as_str()));
             }
             DefPathData::Ctor => {
                 segments.push(Arc::new(vir::def::RUST_DEF_CTOR.to_string()));
@@ -117,7 +171,11 @@ fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, p
             rustc_hir::TyKind::Path(QPath::Resolved(
                 None,
                 rustc_hir::Path { res: rustc_hir::def::Res::Def(_, self_def_id), .. },
-            )) => def_path_to_vir_path(tcx, tcx.def_path(*self_def_id)),
+            )) => def_path_to_vir_path(
+                tcx,
+                tcx.def_path(*self_def_id),
+                tcx.def_path_hash(*self_def_id),
+            ),
             _ => {
                 // To handle cases like [T] which are not syntactically datatypes
                 // but converted into VIR datatypes.
@@ -179,7 +237,7 @@ pub(crate) fn def_id_to_vir_path_option<'tcx>(
             }
         }
     }
-    let path = def_path_to_vir_path(tcx, tcx.def_path(def_id));
+    let path = def_path_to_vir_path(tcx, tcx.def_path(def_id), tcx.def_path_hash(def_id));
     if let Some(path) = &path {
         register_friendly_path_as_rust_name(tcx, def_id, path);
     }

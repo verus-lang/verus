@@ -289,7 +289,10 @@ pub const IEEE_FLOAT_GT: &str = "ieee_float_gt";
 pub const VERUSLIB_PREFIX: &str = "vstd::";
 pub const PERVASIVE_PREFIX: &str = "pervasive::";
 
+pub const RUST_DEF_FOREIGN_MOD: &str = "foreign_mod%";
 pub const RUST_DEF_CTOR: &str = "ctor%";
+pub const RUST_DEF_UNNAMED: &str = "unnamed%";
+pub const RUST_DEF_TYPE_NS: &str = "t%";
 pub const RUST_DEF_CLOSURE: &str = "closure%";
 pub const RUST_DEF_ANON_CONST: &str = "anon_const%";
 
