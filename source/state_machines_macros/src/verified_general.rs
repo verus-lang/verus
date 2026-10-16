@@ -554,9 +554,9 @@ pub fn output_with_ready(
     local_ready: &HashSet<String>,
 ) -> Result<TokenStream, Error> {
     let sm = &bundle.sm;
-    if sm.init_label.is_some() || sm.transition_label.is_some() {
-        return Err(Error::new(sm.name.span(), "verified backend does not yet support labels"));
-    }
+    // Labels are ordinary first parameters of the relations and operations;
+    // only their declarations need to be emitted.
+    let labels = [&sm.init_label, &sm.transition_label];
     let name = &sm.name;
     let (generics, datatype_attrs) = crate::verified_tokens::datatype_generics(sm);
     let (decl, where_clause) = generics_for_decl(&generics);
@@ -1345,6 +1345,7 @@ pub fn output_with_ready(
                 open spec fn embed(s:#st)->#ft {#fe{#marker_value #(#embeds),*}}
             }
             #storage_trait
+            #(#labels)*
             pub type Token #decl #where_clause=#token_type;
             #observation_result
             impl #decl #pt #where_clause {
