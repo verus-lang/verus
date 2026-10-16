@@ -114,13 +114,13 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
                 return Err(Error::new(bundle.name.span(), "generic field tokens do not combine with selected physical readiness"));
             }
             let api=crate::verified_generic_tokens::output(&bundle)?;
-            let output=crate::verified_tokens::output(bundle)?;
+            let output=crate::verified_tokens::output_raw(bundle)?;
             return crate::verified_generic_tokens::append_tokens(output,api);
         }
         let api=if typed {Some(crate::verified_field_tokens::output(&bundle.sm)?)}else{None};
         let output=if typed && bundle.sm.fields.len()==1 && matches!(bundle.sm.fields[0].stype,ShardableType::Count) {
             crate::verified_general::output(bundle)?
-        }else{crate::verified_tokens::output(bundle)?};
+        }else if typed {crate::verified_tokens::output(bundle)?}else{crate::verified_tokens::output_raw(bundle)?};
         return if let Some(api)=api {crate::verified_field_tokens::append(output,api)}else{Ok(output)};
     }
     for name in names {
