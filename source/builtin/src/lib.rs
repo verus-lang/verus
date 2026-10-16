@@ -415,7 +415,7 @@ pub fn use_type_invariant<A>(_a: A) {
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Ghost")]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types_in_ground_variants(A))]
-pub struct Ghost<A> {
+pub struct Ghost<A: ?Sized> {
     phantom: PhantomData<A>,
 }
 
@@ -437,7 +437,7 @@ impl<A> core::fmt::Debug for Tracked<A> {
 /// Note: This special behavior requires support from Verus,
 /// and this trait impl cannot be used generically.
 #[cfg(verus_keep_ghost)]
-impl<A> core::ops::Deref for Ghost<A> {
+impl<A: ?Sized> core::ops::Deref for Ghost<A> {
     type Target = A;
     #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::deref"]
     fn deref(&self) -> &Self::Target {
@@ -450,7 +450,7 @@ impl<A> core::ops::Deref for Ghost<A> {
 /// Note: This special behavior requires support from Verus,
 /// and this trait impl cannot be used generically.
 #[cfg(verus_keep_ghost)]
-impl<A> core::ops::DerefMut for Ghost<A> {
+impl<A: ?Sized> core::ops::DerefMut for Ghost<A> {
     #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::deref_mut"]
     fn deref_mut(&mut self) -> &mut Self::Target {
         unimplemented!();
@@ -2485,6 +2485,12 @@ pub fn dummy_capture_consume<'a>(_dc: DummyCapture<'a>) {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::mutable_reference_tie"]
 pub fn mutable_reference_tie<'a, T: ?Sized, U: ?Sized>(_a: &'a mut T, _b: &'a mut U) -> &'a mut T {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::shared_reference_tie"]
+pub fn shared_reference_tie<'a, T: ?Sized, U: ?Sized>(_a: &'a T, _b: &'a U) -> &'a T {
     unimplemented!()
 }
 

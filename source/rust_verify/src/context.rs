@@ -28,6 +28,10 @@ pub struct ErasureInfo {
     /// Connect every non-tuple VIR Ctor onto its HirId (either a ExprKind::Struct, or a
     /// const-style constructor or call-style constructor).
     pub(crate) ctor_hir_vir_ids: Vec<(Option<HirId>, AstId)>,
+    /// Connect every PlaceX::DerefRaw node onto the HirId of its (explicit) Unary Deref
+    /// HIR expression.
+    /// Use None if there is no corresponding source node.
+    pub(crate) deref_raw_hir_vir_ids: Vec<(Option<HirId>, AstId)>,
     /// Details of each call in the first run's HIR.
     /// The last bool is "in ghost block?".
     /// (This is false for "boundary" calls like Ghost/Tracked
@@ -105,6 +109,14 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) external_opaque_type_map: Option<HashMap<Path, Path>>,
     /// Mapping for HirId found in an HIR Destination to the corresponding VIR Label.
     pub(crate) label_map: Rc<RefCell<(HashMap<HirId, vir::ast::Label>, usize)>>,
+    /// The 'permission' vars in scope
+    pub(crate) permission_vars: Rc<RefCell<Vec<PermissionVar>>>,
+}
+
+pub(crate) struct PermissionVar {
+    pub name: vir::ast::VarIdent,
+    pub typ: vir::ast::Typ,
+    pub place_descriptor: String,
 }
 
 pub(crate) struct AtomicallyCtxt {

@@ -1406,33 +1406,86 @@ impl PlaceX {
             PlaceX::WithExpr(_e, p) => p.x.uses_unnamed_temporary(),
             PlaceX::Index(p, _idx, _k, _needs_bounds_check) => p.x.uses_unnamed_temporary(),
             PlaceX::UserDefinedTypInvariantObligation(p, _) => p.x.uses_unnamed_temporary(),
+            PlaceX::DerefRaw(p, _) => p.x.uses_unnamed_temporary(),
         }
     }
 }
 
-pub fn place_get_local(p: &Place) -> Option<Place> {
+/// The "logical" local is the one you get if, when encountering a `DerefRaw`, you
+/// descend into the permission place.
+pub fn place_get_local_logical(p: &Place) -> Option<Place> {
     match &p.x {
         PlaceX::Local(_) => Some(p.clone()),
-        PlaceX::DerefMut(p) => place_get_local(p),
-        PlaceX::Field(_opr, p) => place_get_local(p),
+        PlaceX::DerefMut(p) => place_get_local_logical(p),
+        PlaceX::Field(_opr, p) => place_get_local_logical(p),
         PlaceX::Temporary(_) => None,
-        PlaceX::ModeUnwrap(p, _) => place_get_local(p),
-        PlaceX::WithExpr(_e, p) => place_get_local(p),
-        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_get_local(p),
-        PlaceX::UserDefinedTypInvariantObligation(p, _) => place_get_local(p),
+        PlaceX::ModeUnwrap(p, _) => place_get_local_logical(p),
+        PlaceX::WithExpr(_e, p) => place_get_local_logical(p),
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_get_local_logical(p),
+        PlaceX::UserDefinedTypInvariantObligation(p, _) => place_get_local_logical(p),
+        PlaceX::DerefRaw(_, None) => None,
+        PlaceX::DerefRaw(_, Some(p)) => place_get_local_logical(p),
     }
 }
 
-pub fn place_has_deref_mut(p: &Place) -> bool {
+pub fn place_get_deref_raw_permission_place(p: &Place) -> Option<Option<Place>> {
+    match &p.x {
+        PlaceX::Local(_) => None,
+        PlaceX::Temporary(_) => None,
+        PlaceX::ModeUnwrap(p, _)
+        | PlaceX::WithExpr(_, p)
+        | PlaceX::Index(p, _, _, _)
+        | PlaceX::DerefMut(p)
+        | PlaceX::Field(_, p)
+        | PlaceX::UserDefinedTypInvariantObligation(p, _) => {
+            place_get_deref_raw_permission_place(p)
+        }
+        PlaceX::DerefRaw(_, perm_place) => Some(perm_place.clone()),
+    }
+}
+
+/// The "physical" local is the one you get if, when encountering a `DerefRaw`, you
+/// descend into the pointer place.
+pub fn place_get_local_physical(p: &Place) -> Option<Place> {
+    match &p.x {
+        PlaceX::Local(_) => Some(p.clone()),
+        PlaceX::DerefMut(p) => place_get_local_physical(p),
+        PlaceX::Field(_opr, p) => place_get_local_physical(p),
+        PlaceX::Temporary(_) => None,
+        PlaceX::ModeUnwrap(p, _) => place_get_local_physical(p),
+        PlaceX::WithExpr(_e, p) => place_get_local_physical(p),
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_get_local_physical(p),
+        PlaceX::UserDefinedTypInvariantObligation(p, _) => place_get_local_physical(p),
+        PlaceX::DerefRaw(p, _) => place_get_local_physical(p),
+    }
+}
+
+pub fn place_has_deref_mut_on_logical_path(p: &Place) -> bool {
     match &p.x {
         PlaceX::Local(_) => false,
         PlaceX::DerefMut(_p) => true,
-        PlaceX::Field(_opr, p) => place_has_deref_mut(p),
+        PlaceX::Field(_opr, p) => place_has_deref_mut_on_logical_path(p),
         PlaceX::Temporary(_) => false,
-        PlaceX::ModeUnwrap(p, _) => place_has_deref_mut(p),
-        PlaceX::WithExpr(_e, p) => place_has_deref_mut(p),
-        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_has_deref_mut(p),
-        PlaceX::UserDefinedTypInvariantObligation(p, _) => place_has_deref_mut(p),
+        PlaceX::ModeUnwrap(p, _) => place_has_deref_mut_on_logical_path(p),
+        PlaceX::WithExpr(_e, p) => place_has_deref_mut_on_logical_path(p),
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_has_deref_mut_on_logical_path(p),
+        PlaceX::UserDefinedTypInvariantObligation(p, _) => place_has_deref_mut_on_logical_path(p),
+        PlaceX::DerefRaw(_, None) => false,
+        PlaceX::DerefRaw(_, Some(p)) => place_has_deref_mut_on_logical_path(p),
+    }
+}
+
+pub fn place_has_deref_mut_or_raw(p: &Place) -> bool {
+    match &p.x {
+        PlaceX::Local(_) => false,
+        PlaceX::DerefMut(_p) => true,
+        PlaceX::Field(_opr, p) => place_has_deref_mut_or_raw(p),
+        PlaceX::Temporary(_) => false,
+        PlaceX::ModeUnwrap(p, _) => place_has_deref_mut_or_raw(p),
+        PlaceX::WithExpr(_e, p) => place_has_deref_mut_or_raw(p),
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_has_deref_mut_or_raw(p),
+        PlaceX::UserDefinedTypInvariantObligation(p, _) => place_has_deref_mut_or_raw(p),
+        PlaceX::DerefRaw(_p, _) => true,
     }
 }
 

@@ -599,3 +599,32 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] test_native_ptrs verus_code! {
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        fn cond() -> bool { true }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test(a: *mut u8, pt: PointsTo<u8>)
+            requires pt.is_init(), pt.ptr() == a, pt.value() == 30,
+        {
+            #[verifier::permission("a")]
+            let tracked mut pt = pt;
+
+            loop {
+                assume(pt.is_init());
+                assume(pt.ptr() == a);
+                *a = 20;
+                if cond() { break; }
+            }
+
+            assert(pt.is_init());
+            assert(pt.ptr() == a);
+            assert(pt.value() == 30); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

@@ -1,7 +1,8 @@
 use crate::ast::VirErr;
 use crate::ast::{Expr, ExprX, PlaceX};
-use crate::ast_util::place_get_local;
+use crate::ast_util::place_get_local_logical;
 use crate::ast_visitor::expr_visitor_check;
+use crate::def::user_local_name;
 use crate::messages::error;
 
 /// Makes the following check:
@@ -16,12 +17,15 @@ pub fn check_closure_well_formed(expr: &Expr, is_proof_fn: bool) -> Result<(), V
     expr_visitor_check(expr, &mut |scope_map, expr| {
         match &expr.x {
             ExprX::Assign { place, .. } | ExprX::BorrowMut(place) => {
-                if let Some(local) = place_get_local(place) {
+                if let Some(local) = place_get_local_logical(place) {
                     let PlaceX::Local(ident) = &local.x else { unreachable!() };
                     if !scope_map.contains_key(ident) {
                         return Err(error(
                             &expr.span,
-                            "Verus does not currently support closures capturing a mutable reference for variables of any mode",
+                            format!(
+                                "Verus does not currently support closures capturing a mutable reference for variables of any mode (capturing variable `{:}`)",
+                                user_local_name(ident)
+                            ),
                         ));
                     }
                 }

@@ -319,6 +319,9 @@ fn place_to_pure_place_rec(state: &mut State, place: &Place) -> (Vec<Stmt>, Plac
         PlaceX::UserDefinedTypInvariantObligation(..) => {
             panic!("Verus internal error: unexpected UserDefinedTypInvariantObligation");
         }
+        PlaceX::DerefRaw(..) => {
+            panic!("DerefRaw in match");
+        }
     }
 }
 
@@ -347,8 +350,16 @@ fn simplify_one_expr(
             // However, much of the time it _does_ get caught by borrowck.
             // This check is in ast_simplify because it's after borrowck
             // (borrowck errors look nicer).
-            if !crate::ast_util::place_has_deref_mut(place)
-                && let Some(local) = crate::ast_util::place_get_local(place)
+            let mutated_place = match crate::ast_util::place_get_deref_raw_permission_place(place) {
+                None => place.clone(),
+                Some(None) => {
+                    // no check
+                    return Ok(expr.clone());
+                }
+                Some(Some(p)) => p.clone(),
+            };
+            if !crate::ast_util::place_has_deref_mut_or_raw(&mutated_place)
+                && let Some(local) = crate::ast_util::place_get_local_logical(&mutated_place)
             {
                 let PlaceX::Local(x) = &local.x else { unreachable!() };
                 let x = match state.rename_vars_reverse.get(x) {

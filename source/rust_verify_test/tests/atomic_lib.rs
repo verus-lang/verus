@@ -1130,11 +1130,11 @@ test_verify_one_file! {
                 old(perm1).is_uninit(),
                 old(perm2).is_uninit(),
             ensures
-                ret.0 == ret.1,
+                ret.0 == ret.1, // FAILS
         {
             let a = PAtomicU64::from_ptr_swap(p1, Tracked(perm1), 7); // FAILS
             let b = PAtomicU64::from_ptr_swap(p2, Tracked(perm2), 7); // FAILS
             (a, b)
         }
-    } => Err(e) => assert_fails(e, 2)
+    } => Err(e) => assert_fails(e, 3)
 }

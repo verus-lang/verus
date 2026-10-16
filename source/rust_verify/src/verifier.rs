@@ -2691,6 +2691,7 @@ impl Verifier {
             local_hir_vir_ids: vec![],
             binder_hir_vir_ids: vec![],
             ctor_hir_vir_ids: vec![],
+            deref_raw_hir_vir_ids: vec![],
             resolved_calls: vec![],
             resolved_pats: vec![],
             direct_var_modes: vec![],
