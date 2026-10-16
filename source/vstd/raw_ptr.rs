@@ -275,26 +275,31 @@ pub tracked enum MemContents<T> {
     Init(T),
 }
 
+/// Can the given value be encoded into the abstract bytes?
+pub uninterp spec fn abstract_bytes_encode<T: ?Sized>(value: &T, bytes: Seq<AbstractByte>) -> bool;
+
 // TODO - explain how related to type representation
 /// Can the given abstract bytes be decoded to the given value?
 pub uninterp spec fn abstract_bytes_decode<T: ?Sized>(bytes: Seq<AbstractByte>, value: &T) -> bool;
 
 /// For any type `T`, the abstract byte encoding must match the size of the type.
-pub broadcast axiom fn abstract_bytes_decode_len<T>(value: T, bytes: Seq<AbstractByte>)
+// TODO - unsized version
+pub broadcast axiom fn abstract_bytes_encode_decode_len<T>(value: T, bytes: Seq<AbstractByte>)
     ensures
+        #![trigger abstract_bytes_encode::<T>(&value, bytes)]
         #![trigger abstract_bytes_decode::<T>(bytes, &value)]
+        abstract_bytes_encode::<T>(&value, bytes) ==> bytes.len() == size_of::<T>(),
         abstract_bytes_decode::<T>(bytes, &value) ==> bytes.len() == size_of::<T>(),
 ;
 
-// TODO - how to tie abstract_bytes_decode to TypeRepresentation?
-
-/*
-TODO - delete?
+// TODO
 pub axiom fn encode_decode_inverse<T>(tracked value: &T)
     ensures
-        forall|bytes| #[trigger] abs_encode::<T>(value, bytes) ==> abstract_bytes_decode::<T>(bytes, value),
+        forall|bytes| #[trigger] abstract_bytes_encode::<T>(value, bytes) ==> abstract_bytes_decode::<T>(bytes, value),
 ;
-*/
+
+
+// TODO - how to tie abstract_bytes_decode to TypeRepresentation?
 
 /// Data associated with a `PointsTo` permission.
 /// We keep track of both the pointer, the (potentially uninitialized) value
@@ -2277,7 +2282,7 @@ impl<T> SeqPointsTo<T> {
     {
         broadcast use
             crate::vstd::seq::group_seq_axioms,
-            abstract_bytes_decode_len,
+            abstract_bytes_encode_decode_len,
         ;
 
         if perms.len() > 0 {

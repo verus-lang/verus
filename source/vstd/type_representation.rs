@@ -533,7 +533,7 @@ macro_rules! raw_ptr_encoding_from_type_representation {
     )+) => {$(
         verus! {
             /// TODO
-            impl<T: ?Sized> TypeRepresentation for *$mutability T where <T as core::ptr::Pointee>::Metadata: TypeRepresentation {
+            impl<T: core::marker::PointeeSized> TypeRepresentation for *$mutability T where <T as core::ptr::Pointee>::Metadata: TypeRepresentation {
                 open spec fn can_be_encoded() -> bool {
                     &&& <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::can_be_encoded()
                     &&& (forall |metadata, shadow_data| #[trigger] encoding_exists::<<T as core::ptr::Pointee>::Metadata>(metadata, shadow_data))
@@ -843,39 +843,46 @@ pub trait PrimitiveTypeRepresentation<Primitive: TypeRepresentation> where Self:
 #[allow(unused_macros)]
 macro_rules! impl_type_representation_for_primitive_repr {
     ($(
-        ($name:ty, $spec_mod:tt, $primitive:ty);
+        ([$($generics:tt)*] $name:ty, [$($where_clause:tt)*], $spec_mod:tt, $primitive:ty);
     )+) => {$(
         verus! {
             /// The type representation for `$name` ensures that values of type `$name` are encoded and decoded 
             /// as specified in the type representation for the underlying `$primitive` value.
             /// This is because `$name` has a primitive type representation
             /// (see: [Primitive representations](https://doc.rust-lang.org/reference/type-layout.html#primitive-representation-of-field-less-enums)).
-            impl TypeRepresentation for $name {
-                open spec fn can_be_encoded() -> bool {
+            impl<$($generics)*> TypeRepresentation for $name where $($where_clause)* {
+                $spec_mod spec fn can_be_encoded() -> bool {
                     <$primitive as TypeRepresentation>::can_be_encoded()
                 }
 
                 $spec_mod spec fn encode(value: Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
-                    <$primitive as TypeRepresentation>::encode($name::to_primitive(value), bytes)
+                    <$primitive as TypeRepresentation>::encode(<$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive(value), arbitrary(), bytes)
                 }
 
                 $spec_mod spec fn decode(bytes: Seq<AbstractByte>, value: Self, shadow_data: ShadowData<Self>) -> bool {
-                    <$primitive as TypeRepresentation>::decode(bytes, $name::to_primitive(value))
+                    <$primitive as TypeRepresentation>::decode(bytes, <$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive(value), arbitrary())
                 }
 
                 proof fn encoding_size(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-                    <$name as PrimitiveTypeRepresentation>::layout_of_primitive_repr();
-                    <$primitive as TypeRepresentation>::encoding_size($name::to_primitive(v), b);
+                    <$name as PrimitiveTypeRepresentation<$primitive>>::layout_of_primitive_repr();
+                    <$primitive as TypeRepresentation>::encoding_size(<$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive(v), arbitrary(), b);
                 }
 
                 proof fn encoding_exists(tracked v: Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
-                    <$primitive as TypeRepresentation>::encoding_exists($name::to_primitive_tracked(v))
+                    <$primitive as TypeRepresentation>::encoding_exists(<$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive_tracked(v), arbitrary())
                 }
 
                 proof fn encoding_invertible(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-                    <$primitive as TypeRepresentation>::encoding_invertible($name::to_primitive(v), b);
+                    <$primitive as TypeRepresentation>::encoding_invertible(<$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive(v), arbitrary(), b);
                 }
             }
+        }
+    )+};
+    ($(
+        ($name:ty, $spec_mod:tt, $primitive:ty);
+    )+) => {$(
+        impl_type_representation_for_primitive_repr! {
+            ([] $name, [], $spec_mod, $primitive);
         }
     )+};
 }
@@ -904,112 +911,126 @@ pub trait TransparentTypeRepresentation<Inner: TypeRepresentation> where Self: S
 #[allow(unused_macros)]
 macro_rules! impl_type_representation_for_transparent_repr {
     ($(
-        ($name:ty, $spec_mod:tt, $inner:ty);
+        ([$($generics:tt)*] $name:ty, [$($where_clause:tt)*], $spec_mod:tt, $inner:ty);
     )+) => {$(
         verus! {
             /// The type representation for `$name` ensures that values of type `$name` are encoded and decoded 
             /// as specified in the type representation for the underlying `$inner` value.
             /// This is because `$name` has a transparent type representation
             /// (see: [Transparent representations](https://doc.rust-lang.org/reference/type-layout.html#the-transparent-representation)).
-            impl TypeRepresentation for $name {
-                open spec fn can_be_encoded() -> bool {
+            impl<$($generics)*> TypeRepresentation for $name where $($where_clause)* {
+                $spec_mod spec fn can_be_encoded() -> bool {
                     <$inner as TypeRepresentation>::can_be_encoded()
                 }
 
                 $spec_mod spec fn encode(value: Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
-                    <$inner as TypeRepresentation>::encode($name::to_inner(value), bytes)
+                    <$inner as TypeRepresentation>::encode(<$name as TransparentTypeRepresentation<$inner>>::to_inner(value), arbitrary(), bytes)
                 }
 
                 $spec_mod spec fn decode(bytes: Seq<AbstractByte>, value: Self, shadow_data: ShadowData<Self>) -> bool {
-                    <$inner as TypeRepresentation>::decode(bytes, $name::to_inner(value))
+                    <$inner as TypeRepresentation>::decode(bytes, <$name as TransparentTypeRepresentation<$inner>>::to_inner(value), arbitrary())
                 }
 
                 proof fn encoding_size(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-                    <$name as TransparentTypeRepresentation>::layout_of_transparent_repr();
-                    <$inner as TypeRepresentation>::encoding_size($name::to_inner(v), b);
+                    <$name as TransparentTypeRepresentation<$inner>>::layout_of_transparent_repr();
+                    <$inner as TypeRepresentation>::encoding_size(<$name as TransparentTypeRepresentation<$inner>>::to_inner(v), arbitrary(), b);
                 }
 
                 proof fn encoding_exists(tracked v: Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
-                    <$inner as TypeRepresentation>::encoding_exists($name::to_inner_tracked(v))
+                    <$inner as TypeRepresentation>::encoding_exists(<$name as TransparentTypeRepresentation<$inner>>::to_inner_tracked(v), arbitrary())
                 }
 
                 proof fn encoding_invertible(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-                    <$inner as TypeRepresentation>::encoding_invertible($name::to_inner(v), b);
+                    <$inner as TypeRepresentation>::encoding_invertible(<$name as TransparentTypeRepresentation<$inner>>::to_inner(v), arbitrary(), b);
                 }
             }
+        }
+    )+};
+    ($(
+        ($name:ty, $spec_mod:tt, $inner:ty);
+    )+) => {$(
+        impl_type_representation_for_transparent_repr! {
+            ([] $name, [], $spec_mod, $inner);
         }
     )+};
 }
 
 pub(crate) use impl_type_representation_for_transparent_repr;
 
-/// TODO
-/// This trait is implemented on structs or enums with a scalar valid range, defined with the `#[repr(rustc_layout_scalar_valid_range_start(...))]` and `#[repr(rustc_layout_scalar_valid_range_end(...))]` attributes.
-/// A scalar range representation means that the type must take on values within the specified range (which we represent over `nat`s).
-/// The compiler uses this attribute to perform the niche optimization (See: [https://doc.rust-lang.org/std/option/#representation](https://doc.rust-lang.org/std/option/#representation)).
-/// Given `Repr` which is an existing `AbstractByteEncodingFor<Self>`, this trait is used to define a new `AbstractByteEncodingFor` for `Self` which is implemented on `ScalarRangeRepresentationEncoding<Inner, Self>`.
-/// This representation uses `Repr::encode` and `Repr::decode` but also that the value fall within the given range in order to be encoded or decoded, respectively.
-/// `ScalarRangeRepresentationEncoding<Inner, Self>` can then be used to implement `TypeRepresentation` on `Self`.
-pub trait ScalarRangeTypeRepresentation where Self: Sized {
-    spec fn scalar_range_min() -> nat;
+/// This trait is intended to be implemented on types with a scalar valid range, i.e. types defined with the
+/// `#[rustc_layout_scalar_valid_range_start(...)]` and `#[rustc_layout_scalar_valid_range_end(...)]` attributes
+/// (or, equivalently, a transparent wrapper around a pattern type such as `pattern_type!(u32 is 1..)`).
+/// The compiler uses the valid range to perform the niche optimization (see: <https://doc.rust-lang.org/std/option/#representation>).
+///
+/// Such a type is represented exactly like its `Inner` type (see `TransparentTypeRepresentation`),
+/// except that only `Inner` values within the valid range may be encoded or decoded.
+/// `in_scalar_range` must hold exactly for the `Inner` values in the type's valid range.
+/// Intended to be used in conjunction with the `impl_type_representation_for_scalar_range_repr` macro.
+pub trait ScalarRangeTypeRepresentation<Inner: TypeRepresentation>: TransparentTypeRepresentation<Inner> {
+    /// Does the `Inner` value lie within the valid scalar range for `Self`?
+    spec fn in_scalar_range(v: Inner) -> bool;
 
-    spec fn scalar_range_max() -> nat;
-
-    spec fn to_nat(v: Self) -> nat;
-
-    spec fn in_scalar_range(v: Self) -> bool;
-
+    /// Every value of `Self` lies within the valid scalar range. The `Self` argument is tracked to allow type invariants to be invoked.
     proof fn valid_scalar_range_repr(tracked v: &Self)
         ensures
-            Self::scalar_range_min() <= Self::to_nat(*v) <= Self::scalar_range_max(),
+            Self::in_scalar_range(Self::to_inner(*v)),
     ;
 }
 
-/*
-TODO - this macro won't quite work yet
 #[allow(unused_macros)]
-macro_rules! impl_type_representation_for_scalar_range_type {
+macro_rules! impl_type_representation_for_scalar_range_repr {
     ($(
-        ($name:ty, $spec_mod:tt, $inner:ty);
+        ([$($generics:tt)*] $name:ty, [$($where_clause:tt)*], $spec_mod:tt, $inner:ty);
     )+) => {$(
         verus! {
-            /// TODO
-            /// The type representation for `$name` ensures that values of type `$name` are encoded and decoded 
-            /// as specified in the type representation for the underlying `$inner` value.
-            /// This is because `$name` has a transparent type representation
-            /// (see: [Transparent representations](https://doc.rust-lang.org/reference/type-layout.html#the-transparent-representation)).
-            impl TypeRepresentation for $name {
-                open spec fn can_be_encoded() -> bool {
+            /// The type representation for `$name` ensures that values of type `$name` are encoded and decoded
+            /// as specified in the type representation for the underlying `$inner` value,
+            /// provided that the `$inner` value lies within the valid scalar range for `$name`.
+            impl<$($generics)*> TypeRepresentation for $name where $($where_clause)* {
+                $spec_mod spec fn can_be_encoded() -> bool {
                     <$inner as TypeRepresentation>::can_be_encoded()
                 }
 
                 $spec_mod spec fn encode(value: Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
-                    &&& <$inner as TypeRepresentation>::encode(value, bytes)
-                    &&& <$name as ScalarRangeTypeRepresentation>::scalar_range_min() <= <$name as ScalarRangeTypeRepresentation>::to_nat(value) <= <$name as ScalarRangeTypeRepresentation>::scalar_range_max()
+                    let inner = <$name as TransparentTypeRepresentation<$inner>>::to_inner(value);
+                    &&& <$inner as TypeRepresentation>::encode(inner, arbitrary(), bytes)
+                    &&& <$name as ScalarRangeTypeRepresentation<$inner>>::in_scalar_range(inner)
                 }
 
                 $spec_mod spec fn decode(bytes: Seq<AbstractByte>, value: Self, shadow_data: ShadowData<Self>) -> bool {
-                    &&& <$inner as TypeRepresentation>::decode(bytes, value)
-                    &&& <$name as ScalarRangeTypeRepresentation>::scalar_range_min() <= <$name as ScalarRangeTypeRepresentation>::to_nat(value) <= <$name as ScalarRangeTypeRepresentation>::scalar_range_max()
+                    let inner = <$name as TransparentTypeRepresentation<$inner>>::to_inner(value);
+                    &&& <$inner as TypeRepresentation>::decode(bytes, inner, arbitrary())
+                    &&& <$name as ScalarRangeTypeRepresentation<$inner>>::in_scalar_range(inner)
                 }
 
                 proof fn encoding_size(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-                    <$inner as TypeRepresentation>::encoding_size(v, b);
+                    <$name as TransparentTypeRepresentation<$inner>>::layout_of_transparent_repr();
+                    <$inner as TypeRepresentation>::encoding_size(<$name as TransparentTypeRepresentation<$inner>>::to_inner(v), arbitrary(), b);
                 }
 
                 proof fn encoding_exists(tracked v: Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
-                    <$name as ScalarRangeTypeRepresentation>::valid_scalar_range_repr(&v);
-                    <$inner as TypeRepresentation>::encoding_exists(v)
+                    <$name as ScalarRangeTypeRepresentation<$inner>>::valid_scalar_range_repr(&v);
+                    <$inner as TypeRepresentation>::encoding_exists(<$name as TransparentTypeRepresentation<$inner>>::to_inner_tracked(v), arbitrary())
                 }
 
                 proof fn encoding_invertible(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-                    <$inner as TypeRepresentation>::encoding_invertible(v, b);
+                    <$inner as TypeRepresentation>::encoding_invertible(<$name as TransparentTypeRepresentation<$inner>>::to_inner(v), arbitrary(), b);
                 }
             }
         }
     )+};
+    ($(
+        ($name:ty, $spec_mod:tt, $inner:ty);
+    )+) => {$(
+        impl_type_representation_for_scalar_range_repr! {
+            ([] $name, [], $spec_mod, $inner);
+        }
+    )+};
 }
-    */
+
+pub(crate) use impl_type_representation_for_scalar_range_repr;
+
+// TODO: Define type representation for any slice.
 
 /// The abstract encoding for a `[u8]` maps each value in the slice to a corresponding abtract byte with no provenance.
 impl TypeRepresentationMetaSized for [u8] {
