@@ -21,7 +21,7 @@ use crate::sst::{
 };
 use crate::sst_util::{sst_equal, subst_exp};
 use crate::util::{vec_map, vec_map_result};
-use crate::{ast_visitor, type_path_fun};
+use crate::{ast_visitor, real_fun};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -266,7 +266,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
             ExprX::Call {
                 target: CallTarget::Fun(
                     crate::ast::CallTargetKind::Dynamic,
-                    type_path_fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "awaited"),
+                    real_fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "awaited"),
                     Arc::new(vec![future_typ.clone(), output_typ.clone()]),
                     Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
                         crate::def::prefix_spec_fn_type(0),
@@ -291,7 +291,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                 ExprX::Call {
                     target: CallTarget::Fun(
                         crate::ast::CallTargetKind::Dynamic,
-                        type_path_fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "view"),
+                        real_fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "view"),
                         Arc::new(vec![future_typ.clone(), output_typ.clone()]),
                         Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
                             crate::def::prefix_spec_fn_type(0),

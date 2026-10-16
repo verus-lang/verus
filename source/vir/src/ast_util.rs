@@ -404,8 +404,6 @@ pub(crate) fn path_as_friendly_rust_name_raw(path: &Path) -> String {
     let mut strings: Vec<String> = vec![krate];
     for segment in path.segments.iter() {
         if !segment.starts_with(crate::def::RUST_DEF_FOREIGN_MOD) {
-            // The t% prefix distinguishes the type namespace from the value namespace
-            // internally; it isn't part of the name the user wrote.
             strings.push(crate::def::strip_type_ns(segment).to_string());
         }
     }
@@ -1273,6 +1271,9 @@ impl MaskSpec {
     }
 }
 
+// TODO: remove this inconsistency by properly using the type namespace for verus items
+
+/// Path for any non-function item hardcoded by verus_items.
 #[macro_export]
 macro_rules! path {
     [ $krate:expr => $( $segment:literal ),* ] => {
@@ -1289,11 +1290,11 @@ macro_rules! path {
     };
 }
 
-// Like path!, but for paths where every segment is in the Rust type namespace
-// (modules, structs, traits), which is the usual case for hand-written paths
-// to core/std items.
+/// Path for any non-function item whose path is determined outside of verus_items.
+/// This requires every segment to be in the "type namespace",
+/// which is the namespace where module names, types, and traits, go.
 #[macro_export]
-macro_rules! type_path {
+macro_rules! real_path {
     [ $krate:expr => $( $segment:literal ),* ] => {
         ::std::sync::Arc::new($crate::ast::PathX {
             krate: $krate,
@@ -1308,6 +1309,7 @@ macro_rules! type_path {
     };
 }
 
+/// Path to a function for anything hardcoded by verus_items.
 #[macro_export]
 macro_rules! fun {
     [ $krate:expr => $( $segment:literal ),* ] => {
@@ -1315,11 +1317,11 @@ macro_rules! fun {
     };
 }
 
-// Like fun!, but for a function whose enclosing segments (modules, types, traits)
-// are all in the Rust type namespace, with the function name itself,
-// written after the `;`, in the value namespace.
+/// Path to a function whose path is determined outside of verus_items.
+/// This requires every segment (except the last) to be in the "type namespace",
+/// which is the namespace where module names go.
 #[macro_export]
-macro_rules! type_path_fun {
+macro_rules! real_fun {
     [ $krate:expr => $( $segment:literal ),* ; $name:literal ] => {
         ::std::sync::Arc::new($crate::ast::FunX {
             path: ::std::sync::Arc::new($crate::ast::PathX {
@@ -1557,9 +1559,9 @@ impl fmt::Display for ClosureKind {
 impl ClosureKind {
     pub(crate) fn trait_path(&self) -> Path {
         match self {
-            ClosureKind::Fn => crate::type_path![CrateId::Core => "ops", "function", "Fn"],
-            ClosureKind::FnMut => crate::type_path![CrateId::Core => "ops", "function", "FnMut"],
-            ClosureKind::FnOnce => crate::type_path![CrateId::Core => "ops", "function", "FnOnce"],
+            ClosureKind::Fn => crate::real_path![CrateId::Core => "ops", "function", "Fn"],
+            ClosureKind::FnMut => crate::real_path![CrateId::Core => "ops", "function", "FnMut"],
+            ClosureKind::FnOnce => crate::real_path![CrateId::Core => "ops", "function", "FnOnce"],
         }
     }
 }
