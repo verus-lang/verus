@@ -78,8 +78,6 @@ struct StoragePath {
     /// `None` stands for the single location of a `storage_option` field.
     withdrawn: Vec<(String, Option<String>)>,
     deposited: Vec<(String, Option<String>)>,
-    deposit: bool,
-    withdraw: bool,
 }
 
 /// Several deposits, withdrawals and guards may occur on one path; together
@@ -88,17 +86,16 @@ struct StoragePath {
 /// the deposit to be disjoint from the pre-state storage, so a deposit into a
 /// location withdrawn earlier on the same path cannot be checked. Syntactically
 /// identical locations are rejected here; other overlaps fail in the generated
-/// storage proof. Returns whether some path both deposits and withdraws.
+/// storage proof.
 fn storage_paths(
     s: &TransitionStmt,
     fields: &HashMap<String, Field>,
     path: &mut StoragePath,
-    paired: &mut bool,
 ) -> Result<(), Error> {
     match s {
         TransitionStmt::Block(_, children) => {
             for child in children {
-                storage_paths(child, fields, path, paired)?;
+                storage_paths(child, fields, path)?;
             }
         }
         TransitionStmt::Split(span, kind, children) => {
@@ -124,12 +121,10 @@ fn storage_paths(
                         }
                     }
                     if op.stmt.is_withdraw() {
-                        path.withdraw = true;
                         if let Some(location) = location {
                             path.withdrawn.push((name.to_string(), location));
                         }
                     } else if op.stmt.is_deposit() {
-                        path.deposit = true;
                         if let Some(location) = location {
                             path.deposited.push((name.to_string(), location.clone()));
                             if path.withdrawn.contains(&(name.to_string(), location)) {
@@ -140,16 +135,13 @@ fn storage_paths(
                             }
                         }
                     }
-                    *paired |= path.deposit && path.withdraw;
                 }
             }
             if matches!(&**kind, SplitKind::If(_) | SplitKind::Match(..)) {
                 let start = path.clone();
                 for child in children {
                     let mut branch = start.clone();
-                    storage_paths(child, fields, &mut branch, paired)?;
-                    path.deposit |= branch.deposit;
-                    path.withdraw |= branch.withdraw;
+                    storage_paths(child, fields, &mut branch)?;
                     for location in branch.withdrawn {
                         if !path.withdrawn.contains(&location) {
                             path.withdrawn.push(location);
@@ -163,7 +155,7 @@ fn storage_paths(
                 }
             } else {
                 for child in children {
-                    storage_paths(child, fields, path, paired)?;
+                    storage_paths(child, fields, path)?;
                 }
             }
         }
@@ -717,15 +709,16 @@ pub fn output_with_ready(
         let safe_body = execute(&sops, true);
         let run_body = execute(&sops, false);
         let mut changed = HashSet::new();
-        let (_, withdraw) = modified(
+        let (storage_ops, withdraw) = modified(
             &tr.body,
             &mut changed,
             storage.is_some(),
             &fields,
             matches!(tr.kind, TransitionKind::Property | TransitionKind::ReadonlyTransition),
         )?;
-        let mut paired = false;
-        storage_paths(&tr.body,&fields,&mut StoragePath::default(),&mut paired)?;
+        storage_paths(&tr.body,&fields,&mut StoragePath::default())?;
+        // Paired exchange outputs when some path has several storage operations.
+        let paired = storage_ops > 1;
         let effects = monoids::analyze(tr, &fields)?;
         for e in &effects {
             changed.insert(e.field.name.to_string());
