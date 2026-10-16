@@ -112,7 +112,9 @@ pub(crate) fn compute_def_path_to_vir_path<'tcx>(
                 segments.push(vir::def::impl_ident(d.disambiguator));
             }
             DefPathData::ForeignMod => {
-                // this segment can be ignored
+                segments.push(Arc::new(
+                    vir::def::RUST_DEF_FOREIGN_MOD.to_string() + &d.disambiguator.to_string(),
+                ));
             }
             DefPathData::OpaqueTy => {
                 segments.push(Arc::new(
