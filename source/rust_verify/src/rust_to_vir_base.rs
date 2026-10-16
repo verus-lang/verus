@@ -228,8 +228,7 @@ fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Pa
                 }
             }
             DefPathData::TypeNs(symbol) => {
-                //segments.push(Arc::new(vir::def::RUST_DEF_TYPE_NS.to_string() + symbol.as_str()));
-                segments.push(Arc::new(symbol.to_string()));
+                segments.push(Arc::new(vir::def::RUST_DEF_TYPE_NS.to_string() + symbol.as_str()));
             }
             DefPathData::Ctor => {
                 segments.push(Arc::new(vir::def::RUST_DEF_CTOR.to_string()));

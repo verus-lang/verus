@@ -1395,3 +1395,7 @@ pub fn fn_fp_postcondition_name(op: UninterpretedFloatBinaryOp) -> Fun {
         }
     }
 }
+
+pub fn in_type_ns(s: &str) -> Ident {
+    Arc::new(RUST_DEF_TYPE_NS.to_string() + s)
+}
