@@ -174,7 +174,11 @@ None of these need a slice value, so they are plain field construction and destr
   `SeqPointsTo` versions can't share a name across impls of the same type, so these lemmas may need
   suffixed names (as with the earlier `_untyped` rename).
 
-### Step 4: how a slice decodes (new axiom)
+### Step 4: how a slice decodes (new axiom) (done)
+
+Added to `type_representation.rs` after `encode_decode_inverse`, and to
+`group_type_representation_axioms`. The inner `forall` is triggered on `v@[i]`, since the
+per-element `abs_decode::<T>` term contains arithmetic on `i`.
 
 `abs_decode` is uninterpreted, and its only general axiom ties length to `size_of`, which needs
 `Sized`. A valid slice needs a rule like this one, in `type_representation.rs`:

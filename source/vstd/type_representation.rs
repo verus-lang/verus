@@ -132,6 +132,22 @@ pub axiom fn encode_decode_inverse<T>(tracked value: &T)
         forall|bytes| #[trigger] abs_encode::<T>(value, bytes) ==> abs_decode::<T>(bytes, value),
 ;
 
+/// The bytes decode to a slice exactly when there is one `size_of::<T>()`-byte slot per element,
+/// and each slot decodes to its element.
+/// This follows the same pattern as the `[u8]` encoding (`EncodingU8Slice`).
+pub broadcast axiom fn abs_decode_slice<T>(bytes: Seq<AbstractByte>, v: &[T])
+    ensures
+        #[trigger] abs_decode::<[T]>(bytes, v) <==> {
+            &&& bytes.len() == v@.len() * size_of::<T>()
+            &&& forall|i: int|
+                #![trigger v@[i]]
+                0 <= i < v@.len() ==> abs_decode::<T>(
+                    bytes.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+                    &v@[i],
+                )
+        },
+;
+
 /// This trait defines the concrete specification for the given type's `AbstractByte` encoding.
 pub trait AbstractByteRepresentation where Self: Sized {
     /// Is encoding allowed for this type?
@@ -1392,6 +1408,42 @@ impl AbstractByteRepresentationUnsized<[u8]> for EncodingU8Slice {
     axiom fn abs_can_be_encoded_impl();
 }
 
+// /// The abstract encoding for a `[T]` maps each value in the slice to a corresponding abtract byte with no provenance.
+// pub struct EncodingSlice;
+
+// impl<T: AbstractByteRepresentation> AbstractByteRepresentationUnsized<[T]> for EncodingSlice {
+//     open spec fn can_be_encoded() -> bool {
+//         true
+//     }
+
+//     open spec fn encode(value: &[T], bytes: Seq<AbstractByte>) -> bool {
+//         &&& value@.len() * size_of::<T>() == bytes.len()
+//         &&& forall|i| 0 <= i < value@.len() ==> T::encode(#[trigger] value@[i], bytes.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()))
+//     }
+
+//     open spec fn decode(bytes: Seq<AbstractByte>, value: &[T]) -> bool {
+//         &&& value@.len() * size_of::<T>() == bytes.len()
+//         &&& forall|i: int| 0 <= i < value@.len() ==> T::decode(bytes.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()), #[trigger] value@[i])
+//     }
+
+//     proof fn encoding_size(v: &[T], b: Seq<AbstractByte>) {
+//     }
+
+//     proof fn encoding_exists(tracked v: &[T]) -> (b: Seq<AbstractByte>) {
+//         v@.map_values(|val: T| T::encoding_exists(val)).fold_left(Seq::<AbstractByte>::empty(), |s1: Seq<AbstractByte>, s2: Seq<AbstractByte>| s1.add(s2))
+//     }
+
+//     proof fn encoding_invertible(v: &[T], b: Seq<AbstractByte>) {
+//         assert forall|i: int| 0 <= i < v@.len() implies T::decode(b.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()), #[trigger] v@[i]) by {
+//             T::encoding_invertible(v@[i], b.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()));
+//         }
+//     }
+
+//     axiom fn abs_encode_impl(v: &[T], b: Seq<AbstractByte>);
+
+//     axiom fn abs_can_be_encoded_impl();
+// }
+
 pub broadcast group group_type_representation_axioms {
     u8_encode,
     u16_encode,
@@ -1419,6 +1471,7 @@ pub broadcast group group_type_representation_axioms {
     ptr_metadata_encoding_well_defined_slices,
     ptr_metadata_encoding_well_defined_str,
     shared_ref_cannot_be_encoded,
+    abs_decode_slice,
 }
 
 } // verus!
