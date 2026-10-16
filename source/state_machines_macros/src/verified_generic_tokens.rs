@@ -30,8 +30,12 @@ enum Kind {
     PersistentOption,
     Map,
     PersistentMap,
+    IMap,
+    PersistentIMap,
     Set,
     PersistentSet,
+    ISet,
+    PersistentISet,
     Multiset,
     Bool,
     PersistentBool,
@@ -45,19 +49,25 @@ impl Kind {
             self,
             Kind::PersistentOption
                 | Kind::PersistentMap
+                | Kind::PersistentIMap
                 | Kind::PersistentSet
+                | Kind::PersistentISet
                 | Kind::PersistentBool
                 | Kind::PersistentCount
         )
     }
     fn unique(self) -> bool {
-        matches!(self, Kind::Variable | Kind::Option | Kind::Map | Kind::Set | Kind::Bool)
+        matches!(self, Kind::Variable | Kind::Option | Kind::Map | Kind::IMap | Kind::Set | Kind::ISet | Kind::Bool)
     }
     fn map_like(self) -> bool {
-        matches!(self, Kind::Map | Kind::PersistentMap)
+        matches!(self, Kind::Map | Kind::PersistentMap | Kind::IMap | Kind::PersistentIMap)
     }
     fn set_like(self) -> bool {
-        matches!(self, Kind::Set | Kind::PersistentSet)
+        matches!(self, Kind::Set | Kind::PersistentSet | Kind::ISet | Kind::PersistentISet)
+    }
+    /// `imap`/`iset` strategies: collections are `IMap`/`ISet` valued.
+    fn infinite(self) -> bool {
+        matches!(self, Kind::IMap | Kind::PersistentIMap | Kind::ISet | Kind::PersistentISet)
     }
     fn option_like(self) -> bool {
         matches!(self, Kind::Option | Kind::PersistentOption | Kind::Bool | Kind::PersistentBool)
@@ -71,6 +81,10 @@ fn kind(f: &Field) -> Option<Kind> {
         ShardableType::PersistentOption(_) => Some(Kind::PersistentOption),
         ShardableType::Map(..) => Some(Kind::Map),
         ShardableType::PersistentMap(..) => Some(Kind::PersistentMap),
+        ShardableType::IMap(..) => Some(Kind::IMap),
+        ShardableType::PersistentIMap(..) => Some(Kind::PersistentIMap),
+        ShardableType::ISet(_) => Some(Kind::ISet),
+        ShardableType::PersistentISet(_) => Some(Kind::PersistentISet),
         ShardableType::Set(_) => Some(Kind::Set),
         ShardableType::PersistentSet(_) => Some(Kind::PersistentSet),
         ShardableType::Multiset(_) => Some(Kind::Multiset),
@@ -232,6 +246,15 @@ impl Store {
     fn pack(&self, f: &Field, p: &TokenStream) -> TokenStream {
         let n = &f.name;
         match (&self.kind, &f.stype) {
+            (StoreKind::Carrier, ShardableType::StorageIMap(..)) => {
+                // The carrier packs finite maps.
+                let pack = format_ident!("__pack_{}", n);
+                quote! {
+                    assert((#p).dom().finite());
+                    let tracked __tsm_finite = ::vstd::resource::tsm_generic::tracked_imap_to_map(#p);
+                    let tracked __tsm_packed = __StorageKey::#pack(__tsm_finite);
+                }
+            }
             (StoreKind::Carrier, _) => {
                 let pack = format_ident!("__pack_{}", n);
                 quote! {let tracked __tsm_packed = __StorageKey::#pack(#p);}
@@ -279,6 +302,9 @@ impl Store {
                     assert(::vstd::prelude::ext_equal(#p, #e));
                 }
             }
+            (StoreKind::Carrier, ShardableType::StorageIMap(..)) => quote! {
+                compile_error!("generic field tokens do not support general withdrawals from a tagged storage_imap");
+            },
             (StoreKind::Carrier, _) => {
                 let unpack = format_ident!("__unpack_{}", n);
                 let untag = format_ident!("__untag_{}", n);
@@ -340,10 +366,12 @@ fn token_data(f: &Field) -> Vec<(Ident, Type)> {
         ShardableType::Variable(t) | ShardableType::Option(t) | ShardableType::PersistentOption(t) => {
             vec![(mk("__v"), t.clone())]
         }
-        ShardableType::Map(k, v) | ShardableType::PersistentMap(k, v) => {
+        ShardableType::Map(k, v) | ShardableType::PersistentMap(k, v)
+        | ShardableType::IMap(k, v) | ShardableType::PersistentIMap(k, v) => {
             vec![(mk("__k"), k.clone()), (mk("__v"), v.clone())]
         }
-        ShardableType::Set(e) | ShardableType::PersistentSet(e) | ShardableType::Multiset(e) => {
+        ShardableType::Set(e) | ShardableType::PersistentSet(e) | ShardableType::Multiset(e)
+        | ShardableType::ISet(e) | ShardableType::PersistentISet(e) => {
             vec![(mk("__e"), e.clone())]
         }
         ShardableType::Bool | ShardableType::PersistentBool => vec![],
@@ -367,9 +395,17 @@ fn single_fragment(f: &Field, data: &[TokenStream]) -> TokenStream {
             let (k, v) = (&data[0], &data[1]);
             quote! {::vstd::map::Map::empty().insert(#k, #v)}
         }
+        Kind::IMap | Kind::PersistentIMap => {
+            let (k, v) = (&data[0], &data[1]);
+            quote! {::vstd::imap::IMap::empty().insert(#k, #v)}
+        }
         Kind::Set | Kind::PersistentSet => {
             let e = &data[0];
             quote! {::vstd::set::Set::empty().insert(#e)}
+        }
+        Kind::ISet | Kind::PersistentISet => {
+            let e = &data[0];
+            quote! {::vstd::iset::ISet::empty().insert(#e)}
         }
         Kind::Multiset => {
             let e = &data[0];
@@ -431,8 +467,10 @@ fn tyname(f: &Field) -> Ident {
 /// The trait path implemented by a token type (for its observers).
 fn trait_path(f: &Field) -> TokenStream {
     match &f.stype {
-        ShardableType::Map(k, v) | ShardableType::PersistentMap(k, v) => quote! {::vstd::tokens::KeyValueToken<#k, #v>},
-        ShardableType::Set(e) | ShardableType::PersistentSet(e) | ShardableType::Multiset(e) => {
+        ShardableType::Map(k, v) | ShardableType::PersistentMap(k, v)
+        | ShardableType::IMap(k, v) | ShardableType::PersistentIMap(k, v) => quote! {::vstd::tokens::KeyValueToken<#k, #v>},
+        ShardableType::Set(e) | ShardableType::PersistentSet(e) | ShardableType::Multiset(e)
+        | ShardableType::ISet(e) | ShardableType::PersistentISet(e) => {
             quote! {::vstd::tokens::ElementToken<#e>}
         }
         ShardableType::Variable(v) | ShardableType::Option(v) | ShardableType::PersistentOption(v) => {
@@ -644,10 +682,12 @@ fn token_traits(f: &Field, instance_id: &TokenStream, _store: &Store) -> TokenSt
     let embed = |s: TokenStream| quote! {<Protocol as ::vstd::resource::tsm::Machine>::embed(#s)};
     let slot_of = |who: &str| -> Option<TokenStream> {
         let w = format_ident!("{}", who);
-        match k {
-            Kind::Map | Kind::PersistentMap => Some(quote! {#w.__k}),
-            Kind::Set | Kind::PersistentSet => Some(quote! {#w.__e}),
-            _ => None,
+        if k.map_like() {
+            Some(quote! {#w.__k})
+        } else if k.set_like() {
+            Some(quote! {#w.__e})
+        } else {
+            None
         }
     };
     // Contradiction from two real tokens of the same exclusive slot.
@@ -728,7 +768,8 @@ fn token_traits(f: &Field, instance_id: &TokenStream, _store: &Store) -> TokenSt
     let arbitrary = quote! {proof fn arbitrary() -> (tracked s: Self) {Self::__arbitrary()}};
     let id_fn = quote! {closed spec fn instance_id(&self) -> ::vstd::tokens::InstanceId {#instance_id}};
     match &f.stype {
-        ShardableType::Map(kt, v) | ShardableType::PersistentMap(kt, v) => {
+        ShardableType::Map(kt, v) | ShardableType::PersistentMap(kt, v)
+        | ShardableType::IMap(kt, v) | ShardableType::PersistentIMap(kt, v) => {
             let agree = agree_body(quote! {&& self.__k == other.__k && self.__v != other.__v});
             let unique = if k.unique() {
                 let body = unique_body(quote! {mine.__k == other.__k});
@@ -751,7 +792,8 @@ fn token_traits(f: &Field, instance_id: &TokenStream, _store: &Store) -> TokenSt
                 #unique
             }
         }
-        ShardableType::Set(e) | ShardableType::PersistentSet(e) | ShardableType::Multiset(e) => {
+        ShardableType::Set(e) | ShardableType::PersistentSet(e) | ShardableType::Multiset(e)
+        | ShardableType::ISet(e) | ShardableType::PersistentISet(e) => {
             let unique = if k.unique() {
                 let body = unique_body(quote! {mine.__e == other.__e});
                 quote! {
@@ -909,28 +951,45 @@ fn collection_helpers(f: &Field) -> TokenStream {
         ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};};
     let pointwise = quote! {::vstd::resource::tsm_collections::Pointwise};
     let id_of = |x: TokenStream| id_call(f, x);
+    // `imap`/`iset` collections use infinite maps and sets; splitting and
+    // joining them recurses on a finite domain.
+    let fin = !k.infinite();
+    let (map_t, set_t) = if fin {
+        (quote! {::vstd::map::Map}, quote! {::vstd::set::Set})
+    } else {
+        (quote! {::vstd::imap::IMap}, quote! {::vstd::iset::ISet})
+    };
+    let mlen = if fin { quote! {m.len()} } else { quote! {m.dom().len()} };
+    let (fin_m, fin_s) = if fin { (quote! {}, quote! {}) } else { (quote! {m.dom().finite(),}, quote! {s.finite(),}) };
     match &f.stype {
-        ShardableType::Map(kt, v) | ShardableType::PersistentMap(kt, v) => {
+        ShardableType::Map(kt, v) | ShardableType::PersistentMap(kt, v)
+        | ShardableType::IMap(kt, v) | ShardableType::PersistentIMap(kt, v) => {
             let out_id = id_of(quote! {out[key]});
+            let vals = quote! {|key: #kt| ::vstd::tokens::KeyValueToken::value(&m[key])};
+            let all_vals = if fin {
+                quote! {::vstd::map::Map::new(m.dom(), #vals)}
+            } else {
+                quote! {::vstd::imap::IMap::new(|__tsm_key: #kt| m.dom().contains(__tsm_key), #vals)}
+            };
             let mut s = quote! {
-                proof fn #split(tracked raw: Token, m: ::vstd::map::Map<#kt, #v>)
-                    -> (tracked out: ::vstd::map::Map<#kt, #nt>)
-                    requires raw.fragment() == Fragment::#factory(m),
+                proof fn #split(tracked raw: Token, m: #map_t<#kt, #v>)
+                    -> (tracked out: #map_t<#kt, #nt>)
+                    requires raw.fragment() == Fragment::#factory(m), #fin_m
                     ensures out.dom() == m.dom(),
                         forall|key: #kt| ::vstd::prelude::imply(#[trigger] out.dom().contains(key),
                             ::vstd::tokens::KeyValueToken::key(&out[key]) == key
                             && ::vstd::tokens::KeyValueToken::value(&out[key]) == m[key]
                             && #out_id == ::vstd::resource::tsm_instance_id(raw.loc(), false)),
-                    decreases m.len(),
+                    decreases #mlen,
                 {
                     #lemmas
-                    if m.len() == 0 {
-                        assert(::vstd::prelude::ext_equal(m.dom(), ::vstd::set::Set::empty()));
-                        ::vstd::map::Map::tracked_empty()
+                    if #mlen == 0 {
+                        assert(::vstd::prelude::ext_equal(m.dom(), #set_t::empty()));
+                        #map_t::tracked_empty()
                     } else {
                         let key = m.dom().choose();
                         let rest = m.remove(key);
-                        let one = Fragment::#factory(::vstd::map::Map::empty().insert(key, m[key]));
+                        let one = Fragment::#factory(#map_t::empty().insert(key, m[key]));
                         let others = Fragment::#factory(rest);
                         assert(raw.fragment() == Fragment::op(one, others)) by {
                             Fragment::unit().op_unit();
@@ -949,24 +1008,23 @@ fn collection_helpers(f: &Field) -> TokenStream {
             };
             if !k.persistent() {
                 s.extend(quote! {
-                    proof fn #join(tracked acc: Token, tracked m: ::vstd::map::Map<#kt, #nt>, loc: ::vstd::resource::Loc)
+                    proof fn #join(tracked acc: Token, tracked m: #map_t<#kt, #nt>, loc: ::vstd::resource::Loc)
                         -> (tracked out: Token)
-                        requires acc.loc() == loc,
+                        requires acc.loc() == loc, #fin_m
                             forall|key: #kt| ::vstd::prelude::imply(#[trigger] m.dom().contains(key),
                                 m[key].__id() == ::vstd::resource::tsm_instance_id(loc, false)
                                 && ::vstd::tokens::KeyValueToken::key(&m[key]) == key),
                         ensures out.loc() == loc,
-                            out.fragment() == Fragment::op(acc.fragment(), Fragment::#factory(
-                                ::vstd::map::Map::new(m.dom(), |key: #kt| ::vstd::tokens::KeyValueToken::value(&m[key])))),
-                        decreases m.len(),
+                            out.fragment() == Fragment::op(acc.fragment(), Fragment::#factory(#all_vals)),
+                        decreases #mlen,
                     {
                         #lemmas
-                        let all = ::vstd::map::Map::new(m.dom(), |key: #kt| ::vstd::tokens::KeyValueToken::value(&m[key]));
-                        if m.len() == 0 {
+                        let all = #all_vals;
+                        if #mlen == 0 {
                             Fragment::unit().op_unit();
                             acc.fragment().op_unit();
                             assert(Fragment::#factory(all) == Fragment::unit()) by {
-                                assert(::vstd::prelude::ext_equal(all, ::vstd::map::Map::empty()));
+                                assert(::vstd::prelude::ext_equal(all, #map_t::empty()));
                                 #pointwise::extensionality(Fragment::#factory(all).#n, Fragment::unit().#n);
                             }
                             acc
@@ -979,9 +1037,9 @@ fn collection_helpers(f: &Field) -> TokenStream {
                             let v = ::vstd::tokens::KeyValueToken::value(&t);
                             let tracked raw = t.__into_raw(loc);
                             let tracked acc2 = acc.join(raw);
-                            let rest = ::vstd::map::Map::new(m.dom(), |key: #kt| ::vstd::tokens::KeyValueToken::value(&m[key]));
+                            let rest = #all_vals;
                             let tracked out = Self::#join(acc2, m, loc);
-                            let one = Fragment::#factory(::vstd::map::Map::empty().insert(key, v));
+                            let one = Fragment::#factory(#map_t::empty().insert(key, v));
                             Fragment::unit().op_unit();
                             assert(Fragment::op(one, Fragment::#factory(rest)) == Fragment::#factory(all)) by {
                                 assert forall|kk: #kt| #[trigger] Fragment::op(one, Fragment::#factory(rest)).#n.at(kk)
@@ -999,12 +1057,13 @@ fn collection_helpers(f: &Field) -> TokenStream {
             }
             quote! {impl #nt {#s}}
         }
-        ShardableType::Set(e) | ShardableType::PersistentSet(e) => {
+        ShardableType::Set(e) | ShardableType::PersistentSet(e)
+        | ShardableType::ISet(e) | ShardableType::PersistentISet(e) => {
             let out_id = id_of(quote! {out[x]});
             let mut s = quote! {
-                proof fn #split(tracked raw: Token, s: ::vstd::set::Set<#e>)
-                    -> (tracked out: ::vstd::map::Map<#e, #nt>)
-                    requires raw.fragment() == Fragment::#factory(s),
+                proof fn #split(tracked raw: Token, s: #set_t<#e>)
+                    -> (tracked out: #map_t<#e, #nt>)
+                    requires raw.fragment() == Fragment::#factory(s), #fin_s
                     ensures out.dom() == s,
                         forall|x: #e| ::vstd::prelude::imply(#[trigger] out.dom().contains(x),
                             ::vstd::tokens::ElementToken::element(&out[x]) == x
@@ -1013,12 +1072,12 @@ fn collection_helpers(f: &Field) -> TokenStream {
                 {
                     #lemmas
                     if s.len() == 0 {
-                        assert(::vstd::prelude::ext_equal(s, ::vstd::set::Set::empty()));
-                        ::vstd::map::Map::tracked_empty()
+                        assert(::vstd::prelude::ext_equal(s, #set_t::empty()));
+                        #map_t::tracked_empty()
                     } else {
                         let x = s.choose();
                         let rest = s.remove(x);
-                        let one = Fragment::#factory(::vstd::set::Set::empty().insert(x));
+                        let one = Fragment::#factory(#set_t::empty().insert(x));
                         let others = Fragment::#factory(rest);
                         assert(raw.fragment() == Fragment::op(one, others)) by {
                             Fragment::unit().op_unit();
@@ -1037,22 +1096,22 @@ fn collection_helpers(f: &Field) -> TokenStream {
             };
             if !k.persistent() {
                 s.extend(quote! {
-                    proof fn #join(tracked acc: Token, tracked m: ::vstd::map::Map<#e, #nt>, loc: ::vstd::resource::Loc)
+                    proof fn #join(tracked acc: Token, tracked m: #map_t<#e, #nt>, loc: ::vstd::resource::Loc)
                         -> (tracked out: Token)
-                        requires acc.loc() == loc,
+                        requires acc.loc() == loc, #fin_m
                             forall|x: #e| ::vstd::prelude::imply(#[trigger] m.dom().contains(x),
                                 m[x].__id() == ::vstd::resource::tsm_instance_id(loc, false)
                                 && ::vstd::tokens::ElementToken::element(&m[x]) == x),
                         ensures out.loc() == loc,
                             out.fragment() == Fragment::op(acc.fragment(), Fragment::#factory(m.dom())),
-                        decreases m.len(),
+                        decreases #mlen,
                     {
                         #lemmas
-                        if m.len() == 0 {
+                        if #mlen == 0 {
                             Fragment::unit().op_unit();
                             acc.fragment().op_unit();
                             assert(Fragment::#factory(m.dom()) == Fragment::unit()) by {
-                                assert(::vstd::prelude::ext_equal(m.dom(), ::vstd::set::Set::empty()));
+                                assert(::vstd::prelude::ext_equal(m.dom(), #set_t::empty()));
                                 #pointwise::extensionality(Fragment::#factory(m.dom()).#n, Fragment::unit().#n);
                             }
                             acc
@@ -1067,7 +1126,7 @@ fn collection_helpers(f: &Field) -> TokenStream {
                             let tracked acc2 = acc.join(raw);
                             let rest = m.dom();
                             let tracked out = Self::#join(acc2, m, loc);
-                            let one = Fragment::#factory(::vstd::set::Set::empty().insert(x));
+                            let one = Fragment::#factory(#set_t::empty().insert(x));
                             Fragment::unit().op_unit();
                             assert(Fragment::op(one, Fragment::#factory(rest)) == Fragment::#factory(all)) by {
                                 assert forall|kk: #e| #[trigger] Fragment::op(one, Fragment::#factory(rest)).#n.at(kk)
@@ -1247,6 +1306,8 @@ fn included_lemma(f: &Field, vals: &[TokenStream], tok: TokenStream, coll: Optio
                 }
                 assert((#observed).subset_of(pre.#n));
             },
+            Kind::IMap => quote! {#c::map_included_owned_many((#tok).#n, #rest, #z, pre.#n, #observed);},
+            Kind::ISet => quote! {#c::set_included_owned_many((#tok).#n, #rest, #z, pre.#n, #observed);},
             Kind::Multiset => quote! {#g::multiset_included_many((#tok).#n, #rest, #z, pre.#n, #observed);},
             Kind::Option => quote! {#g::option_included_general((#tok).#n, #rest, #z, pre.#n, #observed);},
             Kind::PersistentOption => quote! {#g::persistent_option_included_general((#tok).#n, #rest, #z, pre.#n, #observed);},
@@ -1267,6 +1328,22 @@ fn included_lemma(f: &Field, vals: &[TokenStream], tok: TokenStream, coll: Optio
         Kind::Set => {
             let e = &vals[0];
             quote! {#c::set_included_owned_at((#tok).#n, #rest, #z, pre.#n.to_iset(), #e);}
+        }
+        Kind::IMap => {
+            let (kk, v) = (&vals[0], &vals[1]);
+            quote! {#c::map_included_owned_at((#tok).#n, #rest, #z, pre.#n, #kk, #v);}
+        }
+        Kind::PersistentIMap => {
+            let (kk, v) = (&vals[0], &vals[1]);
+            quote! {#g::persistent_map_included_owned_at((#tok).#n, #rest, #z, pre.#n, #kk, #v);}
+        }
+        Kind::ISet => {
+            let e = &vals[0];
+            quote! {#c::set_included_owned_at((#tok).#n, #rest, #z, pre.#n, #e);}
+        }
+        Kind::PersistentISet => {
+            let e = &vals[0];
+            quote! {#g::persistent_set_included_owned_at((#tok).#n, #rest, #z, pre.#n, #e);}
         }
         Kind::PersistentSet => {
             let e = &vals[0];
@@ -1567,6 +1644,14 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                 let alias = format_ident!("{}_set", n);
                 items.push(quote! {#[allow(non_camel_case_types)] pub type #alias = ::vstd::tokens::SetToken<#e, #nt>;});
             }
+            ShardableType::IMap(k, v) | ShardableType::PersistentIMap(k, v) => {
+                let alias = format_ident!("{}_map", n);
+                items.push(quote! {#[allow(non_camel_case_types)] pub type #alias = ::vstd::tokens::IMapToken<#k, #v, #nt>;});
+            }
+            ShardableType::ISet(e) | ShardableType::PersistentISet(e) => {
+                let alias = format_ident!("{}_set", n);
+                items.push(quote! {#[allow(non_camel_case_types)] pub type #alias = ::vstd::tokens::ISetToken<#e, #nt>;});
+            }
             ShardableType::Multiset(e) => {
                 let alias = format_ident!("{}_multiset", n);
                 items.push(quote! {#[allow(non_camel_case_types)] pub type #alias = ::vstd::tokens::MultisetToken<#e, #nt>;});
@@ -1650,8 +1735,8 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
         let id_final = id_call(f, quote! {*final(t)});
         let tr_path = trait_path(f);
         let observers: Vec<Ident> = match k {
-            Kind::Map => vec![format_ident!("key"), format_ident!("value")],
-            Kind::Set | Kind::Multiset => vec![format_ident!("element")],
+            Kind::Map | Kind::IMap => vec![format_ident!("key"), format_ident!("value")],
+            Kind::Set | Kind::ISet | Kind::Multiset => vec![format_ident!("element")],
             Kind::Variable | Kind::Option => vec![format_ident!("value")],
             Kind::Count => vec![format_ident!("count")],
             _ => vec![],
@@ -1771,10 +1856,17 @@ fn collection_input(f: &Field, pname: &Ident, loc: &TokenStream, e: &Expr) -> Re
                 |k| ::vstd::tokens::KeyValueToken::value(&__tsm_sel[k])), #e));
             let tracked __tsm_acc = #nt::#join(__tsm_acc, __tsm_sel, #loc);
         })),
-        Some(Kind::Set) => Ok((frag, quote! {
+        Some(Kind::Set) | Some(Kind::ISet) => Ok((frag, quote! {
             let tracked mut __tsm_tokens = #pname.into_map();
             let tracked __tsm_sel = __tsm_tokens.tracked_remove_keys(#e);
             assert(::vstd::prelude::ext_equal(__tsm_sel.dom(), #e));
+            let tracked __tsm_acc = #nt::#join(__tsm_acc, __tsm_sel, #loc);
+        })),
+        Some(Kind::IMap) => Ok((frag, quote! {
+            let tracked mut __tsm_tokens = #pname.into_map();
+            let tracked __tsm_sel = __tsm_tokens.tracked_remove_keys((#e).dom());
+            assert(::vstd::prelude::ext_equal(::vstd::imap::IMap::new(|__tsm_key| __tsm_sel.dom().contains(__tsm_key),
+                |k| ::vstd::tokens::KeyValueToken::value(&__tsm_sel[k])), #e));
             let tracked __tsm_acc = #nt::#join(__tsm_acc, __tsm_sel, #loc);
         })),
         Some(Kind::Multiset) => Ok((frag, quote! {
@@ -1791,7 +1883,7 @@ fn collection_input(f: &Field, pname: &Ident, loc: &TokenStream, e: &Expr) -> Re
 fn ext_step(f: &Field, a: &TokenStream, b: &TokenStream) -> TokenStream {
     let n = &f.name;
     match kind(f) {
-        Some(Kind::Map) | Some(Kind::PersistentMap) | Some(Kind::Set) | Some(Kind::PersistentSet) => {
+        Some(k) if k.map_like() || k.set_like() => {
             quote! {::vstd::resource::tsm_collections::Pointwise::extensionality((#a).#n, (#b).#n);}
         }
         Some(Kind::Multiset) => quote! {assert(::vstd::prelude::ext_equal((#a).#n.values, (#b).#n.values));},
@@ -1846,6 +1938,8 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     // read from the withdrawn map.
     let mut withdrawn_arb = HashMap::new();
     let mut withdrawn_actual = HashMap::new();
+    // The withdrawn values, once known (for variable updates that use them).
+    let mut withdrawn_binds: Vec<TokenStream> = vec![];
     for q in &params {
         let f = q.field;
         if !f.stype.is_storage() || q.p.inout_type != InoutType::Out {
@@ -1864,6 +1958,8 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             quote! {__tsm_withdrawn[#key]}
         };
         withdrawn_arb.insert(q.p.name.to_string(), quote! {::vstd::prelude::arbitrary::<#ty>()});
+        let pname = &q.p.name;
+        withdrawn_binds.push(quote! {let #pname: #ty = #actual;});
         withdrawn_actual.insert(q.p.name.to_string(), actual);
     }
     // Bind the transition's lets (except those depending on birds_eye reads).
@@ -2006,8 +2102,24 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     if unit_param {
         in_params.push(quote! {tracked __tsm_unit: Unit});
     }
-    let unit_req = if unit_param { quote! {__tsm_unit.instance_id() == (*self).id(),} } else { quote! {} };
-    let req = if unit_param {
+    let mut unit_req = if unit_param { quote! {__tsm_unit.instance_id() == (*self).id(),} } else { quote! {} };
+    // `imap`/`iset` token collections are finite (they are split and joined
+    // token by token); the trusted interface does not require this.
+    for q in &params {
+        let Some(k) = kind(q.field) else { continue };
+        if !k.infinite() || !q.p.is_collection {
+            continue;
+        }
+        if let Some(MonoidElt::General(e)) = q.p.elt.as_ref() {
+            let lets = &early;
+            unit_req.extend(if k.map_like() {
+                quote! {({ #(#lets)* (#e).dom().finite() }),}
+            } else {
+                quote! {({ #(#lets)* (#e).finite() }),}
+            });
+        }
+    }
+    let req = if !unit_req.is_empty() {
         if req.is_empty() { quote! {requires #unit_req} } else { quote! {#req, #unit_req} }
     } else {
         req
@@ -2079,7 +2191,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             (InoutType::In, MonoidElt::SingletonKV(k, _)) => {
                 let key = store.key_of(f, Some(k));
                 let val = store.wrap(f, quote! {#pname});
-                deposits.push(quote! {__tsm_deposit.tracked_insert(#key, #val);});
+                deposits.push(in_body(quote! {__tsm_deposit.tracked_insert(#key, #val);}));
                 deposit_spec = quote! {#deposit_spec.insert(#key, #val)};
             }
             (InoutType::In, MonoidElt::OptionSome(_)) => {
@@ -2108,10 +2220,10 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             (InoutType::Out, MonoidElt::OptionSome(_)) => {
                 let key = store.key_of(f, None);
                 let unwrap = store.unwrap(f, pname);
-                withdrawals.push(quote! {
+                withdrawals.push(in_body(quote! {
                     let tracked #pname = __tsm_withdrawn.tracked_remove(#key);
                     #unwrap
-                });
+                }));
             }
             (InoutType::Out, MonoidElt::General(e)) => {
                 withdrawals.push(in_body(store.unpack(f, pname, &quote! {#e})));
@@ -2119,6 +2231,11 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             _ => return err(f.name.span(), "unsupported storage operation for generic field tokens"),
         }
     }
+    let deposit_spec_helper = in_helper(deposit_spec.clone());
+    let withdrawn_binds_helper: Vec<_> = withdrawn_binds.iter().map(|b| in_helper(b.clone())).collect();
+    let withdrawn_binds_body: Vec<_> = withdrawn_binds.iter().map(|b| in_body(b.clone())).collect();
+    let deposit_spec_body = in_body(deposit_spec.clone());
+    let deposits: Vec<_> = deposits.into_iter().map(|d| in_body(d)).collect();
     let reqs_name = format_ident!("{}_requires", tr.name);
     let witness = format_ident!("{}_witness", tr.name);
     let frame_fn = format_ident!("{}_frame", tr.name);
@@ -2231,14 +2348,19 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             };
             let split = format_ident!("__split_{}", f.name);
             let k = kind(f).unwrap();
+            let (mtok, stok) = if k.infinite() {
+                (quote! {::vstd::tokens::IMapToken}, quote! {::vstd::tokens::ISetToken})
+            } else {
+                (quote! {::vstd::tokens::MapToken}, quote! {::vstd::tokens::SetToken})
+            };
             let mk = if k.map_like() {
                 quote! {
-                    let tracked #pname = ::vstd::tokens::MapToken::from_map((*self).id(), #ty::#split(__tsm_piece, #e));
+                    let tracked #pname = #mtok::from_map((*self).id(), #ty::#split(__tsm_piece, #e));
                     assert(::vstd::prelude::ext_equal(#pname.map(), #e));
                 }
             } else if k.set_like() {
                 quote! {
-                    let tracked #pname = ::vstd::tokens::SetToken::from_map((*self).id(), #ty::#split(__tsm_piece, #e));
+                    let tracked #pname = #stok::from_map((*self).id(), #ty::#split(__tsm_piece, #e));
                     assert(::vstd::prelude::ext_equal(#pname.set(), #e));
                 }
             } else if k == Kind::Multiset || k.option_like() {
@@ -2251,8 +2373,8 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             continue;
         }
         let data: Vec<TokenStream> = match (kind(f).unwrap(), elt) {
-            (Kind::Map | Kind::PersistentMap, MonoidElt::SingletonKV(k, Some(v))) => vec![quote! {#k}, quote! {#v}],
-            (Kind::Set | Kind::PersistentSet, MonoidElt::SingletonSet(e)) => vec![quote! {#e}],
+            (k, MonoidElt::SingletonKV(kk, Some(v))) if k.map_like() => vec![quote! {#kk}, quote! {#v}],
+            (k, MonoidElt::SingletonSet(e)) if k.set_like() => vec![quote! {#e}],
             (Kind::Multiset, MonoidElt::SingletonMultiset(e)) => vec![quote! {#e}],
             (Kind::Bool | Kind::PersistentBool, MonoidElt::True) => vec![],
             (Kind::Option | Kind::PersistentOption, MonoidElt::OptionSome(Some(v))) => vec![quote! {#v}],
@@ -2390,6 +2512,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             _ => {}
         }
     }
+    let withdraw_facts: Vec<_> = withdraw_facts.into_iter().map(|w| in_helper(w)).collect();
     // Input tokens' data match the transition's elements (as in the API's requires).
     let mut match_conds = vec![];
     for q in &params {
@@ -2400,9 +2523,9 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         let pname = &q.p.name;
         let Some(elt) = q.p.elt.as_ref() else { continue };
         let cond = match (kind(f), elt, q.p.is_collection) {
-            (Some(Kind::Map | Kind::PersistentMap), MonoidElt::SingletonKV(k, Some(v)), false) => quote! {#pname.__k == #k && #pname.__v == #v},
-            (Some(Kind::Map | Kind::PersistentMap), MonoidElt::SingletonKV(k, None), false) => quote! {#pname.__k == #k},
-            (Some(Kind::Set | Kind::PersistentSet), MonoidElt::SingletonSet(e), false) => quote! {#pname.__e == #e},
+            (Some(kd), MonoidElt::SingletonKV(k, Some(v)), false) if kd.map_like() => quote! {#pname.__k == #k && #pname.__v == #v},
+            (Some(kd), MonoidElt::SingletonKV(k, None), false) if kd.map_like() => quote! {#pname.__k == #k},
+            (Some(kd), MonoidElt::SingletonSet(e), false) if kd.set_like() => quote! {#pname.__e == #e},
             (Some(Kind::Multiset), MonoidElt::SingletonMultiset(e), false) => quote! {#pname.__e == #e},
             (Some(Kind::Option | Kind::PersistentOption), MonoidElt::OptionSome(Some(v)), false) => quote! {#pname.__v == #v},
             (Some(Kind::Count | Kind::PersistentCount), MonoidElt::General(n), false) => quote! {#pname.__n == #n},
@@ -2435,13 +2558,29 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             }}
         })
         .collect();
+    // Borrowed fragments are included in `h` itself, which separates them
+    // from the owned fragment.
+    let shared_incl_reqs: Vec<_> = shared_frags
+        .iter()
+        .map(|sf| quote! {::vstd::resource::tsm::fragment_included::<Protocol>(#sf, #h_param)})
+        .collect();
+    let shared_steps: Vec<_> = shared_frags
+        .iter()
+        .map(|sf| {
+            quote! {{
+                let __tsm_d = choose|__tsm_d: Fragment| Fragment::op(#sf, __tsm_d) == #h_param;
+                assert(Fragment::op(#sf, __tsm_d) == #h_param);
+            }}
+        })
+        .collect();
+    let frames_ready: Vec<_> = shared_steps.iter().cloned().chain(frames_post.iter().cloned()).collect();
     let ready_fn = format_ident!("__tsm_ready_{}", tr.name);
     let api_reqs: Vec<_> = parts.reqs.iter().map(|r| in_helper(quote! {#r})).collect();
     let (dep_param, dep_arg, dep_req, dep_goal, dep_ext) = if store.has() {
         (
             quote! {__tsm_deposit: #map_ty},
             quote! {__tsm_deposit},
-            quote! {({ #(#early_helper)* __tsm_deposit == #deposit_spec }),},
+            quote! {({ #(#early_helper)* __tsm_deposit == #deposit_spec_helper }),},
             quote! {&& __tsm_deposit == State::#deposited(pre, #(#pn),*)},
             quote! {assert(::vstd::prelude::ext_equal(__tsm_deposit, State::#deposited(pre, #(#pn),*)));},
         )
@@ -2457,7 +2596,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             quote! {{
                 let (__tsm_z, pre) = choose|__tsm_z: Fragment, pre: State| pre.invariant()
                     && Fragment::op(Fragment::op(#owned_ident, #h_param), __tsm_z) == <Protocol as ::vstd::resource::tsm::Machine>::embed(pre);
-                #(#frames_post)*
+                #(#frames_ready)*
             }},
         )
     } else {
@@ -2471,6 +2610,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 #(#extra_reqs,)*
                 #owned_ident == #owned_chain,
                 #(#incl_reqs,)*
+                #(#shared_incl_reqs,)*
                 #ready_req
                 #dep_req
             ensures Protocol::#reqs_name(#owned_ident, #h_param, #dep_arg #dep_comma #(#pn),*),
@@ -2484,7 +2624,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 implies State::#enabled(pre, #(#pn),*)
                     #dep_goal
                     && State::#owners(pre, #owned_ident, #h_param, #(#pn),*) by {
-                #(#frames_post)*
+                #(#frames_ready)*
                 #dep_ext
             }
         }
@@ -2534,6 +2674,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 ({
                 let pre = __tsm_r.0;
                 #(#early_actual_helper)*
+                #(#withdrawn_binds_helper)*
                 #(#nondet)*
                 #(#late_helper)*
                 __tsm_out_frag == #expected_helper #(&& #withdraw_facts)*
@@ -2544,6 +2685,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             #witness_call
             #(#frames_post)*
             #(#early_actual_helper)*
+            #(#withdrawn_binds_helper)*
             #(#nondet)*
             #(#late_helper)*
             let __tsm_expected = #expected_helper;
@@ -2558,7 +2700,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         quote! {
             let tracked mut __tsm_deposit: #map_ty = ::vstd::imap::IMap::tracked_empty();
             #(#deposits)*
-            assert(__tsm_deposit == #deposit_spec);
+            assert(__tsm_deposit == #deposit_spec_body);
         }
     } else {
         quote! {}
@@ -2608,6 +2750,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 #owned_ident, #h, __tsm_out.fragment(), #post_args);
             #safety_after
             #(#early_actual_body)*
+            #(#withdrawn_binds_body)*
             #(#nondet)*
             #(#late_body)*
             let __tsm_expected = #expected_body;
@@ -2911,13 +3054,22 @@ fn init_method(
         takes.push(quote! {let tracked (__tsm_piece, __tsm_rest) = Protocol::#take(__tsm_rest);});
         let value = quote! {post.#fname};
         let stmt = match k {
-            Kind::Map | Kind::PersistentMap | Kind::Set | Kind::PersistentSet => {
-                let coll = if k.map_like() {
-                    quote! {::vstd::tokens::MapToken::from_map}
-                } else {
-                    quote! {::vstd::tokens::SetToken::from_map}
+            k if k.map_like() || k.set_like() => {
+                let coll = match (k.map_like(), k.infinite()) {
+                    (true, false) => quote! {::vstd::tokens::MapToken::from_map},
+                    (true, true) => quote! {::vstd::tokens::IMapToken::from_map},
+                    (false, false) => quote! {::vstd::tokens::SetToken::from_map},
+                    (false, true) => quote! {::vstd::tokens::ISetToken::from_map},
+                };
+                // An initial `imap`/`iset` collection must be finite to be split
+                // into tokens.
+                let finite = match (k.map_like(), k.infinite()) {
+                    (true, true) => quote! {assert(#value.dom().finite());},
+                    (false, true) => quote! {assert(#value.finite());},
+                    _ => quote! {},
                 };
                 quote! {
+                    #finite
                     assert(__tsm_piece.fragment() == Fragment::#factory(#value)) by {
                         ::vstd::resource::tsm_collections::Pointwise::extensionality(
                             __tsm_piece.fragment().#fname, Fragment::#factory(#value).#fname);
@@ -2941,6 +3093,7 @@ fn init_method(
                 assert(__tsm_piece.fragment() == Fragment::#factory(#value));
                 let tracked #arg = #ty::__from_raw(__tsm_piece, #value, #value);
             },
+            _ => unreachable!(),
         };
         takes.push(stmt);
     }
@@ -3090,7 +3243,19 @@ fn genericize(ts: TokenStream, g: &Gen) -> TokenStream {
         }
         if is_ident(t, "struct") || is_ident(t, "type") {
             let alias = is_ident(t, "type");
-            out.extend(g.attrs.clone().into_iter().filter(|_| !alias));
+            if !alias {
+                // Datatype attributes go before the visibility and `tracked`.
+                let mut moved = vec![];
+                while let Some(TokenTree::Ident(id)) = out.last() {
+                    if id == "pub" || id == "tracked" {
+                        moved.push(out.pop().unwrap());
+                    } else {
+                        break;
+                    }
+                }
+                out.extend(g.attrs.clone());
+                out.extend(moved.into_iter().rev());
+            }
             out.push(t.clone());
             if let Some(name) = trees.get(i + 1) {
                 out.push(name.clone());
