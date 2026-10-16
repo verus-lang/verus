@@ -308,7 +308,7 @@ pub struct Verifier {
     pub time_verify_crate: Duration,
     /// sequential part of the crate verification before parallel verification
     pub time_verify_crate_sequential: Duration,
-    /// total sequantial time spent constructing teh VIR
+    /// total sequantial time spent constructing the VIR
     pub time_vir: Duration,
     /// the time it took convert the VIR from rust AST
     pub time_vir_rust_to_vir: Duration,
