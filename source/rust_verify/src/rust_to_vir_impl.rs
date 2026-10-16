@@ -18,7 +18,7 @@ use rustc_span::{ExpnKind, Span, sym};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    AssocTypeImpl, AssocTypeImplX, Dt, Fun, FunX, Function, FunctionKind, Ident, Krate, KrateX,
+    AssocTypeImpl, AssocTypeImplX, Dt, Fun, FunX, FunctionKind, Ident, Krate, KrateX,
     Mode, Path, Trait, TraitImpl, Typ, Typs, VirErr,
 };
 

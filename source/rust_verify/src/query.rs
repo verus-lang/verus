@@ -1,13 +1,10 @@
 use crate::boundary_suggestions::build_boundary_suggestion;
 use crate::config::Args;
 use crate::context::Context;
-use crate::external::CrateItems;
-use crate::import_export::ImportOutput;
 use crate::rust_to_vir_func::FunctionOrConstInfo;
 use crate::rust_to_vir_func::finish_item;
 use crate::verifier::FuncDetails;
 use air::messages::Diagnostics;
-use std::borrow::BorrowMut;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -129,7 +126,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let vir::well_formed::WFErr { errors, boundary_errors, func_failed_proof_notes } = wf_err;
         assert!(errors.len() > 0 || boundary_errors.len() > 0);
         if errors.len() > 0 {
-            let err = self.emit_errors(errors);
+            self.emit_errors(errors);
         }
         for (path, mut err) in boundary_errors.into_iter() {
             let map = ctxt.name_def_id_map.borrow();
@@ -571,7 +568,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
                     assert!(found.is_none());
                 }
                 Ok((_, _, None, _)) => {}
-                Err(err) => unreachable!(),
+                Err(_) => unreachable!(),
             }
         }
         let krate = krate_infer_resolution(&krate, &res_infos).map_err(|e| self.emit_errors(e))?;

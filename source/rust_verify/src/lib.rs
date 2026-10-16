@@ -1,6 +1,3 @@
-#![allow(unused_variables)] // TODO remove
-#![allow(dead_code)] // TODO remove
-#![allow(unused_imports)] // TODO remove
 #![feature(rustc_private)]
 #![feature(box_patterns)]
 
