@@ -1397,3 +1397,15 @@ pub fn fn_fp_postcondition_name(op: UninterpretedFloatBinaryOp) -> Fun {
         }
     }
 }
+
+pub fn is_anon_const(f: &Fun) -> bool {
+    f.path.segments.last().is_some_and(|s| s.starts_with(RUST_DEF_ANON_CONST))
+}
+
+pub fn is_anon_const(f: &Fun) -> bool {
+    f.path.segments.last().is_some_and(|s| s.starts_with(RUST_DEF_ANON_CONST))
+}
+
+pub fn in_type_ns(s: &str) -> Ident {
+    Arc::new(RUST_DEF_TYPE_NS.to_string() + s)
+}
