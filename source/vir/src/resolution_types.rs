@@ -92,6 +92,7 @@ fn typ_node_resolvability(t: &Typ) -> NodeResolve {
         | TypX::SpecFn(..)
         | TypX::FnDef(..)
         | TypX::PointeeMetadata(..)
+        | TypX::ProjectionDeref(..)
         | TypX::TypeId
         | TypX::ConstInt(..)
         | TypX::ConstBool(..)
