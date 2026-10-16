@@ -454,6 +454,33 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
+// A cfg'd-out external_trait_extension must also drop its generated items
+// (here they would reference the nonexistent `DoesNotExist`).
+test_verify_one_file! {
+    #[test] test_trait_extension_cfg_gated verus_code! {
+        #[verifier::external]
+        trait T {
+            fn f(&self) -> u8;
+        }
+
+        #[cfg(any())]
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        trait Ex: DoesNotExist {
+            type ExternalTraitSpecificationFor: T;
+
+            spec fn s(&self) -> bool;
+
+            fn f(&self) -> (r: u8)
+                ensures
+                    self.s();
+        }
+
+        fn test() {
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] test_trait_extension_default_method_context_order verus_code! {
         use vstd::prelude::*;
