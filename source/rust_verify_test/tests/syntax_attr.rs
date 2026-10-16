@@ -1800,3 +1800,25 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    // as above, but the cfg_attr predicate does not hold (`any()`): the item still needs the
+    // empty #[verus_spec] that #[verus_verify] adds, here for its `for` loop
+    #[test] test_cfg_attr_verus_spec_in_impl_pred_false code!{
+        use vstd::prelude::*;
+        #[verus_verify]
+        struct S { x: u64 }
+
+        #[verus_verify]
+        impl S {
+            #[cfg_attr(any(), verus_spec(r => ensures r == 0))]
+            fn count(&self) -> u64 {
+                let mut n: u64 = 0;
+                for i in 0..10u64 {
+                    n = i;
+                }
+                n
+            }
+        }
+    } => Ok(())
+}
