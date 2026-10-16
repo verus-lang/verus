@@ -372,7 +372,7 @@ pub fn func_decl_to_sst(
         let obeys = async_future_spec_call(
             function,
             &function.span,
-            "obeys_deterministic_future_laws",
+            "obeys_future_laws",
             &Arc::new(TypX::Bool),
         );
         enss0.push(expr_to_exp_skip_checks(ctx, diagnostics, &ens_pars, &obeys)?);
