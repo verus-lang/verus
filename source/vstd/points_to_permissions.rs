@@ -943,6 +943,133 @@ impl<T> PointsToUnaligned<T> {
     }
 }
 
+#[cfg(verus_keep_ghost)]
+impl<T> View for PointsToUnaligned<[T]> {
+    type V = PointsToData<[T]>;
+
+    open spec fn view(&self) -> Self::V {
+        PointsToData { ptr: self.ptr(), value: self.typed_value(), bytes: self.bytes() }
+    }
+}
+
+impl<T> PointsToPhys for PointsToUnaligned<[T]> {
+    type A = [T];
+
+    /// Builds the `*mut [T]` from the underlying untyped pointer's address and provenance
+    /// and the stored metadata.
+    closed spec fn ptr(self) -> *mut [T] {
+        ptr_mut_from_data::<[T]>(
+            PtrData {
+                addr: self.pt_untyped().ptr()@.addr,
+                provenance: self.pt_untyped().ptr()@.provenance,
+                metadata: self.metadata(),
+            },
+        )
+    }
+
+    /// The size of the pointed-to region is the number of elements times the size of `T`.
+    open spec fn size(self) -> nat {
+        self.metadata() as nat * size_of::<T>()
+    }
+}
+
+impl<T> PointsToProperties for PointsToUnaligned<[T]> {
+    /// A `PointsToUnaligned<[T]>` is well-formed if its memory region is `size()` bytes,
+    /// validity of the typed memory implies that the slice has `metadata()` elements
+    /// and that the bytes decode to it,
+    /// the underlying `PointsToUntyped` is well-formed,
+    /// and the stored metadata is the pointer's metadata.
+    open spec fn wf_basic(self) -> bool {
+        &&& self.bytes().len() == self.size()
+        &&& self.is_valid() ==> {
+            &&& self.typed_value().value()@.len() == self.metadata()
+            &&& abs_decode::<[T]>(self.bytes(), self.typed_value().value())
+        }
+        &&& self.pt_untyped().wf()
+        &&& self.metadata() == self.ptr()@.metadata
+    }
+
+    /// Non-nullness follows from the underlying `PointsToUntyped`'s invariant,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
+    proof fn is_nonnull(tracked &self) {
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
+    }
+
+    /// Delegates to the underlying `PointsToUntyped`'s `ptr_bounds`,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
+    proof fn ptr_bounds(tracked &self) {
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
+
+        self.pt_untyped.ptr_bounds();
+    }
+
+    /// Delegates to the underlying `PointsToUntyped`'s `provenance_not_none`.
+    proof fn provenance_not_none(tracked &self) {
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
+
+        self.pt_untyped.provenance_not_none();
+    }
+
+    /// Delegates to the underlying `PointsToUntyped`'s `is_disjoint`,
+    /// since the two permissions track the same memory range.
+    proof fn is_disjoint<OtherPointsToPerm: PointsToPhys>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    ) {
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
+
+        self.pt_untyped.is_disjoint(other);
+    }
+
+    /// `new` has the same pointer (so the same metadata) as `old`,
+    /// and the same underlying `PointsToUntyped` pointers and length.
+    /// If `new` is valid, its slice has `old`'s number of elements
+    /// (the length doesn't change, even if the typed value does),
+    /// and `new`'s bytes decode to it.
+    open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& PointsToUntyped::ptrs_len_same_valid(old.pt_untyped(), new.pt_untyped())
+        &&& new.is_valid() ==> {
+            &&& new.typed_value().value()@.len() == old.metadata()
+            &&& abs_decode::<[T]>(new.bytes(), new.typed_value().value())
+        }
+    }
+
+    /// Delegates to `PointsToUntyped::stays_wf` for the underlying bytes.
+    proof fn stays_wf_basic(old: Self, new: Self) {
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
+
+        PointsToUntyped::stays_wf(old.pt_untyped(), new.pt_untyped());
+    }
+}
+
+impl<T> PointsToUnaligned<[T]> {
+    /// Well-formedness is defined in the `PointsToProperties` trait function `wf_basic`.
+    pub open spec fn wf(&self) -> bool {
+        self.wf_basic()
+    }
+}
+
 /**
 Permission to access possibly-initialized, _typed_ memory.
 
@@ -1012,7 +1139,7 @@ pub tracked struct PointsTo<T: ?Sized> {
 /// (To be pedantic, the bytes might be initialized in Rust's abstract machine,
 ///  but we don't know, so we have to pretend they're uninitialized.)
 #[cfg(verus_keep_ghost)]
-pub ghost struct PointsToData<T> {
+pub ghost struct PointsToData<T: ?Sized> {
     pub ptr: *mut T,
     pub value: TypedValue<T>,
     pub bytes: Seq<AbstractByte>,
@@ -1148,6 +1275,83 @@ impl<T> PointsToProperties for PointsTo<T> {
     /// Delegates to `PointsToUnaligned::stays_wf`.
     proof fn stays_wf_basic(old: Self, new: Self) {
         PointsToUnaligned::<T>::stays_wf(old.pt_unaligned(), new.pt_unaligned());
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+impl<T> View for PointsTo<[T]> {
+    type V = PointsToData<[T]>;
+
+    open spec fn view(&self) -> Self::V {
+        PointsToData { ptr: self.ptr(), value: self.typed_value(), bytes: self.bytes() }
+    }
+}
+
+impl<T> PointsToPhys for PointsTo<[T]> {
+    type A = [T];
+
+    /// Delegates to the underlying `PointsToUnaligned`'s pointer.
+    open spec fn ptr(self) -> *mut [T] {
+        self.pt_unaligned().ptr()
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`'s size.
+    open spec fn size(self) -> nat {
+        self.pt_unaligned().size()
+    }
+}
+
+impl<T> PointsToProperties for PointsTo<[T]> {
+    /// A `PointsTo<[T]>` is well-formed if its pointer is aligned to `T`,
+    /// and the underlying `PointsToUnaligned` is well-formed.
+    open spec fn wf_basic(self) -> bool {
+        &&& self.ptr()@.addr as nat % align_of::<T>() == 0
+        &&& self.pt_unaligned().wf()
+    }
+
+    /// Non-nullness follows from the underlying `PointsToUnaligned`'s invariant,
+    /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
+    proof fn is_nonnull(tracked &self) {
+        self.pt_unaligned.is_nonnull();
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`'s `ptr_bounds`,
+    /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
+    proof fn ptr_bounds(tracked &self) {
+        self.pt_unaligned.ptr_bounds();
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`'s `provenance_not_none`.
+    proof fn provenance_not_none(tracked &self) {
+        self.pt_unaligned.provenance_not_none();
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`'s `is_disjoint`,
+    /// since the two permissions track the same memory range.
+    proof fn is_disjoint<OtherPointsToPerm: PointsToPhys>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    ) {
+        self.pt_unaligned.is_disjoint(other);
+    }
+
+    /// `new` has the same pointer as `old`, and they satisfy the `PointsToUnaligned` requirements
+    /// for preserving well-formed-ness.
+    open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& PointsToUnaligned::<[T]>::ptrs_len_same_valid(old.pt_unaligned(), new.pt_unaligned())
+    }
+
+    /// Delegates to `PointsToUnaligned`'s `stays_wf_basic`.
+    proof fn stays_wf_basic(old: Self, new: Self) {
+        PointsToUnaligned::<[T]>::stays_wf_basic(old.pt_unaligned(), new.pt_unaligned());
+    }
+}
+
+impl<T> PointsTo<[T]> {
+    /// Well-formedness is defined in the `PointsToProperties` trait function `wf_basic`.
+    pub open spec fn wf(&self) -> bool {
+        self.wf_basic()
     }
 }
 

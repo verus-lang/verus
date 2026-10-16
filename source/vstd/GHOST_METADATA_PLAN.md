@@ -88,7 +88,7 @@ Each step should leave the builds green:
   `verus_verify_core`, builtin's `Tracked` `Deref` / `DerefMut` impls are cfg'd out, because rustlib
   provides its own const `Deref` impl for `Tracked`, so that configuration has to be tested there.
 
-### Step 1: add the field; update the Sized construction sites (no proof changes expected)
+### Step 1: add the field; update the Sized construction sites (done)
 
 Check that `Ghost<Metadata<T>>` compiles in both configurations above, including the non-ghost
 compile, where `Metadata<T>` is `FakeMetadata<T>`.
@@ -107,7 +107,11 @@ compile, where `Metadata<T>` is `FakeMetadata<T>`.
   `pub closed spec fn metadata(self) -> Metadata<T> { self.metadata@ }`, and an open delegating
   `PointsTo::metadata()`.
 
-### Step 2: slice trait impls
+### Step 2: slice trait impls (done)
+
+Implemented as below, plus inherent `wf()` (= `wf_basic()`) on `PointsToUnaligned<[E]>` and
+`PointsTo<[E]>`, which Rust accepts alongside the Sized `wf()`. `PointsTo<[E]>::size()` delegates
+to `pt_unaligned().size()`. No `View` for slices yet.
 
 ```rust
 impl<E> PointsToPhys for PointsToUnaligned<[E]> {
