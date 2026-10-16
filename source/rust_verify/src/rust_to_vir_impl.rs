@@ -66,7 +66,7 @@ impl ExternalInfo {
     ) -> Option<bool> {
         match self.type_id_map.get(&def_id).copied() {
             None => {
-                let path = def_id_to_vir_path_option(ctxt.tcx, Some(&*ctxt.verus_items), def_id);
+                let path = def_id_to_vir_path_option(ctxt.tcx, &*ctxt.verus_items, def_id);
                 let has = path.and_then(|p| self.type_paths.get(&p).copied());
                 self.type_id_map.insert(def_id, has);
                 has
@@ -675,7 +675,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     for c in tcx.crates(()) {
         assert!(*c != rustc_span::def_id::LOCAL_CRATE);
         for trait_id in tcx.traits(*c) {
-            let path = def_id_to_vir_path_option(tcx, Some(&ctxt.verus_items), *trait_id);
+            let path = def_id_to_vir_path_option(tcx, &ctxt.verus_items, *trait_id);
             if let Some(path) = path {
                 if all_traits.contains(&path) {
                     all_trait_ids.push(*trait_id);

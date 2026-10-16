@@ -610,7 +610,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
         if let Item { kind: ItemKind::Mod(_ident, _module), owner_id, .. } = item {
             forbid_unsafe_attributes(tcx, *owner_id, &mut errors);
             let path =
-                def_id_to_vir_path_option(ctxt.tcx, Some(&ctxt.verus_items), owner_id.to_def_id());
+                def_id_to_vir_path_option(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
             if let Some(path) = path {
                 if used_modules.contains(&path) {
                     vir.modules.push(ctxt.spanned_new(
