@@ -2115,7 +2115,10 @@ impl Verifier {
         let source_map = compiler.sess.source_map();
 
         self.num_threads = if self.args.no_verify {
-            1
+            // (at most one per bucket: with no buckets, the worker pool's reporter loop below
+            // would wait for a message no worker sends; --no-verify --build-sst on a crate
+            // without verified functions hung)
+            std::cmp::min(1, bucket_ids.len())
         } else {
             std::cmp::min(self.args.num_threads, bucket_ids.len())
         };
