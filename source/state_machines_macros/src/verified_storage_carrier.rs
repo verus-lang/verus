@@ -18,6 +18,20 @@ pub struct Carrier {
 }
 
 impl Carrier {
+    /// Case split on the storage tag, for any carrier layout.
+    pub fn tagged_cases(&self, index: TokenStream, goal: TokenStream) -> TokenStream {
+        let key = &self.key_expr;
+        let arms:Vec<_> = self.fields.iter().map(|field| {
+            let n=&field.name;
+            if matches!(field.stype,ShardableType::StorageOption(_)) {
+                quote!{#key::#n=>{assert(#goal);},}
+            } else {
+                quote!{#key::#n(..)=>{assert(#goal);},}
+            }
+        }).collect();
+        quote!{match #index {#(#arms)*_=>{assert(#goal);}}}
+    }
+
     pub fn pointwise(&self, index: TokenStream, goal: TokenStream) -> TokenStream {
         if !self.homogeneous { return quote!{}; }
         let key = &self.key_expr;

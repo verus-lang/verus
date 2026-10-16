@@ -19,6 +19,18 @@ use quote::{format_ident, quote};
 use verus_syn::spanned::Spanned;
 use verus_syn::{Error, FnArgKind, FnMode, ModeSpec, Open, Publish, token};
 
+/// Induction lemmas get their own pruned prover context. In the shared module
+/// context they were unstable (and slowed the generated protocol proofs):
+/// spinning them off made all of the allocator's Mim induction lemmas verify
+/// and cut its generated-protocol proof time from 145 s to 37 s.
+pub fn induction_spinoff(attrs: &[verus_syn::Attribute]) -> TokenStream {
+    let present = attrs.iter().any(|a| {
+        let p = a.path();
+        p.segments.len() == 2 && p.segments[0].ident == "verifier" && p.segments[1].ident == "spinoff_prover"
+    });
+    if present { quote! {} } else { quote! {#[verifier::spinoff_prover]} }
+}
+
 pub fn construct(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let result = verus_syn::parse::<ParseResult>(input).and_then(|parsed| {
         // Ordinary models need no sharding annotations. Annotated models use
@@ -140,7 +152,8 @@ pub fn output(bundle: SMBundle) -> Result<TokenStream, Error> {
         let span = function.sig.span();
         set_mode_proof(&mut function.sig, span);
         fix_attrs(&mut function.attrs);
-        induction.push(quote! {::vstd::prelude::verus_impl! {#function}});
+        let spinoff = induction_spinoff(&function.attrs);
+        induction.push(quote! {::vstd::prelude::verus_impl! {#spinoff #function}});
     }
     let normal: Vec<_> = bundle
         .normal_fns

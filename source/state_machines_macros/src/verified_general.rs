@@ -418,6 +418,31 @@ fn deposit_expression_mode(
     })
 }
 
+/// `have` operations on exclusive map fields with a key, in a guard property.
+fn guard_map_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<(Ident, verus_syn::Expr)> {
+    let mut out = vec![];
+    fn walk(s: &TransitionStmt, fields: &HashMap<String, Field>, out: &mut Vec<(Ident, verus_syn::Expr)>) {
+        match s {
+            TransitionStmt::Block(_, xs) => xs.iter().for_each(|x| walk(x, fields, out)),
+            TransitionStmt::Split(_, k, xs) => {
+                if let SplitKind::Special(n, op, _, _) = &**k {
+                    if matches!(op.stmt, MonoidStmtType::Have)
+                        && matches!(fields[&n.to_string()].stype, ShardableType::Map(..) | ShardableType::IMap(..))
+                    {
+                        if let MonoidElt::SingletonKV(key, _) = &op.elt {
+                            out.push((n.clone(), key.clone()));
+                        }
+                    }
+                }
+                xs.iter().for_each(|x| walk(x, fields, out));
+            }
+            _ => {}
+        }
+    }
+    walk(s, fields, &mut out);
+    out
+}
+
 fn guarded_expression(
     s: &TransitionStmt,
     fields: &HashMap<String, Field>,
@@ -799,7 +824,8 @@ pub fn output_with_ready(
                     }).collect()
             } else {vec![]};
             f.block = verus_syn::parse2(quote! {{requires(#cond);ensures(post.invariant());#b #(#cardinality_hints)*}})?;
-            lemmas.push(quote! {::vstd::prelude::verus_impl!{#f}});
+            let spinoff=crate::verified_model::induction_spinoff(&f.attrs);
+            lemmas.push(quote! {::vstd::prelude::verus_impl!{#spinoff #f}});
         }
         let init_alias = if init {
             quote! {pub open spec fn #n(post:#st,#(#params),*)->bool {Self::#strong(post,#(#pn),*)}}
@@ -902,6 +928,53 @@ pub fn output_with_ready(
             let (storage_n, key, val, _) = storage.as_ref().unwrap();
             let guarded = format_ident!("{}_guarded", n);
             let expression = guarded_expression(&tr.body, &fields, carrier.as_ref())?;
+            // Values bound by `have m >= [k => ..]` on exclusive map fields are
+            // observed from the owned fragment at k, so the guarded value stays
+            // a function of the fragment and is linked to `pre` by map_owned_frame.
+            let map_haves = guard_map_haves(&tr.body, &fields);
+            let mut observed_fields: Vec<(Ident, Vec<verus_syn::Expr>)> = vec![];
+            for (field, key) in &map_haves {
+                match observed_fields.iter_mut().find(|(n, _)| n == field) {
+                    Some((_, keys)) => keys.push(key.clone()),
+                    None => observed_fields.push((field.clone(), vec![key.clone()])),
+                }
+            }
+            let observed_base = if observed_fields.is_empty() {
+                quote! {Self::__observed(f)}
+            } else {
+                let updates: Vec<_> = observed_fields.iter().map(|(field, keys)| {
+                    let inserts = keys.iter().map(|k| quote! {.insert(#k, f.#field.at(#k)->Some_0->Exclusive_0)});
+                    let empty = match fields[&field.to_string()].stype {
+                        ShardableType::IMap(..) => quote! {::vstd::imap::IMap::empty()},
+                        _ => quote! {::vstd::map::Map::empty()},
+                    };
+                    quote! {#field: #empty #(#inserts)*}
+                }).collect();
+                quote! {#se{#(#updates,)* ..Self::__observed(f)}}
+            };
+            let observed_links: Vec<_> = map_haves.iter().map(|(field, key)| {
+                let imap = match fields[&field.to_string()].stype {
+                    ShardableType::IMap(..) => quote! {pre.#field},
+                    _ => quote! {pre.#field.to_imap()},
+                };
+                quote! {
+                    ::vstd::resource::tsm_collections::map_owned_frame(f.#field, z.#field, #imap, #key,
+                        f.#field.at(#key)->Some_0->Exclusive_0);
+                }
+            }).collect();
+            // Tagged multi-field carriers need a per-tag split to lift the
+            // field-level guard fact to the combined storage map.
+            let guard_cases = match carrier.as_ref() {
+                Some(c) => {
+                    let k = format_ident!("__tsm_guard_key", span = proc_macro2::Span::mixed_site());
+                    let kt = &c.key;
+                    let goal = quote! {Self::storage(pre).contains_key(#k)
+                        && Self::storage(pre)[#k] == Self::#guarded(f,#(#pn),*)[#k]};
+                    let cases = c.tagged_cases(quote! {#k}, goal.clone());
+                    quote! {assert forall|#k:#kt| Self::#guarded(f,#(#pn),*).contains_key(#k) implies #goal by {#cases}}
+                }
+                None => quote! {},
+            };
             relations.push(quote!{pub open spec fn #guarded(pre:#st,#(#params),*)->IMap<#key,#val>{#expression}});
             let observed_req: Vec<_> = names
                 .iter()
@@ -922,7 +995,7 @@ pub fn output_with_ready(
                 })
                 .collect();
             ops.push(quote!{
-                pub open spec fn #guarded(f:#ft,#(#params),*)->IMap<#key,#val>{#se::#guarded(Self::__observed(f),#(#pn),*)}
+                pub open spec fn #guarded(f:#ft,#(#params),*)->IMap<#key,#val>{#se::#guarded(#observed_base,#(#pn),*)}
                 pub open spec fn #req(f:#ft,#(#params),*)->bool {
                     true #(&& #observed_req)* &&
                     forall|z:#ft,pre:#st|::vstd::prelude::imply(pre.invariant()&&<#ft>::op(f,z)==Self::embed(pre),
@@ -938,7 +1011,11 @@ pub fn output_with_ready(
                         assert(#se::#enabled(pre,#(#pn),*));
                         let post=#se::#run(pre,#(#pn),*);
                         assert(true #(&& #observe_equal)*);
+                        #(#observed_links)*
                         assert(#se::#guarded(pre,#(#pn),*)==Self::#guarded(f,#(#pn),*));
+                        // The guard's storage fact (with its user proof) comes from safety.
+                        #se::#safety(pre,#(#pn),*);
+                        #guard_cases
                         assert(Self::#guarded(f,#(#pn),*).submap_of(Self::storage(pre)));
                     }
                 }

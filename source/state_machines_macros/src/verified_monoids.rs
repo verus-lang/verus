@@ -248,7 +248,13 @@ fn effect_expression(s: &TransitionStmt, f: &Field, kind: EffectOp) -> Result<To
     }
     Ok(match s {
         TransitionStmt::Block(_, xs) => {
-            effect_expression(xs.iter().find(|s| has_effect(s, &f.name, kind)).unwrap(), f, kind)?
+            // Sequential modifiers of one kind compose into one operand.
+            let mut parts = vec![];
+            for x in xs.iter().filter(|s| has_effect(s, &f.name, kind)) {
+                parts.push(effect_expression(x, f, kind)?);
+            }
+            let first = parts.remove(0);
+            parts.into_iter().fold(first, |a, b| sequential(f, a, b))
         }
         TransitionStmt::Split(span, k, xs) => match &**k {
             SplitKind::Let(p, t, _, e) => {
@@ -280,7 +286,12 @@ fn effect_expression(s: &TransitionStmt, f: &Field, kind: EffectOp) -> Result<To
             }
             SplitKind::Special(n, op, _, _) if n == &f.name && wanted(op, kind) => {
                 let value = element(f, op, *span)?;
-                quote! {Some(#value)}
+                match xs.first() {
+                    Some(rest) if has_effect(rest, &f.name, kind) => {
+                        sequential(f, quote! {Some(#value)}, effect_expression(rest, f, kind)?)
+                    }
+                    _ => quote! {Some(#value)},
+                }
             }
             SplitKind::Special(n, op, _, Some(p)) => {
                 let value = match &op.elt {
@@ -295,6 +306,22 @@ fn effect_expression(s: &TransitionStmt, f: &Field, kind: EffectOp) -> Result<To
         },
         _ => quote! {None},
     })
+}
+
+// Compose two optional operands of the same modifier kind. Only map and
+// multiset fields reach this: `analyze` rejects repeated modifiers elsewhere.
+// For maps, the transition's enabling condition makes repeated removals (and
+// additions) key-disjoint, so the union is the combined operand.
+fn sequential(f: &Field, a: TokenStream, b: TokenStream) -> TokenStream {
+    let combine = match f.stype {
+        ShardableType::Multiset(_) => quote! {x.add(y)},
+        _ => quote! {x.union_prefer_right(y)},
+    };
+    // Nested rather than tuple matches: see the vstd resource-algebra ops.
+    quote! {match #a {
+        Some(x) => match #b { Some(y) => Some(#combine), None => Some(x) },
+        None => #b,
+    }}
 }
 
 fn collect(
@@ -500,7 +527,9 @@ pub fn analyze(tr: &Transition, fields: &HashMap<String, Field>) -> Result<Vec<E
             let new=effect_expression(&tr.body,&field,EffectOp::Add)?;
             quote!{match (#old,#new){(Some(old),Some(new))=>Some((old,new)),_=>None}}
         }else{
-            if counts[&n]>1{return Err(Error::new(*tr.body.get_span(),"verified monoids permit at most one modifier per field on each execution path"));}
+            if counts[&n]>1&&!matches!(field.stype,ShardableType::Map(..)|ShardableType::IMap(..)|ShardableType::Multiset(_)){
+                return Err(Error::new(*tr.body.get_span(),"verified monoids permit at most one modifier per field on each execution path"));
+            }
             effect_expression(&tr.body,&field,op)?
         };
         Ok(Effect{function:format_ident!("{}_{}_effect",tr.name,field.name),field,op,expression,replacement})

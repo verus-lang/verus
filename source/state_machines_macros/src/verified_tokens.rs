@@ -602,7 +602,8 @@ pub fn output(bundle: SMBundle) -> Result<TokenStream, Error> {
             f.block = verus_syn::parse2(
                 quote! {{ requires(#condition); ensures(post.invariant()); #body }},
             )?;
-            induction.push(quote! { ::vstd::prelude::verus_impl! { #f } });
+            let spinoff = crate::verified_model::induction_spinoff(&f.attrs);
+            induction.push(quote! { ::vstd::prelude::verus_impl! { #spinoff #f } });
         }
         relations.push(quote! {
             pub open spec fn #next(s: #state_ty, #(#params),*) -> #state_ty { #state_expr { #marker_value #(#next_fields),* } }
