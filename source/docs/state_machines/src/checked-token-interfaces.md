@@ -2,19 +2,27 @@
 
 `verified_tokenized_state_machine!` accepts the same machine syntax as
 `tokenized_state_machine!`, but the operations on the ghost resources it generates are
-proved rather than trusted. Two attributes select how clients see those resources:
+proved rather than trusted. It offers two interfaces to those resources:
 
-* `#[verified_raw_tokens]` exposes the machine's resource algebra directly. A client
-  owns fragments of the whole product algebra and calls operations whose
-  preconditions are stated over fragments.
-* `#[verified_generic_tokens]` generates the interface of the trusted
+* The **generic interface** is the default. It generates the interface of the trusted
   `tokenized_state_machine!`: one token type per field, `Instance` methods with the
   same signatures and specifications, and implementations of the `vstd::tokens`
   traits. Every method body is a proof that calls the corresponding raw operation.
+  `#[verified_generic_tokens]` selects it explicitly; the attribute is optional.
+* `#[verified_raw_tokens]` exposes the machine's resource algebra directly. A client
+  owns fragments of the whole product algebra and calls operations whose
+  preconditions are stated over fragments.
 
 The two interfaces share the generated model and its proofs. The generic interface is
 a layer over the raw one: it adds no assumptions and no external bodies. This chapter
 describes the shared model, then each interface, then how they differ.
+
+The attributes are written before the machine name, e.g.
+`verified_tokenized_state_machine!{ #[verified_raw_tokens] X { .. } }`. Combining the
+two, repeating one, or giving one arguments is an error. The former
+`#[verified_field_tokens]` attribute marked the earlier default, a set of
+field-shape-specific interfaces; it was removed together with them and is now
+rejected with a diagnostic.
 
 ## The shared model
 
@@ -133,6 +141,21 @@ extracted with `t_witness`. Readonly transitions and properties take a borrowed
 token and ensure facts about every completion. Storage guards return a shared
 reference into the guarded storage map.
 
+### Local readiness
+
+`#[verified_local_ready(t, ..)]`, written next to `#[verified_raw_tokens]` (it is
+rejected without it), adds operations for the named mutating transitions whose
+precondition is local. `Protocol::t_local_requires(owned, shared, deposit, x)` states
+`t`'s `require`s, its ownership condition and its deposit over the state observed in
+`owned · shared` alone (`Protocol::__observed`), without quantifying over
+completions. The generated lemma `t_local_ready` proves that it implies
+`t_requires`, for every completion; `t_local` and `t_local_with_shared` are `t`
+with the local precondition, and `t_observed` also returns ghost `before`, `after`
+and `frame` values of one compatible completion together with the withdrawn map.
+These states describe some completion, not a distinguished global history. A
+transition qualifies only if its `require`s can be read from the supplied
+components; otherwise the macro rejects it or the generated lemma fails to verify.
+
 So the raw interface puts the separation-logic reasoning in the client: the client
 chooses fragments and proves the quantified preconditions. It is the more
 expressive of the two interfaces:
@@ -145,7 +168,7 @@ compatible with clients written against `tokenized_state_machine!`.
 
 ## The generic interface
 
-With `#[verified_generic_tokens]` the macro generates the declarations that
+By default (or with `#[verified_generic_tokens]`) the macro generates the declarations that
 `tokenized_state_machine!` would generate. The method signatures and their
 `requires`/`ensures` clauses are produced by the same code
 (`concurrency_tokens::exchange_parts`). A client of the trusted macro is therefore,
@@ -312,20 +335,31 @@ without storage fields uses the plain `vstd::resource::tsm::Token`.
     strategies) collections for all collection strategies;
   * guards with one output.
 
-  Borrowed token collections of the finite strategies (`have f >= (e)` for `map`,
-  `set`, `multiset`, `option` and their persistent variants, in an operation with
-  something to prove: the `vstd::tokens` collection types give no access to their
-  tokens through a shared reference), a borrowed `imap`/`iset` collection as the
-  only borrowed input, guards without a borrowed token, general withdrawals from a
-  tagged `storage_imap`, and labels are rejected at expansion time.
+  The following are rejected at expansion time:
+  * borrowed token collections of the finite strategies (`have f >= (e)` for
+    `map`, `set`, `multiset`, `option`, `bool` and their persistent variants, in an
+    operation with something to prove: the `vstd::tokens` collection types give no
+    access to their tokens through a shared reference), and a borrowed
+    `imap`/`iset` collection as the only borrowed input;
+  * guards without a borrowed token, and guards of a general element
+    (`guard f >= (e)`);
+  * an operation that reads a constant but has no token of the instance (such as a
+    property whose assertion reads only constants);
+  * general withdrawals from a tagged `storage_imap`;
+  * the storage layout of exactly one `option`, one `map`/`imap`, one
+    `storage_option` and one `storage_map`/`storage_imap` field, which the raw
+    backend stores in a homogeneous carrier;
+  * labels.
+
+  For these, use `#[verified_raw_tokens]`.
 
 ## Comparison
 
-| | `#[verified_raw_tokens]` | `#[verified_generic_tokens]` |
+| | `#[verified_raw_tokens]` | Generic (default, or `#[verified_generic_tokens]`) |
 | --- | --- | --- |
 | Client-held resource | `Token`: an arbitrary fragment of the product algebra | One type per field; each owns `ι_i(e)` for a singleton `e` |
 | Splitting and combining | Explicit, by fragment arithmetic (`split`, `join`) | By the operations' signatures and token collections |
-| Operation preconditions | Quantified over all completions of the input fragments; proved by the client | Stated over tokens' ghost data, as in the trusted macro; the completion argument is generated |
+| Operation preconditions | Quantified over all completions of the input fragments; proved by the client (or local, with `#[verified_local_ready]`) | Stated over tokens' ghost data, as in the trusted macro; the completion argument is generated |
 | Operation postconditions | Output fragment, or an existential over a completion and successor state | Values of the output tokens, as in the trusted macro |
 | `Instance` | None; the location is that of the token | `Copy` value carrying the location (and a shared token with the constants) |
 | Operations without input tokens | Take a token of the instance (it may own the unit fragment) | Take a `Unit` in machines with storage; unchanged otherwise |
@@ -346,5 +380,7 @@ Both interfaces allow a storage payload to contain the machine's own tokens.
 Verus's strict-positivity check applies to the resulting datatype cycle and rejects
 negative occurrences, such as a token type in the argument of a `spec_fn`.
 
-Without either attribute, the macro selects one of several field-specific interfaces
-based on the machine's fields. Those are outside the scope of this chapter.
+Without an attribute the macro generates the generic interface. Earlier versions
+instead selected one of several field-specific interfaces from the exact shape of the
+machine's fields (with `#[verified_field_tokens]` as an explicit marker, and
+`#[verified_local_ready]` on that route); those interfaces have been removed.

@@ -1,6 +1,8 @@
 # Checked state-machine example ergonomics
 
-The checked examples keep the original Rust guide models, helper names, and client structure. `verified_tokenized_state_machine!` supplies typed field tokens and `Instance` methods by default. The old `#[verified_field_tokens]` marker remains accepted for compatibility; new typed clients do not need it. `#[verified_raw_tokens]` explicitly selects the checked low-level protocol interface when a caller needs it. This flag changes the interface, not the proof obligations or permission model.
+The checked examples keep the original Rust guide models, helper names, and client structure. `verified_tokenized_state_machine!` supplies the trusted macro's field tokens and `Instance` methods (the generic interface) by default. `#[verified_raw_tokens]` explicitly selects the checked low-level protocol interface when a caller needs it. This flag changes the interface, not the proof obligations or permission model.
+
+Note: the audit below (and [ERGONOMICS_AUDIT.json](ERGONOMICS_AUDIT.json)) was recorded when the default was a set of field-shape-specific interfaces, which have since been removed together with the `#[verified_field_tokens]` marker. Its hashes, the LLCRT application rows and the recorded API adaptations (`InstanceInfo`, owned instances, mutable persistent clones) describe that earlier interface, not the current one.
 
 ```rust
 use verus_state_machines_macros::verified_tokenized_state_machine;

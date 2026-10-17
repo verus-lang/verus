@@ -17,7 +17,7 @@ and storage libraries. Those libraries still contain trusted primitives.
 | Tokens | Generated proof objects and trusted token-trait implementations | Tracked owners backed by PCM or storage resources |
 | Exchange | Trusted method promises the declared token effects | Method proves an update or storage exchange that preserves compatible frames |
 | Storage guard | Trusted contract returns a borrowed permission | Checked guard condition is passed to the existing storage primitive |
-| Persistent duplication | Trusted clone and `Copy` where the generator permits them | Proof of idempotent duplication; receiver mode depends on the representation |
+| Persistent duplication | Trusted clone and `Copy` where the generator permits them | `Copy` tokens holding a shared reference to an idempotent resource |
 | Execution | Client supplies the synchronization algorithm | Client still supplies the algorithm; generated protocol operations are proof code |
 
 ## Frontend and code generation
@@ -35,17 +35,19 @@ The common frontend includes [parse_token_stream.rs](../state_machines_macros/sr
 [token_transition_checks.rs](../state_machines_macros/src/token_transition_checks.rs),
 and [lemmas.rs](../state_machines_macros/src/lemmas.rs).
 
-The checked dispatcher examines field kinds, transition syntax, and selected
-readiness methods. It chooses an emitter for the supported combination. Some
-emitters generate the complete resource model and field API together. Others
-append a nominal field API to the generated protocol module.
-
-Nominal field APIs are the default. `#[verified_raw_tokens]` selects the checked
-aggregate resource API. `#[verified_field_tokens]` remains a compatibility
-marker. Duplicate, conflicting, or argument-bearing selection markers produce
-diagnostics. An unsupported nominal declaration does not silently select raw
-tokens. [verified_field_tokens.rs](../state_machines_macros/src/verified_field_tokens.rs)
-contains the API append operation and several field API routes.
+The checked dispatcher selects one of two interfaces. By default (or with
+`#[verified_generic_tokens]`) it generates the raw protocol with the general
+emitter and appends the generic field-token interface of
+[verified_generic_tokens.rs](../state_machines_macros/src/verified_generic_tokens.rs):
+the trusted macro's token types and `Instance` methods, with proofs. With
+`#[verified_raw_tokens]` it generates only the raw protocol, using the
+straight-line emitter where it applies and the general emitter otherwise, plus
+the operations selected by `#[verified_local_ready(..)]`. Duplicate, conflicting,
+or argument-bearing markers produce diagnostics, as do `#[verified_local_ready]`
+without `#[verified_raw_tokens]` and the removed `#[verified_field_tokens]`. A
+declaration that the generic interface does not support is rejected; the macro
+does not silently select raw tokens. (Earlier versions selected one of several
+field-shape-specific interfaces by default; those were removed.)
 
 `verified_state_machine_model!` is a separate mathematical-model entrypoint.
 [verified_model.rs](../state_machines_macros/src/verified_model.rs) generates
@@ -106,10 +108,7 @@ The generated `Token` alias refers to the library's `Token<Protocol>` or
 carrier `StorageCarrier`) has no trait bounds. A storage payload that contains
 the machine's own tokens is then an ordinary datatype cycle, checked by Verus's
 strict-positivity rule, rather than a cycle through the `StorageMachine` impl,
-which Verus rejects outright. The dedicated owned-storage route
-instead constructs its checked exclusive resource model in
-[verified_storage_owned_imap.rs](../state_machines_macros/src/verified_storage_owned_imap.rs).
-That route supports its full-state key expressions using actual owned storage.
+which Verus rejects outright.
 
 ## Relations, safety, induction, and updates
 
@@ -156,15 +155,16 @@ effects. The supporting implementations include
 [collections](../vstd/resource/tsm_collections.rs), and
 [persistent resources](../vstd/resource/tsm_persistent.rs).
 
-Nominal wrappers restrict an actual fragment to a particular field role.
-Private constructors and type invariants connect their getters and descriptors
-to that resource. Entry wrappers distinguish one entry from a collection owner.
-Split, join, removal, and insertion methods transform owned resources; they do
-not obtain ownership from a map, count, or instance identifier in specification
-code. Representative implementations are
-[field roles](../state_machines_macros/src/verified_field_storage_roles.rs),
-[IMap roles](../state_machines_macros/src/verified_field_storage_imap_roles.rs),
-and [collections](../state_machines_macros/src/verified_field_storage_collections.rs).
+A generic field token owns exactly the fragment of one field element. Its type
+invariant ties its ghost data (key, value, element or count) to the raw token it
+holds, or marks it as a placeholder with an instance identifier that no real
+instance has. Collection types of the infinite strategies hold one raw token for a
+possibly infinite part plus finitely many individual tokens. Operations join the
+input tokens' fragments, prove the raw precondition from the trusted-style one,
+call the raw operation, and split the output fragment into the promised tokens; no
+operation obtains ownership from a map, count or instance identifier in
+specification code. The representation and proofs are described in
+[Checked tokens: raw and generic interfaces](state_machines/src/checked-token-interfaces.md).
 
 Physical storage belongs to the storage resource rather than an ordinary
 logical field token. Deposits consume tracked payloads. Withdrawals return
@@ -181,37 +181,29 @@ equalities before tracked extraction.
 
 ## Instances, metadata, and duplication
 
-The original generator treats an instance as a cloneable, copyable protocol
-handle. Its trusted clone promises complete value equality. Checked instance
-representations retain tracked ownership or a checked initialization witness.
-Their clone methods generally promise identifier and constant agreement,
-without promising equality of the complete representation.
+Both generators treat an instance as a copyable handle, and both `clone`
+methods promise `out == *self`. The original instance is a trusted token. The
+generic interface's `Instance` is not a resource: it holds the protocol location
+and, where needed, `&'static` references to leaked shared resources (a unit token,
+or a descriptor of the constants), so copying it duplicates no ownership. Its
+`id()` is a function of the location. Operations that change resources take the
+field tokens that own the affected fragments; an operation without such a token
+in a machine with storage takes a `Unit` token of the instance.
 
-Some routes expose a ghost `InstanceInfo` containing an identifier and constants.
-It is a description, not a token owner. Methods that change resources still
-require the corresponding tracked owners. The
-[mixed-storage field API](../state_machines_macros/src/verified_field_storage_wide.rs)
-shows this separation and its initialization facts.
-
-The record lets ghost tickets compare identifiers and constants without
-cloning an operational instance. Its equality compares metadata rather than
-the opaque instance representation. This is an API convenience, not a logical
-necessity: ghost instance snapshots could instead compare the same getters.
-`InstanceInfo` is generated only by the routes that provide this interface.
-
-Persistent logical ownership can be duplicated when its component is
-idempotent. Some wrappers use a shared tracked receiver. Others split and
-restore an actual token slot through a mutable tracked receiver.
-The lack of `Copy`, or the need for a mutable receiver, is a representation and
-API constraint of these implementations. It is not a claim that persistent
-ownership is logically impossible to duplicate. Ordinary exclusive owners and
-physical permissions do not acquire persistence from a clone method.
+Persistent tokens hold a leaked `&'static` raw token whose fragment is
+idempotent. They are `Copy`, and their `clone` promises equality, as in the
+trusted macro. Ordinary exclusive owners and physical permissions are not `Copy`
+and have no clone method.
 
 ## Local readiness and state observations
 
-`#[verified_local_ready(...)]` adds methods such as `change_local_ready`,
-`change_local`, and `change_observed`. The implementation is in
+`#[verified_local_ready(...)]`, with `#[verified_raw_tokens]`, adds raw
+operations such as `change_local_ready`, `change_local`, and `change_observed`.
+The implementation is in
 [verified_readiness.rs](../state_machines_macros/src/verified_readiness.rs).
+The generic interface needs no such selection: its preconditions are already
+stated over the supplied tokens, and its generated proofs derive the raw
+precondition for every completion.
 A local requirement can use facts visible in supplied fragments. Its generated
 proof must establish readiness for **every** compatible invariant-satisfying
 completion, including the ownership and deposit conditions.
@@ -233,11 +225,12 @@ Checked machine-library theorems connect generated obligations to these
 primitives. This implementation is not an axiom-free proof of the whole system.
 Client assumptions, trusted specifications, and verifier trust remain separate.
 
-Backend support is combination-dependent. Specialized routes cover more
-syntax than the basic straight-line emitter. A supported field kind does not
-mean that every combination of fields, binders, storage operands, and selected
-readiness methods is supported. Selection checks also reject some combinations
-of unowned observations and physical readiness.
+Backend support is combination-dependent. The general emitter covers more
+syntax than the basic straight-line emitter, and the generic interface supports
+a subset of the general emitter's forms (its limits are listed in
+[Checked tokens: raw and generic interfaces](state_machines/src/checked-token-interfaces.md)).
+A supported field kind does not mean that every combination of fields, binders,
+storage operands, and selected readiness methods is supported.
 
 The raw interface (`#[verified_raw_tokens]`, and the generic interface built on
 it) uses the general emitter for every machine the straight-line emitter does
