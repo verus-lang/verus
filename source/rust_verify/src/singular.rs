@@ -155,7 +155,7 @@ impl SingularExpr {
                 let r = rhs.to_singular_string();
                 format!("({:} {:} {:})", l, op, r)
             }
-            SingularExpr::Literal(l) => (**l).clone(),
+            SingularExpr::Literal(l) => format!("bigint({:})", l),
             SingularExpr::Var(Var::User(ident)) => sanitize_var_name(&ident),
             SingularExpr::Var(Var::Tmp(tmp)) => tmp.to_string(),
         }
