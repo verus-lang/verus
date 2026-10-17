@@ -545,7 +545,7 @@ impl Cm {
         }).collect();
         let k = self.kappa_of(&vals);
         quote! {
-            pub proof fn __tsm_kappa_idem(#(#params),*)
+            proof fn __tsm_kappa_idem(#(#params),*)
                 ensures Fragment::op(#k, #k) == #k,
             {
                 Fragment::unit().op_unit();
@@ -4092,7 +4092,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                 let n = &f.name;
                 let (lemma, tag, untag) = (format_ident!("__tsm_untag_tag_{}", n), format_ident!("__tag_{}", n), format_ident!("__untag_{}", n));
                 Some(quote! {
-                    pub proof fn #lemma(e: Option<#v>) ensures __StorageKey::#untag(__StorageKey::#tag(e)) == e {}
+                    proof fn #lemma(e: Option<#v>) ensures __StorageKey::#untag(__StorageKey::#tag(e)) == e {}
                 })
             }
             _ => None,
