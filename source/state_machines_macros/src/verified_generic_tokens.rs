@@ -5119,7 +5119,6 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         })
         .collect();
     let ready = quote! {
-        #[verifier::spinoff_prover]
         proof fn #ready_fn(&self, #(#ghost_params,)* #(#tparams,)* #owned_ident: Fragment, #h_param: Fragment #dep_comma #dep_param)
             requires
                 #(#api_reqs,)*
@@ -5175,7 +5174,6 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     };
     let exchange_helper = match (store.has(), has_shared) {
         (true, true) => quote! {
-            #[verifier::spinoff_prover]
             proof fn #exchange_fn<'b>(tracked acc: Token,
                 tracked obs: &::vstd::resource::tsm_storage::StorageObservation<'b, Protocol>,
                 tracked deposit: #map_ty, owned: Fragment, h: Fragment, #(#tparams),*)
@@ -5192,7 +5190,6 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             }
         },
         (false, true) => quote! {
-            #[verifier::spinoff_prover]
             proof fn #exchange_fn<'b>(tracked acc: Token,
                 tracked obs: &::vstd::resource::tsm::Observation<'b, Protocol>,
                 owned: Fragment, h: Fragment, #(#tparams),*)
@@ -5211,7 +5208,6 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     let helper = quote! {
         #exchange_helper
         #ready
-        #[verifier::spinoff_prover]
         proof fn #post_fn(&self, #(#ghost_params,)* #(#tparams,)* #owned_ident: Fragment, #h_param: Fragment,
             __tsm_out_frag: Fragment, #post_store_params)
             -> (__tsm_r: (State, State, Fragment))
@@ -5290,7 +5286,6 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     };
     Ok(quote! {
         #helper
-        #[verifier::spinoff_prover]
         #mut_style
         pub proof fn #name #gen (#(#in_params),*) #ret #req #ens {
             hide(State::invariant);
@@ -5407,7 +5402,6 @@ fn read_only_method(
         return err(tr.name.span(), "internal: generic field tokens join borrowed collections after the other borrowed inputs");
     }
     Ok(quote! {
-        #[verifier::spinoff_prover]
         pub proof fn #name #gen (#(#in_params),*) #ret #req #ens {
             hide(State::invariant);
             broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
@@ -5588,7 +5582,6 @@ fn read_only_optional(
         })
         .collect();
     Ok(quote! {
-        #[verifier::spinoff_prover]
         pub proof fn #name #gen (#(#in_params),*) #ret #req #ens {
             hide(State::invariant);
             broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
@@ -5739,7 +5732,6 @@ fn guard_method(
         quote! {(#(Tracked(#ret_vals)),*)}
     };
     Ok(quote! {
-        #[verifier::spinoff_prover]
         pub proof fn #name #gen (#(#in_params),*) #ret #req #ens {
             broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
                 ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};
@@ -5998,7 +5990,6 @@ fn init_method(
         (quote! {}, quote! {let tracked __tsm_all = Protocol::#init_fn(#(#pn),*);})
     };
     Ok(quote! {
-        #[verifier::spinoff_prover]
         pub proof fn #name(#(#in_params),*) #ret #req #ens {
             broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
                 ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};
