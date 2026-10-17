@@ -3303,7 +3303,14 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 tcx,
                 self.verifier.vir_crate.as_ref().expect("vir_crate should be initialized"),
                 &crate_items,
-                |d| crate::rust_to_vir_base::def_id_to_vir_path(tcx, &verus_items, d, None::<&mut HashMap<vir::ast::Path, rustc_span::def_id::DefId>>),
+                |d| {
+                    crate::rust_to_vir_base::def_id_to_vir_path(
+                        tcx,
+                        &verus_items,
+                        d,
+                        None::<&mut HashMap<vir::ast::Path, rustc_span::def_id::DefId>>,
+                    )
+                },
                 std::env::var("VERUS_CHECK_DROPS_VERBOSE").is_ok(),
             );
             if !findings.is_empty() {

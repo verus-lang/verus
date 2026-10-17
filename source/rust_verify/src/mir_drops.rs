@@ -121,10 +121,9 @@ pub(crate) fn check_drops<'tcx>(
         // the `drop` method's owner is the impl item
         let owner = tcx.local_def_id_to_hir_id(local).owner;
         let impl_owner = tcx.parent(did);
-        let item = crate_items
-            .map
-            .get(&owner)
-            .or_else(|| impl_owner.as_local().and_then(|l| crate_items.map.get(&OwnerId { def_id: l })));
+        let item = crate_items.map.get(&owner).or_else(|| {
+            impl_owner.as_local().and_then(|l| crate_items.map.get(&OwnerId { def_id: l }))
+        });
         matches!(item, Some(VerifOrExternal::VerusAware { external_body: false, .. }))
     };
     let mut findings = vec![];
@@ -184,23 +183,23 @@ pub(crate) fn check_drops<'tcx>(
                 continue;
             }
             for ty in dropped {
-            let mut impls = vec![];
-            drop_impls_of(tcx, typing_env, ty, &mut HashSet::new(), &mut impls);
-            for (dty, drop_fn) in impls {
-                if verified_local(drop_fn) {
-                    continue; // checked no_unwind / opens_invariants none
-                }
-                if !drop_fn.is_local() {
-                    trusted.insert(format!("{dty}"));
-                    continue;
-                }
-                let span = bb.terminator().source_info.span;
-                let what = match (no_unwind, atomic) {
-                    (_, true) => "an atomic function",
-                    (true, _) => "a `no_unwind` function",
-                    _ => "an atomic invariant block",
-                };
-                findings.push(DropFinding {
+                let mut impls = vec![];
+                drop_impls_of(tcx, typing_env, ty, &mut HashSet::new(), &mut impls);
+                for (dty, drop_fn) in impls {
+                    if verified_local(drop_fn) {
+                        continue; // checked no_unwind / opens_invariants none
+                    }
+                    if !drop_fn.is_local() {
+                        trusted.insert(format!("{dty}"));
+                        continue;
+                    }
+                    let span = bb.terminator().source_info.span;
+                    let what = match (no_unwind, atomic) {
+                        (_, true) => "an atomic function",
+                        (true, _) => "a `no_unwind` function",
+                        _ => "an atomic invariant block",
+                    };
+                    findings.push(DropFinding {
                     span,
                     msg: format!(
                         "this may drop a `{dty}`, whose `Drop` impl is not verified, in {what}; \
@@ -208,7 +207,7 @@ pub(crate) fn check_drops<'tcx>(
                          (verify the `Drop` impl, or move the value out)"
                     ),
                 });
-            }
+                }
             }
         }
         let _ = local as LocalDefId;
