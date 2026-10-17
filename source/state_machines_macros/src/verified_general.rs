@@ -484,19 +484,27 @@ fn guard_map_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<(
 }
 
 /// Exclusive `option` fields borrowed by `have f >= Some(..)` in a guard.
-fn guard_option_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<Ident> {
-    let mut out: Vec<Ident> = vec![];
-    fn walk(s: &TransitionStmt, fields: &HashMap<String, Field>, out: &mut Vec<Ident>) {
+/// The `option` and `persistent_option` fields of `have o >= Some(..)`
+/// statements, each with whether it is persistent.
+fn guard_option_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<(Ident, bool)> {
+    let mut out: Vec<(Ident, bool)> = vec![];
+    fn walk(s: &TransitionStmt, fields: &HashMap<String, Field>, out: &mut Vec<(Ident, bool)>) {
         match s {
             TransitionStmt::Block(_, xs) => xs.iter().for_each(|x| walk(x, fields, out)),
             TransitionStmt::Split(_, k, xs) => {
                 if let SplitKind::Special(n, op, _, _) = &**k {
-                    if matches!(op.stmt, MonoidStmtType::Have)
-                        && matches!(fields[&n.to_string()].stype, ShardableType::Option(_))
-                        && matches!(op.elt, MonoidElt::OptionSome(_))
-                        && !out.contains(n)
-                    {
-                        out.push(n.clone());
+                    let persistent = match fields[&n.to_string()].stype {
+                        ShardableType::Option(_) => Some(false),
+                        ShardableType::PersistentOption(_) => Some(true),
+                        _ => None,
+                    };
+                    if let Some(persistent) = persistent {
+                        if matches!(op.stmt, MonoidStmtType::Have)
+                            && matches!(op.elt, MonoidElt::OptionSome(_))
+                            && !out.iter().any(|(m, _)| m == n)
+                        {
+                            out.push((n.clone(), persistent));
+                        }
                     }
                 }
                 xs.iter().for_each(|x| walk(x, fields, out));
@@ -1001,11 +1009,16 @@ pub fn output_with_ready(
                     None => observed_fields.push((field.clone(), vec![key.clone()])),
                 }
             }
-            // Likewise for values bound by `have o >= Some(..)` on exclusive
-            // option fields (linked to `pre` by option_owned_frame).
+            // Likewise for values bound by `have o >= Some(..)` on option
+            // fields (linked to `pre` by option_owned_frame) and persistent
+            // option fields (by persistent_option_owned_frame).
             let option_haves = guard_option_haves(&tr.body, &fields);
-            let option_updates: Vec<_> = option_haves.iter().map(|field| {
-                quote! {#field: Some(f.#field->Some_0->Exclusive_0)}
+            let option_updates: Vec<_> = option_haves.iter().map(|(field, persistent)| {
+                if *persistent {
+                    quote! {#field: Some(f.#field->Some_0->Agree_0)}
+                } else {
+                    quote! {#field: Some(f.#field->Some_0->Exclusive_0)}
+                }
             }).collect();
             let observed_base = if observed_fields.is_empty() && option_updates.is_empty() {
                 quote! {Self::__observed(f)}
@@ -1030,10 +1043,17 @@ pub fn output_with_ready(
                         f.#field.at(#key)->Some_0->Exclusive_0);
                 }
             }).collect();
-            for field in &option_haves {
-                observed_links.push(quote! {
-                    ::vstd::resource::tsm_collections::option_owned_frame(f.#field, z.#field, pre.#field,
-                        f.#field->Some_0->Exclusive_0);
+            for (field, persistent) in &option_haves {
+                observed_links.push(if *persistent {
+                    quote! {
+                        ::vstd::resource::tsm_collections::persistent_option_owned_frame(f.#field, z.#field, pre.#field,
+                            f.#field->Some_0->Agree_0);
+                    }
+                } else {
+                    quote! {
+                        ::vstd::resource::tsm_collections::option_owned_frame(f.#field, z.#field, pre.#field,
+                            f.#field->Some_0->Exclusive_0);
+                    }
                 });
             }
             // Tagged multi-field carriers need a per-tag split to lift the
@@ -1059,8 +1079,12 @@ pub fn output_with_ready(
                     _ => unreachable!(),
                 })
                 .collect();
-            for field in &option_haves {
-                observed_req.push(quote! {f.#field is Some && f.#field->Some_0 is Exclusive});
+            for (field, persistent) in &option_haves {
+                observed_req.push(if *persistent {
+                    quote! {f.#field is Some && f.#field->Some_0 is Agree}
+                } else {
+                    quote! {f.#field is Some && f.#field->Some_0 is Exclusive}
+                });
             }
             let observe_equal: Vec<_> = sm
                 .fields

@@ -135,8 +135,8 @@ enum StoreKind {
     /// storage options indexed by their position).
     Plain,
     /// `__StorageKey` tagged by field, with the fields' common payload type
-    /// as the value (one `option`, one `map`/`imap`, one `storage_option` and
-    /// one `storage_map`/`storage_imap` field of one payload type).
+    /// as the value (storage fields that need a tagged carrier and all store
+    /// one payload type).
     Homog,
 }
 
@@ -170,11 +170,6 @@ impl Store {
             })
             .collect();
         if fields.len() >= 2 && (has_option && map_count > 0 || map_count > 1 || option_types.len() > 1) {
-            if sm.fields.len() == 4
-                && sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::Option(_))).count() == 1
-                && sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::Map(..) | ShardableType::IMap(..))).count() == 1
-                && has_option
-                && map_count == 1
             {
                 let owned: Vec<Field> = fields.iter().map(|f| (*f).clone()).collect();
                 if let Some(v) = crate::verified_storage_homogeneous_carrier::payload(&owned) {
@@ -283,7 +278,12 @@ impl Store {
             (StoreKind::Carrier, ShardableType::StorageIMap(..)) => {
                 // The carrier packs finite maps.
                 let pack = format_ident!("__pack_{}", n);
+                let msg = format!(
+                    "generic field tokens: a deposit into storage_imap field `{}` (stored with differently typed storage fields) needs a finite domain (state it with a `require`, or use #[verified_raw_tokens])",
+                    n
+                );
                 quote! {
+                    #[verifier::custom_err(#msg)]
                     assert((#p).dom().finite());
                     let tracked __tsm_finite = ::vstd::resource::tsm_generic::tracked_imap_to_map(#p);
                     let tracked __tsm_packed = __StorageKey::#pack(__tsm_finite);
@@ -335,9 +335,30 @@ impl Store {
                     assert(::vstd::prelude::ext_equal(#p, #e));
                 }
             }
-            (StoreKind::Carrier, ShardableType::StorageIMap(..)) => quote! {
-                compile_error!("generic field tokens do not support general withdrawals from a tagged storage_imap");
-            },
+            (StoreKind::Carrier, ShardableType::StorageIMap(..)) => {
+                // The tagged carrier unpacks finite maps: its values are
+                // tagged, and no tracked operation untags infinitely many.
+                let unpack = format_ident!("__unpack_{}", n);
+                let shape = format_ident!("__carrier_shape_{}", n);
+                let msg = format!(
+                    "generic field tokens: a general withdrawal from storage_imap field `{}` (stored with differently typed storage fields) needs a finite domain (state it with a `require`, or use #[verified_raw_tokens])",
+                    n
+                );
+                let at = e.clone().into_iter().next().map_or(Span::call_site(), |t| t.span());
+                let fin = quote::quote_spanned! {at=>
+                    #[verifier::custom_err(#msg)]
+                    assert((#e).dom().finite());
+                };
+                quote! {
+                    #fin
+                    Protocol::#shape(#e);
+                    let tracked __tsm_part = __tsm_withdrawn.tracked_remove_keys(#tagged.dom());
+                    assert(::vstd::prelude::ext_equal(__tsm_part, #tagged));
+                    let tracked __tsm_finite = __StorageKey::#unpack(__tsm_part);
+                    let tracked #p = ::vstd::resource::tsm_generic::tracked_map_to_imap(__tsm_finite);
+                    assert(::vstd::prelude::ext_equal(#p, #e));
+                }
+            }
             (StoreKind::Homog, ShardableType::StorageMap(..) | ShardableType::StorageIMap(..)) => {
                 let unpack = format_ident!("__unpack_imap_{}", n);
                 let untag = format_ident!("__untag_{}", n);
@@ -2594,6 +2615,46 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
     };
     let single_m = single(quote! {k}, quote! {m});
     let single_mkk = single(quote! {kk}, quote! {m});
+    // With constants, each observed token's copy of `κ` (and the bulk's) is
+    // joined too, so a non-empty observation includes `κ`.
+    let (kappa_req, kappa_ens, observe_tok, tok_step, kappa_pre, kappa_step, bulk_obs, bulk_step) = match cm {
+        None => (
+            quote! {},
+            quote! {},
+            quote! {let tracked o = tk.__borrow_raw(#larg).observe();},
+            quote! {},
+            quote! {},
+            quote! {},
+            quote! {Some(self.bulk.tracked_borrow().observe())},
+            quote! {},
+        ),
+        Some(cm) => {
+            let kappa = cm.kappa(quote! {d});
+            (
+                quote! {::vstd::prelude::imply(acc is Some, #t::fragment_included::<Protocol>(#kappa, acc->Some_0.fragment())),},
+                quote! {::vstd::prelude::imply(out is Some, #t::fragment_included::<Protocol>(#kappa, out->Some_0.fragment())),},
+                quote! {
+                    let tracked o1 = tk.__borrow_raw(#larg).observe();
+                    let tracked o2 = tk.__borrow_base(#larg).observe();
+                    let tracked o = o1.join(&o2);
+                },
+                quote! {#t::fragment_included_transitive::<Protocol>(o1.fragment(), o.fragment(), out->Some_0.fragment());},
+                quote! {#t::fragment_included_transitive::<Protocol>(#kappa, o.fragment(), acc2->Some_0.fragment());},
+                quote! {#t::fragment_included_transitive::<Protocol>(#kappa, acc2->Some_0.fragment(), out->Some_0.fragment());},
+                quote! {{
+                    let tracked b1 = self.bulk.tracked_borrow().observe();
+                    let tracked b2 = self.kappa.tracked_borrow().observe();
+                    Some(b1.join(&b2))
+                }},
+                quote! {
+                    if self.bulk is Some {
+                        #t::fragment_included_transitive::<Protocol>(Fragment::#factory(bm), acc->Some_0.fragment(), out->Some_0.fragment());
+                        #t::fragment_included_transitive::<Protocol>(#kappa, acc->Some_0.fragment(), out->Some_0.fragment());
+                    }
+                },
+            )
+        }
+    };
     let single_parts = single(quote! {k}, quote! {self.parts});
     let observe_parts = format_ident!("__observe_parts_{}", n);
     let key_m = if ml { quote! {<#nt as #tr>::key(&m[key])} } else { quote! {<#nt as #tr>::element(&m[key])} };
@@ -2676,7 +2737,9 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
                     m[key].__id() == ::vstd::resource::tsm_instance_id(#larg_id, false) && #key_m == key),
                 #link_ok
                 ::vstd::prelude::imply(acc is Some, acc->Some_0.loc() == #link_loc),
+                #kappa_req
             ensures ::vstd::prelude::imply(out is Some, out->Some_0.loc() == #link_loc),
+                #kappa_ens
                 ::vstd::prelude::imply(acc is Some, out is Some && #t::fragment_included::<Protocol>(acc->Some_0.fragment(), out->Some_0.fragment())),
                 forall|k: #kt| ::vstd::prelude::imply(#[trigger] keys.contains(k), out is Some
                     && #t::fragment_included::<Protocol>(#single_m, out->Some_0.fragment())),
@@ -2694,7 +2757,7 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
                 ::vstd::iset::lemma_iset_choose_len(keys);
                 let k = keys.choose();
                 let tracked tk = m.tracked_borrow(k);
-                let tracked o = tk.__borrow_raw(#larg).observe();
+                #observe_tok
                 let tracked acc2 = if acc is Some {
                     let tracked a = acc.tracked_unwrap();
                     Some(a.join(&o))
@@ -2702,11 +2765,14 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
                     #t::fragment_included_reflexive::<Protocol>(o.fragment());
                     Some(o)
                 };
+                #kappa_pre
                 let tracked out = Self::#observe_parts(m, keys.remove(k), acc2, #larg);
                 if acc is Some {
                     #t::fragment_included_transitive::<Protocol>(acc->Some_0.fragment(), acc2->Some_0.fragment(), out->Some_0.fragment());
                 }
                 #t::fragment_included_transitive::<Protocol>(o.fragment(), acc2->Some_0.fragment(), out->Some_0.fragment());
+                #tok_step
+                #kappa_step
                 assert forall|kk: #kt| #[trigger] keys.contains(kk) implies out is Some
                     && #t::fragment_included::<Protocol>(#single_mkk, out->Some_0.fragment()) by {
                     if kk != k { assert(keys.remove(k).contains(kk)); }
@@ -2720,6 +2786,7 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
             ensures ::vstd::prelude::imply(out is Some, out->Some_0.loc() == #link_loc
                     && #t::fragment_included::<Protocol>(Fragment::#factory(e), out->Some_0.fragment())),
                 ::vstd::prelude::imply(out is None, Fragment::#factory(e) == Fragment::unit()),
+                #kappa_ens
         {
             broadcast use {::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas};
             ::vstd::prelude::use_type_invariant(self);
@@ -2728,7 +2795,7 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
             let eb = #eb;
             let tracked acc: Option<#obs> = if self.bulk is Some {
                 #bulk_link
-                Some(self.bulk.tracked_borrow().observe())
+                #bulk_obs
             } else {
                 None
             };
@@ -2736,6 +2803,7 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
             assert(keys.subset_of(self.parts.dom()));
             ::vstd::iset_lib::lemma_iset_subset_finite(self.parts.dom(), keys);
             let tracked out = Self::#observe_parts(&self.parts, keys, acc, #larg);
+            #bulk_step
             if out is None {
                 assert(::vstd::prelude::ext_equal(e, #eempty)) by {
                     assert forall|k: #kt| !#edom.contains(k) by {
@@ -3093,7 +3161,17 @@ fn finite_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream {
     } else {
         quote! {}
     };
-    let multi_req = if k == Kind::Multiset { quote! {forall|kk: #kt| #[trigger] e.count(kk) <= 1,} } else { quote! {} };
+    // Shared references to two tokens of one element do not show that they
+    // are distinct resources.
+    let multi_msg = format!(
+        "generic field tokens: the borrowed part of multiset field `{}` must not contain an element twice (state it with a `require`, or use #[verified_raw_tokens])",
+        n
+    );
+    let multi_req = if k == Kind::Multiset {
+        quote! {#[verifier::custom_err(#multi_msg)] (forall|kk: #kt| #[trigger] e.count(kk) <= 1),}
+    } else {
+        quote! {}
+    };
     quote! {
         impl #nt {
             #parts
@@ -3138,8 +3216,9 @@ fn included_lemma(f: &Field, vals: &[TokenStream], tok: TokenStream, coll: Optio
         return match k {
             Kind::Map => quote! {
                 #c::map_included_owned_many((#tok).#n, #rest, #z, pre.#n.to_imap(), (#observed).to_imap());
-                assert forall|k| (#observed).dom().contains(k)
-                    implies #[trigger] pre.#n.dom().contains(k) && pre.#n[k] == (#observed)[k] by {
+                let ghost __tsm_observed = #observed;
+                assert forall|k| #![trigger __tsm_observed.dom().contains(k)] #![trigger pre.#n.dom().contains(k)]
+                    (#observed).dom().contains(k) implies pre.#n.dom().contains(k) && pre.#n[k] == (#observed)[k] by {
                     assert((#observed).to_imap().dom().contains(k));
                     assert((#observed).to_imap().submap_of(pre.#n.to_imap()));
                     assert(pre.#n.to_imap().dom().contains(k));
@@ -3157,8 +3236,9 @@ fn included_lemma(f: &Field, vals: &[TokenStream], tok: TokenStream, coll: Optio
             },
             Kind::PersistentMap => quote! {
                 #g::persistent_map_included_owned_many((#tok).#n, #rest, #z, pre.#n.to_imap(), (#observed).to_imap());
-                assert forall|k| (#observed).dom().contains(k)
-                    implies #[trigger] pre.#n.dom().contains(k) && pre.#n[k] == (#observed)[k] by {
+                let ghost __tsm_observed = #observed;
+                assert forall|k| #![trigger __tsm_observed.dom().contains(k)] #![trigger pre.#n.dom().contains(k)]
+                    (#observed).dom().contains(k) implies pre.#n.dom().contains(k) && pre.#n[k] == (#observed)[k] by {
                     assert((#observed).to_imap().dom().contains(k));
                     assert((#observed).to_imap().submap_of(pre.#n.to_imap()));
                     assert(pre.#n.to_imap().dom().contains(k));
@@ -3403,6 +3483,11 @@ enum GuardShape {
     MapGeneral(TokenStream),
     /// `guard f >= (m)` on a `storage_imap` (one storage field): `&IMap<K, V>`.
     IMapGeneral(TokenStream),
+    /// `guard f >= (m)` on a `storage_map` or `storage_imap` otherwise (with
+    /// other storage fields, or other guards): no `&IMap<K, V>` exists in the
+    /// guarded storage, so a map of references to the guarded values,
+    /// `Map<K, &V>` (`IMap<K, &V>` of a finite domain for a `storage_imap`).
+    MapRefs(TokenStream),
 }
 
 /// `Some(v)` (or `Option::Some(v)`, `Option::<T>::Some(v)`): `v`.
@@ -3427,28 +3512,32 @@ fn some_arg(e: &Expr) -> Option<TokenStream> {
 /// reference into the guarded storage; see `rewrite_guard_outputs`.
 fn guard_shapes(sm: &SM, store: &Store, parts: &ExchangeParts) -> Result<HashMap<String, GuardShape>, Error> {
     let mut out = HashMap::new();
-    let mut count = 0;
+    let count = sm
+        .fields
+        .iter()
+        .flat_map(|f| parts.params.get(&f.name.to_string()).into_iter().flatten())
+        .filter(|p| p.inout_type == InoutType::BorrowOut)
+        .count();
+    // The guarded storage is the field's own map exactly when it is the only
+    // storage field and this is the only guard.
+    let whole = store.kind == StoreKind::Plain && count == 1;
     for f in &sm.fields {
         for p in parts.params.get(&f.name.to_string()).into_iter().flatten() {
             if p.inout_type != InoutType::BorrowOut {
                 continue;
             }
-            count += 1;
             let shape = match p.elt.as_ref() {
                 Some(MonoidElt::General(e)) => match (&f.stype, some_arg(e)) {
                     (ShardableType::StorageOption(_), Some(v)) => GuardShape::SomeOf(v),
                     (ShardableType::StorageOption(_), None) => GuardShape::OptionGeneral(quote! {#e}),
-                    (ShardableType::StorageMap(..), _) if store.kind == StoreKind::Plain => GuardShape::MapGeneral(quote! {#e}),
-                    (ShardableType::StorageIMap(..), _) if store.kind == StoreKind::Plain => GuardShape::IMapGeneral(quote! {#e}),
-                    _ => return err(f.name.span(), "generic field tokens: a guard of a general map operand needs the field to be the only storage field"),
+                    (ShardableType::StorageMap(..), _) if whole => GuardShape::MapGeneral(quote! {#e}),
+                    (ShardableType::StorageIMap(..), _) if whole => GuardShape::IMapGeneral(quote! {#e}),
+                    _ => GuardShape::MapRefs(quote! {#e}),
                 },
                 _ => GuardShape::Single,
             };
             out.insert(p.name.to_string(), shape);
         }
-    }
-    if count > 1 && out.values().any(|s| matches!(s, GuardShape::MapGeneral(_) | GuardShape::IMapGeneral(_))) {
-        return err(sm.name.span(), "generic field tokens: a guard of a general map operand must be the property's only guard");
     }
     Ok(out)
 }
@@ -3484,6 +3573,22 @@ fn rewrite_guard_outputs(sm: &SM, parts: &mut ExchangeParts, shapes: &HashMap<St
                     Some(quote! {&'a ::vstd::imap::IMap<#k, #v>}),
                     Box::new(move |e: TokenStream| quote! {::vstd::prelude::equal(*#id, (#e).to_imap())}),
                 ),
+                GuardShape::MapRefs(_) => {
+                    let infinite = matches!(f.map(|f| &f.stype), Some(ShardableType::StorageIMap(..)));
+                    let ty = if infinite {
+                        quote! {::vstd::imap::IMap<#k, &'a #v>}
+                    } else {
+                        quote! {::vstd::map::Map<#k, &'a #v>}
+                    };
+                    (
+                        Some(ty),
+                        Box::new(move |e: TokenStream| quote! {
+                            (::vstd::prelude::equal(#id.dom(), (#e).dom())
+                                && (forall|__tsm_k: #k| ::vstd::prelude::imply(#[trigger] #id.dom().contains(__tsm_k),
+                                    ::vstd::prelude::equal(*#id[__tsm_k], (#e)[__tsm_k]))))
+                        }),
+                    )
+                }
             }
         };
         if let Some(ty) = ty {
@@ -3633,6 +3738,9 @@ struct Ctx<'a> {
     unit_init: bool,
     /// The instance owns its unit token (see `output`).
     owned_base: bool,
+    /// Guards that borrow no token borrow a `Unit` (machines with type
+    /// parameters and storage, see `output`).
+    guard_unit: bool,
 }
 
 fn is_read_only(parts: &ExchangeParts, params: &[Param]) -> bool {
@@ -3759,9 +3867,15 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             guard_base |= guard_without_token(sm, &parts);
         }
     }
-    let base = !store.has() && unit_from_base || guard_base;
-    let ctx = Ctx { sm, store: &store, base, cm: &cm, unit_init: store.has() && any_unit,
-        owned_base: base && sm.generics.is_some() && !store.has() };
+    // A guard that borrows no token guards from the instance's leaked unit
+    // token. In a machine with type parameters and storage that would need
+    // the parameters to be `'static` (the instance cannot own the token: a
+    // storage token splits but does not duplicate, so the instance would not
+    // be clonable); such guards borrow a `Unit` instead.
+    let guard_unit = guard_base && store.has() && sm.generics.is_some();
+    let base = !store.has() && unit_from_base || guard_base && !guard_unit;
+    let ctx = Ctx { sm, store: &store, base, cm: &cm, unit_init: store.has() && (any_unit || guard_unit),
+        owned_base: base && sm.generics.is_some() && !store.has(), guard_unit };
     // The trusted macro's specifications call the token traits' methods.
     let mut items = vec![quote! {
         #[allow(unused_imports)]
@@ -4456,7 +4570,10 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 let take = if kind(f).is_some_and(|k| k.infinite()) {
                     in_body(quote! {let tracked #obs = #pname.__observe(#e, #link);})
                 } else {
-                    in_body(quote! {let tracked #obs = #nt::__observe_coll(#pname, #e, #link);})
+                    // Spanned at `e`: the precondition of a multiset's
+                    // `__observe_coll` reports a repeated element there.
+                    let at = verus_syn::spanned::Spanned::span(e);
+                    in_body(quote::quote_spanned! {at=> let tracked #obs = #nt::__observe_coll(#pname, #e, #link);})
                 };
                 pending_collections.push((
                     obs,
@@ -4505,9 +4622,17 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             Some(quote! {let tracked #obs = __tsm_kappa.observe();})
         } else if let Some(p) = &first_borrow {
             Some(quote! {let tracked #obs = #p.__borrow_base(#link).observe();})
+        } else if guard && ctx.guard_unit && guard_without_token(sm, &parts) {
+            let unit_desc_ref = cm.as_ref().map(|cm| cm.by_ref(quote! {__tsm_unit.desc}));
+            Some(quote! {
+                ::vstd::prelude::use_type_invariant(__tsm_unit);
+                ::vstd::resource::tsm_instance_id_injective(__tsm_unit.desc.loc(), false, self.__desc.loc(), false);
+                ::vstd::resource::tsm_generic::agreement_resources_agree(#unit_desc_ref, #link);
+                let tracked #obs = __tsm_unit.base.observe();
+            })
         } else if guard && ctx.base {
             Some(quote! {let tracked #obs = self.__base.observe();})
-        } else if is_read_only(&parts, &params) && !guard && coll_owned.is_empty() && !pending_infinite {
+        } else if is_read_only(&parts, &params) && !guard && coll_owned.is_empty() {
             // A read-only operation without borrowed tokens: `κ` is included in
             // its borrowed collections' observations (if any is not empty);
             // otherwise the instance's reachable state has its constants.
@@ -4535,10 +4660,21 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             }
         }
     }
-    let _ = &kappa_from;
+    let _ = (&kappa_from, pending_infinite);
     // Borrowed collections are joined (if not empty) after the other borrowed inputs.
     let read_only_op = is_read_only(&parts, &params) && coll_owned.is_empty();
-    if guard && take_shared.is_empty() {
+    if guard && take_shared.is_empty() && ctx.guard_unit {
+        // A guard without borrowed tokens guards from its borrowed unit.
+        let root = format_ident!("__tsm_obs_base");
+        take_shared.push((root.clone(), quote! {
+            ::vstd::prelude::use_type_invariant(self);
+            ::vstd::prelude::use_type_invariant(__tsm_unit);
+            ::vstd::resource::tsm_instance_id_injective(__tsm_unit.raw.loc(), false, #loc, false);
+            let tracked #root = __tsm_unit.raw.observe();
+        }, None));
+        shared_frags.push(quote! {Fragment::unit()});
+        shared_frags_body.push(quote! {Fragment::unit()});
+    } else if guard && take_shared.is_empty() {
         // A guard without borrowed tokens guards from the instance's leaked
         // unit (`κ`) token.
         if !ctx.base {
@@ -4583,7 +4719,15 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         return read_only_method(ctx, tr, &parts, &take_shared, &incl_frames, &const_frames, &shared_frags, ret, req, ens, &early_body, &late_body);
     }
     if guard {
-        return guard_method(ctx, tr, &parts, &params, &take_shared, &incl_frames, &shared_frags, &shapes, ret, req, ens, &early_body);
+        // A guard that borrows no token borrows a unit (see `Ctx::guard_unit`).
+        let (unit_params, req) = if ctx.guard_unit && guard_without_token(sm, &parts) {
+            let unit_req = quote! {__tsm_unit.instance_id() == (*self).id()};
+            let req = if req.is_empty() { quote! {requires #unit_req} } else { quote! {#req, #unit_req} };
+            (vec![quote! {tracked __tsm_unit: &'a Unit}], req)
+        } else {
+            (vec![], req)
+        };
+        return guard_method(ctx, tr, &parts, &params, &take_shared, &incl_frames, &shared_frags, &shapes, ret, req, ens, &early_body, &unit_params);
     }
     // Without any owned token, the method takes a unit token (storage
     // machines) or splits one off the instance's shared token.
@@ -5668,11 +5812,12 @@ fn guard_method(
     req: TokenStream,
     ens: TokenStream,
     early: &[TokenStream],
+    unit_params: &[TokenStream],
 ) -> Result<TokenStream, Error> {
     let store = ctx.store;
     let span = tr.name.span();
     let name = &parts.exch_name;
-    let in_params = &parts.in_params;
+    let in_params: Vec<TokenStream> = parts.in_params.iter().chain(unit_params).cloned().collect();
     let gen = if parts.use_explicit_lifetime { quote! {<'a>} } else { quote! {} };
     let pn: Vec<_> = tr.params.iter().map(|p| &p.name).collect();
     let t = quote! {::vstd::resource::tsm};
@@ -5709,6 +5854,8 @@ fn guard_method(
         })
         .collect();
     let mut guards = vec![];
+    let mut helpers = vec![];
+    let mut ref_facts = vec![];
     for q in params {
         let f = q.field;
         if q.p.inout_type != InoutType::BorrowOut {
@@ -5750,6 +5897,13 @@ fn guard_method(
                 });
                 continue;
             }
+            (Some(GuardShape::MapRefs(e)), _) => {
+                let (helper, fact, call) = guard_refs(store, f, &format_ident!("__tsm_guard_refs_{}_{}", tr.name, pname), pname, &e)?;
+                helpers.push(helper);
+                ref_facts.push(fact);
+                guards.push(call);
+                continue;
+            }
             _ => {}
         }
         match (&store.kind, q.p.elt.as_ref()) {
@@ -5777,6 +5931,23 @@ fn guard_method(
             _ => return err(f.name.span(), "unsupported storage guard for generic field tokens"),
         }
     }
+    // Maps of references (`GuardShape::MapRefs`): in a completion, the
+    // guarded map is part of the storage, which holds each guarded part (the
+    // guards' safety conditions).
+    let safety = format_ident!("{}_safety", tr.name);
+    let ref_block = if ref_facts.is_empty() {
+        quote! {}
+    } else {
+        quote! {{
+            let (__tsm_z, pre) = choose|__tsm_z: Fragment, pre: State| pre.invariant()
+                && Fragment::op(__tsm_f, __tsm_z) == <Protocol as ::vstd::resource::tsm::Machine>::embed(pre);
+            assert(State::#owners(pre, __tsm_f, Fragment::unit(), #(#pn),*) && State::#enabled(pre, #(#pn),*));
+            State::#safety(pre, #(#pn),*);
+            assert(Protocol::#guarded(__tsm_f, #(#pn),*).submap_of(
+                <Protocol as ::vstd::resource::tsm_storage::StorageMachine>::storage(pre)));
+            #(#ref_facts)*
+        }}
+    };
     let ens_steps = ensures_steps(parts, &|ts| ts);
     let ret_vals: Vec<_> = parts.out_params.iter().map(|o| o.0.clone()).collect();
     let result = if ret_vals.len() == 1 {
@@ -5808,11 +5979,123 @@ fn guard_method(
             }
             Protocol::#frame_fn(__tsm_f, #(#pn),*);
             let tracked __tsm_guard = #shared_ident.guard(Protocol::#guarded(__tsm_f, #(#pn),*));
+            #ref_block
             #(#guards)*
             #(#ens_steps)*
             #result
         }
+        #(#helpers)*
     })
+}
+
+/// For a guard `guard f >= (e)` of a `storage_map`/`storage_imap` field `f`
+/// whose output is a map of references (`GuardShape::MapRefs`): a helper
+/// borrowing the value of each key of `e` from the guarded storage map, and
+/// the statements binding the output from `__tsm_guard`.
+fn guard_refs(store: &Store, f: &Field, helper: &Ident, pname: &Ident, e: &TokenStream) -> Result<(TokenStream, TokenStream, TokenStream), Error> {
+    let n = &f.name;
+    let (k, v, infinite) = match &f.stype {
+        ShardableType::StorageMap(k, v) => (k, v, false),
+        ShardableType::StorageIMap(k, v) => (k, v, true),
+        _ => return err(f.name.span(), "internal: map guard of a non-map field"),
+    };
+    let skey = store.key_of(f, Some(&verus_syn::parse_quote! {kk}));
+    let skey_c = store.key_of(f, Some(&verus_syn::parse_quote! {kc}));
+    let sval = store.wrap(f, quote! {e[kk]});
+    let borrow = match store.kind {
+        StoreKind::Carrier => {
+            let b = format_ident!("__borrow_{}", n);
+            quote! {__StorageKey::#b(m, kc).tracked_unwrap()}
+        }
+        _ => quote! {m.tracked_borrow(#skey_c)},
+    };
+    let map = store.map_ty();
+    let (set_ty, emap_ty, out_ty, empty, choose_len, contains_len, remove_len, finite) = if infinite {
+        (
+            quote! {::vstd::iset::ISet<#k>},
+            quote! {::vstd::imap::IMap<#k, #v>},
+            quote! {::vstd::imap::IMap<#k, &'a #v>},
+            quote! {::vstd::imap::IMap::tracked_empty()},
+            quote! {::vstd::iset::lemma_iset_choose_len(keys);},
+            quote! {::vstd::iset::lemma_iset_contains_len(keys, kk);},
+            quote! {::vstd::iset::lemma_iset_remove_len(keys, kc);},
+            quote! {keys.finite(),},
+        )
+    } else {
+        (
+            quote! {::vstd::set::Set<#k>},
+            quote! {::vstd::map::Map<#k, #v>},
+            quote! {::vstd::map::Map<#k, &'a #v>},
+            quote! {::vstd::map::Map::tracked_empty()},
+            quote! {::vstd::set::lemma_set_choose_len(keys);},
+            quote! {::vstd::set::lemma_set_contains_len(keys, kk);},
+            quote! {::vstd::set::lemma_set_remove_len(keys, kc);},
+            quote! {},
+        )
+    };
+    let def = quote! {
+        proof fn #helper<'a>(tracked m: &'a #map, keys: #set_ty, e: #emap_ty) -> (tracked out: #out_ty)
+            requires #finite
+                forall|kk: #k| ::vstd::prelude::imply(#[trigger] keys.contains(kk), e.dom().contains(kk)
+                    && m.contains_key(#skey) && m[#skey] == #sval),
+            ensures out.dom() == keys,
+                forall|kk: #k| ::vstd::prelude::imply(#[trigger] keys.contains(kk), ::vstd::prelude::equal(*out[kk], e[kk])),
+            decreases keys.len(),
+        {
+            broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
+                ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas};
+            if keys.len() == 0 {
+                assert forall|kk: #k| !keys.contains(kk) by {
+                    if keys.contains(kk) { #contains_len }
+                }
+                let tracked out = #empty;
+                assert(::vstd::prelude::ext_equal(out.dom(), keys));
+                out
+            } else {
+                #choose_len
+                let kc = keys.choose();
+                #remove_len
+                let tracked mut out = Self::#helper(m, keys.remove(kc), e);
+                let tracked r = #borrow;
+                out.tracked_insert(kc, r);
+                assert(::vstd::prelude::ext_equal(out.dom(), keys));
+                out
+            }
+        }
+    };
+    // From the chosen completion's storage (see `guard_method`), each key of
+    // `e` is in the guarded map with `e`'s value.
+    let tagged = store.tagged(f, e);
+    let fin = if infinite {
+        let msg = format!(
+            "generic field tokens: a guard of a general operand of storage_imap field `{}` (with other storage fields or guards) needs a finite domain (state it with a `require`, or use #[verified_raw_tokens])",
+            n
+        );
+        let at = e.clone().into_iter().next().map_or(Span::call_site(), |t| t.span());
+        quote::quote_spanned! {at=>
+            #[verifier::custom_err(#msg)]
+            assert((#e).dom().finite());
+        }
+    } else {
+        quote! {}
+    };
+    let eval = store.wrap(f, quote! {(#e)[kk]});
+    let fact = quote! {
+        assert forall|kk: #k| #[trigger] (#e).dom().contains(kk) implies
+            __tsm_guard.contains_key(#skey) && __tsm_guard[#skey] == #eval by {
+            assert(#tagged.contains_key(#skey));
+            assert((#e).dom().contains(kk) && (#e).submap_of(pre.#n));
+            assert(pre.#n.dom().contains(kk));
+            assert(pre.#n[kk] == (#e)[kk]);
+            let __tsm_st = <Protocol as ::vstd::resource::tsm_storage::StorageMachine>::storage(pre);
+            assert(__tsm_st.contains_key(#skey) && __tsm_st[#skey] == #eval);
+        }
+    };
+    let call = quote! {
+        #fin
+        let tracked #pname = Self::#helper(__tsm_guard, (#e).dom(), #e);
+    };
+    Ok((def, fact, call))
 }
 
 fn init_method(

@@ -238,8 +238,12 @@ multiset's fold), the observations are joined, and the joined observation is
 valid, so each element of `e` is exactly (or, for persistent strategies, up to
 agreement) owned in it. For a multiset this shows each element of `e` at least
 once, so the borrowed part `e` must not contain an element twice: shared
-references to two tokens do not show that the tokens are distinct resources. (The
-generated operation's proof fails otherwise.)
+references to two tokens do not show that the tokens are distinct resources. The
+generated operation checks this first (`forall|x| e.count(x) <= 1`), so a machine
+states it with a `require`; otherwise verification reports "the borrowed part of
+multiset field `f` must not contain an element twice" at the `have` statement.
+Separate singleton borrows (`have f >= {x}; have f >= {y}`) need no such
+condition: the model requires each of them once, also for `x == y`.
 
 In a machine without type parameters, persistent tokens hold a leaked `&'static`
 raw token instead of an owned one. Their fragments are idempotent, so a shared
@@ -288,7 +292,10 @@ trait lemmas hold for placeholders because each owns its own resource.
 guard borrows no token, it also holds a leaked `&'static` token owning the unit
 fragment, from which such operations take their unit or guard. In a machine with
 type parameters and without storage it owns that token instead, so the parameters
-need not be `'static`.) Its type invariant also states that some
+need not be `'static`. A storage token can be split but not duplicated, so an
+instance owning one would not be clonable: in a machine with type parameters and
+storage, a guard that borrows no token borrows a `Unit` of the instance instead,
+an extra last argument `&Unit`.) Its type invariant also states that some
 invariant-satisfying state has the instance's constants: the initial state is
 one. An operation that observes no fragment (such as a property whose assertion
 reads only constants, or one whose borrowed collections are all empty) reasons
@@ -309,7 +316,11 @@ token, if it owns one). Every token (and every `Unit`) holds
 the same descriptor and its own copy of `κ` (`κ · κ = κ`, so copies are split off
 freely): two holders of one identifier hold descriptors at `δ`, which agree, so
 their constants and locations agree. An operation that reads a constant observes a
-copy of `κ` from one of its tokens, so `κ` is part of its shared fragment.
+copy of `κ` from one of its tokens, so `κ` is part of its shared fragment. (The
+observation of a borrowed collection, also of an `imap`/`iset` field, joins the
+copies of `κ` of its tokens, so a read-only operation whose only borrowed inputs
+are collections finds `κ` there, or, if they are all empty, reasons about the
+instance's reachable state.)
 
 ### Operations
 
@@ -340,12 +351,13 @@ then independent of the size of the rest of the generated module.
 
 Storage operations deposit and withdraw through the raw protocol's storage map. With
 one `storage_map` or `storage_imap` field its keys and values are the field's own;
-`storage_option` fields of one value type use an index key; several storage fields
-of different kinds use the raw protocol's tagged carrier
-(`__StorageKey`/`__StorageValue`), and exactly one `option`, one `map`/`imap`, one
-`storage_option` and one `storage_map`/`storage_imap` field whose stored values
-have one type use its homogeneous carrier (tagged keys, untagged values). A machine
-without storage fields uses the plain `vstd::resource::tsm::Token`.
+`storage_option` fields of one value type use an index key. Any other combination
+of storage fields (several map fields, or option and map fields, or options of
+different value types) uses a carrier keyed by `__StorageKey`, which tags each key
+with its field: if all storage fields store one value type, the values are the
+payloads themselves (the homogeneous carrier, whose transfers re-key tracked maps,
+including infinite ones); otherwise they are tagged too (`__StorageValue`). A
+machine without storage fields uses the plain `vstd::resource::tsm::Token`.
 
 A storage guard guards from the joined observation of its borrowed tokens; a guard
 that borrows no token guards from the instance's unit token. For the general
@@ -353,9 +365,14 @@ operands of the trusted interface (`guard f >= (e)`), whose output types
 `&Option<V>` and `&Map<K, V>` are not references into the guarded storage, the
 generic interface returns references into the storage instead: `&V` for
 `guard f >= (Some(v))`, `Option<&V>` for any other operand of a `storage_option`
-field, and `&IMap<K, V>` (equal to `m.to_imap()`) for a `storage_map` field that is
-the only storage field (`&IMap<K, V>`, as in the trusted interface, for a
-`storage_imap` field). A guard may have several outputs.
+field, and for a `storage_map` or `storage_imap` field `&IMap<K, V>` (equal to
+`m.to_imap()`, or `m` for a `storage_imap`) if the field is the only storage field
+and the guard the property's only guard. Otherwise the guarded storage contains no
+map of type `IMap<K, V>` (its keys are tagged by field, or it holds the other
+guards' values too), and the guard returns a map of references into it:
+`Map<K, &V>` with the domain of `m` and `*out[k] == m[k]` (`IMap<K, &V>` for a
+`storage_imap`, built key by key, so its operand must have a finite domain,
+which the machine states with a `require`). A guard may have several outputs.
 
 ### Differences from the trusted interface
 
@@ -372,8 +389,8 @@ the only storage field (`&IMap<K, V>`, as in the trusted interface, for a
   (`Token::empty`), so the signature is unchanged.
 * **`count` tokens** do not implement `CountToken` (see above).
 * **Guards of general operands** return references into the guarded storage
-  (`&V`, `Option<&V>` or `&IMap<K, V>`, see above) instead of `&Option<V>` or
-  `&Map<K, V>`.
+  (`&V`, `Option<&V>`, `&IMap<K, V>`, or `Map<K, &V>`/`IMap<K, &V>`, see above)
+  instead of `&Option<V>` or `&Map<K, V>`.
 * **Persistent tokens and `Instance` in machines with type parameters** are not
   `Copy` where they own their resources (see above); clients call `clone` (with
   `&mut self` for persistent tokens of a machine with storage).
@@ -382,10 +399,9 @@ the only storage field (`&IMap<K, V>`, as in the trusted interface, for a
   above), not `vstd::tokens::IMapToken`/`ISetToken`; client code that names
   `IMapToken<K, V, M::field>` must name `M::field_map` instead. Their `into_map`
   and `from_map` require finite maps.
-* **Type parameters.** A machine with type parameters and storage in which a guard
-  borrows no token requires its type parameters to be `'static`: its instance
-  holds a leaked `&'static` storage token (a storage token cannot be duplicated,
-  so the instance cannot own it and stay clonable).
+* **Guards without borrowed tokens in machines with type parameters and
+  storage** take an extra argument `&Unit` (see above), as operations that
+  consume no token take a `Unit`; the type parameters need no `'static` bound.
 * **Supported fields.** The interface currently supports:
   * every sharding strategy: `variable`, `constant`, `not_tokenized`, `option`,
     `persistent_option`, `map`, `persistent_map`, `imap`, `persistent_imap`, `set`,
@@ -401,17 +417,16 @@ the only storage field (`&IMap<K, V>`, as in the trusted interface, for a
   * guards with or without borrowed tokens, of singleton and general operands,
     with any number of outputs;
   * operations without any token (with a `Unit`, see above), and properties that
-    read only constants or nothing.
+    read only constants or nothing;
+  * labeled machines: init and transition labels (also with the machine's type
+    parameters) are the first parameters of the generated operations.
 
-  The following are rejected at expansion time:
-  * a guard of a general operand of a `storage_map` or `storage_imap` field that is
-    not the only storage field, or that is not the property's only guard;
-  * a read-only operation that reads a constant and whose only borrowed inputs
-    are `imap`/`iset` collections;
-  * general withdrawals from a tagged `storage_imap`;
-  * labels.
-
-  For these, use `#[verified_raw_tokens]`.
+  A general deposit into or withdrawal from a `storage_imap` field stored in
+  the tagged carrier (with storage fields of other payload types) packs or
+  untags its values one by one, so its operand needs a finite domain, which the
+  machine states with a `require`; verification reports a diagnostic at the
+  operand otherwise. A borrowed multiset part needs a similar `require` (see
+  above).
 
 ## Comparison
 

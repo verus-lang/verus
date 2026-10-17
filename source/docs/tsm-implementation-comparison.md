@@ -194,7 +194,8 @@ type parameters, a leaked reference would need the parameters to be `'static`:
 there the instance owns duplicable copies of these resources where it needs
 them (a descriptor whose type mentions a parameter; a unit token without
 storage), is not `Copy`, and its `clone` promises equal identifiers and
-constants.
+constants. A storage token cannot be duplicated, so with storage a guard that
+borrows no token borrows a `Unit` instead of an instance-held token.
 
 Persistent tokens hold a leaked `&'static` raw token whose fragment is
 idempotent. They are `Copy`, and their `clone` promises equality, as in the
@@ -254,7 +255,9 @@ other overlaps fail in the generated proof. A stored-value binding cannot
 observe a value deposited earlier on its path. Withdrawal keys are evaluated
 in the full pre-state, so they may read fields the operation does not own
 (including the stored map) or use `pre` as a whole; deposit and guard keys must
-be local observations. The corpus `examples/verified_tsm/raw_forms_*.rs`
+be local observations. A guard may guard a value bound by `have` on an exclusive
+`map`/`imap` entry or on an `option` or `persistent_option` field
+(`have o >= Some(let x)`): the bound value is read from the borrowed fragment. The corpus `examples/verified_tsm/raw_forms_*.rs`
 exercises these forms.
 
 Unsupported shapes and generated-name conflicts produce diagnostics. These

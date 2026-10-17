@@ -1,7 +1,6 @@
-//! The storage layout of exactly one `option`, one `map`, one `storage_option`
-//! and one `storage_map` field whose stored values have one type: the raw
-//! backend stores it in a homogeneous carrier (keys tagged by field, values
-//! untagged). The generic interface supports it: singleton and general
+//! Storage fields of different kinds (here a `storage_option` and a
+//! `storage_map`) whose stored values have one type: the raw backend stores
+//! them in a homogeneous carrier (keys tagged by field, values untagged). The generic interface supports it: singleton and general
 //! deposits and withdrawals, and guards.
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
