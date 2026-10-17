@@ -2078,3 +2078,41 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] slice_unchecked_specs verus_code! {
+        use vstd::prelude::*;
+
+        fn get_usize(s: &[u8], i: usize) requires i < s.len() {
+            let x = unsafe { s.get_unchecked(i) };
+            assert(*x == s@[i as int]);
+        }
+
+        fn get_range(s: &[u8], a: usize, b: usize) requires a <= b <= s.len() {
+            let sub = unsafe { s.get_unchecked(a..b) };
+            assert(sub@ == s@.subrange(a as int, b as int));
+        }
+
+        fn get_mut(s: &mut [u8], i: usize) requires i < old(s).len() {
+            let x = unsafe { s.get_unchecked_mut(i) };
+            assert(*x == old(s)@[i as int]);
+            *x = 7u8;
+            assert(s@ == old(s)@.update(i as int, 7u8));
+        }
+
+        fn split(s: &[u8], mid: usize) requires mid <= s.len() {
+            let (l, r) = unsafe { s.split_at_unchecked(mid) };
+            assert(l@ == s@.subrange(0, mid as int));
+            assert(r@ == s@.subrange(mid as int, s@.len() as int));
+        }
+
+        fn split_mut(s: &mut [u8], mid: usize) requires mid <= old(s).len() {
+            let (l, r) = unsafe { s.split_at_mut_unchecked(mid) };
+            let ghost lv = l@;
+            let ghost rv = r@;
+            assert(lv == old(s)@.subrange(0, mid as int));
+            assert(rv == old(s)@.subrange(mid as int, old(s)@.len() as int));
+            assert(s@ == lv + rv);
+        }
+    } => Ok(())
+}
