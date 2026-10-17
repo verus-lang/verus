@@ -1776,8 +1776,9 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> parse::Result<()> 
             ctxt.fields_written.insert(id.to_string());
             Ok(())
         }
-        TransitionStmt::SubUpdate(..) => {
-            panic!("sub-update not supported here");
+        TransitionStmt::SubUpdate(span, ..) => {
+            // Rejected earlier by `check_unsupported_updates`.
+            Err(Error::new(*span, "sub-update not supported here"))
         }
         TransitionStmt::Update(span, id, _e) => {
             let f = ctxt.get_field_or_panic(id);
@@ -1912,8 +1913,9 @@ fn translate_transition(
             return Ok(());
         }
 
-        TransitionStmt::SubUpdate(..) => {
-            panic!("sub-update not supported here");
+        TransitionStmt::SubUpdate(span, ..) => {
+            // Rejected earlier by `check_unsupported_updates`.
+            return Err(Error::new(*span, "sub-update not supported here"));
         }
         TransitionStmt::Initialize(_span, _id, e) | TransitionStmt::Update(_span, _id, e) => {
             let update_e = translate_expr(ctxt, e, false, errors);
