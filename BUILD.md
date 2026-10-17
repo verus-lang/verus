@@ -1,8 +1,8 @@
 Below, you can find instructions for:
 
 - [Building Verus](#building-the-project)
-  - [Using Vargo](#build-with-vargo)
   - [Using Cargo](#build-with-cargo)
+  - **[DEPRECATED]** [Using Vargo](#build-with-vargo)
 - [Running Verus on the command line](#running-the-verifier)
 - [Using Verus in an IDE](#ide-support)
 
@@ -10,9 +10,7 @@ Below, you can find instructions for:
 
 The main project source is in `source`.
 
-`tools` contains scripts for setting up the development environment by
-building a `cargo` wrapper that ensures artifacts are built correctly with
-our custom build process.
+`tools` contains miscellaneous scripts for Verus development.
 
 See [`source/CODE.md`](source/CODE.md) for more details about files in `source`. See the
 [official docs](https://rustc-dev-guide.rust-lang.org/) for more about the
@@ -32,7 +30,7 @@ Set the `VERUS_Z3_PATH` environment variable to the path of the Z3 executable fi
 ### On Unix/macOS/Windows: Get a local Z3
 
 From `source`, use the script `./tools/get-z3.sh` (on Unix/macOs) or `./tools/get-z3.ps1` (on Windows) to download Z3.
-On Unix/macOS the cargo wrapper will correctly set the `VERUS_Z3_PATH` environment variable for the verifier to find Z3.
+The cargo `.config` will correctly set the `VERUS_Z3_PATH` environment variable for the verifier to find Z3.
 If you run the verifier binary manually, set `VERUS_Z3_PATH` to `source/z3` or `source/z3.exe`.
 
 ## Step 2: Ensure you have a recent rustup installed
@@ -45,29 +43,42 @@ process does not expect.
 
 You should be in the `source` subdirectory.
 
+First, ensure that the necessary rust toolchain is installed. Run the following command:
+
+```sh
+rustup toolchain install
+```
+
+### Build with Cargo
+
+The recommended way to build Verus is by using the Cargo-based tooling.
+
+Run the following commands:
+
+```sh
+cargo build --release
+cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
+```
+
+The first command builds Verus and its supporting libraries. The second builds and verifies
+`vstd`, and places its required artifacts in `target-verus/release` alongside the other Verus
+artifacts. Omit `--release` from both commands for a debug build, which uses `target-verus/debug`
+instead.
+
+### Build with Vargo
+
+**WARNING**: Vargo is being deprecated. Please use the Cargo-based tooling described in the section above.
+
 First, activate the development environment with one of the following: (This is automatic for [direnv](https://direnv.net/) users[^1])
 
-```
+```sh
 source ../tools/activate       # for bash and zsh
 source ../tools/activate.fish  # for fish
 ..\tools\activate.bat          # for Windows
 ..\tools\activate.ps1          # for Windows (Power Shell)
 ```
 
-If you do not have the necessary rust toolchain installed, you will get a message like:
-
-```
-error: toolchain '1.82.0-aarch64-unknown-linux-gnu' is not installed
-help: run `rustup toolchain install 1.82.0-aarch64-unknown-linux-gnu` to install it
-```
-
-Do not run the command as indicated.
-Run `rustup toolchain install` so that rustup installs the toolchain according to the requirements of the project
-(specified in `rust-toolchain.toml` at the project root).
-
 This command builds (or re-builds) `vargo`, our cargo wrapper, and adds it to the `PATH` for the current shell.
-
-### Build with Vargo
 
 Now, simply run,
 
@@ -85,37 +96,20 @@ This will build everything you need to use Verus:
 
 If everything is successful, you should see output indicating that various modules in `vstd` are being verified.
 
-### Build with Cargo
-
-Alternatively, you can build Verus directly with Cargo, without activating the Vargo development
-environment. Run:
-
-```
-cargo build --release
-cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
-```
-
-The first command builds Verus and its supporting libraries. The second builds and verifies
-`vstd`, and places its required artifacts in `target-verus/release` alongside the other Verus
-artifacts. Omit `--release` from both commands for a debug build, which uses `target-verus/debug`
-instead.
-
 # Running the Verifier
 
 After running the build steps above, you can verify an example file.
 From the `source` directory, run:
 
-```
-vargo run -p rust_verify --release -- ../examples/vectors.rs
+```sh
+cargo run -p rust_verify --release -- ../examples/vectors.rs
 ```
 
-This will make sure that the Verus and `vstd` builds are up-to-date, then run the verifier.
-
-You can also run the verifier directly (skipping the up-to-date check) with:
+You can also run the verifier directly with:
 
 on Linux and macOS:
 
-```
+```sh
 ./target-verus/release/verus ../examples/vectors.rs
 ```
 
@@ -135,7 +129,7 @@ You can also add the `--compile` flag, which tells Verus to compile the Verus co
 
 on Linux and macOS:
 
-```
+```sh
 ./target-verus/release/verus ../examples/doubly_linked_xor.rs --compile
 ./doubly_linked_xor
 ```
@@ -151,8 +145,7 @@ To verify an entire crate, simply point Verus at your `src/main.rs` file for an 
 
 Now you're ready to write some Verus! Check out [our guide](https://verus-lang.github.io/verus/guide/getting_started.html) if you haven't yet.
 
-Note that while `vargo` needs to be run from the `source` directory, the `verus` binary can be run (directly, or via a symlink) from any
-directory, which is useful when verifying and compiling a project elsewhere on your file-system.
+Note that while `cargo` needs to be run from the `source` directory, the `verus` binary can be run (directly, or via a symlink) from any directory, which is useful when verifying and compiling a project elsewhere on your file-system.
 
 # IDE Support
 

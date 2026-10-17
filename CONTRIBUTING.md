@@ -1,7 +1,7 @@
 # Tips and Expectations for Contributing to Verus
 
-Thanks for contributing to Verus!  Verus is an Open Source project and welcomes
-contributions.  Please report issues or start discussions here on GitHub.
+Thanks for contributing to Verus! Verus is an Open Source project and welcomes
+contributions. Please report issues or start discussions here on GitHub.
 
 We use GitHub discussions for feature requests and more open-ended conversations about
 upcoming features, and we reserve GitHub issues for actionable issues (bugs) with
@@ -10,11 +10,11 @@ vice versa) we can always move it later.
 
 ## Reporting an issue
 
-Verus has a convenient feature to record an execution run, along with necessary files (including the source to your crate) to help debug and fix issues.  When reporting an issue, we would appreciate if you run Verus with this feature.
+Verus has a convenient feature to record an execution run, along with necessary files (including the source to your crate) to help debug and fix issues. When reporting an issue, we would appreciate if you run Verus with this feature.
 
-To record an execution run, simply add `--record` to the verus command that triggers the issue.  This will produce a `.zip` file (named with the current date/time) that you can attach when opening a GitHub issue.
+To record an execution run, simply add `--record` to the verus command that triggers the issue. This will produce a `.zip` file (named with the current date/time) that you can attach when opening a GitHub issue.
 
-If you want to aid us in debugging (or are unable to share your full recording, which includes the full crate for us to be able to reproduce your issue), you can attempt to minimize the issue before recording it.  For automatic minimization of a crate or file (producing a smaller file that triggers the same error), see [source/tools/minimizers/README.md](./source/tools/minimizers/README.md) for more details.
+If you want to aid us in debugging (or are unable to share your full recording, which includes the full crate for us to be able to reproduce your issue), you can attempt to minimize the issue before recording it. For automatic minimization of a crate or file (producing a smaller file that triggers the same error), see [source/tools/minimizers/README.md](./source/tools/minimizers/README.md) for more details.
 
 ## Expectations when making a contribution
 
@@ -23,20 +23,20 @@ Verus is a verification tool, but it is not itself verified, so we use tradition
 As a new contributor, you should expect at least one review from a core contributor (e.g., @tjhance, @Chris-Hawblitzel, or @parno). The first reviewer will also determine if additional reviews are necessary.
 
 In the PR description, please describe:
+
 - What issue you're solving (please include a link to an existing GitHub issue if it exists)
 - Changed behavior, if any
 - A description of your code changes
 
-For *opinionated changes*, such as those that add a feature or dramatically modify code architecture, we would highly recommend checking with the Verus team first (by opening a [GitHub Discussion](https://github.com/verus-lang/verus/discussions)) to save time and to ensure the direction is a desirable one.
+For _opinionated changes_, such as those that add a feature or dramatically modify code architecture, we would highly recommend checking with the Verus team first (by opening a [GitHub Discussion](https://github.com/verus-lang/verus/discussions)) to save time and to ensure the direction is a desirable one.
 
 ### Policy for AI-generated and AI-assisted code
 
-AI use is permitted, but all code produced via agentic AI must be disclosed in the PR.  Regardless of how the code is produced, we expect the human contributor to take responsibility for the quality of the code.  As a consequence of this position, **do not** list any tool (AI or otherwise) as a co-author.  Instead, you can use `Assisted-by: <tool>:<model>`.
+AI use is permitted, but all code produced via agentic AI must be disclosed in the PR. Regardless of how the code is produced, we expect the human contributor to take responsibility for the quality of the code. As a consequence of this position, **do not** list any tool (AI or otherwise) as a co-author. Instead, you can use `Assisted-by: <tool>:<model>`.
 
 AI-assisted coding, or "vibecoding," carries a number of risks. These risks include both damage to overall code quality and the risk of overburdening the reviewers, as code can be generated faster than it can be reviewed. We will close a PR if we feel those risks cannot be satisfactorily managed, or if our time is abused.
 
 We expect professionalism and common sense from contributors; you, the human author, are responsible for the pull request. Be prepared to receive feedback or to answer questions about the PR. **The PR description, along with subsequent PR discussion comments, must be human-written in all cases.**
-
 
 ## Building Verus from Source
 
@@ -56,19 +56,18 @@ by following the [installation instructions](https://github.com/verus-lang/verus
 To check the Verus and vendored dependencies' source code, and `vstd`'s formatting,
 type the following from the `source` directory:
 
-```
-vargo fmt -- --check
+```sh
+cargo run -p cargo-verus -- fmt --check
 ```
 
-If the source code follows the guidelines, `vargo fmt -- --check` will only produce
-`vargo info [0]: formatting <item>` lines.
-Otherwise, it will report suggestions on how to reformat the source code, and will
-output a non-zero status code.
+If the source code follows the guidelines, `cargo verus fmt --check` will produce no output.
+Otherwise, it will report suggestions on how to reformat the source code, and will output a
+non-zero status code.
 
 To automatically apply these suggestions to the source code, type:
 
-```
-vargo fmt
+```sh
+cargo verus fmt
 ```
 
 If you want to use VS Code with `rust-analyzer` to edit the source code of Verus,
@@ -100,7 +99,7 @@ The CI publishes some user facing documentation, including the ["verusdoc" (modi
 
 To manually build the `vstd` documentation, run,
 
-```
+```sh
 cd source
 ./tools/docs.sh
 ```
@@ -111,46 +110,48 @@ Meanwhile, the tutorial guide can be found in `source/docs/guide/`. From that di
 
 ## Internal code documentation
 
-Commenting the code is strongly encouraged.  Use `///` to create comments
+Commenting the code is strongly encouraged. Use `///` to create comments
 that [`rustdoc`](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) can
 automatically extract into HTML documentation.
 
 You can compile the current documentation by running (in the `source` directory)
-```
+
+```sh
 RUSTC_BOOTSTRAP=1 cargo doc
 ```
+
 which will produce documentation files, e.g., `./target/doc/rust_verify/index.html`
 
 ## Running tests for the Rust-to-VIR translation, and inspecting the resulting vir/air/smt
 
-`vargo test` will run the tests for `rust_verify_test`,
+After building Verus and `vstd`, you can run `rust_verify_test` as follows:
 
-```
-vargo test -p rust_verify_test
+```sh
+cargo test -p rust_verify_test
 ```
 
 You can run a single test file and a specific test within with the following:
 
-```
-vargo test -p rust_verify_test --test <test file> <test name>
+```sh
+cargo test -p rust_verify_test --test <test file> <test name>
 ```
 
-`vargo nextest run` is also supported. To install `nextest`, see [https://nexte.st/book/installation.html](https://nexte.st/book/installation.html).
+`cargo nextest run` is also supported. To install `nextest`, see [https://nexte.st/book/installation.html](https://nexte.st/book/installation.html).
 
-See the cargo help for more info on the test flags.
+See `cargo help` for more info on the test flags.
 
 If you need to pass additional command-line arguments to the verifier in tests, for example to print the
 erased rust ast, you can use the `VERUS_EXTRA_ARGS` environment variable, like this:
 
-```
-VERUS_EXTRA_ARGS="--print-erased-spec" vargo test -p rust_verify_test --test refs -- --nocapture test_ref_0
+```sh
+VERUS_EXTRA_ARGS="--print-erased-spec" cargo test -p rust_verify_test --test refs -- --nocapture test_ref_0
 ```
 
 It can be useful to inspect the intermediate representations used by Verus (VIR, AIR, SMTLIB);
 you can log the VIR, AIR, and SMTLIB for a test with:
 
-```
-VERUS_EXTRA_ARGS="--log-all" vargo test -p rust_verify_test --test refs -- --nocapture --exact test_ref_0
+```sh
+VERUS_EXTRA_ARGS="--log-all" cargo test -p rust_verify_test --test refs -- --nocapture --exact test_ref_0
 ```
 
 This will output the log files in `rust_verify_test/.verus-log`. Only run one test at
@@ -186,8 +187,7 @@ processes.
 
 ### Line count tests
 
-Some of the tests for the `line_count` tool (located in `source/tools/line_count`) use [`cargo-insta`]( https://docs.jj-vcs.dev/latest/templates/#commit-keywords
-). This is a testing mechanism that makes it nice to test against snapshots of the output of a tool.
+Some of the tests for the `line_count` tool (located in `source/tools/line_count`) use [`cargo-insta`](https://docs.jj-vcs.dev/latest/templates/#commit-keywords). This is a testing mechanism that makes it nice to test against snapshots of the output of a tool.
 
 `cargo-insta` is not needed to run the tests, but it provides a nice interface for accepting/rejecting new snapshots on test failure.
 This can be useful, for instance, if one of your changes changes the way `line_count` computes the line attribution split, making the snapshots change.
@@ -200,29 +200,30 @@ If you find you need `cargo-insta`, it can be installed with `cargo install carg
 Verus aims to curate `vstd` along similar lines to how Rust curates `std`.
 Ideally, `vstd` should contain a set of minimal shared abstractions (and proofs
 about them) to enable the larger Verus community to develop their own
-abstractions and proof techniques.  A particularly important use case for
+abstractions and proof techniques. A particularly important use case for
 `vstd` is supporting the abstractions needed to provide specs for Rust's `std`,
 so that people developing with Verus can use standard Rust constructs without
 relying on external dependencies.
 
 If your contribution doesn't fall into this minimal subset, it may
 be better off as an independent package published on [crates.io](https://crates.io),
-which the community can then integrate via `cargo verus`.  See the
+which the community can then integrate via `cargo verus`. See the
 [Best Practices](best-practices-for-publishing-verusverified-code-on-cratesio) below.
 
 ### Guidelines for developing `vstd` contributions
 
-When contributing *trusted specifications* for the Rust standard library to `vstd`, 
-the absolute most important consideration is soundness.  Since `assume_specification`
-and external trait specifications are unchecked, they can easily 
+When contributing _trusted specifications_ for the Rust standard library to `vstd`,
+the absolute most important consideration is soundness. Since `assume_specification`
+and external trait specifications are unchecked, they can easily
 [subvert Verus's guarantees](https://verus-lang.github.io/verus/guide/external_trait_specifications.html?highlight=assume_spec#soundness-warning).
 To help mitigate this risk, please follow these guidelines:
+
 1. Specifications should be written in a concise, easy-to-read style, using the
-   simplest, clearest constructs possible.  A necessary, but not sufficient
+   simplest, clearest constructs possible. A necessary, but not sufficient
    step, is typically to abstract complex implementation types into
    mathematical types; e.g., we abstract both `HashSet` and `BtreeSet` as a
-   mathematical `Set`; `Vec` as a mathmematical `Seq`, etc. 
-2. Please consult the corresponding Rust documentation for the function.  Then
+   mathematical `Set`; `Vec` as a mathmematical `Seq`, etc.
+2. Please consult the corresponding Rust documentation for the function. Then
    write your formal specification so as to make it easy to compare it with the
    informal documentation.
 3. The assumed precondition should be strong enough to rule out unsafety and panics.
@@ -231,18 +232,20 @@ To help mitigate this risk, please follow these guidelines:
    functions may clone or copy their arguments, which may not be apparent from
    the function signature) or for places where the code and the documentation disagree.
 5. Despite the point above, it's important that implementation details **not "leak"**
-   into the specification.  See above regarding keeping specifications simple and abstract.
+   into the specification. See above regarding keeping specifications simple and abstract.
 
-Stylistically, inside `vstd`: 
+Stylistically, inside `vstd`:
+
 - We add a `lemma_` prefix to the name of a lemma (i.e., a `proof fn`) to make its purpose explicit.
 - We try to make lemmas associated functions when possible, e.g., `my_map.lemma_remove_keys_len(keys)`, not `lemma_remove_keys_len(my_map, keys)`.
-- Run `vargo fmt` to run the `verusfmt` tool on `vstd`.
+- Run `cargo run -p cargo-verus -- fmt --manifest-path vstd/Cargo.toml` inside `source/` to format `vstd` using `verusfmt`.
 
 ### Tips for testing and verifying your contribution
 
 If you're contributing to the standard library, you should also test the
 standalone build of that library with
-```
+
+```sh
 cd source/vstd
 cargo build
 ```
@@ -252,40 +255,41 @@ identifiers with `use` (as opposed to blanket imports using `*`) don't work
 when building the standalone exec-only version of `vstd`. To rectify this error,
 make sure every such import is prefixed by `#[cfg(verus_keep_ghost)]`, as
 in the following example:
-```
+
+```rust
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::general_internals::is_le;
 ```
 
-You may sometimes want to verify `vstd` outside of the `vargo` build process: To do so,
-build Verus first following the instructions above (with `vargo build --release`) and then
-run, from the project root:
+You may sometimes want to verify `vstd` outside of the usual build process. To do so,
+build Verus first following the instructions above (with `cargo build --release`) and then
+run, from inside `source/`:
 
-```
-cd source/vstd
-../target-verus/release/verus --crate-type=lib --is-vstd vstd.rs --cfg 'feature="std"' --cfg 'feature="alloc"'
+```sh
+cargo run --release -p cargo-verus -- verify --manifest-path vstd/Cargo.toml --features std,alloc
 ```
 
 ## Best practices for publishing Verus-verified code on crates.io
 
 [Publishing](https://doc.rust-lang.org/cargo/reference/publishing.html)
 your Verus-verified crate on [crates.io](https://crates.io) is a great
-way to enable more people to build on your hard work.  If you do so, we encourage
+way to enable more people to build on your hard work. If you do so, we encourage
 you to follow these best practices.
+
 1. If your crate is primarily for specification and proof purposes (i.e., a normal Rust developer
    is unlikely to benefit from it), then please make this clear in your preamble (i.e., in the README.md
-   file that appears on the crates.io landing page.  For example, you might say:
+   file that appears on the crates.io landing page. For example, you might say:
    "This crate contains formal specifications and proofs about Widgets,
    primarily for use with [Verus](https://github.com/verus-lang/verus), a tool
    for verifying the correctness of Rust code."
 2. If your crate contains verified executable Rust code that could be used by both unverified
    and verified projects, you might instead say something like: "This crate
-   implements Widgets with the following fun features: [Feature list].  The
+   implements Widgets with the following fun features: [Feature list]. The
    code has been formally verified using [Verus](https://github.com/verus-lang/verus),
    which means [list of properties you proved, with suitable caveats for what
-   properties have not been proven]."  It's important to convey the limitations
+   properties have not been proven]." It's important to convey the limitations
    of your proof (e.g., what you may have assumed about other libraries), so that
-   consumers of your crate are not disappointed when something breaks.  Err on the
+   consumers of your crate are not disappointed when something breaks. Err on the
    side of under-promising and over-delivering.
 3. If your crate contains verified executable Rust code that uses any of
    Verus's unsafe primitives ([raw
@@ -296,31 +300,35 @@ you to follow these best practices.
    or uses explicit `unsafe` blocks, then we encourage you to run the [safe API
    checker](https://verus-lang.github.io/verus/guide/calling-verified-from-unverified.html),
    which can detect places where your external interface relies on
-   Verus-checked preconditions to ensure safety.   It's important to remember
+   Verus-checked preconditions to ensure safety. It's important to remember
    that unverified consumers are not subject to these checks, so providing such
-   an interface may lead to undefined behavior.  The
+   an interface may lead to undefined behavior. The
    [guide](https://verus-lang.github.io/verus/guide/calling-verified-from-unverified.html)
    offers some tips on how to improve such an interface.
 4. We encourage you to apply [verusdoc](https://verus-lang.github.io/verus/guide/verusdoc.html)
-   to your crate.  Like `rustdoc`, `verusdoc` will automatically generate nice
+   to your crate. Like `rustdoc`, `verusdoc` will automatically generate nice
    HTML documentation, and it will also include Verus-related specifications.
    Ideally, you should host this documentation online and provide a link to it
-   in the preamble of your package on crates.io.  In addition, adding a CI job
+   in the preamble of your package on crates.io. In addition, adding a CI job
    to your repository to automatically update your documentation site will
    help keep it in sync as your package evolves.
 
-
 ## Other tips
-
-You can use `--vstd-no-verify` to skip verification of the `vstd` library. This is pretty useful if you're building or running tests a lot. Note that it will still _build_ `vstd`—it just skips the SMT step. For example:
-
-```
-# for building
-vargo build --vstd-no-verify
-# for tests
-vargo test --vstd-no-verify -p rust_verify_test --test <test file> <test name>
-```
 
 If you modify the syntax parsing inside of the `dependencies/syn/src` directory,
 be sure to regenerate the auto-generated files in the `dependencies/syn/src/gen` directory.
 See `dependencies/syn/README.md` for details.
+
+### Cheat Sheet: Vargo to Cargo
+
+For brevity, this section assumes installing `cargo-verus` via `cargo install --path cargo-verus`. Without that, replace `cargo verus $ARGS` with `cargo run -p cargo-verus -- $ARGS` instead.
+
+| Vargo                        | Cargo                                                                |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `source ../tools/activate`   | `cargo install --path cargo-verus`                                   |
+| `vargo build --exclude vstd` | `cargo build`                                                        |
+| `vargo build`                | `cargo build && cargo verus build --manifest-path vstd/Cargo.toml`   |
+| `vargo build -p vstd`        | `cargo verus build --manifest-path vstd/Cargo.toml`                  |
+| `vargo fmt --exclude vstd`   | `cargo verus fmt`                                                    |
+| `vargo fmt`                  | `cargo verus fmt && cargo verus fmt --manifest-path vstd/Cargo.toml` |
+| `vargo fmt -p vstd`          | `cargo verus fmt --manifest-path vstd/Cargo.toml`                    |
