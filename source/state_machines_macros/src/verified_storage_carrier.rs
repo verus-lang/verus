@@ -33,7 +33,11 @@ impl Carrier {
     }
 
     pub fn pointwise(&self, index: TokenStream, goal: TokenStream) -> TokenStream {
-        if !self.homogeneous { return quote!{}; }
+        // Tagged carriers of optional stores alone (differently typed
+        // permissions) need the per-tag split; existing tagged carriers with
+        // map namespaces are proved without it.
+        let options_only = self.fields.iter().all(|f| matches!(f.stype, ShardableType::StorageOption(_)));
+        if !self.homogeneous && !options_only { return quote!{}; }
         let key = &self.key_expr;
         let arms:Vec<_> = self.fields.iter().map(|field| {
             let n=&field.name;
@@ -58,7 +62,13 @@ impl Carrier {
         let has_option = fields.iter().any(|f| matches!(f.stype, ShardableType::StorageOption(_)));
         let map_count = fields.iter().filter(|f| matches!(f.stype,
             ShardableType::StorageMap(..) | ShardableType::StorageIMap(..))).count();
-        if fields.len() < 2 || !(has_option && map_count > 0 || map_count > 1) {
+        // Optional stores of one permission type share an untagged integer-keyed
+        // carrier; differently typed optional stores need the tagged carrier.
+        let option_types: HashSet<String> = fields.iter().filter_map(|f| match &f.stype {
+            ShardableType::StorageOption(v) => Some(quote!{#v}.to_string()),
+            _ => None,
+        }).collect();
+        if fields.len() < 2 || !(has_option && map_count > 0 || map_count > 1 || option_types.len() > 1) {
             return Ok(None);
         }
         // Preserve existing carrier layouts outside the four-role mixed
@@ -421,8 +431,20 @@ impl Carrier {
                 #(#protocol_helpers)*
             }
         };
-        let projection = quote! {IMap::new(|key:#key_name #types|match key{#(#domains)*_=>false,},
-        |key:#key_name #types|match key{#(#values)*_=>arbitrary(),})};
+        let options_only = fields.iter().all(|f| matches!(f.stype, ShardableType::StorageOption(_)));
+        let projection = if options_only {
+            // Finite unions of singleton tags; solvers reason about these more
+            // reliably than about a closure-defined domain.
+            let tags: Vec<_> = fields.iter().map(|f| {
+                let n = &f.name;
+                let tag = format_ident!("__tag_{}", n);
+                quote! {.union_prefer_right(#key_expr::#tag(s.#n))}
+            }).collect();
+            quote! {IMap::<#key_name #types,#value_name #types>::empty() #(#tags)*}
+        } else {
+            quote! {IMap::new(|key:#key_name #types|match key{#(#domains)*_=>false,},
+            |key:#key_name #types|match key{#(#values)*_=>arbitrary(),})}
+        };
         Ok(Some(Self {
             fields,
             key: verus_syn::parse2(quote! {#key_name #types})?,

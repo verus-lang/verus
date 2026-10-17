@@ -120,13 +120,18 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
                 crate::verified_field_storage_map::normalize_initial_requirements(&mut bundle)?;
             }
             let api=crate::verified_generic_tokens::output(&bundle)?;
+            // The generic facade is written against the general emitter's
+            // interface, so every machine goes there directly. This is the
+            // end point of `verified_tokens::output_raw`'s fallback as well,
+            // and the general emitter carries the raw backend's lifted limits
+            // (labels, several deposits/withdrawals/guards per path, ...).
             let output=crate::verified_general::output(bundle)?;
             return crate::verified_generic_tokens::append_tokens(output,api);
         }
         let api=if typed {Some(crate::verified_field_tokens::output(&bundle.sm)?)}else{None};
         let output=if typed && bundle.sm.fields.len()==1 && matches!(bundle.sm.fields[0].stype,ShardableType::Count) {
             crate::verified_general::output(bundle)?
-        }else{crate::verified_tokens::output(bundle)?};
+        }else if typed {crate::verified_tokens::output(bundle)?}else{crate::verified_tokens::output_raw(bundle)?};
         return if let Some(api)=api {crate::verified_field_tokens::append(output,api)}else{Ok(output)};
     }
     for name in names {

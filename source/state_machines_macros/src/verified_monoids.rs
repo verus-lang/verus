@@ -308,18 +308,39 @@ fn effect_expression(s: &TransitionStmt, f: &Field, kind: EffectOp) -> Result<To
     })
 }
 
-// Compose two optional operands of the same modifier kind. Only map and
-// multiset fields reach this: `analyze` rejects repeated modifiers elsewhere.
-// For maps, the transition's enabling condition makes repeated removals (and
-// additions) key-disjoint, so the union is the combined operand.
+// Compose two optional operands of the same modifier kind into one operand
+// whose single application has the effect of applying both in order. For
+// exclusive kinds the transition's requirements and safety conditions make
+// repeated operands disjoint (e.g. key-disjoint map removals, at most one
+// removed `true`), so the composition is the monoid operation. Persistent
+// additions compose by the idempotent join (max, union, first defined value).
 fn sequential(f: &Field, a: TokenStream, b: TokenStream) -> TokenStream {
+    // Hygienic binders: operands may mention parameters of any name.
+    let x = format_ident!("__tsm_first", span = proc_macro2::Span::mixed_site());
+    let y = format_ident!("__tsm_second", span = proc_macro2::Span::mixed_site());
     let combine = match f.stype {
-        ShardableType::Multiset(_) => quote! {x.add(y)},
-        _ => quote! {x.union_prefer_right(y)},
+        ShardableType::Multiset(_) => quote! {#x.add(#y)},
+        ShardableType::Count => quote! {(#x + #y) as nat},
+        ShardableType::PersistentCount => quote! {::vstd::resource::tsm_persistent::count_max(#x, #y)},
+        ShardableType::Bool | ShardableType::PersistentBool => quote! {(#x || #y)},
+        ShardableType::Set(_)
+        | ShardableType::ISet(_)
+        | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_) => quote! {#x.union(#y)},
+        ShardableType::Option(_) | ShardableType::PersistentOption(_) => {
+            quote! {::vstd::resource::tsm_collections::option_union(#x, #y)}
+        }
+        _ => quote! {#x.union_prefer_right(#y)},
+    };
+    // Integer literal operands need their type before they are combined.
+    let (a, b) = if matches!(f.stype, ShardableType::Count | ShardableType::PersistentCount) {
+        (quote! {{let #x: Option<nat> = #a; #x}}, quote! {{let #y: Option<nat> = #b; #y}})
+    } else {
+        (a, b)
     };
     // Nested rather than tuple matches: see the vstd resource-algebra ops.
     quote! {match #a {
-        Some(x) => match #b { Some(y) => Some(#combine), None => Some(x) },
+        Some(#x) => match #b { Some(#y) => Some(#combine), None => Some(#x) },
         None => #b,
     }}
 }
@@ -389,25 +410,6 @@ fn collect(
         }
         _ => {}
     }
-    for (n, count) in &counts {
-        let limit = if matches!(
-            fields[n].stype,
-            ShardableType::Option(_)
-                | ShardableType::Map(..)
-                | ShardableType::IMap(..)
-                | ShardableType::Multiset(_)
-        ) {
-            2
-        } else {
-            1
-        };
-        if *count > limit {
-            return Err(Error::new(
-                *s.get_span(),
-                "verified monoids permit one modifier, or one option/map/multiset remove-then-add replacement, per field on each execution path",
-            ));
-        }
-    }
     Ok(counts)
 }
 
@@ -425,11 +427,12 @@ fn replacement_order(
         TransitionStmt::Split(span, kind, children) => {
             if let SplitKind::Special(n, op, _, _) = &**kind {
                 if n == target && op.is_modifier() {
-                    let (before, after) = if op.is_remove() { (0, 1) } else { (1, 2) };
-                    if stages.iter().any(|stage| *stage != before) {
+                    // Removals may follow removals; additions follow removals or additions.
+                    let after = if op.is_remove() { 1 } else { 2 };
+                    if op.is_remove() && stages.contains(&2) {
                         return Err(Error::new(
                             *span,
-                            "verified option/map/multiset replacement must remove then add on each modifying path",
+                            "verified monoid updates of one field must go in the order remove, have, add on each path",
                         ));
                     }
                     stages = HashSet::from([after]);
@@ -458,10 +461,51 @@ fn replacement_order(
     Ok(stages)
 }
 
-// Effect selectors currently reconstruct element bindings from the initial
-// mathematical state. Explicit Have values are handled by the ordered local
-// ownership compiler, but a bound Have after changing its source field needs
-// a selector that also threads that state. Reject that case before generation.
+// Whether every modifying path removes exactly once and then adds exactly once
+// (stage 0: unmodified, 1: removed, 2: removed then added).
+fn single_replacement(s: &TransitionStmt, target: &Ident, mut stages: HashSet<u8>) -> Option<HashSet<u8>> {
+    match s {
+        TransitionStmt::Block(_, children) => {
+            for child in children {
+                stages = single_replacement(child, target, stages)?;
+            }
+        }
+        TransitionStmt::Split(_, kind, children) => {
+            if let SplitKind::Special(n, op, _, _) = &**kind {
+                if n == target && op.is_modifier() {
+                    let (before, after) = if op.is_remove() { (0, 1) } else { (1, 2) };
+                    if stages.iter().any(|stage| *stage != before) {
+                        return None;
+                    }
+                    stages = HashSet::from([after]);
+                }
+            }
+            match &**kind {
+                SplitKind::If(_) | SplitKind::Match(..) => {
+                    let mut outcomes = HashSet::new();
+                    if matches!(&**kind, SplitKind::If(_)) && children.len() == 1 {
+                        outcomes.extend(stages.clone());
+                    }
+                    for child in children {
+                        outcomes.extend(single_replacement(child, target, stages.clone())?);
+                    }
+                    stages = outcomes;
+                }
+                _ => {
+                    for child in children {
+                        stages = single_replacement(child, target, stages)?;
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    Some(stages)
+}
+
+// Effect selectors reconstruct element bindings from the initial mathematical
+// state. A value still present after earlier removals equals its initial
+// value, so only an earlier addition to the source field can change it.
 fn check_binding_order(
     statement: &TransitionStmt,
     fields: &HashMap<String, Field>,
@@ -482,10 +526,10 @@ fn check_binding_order(
                     {
                         return Err(Error::new(
                             *span,
-                            "verified effect bindings must precede modifications of their source field",
+                            "verified effect bindings must precede additions to their source field",
                         ));
                     }
-                    if operation.is_modifier() {
+                    if operation.is_add() {
                         modified.insert(name.to_string());
                     }
                 }
@@ -511,29 +555,65 @@ fn check_binding_order(
 pub fn analyze(tr: &Transition, fields: &HashMap<String, Field>) -> Result<Vec<Effect>, Error> {
     check_binding_order(&tr.body, fields, &mut HashSet::new())?;
     let mut kinds = HashMap::new();
-    let counts = collect(&tr.body, fields, &mut kinds)?;
+    collect(&tr.body, fields, &mut kinds)?;
     let mut names: Vec<_> = kinds.keys().cloned().collect();
     names.sort();
     names.into_iter().map(|n|{
         let field=fields[&n].clone();let operations=&kinds[&n];let replacement=operations.len()==2;
         let op=if replacement{EffectOp::Add}else{*operations.iter().next().unwrap()};
         let expression=if replacement{
-            if !matches!(field.stype,ShardableType::Option(_)|ShardableType::Map(..)|ShardableType::IMap(..)|ShardableType::Multiset(_)){
-                return Err(Error::new(*tr.body.get_span(),"verified replacement supports option, map and multiset fields only"));
+            if !replaceable(&field.stype){
+                return Err(Error::new(*tr.body.get_span(),"verified replacement supports exclusive monoid fields only"));
             }
-            let stages=replacement_order(&tr.body,&field.name,HashSet::from([0]))?;
-            if stages.contains(&1){return Err(Error::new(*tr.body.get_span(),"verified replacement requires both remove and add on each modifying path"));}
+            replacement_order(&tr.body,&field.name,HashSet::from([0]))?;
             let old=effect_expression(&tr.body,&field,EffectOp::Remove)?;
             let new=effect_expression(&tr.body,&field,EffectOp::Add)?;
-            quote!{match (#old,#new){(Some(old),Some(new))=>Some((old,new)),_=>None}}
-        }else{
-            if counts[&n]>1&&!matches!(field.stype,ShardableType::Map(..)|ShardableType::IMap(..)|ShardableType::Multiset(_)){
-                return Err(Error::new(*tr.body.get_span(),"verified monoids permit at most one modifier per field on each execution path"));
+            if single_replacement(&tr.body,&field.name,HashSet::from([0])).map_or(false,|stages|!stages.contains(&1)) {
+                // One removal then one addition on every modifying path.
+                quote!{match (#old,#new){(Some(old),Some(new))=>Some((old,new)),_=>None}}
+            } else {
+                // A path that only removes (or only adds) uses the unit for the other part.
+                let unit=unit_element(&field.stype);
+                let removed=format_ident!("__tsm_removed",span=proc_macro2::Span::mixed_site());
+                let added=format_ident!("__tsm_added",span=proc_macro2::Span::mixed_site());
+                quote!{match #old {
+                    Some(#removed)=>match #new {Some(#added)=>Some((#removed,#added)),None=>Some((#removed,#unit))},
+                    None=>match #new {Some(#added)=>Some((#unit,#added)),None=>None},
+                }}
             }
+        }else{
             effect_expression(&tr.body,&field,op)?
         };
         Ok(Effect{function:format_ident!("{}_{}_effect",tr.name,field.name),field,op,expression,replacement})
     }).collect()
+}
+
+/// The operand that leaves a field unchanged.
+fn unit_element(s: &ShardableType) -> TokenStream {
+    match s {
+        ShardableType::Count => quote! {0nat},
+        ShardableType::Bool => quote! {false},
+        ShardableType::Multiset(_) => quote! {::vstd::multiset::Multiset::empty()},
+        ShardableType::Option(_) => quote! {None},
+        ShardableType::Set(_) | ShardableType::ISet(_) => quote! {::vstd::iset::ISet::empty()},
+        ShardableType::Map(..) | ShardableType::IMap(..) => quote! {::vstd::imap::IMap::empty()},
+        _ => unreachable!(),
+    }
+}
+
+/// Exclusive kinds whose removal and addition can both occur in one transition.
+fn replaceable(s: &ShardableType) -> bool {
+    matches!(
+        s,
+        ShardableType::Option(_)
+            | ShardableType::Map(..)
+            | ShardableType::IMap(..)
+            | ShardableType::Multiset(_)
+            | ShardableType::Count
+            | ShardableType::Bool
+            | ShardableType::Set(_)
+            | ShardableType::ISet(_)
+    )
 }
 
 pub fn updated(effect: &Effect, owner: TokenStream, value: TokenStream) -> TokenStream {
@@ -552,6 +632,18 @@ pub fn updated(effect: &Effect, owner: TokenStream, value: TokenStream) -> Token
                 ::vstd::resource::tsm_collections::MapFragment::op(
                     ::vstd::resource::tsm_collections::map_remove_many(#owner,(#value).0.dom()),
                     ::vstd::resource::tsm_collections::map_frag((#value).1))
+            },
+            ShardableType::Count => quote! {
+                ::vstd::resource::tsm::CountRA{count:(((#owner).count-(#value).0) as nat+(#value).1) as nat}
+            },
+            ShardableType::Bool => quote! {
+                ::vstd::resource::tsm::CountRA{count:(((#owner).count-(if (#value).0 {1nat}else{0nat})) as nat
+                    +(if (#value).1 {1nat}else{0nat})) as nat}
+            },
+            ShardableType::Set(_) | ShardableType::ISet(_) => quote! {
+                ::vstd::resource::tsm_collections::SetFragment::op(
+                    ::vstd::resource::tsm_collections::set_remove_many(#owner,(#value).0),
+                    ::vstd::resource::tsm_collections::set_frag((#value).1))
             },
             _ => unreachable!(),
         };
@@ -689,6 +781,12 @@ pub fn declarations(
                     let before = map_view(&stype, quote! {pre.#n});
                     quote! {(#before).remove_keys(value.0.dom()).union_prefer_right(value.1)}
                 }
+                ShardableType::Count => quote! {((pre.#n-value.0) as nat+value.1) as nat},
+                ShardableType::Bool => quote! {((pre.#n && !value.0) || value.1)},
+                s @ (ShardableType::Set(_) | ShardableType::ISet(_)) => {
+                    let before = set_view(s, quote! {pre.#n});
+                    quote! {(#before).difference(value.0).union(value.1)}
+                }
                 _ => unreachable!(),
             }
         } else {
@@ -785,6 +883,24 @@ pub fn declarations(
                         let remaining=::vstd::resource::tsm_collections::map_remove_many(owned.#n,value.0.dom());
                         assert(middle.dom().disjoint(value.1.dom()));
                         ::vstd::resource::tsm_collections::map_add_many_frame(remaining,frame,middle,value.1);
+                    }
+                }
+                ShardableType::Count => quote! {},
+                ShardableType::Bool => quote! {
+                    let middle=pre.#n && !value.0;
+                    let remaining=::vstd::resource::tsm::CountRA{count:(owned.#n.count-(if value.0 {1nat}else{0nat})) as nat};
+                    if value.0 {::vstd::resource::tsm_bool::bool_remove_frame(owned.#n,frame,pre.#n);}
+                    assert(::vstd::resource::tsm::CountRA::op(remaining,frame)==::vstd::resource::tsm_bool::bool_frag(middle));
+                    if value.1 {::vstd::resource::tsm_bool::bool_add_frame(remaining,frame,middle);}
+                },
+                s @ (ShardableType::Set(_) | ShardableType::ISet(_)) => {
+                    let before = set_view(s, quote! {pre.#n});
+                    quote! {
+                        ::vstd::resource::tsm_collections::set_remove_many_frame(owned.#n,frame,#before,value.0);
+                        let middle=(#before).difference(value.0);
+                        let remaining=::vstd::resource::tsm_collections::set_remove_many(owned.#n,value.0);
+                        assert(middle.disjoint(value.1));
+                        ::vstd::resource::tsm_collections::set_add_many_frame(remaining,frame,middle,value.1);
                     }
                 }
                 _ => unreachable!(),
