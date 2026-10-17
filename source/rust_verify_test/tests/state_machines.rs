@@ -9261,3 +9261,162 @@ test_verify_one_file! {
         }}
     } => Err(err) => assert_vir_error_msg(err, "'post' is a reserved identifier in state machine definitions")
 }
+
+const SUB_UPDATE_TYPES: &str = verus_code_str! {
+    pub struct Pt { pub x: int, pub y: int }
+    pub struct Rec<A> { pub a: A, pub s: Seq<int> }
+    pub struct Pair(pub int, pub bool);
+    pub struct Outer { pub p: Pt }
+    pub enum E { A { x: int }, B }
+};
+
+test_verify_one_file! {
+    #[test] dot_field_sub_updates IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
+        state_machine!{ X {
+            fields {
+                pub p: Pt,
+                pub r: Rec<int>,
+                pub t: (int, (Pt, int)),
+                pub q: Pair,
+                pub m: Map<int, Pt>,
+            }
+
+            transition!{
+                tr(v: int, w: int, k: int, b: bool) {
+                    require(pre.r.s.len() == 2 && pre.m.dom().contains(k));
+                    update p.x = v;
+                    update p.y = w;
+                    update p.x = v + 1;
+                    update r.a = v;
+                    update r.s[1] = w;
+                    update t.1.0.y = v;
+                    update t.0 = w;
+                    update q.1 = b;
+                    update m[k].y = v;
+                }
+            }
+
+            transition!{
+                branch(c: bool, v: int) {
+                    if c { update p.x = v; } else { update p.y = v; }
+                }
+            }
+        }}
+
+        proof fn test(pre: X::State, post: X::State, v: int, w: int, k: int, b: bool)
+            requires X::State::tr(pre, post, v, w, k, b)
+            ensures
+                post.p == (Pt { x: v + 1, y: w }),
+                post.r.a == v && post.r.s[1] == w && post.r.s[0] == pre.r.s[0],
+                post.t.0 == w && post.t.1.0.y == v && post.t.1.0.x == pre.t.1.0.x,
+                post.t.1.1 == pre.t.1.1,
+                post.q.1 == b && post.q.0 == pre.q.0,
+                post.m[k] == (Pt { x: pre.m[k].x, y: v }),
+        { }
+
+        proof fn test_branch(pre: X::State, post: X::State, v: int)
+            requires X::State::branch(pre, post, false, v)
+            ensures post.p == (Pt { x: pre.p.x, y: v })
+        { }
+
+        proof fn test_fail(pre: X::State, post: X::State, v: int, w: int, k: int, b: bool)
+            requires X::State::tr(pre, post, v, w, k, b)
+            ensures post.p.x == v
+        { } // FAILS
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] dot_field_sub_updates_tokenized IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(variable)] pub p: Pt,
+                #[sharding(variable)] pub m: Map<int, Pt>,
+                #[sharding(not_tokenized)] pub r: Rec<int>,
+            }
+
+            #[invariant]
+            pub fn inv(&self) -> bool { self.m.dom().contains(1) }
+
+            init!{
+                initialize() {
+                    init p = Pt { x: 0, y: 0 };
+                    init m = Map::empty().insert(1, Pt { x: 0, y: 0 });
+                    init r = Rec { a: 0, s: Seq::empty() };
+                }
+            }
+
+            transition!{
+                tr(v: int, w: int) {
+                    update p.x = v;
+                    update p.y = w;
+                    update m[1].y = v;
+                    update r.a = w;
+                }
+            }
+
+            transition!{
+                branch(c: bool, v: int) {
+                    if c { update p.x = v; } else { update p.y = v; }
+                }
+            }
+
+            #[inductive(initialize)] fn initialize_inductive(post: Self) { }
+            #[inductive(tr)] fn tr_inductive(pre: Self, post: Self, v: int, w: int) {
+                assert(post.m.dom() =~= pre.m.dom());
+            }
+            #[inductive(branch)] fn branch_inductive(pre: Self, post: Self, c: bool, v: int) { }
+        }}
+
+        proof fn client() {
+            let tracked (Tracked(inst), Tracked(mut p), Tracked(mut m)) = X::Instance::initialize();
+            inst.tr(1, 2, &mut p, &mut m);
+            assert(p.value() == Pt { x: 1, y: 2 });
+            assert(m.value()[1] == Pt { x: 0, y: 1 });
+            inst.branch(true, 5, &mut p);
+            assert(p.value() == Pt { x: 5, y: 2 });
+            assert(p.value().y == 3); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] dot_field_sub_update_unknown_type IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
+        state_machine!{ X {
+            fields { pub o: Outer, }
+            transition!{ tr(v: int) { update o.p.x = v; } }
+        }}
+    } => Err(e) => assert_vir_error_msg(e, "cannot update a field of `o.p`: its type is not known to the state machine macro")
+}
+
+test_verify_one_file! {
+    #[test] dot_field_sub_update_tuple_index IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
+        state_machine!{ X {
+            fields { pub t: (int, int), }
+            transition!{ tr(v: int) { update t.2 = v; } }
+        }}
+    } => Err(e) => assert_vir_error_msg(e, "`t` has no element 2")
+}
+
+test_verify_one_file! {
+    #[test] dot_field_sub_update_enum IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
+        state_machine!{ X {
+            fields { pub e: E, }
+            transition!{ tr(v: int) { update e.x = v; } }
+        }}
+    } => Err(e) => assert_rust_error_msg(e, "expected struct, variant or union type, found enum `E`")
+}
+
+test_verify_one_file! {
+    #[test] dot_field_sub_updates_tokenized_paths IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields { #[sharding(variable)] pub p: Pt, }
+            transition!{
+                tr(c: bool, v: int) {
+                    update p.x = v;
+                    if c { update p.y = v; }
+                }
+            }
+        }}
+    } => Err(e) => assert_vir_error_msg(e, "tokenized transitions support one field or index update of a field per path")
+}

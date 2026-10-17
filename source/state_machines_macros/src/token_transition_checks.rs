@@ -43,7 +43,9 @@ pub fn check_unsupported_updates(ts: &TransitionStmt) -> parse::Result<()> {
         TransitionStmt::Update(..) => Ok(()),
         TransitionStmt::SubUpdate(span, _, _, _) => Err(Error::new(
             *span,
-            format!("field updates and index updates are not supported in tokenized transitions"),
+            format!(
+                "tokenized transitions support one field or index update of a field per path; combine several updates of this field into one `update`"
+            ),
         )),
         TransitionStmt::Initialize(..) => Ok(()),
         TransitionStmt::PostCondition(..) => Ok(()),

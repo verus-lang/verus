@@ -221,15 +221,28 @@ state_machine!{ RequireLetExample {
 
 ### Update with subscript and fields
 
-_**Note:** This feature is currently in-development._
-
-To update nested data structures, you can use fields (for structs)
-or subscripts (for maps or sequences) in `update` statements.
-For example,
+To update nested data structures, you can use fields (for structs, tuple
+structs and tuples) or subscripts (for maps or sequences) in `update`
+statements. For example,
 
 ```rust,ignore
-update field.x.y[idx].z[key] = expr;
+update p.x = expr;          // p = Pt { x: expr, ..pre.p }
+update t.1 = expr;          // t = (pre.t.0, expr)
+update m[key].x = expr;     // m = pre.m.update_at_index(key, Pt { x: expr, ..pre.m[key] })
+update p.s[idx] = expr;     // p = Pt { s: pre.p.s.update_at_index(idx, expr), ..pre.p }
 ```
+
+A subscript becomes `update_at_index`, a field of a struct becomes struct
+update syntax, and a tuple element rebuilds the tuple. The macro does not see
+the definitions of struct types, so it knows the type of the updated part only
+from the field's declared type, through tuple elements and the values of
+`Map`, `IMap` and `Seq`. A field of a part of unknown type, such as
+`update p.a.b = expr` where `a` is a field of the struct `p`, is an error;
+update `p.a` as a whole instead.
+
+Several such updates of one field apply in order. In a `tokenized_state_machine`,
+the updates of one field must either be at most one per path, or sit together
+in one block, where they combine into one update of the whole field.
 
 ### `remove` / `have` / `add` / `deposit` / `guard` / `withdraw`
 

@@ -384,13 +384,12 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
         }
         TransitionStmt::SubUpdate(span, f, subs, e) => {
             let field = get_field(&sm.fields, f);
-            vec![SimplStmt::Assign(
-                *span,
-                get_cur_ident(f),
-                Box::new(field.get_type()),
-                update_sub_expr(&get_cur(f), subs, 0, e),
-                false,
-            )]
+            let ty = field.get_type();
+            // Errors are reported earlier by `transitions::desugar_sub_updates`;
+            // this keeps them errors rather than panics.
+            let value = sub_update_expr(&get_cur(f), Some(&ty), f, subs, e)
+                .unwrap_or_else(|err| Expr::Verbatim(err.to_compile_error()));
+            vec![SimplStmt::Assign(*span, get_cur_ident(f), Box::new(ty), value, false)]
         }
     }
 }
@@ -502,23 +501,183 @@ fn get_initializer_expr(f: &Ident, op: &SpecialOp) -> Expr {
     }
 }
 
-fn update_sub_expr(root: &Expr, subs: &Vec<SubIdx>, i: usize, val: &Expr) -> Expr {
-    if i == subs.len() {
-        val.clone()
-    } else {
-        match &subs[i] {
-            SubIdx::Field(_field) => {
-                panic!("dot-fields in sub-updates not yet supported");
-            }
-            SubIdx::Idx(idx_e) => {
-                let child = Expr::Verbatim(quote_spanned! { idx_e.span() => #root.index(#idx_e) });
-                let r = update_sub_expr(&child, subs, i + 1, val);
-                Expr::Verbatim(quote_spanned! { idx_e.span() =>
-                    #root.update_at_index(#idx_e, #r)
-                })
+/// The whole-field value of the sub-update `update f<subs> = val`, where `root`
+/// is the value of `f` before the update and `root_ty` its declared type.
+///
+/// An index step `[i]` becomes `root.update_at_index(i, ..)`. A field step
+/// `.m` becomes a struct update `Path { m: .., ..root }` when the type of
+/// `root` is a path (a struct, or a tuple struct with `.0`), and rebuilds the
+/// tuple when it is a tuple type. The macro does not see struct definitions,
+/// so the type at each step is only known syntactically: from the field's
+/// declared type, through tuple elements and the values of `Map`/`IMap`/`Seq`.
+/// A field step at a point of unknown type (e.g. `.a.b` with `a` a struct
+/// field) is an error.
+pub fn sub_update_expr(
+    root: &Expr,
+    root_ty: Option<&Type>,
+    field: &Ident,
+    subs: &[SubIdx],
+    val: &Expr,
+) -> verus_syn::parse::Result<Expr> {
+    sub_update_rec(root, root_ty, field.to_string(), subs, val)
+}
+
+fn sub_update_rec(
+    root: &Expr,
+    root_ty: Option<&Type>,
+    desc: String,
+    subs: &[SubIdx],
+    val: &Expr,
+) -> verus_syn::parse::Result<Expr> {
+    let Some((sub, rest)) = subs.split_first() else {
+        return Ok(val.clone());
+    };
+    let ty = root_ty.map(strip_type_parens);
+    match sub {
+        SubIdx::Idx(idx_e) => {
+            let child = Expr::Verbatim(quote_spanned! { idx_e.span() => #root.index(#idx_e) });
+            let child_ty = ty.and_then(collection_value_type);
+            let desc = format!("{desc}[..]");
+            let r = sub_update_rec(&child, child_ty.as_ref(), desc, rest, val)?;
+            Ok(Expr::Verbatim(quote_spanned! { idx_e.span() =>
+                #root.update_at_index(#idx_e, #r)
+            }))
+        }
+        SubIdx::Field(member) => {
+            let span = member.span();
+            let child = Expr::Verbatim(quote_spanned! { span => #root.#member });
+            let child_desc = format!("{desc}.{}", member_string(member));
+            match ty {
+                None => Err(verus_syn::Error::new(
+                    span,
+                    format!(
+                        "cannot update a field of `{desc}`: its type is not known to the state machine macro \
+                        (field updates are supported on the field's declared type, tuple elements, and \
+                        `Map`/`IMap`/`Seq` values); update `{desc}` as a whole instead"
+                    ),
+                )),
+                Some(Type::Tuple(tuple)) => {
+                    let verus_syn::Member::Unnamed(index) = member else {
+                        return Err(verus_syn::Error::new(
+                            span,
+                            format!("`{desc}` has a tuple type; expected a tuple index"),
+                        ));
+                    };
+                    let i = index.index as usize;
+                    if i >= tuple.elems.len() {
+                        return Err(verus_syn::Error::new(
+                            span,
+                            format!("`{desc}` has no element {i}"),
+                        ));
+                    }
+                    let elem_ty = tuple.elems.iter().nth(i);
+                    let r = sub_update_rec(&child, elem_ty, child_desc, rest, val)?;
+                    let elems = (0..tuple.elems.len()).map(|j| {
+                        if j == i {
+                            quote_spanned! { span => #r }
+                        } else {
+                            let j = verus_syn::Index { index: j as u32, span };
+                            quote_spanned! { span => #root.#j }
+                        }
+                    });
+                    Ok(Expr::Verbatim(quote_spanned! { span => ( #(#elems,)* ) }))
+                }
+                Some(Type::Path(type_path)) if type_path.qself.is_none() => {
+                    // Spanned at the field, so that e.g. "expected struct, found
+                    // enum" points at the update.
+                    let path = respan(
+                        quote::ToTokens::to_token_stream(&expr_path_of_type(&type_path.path, span)?),
+                        span,
+                    );
+                    let r = sub_update_rec(&child, None, child_desc, rest, val)?;
+                    Ok(Expr::Verbatim(quote_spanned! { span =>
+                        #path { #member: #r, .. #root }
+                    }))
+                }
+                Some(_) => Err(verus_syn::Error::new(
+                    span,
+                    format!(
+                        "cannot update a field of `{desc}`: field updates are supported on struct and tuple types"
+                    ),
+                )),
             }
         }
     }
+}
+
+fn respan(tokens: proc_macro2::TokenStream, span: Span) -> proc_macro2::TokenStream {
+    tokens
+        .into_iter()
+        .map(|mut tt| {
+            if let proc_macro2::TokenTree::Group(g) = &tt {
+                let mut group = proc_macro2::Group::new(g.delimiter(), respan(g.stream(), span));
+                group.set_span(span);
+                tt = proc_macro2::TokenTree::Group(group);
+            } else {
+                tt.set_span(span);
+            }
+            tt
+        })
+        .collect()
+}
+
+fn strip_type_parens(ty: &Type) -> &Type {
+    match ty {
+        Type::Paren(p) => strip_type_parens(&p.elem),
+        Type::Group(g) => strip_type_parens(&g.elem),
+        _ => ty,
+    }
+}
+
+fn member_string(member: &verus_syn::Member) -> String {
+    match member {
+        verus_syn::Member::Named(ident) => ident.to_string(),
+        verus_syn::Member::Unnamed(index) => index.index.to_string(),
+    }
+}
+
+/// The value type `V` of `Map<K, V>`, `IMap<K, V>` or `Seq<V>` (by name).
+fn collection_value_type(ty: &Type) -> Option<Type> {
+    let Type::Path(type_path) = ty else { return None };
+    if type_path.qself.is_some() {
+        return None;
+    }
+    let segment = type_path.path.segments.last()?;
+    let verus_syn::PathArguments::AngleBracketed(args) = &segment.arguments else { return None };
+    let types: Vec<&Type> = args
+        .args
+        .iter()
+        .filter_map(|a| match a {
+            verus_syn::GenericArgument::Type(t) => Some(t),
+            _ => None,
+        })
+        .collect();
+    match (segment.ident.to_string().as_str(), types.len()) {
+        ("Map" | "IMap", 2) => Some(types[1].clone()),
+        ("Seq", 1) => Some(types[0].clone()),
+        _ => None,
+    }
+}
+
+/// The type path `a::B<T>` as an expression path `a::B::<T>` for a struct
+/// expression.
+fn expr_path_of_type(path: &verus_syn::Path, span: Span) -> verus_syn::parse::Result<verus_syn::Path> {
+    let mut path = path.clone();
+    for segment in path.segments.iter_mut() {
+        match &mut segment.arguments {
+            verus_syn::PathArguments::None => {}
+            verus_syn::PathArguments::AngleBracketed(args) => {
+                args.colon2_token = Some(Default::default());
+            }
+            verus_syn::PathArguments::Parenthesized(_) => {
+                return Err(verus_syn::Error::new(
+                    span,
+                    "field updates are supported on struct and tuple types",
+                ));
+            }
+        }
+    }
+    Ok(path)
 }
 
 fn get_opt_type(stype: &ShardableType) -> Type {
