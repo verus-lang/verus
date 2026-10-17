@@ -2,10 +2,9 @@ use crate::automatic_derive::is_automatically_derived;
 use crate::context::Context;
 use crate::external::CrateItems;
 use crate::rust_to_vir::State;
-use crate::rust_to_vir_base::{
-    def_id_to_vir_path_option, mid_ty_const_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
-};
+use crate::rust_to_vir_base::{mid_ty_const_to_vir, mk_visibility};
 use crate::rust_to_vir_func::{CheckItemFnEither, FunctionOrConstInfo, check_item_fn};
+use crate::rust_to_vir_path::def_id_to_vir_path_option;
 use crate::unsupported_err;
 use crate::util::{err_span, err_span_vec, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
@@ -65,7 +64,7 @@ impl ExternalInfo {
     ) -> Option<bool> {
         match self.type_id_map.get(&def_id).copied() {
             None => {
-                let path = def_id_to_vir_path_option(ctxt.tcx, Some(&*ctxt.verus_items), def_id);
+                let path = def_id_to_vir_path_option(ctxt.tcx, &*ctxt.verus_items, def_id);
                 let has = path.and_then(|p| self.type_paths.get(&p).copied());
                 self.type_id_map.insert(def_id, has);
                 has
@@ -454,7 +453,7 @@ pub(crate) fn translate_impl_item<'tcx>(
         if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone() {
             let ident = impl_item.ident.to_string();
             let ident = Arc::new(ident);
-            let path = typ_path_and_ident_to_vir_path(&trait_path, ident);
+            let path = trait_path.push_segment(ident);
             let fun = FunX { path };
             let method = Arc::new(fun);
             FunctionKind::TraitMethodImpl {
@@ -622,7 +621,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     for c in tcx.crates(()) {
         assert!(*c != rustc_span::def_id::LOCAL_CRATE);
         for trait_id in tcx.traits(*c) {
-            let path = def_id_to_vir_path_option(tcx, Some(&ctxt.verus_items), *trait_id);
+            let path = def_id_to_vir_path_option(tcx, &ctxt.verus_items, *trait_id);
             if let Some(path) = path {
                 if all_traits.contains(&path) {
                     all_trait_ids.push(*trait_id);

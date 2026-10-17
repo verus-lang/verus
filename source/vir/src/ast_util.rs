@@ -65,8 +65,9 @@ pub fn path_segments_match_prefix(target: &Idents, prefix: &Idents) -> bool {
 }
 
 pub fn parse_path_segments_from_user_str(s: &str) -> Result<Idents, crate::ast::VirErr> {
+    // The user writes a module path, whose segments are all in the type namespace
     let mut arg_segments: Vec<Ident> =
-        s.split("::").map(|s| Arc::new(s.to_string())).collect::<Vec<_>>();
+        s.split("::").map(|s| crate::def::in_type_ns(s)).collect::<Vec<_>>();
     if arg_segments.first().map(|x| **x == "") == Some(true) {
         arg_segments.remove(0);
     }
@@ -402,7 +403,9 @@ pub(crate) fn path_as_friendly_rust_name_raw(path: &Path) -> String {
     let krate = crate::def::krate_to_string_ignore_stable_id(&path.krate);
     let mut strings: Vec<String> = vec![krate];
     for segment in path.segments.iter() {
-        strings.push(segment.to_string());
+        if !segment.starts_with(crate::def::RUST_DEF_FOREIGN_MOD) {
+            strings.push(crate::def::strip_type_ns(segment).to_string());
+        }
     }
     strings.join("::")
 }
@@ -1268,6 +1271,9 @@ impl MaskSpec {
     }
 }
 
+// TODO: remove this inconsistency by properly using the type namespace for verus items
+
+/// Path for any non-function item hardcoded by verus_items.
 #[macro_export]
 macro_rules! path {
     [ $krate:expr => $( $segment:literal ),* ] => {
@@ -1284,10 +1290,52 @@ macro_rules! path {
     };
 }
 
+/// Path for any non-function item whose path is determined outside of verus_items.
+/// This requires every segment to be in the "type namespace",
+/// which is the namespace where module names, types, and traits, go.
+#[macro_export]
+macro_rules! real_path {
+    [ $krate:expr => $( $segment:literal ),* ] => {
+        ::std::sync::Arc::new($crate::ast::PathX {
+            krate: $krate,
+            segments: ::std::sync::Arc::new(
+                ::std::vec![
+                    $(
+                        $crate::def::in_type_ns($segment)
+                    ),*
+                ],
+            ),
+        })
+    };
+}
+
+/// Path to a function for anything hardcoded by verus_items.
 #[macro_export]
 macro_rules! fun {
     [ $krate:expr => $( $segment:literal ),* ] => {
         Arc::new($crate::ast::FunX { path: $crate::path!($krate => $($segment),*) })
+    };
+}
+
+/// Path to a function whose path is determined outside of verus_items.
+/// This requires every segment (except the last) to be in the "type namespace",
+/// which is the namespace where module names go.
+#[macro_export]
+macro_rules! real_fun {
+    [ $krate:expr => $( $segment:literal ),* ; $name:literal ] => {
+        ::std::sync::Arc::new($crate::ast::FunX {
+            path: ::std::sync::Arc::new($crate::ast::PathX {
+                krate: $krate,
+                segments: ::std::sync::Arc::new(
+                    ::std::vec![
+                        $(
+                            $crate::def::in_type_ns($segment),
+                        )*
+                        ::std::sync::Arc::new($name.to_string()),
+                    ],
+                ),
+            }),
+        })
     };
 }
 
@@ -1511,9 +1559,9 @@ impl fmt::Display for ClosureKind {
 impl ClosureKind {
     pub(crate) fn trait_path(&self) -> Path {
         match self {
-            ClosureKind::Fn => crate::path![CrateId::Core => "ops", "function", "Fn"],
-            ClosureKind::FnMut => crate::path![CrateId::Core => "ops", "function", "FnMut"],
-            ClosureKind::FnOnce => crate::path![CrateId::Core => "ops", "function", "FnOnce"],
+            ClosureKind::Fn => crate::real_path![CrateId::Core => "ops", "function", "Fn"],
+            ClosureKind::FnMut => crate::real_path![CrateId::Core => "ops", "function", "FnMut"],
+            ClosureKind::FnOnce => crate::real_path![CrateId::Core => "ops", "function", "FnOnce"],
         }
     }
 }

@@ -10,12 +10,13 @@ use crate::context::{Context, ContextX};
 use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
-use crate::rust_to_vir_base::{def_id_to_vir_path_option, mk_visibility};
+use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_func::{
     CheckItemFnEither, FunctionOrConstInfo, check_foreign_item_fn, check_item_fn,
 };
 use crate::rust_to_vir_global::TypIgnoreImplPaths;
 use crate::rust_to_vir_impl::ExternalInfo;
+use crate::rust_to_vir_path::def_id_to_vir_path_option;
 use crate::util::err_span_vec;
 use crate::verus_items::{self, VerusItem};
 use crate::{unsupported_err, unsupported_err_vec, unsupported_err_vec_unless};
@@ -485,8 +486,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     }
     for item in crate::util::iter_crate_free_items(tcx) {
         if let Item { kind: ItemKind::Mod(_ident, _module), owner_id, .. } = item {
-            let path =
-                def_id_to_vir_path_option(ctxt.tcx, Some(&ctxt.verus_items), owner_id.to_def_id());
+            let path = def_id_to_vir_path_option(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
             if let Some(path) = path {
                 if used_modules.contains(&path) {
                     vir.modules.push(ctxt.spanned_new(

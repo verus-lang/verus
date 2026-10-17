@@ -122,7 +122,7 @@ pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
 
 pub const CLOSURE_RETURN_VALUE_PREFIX: &str = "%closure_return";
 
-pub const AUTOSPEC_FUNC_SUFFIX: &str = "%returns_clause_autospec";
+pub const AUTOSPEC_FUNC_PREFIX: &str = "returns_clause_autospec%";
 
 pub const FNDEF_TYPE: &str = "fndef";
 pub const FNDEF_SINGLETON: &str = "fndef_singleton";
@@ -288,7 +288,10 @@ pub const IEEE_FLOAT_GT: &str = "ieee_float_gt";
 pub const VERUSLIB_PREFIX: &str = "vstd::";
 pub const PERVASIVE_PREFIX: &str = "pervasive::";
 
+pub const RUST_DEF_FOREIGN_MOD: &str = "foreign_mod%";
 pub const RUST_DEF_CTOR: &str = "ctor%";
+pub const RUST_DEF_UNNAMED: &str = "unnamed%";
+pub const RUST_DEF_TYPE_NS: &str = "t%";
 pub const RUST_DEF_CLOSURE: &str = "closure%";
 
 pub const RUST_OPAQUE_TYPE: &str = "opaque";
@@ -1219,7 +1222,7 @@ pub fn fn_branch_bool() -> Fun {
 }
 
 pub fn result_type_path() -> Path {
-    path!(CrateId::Core => "result", "Result")
+    crate::real_path!(CrateId::Core => "result", "Result")
 }
 
 pub fn strslice_module_path() -> Path {
@@ -1308,10 +1311,7 @@ pub fn unique_var_name(
 pub fn exec_await_path() -> Path {
     Arc::new(PathX {
         krate: CrateId::Vstd,
-        segments: Arc::new(vec![
-            Arc::new("future".to_string()),
-            Arc::new("exec_await".to_string()),
-        ]),
+        segments: Arc::new(vec![in_type_ns("future"), Arc::new("exec_await".to_string())]),
     })
 }
 
@@ -1354,41 +1354,49 @@ pub(crate) fn is_dummy_param_name(v: &VarIdent) -> bool {
 
 pub fn autospec_return_clause_spec_fn_name(path: &Path) -> Fun {
     let name = path.last_segment();
-    let p = path.pop_segment().push_segment(Arc::new(format!("{}{}", name, AUTOSPEC_FUNC_SUFFIX)));
+    let p = path.pop_segment().push_segment(Arc::new(format!("{}{}", AUTOSPEC_FUNC_PREFIX, name)));
     Arc::new(FunX { path: p })
 }
 
 pub fn fn_fp_postcondition_name(op: UninterpretedFloatBinaryOp) -> Fun {
     match op {
         UninterpretedFloatBinaryOp::Add => {
-            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "add_ensures")
+            crate::real_fun!(CrateId::Vstd => "std_specs", "ops"; "add_ensures")
         }
         UninterpretedFloatBinaryOp::Sub => {
-            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "sub_ensures")
+            crate::real_fun!(CrateId::Vstd => "std_specs", "ops"; "sub_ensures")
         }
         UninterpretedFloatBinaryOp::Mul => {
-            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "mul_ensures")
+            crate::real_fun!(CrateId::Vstd => "std_specs", "ops"; "mul_ensures")
         }
         UninterpretedFloatBinaryOp::Div => {
-            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "div_ensures")
+            crate::real_fun!(CrateId::Vstd => "std_specs", "ops"; "div_ensures")
         }
         UninterpretedFloatBinaryOp::Eq => {
-            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "eq_ensures")
+            crate::real_fun!(CrateId::Vstd => "std_specs", "cmp"; "eq_ensures")
         }
         UninterpretedFloatBinaryOp::Ne => {
-            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "ne_ensures")
+            crate::real_fun!(CrateId::Vstd => "std_specs", "cmp"; "ne_ensures")
         }
         UninterpretedFloatBinaryOp::Lt => {
-            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "lt_ensures")
+            crate::real_fun!(CrateId::Vstd => "std_specs", "cmp"; "lt_ensures")
         }
         UninterpretedFloatBinaryOp::Gt => {
-            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "gt_ensures")
+            crate::real_fun!(CrateId::Vstd => "std_specs", "cmp"; "gt_ensures")
         }
         UninterpretedFloatBinaryOp::Le => {
-            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "le_ensures")
+            crate::real_fun!(CrateId::Vstd => "std_specs", "cmp"; "le_ensures")
         }
         UninterpretedFloatBinaryOp::Ge => {
-            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "ge_ensures")
+            crate::real_fun!(CrateId::Vstd => "std_specs", "cmp"; "ge_ensures")
         }
     }
+}
+
+pub fn in_type_ns(s: &str) -> Ident {
+    Arc::new(RUST_DEF_TYPE_NS.to_string() + s)
+}
+
+pub fn strip_type_ns(s: &str) -> &str {
+    s.strip_prefix(RUST_DEF_TYPE_NS).unwrap_or(s)
 }
