@@ -4235,50 +4235,65 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     }) {
         return Err(e);
     }
-    items.push(quote! {impl Instance {#(#methods)*}});
-    let out = ghostify(quote! {#(#items)*}, proc_macro2::Delimiter::None);
-    Ok(match &sm.generics {
-        None => resolve_types(out, None),
-        Some(_) => {
-            let (generics, attrs) = crate::verified_tokens::datatype_generics(sm);
-            let (decl, wc) = crate::to_token_stream::generics_for_decl(&generics);
-            let args = crate::to_token_stream::get_generic_args(&sm.generics.as_ref().unwrap().params);
-            let mut names: HashSet<String> =
-                ["Fragment", "Protocol", "State", "Token", "Instance", "Unit", "__StorageKey", "__StorageValue"]
-                    .iter().map(|s| s.to_string()).collect();
-            let attrs = quote! {#(#attrs)*};
-            // Leaked `&'static` tokens (the instance's base token and persistent
-            // tokens) need the machine's type parameters to be `'static`.
-            // (The descriptor needs it only if a constant's type mentions them.)
-            fn mentions(ts: &TokenStream, names: &HashSet<String>) -> bool {
-                ts.clone().into_iter().any(|t| match t {
-                    TokenTree::Ident(id) => names.contains(&id.to_string()),
-                    TokenTree::Group(g) => mentions(&g.stream(), names),
-                    _ => false,
-                })
-            }
-            let params: HashSet<String> = args.iter().map(|a| quote! {#a}.to_string()).collect();
-            // (Persistent tokens of a machine with type parameters own their raw
-            // tokens; see `leaks`.)
-            let _ = &params;
-            let needs_static = base && !ctx.owned_base
-                || sm.fields.iter().any(|f| kind(f).is_some_and(|k| k.persistent()) && leaks(true))
-                || cm.as_ref().is_some_and(|cm| !cm.owned && mentions(&cm.d, &params));
-            let wc = if needs_static {
-                let bounds: Vec<_> = args.iter().map(|a| quote! {#a: 'static}).collect();
-                match &generics.as_ref().and_then(|g| g.where_clause.as_ref()) {
-                    Some(w) if !w.predicates.is_empty() => {
-                        let preds = &w.predicates;
-                        quote! {where #preds, #(#bounds),*}
-                    }
-                    _ => quote! {where #(#bounds),*},
+    // The operations go in a child module (`__tsm_ops`): the verifier gives
+    // it its own solver context (pruned to what the operations use) and
+    // verifies it in parallel with the machine module.
+    let ops = quote! {impl Instance {#(#methods)*}};
+    let finish = |ts: TokenStream| -> TokenStream {
+        let out = ghostify(ts, proc_macro2::Delimiter::None);
+        match &sm.generics {
+            None => resolve_types(out, None),
+            Some(_) => {
+                let (generics, attrs) = crate::verified_tokens::datatype_generics(sm);
+                let (decl, wc) = crate::to_token_stream::generics_for_decl(&generics);
+                let args = crate::to_token_stream::get_generic_args(&sm.generics.as_ref().unwrap().params);
+                let mut names: HashSet<String> =
+                    ["Fragment", "Protocol", "State", "Token", "Instance", "Unit", "__StorageKey", "__StorageValue"]
+                        .iter().map(|s| s.to_string()).collect();
+                let attrs = quote! {#(#attrs)*};
+                // Leaked `&'static` tokens (the instance's base token and persistent
+                // tokens) need the machine's type parameters to be `'static`.
+                // (The descriptor needs it only if a constant's type mentions them.)
+                fn mentions(ts: &TokenStream, names: &HashSet<String>) -> bool {
+                    ts.clone().into_iter().any(|t| match t {
+                        TokenTree::Ident(id) => names.contains(&id.to_string()),
+                        TokenTree::Group(g) => mentions(&g.stream(), names),
+                        _ => false,
+                    })
                 }
-            } else {
-                wc
-            };
-            let args = quote! {#args};
-            let out = genericize(out, &Gen { decl, wc, args: args.clone(), attrs, names: std::mem::take(&mut names) });
-            resolve_types(out, Some(&args))
+                let params: HashSet<String> = args.iter().map(|a| quote! {#a}.to_string()).collect();
+                // (Persistent tokens of a machine with type parameters own their raw
+                // tokens; see `leaks`.)
+                let _ = &params;
+                let needs_static = base && !ctx.owned_base
+                    || sm.fields.iter().any(|f| kind(f).is_some_and(|k| k.persistent()) && leaks(true))
+                    || cm.as_ref().is_some_and(|cm| !cm.owned && mentions(&cm.d, &params));
+                let wc = if needs_static {
+                    let bounds: Vec<_> = args.iter().map(|a| quote! {#a: 'static}).collect();
+                    match &generics.as_ref().and_then(|g| g.where_clause.as_ref()) {
+                        Some(w) if !w.predicates.is_empty() => {
+                            let preds = &w.predicates;
+                            quote! {where #preds, #(#bounds),*}
+                        }
+                        _ => quote! {where #(#bounds),*},
+                    }
+                } else {
+                    wc
+                };
+                let args = quote! {#args};
+                let out = genericize(out, &Gen { decl, wc, args: args.clone(), attrs, names: std::mem::take(&mut names) });
+                resolve_types(out, Some(&args))
+            }
+        }
+    };
+    let main = finish(quote! {#(#items)*});
+    let ops = finish(ops);
+    Ok(quote! {
+        #main
+        mod __tsm_ops {
+            #[allow(unused_imports)]
+            use super::*;
+            #ops
         }
     })
 }
