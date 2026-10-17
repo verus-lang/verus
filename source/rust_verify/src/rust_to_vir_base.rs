@@ -1679,30 +1679,31 @@ pub(crate) fn ty_has_pattern_smt_equality<'tcx>(
     ty: rustc_middle::ty::Ty<'tcx>,
 ) -> Option<Vec<vir::ast::Path>> {
     let mut adts = Vec::new();
-    pattern_smt_equality_rec(bctx, ty, &mut HashSet::new(), &mut adts, 0).then_some(adts)
+    pattern_smt_equality_rec(bctx, ty, &mut HashSet::new(), &mut adts, &mut 0).then_some(adts)
 }
 
-// Bounds the recursion on polymorphically recursive types
-const PATTERN_SMT_EQUALITY_MAX_DEPTH: usize = 32;
+// Bounds the total number of calls (polymorphically recursive types never repeat a type)
+const PATTERN_SMT_EQUALITY_MAX_CALLS: usize = 1000;
 
 fn pattern_smt_equality_rec<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
     seen: &mut HashSet<rustc_middle::ty::Ty<'tcx>>,
     adts: &mut Vec<vir::ast::Path>,
-    depth: usize,
+    calls: &mut usize,
 ) -> bool {
     use rustc_middle::ty::TyKind;
     let tcx = bctx.ctxt.tcx;
-    if depth > PATTERN_SMT_EQUALITY_MAX_DEPTH {
+    *calls += 1;
+    if *calls > PATTERN_SMT_EQUALITY_MAX_CALLS {
         return false;
     }
     // A type seen before is either being checked or passed (any failure ends the whole check)
     if !seen.insert(ty) {
         return true;
     }
-    let rec = |t, seen: &mut HashSet<_>, adts: &mut Vec<_>| {
-        pattern_smt_equality_rec(bctx, t, seen, adts, depth + 1)
+    let mut rec = |t, seen: &mut HashSet<_>, adts: &mut Vec<_>| {
+        pattern_smt_equality_rec(bctx, t, seen, adts, calls)
     };
     match ty.kind() {
         TyKind::Bool | TyKind::Char | TyKind::Int(_) | TyKind::Uint(_) | TyKind::Str => true,
