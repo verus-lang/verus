@@ -432,6 +432,7 @@ fn reach_atomic_update_ops(state: &mut State, ctxt: &Ctxt) {
     reach_function(ctxt, state, &fn_au_output());
     reach_function(ctxt, state, &fn_au_inner_mask());
     reach_function(ctxt, state, &fn_au_outer_mask());
+    reach_function(ctxt, state, &fn_resolution_atomic_update());
     reach_function(ctxt, state, &fn_pred_args());
     reach_function(ctxt, state, &fn_branch_bool());
     reach_set_ops(state, &ctxt);
