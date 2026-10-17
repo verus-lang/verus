@@ -219,8 +219,13 @@ pub(crate) fn def_id_to_datatype<'tcx, 'hir>(
     )
 }
 
-pub(crate) fn no_body_param_to_var<'tcx>(ident: &Ident) -> VarIdent {
-    str_unique_var(ident.as_str(), vir::ast::VarIdentDisambiguate::NoBodyParam)
+pub(crate) fn no_body_param_to_var<'tcx>(ident: &Ident, index: usize) -> VarIdent {
+    let name = if ident.name == kw::Underscore {
+        format!("%param{index}")
+    } else {
+        ident.as_str().to_string()
+    };
+    str_unique_var(&name, vir::ast::VarIdentDisambiguate::NoBodyParam)
 }
 
 pub(crate) fn local_to_var<'tcx>(ident: &Ident, local_id: rustc_hir::ItemLocalId) -> VarIdent {

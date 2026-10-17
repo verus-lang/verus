@@ -764,6 +764,23 @@ pub(crate) fn erase_pat<'tcx>(cx: &mut ThirBuildCx<'tcx>, pat: Box<Pat<'tcx>>) -
     };
 
     let mut p = pat;
+    // Only ghost code uses the `__verus_param_N @` the macros add to complex parameter patterns
+    // of functions, so we can strip them.
+    if let PatKind::Binding { var, subpattern: subpattern @ Some(_), .. } = &mut p.kind
+        && is_verus_param_binder(&cx.tcx.hir_ident(var.0))
+        && match cx.tcx.parent_hir_node(var.0) {
+            hir::Node::Param(_) => {
+                matches!(
+                    cx.tcx.def_kind(cx.body_owner),
+                    hir::def::DefKind::Fn | hir::def::DefKind::AssocFn
+                )
+            }
+            hir::Node::LetStmt(local) => matches!(local.source, hir::LocalSource::AsyncFn),
+            _ => false,
+        }
+    {
+        p = subpattern.take().unwrap();
+    }
     erase_pat_rec(&PatBindingEraserMode::EraseGhost(erasure_ctxt), &mut p);
     p
 }
@@ -778,6 +795,14 @@ pub(crate) fn erase_pat_all_binders<'tcx>(pat: Box<Pat<'tcx>>) -> Box<Pat<'tcx>>
 enum PatBindingEraserMode {
     EraseAll,
     EraseGhost(Arc<VerusErasureCtxt>),
+}
+
+/// Prefix used for naming complex parameter patterns
+const VERUS_PARAM: &str = "__verus_param_";
+
+pub fn is_verus_param_binder(ident: &rustc_span::symbol::Ident) -> bool {
+    ident.as_str().starts_with(VERUS_PARAM)
+        && !ident.span.ctxt().normalize_to_macros_2_0().is_root()
 }
 
 fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
