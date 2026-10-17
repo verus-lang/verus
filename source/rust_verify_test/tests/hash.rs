@@ -82,6 +82,27 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_map_capacity_with_hasher verus_code! {
+        use std::collections::HashMap;
+        use std::collections::hash_map::RandomState;
+        use vstd::prelude::*;
+        fn test()
+        {
+            let mut m = HashMap::<u32, i8>::new();
+            let cap = m.capacity();
+            assert(cap >= m@.len());
+
+            m.insert(3, 4);
+            let cap = m.capacity();
+            assert(cap >= m@.len());
+
+            let m2: HashMap<u32, i8, RandomState> = HashMap::with_hasher(RandomState::default());
+            assert(m2@ == Map::<u32, i8>::empty());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_hash_set verus_code! {
         use std::collections::HashSet;
         use vstd::prelude::*;

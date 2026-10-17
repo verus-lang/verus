@@ -2,14 +2,14 @@ use crate::ast::{Idents, Path};
 use crate::def::*;
 use crate::sst_to_air::path_to_air_ident;
 use air::ast::Ident;
-use air::context::SmtSolver;
+use air::context::SmtEncoding;
 use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes, nodes_vec};
 use sise::TreeNode as Node;
 
 pub struct PreludeConfig {
     pub arch_word_bits: crate::ast::ArchWordBits,
-    pub solver: SmtSolver,
+    pub smt_encoding: SmtEncoding,
 }
 
 pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<Node> {
@@ -64,15 +64,15 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
     let Poly = str_to_node(POLY);
     #[allow(non_snake_case)]
     let Height = str_to_node(T_HEIGHT);
-    let height_axioms = match config.solver {
-        SmtSolver::Z3 => nodes_vec!(
+    let height_axioms = match config.smt_encoding {
+        SmtEncoding::Z3 => nodes_vec!(
         (axiom (forall ((x [Height]) (y [Height])) (!
             (= ([height_lt] x y) (and ([height_le] x y) (not (= x y))))
             :pattern (([height_lt] x y))
             :qid prelude_height_lt
             :skolemid skolem_prelude_height_lt
             )))),
-        SmtSolver::Cvc5 => nodes_vec!(
+        SmtEncoding::Cvc5 => nodes_vec!(
                     (declare-fun partial-order ([Height] [Height]) Bool)
                     (axiom (forall ((x [Height])) (!
                         (partial-order x x)
@@ -908,6 +908,14 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-fun [bit_shr] ([Poly] [Poly]) Int)
         (declare-fun [bit_shl] ([Poly] [Poly]) Int)
         (declare-fun [bit_not] ([Poly]) Int)
+
+        // On unbounded ints, NOT is exactly -x - 1
+        (axiom (forall ((x [Poly])) (!
+            (= ([bit_not] x) (- (- 0 ([unbox_int] x)) 1))
+            :pattern (([bit_not] x))
+            :qid prelude_bit_not
+            :skolemid skolem_prelude_bit_not
+        )))
 
         // bounds on bit-ops
 

@@ -1034,6 +1034,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_termination_assoc_bounds_proof_cycle verus_code! {
+        trait U { proof fn lem() ensures false; }
+        trait T { type X: U; }
+
+        proof fn p<Y: T>() ensures false { <Y::X as U>::lem() }
+
+        struct S;
+        struct R;
+        impl T for S { type X = R; }
+        impl U for R { proof fn lem() ensures false { p::<S>() } }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_assoc_bounds_generic_spec_cycle verus_code! {
+        trait W { spec fn value() -> int; }
+        trait U { spec fn f() -> int; }
+        trait T { type X: U; }
+
+        struct Wrap<A>(A);
+        impl<A: W> U for Wrap<A> {
+            spec fn f() -> int { A::value() }
+        }
+        spec fn g<Y: T>() -> int { <Y::X as U>::f() }
+
+        struct S;
+        struct R;
+        impl T for S { type X = Wrap<R>; }
+        impl W for R {
+            spec fn value() -> int { g::<S>() + 1 }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
     #[test] test_assoc_bounds_2_pass verus_code! {
         trait Z { type Y; }
         trait T {
@@ -4851,4 +4886,25 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "Call to non-static function fails to satisfy `callee.requires(args)`")
+}
+
+test_verify_one_file! {
+    // `-> impl Trait` in a trait: rustc's synthesized associated type has no name, which used
+    // to panic in the projection conversion; now it is reported as unsupported
+    // a trait outside verus! with `-> Option<impl Iterator>`, used from verified code: an
+    // ordinary error (undeclared trait), no panic
+    #[test] test_rpitit_unsupported_no_panic code! {
+        use vstd::prelude::*;
+        pub trait T {
+            fn it(&self) -> Option<impl Iterator<Item = u8>>;
+        }
+        fn take<A>(a: A) {}
+        verus! {
+            #[verifier::external_body]
+            fn take_v<A>(a: A) {}
+            fn g<X: T>(x: &X) {
+                take_v(x.it());
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "return-position `impl Trait` in a trait")
 }

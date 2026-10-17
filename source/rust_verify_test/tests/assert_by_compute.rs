@@ -1087,6 +1087,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] has_resolved_compute_only_github3164 verus_code! {
+        fn test() {
+            let x = false;
+            assert(has_resolved(x));
+            assert(has_resolved(x) == x) by (compute_only);
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assert_by_compute_only failed to simplify down to true")
+}
+
+test_verify_one_file! {
     #[test] seq_new_len_overflow_issue2177 verus_code! {
         use vstd::prelude::*;
         proof fn test() {
@@ -1145,6 +1156,23 @@ test_verify_one_file! {
             assert(h::<u8>(1) == h::<u64>(1)) by (compute_only); // FAILS
         }
     } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] float_cast_target_types_differ_github3136 verus_code! {
+        proof fn test(f: f32) {
+            assert((f as u8) as i32 == (f as i8) as i32) by (compute_only); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] float_cast_target_types_match verus_code! {
+        proof fn test(f: f32, x: i32) {
+            assert((f as u8) as i32 == (f as u8) as i32) by (compute_only);
+            assert((x as f32) as i64 == (x as f32) as i64) by (compute_only);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

@@ -229,12 +229,12 @@ use rustc_middle::thir::{
     Arm, ArmId, Block, BlockSafety, Expr, ExprId, ExprKind, LocalVarId, LogicalOp, Pat, PatKind,
     Stmt, StmtId, StmtKind, Thir,
 };
-use rustc_middle::ty::{GenericArg, Region, RegionKind, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{GenericArg, Region, RegionExt, RegionKind, Ty, TyCtxt, TyKind};
 use rustc_span::Span;
 use rustc_span::Symbol;
 
 /// Post-process any THIR expression to apply the relevant transformation.
-/// (This might apply to any an expression that results from an adjustment.)
+/// (This might apply to an expression that results from an adjustment.)
 pub(crate) fn expr_post<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &'tcx hir::Expr<'tcx>,
@@ -1412,7 +1412,8 @@ fn tie_mut_refs<'tcx>(
     } else {
         erasure_ctxt.mutable_reference_tie_fn_def_id
     };
-    let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
+    let fn_ty =
+        cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, rustc_middle::ty::Binder::dummy(args)));
 
     let fun_expr_kind = ExprKind::ZstLiteral { user_ty: None };
     let fun_expr = expr_id_from_kind(cx, fun_expr_kind, hir_id, span, fn_ty);
@@ -1456,7 +1457,7 @@ pub(crate) fn shadow_var_uses<'tcx>(
 ) -> Vec<ExprId> {
     let mut v = vec![];
     for local_use in uses.iter() {
-        let emit_shadow = match erasure_ctxt.vars.get(&local_use.hir_id) {
+        let emit_shadow = match erasure_ctxt.locals.get(&local_use.hir_id) {
             Some(VarErasure::Erase) => false,
             Some(VarErasure::Shadow | VarErasure::Keep) | None => true,
         };
@@ -1815,7 +1816,8 @@ fn insert_exprs_after_kind<'tcx>(
     let arg2 = GenericArg::from(cx.thir.exprs[e2].ty);
     let args = cx.tcx.mk_args(&[arg1, arg2]);
     let fn_def_id = erasure_ctxt.get_first_fn_def_id;
-    let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
+    let fn_ty =
+        cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, rustc_middle::ty::Binder::dummy(args)));
 
     let fun_expr_kind = ExprKind::ZstLiteral { user_ty: None };
     let fun_expr = expr_id_from_kind(cx, fun_expr_kind, hir_expr.hir_id, hir_expr.span, fn_ty);

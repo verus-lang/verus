@@ -138,6 +138,10 @@ pub fn bool_typ() -> Typ {
     Arc::new(TypX::Bool)
 }
 
+pub fn int_typ() -> Typ {
+    Arc::new(TypX::Int(IntRange::Int))
+}
+
 // ImplPaths is ignored in types_equal
 pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
     match (&**typ1, &**typ2) {
@@ -589,10 +593,6 @@ pub fn is_never(t: &Typ) -> bool {
     }
 }
 
-pub fn int_typ() -> Typ {
-    Arc::new(TypX::Int(IntRange::Int))
-}
-
 pub fn mk_bool(span: &Span, b: bool) -> Expr {
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExprX::Const(Constant::Bool(b)))
 }
@@ -639,6 +639,14 @@ pub fn mk_assume(span: &Span, e1: &Expr) -> Expr {
         &unit_typ(),
         ExprX::AssertAssume { is_assume: true, expr: e1.clone(), msg: None },
     )
+}
+
+pub fn mk_int_lit_from_usize(span: &Span, u: usize) -> Expr {
+    SpannedTyped::new(span, &int_typ(), ExprX::Const(const_int_from_usize(u)))
+}
+
+pub fn const_int_from_usize(u: usize) -> Constant {
+    Constant::Int(BigInt::from(u))
 }
 
 pub fn const_int_from_u128(u: u128) -> Constant {
@@ -1516,5 +1524,20 @@ impl AssertQueryMode {
             AssertQueryMode::NonLinear => "nonlinear_arith",
             AssertQueryMode::BitVector => "bit_vector",
         }
+    }
+}
+
+pub(crate) fn array_kind_of_typ(t: &Typ) -> (ArrayKind, Typ) {
+    match &*undecorate_typ(t) {
+        TypX::Primitive(Primitive::Array, ts) => (ArrayKind::Array, ts[0].clone()),
+        TypX::Primitive(Primitive::Slice, ts) => (ArrayKind::Slice, ts[0].clone()),
+        _ => panic!("expected type to be slice or array"),
+    }
+}
+
+pub(crate) fn const_usize_of_expr(e: &Expr) -> Option<usize> {
+    match &e.x {
+        ExprX::Const(Constant::Int(bignum)) => bignum.try_into().ok(),
+        _ => None,
     }
 }

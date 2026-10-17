@@ -98,9 +98,11 @@ pub struct LocalInvariantBody {
 /// This is created after mode-checking and passed here via the VERUS_ERASURE_CTXT global.
 #[derive(Debug)]
 pub struct VerusErasureCtxt {
-    /// For a given var (decl or use), should we erase it?
-    /// Also includes patterns.
-    pub vars: HashMap<HirId, VarErasure>,
+    /// For a given var use, should we erase it?
+    pub locals: HashMap<HirId, VarErasure>,
+
+    /// For a given binder (from a pattern), should we erase it?
+    pub binders: HashMap<HirId, VarErasure>,
 
     /// For a call, how do we handle it?
     /// This includes struct constructors as well. The "args" go in source order,
@@ -318,7 +320,7 @@ pub(crate) fn handle_call<'tcx>(
     }
 }
 
-pub(crate) fn handle_var<'tcx>(
+pub(crate) fn handle_local<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
     var_hir_id: HirId,
@@ -326,7 +328,7 @@ pub(crate) fn handle_var<'tcx>(
     let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
         return None;
     };
-    match erasure_ctxt.vars.get(&expr.hir_id) {
+    match erasure_ctxt.locals.get(&expr.hir_id) {
         None | Some(VarErasure::Keep) => None,
         Some(VarErasure::Shadow)
             if cx.verus_ctxt.do_time_travel_prevention
@@ -703,7 +705,8 @@ pub(crate) fn some_ghost_value_kind_with_args<'tcx>(
     let arg1 = GenericArg::from(tup_ty);
     let arg2 = GenericArg::from(ty);
     let args = cx.tcx.mk_args(&[arg1, arg2]);
-    let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
+    let fn_ty =
+        cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, rustc_middle::ty::Binder::dummy(args)));
 
     let fun_expr_kind = ExprKind::ZstLiteral { user_ty: None };
     let fun_expr = expr_id_from_kind(cx, fun_expr_kind, hir_id, span, fn_ty);
@@ -738,9 +741,19 @@ pub(crate) fn erase_var_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
     let erasure_ctxt = get_verus_erasure_ctxt();
     let capture_shadow = ATOMIC_CLOSURE_CAPTURE_SHADOW.load(Ordering::SeqCst);
     if capture_shadow {
-        matches!(erasure_ctxt.vars.get(&hir_id), Some(VarErasure::Erase))
+        matches!(erasure_ctxt.locals.get(&hir_id), Some(VarErasure::Erase))
     } else {
-        matches!(erasure_ctxt.vars.get(&hir_id), Some(VarErasure::Erase | VarErasure::Shadow))
+        matches!(erasure_ctxt.locals.get(&hir_id), Some(VarErasure::Erase | VarErasure::Shadow))
+    }
+}
+
+pub(crate) fn erase_binder_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
+    let erasure_ctxt = get_verus_erasure_ctxt();
+    let capture_shadow = ATOMIC_CLOSURE_CAPTURE_SHADOW.load(Ordering::SeqCst);
+    if capture_shadow {
+        matches!(erasure_ctxt.binders.get(&hir_id), Some(VarErasure::Erase))
+    } else {
+        matches!(erasure_ctxt.binders.get(&hir_id), Some(VarErasure::Erase | VarErasure::Shadow))
     }
 }
 
@@ -787,7 +800,7 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
             let erase_binder = match emode {
                 PatBindingEraserMode::EraseAll => true,
                 PatBindingEraserMode::EraseGhost(erasure_ctxt) => {
-                    matches!(erasure_ctxt.vars.get(&var.0), Some(VarErasure::Erase))
+                    matches!(erasure_ctxt.binders.get(&var.0), Some(VarErasure::Erase))
                 }
             };
 
@@ -891,7 +904,7 @@ struct VisitTreeForPats<'a, 'tcx> {
 
 impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tcx> {
     // Don't recurse into other items or closure bodies
-    type NestedFilter = rustc_hir::intravisit::nested_filter::None;
+    type NestedFilter = rustc_hir::intravisit::IgnoreNested;
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
         match &expr.kind {

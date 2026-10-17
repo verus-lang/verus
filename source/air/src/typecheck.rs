@@ -5,7 +5,7 @@ use crate::ast::{
     Axiom, BinaryOp, BindX, Binder, BinderX, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident,
     MultiOp, Query, QueryX, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
 };
-use crate::context::{Context, SmtSolver};
+use crate::context::{Context, SmtEncoding};
 use crate::messages::MessageInterface;
 use crate::printer::{Printer, node_to_string};
 use crate::scope_map::ScopeMap;
@@ -28,7 +28,7 @@ pub struct Typing {
     pub(crate) snapshots: HashSet<Ident>,
     pub(crate) break_labels_local: HashSet<Ident>,
     pub(crate) break_labels_in_scope: ScopeMap<Ident, ()>,
-    pub(crate) solver: SmtSolver,
+    pub(crate) smt_encoding: SmtEncoding,
 }
 
 impl Typing {
@@ -254,7 +254,7 @@ fn check_float_unary_exprs(
     let t0 = check_expr(typing, expr)?;
     // See https://smt-lib.org/theories-FloatingPoint.shtml for types of each operation
     match &*t0 {
-        TypX::Float { .. } => match op {
+        TypX::Float { exp_bits, sig_bits } => match op {
             UnaryOp::FloatNeg => Ok(t0.clone()),
             UnaryOp::FloatRoundToInt(_) => Ok(t0.clone()),
             UnaryOp::FloatIsNormal
@@ -265,6 +265,7 @@ fn check_float_unary_exprs(
             | UnaryOp::FloatIsNegative
             | UnaryOp::FloatIsPositive => Ok(bt()),
             UnaryOp::FloatToBitVec { bits, .. } => Ok(Arc::new(TypX::BitVec(bits))),
+            UnaryOp::FloatToIeeeBits => Ok(Arc::new(TypX::BitVec(exp_bits + sig_bits))),
             UnaryOp::FloatToReal => Ok(rt()),
             _ => unreachable!(),
         },
@@ -417,6 +418,12 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Unary(op @ UnaryOp::FloatToBitVec { .. }, e1) => {
             check_float_unary_exprs(typing, op.clone(), "float_to_bitvec", &e1.clone())
         }
+        ExprX::Unary(UnaryOp::FloatToIeeeBits, e1) => check_float_unary_exprs(
+            typing,
+            UnaryOp::FloatToIeeeBits,
+            "float_to_ieee_bits",
+            &e1.clone(),
+        ),
         ExprX::Unary(UnaryOp::FloatToReal, e1) => {
             check_float_unary_exprs(typing, UnaryOp::FloatToReal, "float_to_real", &e1.clone())
         }
@@ -771,8 +778,12 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         Ok(t) => Ok(t),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(typing.message_interface.clone(), false, typing.solver.clone())
-                    .expr_to_node(expr),
+                &Printer::new_with_encoding(
+                    typing.message_interface.clone(),
+                    false,
+                    typing.smt_encoding,
+                )
+                .expr_to_node(expr),
             );
             Err(format!("error '{}' in expression '{}'", err, node_str))
         }
@@ -864,8 +875,12 @@ fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
         Ok(()) => Ok(()),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(typing.message_interface.clone(), false, typing.solver.clone())
-                    .stmt_to_node(stmt),
+                &Printer::new_with_encoding(
+                    typing.message_interface.clone(),
+                    false,
+                    typing.smt_encoding,
+                )
+                .stmt_to_node(stmt),
             );
             Err(format!("error '{}' in statement '{}'", err, node_str))
         }
@@ -895,8 +910,12 @@ pub(crate) fn check_decl(
         Ok(()) => Ok(crate::closure::simplify_decl(context, decl)),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(context.message_interface.clone(), false, context.solver.clone())
-                    .decl_to_node(decl),
+                &Printer::new_with_encoding(
+                    context.message_interface.clone(),
+                    false,
+                    context.smt_encoding,
+                )
+                .decl_to_node(decl),
             );
             Err(format!("error '{}' in declaration '{}'", err, node_str))
         }

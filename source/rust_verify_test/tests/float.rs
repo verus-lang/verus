@@ -277,6 +277,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] float_cast_target_type_github3136 verus_code! {
+        proof fn test1(f: f32) {
+            assert(f == 200f32 ==> (f as u8) as i32 == 200i32) by(bit_vector);
+            assert((f as i8) as i32 <= 127i32) by(bit_vector);
+            assert((f as u8) as i32 == (f as u8) as i32) by(bit_vector);
+        }
+        proof fn test2(f: f32) {
+            assert((f as u8) as i32 == (f as i8) as i32) by(bit_vector); // FAILS
+        }
+        proof fn test3(x: i32) {
+            assert((x as f32) as i64 == (x as f64) as i64) by(bit_vector); // FAILS
+        }
+        proof fn test4(f: f32) {
+            assert((f as u8) as i32 == (f as i8) as i32) by(compute); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
     #[test] f32_neg verus_code! {
         fn test() {
             let x: f32 = 1.0;
@@ -658,4 +677,88 @@ test_verify_one_file! {
             assert(z == 1);
         }
     } => Ok(())
+}
+
+// Spec `==` on floats is equality of IEEE bit patterns, including NaN payloads and signed zero.
+// `ieee_eq` stays SMT `fp.eq` (NaN compares unequal, and +0 equals -0).
+test_verify_one_bv_file_with_options! {
+    #[test] bitvector_float_eq_bit_patterns ["vstd"] => verus_code! {
+        proof fn same_nan_f32() {
+            assert(spec_literal_decimal::<f32>("NaN") == spec_literal_decimal::<f32>("NaN")) by(bit_vector);
+        }
+
+        proof fn same_nan_f32_var(x: f32)
+            requires
+                x == spec_literal_decimal::<f32>("NaN"),
+        {
+            assert(x == spec_literal_decimal::<f32>("NaN")) by(bit_vector)
+                requires
+                    x == spec_literal_decimal::<f32>("NaN"),
+            ;
+        }
+
+        proof fn ieee_eq_zeros() {
+            assert((0.0f32).ieee_eq(-0.0f32)) by(bit_vector);
+            assert((0.0f64).ieee_eq(-0.0f64)) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_bv_file_with_options! {
+    #[test] bitvector_float_eq_bit_patterns_fail ["vstd"] => verus_code! {
+        proof fn distinct_nan_f32()
+            ensures
+                false,
+        {
+            assert(spec_literal_decimal::<f32>("NaN") == spec_literal_decimal::<f32>("-NaN")) by(bit_vector); // FAILS
+        }
+
+        proof fn distinct_nan_f32_vars(x: f32, y: f32)
+            requires
+                x == spec_literal_decimal::<f32>("NaN"),
+                y == spec_literal_decimal::<f32>("-NaN"),
+            ensures
+                false,
+        {
+            assert(x == y) by(bit_vector) // FAILS
+                requires
+                    x == spec_literal_decimal::<f32>("NaN"),
+                    y == spec_literal_decimal::<f32>("-NaN"),
+            ;
+        }
+
+        proof fn distinct_nan_f64()
+            ensures
+                false,
+        {
+            assert(spec_literal_decimal::<f64>("NaN") == spec_literal_decimal::<f64>("-NaN")) by(bit_vector); // FAILS
+        }
+
+        proof fn distinct_nan_f64_vars(x: f64, y: f64)
+            requires
+                x == spec_literal_decimal::<f64>("NaN"),
+                y == spec_literal_decimal::<f64>("-NaN"),
+            ensures
+                false,
+        {
+            assert(x == y) by(bit_vector) // FAILS
+                requires
+                    x == spec_literal_decimal::<f64>("NaN"),
+                    y == spec_literal_decimal::<f64>("-NaN"),
+            ;
+        }
+
+        proof fn neg_zero_f32() {
+            assert(0.0f32 == -0.0f32) by(bit_vector); // FAILS
+        }
+
+        proof fn neg_zero_f64() {
+            assert(0.0f64 == -0.0f64) by(bit_vector); // FAILS
+        }
+
+        proof fn ieee_eq_nans() {
+            assert(spec_literal_decimal::<f32>("NaN").ieee_eq(spec_literal_decimal::<f32>("-NaN"))) by(bit_vector); // FAILS
+            assert(spec_literal_decimal::<f64>("NaN").ieee_eq(spec_literal_decimal::<f64>("-NaN"))) by(bit_vector); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 8)
 }

@@ -5285,3 +5285,70 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] if_with_no_else_issue3187 [] => verus_code! {
+        use vstd::prelude::*;
+
+        fn f(c: bool) -> (res: u64)
+            ensures c ==> res == 5,
+                !c ==> res == 0,
+        {
+            let mut x = 0u64;
+            let r = &mut x;
+            let mut z: Option<&mut u64> = None;
+
+            if c {
+                let r2 = r;
+                z = Some(r2);
+            }
+
+            match z {
+                Some(r3) => { *r3 = 5; }
+                None => {}
+            }
+
+            x
+        }
+
+        fn f_fails1(c: bool) -> (res: u64)
+            ensures !c, // FAILS
+        {
+            let mut x = 0u64;
+            let r = &mut x;
+            let mut z: Option<&mut u64> = None;
+
+            if c {
+                let r2 = r;
+                z = Some(r2);
+            }
+
+            match z {
+                Some(r3) => { *r3 = 5; }
+                None => {}
+            }
+
+            x
+        }
+
+        fn f_fails2(c: bool) -> (res: u64)
+            ensures c, // FAILS
+        {
+            let mut x = 0u64;
+            let r = &mut x;
+            let mut z: Option<&mut u64> = None;
+
+            if c {
+                let r2 = r;
+                z = Some(r2);
+            }
+
+            match z {
+                Some(r3) => { *r3 = 5; }
+                None => {}
+            }
+
+            x
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

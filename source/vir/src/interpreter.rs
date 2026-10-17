@@ -486,7 +486,14 @@ impl SyntacticEquality for Exp {
                     Some(false)
                 }
             }
-            (Unary(op_l, e_l), Unary(op_r, e_r)) => def_eq(op_l == op_r && e_l.syntactic_eq(e_r)?),
+            (Unary(op_l, e_l), Unary(op_r, e_r)) => {
+                // A cast's target type is recorded in the expression's type, so we check that too
+                def_eq(
+                    op_l == op_r
+                        && types_equal(&undecorate_typ(&self.typ), &undecorate_typ(&other.typ))
+                        && e_l.syntactic_eq(e_r)?,
+                )
+            }
             (UnaryOpr(op_l, e_l), UnaryOpr(op_r, e_r)) => {
                 use crate::ast::UnaryOpr::*;
                 let op_eq = match (op_l, op_r) {
@@ -1478,12 +1485,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         _ => ok,
                     }
                 }
-                ToDyn(_) => Ok(e),
+                ToDyn(_) => ok,
+                HasResolved(_) => ok,
                 CustomErr(_) => Ok(e),
                 AutoDecreases => Ok(e),
                 AutoLoopEnsures => Ok(e),
                 ProofNote(_) => Ok(e),
-                HasResolved(_) => Ok(e),
                 LoopIsolationBoundary(_) => Ok(e),
             }
         }

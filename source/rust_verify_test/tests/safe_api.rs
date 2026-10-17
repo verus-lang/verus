@@ -441,3 +441,17 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] trait_decl_with_default_issue3214 ["-V check-api-safety"] => verus_code! {
+        pub trait Foo {
+            fn test(x: u8)
+                requires x > 0,
+            {
+                if x == 0 {
+                    unsafe { core::hint::unreachable_unchecked() }
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "'requires' clause is nontrivial for provided method `test_crate::Foo::test`")
+}

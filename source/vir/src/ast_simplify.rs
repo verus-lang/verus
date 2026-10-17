@@ -16,8 +16,8 @@ use crate::ast::{
     TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
-    conjoin, mk_eq, mk_implies, place_to_spec_expr, typ_args_for_datatype_typ, undecorate_typ,
-    unit_typ, wrap_in_trigger,
+    conjoin, is_unit, mk_eq, mk_implies, place_to_spec_expr, typ_args_for_datatype_typ,
+    undecorate_typ, unit_typ, wrap_in_trigger,
 };
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
@@ -197,6 +197,11 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
         PatternX::Range(_, _) => {}
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => {
             pattern_to_decls_with_no_initializer(p, stmts);
+        }
+        PatternX::Slice(pats) => {
+            for p in pats.iter() {
+                pattern_to_decls_with_no_initializer(p, stmts);
+            }
         }
     }
 }
@@ -1208,7 +1213,7 @@ fn simplify_function(
     if let Some(r) = functionx.returns.clone() {
         functionx.returns = None;
 
-        if functionx.ens_has_return {
+        if !is_unit(&undecorate_typ(&functionx.inner_ret.x.typ)) {
             let var = SpannedTyped::new(
                 &r.span,
                 &functionx.inner_ret.x.typ,
@@ -1219,6 +1224,8 @@ fn simplify_function(
         } else {
             // For a unit return type, any returns clause is tautological so we
             // can just skip appending to the postconditions.
+            // We need to do this anyway since a unit-return function might
+            // not have a return-arg to the ensures.
         }
     }
 
@@ -1295,6 +1302,7 @@ fn simplify_function(
         &|state, _, stmt| simplify_one_stmt(ctx, state, stmt),
         &|state, typ| simplify_one_typ(&local, state, typ),
         &|state, map, place| simplify_one_place(ctx, state, map, place),
+        &|_, _, pat| Ok(pat.clone()),
     )?;
     let mut functionx = function.x.clone();
     assert!(functionx.params.len() == param_names.len());

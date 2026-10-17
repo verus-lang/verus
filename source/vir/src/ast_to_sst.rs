@@ -9,8 +9,8 @@ use crate::ast::{
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
 use crate::ast_util::{
-    QUANT_FORALL, bitwidth_to_signed_type_string, bool_typ, int_typ, types_equal, undecorate_typ,
-    unit_typ,
+    QUANT_FORALL, bitwidth_to_signed_type_string, bool_typ, int_typ, is_unit, types_equal,
+    undecorate_typ, unit_typ,
 };
 use crate::context::Ctx;
 use crate::def::{self, Spanned};
@@ -114,6 +114,7 @@ pub(crate) struct State<'a> {
     statics: IndexSet<Fun>,
     pub assert_id_counter: u64,
     loop_id_counter: u64,
+    loop_result_dests: HashMap<Label, VarIdent>,
 
     pub mask: Option<MaskSet>,
 
@@ -260,6 +261,7 @@ impl<'a> State<'a> {
             statics: IndexSet::new(),
             assert_id_counter: 0,
             loop_id_counter: 0,
+            loop_result_dests: HashMap::new(),
             mask: None,
             au_pred_args: Vec::new(),
             au_var_exp_to_resolve: None,
@@ -593,6 +595,16 @@ pub(crate) fn get_function_sst(
     }
 }
 
+pub(crate) fn ens_has_return(ctx: &Ctx, function: &Function) -> bool {
+    match &function.x.kind {
+        crate::ast::FunctionKind::TraitMethodImpl { method, .. } => {
+            let method = &ctx.func_map[method];
+            !is_unit(&undecorate_typ(&method.x.outer_ret.x.typ))
+        }
+        _ => !is_unit(&undecorate_typ(&function.x.outer_ret.x.typ)),
+    }
+}
+
 fn function_can_be_exp(
     ctx: &Ctx,
     state: &State,
@@ -634,7 +646,7 @@ fn loop_body_find_breaks(
             loop_body_find_breaks(loop_label, num_breaks, num_isolated_breaks, true, expr);
             VisitorControlFlow::Return
         }
-        ExprX::BreakOrContinue { label: break_label, is_break: true } => {
+        ExprX::BreakOrContinue { label: break_label, is_break: true, .. } => {
             if break_label == loop_label {
                 *num_breaks += 1;
                 if in_isolated {
@@ -988,7 +1000,7 @@ fn expr_get_call(
                     return Err(internal_error(&expr.span, "autospec not discharged"));
                 }
                 let function = get_function(ctx, &expr.span, x)?;
-                let has_ret = function.x.ens_has_return;
+                let has_ret = ens_has_return(ctx, &function);
                 if disallow_poly_ret.is_some()
                     && has_ret
                     && crate::poly::ret_needs_native(
@@ -1973,6 +1985,14 @@ pub(crate) fn expr_to_stm_opt(
             }
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ExpX::Unary(*op, exp))))))
         }
+        ExprX::UnaryOpr(UnaryOpr::ToDyn(_), _)
+            if matches!(&*undecorate_typ(&expr.typ), TypX::MutRef(_)) =>
+        {
+            let (mut stms, e) = expr_to_stm_opt_with_delayed_obligations(ctx, state, expr)?;
+            let (e, obligations) = unwrap_or_return_never!(e, stms);
+            typ_inv_obligations(ctx, state, &mut stms, obligations, TypInv::BareMutRefError)?;
+            Ok((stms, Maybe::Some(e)))
+        }
         ExprX::UnaryOpr(op, arg) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, arg)?;
             let exp = to_exp_or_return_never!(exp, stms);
@@ -2642,7 +2662,16 @@ pub(crate) fn expr_to_stm_opt(
             atomic_call,
         } => {
             let is_for_loop = *is_for_loop;
+            let produces_value =
+                !crate::ast_util::is_unit(&expr.typ) && !crate::ast_util::is_never(&expr.typ);
             let loop_isolation = *loop_isolation;
+            if produces_value && loop_isolation {
+                return Err(error(
+                    &expr.span,
+                    "loops with value-bearing 'break' do not yet support loop isolation",
+                )
+                .help("add #[verifier::loop_isolation(false)] to this loop"));
+            }
             let allow_complex_invariants = *allow_complex_invariants;
             let id = state.loop_id_counter;
             state.loop_id_counter += 1;
@@ -2759,7 +2788,24 @@ pub(crate) fn expr_to_stm_opt(
                 state.branch_bool_var = Some((var_id, var_exp));
             }
 
+            let loop_result = if !produces_value {
+                None
+            } else {
+                let (dest, result) = state.declare_temp_var_stm(
+                    &expr.span,
+                    &expr.typ,
+                    PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::LoopBreakValue)),
+                );
+                let previous = state.loop_result_dests.insert(label.clone(), dest);
+                assert!(previous.is_none());
+                Some(result)
+            };
+
             let (mut body_stms, _val) = expr_to_stm_opt(ctx, state, body)?;
+            if loop_result.is_some() {
+                let removed = state.loop_result_dests.remove(label);
+                assert!(removed.is_some());
+            }
             state.branch_bool_var = None;
 
             let mut check_recommends: Vec<Stm> = Vec::new();
@@ -2848,7 +2894,10 @@ pub(crate) fn expr_to_stm_opt(
             );
 
             if can_control_flow_reach_after_loop(expr) {
-                let ret = Maybe::Some(Value::ImplicitUnit(expr.span.clone()));
+                let ret = Maybe::Some(match loop_result {
+                    Some(result) => Value::Exp(result),
+                    None => Value::ImplicitUnit(expr.span.clone()),
+                });
                 Ok((vec![while_stm], ret))
             } else {
                 // If it's an infinite loop, add 'assume(false)' and return Never.
@@ -3605,10 +3654,25 @@ pub(crate) fn expr_to_stm_opt(
             stms.push(assume_false(&expr.span));
             Ok((stms, Maybe::Never))
         }
-        ExprX::BreakOrContinue { label, is_break } => {
+        ExprX::BreakOrContinue { label, is_break, value } => {
+            let mut stms = Vec::new();
+            if let Some(value) = value {
+                assert!(*is_break);
+                let (mut value_stms, value) = expr_to_stm_opt(ctx, state, value)?;
+                stms.append(&mut value_stms);
+                let value = match value {
+                    Maybe::Some(value) => value.to_exp(),
+                    Maybe::Never => return Ok((stms, Maybe::Never)),
+                };
+                // Unit-typed loops do not have a result destination.
+                if let Some(dest) = state.loop_result_dests.get(label) {
+                    stms.push(init_var(&expr.span, dest, &value));
+                }
+            }
             let stmx = StmX::BreakOrContinue { label: label.clone(), is_break: *is_break };
             let stm = Spanned::new(expr.span.clone(), stmx);
-            Ok((vec![stm], Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
+            stms.push(stm);
+            Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
         ExprX::NeverToAny(e) => {
             let (mut stms, _e) = expr_to_stm_opt(ctx, state, e)?;
@@ -3840,6 +3904,15 @@ fn expr_to_stm_opt_with_delayed_obligations(
 
             stms.append(&mut stms2);
             Ok((stms, Maybe::Some((exp1, obligations))))
+        }
+        ExprX::UnaryOpr(UnaryOpr::ToDyn(self_typ), e1)
+            if matches!(&*undecorate_typ(&expr.typ), TypX::MutRef(_)) =>
+        {
+            let (mut stms, exp1) = expr_to_stm_opt_with_delayed_obligations(ctx, state, e1)?;
+            let (exp1, obligations) = unwrap_or_return_never!(exp1, stms);
+            let exp1 = exp1.to_exp();
+            let out = mut_ref_to_dyn_sst(state, &expr.span, &mut stms, &exp1, self_typ, &expr.typ);
+            Ok((stms, Maybe::Some((Value::Exp(out), obligations))))
         }
         _ => {
             let (stms, e) = expr_to_stm_opt(ctx, state, expr)?;
@@ -4211,6 +4284,38 @@ fn borrow_mut_to_sst(
         phase1_stms,
         Maybe::Some((BorrowMutSst { phase2_stm: assign, mut_ref_exp, loc: lhs_exp }, obligations)),
     ))
+}
+
+/// Lowers the coercion of `src: &mut T` to `&mut dyn Trait` to a new reference `out` with
+///   mut_ref_current(out) == to_dyn(mut_ref_current(src))
+///   mut_ref_future(out) == to_dyn(mut_ref_future(src))
+fn mut_ref_to_dyn_sst(
+    state: &mut State,
+    span: &Span,
+    stms: &mut Vec<Stm>,
+    src: &Exp,
+    self_typ: &Typ,
+    out_typ: &Typ,
+) -> Exp {
+    let TypX::MutRef(dyn_typ) = &*undecorate_typ(out_typ) else {
+        panic!("mut_ref_to_dyn_sst expected MutRef type");
+    };
+    let (var_ident, out) = state.declare_temp_var_stm(
+        span,
+        out_typ,
+        PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::BorrowMut)),
+    );
+    stms.push(assume_has_typ(&var_ident, out_typ, span));
+    let to_dyn = |e: Exp| {
+        SpannedTyped::new(span, dyn_typ, ExpX::UnaryOpr(UnaryOpr::ToDyn(self_typ.clone()), e))
+    };
+    let cur =
+        sst_equal(span, &sst_mut_ref_current(span, &out), &to_dyn(sst_mut_ref_current(span, src)));
+    let fut =
+        sst_equal(span, &sst_mut_ref_future(span, &out), &to_dyn(sst_mut_ref_future(span, src)));
+    stms.push(Spanned::new(span.clone(), StmX::Assume(cur)));
+    stms.push(Spanned::new(span.clone(), StmX::Assume(fut)));
+    out
 }
 
 #[derive(Clone, Debug)]
