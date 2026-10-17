@@ -483,6 +483,31 @@ fn guard_map_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<(
     out
 }
 
+/// Exclusive `option` fields borrowed by `have f >= Some(..)` in a guard.
+fn guard_option_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<Ident> {
+    let mut out: Vec<Ident> = vec![];
+    fn walk(s: &TransitionStmt, fields: &HashMap<String, Field>, out: &mut Vec<Ident>) {
+        match s {
+            TransitionStmt::Block(_, xs) => xs.iter().for_each(|x| walk(x, fields, out)),
+            TransitionStmt::Split(_, k, xs) => {
+                if let SplitKind::Special(n, op, _, _) = &**k {
+                    if matches!(op.stmt, MonoidStmtType::Have)
+                        && matches!(fields[&n.to_string()].stype, ShardableType::Option(_))
+                        && matches!(op.elt, MonoidElt::OptionSome(_))
+                        && !out.contains(n)
+                    {
+                        out.push(n.clone());
+                    }
+                }
+                xs.iter().for_each(|x| walk(x, fields, out));
+            }
+            _ => {}
+        }
+    }
+    walk(s, fields, &mut out);
+    out
+}
+
 fn guarded_expression(
     s: &TransitionStmt,
     fields: &HashMap<String, Field>,
@@ -976,20 +1001,26 @@ pub fn output_with_ready(
                     None => observed_fields.push((field.clone(), vec![key.clone()])),
                 }
             }
-            let observed_base = if observed_fields.is_empty() {
+            // Likewise for values bound by `have o >= Some(..)` on exclusive
+            // option fields (linked to `pre` by option_owned_frame).
+            let option_haves = guard_option_haves(&tr.body, &fields);
+            let option_updates: Vec<_> = option_haves.iter().map(|field| {
+                quote! {#field: Some(f.#field->Some_0->Exclusive_0)}
+            }).collect();
+            let observed_base = if observed_fields.is_empty() && option_updates.is_empty() {
                 quote! {Self::__observed(f)}
             } else {
-                let updates: Vec<_> = observed_fields.iter().map(|(field, keys)| {
+                let updates: Vec<_> = option_updates.iter().cloned().chain(observed_fields.iter().map(|(field, keys)| {
                     let inserts = keys.iter().map(|k| quote! {.insert(#k, f.#field.at(#k)->Some_0->Exclusive_0)});
                     let empty = match fields[&field.to_string()].stype {
                         ShardableType::IMap(..) => quote! {::vstd::imap::IMap::empty()},
                         _ => quote! {::vstd::map::Map::empty()},
                     };
                     quote! {#field: #empty #(#inserts)*}
-                }).collect();
+                })).collect();
                 quote! {#se{#(#updates,)* ..Self::__observed(f)}}
             };
-            let observed_links: Vec<_> = map_haves.iter().map(|(field, key)| {
+            let mut observed_links: Vec<_> = map_haves.iter().map(|(field, key)| {
                 let imap = match fields[&field.to_string()].stype {
                     ShardableType::IMap(..) => quote! {pre.#field},
                     _ => quote! {pre.#field.to_imap()},
@@ -999,6 +1030,12 @@ pub fn output_with_ready(
                         f.#field.at(#key)->Some_0->Exclusive_0);
                 }
             }).collect();
+            for field in &option_haves {
+                observed_links.push(quote! {
+                    ::vstd::resource::tsm_collections::option_owned_frame(f.#field, z.#field, pre.#field,
+                        f.#field->Some_0->Exclusive_0);
+                });
+            }
             // Tagged multi-field carriers need a per-tag split to lift the
             // field-level guard fact to the combined storage map.
             let guard_cases = match carrier.as_ref() {
@@ -1013,7 +1050,7 @@ pub fn output_with_ready(
                 None => quote! {},
             };
             relations.push(quote!{pub open spec fn #guarded(pre:#st,#(#params),*)->IMap<#key,#val>{#expression}});
-            let observed_req: Vec<_> = names
+            let mut observed_req: Vec<_> = names
                 .iter()
                 .filter(|n| read.contains(&n.to_string()))
                 .map(|n| match fields[&n.to_string()].stype {
@@ -1022,6 +1059,9 @@ pub fn output_with_ready(
                     _ => unreachable!(),
                 })
                 .collect();
+            for field in &option_haves {
+                observed_req.push(quote! {f.#field is Some && f.#field->Some_0 is Exclusive});
+            }
             let observe_equal: Vec<_> = sm
                 .fields
                 .iter()
