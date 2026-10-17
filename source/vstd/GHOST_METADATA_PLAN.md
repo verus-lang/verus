@@ -54,6 +54,10 @@ need to prove it.
 
 ### 2. Leave the Sized impls alone
 
+(Revisited in [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md#wf_basic-and-wf):
+there, every `PointsToUnaligned` pointer, including the Sized one, is built from the stored metadata,
+so `PointsToProperties` can be one generic impl.)
+
 For Sized `T` the metadata is `()`, so `ptr()` stays `pt_untyped().ptr() as *mut T` and `size()`
 stays `size_of::<T>()`. The roughly ten specs that say `out.ptr() == pt_untyped.ptr() as *mut T`
 (e.g. lines 1318, 1347, 1365, 1383, 1401-1405, 2183, 2242) are unaffected. So are all the
@@ -159,7 +163,28 @@ impl<E> PointsToProperties for PointsToUnaligned<[E]> {
 - `View`: `PointsToData<T>` is Sized-only (line 1002). Either give it `T: ?Sized` (its `value` field
   is a `TypedValue<T>`, which already allows that) or skip `View` for slices at first.
 
-### Step 3: empty slice permissions (all proved)
+### Step 3: empty slice permissions (all proved) (written, reverted, saved in `step3_slice_wip.patch`)
+
+On hold until the `PointsToSingleValue` trait is in:
+these become trait impls in its phase 2b
+(see [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md#phase-2b-slice-impls-ghost-steps-3-and-5)).
+The inherent versions were written as listed below, with these details:
+
+- `PointsToUnaligned<[T]>` has `from_untyped`, `into_aligned`, `as_aligned`, `zero_sized`
+  and `lemma_ptrs_len_same_valid_slice`,
+  mirroring the Sized `PointsToUnaligned` (plus `from_untyped`).
+- `PointsTo<[T]>` has `from_untyped`, `into_untyped`, `as_untyped`,
+  `into_untyped_with_typed_value`, `into_unaligned`, `as_unaligned`, `zero_sized`
+  and `lemma_ptrs_len_same_valid_slice`.
+  There is no `as_untyped_mut` yet.
+- Pointers can't be cast to `*mut [T]`, so the untyped conversions state the address,
+  provenance and length (`self.size()`) separately,
+  and `from_untyped` states `out.ptr() == ptr_mut_from_data::<[T]>(...)` with metadata `len`.
+- Both `lemma_ptrs_len_same_valid_slice` lemmas are in `group_points_to_permissions_lemmas`.
+- Since `PointsTo<T>` and `PointsTo<[T]>` now share inherent function names,
+  a path call like `PointsTo::zero_sized(p)` is ambiguous,
+  so the one such call (in `SeqPointsTo::zero_sized_helper`) is now `PointsTo::<T>::zero_sized`.
+  Method calls are unaffected.
 
 None of these need a slice value, so they are plain field construction and destructuring:
 
@@ -212,7 +237,7 @@ would replace the `[u8]` axiom with one for all such slices. That can be done la
 
 `Tracked`'s `Deref` in builtin now takes `A: ?Sized`. Under `verus_verify_core` it is cfg'd out and
 rustlib's const `Deref` impl for `Tracked` is used instead, so that impl must also take
-`A: ?Sized` (to check in rustlib). So `PointsTo<[E]>::borrow_value(&self) -> &[E]` can be a field
+`A: ?Sized` (to check in rustlib). So `PointsTo<[E]>::borrow(&self) -> &[E]` (named `borrow_value` before TYPED_POINTS_TO_PLAN.md's rename) can be a field
 borrow of `Valid(t)`, the same way
 `TypedValue<[T]>::value()` already reads `&*self->0` (line 655). This is the `tracked_borrow` that
 [POINTS_TO_MIGRATION.md](POINTS_TO_MIGRATION.md) §7 lists as "Not possible".
@@ -285,6 +310,11 @@ The axiom says nothing about `SeqPointsTo` or `wf()`.
 `SeqPointsTo::from_refs` is then proved, the same way `PointsToUntyped::split_ref` is:
 `SeqPointsTo`'s only other field is `ptr: Ghost<*mut T>`, so `shr_ref_struct_wrap` can wrap the
 collected `&Seq<P>`.
+
+(Written against the current `SeqPointsTo`.
+After [TYPED_POINTS_TO_PLAN.md phase 1b](TYPED_POINTS_TO_PLAN.md#seqpointstos-pointer-and-sizes)
+the bound is `P: PointsToProperties<A = T>`, offsets use `P::size(())`,
+`ptr` is a thin `*mut T`, and the result has `out.thin_ptr() == ptr`.)
 
 ```rust
 impl<T: ?Sized, P: PointsToProperties + FixedSize> SeqPointsTo<T, P> {
@@ -378,7 +408,7 @@ alignment arithmetic and, for the valid ones, `abs_decode_slice`.
 
 - **`SeqPointsTo::<E, PointsTo<E>>::as_slice_pt(&self) -> &PointsTo<[E]>`:** requires the sequence
   to be all valid or all empty, since a `PointsTo<[E]>` can't represent a mix. Bytes from
-  `SeqPointsTo::as_untyped` (proved). If valid: `borrow_value_subrange` (proved) → `Seq<&E>` →
+  `SeqPointsTo::as_untyped` (proved). If valid: `borrow_subrange` (proved; renamed from `borrow_value_subrange`) → `Seq<&E>` →
   `tracked_slice_from_refs` → `&[E]`, then `PointsTo::<[E]>::from_untyped_with_value_ref`. If empty:
   `PointsTo::<[E]>::from_untyped_ref`. A zero-length sequence is vacuously `is_valid()`, so it comes
   back as a valid, empty slice and is never required to be valid and empty at once.
@@ -589,7 +619,7 @@ Everything the plan trusts, in one place. The contracts are in the steps that in
 - No axiom turns an owned `SeqPointsTo<E, PointsTo<E>>` into an owned `PointsTo<[E]>`.
 - No new axiom mentions `wf()`, alignment, or decoding, except `abs_decode_slice`.
 - Proved from the items above: the field, the trait impls, the owned empty constructors,
-  `borrow_value`, `TypedValue::valid_ref`, the borrowed constructors, `SeqPointsTo::from_refs`, all
+  `borrow`, `TypedValue::valid_ref`, the borrowed constructors, `SeqPointsTo::from_refs`, all
   four conversions (`as_slice_pt`, `as_seq_pt`, `as_slice_pt_mut`, `as_seq_pt_mut`), and the empty
   owned conversions.
 - Not needed at all: `PointsTo::borrow_mut`, `borrow_mut_subrange`, `wrap_mut`, and any
@@ -627,8 +657,12 @@ Everything the plan trusts, in one place. The contracts are in the steps that in
 
 ## Out of scope
 
-- **`TypedPointsTo`** (the trait proposed in `GENERALIZATION_ASSESSMENT.md` §4) comes after this
-  plan. The metadata change is done first; the trait plan isn't finalized yet.
+- **`PointsToSingleValue`** (the trait proposed in `GENERALIZATION_ASSESSMENT.md` §4) now comes
+  before steps 3 and 5-8,
+  so that the slice functions are trait impls with shared contracts.
+  See [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md#combined-order) for the combined order.
 - **`str`** follows the same pattern (metadata equal to the byte length), but it will be done in
   the rustlib repo (`/Users/estang/Documents/Verus/rustlib`), not in vstd. There, the view of a
   `str` is its bytes, rather than its characters as in vstd.
+  There is no `SeqPointsTo<str, _>`; `str` permissions convert to and from `PointsTo<[u8]>`.
+  See [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md#str-in-rustlib).

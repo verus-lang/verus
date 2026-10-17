@@ -1,0 +1,283 @@
+diff --git a/source/vstd/points_to_permissions.rs b/source/vstd/points_to_permissions.rs
+index 2a8d8a690..7ac317a1e 100644
+--- a/source/vstd/points_to_permissions.rs
++++ b/source/vstd/points_to_permissions.rs
+@@ -1000,6 +1000,103 @@ impl<T> PointsToUnaligned<[T]> {
+     pub open spec fn wf(&self) -> bool {
+         self.wf_basic()
+     }
++
++    /// If `old` and `new` are both well-formed with the same pointer,
++    /// then `new` keeps `old`'s underlying pointers and length,
++    /// and still satisfies decode validity.
++    pub broadcast proof fn lemma_ptrs_len_same_valid_slice(old: Self, new: Self)
++        requires
++            old.wf(),
++            new.wf(),
++            new.ptr() == old.ptr(),
++        ensures
++            #[trigger] Self::ptrs_len_same_valid(old, new),
++    {
++        PointsToUntyped::lemma_ptrs_len_same_valid_untyped(old.pt_untyped(), new.pt_untyped());
++    }
++
++    /// Creates an empty (uninitialized) `PointsToUnaligned<[T]>` of `len` elements
++    /// from a `PointsToUntyped` of `len * size_of::<T>()` bytes.
++    /// The resulting pointer has the address and provenance of the `PointsToUntyped`,
++    /// and metadata `len`.
++    pub proof fn from_untyped(tracked pt_untyped: PointsToUntyped, len: usize) -> (tracked out: Self)
++        requires
++            pt_untyped.wf(),
++            pt_untyped.len() == len * size_of::<T>(),
++        ensures
++            out.ptr() == ptr_mut_from_data::<[T]>(
++                PtrData {
++                    addr: pt_untyped.ptr()@.addr,
++                    provenance: pt_untyped.ptr()@.provenance,
++                    metadata: len,
++                },
++            ),
++            out.bytes() == pt_untyped.bytes(),
++            out.is_empty(),
++            out.wf(),
++    {
++        PointsToUnaligned { val: TypedValue::Empty, pt_untyped, metadata: Ghost(len) }
++    }
++
++    /// Convert a `PointsToUnaligned<[T]>` to an aligned `PointsTo<[T]>`.
++    /// Requires the pointer address to be aligned to `T`.
++    ///
++    /// Ensures pointer locations remain the same, and memory
++    /// initializations states remain the same.
++    pub proof fn into_aligned(tracked self) -> (tracked perm: PointsTo<[T]>)
++        requires
++            self.wf(),
++            self.ptr()@.addr as int % align_of::<T>() as int == 0,
++        ensures
++            perm@ == self@,
++            perm.wf(),
++    {
++        PointsTo { pt_unaligned: self }
++    }
++
++    /// Borrow a `PointsToUnaligned<[T]>` as an aligned `PointsTo<[T]>`.
++    /// Requires the pointer address to be aligned to `T`.
++    ///
++    /// Ensures pointer locations remain the same, and memory
++    /// initializations states remain the same.
++    pub proof fn as_aligned(tracked &self) -> (tracked perm: &PointsTo<[T]>)
++        requires
++            self.wf(),
++            self.ptr()@.addr as int % align_of::<T>() as int == 0,
++        ensures
++            perm@ == self@,
++            perm.wf(),
++    {
++        shr_ref_struct_wrap(self, &PointsTo { pt_unaligned: *self }, "", "pt_unaligned")
++    }
++
++    /// If `T` is zero sized or the pointer's length is 0,
++    /// then we can construct an uninitialized `PointsToUnaligned<[T]>`
++    /// from any non-null pointer whose address (and, if known, provenance) is otherwise valid.
++    /// The range of memory pointed to by this permission will be empty.
++    pub proof fn zero_sized(ptr: *mut [T]) -> (tracked perm: Self)
++        requires
++            ptr@.addr != 0,
++            size_of::<T>() == 0 || ptr@.metadata == 0,
++            ptr_addr_in_bounds(ptr),
++        ensures
++            perm.ptr() == ptr,
++            perm.is_empty(),
++            perm.bytes().len() == 0,
++            perm.wf(),
++    {
++        let byte_ptr: *mut [u8] = ptr_mut_from_data(
++            PtrData::<[u8]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: 0 },
++        );
++        let tracked pt_untyped = SeqPointsTo { seq_pt: Seq::tracked_empty(), ptr: Ghost(byte_ptr) };
++        let tracked perm = PointsToUnaligned::<[T]> {
++            val: TypedValue::Empty,
++            pt_untyped,
++            metadata: Ghost(ptr@.metadata),
++        };
++        assert(perm.ptr()@ == ptr@);
++        perm
++    }
+ }
+ 
+ /**
+@@ -1280,6 +1377,156 @@ impl<T> PointsTo<[T]> {
+     pub open spec fn wf(&self) -> bool {
+         self.wf_basic()
+     }
++
++    /// If `old` and `new` are both well-formed with the same pointer,
++    /// then `new` keeps `old`'s underlying pointers and length,
++    /// and still satisfies decode validity.
++    pub broadcast proof fn lemma_ptrs_len_same_valid_slice(old: Self, new: Self)
++        requires
++            old.wf(),
++            new.wf(),
++            new.ptr() == old.ptr(),
++        ensures
++            #[trigger] Self::ptrs_len_same_valid(old, new),
++    {
++        PointsToUnaligned::<[T]>::lemma_ptrs_len_same_valid_slice(
++            old.pt_unaligned(),
++            new.pt_unaligned(),
++        );
++    }
++
++    /// From a non-null pointer aligned to `T`,
++    /// where `T` is zero sized or the pointer's length is 0,
++    /// we can construct an uninitialized `PointsTo<[T]>`.
++    /// The memory range pointed to by this pointer will be empty.
++    pub proof fn zero_sized(ptr: *mut [T]) -> (tracked perm: Self)
++        requires
++            ptr@.addr != 0,
++            ptr@.addr as nat % align_of::<T>() == 0,
++            ptr_addr_in_bounds(ptr),
++            size_of::<T>() == 0 || ptr@.metadata == 0,
++        ensures
++            perm.ptr() == ptr,
++            perm.is_empty(),
++            perm.bytes().len() == 0,
++            perm.wf(),
++    {
++        let tracked pt_unaligned = PointsToUnaligned::<[T]>::zero_sized(ptr);
++        PointsTo { pt_unaligned }
++    }
++
++    /// Convert an aligned `PointsTo<[T]>` to an unaligned `PointsToUnaligned<[T]>`.
++    /// This is always safe since aligned is stricter than unaligned.
++    ///
++    /// Ensures pointer locations remain the same, and memory
++    /// initializations states remain the same.
++    pub proof fn into_unaligned(tracked self) -> (tracked perm: PointsToUnaligned<[T]>)
++        requires
++            self.wf(),
++        ensures
++            perm@ == self@,
++            perm.wf(),
++    {
++        self.pt_unaligned
++    }
++
++    /// Borrow an aligned `PointsTo<[T]>` as an unaligned `PointsToUnaligned<[T]>`.
++    /// This is always safe since aligned is stricter than unaligned.
++    ///
++    /// Ensures pointer locations remain the same, and memory
++    /// initializations states remain the same.
++    pub proof fn as_unaligned(tracked &self) -> (tracked perm: &PointsToUnaligned<[T]>)
++        requires
++            self.wf(),
++        ensures
++            perm@ == self@,
++            perm.wf(),
++    {
++        &self.pt_unaligned
++    }
++
++    /// Converts a `PointsTo<[T]>` into a `PointsToUntyped`, an untyped permission to the same
++    /// underlying bytes, together with the `TypedValue<[T]>` that `self` held.
++    /// (Use `into_untyped` instead if you don't need the typed value.)
++    ///
++    /// The abstract bytes remain the same.
++    pub proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, typed_value): (
++        PointsToUntyped,
++        TypedValue<[T]>,
++    ))
++        requires
++            self.wf(),
++        ensures
++            self.bytes() == pt_untyped.bytes(),
++            self.ptr()@.addr == pt_untyped.ptr()@.addr,
++            self.ptr()@.provenance == pt_untyped.ptr()@.provenance,
++            pt_untyped.wf(),
++            pt_untyped.len() == self.size(),
++            typed_value == self.typed_value(),
++    {
++        let tracked PointsTo { pt_unaligned } = self;
++        let tracked PointsToUnaligned { val, pt_untyped, metadata: _ } = pt_unaligned;
++        (pt_untyped, val)
++    }
++
++    /// Creates an empty (uninitialized) `PointsTo<[T]>` of `len` elements
++    /// from a `PointsToUntyped` of `len * size_of::<T>()` bytes,
++    /// whose address is aligned to `T`.
++    /// The resulting pointer has the address and provenance of the `PointsToUntyped`,
++    /// and metadata `len`.
++    pub proof fn from_untyped(tracked pt_untyped: PointsToUntyped, len: usize) -> (tracked out: Self)
++        requires
++            pt_untyped.wf(),
++            pt_untyped.ptr()@.addr as nat % align_of::<T>() == 0,
++            pt_untyped.len() == len * size_of::<T>(),
++        ensures
++            out.ptr() == ptr_mut_from_data::<[T]>(
++                PtrData {
++                    addr: pt_untyped.ptr()@.addr,
++                    provenance: pt_untyped.ptr()@.provenance,
++                    metadata: len,
++                },
++            ),
++            out.bytes() == pt_untyped.bytes(),
++            out.is_empty(),
++            out.wf(),
++    {
++        let tracked pt_unaligned = PointsToUnaligned::<[T]>::from_untyped(pt_untyped, len);
++        PointsTo { pt_unaligned }
++    }
++
++    /// Creates a `PointsToUntyped` from a `PointsTo<[T]>` with the same address and provenance,
++    /// and a length of `self.size()` bytes.
++    /// If there is any value stored in memory, it is dropped.
++    pub proof fn into_untyped(tracked self) -> (tracked pt_untyped: PointsToUntyped)
++        requires
++            self.wf(),
++        ensures
++            pt_untyped.ptr()@.addr == self.ptr()@.addr,
++            pt_untyped.ptr()@.provenance == self.ptr()@.provenance,
++            pt_untyped.len() == self.size(),
++            pt_untyped.bytes() == self.bytes(),
++            pt_untyped.wf(),
++    {
++        let tracked (pt_untyped, _) = self.into_untyped_with_typed_value();
++        pt_untyped
++    }
++
++    /// Creates a reference to a `PointsToUntyped` from a reference to a `PointsTo<[T]>`
++    /// with the same address and provenance,
++    /// and a length of `self.size()` bytes.
++    pub proof fn as_untyped(tracked &self) -> (tracked pt_untyped: &PointsToUntyped)
++        requires
++            self.wf(),
++        ensures
++            pt_untyped.ptr()@.addr == self.ptr()@.addr,
++            pt_untyped.ptr()@.provenance == self.ptr()@.provenance,
++            pt_untyped.len() == self.size(),
++            pt_untyped.bytes() == self.bytes(),
++            pt_untyped.wf(),
++    {
++        self.pt_unaligned.tracked_pt_untyped()
++    }
+ }
+ 
+ impl<T> PointsTo<T> {
+@@ -1987,7 +2234,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
+         if remaining == 0 {
+             self
+         } else {
+-            let tracked zs_pt = PointsTo::zero_sized(self.ptr());
++            let tracked zs_pt = PointsTo::<T>::zero_sized(self.ptr());
+             let tracked mut mut_spt = self;
+             mut_spt.seq_pt.tracked_push(zs_pt);
+             Self::bytes_len_helper(mut_spt.seq_pt());
+@@ -3481,6 +3728,8 @@ pub broadcast group group_points_to_permissions_lemmas {
+     SeqPointsTo::lemma_ptrs_len_same_valid_untyped,
+     PointsTo::lemma_ptrs_len_same_valid,
+     SeqPointsTo::lemma_ptrs_len_same_valid,
++    PointsToUnaligned::lemma_ptrs_len_same_valid_slice,
++    PointsTo::lemma_ptrs_len_same_valid_slice,
+ }
+ 
+ } // verus!
