@@ -183,7 +183,7 @@ fn pattern_to_exprs_rec(
 
             Ok(matches)
         }
-        PatternX::Expr(e) => {
+        PatternX::Expr(e, _) => {
             let expr = read_place(&place);
             Ok(mk_eq(&pattern.span, &expr, e))
         }
@@ -273,7 +273,7 @@ pub fn pattern_find_mut_binding(pattern: &Pattern) -> Option<Span> {
             }
             pattern_find_mut_binding(pat2)
         }
-        PatternX::Expr(_e) => None,
+        PatternX::Expr(..) => None,
         PatternX::Range(_lower, _upper) => None,
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_find_mut_binding(p),
         PatternX::Slice(patterns) => {
@@ -303,7 +303,7 @@ pub(crate) fn pattern_has_or(pattern: &Pattern) -> bool {
             patterns.iter().any(|p| pattern_has_or(&p.a))
         }
         PatternX::Or(_pat1, _pat2) => true,
-        PatternX::Expr(_e) => false,
+        PatternX::Expr(..) => false,
         PatternX::Range(_lower, _upper) => false,
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_or(p),
         PatternX::Slice(patterns) => patterns.iter().any(|p| pattern_has_or(p)),
@@ -327,7 +327,7 @@ pub(crate) fn definitely_irrefutable(
             one_variant && patterns.iter().all(|p| definitely_irrefutable(&p.a, datatypes))
         }
         PatternX::Or(_pat1, _pat2) => false,
-        PatternX::Expr(_e) => false,
+        PatternX::Expr(..) => false,
         PatternX::Range(_lower, _upper) => false,
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => definitely_irrefutable(p, datatypes),
         PatternX::Slice(patterns) => match array_kind_of_typ(&pattern.typ).0 {
