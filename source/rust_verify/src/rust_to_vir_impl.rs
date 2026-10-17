@@ -18,7 +18,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
     AssocTypeImpl, AssocTypeImplX, Dt, Fun, FunX, Function, FunctionKind, Ident, Krate, KrateX,
-    Path, Trait, TraitImpl, Typ, Typs, VirErr,
+    Mode, Path, Trait, TraitImpl, Typ, Typs, VirErr,
 };
 
 // Used to collect all needed external trait implementations
@@ -302,6 +302,19 @@ pub(crate) fn translate_impl<'tcx>(
                     "`Structural` can only be implemented for struct or enum types",
                 );
             };
+            // Spec == compares ghost and tracked fields, which can differ from their runtime value
+            if let rustc_middle::ty::TyKind::Adt(def, _) = ty.kind() {
+                for field in def.all_fields() {
+                    #[allow(deprecated)]
+                    let attrs = ctxt.tcx.get_all_attrs(field.did);
+                    if crate::attributes::get_mode(Mode::Exec, attrs) != Mode::Exec {
+                        return err_span_vec(
+                            item.span,
+                            "`Structural` cannot be implemented for a type with ghost or tracked fields",
+                        );
+                    }
+                }
+            }
             let ty_applied_never = ctxt.tcx.mk_ty_from_kind(ty_kind_applied_never);
             if !ty_applied_never.is_structural_eq_shallow(ctxt.tcx) {
                 return Err(vec![
