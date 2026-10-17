@@ -1528,7 +1528,7 @@ fn resname(f: &Field) -> Ident {
 /// `insert` (or `from_map`) are kept individually (`parts`, finitely many).
 /// It provides the operations of `vstd::tokens::IMapToken`/`ISetToken`;
 /// `from_map` and `into_map` require finite maps.
-fn reservation(f: &Field, cm: &Option<Cm>) -> TokenStream {
+fn reservation(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream {
     let n = &f.name;
     let nt = tyname(f);
     let k = kind(f).unwrap();
@@ -1894,6 +1894,7 @@ fn reservation(f: &Field, cm: &Option<Cm>) -> TokenStream {
             }
         }
     };
+    let observe = reservation_observe(f, cm, store);
     quote! {
         #[allow(non_camel_case_types)]
         pub tracked struct #alias {
@@ -2016,6 +2017,255 @@ fn reservation(f: &Field, cm: &Option<Cm>) -> TokenStream {
                 s
             }
             #take
+            #observe
+        }
+    }
+}
+
+/// `__observe` of a reservation collection: an observation including the
+/// sub-collection `e` (`None` only if `e` is empty), for borrowed collections.
+fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream {
+    let n = &f.name;
+    let nt = tyname(f);
+    let k = kind(f).unwrap();
+    let ml = k.map_like();
+    let factory = format_ident!("field_{}", n);
+    let t = quote! {::vstd::resource::tsm};
+    let tr = trait_path(f);
+    let obs = if store.has() {
+        quote! {::vstd::resource::tsm_storage::StorageObservation<'a, Protocol>}
+    } else {
+        quote! {::vstd::resource::tsm::Observation<'a, Protocol>}
+    };
+    let (kt, vt) = match &f.stype {
+        ShardableType::IMap(kt, v) | ShardableType::PersistentIMap(kt, v) => (quote! {#kt}, quote! {#v}),
+        ShardableType::ISet(e) | ShardableType::PersistentISet(e) => (quote! {#e}, quote! {()}),
+        _ => unreachable!(),
+    };
+    let bty = if ml { quote! {::vstd::imap::IMap<#kt, #vt>} } else { quote! {::vstd::iset::ISet<#kt>} };
+    let tag = if k.persistent() {
+        quote! {::vstd::resource::agree::AgreementRA::Agree}
+    } else {
+        quote! {::vstd::resource::exclusive::ExclusiveRA::Exclusive}
+    };
+    let (link_param, link_req, link_loc, larg, bulk_link) = match cm {
+        None => (
+            quote! {loc: ::vstd::resource::Loc},
+            quote! {self.instance_id() == ::vstd::resource::tsm_instance_id(loc, false)},
+            quote! {loc},
+            quote! {loc},
+            quote! {::vstd::resource::tsm_instance_id_injective(self.bulk->Some_0.loc(), false, loc, false);},
+        ),
+        Some(cm) => {
+            let dty = &cm.d;
+            let ok = cm.ok(quote! {d});
+            (
+                quote! {tracked d: &#dty},
+                quote! {self.instance_id() == ::vstd::resource::tsm_instance_id(d.loc(), false), #ok},
+                cm.ploc(quote! {d}),
+                quote! {d},
+                quote! {
+                    ::vstd::resource::tsm_instance_id_injective(self.desc->Some_0.loc(), false, d.loc(), false);
+                    ::vstd::resource::tsm_generic::agreement_resources_agree(self.desc.tracked_unwrap(), d);
+                },
+            )
+        }
+    };
+    let single = |key: TokenStream, m: TokenStream| {
+        if ml {
+            quote! {Fragment::#factory(::vstd::imap::IMap::empty().insert(#key, <#nt as #tr>::value(&#m[#key])))}
+        } else {
+            quote! {Fragment::#factory(::vstd::iset::ISet::empty().insert(#key))}
+        }
+    };
+    let single_m = single(quote! {k}, quote! {m});
+    let single_mkk = single(quote! {kk}, quote! {m});
+    let single_parts = single(quote! {k}, quote! {self.parts});
+    let observe_parts = format_ident!("__observe_parts_{}", n);
+    let key_m = if ml { quote! {<#nt as #tr>::key(&m[key])} } else { quote! {<#nt as #tr>::element(&m[key])} };
+    let (larg_id, link_ok) = match cm {
+        None => (quote! {loc}, quote! {}),
+        Some(cm) => {
+            let ok = cm.ok(quote! {d});
+            (quote! {d.loc()}, quote! {#ok,})
+        }
+    };
+    let whole_self = if ml { quote! {self.map()} } else { quote! {self.set()} };
+    let bulk_rest = if ml { quote! {bm.remove_keys(e.dom())} } else { quote! {bm.difference(e)} };
+    let (sub_req, eb, keys_e, edom, ev, eempty, whole_dom, bdom, value_eq) = if ml {
+        (
+            quote! {e.submap_of(self.map())},
+            quote! {::vstd::imap::IMap::new(|k: #kt| e.dom().contains(k) && bm.dom().contains(k), |k: #kt| e[k])},
+            quote! {e.dom().intersect(self.parts.dom())},
+            quote! {e.dom()},
+            quote! {e[k]},
+            quote! {::vstd::imap::IMap::<#kt, #vt>::empty()},
+            quote! {whole.dom()},
+            quote! {bm.dom()},
+            quote! {assert(<#nt as #tr>::value(&self.parts[k]) == e[k]);},
+        )
+    } else {
+        (
+            quote! {e.subset_of(self.set())},
+            quote! {e.intersect(bm)},
+            quote! {e.intersect(self.parts.dom())},
+            quote! {e},
+            quote! {()},
+            quote! {::vstd::iset::ISet::<#kt>::empty()},
+            quote! {whole},
+            quote! {bm},
+            quote! {},
+        )
+    };
+    let (bulk_incl, bulk_join) = if ml {
+        (
+            quote! {
+                assert forall|kk: #kt| #[trigger] bm.dom().contains(kk) && e.dom().contains(kk) implies e[kk] == bm[kk] by {
+                    assert(whole.dom().contains(kk));
+                    assert(!self.parts.dom().contains(kk));
+                }
+                ::vstd::resource::tsm_collections::map_join(eb, bm.remove_keys(e.dom()));
+                assert(::vstd::prelude::ext_equal(eb.union_prefer_right(bm.remove_keys(e.dom())), bm));
+                Fragment::unit().op_unit();
+                assert(Fragment::#factory(bm) == Fragment::op(Fragment::#factory(eb), Fragment::#factory(bm.remove_keys(e.dom()))));
+            },
+            quote! {},
+        )
+    } else {
+        (
+            quote! {
+                ::vstd::resource::tsm_collections::set_join(eb, bm.difference(e));
+                assert(::vstd::prelude::ext_equal(eb.union(bm.difference(e)), bm));
+                Fragment::unit().op_unit();
+                assert(Fragment::#factory(bm) == Fragment::op(Fragment::#factory(eb), Fragment::#factory(bm.difference(e))));
+            },
+            quote! {},
+        )
+    };
+    let _ = bulk_join;
+    let bulk_incl = if k.persistent() {
+        // The persistent joins need agreement, not disjointness: the bulk's own
+        // entries agree with `e` on their common keys.
+        bulk_incl.to_string()
+            .replace("map_join", "persistent_map_join")
+            .replace("set_join", "persistent_set_join")
+            .parse::<TokenStream>().unwrap()
+    } else {
+        bulk_incl
+    };
+    quote! {
+        /// Observe the tokens of `m` for `keys`, joined onto `acc`.
+        proof fn #observe_parts<'a>(tracked m: &'a ::vstd::imap::IMap<#kt, #nt>, keys: ::vstd::iset::ISet<#kt>,
+            tracked acc: Option<#obs>, #link_param) -> (tracked out: Option<#obs>)
+            requires keys.finite(), keys.subset_of(m.dom()),
+                forall|key: #kt| ::vstd::prelude::imply(#[trigger] m.dom().contains(key),
+                    m[key].__id() == ::vstd::resource::tsm_instance_id(#larg_id, false) && #key_m == key),
+                #link_ok
+                ::vstd::prelude::imply(acc is Some, acc->Some_0.loc() == #link_loc),
+            ensures ::vstd::prelude::imply(out is Some, out->Some_0.loc() == #link_loc),
+                ::vstd::prelude::imply(acc is Some, out is Some && #t::fragment_included::<Protocol>(acc->Some_0.fragment(), out->Some_0.fragment())),
+                forall|k: #kt| ::vstd::prelude::imply(#[trigger] keys.contains(k), out is Some
+                    && #t::fragment_included::<Protocol>(#single_m, out->Some_0.fragment())),
+                ::vstd::prelude::imply(out is None, acc is None),
+            decreases keys.len(),
+        {
+            broadcast use {::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas};
+            if keys.len() == 0 {
+                assert forall|k: #kt| !keys.contains(k) by {
+                    if keys.contains(k) { ::vstd::iset::lemma_iset_contains_len(keys, k); }
+                }
+                if acc is Some { #t::fragment_included_reflexive::<Protocol>(acc->Some_0.fragment()); }
+                acc
+            } else {
+                ::vstd::iset::lemma_iset_choose_len(keys);
+                let k = keys.choose();
+                let tracked tk = m.tracked_borrow(k);
+                let tracked o = tk.__borrow_raw(#larg).observe();
+                let tracked acc2 = if acc is Some {
+                    let tracked a = acc.tracked_unwrap();
+                    Some(a.join(&o))
+                } else {
+                    #t::fragment_included_reflexive::<Protocol>(o.fragment());
+                    Some(o)
+                };
+                let tracked out = Self::#observe_parts(m, keys.remove(k), acc2, #larg);
+                if acc is Some {
+                    #t::fragment_included_transitive::<Protocol>(acc->Some_0.fragment(), acc2->Some_0.fragment(), out->Some_0.fragment());
+                }
+                #t::fragment_included_transitive::<Protocol>(o.fragment(), acc2->Some_0.fragment(), out->Some_0.fragment());
+                assert forall|kk: #kt| #[trigger] keys.contains(kk) implies out is Some
+                    && #t::fragment_included::<Protocol>(#single_mkk, out->Some_0.fragment()) by {
+                    if kk != k { assert(keys.remove(k).contains(kk)); }
+                }
+                out
+            }
+        }
+        /// An observation including the sub-collection `e` (`None` only if `e` is empty).
+        proof fn __observe<'a>(tracked &'a self, e: #bty, #link_param) -> (tracked out: Option<#obs>)
+            requires #sub_req, #link_req,
+            ensures ::vstd::prelude::imply(out is Some, out->Some_0.loc() == #link_loc
+                    && #t::fragment_included::<Protocol>(Fragment::#factory(e), out->Some_0.fragment())),
+                ::vstd::prelude::imply(out is None, Fragment::#factory(e) == Fragment::unit()),
+        {
+            broadcast use {::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas};
+            ::vstd::prelude::use_type_invariant(self);
+            let ghost bm = self.bm;
+            let ghost whole = #whole_self;
+            let eb = #eb;
+            let tracked acc: Option<#obs> = if self.bulk is Some {
+                #bulk_link
+                Some(self.bulk.tracked_borrow().observe())
+            } else {
+                None
+            };
+            let keys = #keys_e;
+            assert(keys.subset_of(self.parts.dom()));
+            ::vstd::iset_lib::lemma_iset_subset_finite(self.parts.dom(), keys);
+            let tracked out = Self::#observe_parts(&self.parts, keys, acc, #larg);
+            if out is None {
+                assert(::vstd::prelude::ext_equal(e, #eempty)) by {
+                    assert forall|k: #kt| !#edom.contains(k) by {
+                        if #edom.contains(k) {
+                            assert(#whole_dom.contains(k));
+                            if !#bdom.contains(k) { assert(keys.contains(k)); }
+                        }
+                    }
+                }
+                Fragment::unit().op_unit();
+                ::vstd::resource::tsm_collections::Pointwise::extensionality(Fragment::#factory(e).#n, Fragment::unit().#n);
+                out
+            } else {
+                let tracked o = out.tracked_borrow();
+                let h = o.fragment();
+                o.validate();
+                let (z, s) = choose|z: Fragment, s: State| s.invariant()
+                    && Fragment::op(h, z) == <Protocol as ::vstd::resource::tsm::Machine>::embed(s);
+                // Each element of `e` is exactly that in `h` (`h` is valid).
+                assert forall|k: #kt| #[trigger] #edom.contains(k) implies h.#n.at(k) == Some(#tag(#ev)) by {
+                    assert(#whole_dom.contains(k));
+                    if #bdom.contains(k) {
+                        #bulk_incl
+                        #t::fragment_included_op_left::<Protocol>(Fragment::#factory(eb), Fragment::#factory(#bulk_rest));
+                        #t::fragment_included_transitive::<Protocol>(Fragment::#factory(eb), Fragment::#factory(bm), h);
+                        let d = choose|d: Fragment| Fragment::op(Fragment::#factory(eb), d) == h;
+                        assert(Fragment::op(h, z).#n.at(k) == <Protocol as ::vstd::resource::tsm::Machine>::embed(s).#n.at(k));
+                    } else {
+                        assert(keys.contains(k));
+                        #value_eq
+                        let d = choose|d: Fragment| Fragment::op(#single_parts, d) == h;
+                        assert(Fragment::op(h, z).#n.at(k) == <Protocol as ::vstd::resource::tsm::Machine>::embed(s).#n.at(k));
+                    }
+                }
+                let r = Fragment {#n: ::vstd::resource::tsm_collections::Pointwise {
+                    values: |k: #kt| if #edom.contains(k) { None } else { h.#n.at(k) }}, ..h};
+                assert(Fragment::op(Fragment::#factory(e), r) == h) by {
+                    Fragment::commutative(Fragment::unit(), h);
+                    h.op_unit();
+                    assert forall|k: #kt| #[trigger] Fragment::op(Fragment::#factory(e), r).#n.at(k) == h.#n.at(k) by {}
+                    ::vstd::resource::tsm_collections::Pointwise::extensionality(Fragment::op(Fragment::#factory(e), r).#n, h.#n);
+                }
+                out
+            }
         }
     }
 }
@@ -2054,6 +2304,8 @@ fn included_lemma(f: &Field, vals: &[TokenStream], tok: TokenStream, coll: Optio
             },
             Kind::IMap => quote! {#c::map_included_owned_many((#tok).#n, #rest, #z, pre.#n, #observed);},
             Kind::ISet => quote! {#c::set_included_owned_many((#tok).#n, #rest, #z, pre.#n, #observed);},
+            Kind::PersistentIMap => quote! {#g::persistent_map_included_owned_many((#tok).#n, #rest, #z, pre.#n, #observed);},
+            Kind::PersistentISet => quote! {#g::persistent_set_included_owned_many((#tok).#n, #rest, #z, pre.#n, #observed);},
             Kind::Multiset => quote! {#g::multiset_included_many((#tok).#n, #rest, #z, pre.#n, #observed);},
             Kind::Option => quote! {#g::option_included_general((#tok).#n, #rest, #z, pre.#n, #observed);},
             Kind::PersistentOption => quote! {#g::persistent_option_included_general((#tok).#n, #rest, #z, pre.#n, #observed);},
@@ -2128,6 +2380,39 @@ fn included_lemma(f: &Field, vals: &[TokenStream], tok: TokenStream, coll: Optio
 fn constant_lemma(f: &Field, frag: &TokenStream) -> TokenStream {
     let n = &f.name;
     quote! {::vstd::resource::tsm_generic::agree_included_owned((#frag).#n, __tsm_c.#n, __tsm_z.#n, pre.#n, (*self).#n());}
+}
+
+/// Join the borrowed inputs' observations into `shared`, binding `__tsm_hacc_i`
+/// to the fragment after the `i`-th join. An optional observation (of a
+/// borrowed collection) is joined if present; if absent, its fragment is the
+/// unit, which is included in any fragment.
+fn shared_joins(take_shared: &[(Ident, TokenStream, Option<TokenStream>)], shared: &Ident) -> Vec<TokenStream> {
+    let t = quote! {::vstd::resource::tsm};
+    let mut out = vec![];
+    for (i, (obs, take, optional)) in take_shared.iter().enumerate() {
+        out.push(take.clone());
+        let hacc = format_ident!("__tsm_hacc_{}", i);
+        match (i, optional) {
+            (0, _) => out.push(quote! {let tracked #shared = #obs;}),
+            (_, None) => out.push(quote! {let tracked #shared = #shared.join(&#obs);}),
+            (_, Some(sf)) => out.push(quote! {
+                let tracked #shared = if #obs is Some {
+                    let tracked __tsm_j = #shared.join(#obs.tracked_borrow());
+                    #t::fragment_included_transitive::<Protocol>(#sf, #obs->Some_0.fragment(), __tsm_j.fragment());
+                    __tsm_j
+                } else {
+                    #t::fragment_included_reflexive::<Protocol>(#shared.fragment());
+                    Fragment::unit().op_unit();
+                    Fragment::commutative(Fragment::unit(), #shared.fragment());
+                    #shared.fragment().op_unit();
+                    assert(Fragment::op(#sf, #shared.fragment()) == #shared.fragment());
+                    #shared
+                };
+            }),
+        }
+        out.push(quote! {let ghost #hacc = #shared.fragment();});
+    }
+    out
 }
 
 /// Proofs that every input fragment is included in `op(owned, shared)`.
@@ -2221,6 +2506,33 @@ fn rewrite_old(ts: TokenStream, with: &dyn Fn(&str) -> Option<TokenStream>) -> T
             t => out.push(t.clone()),
         }
         i += 1;
+    }
+    out.into_iter().collect()
+}
+
+/// Drop a unary `*` before one of `names`.
+fn drop_derefs(ts: TokenStream, names: &HashSet<String>) -> TokenStream {
+    let trees: Vec<TokenTree> = ts.into_iter().collect();
+    let mut out: Vec<TokenTree> = vec![];
+    for i in 0..trees.len() {
+        if let TokenTree::Punct(p) = &trees[i] {
+            let unary = i == 0 || !matches!(&trees[i - 1], TokenTree::Ident(_) | TokenTree::Literal(_) | TokenTree::Group(_));
+            if p.as_char() == '*' && unary {
+                if let Some(TokenTree::Ident(id)) = trees.get(i + 1) {
+                    if names.contains(&id.to_string()) {
+                        continue;
+                    }
+                }
+            }
+        }
+        match &trees[i] {
+            TokenTree::Group(g) => {
+                let mut ng = proc_macro2::Group::new(g.delimiter(), drop_derefs(g.stream(), names));
+                ng.set_span(g.span());
+                out.push(TokenTree::Group(ng));
+            }
+            t => out.push(t.clone()),
+        }
     }
     out.into_iter().collect()
 }
@@ -2395,7 +2707,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             }
             ShardableType::IMap(..) | ShardableType::PersistentIMap(..)
             | ShardableType::ISet(_) | ShardableType::PersistentISet(_) => {
-                items.push(reservation(f, &cm));
+                items.push(reservation(f, &cm, &store));
             }
             ShardableType::Multiset(e) => {
                 let alias = format_ident!("{}_multiset", n);
@@ -2744,15 +3056,22 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             }
         })
     };
+    // Borrowed inputs are values (not references) in the helper proofs.
+    let borrowed: HashSet<String> = params
+        .iter()
+        .filter(|q| q.p.inout_type == InoutType::BorrowIn)
+        .map(|q| q.p.name.to_string())
+        .collect();
     let in_helper = |ts: TokenStream| -> TokenStream {
-        rewrite_old(ts, &|p: &str| {
+        let ts = rewrite_old(ts, &|p: &str| {
             if inouts.contains(p) {
                 let g = format_ident!("{}", p);
                 Some(quote! {#g})
             } else {
                 None
             }
-        })
+        });
+        drop_derefs(ts, &borrowed)
     };
     // Values bound to withdrawn resources: unknown before the exchange, then
     // read from the withdrawn map.
@@ -2809,7 +3128,10 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     let owned_ident = format_ident!("__tsm_owned", span = Span::mixed_site());
     let shared_ident = format_ident!("__tsm_shared", span = Span::mixed_site());
     let mut take_owned: Vec<(Ident, TokenStream)> = vec![];
-    let mut take_shared: Vec<(Ident, TokenStream)> = vec![];
+    // Observations of the borrowed inputs: (name, statement, and for an
+    // optional observation of a borrowed collection, its fragment).
+    let mut take_shared: Vec<(Ident, TokenStream, Option<TokenStream>)> = vec![];
+    let mut pending_collections: Vec<(Ident, TokenStream, TokenStream, TokenStream)> = vec![];
     // Input fragments in the helper proofs' names (ghost params) and in the
     // method body (where `&mut` inputs are read from their ghost copies).
     let mut owned_frags: Vec<TokenStream> = vec![];
@@ -2889,15 +3211,31 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 incl_frames.push((tok_frag.clone(), incl_lemma));
                 incl_frames_body.push((tok_frag_ghost.clone(), incl_lemma_ghost));
             }
+            InoutType::BorrowIn if q.p.is_collection => {
+                // Borrowed collections of `imap`/`iset` fields (reservation types).
+                let (true, Some(MonoidElt::General(e))) = (kind(f).is_some_and(|k| k.infinite()), q.p.elt.as_ref()) else {
+                    return err(f.name.span(), "generic field tokens support borrowed token collections of imap and iset fields only");
+                };
+                let factory = format_ident!("field_{}", f.name);
+                let obs = format_ident!("__tsm_obs_{}", pname);
+                let frag = quote! {Fragment::#factory(#e)};
+                let observed = quote! {(#e)};
+                let take = in_body(quote! {let tracked #obs = #pname.__observe(#e, #link);});
+                pending_collections.push((
+                    obs,
+                    take,
+                    frag.clone(),
+                    in_body(frag.clone()),
+                ));
+                incl_frames.push((frag.clone(), included_lemma(f, &[], frag.clone(), Some(observed.clone()))));
+                incl_frames_body.push((in_body(frag.clone()), in_body(included_lemma(f, &[], frag, Some(observed)))));
+            }
             InoutType::BorrowIn => {
-                if q.p.is_collection {
-                    return err(f.name.span(), "generic field tokens do not yet support borrowed token collections");
-                }
                 let obs = format_ident!("__tsm_obs_{}", pname);
                 if first_borrow.is_none() {
                     first_borrow = Some(pname.clone());
                 }
-                take_shared.push((obs.clone(), quote! {let tracked #obs = #pname.__borrow_raw(#link).observe();}));
+                take_shared.push((obs.clone(), quote! {let tracked #obs = #pname.__borrow_raw(#link).observe();}, None));
                 shared_frags.push(tok_frag.clone());
                 shared_frags_body.push(tok_frag_ghost.clone());
                 incl_frames.push((tok_frag.clone(), incl_lemma));
@@ -2933,7 +3271,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         take_shared.push((obs.clone(), quote! {
             ::vstd::prelude::use_type_invariant(self);
             #source
-        }));
+        }, None));
         shared_frags.push(base_frag.clone());
         shared_frags_body.push(base_frag.clone());
         for c in &read_consts {
@@ -2942,6 +3280,15 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         }
     }
     let _ = &kappa_from;
+    // Borrowed collections are joined (if not empty) after the other borrowed inputs.
+    for (obs, take, frag, frag_body) in pending_collections {
+        if take_shared.is_empty() {
+            return err(span, "generic field tokens: a borrowed token collection needs another borrowed token (or a constant) of the operation");
+        }
+        take_shared.push((obs, take, Some(frag_body.clone())));
+        shared_frags.push(frag);
+        shared_frags_body.push(frag_body);
+    }
     // Read-only operations (only borrowed tokens, no outputs or storage
     // changes) need no exchange: validate the borrowed tokens and reason
     // about a completion state.
@@ -3028,17 +3375,8 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     for (join, _) in &coll_owned {
         join_owned.push(join.clone());
     }
-    let mut join_shared = vec![];
     let has_shared = !take_shared.is_empty();
-    for (i, (obs, take)) in take_shared.iter().enumerate() {
-        join_shared.push(take.clone());
-        let hacc = format_ident!("__tsm_hacc_{}", i);
-        if i == 0 {
-            join_shared.push(quote! {let tracked #shared_ident = #obs; let ghost #hacc = #shared_ident.fragment();});
-        } else {
-            join_shared.push(quote! {let tracked #shared_ident = #shared_ident.join(&#obs); let ghost #hacc = #shared_ident.fragment();});
-        }
-    }
+    let join_shared = shared_joins(&take_shared, &shared_ident);
     // Deposits: storage inputs.
     let mut deposits = vec![];
     let mut deposit_spec = store.empty();
@@ -3665,7 +4003,7 @@ fn read_only_method(
     ctx: &Ctx,
     tr: &Transition,
     parts: &ExchangeParts,
-    take_shared: &[(Ident, TokenStream)],
+    take_shared: &[(Ident, TokenStream, Option<TokenStream>)],
     incl_frames: &[(TokenStream, TokenStream)],
     shared_frags: &[TokenStream],
     ret: TokenStream,
@@ -3710,16 +4048,7 @@ fn read_only_method(
         // needs a token of the instance; this form is not supported.
         return err(tr.name.span(), "generic field tokens: a property must read at least one token or constant");
     }
-    let mut joins = vec![];
-    for (i, (obs, take)) in take_shared.iter().enumerate() {
-        let hacc = format_ident!("__tsm_hacc_{}", i);
-        joins.push(take.clone());
-        if i == 0 {
-            joins.push(quote! {let tracked #shared_ident = #obs; let ghost #hacc = #shared_ident.fragment();});
-        } else {
-            joins.push(quote! {let tracked #shared_ident = #shared_ident.join(&#obs); let ghost #hacc = #shared_ident.fragment();});
-        }
-    }
+    let joins = shared_joins(take_shared, &shared_ident);
     let hs: Vec<Ident> = (0..shared_frags.len()).map(|i| format_ident!("__tsm_hacc_{}", i)).collect();
     let mut incl = vec![];
     for (i, sf) in shared_frags.iter().enumerate() {
@@ -3773,7 +4102,7 @@ fn guard_method(
     tr: &Transition,
     parts: &ExchangeParts,
     params: &[Param],
-    take_shared: &[(Ident, TokenStream)],
+    take_shared: &[(Ident, TokenStream, Option<TokenStream>)],
     incl_frames: &[(TokenStream, TokenStream)],
     shared_frags: &[TokenStream],
     ret: TokenStream,
@@ -3797,29 +4126,10 @@ fn guard_method(
     if take_shared.is_empty() {
         return err(span, "generic field tokens support guards with at least one borrowed token");
     }
-    let mut joins = vec![];
-    for (i, (obs, take)) in take_shared.iter().enumerate() {
-        joins.push(take.clone());
-        if i == 0 {
-            joins.push(quote! {let tracked #shared_ident = #obs;});
-        } else {
-            joins.push(quote! {let tracked #shared_ident = #shared_ident.join(&#obs);});
-        }
-    }
     let hs: Vec<Ident> = (0..shared_frags.len()).map(|i| format_ident!("__tsm_hacc_{}", i)).collect();
     let mut incl = vec![];
-    // Re-run the joins with ghost accumulators for the inclusion chain.
-    let mut joins2 = vec![];
-    for (i, (obs, take)) in take_shared.iter().enumerate() {
-        let hacc = &hs[i];
-        joins2.push(take.clone());
-        if i == 0 {
-            joins2.push(quote! {let tracked #shared_ident = #obs; let ghost #hacc = #shared_ident.fragment();});
-        } else {
-            joins2.push(quote! {let tracked #shared_ident = #shared_ident.join(&#obs); let ghost #hacc = #shared_ident.fragment();});
-        }
-    }
-    let _ = joins;
+    let joins2 = shared_joins(take_shared, &shared_ident);
+
     for (i, sf) in shared_frags.iter().enumerate() {
         if i == 0 {
             incl.push(quote! {#t::fragment_included_reflexive::<Protocol>(#sf);});
