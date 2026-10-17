@@ -982,6 +982,7 @@ impl<'a> Builder<'a> {
                 body,
                 requires: _,
                 ensures: _,
+                mask_spec: _,
                 ret: _,
                 external_spec: _,
             } => {

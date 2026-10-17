@@ -2157,6 +2157,8 @@ where
         output: f.fold_return_type(node.output),
         requires: (node.requires).map(|it| f.fold_requires(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        invariants: (node.invariants)
+            .map(|it| Box::new(f.fold_signature_invariants(*it))),
         inner_attrs: f.fold_attributes(node.inner_attrs),
         body: Box::new(f.fold_expr(*node.body)),
     }

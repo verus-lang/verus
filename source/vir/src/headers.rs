@@ -40,6 +40,15 @@ impl HeaderAllows {
         }
     }
 
+    fn opens_invariants(&self) -> bool {
+        match self {
+            HeaderAllows::All => true,
+            HeaderAllows::Loop => false,
+            HeaderAllows::Closure => true,
+            HeaderAllows::Some(_) => false,
+        }
+    }
+
     fn loops(&self) -> bool {
         match self {
             HeaderAllows::All => true,
@@ -215,6 +224,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if invariant_mask.is_some() {
                             return Err(error(&stmt.span, "only one invariant mask spec allowed"));
                         }
+                        allowed = allows.opens_invariants();
                         invariant_mask = Some(mask_spec.clone());
                     }
                     HeaderExprX::AtomicSpec(e) => {

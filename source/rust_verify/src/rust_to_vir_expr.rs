@@ -4297,42 +4297,40 @@ pub(crate) fn closure_to_vir<'tcx>(
         let mut body = expr_to_vir_consume(body_bctx, &body.value)?;
 
         let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Closure)?;
-        let vir::headers::Header { mut require, mut ensure, ensure_id_typ, .. } = header;
+        let vir::headers::Header {
+            mut require, mut ensure, mut invariant_mask, ensure_id_typ, ..
+        } = header;
         assert!(ensure.1.len() == 0);
 
         if !pattern_stmts.is_empty() {
-            require = Arc::new(
-                require
-                    .iter()
-                    .map(|expr| {
-                        bctx.ctxt.spanned_typed_new_vir(
-                            &expr.span,
-                            &expr.typ,
-                            ExprX::Block(
-                                bctx.ctxt.clone_stmts_with_fresh_ids(&pattern_stmts),
-                                Some(expr.clone()),
-                            ),
-                        )
-                    })
-                    .collect(),
-            );
+            let f_expr = |expr: &vir::ast::Expr| {
+                bctx.ctxt.spanned_typed_new_vir(
+                    &expr.span,
+                    &expr.typ,
+                    ExprX::Block(
+                        bctx.ctxt.clone_stmts_with_fresh_ids(&pattern_stmts),
+                        Some(expr.clone()),
+                    ),
+                )
+            };
+            let f_exprs = |exprs: &vir::ast::Exprs| Arc::new(exprs.iter().map(f_expr).collect());
 
-            ensure.0 = Arc::new(
-                ensure
-                    .0
-                    .iter()
-                    .map(|expr| {
-                        bctx.ctxt.spanned_typed_new_vir(
-                            &expr.span,
-                            &expr.typ,
-                            ExprX::Block(
-                                bctx.ctxt.clone_stmts_with_fresh_ids(&pattern_stmts),
-                                Some(expr.clone()),
-                            ),
-                        )
-                    })
-                    .collect(),
-            );
+            require = Arc::new(require.iter().map(f_expr).collect());
+            ensure.0 = Arc::new(ensure.0.iter().map(f_expr).collect());
+            use vir::ast::MaskSpec;
+            invariant_mask = match invariant_mask {
+                None => None,
+                Some(MaskSpec::InvariantOpens(span, exprs)) => {
+                    Some(MaskSpec::InvariantOpens(span, f_exprs(&exprs)))
+                }
+                Some(MaskSpec::InvariantOpensExcept(span, exprs)) => {
+                    Some(MaskSpec::InvariantOpensExcept(span, f_exprs(&exprs)))
+                }
+                Some(MaskSpec::InvariantOpensSet(expr)) => {
+                    Some(MaskSpec::InvariantOpensSet(f_expr(&expr)))
+                }
+            };
+
             let body_typ = body.typ.clone();
 
             body = bctx.spanned_typed_new(
@@ -4352,6 +4350,11 @@ pub(crate) fn closure_to_vir<'tcx>(
                 );
             }
             ExprX::Closure(Arc::new(params), body)
+        } else if invariant_mask.is_some() && proof_fn_modes.is_none() {
+            return err_span(
+                closure_expr.span,
+                "opens_invariants is not supported for spec or exec closures",
+            );
         } else {
             bctx.ctxt.push_body_erasure(
                 *def_id,
@@ -4391,6 +4394,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                 body,
                 requires: require,
                 ensures: ensure.0,
+                mask_spec: invariant_mask,
                 ret: ret,
                 external_spec: None, // filled in by ast_simplify
             }

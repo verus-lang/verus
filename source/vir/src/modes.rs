@@ -2328,6 +2328,7 @@ fn check_expr(
             ret,
             requires,
             ensures,
+            mask_spec,
             body,
             external_spec,
         } => {
@@ -2371,6 +2372,20 @@ fn check_expr(
                         Mode::Spec,
                         &Proph::No,
                     )?;
+                }
+
+                if let Some(mask_spec) = &mask_spec {
+                    for expr in mask_spec.exprs().iter() {
+                        check_expr_has_mode(
+                            ctxt,
+                            record,
+                            &mut ghost_typing,
+                            Mode::Spec,
+                            expr,
+                            Mode::Spec,
+                            &Proph::No,
+                        )?;
+                    }
                 }
 
                 let mut ens_typing = ghost_typing.push_var_scope();
