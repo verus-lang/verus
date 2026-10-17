@@ -50,7 +50,6 @@ const DEPTH_LIMIT_MULTIPLIER: u64 = 500;
 const WARNING_INTERVAL_SECS: u64 = 2;
 
 type Env = ScopeMap<UniqueIdent, Exp>;
-type TypeEnv = ScopeMap<Ident, Typ>;
 
 /// A call's type and value arguments, supporting `Hash` and `Eq`, so that we can use them
 /// as a key when caching the call's result.  Intended to never leave this module.
@@ -1795,11 +1794,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 // Substitute the actual arguments for the formals and the
                                 // type arguments for the type parameters, then evaluate the
                                 // (now closed) body in an empty environment. `subst_exp` is
-                                // capture-avoiding. Binding the formals in an environment
-                                // instead leaves them in any part of the body the interpreter
-                                // returns unevaluated (a shift it cannot finish, #3198; a
-                                // sequence operation with a symbolic index, #3182), where they
-                                // are read as the caller's variables of the same name.
+                                // capture-avoiding.
                                 let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
                                 let mut var_substs: HashMap<VarIdent, Exp> = HashMap::new();
                                 for (formal, actual) in pars.iter().zip(new_args.iter()) {

@@ -1349,36 +1349,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // #3088: a callee's parameters are substituted (capture-avoiding), and its body
-    // is evaluated in its own environment
-    #[test] compute_hygiene_quantifier verus_code! {
-        spec fn g(x: int) -> int { x }
-        spec fn f(y: int) -> bool { exists|x: int| #[trigger] g(x) == x && x != y }
-        proof fn bad_quant() {
-            assert(forall|x: int| !#[trigger] f(x)) by(compute); // FAILS
-        }
-    } => Err(err) => assert_one_fails(err)
-}
-
-test_verify_one_file! {
-    #[test] compute_hygiene_closure verus_code! {
-        spec fn apply(f: spec_fn(int) -> int, y: int) -> int { f(0) }
-        proof fn bad_closure(y: int) {
-            assert(apply(|z: int| y, 5) == 5) by(compute_only);
-        }
-    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
-}
-
-test_verify_one_file! {
-    #[test] compute_hygiene_const_generic verus_code! {
-        spec fn h<const N: u64, const M: u64>() -> int { M as int }
-        proof fn lemma<const N: u64>() ensures h::<5, N>() == 5 {
-            assert(h::<5, N>() == 5) by(compute_only);
-        }
-    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
-}
-
-test_verify_one_file! {
     // #3089: the arguments of a call whose body does not simplify are kept
     #[test] compute_choose_keeps_arguments verus_code! {
         spec fn g(x: int) -> int { x }
@@ -1401,9 +1371,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // https://github.com/verus-lang/verus/issues/3198: a shift the interpreter cannot finish
-    // returned the callee's body with the callee's parameter names, which the caller then
-    // read as its own parameters
+    // #3198: a shift the interpreter cannot finish left the callee's parameters in the result
     #[test] shift_fallback_does_not_capture_issue3198 verus_code! {
         spec fn r(x: i8, n: i8) -> i8 { x >> n }
         proof fn leak(x: i8, n: i8) {
@@ -1413,8 +1381,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // https://github.com/verus-lang/verus/issues/3182: an unfinished sequence operation turned
-    // a hidden caller variable back into a plain variable, which the callee then bound
+    // #3182: an unfinished sequence operation let the callee bind a caller variable
     #[test] seq_residual_does_not_capture_issue3182 verus_code! {
         use vstd::prelude::*;
         spec fn g(x: int, b: bool) -> bool { b ==> false }

@@ -29,8 +29,8 @@ fn free_vars_exp_scope(
             ExpX::Var(x) | ExpX::VarLoc(x) if !scope_map.contains_key(x) => {
                 vars.insert(x.clone(), e.typ.clone());
             }
-            // the interpreter's hidden variable `x` (a variable of an enclosing scope): a
-            // binder named `x` must not capture it
+            // a binder named `x` should not capture a symbolic free variable the interpreter
+            // didn't introduce (i.e., one from an enclosing scope)
             ExpX::Interp(crate::interpreter::InterpExp::FreeVar(x)) => {
                 vars.insert(x.clone(), e.typ.clone());
             }
@@ -313,9 +313,8 @@ fn subst_exp_rec(ctxt: &SubstCtxt, state: &mut SubstState, exp: &Exp) -> Exp {
             }
             mk_exp(ExpX::ArrayLiteral(Arc::new(new_exprs)))
         }
-        // A hidden variable of the interpreter is not a variable of this substitution (it
-        // stands for a variable of an enclosing scope, which `free_vars_exp_scope` reports so
-        // that binders are renamed around it)
+        // a symbolic free variable the interpreter didn't introduce (one from an enclosing
+        // scope) is not substituted; `free_vars_exp_scope` reports it so binders avoid it
         ExpX::Interp(crate::interpreter::InterpExp::FreeVar(_)) => exp.clone(),
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
