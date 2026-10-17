@@ -1764,3 +1764,25 @@ test_verify_one_file! {
         "equality-testing this type in pattern: T<u8>",
     ])
 }
+
+test_verify_one_file! {
+    #[test] external_body_patterns verus_code! {
+        #[verifier::external_body]
+        #[derive(PartialEq, Eq)]
+        pub struct S { x: u8 }
+        #[verifier::external_body]
+        const C: S = S { x: 1 };
+
+        fn m(s: S) { match s { C => {} _ => {} } }
+
+        #[derive(PartialEq, Eq)]
+        pub struct W { s: S }
+        #[verifier::external_body]
+        const D: W = W { s: S { x: 1 } };
+
+        fn n(w: W) { match w { D => {} _ => {} } }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "constant patterns are not supported for opaque (external_body) datatypes",
+        "constant patterns are not supported for opaque (external_body) datatypes",
+    ])
+}
