@@ -140,6 +140,8 @@ pub assume_specification<'a, 'b, T: core::fmt::Debug>[ rt::Argument::<'a>::new_d
 
 #[doc(hidden)]
 pub assume_specification<'a, 'b>[ rt::Argument::<'a>::from_usize ](x: &'b usize) -> rt::Argument<'b>
+    requires
+        *x <= u16::MAX,
 ;
 
 pub assume_specification<'a>[ Arguments::<'a>::from_str ](s: &'static str) -> Arguments<'a>
