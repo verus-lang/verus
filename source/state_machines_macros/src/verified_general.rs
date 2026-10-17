@@ -222,16 +222,23 @@ fn modified(
 
 /// The legacy observation visitor omits storage-map keys, since legacy valued
 /// tokens do not expose keys. Physical map exchange must observe those keys.
+///
+/// Withdrawal keys are evaluated in the checked full-State relation and the
+/// same-witness actual output map, not in a local physical input map (in both
+/// storage layouts: the exchange's withdrawal is the difference of the witness
+/// states' storage). So they may read fields the operation does not own, or use
+/// `pre` as a whole (as the trusted macro, which ignores storage keys, allows);
+/// only their `variable` and `constant` reads are recorded. Deposits and guards
+/// still require exact local ordinary observations.
 fn storage_key_reads(
     s: &TransitionStmt,
     fields: &HashMap<String, Field>,
     out: &mut HashSet<String>,
-    full_witness_keys: bool,
 ) -> Result<(), Error> {
     match s {
         TransitionStmt::Block(_, xs) => {
             for x in xs {
-                storage_key_reads(x, fields, out, full_witness_keys)?;
+                storage_key_reads(x, fields, out)?;
             }
         }
         TransitionStmt::Split(_, k, xs) => {
@@ -242,27 +249,27 @@ fn storage_key_reads(
                 _,
             ) = &**k
             {
+                let withdraw = stmt.is_withdraw();
                 let mut errors = vec![];
                 crate::field_access_visitor::visit_field_accesses(
                     &mut key.clone(),
                     |_, f, _| {
-                        // Withdrawal keys are evaluated in the checked full-State relation and
-                        // same-witness actual output map, not in a local physical input map.
-                        // A nonexclusive key expression is not an exact local observation.
-                        // Deposits/guards still require exact local ordinary observations.
-                        if !full_witness_keys || !stmt.is_withdraw() || matches!(f.stype,ShardableType::Variable(_) | ShardableType::Constant(_)) {
+                        if !withdraw || matches!(f.stype,ShardableType::Variable(_) | ShardableType::Constant(_)) {
                             out.insert(f.name.to_string());
                         }
                     },
                     &mut errors,
                     fields,
                 );
+                if withdraw {
+                    errors.retain(|e| !e.to_string().contains("`pre` cannot be used opaquely"));
+                }
                 if let Some(e) = errors.into_iter().next() {
                     return Err(e);
                 }
             }
             for x in xs {
-                storage_key_reads(x, fields, out, full_witness_keys)?;
+                storage_key_reads(x, fields, out)?;
             }
         }
         _ => {}
@@ -746,7 +753,7 @@ pub fn output_with_ready(
             &mut access_errors,
             &fields,
         );
-        storage_key_reads(&tr.body, &fields, &mut read, carrier.is_some())?;
+        storage_key_reads(&tr.body, &fields, &mut read)?;
         if let Some(e) = access_errors.into_iter().next() {
             return Err(e);
         }

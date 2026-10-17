@@ -249,8 +249,11 @@ storage exchange or guard. That exchange requires its deposit to be disjoint
 from the pre-state storage, so a deposit into a location withdrawn earlier on
 the same path is not supported: syntactically equal locations are rejected,
 other overlaps fail in the generated proof. A stored-value binding cannot
-observe a value deposited earlier on its path. The corpus
-`examples/verified_tsm/raw_forms_*.rs` exercises these forms.
+observe a value deposited earlier on its path. Withdrawal keys are evaluated
+in the full pre-state, so they may read fields the operation does not own
+(including the stored map) or use `pre` as a whole; deposit and guard keys must
+be local observations. The corpus `examples/verified_tsm/raw_forms_*.rs`
+exercises these forms.
 
 Unsupported shapes and generated-name conflicts produce diagnostics. These
 limits are implementation constraints, not proofs that the requested protocol
