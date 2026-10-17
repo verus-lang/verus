@@ -159,10 +159,13 @@ jobs:
         working-directory: ./source/tools/line_count
         run: cargo nextest run
 
-  # check if it builds and runs on macos, running the full test suite
+  # check if it builds and runs on linux, running the full test suite
   # (in release mode because it makes a huge difference)
   full-test:
-    runs-on: macos-14
+    runs-on: ubuntu-24.04
+
+    env:
+      CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
 
     defaults:
       run:
@@ -196,17 +199,18 @@ jobs:
         working-directory: ./source
         run: |
           cargo clean
-          cargo run --release -p cargo-verus-toolchains --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests
-          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo build --release
-          cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
+          # --bin rather than -p, which would rebuild with different features
+          cargo run --release --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests
+          cargo build --release
+          cargo run --release --bin cargo-verus -- build --release --manifest-path vstd/Cargo.toml
 
       - name: full tests
         working-directory: ./source
         run: |
           # check cvc5
-          cargo run --release -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
-          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo nextest run --release -p air
-          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo nextest run --release -p rust_verify_test
+          cargo run --release --bin rust_verify -- -V cvc5 ../examples/assorted_demo.rs
+          cargo nextest run --release -p air
+          cargo nextest run --release -p rust_verify_test
 
   # check if it builds and that basic tests pass on our main supported platforms
   basic-test:
