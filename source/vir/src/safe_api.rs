@@ -181,7 +181,11 @@ pub fn body_that_havocs_all_outputs(function: &Function) -> Expr {
     let ret = &function.x.inner_ret;
     let ret_expr = SpannedTyped::new(span, &ret.x.typ, ExprX::Nondeterministic);
 
-    SpannedTyped::new(span, &ret.x.typ, ExprX::Block(Arc::new(vec![]), Some(ret_expr)))
+    SpannedTyped::new(
+        span,
+        &ret.x.typ,
+        ExprX::Block(Arc::new(vec![]), Some(ret_expr), Arc::new(vec![])),
+    )
 }
 
 /// When emitting a proof obligation, we need axioms that the trait spec fns are given

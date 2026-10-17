@@ -1203,7 +1203,7 @@ fn check_function<Emit: EmitError>(
         if let Some(body) = &function.x.body {
             crate::ast_visitor::expr_visitor_check(body, &mut |_scope_map, expr| {
                 match &expr.x {
-                    ExprX::Block(_, _) => {}
+                    ExprX::Block(..) | ExprX::Drop(..) => {}
                     _ => {
                         return Err(error(
                             &function.span,
@@ -1259,7 +1259,7 @@ fn check_function<Emit: EmitError>(
         if let Some(body) = &function.x.body {
             crate::ast_visitor::expr_visitor_check(body, &mut |_scope_map, expr| {
                 match &expr.x {
-                    ExprX::Block(_, _) => {}
+                    ExprX::Block(..) | ExprX::Drop(..) => {}
                     _ => {
                         return Err(error(&function.span, "integer_ring mode cannot have a body"));
                     }

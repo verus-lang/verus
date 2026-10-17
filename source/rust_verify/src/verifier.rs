@@ -2895,8 +2895,19 @@ impl Verifier {
 
         let vir_crate =
             vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
-        let (vir_crate, erasure_modes) =
-            vir::modes::check_crate(&vir_crate).map_err(|es| (es, Vec::new()))?;
+        let log_resolution_cfg = self.args.log_all || self.args.log_args.log_resolution_cfg;
+        let (vir_crate, erasure_modes, cfg_logs) =
+            vir::modes::check_crate(&vir_crate, log_resolution_cfg)
+                .map_err(|es| (es, Vec::new()))?;
+        if log_resolution_cfg {
+            let mut file = self
+                .create_log_file(None, crate::config::RESOLUTION_CFG_FILE_SUFFIX)
+                .map_err(|e| (vec![e], Vec::new()))?;
+            for (fun, cfg) in cfg_logs.iter() {
+                let name = vir::ast_util::fun_as_friendly_rust_name(fun);
+                writeln!(&mut file, "fn {name}\n{cfg}").expect("cannot write to log file");
+            }
+        }
 
         self.vir_crate = Some(vir_crate.clone());
         self.warning_ctx = Some(Arc::new(warning_ctx));

@@ -77,7 +77,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         return Ok(bctx.spanned_typed_new(
             expr.span,
             &expr_typ()?,
-            ExprX::Block(Arc::new(vec![]), None),
+            ExprX::Block(Arc::new(vec![]), None, Arc::new(vec![])),
         ));
     }
 
@@ -1590,7 +1590,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let proof = bctx.spanned_typed_new(
                         expr.span,
                         &unit_typ(),
-                        ExprX::Block(Arc::new(vec![]), None),
+                        ExprX::Block(Arc::new(vec![]), None, Arc::new(vec![])),
                     );
                     mk_expr(ExprX::AssertQuery {
                         requires,
@@ -1755,7 +1755,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let cast_to = crate::rust_to_vir_expr::expr_cast_enum_int_to_vir(
                         bctx,
                         args[0],
-                        source_vir0.to_place(bctx, expr.span, source_vir0_ty)?,
+                        source_vir0.to_place(bctx, args[0], source_vir0_ty)?,
                         mk_expr,
                     )?;
                     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);

@@ -176,7 +176,7 @@ fn func_body_to_sst(
                 decrease_by_fun.x.body.as_ref().expect("decreases_by has body").clone();
             ast_visitor::expr_visitor_check(&decrease_by_fun_body, &mut |_scope_map, expr| {
                 match &expr.x {
-                    ExprX::Return(_) => Err(error(
+                    ExprX::Return(..) => Err(error(
                         &expr.span,
                         "explicit returns are not allowed in decreases_by function",
                     )),
@@ -327,6 +327,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                     },
                 )]),
                 Some(e.clone()),
+                Arc::new(vec![]),
             ),
         );
         let imply = crate::ast_util::mk_implies(&e.span, &awaited_call, &block);
