@@ -1347,3 +1347,46 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // #3089: the arguments of a call whose body does not simplify are kept
+    #[test] compute_choose_keeps_arguments verus_code! {
+        spec fn g(x: int) -> int { x }
+        spec fn c(a: int) -> int { choose|x: int| #[trigger] g(x) == a }
+        proof fn bad_choose() {
+            assert(c(5) == c(6)) by(compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    // #3072: an array of closures is not cleaned up to `[]`
+    #[test] compute_array_of_closures verus_code! {
+        spec fn mk1() -> [spec_fn(int) -> int; 1] { [|x: int| x + 1] }
+        spec fn mk2() -> [spec_fn(int) -> int; 1] { [|x: int| x + 2] }
+        proof fn unsound() {
+            assert(mk1() == mk2()) by (compute);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "closure literal that wasn't applied")
+}
+
+test_verify_one_file! {
+    // #3198: a shift the interpreter cannot finish left the callee's parameters in the result
+    #[test] shift_fallback_does_not_capture_issue3198 verus_code! {
+        spec fn r(x: i8, n: i8) -> i8 { x >> n }
+        proof fn leak(x: i8, n: i8) {
+            assert(r(4i8, -1i8) == (x >> n)) by (compute_only); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    // #3182: an unfinished sequence operation let the callee bind a caller variable
+    #[test] seq_residual_does_not_capture_issue3182 verus_code! {
+        use vstd::prelude::*;
+        spec fn g(x: int, b: bool) -> bool { b ==> false }
+        proof fn lemma(x: int, j: int) {
+            assert(g(7, seq![x, 1int][j] == 0) == !(seq![7int, 1int][j] == 0)) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

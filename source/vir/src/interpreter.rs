@@ -50,7 +50,6 @@ const DEPTH_LIMIT_MULTIPLIER: u64 = 500;
 const WARNING_INTERVAL_SECS: u64 = 2;
 
 type Env = ScopeMap<UniqueIdent, Exp>;
-type TypeEnv = ScopeMap<Ident, Typ>;
 
 /// A call's type and value arguments, supporting `Hash` and `Eq`, so that we can use them
 /// as a key when caching the call's result.  Intended to never leave this module.
@@ -1792,22 +1791,21 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 let pars = &func.x.pars;
                                 let body = &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
                                 state.cache_misses += 1;
-                                let mut env = Env::new();
-                                let mut type_env = TypeEnv::new();
-                                env.push_scope(true);
-                                type_env.push_scope(true);
+                                // Substitute the actual arguments for the formals and the
+                                // type arguments for the type parameters, then evaluate the
+                                // (now closed) body in an empty environment. `subst_exp` is
+                                // capture-avoiding.
+                                let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+                                let mut var_substs: HashMap<VarIdent, Exp> = HashMap::new();
                                 for (formal, actual) in pars.iter().zip(new_args.iter()) {
-                                    let formal_id = formal.x.name.clone();
-                                    env.insert(formal_id, actual.clone()).unwrap();
+                                    var_substs.insert(formal.x.name.clone(), actual.clone());
                                 }
                                 for (formal, actual) in typ_params.iter().zip(typs.iter()) {
-                                    type_env.insert(formal.clone(), actual.clone()).unwrap();
+                                    typ_substs.insert(formal.clone(), actual.clone());
                                 }
-                                // Proactively apply the type environment to the body.
-                                // We don't do this for the variable environment, since
-                                // the body might locally shadow some of the parameter names.
-                                let empty_substs = HashMap::new();
-                                let body = subst_exp(type_env.map(), &empty_substs, body);
+                                let body = subst_exp(&typ_substs, &var_substs, body);
+                                let mut env = Env::new();
+                                env.push_scope(true);
                                 let prev_env = std::mem::replace(&mut state.env, env);
                                 let result = eval_expr_internal(ctx, state, &body);
                                 state.env = prev_env;
