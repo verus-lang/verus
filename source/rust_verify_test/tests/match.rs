@@ -1686,3 +1686,81 @@ test_verify_one_file! {
         "equality-testing this type in pattern: f64",
     ])
 }
+
+test_verify_one_file! {
+    #[test] const_patterns_derived_partial_eq verus_code! {
+        use vstd::prelude::*;
+        use core::marker::PhantomData;
+
+        #[derive(PartialEq, Eq)]
+        pub enum E { A, B(u8) }
+        const EB: E = E::B(3);
+
+        #[derive(PartialEq, Eq)]
+        pub struct G { pub a: u8, pub p: PhantomData<u8> }
+        const C: G = G { a: 1, p: PhantomData };
+
+        fn m(e: E) -> (r: bool)
+            ensures r == (e == E::B(3))
+        {
+            match e { EB => true, _ => false }
+        }
+
+        fn n(v: G) -> (r: bool)
+            ensures r == (v.a == 1)
+        {
+            match v { C => true, _ => false }
+        }
+
+        fn s(x: &str) -> u8 {
+            match x { "abc" => 1, _ => 0 }
+        }
+
+        fn wrong(e: E) -> (r: bool)
+            ensures r == (e == E::B(4)) // FAILS
+        {
+            match e { EB => true, _ => false }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] nested_float_patterns verus_code! {
+        #[derive(PartialEq)]
+        pub struct F { pub x: f64 }
+        const ZF: F = F { x: 0.0 };
+        const ZO: Option<f64> = Some(0.0);
+        const ZT: (u8, f32) = (1, 0.0);
+
+        fn f(v: F) -> bool { match v { ZF => true, _ => false } }
+        fn o(v: Option<f64>) -> bool { match v { ZO => true, _ => false } }
+        fn t(v: (u8, f32)) -> bool { match v { ZT => true, _ => false } }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "equality-testing this type in pattern: F",
+        "equality-testing this type in pattern: std::option::Option<f64>",
+        "equality-testing this type in pattern: (u8, f32)",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] ghost_field_patterns verus_code! {
+        #[derive(PartialEq, Eq)]
+        pub struct S { pub b: u8, pub ghost a: u8 }
+        const C: S = S { b: 0, a: 5 };
+
+        fn m(s: S) -> (r: bool)
+            ensures r ==> s.a == 5
+        {
+            match s { C => true, _ => false }
+        }
+
+        #[derive(PartialEq, Eq)]
+        pub enum T<A: 'static> { Leaf(A), Node(&'static T<(A, A)>) }
+        const L: T<u8> = T::Leaf(0);
+
+        fn n(v: T<u8>) -> bool { match v { L => true, _ => false } }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "equality-testing this type in pattern: S",
+        "equality-testing this type in pattern: T<u8>",
+    ])
+}

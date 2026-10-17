@@ -532,7 +532,7 @@ fn patexpr_unsupported_type_err<'tcx>(
     pat: &Pat<'tcx>,
 ) -> Result<(), VirErr> {
     let pat_ty = bctx.types.node_type(pat.hir_id);
-    if !crate::rust_to_vir_base::ty_has_smt_equality(bctx, span, pat_ty)? {
+    if !crate::rust_to_vir_base::ty_has_pattern_smt_equality(bctx, pat_ty) {
         unsupported_err!(span, format!("equality-testing this type in pattern: {:?}", pat_ty));
     }
     Ok(())
