@@ -321,8 +321,7 @@ impl Store {
                 let untag = format_ident!("__untag_{}", n);
                 let tag_finite = format_ident!("__tag_finite_{}", n);
                 quote! {
-                    let tracked __tsm_part = __tsm_withdrawn.tracked_remove_keys(#tagged.dom());
-                    assert(::vstd::prelude::ext_equal(__tsm_part, #tagged));
+                    let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #tagged);
                     assert(::vstd::prelude::ext_equal(__StorageKey::#untag(__tsm_part), (#e).to_imap()));
                     __StorageKey::#tag_finite(#e);
                     let tracked #p = __StorageKey::#unpack(__tsm_part);
@@ -361,8 +360,7 @@ impl Store {
                     quote! {let tracked #p = __tsm_native;}
                 };
                 quote! {
-                    let tracked __tsm_part = __tsm_withdrawn.tracked_remove_keys(#tagged.dom());
-                    assert(::vstd::prelude::ext_equal(__tsm_part, #tagged));
+                    let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #tagged);
                     assert(::vstd::prelude::ext_equal(__StorageKey::#untag(__tsm_part), #native));
                     let tracked __tsm_native = __StorageKey::#unpack(__tsm_part);
                     assert(__tsm_native == #native);
@@ -371,17 +369,15 @@ impl Store {
             }
             (StoreKind::Carrier | StoreKind::Homog, _) => {
                 let unpack = format_ident!("__unpack_{}", n);
-                let untag = format_ident!("__untag_{}", n);
+                let lemma = format_ident!("__tsm_untag_tag_{}", n);
                 quote! {
-                    let tracked __tsm_part = __tsm_withdrawn.tracked_remove_keys(#tagged.dom());
-                    assert(::vstd::prelude::ext_equal(__tsm_part, #tagged));
-                    assert(__StorageKey::#untag(__tsm_part) == #e);
+                    let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #tagged);
+                    Instance::#lemma(#e);
                     let tracked #p = __StorageKey::#unpack(__tsm_part);
                 }
             }
             (_, ShardableType::StorageMap(..)) => quote! {
-                let tracked __tsm_part = __tsm_withdrawn.tracked_remove_keys(#tagged.dom());
-                assert(::vstd::prelude::ext_equal(__tsm_part, #tagged));
+                let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #tagged);
                 let tracked #p = ::vstd::resource::tsm_generic::tracked_imap_to_map(__tsm_part);
                 assert(::vstd::prelude::ext_equal(#p, #e)) by {
                     assert forall|k| #p.dom().contains(k) == #[trigger] (#e).dom().contains(k) by {
@@ -393,8 +389,7 @@ impl Store {
                 }
             },
             (_, ShardableType::StorageIMap(..)) => quote! {
-                let tracked #p = __tsm_withdrawn.tracked_remove_keys((#e).dom());
-                assert(::vstd::prelude::ext_equal(#p, #e));
+                let tracked #p = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #e);
             },
             (_, _) => {
                 let i = self.option_index(f);
@@ -3945,6 +3940,22 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     // reason about it.
     let reachable = reachable_state(&cm, &quote! {self.__desc}, &format_ident!("__tsm_s"));
     let kappa_idem = cm.as_ref().map(|cm| cm.idem_lemma());
+    // `untag(tag(e)) == e` for the tagged storage options, for general
+    // withdrawals (proved here, apart from an operation's other facts).
+    let untag_tag: Vec<_> = sm
+        .fields
+        .iter()
+        .filter_map(|f| match &f.stype {
+            ShardableType::StorageOption(v) if matches!(store.kind, StoreKind::Carrier | StoreKind::Homog) => {
+                let n = &f.name;
+                let (lemma, tag, untag) = (format_ident!("__tsm_untag_tag_{}", n), format_ident!("__tag_{}", n), format_ident!("__untag_{}", n));
+                Some(quote! {
+                    pub proof fn #lemma(e: Option<#v>) ensures __StorageKey::#untag(__StorageKey::#tag(e)) == e {}
+                })
+            }
+            _ => None,
+        })
+        .collect();
     items.push(quote! {
         /// The instance carries only its location (and shared, leaked
         /// resources), so it is freely duplicable (`Copy`, as in the trusted
@@ -3962,6 +3973,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             #inst_clone
             #(#const_fns)*
             #kappa_idem
+            #(#untag_tag)*
         }
         #unit_def
     });

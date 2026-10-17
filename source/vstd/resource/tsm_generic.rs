@@ -400,6 +400,20 @@ pub proof fn agreement_duplicate<V>(tracked a: &super::pcm::Resource<Option<Agre
     super::duplicate(a)
 }
 
+/// Remove a submap `t` from a tracked map, returning it.
+pub proof fn tracked_remove_submap<K, V>(tracked m: &mut IMap<K, V>, t: IMap<K, V>) -> (tracked out:
+    IMap<K, V>)
+    requires
+        t.submap_of(*old(m)),
+    ensures
+        out == t,
+        *final(m) == old(m).remove_keys(t.dom()),
+{
+    let tracked out = m.tracked_remove_keys(t.dom());
+    assert(out =~= t);
+    out
+}
+
 /// A tracked finite map as a tracked infinite map with the same entries.
 pub proof fn tracked_map_to_imap<K, V>(tracked m: Map<K, V>) -> (tracked out: IMap<K, V>)
     ensures
