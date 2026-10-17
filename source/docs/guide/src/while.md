@@ -62,6 +62,21 @@ for large functions with large while loops;
 verification runs faster if Verus breaks the surrounding function and the loops into separate pieces
 and verifies them modularly.)
 
+`reveal`, `reveal_with_fuel`, and `broadcast use` are exceptions to that split.
+A directive that is in scope where the loop starts is available inside the loop,
+including inside nested loops, and it keeps the unfolding depth chosen by
+`reveal_with_fuel`. The same directive is available when it appears in the
+statements of a `loop_isolation` boundary that belong to that loop.
+A directive that appears only in another branch, only after the loop, or only
+in a loop that has already finished stays in that context.
+Assertions and preconditions about program state still have to be invariants.
+
+`hide` applies to the whole function. It suppresses default unfolding in every
+query for that function, and a later `reveal` or `reveal_with_fuel` turns
+unfolding back on from that point, including in later isolated loops.
+Using `hide` to cancel an outer `reveal` or `broadcast use` inside only one
+loop is an open design question; Verus does not do that today.
+
 Verus does allow you to opt-out of this behavior, meaning that your loops will inherit
 information from the surrounding context.  This will simplify your loop invariants,
 but verification time may increase for medium-to-large functions.
