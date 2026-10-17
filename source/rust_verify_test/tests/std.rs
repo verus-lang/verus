@@ -2042,3 +2042,24 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    // as above, for an impl of an external trait (also not in the function map)
+    #[test] external_trait_impl_opens_invariants_none_calls_fn_with_default_mask verus_code! {
+        use vstd::prelude::*;
+        #[verifier::external]
+        trait MyTrait {
+            fn foo();
+        }
+        fn f() no_unwind {}
+        pub struct S;
+        impl MyTrait for S {
+            fn foo()
+                opens_invariants none
+                no_unwind
+            {
+                f(); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
