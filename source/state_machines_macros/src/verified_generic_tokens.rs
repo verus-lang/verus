@@ -11,7 +11,7 @@
 //! ids live in a disjoint id space (`tsm_instance_id`), so they never match
 //! an instance and the token traits stay provable.
 use crate::ast::*;
-use crate::concurrency_tokens::{exchange_parts, signature_tokens, ExchangeParts, InoutType, Mode, TokenParam};
+use crate::concurrency_tokens::{exchange_parts_with, signature_tokens, ExchangeParts, InoutType, Mode, TokenParam};
 use crate::parse_token_stream::SMBundle;
 use proc_macro2::{Span, TokenStream, TokenTree};
 use quote::{format_ident, quote};
@@ -1511,6 +1511,515 @@ fn collection_helpers(f: &Field, cm: &Option<Cm>) -> TokenStream {
     }
 }
 
+/// The (placeholder) name of the generated collection type of an `imap` or
+/// `iset` field, resolved like `tyname`.
+fn resname(f: &Field) -> Ident {
+    if kind(f).unwrap().map_like() {
+        format_ident!("__TSM_TY_{}_map", f.name)
+    } else {
+        format_ident!("__TSM_TY_{}_set", f.name)
+    }
+}
+
+/// The collection type of an `imap`, `iset`, `persistent_imap` or
+/// `persistent_iset` field, in reservation style: the possibly infinite part
+/// of the collection is one owned raw token (`bulk`, owning `ι(bm)`), from
+/// which `remove` splits single tokens off on demand; tokens added by
+/// `insert` (or `from_map`) are kept individually (`parts`, finitely many).
+/// It provides the operations of `vstd::tokens::IMapToken`/`ISetToken`;
+/// `from_map` and `into_map` require finite maps.
+fn reservation(f: &Field, cm: &Option<Cm>) -> TokenStream {
+    let n = &f.name;
+    let nt = tyname(f);
+    let k = kind(f).unwrap();
+    let persistent = k.persistent();
+    let ml = k.map_like();
+    let alias = if ml { format_ident!("{}_map", n) } else { format_ident!("{}_set", n) };
+    let at = resname(f);
+    let factory = format_ident!("field_{}", n);
+    let split = format_ident!("__split_{}", n);
+    let join = format_ident!("__join_{}", n);
+    let c = quote! {::vstd::resource::tsm_collections};
+    let imply = quote! {::vstd::prelude::imply};
+    let ext = quote! {::vstd::prelude::ext_equal};
+    let lemmas = quote! {broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
+        ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas};};
+    let (kt, vt) = match &f.stype {
+        ShardableType::IMap(kt, v) | ShardableType::PersistentIMap(kt, v) => (quote! {#kt}, quote! {#v}),
+        ShardableType::ISet(e) | ShardableType::PersistentISet(e) => (quote! {#e}, quote! {()}),
+        _ => unreachable!(),
+    };
+    let tr = trait_path(f);
+    let id_of = |x: TokenStream| quote! {<#nt as #tr>::instance_id(&#x)};
+    let key_of = |x: TokenStream| if ml { quote! {<#nt as #tr>::key(&#x)} } else { quote! {<#nt as #tr>::element(&#x)} };
+    let val_of = |x: TokenStream| quote! {<#nt as #tr>::value(&#x)};
+    // The bulk's value type, its domain, the empty value, and the whole collection.
+    let bty = if ml { quote! {::vstd::imap::IMap<#kt, #vt>} } else { quote! {::vstd::iset::ISet<#kt>} };
+    let bdom = |x: TokenStream| if ml { quote! {(#x).bm.dom()} } else { quote! {(#x).bm} };
+    let bempty = if ml { quote! {::vstd::imap::IMap::<#kt, #vt>::empty()} } else { quote! {::vstd::iset::ISet::<#kt>::empty()} };
+    let whole = |x: TokenStream| if ml { quote! {(#x).map()} } else { quote! {(#x).set()} };
+    let pk = key_of(quote! {self.parts[k]});
+    let pid = id_of(quote! {self.parts[k]});
+    let pval = if ml { val_of(quote! {self.parts[k]}) } else { quote! {()} };
+    let view = if ml {
+        quote! {
+            pub closed spec fn map(self) -> ::vstd::imap::IMap<#kt, #vt> {
+                ::vstd::imap::IMap::new(|k: #kt| self.bm.dom().contains(k) || self.parts.dom().contains(k),
+                    |k: #kt| if self.parts.dom().contains(k) { #pval } else { self.bm[k] })
+            }
+            #[verifier::inline]
+            pub open spec fn dom(self) -> ::vstd::iset::ISet<#kt> {self.map().dom()}
+            #[verifier::inline]
+            pub open spec fn spec_index(self, k: #kt) -> #vt {self.map()[k]}
+            #[verifier::inline]
+            pub open spec fn index(self, k: #kt) -> #vt {self.map()[k]}
+        }
+    } else {
+        quote! {
+            pub closed spec fn set(self) -> ::vstd::iset::ISet<#kt> {self.bm.union(self.parts.dom())}
+            #[verifier::inline]
+            pub open spec fn contains(self, element: #kt) -> bool {self.set().contains(element)}
+        }
+    };
+    // Mode-dependent fields and checks (see `Cm`).
+    let (extra_fields, extra_pat, none_extra, real_inv, none_inv, lemma_link, unwrap_desc, mint, mint_args, split_args, bulk_params, bulk_reqs, bulk_fields, bulk_id) = match cm {
+        None => (
+            quote! {},
+            quote! {},
+            quote! {},
+            quote! {self.inst == ::vstd::resource::tsm_instance_id(self.bulk->Some_0.loc(), false)},
+            quote! {true},
+            quote! {saved.bulk->Some_0.loc()},
+            quote! {},
+            quote! {},
+            quote! {},
+            quote! {},
+            quote! {},
+            quote! {},
+            quote! {},
+            quote! {::vstd::resource::tsm_instance_id(raw.loc(), false)},
+        ),
+        Some(cm) => {
+            let dty = &cm.d;
+            let ok = cm.ok(quote! {self.desc->Some_0});
+            let ploc = cm.ploc(quote! {self.desc->Some_0});
+            let kappa_s = cm.kappa(quote! {self.desc->Some_0});
+            let kappa_d = cm.kappa(quote! {dref});
+            let d_ok = cm.ok(quote! {d});
+            let d_ploc = cm.ploc(quote! {d});
+            let d_kappa = cm.kappa(quote! {d});
+            (
+                quote! {tracked kappa: Option<Token>, tracked desc: Option<&'static #dty>,},
+                quote! {kappa, desc,},
+                quote! {kappa: None, desc: None,},
+                quote! {self.kappa is Some && self.desc is Some && #ok
+                    && self.inst == ::vstd::resource::tsm_instance_id(self.desc->Some_0.loc(), false)
+                    && self.bulk->Some_0.loc() == #ploc && self.kappa->Some_0.loc() == #ploc
+                    && self.kappa->Some_0.fragment() == #kappa_s},
+                quote! {self.kappa is None && self.desc is None},
+                quote! {dref},
+                quote! {let tracked dref = desc.tracked_unwrap(); let tracked desc = Some(dref);},
+                quote! {
+                    let tracked kp0 = kappa.tracked_unwrap();
+                    Fragment::unit().op_unit();
+                    assert(kp0.fragment() == Fragment::op(#kappa_d, #kappa_d));
+                    let tracked (__tsm_kp, kp1) = kp0.split(#kappa_d, #kappa_d);
+                    let tracked kappa = Some(kp1);
+                },
+                quote! {__tsm_kp, dref,},
+                quote! {, kappa.tracked_unwrap(), dref},
+                quote! {tracked kappa: Token, tracked d: &'static #dty},
+                quote! {#d_ok, raw.loc() == #d_ploc, kappa.loc() == #d_ploc, kappa.fragment() == #d_kappa,},
+                quote! {kappa: Some(kappa), desc: Some(d),},
+                quote! {::vstd::resource::tsm_instance_id(d.loc(), false)},
+            )
+        }
+    };
+    let bdom_self = bdom(quote! {self});
+    let wf = quote! {
+        #[verifier::type_invariant]
+        spec fn __wf(self) -> bool {
+            self.parts.dom().finite()
+            && (forall |k: #kt| #imply(#[trigger] self.parts.dom().contains(k), #pk == k && #pid == self.inst))
+            && #bdom_self.disjoint(self.parts.dom())
+            && #imply(self.bulk is None, self.bm == #bempty && #none_inv)
+            && #imply(self.bulk is Some, #real_inv && self.bulk->Some_0.fragment() == Fragment::#factory(self.bm))
+        }
+    };
+    let w_s = whole(quote! {s});
+    let w_back = whole(quote! {back});
+    let w_saved = whole(quote! {saved});
+    let w_old = whole(quote! {*old(self)});
+    let w_final = whole(quote! {*final(self)});
+    let w_self = whole(quote! {self});
+    let bdom_saved = bdom(quote! {saved});
+    let tk = key_of(quote! {token});
+    let tid = id_of(quote! {token});
+    let (ins_ens, ins_goal) = if ml {
+        let tv = val_of(quote! {token});
+        (quote! {#w_final == #w_old.insert(#tk, #tv)}, quote! {#w_saved.insert(key, #tv)})
+    } else {
+        (quote! {#w_final == #w_old.insert(#tk)}, quote! {#w_saved.insert(key)})
+    };
+    // The bulk already owns the inserted key: impossible for exclusive tokens
+    // (their composition is invalid); for persistent ones the values agree.
+    let bulk_conflict = quote! {
+        token.__lemma_id(#lemma_link);
+        let tracked mut b = bulk.tracked_unwrap();
+        b.validate_2(token.__raw());
+        let f = Fragment::op(b.fragment(), token.raw->Some_0.fragment());
+        let (frame, st) = choose|frame: Fragment, st: State|
+            st.invariant() && Fragment::op(f, frame) == <Protocol as ::vstd::resource::tsm::Machine>::embed(st);
+        assert(Fragment::op(f, frame).#n.at(key) == <Protocol as ::vstd::resource::tsm::Machine>::embed(st).#n.at(key));
+        let tracked bulk = Some(b);
+    };
+    let (remove_req, remove_ens, remove_goal) = if ml {
+        let tv = val_of(quote! {token});
+        (
+            quote! {#w_old.dom().contains(key)},
+            quote! {#w_final == #w_old.remove(key), #tid == final(self).instance_id(), #tk == key, #tv == #w_old[key],},
+            quote! {#w_saved.remove(key)},
+        )
+    } else {
+        (
+            quote! {#w_old.contains(key)},
+            quote! {#w_final == #w_old.remove(key), #tid == final(self).instance_id(), #tk == key,},
+            quote! {#w_saved.remove(key)},
+        )
+    };
+    let (one_v, rest_v, union_v, tok_data) = if ml {
+        (
+            quote! {::vstd::imap::IMap::empty().insert(key, saved.bm[key])},
+            quote! {saved.bm.remove(key)},
+            quote! {::vstd::imap::IMap::empty().insert(key, saved.bm[key]).union_prefer_right(saved.bm.remove(key))},
+            quote! {key, saved.bm[key]},
+        )
+    } else {
+        (
+            quote! {::vstd::iset::ISet::empty().insert(key)},
+            quote! {saved.bm.remove(key)},
+            quote! {::vstd::iset::ISet::empty().insert(key).union(saved.bm.remove(key))},
+            quote! {key},
+        )
+    };
+    let join_lemma = match (ml, persistent) {
+        (true, false) => quote! {#c::map_join},
+        (true, true) => quote! {#c::persistent_map_join},
+        (false, false) => quote! {#c::set_join},
+        (false, true) => quote! {#c::persistent_set_join},
+    };
+    let (into_req, into_ens, from_reqs, from_ens, from_goal, bulk_ens) = if ml {
+        let mk = key_of(quote! {map[key]});
+        let mid = id_of(quote! {map[key]});
+        let mv = val_of(quote! {map[key]});
+        (
+            quote! {#w_self.dom().finite()},
+            quote! {
+                map.dom() == #w_self.dom(),
+                forall |key: #kt| #imply(#[trigger] map.dom().contains(key),
+                    #mid == self.instance_id() && #mk == key && #mv == #w_self[key]),
+            },
+            quote! {
+                forall |key: #kt| #imply(#[trigger] map.dom().contains(key), #mid == instance_id),
+                forall |key: #kt| #imply(#[trigger] map.dom().contains(key), #mk == key),
+                map.dom().finite(),
+            },
+            quote! {
+                s.instance_id() == instance_id,
+                #w_s.dom() == map.dom(),
+                forall |key: #kt| #imply(#[trigger] map.dom().contains(key), #w_s[key] == #mv),
+            },
+            quote! {assert(#ext(#w_s.dom(), map.dom()));},
+            quote! {#w_s == m},
+        )
+    } else {
+        let mk = key_of(quote! {map[key]});
+        let mid = id_of(quote! {map[key]});
+        (
+            quote! {#w_self.finite()},
+            quote! {
+                map.dom() == #w_self,
+                forall |key: #kt| #imply(#[trigger] map.dom().contains(key), #mid == self.instance_id() && #mk == key),
+            },
+            quote! {
+                forall |key: #kt| #imply(#[trigger] map.dom().contains(key), #mid == instance_id),
+                forall |key: #kt| #imply(#[trigger] map.dom().contains(key), #mk == key),
+                map.dom().finite(),
+            },
+            quote! {s.instance_id() == instance_id, #w_s == map.dom(),},
+            quote! {assert(#ext(#w_s, map.dom()));},
+            quote! {#w_s == m},
+        )
+    };
+    let whole_dom = if ml { quote! {whole.dom()} } else { quote! {whole} };
+    let bm_dom = if ml { quote! {bm.dom()} } else { quote! {bm} };
+    let into_split_args = split_args.clone();
+    // `__take` (exclusive only): the tokens of a sub-collection `e`, joined onto `acc`.
+    let take = if persistent {
+        quote! {}
+    } else {
+        let (link_param, link_req, out_loc, larg, link_eq) = match cm {
+            None => (
+                quote! {loc: ::vstd::resource::Loc},
+                quote! {self.instance_id() == ::vstd::resource::tsm_instance_id(loc, false), acc.loc() == loc,},
+                quote! {loc},
+                quote! {loc},
+                quote! {
+                    if bulk is Some {
+                        ::vstd::resource::tsm_instance_id_injective(bulk->Some_0.loc(), false, loc, false);
+                    }
+                },
+            ),
+            Some(cm) => {
+                let dty = &cm.d;
+                let ok = cm.ok(quote! {d});
+                let ploc = cm.ploc(quote! {d});
+                (
+                    quote! {tracked d: &#dty},
+                    quote! {self.instance_id() == ::vstd::resource::tsm_instance_id(d.loc(), false), #ok, acc.loc() == #ploc,},
+                    ploc,
+                    quote! {d},
+                    quote! {
+                        if bulk is Some {
+                            ::vstd::resource::tsm_instance_id_injective(desc->Some_0.loc(), false, d.loc(), false);
+                            ::vstd::resource::tsm_generic::agreement_resources_agree(desc.tracked_unwrap(), d);
+                        }
+                    },
+                )
+            }
+        };
+        let (sub_req, eb, keys, eb_rest, bulk_join, sel_vals, sel_join) = if ml {
+            (
+                quote! {e.submap_of(#w_self)},
+                quote! {::vstd::imap::IMap::new(|k: #kt| e.dom().contains(k) && bm.dom().contains(k), |k: #kt| e[k])},
+                quote! {e.dom().intersect(parts.dom())},
+                quote! {bm.remove_keys(e.dom())},
+                quote! {
+                    assert forall|k: #kt| #[trigger] bm.dom().contains(k) && e.dom().contains(k) implies e[k] == bm[k] by {
+                        assert(whole.dom().contains(k));
+                        assert(!parts_dom.contains(k));
+                    }
+                    #c::map_join(eb, bm.remove_keys(e.dom()));
+                    assert(#ext(eb.union_prefer_right(bm.remove_keys(e.dom())), bm));
+                },
+                quote! {::vstd::imap::IMap::new(|k: #kt| sel.dom().contains(k), |k: #kt| <#nt as #tr>::value(&sel[k]))},
+                quote! {
+                    #c::map_join(eb, sel_vals);
+                    assert(#ext(eb.union_prefer_right(sel_vals), e));
+                },
+            )
+        } else {
+            (
+                quote! {e.subset_of(#w_self)},
+                quote! {e.intersect(bm)},
+                quote! {e.intersect(parts.dom())},
+                quote! {bm.difference(e)},
+                quote! {
+                    #c::set_join(eb, bm.difference(e));
+                    assert(#ext(eb.union(bm.difference(e)), bm));
+                },
+                quote! {sel.dom()},
+                quote! {
+                    #c::set_join(eb, sel_vals);
+                    assert(#ext(eb.union(sel_vals), e));
+                },
+            )
+        };
+        // Every element of `e` is in the bulk or among the selected parts.
+        let cover = if ml {
+            quote! {
+                assert forall|k: #kt| #[trigger] e.dom().contains(k) implies
+                    (eb.dom().contains(k) || sel_vals.dom().contains(k)) && eb.union_prefer_right(sel_vals)[k] == e[k] by {
+                    assert(whole.dom().contains(k));
+                    if bm.dom().contains(k) {
+                        assert(!parts0.dom().contains(k));
+                    } else {
+                        assert(parts0.dom().contains(k));
+                        assert(sel[k] == parts0[k]);
+                    }
+                }
+            }
+        } else {
+            quote! {
+                assert forall|k: #kt| #[trigger] e.contains(k) implies eb.contains(k) || sel_vals.contains(k) by {
+                    assert(whole.contains(k));
+                    if !bm.contains(k) {
+                        assert(parts0.dom().contains(k));
+                    }
+                }
+            }
+        };
+        quote! {
+            /// The tokens of the sub-collection `e`, joined onto `acc`.
+            proof fn __take(tracked self, e: #bty, tracked acc: Token, #link_param) -> (tracked out: Token)
+                requires #sub_req, #link_req
+                ensures out.loc() == #out_loc, out.fragment() == Fragment::op(acc.fragment(), Fragment::#factory(e)),
+            {
+                #lemmas
+                ::vstd::prelude::use_type_invariant(&self);
+                let ghost bm = self.bm;
+                let ghost whole = #w_self;
+                let tracked Self {bulk, parts, #extra_pat ..} = self;
+                let ghost parts_dom = parts.dom();
+                #link_eq
+                let eb = #eb;
+                Fragment::unit().op_unit();
+                let tracked acc1 = if bulk is Some {
+                    let tracked b = bulk.tracked_unwrap();
+                    #bulk_join
+                    assert(b.fragment() == Fragment::op(Fragment::#factory(eb), Fragment::#factory(#eb_rest)));
+                    let tracked (piece, _rest) = b.split(Fragment::#factory(eb), Fragment::#factory(#eb_rest));
+                    acc.join(piece)
+                } else {
+                    assert(#ext(eb, #bempty));
+                    acc.fragment().op_unit();
+                    assert(Fragment::#factory(eb) == Fragment::unit()) by {
+                        #c::Pointwise::extensionality(Fragment::#factory(eb).#n, Fragment::unit().#n);
+                    }
+                    acc
+                };
+                let tracked mut parts = parts;
+                let keys = #keys;
+                assert(keys.subset_of(parts.dom()));
+                ::vstd::iset_lib::lemma_iset_subset_finite(parts.dom(), keys);
+                let ghost parts0 = parts;
+                let tracked sel = parts.tracked_remove_keys(keys);
+                assert(#ext(sel.dom(), keys));
+                let tracked out = #nt::#join(acc1, sel, #larg);
+                let sel_vals = #sel_vals;
+                #cover
+                #sel_join
+                Fragment::associative(acc.fragment(), Fragment::#factory(eb), Fragment::#factory(sel_vals));
+                out
+            }
+        }
+    };
+    quote! {
+        #[allow(non_camel_case_types)]
+        pub tracked struct #alias {
+            tracked bulk: Option<Token>,
+            tracked parts: ::vstd::imap::IMap<#kt, #nt>,
+            #extra_fields
+            ghost inst: ::vstd::tokens::InstanceId,
+            ghost bm: #bty,
+        }
+        impl #at {
+            #wf
+            pub closed spec fn instance_id(self) -> ::vstd::tokens::InstanceId {self.inst}
+            #view
+            pub proof fn empty(instance_id: ::vstd::tokens::InstanceId) -> (tracked s: Self)
+                ensures s.instance_id() == instance_id, #w_s == #bempty,
+            {
+                #lemmas
+                let tracked s = Self {bulk: None, parts: ::vstd::imap::IMap::tracked_empty(), #none_extra
+                    inst: instance_id, bm: #bempty};
+                assert(#ext(#w_s, #bempty));
+                s
+            }
+            pub proof fn insert(tracked &mut self, tracked token: #nt)
+                requires old(self).instance_id() == #tid,
+                ensures final(self).instance_id() == old(self).instance_id(), #ins_ens,
+            {
+                #lemmas
+                let tracked mut mine = Self::empty(arbitrary());
+                ::vstd::modes::tracked_swap(self, &mut mine);
+                ::vstd::prelude::use_type_invariant(&mine);
+                ::vstd::prelude::use_type_invariant(&token);
+                let ghost saved = mine;
+                let key = #tk;
+                let tracked Self {bulk, parts, #extra_pat ..} = mine;
+                let tracked mut parts = parts;
+                if bulk is Some && #bdom_saved.contains(key) {
+                    #unwrap_desc
+                    #bulk_conflict
+                    let tracked mut back = Self {bulk, parts, #extra_pat inst: saved.inst, bm: saved.bm};
+                    assert(#ext(#w_back, #ins_goal));
+                    ::vstd::modes::tracked_swap(self, &mut back);
+                } else {
+                    parts.tracked_insert(key, token);
+                    let tracked mut back = Self {bulk, parts, #extra_pat inst: saved.inst, bm: saved.bm};
+                    assert(#ext(#w_back, #ins_goal));
+                    ::vstd::modes::tracked_swap(self, &mut back);
+                }
+            }
+            pub proof fn remove(tracked &mut self, key: #kt) -> (tracked token: #nt)
+                requires #remove_req,
+                ensures final(self).instance_id() == old(self).instance_id(), #remove_ens
+            {
+                #lemmas
+                let tracked mut mine = Self::empty(arbitrary());
+                ::vstd::modes::tracked_swap(self, &mut mine);
+                ::vstd::prelude::use_type_invariant(&mine);
+                let ghost saved = mine;
+                let tracked Self {bulk, parts, #extra_pat ..} = mine;
+                let tracked mut parts = parts;
+                if parts.dom().contains(key) {
+                    let tracked token = parts.tracked_remove(key);
+                    let tracked mut back = Self {bulk, parts, #extra_pat inst: saved.inst, bm: saved.bm};
+                    assert(#ext(#w_back, #remove_goal));
+                    ::vstd::modes::tracked_swap(self, &mut back);
+                    token
+                } else {
+                    #unwrap_desc
+                    let tracked b = bulk.tracked_unwrap();
+                    #join_lemma(#one_v, #rest_v);
+                    assert(#ext(#union_v, saved.bm));
+                    Fragment::unit().op_unit();
+                    assert(b.fragment() == Fragment::op(Fragment::#factory(#one_v), Fragment::#factory(#rest_v)));
+                    let tracked (piece, b) = b.split(Fragment::#factory(#one_v), Fragment::#factory(#rest_v));
+                    #mint
+                    let tracked token = #nt::__from_raw(piece, #mint_args #tok_data);
+                    let tracked mut back = Self {bulk: Some(b), parts, #extra_pat inst: saved.inst, bm: #rest_v};
+                    assert(#ext(#w_back, #remove_goal));
+                    ::vstd::modes::tracked_swap(self, &mut back);
+                    token
+                }
+            }
+            pub proof fn into_map(tracked self) -> (tracked map: ::vstd::imap::IMap<#kt, #nt>)
+                requires #into_req,
+                ensures #into_ens
+            {
+                #lemmas
+                ::vstd::prelude::use_type_invariant(&self);
+                let ghost bm = self.bm;
+                let ghost whole = #w_self;
+                let tracked Self {bulk, parts, #extra_pat ..} = self;
+                let tracked mut parts = parts;
+                if bulk is Some {
+                    #unwrap_desc
+                    assert(#bm_dom.subset_of(#whole_dom));
+                    ::vstd::iset_lib::lemma_iset_subset_finite(#whole_dom, #bm_dom);
+                    let tracked m = #nt::#split(bulk.tracked_unwrap(), bm #into_split_args);
+                    parts.tracked_union_prefer_right(m);
+                }
+                assert(#ext(parts.dom(), #whole_dom));
+                parts
+            }
+            pub proof fn from_map(instance_id: ::vstd::tokens::InstanceId, tracked map: ::vstd::imap::IMap<#kt, #nt>) -> (tracked s: Self)
+                requires #from_reqs
+                ensures #from_ens
+            {
+                #lemmas
+                let tracked s = Self {bulk: None, parts: map, #none_extra inst: instance_id, bm: #bempty};
+                #from_goal
+                s
+            }
+            /// A collection owning exactly `m`, held by one raw token.
+            proof fn __from_bulk(tracked raw: Token, m: #bty, #bulk_params) -> (tracked s: Self)
+                requires raw.fragment() == Fragment::#factory(m), #bulk_reqs
+                ensures s.instance_id() == #bulk_id, #bulk_ens,
+            {
+                #lemmas
+                let tracked s = Self {bulk: Some(raw), parts: ::vstd::imap::IMap::tracked_empty(), #bulk_fields
+                    inst: #bulk_id, bm: m};
+                assert(#ext(#w_s, m));
+                s
+            }
+            #take
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Operation proofs
 
@@ -1835,7 +2344,7 @@ fn needs_unit(sm: &SM, bundle: &SMBundle, tr: &Transition) -> Result<bool, Error
     if tr.kind == TransitionKind::Init || tr.kind == TransitionKind::ReadonlyTransition {
         return Ok(false);
     }
-    let parts = exchange_parts(bundle, tr, &HashMap::new())?;
+    let parts = exchange_parts_with(bundle, tr, &HashMap::new(), true)?;
     let vars = variable_params(sm, &parts);
     let params = params_of(sm, &parts, &vars);
     let guard = params.iter().any(|q| q.p.inout_type == InoutType::BorrowOut);
@@ -1884,13 +2393,9 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                 let alias = format_ident!("{}_set", n);
                 items.push(quote! {#[allow(non_camel_case_types)] pub type #alias = ::vstd::tokens::SetToken<#e, #nt>;});
             }
-            ShardableType::IMap(k, v) | ShardableType::PersistentIMap(k, v) => {
-                let alias = format_ident!("{}_map", n);
-                items.push(quote! {#[allow(non_camel_case_types)] pub type #alias = ::vstd::tokens::IMapToken<#k, #v, #nt>;});
-            }
-            ShardableType::ISet(e) | ShardableType::PersistentISet(e) => {
-                let alias = format_ident!("{}_set", n);
-                items.push(quote! {#[allow(non_camel_case_types)] pub type #alias = ::vstd::tokens::ISetToken<#e, #nt>;});
+            ShardableType::IMap(..) | ShardableType::PersistentIMap(..)
+            | ShardableType::ISet(_) | ShardableType::PersistentISet(_) => {
+                items.push(reservation(f, &cm));
             }
             ShardableType::Multiset(e) => {
                 let alias = format_ident!("{}_multiset", n);
@@ -2174,17 +2679,13 @@ fn collection_input(f: &Field, pname: &Ident, loc: &TokenStream, e: &Expr) -> Re
                 |k| ::vstd::tokens::KeyValueToken::value(&__tsm_sel[k])), #e));
             let tracked __tsm_acc = #nt::#join(__tsm_acc, __tsm_sel, #loc);
         })),
-        Some(Kind::Set) | Some(Kind::ISet) => Ok((frag, quote! {
+        Some(Kind::IMap) | Some(Kind::ISet) => Ok((frag, quote! {
+            let tracked __tsm_acc = #pname.__take(#e, __tsm_acc, #loc);
+        })),
+        Some(Kind::Set) => Ok((frag, quote! {
             let tracked mut __tsm_tokens = #pname.into_map();
             let tracked __tsm_sel = __tsm_tokens.tracked_remove_keys(#e);
             assert(::vstd::prelude::ext_equal(__tsm_sel.dom(), #e));
-            let tracked __tsm_acc = #nt::#join(__tsm_acc, __tsm_sel, #loc);
-        })),
-        Some(Kind::IMap) => Ok((frag, quote! {
-            let tracked mut __tsm_tokens = #pname.into_map();
-            let tracked __tsm_sel = __tsm_tokens.tracked_remove_keys((#e).dom());
-            assert(::vstd::prelude::ext_equal(::vstd::imap::IMap::new(|__tsm_key| __tsm_sel.dom().contains(__tsm_key),
-                |k| ::vstd::tokens::KeyValueToken::value(&__tsm_sel[k])), #e));
             let tracked __tsm_acc = #nt::#join(__tsm_acc, __tsm_sel, #loc);
         })),
         Some(Kind::Multiset) => Ok((frag, quote! {
@@ -2212,7 +2713,8 @@ fn ext_step(f: &Field, a: &TokenStream, b: &TokenStream) -> TokenStream {
 fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, Error> {
     let sm = &bundle.sm;
     let store = ctx.store;
-    let parts = exchange_parts(bundle, tr, &HashMap::new())?;
+    // `imap`/`iset` collections are the generated reservation types.
+    let parts = exchange_parts_with(bundle, tr, &HashMap::new(), true)?;
     let (ret, req, ens) = signature_tokens(&parts);
     let vars = variable_params(sm, &parts);
     let params = params_of(sm, &parts, &vars);
@@ -2458,22 +2960,6 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         in_params.push(quote! {tracked __tsm_unit: Unit});
     }
     let mut unit_req = if unit_param { quote! {__tsm_unit.instance_id() == (*self).id(),} } else { quote! {} };
-    // `imap`/`iset` token collections are finite (they are split and joined
-    // token by token); the trusted interface does not require this.
-    for q in &params {
-        let Some(k) = kind(q.field) else { continue };
-        if !k.infinite() || !q.p.is_collection {
-            continue;
-        }
-        if let Some(MonoidElt::General(e)) = q.p.elt.as_ref() {
-            let lets = &early;
-            unit_req.extend(if k.map_like() {
-                quote! {({ #(#lets)* (#e).dom().finite() }),}
-            } else {
-                quote! {({ #(#lets)* (#e).finite() }),}
-            });
-        }
-    }
     let req = if !unit_req.is_empty() {
         if req.is_empty() { quote! {requires #unit_req} } else { quote! {#req, #unit_req} }
     } else {
@@ -2742,12 +3228,15 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             };
             let split = format_ident!("__split_{}", f.name);
             let k = kind(f).unwrap();
-            let (mtok, stok) = if k.infinite() {
-                (quote! {::vstd::tokens::IMapToken}, quote! {::vstd::tokens::ISetToken})
-            } else {
-                (quote! {::vstd::tokens::MapToken}, quote! {::vstd::tokens::SetToken})
-            };
-            let mk = if k.map_like() {
+            let (mtok, stok) = (quote! {::vstd::tokens::MapToken}, quote! {::vstd::tokens::SetToken});
+            let mk = if k.infinite() {
+                // One raw token holds the whole (possibly infinite) collection.
+                let at = resname(f);
+                quote! {
+                    #kp
+                    let tracked #pname = #at::__from_bulk(__tsm_piece, #e #split_args);
+                }
+            } else if k.map_like() {
                 quote! {
                     #kp
                     let tracked #pname = #mtok::from_map((*self).id(), #ty::#split(__tsm_piece, #e #split_args));
@@ -3499,22 +3988,25 @@ fn init_method(
         takes.push(quote! {let tracked (__tsm_piece, __tsm_rest) = Protocol::#take(__tsm_rest);});
         let value = quote! {post.#fname};
         let stmt = match k {
+            k if k.infinite() => {
+                // The whole (possibly infinite) initial collection is one raw token.
+                let at = resname(f);
+                quote! {
+                    assert(__tsm_piece.fragment() == Fragment::#factory(#value)) by {
+                        ::vstd::resource::tsm_collections::Pointwise::extensionality(
+                            __tsm_piece.fragment().#fname, Fragment::#factory(#value).#fname);
+                    }
+                    #kp
+                    let tracked #arg = #at::__from_bulk(__tsm_piece, #value #split_args);
+                }
+            }
             k if k.map_like() || k.set_like() => {
-                let coll = match (k.map_like(), k.infinite()) {
-                    (true, false) => quote! {::vstd::tokens::MapToken::from_map},
-                    (true, true) => quote! {::vstd::tokens::IMapToken::from_map},
-                    (false, false) => quote! {::vstd::tokens::SetToken::from_map},
-                    (false, true) => quote! {::vstd::tokens::ISetToken::from_map},
-                };
-                // An initial `imap`/`iset` collection must be finite to be split
-                // into tokens.
-                let finite = match (k.map_like(), k.infinite()) {
-                    (true, true) => quote! {assert(#value.dom().finite());},
-                    (false, true) => quote! {assert(#value.finite());},
-                    _ => quote! {},
+                let coll = if k.map_like() {
+                    quote! {::vstd::tokens::MapToken::from_map}
+                } else {
+                    quote! {::vstd::tokens::SetToken::from_map}
                 };
                 quote! {
-                    #finite
                     assert(__tsm_piece.fragment() == Fragment::#factory(#value)) by {
                         ::vstd::resource::tsm_collections::Pointwise::extensionality(
                             __tsm_piece.fragment().#fname, Fragment::#factory(#value).#fname);

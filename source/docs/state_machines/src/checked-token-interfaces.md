@@ -181,11 +181,24 @@ singleton element given by the ghost data:
   token that reports `n` (so that `weaken` needs no update).
 
 A field token is therefore ownership of `ι_i(e)` at `γ`. The collection types
-(`<field>_map`, a `vstd::tokens::MapToken` or `IMapToken`; `<field>_set`;
-`<field>_multiset`; and `Option<field>` for `option` and `bool` fields) are
+(`<field>_map`, a `vstd::tokens::MapToken`; `<field>_set`, a `SetToken`;
+`<field>_multiset`; and `Option<field>` for `option` and `bool` fields) are finite
 collections of such tokens. Their fragments compose to `ι_i(m)` for the whole
-collection `m`. Collections are built and taken apart one token at a time, so they
-are finite; for `imap` and `iset` fields this is an added requirement (see below).
+collection `m`.
+
+The collections of `imap`, `iset`, `persistent_imap` and `persistent_iset` fields
+may be infinite (e.g. `init m = IMap::new(|k| true, |k| None)`, or
+`ISet::full()`). `vstd::tokens::IMapToken` holds one tracked token per key, and no
+`vstd` primitive splits one resource into infinitely many, so these fields use
+generated collection types in reservation style instead: `<field>_map` (or
+`<field>_set`) holds one raw token owning `ι_i(bm)` for a possibly infinite part
+`bm`, plus finitely many individual tokens. `remove(k)` splits the token for `k` off
+the bulk on demand; `insert` adds an individual token. An operation that consumes a
+sub-collection splits it off the bulk in one step, and one that produces a
+collection hands out its fragment as a new bulk. The types provide the methods of
+`IMapToken`/`ISetToken` (`empty`, `insert`, `remove`, `map`/`set`, `dom`,
+`index`, `contains`, `instance_id`, `into_map`, `from_map`); `into_map` and
+`from_map` require finite maps.
 
 Persistent tokens hold a leaked `&'static` raw token instead of an owned one. Their
 fragments are idempotent, so a shared reference is all an operation needs (they are
@@ -272,12 +285,11 @@ without storage fields uses the plain `vstd::resource::tsm::Token`.
   `ι_i(e) = ε · ι_i(e)`. In a machine without storage the unit is split off the
   instance's own token (`Token::empty`), so the signature is unchanged.
 * **`count` tokens** do not implement `CountToken` (see above).
-* **Finite `imap`/`iset` collections.** An operation that consumes or produces a
-  token collection of an `imap`, `iset`, `persistent_imap` or `persistent_iset`
-  field additionally requires the operand to be finite, and an initial value of
-  such a field must be provably finite in the generated proof (e.g. `IMap::empty()`
-  or finitely many `insert`s; not `ISet::full()`, nor `IMap::new` over a range).
-  Infinitely many tokens cannot be split off one resource.
+* **`imap`/`iset` collection types.** For `imap`, `iset`, `persistent_imap` and
+  `persistent_iset` fields, `<field>_map`/`<field>_set` are generated types (see
+  above), not `vstd::tokens::IMapToken`/`ISetToken`; client code that names
+  `IMapToken<K, V, M::field>` must name `M::field_map` instead. Their `into_map`
+  and `from_map` require finite maps.
 * **Type parameters.** A machine with type parameters and a persistent field (or a
   constant whose type mentions a type parameter, or an operation without storage
   that consumes no token) requires its type parameters to be `'static`: it holds
@@ -291,8 +303,8 @@ without storage fields uses the plain `vstd::resource::tsm::Token`.
   * any number of storage fields;
   * machines with or without type parameters;
   * consumed token collections for `map`, `imap`, `set`, `iset`, `multiset`,
-    `option` and `bool` fields, and produced collections for all collection
-    strategies;
+    `option` and `bool` fields, and produced (also infinite, for `imap` and `iset`
+    strategies) collections for all collection strategies;
   * guards with one output.
 
   Borrowed token collections (`have f >= (e)` for a collection strategy; the

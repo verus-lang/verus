@@ -475,6 +475,9 @@ struct Ctxt {
     sm: SM,
 
     fresh_num_counter: usize,
+
+    // The checked facade's own collection types for `imap`/`iset` fields.
+    reservation_collections: bool,
 }
 
 impl Ctxt {
@@ -530,6 +533,18 @@ pub(crate) fn exchange_parts(
     tr: &Transition,
     safety_condition_lemmas: &HashMap<String, Ident>,
 ) -> parse::Result<ExchangeParts> {
+    exchange_parts_with(bundle, tr, safety_condition_lemmas, false)
+}
+
+/// `exchange_parts`, where `reservation_collections` selects the checked
+/// facade's collection types `<field>_map`/`<field>_set` (instead of
+/// `vstd::tokens::IMapToken`/`ISetToken`) for `imap` and `iset` fields.
+pub(crate) fn exchange_parts_with(
+    bundle: &SMBundle,
+    tr: &Transition,
+    safety_condition_lemmas: &HashMap<String, Ident>,
+    reservation_collections: bool,
+) -> parse::Result<ExchangeParts> {
     let sm = &bundle.sm;
 
     let is_init = tr.kind == TransitionKind::Init;
@@ -582,6 +597,7 @@ pub(crate) fn exchange_parts(
         is_init: is_init,
         sm: bundle.sm.clone(),
         fresh_num_counter: 0,
+        reservation_collections,
     };
 
     let mut tr = tr.clone();
@@ -770,7 +786,9 @@ pub(crate) fn exchange_parts(
                     e,
                     Expr::Verbatim(quote! { #arg_name }),
                 );
-            } else if let Some(init_output_token_type) = get_init_param_output_type(sm, &field) {
+            } else if let Some(init_output_token_type) =
+                get_init_param_output_type(sm, &field, ctxt.reservation_collections)
+            {
                 // Everything else case, output token & postcondition:
 
                 let arg_name = transition_arg_name(field);
@@ -1169,7 +1187,7 @@ fn add_initialization_input_conditions(
     }
 }
 
-fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
+fn get_init_param_output_type(sm: &SM, field: &Field, reservation: bool) -> Option<Type> {
     match &field.stype {
         ShardableType::Variable(_) => Some(field_token_type(&sm, field)),
         ShardableType::Constant(_) => None, // constants handled separately
@@ -1187,7 +1205,7 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
         | ShardableType::Map(..)
         | ShardableType::IMap(..)
         | ShardableType::PersistentMap(..)
-        | ShardableType::PersistentIMap(..) => Some(field_token_collection_type(sm, field)),
+        | ShardableType::PersistentIMap(..) => Some(field_token_collection_type(sm, field, reservation)),
 
         ShardableType::StorageOption(_) => None, // no output tokens for storage
         ShardableType::StorageMap(_, _) => None,
@@ -1942,8 +1960,19 @@ fn translate_split_kind(ctxt: &mut Ctxt, sk: &mut SplitKind, errors: &mut Vec<Er
     }
 }
 
-fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
+fn field_token_collection_type(sm: &SM, field: &Field, reservation: bool) -> Type {
     let tok = field_token_type(sm, field);
+    if reservation {
+        let suffix = match &field.stype {
+            ShardableType::IMap(..) | ShardableType::PersistentIMap(..) => Some("map"),
+            ShardableType::ISet(_) | ShardableType::PersistentISet(_) => Some("set"),
+            _ => None,
+        };
+        if let Some(suffix) = suffix {
+            let name = Ident::new(&format!("{}_{}", field.name, suffix), field.name.span());
+            return name_with_type_args(&name, sm);
+        }
+    }
     match &field.stype {
         ShardableType::Option(_)
         | ShardableType::PersistentOption(_)
@@ -2105,7 +2134,7 @@ fn translate_special_condition(
             let ident = ctxt.get_numbered_token_ident(&field.name);
             let is_collection = elt.is_general() && !field.stype.is_count();
             let ty = if is_collection {
-                field_token_collection_type(&ctxt.sm, &field)
+                field_token_collection_type(&ctxt.sm, &field, ctxt.reservation_collections)
             } else {
                 field_token_type(&ctxt.sm, &field)
             };
@@ -2132,7 +2161,7 @@ fn translate_special_condition(
             let ident = ctxt.get_numbered_token_ident(&field.name);
             let is_collection = elt.is_general() && !field.stype.is_count();
             let ty = if is_collection {
-                field_token_collection_type(&ctxt.sm, &field)
+                field_token_collection_type(&ctxt.sm, &field, ctxt.reservation_collections)
             } else {
                 field_token_type(&ctxt.sm, &field)
             };
@@ -2159,7 +2188,7 @@ fn translate_special_condition(
             let ident = ctxt.get_numbered_token_ident(&field.name);
             let is_collection = elt.is_general() && !field.stype.is_count();
             let ty = if is_collection {
-                field_token_collection_type(&ctxt.sm, &field)
+                field_token_collection_type(&ctxt.sm, &field, ctxt.reservation_collections)
             } else {
                 field_token_type(&ctxt.sm, &field)
             };

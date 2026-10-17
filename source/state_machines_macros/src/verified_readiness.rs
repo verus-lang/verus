@@ -113,8 +113,13 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
             if !names.is_empty() {
                 return Err(Error::new(bundle.name.span(), "generic field tokens do not combine with selected physical readiness"));
             }
+            // Initial requirements over a storage map become named open spec
+            // functions (as for the field facades), which keeps the raw
+            // initializer's execution proof stable; clients see equal terms.
+            if bundle.sm.fields.iter().any(|field| matches!(field.stype, ShardableType::StorageMap(..))) {
+                crate::verified_field_storage_map::normalize_initial_requirements(&mut bundle)?;
+            }
             let api=crate::verified_generic_tokens::output(&bundle)?;
-            if let Ok(path)=std::env::var("VERUS_TSM_GENERIC_DUMP") {let _=std::fs::write(path,api.to_string());}
             let output=crate::verified_general::output(bundle)?;
             return crate::verified_generic_tokens::append_tokens(output,api);
         }
