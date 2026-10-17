@@ -135,8 +135,8 @@ enum StoreKind {
     /// storage options indexed by their position).
     Plain,
     /// `__StorageKey` tagged by field, with the fields' common payload type
-    /// as the value (one `option`, one `map`/`imap`, one `storage_option` and
-    /// one `storage_map`/`storage_imap` field of one payload type).
+    /// as the value (storage fields that need a tagged carrier and all store
+    /// one payload type).
     Homog,
 }
 
@@ -170,11 +170,6 @@ impl Store {
             })
             .collect();
         if fields.len() >= 2 && (has_option && map_count > 0 || map_count > 1 || option_types.len() > 1) {
-            if sm.fields.len() == 4
-                && sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::Option(_))).count() == 1
-                && sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::Map(..) | ShardableType::IMap(..))).count() == 1
-                && has_option
-                && map_count == 1
             {
                 let owned: Vec<Field> = fields.iter().map(|f| (*f).clone()).collect();
                 if let Some(v) = crate::verified_storage_homogeneous_carrier::payload(&owned) {

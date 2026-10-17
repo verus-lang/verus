@@ -340,12 +340,13 @@ then independent of the size of the rest of the generated module.
 
 Storage operations deposit and withdraw through the raw protocol's storage map. With
 one `storage_map` or `storage_imap` field its keys and values are the field's own;
-`storage_option` fields of one value type use an index key; several storage fields
-of different kinds use the raw protocol's tagged carrier
-(`__StorageKey`/`__StorageValue`), and exactly one `option`, one `map`/`imap`, one
-`storage_option` and one `storage_map`/`storage_imap` field whose stored values
-have one type use its homogeneous carrier (tagged keys, untagged values). A machine
-without storage fields uses the plain `vstd::resource::tsm::Token`.
+`storage_option` fields of one value type use an index key. Any other combination
+of storage fields (several map fields, or option and map fields, or options of
+different value types) uses a carrier keyed by `__StorageKey`, which tags each key
+with its field: if all storage fields store one value type, the values are the
+payloads themselves (the homogeneous carrier, whose transfers re-key tracked maps,
+including infinite ones); otherwise they are tagged too (`__StorageValue`). A
+machine without storage fields uses the plain `vstd::resource::tsm::Token`.
 
 A storage guard guards from the joined observation of its borrowed tokens; a guard
 that borrows no token guards from the instance's unit token. For the general

@@ -71,14 +71,10 @@ impl Carrier {
         if fields.len() < 2 || !(has_option && map_count > 0 || map_count > 1 || option_types.len() > 1) {
             return Ok(None);
         }
-        // Preserve existing carrier layouts outside the four-role mixed
-        // logical/physical profile. Its arbitrary-domain initializer needs
-        // key-only transfers, since its original payloads are homogeneous.
-        if sm.fields.len() == 4
-            && sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::Option(_))).count() == 1
-            && sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::Map(..) | ShardableType::IMap(..))).count() == 1
-            && fields.iter().filter(|f| matches!(f.stype, ShardableType::StorageOption(_))).count() == 1
-            && fields.iter().filter(|f| matches!(f.stype, ShardableType::StorageMap(..) | ShardableType::StorageIMap(..))).count() == 1
+        // Storage fields of one payload type share a key-only tagged carrier:
+        // keys are tagged by field, values are the payloads themselves, so
+        // transfers re-key tracked maps (also infinite ones, e.g. an
+        // arbitrary-domain `storage_imap` initializer) without repacking them.
         {
             if let Some(value) = crate::verified_storage_homogeneous_carrier::payload(&fields) {
                 let output = crate::verified_storage_homogeneous_carrier::build(sm, &fields, &value, caller_items)?;
