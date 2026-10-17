@@ -1714,6 +1714,10 @@ fn pattern_smt_equality_rec<'tcx>(
             if implements_structural(bctx, ty) {
                 return true;
             }
+            // Box's == compares the contents (ignoring the allocator), and so does spec ==
+            if Some(adt_def.did()) == tcx.lang_items().owned_box() {
+                return rec(args.type_at(0), seen, adts);
+            }
             let Some(structural_peq) = tcx.lang_items().structural_peq_trait() else {
                 return false;
             };
