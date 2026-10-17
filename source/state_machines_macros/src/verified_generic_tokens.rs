@@ -2472,17 +2472,24 @@ fn rewrite_old(ts: TokenStream, with: &dyn Fn(&str) -> Option<TokenStream>) -> T
                 if inner.len() == 1 {
                     if let TokenTree::Ident(p) = &inner[0] {
                         if let Some(rep) = with(&p.to_string()) {
-                            // Drop a preceding path (`::vstd::prelude::`).
+                            // Drop a preceding path (`::vstd::prelude::`). A
+                            // keyword before a leading `::` (`match ::vstd::..`)
+                            // is not a path segment.
+                            const KEYWORDS: &[&str] = &["match", "if", "else", "while", "for", "in", "return",
+                                "let", "mut", "ref", "move", "as", "box", "break", "loop", "unsafe", "where"];
                             loop {
                                 let l = out.len();
                                 if l >= 2 {
                                     if let (TokenTree::Punct(a), TokenTree::Punct(b)) = (&out[l - 2], &out[l - 1]) {
                                         if a.as_char() == ':' && b.as_char() == ':' {
                                             out.truncate(l - 2);
-                                            if let Some(TokenTree::Ident(_)) = out.last() {
-                                                out.pop();
+                                            if let Some(TokenTree::Ident(seg)) = out.last() {
+                                                if !KEYWORDS.contains(&seg.to_string().as_str()) {
+                                                    out.pop();
+                                                    continue;
+                                                }
                                             }
-                                            continue;
+                                            break;
                                         }
                                     }
                                 }
@@ -3838,6 +3845,28 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     } else {
         quote! {}
     };
+    // Ground terms for the input tokens' accessors: a precondition that uses
+    // an accessor only under a quantifier (`forall|i| .. t.value().index(i) ..`)
+    // otherwise never unfolds it to the token's data, which the inclusion
+    // lemmas relate to the state.
+    let accessor_anchors: Vec<TokenStream> = params
+        .iter()
+        .filter(|q| !q.field.stype.is_storage() && !q.p.is_collection
+            && matches!(q.p.inout_type, InoutType::In | InoutType::InOut | InoutType::BorrowIn))
+        .flat_map(|q| {
+            let pname = &q.p.name;
+            let pairs: &[(&str, &str)] = match kind(q.field) {
+                Some(Kind::Variable | Kind::Option | Kind::PersistentOption) => &[("value", "__v")],
+                Some(Kind::Map | Kind::PersistentMap | Kind::IMap | Kind::PersistentIMap) => &[("key", "__k"), ("value", "__v")],
+                Some(Kind::Set | Kind::PersistentSet | Kind::ISet | Kind::PersistentISet | Kind::Multiset) => &[("element", "__e")],
+                _ => &[],
+            };
+            pairs.iter().map(move |(acc, d)| {
+                let (acc, d) = (format_ident!("{}", acc), format_ident!("{}", d));
+                quote! {assert(::vstd::prelude::equal((#pname).#acc(), #pname.#d));}
+            }).collect::<Vec<_>>()
+        })
+        .collect();
     let ready = quote! {
         #[verifier::spinoff_prover]
         proof fn #ready_fn(&self, #(#ghost_params,)* #(#tparams,)* #owned_ident: Fragment, #h_param: Fragment #dep_comma #dep_param)
@@ -3853,6 +3882,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         {
             hide(State::invariant);
             #lemmas
+            #(#accessor_anchors)*
             #(#early_helper)*
             #ready_pre
             assert forall|__tsm_z: Fragment, pre: State| pre.invariant()
@@ -4724,5 +4754,139 @@ pub fn append_tokens(output: TokenStream, api: TokenStream) -> Result<TokenStrea
     if api.is_some() {
         return err(Span::call_site(), "checked field facade: generated verus block not found");
     }
+    if let Ok(p) = std::env::var("TSM_DUMP_GENERIC") { let _ = std::fs::write(p, out.to_string()); }
     Ok(out)
+}
+
+/// Initial requirements of a machine with a storage map become named open
+/// spec functions (`State::__tsm_storage_initial_requirement_<i>`), which keeps
+/// the raw initializer's execution proof stable; clients see equal terms.
+pub fn normalize_initial_requirements(bundle:&mut crate::parse_token_stream::SMBundle)->Result<(),Error> {
+    let args=bundle.sm.generics.as_ref().map(|g|crate::to_token_stream::get_generic_args(&g.params));
+    let state=args.as_ref().map(|a|quote!{State::<#a>}).unwrap_or(quote!{State});
+    let mut unavailable:HashSet<_>=bundle.normal_fns.iter().map(|f|f.sig.ident.to_string())
+        .chain(bundle.extras.invariants.iter().map(|i|i.func.sig.ident.to_string()))
+        .chain(bundle.extras.lemmas.iter().map(|l|l.func.sig.ident.to_string()))
+        .collect();
+    unavailable.extend(["invariant".to_string(),"__storage".to_string()]);
+    for tr in &bundle.sm.transitions {
+        for suffix in ["","_strong","_enabled","_safety","_execute","_owners_enabled","_deposited","_guarded","_declared_requires","_local_deposited"] {
+            unavailable.insert(format!("{}{suffix}",tr.name));
+        }
+    }
+    for index in 0..bundle.sm.transitions.len() {
+        let tr=&bundle.sm.transitions[index];
+        if tr.kind!=TransitionKind::Init {continue;}
+        let mut values=HashMap::new();let mut requirements=Vec::new();
+        initial_statements(&tr.body,&mut values,&mut requirements)?;
+        let params:Vec<_>=tr.params.iter().map(|p|{let n=&p.name;let t=&p.ty;quote!{#n:#t}}).collect();
+        let names:Vec<_>=tr.params.iter().map(|p|&p.name).collect();
+        let mut replacements=Vec::new();
+        for (i,e) in requirements.iter().enumerate() {
+            let mut n=initial_fresh(&bundle.sm,tr,&format!("initial_requirement_{i}"));
+            while unavailable.contains(&n.to_string()) {n=Ident::new(&(n.to_string()+"_"),Span::mixed_site());}
+            unavailable.insert(n.to_string());
+            let f:verus_syn::ImplItemFn=verus_syn::parse2(quote!{pub open spec fn #n(#(#params),*)->bool{#e}})?;
+            bundle.normal_fns.push(f);
+            replacements.push(verus_syn::parse2::<Expr>(quote!{#state::#n(#(#names),*)})?);
+        }
+        fn replace(s:&mut TransitionStmt,expressions:&mut std::vec::IntoIter<Expr>) {
+            match s {
+                TransitionStmt::Block(_,xs)=>for x in xs {replace(x,expressions)},
+                TransitionStmt::Require(_,e)=>*e=expressions.next().expect("initializer requirement order"),
+                _=>{},
+            }
+        }
+        replace(&mut bundle.sm.transitions[index].body,&mut replacements.into_iter());
+    }
+    Ok(())
+}
+
+fn initial_fresh(sm: &SM, tr: &Transition, label: &str) -> Ident {
+    let mut unavailable: HashSet<_> = sm.fields.iter().map(|f| f.name.to_string()).collect();
+    unavailable.extend(tr.params.iter().map(|p| p.name.to_string()));
+    fn bindings(stmt: &TransitionStmt, out: &mut HashSet<String>) {
+        struct Names<'a>(&'a mut HashSet<String>);
+        impl<'ast> verus_syn::visit::Visit<'ast> for Names<'_> {
+            fn visit_ident(&mut self, ident: &'ast Ident) {
+                self.0.insert(ident.to_string());
+            }
+        }
+        use verus_syn::visit::Visit;
+        match stmt {
+            TransitionStmt::Block(_, children) => {
+                for child in children {
+                    bindings(child, out);
+                }
+            }
+            TransitionStmt::Split(_, split, children) => {
+                match &**split {
+                    SplitKind::Let(pat, ..) => Names(out).visit_pat(pat),
+                    SplitKind::Special(_, _, _, Some(pat)) => Names(out).visit_pat(pat),
+                    SplitKind::Match(_, arms) => {
+                        for arm in arms {
+                            Names(out).visit_pat(&arm.pat);
+                        }
+                    }
+                    _ => {}
+                }
+                for child in children {
+                    bindings(child, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    fn tokens(t:TokenStream,names:&mut HashSet<String>) {
+        for token in t {match token {
+            proc_macro2::TokenTree::Ident(n)=>{names.insert(n.to_string());},
+            proc_macro2::TokenTree::Group(g)=>tokens(g.stream(),names),_=>{}
+        }}
+    }
+    fn expressions(s:&TransitionStmt,names:&mut HashSet<String>) {
+        match s {
+            TransitionStmt::Block(xs,children)=>{let _=xs;for c in children {expressions(c,names);}},
+            TransitionStmt::Initialize(_,_,e)|TransitionStmt::Update(_,_,e)|TransitionStmt::Require(_,e)|TransitionStmt::Assert(_,e,_)=>tokens(quote!{#e},names),
+            TransitionStmt::Split(_,split,children)=>{
+                match &**split {
+                    SplitKind::Let(p,t,_,e)=>tokens(quote!{#p #t #e},names),
+                    SplitKind::Special(_,op,_,p)=>{tokens(quote!{#p},names);if let MonoidElt::SingletonKV(k,v)=&op.elt {tokens(quote!{#k #v},names);}},_=>{}
+                }
+                for c in children {expressions(c,names);}
+            },_=>{}
+        }
+    }
+    expressions(&tr.body,&mut unavailable);
+    if let Some(g)=&sm.generics {tokens(quote!{#g},&mut unavailable);}
+    bindings(&tr.body, &mut unavailable);
+    let mut candidate = format!("__tsm_storage_{label}");
+    while unavailable.contains(&candidate) {
+        candidate.push('_');
+    }
+    Ident::new(&candidate, Span::mixed_site())
+}
+
+fn initial_statements(
+    stmt: &TransitionStmt,
+    values: &mut HashMap<String, Expr>,
+    requirements: &mut Vec<Expr>,
+) -> Result<(), Error> {
+    match stmt {
+        TransitionStmt::Block(_, children) => {
+            for child in children {
+                initial_statements(child, values, requirements)?;
+            }
+        }
+        TransitionStmt::Initialize(_, name, value) => {
+            values.insert(name.to_string(), value.clone());
+        }
+        TransitionStmt::Require(_, value) => requirements.push(value.clone()),
+        _ => {
+            return Err(Error::new(
+                *stmt.get_span(),
+                "physical field initializer requires straight-line initialization",
+            ))
+        }
+    }
+    Ok(())
 }

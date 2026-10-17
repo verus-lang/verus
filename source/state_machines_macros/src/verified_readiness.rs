@@ -1,5 +1,7 @@
-//! Optional checked readiness over locally observed inputs. The existing
-//! all-completion API remains available when a transition is not opted in.
+//! Interface selection for `verified_tokenized_state_machine!`, and optional
+//! checked readiness over locally observed inputs for the raw interface. The
+//! existing all-completion API remains available when a transition is not
+//! opted in.
 use crate::ast::*;
 use crate::parse_token_stream::{parse_result_to_smir, ParseResult, SMBundle};
 use proc_macro2::TokenStream;
@@ -7,11 +9,16 @@ use quote::{format_ident, quote};
 use std::collections::HashSet;
 use verus_syn::{punctuated::Punctuated, Error, Ident, Token, Type};
 
+/// Selects the client interface. The default is the generic field-token
+/// interface (`verified_generic_tokens`, which may also be written explicitly):
+/// the trusted macro's token types and `Instance` methods, each proved by a
+/// call to the raw operation. `#[verified_raw_tokens]` selects the raw
+/// resource interface, optionally with `#[verified_local_ready(..)]` raw
+/// operations whose preconditions are stated over the owned fragments.
 pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
     let mut selected = HashSet::new();
-    let mut field_optin=false;
-    let mut raw_optout=false;
-    let mut generic=false;
+    let mut raw = false;
+    let mut generic = false;
     let mut names = vec![];
     let mut remaining = vec![];
     for attr in parsed.attrs {
@@ -21,20 +28,20 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
             String::new()
         };
         if attribute_name == "verified_field_tokens" {
-            if field_optin {return Err(Error::new(attr.path().segments[0].ident.span(),"duplicate field facade attribute"));}
-            if !matches!(attr.meta,verus_syn::Meta::Path(_)){return Err(Error::new(attr.path().segments[0].ident.span(),"field facade attribute takes no arguments"));}
-            if raw_optout {return Err(Error::new(attr.path().segments[0].ident.span(),"field facade and raw token attributes cannot be combined"));}
-            field_optin=true;
+            return Err(Error::new(
+                attr.path().segments[0].ident.span(),
+                "`#[verified_field_tokens]` was removed: per-field tokens (the generic interface) are the default; delete the attribute",
+            ));
         } else if attribute_name == "verified_generic_tokens" {
-            if field_optin || raw_optout || generic {return Err(Error::new(attr.path().segments[0].ident.span(),"generic field tokens cannot be combined with another token attribute"));}
+            if generic {return Err(Error::new(attr.path().segments[0].ident.span(),"duplicate generic field tokens attribute"));}
+            if raw {return Err(Error::new(attr.path().segments[0].ident.span(),"generic field tokens and raw token attributes cannot be combined"));}
             if !matches!(attr.meta,verus_syn::Meta::Path(_)){return Err(Error::new(attr.path().segments[0].ident.span(),"generic field tokens attribute takes no arguments"));}
             generic=true;
-            raw_optout=true;
         } else if attribute_name == "verified_raw_tokens" {
-            if raw_optout {return Err(Error::new(attr.path().segments[0].ident.span(),"duplicate raw token attribute"));}
+            if raw {return Err(Error::new(attr.path().segments[0].ident.span(),"duplicate raw token attribute"));}
+            if generic {return Err(Error::new(attr.path().segments[0].ident.span(),"generic field tokens and raw token attributes cannot be combined"));}
             if !matches!(attr.meta,verus_syn::Meta::Path(_)){return Err(Error::new(attr.path().segments[0].ident.span(),"raw token attribute takes no arguments"));}
-            if field_optin {return Err(Error::new(attr.path().segments[0].ident.span(),"field facade and raw token attributes cannot be combined"));}
-            raw_optout=true;
+            raw=true;
         } else if attr.path().is_ident("verified_local_ready") {
             let list = attr.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)?;
             for name in list {
@@ -47,92 +54,33 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
             remaining.push(attr);
         }
     }
-    // Nominal field APIs are the default. The explicit raw marker selects
-    // exactly the existing lower-level checked resource path. Unsupported
-    // nominal profiles still return their original facade diagnostics.
-    let typed = !raw_optout;
     parsed.attrs = remaining;
     let mut bundle = parse_result_to_smir(parsed, true)?;
     crate::lemmas::check_lemmas(&bundle)?;
-    if typed && crate::verified_field_nondet::needed(&bundle.sm) {
-        if !selected.is_empty() {
-            return Err(Error::new(bundle.name.span(), "mutable unowned observations do not combine with physical readiness"));
+    if !raw {
+        if let Some(name) = names.first() {
+            return Err(Error::new(
+                name.span(),
+                "`#[verified_local_ready(..)]` selects raw local-readiness operations and requires `#[verified_raw_tokens]`; the default field-token interface states its preconditions over the tokens already",
+            ));
         }
-        validate_api_names(&bundle,&selected)?;
-        let api=crate::verified_field_nondet::output(&bundle.sm)?;
+        // Initial requirements over a storage map become named open spec
+        // functions, which keeps the raw initializer's execution proof
+        // stable; clients see equal terms.
+        if bundle.sm.fields.iter().any(|field| matches!(field.stype, ShardableType::StorageMap(..))) {
+            crate::verified_generic_tokens::normalize_initial_requirements(&mut bundle)?;
+        }
+        let api=crate::verified_generic_tokens::output(&bundle)?;
+        // The generic interface is written against the general emitter's
+        // interface, so every machine goes there directly. This is the
+        // end point of `verified_tokens::output_raw`'s fallback as well,
+        // and the general emitter carries the raw backend's lifted limits
+        // (labels, several deposits/withdrawals/guards per path, ...).
         let output=crate::verified_general::output(bundle)?;
-        return crate::verified_field_tokens::append(output,api);
-    }
-    if typed && crate::verified_hidden_constants::needed(&bundle.sm) {
-        if !selected.is_empty() {
-            return Err(Error::new(bundle.name.span(), "hidden unchanging observations do not yet combine with selected physical readiness"));
-        }
-        return crate::verified_hidden_constants::output(bundle);
+        return crate::verified_generic_tokens::append_tokens(output,api);
     }
     if selected.is_empty() {
-        if typed && crate::verified_storage_owned_imap::needed(&bundle.sm) {
-            validate_api_names(&bundle,&selected)?;
-            let api=crate::verified_storage_owned_imap::output(&bundle)?;
-            let output=crate::verified_model::output(bundle)?;
-            return crate::verified_field_tokens::append(output,api);
-        }
-        if typed && crate::verified_field_storage_refutable::needed(&bundle.sm) {
-            validate_api_names(&bundle,&selected)?;
-            let api=crate::verified_field_storage_refutable::output(&bundle.sm)?;
-            let output=crate::verified_general::output(bundle)?;
-            return crate::verified_field_tokens::append(output,api);
-        }
-        if typed && crate::verified_field_storage_bindings::needed(&bundle.sm) {
-            validate_api_names(&bundle,&selected)?;
-            let api=crate::verified_field_storage_bindings::output(&bundle.sm)?;
-            let output=crate::verified_general::output(bundle)?;
-            return crate::verified_field_tokens::append(output,api);
-        }
-
-        if typed && crate::verified_field_storage_map_pair::needed(&bundle.sm) {
-            validate_api_names(&bundle,&selected)?;
-            let api=crate::verified_field_storage_map_pair::output(&bundle.sm,&selected)?;
-            let output=crate::verified_general::output(bundle)?;
-            return crate::verified_field_tokens::append(output,api);
-        }
-        if typed && bundle.sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::StorageMap(..))).count() == 1
-            && bundle.sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::StorageOption(_))).count() == 1
-            && bundle.sm.fields.iter().all(|f| matches!(f.stype,
-                ShardableType::StorageMap(..) | ShardableType::StorageOption(_)
-                | ShardableType::Constant(_) | ShardableType::Variable(_)
-                | ShardableType::Count | ShardableType::Bool | ShardableType::PersistentBool
-                | ShardableType::Option(_) | ShardableType::PersistentOption(_)
-                | ShardableType::Set(_) | ShardableType::PersistentSet(_)
-                | ShardableType::Multiset(_) | ShardableType::PersistentMap(..))) {
-            validate_api_names(&bundle, &selected)?;
-            let api = crate::verified_field_storage_wide::output(&bundle.sm, &selected)?;
-            let output = crate::verified_general::output(bundle)?;
-            return crate::verified_field_tokens::append(output, api);
-        }
-        if generic {
-            if !names.is_empty() {
-                return Err(Error::new(bundle.name.span(), "generic field tokens do not combine with selected physical readiness"));
-            }
-            // Initial requirements over a storage map become named open spec
-            // functions (as for the field facades), which keeps the raw
-            // initializer's execution proof stable; clients see equal terms.
-            if bundle.sm.fields.iter().any(|field| matches!(field.stype, ShardableType::StorageMap(..))) {
-                crate::verified_field_storage_map::normalize_initial_requirements(&mut bundle)?;
-            }
-            let api=crate::verified_generic_tokens::output(&bundle)?;
-            // The generic facade is written against the general emitter's
-            // interface, so every machine goes there directly. This is the
-            // end point of `verified_tokens::output_raw`'s fallback as well,
-            // and the general emitter carries the raw backend's lifted limits
-            // (labels, several deposits/withdrawals/guards per path, ...).
-            let output=crate::verified_general::output(bundle)?;
-            return crate::verified_generic_tokens::append_tokens(output,api);
-        }
-        let api=if typed {Some(crate::verified_field_tokens::output(&bundle.sm)?)}else{None};
-        let output=if typed && bundle.sm.fields.len()==1 && matches!(bundle.sm.fields[0].stype,ShardableType::Count) {
-            crate::verified_general::output(bundle)?
-        }else if typed {crate::verified_tokens::output(bundle)?}else{crate::verified_tokens::output_raw(bundle)?};
-        return if let Some(api)=api {crate::verified_field_tokens::append(output,api)}else{Ok(output)};
+        return crate::verified_tokens::output_raw(bundle);
     }
     for name in names {
         let Some(tr) = bundle.sm.transitions.iter().find(|tr| tr.name == name) else {
@@ -144,32 +92,6 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
                 "local-ready requires a mutating transition",
             ));
         }
-    }
-    if typed && bundle.sm.fields.iter().any(|field| matches!(field.stype, ShardableType::StorageMap(..))) {
-        crate::verified_field_storage_map::normalize_initial_requirements(&mut bundle)?;
-    }
-    if typed {
-        if !bundle.sm.fields.iter().any(|field| field.stype.is_storage()) {
-            return Err(Error::new(bundle.name.span(),"field facade cannot yet combine with selected physical readiness"));
-        }
-        let variables = bundle.sm.fields.iter()
-            .filter(|field| matches!(field.stype, ShardableType::Variable(_))).count();
-        let api = if crate::verified_field_storage_general_bulk::needed(&bundle.sm) {crate::verified_field_storage_general_bulk::output(&bundle.sm,&selected)?} else if crate::verified_field_storage_distributed_rwlock::needed(&bundle.sm) {crate::verified_field_storage_distributed_rwlock::output(&bundle.sm,&selected)?} else if crate::verified_field_storage_map_pair::needed(&bundle.sm) {crate::verified_field_storage_map_pair::output(&bundle.sm,&selected)?} else if crate::verified_field_storage_rwlock::needed(&bundle.sm) {crate::verified_field_storage_rwlock::output(&bundle.sm,&selected)?} else if crate::verified_field_storage_logical_map::needed(&bundle.sm) { crate::verified_field_storage_logical_map::output(&bundle.sm, &selected)? } else if bundle.sm.fields.iter().filter(|field|field.stype.is_storage()).count()>1 {crate::verified_field_storage_multiple::output(&bundle.sm,&selected)?} else if variables > 1 && bundle.sm.fields.iter().any(|field| matches!(field.stype,ShardableType::Count|ShardableType::Set(_)|ShardableType::Option(_))) {
-            crate::verified_field_storage_heterogeneous::output(&bundle.sm,&selected)?
-        } else if bundle.sm.fields.iter().any(|field| matches!(field.stype,ShardableType::Multiset(_))) && bundle.sm.fields.iter().any(|field| matches!(field.stype,ShardableType::Bool)) {
-            crate::verified_field_storage_borrows::output(&bundle.sm,&selected)?
-        } else if bundle.sm.fields.iter().any(|field| matches!(field.stype,ShardableType::Multiset(_))) {
-            if crate::verified_field_storage_counting::needed(&bundle.sm){crate::verified_field_storage_counting::output(&bundle.sm,&selected)?}else{crate::verified_field_storage_readers::output(&bundle.sm,&selected)?}
-        } else if bundle.sm.fields.iter().any(|field| matches!(field.stype, ShardableType::StorageMap(..))) {
-            crate::verified_field_storage_map::output(&bundle.sm, &selected)?
-        } else if variables > 1 {
-            crate::verified_field_storage_grouped::output(&bundle.sm, &selected)?
-        } else {
-            crate::verified_field_storage::output(&bundle.sm, &selected)?
-        };
-        validate_api_names(&bundle, &selected)?;
-        let output = crate::verified_general::output_with_ready(bundle, &selected)?;
-        return crate::verified_field_tokens::append(output, api);
     }
     validate_api_names(&bundle, &selected)?;
     crate::verified_general::output_with_ready(bundle, &selected)
