@@ -422,6 +422,7 @@ fn mk_bctx<'tcx>(
         external_opaque_type_map,
         label_map: std::rc::Rc::new(std::cell::RefCell::new((HashMap::new(), 0))),
         erasure_info: std::rc::Rc::new(std::cell::RefCell::new(ErasureInfo::new())),
+        drop_scopes: Default::default(),
     }
 }
 
@@ -439,7 +440,7 @@ fn body_to_vir<'tcx>(
     external_opaque_type_map: Option<HashMap<Path, Path>>,
     is_async: bool,
 ) -> Result<(vir::ast::Expr, Vec<(vir::ast::Stmt, vir::ast::Stmt)>, BodyCtxt<'tcx>), VirErr> {
-    let param_names = params.iter().map(|p| p.x.name.clone()).collect();
+    let param_names: Vec<VarIdent> = params.iter().map(|p| p.x.name.clone()).collect();
     let bctx = mk_bctx(
         ctxt,
         fun_id,
@@ -448,12 +449,24 @@ fn body_to_vir<'tcx>(
         external_body,
         external_trait_from_to,
         migrate_postcondition_vars,
-        param_names,
+        param_names.clone(),
         external_opaque_type_map,
     );
     let body_expr =
         if is_async { extract_desugared_async_body(&bctx.ctxt, body)? } else { &body.value };
-    let e = expr_to_vir_consume(&bctx, body_expr)?;
+    // As in rustc's MIR builder, the parameters are in their own scope, outside the body,
+    // so they are dropped after everything in the body.
+    let args_scope = rustc_middle::middle::region::Scope {
+        local_id: body.value.hir_id.local_id,
+        data: rustc_middle::middle::region::ScopeData::Arguments,
+    };
+    let (e, drops) = bctx.in_drop_scope(args_scope, || {
+        for param_name in param_names.iter() {
+            bctx.schedule_local_drop_in(args_scope, param_name, body.value.span);
+        }
+        expr_to_vir_consume(&bctx, body_expr)
+    })?;
+    let e = crate::drop_scopes::append_drops(&bctx, e, drops);
 
     bctx.push_body_erasure(
         fun_id.expect_local(),

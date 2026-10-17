@@ -71,7 +71,8 @@ pub(crate) struct State<'tcx> {
     /// Crate that can be exported
     cache_exportable_crate: Option<Res<Krate>>,
     /// Crate with trait demotion, resolution inference, merged with imported crates and pruned
-    cache_merged_crate: Option<Res<(Krate, Arc<WarningCtx>)>>,
+    /// (also includes the resolution inference CFG logs, if requested)
+    cache_merged_crate: Option<Res<(Krate, Arc<WarningCtx>, Arc<Vec<(Fun, String)>>)>>,
 
     /// Errors found along the way
     pub encountered_blocking_vir_error: bool,
@@ -611,7 +612,13 @@ impl<'tcx> Query<'tcx> {
         Ok(cache_or_compute!(self, cache_merged_crate, _compute_merged_crate())?.1)
     }
 
-    pub fn _compute_merged_crate(&self) -> Res<(Krate, Arc<WarningCtx>)> {
+    /// Pretty-printed CFGs built by resolution inference, for each function
+    /// (empty unless resolution-cfg logging is enabled)
+    pub fn get_resolution_cfg_logs(&self) -> Res<Arc<Vec<(Fun, String)>>> {
+        Ok(cache_or_compute!(self, cache_merged_crate, _compute_merged_crate())?.2)
+    }
+
+    pub fn _compute_merged_crate(&self) -> Res<(Krate, Arc<WarningCtx>, Arc<Vec<(Fun, String)>>)> {
         let pre_crate = self.get_pre_crate()?;
         let _flush = pre_crate.ctxt.flush_diagnostics_on_drop(&*self.reporter);
         let krate = self.get_exportable_crate()?;
@@ -658,11 +665,13 @@ impl<'tcx> Query<'tcx> {
                 Err(_) => unreachable!(),
             }
         }
-        let krate = krate_infer_resolution(&krate, &res_infos).map_err(|e| self.emit_errors(e))?;
+        let log_cfgs = self.args.log_all || self.args.log_args.log_resolution_cfg;
+        let (krate, cfg_logs) = krate_infer_resolution(&krate, &res_infos, log_cfgs)
+            .map_err(|e| self.emit_errors(e))?;
 
         vir::well_formed::check_crate_merged(&krate).map_err(|e| self.emit_error(e))?;
 
-        Ok((krate, Arc::new(new_warning_ctx)))
+        Ok((krate, Arc::new(new_warning_ctx), Arc::new(cfg_logs)))
     }
 
     //// Erasure modes

@@ -3846,6 +3846,10 @@ pub(crate) fn expr_to_stm_opt(
                 }
             }
         }
+        ExprX::Drop(_) => {
+            // Drops are currently no-ops
+            Ok((vec![], Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
+        }
         ExprX::AirStmt(s) => {
             let stmt = Spanned::new(expr.span.clone(), StmX::Air(s.clone()));
             return Ok((vec![stmt], Maybe::Some(Value::ImplicitUnit(expr.span.clone()))));
@@ -4082,6 +4086,8 @@ fn binary_op_exp(
             None => e2.clone(),
         };
         SpannedTyped::new(span, &bool_typ(), ExpX::Binary(bin_op, l, r))
+    } else if let BinaryOp::Left = op {
+        e1.clone()
     } else {
         let pure_op = match op {
             // Ops with side-effects are turned into sst ops without side-effects
@@ -4102,6 +4108,7 @@ fn binary_op_exp(
             BinaryOp::Arith(ArithOp::TruncatingDiv(_, _)) => unreachable!(),
             BinaryOp::UninterpretedFloat(..) => unreachable!(),
             BinaryOp::BoolInequality(..) => unreachable!(),
+            BinaryOp::Left => unreachable!(),
 
             // Pure ops
             BinaryOp::BoolOrNoSC => sst::BinaryOp::Or,

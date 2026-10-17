@@ -155,6 +155,8 @@ pub(crate) struct BodyCtxt<'tcx> {
     /// Mapping for HirId found in an HIR Destination to the corresponding VIR Label.
     pub(crate) label_map: Rc<RefCell<(HashMap<HirId, vir::ast::Label>, usize)>>,
     pub(crate) erasure_info: ErasureInfoRef,
+    /// Stack of drop scopes for the current function or closure body (see drop_scopes.rs)
+    pub(crate) drop_scopes: Rc<RefCell<crate::drop_scopes::DropScopes>>,
 }
 
 pub(crate) struct AtomicallyCtxt {

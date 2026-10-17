@@ -266,10 +266,10 @@ The analysis is pretty weak right now but could be improved.
 
 use crate::ast::{
     Arm, ArrayKind, BoundsCheck, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
-    FunWithVis, Function, Ident, Krate, Label, Mode, ModeWrapperMode, Params, Path, Pattern,
-    PatternBinding, PatternX, Place, PlaceX, Primitive, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
-    TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate,
-    VariantCheck, VirErr,
+    FunWithVis, Function, Ident, Krate, Label, LocalOrTemp, Mode, ModeWrapperMode, Params, Path,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, Primitive, ReadKind, SpannedTyped, Stmt,
+    StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind, VarBinders, VarIdent,
+    VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast_to_sst::Maybe;
 use crate::ast_util::{
@@ -298,10 +298,12 @@ pub struct ResolutionInfo {
     pub(crate) dual_mode: bool,
 }
 
+/// If `log_cfgs` is set, also returns the CFG built for each function (pretty-printed).
 pub fn krate_infer_resolution(
     krate: &Krate,
     infos: &HashMap<Fun, Arc<ResolutionInfo>>,
-) -> Result<Krate, Vec<VirErr>> {
+    log_cfgs: bool,
+) -> Result<(Krate, Vec<(Fun, String)>), Vec<VirErr>> {
     let mut datatypes = HashMap::new();
     for datatype in krate.datatypes.iter() {
         let Dt::Path(path) = datatype.x.name.clone() else {
@@ -320,6 +322,7 @@ pub fn krate_infer_resolution(
 
     let mut krate = krate.clone();
     let mut errors = vec![];
+    let mut cfg_logs = vec![];
     for function in &mut Arc::make_mut(&mut krate).functions {
         if let Some(res_info) = infos.get(&function.x.name) {
             let new_body = infer_resolution(
@@ -330,6 +333,7 @@ pub fn krate_infer_resolution(
                 &functions,
                 function.x.owning_module.as_ref().unwrap(),
                 &rtypes,
+                if log_cfgs { Some((&function.x.name, &mut cfg_logs)) } else { None },
             );
             match new_body {
                 Ok(new_body) => {
@@ -341,7 +345,7 @@ pub fn krate_infer_resolution(
             }
         }
     }
-    if errors.len() > 0 { Err(errors) } else { Ok(krate) }
+    if errors.len() > 0 { Err(errors) } else { Ok((krate, cfg_logs)) }
 }
 
 /// Updates the given function body to include assume(has_resolved(...)) nodes
@@ -358,6 +362,7 @@ fn infer_resolution(
     functions: &HashMap<Fun, Function>,
     module: &Path,
     rtypes: &ResolutionTypes,
+    cfg_log: Option<(&Fun, &mut Vec<(Fun, String)>)>,
 ) -> Result<Expr, VirErr> {
     let (cfg, assigns_to_resolve, typ_inv_obligations, asserts, loops_with_no_back_edges) =
         new_cfg(
@@ -370,6 +375,9 @@ fn infer_resolution(
             &info.temporary_modes,
         )?;
     //println!("{:}", pretty_cfg(&cfg));
+    if let Some((fun, cfg_log)) = cfg_log {
+        cfg_log.push((fun.clone(), pretty_cfg_for_log(&cfg)));
+    }
     let resolutions = if info.dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
     apply_resolutions(
         &cfg,
@@ -517,6 +525,11 @@ enum InstructionKind {
     /// or partially initialized. Whatever was there before gets dropped.
     /// The place is subsequently uninitialized.
     DropFrom(FlattenedPlace),
+    /// Corresponds to an ExprX::Drop node, i.e., the point where Rust would drop the given
+    /// local or temporary when it goes out of scope.
+    /// (Not to be confused with DropFrom, which serves an unrelated purpose.)
+    /// This is currently a no-op for the purposes of the analysis.
+    ScopeDrop(FlattenedPlace),
 }
 
 type BBIndex = usize;
@@ -782,7 +795,7 @@ impl<'a> Builder<'a> {
                     self.fns.last_mut().unwrap().upvars_moved.push(fp.clone());
                 }
             }
-            InstructionKind::DropFrom(_) => {}
+            InstructionKind::DropFrom(_) | InstructionKind::ScopeDrop(_) => {}
         }
         self.push_instruction_raw(bb, post_instruction_position, instr);
     }
@@ -1353,6 +1366,17 @@ impl<'a> Builder<'a> {
                 }
                 Maybe::Some(bb)
             }
+            ExprX::Drop(local_or_temp) => {
+                // TODO: account for the unwinding path here
+                if let Some(fp) = self.local_or_temp_place(local_or_temp) {
+                    self.push_instruction_propagate(
+                        bb,
+                        AstPosition::After(span_id),
+                        InstructionKind::ScopeDrop(fp),
+                    );
+                }
+                Maybe::Some(bb)
+            }
             ExprX::EvalAndResolve(..) => {
                 panic!("EvalAndResolve shouldn't be created yet");
             }
@@ -1377,6 +1401,20 @@ impl<'a> Builder<'a> {
                 Maybe::Some(bb)
             }
         }
+    }
+
+    /// Get the place for the target of an ExprX::Drop, if it's a place tracked by the analysis.
+    /// (Spec-mode locals and temporaries are not tracked.)
+    fn local_or_temp_place(&mut self, local_or_temp: &LocalOrTemp) -> Option<FlattenedPlace> {
+        let name = match local_or_temp {
+            LocalOrTemp::Local(x) => LocalName::Named(x.clone()),
+            LocalOrTemp::Temp(ast_id) => {
+                let temp_id = self.locals.ast_id_to_temp_id.get(ast_id)?;
+                LocalName::Temporary(*ast_id, *temp_id)
+            }
+        };
+        let local = *self.locals.ident_to_idx.get(&name)?;
+        Some(FlattenedPlace { local, projections: vec![] })
     }
 
     fn build_stmt(&mut self, stmt: &Stmt, bb: BBIndex) -> Maybe<BBIndex> {
@@ -2898,6 +2936,7 @@ impl FlattenedPlace {
             InstructionKind::Overwrite(sp) => self.intersects(sp),
             InstructionKind::Mutate(sp) => self.intersects(sp),
             InstructionKind::DropFrom(_) => false,
+            InstructionKind::ScopeDrop(_) => false,
         }
     }
 
@@ -3242,6 +3281,43 @@ fn pretty_cfg(cfg: &CFG) -> String {
     )
 }
 
+/// A compact representation of the CFG, for logging.
+/// (We omit the unwind edges, which are always exits, for brevity.)
+fn pretty_cfg_for_log(cfg: &CFG) -> String {
+    let is_unwind = |bb: &BasicBlock| matches!(bb.position_of_start, AstPosition::OnUnwind(_));
+    let mut v = vec![];
+    for (i, bb) in cfg.basic_blocks.iter().enumerate() {
+        if is_unwind(bb) {
+            continue;
+        }
+        let mut attrs = vec![];
+        if bb.is_entry {
+            attrs.push("entry");
+        }
+        if bb.is_exit {
+            attrs.push("exit");
+        }
+        if bb.successors.iter().any(|s| is_unwind(&cfg.basic_blocks[*s])) {
+            attrs.push("may_unwind");
+        }
+        let attrs = if attrs.len() > 0 { format!(" ({})", attrs.join(", ")) } else { "".into() };
+        v.push(format!("bb{i}{attrs}:\n"));
+        for instr in bb.instructions.iter() {
+            v.push(format!("    {}\n", pretty_instr(&cfg.locals, instr)));
+        }
+        let succs: Vec<_> = bb
+            .successors
+            .iter()
+            .filter(|s| !is_unwind(&cfg.basic_blocks[**s]))
+            .map(|s| format!("bb{s}"))
+            .collect();
+        if succs.len() > 0 {
+            v.push(format!("    -> {}\n", succs.join(", ")));
+        }
+    }
+    v.join("")
+}
+
 fn pretty_locals(locals: &LocalCollection) -> String {
     let mut v = vec![];
     for l in locals.locals.iter() {
@@ -3354,6 +3430,7 @@ fn pretty_instr(locals: &LocalCollection, instr: &Instruction) -> String {
         InstructionKind::Overwrite(fp) => ("Overwrite", fp),
         InstructionKind::Mutate(fp) => ("Mutate", fp),
         InstructionKind::DropFrom(fp) => ("DropFrom", fp),
+        InstructionKind::ScopeDrop(fp) => ("ScopeDrop", fp),
     };
     format!("{:}({:})", name, pretty_flattened_place(locals, fp))
 }
@@ -3462,6 +3539,7 @@ impl DataflowState for InitializationPossibilities {
                 }
             }
             InstructionKind::Mutate(_sp) => *self,
+            InstructionKind::ScopeDrop(_sp) => *self,
             InstructionKind::DropFrom(sp) => {
                 if sp.contains(place) {
                     InitializationPossibilities { can_be_uninit: true }
@@ -3507,6 +3585,7 @@ impl DataflowState for ResolveSafety {
                     *self
                 }
             }
+            InstructionKind::ScopeDrop(_sp) => *self,
             InstructionKind::Overwrite(sp) | InstructionKind::DropFrom(sp) => {
                 if sp.contains_and_not_separated_by_deref(place) {
                     ResolveSafety { can_resolve: true }

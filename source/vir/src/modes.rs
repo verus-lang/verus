@@ -295,6 +295,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::Old(..)
             | ExprX::ForcePureAndNonProphetic(..)
             | ExprX::Await(..)
+            | ExprX::Drop(..)
         => None,
         ExprX::NonSpecClosure { .. } => Some(OuterProphReason::NonSpecClosure),
         ExprX::Loop { source, .. } => match source {
@@ -3543,6 +3544,7 @@ fn check_expr(
             Ok((Mode::Spec, proph))
         }
         ExprX::AirStmt(_) => Ok((Mode::Exec, Proph::No)),
+        ExprX::Drop(_) => Ok((outer_mode, Proph::No)),
         ExprX::NeverToAny(e) => {
             let expect = Expect(expect.meet(Mode::Proof));
             let (mode, _p) = check_expr(ctxt, record, typing, outer_mode, expect, e, outer_proph)?;

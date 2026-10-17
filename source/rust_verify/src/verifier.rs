@@ -2817,6 +2817,16 @@ impl Verifier {
         .map_err(map_err_diagnostics)?;
 
         let merged_crate = query.get_merged_crate().map_err(map_query_err)?;
+        if self.args.log_all || self.args.log_args.log_resolution_cfg {
+            let cfg_logs = query.get_resolution_cfg_logs().map_err(map_query_err)?;
+            let mut file = self
+                .create_log_file(None, crate::config::RESOLUTION_CFG_FILE_SUFFIX)
+                .map_err(map_err_diagnostics)?;
+            for (fun, cfg) in cfg_logs.iter() {
+                let name = vir::ast_util::fun_as_friendly_rust_name(fun);
+                writeln!(&mut file, "fn {name}\n{cfg}").expect("cannot write to log file");
+            }
+        }
         self.maybe_log_impl_names(&merged_crate).map_err(map_err_diagnostics)?;
         self.maybe_log_vir_crate(&merged_crate).map_err(map_err_diagnostics)?;
 
