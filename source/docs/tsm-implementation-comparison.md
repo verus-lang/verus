@@ -255,7 +255,9 @@ other overlaps fail in the generated proof. A stored-value binding cannot
 observe a value deposited earlier on its path. Withdrawal keys are evaluated
 in the full pre-state, so they may read fields the operation does not own
 (including the stored map) or use `pre` as a whole; deposit and guard keys must
-be local observations. The corpus `examples/verified_tsm/raw_forms_*.rs`
+be local observations. A guard may guard a value bound by `have` on an exclusive
+`map`/`imap` entry or on an `option` or `persistent_option` field
+(`have o >= Some(let x)`): the bound value is read from the borrowed fragment. The corpus `examples/verified_tsm/raw_forms_*.rs`
 exercises these forms.
 
 Unsupported shapes and generated-name conflicts produce diagnostics. These
