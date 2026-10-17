@@ -1,7 +1,9 @@
 //! Checked generic field tokens for the infinite-collection strategies
 //! (`imap`, `iset`, `persistent_imap`, `persistent_iset`): single tokens,
 //! finite initial collections, and bulk outputs and inputs (finite
-//! collections only: they are split and joined token by token).
+//! collections only: they are split and joined token by token), and the
+//! conversions of finite collections to and from `vstd::tokens::IMapToken`
+//! and `ISetToken`.
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 use vstd::tokens::*;
@@ -104,6 +106,15 @@ proof fn client() {
     let tracked (Tracked(l1), Tracked(d1)) = inst.finish(1, s1);
     assert(l1.value() == 10 && d1.element() == 1);
     inst.finished(1, 10, &l1, &d1);
+    // Finite collections convert to and from `vstd::tokens::IMapToken` and
+    // `ISetToken`.
+    let tracked as_vstd: IMapToken<int, int, I::slots> = many.into_imap_token();
+    let tracked many = I::slots_map::from_imap_token(as_vstd);
+    assert(many.map().dom() == s);
+    assert(done.set() =~= ISet::<int>::empty());
+    let tracked done_vstd: ISetToken<int, I::done> = done.into_iset_token();
+    let tracked done = I::done_set::from_iset_token(done_vstd);
+    assert(done.set() =~= ISet::<int>::empty());
     let tracked mut slots = slots;
     let tracked s0 = slots.remove(0);
     let tracked mut many = many;
