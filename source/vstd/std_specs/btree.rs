@@ -507,9 +507,10 @@ pub assume_specification<K: Clone, V: Clone, A: Allocator + Clone>[ <BTreeMap::<
     A,
 > as Clone>::clone ](this: &BTreeMap<K, V, A>) -> (other: BTreeMap<K, V, A>)
     ensures
-        // Keys and values are cloned with their `Clone` impls (#3086, as #1835 for
-        // `HashMap`): the keys are the same only if `K::clone` returns an equal value, and
-        // each value is a clone.
+// Keys and values are cloned with their `Clone` impls (#3086, as #1835 for
+// `HashMap`): the keys are the same only if `K::clone` returns an equal value, and
+// each value is a clone.
+
         (forall|a: K, b: K| #[trigger] cloned(a, b) ==> a == b) ==> {
             &&& other@.dom() == this@.dom()
             &&& forall|key|
@@ -1126,7 +1127,8 @@ pub assume_specification<K: Clone, A: Allocator + Clone>[ <BTreeSet::<K, A> as C
     this: &BTreeSet<K, A>,
 ) -> (other: BTreeSet<K, A>)
     ensures
-        // the elements are cloned (#3086)
+// the elements are cloned (#3086)
+
         (forall|a: K, b: K| #[trigger] cloned(a, b) ==> a == b) ==> other@ == this@,
 ;
 
