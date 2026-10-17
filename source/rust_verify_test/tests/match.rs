@@ -1786,3 +1786,34 @@ test_verify_one_file! {
         "constant patterns are not supported for opaque (external_body) datatypes",
     ])
 }
+
+test_verify_one_file! {
+    #[test] external_body_structural_patterns verus_code! {
+        #[verifier::external_body]
+        #[derive(PartialEq, Eq, Structural)]
+        pub struct S { x: u8 }
+        #[verifier::external_body]
+        const C: S = S { x: 1 };
+
+        fn m(s: S) { match s { C => {} _ => {} } }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] recursive_type_patterns verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(PartialEq, Eq)]
+        pub struct BinaryTree {
+            pub left: Option<&'static BinaryTree>,
+            pub right: Option<&'static BinaryTree>,
+        }
+        const LEAF: BinaryTree = BinaryTree { left: None, right: None };
+
+        fn m(t: BinaryTree) -> (r: bool)
+            ensures r ==> t.left is None
+        {
+            match t { LEAF => true, _ => false }
+        }
+    } => Ok(())
+}
