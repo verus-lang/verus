@@ -1842,7 +1842,11 @@ pub(crate) fn expr_to_stm_opt(
                                 stms.push(init_var(&expr.span, &temp_ident, &call));
                             }
                         }
-                        let ti = if may_unwind { TypInv::UnwindError(Some(x.clone())) } else { TypInv::Call(x) };
+                        let ti = if may_unwind {
+                            TypInv::UnwindError(Some(x.clone()))
+                        } else {
+                            TypInv::Call(x)
+                        };
                         typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
                         // tmp
                         Ok((stms, Maybe::Some(Value::Exp(temp_var))))
@@ -1860,7 +1864,11 @@ pub(crate) fn expr_to_stm_opt(
                             None,
                             body,
                         )?);
-                        let ti = if may_unwind { TypInv::UnwindError(Some(x.clone())) } else { TypInv::Call(x) };
+                        let ti = if may_unwind {
+                            TypInv::UnwindError(Some(x.clone()))
+                        } else {
+                            TypInv::Call(x)
+                        };
                         typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
                         Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
                     }
@@ -4681,7 +4689,11 @@ fn stmt_to_stm(
                         // to handle the right-hand-side, if possible.
                         let ret = Maybe::Some(Value::ImplicitUnit(stmt.span.clone()));
 
-                        let ti = if may_unwind { TypInv::UnwindError(Some(fun.clone())) } else { TypInv::Call(fun) };
+                        let ti = if may_unwind {
+                            TypInv::UnwindError(Some(fun.clone()))
+                        } else {
+                            TypInv::Call(fun)
+                        };
                         typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
 
                         return Ok((stms, ret, Some((name.clone(), decl, None))));
@@ -4867,7 +4879,9 @@ fn call_namespace(_ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicit
 fn typ_inv_may_read_field(ctx: &Ctx, inv: &Fun, f: &FieldOpr) -> bool {
     let one_variant = ctx.datatype_map.get(&f.datatype).map_or(false, |d| d.x.variants.len() == 1);
     let Some(function) = ctx.func_map.get(inv) else { return true };
-    let (Some(body), Some(param)) = (&function.x.body, function.x.params.first()) else { return true };
+    let (Some(body), Some(param)) = (&function.x.body, function.x.params.first()) else {
+        return true;
+    };
     if !one_variant {
         return true;
     }
@@ -4941,14 +4955,7 @@ fn typ_inv_obligations(
             }
             _ => typ_inv.clone(),
         };
-        assert_assume_satisfies_user_defined_type_invariant(
-            ctx,
-            state,
-            &exp,
-            stms,
-            &fun,
-            typ_inv,
-        )?;
+        assert_assume_satisfies_user_defined_type_invariant(ctx, state, &exp, stms, &fun, typ_inv)?;
     }
     Ok(())
 }
