@@ -94,6 +94,180 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// Regression tests for issue #3165.
+test_verify_one_file! {
+    #[test] from_iter_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        fn direct() {
+            let v = vec![1u8, 2, 3];
+            let w: Vec<u8> = Vec::from_iter(v.into_iter());
+            assert(w@ == v@);
+        }
+
+        fn mut_ref() {
+            let v = vec![1u8, 2, 3];
+            let mut it = v.into_iter();
+            let x: Vec<u8> = Vec::from_iter(&mut it);
+            assert(x@ == v@);
+        }
+
+        fn zip() {
+            let v = vec![1u8, 2, 3];
+            let y: Vec<(u8, u8)> = Vec::from_iter(v.into_iter().zip(vec![4u8, 5]));
+            assert(y@ == seq![(1u8, 4u8), (2, 5)]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] from_iter_requires_iterator_laws verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        pub struct It;
+
+        impl Iterator for It {
+            type Item = u8;
+
+            fn next(&mut self) -> Option<u8> {
+                None
+            }
+        }
+
+        impl IteratorSpecImpl for It {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool { false }
+
+            #[verifier::prophetic]
+            open spec fn remaining(&self) -> Seq<u8> { seq![7u8] }
+
+            #[verifier::prophetic]
+            open spec fn will_return_none(&self) -> bool { true }
+
+            open spec fn decrease(&self) -> Option<nat> { None }
+
+            open spec fn peek(&self, index: int) -> Option<u8> { None }
+        }
+
+        fn direct() {
+            let v: Vec<u8> = Vec::from_iter(It);
+            assert(v.len() == 1); // FAILS
+        }
+
+        fn mut_ref() {
+            let mut it = It;
+            let v: Vec<u8> = Vec::from_iter(&mut it);
+            assert(v.len() == 1); // FAILS
+        }
+
+        fn zip() {
+            let w = vec![1u8, 2];
+            let v: Vec<(u8, u8)> = Vec::from_iter(w.into_iter().zip(It));
+            assert(v.len() == 1); // FAILS
+        }
+
+        proof fn explicit_axiom_call() {
+            from_iter_ensures::<u8, It>(It); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] from_iter_remaining_is_prophetic verus_code! {
+        use vstd::modes::tracked_swap;
+        use vstd::prelude::*;
+        use vstd::proph::ProphecyGhost;
+        use vstd::std_specs::iter::*;
+
+        pub struct IterCtr {
+            pub count: u64,
+            pub len: Tracked<ProphecyGhost<nat>>,
+        }
+
+        impl Iterator for IterCtr {
+            type Item = u64;
+
+            fn next(&mut self) -> (ret: Option<u64>) {
+                proof {
+                    let tracked mut new = ProphecyGhost::new();
+                    tracked_swap(&mut new, &mut self.len);
+                    new.resolve_dependent(&self.len, |x: nat| (x + 1) as nat);
+                }
+                let ret = self.count;
+                if self.count == u64::MAX {
+                    self.count = 0;
+                } else {
+                    self.count = self.count + 1;
+                }
+                Some(ret)
+            }
+        }
+
+        impl IteratorSpecImpl for IterCtr {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool { true }
+
+            #[verifier::prophetic]
+            open spec fn remaining(&self) -> Seq<u64> {
+                Seq::new(self.len@.value(), |i: int|
+                    ((i + self.count) % (u64::MAX as int + 1)) as u64)
+            }
+
+            open spec fn will_return_none(&self) -> bool { false }
+
+            open spec fn decrease(&self) -> Option<nat> { None }
+
+            open spec fn peek(&self, index: int) -> Option<u64> {
+                Some((index % (u64::MAX as int + 1)) as u64)
+            }
+        }
+
+        fn paradox() {
+            let it = IterCtr { count: 0, len: Tracked(ProphecyGhost::new()) };
+            let ghost g = it;
+            let ghost n = into_iter_remaining::<u64, IterCtr>(g).len();
+            let IterCtr { count, len } = it;
+            proof {
+                from_iter_ensures::<u64, IterCtr>(g);
+                let tracked l = len.get();
+                l.resolve((n + 1) as nat);
+                assert(IteratorSpec::remaining(&g).len() == g.len@.value());
+                assert(false);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for argument to proof-mode function with tracked parameters")
+}
+
+test_verify_one_file! {
+    #[test] from_iter_into_iterator_can_vary code! {
+        use vstd::prelude::*;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+        verus! {
+            pub struct Src;
+
+            fn two() -> (r: (Vec<u64>, Vec<u64>))
+                ensures r.0@ == r.1@, // FAILS
+            {
+                let a: Vec<u64> = Vec::from_iter(Src);
+                let b: Vec<u64> = Vec::from_iter(Src);
+                (a, b)
+            }
+        }
+
+        impl IntoIterator for Src {
+            type Item = u64;
+            type IntoIter = std::vec::IntoIter<u64>;
+
+            fn into_iter(self) -> Self::IntoIter {
+                vec![COUNTER.fetch_add(1, Ordering::SeqCst)].into_iter()
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 test_verify_one_file! {
     #[test] filter_works verus_code! {
         use vstd::prelude::*;

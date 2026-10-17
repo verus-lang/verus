@@ -400,7 +400,7 @@ pub uninterp spec fn into_iter_remaining_guard<A, T>(iter: T) -> bool;
 
 // Connects into_iter_remaining to remaining() for types implementing Iterator + IteratorSpec.
 // This allows callers of from_iter to relate the result to the iterator's remaining elements.
-pub broadcast axiom fn axiom_from_iterator_ensures<A, I: Iterator<Item = A> + IteratorSpec>(iter: I)
+pub broadcast axiom fn from_iter_ensures<A, I: Iterator<Item = A> + IteratorSpec>(iter: I)
     requires
         iter.obeys_prophetic_iter_laws(),
     ensures
@@ -1006,6 +1006,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
  ********************************************************************************/
 
 pub broadcast group group_iter_axioms {
+    from_iter_ensures,
     rev_postcondition,
     zip_postcondition,
     filter_postcondition,
