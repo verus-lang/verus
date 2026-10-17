@@ -5,14 +5,14 @@ use crate::pre_header::PreHeader;
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir::State;
 use crate::rust_to_vir_base::{
-    check_fn_opaque_ty, check_generics_bounds_no_polarity, def_id_to_vir_path, local_to_var,
-    no_body_param_to_var,
+    check_fn_opaque_ty, check_generics_bounds_no_polarity, local_to_var, no_body_param_to_var,
 };
 use crate::rust_to_vir_base::{mk_visibility, qpath_to_ident};
 use crate::rust_to_vir_expr::{
     add_param_decls, expr_to_vir_consume, param_pat_to_decl, param_pat_to_destructure,
     param_pat_to_mut_var,
 };
+use crate::rust_to_vir_path::def_id_to_vir_path;
 use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
@@ -1329,7 +1329,7 @@ fn assume_specification_mismatch_type_error<'tcx, A>(
     t2: String,
 ) -> Result<A, VirErr> {
     let ex =
-        crate::rust_to_vir_base::def_id_to_friendly(ctxt.tcx, &ctxt.verus_items, external_def_id);
+        crate::rust_to_vir_path::def_id_to_friendly(ctxt.tcx, &ctxt.verus_items, external_def_id);
     err_span(
         span,
         format!(
@@ -2999,7 +2999,7 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
                     true
                 }
             } else {
-                use crate::rust_to_vir_base::def_path_to_segments_without_disambiguation;
+                use crate::rust_to_vir_path::def_path_to_segments_without_disambiguation;
                 use crate::verus_items::RustItem;
                 let id = tp.trait_ref.def_id;
                 let rust_item = crate::verus_items::get_rust_item(tcx, id);
