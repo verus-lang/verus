@@ -7,8 +7,8 @@ use super::type_representation::*;
 
 verus! {
 
-/// Defines parameters common to all `PointsTo` permissions:
-/// the pointer to memory and the size of the pointed-to region.
+/// Defines the physical memory region that a `PointsTo` permission covers,
+/// by specifying the pointer to memory and the size of the pointed-to region.
 pub trait PointsToPhys: Sized {
     type A: ?Sized; //caller choice vs implementor choice, so maybe can go with implementor
 
