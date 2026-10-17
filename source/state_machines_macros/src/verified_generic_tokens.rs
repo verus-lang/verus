@@ -1655,6 +1655,21 @@ fn collection_helpers(f: &Field, cm: &Option<Cm>) -> TokenStream {
                     }
                 }
             };
+            if fin {
+                // The output collection of an operation, as a `MapToken`.
+                let split_token = format_ident!("__split_{}_token", n);
+                s.extend(quote! {
+                    proof fn #split_token(tracked raw: Token, m: #map_t<#kt, #v>, #split_params id: ::vstd::tokens::InstanceId)
+                        -> (tracked out: ::vstd::tokens::MapToken<#kt, #v, #nt>)
+                        requires raw.fragment() == Fragment::#factory(m), #split_reqs id == #sid,
+                        ensures out.instance_id() == id, out.map() == m,
+                    {
+                        let tracked out = ::vstd::tokens::MapToken::from_map(id, Self::#split(raw, m #rec_split));
+                        assert(::vstd::prelude::ext_equal(out.map(), m));
+                        out
+                    }
+                });
+            }
             if !k.persistent() {
                 s.extend(quote! {
                     proof fn #join(tracked acc: Token, tracked m: #map_t<#kt, #nt>, #link_param)
@@ -1744,6 +1759,19 @@ fn collection_helpers(f: &Field, cm: &Option<Cm>) -> TokenStream {
                     }
                 }
             };
+            if fin {
+                // The output collection of an operation, as a `SetToken`.
+                let split_token = format_ident!("__split_{}_token", n);
+                s.extend(quote! {
+                    proof fn #split_token(tracked raw: Token, s: #set_t<#e>, #split_params id: ::vstd::tokens::InstanceId)
+                        -> (tracked out: ::vstd::tokens::SetToken<#e, #nt>)
+                        requires raw.fragment() == Fragment::#factory(s), #split_reqs id == #sid,
+                        ensures out.instance_id() == id, out.set() == s,
+                    {
+                        ::vstd::tokens::SetToken::from_map(id, Self::#split(raw, s #rec_split))
+                    }
+                });
+            }
             if !k.persistent() {
                 s.extend(quote! {
                     proof fn #join(tracked acc: Token, tracked m: #map_t<#e, #nt>, #link_param)
@@ -4302,6 +4330,16 @@ fn ext_step(f: &Field, a: &TokenStream, b: &TokenStream) -> TokenStream {
     }
 }
 
+/// The API's postconditions as separate assertions at the end of a method
+/// body (over its local outputs; `old(p)` rewritten by `in_body`). Z3 proves
+/// them one at a time much faster than the whole postcondition at once.
+fn ensures_steps(parts: &ExchangeParts, in_body: &dyn Fn(TokenStream) -> TokenStream) -> Vec<TokenStream> {
+    parts.enss.iter().map(|e| {
+        let e = in_body(quote! {#e});
+        quote! {assert(#e);}
+    }).collect()
+}
+
 fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, Error> {
     let sm = &bundle.sm;
     let store = ctx.store;
@@ -4939,10 +4977,9 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         let (kp, from_args, split_args) = match cm {
             None => (quote! {}, quote! {}, quote! {}),
             Some(cm) => {
-                let kappa = cm.kappa(quote! {self.__desc});
                 (
                     quote! {
-                        let tracked (__tsm_kp, __tsm_kappa) = __tsm_kappa.split(#kappa, #kappa);
+                        let tracked (__tsm_kp, __tsm_kappa) = __tsm_kappa.split(__tsm_k, __tsm_k);
                     },
                     {
                         let d = cm.share(cm.by_ref(quote! {self.__desc}));
@@ -4980,7 +5017,6 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             };
             let split = format_ident!("__split_{}", f.name);
             let k = kind(f).unwrap();
-            let (mtok, stok) = (quote! {::vstd::tokens::MapToken}, quote! {::vstd::tokens::SetToken});
             let mk = if k.infinite() {
                 // One raw token holds the whole (possibly infinite) collection.
                 let at = resname(f);
@@ -4988,17 +5024,11 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                     #kp
                     let tracked #pname = #at::__from_bulk(__tsm_piece, #e #split_args);
                 }
-            } else if k.map_like() {
+            } else if k.map_like() || k.set_like() {
+                let split_token = format_ident!("__split_{}_token", f.name);
                 quote! {
                     #kp
-                    let tracked #pname = #mtok::from_map((*self).id(), #ty::#split(__tsm_piece, #e #split_args));
-                    assert(::vstd::prelude::ext_equal(#pname.map(), #e));
-                }
-            } else if k.set_like() {
-                quote! {
-                    #kp
-                    let tracked #pname = #stok::from_map((*self).id(), #ty::#split(__tsm_piece, #e #split_args));
-                    assert(::vstd::prelude::ext_equal(#pname.set(), #e));
+                    let tracked #pname = #ty::#split_token(__tsm_piece, #e #split_args, (*self).id());
                 }
             } else if k == Kind::Multiset || k.option_like() {
                 quote! {#kp let tracked #pname = #ty::#split(__tsm_piece, #e #split_args);}
@@ -5435,9 +5465,14 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     } else {
         quote! {#[verifier::deprecated_postcondition_mut_ref_style(true)]}
     };
+    let ens_steps = ensures_steps(&parts, &in_body);
     // The output tokens' copies of `κ` are split off `κ`.
     let out_idem = match cm {
-        Some(cm) if !outs.is_empty() => cm.idem(quote! {self.__desc}),
+        Some(cm) if !outs.is_empty() => {
+            let idem = cm.idem(quote! {self.__desc});
+            let kappa = cm.kappa(quote! {self.__desc});
+            quote! {#idem let ghost __tsm_k = #kappa;}
+        }
         _ => quote! {},
     };
     Ok(quote! {
@@ -5472,6 +5507,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             #out_idem
             #(#splits)*
             #withdraw_stmts
+            #(#ens_steps)*
             #result
         }
     })
@@ -5551,6 +5587,7 @@ fn read_only_method(
         })
         .collect();
     let use_invs = quote! {};
+    let ens_steps = ensures_steps(parts, &|ts| ts);
     if take_shared.iter().all(|(_, _, optional)| optional.is_some()) {
         return read_only_optional(ctx, tr, parts, take_shared, incl_frames, const_frames, shared_frags, ret, req, ens, early, late, &nondet, result);
     }
@@ -5574,6 +5611,7 @@ fn read_only_method(
             State::#safety(pre, #(#pn),*);
             #(#nondet)*
             #(#late)*
+            #(#ens_steps)*
             #result
         }
     })
@@ -5610,6 +5648,7 @@ fn read_only_optional(
     let s = format_ident!("__tsm_s");
     let eqs = const_eqs(ctx.cm, &quote! {self.__desc}, &s);
     let embed = quote! {<Protocol as ::vstd::resource::tsm::Machine>::embed};
+    let ens_steps = ensures_steps(parts, &|ts| ts);
     let mut joins = vec![];
     let hs: Vec<Ident> = (0..take_shared.len()).map(|i| format_ident!("__tsm_hacc_{}", i)).collect();
     let gs: Vec<Ident> = (0..take_shared.len()).map(|i| format_ident!("__tsm_g_{}", i)).collect();
@@ -5751,6 +5790,7 @@ fn read_only_optional(
             State::#safety(pre, #(#pn),*);
             #(#nondet)*
             #(#late)*
+            #(#ens_steps)*
             #result
         }
     })
@@ -5908,6 +5948,7 @@ fn guard_method(
             #(#ref_facts)*
         }}
     };
+    let ens_steps = ensures_steps(parts, &|ts| ts);
     let ret_vals: Vec<_> = parts.out_params.iter().map(|o| o.0.clone()).collect();
     let result = if ret_vals.len() == 1 {
         quote! {#(#ret_vals)*}
@@ -5940,6 +5981,7 @@ fn guard_method(
             let tracked __tsm_guard = #shared_ident.guard(Protocol::#guarded(__tsm_f, #(#pn),*));
             #ref_block
             #(#guards)*
+            #(#ens_steps)*
             #result
         }
         #(#helpers)*
@@ -6124,11 +6166,11 @@ fn init_method(
                 Fragment::unit().op_unit();
                 assert(__tsm_kappa.fragment() == #kappa);
                 #idem
+                let ghost __tsm_k = #kappa;
             });
             (
                 quote! {
-                    assert(__tsm_kappa.fragment() == Fragment::op(#kappa, #kappa));
-                    let tracked (__tsm_kp, __tsm_kappa) = __tsm_kappa.split(#kappa, #kappa);
+                    let tracked (__tsm_kp, __tsm_kappa) = __tsm_kappa.split(__tsm_k, __tsm_k);
                 },
                 {
                     let d = cm.share(cm.by_ref(quote! {__tsm_desc}));
@@ -6165,18 +6207,14 @@ fn init_method(
                 }
             }
             k if k.map_like() || k.set_like() => {
-                let coll = if k.map_like() {
-                    quote! {::vstd::tokens::MapToken::from_map}
-                } else {
-                    quote! {::vstd::tokens::SetToken::from_map}
-                };
+                let split_token = format_ident!("__split_{}_token", f.name);
                 quote! {
                     assert(__tsm_piece.fragment() == Fragment::#factory(#value)) by {
                         ::vstd::resource::tsm_collections::Pointwise::extensionality(
                             __tsm_piece.fragment().#fname, Fragment::#factory(#value).#fname);
                     }
                     #kp
-                    let tracked #arg = #coll(#id, #ty::#split(__tsm_piece, #value #split_args));
+                    let tracked #arg = #ty::#split_token(__tsm_piece, #value #split_args, #id);
                 }
             }
             Kind::Multiset | Kind::Option | Kind::PersistentOption | Kind::Bool | Kind::PersistentBool => quote! {
@@ -6213,11 +6251,9 @@ fn init_method(
             let tracked instance = Instance {__loc: Ghost(__tsm_all_loc), __base: #base_hold};
         },
         (None, false) => quote! {let tracked instance = Instance {__loc: Ghost(__tsm_all_loc) #phantom};},
-        (Some(cm), true) => {
-            let kappa = cm.kappa(quote! {__tsm_desc});
+        (Some(_), true) => {
             quote! {
-                assert(__tsm_kappa.fragment() == Fragment::op(#kappa, #kappa));
-                let tracked (__tsm_base_tok, __tsm_kappa) = __tsm_kappa.split(#kappa, #kappa);
+                let tracked (__tsm_base_tok, __tsm_kappa) = __tsm_kappa.split(__tsm_k, __tsm_k);
                 let tracked instance = Instance {__desc: __tsm_desc, __base: #base_hold};
             }
         }
@@ -6240,13 +6276,10 @@ fn init_method(
                 let tracked __tsm_unit_out = Unit {raw: __tsm_unit_tok};
             },
             Some(cm) => {
-                let kappa = cm.kappa(quote! {__tsm_desc});
                 let udesc = cm.share(cm.by_ref(quote! {__tsm_desc}));
                 quote! {
                     #split_raw
-                    Fragment::unit().op_unit();
-                    assert(__tsm_kappa.fragment() == Fragment::op(#kappa, #kappa));
-                    let tracked (__tsm_ukp, __tsm_kappa) = __tsm_kappa.split(#kappa, #kappa);
+                    let tracked (__tsm_ukp, __tsm_kappa) = __tsm_kappa.split(__tsm_k, __tsm_k);
                     let tracked __tsm_unit_out = Unit {raw: __tsm_unit_tok, base: __tsm_ukp, desc: #udesc};
                 }
             }
@@ -6284,6 +6317,7 @@ fn init_method(
     } else {
         (quote! {}, quote! {let tracked __tsm_all = Protocol::#init_fn(#(#pn),*);})
     };
+    let ens_steps = ensures_steps(parts, &|ts| ts);
     Ok(quote! {
         pub proof fn #name(#(#in_params),*) #ret #req #ens {
             broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
@@ -6298,6 +6332,7 @@ fn init_method(
             #(#takes)*
             #unit_stmt
             #base_stmt
+            #(#ens_steps)*
             #result
         }
     })
