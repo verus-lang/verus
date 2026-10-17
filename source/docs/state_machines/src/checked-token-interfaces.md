@@ -230,6 +230,9 @@ form `t.instance_id() == self.id()` implies that `t` owns a fragment at `γ`. Th
 trait lemmas hold for placeholders because each owns its own resource.
 
 `Instance` holds the ghost location `γ` and is `Copy`. It is not itself a resource.
+(In a machine without storage in which an operation consumes no token, it also
+holds a leaked `&'static` token owning the unit fragment, from which such operations
+take their unit.)
 
 Constants need more. `inst.c()` must equal `s.c` in every completion `s` of an
 operation's fragments, so some fragment of the operation must contain the
@@ -249,9 +252,8 @@ copy of `κ` from one of its tokens, so `κ` is part of its shared fragment.
 An operation's body proceeds in five steps:
 
 1. **Join.** Consume the input tokens and compose their fragments,
-   `a = ι_{i1}(e_1) · … · ι_{ik}(e_k)`. Borrowed inputs (and the instance's
-   constants token, if a constant is read) are composed into a separate shared
-   fragment `h`. A `&mut` token (a `variable` that the transition updates) is
+   `a = ι_{i1}(e_1) · … · ι_{ik}(e_k)`. Borrowed inputs (and a copy of `κ`, if a
+   constant is read) are composed into a separate shared fragment `h`. A `&mut` token (a `variable` that the transition updates) is
    consumed and later replaced.
 2. **Establish the raw precondition.** Prove `t_requires(a, h, deposit, x)` from
    the trusted-style precondition, which is stated over the tokens' ghost data. The
