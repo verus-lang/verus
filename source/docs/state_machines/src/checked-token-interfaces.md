@@ -238,8 +238,12 @@ multiset's fold), the observations are joined, and the joined observation is
 valid, so each element of `e` is exactly (or, for persistent strategies, up to
 agreement) owned in it. For a multiset this shows each element of `e` at least
 once, so the borrowed part `e` must not contain an element twice: shared
-references to two tokens do not show that the tokens are distinct resources. (The
-generated operation's proof fails otherwise.)
+references to two tokens do not show that the tokens are distinct resources. The
+generated operation checks this first (`forall|x| e.count(x) <= 1`), so a machine
+states it with a `require`; otherwise verification reports "the borrowed part of
+multiset field `f` must not contain an element twice" at the `have` statement.
+Separate singleton borrows (`have f >= {x}; have f >= {y}`) need no such
+condition: the model requires each of them once, also for `x == y`.
 
 In a machine without type parameters, persistent tokens hold a leaked `&'static`
 raw token instead of an owned one. Their fragments are idempotent, so a shared

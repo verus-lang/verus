@@ -173,8 +173,9 @@ field).
 
 Some statement forms are rejected at expansion time, for example a guard of a
 general operand of a `storage_map` field that is not the only storage field, and
-general withdrawals from a tagged `storage_imap`. A borrowed multiset part must
-not contain an element twice. The complete list is in
+general withdrawals from a tagged `storage_imap`. A borrowed multiset part
+(`have f >= (e)`) must not contain an element twice, which the machine states with
+a `require` (verification reports a diagnostic at the `have` statement otherwise). The complete list is in
 [Checked tokens: raw and generic interfaces](state_machines/src/checked-token-interfaces.md).
 Such a machine needs the raw interface (Change 3) or a rewritten transition.
 

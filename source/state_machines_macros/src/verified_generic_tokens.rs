@@ -3037,7 +3037,17 @@ fn finite_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream {
     } else {
         quote! {}
     };
-    let multi_req = if k == Kind::Multiset { quote! {forall|kk: #kt| #[trigger] e.count(kk) <= 1,} } else { quote! {} };
+    // Shared references to two tokens of one element do not show that they
+    // are distinct resources.
+    let multi_msg = format!(
+        "generic field tokens: the borrowed part of multiset field `{}` must not contain an element twice (state it with a `require`, or use #[verified_raw_tokens])",
+        n
+    );
+    let multi_req = if k == Kind::Multiset {
+        quote! {#[verifier::custom_err(#multi_msg)] (forall|kk: #kt| #[trigger] e.count(kk) <= 1),}
+    } else {
+        quote! {}
+    };
     quote! {
         impl #nt {
             #parts
@@ -4371,7 +4381,10 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 let take = if kind(f).is_some_and(|k| k.infinite()) {
                     in_body(quote! {let tracked #obs = #pname.__observe(#e, #link);})
                 } else {
-                    in_body(quote! {let tracked #obs = #nt::__observe_coll(#pname, #e, #link);})
+                    // Spanned at `e`: the precondition of a multiset's
+                    // `__observe_coll` reports a repeated element there.
+                    let at = verus_syn::spanned::Spanned::span(e);
+                    in_body(quote::quote_spanned! {at=> let tracked #obs = #nt::__observe_coll(#pname, #e, #link);})
                 };
                 pending_collections.push((
                     obs,
