@@ -2,10 +2,9 @@ use crate::automatic_derive::is_automatically_derived;
 use crate::context::Context;
 use crate::external::CrateItems;
 use crate::rust_to_vir::State;
-use crate::rust_to_vir_base::{
-    def_id_to_vir_path_option, mid_ty_const_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
-};
+use crate::rust_to_vir_base::{mid_ty_const_to_vir, mk_visibility};
 use crate::rust_to_vir_func::{CheckItemFnEither, FunctionOrConstInfo, check_item_fn};
+use crate::rust_to_vir_path::def_id_to_vir_path_option;
 use crate::unsupported_err;
 use crate::util::{err_span, err_span_vec, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
@@ -454,7 +453,7 @@ pub(crate) fn translate_impl_item<'tcx>(
         if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone() {
             let ident = impl_item.ident.to_string();
             let ident = Arc::new(ident);
-            let path = typ_path_and_ident_to_vir_path(&trait_path, ident);
+            let path = trait_path.push_segment(ident);
             let fun = FunX { path };
             let method = Arc::new(fun);
             FunctionKind::TraitMethodImpl {
