@@ -417,18 +417,16 @@ which the machine states with a `require`). A guard may have several outputs.
   * guards with or without borrowed tokens, of singleton and general operands,
     with any number of outputs;
   * operations without any token (with a `Unit`, see above), and properties that
-    read only constants or nothing.
-
-  The following are rejected at expansion time:
-  * labels.
+    read only constants or nothing;
+  * labeled machines: init and transition labels (also with the machine's type
+    parameters) are the first parameters of the generated operations.
 
   A general deposit into or withdrawal from a `storage_imap` field stored in
   the tagged carrier (with storage fields of other payload types) packs or
   untags its values one by one, so its operand needs a finite domain, which the
   machine states with a `require`; verification reports a diagnostic at the
-  operand otherwise.
-
-  For these, use `#[verified_raw_tokens]`.
+  operand otherwise. A borrowed multiset part needs a similar `require` (see
+  above).
 
 ## Comparison
 
