@@ -1634,6 +1634,21 @@ fn collection_helpers(f: &Field, cm: &Option<Cm>) -> TokenStream {
                     }
                 }
             };
+            if fin {
+                // The output collection of an operation, as a `MapToken`.
+                let split_token = format_ident!("__split_{}_token", n);
+                s.extend(quote! {
+                    proof fn #split_token(tracked raw: Token, m: #map_t<#kt, #v>, #split_params id: ::vstd::tokens::InstanceId)
+                        -> (tracked out: ::vstd::tokens::MapToken<#kt, #v, #nt>)
+                        requires raw.fragment() == Fragment::#factory(m), #split_reqs id == #sid,
+                        ensures out.instance_id() == id, out.map() == m,
+                    {
+                        let tracked out = ::vstd::tokens::MapToken::from_map(id, Self::#split(raw, m #rec_split));
+                        assert(::vstd::prelude::ext_equal(out.map(), m));
+                        out
+                    }
+                });
+            }
             if !k.persistent() {
                 s.extend(quote! {
                     proof fn #join(tracked acc: Token, tracked m: #map_t<#kt, #nt>, #link_param)
@@ -1723,6 +1738,19 @@ fn collection_helpers(f: &Field, cm: &Option<Cm>) -> TokenStream {
                     }
                 }
             };
+            if fin {
+                // The output collection of an operation, as a `SetToken`.
+                let split_token = format_ident!("__split_{}_token", n);
+                s.extend(quote! {
+                    proof fn #split_token(tracked raw: Token, s: #set_t<#e>, #split_params id: ::vstd::tokens::InstanceId)
+                        -> (tracked out: ::vstd::tokens::SetToken<#e, #nt>)
+                        requires raw.fragment() == Fragment::#factory(s), #split_reqs id == #sid,
+                        ensures out.instance_id() == id, out.set() == s,
+                    {
+                        ::vstd::tokens::SetToken::from_map(id, Self::#split(raw, s #rec_split))
+                    }
+                });
+            }
             if !k.persistent() {
                 s.extend(quote! {
                     proof fn #join(tracked acc: Token, tracked m: #map_t<#e, #nt>, #link_param)
@@ -4845,7 +4873,6 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             };
             let split = format_ident!("__split_{}", f.name);
             let k = kind(f).unwrap();
-            let (mtok, stok) = (quote! {::vstd::tokens::MapToken}, quote! {::vstd::tokens::SetToken});
             let mk = if k.infinite() {
                 // One raw token holds the whole (possibly infinite) collection.
                 let at = resname(f);
@@ -4853,17 +4880,11 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                     #kp
                     let tracked #pname = #at::__from_bulk(__tsm_piece, #e #split_args);
                 }
-            } else if k.map_like() {
+            } else if k.map_like() || k.set_like() {
+                let split_token = format_ident!("__split_{}_token", f.name);
                 quote! {
                     #kp
-                    let tracked #pname = #mtok::from_map((*self).id(), #ty::#split(__tsm_piece, #e #split_args));
-                    assert(::vstd::prelude::ext_equal(#pname.map(), #e));
-                }
-            } else if k.set_like() {
-                quote! {
-                    #kp
-                    let tracked #pname = #stok::from_map((*self).id(), #ty::#split(__tsm_piece, #e #split_args));
-                    assert(::vstd::prelude::ext_equal(#pname.set(), #e));
+                    let tracked #pname = #ty::#split_token(__tsm_piece, #e #split_args, (*self).id());
                 }
             } else if k == Kind::Multiset || k.option_like() {
                 quote! {#kp let tracked #pname = #ty::#split(__tsm_piece, #e #split_args);}
@@ -5903,18 +5924,14 @@ fn init_method(
                 }
             }
             k if k.map_like() || k.set_like() => {
-                let coll = if k.map_like() {
-                    quote! {::vstd::tokens::MapToken::from_map}
-                } else {
-                    quote! {::vstd::tokens::SetToken::from_map}
-                };
+                let split_token = format_ident!("__split_{}_token", f.name);
                 quote! {
                     assert(__tsm_piece.fragment() == Fragment::#factory(#value)) by {
                         ::vstd::resource::tsm_collections::Pointwise::extensionality(
                             __tsm_piece.fragment().#fname, Fragment::#factory(#value).#fname);
                     }
                     #kp
-                    let tracked #arg = #coll(#id, #ty::#split(__tsm_piece, #value #split_args));
+                    let tracked #arg = #ty::#split_token(__tsm_piece, #value #split_args, #id);
                 }
             }
             Kind::Multiset | Kind::Option | Kind::PersistentOption | Kind::Bool | Kind::PersistentBool => quote! {
