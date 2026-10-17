@@ -1210,6 +1210,10 @@ pub fn fn_au_inner_mask() -> Fun {
     fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "inner_mask")
 }
 
+pub fn fn_resolution_atomic_update() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "Resolution", "atomic_update")
+}
+
 pub fn fn_pred_args() -> Fun {
     fun!(CrateId::Vstd => "atomic", "pred_args")
 }

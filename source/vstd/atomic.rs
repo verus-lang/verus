@@ -823,6 +823,29 @@ impl<X, Y, Pred: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, Pred> {
     }
 }
 
+#[verifier::reject_recursive_types(X)]
+#[verifier::reject_recursive_types(Y)]
+#[verifier::reject_recursive_types(Pred)]
+pub struct Resolution<X, Y, Pred> {
+    _inner: Ghost<AtomicUpdate<X, Y, Pred>>,
+}
+
+impl<X, Y, Pred> Resolution<X, Y, Pred> {
+    #[rustc_diagnostic_item = "verus::vstd::atomic::Resolution::atomic_update"]
+    pub uninterp spec fn atomic_update(self) -> AtomicUpdate<X, Y, Pred>;
+
+    pub uninterp spec fn input(self) -> X;
+
+    pub uninterp spec fn output(self) -> Y;
+
+    pub axiom fn agree(&self)
+        ensures
+            self.atomic_update().resolves() == true,
+            self.atomic_update().input() == self.input(),
+            self.atomic_update().output() == self.output(),
+    ;
+}
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::vstd::atomic::pred_args"]
 #[doc(hidden)]
@@ -1003,7 +1026,7 @@ pub fn try_open_atomic_update_begin<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
 pub fn try_open_atomic_update_end<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
     _guard: BlockGuard<AtomicUpdate<X, Y, P>>,
     _y: Tracked<Y>,
-) -> Tracked<Result<(), AtomicUpdate<X, Y, P>>> {
+) -> Tracked<Result<Resolution<X, Y, P>, AtomicUpdate<X, Y, P>>> {
     unimplemented!()
 }
 
