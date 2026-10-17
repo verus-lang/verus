@@ -114,8 +114,10 @@ in [Checked tokens: raw and generic interfaces](state_machines/src/checked-token
 `Instance` is not a resource. In a machine with storage fields, an operation that
 consumes no token takes an extra `tracked Unit` argument, which owns the unit
 fragment of the instance. `Instance::unit_from_<field>(&mut t)` obtains one from
-any non-persistent token `t` of the instance. Machines without storage are
-unchanged.
+any non-persistent token `t` of the instance; `<init>_with_unit` is the
+initializer `<init>` that also returns a `Unit` (for a machine with no such
+token, e.g. one whose only tokenized state is storage); `Unit::split` makes two
+units of one. Machines without storage are unchanged.
 
 The example is the `Bank` machine of
 [generic_tokens_option.rs](../../examples/verified_tsm/generic_tokens_option.rs),
@@ -135,13 +137,25 @@ let tracked u = inst.unit_from_epoch(&mut epoch);
 let tracked c = inst.store(m, free, deposit, u);
 ```
 
-#### Type parameters must be `'static` when the instance holds shared resources
+#### Persistent tokens and instances of machines with type parameters
 
-A machine with type parameters and a persistent field (or a constant whose type
-mentions a type parameter, or an operation without storage that consumes no
-token) requires its type parameters to be `'static`: the instance holds leaked
-`&'static` resources. Client types that store the instance or its tokens need the
-same bound. The Interner example (Change 5) shows this.
+In a machine with type parameters, persistent tokens own their resources (a
+leaked `&'static` resource would need the parameters to be `'static`), so they
+are not `Copy`: clients call `clone`, which takes `&mut self` in a machine with
+storage (and so does `weaken` of a `persistent_count` token there, an inherent
+method). Likewise the instance is not `Copy` if a constant's type mentions a
+type parameter (it owns its descriptor) or if it owns a unit token; `clone`
+duplicates them. The Interner example (Change 5) shows this. Only a machine with
+type parameters and storage in which a guard borrows no token requires its
+parameters to be `'static`.
+
+#### Guards of general operands
+
+A guard of a general operand returns a reference into the guarded storage
+instead of `&Option<V>` or `&Map<K, V>`: `&V` for `guard f >= (Some(v))`,
+`Option<&V>` for another operand of a `storage_option` field, and
+`&IMap<K, V>` for one of a `storage_map` field (which must be the only storage
+field).
 
 #### Count tokens and infinite collections
 
@@ -151,14 +165,16 @@ same bound. The Interner example (Change 5) shows this.
   `<field>_map`/`<field>_set` are generated types with the methods of
   `IMapToken`/`ISetToken`, not those `vstd::tokens` types; their `into_map` and
   `from_map` require finite maps. Client code that names
-  `IMapToken<K, V, M::field>` must name `M::field_map` instead.
+  `IMapToken<K, V, M::field>` must name `M::field_map` instead, or convert a
+  finite collection with `into_imap_token`/`from_imap_token`
+  (`into_iset_token`/`from_iset_token`).
 
 #### Unsupported forms
 
-Some statement forms are rejected at expansion time, for example borrowed token
-collections of finite strategies (`have f >= (e)` on a `map`, `set`, `multiset`,
-`option` or `bool` field), guards of a general element, and operations that read
-a constant but have no token of the instance. The complete list is in
+Some statement forms are rejected at expansion time, for example a guard of a
+general operand of a `storage_map` field that is not the only storage field, and
+general withdrawals from a tagged `storage_imap`. A borrowed multiset part must
+not contain an element twice. The complete list is in
 [Checked tokens: raw and generic interfaces](state_machines/src/checked-token-interfaces.md).
 Such a machine needs the raw interface (Change 3) or a rewritten transition.
 
@@ -189,8 +205,7 @@ Earlier checked versions generated one of several field-shape-specific interface
 by default, marked by `#[verified_field_tokens]`, with `#[verified_local_ready]`
 selecting physical readiness on that route. Those interfaces were removed, and
 `#[verified_field_tokens]` is rejected with a diagnostic. Clients written for
-them (an owned, non-`Copy` `Instance`, `InstanceInfo`, `clone(&mut self)` on
-persistent tokens, generated `*_collection` owners, empty-token bases) port to
+them (`InstanceInfo`, generated `*_collection` owners, empty-token bases) port to
 the trusted macro's interface, i.e. back to their original form.
 
 ### Change 4: Check resource proof obligations
@@ -247,14 +262,12 @@ let eq = compute_eq(&val, &self.store[idx]);
 The `T: VerifiedEq` bound requires a checked equality implementation.
 The example provides one for `u64`. This requirement replaces the trusted stub.
 
-`InternSystem<T>` has a persistent field, so its instance requires `T: 'static`
-(Change 2). The client structures carry the bound:
+`InternSystem<T>` has a persistent field; its persistent tokens own their
+resources (Change 2), so the client's `self.frag.borrow().clone()` duplicates
+one, and the client structures need no bound on `T`:
 
 ```rust
-// Before:
 struct Interner<T> { inst: Tracked<InternSystem::Instance<T>>, /* .. */ }
-// After:
-struct Interner<T: 'static> { inst: Tracked<InternSystem::Instance<T>>, /* .. */ }
 ```
 
 ### Change 6: Constrain the supplied Disk authority
@@ -387,9 +400,9 @@ Contracts and resource proofs can still change.
 | System | `vstd::tokens` traits | Trusted implementations. | Implemented with proofs, except `CountToken` for `count` tokens (inherent methods instead). |
 | System | Operations without input tokens, storage machines | Take only `&self`. | Take an extra `Unit` (`Instance::unit_from_<field>`). |
 | System | `imap`/`iset` token collections | `IMapToken`/`ISetToken`. | Generated `<field>_map`/`<field>_set` types with the same methods. |
-| System | Type parameters | Unconstrained. | `'static` when the instance holds shared resources (persistent fields, constants mentioning a parameter, or token-less operations without storage). |
+| System | Type parameters | Unconstrained. | Unconstrained, except `'static` for a machine with storage whose guard borrows no token; persistent tokens (and an instance owning resources) are not `Copy`. |
 | System | Raw resources and local readiness | Not available. | `#[verified_raw_tokens]`, optionally with `#[verified_local_ready(..)]`. |
-| Example | Interner equality | An unrestricted generic helper has a trusted, unimplemented body. | The helper requires `T: VerifiedEq` and calls a checked provider. Client structures require `T: 'static`. |
+| Example | Interner equality | An unrestricted generic helper has a trusted, unimplemented body. | The helper requires `T: VerifiedEq` and calls a checked provider. |
 | Example | Disk interpretation | A two-argument spec function returns a described authority token. | A three-argument spec predicate returns `bool` and constrains a supplied authority token. |
 | Example | Rc/Arc invariant identity | The invariant uses the original instance value. | An added `Ghost<Loc>` field supplies an identity parameter. |
 | Example | Rc/Arc executable clone | Returns `Self` after an assumed increment bound. | Returns `Option<Self>`; `None` at `u64::MAX`. |

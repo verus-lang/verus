@@ -189,12 +189,19 @@ and, where needed, `&'static` references to leaked shared resources (a unit toke
 or a descriptor of the constants), so copying it duplicates no ownership. Its
 `id()` is a function of the location. Operations that change resources take the
 field tokens that own the affected fragments; an operation without such a token
-in a machine with storage takes a `Unit` token of the instance.
+in a machine with storage takes a `Unit` token of the instance. In a machine with
+type parameters, a leaked reference would need the parameters to be `'static`:
+there the instance owns duplicable copies of these resources where it needs
+them (a descriptor whose type mentions a parameter; a unit token without
+storage), is not `Copy`, and its `clone` promises equal identifiers and
+constants.
 
 Persistent tokens hold a leaked `&'static` raw token whose fragment is
 idempotent. They are `Copy`, and their `clone` promises equality, as in the
-trusted macro. Ordinary exclusive owners and physical permissions are not `Copy`
-and have no clone method.
+trusted macro. In a machine with type parameters they own their raw token
+instead and `clone` duplicates it (with `&mut self` if the machine has storage:
+storage-protocol resources only split). Ordinary exclusive owners and physical
+permissions are not `Copy` and have no clone method.
 
 ## Local readiness and state observations
 

@@ -226,11 +226,32 @@ keys of `e`; the joined observation is valid, so each element of `e` is exactly
 owned in it, and it includes `ι_i(e)`. The types provide the methods of
 `IMapToken`/`ISetToken` (`empty`, `insert`, `remove`, `map`/`set`, `dom`,
 `index`, `contains`, `instance_id`, `into_map`, `from_map`); `into_map` and
-`from_map` require finite maps.
+`from_map` require finite maps. For finite collections, `into_imap_token` and
+`from_imap_token` (`into_iset_token`/`from_iset_token`) convert to and from
+`vstd::tokens::IMapToken` (`ISetToken`).
 
-Persistent tokens hold a leaked `&'static` raw token instead of an owned one. Their
-fragments are idempotent, so a shared reference is all an operation needs (they are
-only ever observed), and the token types are `Copy`, as in the trusted macro.
+A borrowed collection of a finite strategy (`have f >= (e)` for `map`, `set`,
+`multiset`, `option`, `bool` and their persistent variants) is observed token by
+token: the `vstd::tokens` collection types provide `borrow(k)`, a shared
+reference to the token for `k` (`MultisetToken::borrow` is proved from the
+multiset's fold), the observations are joined, and the joined observation is
+valid, so each element of `e` is exactly (or, for persistent strategies, up to
+agreement) owned in it. For a multiset this shows each element of `e` at least
+once, so the borrowed part `e` must not contain an element twice: shared
+references to two tokens do not show that the tokens are distinct resources. (The
+generated operation's proof fails otherwise.)
+
+In a machine without type parameters, persistent tokens hold a leaked `&'static`
+raw token instead of an owned one. Their fragments are idempotent, so a shared
+reference is all an operation needs (they are only ever observed), and the token
+types are `Copy`, as in the trusted macro. In a machine with type parameters a
+leaked reference would need the parameters to be `'static`, so persistent tokens
+own their raw tokens there and are not `Copy`; `clone` duplicates the raw token.
+Without storage it takes `&self` (`Token::duplicate`); a storage-protocol
+resource can only be split (`x = x · x`), so in a machine with storage `clone`
+takes `&mut self`, and so does `weaken` of a `persistent_count` token, which then
+provides its operations as inherent methods instead of `MonotonicCountToken`
+(whose `weaken` takes `&self`).
 
 The tokens implement the `vstd::tokens` traits (`ValueToken`, `KeyValueToken`,
 `ElementToken`, `SimpleToken`, `MonotonicCountToken`, and the `Unique*` variants
@@ -241,9 +262,17 @@ where the strategy is exclusive). The trait lemmas are proved:
 * **Instance identifiers:** are a function `tsm_instance_id` of the location.
 
 `count` tokens provide the `CountToken` operations `count`, `join`, `split` and
-`arbitrary` as inherent methods but do not implement the trait: its `weaken_shared`
-returns a shared reference to a token with a smaller count, and no such token
-exists to borrow from (a `&Self` cannot be made from a part of `self`).
+`arbitrary` as inherent methods but do not implement the trait: its
+`weaken_shared(&self, n)` returns a `&Self` whose count is `n`. Such a reference
+must point to a token value reachable from `self` (the only memory with the
+lifetime of `&self`), and a token's value determines its count, so `self` would
+have to contain tokens for every smaller count. Each such token owns its count by
+the type invariant, and owned counts add up, so a token of count `n` cannot also
+contain tokens of the smaller counts; a variant that owns nothing would carry the
+instance's identifier without owning a fragment, which the operations'
+preconditions rely on. Observations of the parts of a token (which could be
+shared) do not add up either: a shared observation shows inclusion, not the sum of
+disjoint parts.
 
 The trusted interface also lets clients create a token with `arbitrary()`, for
 example as a placeholder for `tracked_swap`. Here a placeholder owns a freshly
@@ -255,9 +284,15 @@ form `t.instance_id() == self.id()` implies that `t` owns a fragment at `γ`. Th
 trait lemmas hold for placeholders because each owns its own resource.
 
 `Instance` holds the ghost location `γ` and is `Copy`. It is not itself a resource.
-(In a machine without storage in which an operation consumes no token, it also
-holds a leaked `&'static` token owning the unit fragment, from which such operations
-take their unit.)
+(If an operation of a machine without storage consumes and borrows no token, or a
+guard borrows no token, it also holds a leaked `&'static` token owning the unit
+fragment, from which such operations take their unit or guard. In a machine with
+type parameters and without storage it owns that token instead, so the parameters
+need not be `'static`.) Its type invariant also states that some
+invariant-satisfying state has the instance's constants: the initial state is
+one. An operation that observes no fragment (such as a property whose assertion
+reads only constants, or one whose borrowed collections are all empty) reasons
+about that state.
 
 Constants need more. `inst.c()` must equal `s.c` in every completion `s` of an
 operation's fragments, so some fragment of the operation must contain the
@@ -266,7 +301,11 @@ with `constant` fields therefore allocates, at initialization, a descriptor: an
 agreement resource on `(c, γ)` at a fresh location `δ`, leaked to a `&'static`
 reference. The instance holds the descriptor (so it stays `Copy`; the descriptor's
 type does not involve the machine's protocol types), `inst.c()` reads it, and
-instance identifiers are `tsm_instance_id(δ)`. Every token (and every `Unit`) holds
+instance identifiers are `tsm_instance_id(δ)`. If a constant's type mentions a type
+parameter, a leaked descriptor would need the parameters to be `'static`; every
+holder then owns a copy of the descriptor instead (agreement resources duplicate),
+and `Instance` is not `Copy`: `clone` duplicates its descriptor (and its unit
+token, if it owns one). Every token (and every `Unit`) holds
 the same descriptor and its own copy of `κ` (`κ · κ = κ`, so copies are split off
 freely): two holders of one identifier hold descriptors at `δ`, which agree, so
 their constants and locations agree. An operation that reads a constant observes a
@@ -301,29 +340,52 @@ then independent of the size of the rest of the generated module.
 
 Storage operations deposit and withdraw through the raw protocol's storage map. With
 one `storage_map` or `storage_imap` field its keys and values are the field's own;
-`storage_option` fields use an index key; several storage fields of different kinds
-use the raw protocol's tagged carrier (`__StorageKey`/`__StorageValue`). A machine
+`storage_option` fields of one value type use an index key; several storage fields
+of different kinds use the raw protocol's tagged carrier
+(`__StorageKey`/`__StorageValue`), and exactly one `option`, one `map`/`imap`, one
+`storage_option` and one `storage_map`/`storage_imap` field whose stored values
+have one type use its homogeneous carrier (tagged keys, untagged values). A machine
 without storage fields uses the plain `vstd::resource::tsm::Token`.
+
+A storage guard guards from the joined observation of its borrowed tokens; a guard
+that borrows no token guards from the instance's unit token. For the general
+operands of the trusted interface (`guard f >= (e)`), whose output types
+`&Option<V>` and `&Map<K, V>` are not references into the guarded storage, the
+generic interface returns references into the storage instead: `&V` for
+`guard f >= (Some(v))`, `Option<&V>` for any other operand of a `storage_option`
+field, and `&IMap<K, V>` (equal to `m.to_imap()`) for a `storage_map` field that is
+the only storage field (`&IMap<K, V>`, as in the trusted interface, for a
+`storage_imap` field). A guard may have several outputs.
 
 ### Differences from the trusted interface
 
 * **Operations that consume no token.** Because `Instance` is not a resource, an
   operation that consumes no token has nothing to perform the update on. In a
   machine with storage fields, such operations take an extra argument of type
-  `Unit`, which owns the unit fragment at `γ`. `Instance::unit_from_<field>(&mut t)`
-  obtains one from any (non-persistent) token of the instance by splitting
-  `ι_i(e) = ε · ι_i(e)`. In a machine without storage the unit is split off the
-  instance's own token (`Token::empty`), so the signature is unchanged.
+  `Unit`, which owns the unit fragment at `γ`. Units come from three sources:
+  `Instance::unit_from_<field>(&mut t)` splits one off any (non-persistent) token
+  of the instance (`ι_i(e) = ε · ι_i(e)`); the initializer `<init>_with_unit` is
+  `<init>` that also returns a `Unit` (for machines whose only tokenized state is
+  storage and constants, which have no field token); and `Unit::split` divides a
+  unit into two (`ε = ε · ε`). In a machine without storage the unit is split off
+  a borrowed token of the operation, or else the instance's own token
+  (`Token::empty`), so the signature is unchanged.
 * **`count` tokens** do not implement `CountToken` (see above).
+* **Guards of general operands** return references into the guarded storage
+  (`&V`, `Option<&V>` or `&IMap<K, V>`, see above) instead of `&Option<V>` or
+  `&Map<K, V>`.
+* **Persistent tokens and `Instance` in machines with type parameters** are not
+  `Copy` where they own their resources (see above); clients call `clone` (with
+  `&mut self` for persistent tokens of a machine with storage).
 * **`imap`/`iset` collection types.** For `imap`, `iset`, `persistent_imap` and
   `persistent_iset` fields, `<field>_map`/`<field>_set` are generated types (see
   above), not `vstd::tokens::IMapToken`/`ISetToken`; client code that names
   `IMapToken<K, V, M::field>` must name `M::field_map` instead. Their `into_map`
   and `from_map` require finite maps.
-* **Type parameters.** A machine with type parameters and a persistent field (or a
-  constant whose type mentions a type parameter, or an operation without storage
-  that consumes no token) requires its type parameters to be `'static`: it holds
-  leaked `&'static` raw tokens.
+* **Type parameters.** A machine with type parameters and storage in which a guard
+  borrows no token requires its type parameters to be `'static`: its instance
+  holds a leaked `&'static` storage token (a storage token cannot be duplicated,
+  so the instance cannot own it and stay clonable).
 * **Supported fields.** The interface currently supports:
   * every sharding strategy: `variable`, `constant`, `not_tokenized`, `option`,
     `persistent_option`, `map`, `persistent_map`, `imap`, `persistent_imap`, `set`,
@@ -333,24 +395,20 @@ without storage fields uses the plain `vstd::resource::tsm::Token`.
   * any number of storage fields;
   * machines with or without type parameters;
   * consumed token collections for `map`, `imap`, `set`, `iset`, `multiset`,
-    `option` and `bool` fields, and produced (also infinite, for `imap` and `iset`
-    strategies) collections for all collection strategies;
-  * guards with one output.
+    `option` and `bool` fields, borrowed token collections for all collection
+    strategies, and produced (also infinite, for `imap` and `iset` strategies)
+    collections for all collection strategies;
+  * guards with or without borrowed tokens, of singleton and general operands,
+    with any number of outputs;
+  * operations without any token (with a `Unit`, see above), and properties that
+    read only constants or nothing.
 
   The following are rejected at expansion time:
-  * borrowed token collections of the finite strategies (`have f >= (e)` for
-    `map`, `set`, `multiset`, `option`, `bool` and their persistent variants, in an
-    operation with something to prove: the `vstd::tokens` collection types give no
-    access to their tokens through a shared reference), and a borrowed
-    `imap`/`iset` collection as the only borrowed input;
-  * guards without a borrowed token, and guards of a general element
-    (`guard f >= (e)`);
-  * an operation that reads a constant but has no token of the instance (such as a
-    property whose assertion reads only constants);
+  * a guard of a general operand of a `storage_map` or `storage_imap` field that is
+    not the only storage field, or that is not the property's only guard;
+  * a read-only operation that reads a constant and whose only borrowed inputs
+    are `imap`/`iset` collections;
   * general withdrawals from a tagged `storage_imap`;
-  * the storage layout of exactly one `option`, one `map`/`imap`, one
-    `storage_option` and one `storage_map`/`storage_imap` field, which the raw
-    backend stores in a homogeneous carrier;
   * labels.
 
   For these, use `#[verified_raw_tokens]`.
@@ -363,10 +421,10 @@ without storage fields uses the plain `vstd::resource::tsm::Token`.
 | Splitting and combining | Explicit, by fragment arithmetic (`split`, `join`) | By the operations' signatures and token collections |
 | Operation preconditions | Quantified over all completions of the input fragments; proved by the client (or local, with `#[verified_local_ready]`) | Stated over tokens' ghost data, as in the trusted macro; the completion argument is generated |
 | Operation postconditions | Output fragment, or an existential over a completion and successor state | Values of the output tokens, as in the trusted macro |
-| `Instance` | None; the location is that of the token | `Copy` value carrying the location (and a shared token with the constants) |
+| `Instance` | None; the location is that of the token | `Copy` value carrying the location (and shared resources); with type parameters, possibly an owned copy (`clone`) |
 | Operations without input tokens | Take a token of the instance (it may own the unit fragment) | Take a `Unit` in machines with storage; unchanged otherwise |
 | `vstd::tokens` traits | Not implemented | Implemented, with proofs |
-| Source compatibility with `tokenized_state_machine!` clients | No | Yes, except for `Unit` (storage machines), `count` tokens without `CountToken`, and `'static` type parameters (see above) |
+| Source compatibility with `tokenized_state_machine!` clients | No | Yes, except for `Unit` (storage machines), `count` tokens without `CountToken`, the outputs of guards of general operands, and non-`Copy` persistent tokens and instances of machines with type parameters (see above) |
 | Field kinds and statement forms | Those supported by the verified backend | A subset (see above), on top of the raw backend |
 | Trusted code added | None | None |
 
