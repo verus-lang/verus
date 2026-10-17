@@ -207,13 +207,13 @@ proof fn test_inst1() {
     assert(equal(token1.instance_id(), inst.id()));
     assert(token1.element() == 5);
     inst.tr_have(&token1);
-    inst.tr_remove(&mut authority, token1);
+    inst.tr_remove(token1, &mut authority);
 
     let tracked token_set = inst.tr_add_gen(&mut authority);
     assert(token_set.set() =~= iset![6]);
     assert(token_set.instance_id() == inst.id());
     inst.tr_have_gen(&token_set);
-    inst.tr_remove_gen(&mut authority, token_set);
+    inst.tr_remove_gen(token_set, &mut authority);
     assert(authority.value() =~= ISet::<int>::empty().insert(19));
     assert(token_f.set() =~= iset![19]);
 }

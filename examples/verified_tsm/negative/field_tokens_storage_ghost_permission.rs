@@ -18,7 +18,7 @@ pub trait TxPredicate<V, M>: Sized {
 }
 
 verified_tokenized_state_machine!(
-#[verified_local_ready(gather,withdraw,deposit,withdraw_mutating,deposit_mutating,mutate)] TxToks<V, M, Pred: TxPredicate<V, M>> {
+TxToks<V, M, Pred: TxPredicate<V, M>> {
     fields {
         #[sharding(constant)]
         pub pred: Pred,

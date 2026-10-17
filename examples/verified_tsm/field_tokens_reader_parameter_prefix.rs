@@ -5,7 +5,7 @@ use vstd::prelude::*;
 verus! {
 
 verified_tokenized_state_machine!(
-#[verified_local_ready(deposit_one,copy_one,drop_one,take_last)] RefCounter<Perm> {
+RefCounter<Perm> {
     fields {
         #[sharding(variable)]
         pub left: nat,

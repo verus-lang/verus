@@ -50,8 +50,7 @@ verified_tokenized_state_machine!(
 
 verified_tokenized_state_machine!(
 
-#[verified_local_ready(do_deposit, do_withdraw)]
-    Fancy {
+Fancy {
         fields {
             #[sharding(variable)]
             pub m: int,

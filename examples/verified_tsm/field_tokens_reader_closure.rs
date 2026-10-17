@@ -9,7 +9,7 @@ pub open spec fn reader_marker(value: int) -> bool {
 }
 
 verified_tokenized_state_machine!(
-#[verified_local_ready(do_deposit,do_clone,dec_basic,dec_to_zero)] RefCounter<Perm> {
+RefCounter<Perm> {
     fields {
         #[sharding(variable)]
         pub counter: nat,

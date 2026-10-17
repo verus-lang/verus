@@ -12,7 +12,6 @@ verus! {
 
 verified_tokenized_state_machine!{
 
-    #[verified_local_ready(exc_start,exc_finish,exc_release,shared_finish)]
     DistRwLock<T> {
         fields {
             #[sharding(constant)]
@@ -443,9 +442,9 @@ fn main() {
             Some(permission),
         );
         let tracked ref_count_token = ref_counts_tokens.remove(0int);
-        let tracked mut exc_pending_token = instance.exc_start(&mut exc_locked_token);
-        instance.exc_check_count(&mut exc_pending_token, &ref_count_token);
-        let tracked (Tracked(_exc_guard_token), Tracked(withdrawn)) = instance.exc_finish(
+        let tracked exc_pending_token = instance.exc_start(&mut exc_locked_token);
+        let tracked exc_pending_token = instance.exc_check_count(&ref_count_token, exc_pending_token);
+        let tracked (Tracked(withdrawn), Tracked(_exc_guard_token)) = instance.exc_finish(
             exc_pending_token,
         );
         previous = withdrawn;

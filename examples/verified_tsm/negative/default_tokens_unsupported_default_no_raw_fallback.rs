@@ -1,4 +1,4 @@
-// EXPECTED-ERROR: field facade cannot yet combine with selected physical readiness
+// EXPECTED-ERROR: `#[verified_local_ready(..)]` selects raw local-readiness operations and requires `#[verified_raw_tokens]`
 //! Complete ordinary adder.rs model, including its local initialization let.
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;

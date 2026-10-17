@@ -13,7 +13,6 @@ verus! {
 
 verified_tokenized_state_machine!{
 
-    #[verified_local_ready(exc_start,exc_finish,exc_release,shared_finish)]
     DistRwLock<T> {
         fields {
             #[sharding(constant)]

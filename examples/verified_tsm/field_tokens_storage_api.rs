@@ -13,7 +13,6 @@ type Perm<S> = cell::PointsTo<S>;
 
 verified_tokenized_state_machine! {
 
-    #[verified_local_ready(deposit,withdraw)]
     Store<#[verifier::reject_recursive_types] S> {
         fields {
             #[sharding(constant)] pub permission:Perm<S>,

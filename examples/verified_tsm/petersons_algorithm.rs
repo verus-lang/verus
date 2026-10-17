@@ -14,7 +14,6 @@ pub enum ThreadState {
 
 verified_tokenized_state_machine! {
 
-    #[verified_local_ready(t0_set_flag,t0_set_turn,t0_enter_via_flag,t0_enter_via_turn,t0_done,t1_set_flag,t1_set_turn,t1_enter_via_flag,t1_enter_via_turn,t1_done)]
     Petersons<T> {
     fields {
         #[sharding(variable)] pub flag_0: bool,

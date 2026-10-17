@@ -7,8 +7,7 @@ use vstd::prelude::*;
 
 verified_tokenized_state_machine! {
 
-#[verified_local_ready(writeable_to_readable,readable_to_writeable,new_ref,delete_ref)]
- CountingPermissions<T> {
+CountingPermissions<T> {
     fields {
         #[sharding(multiset)]
         pub read_ref: Multiset<T>,

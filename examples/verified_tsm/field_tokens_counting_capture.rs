@@ -14,8 +14,7 @@ pub open spec fn capture_id(x: int) -> int {
 } // verus!
 verified_tokenized_state_machine! {
 
-#[verified_local_ready(writeable_to_readable,readable_to_writeable,new_ref,delete_ref)]
- CountingPermissions<T> {
+CountingPermissions<T> {
     fields {
         #[sharding(storage_option)]
         pub stored: Option<T>,

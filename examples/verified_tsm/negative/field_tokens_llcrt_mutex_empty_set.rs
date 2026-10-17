@@ -33,7 +33,6 @@ pub open spec fn count<T>(o: Option<T>) -> int {
 
 verified_tokenized_state_machine!(
 
-#[verified_local_ready(take_ticket, acquire, release, enter_single_threaded, exit_single_threaded)]
 MutexToks<K, V, Pred: InvariantPredicate<K, V>> {
     fields {
         // The constant portion of the invariant we maintain about the stored value

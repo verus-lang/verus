@@ -17,7 +17,6 @@ pub struct T {
 
 verified_tokenized_state_machine!(
 
-    #[verified_local_ready(acquire_read_start,acquire_read_end,acquire_read_abandon,acquire_exc_start,acquire_exc_end,release_exc,release_shared)]
     RwLock {
     fields {
         #[sharding(variable)]

@@ -23,7 +23,6 @@ type Perm<S> = cell::PointsTo<S>;
 
 // ANCHOR: fields
 verified_tokenized_state_machine!(
-#[verified_local_ready(do_deposit,do_withdraw,new_reader,drop_reader)]
 RefCounter<S> {
     fields {
         #[sharding(constant)]

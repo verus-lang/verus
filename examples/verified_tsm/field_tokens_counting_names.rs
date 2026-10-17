@@ -7,8 +7,7 @@ use vstd::prelude::*;
 
 verified_tokenized_state_machine! {
 
-#[verified_local_ready(writeable_to_readable,readable_to_writeable,new_ref,delete_ref)]
- NativeCounterNames<T> {
+NativeCounterNames<T> {
     fields {
         #[sharding(storage_option)]
         pub __tsm_borrow_payload: Option<T>,

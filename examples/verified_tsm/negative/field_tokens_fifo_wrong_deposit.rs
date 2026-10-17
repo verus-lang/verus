@@ -38,7 +38,6 @@ pub enum ConsumerState {
 // ANCHOR: fields
 verified_tokenized_state_machine!{
 
-#[verified_local_ready(produce_start, produce_end, consume_start, consume_end)]
 FifoQueue<T> {
     fields {
         // IDs of the cells used in the ring buffer.

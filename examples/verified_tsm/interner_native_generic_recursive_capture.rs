@@ -139,13 +139,13 @@ verus! {
 // - use `@` to get the original string (in spec-code)
 //   so that you could reason about the string as if you just had the original
 // - evaluate string equality by comparing the IDs
-struct Interner<__tsm_variable_persistent_authority> {
+struct Interner<__tsm_variable_persistent_authority: 'static> {
     inst: Tracked<InternSystem::Instance<__tsm_variable_persistent_authority>>,
     auth: Tracked<InternSystem::auth<__tsm_variable_persistent_authority>>,
     store: Vec<__tsm_variable_persistent_authority>,
 }
 
-struct Interned<__tsm_variable_persistent_authority> {
+struct Interned<__tsm_variable_persistent_authority: 'static> {
     inst: Tracked<InternSystem::Instance<__tsm_variable_persistent_authority>>,
     frag: Tracked<InternSystem::frag<__tsm_variable_persistent_authority>>,
     id: usize,

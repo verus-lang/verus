@@ -216,16 +216,16 @@ pub proof fn test_inst1() {
     let tracked tok = inst.tr_add(&mut flag);
     assert(equal(tok.instance_id(), inst.id()));
     inst.tr_have(&tok);
-    inst.tr_remove(&mut flag, tok);
+    inst.tr_remove(tok, &mut flag);
     let tracked opt_tok = inst.tr_add_gen(true, &mut flag);
     assert(opt_tok is Some);
     assert(equal(opt_tok->Some_0.instance_id(), inst.id()));
     inst.tr_have_gen(true, &opt_tok);
-    inst.tr_remove_gen(true, &mut flag, opt_tok);
+    inst.tr_remove_gen(true, opt_tok, &mut flag);
     let tracked opt_tok = inst.tr_add_gen(false, &mut flag);
     assert(opt_tok is None);
     inst.tr_have_gen(false, &opt_tok);
-    inst.tr_remove_gen(false, &mut flag, opt_tok);
+    inst.tr_remove_gen(false, opt_tok, &mut flag);
 }
 
 pub proof fn test_inst2() {

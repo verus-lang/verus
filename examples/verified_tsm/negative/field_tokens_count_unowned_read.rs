@@ -1,4 +1,4 @@
-// EXPECTED-ERROR: unowned fields cannot be read by a token operation
+// EXPECTED-ERROR: A 'count' field cannot be directly referenced here
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 verus! {

@@ -102,7 +102,7 @@ pub proof fn test_inst1() {
     assert(equal(tok.instance_id(), inst.id()));
     inst.tr_have(&tok);
     let tracked tok1 = tok.clone();
-    assert(equal((tok.value(), tok.instance_id()), (tok1.value(), tok1.instance_id())));
+    assert(equal(tok, tok1));
     let tracked opt_tok = inst.tr_add_gen(true);
     assert(opt_tok is Some);
     assert(equal(opt_tok->Some_0.instance_id(), inst.id()));

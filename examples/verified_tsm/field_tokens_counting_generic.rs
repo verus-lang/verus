@@ -7,8 +7,7 @@ use vstd::prelude::*;
 
 verified_tokenized_state_machine! {
 
-#[verified_local_ready(writeable_to_readable,readable_to_writeable,new_ref,delete_ref)]
- GenericCounter<Value> {
+GenericCounter<Value> {
     fields {
         #[sharding(storage_option)]
         pub stored: Option<Value>,
