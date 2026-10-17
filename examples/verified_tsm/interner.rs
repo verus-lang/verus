@@ -137,15 +137,13 @@ verus! {
 // - use `@` to get the original string (in spec-code)
 //   so that you could reason about the string as if you just had the original
 // - evaluate string equality by comparing the IDs
-// `T: 'static`: the instance of a machine with a persistent field holds a
-// leaked `&'static` resource.
-struct Interner<T: 'static> {
+struct Interner<T> {
     inst: Tracked<InternSystem::Instance<T>>,
     auth: Tracked<InternSystem::auth<T>>,
     store: Vec<T>,
 }
 
-struct Interned<T: 'static> {
+struct Interned<T> {
     inst: Tracked<InternSystem::Instance<T>>,
     frag: Tracked<InternSystem::frag<T>>,
     id: usize,
