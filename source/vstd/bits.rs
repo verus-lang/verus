@@ -31,8 +31,22 @@ use super::arithmetic::mul::{
 };
 #[cfg(verus_keep_ghost)]
 use super::calc_macro::*;
-#[cfg(verus_keep_ghost)]
-use super::layout::unsigned_int_max_values;
+
+/// Proof that the max value of each unsigned integer type is 2^BITS - 1.
+pub proof fn lemma_unsigned_int_max_is_pow2_minus_1()
+    ensures
+        (u8::MAX as nat) == pow2(u8::BITS as nat) - 1,
+        (u16::MAX as nat) == pow2(u16::BITS as nat) - 1,
+        (u32::MAX as nat) == pow2(u32::BITS as nat) - 1,
+        (u64::MAX as nat) == pow2(u64::BITS as nat) - 1,
+        (u128::MAX as nat) == pow2(u128::BITS as nat) - 1,
+{
+    assert(0x100 == pow2(8)) by (compute);
+    assert(0x1_0000 == pow2(16)) by (compute);
+    assert(0x1_0000_0000 == pow2(32)) by (compute);
+    assert(0x1_0000_0000_0000_0000 == pow2(64)) by (compute);
+    assert(0x1_0000_0000_0000_0000_0000_0000_0000_0000 == pow2(128)) by (compute);
+}
 
 } // verus!
 // Proofs that shift right is equivalent to division by power of 2.
@@ -115,7 +129,7 @@ macro_rules! lemma_pow2_no_overflow {
                 0 < #[trigger] pow2(n) < <$uN>::MAX,
         {
             lemma_pow2_pos(n);
-            unsigned_int_max_values();
+            lemma_unsigned_int_max_is_pow2_minus_1();
             lemma_pow2_unfold(<$uN>::BITS as nat);
             if n < <$uN>::BITS - 1 {
                 lemma_pow2_strictly_increases(n, (<$uN>::BITS - 1) as nat);
