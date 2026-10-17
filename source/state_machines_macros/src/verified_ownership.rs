@@ -106,6 +106,29 @@ impl Compiler<'_> {
         }
     }
 
+    /// Whether `statement` returns exactly its input fragment: it contains no
+    /// `add`/`remove` of an ownership component (mirrors `statement`).
+    fn preserves_owned(&self, stmt: &TransitionStmt) -> bool {
+        match stmt {
+            TransitionStmt::Block(_, children) => children.iter().all(|c| self.preserves_owned(c)),
+            TransitionStmt::Split(_, kind, children) => {
+                let local = match &**kind {
+                    SplitKind::Special(name, operation, _, _) => {
+                        match self.fields.get(&name.to_string()) {
+                            Some(field) if supported(&field.stype) => {
+                                matches!(operation.stmt, MonoidStmtType::Have)
+                            }
+                            _ => true,
+                        }
+                    }
+                    _ => true,
+                };
+                local && children.iter().all(|c| self.preserves_owned(c))
+            }
+            _ => true,
+        }
+    }
+
     fn sequence(
         &mut self,
         statements: &[TransitionStmt],
@@ -115,12 +138,24 @@ impl Compiler<'_> {
         let mut declarations = Vec::new();
         let mut conditions = Vec::new();
         for statement in statements {
-            let pair = self.statement(statement, result)?;
+            let preserves = self.preserves_owned(statement);
+            let pair = self.statement(statement, result.clone())?;
             let enabled = self.fresh("enabled");
-            let next = self.fresh("owned");
-            declarations.push(quote! {let (#enabled, #next) = #pair;});
+            if preserves {
+                // The statement returns its input fragment unchanged. Keep
+                // referring to that input rather than to the projection of the
+                // pair: the pair also holds the statement's conditions (with
+                // their quantifiers), and a later observation's trigger
+                // `op(owned, shared).f.at(k)` must not mention it, or it
+                // cannot match the ground terms of the fragment (e.g. two
+                // `have`s of one map field before a guard).
+                declarations.push(quote! {let #enabled = (#pair).0;});
+            } else {
+                let next = self.fresh("owned");
+                declarations.push(quote! {let (#enabled, #next) = #pair;});
+                result = quote! {#next};
+            }
             conditions.push(enabled);
-            result = quote! {#next};
         }
         Ok(quote! {{#(#declarations)* (true #(&& #conditions)*, #result)}})
     }
