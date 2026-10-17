@@ -2538,6 +2538,46 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
     };
     let single_m = single(quote! {k}, quote! {m});
     let single_mkk = single(quote! {kk}, quote! {m});
+    // With constants, each observed token's copy of `κ` (and the bulk's) is
+    // joined too, so a non-empty observation includes `κ`.
+    let (kappa_req, kappa_ens, observe_tok, tok_step, kappa_pre, kappa_step, bulk_obs, bulk_step) = match cm {
+        None => (
+            quote! {},
+            quote! {},
+            quote! {let tracked o = tk.__borrow_raw(#larg).observe();},
+            quote! {},
+            quote! {},
+            quote! {},
+            quote! {Some(self.bulk.tracked_borrow().observe())},
+            quote! {},
+        ),
+        Some(cm) => {
+            let kappa = cm.kappa(quote! {d});
+            (
+                quote! {::vstd::prelude::imply(acc is Some, #t::fragment_included::<Protocol>(#kappa, acc->Some_0.fragment())),},
+                quote! {::vstd::prelude::imply(out is Some, #t::fragment_included::<Protocol>(#kappa, out->Some_0.fragment())),},
+                quote! {
+                    let tracked o1 = tk.__borrow_raw(#larg).observe();
+                    let tracked o2 = tk.__borrow_base(#larg).observe();
+                    let tracked o = o1.join(&o2);
+                },
+                quote! {#t::fragment_included_transitive::<Protocol>(o1.fragment(), o.fragment(), out->Some_0.fragment());},
+                quote! {#t::fragment_included_transitive::<Protocol>(#kappa, o.fragment(), acc2->Some_0.fragment());},
+                quote! {#t::fragment_included_transitive::<Protocol>(#kappa, acc2->Some_0.fragment(), out->Some_0.fragment());},
+                quote! {{
+                    let tracked b1 = self.bulk.tracked_borrow().observe();
+                    let tracked b2 = self.kappa.tracked_borrow().observe();
+                    Some(b1.join(&b2))
+                }},
+                quote! {
+                    if self.bulk is Some {
+                        #t::fragment_included_transitive::<Protocol>(Fragment::#factory(bm), acc->Some_0.fragment(), out->Some_0.fragment());
+                        #t::fragment_included_transitive::<Protocol>(#kappa, acc->Some_0.fragment(), out->Some_0.fragment());
+                    }
+                },
+            )
+        }
+    };
     let single_parts = single(quote! {k}, quote! {self.parts});
     let observe_parts = format_ident!("__observe_parts_{}", n);
     let key_m = if ml { quote! {<#nt as #tr>::key(&m[key])} } else { quote! {<#nt as #tr>::element(&m[key])} };
@@ -2620,7 +2660,9 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
                     m[key].__id() == ::vstd::resource::tsm_instance_id(#larg_id, false) && #key_m == key),
                 #link_ok
                 ::vstd::prelude::imply(acc is Some, acc->Some_0.loc() == #link_loc),
+                #kappa_req
             ensures ::vstd::prelude::imply(out is Some, out->Some_0.loc() == #link_loc),
+                #kappa_ens
                 ::vstd::prelude::imply(acc is Some, out is Some && #t::fragment_included::<Protocol>(acc->Some_0.fragment(), out->Some_0.fragment())),
                 forall|k: #kt| ::vstd::prelude::imply(#[trigger] keys.contains(k), out is Some
                     && #t::fragment_included::<Protocol>(#single_m, out->Some_0.fragment())),
@@ -2638,7 +2680,7 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
                 ::vstd::iset::lemma_iset_choose_len(keys);
                 let k = keys.choose();
                 let tracked tk = m.tracked_borrow(k);
-                let tracked o = tk.__borrow_raw(#larg).observe();
+                #observe_tok
                 let tracked acc2 = if acc is Some {
                     let tracked a = acc.tracked_unwrap();
                     Some(a.join(&o))
@@ -2646,11 +2688,14 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
                     #t::fragment_included_reflexive::<Protocol>(o.fragment());
                     Some(o)
                 };
+                #kappa_pre
                 let tracked out = Self::#observe_parts(m, keys.remove(k), acc2, #larg);
                 if acc is Some {
                     #t::fragment_included_transitive::<Protocol>(acc->Some_0.fragment(), acc2->Some_0.fragment(), out->Some_0.fragment());
                 }
                 #t::fragment_included_transitive::<Protocol>(o.fragment(), acc2->Some_0.fragment(), out->Some_0.fragment());
+                #tok_step
+                #kappa_step
                 assert forall|kk: #kt| #[trigger] keys.contains(kk) implies out is Some
                     && #t::fragment_included::<Protocol>(#single_mkk, out->Some_0.fragment()) by {
                     if kk != k { assert(keys.remove(k).contains(kk)); }
@@ -2664,6 +2709,7 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
             ensures ::vstd::prelude::imply(out is Some, out->Some_0.loc() == #link_loc
                     && #t::fragment_included::<Protocol>(Fragment::#factory(e), out->Some_0.fragment())),
                 ::vstd::prelude::imply(out is None, Fragment::#factory(e) == Fragment::unit()),
+                #kappa_ens
         {
             broadcast use {::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas};
             ::vstd::prelude::use_type_invariant(self);
@@ -2672,7 +2718,7 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
             let eb = #eb;
             let tracked acc: Option<#obs> = if self.bulk is Some {
                 #bulk_link
-                Some(self.bulk.tracked_borrow().observe())
+                #bulk_obs
             } else {
                 None
             };
@@ -2680,6 +2726,7 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
             assert(keys.subset_of(self.parts.dom()));
             ::vstd::iset_lib::lemma_iset_subset_finite(self.parts.dom(), keys);
             let tracked out = Self::#observe_parts(&self.parts, keys, acc, #larg);
+            #bulk_step
             if out is None {
                 assert(::vstd::prelude::ext_equal(e, #eempty)) by {
                     assert forall|k: #kt| !#edom.contains(k) by {
@@ -4479,7 +4526,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             })
         } else if guard && ctx.base {
             Some(quote! {let tracked #obs = self.__base.observe();})
-        } else if is_read_only(&parts, &params) && !guard && coll_owned.is_empty() && !pending_infinite {
+        } else if is_read_only(&parts, &params) && !guard && coll_owned.is_empty() {
             // A read-only operation without borrowed tokens: `κ` is included in
             // its borrowed collections' observations (if any is not empty);
             // otherwise the instance's reachable state has its constants.
@@ -4507,7 +4554,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             }
         }
     }
-    let _ = &kappa_from;
+    let _ = (&kappa_from, pending_infinite);
     // Borrowed collections are joined (if not empty) after the other borrowed inputs.
     let read_only_op = is_read_only(&parts, &params) && coll_owned.is_empty();
     if guard && take_shared.is_empty() && ctx.guard_unit {

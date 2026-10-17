@@ -316,7 +316,11 @@ token, if it owns one). Every token (and every `Unit`) holds
 the same descriptor and its own copy of `κ` (`κ · κ = κ`, so copies are split off
 freely): two holders of one identifier hold descriptors at `δ`, which agree, so
 their constants and locations agree. An operation that reads a constant observes a
-copy of `κ` from one of its tokens, so `κ` is part of its shared fragment.
+copy of `κ` from one of its tokens, so `κ` is part of its shared fragment. (The
+observation of a borrowed collection, also of an `imap`/`iset` field, joins the
+copies of `κ` of its tokens, so a read-only operation whose only borrowed inputs
+are collections finds `κ` there, or, if they are all empty, reasons about the
+instance's reachable state.)
 
 ### Operations
 
@@ -416,8 +420,6 @@ which the machine states with a `require`). A guard may have several outputs.
     read only constants or nothing.
 
   The following are rejected at expansion time:
-  * a read-only operation that reads a constant and whose only borrowed inputs
-    are `imap`/`iset` collections;
   * general withdrawals from a tagged `storage_imap`;
   * labels.
 
