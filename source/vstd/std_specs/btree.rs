@@ -501,16 +501,14 @@ pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Valu
         res == m@.is_empty(),
 ;
 
+// Keys and values are cloned with their `Clone` impls (#3086, as #1835 for `HashMap`): the
+// keys are the same only if `K::clone` returns an equal value, and each value is a clone.
 pub assume_specification<K: Clone, V: Clone, A: Allocator + Clone>[ <BTreeMap::<
     K,
     V,
     A,
 > as Clone>::clone ](this: &BTreeMap<K, V, A>) -> (other: BTreeMap<K, V, A>)
     ensures
-// Keys and values are cloned with their `Clone` impls (#3086, as #1835 for
-// `HashMap`): the keys are the same only if `K::clone` returns an equal value, and
-// each value is a clone.
-
         (forall|a: K, b: K| #[trigger] cloned(a, b) ==> a == b) ==> {
             &&& other@.dom() == this@.dom()
             &&& forall|key|
@@ -1123,12 +1121,11 @@ pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::is_empt
         res == m@.is_empty(),
 ;
 
+// The elements are cloned with `K::clone` (#3086).
 pub assume_specification<K: Clone, A: Allocator + Clone>[ <BTreeSet::<K, A> as Clone>::clone ](
     this: &BTreeSet<K, A>,
 ) -> (other: BTreeSet<K, A>)
     ensures
-// the elements are cloned (#3086)
-
         (forall|a: K, b: K| #[trigger] cloned(a, b) ==> a == b) ==> other@ == this@,
 ;
 
