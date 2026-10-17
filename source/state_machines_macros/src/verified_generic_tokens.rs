@@ -316,8 +316,7 @@ impl Store {
                 let untag = format_ident!("__untag_{}", n);
                 let tag_finite = format_ident!("__tag_finite_{}", n);
                 quote! {
-                    let tracked __tsm_part = __tsm_withdrawn.tracked_remove_keys(#tagged.dom());
-                    assert(::vstd::prelude::ext_equal(__tsm_part, #tagged));
+                    let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #tagged);
                     assert(::vstd::prelude::ext_equal(__StorageKey::#untag(__tsm_part), (#e).to_imap()));
                     __StorageKey::#tag_finite(#e);
                     let tracked #p = __StorageKey::#unpack(__tsm_part);
@@ -356,8 +355,7 @@ impl Store {
                     quote! {let tracked #p = __tsm_native;}
                 };
                 quote! {
-                    let tracked __tsm_part = __tsm_withdrawn.tracked_remove_keys(#tagged.dom());
-                    assert(::vstd::prelude::ext_equal(__tsm_part, #tagged));
+                    let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #tagged);
                     assert(::vstd::prelude::ext_equal(__StorageKey::#untag(__tsm_part), #native));
                     let tracked __tsm_native = __StorageKey::#unpack(__tsm_part);
                     assert(__tsm_native == #native);
@@ -366,17 +364,15 @@ impl Store {
             }
             (StoreKind::Carrier | StoreKind::Homog, _) => {
                 let unpack = format_ident!("__unpack_{}", n);
-                let untag = format_ident!("__untag_{}", n);
+                let lemma = format_ident!("__tsm_untag_tag_{}", n);
                 quote! {
-                    let tracked __tsm_part = __tsm_withdrawn.tracked_remove_keys(#tagged.dom());
-                    assert(::vstd::prelude::ext_equal(__tsm_part, #tagged));
-                    assert(__StorageKey::#untag(__tsm_part) == #e);
+                    let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #tagged);
+                    Instance::#lemma(#e);
                     let tracked #p = __StorageKey::#unpack(__tsm_part);
                 }
             }
             (_, ShardableType::StorageMap(..)) => quote! {
-                let tracked __tsm_part = __tsm_withdrawn.tracked_remove_keys(#tagged.dom());
-                assert(::vstd::prelude::ext_equal(__tsm_part, #tagged));
+                let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #tagged);
                 let tracked #p = ::vstd::resource::tsm_generic::tracked_imap_to_map(__tsm_part);
                 assert(::vstd::prelude::ext_equal(#p, #e)) by {
                     assert forall|k| #p.dom().contains(k) == #[trigger] (#e).dom().contains(k) by {
@@ -388,8 +384,7 @@ impl Store {
                 }
             },
             (_, ShardableType::StorageIMap(..)) => quote! {
-                let tracked #p = __tsm_withdrawn.tracked_remove_keys((#e).dom());
-                assert(::vstd::prelude::ext_equal(#p, #e));
+                let tracked #p = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #e);
             },
             (_, _) => {
                 let i = self.option_index(f);
@@ -503,6 +498,34 @@ impl Cm {
             let w = format_ident!("with_{}", c.name);
             quote! {#acc.#w(#v)}
         })
+    }
+    /// `op(κ, κ) == κ` for the constants of descriptor `d` (a call of the
+    /// instance's `__tsm_kappa_idem` lemma). Proving it in place, among an
+    /// operation's other facts, can be very expensive for the solver.
+    fn idem(&self, d: TokenStream) -> TokenStream {
+        let vals: Vec<_> = (0..self.consts.len()).map(|i| self.constant(d.clone(), i)).collect();
+        quote! {Instance::__tsm_kappa_idem(#(#vals),*);}
+    }
+    /// The `__tsm_kappa_idem` lemma.
+    fn idem_lemma(&self) -> TokenStream {
+        let params: Vec<_> = self.consts.iter().enumerate().map(|(i, c)| {
+            let ShardableType::Constant(t) = &c.stype else { unreachable!() };
+            let p = format_ident!("__tsm_c{}", i);
+            quote! {#p: #t}
+        }).collect();
+        let vals: Vec<_> = (0..self.consts.len()).map(|i| {
+            let p = format_ident!("__tsm_c{}", i);
+            quote! {#p}
+        }).collect();
+        let k = self.kappa_of(&vals);
+        quote! {
+            pub proof fn __tsm_kappa_idem(#(#params),*)
+                ensures Fragment::op(#k, #k) == #k,
+            {
+                Fragment::unit().op_unit();
+                assert(Fragment::op(#k, #k) == #k);
+            }
+        }
     }
 }
 
@@ -4004,6 +4027,23 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     // that observe no fragment (e.g. a property over the constants only)
     // reason about it.
     let reachable = reachable_state(&cm, &quote! {self.__desc}, &format_ident!("__tsm_s"));
+    let kappa_idem = cm.as_ref().map(|cm| cm.idem_lemma());
+    // `untag(tag(e)) == e` for the tagged storage options, for general
+    // withdrawals (proved here, apart from an operation's other facts).
+    let untag_tag: Vec<_> = sm
+        .fields
+        .iter()
+        .filter_map(|f| match &f.stype {
+            ShardableType::StorageOption(v) if matches!(store.kind, StoreKind::Carrier | StoreKind::Homog) => {
+                let n = &f.name;
+                let (lemma, tag, untag) = (format_ident!("__tsm_untag_tag_{}", n), format_ident!("__tag_{}", n), format_ident!("__untag_{}", n));
+                Some(quote! {
+                    pub proof fn #lemma(e: Option<#v>) ensures __StorageKey::#untag(__StorageKey::#tag(e)) == e {}
+                })
+            }
+            _ => None,
+        })
+        .collect();
     items.push(quote! {
         /// The instance carries only its location (and shared, leaked
         /// resources), so it is freely duplicable (`Copy`, as in the trusted
@@ -4020,6 +4060,8 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             pub closed spec fn id(&self) -> ::vstd::tokens::InstanceId {#id_spec}
             #inst_clone
             #(#const_fns)*
+            #kappa_idem
+            #(#untag_tag)*
         }
         #unit_def
     });
@@ -4677,10 +4719,9 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 let tracked __tsm_acc = #p.__borrow_raw(#link).empty();
             });
             if let Some(cm) = cm {
-                let kappa = cm.kappa(quote! {self.__desc});
+                let idem = cm.idem(quote! {self.__desc});
                 join_owned.push(quote! {
-                    Fragment::unit().op_unit();
-                    assert(Fragment::op(#kappa, #kappa) == #kappa);
+                    #idem
                     let tracked __tsm_kappa = #p.__borrow_base(#link).duplicate();
                 });
             }
@@ -4693,10 +4734,9 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 let tracked __tsm_acc = self.__base.empty();
             });
             if let Some(cm) = cm {
-                let kappa = cm.kappa(quote! {self.__desc});
+                let idem = cm.idem(quote! {self.__desc});
                 join_owned.push(quote! {
-                    Fragment::unit().op_unit();
-                    assert(Fragment::op(#kappa, #kappa) == #kappa);
+                    #idem
                     let tracked __tsm_kappa = self.__base.duplicate();
                 });
             }
@@ -4876,8 +4916,6 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 let kappa = cm.kappa(quote! {self.__desc});
                 (
                     quote! {
-                        Fragment::unit().op_unit();
-                        assert(__tsm_kappa.fragment() == Fragment::op(#kappa, #kappa));
                         let tracked (__tsm_kp, __tsm_kappa) = __tsm_kappa.split(#kappa, #kappa);
                     },
                     {
@@ -5211,7 +5249,6 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         })
         .collect();
     let ready = quote! {
-        #[verifier::spinoff_prover]
         proof fn #ready_fn(&self, #(#ghost_params,)* #(#tparams,)* #owned_ident: Fragment, #h_param: Fragment #dep_comma #dep_param)
             requires
                 #(#api_reqs,)*
@@ -5267,7 +5304,6 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     };
     let exchange_helper = match (store.has(), has_shared) {
         (true, true) => quote! {
-            #[verifier::spinoff_prover]
             proof fn #exchange_fn<'b>(tracked acc: Token,
                 tracked obs: &::vstd::resource::tsm_storage::StorageObservation<'b, Protocol>,
                 tracked deposit: #map_ty, owned: Fragment, h: Fragment, #(#tparams),*)
@@ -5284,7 +5320,6 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             }
         },
         (false, true) => quote! {
-            #[verifier::spinoff_prover]
             proof fn #exchange_fn<'b>(tracked acc: Token,
                 tracked obs: &::vstd::resource::tsm::Observation<'b, Protocol>,
                 owned: Fragment, h: Fragment, #(#tparams),*)
@@ -5303,7 +5338,6 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     let helper = quote! {
         #exchange_helper
         #ready
-        #[verifier::spinoff_prover]
         proof fn #post_fn(&self, #(#ghost_params,)* #(#tparams,)* #owned_ident: Fragment, #h_param: Fragment,
             __tsm_out_frag: Fragment, #post_store_params)
             -> (__tsm_r: (State, State, Fragment))
@@ -5375,9 +5409,13 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     } else {
         quote! {#[verifier::deprecated_postcondition_mut_ref_style(true)]}
     };
+    // The output tokens' copies of `κ` are split off `κ`.
+    let out_idem = match cm {
+        Some(cm) if !outs.is_empty() => cm.idem(quote! {self.__desc}),
+        _ => quote! {},
+    };
     Ok(quote! {
         #helper
-        #[verifier::spinoff_prover]
         #mut_style
         pub proof fn #name #gen (#(#in_params),*) #ret #req #ens {
             hide(State::invariant);
@@ -5405,6 +5443,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             let __tsm_expected = #expected_body;
             assert(__tsm_out.fragment() == __tsm_expected);
             let tracked __tsm_left = __tsm_out;
+            #out_idem
             #(#splits)*
             #withdraw_stmts
             #result
@@ -5493,7 +5532,6 @@ fn read_only_method(
         return err(tr.name.span(), "internal: generic field tokens join borrowed collections after the other borrowed inputs");
     }
     Ok(quote! {
-        #[verifier::spinoff_prover]
         pub proof fn #name #gen (#(#in_params),*) #ret #req #ens {
             hide(State::invariant);
             broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
@@ -5674,7 +5712,6 @@ fn read_only_optional(
         })
         .collect();
     Ok(quote! {
-        #[verifier::spinoff_prover]
         pub proof fn #name #gen (#(#in_params),*) #ret #req #ens {
             hide(State::invariant);
             broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
@@ -5852,7 +5889,6 @@ fn guard_method(
         quote! {(#(Tracked(#ret_vals)),*)}
     };
     Ok(quote! {
-        #[verifier::spinoff_prover]
         pub proof fn #name #gen (#(#in_params),*) #ret #req #ens {
             broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
                 ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};
@@ -6056,10 +6092,12 @@ fn init_method(
             let alloc = quote! {::vstd::resource::pcm::Resource::alloc(
                 Some(::vstd::resource::agree::AgreementRA::Agree(((#(#vals,)*), __tsm_all_loc))))};
             let desc_alloc = if cm.owned { alloc } else { quote! {::vstd::modes::tracked_static_ref(#alloc)} };
+            let idem = cm.idem(quote! {__tsm_desc});
             takes.push(quote! {
                 let tracked __tsm_desc = #desc_alloc;
                 Fragment::unit().op_unit();
                 assert(__tsm_kappa.fragment() == #kappa);
+                #idem
             });
             (
                 quote! {
@@ -6221,7 +6259,6 @@ fn init_method(
         (quote! {}, quote! {let tracked __tsm_all = Protocol::#init_fn(#(#pn),*);})
     };
     Ok(quote! {
-        #[verifier::spinoff_prover]
         pub proof fn #name(#(#in_params),*) #ret #req #ens {
             broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
                 ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};
