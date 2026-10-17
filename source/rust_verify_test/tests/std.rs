@@ -2060,6 +2060,79 @@ test_verify_one_file! {
     }
 }
 
+test_verify_one_file_with_options! {
+    // implicit drops (from rustc's MIR) of values whose `Drop` impl is not verified, in
+    // no_unwind and atomic functions (#2949, #778)
+    #[test] check_drops_unverified_drop_impls [] => code! {
+        use vstd::prelude::*;
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        pub struct Verified { pub x: u8 }
+        impl Drop for Verified {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            { }
+        }
+        fn ok_no_unwind(v: Verified) no_unwind { }
+        fn may_unwind_ok(p: PanickingDrop) { }
+        fn bad_no_unwind(p: PanickingDrop) no_unwind { }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "whose `Drop` impl is not verified, in a `no_unwind` function")
+}
+
+test_verify_one_file_with_options! {
+    // the same inside `open_atomic_invariant!` in an ordinary function: an unverified drop
+    // in the block is arbitrary code in what must be one atomic step. Not flagged: drops after
+    // the block, verified `Drop` impls, local (non-atomic) invariants.
+    #[test] check_drops_atomic_invariant_block [] => code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        pub struct Verified { pub x: u8 }
+        impl Drop for Verified {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            { }
+        }
+        struct P;
+        impl InvariantPredicate<int, u8> for P { open spec fn inv(k: int, v: u8) -> bool { true } }
+        fn after(Tracked(i): Tracked<&AtomicInvariant<int, u8, P>>, d: PanickingDrop) {
+            open_atomic_invariant!(i => inner => {
+                let y: u8 = 1;
+            });
+        }
+        fn verified_inside(Tracked(i): Tracked<&AtomicInvariant<int, u8, P>>, v: Verified) {
+            open_atomic_invariant!(i => inner => {
+                let x = v;
+            });
+        }
+        fn local_inv(Tracked(i): Tracked<&LocalInvariant<int, u8, P>>, d: PanickingDrop) {
+            open_local_invariant!(i => inner => {
+                let x = d;
+            });
+        }
+        fn bad(Tracked(i): Tracked<&AtomicInvariant<int, u8, P>>, d: PanickingDrop) {
+            open_atomic_invariant!(i => inner => {
+                let x = d;
+            });
+        }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "whose `Drop` impl is not verified, in an atomic invariant block")
+}
+
 test_verify_one_file! {
     #[test] maybe_uninit_write verus_code! {
         use core::mem::MaybeUninit;
