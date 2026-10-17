@@ -195,7 +195,10 @@ generated collection types in reservation style instead: `<field>_map` (or
 `bm`, plus finitely many individual tokens. `remove(k)` splits the token for `k` off
 the bulk on demand; `insert` adds an individual token. An operation that consumes a
 sub-collection splits it off the bulk in one step, and one that produces a
-collection hands out its fragment as a new bulk. The types provide the methods of
+collection hands out its fragment as a new bulk. A borrowed sub-collection `e`
+(`have f >= (e)`) is observed through the bulk and the individual tokens for the
+keys of `e`; the joined observation is valid, so each element of `e` is exactly
+owned in it, and it includes `ι_i(e)`. The types provide the methods of
 `IMapToken`/`ISetToken` (`empty`, `insert`, `remove`, `map`/`set`, `dom`,
 `index`, `contains`, `instance_id`, `into_map`, `from_map`); `into_map` and
 `from_map` require finite maps.
@@ -307,10 +310,12 @@ without storage fields uses the plain `vstd::resource::tsm::Token`.
     strategies) collections for all collection strategies;
   * guards with one output.
 
-  Borrowed token collections (`have f >= (e)` for a collection strategy; the
-  `vstd::tokens` collection types give no access to their tokens through a shared
-  reference), general withdrawals from a tagged `storage_imap`, and labels are
-  rejected at expansion time.
+  Borrowed token collections of the finite strategies (`have f >= (e)` for `map`,
+  `set`, `multiset`, `option` and their persistent variants, in an operation with
+  something to prove: the `vstd::tokens` collection types give no access to their
+  tokens through a shared reference), a borrowed `imap`/`iset` collection as the
+  only borrowed input, guards without a borrowed token, general withdrawals from a
+  tagged `storage_imap`, and labels are rejected at expansion time.
 
 ## Comparison
 

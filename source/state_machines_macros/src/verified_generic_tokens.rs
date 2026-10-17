@@ -3039,6 +3039,12 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     let pn: Vec<_> = tr.params.iter().map(|p| &p.name).collect();
     let span = tr.name.span();
     let guard = params.iter().any(|q| q.p.inout_type == InoutType::BorrowOut);
+    // A read-only operation with nothing to establish needs no proof.
+    if is_read_only(&parts, &params) && parts.enss.is_empty() && parts.out_params.is_empty() {
+        return Ok(quote! {
+            pub proof fn #name #gen (#(#in_params),*) #ret #req #ens {}
+        });
+    }
     let inouts: HashSet<String> = params
         .iter()
         .filter(|q| q.p.inout_type == InoutType::InOut)
