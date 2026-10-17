@@ -20,6 +20,50 @@ fn reserve(tokens: TokenStream, names: &mut HashSet<String>) {
     }
 }
 
+/// Reserve every identifier of a transition body (expressions, patterns and
+/// proof blocks), so that generated names cannot capture a user binding.
+pub(crate) fn reserve_stmt(stmt: &crate::ast::TransitionStmt, names: &mut HashSet<String>) {
+    use crate::ast::{MonoidElt, SplitKind, SubIdx, TransitionStmt};
+    match stmt {
+        TransitionStmt::Block(_, children) => for child in children { reserve_stmt(child, names); },
+        TransitionStmt::Require(_, e) | TransitionStmt::Update(_, _, e)
+        | TransitionStmt::Initialize(_, _, e) | TransitionStmt::PostCondition(_, e) => reserve(quote! {#e}, names),
+        TransitionStmt::Assert(_, e, proof) => {
+            let block = proof.proof.as_ref().map(|b| &**b);
+            reserve(quote! {#e #block}, names);
+        }
+        TransitionStmt::SubUpdate(_, _, indices, e) => {
+            reserve(quote! {#e}, names);
+            for index in indices { if let SubIdx::Idx(e) = index { reserve(quote! {#e}, names); } }
+        }
+        TransitionStmt::Split(_, kind, children) => {
+            match &**kind {
+                SplitKind::If(e) => reserve(quote! {#e}, names),
+                SplitKind::Match(e, arms) => {
+                    reserve(quote! {#e}, names);
+                    for arm in arms {
+                        let pat = &arm.pat;
+                        let guard = arm.guard.as_ref().map(|(_, e)| e);
+                        reserve(quote! {#pat #guard}, names);
+                    }
+                }
+                SplitKind::Let(pat, ty, _, e) => reserve(quote! {#pat #ty #e}, names),
+                SplitKind::Special(_, op, proof, pat) => {
+                    let block = proof.proof.as_ref().map(|b| &**b);
+                    reserve(quote! {#pat #block}, names);
+                    match &op.elt {
+                        MonoidElt::General(e) | MonoidElt::SingletonMultiset(e) | MonoidElt::SingletonSet(e) => reserve(quote! {#e}, names),
+                        MonoidElt::OptionSome(e) => reserve(quote! {#e}, names),
+                        MonoidElt::SingletonKV(k, v) => reserve(quote! {#k #v}, names),
+                        MonoidElt::True => {}
+                    }
+                }
+            }
+            for child in children { reserve_stmt(child, names); }
+        }
+    }
+}
+
 fn occupied(sm: &SM) -> HashSet<String> {
     let mut names = HashSet::new();
     let generics = &sm.generics;
@@ -33,7 +77,7 @@ fn occupied(sm: &SM) -> HashSet<String> {
             let ty = &param.ty;
             reserve(quote! {#name #ty}, &mut names);
         }
-        crate::verified_field_storage_map_pair::reserve_stmt(&transition.body, &mut names);
+        reserve_stmt(&transition.body, &mut names);
     }
     names
 }

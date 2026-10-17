@@ -14,6 +14,47 @@ use verus_syn::Error;
 use verus_syn::spanned::Spanned;
 use verus_syn::{Ident, Type};
 
+fn writes(stmt: &TransitionStmt, out: &mut HashSet<String>) {
+    match stmt {
+        TransitionStmt::Update(_, n, _) | TransitionStmt::SubUpdate(_, n, _, _) => {
+            out.insert(n.to_string());
+        }
+        TransitionStmt::Block(_, children) | TransitionStmt::Split(_, _, children) => {
+            for child in children { writes(child, out); }
+        }
+        _ => {}
+    }
+}
+
+/// Some transition updates a `not_tokenized` field.
+fn updates_unowned(sm: &SM) -> bool {
+    let hidden: HashSet<_> = sm.fields.iter()
+        .filter(|f| matches!(f.stype, ShardableType::NotTokenized(_)))
+        .map(|f| f.name.to_string()).collect();
+    sm.transitions.iter().any(|tr| {
+        let mut changed = HashSet::new();
+        writes(&tr.body, &mut changed);
+        changed.iter().any(|n| hidden.contains(n))
+    })
+}
+
+/// Exclude updates of unowned fields from the token read footprint only.
+/// The original executor, State relations, safety and all-frame obligations
+/// continue to process the untouched original transition.
+fn unowned_token_footprint(stmt: &mut TransitionStmt, fields: &HashMap<String, Field>) {
+    match stmt {
+        TransitionStmt::Update(span, n, _) | TransitionStmt::SubUpdate(span, n, _, _)
+            if matches!(fields[&n.to_string()].stype, ShardableType::NotTokenized(_)) =>
+        {
+            *stmt = TransitionStmt::Block(*span, vec![]);
+        }
+        TransitionStmt::Block(_, children) | TransitionStmt::Split(_, _, children) => {
+            for child in children { unowned_token_footprint(child, fields); }
+        }
+        _ => {}
+    }
+}
+
 pub fn needed(sm: &SM) -> bool {
     fn walk(s: &TransitionStmt) -> bool {
         match s {
@@ -745,8 +786,8 @@ pub fn output_with_ready(
         relations.push(effect_declarations);
         let mut access_errors = vec![];
         let mut token_footprint=tr.body.clone();
-        if crate::verified_field_nondet::needed(sm) {
-            crate::verified_field_nondet::token_footprint(&mut token_footprint,&fields);
+        if updates_unowned(sm) {
+            unowned_token_footprint(&mut token_footprint,&fields);
         }
         let (mut read, _) = crate::field_access_visitor::find_all_accesses(
             &mut token_footprint,

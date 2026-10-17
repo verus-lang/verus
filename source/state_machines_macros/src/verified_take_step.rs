@@ -127,7 +127,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             let ty = &parameter.ty;
             reserve(quote! {#name #ty}, &mut names)?;
         }
-        crate::verified_field_storage_map_pair::reserve_stmt(&transition.body, &mut names);
+        crate::verified_steps::reserve_stmt(&transition.body, &mut names);
     }
     for function in &bundle.normal_fns {
         reserve(quote! {#function}, &mut names)?;
