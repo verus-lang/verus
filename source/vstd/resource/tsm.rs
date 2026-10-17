@@ -679,6 +679,16 @@ pub proof fn fragment_included_reflexive<M: Machine>(source: M::Fragment)
     assert(M::Fragment::op(source, M::Fragment::unit()) == source);
 }
 
+/// The unit is included in every fragment.
+pub proof fn fragment_included_unit<M: Machine>(upper: M::Fragment)
+    ensures
+        fragment_included::<M>(M::Fragment::unit(), upper),
+{
+    M::Fragment::commutative(M::Fragment::unit(), upper);
+    M::Fragment::op_unit(upper);
+    assert(M::Fragment::op(M::Fragment::unit(), upper) == upper);
+}
+
 /// Inclusion composes by combining the two remainders.
 pub proof fn fragment_included_transitive<M: Machine>(
     source: M::Fragment,

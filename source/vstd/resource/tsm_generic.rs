@@ -387,6 +387,19 @@ pub proof fn agreement_resources_agree<V>(
     assert(upper.value() == b.value());
 }
 
+/// A copy of an agreement resource (its value is idempotent).
+pub proof fn agreement_duplicate<V>(tracked a: &super::pcm::Resource<Option<AgreementRA<V>>>)
+    -> (tracked out: super::pcm::Resource<Option<AgreementRA<V>>>)
+    requires
+        a.value() is Some && a.value()->Some_0 is Agree,
+    ensures
+        out.loc() == a.loc(),
+        out.value() == a.value(),
+{
+    assert(Option::<AgreementRA<V>>::op(a.value(), a.value()) == a.value());
+    super::duplicate(a)
+}
+
 /// A tracked finite map as a tracked infinite map with the same entries.
 pub proof fn tracked_map_to_imap<K, V>(tracked m: Map<K, V>) -> (tracked out: IMap<K, V>)
     ensures

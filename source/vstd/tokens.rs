@@ -447,6 +447,19 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
         t
     }
 
+    /// A shared reference to the token for `key`.
+    pub proof fn borrow(tracked &self, key: Key) -> (tracked token: &Token)
+        requires
+            self.dom().contains(key),
+        ensures
+            token.instance_id() == self.instance_id(),
+            token.key() == key,
+            token.value() == self.map()[key],
+    {
+        use_type_invariant(self);
+        self.m.tracked_borrow(key)
+    }
+
     pub proof fn into_map(tracked self) -> (tracked map: Map<Key, Token>)
         ensures
             map.dom() == self.map().dom(),
@@ -646,6 +659,18 @@ impl<Element, Token> SetToken<Element, Token>
         t
     }
 
+    /// A shared reference to the token for `element`.
+    pub proof fn borrow(tracked &self, element: Element) -> (tracked token: &Token)
+        requires
+            self.contains(element),
+        ensures
+            token.instance_id() == self.instance_id(),
+            token.element() == element,
+    {
+        use_type_invariant(self);
+        self.m.tracked_borrow(element)
+    }
+
     pub proof fn into_map(tracked self) -> (tracked map: Map<Element, Token>)
         ensures
             map.dom() == self.set(),
@@ -684,8 +709,63 @@ pub tracked struct MultisetToken<Element, Token>
     tracked m: IMap<int, Token>,
 }
 
+spec fn values_step<K, V>(m: IMap<K, V>) -> spec_fn(Multiset<V>, K) -> Multiset<V> {
+    |multiset: Multiset<V>, k: K| multiset.insert(m[k])
+}
+
 spec fn map_values<K, V>(m: IMap<K, V>) -> Multiset<V> {
-    m.dom().fold(Multiset::empty(), |multiset: Multiset<V>, k: K| multiset.insert(m[k]))
+    m.dom().fold(Multiset::empty(), values_step(m))
+}
+
+proof fn values_step_commutative<K, V>(m: IMap<K, V>)
+    ensures
+        super::iset::fold::is_fun_commutative(values_step(m)),
+{
+    broadcast use group_multiset_axioms;
+    assert forall|a1: K, a2: K, b: Multiset<V>|
+        #[trigger] (values_step(m))((values_step(m))(b, a2), a1)
+            == (values_step(m))((values_step(m))(b, a1), a2) by {
+        assert(b.insert(m[a2]).insert(m[a1]) =~= b.insert(m[a1]).insert(m[a2]));
+    }
+}
+
+/// An element of the values folded over a finite set of keys is the value of one of the keys.
+proof fn fold_values_contains<K, V>(m: IMap<K, V>, s: ISet<K>, v: V) -> (k: K)
+    requires
+        s.finite(),
+        s.fold(Multiset::empty(), values_step(m)).contains(v),
+    ensures
+        s.contains(k),
+        m[k] == v,
+    decreases s.len(),
+{
+    broadcast use {group_multiset_axioms, super::iset::fold::lemma_fold_insert, super::iset::fold::lemma_fold_empty};
+    if s.len() == 0 {
+        assert(s =~= ISet::empty()) by {
+            assert forall|x: K| !s.contains(x) by {
+                if s.contains(x) {
+                    super::iset::lemma_iset_contains_len(s, x);
+                }
+            }
+        }
+        assert(false);
+        arbitrary()
+    } else {
+        super::iset::lemma_iset_choose_len(s);
+        let a = s.choose();
+        let r = s.remove(a);
+        super::iset::lemma_iset_remove_len(s, a);
+        assert(r.insert(a) =~= s);
+        values_step_commutative(m);
+        assert(s.fold(Multiset::empty(), values_step(m))
+            == r.fold(Multiset::empty(), values_step(m)).insert(m[a]));
+        if m[a] == v {
+            a
+        } else {
+            let k = fold_values_contains(m, r, v);
+            k
+        }
+    }
 }
 
 proof fn map_values_insert_not_in<K, V>(m: IMap<K, V>, k: K, v: V)
@@ -779,6 +859,21 @@ impl<Element, Token> MultisetToken<Element, Token>
         assert(Self::map_elems(self.m) =~= Self::map_elems(old(self).m).insert(
             f, token.element()));
         assert(self.multiset() =~= old(self).multiset().insert(token.element()));
+    }
+
+    /// A shared reference to a token for `element`.
+    pub proof fn borrow(tracked &self, element: Element) -> (tracked token: &Token)
+        requires
+            self.multiset().contains(element),
+        ensures
+            token.instance_id() == self.instance_id(),
+            token.element() == element,
+    {
+        use_type_invariant(self);
+        let elems = Self::map_elems(self.m);
+        assert(elems.dom() =~= self.m.dom());
+        let k = fold_values_contains(elems, elems.dom(), element);
+        self.m.tracked_borrow(k)
     }
 
     pub proof fn remove(tracked &mut self, element: Element) -> (tracked token: Token)
