@@ -491,7 +491,7 @@ fn simplify_one_expr(
             if decls.len() == 0 {
                 Ok(ctor)
             } else {
-                let block = ExprX::Block(Arc::new(decls), Some(ctor));
+                let block = ExprX::Block(Arc::new(decls), Some(ctor), Arc::new(vec![]));
                 Ok(SpannedTyped::new(&expr.span, &expr.typ, block))
             }
         }
@@ -559,7 +559,7 @@ fn simplify_one_expr(
             if stmts.len() == 0 {
                 Ok(conjunction)
             } else {
-                let block = ExprX::Block(Arc::new(stmts), Some(conjunction));
+                let block = ExprX::Block(Arc::new(stmts), Some(conjunction), Arc::new(vec![]));
                 Ok(SpannedTyped::new(&expr.span, &expr.typ, block))
             }
         }
@@ -594,12 +594,19 @@ fn simplify_one_expr(
                     );
                     let test_exp = ExprX::Logical(LogicalOp::And, test_pattern, guard);
                     let test = SpannedTyped::new(&arm.x.pattern.span, &t_bool, test_exp);
-                    let block = ExprX::Block(Arc::new(decls.clone()), Some(test));
+                    let block = ExprX::Block(Arc::new(decls.clone()), Some(test), Arc::new(vec![]));
                     SpannedTyped::new(&arm.x.pattern.span, &t_bool, block)
                 };
                 let test_is_true = matches!(&test.x, ExprX::Const(Constant::Bool(true)));
 
-                let block = ExprX::Block(Arc::new(decls), Some(arm.x.body.clone()));
+                let block = match &arm.x.body.x {
+                    // If the body is just a wrapper for drops (e.g., for the arm's bindings),
+                    // merge it into the new block (which helps avoid deeply nested blocks)
+                    ExprX::Block(stmts, Some(body), drops) if stmts.len() == 0 => {
+                        ExprX::Block(Arc::new(decls), Some(body.clone()), drops.clone())
+                    }
+                    _ => ExprX::Block(Arc::new(decls), Some(arm.x.body.clone()), Arc::new(vec![])),
+                };
                 let body = SpannedTyped::new(&arm.x.pattern.span, &expr.typ, block);
                 if let Some(prev) = if_expr {
                     // if pattern && guard then body else prev
@@ -627,6 +634,7 @@ fn simplify_one_expr(
                                 StmtX::Expr(assertion.clone()),
                             )]),
                             Some(body.clone()),
+                            Arc::new(vec![]),
                         ),
                     );
                     if_expr = Some(block);
@@ -637,7 +645,7 @@ fn simplify_one_expr(
             }
             if let Some(if_expr) = if_expr {
                 let if_expr = if temp_decl.len() != 0 {
-                    let block = ExprX::Block(Arc::new(temp_decl), Some(if_expr));
+                    let block = ExprX::Block(Arc::new(temp_decl), Some(if_expr), Arc::new(vec![]));
                     SpannedTyped::new(&expr.span, &expr.typ, block)
                 } else {
                     if_expr
@@ -948,8 +956,11 @@ fn exec_closure_spec_requires(
         decls.push(Spanned::new(span.clone(), decl));
     }
 
-    let reqs_body =
-        SpannedTyped::new(&reqs.span, &reqs.typ, ExprX::Block(Arc::new(decls), Some(reqs.clone())));
+    let reqs_body = SpannedTyped::new(
+        &reqs.span,
+        &reqs.typ,
+        ExprX::Block(Arc::new(decls), Some(reqs.clone()), Arc::new(vec![])),
+    );
 
     let closure_req_call =
         wrap_in_trigger(&mk_closure_req_call(state, span, params, closure_var, &tuple_var));
@@ -1008,8 +1019,11 @@ fn exec_closure_spec_ensures(
         decls.push(Spanned::new(span.clone(), decl));
     }
 
-    let enss_body =
-        SpannedTyped::new(&enss.span, &enss.typ, ExprX::Block(Arc::new(decls), Some(enss.clone())));
+    let enss_body = SpannedTyped::new(
+        &enss.span,
+        &enss.typ,
+        ExprX::Block(Arc::new(decls), Some(enss.clone()), Arc::new(vec![])),
+    );
 
     let closure_ens_call = wrap_in_trigger(&mk_closure_ens_call(
         state,

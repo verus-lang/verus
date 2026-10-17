@@ -42,6 +42,7 @@ pub mod context;
 pub mod debugger;
 pub mod def;
 pub mod driver;
+mod drop_scopes;
 pub mod erase;
 mod expand_errors_driver;
 pub mod external;

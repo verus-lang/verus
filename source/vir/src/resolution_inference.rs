@@ -265,11 +265,11 @@ The analysis is pretty weak right now but could be improved.
 */
 
 use crate::ast::{
-    Arm, ArrayKind, BoundsCheck, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
-    FunWithVis, Function, Ident, Label, Mode, ModeWrapperMode, Params, Path, Pattern,
-    PatternBinding, PatternX, Place, PlaceX, Primitive, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
-    TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate,
-    VariantCheck, VirErr,
+    Arm, ArrayKind, BoundsCheck, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, Exprs, FieldOpr,
+    Fun, FunWithVis, Function, Ident, Label, LocalOrTemp, Mode, ModeWrapperMode, Params, Path,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, Primitive, ReadKind, SpannedTyped, Stmt,
+    StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind, VarBinders, VarIdent,
+    VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast_to_sst::Maybe;
 use crate::ast_util::{
@@ -306,10 +306,14 @@ pub(crate) fn infer_resolution(
     temporary_modes: &HashMap<AstId, Mode>,
     rtypes: &ResolutionTypes,
     dual_mode: bool,
+    cfg_log: Option<(&Fun, &mut Vec<(Fun, String)>)>,
 ) -> Result<Expr, VirErr> {
     let (cfg, assigns_to_resolve, typ_inv_obligations, asserts) =
         new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes, temporary_modes)?;
     //println!("{:}", pretty_cfg(&cfg));
+    if let Some((fun, cfg_log)) = cfg_log {
+        cfg_log.push((fun.clone(), pretty_cfg_for_log(&cfg)));
+    }
     let resolutions = if dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
     apply_resolutions(
         &cfg,
@@ -456,6 +460,11 @@ enum InstructionKind {
     /// or partially initialized. Whatever was there before gets dropped.
     /// The place is subsequently uninitialized.
     DropFrom(FlattenedPlace),
+    /// Corresponds to an ExprX::Drop node, i.e., the point where Rust would drop the given
+    /// local or temporary when it goes out of scope.
+    /// (Not to be confused with DropFrom, which serves an unrelated purpose.)
+    /// This is currently a no-op for the purposes of the analysis.
+    ScopeDrop(FlattenedPlace),
 }
 
 type BBIndex = usize;
@@ -709,7 +718,7 @@ impl<'a> Builder<'a> {
                     self.fns.last_mut().unwrap().upvars_moved.push(fp.clone());
                 }
             }
-            InstructionKind::DropFrom(_) => {}
+            InstructionKind::DropFrom(_) | InstructionKind::ScopeDrop(_) => {}
         }
         self.push_instruction_raw(bb, post_instruction_position, instr);
     }
@@ -1133,17 +1142,19 @@ impl<'a> Builder<'a> {
                 Maybe::Some(bb)
             }
             ExprX::InvMask(_m) => Maybe::Some(bb),
-            ExprX::Return(e_opt) => {
+            ExprX::Return(e_opt, drops) => {
                 if let Some(e) = e_opt {
                     bb = unwrap!(self.build(e, bb));
                 }
+                bb = unwrap!(self.build_drops(drops, bb));
                 self.basic_blocks[bb].is_exit = true;
                 Maybe::Never
             }
-            ExprX::BreakOrContinue { label, is_break, value } => {
+            ExprX::BreakOrContinue { label, is_break, value, drops } => {
                 if let Some(value) = value {
                     bb = unwrap!(self.build(value, bb));
                 }
+                bb = unwrap!(self.build_drops(drops, bb));
                 let entry = self.get_loop(label);
                 if *is_break {
                     self.basic_blocks[bb].successors.push(entry.break_bb);
@@ -1234,7 +1245,7 @@ impl<'a> Builder<'a> {
                     Maybe::Some(bb)
                 }
             }
-            ExprX::Block(stmts, e_opt) => {
+            ExprX::Block(stmts, e_opt, drops) => {
                 let mut scope_count = 0;
                 for s in stmts.iter() {
                     bb = match self.build_stmt(s, bb) {
@@ -1262,8 +1273,20 @@ impl<'a> Builder<'a> {
                         }
                     };
                 }
+                // Drops are evaluated with the block's locals still in scope
+                let bb = self.build_drops(drops, bb);
                 for _i in 0..scope_count {
                     self.pop_scope();
+                }
+                bb
+            }
+            ExprX::Drop(local_or_temp) => {
+                if let Some(fp) = self.local_or_temp_place(local_or_temp) {
+                    self.push_instruction_propagate(
+                        bb,
+                        AstPosition::After(span_id),
+                        InstructionKind::ScopeDrop(fp),
+                    );
                 }
                 Maybe::Some(bb)
             }
@@ -1291,6 +1314,28 @@ impl<'a> Builder<'a> {
                 Maybe::Some(bb)
             }
         }
+    }
+
+    fn build_drops(&mut self, drops: &Exprs, bb: BBIndex) -> Maybe<BBIndex> {
+        let mut bb = bb;
+        for d in drops.iter() {
+            bb = unwrap!(self.build(d, bb));
+        }
+        Maybe::Some(bb)
+    }
+
+    /// Get the place for the target of an ExprX::Drop, if it's a place tracked by the analysis.
+    /// (Spec-mode locals and temporaries are not tracked.)
+    fn local_or_temp_place(&mut self, local_or_temp: &LocalOrTemp) -> Option<FlattenedPlace> {
+        let name = match local_or_temp {
+            LocalOrTemp::Local(x) => LocalName::Named(x.clone()),
+            LocalOrTemp::Temp(ast_id) => {
+                let temp_id = self.locals.ast_id_to_temp_id.get(ast_id)?;
+                LocalName::Temporary(*ast_id, *temp_id)
+            }
+        };
+        let local = *self.locals.ident_to_idx.get(&name)?;
+        Some(FlattenedPlace { local, projections: vec![] })
     }
 
     fn build_stmt(&mut self, stmt: &Stmt, bb: BBIndex) -> Maybe<BBIndex> {
@@ -2779,6 +2824,7 @@ impl FlattenedPlace {
             InstructionKind::Overwrite(sp) => self.intersects(sp),
             InstructionKind::Mutate(sp) => self.intersects(sp),
             InstructionKind::DropFrom(_) => false,
+            InstructionKind::ScopeDrop(_) => false,
         }
     }
 
@@ -3123,6 +3169,43 @@ fn pretty_cfg(cfg: &CFG) -> String {
     )
 }
 
+/// A compact representation of the CFG, for logging.
+/// (We omit the unwind edges, which are always exits, for brevity.)
+fn pretty_cfg_for_log(cfg: &CFG) -> String {
+    let is_unwind = |bb: &BasicBlock| matches!(bb.position_of_start, AstPosition::OnUnwind(_));
+    let mut v = vec![];
+    for (i, bb) in cfg.basic_blocks.iter().enumerate() {
+        if is_unwind(bb) {
+            continue;
+        }
+        let mut attrs = vec![];
+        if bb.is_entry {
+            attrs.push("entry");
+        }
+        if bb.is_exit {
+            attrs.push("exit");
+        }
+        if bb.successors.iter().any(|s| is_unwind(&cfg.basic_blocks[*s])) {
+            attrs.push("may_unwind");
+        }
+        let attrs = if attrs.len() > 0 { format!(" ({})", attrs.join(", ")) } else { "".into() };
+        v.push(format!("bb{i}{attrs}:\n"));
+        for instr in bb.instructions.iter() {
+            v.push(format!("    {}\n", pretty_instr(&cfg.locals, instr)));
+        }
+        let succs: Vec<_> = bb
+            .successors
+            .iter()
+            .filter(|s| !is_unwind(&cfg.basic_blocks[**s]))
+            .map(|s| format!("bb{s}"))
+            .collect();
+        if succs.len() > 0 {
+            v.push(format!("    -> {}\n", succs.join(", ")));
+        }
+    }
+    v.join("")
+}
+
 fn pretty_locals(locals: &LocalCollection) -> String {
     let mut v = vec![];
     for l in locals.locals.iter() {
@@ -3235,6 +3318,7 @@ fn pretty_instr(locals: &LocalCollection, instr: &Instruction) -> String {
         InstructionKind::Overwrite(fp) => ("Overwrite", fp),
         InstructionKind::Mutate(fp) => ("Mutate", fp),
         InstructionKind::DropFrom(fp) => ("DropFrom", fp),
+        InstructionKind::ScopeDrop(fp) => ("ScopeDrop", fp),
     };
     format!("{:}({:})", name, pretty_flattened_place(locals, fp))
 }
@@ -3343,6 +3427,7 @@ impl DataflowState for InitializationPossibilities {
                 }
             }
             InstructionKind::Mutate(_sp) => *self,
+            InstructionKind::ScopeDrop(_sp) => *self,
             InstructionKind::DropFrom(sp) => {
                 if sp.contains(place) {
                     InitializationPossibilities { can_be_uninit: true }
@@ -3388,6 +3473,7 @@ impl DataflowState for ResolveSafety {
                     *self
                 }
             }
+            InstructionKind::ScopeDrop(_sp) => *self,
             InstructionKind::Overwrite(sp) | InstructionKind::DropFrom(sp) => {
                 if sp.contains_and_not_separated_by_deref(place) {
                     ResolveSafety { can_resolve: true }
@@ -3992,7 +4078,11 @@ fn apply_before_exprs(expr: Expr, before_exprs: Vec<Expr>) -> Expr {
     for e in before_exprs.into_iter() {
         stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
     }
-    SpannedTyped::new(&expr.span, &expr.typ, ExprX::Block(Arc::new(stmts), Some(expr.clone())))
+    SpannedTyped::new(
+        &expr.span,
+        &expr.typ,
+        ExprX::Block(Arc::new(stmts), Some(expr.clone()), Arc::new(vec![])),
+    )
 }
 
 fn apply_after_exprs(expr: Expr, after_exprs: Vec<Expr>) -> Expr {
@@ -4006,7 +4096,11 @@ fn apply_after_exprs(expr: Expr, after_exprs: Vec<Expr>) -> Expr {
         for e in after_exprs.into_iter() {
             stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
         }
-        SpannedTyped::new(&expr.span, &unit_typ(), ExprX::Block(Arc::new(stmts), None))
+        SpannedTyped::new(
+            &expr.span,
+            &unit_typ(),
+            ExprX::Block(Arc::new(stmts), None, Arc::new(vec![])),
+        )
     };
     SpannedTyped::new(&expr.span, &expr.typ, ExprX::EvalAndResolve(expr.clone(), e))
 }
@@ -4039,12 +4133,12 @@ fn apply_after_bool_exprs(expr: Expr, after_f: Vec<Expr>, after_t: Vec<Expr>) ->
             SpannedTyped::new(
                 &expr.span,
                 &unit_typ(),
-                ExprX::Block(Arc::new(t_stmts), Some(mk_bool(&expr.span, true))),
+                ExprX::Block(Arc::new(t_stmts), Some(mk_bool(&expr.span, true)), Arc::new(vec![])),
             ),
             Some(SpannedTyped::new(
                 &expr.span,
                 &unit_typ(),
-                ExprX::Block(Arc::new(f_stmts), Some(mk_bool(&expr.span, false))),
+                ExprX::Block(Arc::new(f_stmts), Some(mk_bool(&expr.span, false)), Arc::new(vec![])),
             )),
         ),
     )
@@ -4060,8 +4154,11 @@ fn apply_after_args_exprs(expr: Expr, exprs: Vec<Expr>) -> Expr {
             for e in exprs.into_iter() {
                 stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
             }
-            let block =
-                SpannedTyped::new(&expr.span, &unit_typ(), ExprX::Block(Arc::new(stmts), None));
+            let block = SpannedTyped::new(
+                &expr.span,
+                &unit_typ(),
+                ExprX::Block(Arc::new(stmts), None, Arc::new(vec![])),
+            );
             SpannedTyped::new(
                 &expr.span,
                 &expr.typ,
@@ -4114,8 +4211,11 @@ fn apply_temp_simplification(cfg: &CFG, place: &Place, exprs: Vec<Expr>) -> Plac
         stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
     }
 
-    let block_expr =
-        SpannedTyped::new(&place.span, &unit_typ(), ExprX::Block(Arc::new(stmts), None));
+    let block_expr = SpannedTyped::new(
+        &place.span,
+        &unit_typ(),
+        ExprX::Block(Arc::new(stmts), None, Arc::new(vec![])),
+    );
 
     SpannedTyped::new(&place.span, &place.typ, PlaceX::WithExpr(block_expr, tmp_local_place))
 }
@@ -4147,5 +4247,9 @@ fn add_decls_for_temps(
             }
         }
     }
-    SpannedTyped::new(&expr.span, &expr.typ, ExprX::Block(Arc::new(stmts), Some(expr.clone())))
+    SpannedTyped::new(
+        &expr.span,
+        &expr.typ,
+        ExprX::Block(Arc::new(stmts), Some(expr.clone()), Arc::new(vec![])),
+    )
 }
