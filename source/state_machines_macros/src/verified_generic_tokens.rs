@@ -278,7 +278,12 @@ impl Store {
             (StoreKind::Carrier, ShardableType::StorageIMap(..)) => {
                 // The carrier packs finite maps.
                 let pack = format_ident!("__pack_{}", n);
+                let msg = format!(
+                    "generic field tokens: a deposit into storage_imap field `{}` (stored with differently typed storage fields) needs a finite domain (state it with a `require`, or use #[verified_raw_tokens])",
+                    n
+                );
                 quote! {
+                    #[verifier::custom_err(#msg)]
                     assert((#p).dom().finite());
                     let tracked __tsm_finite = ::vstd::resource::tsm_generic::tracked_imap_to_map(#p);
                     let tracked __tsm_packed = __StorageKey::#pack(__tsm_finite);
@@ -331,9 +336,30 @@ impl Store {
                     assert(::vstd::prelude::ext_equal(#p, #e));
                 }
             }
-            (StoreKind::Carrier, ShardableType::StorageIMap(..)) => quote! {
-                compile_error!("generic field tokens do not support general withdrawals from a tagged storage_imap");
-            },
+            (StoreKind::Carrier, ShardableType::StorageIMap(..)) => {
+                // The tagged carrier unpacks finite maps: its values are
+                // tagged, and no tracked operation untags infinitely many.
+                let unpack = format_ident!("__unpack_{}", n);
+                let shape = format_ident!("__carrier_shape_{}", n);
+                let msg = format!(
+                    "generic field tokens: a general withdrawal from storage_imap field `{}` (stored with differently typed storage fields) needs a finite domain (state it with a `require`, or use #[verified_raw_tokens])",
+                    n
+                );
+                let at = e.clone().into_iter().next().map_or(Span::call_site(), |t| t.span());
+                let fin = quote::quote_spanned! {at=>
+                    #[verifier::custom_err(#msg)]
+                    assert((#e).dom().finite());
+                };
+                quote! {
+                    #fin
+                    Protocol::#shape(#e);
+                    let tracked __tsm_part = __tsm_withdrawn.tracked_remove_keys(#tagged.dom());
+                    assert(::vstd::prelude::ext_equal(__tsm_part, #tagged));
+                    let tracked __tsm_finite = __StorageKey::#unpack(__tsm_part);
+                    let tracked #p = ::vstd::resource::tsm_generic::tracked_map_to_imap(__tsm_finite);
+                    assert(::vstd::prelude::ext_equal(#p, #e));
+                }
+            }
             (StoreKind::Homog, ShardableType::StorageMap(..) | ShardableType::StorageIMap(..)) => {
                 let unpack = format_ident!("__unpack_imap_{}", n);
                 let untag = format_ident!("__untag_{}", n);

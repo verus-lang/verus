@@ -420,8 +420,13 @@ which the machine states with a `require`). A guard may have several outputs.
     read only constants or nothing.
 
   The following are rejected at expansion time:
-  * general withdrawals from a tagged `storage_imap`;
   * labels.
+
+  A general deposit into or withdrawal from a `storage_imap` field stored in
+  the tagged carrier (with storage fields of other payload types) packs or
+  untags its values one by one, so its operand needs a finite domain, which the
+  machine states with a `require`; verification reports a diagnostic at the
+  operand otherwise.
 
   For these, use `#[verified_raw_tokens]`.
 

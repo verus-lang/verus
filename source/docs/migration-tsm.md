@@ -174,10 +174,12 @@ needs a finite domain).
 
 #### Unsupported forms
 
-Some statement forms are rejected at expansion time, for example general
-withdrawals from a tagged `storage_imap`. A borrowed multiset part
-(`have f >= (e)`) must not contain an element twice, which the machine states with
-a `require` (verification reports a diagnostic at the `have` statement otherwise). The complete list is in
+Some statement forms need conditions the trusted interface does not state, which
+the machine states with a `require` (verification reports a diagnostic at the
+statement otherwise): a borrowed multiset part (`have f >= (e)`) must not
+contain an element twice, and the operand of a general deposit into, withdrawal
+from or guard of a `storage_imap` field that is not stored on its own needs a
+finite domain. The complete list is in
 [Checked tokens: raw and generic interfaces](state_machines/src/checked-token-interfaces.md).
 Such a machine needs the raw interface (Change 3) or a rewritten transition.
 
