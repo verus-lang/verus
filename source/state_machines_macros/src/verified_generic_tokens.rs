@@ -3357,6 +3357,11 @@ enum GuardShape {
     MapGeneral(TokenStream),
     /// `guard f >= (m)` on a `storage_imap` (one storage field): `&IMap<K, V>`.
     IMapGeneral(TokenStream),
+    /// `guard f >= (m)` on a `storage_map` or `storage_imap` otherwise (with
+    /// other storage fields, or other guards): no `&IMap<K, V>` exists in the
+    /// guarded storage, so a map of references to the guarded values,
+    /// `Map<K, &V>` (`IMap<K, &V>` of a finite domain for a `storage_imap`).
+    MapRefs(TokenStream),
 }
 
 /// `Some(v)` (or `Option::Some(v)`, `Option::<T>::Some(v)`): `v`.
@@ -3381,28 +3386,32 @@ fn some_arg(e: &Expr) -> Option<TokenStream> {
 /// reference into the guarded storage; see `rewrite_guard_outputs`.
 fn guard_shapes(sm: &SM, store: &Store, parts: &ExchangeParts) -> Result<HashMap<String, GuardShape>, Error> {
     let mut out = HashMap::new();
-    let mut count = 0;
+    let count = sm
+        .fields
+        .iter()
+        .flat_map(|f| parts.params.get(&f.name.to_string()).into_iter().flatten())
+        .filter(|p| p.inout_type == InoutType::BorrowOut)
+        .count();
+    // The guarded storage is the field's own map exactly when it is the only
+    // storage field and this is the only guard.
+    let whole = store.kind == StoreKind::Plain && count == 1;
     for f in &sm.fields {
         for p in parts.params.get(&f.name.to_string()).into_iter().flatten() {
             if p.inout_type != InoutType::BorrowOut {
                 continue;
             }
-            count += 1;
             let shape = match p.elt.as_ref() {
                 Some(MonoidElt::General(e)) => match (&f.stype, some_arg(e)) {
                     (ShardableType::StorageOption(_), Some(v)) => GuardShape::SomeOf(v),
                     (ShardableType::StorageOption(_), None) => GuardShape::OptionGeneral(quote! {#e}),
-                    (ShardableType::StorageMap(..), _) if store.kind == StoreKind::Plain => GuardShape::MapGeneral(quote! {#e}),
-                    (ShardableType::StorageIMap(..), _) if store.kind == StoreKind::Plain => GuardShape::IMapGeneral(quote! {#e}),
-                    _ => return err(f.name.span(), "generic field tokens: a guard of a general map operand needs the field to be the only storage field"),
+                    (ShardableType::StorageMap(..), _) if whole => GuardShape::MapGeneral(quote! {#e}),
+                    (ShardableType::StorageIMap(..), _) if whole => GuardShape::IMapGeneral(quote! {#e}),
+                    _ => GuardShape::MapRefs(quote! {#e}),
                 },
                 _ => GuardShape::Single,
             };
             out.insert(p.name.to_string(), shape);
         }
-    }
-    if count > 1 && out.values().any(|s| matches!(s, GuardShape::MapGeneral(_) | GuardShape::IMapGeneral(_))) {
-        return err(sm.name.span(), "generic field tokens: a guard of a general map operand must be the property's only guard");
     }
     Ok(out)
 }
@@ -3438,6 +3447,22 @@ fn rewrite_guard_outputs(sm: &SM, parts: &mut ExchangeParts, shapes: &HashMap<St
                     Some(quote! {&'a ::vstd::imap::IMap<#k, #v>}),
                     Box::new(move |e: TokenStream| quote! {::vstd::prelude::equal(*#id, (#e).to_imap())}),
                 ),
+                GuardShape::MapRefs(_) => {
+                    let infinite = matches!(f.map(|f| &f.stype), Some(ShardableType::StorageIMap(..)));
+                    let ty = if infinite {
+                        quote! {::vstd::imap::IMap<#k, &'a #v>}
+                    } else {
+                        quote! {::vstd::map::Map<#k, &'a #v>}
+                    };
+                    (
+                        Some(ty),
+                        Box::new(move |e: TokenStream| quote! {
+                            (::vstd::prelude::equal(#id.dom(), (#e).dom())
+                                && (forall|__tsm_k: #k| ::vstd::prelude::imply(#[trigger] #id.dom().contains(__tsm_k),
+                                    ::vstd::prelude::equal(*#id[__tsm_k], (#e)[__tsm_k]))))
+                        }),
+                    )
+                }
             }
         };
         if let Some(ty) = ty {
@@ -5640,6 +5665,8 @@ fn guard_method(
         })
         .collect();
     let mut guards = vec![];
+    let mut helpers = vec![];
+    let mut ref_facts = vec![];
     for q in params {
         let f = q.field;
         if q.p.inout_type != InoutType::BorrowOut {
@@ -5681,6 +5708,13 @@ fn guard_method(
                 });
                 continue;
             }
+            (Some(GuardShape::MapRefs(e)), _) => {
+                let (helper, fact, call) = guard_refs(store, f, &format_ident!("__tsm_guard_refs_{}_{}", tr.name, pname), pname, &e)?;
+                helpers.push(helper);
+                ref_facts.push(fact);
+                guards.push(call);
+                continue;
+            }
             _ => {}
         }
         match (&store.kind, q.p.elt.as_ref()) {
@@ -5708,6 +5742,23 @@ fn guard_method(
             _ => return err(f.name.span(), "unsupported storage guard for generic field tokens"),
         }
     }
+    // Maps of references (`GuardShape::MapRefs`): in a completion, the
+    // guarded map is part of the storage, which holds each guarded part (the
+    // guards' safety conditions).
+    let safety = format_ident!("{}_safety", tr.name);
+    let ref_block = if ref_facts.is_empty() {
+        quote! {}
+    } else {
+        quote! {{
+            let (__tsm_z, pre) = choose|__tsm_z: Fragment, pre: State| pre.invariant()
+                && Fragment::op(__tsm_f, __tsm_z) == <Protocol as ::vstd::resource::tsm::Machine>::embed(pre);
+            assert(State::#owners(pre, __tsm_f, Fragment::unit(), #(#pn),*) && State::#enabled(pre, #(#pn),*));
+            State::#safety(pre, #(#pn),*);
+            assert(Protocol::#guarded(__tsm_f, #(#pn),*).submap_of(
+                <Protocol as ::vstd::resource::tsm_storage::StorageMachine>::storage(pre)));
+            #(#ref_facts)*
+        }}
+    };
     let ret_vals: Vec<_> = parts.out_params.iter().map(|o| o.0.clone()).collect();
     let result = if ret_vals.len() == 1 {
         quote! {#(#ret_vals)*}
@@ -5739,10 +5790,122 @@ fn guard_method(
             }
             Protocol::#frame_fn(__tsm_f, #(#pn),*);
             let tracked __tsm_guard = #shared_ident.guard(Protocol::#guarded(__tsm_f, #(#pn),*));
+            #ref_block
             #(#guards)*
             #result
         }
+        #(#helpers)*
     })
+}
+
+/// For a guard `guard f >= (e)` of a `storage_map`/`storage_imap` field `f`
+/// whose output is a map of references (`GuardShape::MapRefs`): a helper
+/// borrowing the value of each key of `e` from the guarded storage map, and
+/// the statements binding the output from `__tsm_guard`.
+fn guard_refs(store: &Store, f: &Field, helper: &Ident, pname: &Ident, e: &TokenStream) -> Result<(TokenStream, TokenStream, TokenStream), Error> {
+    let n = &f.name;
+    let (k, v, infinite) = match &f.stype {
+        ShardableType::StorageMap(k, v) => (k, v, false),
+        ShardableType::StorageIMap(k, v) => (k, v, true),
+        _ => return err(f.name.span(), "internal: map guard of a non-map field"),
+    };
+    let skey = store.key_of(f, Some(&verus_syn::parse_quote! {kk}));
+    let skey_c = store.key_of(f, Some(&verus_syn::parse_quote! {kc}));
+    let sval = store.wrap(f, quote! {e[kk]});
+    let borrow = match store.kind {
+        StoreKind::Carrier => {
+            let b = format_ident!("__borrow_{}", n);
+            quote! {__StorageKey::#b(m, kc).tracked_unwrap()}
+        }
+        _ => quote! {m.tracked_borrow(#skey_c)},
+    };
+    let map = store.map_ty();
+    let (set_ty, emap_ty, out_ty, empty, choose_len, contains_len, remove_len, finite) = if infinite {
+        (
+            quote! {::vstd::iset::ISet<#k>},
+            quote! {::vstd::imap::IMap<#k, #v>},
+            quote! {::vstd::imap::IMap<#k, &'a #v>},
+            quote! {::vstd::imap::IMap::tracked_empty()},
+            quote! {::vstd::iset::lemma_iset_choose_len(keys);},
+            quote! {::vstd::iset::lemma_iset_contains_len(keys, kk);},
+            quote! {::vstd::iset::lemma_iset_remove_len(keys, kc);},
+            quote! {keys.finite(),},
+        )
+    } else {
+        (
+            quote! {::vstd::set::Set<#k>},
+            quote! {::vstd::map::Map<#k, #v>},
+            quote! {::vstd::map::Map<#k, &'a #v>},
+            quote! {::vstd::map::Map::tracked_empty()},
+            quote! {::vstd::set::lemma_set_choose_len(keys);},
+            quote! {::vstd::set::lemma_set_contains_len(keys, kk);},
+            quote! {::vstd::set::lemma_set_remove_len(keys, kc);},
+            quote! {},
+        )
+    };
+    let def = quote! {
+        proof fn #helper<'a>(tracked m: &'a #map, keys: #set_ty, e: #emap_ty) -> (tracked out: #out_ty)
+            requires #finite
+                forall|kk: #k| ::vstd::prelude::imply(#[trigger] keys.contains(kk), e.dom().contains(kk)
+                    && m.contains_key(#skey) && m[#skey] == #sval),
+            ensures out.dom() == keys,
+                forall|kk: #k| ::vstd::prelude::imply(#[trigger] keys.contains(kk), ::vstd::prelude::equal(*out[kk], e[kk])),
+            decreases keys.len(),
+        {
+            broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
+                ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas};
+            if keys.len() == 0 {
+                assert forall|kk: #k| !keys.contains(kk) by {
+                    if keys.contains(kk) { #contains_len }
+                }
+                let tracked out = #empty;
+                assert(::vstd::prelude::ext_equal(out.dom(), keys));
+                out
+            } else {
+                #choose_len
+                let kc = keys.choose();
+                #remove_len
+                let tracked mut out = Self::#helper(m, keys.remove(kc), e);
+                let tracked r = #borrow;
+                out.tracked_insert(kc, r);
+                assert(::vstd::prelude::ext_equal(out.dom(), keys));
+                out
+            }
+        }
+    };
+    // From the chosen completion's storage (see `guard_method`), each key of
+    // `e` is in the guarded map with `e`'s value.
+    let tagged = store.tagged(f, e);
+    let fin = if infinite {
+        let msg = format!(
+            "generic field tokens: a guard of a general operand of storage_imap field `{}` (with other storage fields or guards) needs a finite domain (state it with a `require`, or use #[verified_raw_tokens])",
+            n
+        );
+        let at = e.clone().into_iter().next().map_or(Span::call_site(), |t| t.span());
+        quote::quote_spanned! {at=>
+            #[verifier::custom_err(#msg)]
+            assert((#e).dom().finite());
+        }
+    } else {
+        quote! {}
+    };
+    let eval = store.wrap(f, quote! {(#e)[kk]});
+    let fact = quote! {
+        assert forall|kk: #k| #[trigger] (#e).dom().contains(kk) implies
+            __tsm_guard.contains_key(#skey) && __tsm_guard[#skey] == #eval by {
+            assert(#tagged.contains_key(#skey));
+            assert((#e).dom().contains(kk) && (#e).submap_of(pre.#n));
+            assert(pre.#n.dom().contains(kk));
+            assert(pre.#n[kk] == (#e)[kk]);
+            let __tsm_st = <Protocol as ::vstd::resource::tsm_storage::StorageMachine>::storage(pre);
+            assert(__tsm_st.contains_key(#skey) && __tsm_st[#skey] == #eval);
+        }
+    };
+    let call = quote! {
+        #fin
+        let tracked #pname = Self::#helper(__tsm_guard, (#e).dom(), #e);
+    };
+    Ok((def, fact, call))
 }
 
 fn init_method(

@@ -358,9 +358,14 @@ operands of the trusted interface (`guard f >= (e)`), whose output types
 `&Option<V>` and `&Map<K, V>` are not references into the guarded storage, the
 generic interface returns references into the storage instead: `&V` for
 `guard f >= (Some(v))`, `Option<&V>` for any other operand of a `storage_option`
-field, and `&IMap<K, V>` (equal to `m.to_imap()`) for a `storage_map` field that is
-the only storage field (`&IMap<K, V>`, as in the trusted interface, for a
-`storage_imap` field). A guard may have several outputs.
+field, and for a `storage_map` or `storage_imap` field `&IMap<K, V>` (equal to
+`m.to_imap()`, or `m` for a `storage_imap`) if the field is the only storage field
+and the guard the property's only guard. Otherwise the guarded storage contains no
+map of type `IMap<K, V>` (its keys are tagged by field, or it holds the other
+guards' values too), and the guard returns a map of references into it:
+`Map<K, &V>` with the domain of `m` and `*out[k] == m[k]` (`IMap<K, &V>` for a
+`storage_imap`, built key by key, so its operand must have a finite domain,
+which the machine states with a `require`). A guard may have several outputs.
 
 ### Differences from the trusted interface
 
@@ -377,8 +382,8 @@ the only storage field (`&IMap<K, V>`, as in the trusted interface, for a
   (`Token::empty`), so the signature is unchanged.
 * **`count` tokens** do not implement `CountToken` (see above).
 * **Guards of general operands** return references into the guarded storage
-  (`&V`, `Option<&V>` or `&IMap<K, V>`, see above) instead of `&Option<V>` or
-  `&Map<K, V>`.
+  (`&V`, `Option<&V>`, `&IMap<K, V>`, or `Map<K, &V>`/`IMap<K, &V>`, see above)
+  instead of `&Option<V>` or `&Map<K, V>`.
 * **Persistent tokens and `Instance` in machines with type parameters** are not
   `Copy` where they own their resources (see above); clients call `clone` (with
   `&mut self` for persistent tokens of a machine with storage).
@@ -409,8 +414,6 @@ the only storage field (`&IMap<K, V>`, as in the trusted interface, for a
     read only constants or nothing.
 
   The following are rejected at expansion time:
-  * a guard of a general operand of a `storage_map` or `storage_imap` field that is
-    not the only storage field, or that is not the property's only guard;
   * a read-only operation that reads a constant and whose only borrowed inputs
     are `imap`/`iset` collections;
   * general withdrawals from a tagged `storage_imap`;

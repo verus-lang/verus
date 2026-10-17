@@ -153,9 +153,11 @@ parameters to be `'static`.
 
 A guard of a general operand returns a reference into the guarded storage
 instead of `&Option<V>` or `&Map<K, V>`: `&V` for `guard f >= (Some(v))`,
-`Option<&V>` for another operand of a `storage_option` field, and
-`&IMap<K, V>` for one of a `storage_map` field (which must be the only storage
-field).
+`Option<&V>` for another operand of a `storage_option` field, and `&IMap<K, V>`
+for one of a `storage_map` field that is the only storage field and the
+property's only guard. Otherwise a guard of a `storage_map` (`storage_imap`)
+field returns a map of references `Map<K, &V>` (`IMap<K, &V>`, whose operand
+needs a finite domain).
 
 #### Count tokens and infinite collections
 
@@ -171,9 +173,8 @@ field).
 
 #### Unsupported forms
 
-Some statement forms are rejected at expansion time, for example a guard of a
-general operand of a `storage_map` field that is not the only storage field, and
-general withdrawals from a tagged `storage_imap`. A borrowed multiset part
+Some statement forms are rejected at expansion time, for example general
+withdrawals from a tagged `storage_imap`. A borrowed multiset part
 (`have f >= (e)`) must not contain an element twice, which the machine states with
 a `require` (verification reports a diagnostic at the `have` statement otherwise). The complete list is in
 [Checked tokens: raw and generic interfaces](state_machines/src/checked-token-interfaces.md).
