@@ -2006,4 +2006,3 @@ test_verify_one_file! {
         proof fn g(tracked t: T) -> (r: int) ensures r == t.g { t.g }
     } => Ok(())
 }
-
