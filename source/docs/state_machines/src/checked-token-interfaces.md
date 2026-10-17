@@ -292,7 +292,10 @@ trait lemmas hold for placeholders because each owns its own resource.
 guard borrows no token, it also holds a leaked `&'static` token owning the unit
 fragment, from which such operations take their unit or guard. In a machine with
 type parameters and without storage it owns that token instead, so the parameters
-need not be `'static`.) Its type invariant also states that some
+need not be `'static`. A storage token can be split but not duplicated, so an
+instance owning one would not be clonable: in a machine with type parameters and
+storage, a guard that borrows no token borrows a `Unit` of the instance instead,
+an extra last argument `&Unit`.) Its type invariant also states that some
 invariant-satisfying state has the instance's constants: the initial state is
 one. An operation that observes no fragment (such as a property whose assertion
 reads only constants, or one whose borrowed collections are all empty) reasons
@@ -392,10 +395,9 @@ which the machine states with a `require`). A guard may have several outputs.
   above), not `vstd::tokens::IMapToken`/`ISetToken`; client code that names
   `IMapToken<K, V, M::field>` must name `M::field_map` instead. Their `into_map`
   and `from_map` require finite maps.
-* **Type parameters.** A machine with type parameters and storage in which a guard
-  borrows no token requires its type parameters to be `'static`: its instance
-  holds a leaked `&'static` storage token (a storage token cannot be duplicated,
-  so the instance cannot own it and stay clonable).
+* **Guards without borrowed tokens in machines with type parameters and
+  storage** take an extra argument `&Unit` (see above), as operations that
+  consume no token take a `Unit`; the type parameters need no `'static` bound.
 * **Supported fields.** The interface currently supports:
   * every sharding strategy: `variable`, `constant`, `not_tokenized`, `option`,
     `persistent_option`, `map`, `persistent_map`, `imap`, `persistent_imap`, `set`,

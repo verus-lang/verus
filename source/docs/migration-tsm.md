@@ -145,9 +145,10 @@ are not `Copy`: clients call `clone`, which takes `&mut self` in a machine with
 storage (and so does `weaken` of a `persistent_count` token there, an inherent
 method). Likewise the instance is not `Copy` if a constant's type mentions a
 type parameter (it owns its descriptor) or if it owns a unit token; `clone`
-duplicates them. The Interner example (Change 5) shows this. Only a machine with
-type parameters and storage in which a guard borrows no token requires its
-parameters to be `'static`.
+duplicates them. The Interner example (Change 5) shows this. In a machine with
+type parameters and storage, a guard that borrows no token takes an extra
+argument `&Unit` (a unit of the instance, see above), so that no parameter
+needs to be `'static`.
 
 #### Guards of general operands
 
@@ -402,7 +403,7 @@ Contracts and resource proofs can still change.
 | System | `vstd::tokens` traits | Trusted implementations. | Implemented with proofs, except `CountToken` for `count` tokens (inherent methods instead). |
 | System | Operations without input tokens, storage machines | Take only `&self`. | Take an extra `Unit` (`Instance::unit_from_<field>`). |
 | System | `imap`/`iset` token collections | `IMapToken`/`ISetToken`. | Generated `<field>_map`/`<field>_set` types with the same methods. |
-| System | Type parameters | Unconstrained. | Unconstrained, except `'static` for a machine with storage whose guard borrows no token; persistent tokens (and an instance owning resources) are not `Copy`. |
+| System | Type parameters | Unconstrained. | Unconstrained; a guard borrowing no token takes a `&Unit` in a machine with storage; persistent tokens (and an instance owning resources) are not `Copy`. |
 | System | Raw resources and local readiness | Not available. | `#[verified_raw_tokens]`, optionally with `#[verified_local_ready(..)]`. |
 | Example | Interner equality | An unrestricted generic helper has a trusted, unimplemented body. | The helper requires `T: VerifiedEq` and calls a checked provider. |
 | Example | Disk interpretation | A two-argument spec function returns a described authority token. | A three-argument spec predicate returns `bool` and constrains a supplied authority token. |

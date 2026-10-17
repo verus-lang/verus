@@ -3092,8 +3092,9 @@ fn included_lemma(f: &Field, vals: &[TokenStream], tok: TokenStream, coll: Optio
         return match k {
             Kind::Map => quote! {
                 #c::map_included_owned_many((#tok).#n, #rest, #z, pre.#n.to_imap(), (#observed).to_imap());
-                assert forall|k| (#observed).dom().contains(k)
-                    implies #[trigger] pre.#n.dom().contains(k) && pre.#n[k] == (#observed)[k] by {
+                let ghost __tsm_observed = #observed;
+                assert forall|k| #![trigger __tsm_observed.dom().contains(k)] #![trigger pre.#n.dom().contains(k)]
+                    (#observed).dom().contains(k) implies pre.#n.dom().contains(k) && pre.#n[k] == (#observed)[k] by {
                     assert((#observed).to_imap().dom().contains(k));
                     assert((#observed).to_imap().submap_of(pre.#n.to_imap()));
                     assert(pre.#n.to_imap().dom().contains(k));
@@ -3111,8 +3112,9 @@ fn included_lemma(f: &Field, vals: &[TokenStream], tok: TokenStream, coll: Optio
             },
             Kind::PersistentMap => quote! {
                 #g::persistent_map_included_owned_many((#tok).#n, #rest, #z, pre.#n.to_imap(), (#observed).to_imap());
-                assert forall|k| (#observed).dom().contains(k)
-                    implies #[trigger] pre.#n.dom().contains(k) && pre.#n[k] == (#observed)[k] by {
+                let ghost __tsm_observed = #observed;
+                assert forall|k| #![trigger __tsm_observed.dom().contains(k)] #![trigger pre.#n.dom().contains(k)]
+                    (#observed).dom().contains(k) implies pre.#n.dom().contains(k) && pre.#n[k] == (#observed)[k] by {
                     assert((#observed).to_imap().dom().contains(k));
                     assert((#observed).to_imap().submap_of(pre.#n.to_imap()));
                     assert(pre.#n.to_imap().dom().contains(k));
@@ -3612,6 +3614,9 @@ struct Ctx<'a> {
     unit_init: bool,
     /// The instance owns its unit token (see `output`).
     owned_base: bool,
+    /// Guards that borrow no token borrow a `Unit` (machines with type
+    /// parameters and storage, see `output`).
+    guard_unit: bool,
 }
 
 fn is_read_only(parts: &ExchangeParts, params: &[Param]) -> bool {
@@ -3738,9 +3743,15 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             guard_base |= guard_without_token(sm, &parts);
         }
     }
-    let base = !store.has() && unit_from_base || guard_base;
-    let ctx = Ctx { sm, store: &store, base, cm: &cm, unit_init: store.has() && any_unit,
-        owned_base: base && sm.generics.is_some() && !store.has() };
+    // A guard that borrows no token guards from the instance's leaked unit
+    // token. In a machine with type parameters and storage that would need
+    // the parameters to be `'static` (the instance cannot own the token: a
+    // storage token splits but does not duplicate, so the instance would not
+    // be clonable); such guards borrow a `Unit` instead.
+    let guard_unit = guard_base && store.has() && sm.generics.is_some();
+    let base = !store.has() && unit_from_base || guard_base && !guard_unit;
+    let ctx = Ctx { sm, store: &store, base, cm: &cm, unit_init: store.has() && (any_unit || guard_unit),
+        owned_base: base && sm.generics.is_some() && !store.has(), guard_unit };
     // The trusted macro's specifications call the token traits' methods.
     let mut items = vec![quote! {
         #[allow(unused_imports)]
@@ -4458,6 +4469,14 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             Some(quote! {let tracked #obs = __tsm_kappa.observe();})
         } else if let Some(p) = &first_borrow {
             Some(quote! {let tracked #obs = #p.__borrow_base(#link).observe();})
+        } else if guard && ctx.guard_unit && guard_without_token(sm, &parts) {
+            let unit_desc_ref = cm.as_ref().map(|cm| cm.by_ref(quote! {__tsm_unit.desc}));
+            Some(quote! {
+                ::vstd::prelude::use_type_invariant(__tsm_unit);
+                ::vstd::resource::tsm_instance_id_injective(__tsm_unit.desc.loc(), false, self.__desc.loc(), false);
+                ::vstd::resource::tsm_generic::agreement_resources_agree(#unit_desc_ref, #link);
+                let tracked #obs = __tsm_unit.base.observe();
+            })
         } else if guard && ctx.base {
             Some(quote! {let tracked #obs = self.__base.observe();})
         } else if is_read_only(&parts, &params) && !guard && coll_owned.is_empty() && !pending_infinite {
@@ -4491,7 +4510,18 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     let _ = &kappa_from;
     // Borrowed collections are joined (if not empty) after the other borrowed inputs.
     let read_only_op = is_read_only(&parts, &params) && coll_owned.is_empty();
-    if guard && take_shared.is_empty() {
+    if guard && take_shared.is_empty() && ctx.guard_unit {
+        // A guard without borrowed tokens guards from its borrowed unit.
+        let root = format_ident!("__tsm_obs_base");
+        take_shared.push((root.clone(), quote! {
+            ::vstd::prelude::use_type_invariant(self);
+            ::vstd::prelude::use_type_invariant(__tsm_unit);
+            ::vstd::resource::tsm_instance_id_injective(__tsm_unit.raw.loc(), false, #loc, false);
+            let tracked #root = __tsm_unit.raw.observe();
+        }, None));
+        shared_frags.push(quote! {Fragment::unit()});
+        shared_frags_body.push(quote! {Fragment::unit()});
+    } else if guard && take_shared.is_empty() {
         // A guard without borrowed tokens guards from the instance's leaked
         // unit (`κ`) token.
         if !ctx.base {
@@ -4536,7 +4566,15 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         return read_only_method(ctx, tr, &parts, &take_shared, &incl_frames, &const_frames, &shared_frags, ret, req, ens, &early_body, &late_body);
     }
     if guard {
-        return guard_method(ctx, tr, &parts, &params, &take_shared, &incl_frames, &shared_frags, &shapes, ret, req, ens, &early_body);
+        // A guard that borrows no token borrows a unit (see `Ctx::guard_unit`).
+        let (unit_params, req) = if ctx.guard_unit && guard_without_token(sm, &parts) {
+            let unit_req = quote! {__tsm_unit.instance_id() == (*self).id()};
+            let req = if req.is_empty() { quote! {requires #unit_req} } else { quote! {#req, #unit_req} };
+            (vec![quote! {tracked __tsm_unit: &'a Unit}], req)
+        } else {
+            (vec![], req)
+        };
+        return guard_method(ctx, tr, &parts, &params, &take_shared, &incl_frames, &shared_frags, &shapes, ret, req, ens, &early_body, &unit_params);
     }
     // Without any owned token, the method takes a unit token (storage
     // machines) or splits one off the instance's shared token.
@@ -5624,11 +5662,12 @@ fn guard_method(
     req: TokenStream,
     ens: TokenStream,
     early: &[TokenStream],
+    unit_params: &[TokenStream],
 ) -> Result<TokenStream, Error> {
     let store = ctx.store;
     let span = tr.name.span();
     let name = &parts.exch_name;
-    let in_params = &parts.in_params;
+    let in_params: Vec<TokenStream> = parts.in_params.iter().chain(unit_params).cloned().collect();
     let gen = if parts.use_explicit_lifetime { quote! {<'a>} } else { quote! {} };
     let pn: Vec<_> = tr.params.iter().map(|p| &p.name).collect();
     let t = quote! {::vstd::resource::tsm};

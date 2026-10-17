@@ -194,7 +194,8 @@ type parameters, a leaked reference would need the parameters to be `'static`:
 there the instance owns duplicable copies of these resources where it needs
 them (a descriptor whose type mentions a parameter; a unit token without
 storage), is not `Copy`, and its `clone` promises equal identifiers and
-constants.
+constants. A storage token cannot be duplicated, so with storage a guard that
+borrows no token borrows a `Unit` instead of an instance-held token.
 
 Persistent tokens hold a leaked `&'static` raw token whose fragment is
 idempotent. They are `Copy`, and their `clone` promises equality, as in the
