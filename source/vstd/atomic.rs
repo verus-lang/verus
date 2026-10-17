@@ -780,6 +780,7 @@ impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
     /// Once the atomic update has been committed using the [`try_open_atomic_update`] macro, we learn that `au.resolves()` is `true`.
     ///
     /// We must be able to prove that `au.resolves()` when the logically atomic function exits.
+    #[verifier::prophetic]
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::resolves"]
     pub uninterp spec fn resolves(self) -> bool;
 
@@ -787,6 +788,7 @@ impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
     ///
     /// When the atomic update is committed, this variable is resolved to the input value of the atomic update.
     /// This variable is used internally in the (private) postcondition of the logically atomic function.
+    #[verifier::prophetic]
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::input"]
     pub uninterp spec fn input(self) -> X;
 
@@ -794,6 +796,7 @@ impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
     ///
     /// When the atomic update is committed, this variable is resolved to the output value of the atomic update.
     /// This variable is used internally in the (private) postcondition of the logically atomic function.
+    #[verifier::prophetic]
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::output"]
     pub uninterp spec fn output(self) -> Y;
 }
