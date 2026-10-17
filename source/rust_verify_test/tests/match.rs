@@ -1726,19 +1726,23 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] nested_float_patterns verus_code! {
+        use vstd::prelude::*;
         #[derive(PartialEq)]
         pub struct F { pub x: f64 }
         const ZF: F = F { x: 0.0 };
         const ZO: Option<f64> = Some(0.0);
         const ZT: (u8, f32) = (1, 0.0);
+        const ZB: Option<Box<f64>> = None;
 
         fn f(v: F) -> bool { match v { ZF => true, _ => false } }
         fn o(v: Option<f64>) -> bool { match v { ZO => true, _ => false } }
         fn t(v: (u8, f32)) -> bool { match v { ZT => true, _ => false } }
+        fn b(v: Option<Box<f64>>) -> bool { match v { ZB => true, _ => false } }
     } => Err(err) => assert_vir_error_msgs(err, &[
-        "equality-testing this type in pattern: F",
-        "equality-testing this type in pattern: std::option::Option<f64>",
-        "equality-testing this type in pattern: (u8, f32)",
+        "equality-testing this type in a pattern: F",
+        "equality-testing this type in a pattern: std::option::Option<f64>",
+        "equality-testing this type in a pattern: (u8, f32)",
+        "equality-testing this type in a pattern: std::option::Option<std::boxed::Box<f64, std::alloc::Global>>",
     ])
 }
 
@@ -1760,8 +1764,8 @@ test_verify_one_file! {
 
         fn n(v: T<u8>) -> bool { match v { L => true, _ => false } }
     } => Err(err) => assert_vir_error_msgs(err, &[
-        "equality-testing this type in pattern: S",
-        "equality-testing this type in pattern: T<u8>",
+        "equality-testing this type in a pattern: S",
+        "equality-testing this type in a pattern: T<u8>",
     ])
 }
 
@@ -1805,8 +1809,8 @@ test_verify_one_file! {
 
         #[derive(PartialEq, Eq)]
         pub struct BinaryTree {
-            pub left: Option<&'static BinaryTree>,
-            pub right: Option<&'static BinaryTree>,
+            pub left: Option<Box<BinaryTree>>,
+            pub right: Option<Box<BinaryTree>>,
         }
         const LEAF: BinaryTree = BinaryTree { left: None, right: None };
 

@@ -985,7 +985,7 @@ fn check_one_pattern(
         PatternX::Expr(_, dts) => {
             // Spec == on an opaque datatype need not agree with rustc's field-by-field match
             for path in dts.iter() {
-                if let Some(dt) = ctxt.dts.get(path) {
+                if let Some(dt) = ctxt.lookup.dts.get(path) {
                     if matches!(dt.x.transparency, DatatypeTransparency::Never) {
                         return Err(error(
                             &pattern.span,
