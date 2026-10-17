@@ -59,6 +59,37 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_structural_ghost_field verus_code! {
+        #[derive(PartialEq, Eq, Structural)]
+        struct S {
+            b: u8,
+            ghost a: u8,
+        }
+
+        fn test() -> (r: bool)
+            ensures !r
+        {
+            let mut s = S { b: 0, a: 5 };
+            let t = S { b: 0, a: 5 };
+            proof { s.a = 6; }
+            s == t
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`Structural` cannot be implemented for a type with ghost or tracked fields")
+}
+
+test_verify_one_file! {
+    #[test] test_structural_tracked_field verus_code! {
+        #[derive(PartialEq, Eq)]
+        struct S {
+            b: u8,
+            tracked a: u8,
+        }
+
+        unsafe impl Structural for S {}
+    } => Err(err) => assert_vir_error_msg(err, "`Structural` cannot be implemented for a type with ghost or tracked fields")
+}
+
+test_verify_one_file! {
     #[test] test_not_structural_fields verus_code! {
         #[derive(PartialEq, Eq)]
         struct Other { }

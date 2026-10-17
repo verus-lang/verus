@@ -1686,3 +1686,137 @@ test_verify_one_file! {
         "equality-testing this type in pattern: f64",
     ])
 }
+
+test_verify_one_file! {
+    #[test] const_patterns_derived_partial_eq verus_code! {
+        use vstd::prelude::*;
+        use core::marker::PhantomData;
+
+        #[derive(PartialEq, Eq)]
+        pub enum E { A, B(u8) }
+        const EB: E = E::B(3);
+
+        #[derive(PartialEq, Eq)]
+        pub struct G { pub a: u8, pub p: PhantomData<u8> }
+        const C: G = G { a: 1, p: PhantomData };
+
+        fn m(e: E) -> (r: bool)
+            ensures r == (e == E::B(3))
+        {
+            match e { EB => true, _ => false }
+        }
+
+        fn n(v: G) -> (r: bool)
+            ensures r == (v.a == 1)
+        {
+            match v { C => true, _ => false }
+        }
+
+        fn s(x: &str) -> u8 {
+            match x { "abc" => 1, _ => 0 }
+        }
+
+        fn wrong(e: E) -> (r: bool)
+            ensures r == (e == E::B(4)) // FAILS
+        {
+            match e { EB => true, _ => false }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] nested_float_patterns verus_code! {
+        #[derive(PartialEq)]
+        pub struct F { pub x: f64 }
+        const ZF: F = F { x: 0.0 };
+        const ZO: Option<f64> = Some(0.0);
+        const ZT: (u8, f32) = (1, 0.0);
+        const ZB: Option<Box<f64>> = None;
+
+        fn f(v: F) -> bool { match v { ZF => true, _ => false } }
+        fn o(v: Option<f64>) -> bool { match v { ZO => true, _ => false } }
+        fn t(v: (u8, f32)) -> bool { match v { ZT => true, _ => false } }
+        fn b(v: Option<Box<f64>>) -> bool { match v { ZB => true, _ => false } }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "equality-testing this type in pattern: F",
+        "equality-testing this type in pattern: std::option::Option<f64>",
+        "equality-testing this type in pattern: (u8, f32)",
+        "equality-testing this type in pattern: std::option::Option<std::boxed::Box<f64, std::alloc::Global>>",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] ghost_field_patterns verus_code! {
+        #[derive(PartialEq, Eq)]
+        pub struct S { pub b: u8, pub ghost a: u8 }
+        const C: S = S { b: 0, a: 5 };
+
+        fn m(s: S) -> (r: bool)
+            ensures r ==> s.a == 5
+        {
+            match s { C => true, _ => false }
+        }
+
+        #[derive(PartialEq, Eq)]
+        pub enum T<A: 'static> { Leaf(A), Node(&'static T<(A, A)>) }
+        const L: T<u8> = T::Leaf(0);
+
+        fn n(v: T<u8>) -> bool { match v { L => true, _ => false } }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "equality-testing this type in pattern: S",
+        "equality-testing this type in pattern: T<u8>",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] external_body_patterns verus_code! {
+        #[verifier::external_body]
+        #[derive(PartialEq, Eq)]
+        pub struct S { x: u8 }
+        #[verifier::external_body]
+        const C: S = S { x: 1 };
+
+        fn m(s: S) { match s { C => {} _ => {} } }
+
+        #[derive(PartialEq, Eq)]
+        pub struct W { s: S }
+        #[verifier::external_body]
+        const D: W = W { s: S { x: 1 } };
+
+        fn n(w: W) { match w { D => {} _ => {} } }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "constant patterns are not supported for opaque (external_body) datatypes",
+        "constant patterns are not supported for opaque (external_body) datatypes",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] external_body_structural_patterns verus_code! {
+        #[verifier::external_body]
+        #[derive(PartialEq, Eq, Structural)]
+        pub struct S { x: u8 }
+        #[verifier::external_body]
+        const C: S = S { x: 1 };
+
+        fn m(s: S) { match s { C => {} _ => {} } }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] recursive_type_patterns verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(PartialEq, Eq)]
+        pub struct BinaryTree {
+            pub left: Option<Box<BinaryTree>>,
+            pub right: Option<Box<BinaryTree>>,
+        }
+        const LEAF: BinaryTree = BinaryTree { left: None, right: None };
+
+        fn m(t: BinaryTree) -> (r: bool)
+            ensures r ==> t.left is None
+        {
+            match t { LEAF => true, _ => false }
+        }
+    } => Ok(())
+}

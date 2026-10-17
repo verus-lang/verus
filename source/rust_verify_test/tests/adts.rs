@@ -730,13 +730,13 @@ test_verify_one_file! {
 }
 
 const FIELD_UPDATE_MODES: &str = verus_code_str! {
-    #[derive(PartialEq, Eq, Structural)]
+    #[derive(PartialEq, Eq)]
     struct S {
         ghost a: nat,
         b: i32,
     }
 
-    #[derive(PartialEq, Eq, Structural)]
+    #[derive(PartialEq, Eq)]
     struct T {
         tracked s: S,
         c: bool,

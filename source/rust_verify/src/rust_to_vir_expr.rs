@@ -530,12 +530,14 @@ fn patexpr_unsupported_type_err<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
     pat: &Pat<'tcx>,
-) -> Result<(), VirErr> {
+) -> Result<Arc<Vec<vir::ast::Path>>, VirErr> {
     let pat_ty = bctx.types.node_type(pat.hir_id);
-    if !crate::rust_to_vir_base::ty_has_smt_equality(bctx, span, pat_ty)? {
-        unsupported_err!(span, format!("equality-testing this type in pattern: {:?}", pat_ty));
+    match crate::rust_to_vir_base::ty_has_pattern_smt_equality(bctx, pat_ty) {
+        Some(adts) => Ok(Arc::new(adts)),
+        None => {
+            unsupported_err!(span, format!("equality-testing this type in pattern: {:?}", pat_ty))
+        }
     }
-    Ok(())
 }
 
 pub(crate) fn patexpr_to_vir<'tcx>(
@@ -548,33 +550,33 @@ pub(crate) fn patexpr_to_vir<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match pat_expr.kind {
         PatExprKind::Lit { lit, negated } => {
-            patexpr_unsupported_type_err(bctx, span, pat)?;
-            Ok(PatternX::Expr(lit_to_vir(bctx, span, lit, negated, pat_typ, None)?))
+            let adts = patexpr_unsupported_type_err(bctx, span, pat)?;
+            Ok(PatternX::Expr(lit_to_vir(bctx, span, lit, negated, pat_typ, None)?, adts))
         }
         PatExprKind::Path(qpath) => {
             let res = bctx.types.qpath_res(&qpath, pat_expr.hir_id);
             match res {
                 Res::Def(DefKind::Const { is_type_const: _ }, id) => {
-                    patexpr_unsupported_type_err(bctx, span, pat)?;
+                    let adts = patexpr_unsupported_type_err(bctx, span, pat)?;
                     let node_substs = bctx.types.node_args(pat_expr.hir_id);
                     let x = const_var_to_vir(bctx, None, id, node_substs, &pat_expr.hir_id, span)?;
                     let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x.x.clone());
 
-                    Ok(PatternX::Expr(expr))
+                    Ok(PatternX::Expr(expr, adts))
                 }
                 Res::Def(DefKind::AssocConst { is_type_const: _ }, id) => {
-                    patexpr_unsupported_type_err(bctx, span, pat)?;
+                    let adts = patexpr_unsupported_type_err(bctx, span, pat)?;
                     if let Some(vir_expr) =
                         int_intrinsic_constant_to_vir(&bctx.ctxt, pat.span, &pat_typ, id)
                     {
-                        Ok(PatternX::Expr(vir_expr))
+                        Ok(PatternX::Expr(vir_expr, adts))
                     } else {
                         let node_substs = bctx.types.node_args(pat_expr.hir_id);
                         let x =
                             const_var_to_vir(bctx, None, id, node_substs, &pat_expr.hir_id, span)?;
                         let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x.x.clone());
 
-                        Ok(PatternX::Expr(expr))
+                        Ok(PatternX::Expr(expr, adts))
                     }
                 }
                 Res::Err => err_span(span, format!("Couldn't resolve {qpath:#?}")),
@@ -875,7 +877,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
                 None => None,
                 Some(expr1) => {
                     let e1 = patexpr_to_vir(bctx, expr1.span, pat, &pat_typ, expr1)?;
-                    if let PatternX::Expr(e1) = e1 {
+                    if let PatternX::Expr(e1, _) = e1 {
                         if !matches!(&*e1.typ, TypX::Int(_)) {
                             unsupported_err!(expr1.span, "range pattern with non-int type");
                         }
@@ -889,7 +891,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
                 None => None,
                 Some(expr2) => {
                     let e2 = patexpr_to_vir(bctx, expr2.span, pat, &pat_typ, expr2)?;
-                    if let PatternX::Expr(e2) = e2 {
+                    if let PatternX::Expr(e2, _) = e2 {
                         if !matches!(&*e2.typ, TypX::Int(_)) {
                             unsupported_err!(expr2.span, "range pattern with non-int type");
                         }

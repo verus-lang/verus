@@ -924,7 +924,9 @@ pub enum PatternX {
     /// This only supports literals, consts, and pure functions
     /// so we don't need to worry about side-effects, binding order, etc.
     /// See `check_expr_in_pattern` for the exact supported expressions.
-    Expr(Expr),
+    /// The paths are datatypes whose fields were checked to make exec matching agree with spec
+    /// equality; well_formed rejects them if they are opaque.
+    Expr(Expr, Arc<Vec<Path>>),
     /// `e1 <= x <= e2` or `e1 <= x < e2`
     /// The start of the range is always inclusive (<=)
     /// The end of the range may be inclusive (<=) or exclusive (<),
