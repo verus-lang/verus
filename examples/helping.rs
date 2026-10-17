@@ -75,7 +75,7 @@ impl InvariantPredicate<K, V> for FlagInv {
             Accepted(done) => {
                 &&& pend_perm.value() == 2
                 &&& gv@ is Some
-                &&& gv@->0 == done.atomic_update()
+                &&& done.is_for(gv@->0)
             }
         }
     }
