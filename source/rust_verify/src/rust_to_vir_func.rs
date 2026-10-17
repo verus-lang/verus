@@ -19,8 +19,8 @@ use rustc_hir::{
 };
 use rustc_middle::ty::{
     AdtDef, AliasTermKind, AliasTyKind, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind,
-    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind, TyCtxt,
-    TyKind, TypingEnv, ValTreeKind, Value,
+    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionExt, RegionKind,
+    TyCtxt, TyKind, TypingEnv, ValTreeKind, Value,
 };
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
@@ -215,7 +215,6 @@ fn handle_autospec<'tcx>(
                 typ_bounds: functionx.typ_bounds.clone(),
                 params: Arc::new(spec_params),
                 outer_ret: spec_ret_param,
-                ens_has_return: true,
                 item_kind: ItemKind::Function,
                 attrs: Arc::new(FunctionAttrsX {
                     uses_ghost_blocks: vattrs.verus_macro,
@@ -282,7 +281,6 @@ fn finish_autospec<'tcx>(
         typ_bounds,
         params,
         outer_ret,
-        ens_has_return,
         item_kind,
         attrs,
     } = function_autospec.x.clone();
@@ -300,7 +298,6 @@ fn finish_autospec<'tcx>(
         params,
         outer_ret: outer_ret.clone(),
         inner_ret: outer_ret,
-        ens_has_return,
         decrease_by: None,
         item_kind,
         attrs,
@@ -812,8 +809,14 @@ fn compare_external_ty<'tcx>(
             (
                 rustc_middle::ty::TyKind::FnDef(def_id1, generic_args1),
                 rustc_middle::ty::TyKind::FnDef(def_id2, generic_args2),
-            )
-            | (
+            ) => match (generic_args1.no_bound_vars(), generic_args2.no_bound_vars()) {
+                (Some(generic_args1), Some(generic_args2)) => {
+                    (*def_id1 == *def_id2) && compare_generic_args(generic_args1, generic_args2)
+                }
+                // see fn_def_args
+                _ => false,
+            },
+            (
                 rustc_middle::ty::TyKind::Closure(def_id1, generic_args1),
                 rustc_middle::ty::TyKind::Closure(def_id2, generic_args2),
             )
@@ -1155,7 +1158,8 @@ pub(crate) fn get_substs_early<'tcx>(
     match ty.kind() {
         // The following TyKind Variants have a I::GenericArgs of early-bound generic arguments:
         // Adt, FnDef, Coroutine, Closure, CoroutineClosure, CoroutineWitness
-        rustc_middle::ty::Adt(_, substs) | rustc_middle::ty::FnDef(_, substs) => Ok(substs),
+        rustc_middle::ty::Adt(_, substs) => Ok(substs),
+        rustc_middle::ty::FnDef(_, substs) => crate::rust_to_vir_base::fn_def_args(*substs, span),
         _ => {
             crate::internal_err!(span, "expected Adt or FnDef")
         }
@@ -2121,11 +2125,6 @@ pub(crate) fn check_item_fn<'tcx>(
         visibility.restricted_to = None;
     }
 
-    // Note: ens_has_return isn't final; it may need to be changed later to make
-    // sure it's in sync for trait method impls and trait method decls.
-    // See `fixup_ens_has_return_for_trait_method_impls`.
-    let ens_has_return = !vir::ast_util::is_unit(&vir::ast_util::undecorate_typ(&ret.x.typ));
-
     let (publish, mode, item_kind) = match (is_external_const, pre_header.returns) {
         (true, true) => {
             // In an external const declaration, use returns expression as spec function body:
@@ -2176,8 +2175,6 @@ pub(crate) fn check_item_fn<'tcx>(
         typ_bounds,
         params,
         outer_ret: ret,
-        // async function always refer to return value in ensures
-        ens_has_return: is_async || ens_has_return,
         item_kind,
         attrs: fattrs,
     };
@@ -2270,7 +2267,6 @@ pub(crate) fn finish_function<'tcx>(
         typ_bounds,
         params,
         outer_ret,
-        ens_has_return,
         item_kind,
         attrs,
     } = function.x.clone();
@@ -2424,7 +2420,6 @@ pub(crate) fn finish_function<'tcx>(
         params,
         outer_ret,
         inner_ret,
-        ens_has_return,
         require: if mode == Mode::Spec { Arc::new(recommend) } else { header.require },
         returns,
         ensure,
@@ -2513,7 +2508,6 @@ fn fix_external_fn_specification_trait_method_decl_typs_stub(
             mut typ_bounds,
             mut params,
             mut outer_ret,
-            ens_has_return,
             item_kind,
             attrs,
         } = func;
@@ -2555,7 +2549,6 @@ fn fix_external_fn_specification_trait_method_decl_typs_stub(
             typ_bounds,
             params,
             outer_ret,
-            ens_has_return,
             item_kind,
             attrs,
         })
@@ -2583,7 +2576,6 @@ fn check_external_fn_specification_trait_method_decl_typs(
             params: _,
             outer_ret: _,
             inner_ret: _,
-            ens_has_return: _,
             require,
             ensure,
             returns,
@@ -2724,12 +2716,12 @@ fn check_generics_for_invariant_fn<'tcx>(
                 span,
             )?;
 
-            let datatype_predicates = adt_def.predicates(tcx);
-            let func_predicates = tcx.predicates_of(id);
+            let datatype_predicates = adt_def.clauses(tcx);
+            let func_predicates = tcx.clauses_of(id);
             let datatype_typing_env = TypingEnv::post_analysis(tcx, adt_def.did());
             let func_typing_env = TypingEnv::post_analysis(tcx, id);
-            let preds1 = datatype_predicates.instantiate(tcx, substs).predicates;
-            let preds2 = func_predicates.instantiate(tcx, substs).predicates;
+            let preds1 = datatype_predicates.instantiate(tcx, substs).clauses;
+            let preds2 = func_predicates.instantiate(tcx, substs).clauses;
             // The 'outlives' predicates don't always line up; I don't know why.
             // But they don't matter for the purpose of this check, so filter them out here.
             let preds1 = preds1
@@ -2938,7 +2930,7 @@ fn all_predicates<'tcx>(
     preliminarily_try_to_process_and_eliminate_trait_aliases: bool,
 ) -> Vec<Clause<'tcx>> {
     let mut trait_alias_clauses: Vec<Clause<'tcx>> = Vec::new();
-    let preds = tcx.predicates_of(id);
+    let preds = tcx.clauses_of(id);
     if preliminarily_try_to_process_and_eliminate_trait_aliases {
         // raw_ptr.rs uses external_fn_specification for functions with core::ptr::Thin bounds,
         // where core::ptr::Thin is a trait alias (an experimental Rust feature)
@@ -2947,11 +2939,11 @@ fn all_predicates<'tcx>(
         // However, to get this case to work, we attempt to expand away trait aliases unto
         // their underlying traits here.
         // This is not fully general and probably doesn't yet work for parameterized trait aliases.
-        for (p, _) in preds.predicates {
+        for (p, _) in preds.clauses {
             match p.kind().skip_binder() {
                 rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
                     if tcx.trait_is_alias(tp.trait_ref.def_id) {
-                        let preds = tcx.predicates_of(tp.trait_ref.def_id);
+                        let preds = tcx.clauses_of(tp.trait_ref.def_id);
                         let alias_typing_env = TypingEnv::post_analysis(tcx, tp.trait_ref.def_id);
                         trait_alias_clauses.extend(
                             preds
@@ -2968,7 +2960,7 @@ fn all_predicates<'tcx>(
     let typing_env = TypingEnv::post_analysis(tcx, id);
     let preds = preds.instantiate(tcx, substs);
     let mut clauses: Vec<Clause<'tcx>> = preds
-        .predicates
+        .clauses
         .into_iter()
         .map(|clause| tcx.normalize_erasing_regions(typing_env, clause))
         .collect();
@@ -3276,9 +3268,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         (Arc::new(vec![]), Arc::new(vec![]))
     };
 
-    let ens_has_return = !vir::ast_util::is_unit(&vir::ast_util::undecorate_typ(&outer_ret.x.typ));
-    assert!(!is_async || ens_has_return);
-
     let mut functionx = FunctionStubX {
         name: name.clone(),
         proxy: None,
@@ -3292,7 +3281,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         typ_bounds,
         params: Arc::new(vec![]),
         outer_ret,
-        ens_has_return,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         attrs: fattrs,
     };
@@ -3357,7 +3345,6 @@ pub(crate) fn finish_const_or_static<'tcx>(
         typ_bounds,
         params,
         outer_ret,
-        ens_has_return,
         item_kind,
         attrs,
     } = function.x.clone();
@@ -3414,7 +3401,6 @@ pub(crate) fn finish_const_or_static<'tcx>(
         params,
         inner_ret,
         outer_ret,
-        ens_has_return,
         require: Arc::new(vec![]),
         ensure: (ensure, Arc::new(vec![])),
         returns: None,
@@ -3493,9 +3479,9 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         vir_params.push(vir_param);
     }
     let params = Arc::new(vir_params);
-    let (ret_typ, ret_mode, ens_has_return) = match ret_typ_mode {
-        None => (unit_typ(), mode, false),
-        Some((typ, mode)) => (typ, mode, true),
+    let (ret_typ, ret_mode) = match ret_typ_mode {
+        None => (unit_typ(), mode),
+        Some((typ, mode)) => (typ, mode),
     };
     let ret_param = ParamX {
         name: air_unique_var(RETURN_VALUE),
@@ -3524,7 +3510,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         params,
         outer_ret: ret.clone(),
         inner_ret: ret,
-        ens_has_return,
         require: Arc::new(vec![]),
         ensure: (Arc::new(vec![]), Arc::new(vec![])),
         returns: None,

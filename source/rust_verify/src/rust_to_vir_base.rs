@@ -11,9 +11,9 @@ use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKi
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
     AdtDef, AliasTyKind, BoundVarIndexKind, BoundVarReplacerDelegate, Clause, ClauseKind,
-    ConstKind, GenericArg, GenericArgKind, GenericParamDefKind, IsRigid, TermKind, TyCtxt, TyKind,
-    TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTreeKind, Value,
-    Visibility,
+    ConstKind, GenericArg, GenericArgKind, GenericParamDefKind, IsRigid, RegionExt, TermKind,
+    TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode,
+    ValTreeKind, Value, Visibility,
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
@@ -223,10 +223,7 @@ pub(crate) fn no_body_param_to_var<'tcx>(ident: &Ident) -> VarIdent {
     str_unique_var(ident.as_str(), vir::ast::VarIdentDisambiguate::NoBodyParam)
 }
 
-pub(crate) fn local_to_var<'tcx>(
-    ident: &Ident,
-    local_id: rustc_hir::hir_id::ItemLocalId,
-) -> VarIdent {
+pub(crate) fn local_to_var<'tcx>(ident: &Ident, local_id: rustc_hir::ItemLocalId) -> VarIdent {
     let dis = vir::ast::VarIdentDisambiguate::RustcId(local_id.index());
     str_unique_var(&ident.to_string(), dis)
 }
@@ -398,6 +395,19 @@ pub(crate) struct ClauseFrom<'tcx> {
     span: Span,
 }
 
+// rustc 1.99 does not reference the binder's vars from the args, but this will fail loudly if that changes
+pub(crate) fn fn_def_args<'tcx>(
+    args: rustc_middle::ty::Binder<'tcx, rustc_middle::ty::GenericArgsRef<'tcx>>,
+    span: Span,
+) -> Result<rustc_middle::ty::GenericArgsRef<'tcx>, VirErr> {
+    match args.no_bound_vars() {
+        Some(args) => Ok(args),
+        None => {
+            unsupported_err!(span, "function item type whose generic arguments use bound variables")
+        }
+    }
+}
+
 fn instantiate_pred_clauses<'tcx>(
     tcx: TyCtxt<'tcx>,
     mut def_id: DefId,
@@ -405,9 +415,9 @@ fn instantiate_pred_clauses<'tcx>(
 ) -> Vec<(Option<ClauseFrom<'tcx>>, Clause<'tcx>)> {
     // We could get the information directly like this:
     let direct_clauses: Vec<Clause<'tcx>> = tcx
-        .predicates_of(def_id)
+        .clauses_of(def_id)
         .instantiate(tcx, args)
-        .predicates
+        .clauses
         .into_iter()
         .map(|c| c.skip_norm_wip())
         .collect();
@@ -415,7 +425,7 @@ fn instantiate_pred_clauses<'tcx>(
     let mut ancestors: Vec<DefId> = Vec::new();
     loop {
         ancestors.push(def_id);
-        let preds = tcx.predicates_of(def_id);
+        let preds = tcx.clauses_of(def_id);
         if let Some(id) = preds.parent {
             def_id = id;
         } else {
@@ -424,9 +434,9 @@ fn instantiate_pred_clauses<'tcx>(
     }
     let mut clauses: Vec<(Option<ClauseFrom<'tcx>>, Clause<'tcx>)> = Vec::new();
     for def_id in ancestors.iter().rev() {
-        let preds = tcx.predicates_of(*def_id);
-        for (clause, span) in preds.predicates {
-            // This is based on GenericPredicates.instantiate_into, which is close to what
+        let preds = tcx.clauses_of(*def_id);
+        for (clause, span) in preds.clauses {
+            // This is based on GenericClauses.instantiate_into, which is close to what
             // we need but doesn't track the relation between the uninstantiated and
             // instantiated clauses.
             let inst = rustc_middle::ty::EarlyBinder::bind(tcx, *clause)
@@ -598,7 +608,7 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                         let clauses = instantiate_pred_clauses(
                                             tcx,
                                             *fn_def_id,
-                                            fn_node_substs,
+                                            fn_def_args(*fn_node_substs, span)?,
                                         );
                                         for p in clauses {
                                             if !predicate_worklist.contains(&p) {
@@ -760,11 +770,11 @@ pub(crate) fn mk_visibility<'tcx>(ctxt: &Context<'tcx>, def_id: DefId) -> vir::a
 
 pub(crate) fn mk_visibility_from_vis<'tcx>(
     ctxt: &Context<'tcx>,
-    visibility: rustc_middle::ty::Visibility<DefId>,
+    visibility: rustc_middle::ty::Visibility<rustc_span::def_id::ModId>,
 ) -> vir::ast::Visibility {
     let restricted_to = match visibility {
         Visibility::Public => None,
-        Visibility::Restricted(id) => Some(ctxt.def_id_to_vir_path(id)),
+        Visibility::Restricted(id) => Some(ctxt.def_id_to_vir_path(id.to_def_id())),
     };
     vir::ast::Visibility { restricted_to }
 }
@@ -977,8 +987,8 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
             return false;
         }
     }
-    let predicates = tcx.predicates_of(def_id);
-    for (predicate, _span) in predicates.predicates.iter() {
+    let predicates = tcx.clauses_of(def_id);
+    for (predicate, _span) in predicates.clauses.iter() {
         match predicate.kind().skip_binder() {
             ClauseKind::RegionOutlives(_) | ClauseKind::TypeOutlives(_) => {}
             ClauseKind::Trait(TraitPredicate {
@@ -1278,7 +1288,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     }
                     // If normalization isn't possible, return a projection type:
                     let assoc_item = tcx.associated_item(def_id);
-                    let name = Arc::new(assoc_item.name().to_string());
+                    let name = assoc_item_name(&assoc_item, span)?;
                     // Note: this looks like it would work, but trait_item_def_id is sometimes None:
                     //   use crate::rustc_middle::ty::DefIdTree;
                     //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
@@ -1381,6 +1391,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             }
         }
         TyKind::FnDef(def_id, args) => {
+            let args = fn_def_args(*args, span)?;
             let resolved = if tcx.trait_of_assoc(*def_id).is_none() {
                 None
             } else {
@@ -1630,24 +1641,48 @@ pub(crate) fn implements_structural<'tcx>(
     ty_impls_structural
 }
 
-// Do equality operations on these operands translate into the SMT solver's == operation?
+/// Do equality operations on these operands translate into the SMT solver's == operation?
 pub(crate) fn is_smt_equality<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
     id1: &HirId,
     id2: &HirId,
 ) -> Result<bool, VirErr> {
-    let (t1, t2) = (typ_of_expr_adjusted(bctx, span, id1)?, typ_of_expr_adjusted(bctx, span, id2)?);
+    let rustc_hir::Node::Expr(expr1) = bctx.ctxt.tcx.hir_node(*id1) else {
+        panic!("is_smt_equality expected Expr");
+    };
+    let rustc_hir::Node::Expr(expr2) = bctx.ctxt.tcx.hir_node(*id2) else {
+        panic!("is_smt_equality expected Expr");
+    };
+    let ty1 = bctx.types.expr_ty_adjusted(expr1);
+    let ty2 = bctx.types.expr_ty_adjusted(expr2);
+    ty_pair_has_smt_equality(bctx, span, ty1, ty2)
+}
+
+pub(crate) fn ty_has_smt_equality<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> Result<bool, VirErr> {
+    ty_pair_has_smt_equality(bctx, span, ty, ty)
+}
+
+pub(crate) fn ty_pair_has_smt_equality<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    ty1: rustc_middle::ty::Ty<'tcx>,
+    ty2: rustc_middle::ty::Ty<'tcx>,
+) -> Result<bool, VirErr> {
+    let t1 = bctx.mid_ty_to_vir(span, &ty1)?;
+    let t2 = bctx.mid_ty_to_vir(span, &ty2)?;
     match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
         (TypX::Datatype(..), TypX::Datatype(..)) if types_equal(&t1, &t2) => {
-            let ty = bctx.types.node_type(*id1);
-            Ok(implements_structural(&bctx, ty))
+            Ok(implements_structural(&bctx, ty1))
         }
         (TypX::TypParam(_), TypX::TypParam(_)) if types_equal(&t1, &t2) => {
-            let ty = bctx.types.node_type(*id1);
-            Ok(implements_structural(&bctx, ty))
+            Ok(implements_structural(&bctx, ty2))
         }
         _ => Ok(false),
     }
@@ -1914,7 +1949,7 @@ where
                 let substs = pred.projection_term.args;
                 let trait_def_id = pred.projection_term.trait_def_id(tcx);
                 let assoc_item = tcx.associated_item(item_def_id);
-                let name = Arc::new(assoc_item.name().to_string());
+                let name = assoc_item_name(&assoc_item, *span)?;
                 let generic_bound = check_generic_bound(
                     tcx,
                     verus_items,
@@ -2166,9 +2201,9 @@ fn check_generics_bounds_main<'tcx>(
     let mut typ_params: Vec<(vir::ast::Ident, vir::ast::AcceptRecursiveType)> = Vec::new();
 
     // Process all trait bounds.
-    let predicates = tcx.predicates_of(def_id);
+    let predicates = tcx.clauses_of(def_id);
     let bounds =
-        process_predicate_bounds(tcx, def_id, verus_items, predicates.predicates.iter(), generics)?;
+        process_predicate_bounds(tcx, def_id, verus_items, predicates.clauses.iter(), generics)?;
 
     // In traits, the first type param is Self. This is handled specially,
     // so we skip it here.
@@ -2556,7 +2591,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                         let substs = pred.projection_term.args;
                         let trait_def_id = pred.projection_term.trait_def_id(ctxt.tcx);
                         let assoc_item = ctxt.tcx.associated_item(item_def_id);
-                        let name = Arc::new(assoc_item.name().to_string());
+                        let name = assoc_item_name(&assoc_item, span)?;
                         let generic_bound = check_generic_bound(
                             ctxt.tcx,
                             &ctxt.verus_items,
@@ -2712,11 +2747,30 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
             Ok(None)
         }
         (rustc_middle::ty::TyKind::Adt(_, generic_args), None)
-        | (rustc_middle::ty::TyKind::FnDef(_, generic_args), None)
         | (rustc_middle::ty::TyKind::Closure(_, generic_args), None)
         | (rustc_middle::ty::TyKind::CoroutineClosure(_, generic_args), None)
         | (rustc_middle::ty::TyKind::Coroutine(_, generic_args), None)
         | (rustc_middle::ty::TyKind::CoroutineWitness(_, generic_args), None) => {
+            for generic_arg in generic_args.iter() {
+                if let Some(ty) = generic_arg.as_type() {
+                    opaque_def_to_vir(
+                        ctxt,
+                        opaque_types,
+                        fn_def_id,
+                        &ty,
+                        span,
+                        None,
+                        false,
+                        assume_specification_opaque_type_map,
+                    )?;
+                } else {
+                    continue;
+                }
+            }
+            Ok(None)
+        }
+        (rustc_middle::ty::TyKind::FnDef(_, generic_args), None) => {
+            let generic_args = fn_def_args(*generic_args, span)?;
             for generic_arg in generic_args.iter() {
                 if let Some(ty) = generic_arg.as_type() {
                     opaque_def_to_vir(
@@ -2740,10 +2794,6 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
             Some(rustc_middle::ty::TyKind::Adt(_, generic_args2)),
         )
         | (
-            rustc_middle::ty::TyKind::FnDef(_, generic_args1),
-            Some(rustc_middle::ty::TyKind::FnDef(_, generic_args2)),
-        )
-        | (
             rustc_middle::ty::TyKind::Closure(_, generic_args1),
             Some(rustc_middle::ty::TyKind::Closure(_, generic_args2)),
         )
@@ -2759,6 +2809,35 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
             rustc_middle::ty::TyKind::CoroutineWitness(_, generic_args1),
             Some(rustc_middle::ty::TyKind::CoroutineWitness(_, generic_args2)),
         ) => {
+            if generic_args1.len() != generic_args2.len() {
+                return unmatch_err();
+            }
+            for (generic_arg1, generic_args) in generic_args1.iter().zip(generic_args2.iter()) {
+                match (generic_arg1.as_type(), generic_args.as_type()) {
+                    (Some(ty1), Some(ty2)) => {
+                        opaque_def_to_vir(
+                            ctxt,
+                            opaque_types,
+                            fn_def_id,
+                            &ty1,
+                            span,
+                            Some(&ty2),
+                            false,
+                            assume_specification_opaque_type_map,
+                        )?;
+                    }
+                    (None, None) => continue,
+                    _ => return unmatch_err(),
+                }
+            }
+            Ok(None)
+        }
+        (
+            rustc_middle::ty::TyKind::FnDef(_, generic_args1),
+            Some(rustc_middle::ty::TyKind::FnDef(_, generic_args2)),
+        ) => {
+            let generic_args1 = fn_def_args(*generic_args1, span)?;
+            let generic_args2 = fn_def_args(*generic_args2, span)?;
             if generic_args1.len() != generic_args2.len() {
                 return unmatch_err();
             }
@@ -2830,4 +2909,19 @@ pub(crate) fn hack_fix_no_lifetime_opaque_ty_issue2541<'tcx>(
             region
         }
     })
+}
+
+/// The name of an associated item, or an unsupported-feature error for the associated types
+/// rustc synthesizes for `-> impl Trait` in traits and `async fn` in traits, which have none.
+pub(crate) fn assoc_item_name(
+    assoc_item: &rustc_middle::ty::AssocItem,
+    span: Span,
+) -> Result<vir::ast::Ident, VirErr> {
+    match assoc_item.opt_name() {
+        Some(name) => Ok(Arc::new(name.to_string())),
+        None => unsupported_err!(
+            span,
+            "return-position `impl Trait` in a trait, or `async fn` in a trait"
+        ),
+    }
 }

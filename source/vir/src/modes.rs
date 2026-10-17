@@ -2172,7 +2172,17 @@ fn check_expr(
             check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
         }
         ExprX::UnaryOpr(UnaryOpr::ToDyn(_), e1) => {
-            check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
+            let (mode, proph) =
+                check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)?;
+            if matches!(&*crate::ast_util::undecorate_typ(&expr.typ), TypX::MutRef(_))
+                && mode != Mode::Exec
+            {
+                return Err(error(
+                    &expr.span,
+                    "coercing mutable references to a trait object is not supported in spec/proof mode",
+                ));
+            }
+            Ok((mode, proph))
         }
         ExprX::UnaryOpr(UnaryOpr::Box(_), _) => panic!("unexpected box"),
         ExprX::UnaryOpr(UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
@@ -3765,9 +3775,7 @@ fn check_function(
     }
 
     let mut ens_typing = fun_typing.push_var_scope();
-    if function.x.ens_has_return {
-        ens_typing.insert(&function.x.inner_ret.x.name, Mode::Spec, Some(ProphVar::No));
-    }
+    ens_typing.insert(&function.x.inner_ret.x.name, Mode::Spec, Some(ProphVar::No));
 
     for expr in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let mut ens_typing = ens_typing.push_block_ghostness(Ghost::Ghost);
@@ -3844,7 +3852,7 @@ fn check_function(
         }
     }
 
-    let ret_mode = if function.x.ens_has_return {
+    let ret_mode = if !is_unit(&function.x.outer_ret.x.typ) {
         let ret_mode = function.x.outer_ret.x.mode;
         if !matches!(function.x.item_kind, ItemKind::Const) && !mode_le(function.x.mode, ret_mode) {
             return Err(error(

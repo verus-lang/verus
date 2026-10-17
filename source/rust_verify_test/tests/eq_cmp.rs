@@ -121,3 +121,66 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3167
+    #[test] ord_max_default verus_code! {
+        use core::cmp::Ordering;
+        use vstd::std_specs::cmp::*;
+
+        #[derive(PartialEq, Eq)]
+        pub struct S {
+            pub v: u8,
+        }
+
+        impl PartialOrd for S {
+            fn partial_cmp(&self, other: &S) -> (r: Option<Ordering>) {
+                None
+            }
+        }
+
+        impl PartialOrdSpecImpl for S {
+            open spec fn obeys_partial_cmp_spec() -> bool {
+                true
+            }
+
+            open spec fn partial_cmp_spec(&self, other: &S) -> Option<Ordering> {
+                None
+            }
+        }
+
+        impl Ord for S {
+            fn cmp(&self, other: &S) -> (r: Ordering) {
+                if self.v < other.v {
+                    Ordering::Less
+                } else if self.v == other.v {
+                    Ordering::Equal
+                } else {
+                    Ordering::Greater
+                }
+            }
+        }
+
+        impl OrdSpecImpl for S {
+            open spec fn obeys_cmp_spec() -> bool {
+                true
+            }
+
+            open spec fn cmp_spec(&self, other: &S) -> Ordering {
+                if self.v < other.v {
+                    Ordering::Less
+                } else if self.v == other.v {
+                    Ordering::Equal
+                } else {
+                    Ordering::Greater
+                }
+            }
+        }
+
+        fn test() {
+            let m = (S { v: 5 }).max(S { v: 3 });
+            assert(m.v == 5); // FAILS
+            assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}

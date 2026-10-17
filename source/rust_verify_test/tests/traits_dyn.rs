@@ -604,3 +604,93 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_dyn_mut_coercion verus_code! {
+        trait Cell {
+            spec fn get(&self) -> u64;
+            fn set(&mut self, v: u64)
+                ensures final(self).get() == v;
+        }
+
+        struct S { a: u64, hidden: u64 }
+
+        impl Cell for S {
+            spec fn get(&self) -> u64 { self.a }
+            fn set(&mut self, v: u64) { self.a = v; }
+        }
+
+        fn set_dyn(c: &mut dyn Cell, v: u64)
+            ensures final(c).get() == v,
+        {
+            c.set(v);
+        }
+
+        fn call_arg() {
+            let mut s = S { a: 1, hidden: 7 };
+            set_dyn(&mut s, 2);
+            assert(s.a == 2);
+        }
+
+        fn binding_and_cast() {
+            let mut s = S { a: 1, hidden: 7 };
+            let d: &mut dyn Cell = &mut s;
+            d.set(2);
+            assert(s.a == 2);
+            let e = &mut s as &mut dyn Cell;
+            e.set(3);
+            assert(s.a == 3);
+        }
+
+        fn as_dyn(s: &mut S) -> (d: &mut dyn Cell)
+            ensures final(d).get() == final(s).a,
+        {
+            s
+        }
+
+        fn returned() {
+            let mut s = S { a: 1, hidden: 7 };
+            as_dyn(&mut s).set(5);
+            assert(s.a == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_dyn_mut_coercion_type_invariant verus_code! {
+        use vstd::prelude::*;
+        trait Cell {
+            spec fn get(&self) -> u64;
+            fn set(&mut self, v: u64)
+                ensures final(self).get() == v,
+                no_unwind;
+        }
+
+        impl Cell for u64 {
+            spec fn get(&self) -> u64 { *self }
+            fn set(&mut self, v: u64) { *self = v; }
+        }
+
+        fn set_dyn(c: &mut dyn Cell, v: u64)
+            ensures final(c).get() == v,
+            no_unwind
+        {
+            c.set(v);
+        }
+
+        struct Bounded { x: u64 }
+
+        impl Bounded {
+            #[verifier::type_invariant]
+            spec fn inv(&self) -> bool { self.x <= 10 }
+        }
+
+        fn preserves(b: &mut Bounded) {
+            set_dyn(&mut b.x, 5);
+        }
+
+        fn breaks(b: &mut Bounded) {
+            set_dyn(&mut b.x, 11); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}

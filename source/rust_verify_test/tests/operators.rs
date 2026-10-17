@@ -738,3 +738,23 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] bare_ops_disallowed verus_code! {
+        #[verus::internal(verus_macro)]
+        #[verus::internal(spec)]
+        fn op_minus(x: i8) -> i8 { -x }
+
+        #[verus::internal(verus_macro)]
+        #[verus::internal(spec)]
+        fn op_div_signed(x: i8, y: i8) -> i8 { x / y }
+
+        #[verus::internal(verus_macro)]
+        #[verus::internal(spec)]
+        fn op_mod_signed(x: i8, y: i8) -> i8 { x % y }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "bare unary negation (-) in ghost code; it is expected that (-) is translated by the verus macro",
+        "bare division operator (/) in ghost code; it is expected that (/) is translated by the verus macro",
+        "bare modulo operator (%) in ghost code; it is expected that (%) is translated by the verus macro",
+    ])
+}
