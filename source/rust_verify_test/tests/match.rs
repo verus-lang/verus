@@ -1731,14 +1731,17 @@ test_verify_one_file! {
         const ZF: F = F { x: 0.0 };
         const ZO: Option<f64> = Some(0.0);
         const ZT: (u8, f32) = (1, 0.0);
+        const ZB: Option<Box<f64>> = None;
 
         fn f(v: F) -> bool { match v { ZF => true, _ => false } }
         fn o(v: Option<f64>) -> bool { match v { ZO => true, _ => false } }
         fn t(v: (u8, f32)) -> bool { match v { ZT => true, _ => false } }
+        fn b(v: Option<Box<f64>>) -> bool { match v { ZB => true, _ => false } }
     } => Err(err) => assert_vir_error_msgs(err, &[
         "equality-testing this type in pattern: F",
         "equality-testing this type in pattern: std::option::Option<f64>",
         "equality-testing this type in pattern: (u8, f32)",
+        "equality-testing this type in pattern: std::option::Option<std::boxed::Box<f64, std::alloc::Global>>",
     ])
 }
 
@@ -1805,8 +1808,8 @@ test_verify_one_file! {
 
         #[derive(PartialEq, Eq)]
         pub struct BinaryTree {
-            pub left: Option<&'static BinaryTree>,
-            pub right: Option<&'static BinaryTree>,
+            pub left: Option<Box<BinaryTree>>,
+            pub right: Option<Box<BinaryTree>>,
         }
         const LEAF: BinaryTree = BinaryTree { left: None, right: None };
 
