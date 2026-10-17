@@ -509,6 +509,34 @@ impl Cm {
             quote! {#acc.#w(#v)}
         })
     }
+    /// `op(κ, κ) == κ` for the constants of descriptor `d` (a call of the
+    /// instance's `__tsm_kappa_idem` lemma). Proving it in place, among an
+    /// operation's other facts, can be very expensive for the solver.
+    fn idem(&self, d: TokenStream) -> TokenStream {
+        let vals: Vec<_> = (0..self.consts.len()).map(|i| self.constant(d.clone(), i)).collect();
+        quote! {Instance::__tsm_kappa_idem(#(#vals),*);}
+    }
+    /// The `__tsm_kappa_idem` lemma.
+    fn idem_lemma(&self) -> TokenStream {
+        let params: Vec<_> = self.consts.iter().enumerate().map(|(i, c)| {
+            let ShardableType::Constant(t) = &c.stype else { unreachable!() };
+            let p = format_ident!("__tsm_c{}", i);
+            quote! {#p: #t}
+        }).collect();
+        let vals: Vec<_> = (0..self.consts.len()).map(|i| {
+            let p = format_ident!("__tsm_c{}", i);
+            quote! {#p}
+        }).collect();
+        let k = self.kappa_of(&vals);
+        quote! {
+            pub proof fn __tsm_kappa_idem(#(#params),*)
+                ensures Fragment::op(#k, #k) == #k,
+            {
+                Fragment::unit().op_unit();
+                assert(Fragment::op(#k, #k) == #k);
+            }
+        }
+    }
 }
 
 /// Whether `ts` mentions one of `names`.
@@ -3916,6 +3944,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     // that observe no fragment (e.g. a property over the constants only)
     // reason about it.
     let reachable = reachable_state(&cm, &quote! {self.__desc}, &format_ident!("__tsm_s"));
+    let kappa_idem = cm.as_ref().map(|cm| cm.idem_lemma());
     items.push(quote! {
         /// The instance carries only its location (and shared, leaked
         /// resources), so it is freely duplicable (`Copy`, as in the trusted
@@ -3932,6 +3961,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             pub closed spec fn id(&self) -> ::vstd::tokens::InstanceId {#id_spec}
             #inst_clone
             #(#const_fns)*
+            #kappa_idem
         }
         #unit_def
     });
@@ -4559,10 +4589,9 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 let tracked __tsm_acc = #p.__borrow_raw(#link).empty();
             });
             if let Some(cm) = cm {
-                let kappa = cm.kappa(quote! {self.__desc});
+                let idem = cm.idem(quote! {self.__desc});
                 join_owned.push(quote! {
-                    Fragment::unit().op_unit();
-                    assert(Fragment::op(#kappa, #kappa) == #kappa);
+                    #idem
                     let tracked __tsm_kappa = #p.__borrow_base(#link).duplicate();
                 });
             }
@@ -4575,10 +4604,9 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 let tracked __tsm_acc = self.__base.empty();
             });
             if let Some(cm) = cm {
-                let kappa = cm.kappa(quote! {self.__desc});
+                let idem = cm.idem(quote! {self.__desc});
                 join_owned.push(quote! {
-                    Fragment::unit().op_unit();
-                    assert(Fragment::op(#kappa, #kappa) == #kappa);
+                    #idem
                     let tracked __tsm_kappa = self.__base.duplicate();
                 });
             }
@@ -4758,8 +4786,6 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 let kappa = cm.kappa(quote! {self.__desc});
                 (
                     quote! {
-                        Fragment::unit().op_unit();
-                        assert(__tsm_kappa.fragment() == Fragment::op(#kappa, #kappa));
                         let tracked (__tsm_kp, __tsm_kappa) = __tsm_kappa.split(#kappa, #kappa);
                     },
                     {
@@ -5257,6 +5283,11 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     } else {
         quote! {#[verifier::deprecated_postcondition_mut_ref_style(true)]}
     };
+    // The output tokens' copies of `κ` are split off `κ`.
+    let out_idem = match cm {
+        Some(cm) if !outs.is_empty() => cm.idem(quote! {self.__desc}),
+        _ => quote! {},
+    };
     Ok(quote! {
         #helper
         #[verifier::spinoff_prover]
@@ -5287,6 +5318,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             let __tsm_expected = #expected_body;
             assert(__tsm_out.fragment() == __tsm_expected);
             let tracked __tsm_left = __tsm_out;
+            #out_idem
             #(#splits)*
             #withdraw_stmts
             #result
@@ -5799,10 +5831,12 @@ fn init_method(
             let alloc = quote! {::vstd::resource::pcm::Resource::alloc(
                 Some(::vstd::resource::agree::AgreementRA::Agree(((#(#vals,)*), __tsm_all_loc))))};
             let desc_alloc = if cm.owned { alloc } else { quote! {::vstd::modes::tracked_static_ref(#alloc)} };
+            let idem = cm.idem(quote! {__tsm_desc});
             takes.push(quote! {
                 let tracked __tsm_desc = #desc_alloc;
                 Fragment::unit().op_unit();
                 assert(__tsm_kappa.fragment() == #kappa);
+                #idem
             });
             (
                 quote! {
