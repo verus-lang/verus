@@ -143,9 +143,11 @@ reference into the guarded storage map.
 
 ### Local readiness
 
-`#[verified_local_ready(t, ..)]`, written next to `#[verified_raw_tokens]` (it is
-rejected without it), adds operations for the named mutating transitions whose
-precondition is local. `Protocol::t_local_requires(owned, shared, deposit, x)` states
+`#[verified_local_ready(t, ..)]`, written next to `#[verified_raw_tokens]`, adds
+operations for the named mutating transitions whose precondition is local. (On the
+generic interface the attribute is accepted, its names must be mutating
+transitions, and it has no other effect: every generic operation already has a
+token-level precondition and a generated readiness proof.) `Protocol::t_local_requires(owned, shared, deposit, x)` states
 `t`'s `require`s, its ownership condition and its deposit over the state observed in
 `owned · shared` alone (`Protocol::__observed`), without quantifying over
 completions. The generated lemma `t_local_ready` proves that it implies

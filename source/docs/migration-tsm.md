@@ -166,10 +166,12 @@ Such a machine needs the raw interface (Change 3) or a rewritten transition.
 
 `#[verified_raw_tokens]` exposes the machine's resource algebra instead of field
 tokens. A client owns fragments of the product algebra and proves preconditions
-quantified over all completions. `#[verified_local_ready(t, ..)]`, which requires
-`#[verified_raw_tokens]`, adds raw operations for the named transitions whose
-precondition is stated over the supplied fragments; the macro proves that it
-implies readiness for every completion.
+quantified over all completions. With `#[verified_raw_tokens]`,
+`#[verified_local_ready(t, ..)]` adds raw operations for the named transitions
+whose precondition is stated over the supplied fragments; the macro proves that it
+implies readiness for every completion. On the default interface the attribute is
+accepted and only its names are checked: the generic operations already have
+token-level preconditions.
 
 ```rust
 verified_tokenized_state_machine!{
@@ -185,9 +187,8 @@ verified_tokenized_state_machine!{
 
 Earlier checked versions generated one of several field-shape-specific interfaces
 by default, marked by `#[verified_field_tokens]`, with `#[verified_local_ready]`
-selecting physical readiness on that route. Those interfaces were removed: the
-attribute `#[verified_field_tokens]`, and `#[verified_local_ready]` without
-`#[verified_raw_tokens]`, are rejected with a diagnostic. Clients written for
+selecting physical readiness on that route. Those interfaces were removed, and
+`#[verified_field_tokens]` is rejected with a diagnostic. Clients written for
 them (an owned, non-`Copy` `Instance`, `InstanceInfo`, `clone(&mut self)` on
 persistent tokens, generated `*_collection` owners, empty-token bases) port to
 the trusted macro's interface, i.e. back to their original form.

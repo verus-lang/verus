@@ -14,7 +14,9 @@ use verus_syn::{punctuated::Punctuated, Error, Ident, Token, Type};
 /// the trusted macro's token types and `Instance` methods, each proved by a
 /// call to the raw operation. `#[verified_raw_tokens]` selects the raw
 /// resource interface, optionally with `#[verified_local_ready(..)]` raw
-/// operations whose preconditions are stated over the owned fragments.
+/// operations whose preconditions are stated over the owned fragments. On the
+/// generic interface `#[verified_local_ready(..)]` is accepted (its names are
+/// checked) and has no further effect.
 pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
     let mut selected = HashSet::new();
     let mut raw = false;
@@ -57,13 +59,22 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
     parsed.attrs = remaining;
     let mut bundle = parse_result_to_smir(parsed, true)?;
     crate::lemmas::check_lemmas(&bundle)?;
-    if !raw {
-        if let Some(name) = names.first() {
+    for name in &names {
+        let Some(tr) = bundle.sm.transitions.iter().find(|tr| tr.name == *name) else {
+            return Err(Error::new(name.span(), "unknown local-ready transition"));
+        };
+        if tr.kind != TransitionKind::Transition {
             return Err(Error::new(
                 name.span(),
-                "`#[verified_local_ready(..)]` selects raw local-readiness operations and requires `#[verified_raw_tokens]`; the default field-token interface states its preconditions over the tokens already",
+                "local-ready requires a mutating transition",
             ));
         }
+    }
+    if !raw {
+        // `#[verified_local_ready(..)]` has no effect here beyond the check
+        // above: every generic operation already has a token-level
+        // precondition, and its generated readiness lemma covers every
+        // completion.
         // Initial requirements over a storage map become named open spec
         // functions, which keeps the raw initializer's execution proof
         // stable; clients see equal terms.
@@ -81,17 +92,6 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
     }
     if selected.is_empty() {
         return crate::verified_tokens::output_raw(bundle);
-    }
-    for name in names {
-        let Some(tr) = bundle.sm.transitions.iter().find(|tr| tr.name == name) else {
-            return Err(Error::new(name.span(), "unknown local-ready transition"));
-        };
-        if tr.kind != TransitionKind::Transition {
-            return Err(Error::new(
-                name.span(),
-                "local-ready requires a mutating transition",
-            ));
-        }
     }
     validate_api_names(&bundle, &selected)?;
     crate::verified_general::output_with_ready(bundle, &selected)

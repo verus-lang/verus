@@ -42,9 +42,10 @@ emitter and appends the generic field-token interface of
 the trusted macro's token types and `Instance` methods, with proofs. With
 `#[verified_raw_tokens]` it generates only the raw protocol, using the
 straight-line emitter where it applies and the general emitter otherwise, plus
-the operations selected by `#[verified_local_ready(..)]`. Duplicate, conflicting,
-or argument-bearing markers produce diagnostics, as do `#[verified_local_ready]`
-without `#[verified_raw_tokens]` and the removed `#[verified_field_tokens]`. A
+the operations selected by `#[verified_local_ready(..)]` (on the default
+interface that attribute is accepted and only its names are checked). Duplicate,
+conflicting, or argument-bearing markers produce diagnostics, as does the removed
+`#[verified_field_tokens]`. A
 declaration that the generic interface does not support is rejected; the macro
 does not silently select raw tokens. (Earlier versions selected one of several
 field-shape-specific interfaces by default; those were removed.)
@@ -203,7 +204,8 @@ The implementation is in
 [verified_readiness.rs](../state_machines_macros/src/verified_readiness.rs).
 The generic interface needs no such selection: its preconditions are already
 stated over the supplied tokens, and its generated proofs derive the raw
-precondition for every completion.
+precondition for every completion. There the attribute is accepted, its names
+are checked, and it has no further effect.
 A local requirement can use facts visible in supplied fragments. Its generated
 proof must establish readiness for **every** compatible invariant-satisfying
 completion, including the ownership and deposit conditions.

@@ -1,11 +1,13 @@
-// EXPECTED-ERROR: `#[verified_local_ready(..)]` selects raw local-readiness operations and requires `#[verified_raw_tokens]`
+// EXPECTED-ERROR: unknown local-ready transition
 //! Complete ordinary adder.rs model, including its local initialization let.
+//! On the default interface `#[verified_local_ready(..)]` has no effect, but
+//! its names are still checked.
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 verus! {
 
 verified_tokenized_state_machine!(
-    #[verified_local_ready(add)]
+    #[verified_local_ready(missing)]
     X {
         fields {
             #[sharding(variable)]
