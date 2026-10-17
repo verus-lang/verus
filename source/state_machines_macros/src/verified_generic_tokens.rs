@@ -4805,10 +4805,9 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         let (kp, from_args, split_args) = match cm {
             None => (quote! {}, quote! {}, quote! {}),
             Some(cm) => {
-                let kappa = cm.kappa(quote! {self.__desc});
                 (
                     quote! {
-                        let tracked (__tsm_kp, __tsm_kappa) = __tsm_kappa.split(#kappa, #kappa);
+                        let tracked (__tsm_kp, __tsm_kappa) = __tsm_kappa.split(__tsm_k, __tsm_k);
                     },
                     {
                         let d = cm.share(cm.by_ref(quote! {self.__desc}));
@@ -5304,7 +5303,11 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     let ens_steps = ensures_steps(&parts, &in_body);
     // The output tokens' copies of `κ` are split off `κ`.
     let out_idem = match cm {
-        Some(cm) if !outs.is_empty() => cm.idem(quote! {self.__desc}),
+        Some(cm) if !outs.is_empty() => {
+            let idem = cm.idem(quote! {self.__desc});
+            let kappa = cm.kappa(quote! {self.__desc});
+            quote! {#idem let ghost __tsm_k = #kappa;}
+        }
         _ => quote! {},
     };
     Ok(quote! {
@@ -5859,11 +5862,11 @@ fn init_method(
                 Fragment::unit().op_unit();
                 assert(__tsm_kappa.fragment() == #kappa);
                 #idem
+                let ghost __tsm_k = #kappa;
             });
             (
                 quote! {
-                    assert(__tsm_kappa.fragment() == Fragment::op(#kappa, #kappa));
-                    let tracked (__tsm_kp, __tsm_kappa) = __tsm_kappa.split(#kappa, #kappa);
+                    let tracked (__tsm_kp, __tsm_kappa) = __tsm_kappa.split(__tsm_k, __tsm_k);
                 },
                 {
                     let d = cm.share(cm.by_ref(quote! {__tsm_desc}));
@@ -5948,11 +5951,9 @@ fn init_method(
             let tracked instance = Instance {__loc: Ghost(__tsm_all_loc), __base: #base_hold};
         },
         (None, false) => quote! {let tracked instance = Instance {__loc: Ghost(__tsm_all_loc) #phantom};},
-        (Some(cm), true) => {
-            let kappa = cm.kappa(quote! {__tsm_desc});
+        (Some(_), true) => {
             quote! {
-                assert(__tsm_kappa.fragment() == Fragment::op(#kappa, #kappa));
-                let tracked (__tsm_base_tok, __tsm_kappa) = __tsm_kappa.split(#kappa, #kappa);
+                let tracked (__tsm_base_tok, __tsm_kappa) = __tsm_kappa.split(__tsm_k, __tsm_k);
                 let tracked instance = Instance {__desc: __tsm_desc, __base: #base_hold};
             }
         }
@@ -5975,13 +5976,10 @@ fn init_method(
                 let tracked __tsm_unit_out = Unit {raw: __tsm_unit_tok};
             },
             Some(cm) => {
-                let kappa = cm.kappa(quote! {__tsm_desc});
                 let udesc = cm.share(cm.by_ref(quote! {__tsm_desc}));
                 quote! {
                     #split_raw
-                    Fragment::unit().op_unit();
-                    assert(__tsm_kappa.fragment() == Fragment::op(#kappa, #kappa));
-                    let tracked (__tsm_ukp, __tsm_kappa) = __tsm_kappa.split(#kappa, #kappa);
+                    let tracked (__tsm_ukp, __tsm_kappa) = __tsm_kappa.split(__tsm_k, __tsm_k);
                     let tracked __tsm_unit_out = Unit {raw: __tsm_unit_tok, base: __tsm_ukp, desc: #udesc};
                 }
             }
