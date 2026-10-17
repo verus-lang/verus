@@ -389,25 +389,6 @@ pub assume_specification<I: Iterator>[ <I as IntoIterator>::into_iter ](i: I) ->
         r == i,
 ;
 
-// Uninterpreted function representing the sequence of elements that will be
-// produced by the iterator obtained from an IntoIterator value.
-// This avoids requiring IteratorSpec bounds in from_iter's ensures clause.
-#[verifier::prophetic]
-pub uninterp spec fn into_iter_remaining<A, T>(iter: T) -> Seq<A>;
-
-// Holds when into_iter_remaining(iter) is valid
-pub uninterp spec fn into_iter_remaining_guard<A, T>(iter: T) -> bool;
-
-// Connects into_iter_remaining to remaining() for types implementing Iterator + IteratorSpec.
-// This allows callers of from_iter to relate the result to the iterator's remaining elements.
-pub broadcast axiom fn from_iter_ensures<A, I: Iterator<Item = A> + IteratorSpec>(iter: I)
-    requires
-        iter.obeys_prophetic_iter_laws(),
-    ensures
-        #[trigger] into_iter_remaining_guard::<A, I>(iter),
-        into_iter_remaining::<A, I>(iter) == iter.remaining(),
-;
-
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(FromIteratorSpec via FromIteratorSpecImpl)]
 pub trait ExFromIterator<A>: Sized {
@@ -415,14 +396,15 @@ pub trait ExFromIterator<A>: Sized {
 
     spec fn from_iter_ensures(remaining: Seq<A>, s: Self) -> bool;
 
+    // from_iter may be nondeterministic, which we represent with an existential
     #[verifier::impls_cannot_extend_spec]
     fn from_iter<T>(iter: T) -> (s: Self)
        where T: IntoIterator<Item = A>
         ensures
-            into_iter_remaining_guard::<A, T>(iter) ==> Self::from_iter_ensures(
-                into_iter_remaining(iter),
-                s,
-            ),
+            exists |initial: T::IntoIter|
+                #[trigger] call_ensures(T::into_iter, (iter,), initial)
+                && (initial.obeys_prophetic_iter_laws() ==>
+                    Self::from_iter_ensures(initial.remaining(), s)),
     ;
 }
 
@@ -1006,7 +988,6 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
  ********************************************************************************/
 
 pub broadcast group group_iter_axioms {
-    from_iter_ensures,
     rev_postcondition,
     zip_postcondition,
     filter_postcondition,
