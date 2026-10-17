@@ -4188,6 +4188,16 @@ fn ext_step(f: &Field, a: &TokenStream, b: &TokenStream) -> TokenStream {
     }
 }
 
+/// The API's postconditions as separate assertions at the end of a method
+/// body (over its local outputs; `old(p)` rewritten by `in_body`). Z3 proves
+/// them one at a time much faster than the whole postcondition at once.
+fn ensures_steps(parts: &ExchangeParts, in_body: &dyn Fn(TokenStream) -> TokenStream) -> Vec<TokenStream> {
+    parts.enss.iter().map(|e| {
+        let e = in_body(quote! {#e});
+        quote! {assert(#e);}
+    }).collect()
+}
+
 fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, Error> {
     let sm = &bundle.sm;
     let store = ctx.store;
@@ -5291,6 +5301,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     } else {
         quote! {#[verifier::deprecated_postcondition_mut_ref_style(true)]}
     };
+    let ens_steps = ensures_steps(&parts, &in_body);
     // The output tokens' copies of `κ` are split off `κ`.
     let out_idem = match cm {
         Some(cm) if !outs.is_empty() => cm.idem(quote! {self.__desc}),
@@ -5328,6 +5339,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             #out_idem
             #(#splits)*
             #withdraw_stmts
+            #(#ens_steps)*
             #result
         }
     })
@@ -5407,6 +5419,7 @@ fn read_only_method(
         })
         .collect();
     let use_invs = quote! {};
+    let ens_steps = ensures_steps(parts, &|ts| ts);
     if take_shared.iter().all(|(_, _, optional)| optional.is_some()) {
         return read_only_optional(ctx, tr, parts, take_shared, incl_frames, const_frames, shared_frags, ret, req, ens, early, late, &nondet, result);
     }
@@ -5430,6 +5443,7 @@ fn read_only_method(
             State::#safety(pre, #(#pn),*);
             #(#nondet)*
             #(#late)*
+            #(#ens_steps)*
             #result
         }
     })
@@ -5466,6 +5480,7 @@ fn read_only_optional(
     let s = format_ident!("__tsm_s");
     let eqs = const_eqs(ctx.cm, &quote! {self.__desc}, &s);
     let embed = quote! {<Protocol as ::vstd::resource::tsm::Machine>::embed};
+    let ens_steps = ensures_steps(parts, &|ts| ts);
     let mut joins = vec![];
     let hs: Vec<Ident> = (0..take_shared.len()).map(|i| format_ident!("__tsm_hacc_{}", i)).collect();
     let gs: Vec<Ident> = (0..take_shared.len()).map(|i| format_ident!("__tsm_g_{}", i)).collect();
@@ -5607,6 +5622,7 @@ fn read_only_optional(
             State::#safety(pre, #(#pn),*);
             #(#nondet)*
             #(#late)*
+            #(#ens_steps)*
             #result
         }
     })
@@ -5737,6 +5753,7 @@ fn guard_method(
             _ => return err(f.name.span(), "unsupported storage guard for generic field tokens"),
         }
     }
+    let ens_steps = ensures_steps(parts, &|ts| ts);
     let ret_vals: Vec<_> = parts.out_params.iter().map(|o| o.0.clone()).collect();
     let result = if ret_vals.len() == 1 {
         quote! {#(#ret_vals)*}
@@ -5768,6 +5785,7 @@ fn guard_method(
             Protocol::#frame_fn(__tsm_f, #(#pn),*);
             let tracked __tsm_guard = #shared_ident.guard(Protocol::#guarded(__tsm_f, #(#pn),*));
             #(#guards)*
+            #(#ens_steps)*
             #result
         }
     })
@@ -6001,6 +6019,7 @@ fn init_method(
     } else {
         (quote! {}, quote! {let tracked __tsm_all = Protocol::#init_fn(#(#pn),*);})
     };
+    let ens_steps = ensures_steps(parts, &|ts| ts);
     Ok(quote! {
         pub proof fn #name(#(#in_params),*) #ret #req #ens {
             broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
@@ -6015,6 +6034,7 @@ fn init_method(
             #(#takes)*
             #unit_stmt
             #base_stmt
+            #(#ens_steps)*
             #result
         }
     })
