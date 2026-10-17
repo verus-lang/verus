@@ -193,7 +193,7 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
         PatternX::Or(pat1, _pat2) => {
             pattern_to_decls_with_no_initializer(&pat1, stmts);
         }
-        PatternX::Expr(_) => {}
+        PatternX::Expr(..) => {}
         PatternX::Range(_, _) => {}
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => {
             pattern_to_decls_with_no_initializer(p, stmts);

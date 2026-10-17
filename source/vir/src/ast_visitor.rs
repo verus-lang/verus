@@ -897,9 +897,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let b = self.visit_pattern(b)?;
                 R::ret(|| pattern_new(PatternX::Or(R::get(a), R::get(b))))
             }
-            PatternX::Expr(e) => {
+            PatternX::Expr(e, dts) => {
                 let e = self.visit_expr(e)?;
-                R::ret(|| pattern_new(PatternX::Expr(R::get(e))))
+                R::ret(|| pattern_new(PatternX::Expr(R::get(e), dts.clone())))
             }
             PatternX::Range(start, end) => {
                 let start = self.visit_opt_expr(start)?;
@@ -1606,7 +1606,7 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
             insert_pattern_vars(map, pat1, init);
             // pat2 should bind an identical set of variables
         }
-        PatternX::Expr(_) => {}
+        PatternX::Expr(..) => {}
         PatternX::Range(_, _) => {}
         PatternX::MutRef(pat1) | PatternX::ImmutRef(pat1) => {
             insert_pattern_vars(map, pat1, init);

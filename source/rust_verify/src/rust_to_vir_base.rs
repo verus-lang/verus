@@ -1683,11 +1683,14 @@ pub(crate) fn ty_pair_has_smt_equality<'tcx>(
 /// Does matching a literal or constant pattern of this type agree with SMT ==?
 /// rustc compares such constants field by field, so yes unless a field is a float, a pointer,
 /// or ghost/tracked.
+/// On success, returns the ADTs whose fields were checked; these must not be opaque,
+/// since spec == on an opaque type need not compare fields (checked in well_formed).
 pub(crate) fn ty_has_pattern_smt_equality<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
-) -> bool {
-    pattern_smt_equality_rec(bctx, ty, &mut HashSet::new(), 0)
+) -> Option<Vec<vir::ast::Path>> {
+    let mut adts = Vec::new();
+    pattern_smt_equality_rec(bctx, ty, &mut HashSet::new(), &mut adts, 0).then_some(adts)
 }
 
 // Bounds the recursion on polymorphically recursive types
@@ -1697,6 +1700,7 @@ fn pattern_smt_equality_rec<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
     seen: &mut HashSet<rustc_middle::ty::Ty<'tcx>>,
+    adts: &mut Vec<vir::ast::Path>,
     depth: usize,
 ) -> bool {
     use rustc_middle::ty::TyKind;
@@ -1708,11 +1712,13 @@ fn pattern_smt_equality_rec<'tcx>(
     if !seen.insert(ty) {
         return true;
     }
-    let rec = |t, seen: &mut HashSet<_>| pattern_smt_equality_rec(bctx, t, seen, depth + 1);
+    let rec = |t, seen: &mut HashSet<_>, adts: &mut Vec<_>| {
+        pattern_smt_equality_rec(bctx, t, seen, adts, depth + 1)
+    };
     match ty.kind() {
         TyKind::Bool | TyKind::Char | TyKind::Int(_) | TyKind::Uint(_) | TyKind::Str => true,
-        TyKind::Ref(_, t, _) | TyKind::Array(t, _) | TyKind::Slice(t) => rec(*t, seen),
-        TyKind::Tuple(ts) => ts.iter().all(|t| rec(t, seen)),
+        TyKind::Ref(_, t, _) | TyKind::Array(t, _) | TyKind::Slice(t) => rec(*t, seen, adts),
+        TyKind::Tuple(ts) => ts.iter().all(|t| rec(t, seen, adts)),
         TyKind::Param(_) => implements_structural(bctx, ty),
         TyKind::Adt(adt_def, args) => {
             if implements_structural(bctx, ty) {
@@ -1735,6 +1741,7 @@ fn pattern_smt_equality_rec<'tcx>(
             {
                 return false;
             }
+            adts.push(bctx.ctxt.def_id_to_vir_path(adt_def.did()));
             let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
             adt_def.all_fields().all(|f| {
                 // Spec == compares ghost and tracked fields, which can differ from their runtime value
@@ -1744,7 +1751,7 @@ fn pattern_smt_equality_rec<'tcx>(
                     return false;
                 }
                 let fty = tcx.normalize_erasing_regions(typing_env, f.ty(tcx, args));
-                rec(fty, seen)
+                rec(fty, seen, adts)
             })
         }
         _ => false,

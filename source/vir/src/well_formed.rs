@@ -914,6 +914,21 @@ fn check_one_pattern<Emit: EmitError>(
             )?;
             Ok(())
         }
+        PatternX::Expr(_, dts) => {
+            // Spec == on an opaque datatype need not agree with rustc's field-by-field match
+            for path in dts.iter() {
+                if let Some(dt) = ctxt.dts.get(path) {
+                    if matches!(dt.x.transparency, DatatypeTransparency::Never) {
+                        return Err(error(
+                            &pattern.span,
+                            "constant patterns are not supported for opaque (external_body) datatypes",
+                        )
+                        .secondary_span(&dt.span));
+                    }
+                }
+            }
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
