@@ -476,7 +476,7 @@ test_verify_one_file! {
 
         fn test()
         {
-            assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());
+            assume(vstd::std_specs::btree::btree_key_obeys::<MyStruct>());
 
             let mut m = BTreeMap::<MyStruct, u32>::new();
             assert(m@ == Map::<MyStruct, u32>::empty());
@@ -518,7 +518,7 @@ test_verify_one_file! {
 
         fn test()
         {
-            assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());
+            assume(vstd::std_specs::btree::btree_key_obeys::<MyStruct>());
 
             let mut m = BTreeSet::<MyStruct>::new();
             assert(m@ == Set::<MyStruct>::empty());
@@ -570,7 +570,7 @@ test_verify_one_file! {
 
         fn test()
         {
-            // Missing `assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());`
+            // Missing `assume(vstd::std_specs::btree::btree_key_obeys::<MyStruct>());`
 
             let mut m = BTreeMap::<MyStruct, u32>::new();
             let s1 = MyStruct{ i: 3, j: 7 };
@@ -596,7 +596,7 @@ test_verify_one_file! {
 
         fn test()
         {
-            // Missing `assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());`
+            // Missing `assume(vstd::std_specs::btree::btree_key_obeys::<MyStruct>());`
 
             let mut m = BTreeSet::<MyStruct>::new();
             let s1 = MyStruct{ i: 3, j: 7 };
@@ -843,4 +843,68 @@ test_verify_one_file_with_options! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    // #3029: an `Ord` whose `Equal` is coarser than `==` (it ignores `b`) satisfies
+    // `obeys_cmp` but not `btree_key_obeys`; `insert` of two cmp-equal keys then says nothing
+    #[test] test_btree_insert_coarse_ord verus_code! {
+        use std::collections::BTreeMap;
+        use std::cmp::Ordering;
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::{PartialEqSpecImpl, PartialOrdSpecImpl, OrdSpecImpl};
+        pub struct K { pub a: u64, pub b: u64 }
+        impl PartialEqSpecImpl for K {
+            open spec fn obeys_eq_spec() -> bool { true }
+            open spec fn eq_spec(&self, other: &K) -> bool { self.a == other.a }
+        }
+        impl PartialEq for K { fn eq(&self, other: &K) -> bool { self.a == other.a } }
+        impl Eq for K {}
+        impl PartialOrdSpecImpl for K {
+            open spec fn obeys_partial_cmp_spec() -> bool { true }
+            open spec fn partial_cmp_spec(&self, other: &K) -> Option<Ordering> {
+                Some(if self.a < other.a { Ordering::Less } else if self.a > other.a { Ordering::Greater } else { Ordering::Equal })
+            }
+        }
+        impl PartialOrd for K {
+            fn partial_cmp(&self, other: &K) -> Option<Ordering> { Some(self.cmp(other)) }
+        }
+        impl OrdSpecImpl for K {
+            open spec fn obeys_cmp_spec() -> bool { true }
+            open spec fn cmp_spec(&self, other: &K) -> Ordering {
+                if self.a < other.a { Ordering::Less } else if self.a > other.a { Ordering::Greater } else { Ordering::Equal }
+            }
+        }
+        impl Ord for K {
+            fn cmp(&self, other: &K) -> Ordering {
+                if self.a < other.a { Ordering::Less } else if self.a > other.a { Ordering::Greater } else { Ordering::Equal }
+            }
+        }
+        fn test() {
+            assume(vstd::laws_cmp::obeys_cmp::<K>());
+            let mut m = BTreeMap::<K, u32>::new();
+            m.insert(K { a: 1, b: 0 }, 10);
+            m.insert(K { a: 1, b: 1 }, 20);
+            // the tree has one entry; the old spec gave a two-entry map
+            assert(m@.len() == 2); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // #3086: clone copies keys and values with their Clone impls
+    #[test] test_btree_clone_values_cloned verus_code! {
+        use std::collections::BTreeMap;
+        use vstd::prelude::*;
+        pub struct V { pub x: u8 }
+        impl Clone for V {
+            fn clone(&self) -> (r: V) ensures r.x == 0 { V { x: 0 } }
+        }
+        fn test(m: &BTreeMap<u64, V>) {
+            let c = m.clone();
+            assert(c@.dom() == m@.dom());
+            assert(forall|k| c@.dom().contains(k) ==> cloned(m@[k], #[trigger] c@[k]));
+            assert(c@ == m@); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
