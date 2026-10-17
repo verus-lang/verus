@@ -1988,3 +1988,21 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // fields named like Verus keywords (`tracked`, `ghost`, `exec`, `requires`, `ensures`); a
+    // mode keyword followed by a name is still a mode
+    #[test] fields_named_like_keywords verus_code! {
+        use vstd::prelude::*;
+        pub enum E { Ghost { alloc_wrapper: bool, tracked: bool, ghost: u8, exec: u8 } }
+        pub struct S { pub requires: u8, pub ensures: u8, pub tracked: bool }
+        pub tracked struct T { pub ghost g: int, pub tracked: bool }
+        fn f(e: E, s: S) -> (r: bool)
+            ensures r == (s.tracked || s.requires > 0)
+        {
+            match e { E::Ghost { tracked, ghost, .. } => { let _ = (tracked, ghost); } }
+            s.tracked || s.requires > 0
+        }
+        proof fn g(tracked t: T) -> (r: int) ensures r == t.g { t.g }
+    } => Ok(())
+}
