@@ -775,7 +775,9 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             // `ghost: T`, `tracked: T`, `exec: T`: a field named like the mode keyword, with no
             // mode (a mode is always followed by the field name, as in `tracked x: T`)
-            if (input.peek(Token![ghost]) || input.peek(Token![tracked]) || input.peek(Token![exec]))
+            if (input.peek(Token![ghost])
+                || input.peek(Token![tracked])
+                || input.peek(Token![exec]))
                 && input.peek2(Token![:])
                 && !input.peek2(Token![::])
             {
