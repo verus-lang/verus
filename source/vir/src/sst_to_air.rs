@@ -98,6 +98,7 @@ pub(crate) fn primitive_path(name: &Primitive) -> Path {
         Primitive::StrSlice => crate::def::strslice_type(),
         Primitive::Ptr => crate::def::ptr_type(),
         Primitive::Global => crate::def::global_type(),
+        Primitive::ShadowData => panic!("ShadowData is not a monotype"),
     }
 }
 
@@ -108,6 +109,7 @@ pub(crate) fn primitive_type_id(name: &Primitive) -> Ident {
         Primitive::StrSlice => crate::def::TYPE_ID_STRSLICE,
         Primitive::Ptr => crate::def::TYPE_ID_PTR,
         Primitive::Global => crate::def::TYPE_ID_GLOBAL,
+        Primitive::ShadowData => crate::def::TYPE_ID_SHADOW_DATA,
     })
 }
 
@@ -183,7 +185,11 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
         TypX::Primitive(
-            Primitive::Slice | Primitive::StrSlice | Primitive::Ptr | Primitive::Global,
+            Primitive::Slice
+            | Primitive::StrSlice
+            | Primitive::Ptr
+            | Primitive::Global
+            | Primitive::ShadowData,
             _,
         ) => match typ_as_mono(typ) {
             None => panic!("should be boxed"),
@@ -302,7 +308,9 @@ fn big_int_to_expr(i: &BigInt) -> Expr {
 
 fn decoration_base_for_primitive(name: Primitive) -> &'static str {
     match name {
-        Primitive::Array | Primitive::Ptr | Primitive::Global => crate::def::DECORATE_NIL_SIZED,
+        Primitive::Array | Primitive::Ptr | Primitive::Global | Primitive::ShadowData => {
+            crate::def::DECORATE_NIL_SIZED
+        }
         Primitive::Slice | Primitive::StrSlice => crate::def::DECORATE_NIL_SLICE,
     }
 }
@@ -593,7 +601,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
                         panic!("abstract datatype should be boxed")
                     }
                 }
-                Primitive::StrSlice | Primitive::Global => {}
+                Primitive::StrSlice | Primitive::Global | Primitive::ShadowData => {}
             }
             None
         }
@@ -1162,6 +1170,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     }
                 }
             }
+            UnaryOp::ShadowData => {
+                return Err(error(&exp.span, "shadow_data is not supported in this location"));
+            }
+            UnaryOp::ShadowAddrOf => panic!("ShadowAddrOf should have been removed"),
         },
         ExpX::UnaryOpr(op, e) => match op {
             UnaryOpr::Box(typ) => {

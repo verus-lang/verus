@@ -228,6 +228,7 @@ fn datatypes_invs(
                         }
                         TypX::Primitive(Primitive::StrSlice, _) => {}
                         TypX::Primitive(Primitive::Global, _) => {}
+                        TypX::Primitive(Primitive::ShadowData, _) => {}
                         TypX::MutRef(_) => {
                             roots.insert(container_name.clone());
                         }

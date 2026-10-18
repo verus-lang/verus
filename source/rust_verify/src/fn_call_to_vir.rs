@@ -2007,6 +2007,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 BuiltinFunctionItem::ConstrainType => unreachable!(),
                 BuiltinFunctionItem::GetFutureOutputType => unreachable!(),
+                BuiltinFunctionItem::ShadowData => unreachable!(),
             };
 
             let vir_args = args
@@ -2027,6 +2028,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                 Arc::new(vir_args),
                 None,
             ));
+        }
+        VerusItem::BuiltinFunction(BuiltinFunctionItem::ShadowData) => {
+            record_spec_fn(bctx, expr);
+            assert!(args.len() == 1);
+            let vir_arg = expr_to_vir_consume(bctx, &args[0])?;
+            return mk_expr(ExprX::Unary(UnaryOp::ShadowData, vir_arg));
         }
         VerusItem::ErasedGhostValue
         | VerusItem::ShadowGhostValue

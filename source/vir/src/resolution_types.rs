@@ -103,7 +103,9 @@ fn typ_node_resolvability(t: &Typ) -> NodeResolve {
 
         TypX::Primitive(primitive, _) => match primitive {
             Primitive::Array | Primitive::Slice => NodeResolve::TypArgDependent,
-            Primitive::StrSlice | Primitive::Ptr | Primitive::Global => NodeResolve::No,
+            Primitive::StrSlice | Primitive::Ptr | Primitive::Global | Primitive::ShadowData => {
+                NodeResolve::No
+            }
         },
 
         TypX::Decorate(dec, ..) => match dec {

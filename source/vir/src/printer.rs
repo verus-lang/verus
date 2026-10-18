@@ -133,6 +133,12 @@ impl<A: ToDebugSNode> ToDebugSNode for Vec<A> {
     }
 }
 
+impl<A: ToDebugSNode> ToDebugSNode for Box<A> {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+        (**self).to_node(opts)
+    }
+}
+
 impl<A: ToDebugSNode> ToDebugSNode for std::sync::Arc<A> {
     fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         (**self).to_node(opts)

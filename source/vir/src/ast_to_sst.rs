@@ -1258,9 +1258,10 @@ fn is_small_exp(exp: &Exp) -> bool {
         ExpX::Const(_) => true,
         ExpX::Var(..) | ExpX::VarAt(..) => true,
         ExpX::Old(..) => true,
-        ExpX::Unary(UnaryOp::Not | UnaryOp::Clip { .. } | UnaryOp::MustBeFinalized, e) => {
-            is_small_exp_or_loc(e)
-        }
+        ExpX::Unary(
+            UnaryOp::Not | UnaryOp::Clip { .. } | UnaryOp::MustBeFinalized | UnaryOp::ShadowAddrOf,
+            e,
+        ) => is_small_exp_or_loc(e),
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
         _ => false,
     }
@@ -2903,8 +2904,22 @@ pub(crate) fn expr_to_stm_opt(
             panic!("ShrRefStructWrap should have been simplified out");
         }
         ExprX::ReadPlace(place, _) | ExprX::ImplicitReborrowOrSpecRead(place, _, _) => {
+            use crate::ast::{ReadKind, UnfinalizedReadKind};
             let (stms, e) = place_to_exp_for_read(ctx, state, place)?;
             let e = unwrap_or_return_never!(e, stms);
+            let e = match &expr.x {
+                ExprX::ReadPlace(
+                    _,
+                    UnfinalizedReadKind {
+                        preliminary_kind: ReadKind::ImmutBor { is_expr_addr_of: true },
+                        ..
+                    },
+                ) => {
+                    let typ = e.typ.clone();
+                    SpannedTyped::new(&expr.span, &typ, ExpX::Unary(UnaryOp::ShadowAddrOf, e))
+                }
+                _ => e,
+            };
             Ok((stms, Maybe::Some(Value::Exp(e))))
         }
         ExprX::EvalAndResolve(e1, e2) => {

@@ -981,6 +981,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
             crate::ast::Primitive::Ptr => format!("*mut {:}", &typ_to_diagnostic_str(&typs[0])),
             crate::ast::Primitive::Global => format!("Global"),
+            crate::ast::Primitive::ShadowData => format!("ShadowData"),
         },
         TypX::Datatype(Dt::Tuple(_arity), typs, _) => {
             // 1-tuples should be formatted like `(T,)`
@@ -1088,7 +1089,7 @@ impl ItemKind {
 impl Into<String> for &VarIdent {
     fn into(self) -> String {
         let VarIdent(ident, uniq_id) = self;
-        crate::def::unique_var_name(ident.to_string(), *uniq_id)
+        crate::def::unique_var_name(ident.to_string(), uniq_id.clone())
     }
 }
 
@@ -1199,7 +1200,7 @@ impl LowerUniqueVar for VarIdent {
 
     fn lower(&self) -> Ident {
         let VarIdent(ident, uniq_id) = self;
-        Arc::new(crate::def::unique_var_name(ident.to_string(), *uniq_id))
+        Arc::new(crate::def::unique_var_name(ident.to_string(), uniq_id.clone()))
     }
 }
 
