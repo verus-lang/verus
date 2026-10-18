@@ -5340,8 +5340,8 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             #(#accessor_anchors)*
             #(#early_helper)*
             #ready_pre
-            assert forall|__tsm_z: Fragment, pre: State| pre.invariant()
-                && Fragment::op(Fragment::op(#owned_ident, #h_param), __tsm_z) == <Protocol as ::vstd::resource::tsm::Machine>::embed(pre)
+            assert forall|__tsm_z: Fragment, pre: State|
+                ::vstd::resource::tsm::completes_with::<Protocol>(Fragment::op(#owned_ident, #h_param), __tsm_z, pre)
                 implies State::#enabled(pre, #(#pn),*)
                     #dep_goal
                     && State::#owners(pre, #owned_ident, #h_param, #(#pn),*) by {
