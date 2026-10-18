@@ -171,6 +171,79 @@ pub open spec fn frame_update_nondeterministic<M: Machine>(
                     && M::Fragment::op(new, frame) == M::embed(next)
 }
 
+/// One frame of a generated update: for the complete state around
+/// `op(op(owned, h), z)`, some output `new` completes to an invariant state with
+/// the same borrowed fragment `h` and frame `z`.
+pub open spec fn update_point<M: Machine>(
+    owned: M::Fragment,
+    h: M::Fragment,
+    z: M::Fragment,
+    pre: M::State,
+    outputs: ISet<M::Fragment>,
+) -> bool {
+    exists|new: M::Fragment, post: M::State|
+        #![trigger outputs.contains(new), M::embed(post)]
+        outputs.contains(new) && M::invariant(post) && M::Fragment::op(
+            M::Fragment::op(new, h),
+            z,
+        ) == M::embed(post)
+}
+
+/// Introduces [`update_point`] for the witnesses `new` and `post`.
+pub proof fn update_point_intro<M: Machine>(
+    owned: M::Fragment,
+    h: M::Fragment,
+    z: M::Fragment,
+    pre: M::State,
+    outputs: ISet<M::Fragment>,
+    new: M::Fragment,
+    post: M::State,
+)
+    requires
+        outputs.contains(new),
+        M::invariant(post),
+        M::Fragment::op(M::Fragment::op(new, h), z) == M::embed(post),
+    ensures
+        update_point::<M>(owned, h, z, pre, outputs),
+{
+}
+
+/// The frame obligation of a generated update, from its proof for each frame:
+/// the outputs are lifted by the borrowed fragment `h`.
+pub proof fn frame_update_by_points<M: Machine>(
+    owned: M::Fragment,
+    h: M::Fragment,
+    outputs: ISet<M::Fragment>,
+)
+    requires
+        forall|z: M::Fragment, pre: M::State|
+            M::invariant(pre) && M::Fragment::op(M::Fragment::op(owned, h), z) == M::embed(pre)
+                ==> #[trigger] update_point::<M>(owned, h, z, pre, outputs),
+    ensures
+        frame_update_nondeterministic::<M>(
+            M::Fragment::op(owned, h),
+            outputs.map(|new: M::Fragment| M::Fragment::op(new, h)),
+        ),
+{
+    let lifted = outputs.map(|new: M::Fragment| M::Fragment::op(new, h));
+    assert forall|z: M::Fragment, pre: M::State|
+        M::invariant(pre) && M::Fragment::op(M::Fragment::op(owned, h), z) == M::embed(
+            pre,
+        ) implies exists|new: M::Fragment, next: M::State|
+        lifted.contains(new) && M::invariant(next) && M::Fragment::op(new, z) == M::embed(
+            next,
+        ) by {
+        assert(update_point::<M>(owned, h, z, pre, outputs));
+        let (new, post) = choose|new: M::Fragment, post: M::State|
+            #![trigger outputs.contains(new), M::embed(post)]
+            outputs.contains(new) && M::invariant(post) && M::Fragment::op(
+                M::Fragment::op(new, h),
+                z,
+            ) == M::embed(post);
+        assert(lifted.contains(M::Fragment::op(new, h)));
+    }
+}
+
 /// Complete-state frame obligations imply PCM frame-preserving updates.
 pub proof fn frame_update_sound<M: Machine>(old: M::Fragment, new: M::Fragment)
     requires

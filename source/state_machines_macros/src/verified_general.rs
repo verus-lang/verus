@@ -1266,9 +1266,9 @@ pub fn output_with_ready(
                     ensures ::vstd::resource::tsm::frame_update_nondeterministic::<#pt>(
                         <#ft>::op(owned,h),ISet::new(|new:#ft|Self::#output(owned,h,new,#(#pn),*)).map(|new:#ft|<#ft>::op(new,h)))
                 {
+                    let outputs=ISet::new(|new:#ft|Self::#output(owned,h,new,#(#pn),*));
                     assert forall|z:#ft,pre:#st|pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre)
-                        implies exists|full:#ft,post:#st|ISet::new(|new:#ft|Self::#output(owned,h,new,#(#pn),*)).map(|new:#ft|<#ft>::op(new,h)).contains(full)
-                            &&post.invariant()&&<#ft>::op(full,z)==Self::embed(post) by {
+                        implies ::vstd::resource::tsm::update_point::<#pt>(owned,h,z,pre,outputs) by {
                         assert(#se::#owners(pre,owned,h,#(#pn),*));
                         let post=#se::#run(pre,#(#pn),*);
                         assert(true #(&& #unchanged)*);
@@ -1277,11 +1277,9 @@ pub fn output_with_ready(
                         <#ft>::associative(new,h,z);
                         assert(<#ft>::op(<#ft>::op(new,h),z)==Self::embed(post));
                         assert(Self::#output(owned,h,new,#(#pn),*));
-                        let outputs=ISet::new(|new:#ft|Self::#output(owned,h,new,#(#pn),*));
-                        assert(outputs.contains(new));
-                        assert(exists|x:#ft|outputs.contains(x)&&<#ft>::op(new,h)==<#ft>::op(x,h));
-                        assert(outputs.map(|new:#ft|<#ft>::op(new,h)).contains(<#ft>::op(new,h)));
+                        ::vstd::resource::tsm::update_point_intro::<#pt>(owned,h,z,pre,outputs,new,post);
                     }
+                    ::vstd::resource::tsm::frame_update_by_points::<#pt>(owned,h,outputs);
                 }
                 pub proof fn #shared(tracked owned:#tt,tracked shared:&#tt,#(#params),*)->(tracked out:#tt)
                     requires owned.loc()==shared.loc(),Self::#req(owned.fragment(),shared.fragment(),#(#pn),*)
@@ -1555,13 +1553,15 @@ fn storage_operations(
     };
     let withdrawal_proof = if withdraws {
         quote! {}
-    } else {
+    } else if paired {
         quote! {
             assert(Self::storage(pre).submap_of(Self::storage(post)));
             assert(::vstd::prelude::ext_equal(withdrawn,IMap::empty())) by {
                 assert forall|key| !withdrawn.contains_key(key) by {};
             }
         }
+    } else {
+        quote! {::vstd::resource::tsm_storage::storage_withdrawn_none(Self::storage(pre),Self::storage(post),deposit);}
     };
     let output_storage = if paired {
         quote! {
@@ -1588,10 +1588,13 @@ fn storage_operations(
             assert(Self::storage(post).submap_of(Self::storage(pre).union_prefer_right(deposit)));
         }
     } else {
-        quote! {
-            assert(deposit==Self::storage(post).remove_keys(Self::storage(pre).dom()));
-            ::vstd::resource::tsm_storage::storage_delta(Self::storage(pre),Self::storage(post));
-        }
+        quote! {}
+    };
+    // The exchange's witnesses for one frame (`exchange_point`).
+    let point_intro = if paired {
+        quote! {::vstd::resource::tsm_storage::exchange_point_intro::<#pt>(owned,h,z,pre,deposit,outputs,new,post);}
+    } else {
+        quote! {::vstd::resource::tsm_storage::exchange_point_intro_delta::<#pt>(owned,h,z,pre,deposit,outputs,new,post);}
     };
     quote! {
             pub open spec fn #owned_post(owned:#ft,pre:#st,post:#st,#(#params),*)->#ft {#fe{#marker_value #(#newfields),*}}
@@ -1630,14 +1633,9 @@ fn storage_operations(
                 requires Self::#req(owned,h,deposit,#(#pn),*)
                 ensures ::vstd::resource::tsm_storage::frame_exchange_nondeterministic::<#pt>(<#ft>::op(owned,h),deposit,#lifted)
             {
+                let outputs=#outputs;
                 assert forall|z:#ft,pre:#st|Self::invariant(pre)&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre)
-                    implies exists|new:#ft,withdrawn:#map,post:#st|
-                        #lifted.contains((new,withdrawn))&&Self::invariant(post)
-                        &&<#ft>::op(new,z)==Self::embed(post)
-                        &&Self::storage(pre).dom().disjoint(deposit.dom())
-                        &&Self::storage(post).dom().disjoint(withdrawn.dom())
-                        &&::vstd::prelude::ext_equal(Self::storage(pre).union_prefer_right(deposit),Self::storage(post).union_prefer_right(withdrawn))
-                    by {
+                    implies ::vstd::resource::tsm_storage::exchange_point::<#pt>(owned,h,z,pre,deposit,outputs) by {
                         let post=#se::#run(pre,#(#pn),*);
                         assert(true #(&& #unchanged)*);
                         #(#effect_calls)*
@@ -1645,16 +1643,12 @@ fn storage_operations(
                         <#ft>::associative(new,h,z);
                         assert(<#ft>::op(<#ft>::op(new,h),z)==Self::embed(post));
                         #transfer_proof
-                        let whole=Self::storage(pre).union_prefer_right(deposit);
-                        ::vstd::resource::tsm_storage::storage_partition(whole,Self::storage(post));
-                        let withdrawn=whole.remove_keys(Self::storage(post).dom());
+                        let withdrawn=Self::storage(pre).union_prefer_right(deposit).remove_keys(Self::storage(post).dom());
                         #withdrawal_proof
                         assert(Self::#output(owned,h,new,deposit,withdrawn,#(#pn),*));
-                        let outputs=#outputs;
-                        assert(outputs.contains((new,withdrawn)));
-                        assert(exists|#pair:(#ft,#map)|outputs.contains(#pair)&&(<#ft>::op(new,h),withdrawn)==(<#ft>::op(#pair.0,h),#pair.1));
-                        assert(#lifted.contains((<#ft>::op(new,h),withdrawn)));
+                        #point_intro
                     }
+                ::vstd::resource::tsm_storage::frame_exchange_by_points::<#pt>(owned,h,deposit,outputs);
             }
     pub proof fn #shared(tracked owned:#tt,tracked shared:&#tt,#deposit_param #(#params),*)->(#ret)
                 requires owned.loc()==shared.loc(),Self::#req(owned.fragment(),shared.fragment(),#deposit_spec,#(#pn),*)

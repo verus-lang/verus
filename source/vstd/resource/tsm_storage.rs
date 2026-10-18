@@ -111,6 +111,157 @@ pub proof fn storage_delta<K, V>(old: IMap<K, V>, new: IMap<K, V>)
     }
 }
 
+/// A step that only adds storage (its deposit is the newly present keys)
+/// withdraws nothing.
+pub proof fn storage_withdrawn_none<K, V>(old: IMap<K, V>, new: IMap<K, V>, deposit: IMap<K, V>)
+    requires
+        old.submap_of(new),
+        deposit == new.remove_keys(old.dom()),
+    ensures
+        old.union_prefer_right(deposit).remove_keys(new.dom()) == IMap::<K, V>::empty(),
+{
+    let withdrawn = old.union_prefer_right(deposit).remove_keys(new.dom());
+    assert forall|key: K| !#[trigger] withdrawn.contains_key(key) by {};
+    assert(super::super::prelude::ext_equal(withdrawn, IMap::<K, V>::empty()));
+}
+
+/// One frame of a generated exchange: for the complete state `pre` around
+/// `op(op(owned, h), z)`, some output `new` (withdrawing what the step from
+/// `pre` to `post` leaves out of the old base and the deposit) completes to the
+/// invariant state `post` with the same borrowed fragment `h` and frame `z`.
+pub open spec fn exchange_point<M: StorageMachine>(
+    owned: M::Fragment,
+    h: M::Fragment,
+    z: M::Fragment,
+    pre: M::State,
+    deposit: IMap<M::Key, M::Value>,
+    outputs: ISet<(M::Fragment, IMap<M::Key, M::Value>)>,
+) -> bool {
+    exists|new: M::Fragment, post: M::State|
+        {
+            &&& #[trigger] outputs.contains(
+                (new, M::storage(pre).union_prefer_right(deposit).remove_keys(M::storage(post).dom())),
+            )
+            &&& M::invariant(post)
+            &&& M::Fragment::op(M::Fragment::op(new, h), z) == M::embed(post)
+            &&& M::storage(pre).dom().disjoint(deposit.dom())
+            &&& M::storage(post).submap_of(M::storage(pre).union_prefer_right(deposit))
+        }
+}
+
+/// Introduces [`exchange_point`] for the witnesses `new` and `post`.
+pub proof fn exchange_point_intro<M: StorageMachine>(
+    owned: M::Fragment,
+    h: M::Fragment,
+    z: M::Fragment,
+    pre: M::State,
+    deposit: IMap<M::Key, M::Value>,
+    outputs: ISet<(M::Fragment, IMap<M::Key, M::Value>)>,
+    new: M::Fragment,
+    post: M::State,
+)
+    requires
+        outputs.contains(
+            (new, M::storage(pre).union_prefer_right(deposit).remove_keys(M::storage(post).dom())),
+        ),
+        M::invariant(post),
+        M::Fragment::op(M::Fragment::op(new, h), z) == M::embed(post),
+        M::storage(pre).dom().disjoint(deposit.dom()),
+        M::storage(post).submap_of(M::storage(pre).union_prefer_right(deposit)),
+    ensures
+        exchange_point::<M>(owned, h, z, pre, deposit, outputs),
+{
+}
+
+/// Introduces [`exchange_point`] for a step between agreeing storage maps whose
+/// deposit is exactly the newly present keys.
+pub proof fn exchange_point_intro_delta<M: StorageMachine>(
+    owned: M::Fragment,
+    h: M::Fragment,
+    z: M::Fragment,
+    pre: M::State,
+    deposit: IMap<M::Key, M::Value>,
+    outputs: ISet<(M::Fragment, IMap<M::Key, M::Value>)>,
+    new: M::Fragment,
+    post: M::State,
+)
+    requires
+        outputs.contains(
+            (new, M::storage(pre).union_prefer_right(deposit).remove_keys(M::storage(post).dom())),
+        ),
+        M::invariant(post),
+        M::Fragment::op(M::Fragment::op(new, h), z) == M::embed(post),
+        M::storage(pre).agrees(M::storage(post)),
+        deposit == M::storage(post).remove_keys(M::storage(pre).dom()),
+    ensures
+        exchange_point::<M>(owned, h, z, pre, deposit, outputs),
+{
+    storage_delta(M::storage(pre), M::storage(post));
+    exchange_point_intro::<M>(owned, h, z, pre, deposit, outputs, new, post);
+}
+
+/// The frame obligation of a generated exchange, from its proof for each
+/// frame: the outputs are lifted by the borrowed fragment `h`.
+pub proof fn frame_exchange_by_points<M: StorageMachine>(
+    owned: M::Fragment,
+    h: M::Fragment,
+    deposit: IMap<M::Key, M::Value>,
+    outputs: ISet<(M::Fragment, IMap<M::Key, M::Value>)>,
+)
+    requires
+        forall|z: M::Fragment, pre: M::State|
+            M::invariant(pre) && M::Fragment::op(M::Fragment::op(owned, h), z) == M::embed(pre)
+                ==> #[trigger] exchange_point::<M>(owned, h, z, pre, deposit, outputs),
+    ensures
+        frame_exchange_nondeterministic::<M>(
+            M::Fragment::op(owned, h),
+            deposit,
+            outputs.map(
+                |pair: (M::Fragment, IMap<M::Key, M::Value>)|
+                    (M::Fragment::op(pair.0, h), pair.1),
+            ),
+        ),
+{
+    let lifted = outputs.map(
+        |pair: (M::Fragment, IMap<M::Key, M::Value>)| (M::Fragment::op(pair.0, h), pair.1),
+    );
+    assert forall|z: M::Fragment, pre: M::State|
+        M::invariant(pre) && M::Fragment::op(M::Fragment::op(owned, h), z) == M::embed(
+            pre,
+        ) implies exists|new: M::Fragment, withdraw: IMap<M::Key, M::Value>, next: M::State|
+        {
+            &&& lifted.contains((new, withdraw))
+            &&& M::invariant(next)
+            &&& M::Fragment::op(new, z) == M::embed(next)
+            &&& M::storage(pre).dom().disjoint(deposit.dom())
+            &&& M::storage(next).dom().disjoint(withdraw.dom())
+            &&& M::storage(pre).union_prefer_right(deposit) =~= M::storage(
+                next,
+            ).union_prefer_right(withdraw)
+        } by {
+        assert(exchange_point::<M>(owned, h, z, pre, deposit, outputs));
+        let (new, post) = choose|new: M::Fragment, post: M::State|
+            {
+                &&& #[trigger] outputs.contains(
+                    (
+                        new,
+                        M::storage(pre).union_prefer_right(deposit).remove_keys(
+                            M::storage(post).dom(),
+                        ),
+                    ),
+                )
+                &&& M::invariant(post)
+                &&& M::Fragment::op(M::Fragment::op(new, h), z) == M::embed(post)
+                &&& M::storage(pre).dom().disjoint(deposit.dom())
+                &&& M::storage(post).submap_of(M::storage(pre).union_prefer_right(deposit))
+            };
+        let whole = M::storage(pre).union_prefer_right(deposit);
+        storage_partition(whole, M::storage(post));
+        let withdraw = whole.remove_keys(M::storage(post).dom());
+        assert(lifted.contains((M::Fragment::op(new, h), withdraw)));
+    }
+}
+
 /// The storage-protocol carrier of a machine `M` with fragment type `F`.
 ///
 /// The declaration has no trait bounds and mentions no associated types, so a
