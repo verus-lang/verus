@@ -59,6 +59,46 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test1c verus_code! {
+        #[verifier::shadow_data]
+        proof fn ident(tracked x: &u64) -> (tracked r: &u64)
+            ensures shadow_data(r) == shadow_data(x)
+        {
+            x
+        }
+
+        #[verifier::shadow_data]
+        fn test_ident1(x: &u64, y: &u64) {
+            let tracked t = x;
+            assert(shadow_data(t) == shadow_data(x));
+            let tracked xx = ident(x);
+            let tracked yy = ident(&*y);
+            assert(shadow_data(xx) == shadow_data(x));
+            assert(shadow_data(yy) == shadow_data(y)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test1d verus_code! {
+        #[verifier::shadow_data]
+        proof fn ident(tracked x: &u64) -> (tracked r: &u64)
+            ensures shadow_data(r) == shadow_data(x)
+        {
+            x
+        }
+
+        #[verifier::shadow_data]
+        proof fn test_ident1(tracked x: &u64, tracked y: &u64) {
+            let tracked xx = ident(x);
+            let tracked yy = ident(&*y);
+            assert(shadow_data(xx) == shadow_data(x));
+            assert(shadow_data(yy) == shadow_data(y)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test2 verus_code! {
         #[verifier::shadow_data]
         fn ident(x: &u64) -> (r: &u64)
@@ -101,17 +141,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_exec_only1 verus_code! {
+    #[test] test_exec_proof_only1 verus_code! {
         #[verifier::shadow_data]
-        proof fn test() {}
-    } => Err(err) => assert_vir_error_msg(err, "shadow_data only allowed for exec functions")
+        proof fn test(x: &u8) {
+            assert(shadow_data(x) == shadow_data(x));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "shadow_data expects exec or tracked variable")
 }
 
 test_verify_one_file! {
-    #[test] test_exec_only2 verus_code! {
+    #[test] test_exec_proof_only2 verus_code! {
         #[verifier::shadow_data]
         spec fn test() -> int { 5 }
-    } => Err(err) => assert_vir_error_msg(err, "shadow_data only allowed for exec functions")
+    } => Err(err) => assert_vir_error_msg(err, "shadow_data only allowed for exec and proof functions")
 }
 
 test_verify_one_file! {
