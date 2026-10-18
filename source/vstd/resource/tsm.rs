@@ -181,6 +181,16 @@ pub open spec fn frame_update_nondeterministic<M: Machine>(
                     && M::Fragment::op(new, frame) == M::embed(next)
 }
 
+/// `fragment` with frame `z` completes to the invariant state `state` (a named
+/// trigger for the frames of generated operations' preconditions).
+pub open spec fn completes_with<M: Machine>(
+    fragment: M::Fragment,
+    z: M::Fragment,
+    state: M::State,
+) -> bool {
+    M::invariant(state) && M::Fragment::op(fragment, z) == M::embed(state)
+}
+
 /// One frame of a generated update: for the complete state around
 /// `op(op(owned, h), z)`, some output `new` completes to an invariant state with
 /// the same borrowed fragment `h` and frame `z`.
