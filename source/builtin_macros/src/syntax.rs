@@ -5393,6 +5393,16 @@ pub(crate) fn rewrite_items(
     use_spec_traits: bool,
 ) -> proc_macro::TokenStream {
     let stream = rejoin_tokens(stream);
+    // When erasing (but not fully erasing) ghost code, visit_items_prefilter and
+    // visit_impl_items_prefilter discard the bodies of the spec and proof functions that are
+    // items of these items, of their modules and of their impls, before anything looks at them,
+    // so these bodies need not be parsed. (Erase is the mode of Verus's second rustc run, which
+    // runs only after the first one has parsed the same code in full; in EraseAll mode, used
+    // without Verus, ghost code is still parsed and its syntax errors reported.)
+    let _skip_bodies = (matches!(erase_ghost, EraseGhost::Erase)
+        && !env_rustdoc()
+        && !cfg!(feature = "contrib-hooks"))
+    .then(verus_syn::SkipGhostItemBodies::enter);
     let mut items: Items = parse_macro_input!(stream as Items);
     rewrite_items_inner(&mut items.items, erase_ghost, use_spec_traits)
 }

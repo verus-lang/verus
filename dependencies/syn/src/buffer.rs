@@ -189,6 +189,11 @@ impl<'a> Cursor<'a> {
         }
     }
 
+    /// A cursor at the end of this cursor's scope, past its remaining tokens.
+    pub(crate) fn end_of_scope(self) -> Cursor<'a> {
+        unsafe { Cursor::create(self.scope, self.scope) }
+    }
+
     /// Checks whether the cursor is currently pointing at the end of its valid
     /// scope.
     pub fn eof(self) -> bool {

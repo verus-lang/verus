@@ -155,31 +155,35 @@ pub(crate) mod parsing {
         /// ```
         #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
         pub fn parse_within(input: ParseStream) -> Result<Vec<Stmt>> {
-            let mut stmts = Vec::new();
-            loop {
-                while let semi @ Some(_) = input.parse()? {
-                    stmts.push(Stmt::Expr(Expr::Verbatim(TokenStream::new()), semi));
-                }
-                if input.is_empty() {
-                    break;
-                }
-                let stmt = parse_stmt(input, AllowNoSemi(true))?;
-                let requires_semicolon = match &stmt {
-                    Stmt::Expr(stmt, None) => classify::requires_semi_to_be_stmt(stmt),
-                    Stmt::Macro(stmt) => {
-                        stmt.semi_token.is_none() && !stmt.mac.delimiter.is_brace()
-                    }
-                    Stmt::Local(_) | Stmt::Item(_) | Stmt::Expr(_, Some(_)) => false,
-                };
-                stmts.push(stmt);
-                if input.is_empty() {
-                    break;
-                } else if requires_semicolon {
-                    return Err(input.error("unexpected token, expected `;`"));
-                }
-            }
-            Ok(stmts)
+            crate::ghost_bodies::in_block(|| parse_stmts(input))
         }
+    }
+
+    fn parse_stmts(input: ParseStream) -> Result<Vec<Stmt>> {
+        let mut stmts = Vec::new();
+        loop {
+            while let semi @ Some(_) = input.parse()? {
+                stmts.push(Stmt::Expr(Expr::Verbatim(TokenStream::new()), semi));
+            }
+            if input.is_empty() {
+                break;
+            }
+            let stmt = parse_stmt(input, AllowNoSemi(true))?;
+            let requires_semicolon = match &stmt {
+                Stmt::Expr(stmt, None) => classify::requires_semi_to_be_stmt(stmt),
+                Stmt::Macro(stmt) => {
+                    stmt.semi_token.is_none() && !stmt.mac.delimiter.is_brace()
+                }
+                Stmt::Local(_) | Stmt::Item(_) | Stmt::Expr(_, Some(_)) => false,
+            };
+            stmts.push(stmt);
+            if input.is_empty() {
+                break;
+            } else if requires_semicolon {
+                return Err(input.error("unexpected token, expected `;`"));
+            }
+        }
+        Ok(stmts)
     }
 
     #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
@@ -197,7 +201,7 @@ pub(crate) mod parsing {
     impl Parse for Stmt {
         fn parse(input: ParseStream) -> Result<Self> {
             let allow_nosemi = AllowNoSemi(false);
-            parse_stmt(input, allow_nosemi)
+            crate::ghost_bodies::in_block(|| parse_stmt(input, allow_nosemi))
         }
     }
 
