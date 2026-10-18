@@ -200,6 +200,33 @@ pub proof fn exchange_point_intro_delta<M: StorageMachine>(
     exchange_point_intro::<M>(owned, h, z, pre, deposit, outputs, new, post);
 }
 
+/// Introduces [`exchange_point`] for a step that only adds storage (between
+/// agreeing maps, depositing exactly the newly present keys) and withdraws
+/// nothing.
+pub proof fn exchange_point_intro_monotone<M: StorageMachine>(
+    owned: M::Fragment,
+    h: M::Fragment,
+    z: M::Fragment,
+    pre: M::State,
+    deposit: IMap<M::Key, M::Value>,
+    outputs: ISet<(M::Fragment, IMap<M::Key, M::Value>)>,
+    new: M::Fragment,
+    post: M::State,
+)
+    requires
+        outputs.contains((new, IMap::<M::Key, M::Value>::empty())),
+        M::invariant(post),
+        M::Fragment::op(M::Fragment::op(new, h), z) == M::embed(post),
+        M::storage(pre).agrees(M::storage(post)),
+        M::storage(pre).submap_of(M::storage(post)),
+        deposit == M::storage(post).remove_keys(M::storage(pre).dom()),
+    ensures
+        exchange_point::<M>(owned, h, z, pre, deposit, outputs),
+{
+    storage_withdrawn_none(M::storage(pre), M::storage(post), deposit);
+    exchange_point_intro_delta::<M>(owned, h, z, pre, deposit, outputs, new, post);
+}
+
 /// The frame obligation of a generated exchange, from its proof for each
 /// frame: the outputs are lifted by the borrowed fragment `h`.
 pub proof fn frame_exchange_by_points<M: StorageMachine>(

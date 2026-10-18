@@ -1581,6 +1581,20 @@ fn storage_operations(
             out
         }
     };
+    // A step that withdraws nothing and has one storage operation per path:
+    // its outputs state `withdrawn == empty` only, and the frame leaves the
+    // storage bookkeeping to `exchange_point_intro_monotone`.
+    let monotone = !withdraws && !paired;
+    let withdrawn_value = if monotone {
+        quote! {}
+    } else {
+        quote! {&&withdrawn==pre.__storage().union_prefer_right(deposit).remove_keys(post.__storage().dom())}
+    };
+    let withdrawn_result = if monotone {
+        quote! {}
+    } else {
+        quote! {,withdrawn==result.0.__storage().union_prefer_right(deposit).remove_keys(result.1.__storage().dom())}
+    };
     let withdrawal_shape = if withdraws {
         quote! {true}
     } else {
@@ -1625,9 +1639,20 @@ fn storage_operations(
     } else {
         quote! {}
     };
+    let frame_withdrawn = if monotone {
+        quote! {assert(Self::#output(owned,h,new,deposit,IMap::empty(),#(#pn),*));}
+    } else {
+        quote! {
+            let withdrawn=Self::storage(pre).union_prefer_right(deposit).remove_keys(Self::storage(post).dom());
+            #withdrawal_proof
+            assert(Self::#output(owned,h,new,deposit,withdrawn,#(#pn),*));
+        }
+    };
     // The exchange's witnesses for one frame (`exchange_point`).
     let point_intro = if paired {
         quote! {::vstd::resource::tsm_storage::exchange_point_intro::<#pt>(owned,h,z,pre,deposit,outputs,new,post);}
+    } else if monotone {
+        quote! {::vstd::resource::tsm_storage::exchange_point_intro_monotone::<#pt>(owned,h,z,pre,deposit,outputs,new,post);}
     } else {
         quote! {::vstd::resource::tsm_storage::exchange_point_intro_delta::<#pt>(owned,h,z,pre,deposit,outputs,new,post);}
     };
@@ -1644,7 +1669,7 @@ fn storage_operations(
                     &&#se::#strong(pre,post,#(#pn),*)&&post.invariant()&&new==Self::#owned_post(owned,pre,post,#(#pn),*)
                     &&<#ft>::op(<#ft>::op(new,h),z)==Self::embed(post)
                     &&(#output_storage)
-                    &&withdrawn==pre.__storage().union_prefer_right(deposit).remove_keys(post.__storage().dom())
+                    #withdrawn_value
             }
             pub proof fn #witness(owned:#ft,h:#ft,new:#ft,deposit:#map,withdrawn:#map,#(#params),*)
                 ->(result:(#st,#st,#ft))
@@ -1654,14 +1679,14 @@ fn storage_operations(
                     #se::#strong(result.0,result.1,#(#pn),*),
                     new==Self::#owned_post(owned,result.0,result.1,#(#pn),*),
                     <#ft>::op(<#ft>::op(new,h),result.2)==Self::embed(result.1),
-                    #witness_storage,
-                    withdrawn==result.0.__storage().union_prefer_right(deposit).remove_keys(result.1.__storage().dom())
+                    #witness_storage
+                    #withdrawn_result
             {
                 let (z,pre,post)=choose|z:#ft,pre:#st,post:#st|pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre)
                     &&#se::#strong(pre,post,#(#pn),*)&&post.invariant()&&new==Self::#owned_post(owned,pre,post,#(#pn),*)
                     &&<#ft>::op(<#ft>::op(new,h),z)==Self::embed(post)
                     &&(#output_storage)
-                    &&withdrawn==pre.__storage().union_prefer_right(deposit).remove_keys(post.__storage().dom());
+                    #withdrawn_value;
                 (pre,post,z)
             }
             pub proof fn #frame(owned:#ft,h:#ft,deposit:#map,#(#params),*)
@@ -1677,9 +1702,7 @@ fn storage_operations(
                         let new=Self::#owned_post(owned,pre,post,#(#pn),*);
                         <#ft>::associative(new,h,z);
                         #transfer_proof
-                        let withdrawn=Self::storage(pre).union_prefer_right(deposit).remove_keys(Self::storage(post).dom());
-                        #withdrawal_proof
-                        assert(Self::#output(owned,h,new,deposit,withdrawn,#(#pn),*));
+                        #frame_withdrawn
                         #point_intro
                     }
                 ::vstd::resource::tsm_storage::frame_exchange_by_points::<#pt>(owned,h,deposit,outputs);
