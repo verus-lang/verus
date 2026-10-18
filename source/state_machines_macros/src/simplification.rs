@@ -1047,3 +1047,104 @@ fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
         },
     }
 }
+
+/// For the verified backend: the fields a transition assigns (beyond the
+/// prologue `assign update_tmp_f = pre.f`), and the statements with the
+/// prologue of every other field dropped and its `update_tmp_f` read as
+/// `pre.f`. A field the transition does not update then costs no temporary in
+/// the generated relations and executors.
+pub fn inline_unassigned(
+    sm: &SM,
+    sops: Vec<SimplStmt>,
+) -> (Vec<SimplStmt>, std::collections::HashSet<String>) {
+    fn assigned(sops: &[SimplStmt], out: &mut std::collections::HashSet<String>) {
+        for s in sops {
+            match s {
+                SimplStmt::Assign(_, n, _, _, false) => {
+                    if let Some(f) = field_name_from_tmp(n) {
+                        out.insert(f.to_string());
+                    }
+                }
+                SimplStmt::Let(_, _, _, _, v, _) => assigned(v, out),
+                SimplStmt::Split(_, _, es, _) => {
+                    for (_, v) in es {
+                        assigned(v, out)
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut set = std::collections::HashSet::new();
+    assigned(&sops, &mut set);
+    let inline: std::collections::HashMap<String, Ident> = sm
+        .fields
+        .iter()
+        .filter(|f| !set.contains(&f.name.to_string()))
+        .map(|f| (get_cur_ident(&f.name).to_string(), f.name.clone()))
+        .collect();
+    fn rw(ts: proc_macro2::TokenStream, m: &std::collections::HashMap<String, Ident>) -> proc_macro2::TokenStream {
+        use proc_macro2::{Group, TokenTree};
+        let mut out = proc_macro2::TokenStream::new();
+        for t in ts {
+            match t {
+                TokenTree::Ident(id) if m.contains_key(&id.to_string()) => {
+                    let f = &m[&id.to_string()];
+                    out.extend(quote! {(pre.#f)});
+                }
+                TokenTree::Group(g) => {
+                    let mut ng = Group::new(g.delimiter(), rw(g.stream(), m));
+                    ng.set_span(g.span());
+                    out.extend([TokenTree::Group(ng)]);
+                }
+                t => out.extend([t]),
+            }
+        }
+        out
+    }
+    fn ex(e: &Expr, m: &std::collections::HashMap<String, Ident>) -> Expr {
+        Expr::Verbatim(rw(quote! {#e}, m))
+    }
+    fn pf(p: &AssertProof, m: &std::collections::HashMap<String, Ident>) -> AssertProof {
+        AssertProof {
+            proof: p.proof.as_ref().map(|b| {
+                let b = &**b;
+                std::rc::Rc::new(verus_syn::parse2(rw(quote! {#b}, m)).expect("rewritten proof block"))
+            }),
+            error_msg: p.error_msg.clone(),
+        }
+    }
+    fn go(sops: Vec<SimplStmt>, m: &std::collections::HashMap<String, Ident>) -> Vec<SimplStmt> {
+        let mut out = vec![];
+        for s in sops {
+            out.push(match s {
+                SimplStmt::Assign(_, ref n, _, _, true) if m.contains_key(&n.to_string()) => continue,
+                SimplStmt::Assign(sp, n, t, e, p) => SimplStmt::Assign(sp, n, t, ex(&e, m), p),
+                SimplStmt::Require(sp, e) => SimplStmt::Require(sp, ex(&e, m)),
+                SimplStmt::PostCondition(sp, e, r) => SimplStmt::PostCondition(sp, ex(&e, m), r),
+                SimplStmt::Assert(sp, e, p) => SimplStmt::Assert(sp, ex(&e, m), pf(&p, m)),
+                SimplStmt::Let(sp, pat, ty, e, v, ids) => SimplStmt::Let(sp, pat, ty, ex(&e, m), go(v, m), ids),
+                SimplStmt::Split(sp, k, es, ids) => {
+                    let k = match *k {
+                        SplitKind::If(e) => SplitKind::If(ex(&e, m)),
+                        SplitKind::Match(e, arms) => SplitKind::Match(
+                            ex(&e, m),
+                            arms.into_iter()
+                                .map(|mut a| {
+                                    a.guard = a.guard.map(|(t, g)| (t, Box::new(ex(&g, m))));
+                                    a
+                                })
+                                .collect(),
+                        ),
+                        k => k,
+                    };
+                    let es = es.into_iter().map(|(sp, v)| (sp, go(v, m))).collect();
+                    SimplStmt::Split(sp, Box::new(k), es, ids)
+                }
+            });
+        }
+        out
+    }
+    (go(sops, &inline), set)
+}
+
