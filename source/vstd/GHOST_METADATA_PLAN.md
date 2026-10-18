@@ -8,19 +8,19 @@ fill in the field (which is `()`) at two construction sites; its `ptr()`, `size(
 as they are.
 Slices then get their own `PointsToPhys`/`PointsToProperties` impls, with a pointer built from the
 stored metadata. Empty slice permissions can be proved from `PointsToUntyped`. A *valid* slice needs
-two new axioms: one for how a slice decodes, and one to build a tracked `[E]` from per-element
+two new axioms: one for how a slice decodes, and one to build a tracked `[T]` from per-element
 permissions.
 
 ## The problem
 
 `PointsToUnaligned<T>::ptr()` is `self.pt_untyped().ptr() as *mut T` (line 735), and `size()` is
 `size_of::<T>()`. Both only exist for `Sized` `T`: the `PointsToPhys`, `FixedSize` and
-`PointsToProperties` impls are all `impl<T>`. For `T = [E]`, nothing in the struct can produce the
-`*mut [E]`:
+`PointsToProperties` impls are all `impl<T>`. For a slice permission `PointsToUnaligned<[T]>`,
+nothing in the struct can produce the `*mut [T]`:
 
-- The untyped pointer is a `*mut [u8]` whose metadata is a *byte* count. A `*mut [E]` needs an
+- The untyped pointer is a `*mut [u8]` whose metadata is a *byte* count. A `*mut [T]` needs an
   *element* count.
-- The byte count doesn't determine the element count when `size_of::<E>() == 0`: every length has
+- The byte count doesn't determine the element count when `size_of::<T>() == 0`: every length has
   zero bytes.
 - An `Empty` permission has no value to read a length from.
 
@@ -39,7 +39,7 @@ All four decisions are confirmed.
 pub tracked struct PointsToUnaligned<T: ?Sized> {
     val: TypedValue<T>,
     pt_untyped: PointsToUntyped,
-    metadata: Ghost<Metadata<T>>,   // () for Sized T; the element count for [E]
+    metadata: Ghost<Metadata<T>>,   // () for Sized T; the element count for [T]
 }
 ```
 
@@ -69,17 +69,17 @@ A single `impl<T: ?Sized> PointsToPhys for PointsToUnaligned<T>` would need a si
 metadata, i.e. a new `size_of_metadata::<T>(m)` layout spec (the spec counterpart of the unstable
 `size_of_val_raw`). It would also need axioms tying that spec to `size_of` and `spec_size_of_val`
 for every unsized type. Per-type impls avoid all of that: the slice impl's size is
-`metadata * size_of::<E>()`, built from what `layout.rs` already has (`layout_of_slices`, line 235).
+`metadata * size_of::<T>()`, built from what `layout.rs` already has (`layout_of_slices`, line 235).
 The generic version can come later if `dyn` or custom DSTs are ever needed. Rust accepts
 `impl<T> PointsToPhys for PointsToUnaligned<T>` (implicitly `T: Sized`) next to
-`impl<E> PointsToPhys for PointsToUnaligned<[E]>`, since `[E]` is never `Sized`.
+`impl<T> PointsToPhys for PointsToUnaligned<[T]>`, since `[T]` is never `Sized`.
 
 ### 4. A slice permission is all valid or all empty
 
-`TypedValue<[E]>` holds the whole slice or nothing. This is one of the distinguishing differences
-between `PointsTo<[E]>` and `SeqPointsTo<E, PointsTo<E>>`, where each element is valid or empty
-independently. `SeqPointsTo` keeps its current role for per-element validity. `PointsTo<[E]>` adds
-what `SeqPointsTo` can't give: a real `*mut [E]` pointer and a real `&[E]` borrow. Conversions
+`TypedValue<[T]>` holds the whole slice or nothing. This is one of the distinguishing differences
+between `PointsTo<[T]>` and `SeqPointsTo<T, PointsTo<T>>`, where each element is valid or empty
+independently. `SeqPointsTo` keeps its current role for per-element validity. `PointsTo<[T]>` adds
+what `SeqPointsTo` can't give: a real `*mut [T]` pointer and a real `&[T]` borrow. Conversions
 between the two are part of the plan (step 6).
 
 ## Steps
@@ -113,31 +113,31 @@ compile, where `Metadata<T>` is `FakeMetadata<T>`.
 
 ### Step 2: slice trait impls (done)
 
-Implemented as below, plus inherent `wf()` (= `wf_basic()`) on `PointsToUnaligned<[E]>` and
-`PointsTo<[E]>`, which Rust accepts alongside the Sized `wf()`. `PointsTo<[E]>::size()` delegates
+Implemented as below, plus inherent `wf()` (= `wf_basic()`) on `PointsToUnaligned<[T]>` and
+`PointsTo<[T]>`, which Rust accepts alongside the Sized `wf()`. `PointsTo<[T]>::size()` delegates
 to `pt_unaligned().size()`. No `View` for slices yet.
 
 ```rust
-impl<E> PointsToPhys for PointsToUnaligned<[E]> {
-    type A = [E];
-    closed spec fn ptr(self) -> *mut [E] {
-        ptr_mut_from_data::<[E]>(PtrData {
+impl<T> PointsToPhys for PointsToUnaligned<[T]> {
+    type A = [T];
+    closed spec fn ptr(self) -> *mut [T] {
+        ptr_mut_from_data::<[T]>(PtrData {
             addr: self.pt_untyped().ptr()@.addr,
             provenance: self.pt_untyped().ptr()@.provenance,
             metadata: self.metadata(),
         })
     }
-    open spec fn size(self) -> nat { self.metadata() as nat * size_of::<E>() }
+    open spec fn size(self) -> nat { self.metadata() as nat * size_of::<T>() }
 }
 
-impl<E> PointsToProperties for PointsToUnaligned<[E]> {
+impl<T> PointsToProperties for PointsToUnaligned<[T]> {
     open spec fn wf_basic(self) -> bool {
         &&& self.bytes().len() == self.size()
         &&& self.pt_untyped().wf()
         &&& self.metadata() == self.ptr()@.metadata   // as in the Sized wf_basic
         &&& self.is_valid() ==> {
             &&& self.typed_value().value()@.len() == self.metadata()
-            &&& abs_decode::<[E]>(self.bytes(), self.typed_value().value())
+            &&& abs_decode::<[T]>(self.bytes(), self.typed_value().value())
         }
     }
     // is_nonnull, ptr_bounds, provenance_not_none, is_disjoint, stays_wf_basic:
@@ -145,17 +145,17 @@ impl<E> PointsToProperties for PointsToUnaligned<[E]> {
     open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
         &&& new.ptr() == old.ptr()          // also fixes the metadata
         &&& PointsToUntyped::ptrs_len_same_valid(old.pt_untyped(), new.pt_untyped())
-        &&& new.is_valid() ==> abs_decode::<[E]>(new.bytes(), new.typed_value().value())
+        &&& new.is_valid() ==> abs_decode::<[T]>(new.bytes(), new.typed_value().value())
     }
 }
 ```
 
-- `PointsTo<[E]>` gets the same pair. Its `wf_basic` adds alignment to `align_of::<E>()` (matching
+- `PointsTo<[T]>` gets the same pair. Its `wf_basic` adds alignment to `align_of::<T>()` (matching
   `layout_of_slices`), and `ptr()` delegates to `pt_unaligned()`.
 - No `FixedSize` impl: slices aren't `SeqPointsTo` elements.
-- No separate bound on the metadata (e.g. `metadata * size_of::<E>() <= isize::MAX`). When
-  `size_of::<E>() > 0`, the product is the byte length, which the untyped permission's provenance
-  bounds already limit. When `size_of::<E>() == 0`, the product is 0, so the bound would say
+- No separate bound on the metadata (e.g. `metadata * size_of::<T>() <= isize::MAX`). When
+  `size_of::<T>() > 0`, the product is the byte length, which the untyped permission's provenance
+  bounds already limit. When `size_of::<T>() == 0`, the product is 0, so the bound would say
   nothing; Rust doesn't limit a ZST slice's length beyond the metadata being a `usize`.
 - The trait methods (`is_nonnull` etc.) are on the dependency path of
   `group_points_to_permissions_lemmas`, so they use the specific groups
@@ -188,12 +188,12 @@ The inherent versions were written as listed below, with these details:
 
 None of these need a slice value, so they are plain field construction and destructuring:
 
-- `PointsToUnaligned::<[E]>::from_untyped(pt_untyped, len)`: requires `pt_untyped.wf()` and
-  `pt_untyped.len() == len * size_of::<E>()`; ensures `wf()`, `is_empty()` and
-  `ptr()@.metadata == len`. The aligned version also requires alignment to `align_of::<E>()`.
+- `PointsToUnaligned::<[T]>::from_untyped(pt_untyped, len)`: requires `pt_untyped.wf()` and
+  `pt_untyped.len() == len * size_of::<T>()`; ensures `wf()`, `is_empty()` and
+  `ptr()@.metadata == len`. The aligned version also requires alignment to `align_of::<T>()`.
 - `into_untyped`, `as_untyped`, `into_untyped_with_typed_value`, mirroring the Sized versions.
 - `into_aligned` / `as_aligned` / `into_unaligned` / `as_unaligned` for slices.
-- `zero_sized` variants: any length when `size_of::<E>() == 0`, or `len == 0` for any `E`. The
+- `zero_sized` variants: any length when `size_of::<T>() == 0`, or `len == 0` for any `T`. The
   stored metadata is what makes the ZST case expressible at all.
 - `lemma_ptrs_len_same_valid` for the slice impls, added to the broadcast group. The `PointsTo` and
   `SeqPointsTo` versions can't share a name across impls of the same type, so these lemmas may need
@@ -209,12 +209,12 @@ per-element `abs_decode::<T>` term contains arithmetic on `i`.
 `Sized`. A valid slice needs a rule like this one, in `type_representation.rs`:
 
 ```rust
-pub broadcast axiom fn abs_decode_slice<E>(bytes: Seq<AbstractByte>, v: &[E])
+pub broadcast axiom fn abs_decode_slice<T>(bytes: Seq<AbstractByte>, v: &[T])
     ensures
-        #[trigger] abs_decode::<[E]>(bytes, v) <==> {
-            &&& bytes.len() == v@.len() * size_of::<E>()
-            &&& forall|i: int| 0 <= i < v@.len() ==> #[trigger] abs_decode::<E>(
-                bytes.subrange(i * size_of::<E>(), (i + 1) * size_of::<E>()), &v@[i])
+        #[trigger] abs_decode::<[T]>(bytes, v) <==> {
+            &&& bytes.len() == v@.len() * size_of::<T>()
+            &&& forall|i: int| 0 <= i < v@.len() ==> #[trigger] abs_decode::<T>(
+                bytes.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()), &v@[i])
         },
 ;
 ```
@@ -223,8 +223,8 @@ This follows the same pattern as the existing `[u8]` axiom: `EncodingU8Slice`'s 
 ([type_representation.rs:1390](type_representation.rs)) states
 `EncodingU8Slice::decode(b, v) <==> abs_decode::<[u8]>(b, v)`, where `decode` is a per-element
 condition (`v@.len() == b.len()` and each byte decodes to its element). `abs_decode_slice` states
-the same per-element shape for any `[E]`, with each element taking a `size_of::<E>()`-byte slot and
-decoding by `abs_decode::<E>`. For `E = u8` the two agree, since `u8`'s own `abs_encode_impl`
+the same per-element shape for any `[T]`, with each element taking a `size_of::<T>()`-byte slot and
+decoding by `abs_decode::<T>`. For `T = u8` the two agree, since `u8`'s own `abs_encode_impl`
 makes `u8::decode` and `abs_decode::<u8>` equivalent and `size_of::<u8>() == 1`.
 
 It goes in `type_representation.rs` with the other encoding facts.
@@ -237,21 +237,21 @@ would replace the `[u8]` axiom with one for all such slices. That can be done la
 
 `Tracked`'s `Deref` in builtin now takes `A: ?Sized`. Under `verus_verify_core` it is cfg'd out and
 rustlib's const `Deref` impl for `Tracked` is used instead, so that impl must also take
-`A: ?Sized` (to check in rustlib). So `PointsTo<[E]>::borrow(&self) -> &[E]` (named `borrow_value` before TYPED_POINTS_TO_PLAN.md's rename) can be a field
+`A: ?Sized` (to check in rustlib). So `PointsTo<[T]>::borrow(&self) -> &[T]` (named `borrow_value` before TYPED_POINTS_TO_PLAN.md's rename) can be a field
 borrow of `Valid(t)`, the same way
 `TypedValue<[T]>::value()` already reads `&*self->0` (line 655). This is the `tracked_borrow` that
 [POINTS_TO_MIGRATION.md](POINTS_TO_MIGRATION.md) §7 lists as "Not possible".
 
-### Step 6: borrowed conversions between `SeqPointsTo` and `PointsTo<[E]>`
+### Step 6: borrowed conversions between `SeqPointsTo` and `PointsTo<[T]>`
 
-Valid slice permissions come from real `&[E]` / `&mut [E]` references (step 7), which supply the
-tracked `[E]`. Proof code never needs to turn an owned `SeqPointsTo<E, PointsTo<E>>` into an owned
-`PointsTo<[E]>`, so there is nothing for that. The conversions to support are:
+Valid slice permissions come from real `&[T]` / `&mut [T]` references (step 7), which supply the
+tracked `[T]`. Proof code never needs to turn an owned `SeqPointsTo<T, PointsTo<T>>` into an owned
+`PointsTo<[T]>`, so there is nothing for that. The conversions to support are:
 
-- `&SeqPointsTo<E, PointsTo<E>>` ↔ `&PointsTo<[E]>`
-- `&mut SeqPointsTo<E, PointsTo<E>>` ↔ `&mut PointsTo<[E]>`
+- `&SeqPointsTo<T, PointsTo<T>>` ↔ `&PointsTo<[T]>`
+- `&mut SeqPointsTo<T, PointsTo<T>>` ↔ `&mut PointsTo<[T]>`
 
-Indexing into a `PointsTo<[E]>` is done by converting to a `SeqPointsTo` and indexing that, so there
+Indexing into a `PointsTo<[T]>` is done by converting to a `SeqPointsTo` and indexing that, so there
 is no separate element-borrow function.
 
 The bytes part of each conversion is already provable (`SeqPointsTo::as_untyped`, or `as_untyped` +
@@ -268,16 +268,16 @@ structure or field assembly, and proves the conversions from them.
 
 ```rust
 // slice.rs: no permissions involved
-pub axiom fn tracked_slice_index<'a, E>(tracked s: &'a [E], i: int) -> (tracked e: &'a E)
+pub axiom fn tracked_slice_index<'a, T>(tracked s: &'a [T], i: int) -> (tracked e: &'a T)
     requires
         0 <= i < s@.len(),
     ensures
         *e == s@[i],
 ;
 
-pub axiom fn tracked_slice_from_refs<'a, E>(tracked refs: Seq<&'a E>) -> (tracked s: &'a [E])
+pub axiom fn tracked_slice_from_refs<'a, T>(tracked refs: Seq<&'a T>) -> (tracked s: &'a [T])
     ensures
-        s@ == refs.map_values(|r: &E| *r),
+        s@ == refs.map_values(|r: &T| *r),
 ;
 
 // points_to_permissions.rs: borrowed versions of the struct literals; no wf
@@ -389,15 +389,15 @@ None of these mention `wf()`, alignment or decoding, so those facts are still pr
 These are the borrowed counterparts of the owned `from_untyped` / `from_untyped_with_typed_value`.
 Each conversion below picks one depending on whether the permission is all valid or all empty.
 
-- **`PointsTo::<[E]>::from_untyped_ref(&'a PointsToUntyped, len) -> &'a PointsTo<[E]>`** (empty):
+- **`PointsTo::<[T]>::from_untyped_ref(&'a PointsToUntyped, len) -> &'a PointsTo<[T]>`** (empty):
   `from_raw_parts_ref(pt_untyped, tracked_static_ref(TypedValue::Empty), len)`, then wrap into
-  `&PointsTo<[E]>`.
-- **`PointsTo::<[E]>::from_untyped_with_value_ref(&'a PointsToUntyped, &'a [E]) -> &'a PointsTo<[E]>`**
+  `&PointsTo<[T]>`.
+- **`PointsTo::<[T]>::from_untyped_with_value_ref(&'a PointsToUntyped, &'a [T]) -> &'a PointsTo<[T]>`**
   (valid): `from_raw_parts_ref(pt_untyped, valid_ref(value), value@.len())`, then wrap.
-- **`SeqPointsTo::<E, PointsTo<E>>::from_untyped_ref(&'a PointsToUntyped, len)`** (empty): split the
-  bytes per element with `split_ref`, build each element's `&PointsTo<E>` with `from_raw_parts_ref`
+- **`SeqPointsTo::<T, PointsTo<T>>::from_untyped_ref(&'a PointsToUntyped, len)`** (empty): split the
+  bytes per element with `split_ref`, build each element's `&PointsTo<T>` with `from_raw_parts_ref`
   and `tracked_static_ref(TypedValue::Empty)`, then `from_refs`.
-- **`SeqPointsTo::<E, PointsTo<E>>::from_untyped_with_value_ref(&'a PointsToUntyped, &'a [E])`**
+- **`SeqPointsTo::<T, PointsTo<T>>::from_untyped_with_value_ref(&'a PointsToUntyped, &'a [T])`**
   (valid): the same, with each element's typed value from `tracked_slice_index` → `valid_ref`.
 
 Each requires the conditions the owned versions require (`wf()`, alignment, length, and for the
@@ -406,14 +406,14 @@ alignment arithmetic and, for the valid ones, `abs_decode_slice`.
 
 #### Proved shared conversions
 
-- **`SeqPointsTo::<E, PointsTo<E>>::as_slice_pt(&self) -> &PointsTo<[E]>`:** requires the sequence
-  to be all valid or all empty, since a `PointsTo<[E]>` can't represent a mix. Bytes from
-  `SeqPointsTo::as_untyped` (proved). If valid: `borrow_subrange` (proved; renamed from `borrow_value_subrange`) → `Seq<&E>` →
-  `tracked_slice_from_refs` → `&[E]`, then `PointsTo::<[E]>::from_untyped_with_value_ref`. If empty:
-  `PointsTo::<[E]>::from_untyped_ref`. A zero-length sequence is vacuously `is_valid()`, so it comes
+- **`SeqPointsTo::<T, PointsTo<T>>::as_slice_pt(&self) -> &PointsTo<[T]>`:** requires the sequence
+  to be all valid or all empty, since a `PointsTo<[T]>` can't represent a mix. Bytes from
+  `SeqPointsTo::as_untyped` (proved). If valid: `borrow_subrange` (proved; renamed from `borrow_value_subrange`) → `Seq<&T>` →
+  `tracked_slice_from_refs` → `&[T]`, then `PointsTo::<[T]>::from_untyped_with_value_ref`. If empty:
+  `PointsTo::<[T]>::from_untyped_ref`. A zero-length sequence is vacuously `is_valid()`, so it comes
   back as a valid, empty slice and is never required to be valid and empty at once.
-- **`PointsTo::<[E]>::as_seq_pt(&self) -> &SeqPointsTo<E, PointsTo<E>>`:** bytes from `as_untyped`
-  (proved). If valid: `&[E]` (proved, via `Tracked`'s `Deref`), then
+- **`PointsTo::<[T]>::as_seq_pt(&self) -> &SeqPointsTo<T, PointsTo<T>>`:** bytes from `as_untyped`
+  (proved). If valid: `&[T]` (proved, via `Tracked`'s `Deref`), then
   `SeqPointsTo::from_untyped_with_value_ref`. If empty: `SeqPointsTo::from_untyped_ref`. Ensures
   `len() == metadata`, the same address and provenance, the same bytes, and all valid with
   `seq_value() == value()@` or fully empty.
@@ -424,12 +424,12 @@ Each permission is borrowed as two disjoint parts, its bytes (`&mut PointsToUnty
 value (`&mut TypedValue<_>`), and each part is converted separately. This needs neither
 `PointsTo::borrow_mut` nor the reverted generic `wrap_mut`, and it has three advantages:
 
-- **No `borrow_mut`.** Values are borrowed as `&mut TypedValue<E>`, never as `&mut E`, and the bytes
+- **No `borrow_mut`.** Values are borrowed as `&mut TypedValue<T>`, never as `&mut T`, and the bytes
   are a separate borrow. Nothing asserts that the bytes follow a ghost write to the value. When the
   borrow ends, the original is `wf()` again only if the final bytes decode the final value. Exec
   writes (e.g. through the restored `ptr_mut_ref_slice`) update both, so they get `wf()` back;
   ghost-only writes that leave the bytes stale don't.
-- **Validity can change inside the borrow.** Borrowing whole `TypedValue`s (rather than `&mut E`)
+- **Validity can change inside the borrow.** Borrowing whole `TypedValue`s (rather than `&mut T`)
   lets the value conversions carry `Valid` ↔ `Empty` changes across. Taking the slice's value out
   leaves every element empty; putting a slice in makes every element valid.
 - **Each mutable wrap is its own small axiom**, for one specific struct, instead of a generic
@@ -442,10 +442,10 @@ tied to the result's final value, conditionally where the structure could change
 
 ```rust
 // Value conversions (TypedValue level)
-impl<E> TypedValue<[E]> {
+impl<T> TypedValue<[T]> {
     // M1: per-element typed values -> slice typed value
-    pub axiom fn from_elems_mut<'a>(tracked elems: Seq<&'a mut TypedValue<E>>)
-        -> (tracked out: &'a mut TypedValue<[E]>)
+    pub axiom fn from_elems_mut<'a>(tracked elems: Seq<&'a mut TypedValue<T>>)
+        -> (tracked out: &'a mut TypedValue<[T]>)
         requires
             (forall|i: int| 0 <= i < elems.len() ==> (*elems[i]).is_valid())
                 || (forall|i: int| 0 <= i < elems.len() ==> (*elems[i]).is_empty()),
@@ -457,7 +457,7 @@ impl<E> TypedValue<[E]> {
 
     // M2: slice typed value -> per-element typed values (the inverse of M1)
     pub axiom fn into_elems_mut<'a>(tracked &'a mut self, len: nat)
-        -> (tracked elems: Seq<&'a mut TypedValue<E>>)
+        -> (tracked elems: Seq<&'a mut TypedValue<T>>)
         requires
             old(self).is_valid() ==> old(self).value()@.len() == len,
         ensures
@@ -529,15 +529,15 @@ Things that are proved from existing pieces, so need no new axiom:
 
 ##### Proved `&mut` conversions
 
-- **`SeqPointsTo::<E, PointsTo<E>>::as_slice_pt_mut(&mut self) -> &mut PointsTo<[E]>`.** Requires
-  `wf()` and all valid or all empty. Borrow the `Seq<PointsTo<E>>` (`tracked_seq_pt_mut`) and split
+- **`SeqPointsTo::<T, PointsTo<T>>::as_slice_pt_mut(&mut self) -> &mut PointsTo<[T]>`.** Requires
+  `wf()` and all valid or all empty. Borrow the `Seq<PointsTo<T>>` (`tracked_seq_pt_mut`) and split
   it per element; split each element into its bytes and typed value. Join the bytes with `join_mut`
   (or M6 + M5), join the typed values with M1, assemble with M3 and wrap with M4. Ensures: initially
   the same facts as `as_slice_pt`; finally, if the slice keeps its pointer and stays well-formed
-  (`PointsTo::<[E]>::ptrs_len_same_valid(*s, *final(s))`), then `final(self)` is `wf()` with the
+  (`PointsTo::<[T]>::ptrs_len_same_valid(*s, *final(s))`), then `final(self)` is `wf()` with the
   same pointer, length and bytes as the slice, and is all valid with
   `seq_value() == final(s).value()@` if the slice ends valid, or fully empty if it ends empty.
-- **`PointsTo::<[E]>::as_seq_pt_mut(&mut self) -> &mut SeqPointsTo<E, PointsTo<E>>`.** Requires
+- **`PointsTo::<[T]>::as_seq_pt_mut(&mut self) -> &mut SeqPointsTo<T, PointsTo<T>>`.** Requires
   `wf()`. Split `self` into its bytes and typed value. Split the bytes per element (`split_mut`,
   proved from M6 + M5), split the typed value with M2, assemble each element with M3 + M4, collect
   with M6 and wrap with M5. Ensures: initially the same facts as `as_seq_pt`; finally, if the
@@ -551,7 +551,7 @@ All the trusted items step 6 relies on are listed in [Trusted surface](#trusted-
 
 #### Notes
 
-- **Empty owned conversions** (an empty `PointsTo<[E]>` to and from an empty `SeqPointsTo`) can be
+- **Empty owned conversions** (an empty `PointsTo<[T]>` to and from an empty `SeqPointsTo`) can be
   proved through the untyped permission (`into_untyped`, then `from_untyped`) if they turn out to be
   useful.
 
@@ -589,19 +589,19 @@ Everything the plan trusts, in one place. The contracts are in the steps that in
 
 | Item | Input → output | Used by | What it says | Why it can't be proved |
 |---|---|---|---|---|
-| `abs_decode_slice` | `Seq<AbstractByte>`, `&[E]` → (broadcast fact) | slice `wf` (step 2) | Bytes decode to a slice exactly when each element's slot decodes to that element (same pattern as the existing `[u8]` axiom). | `abs_decode` is uninterpreted; the slice encoding has to be stated. |
-| `tracked_slice_index` | `&'a [E]`, `int` → `&'a E` | shared | Borrows an element of a borrowed slice. | No proof-mode slice indexing. |
-| `tracked_slice_from_refs` | `Seq<&'a E>` → `&'a [E]` | shared | Borrowed elements act as one borrowed slice. | No proof-mode way to build a borrowed slice from borrowed elements. |
+| `abs_decode_slice` | `Seq<AbstractByte>`, `&[T]` → (broadcast fact) | slice `wf` (step 2) | Bytes decode to a slice exactly when each element's slot decodes to that element (same pattern as the existing `[u8]` axiom). | `abs_decode` is uninterpreted; the slice encoding has to be stated. |
+| `tracked_slice_index` | `&'a [T]`, `int` → `&'a T` | shared | Borrows an element of a borrowed slice. | No proof-mode slice indexing. |
+| `tracked_slice_from_refs` | `Seq<&'a T>` → `&'a [T]` | shared | Borrowed elements act as one borrowed slice. | No proof-mode way to build a borrowed slice from borrowed elements. |
 | `tracked_ref` | `&'a T` → `&'a Tracked<T>` | shared | A borrowed value is a borrowed `Tracked` of itself. Makes `TypedValue::valid_ref` provable. | No proof-mode way to view a borrow as a borrowed `Tracked`. Could be removed afterwards by a Verus check change (see the follow-up). |
 | `PointsToUnaligned::from_raw_parts_ref` | `&'a PointsToUntyped`, `&'a TypedValue<T>`, `Metadata<T>` → `&'a PointsToUnaligned<T>` | shared | Borrowed bytes and typed value act as one borrowed permission. | `shr_ref_struct_wrap` can't assemble a struct with more than one tracked field. |
 | `tracked_collect_perm_refs` | `Seq<&'a P>` → `&'a Seq<P>` | shared | Borrowed permissions act as one borrowed `Seq`. Makes `SeqPointsTo::from_refs` provable. | No stored `Seq` of permissions to borrow. |
-| M1 `TypedValue::<[E]>::from_elems_mut` | `Seq<&'a mut TypedValue<E>>` → `&'a mut TypedValue<[E]>` | `&mut` | Borrowed per-element typed values act as one borrowed slice typed value; validity changes are distributed back to the elements. | A tracked `[E]` can't be assembled from or split into elements in proof code. |
-| M2 `TypedValue::<[E]>::into_elems_mut` | `&'a mut TypedValue<[E]>`, `nat` → `Seq<&'a mut TypedValue<E>>` | `&mut` | The inverse of M1; a mixed final state drops the remaining values. | Same as M1. |
+| M1 `TypedValue::<[T]>::from_elems_mut` | `Seq<&'a mut TypedValue<T>>` → `&'a mut TypedValue<[T]>` | `&mut` | Borrowed per-element typed values act as one borrowed slice typed value; validity changes are distributed back to the elements. | A tracked `[T]` can't be assembled from or split into elements in proof code. |
+| M2 `TypedValue::<[T]>::into_elems_mut` | `&'a mut TypedValue<[T]>`, `nat` → `Seq<&'a mut TypedValue<T>>` | `&mut` | The inverse of M1; a mixed final state drops the remaining values. | Same as M1. |
 | M3 `PointsToUnaligned::from_raw_parts_mut` | `&'a mut PointsToUntyped`, `&'a mut TypedValue<T>`, `Metadata<T>` → `&'a mut PointsToUnaligned<T>` | `&mut` | Borrowed bytes and typed value act as one borrowed permission. | No mutable struct wrap for structs with two tracked fields. |
 | M4 `PointsTo::from_unaligned_mut` | `&'a mut PointsToUnaligned<T>` → `&'a mut PointsTo<T>` | `&mut` | A borrowed `PointsToUnaligned` acts as a borrowed `PointsTo`. | No mutable counterpart of `shr_ref_struct_wrap`. |
 | M5 `SeqPointsTo::from_seq_mut` | `&'a mut Seq<P>`, `*mut T` → `&'a mut SeqPointsTo<T, P>` | `&mut` | A borrowed `Seq<P>` acts as a borrowed `SeqPointsTo` with the given (ghost) pointer. | Same as M4. |
 | M6 `tracked_collect_perm_muts` | `Seq<&'a mut P>` → `&'a mut Seq<P>` | `&mut` | Borrowed permissions act as one borrowed `Seq`. | No stored `Seq` to borrow. |
-| `&[E]` / `&mut [E]` → `PointsTo<[E]>` | `&[E]` → `&PointsTo<[E]>`; `&mut [E]` → `&mut PointsTo<[E]>` (exact shapes, e.g. whether a pointer is also returned, settled when restored) | sources of valid slices (step 7) | A real slice reference gives a slice permission (and the tracked `[E]`). | Exec/ghost boundary; existed in the old model (`raw_ptr_new.rs:691`, `shared_reference.rs:126`) but commented out today. |
+| `&[T]` / `&mut [T]` → `PointsTo<[T]>` | `&[T]` → `&PointsTo<[T]>`; `&mut [T]` → `&mut PointsTo<[T]>` (exact shapes, e.g. whether a pointer is also returned, settled when restored) | sources of valid slices (step 7) | A real slice reference gives a slice permission (and the tracked `[T]`). | Exec/ghost boundary; existed in the old model (`raw_ptr_new.rs:691`, `shared_reference.rs:126`) but commented out today. |
 
 ### Existing
 
@@ -616,14 +616,14 @@ Everything the plan trusts, in one place. The contracts are in the steps that in
 
 ### Not trusted
 
-- No axiom turns an owned `SeqPointsTo<E, PointsTo<E>>` into an owned `PointsTo<[E]>`.
+- No axiom turns an owned `SeqPointsTo<T, PointsTo<T>>` into an owned `PointsTo<[T]>`.
 - No new axiom mentions `wf()`, alignment, or decoding, except `abs_decode_slice`.
 - Proved from the items above: the field, the trait impls, the owned empty constructors,
   `borrow`, `TypedValue::valid_ref`, the borrowed constructors, `SeqPointsTo::from_refs`, all
   four conversions (`as_slice_pt`, `as_seq_pt`, `as_slice_pt_mut`, `as_seq_pt_mut`), and the empty
   owned conversions.
 - Not needed at all: `PointsTo::borrow_mut`, `borrow_mut_subrange`, `wrap_mut`, and any
-  `&mut [E]` / `&mut E` slice axioms.
+  `&mut [T]` / `&mut T` slice axioms.
 
 ### Review notes
 
@@ -640,7 +640,7 @@ Everything the plan trusts, in one place. The contracts are in the steps that in
   final state of the borrowed parts without duplicating a tracked value: M1/M2 drop values rather
   than duplicate them when the final state can't be distributed, and M6's finals are only tied when
   the length is unchanged.
-- **The restored `&mut [E]` conversions** (step 7) still need their contracts updated and reviewed
+- **The restored `&mut [T]` conversions** (step 7) still need their contracts updated and reviewed
   when they're restored.
 
 ## Follow-up after this plan
