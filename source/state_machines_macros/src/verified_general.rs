@@ -811,10 +811,16 @@ pub fn output_with_ready(
             .collect();
         let preserved: HashSet<String> =
             sm.fields.iter().map(|f| f.name.to_string()).filter(|f| !assigned.contains(f)).collect();
-        let relation = crate::to_relation::to_relation(
-            &crate::simplification::merge_preserved(sops.clone(), &preserved),
-            false,
-        );
+        // The strong relation of a non-init transition is only established by
+        // the generated executor: it needs no per-conjunct error messages.
+        let relation = if tr.kind == TransitionKind::Init {
+            crate::to_relation::to_relation(&sops, false)
+        } else {
+            crate::to_relation::to_relation_plain(
+                &crate::simplification::merge_preserved(sops.clone(), &preserved),
+                false,
+            )
+        };
         let weak = crate::to_relation::to_is_enabled_condition_weak(&sops);
         let enabling = crate::to_relation::to_is_enabled_condition_strong(&sops);
         let safe_body = execute(&sops, true);
