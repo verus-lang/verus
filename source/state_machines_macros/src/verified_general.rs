@@ -1664,13 +1664,7 @@ fn storage_operations(
             pub proof fn #witness(owned:#ft,h:#ft,new:#ft,deposit:#map,withdrawn:#map,#(#params),*)
                 ->(result:(#st,#st,#ft))
                 requires Self::#output(owned,h,new,deposit,withdrawn,#(#pn),*)
-                ensures result.0.invariant(),result.1.invariant(),
-                    <#ft>::op(<#ft>::op(owned,h),result.2)==Self::embed(result.0),
-                    #se::#strong(result.0,result.1,#(#pn),*),
-                    new==Self::#owned_post(owned,result.0,result.1,#(#pn),*),
-                    <#ft>::op(<#ft>::op(new,h),result.2)==Self::embed(result.1),
-                    #witness_storage
-                    #withdrawn_result
+                ensures Self::#output_at(owned,h,new,deposit,withdrawn,#(#pn,)* result.2,result.0,result.1)
             {
                 let (z,pre,post)=choose|z:#ft,pre:#st,post:#st| #[trigger] Self::#output_at(owned,h,new,deposit,withdrawn,#(#pn,)* z,pre,post);
                 (pre,post,z)
