@@ -14,9 +14,19 @@ pub fn field_api(
     types: &[TokenStream],
 ) -> Result<(TokenStream, TokenStream), Error> {
     validate_names(sm, names)?;
+    // Both unit laws of every component, proved once: the projection laws
+    // below only need them, so each costs one call instead of one per field.
+    let unit_laws: Vec<_> = names
+        .iter()
+        .zip(types)
+        .map(|(n, ty)| quote! {<#ty>::op(<#ty>::unit(),self.#n)==self.#n,<#ty>::op(self.#n,<#ty>::unit())==self.#n})
+        .collect();
+    let unit_calls: Vec<_> =
+        names.iter().zip(types).map(|(n, ty)| quote! {::vstd::resource::tsm::pcm_units::<#ty>(self.#n);}).collect();
     let mut specs = vec![quote! {
         pub open spec fn empty()->Self {Self::unit()}
         pub open spec fn combine(self, other:Self)->Self {Self::op(self,other)}
+        pub proof fn __tsm_unit_laws(self) ensures #(#unit_laws),* {#(#unit_calls)*}
     }];
     let mut proofs = vec![];
     let constants: Vec<_> = sm
@@ -86,18 +96,6 @@ pub fn field_api(
             check_operation_name(sm, &split)?;
             let remaining = format_ident!("remove_{}", name);
             let law = format_ident!("split_{}_law", name);
-            let others: Vec<_> = names
-                .iter()
-                .zip(types)
-                .enumerate()
-                .filter(|(i, _)| *i != index)
-                .map(|(_, (other, ty))| {
-                    quote! {
-                        <#ty>::commutative(<#ty>::unit(),self.#other);
-                        self.#other.op_unit();
-                    }
-                })
-                .collect();
             specs.push(quote! {
                 pub open spec fn #remaining(self,amount:nat)->Self {
                     Self{#name: ::vstd::resource::tsm::CountRA{count:(self.#name.count-amount) as nat},..self}
@@ -106,7 +104,7 @@ pub fn field_api(
                     requires amount<=self.#name.count
                     ensures Self::op(Self::#factory(amount),self.#remaining(amount))==self
                 {
-                    #(#others)*
+                    self.__tsm_unit_laws();
                     assert(amount+(self.#name.count-amount) as nat==self.#name.count);
                 }
             });
@@ -253,24 +251,12 @@ fn projection(
             quote! {#n:<#ty>::unit()}
         })
         .collect();
-    let laws: Vec<_> = names
-        .iter()
-        .zip(types)
-        .enumerate()
-        .map(|(i, (n, ty))| {
-            if selected.contains(&i) {
-                quote! {self.#n.op_unit();}
-            } else {
-                quote! {<#ty>::commutative(<#ty>::unit(),self.#n);self.#n.op_unit();}
-            }
-        })
-        .collect();
     specs.push(quote! {
         pub open spec fn #select(self)->Self {Self{#(#entries),*,..Self::unit()}}
         pub open spec fn #without(self)->Self {Self{#(#removed),*,..self}}
         pub proof fn #law(self)
             ensures Self::op(self.#select(),self.#without())==self
-        {#(#laws)*}
+        {self.__tsm_unit_laws();}
     });
     proofs.push(quote! {
         pub proof fn #take(tracked token:#token)->(tracked out:(#token,#token))

@@ -50,6 +50,16 @@ impl PCM for CountRA {
     }
 }
 
+/// Both unit laws of a PCM.
+pub proof fn pcm_units<P: PCM>(a: P)
+    ensures
+        P::op(P::unit(), a) == a,
+        P::op(a, P::unit()) == a,
+{
+    a.op_unit();
+    P::commutative(P::unit(), a);
+}
+
 /// Value observer of a checked field token.
 ///
 /// Generated tokens implement this trait instead of declaring an inherent `value`,

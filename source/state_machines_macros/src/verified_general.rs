@@ -783,8 +783,38 @@ pub fn output_with_ready(
                 quote! {#n:#t}
             })
             .collect();
-        let sops = crate::simplification::simplify_ops(sm, &tr.body, tr.kind);
-        let relation = crate::to_relation::to_relation(&sops, false);
+        let (sops, assigned) = crate::simplification::inline_unassigned(
+            sm,
+            crate::simplification::simplify_ops(sm, &tr.body, tr.kind),
+        );
+        // Temporaries only for the fields the transition assigns; the others
+        // are read from (and kept as) `pre`.
+        let tr_temps: Vec<_> = sm
+            .fields
+            .iter()
+            .zip(&temps)
+            .filter(|(f, _)| assigned.contains(&f.name.to_string()))
+            .map(|(_, t)| t.clone())
+            .collect();
+        let tr_posts: Vec<_> = sm
+            .fields
+            .iter()
+            .zip(&posts)
+            .map(|(f, p)| {
+                if assigned.contains(&f.name.to_string()) {
+                    p.clone()
+                } else {
+                    let n = &f.name;
+                    quote! {#n:pre.#n}
+                }
+            })
+            .collect();
+        let preserved: HashSet<String> =
+            sm.fields.iter().map(|f| f.name.to_string()).filter(|f| !assigned.contains(f)).collect();
+        let relation = crate::to_relation::to_relation(
+            &crate::simplification::merge_preserved(sops.clone(), &preserved),
+            false,
+        );
         let weak = crate::to_relation::to_is_enabled_condition_weak(&sops);
         let enabling = crate::to_relation::to_is_enabled_condition_strong(&sops);
         let safe_body = execute(&sops, true);
@@ -981,14 +1011,14 @@ pub fn output_with_ready(
             pub proof fn #safety(#pre_param #(#params),*)
                 requires #inv_req
                 ensures ::vstd::prelude::imply(Self::#enabled(#pre_call #(#pn),*), {#enabling})
-            {#(#temps)* let _={#safe_body};}
+            {#(#tr_temps)* let _={#safe_body};}
             pub proof fn #run(#pre_param #(#params),*)->(post:#st)
                 requires #inv_req, Self::#enabled(#pre_call #(#pn),*)
                 ensures Self::#strong(#rel_pre post,#(#pn),*),post.invariant() #storage_ens
             {
                 Self::#safety(#pre_call #(#pn),*);
-                #(#temps)* #run_body
-                let post=#se{#marker_value #(#posts),*};
+                #(#tr_temps)* #run_body
+                let post=#se{#marker_value #(#tr_posts),*};
                 #storage_proof
                 #induct
                 post

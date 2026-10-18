@@ -514,39 +514,43 @@ impl Cm {
         let i = verus_syn::Index::from(i);
         quote! {((#v).0).#i}
     }
-    /// `κ` for the constants of descriptor `d`.
+    /// `κ` for the constants of descriptor `d` (`Instance::__tsm_kappa` of its
+    /// constants: the fragment is spelled out once, in that spec fn).
     fn kappa(&self, d: TokenStream) -> TokenStream {
-        let vals: Vec<_> = (0..self.consts.len()).map(|i| self.constant(d.clone(), i)).collect();
-        self.kappa_of(&vals)
+        let v = self.val(d);
+        quote! {Instance::__tsm_kappa((#v).0)}
     }
-    fn kappa_of(&self, vals: &[TokenStream]) -> TokenStream {
-        self.consts.iter().zip(vals).fold(quote! {Fragment::unit()}, |acc, (c, v)| {
-            let w = format_ident!("with_{}", c.name);
-            quote! {#acc.#w(#v)}
-        })
+    /// The constants' tuple type.
+    fn tuple_ty(&self) -> TokenStream {
+        let tys: Vec<_> = self
+            .consts
+            .iter()
+            .map(|c| {
+                let ShardableType::Constant(t) = &c.stype else { unreachable!() };
+                quote! {#t}
+            })
+            .collect();
+        quote! {(#(#tys,)*)}
     }
     /// `op(κ, κ) == κ` for the constants of descriptor `d` (a call of the
     /// instance's `__tsm_kappa_idem` lemma). Proving it in place, among an
     /// operation's other facts, can be very expensive for the solver.
     fn idem(&self, d: TokenStream) -> TokenStream {
-        let vals: Vec<_> = (0..self.consts.len()).map(|i| self.constant(d.clone(), i)).collect();
-        quote! {Instance::__tsm_kappa_idem(#(#vals),*);}
+        let v = self.val(d);
+        quote! {Instance::__tsm_kappa_idem((#v).0);}
     }
-    /// The `__tsm_kappa_idem` lemma.
+    /// The `__tsm_kappa` spec fn and the `__tsm_kappa_idem` lemma.
     fn idem_lemma(&self) -> TokenStream {
-        let params: Vec<_> = self.consts.iter().enumerate().map(|(i, c)| {
-            let ShardableType::Constant(t) = &c.stype else { unreachable!() };
-            let p = format_ident!("__tsm_c{}", i);
-            quote! {#p: #t}
-        }).collect();
-        let vals: Vec<_> = (0..self.consts.len()).map(|i| {
-            let p = format_ident!("__tsm_c{}", i);
-            quote! {#p}
-        }).collect();
-        let k = self.kappa_of(&vals);
+        let t = self.tuple_ty();
+        let k = self.consts.iter().enumerate().fold(quote! {Fragment::unit()}, |acc, (i, c)| {
+            let w = format_ident!("with_{}", c.name);
+            let i = verus_syn::Index::from(i);
+            quote! {#acc.#w(__tsm_c.#i)}
+        });
         quote! {
-            proof fn __tsm_kappa_idem(#(#params),*)
-                ensures Fragment::op(#k, #k) == #k,
+            pub open spec fn __tsm_kappa(__tsm_c: #t) -> Fragment {#k}
+            proof fn __tsm_kappa_idem(__tsm_c: #t)
+                ensures Fragment::op(Self::__tsm_kappa(__tsm_c), Self::__tsm_kappa(__tsm_c)) == Self::__tsm_kappa(__tsm_c),
             {
                 Fragment::unit().op_unit();
                 assert(Fragment::op(#k, #k) == #k);

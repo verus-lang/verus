@@ -75,7 +75,10 @@ pub fn output(bundle: &SMBundle, state: &TokenStream) -> Result<Vec<TokenStream>
                 ));
             }
         }
-        let simplified = crate::simplification::simplify_ops(sm, &transition.body, transition.kind);
+        let (simplified, _) = crate::simplification::inline_unassigned(
+            sm,
+            crate::simplification::simplify_ops(sm, &transition.body, transition.kind),
+        );
         let relation = crate::to_relation::to_relation(&simplified, true);
         let enabling = crate::to_relation::to_is_enabled_condition_weak(&simplified);
         let parameters: Vec<_> = transition
