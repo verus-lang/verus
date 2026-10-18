@@ -507,7 +507,9 @@ macro_rules! define_delimiters {
                     F: FnOnce(&mut TokenStream),
                 {
                     let mut inner = TokenStream::new();
-                    f(&mut inner);
+                    if !printing::outline_only() {
+                        f(&mut inner);
+                    }
                     printing::delim(Delimiter::$delim, self.span.join(), tokens, inner);
                 }
             }
@@ -637,7 +639,9 @@ impl Group {
         F: FnOnce(&mut TokenStream),
     {
         let mut inner = TokenStream::new();
-        f(&mut inner);
+        if !printing::outline_only() {
+            f(&mut inner);
+        }
         printing::delim(Delimiter::None, self.span, tokens, inner);
     }
 }
@@ -1194,6 +1198,37 @@ pub(crate) mod printing {
     use crate::ext::PunctExt as _;
     use proc_macro2::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream};
     use quote::TokenStreamExt as _;
+    use std::cell::Cell;
+
+    std::thread_local! {
+        static OUTLINE_ONLY: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Whether printing is in outline mode (see `Outline`).
+    pub(crate) fn outline_only() -> bool {
+        OUTLINE_ONLY.with(Cell::get)
+    }
+
+    /// While an `Outline` guard is alive, `surround` emits each delimited group without
+    /// printing its contents. The outermost token trees, and their spans, are the same as
+    /// in a full printing: a group's span is its delimiters' span, set independently of
+    /// the contents. `Spanned::span` needs only these, and on large syntax trees printing
+    /// the contents (through the proc-macro bridge) dominates its cost.
+    pub(crate) struct Outline {
+        previous: bool,
+    }
+
+    impl Outline {
+        pub(crate) fn enter() -> Outline {
+            Outline { previous: OUTLINE_ONLY.with(|o| o.replace(true)) }
+        }
+    }
+
+    impl Drop for Outline {
+        fn drop(&mut self) {
+            OUTLINE_ONLY.with(|o| o.set(self.previous));
+        }
+    }
 
     #[doc(hidden)]
     pub fn punct(s: &str, spans: &[Span], tokens: &mut TokenStream) {
