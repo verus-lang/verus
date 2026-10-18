@@ -1120,8 +1120,8 @@ pub(crate) mod parsing {
 
     pub(crate) fn keyword(input: ParseStream, token: &str) -> Result<Span> {
         input.step(|cursor| {
-            if let Some((ident, rest)) = cursor.ident() {
-                if ident == token {
+            if peek_keyword(*cursor, token) {
+                if let Some((ident, rest)) = cursor.ident() {
                     return Ok((ident.span(), rest));
                 }
             }
@@ -1130,10 +1130,9 @@ pub(crate) mod parsing {
     }
 
     pub(crate) fn peek_keyword(cursor: Cursor, token: &str) -> bool {
-        if let Some((ident, _rest)) = cursor.ident() {
-            ident == token
-        } else {
-            false
+        match cursor.ident_text() {
+            Some((text, _rest)) => text == token,
+            None => false,
         }
     }
 
