@@ -1720,6 +1720,12 @@ impl Visitor {
             }
         }
 
+        if self.inside_ghost != 0 {
+            assert!(visit_pat.x_assigns.len() == 0);
+            stmts.extend(visit_pat.x_decls);
+            return (false, stmts);
+        }
+
         let span = local.span();
         // Make proof block that will be subsequently visited with inside_ghost > 0
         let mk_proof_block = |block: Block| {
@@ -1728,11 +1734,7 @@ impl Visitor {
             Expr::Unary(ExprUnary { attrs: vec![], expr: Box::new(Expr::Block(expr_block)), op })
         };
 
-        if self.inside_ghost != 0 {
-            assert!(visit_pat.x_assigns.len() == 0);
-            stmts.extend(visit_pat.x_decls);
-            (false, stmts)
-        } else if local.tracked.is_none() && local.ghost.is_none() {
+        if local.tracked.is_none() && local.ghost.is_none() {
             stmts.extend(visit_pat.x_decls);
             let block = Block { brace_token: Brace(span), stmts: visit_pat.x_assigns };
             stmts.push(Stmt::Expr(mk_proof_block(block), Some(Semi { spans: [span] })));
@@ -1789,10 +1791,10 @@ impl Visitor {
     }
 
     fn visit_stmt_extend(&mut self, stmt: &mut Stmt) -> (bool, Vec<Stmt>) {
-        let span = stmt.span();
         match stmt {
             Stmt::Local(local) => self.visit_local_extend(local),
             Stmt::Item(Item::BroadcastUse(broadcast_use)) => {
+                let span = broadcast_use.span();
                 let BroadcastUse { attrs, paths, .. } = broadcast_use;
                 if self.erase_ghost.erase() {
                     (true, vec![])
@@ -1869,7 +1871,7 @@ impl Visitor {
         // - For erased non-pub Fn and Const item x, leave "use bool as x;"
         // - Leave Struct and Enum as-is (REVIEW: we could leave stubs with PhantomData fields)
         for item in items.iter_mut() {
-            let span = item.span();
+            // Spans are computed only where needed: span() prints the whole item.
             match item {
                 Item::Fn(fun) => match (&fun.vis, &fun.sig.mode) {
                     (
@@ -1880,6 +1882,7 @@ impl Visitor {
                         | FnMode::ProofAxiom(_),
                     ) if erase_ghost => {
                         // replace body with panic!()
+                        let span = fun.span();
                         let expr: Expr = Expr::Verbatim(quote_spanned! {
                             span => { panic!() }
                         });
@@ -1932,6 +1935,7 @@ impl Visitor {
                 _ => None,
             };
             if let Some((name, vis)) = erase_fn {
+                let span = item.span();
                 *item = Item::Verbatim(quote_spanned! {
                     span => #[allow(unused_imports)] #vis fn #name() { unimplemented!() }
                 });
@@ -2394,7 +2398,7 @@ impl Visitor {
             _ => true,
         });
         for item in items.iter_mut() {
-            let span = item.span();
+            // Spans are computed only where needed: span() prints the whole item.
             match item {
                 ImplItem::Fn(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
                     (
@@ -2405,6 +2409,7 @@ impl Visitor {
                         | FnMode::ProofAxiom(_),
                     ) if erase_ghost => {
                         // replace body with panic!()
+                        let span = fun.span();
                         let expr: Expr = Expr::Verbatim(quote_spanned! {
                             span => { panic!() }
                         });
@@ -2416,6 +2421,7 @@ impl Visitor {
                     _ => {}
                 },
                 ImplItem::BroadcastGroup(item_broadcast_group) => {
+                    let span = item_broadcast_group.span();
                     *item =
                         ImplItem::Verbatim(self.handle_broadcast_group(item_broadcast_group, span));
                 }
@@ -4895,6 +4901,11 @@ impl VisitMut for Visitor {
         verus_syn::visit_mut::visit_type_mut(self, ty);
         self.inside_type -= 1;
 
+        // Only spec_fn and proof_fn types are rewritten (and only these need the span,
+        // which prints the whole type).
+        if !matches!(ty, Type::FnSpec(_) | Type::FnProof(_)) {
+            return;
+        }
         let span = ty.span();
         let tmp_ty = take_type(ty);
 
