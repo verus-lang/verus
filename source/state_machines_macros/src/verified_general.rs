@@ -569,7 +569,7 @@ fn execute(xs: &[SimplStmt], safety: bool) -> TokenStream {
     let tail = execute(rest, safety);
     match first {
         SimplStmt::Require(_, e) if safety => quote! { if #e { #tail } else { false } },
-        SimplStmt::Require(_, e) => quote! { assert(#e); #tail },
+        SimplStmt::Require(..) => tail,
         SimplStmt::Assert(_, e, p) => {
             let a = match &p.proof {
                 Some(b) => quote! {assert(#e) by #b},
@@ -1304,7 +1304,6 @@ pub fn output_with_ready(
                         #(#effect_calls)*
                         let new=Self::#owned_post(owned,pre,post,#(#pn),*);
                         <#ft>::associative(new,h,z);
-                        assert(<#ft>::op(<#ft>::op(new,h),z)==Self::embed(post));
                         assert(Self::#output(owned,h,new,#(#pn),*));
                         ::vstd::resource::tsm::update_point_intro::<#pt>(owned,h,z,pre,outputs,new,post);
                     }
@@ -1669,7 +1668,6 @@ fn storage_operations(
                         #(#effect_calls)*
                         let new=Self::#owned_post(owned,pre,post,#(#pn),*);
                         <#ft>::associative(new,h,z);
-                        assert(<#ft>::op(<#ft>::op(new,h),z)==Self::embed(post));
                         #transfer_proof
                         let withdrawn=Self::storage(pre).union_prefer_right(deposit).remove_keys(Self::storage(post).dom());
                         #withdrawal_proof
