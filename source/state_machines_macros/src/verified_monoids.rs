@@ -768,7 +768,6 @@ pub fn declarations(
         let own_fn = format_ident!("{}_owned", function);
         let lemma = format_ident!("{}_frame", function);
         let update = updated(effect, quote! {owned.#n}, quote! {value});
-        let pre_embed = embed(&effect.field.stype, quote! {pre.#n});
         let post_embed = embed(&effect.field.stype, quote! {post.#n});
         let state_update = if effect.replacement {
             match &effect.field.stype {

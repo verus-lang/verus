@@ -1207,18 +1207,6 @@ pub fn output_with_ready(
                     }
                 })
                 .collect();
-            let unchanged: Vec<_> = sm
-                .fields
-                .iter()
-                .filter(|f| {
-                    !changed.contains(&f.name.to_string())
-                        && !f.stype.is_storage()
-                })
-                .map(|f| {
-                    let n = &f.name;
-                    quote! {post.#n==pre.#n}
-                })
-                .collect();
             if let Some((_, key, val, _)) = &storage {
                 ops.push(storage_operations(
                     &n,
@@ -1244,7 +1232,6 @@ pub fn output_with_ready(
                     &owned_req,
                     &observed_req,
                     &newfields,
-                    &unchanged,
                     &effect_calls,
                     key,
                     val,
@@ -1520,7 +1507,6 @@ fn storage_operations(
     owned_req: &Vec<TokenStream>,
     observed_req: &Vec<TokenStream>,
     newfields: &Vec<TokenStream>,
-    unchanged: &Vec<TokenStream>,
     effect_calls: &Vec<TokenStream>,
     key: &Type,
     val: &Type,
