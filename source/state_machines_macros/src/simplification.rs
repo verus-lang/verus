@@ -1148,3 +1148,37 @@ pub fn inline_unassigned(
     (go(sops, &inline), set)
 }
 
+/// For the verified backend's strong relation: the top-level postconditions of
+/// the fields in `preserved` (each `equal(post.f, pre.f)` with its own error
+/// message) as one conjunction, reported for all of them.
+pub fn merge_preserved(
+    sops: Vec<SimplStmt>,
+    preserved: &std::collections::HashSet<String>,
+) -> Vec<SimplStmt> {
+    let mut out = vec![];
+    let mut merged: Vec<(Span, Expr, String)> = vec![];
+    for s in sops {
+        match s {
+            SimplStmt::PostCondition(
+                sp,
+                e,
+                PostConditionReason::FieldValue(PostConditionReasonField::NoUpdateTopLevel, f),
+            ) if preserved.contains(&f) => merged.push((sp, e, f)),
+            s => out.push(s),
+        }
+    }
+    if let Some((sp, _, _)) = merged.first() {
+        let sp = *sp;
+        let es: Vec<_> = merged.iter().map(|(_, e, _)| e).collect();
+        let names: Vec<_> = merged.iter().map(|(_, _, f)| f.clone()).collect();
+        out.push(SimplStmt::PostCondition(
+            sp,
+            Expr::Verbatim(quote! {(true #(&& #es)*)}),
+            PostConditionReason::FieldValue(
+                PostConditionReasonField::NoUpdateTopLevel,
+                names.join("`, `"),
+            ),
+        ));
+    }
+    out
+}

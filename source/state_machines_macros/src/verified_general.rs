@@ -809,7 +809,12 @@ pub fn output_with_ready(
                 }
             })
             .collect();
-        let relation = crate::to_relation::to_relation(&sops, false);
+        let preserved: HashSet<String> =
+            sm.fields.iter().map(|f| f.name.to_string()).filter(|f| !assigned.contains(f)).collect();
+        let relation = crate::to_relation::to_relation(
+            &crate::simplification::merge_preserved(sops.clone(), &preserved),
+            false,
+        );
         let weak = crate::to_relation::to_is_enabled_condition_weak(&sops);
         let enabling = crate::to_relation::to_is_enabled_condition_strong(&sops);
         let safe_body = execute(&sops, true);
