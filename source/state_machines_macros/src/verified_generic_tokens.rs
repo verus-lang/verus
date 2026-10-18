@@ -15,6 +15,7 @@
 use crate::ast::*;
 use crate::concurrency_tokens::{exchange_parts_with, signature_tokens, ExchangeParts, InoutType, Mode, TokenParam};
 use crate::parse_token_stream::SMBundle;
+use crate::token_trees::{from_trees, to_trees, Tree};
 use proc_macro2::{Span, TokenStream, TokenTree};
 use quote::{format_ident, quote};
 use std::collections::{HashMap, HashSet};
@@ -4244,8 +4245,8 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     // verifies it in parallel with the machine module.
     let ops = quote! {impl Instance {#(#methods)*}};
     let finish = |ts: TokenStream| -> TokenStream {
-        let out = ghostify(ts, proc_macro2::Delimiter::None);
-        match &sm.generics {
+        let out = ghostify(&to_trees(ts), proc_macro2::Delimiter::None);
+        let out = match &sm.generics {
             None => resolve_types(out, None),
             Some(_) => {
                 let (generics, attrs) = crate::verified_tokens::datatype_generics(sm);
@@ -4285,10 +4286,11 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                     wc
                 };
                 let args = quote! {#args};
-                let out = genericize(out, &Gen { decl, wc, args: args.clone(), attrs, names: std::mem::take(&mut names) });
-                resolve_types(out, Some(&args))
+                let g = Gen { decl: to_trees(decl), wc: to_trees(wc), args: args.clone(), attrs: to_trees(attrs), names: std::mem::take(&mut names) };
+                resolve_types(genericize(&out, &g), Some(&args))
             }
-        }
+        };
+        from_trees(out)
     };
     let main = finish(quote! {#(#items)*});
     let ops = finish(ops);
@@ -6362,21 +6364,19 @@ fn init_method(
 /// `ghost d: Ghost<T>`, field reads `x.d` become `x.d@`, and field
 /// initializers `d: e` (or `d`) become `d: Ghost(e)`. The data names are
 /// generated (`__k`, `__v`, `__e`, `__n`, `__m`).
-fn ghostify(ts: TokenStream, delim: proc_macro2::Delimiter) -> TokenStream {
-    use proc_macro2::{Delimiter, Group, Punct, Spacing};
+fn ghostify(trees: &[Tree], delim: proc_macro2::Delimiter) -> Vec<Tree> {
+    use proc_macro2::{Delimiter, Punct, Spacing};
     let data = ["__k", "__v", "__e", "__n", "__m"];
-    let trees: Vec<TokenTree> = ts.into_iter().collect();
-    let punct = |t: Option<&TokenTree>, c: char| matches!(t, Some(TokenTree::Punct(p)) if p.as_char() == c);
-    let mut out: Vec<TokenTree> = vec![];
+    let punct = |t: Option<&Tree>, c: char| t.is_some_and(|t| t.is_punct(c));
+    let mut out: Vec<Tree> = vec![];
     let mut i = 0;
-    // The tokens up to the next top-level `,` (or the end).
     // The tokens up to the next `,` outside angle brackets (or the end).
     let until_comma = |j: usize| -> usize {
         let mut k = j;
         let mut depth = 0i32;
         while k < trees.len() {
-            if let TokenTree::Punct(p) = &trees[k] {
-                let arrow = p.as_char() == '>' && k > 0 && matches!(&trees[k - 1], TokenTree::Punct(q) if q.as_char() == '-');
+            if let Tree::Token(TokenTree::Punct(p)) = &trees[k] {
+                let arrow = p.as_char() == '>' && k > 0 && trees[k - 1].is_punct('-');
                 match p.as_char() {
                     ',' if depth == 0 => break,
                     '<' => depth += 1,
@@ -6389,36 +6389,33 @@ fn ghostify(ts: TokenStream, delim: proc_macro2::Delimiter) -> TokenStream {
         k
     };
     while i < trees.len() {
-        if let TokenTree::Ident(id) = &trees[i] {
+        if let Some(id) = trees[i].ident() {
             if data.contains(&id.to_string().as_str()) {
                 let prev = if i > 0 { trees.get(i - 1) } else { None };
                 let next = trees.get(i + 1);
-                let next2 = trees.get(i + 2);
                 // A single `:` (a `::` path separator starts with a joint `:`).
-                let is_field_colon = matches!(next, Some(TokenTree::Punct(p)) if p.as_char() == ':' && p.spacing() == Spacing::Alone);
-                let _ = next2;
+                let is_field_colon = matches!(next, Some(Tree::Token(TokenTree::Punct(p))) if p.as_char() == ':' && p.spacing() == Spacing::Alone);
+                let prev_is = |s: &str| prev.and_then(Tree::ident).is_some_and(|g| g == s);
                 if punct(prev, '.') {
                     out.push(trees[i].clone());
-                    out.push(TokenTree::Punct(Punct::new('@', Spacing::Alone)));
+                    out.push(Tree::Token(TokenTree::Punct(Punct::new('@', Spacing::Alone))));
                     i += 1;
                     continue;
                 }
-                if matches!(prev, Some(TokenTree::Ident(g)) if g == "ghost") && is_field_colon {
+                if prev_is("ghost") && is_field_colon {
                     let end = until_comma(i + 2);
-                    let ty: TokenStream = trees[i + 2..end].iter().cloned().collect();
-                    let ty = ghostify(ty, Delimiter::None);
+                    let ty = from_trees(ghostify(&trees[i + 2..end], Delimiter::None));
                     out.push(trees[i].clone());
-                    out.extend(quote! {: ::vstd::prelude::Ghost<#ty>});
+                    out.extend(to_trees(quote! {: ::vstd::prelude::Ghost<#ty>}));
                     i = end;
                     continue;
                 }
-                let after_let = matches!(prev, Some(TokenTree::Ident(g)) if g == "let" || g == "mut");
+                let after_let = prev_is("let") || prev_is("mut");
                 if delim == Delimiter::Brace && is_field_colon && !after_let {
                     let end = until_comma(i + 2);
-                    let e: TokenStream = trees[i + 2..end].iter().cloned().collect();
-                    let e = ghostify(e, Delimiter::None);
+                    let e = from_trees(ghostify(&trees[i + 2..end], Delimiter::None));
                     out.push(trees[i].clone());
-                    out.extend(quote! {: Ghost(#e)});
+                    out.extend(to_trees(quote! {: Ghost(#e)}));
                     i = end;
                     continue;
                 }
@@ -6426,56 +6423,48 @@ fn ghostify(ts: TokenStream, delim: proc_macro2::Delimiter) -> TokenStream {
                     && (prev.is_none() || punct(prev, ','))
                     && (next.is_none() || punct(next, ','))
                 {
-                    let name = trees[i].clone();
-                    out.push(name.clone());
-                    out.extend(quote! {: Ghost(#name)});
+                    let name = from_trees(vec![trees[i].clone()]);
+                    out.push(trees[i].clone());
+                    out.extend(to_trees(quote! {: Ghost(#name)}));
                     i += 1;
                     continue;
                 }
             }
         }
         match &trees[i] {
-            TokenTree::Group(g) => {
-                let mut ng = Group::new(g.delimiter(), ghostify(g.stream(), g.delimiter()));
-                ng.set_span(g.span());
-                out.push(TokenTree::Group(ng));
-            }
+            Tree::Group(d, span, inner) => out.push(Tree::Group(*d, *span, ghostify(inner, *d))),
             t => out.push(t.clone()),
         }
         i += 1;
     }
-    out.into_iter().collect()
+    out
 }
 
 /// Resolve the token type placeholders of `tyname`.
-fn resolve_types(ts: TokenStream, args: Option<&TokenStream>) -> TokenStream {
+fn resolve_types(trees: Vec<Tree>, args: Option<&TokenStream>) -> Vec<Tree> {
     let mut out = vec![];
-    for t in ts {
+    for t in trees {
         match t {
-            TokenTree::Group(gr) => {
-                let mut ng = proc_macro2::Group::new(gr.delimiter(), resolve_types(gr.stream(), args));
-                ng.set_span(gr.span());
-                out.push(TokenTree::Group(ng));
-            }
-            TokenTree::Ident(id) if id.to_string().starts_with("__TSM_TY_") => {
+            Tree::Group(d, span, inner) => out.push(Tree::Group(d, span, resolve_types(inner, args))),
+            Tree::Token(TokenTree::Ident(id)) if id.to_string().starts_with("__TSM_TY_") => {
                 let name = Ident::new(&id.to_string()["__TSM_TY_".len()..], id.span());
                 match args {
-                    None => out.push(TokenTree::Ident(name)),
-                    Some(a) => out.extend(quote! {#name::<#a>}),
+                    None => out.push(Tree::Token(TokenTree::Ident(name))),
+                    Some(a) => out.extend(to_trees(quote! {#name::<#a>})),
                 }
             }
             t => out.push(t),
         }
     }
-    out.into_iter().collect()
+    out
 }
 
 /// The machine's type parameters, applied to the generated items.
 struct Gen {
-    decl: TokenStream,
-    wc: TokenStream,
+    decl: Vec<Tree>,
+    wc: Vec<Tree>,
     args: TokenStream,
-    attrs: TokenStream,
+    attrs: Vec<Tree>,
     /// Generated generic types, whose bare uses get the machine's arguments.
     names: HashSet<String>,
 }
@@ -6484,31 +6473,26 @@ struct Gen {
 /// structs, type aliases and impls get the declaration and where clause, and
 /// each bare use of a generated generic type gets `::<args>` (valid in both
 /// type and expression position).
-fn genericize(ts: TokenStream, g: &Gen) -> TokenStream {
-    let trees: Vec<TokenTree> = ts.into_iter().collect();
-    let mut out: Vec<TokenTree> = vec![];
+fn genericize(trees: &[Tree], g: &Gen) -> Vec<Tree> {
+    let mut out: Vec<Tree> = vec![];
     let mut i = 0;
-    let is_ident = |t: &TokenTree, s: &str| matches!(t, TokenTree::Ident(id) if id == s);
+    let is_ident = |t: &Tree, s: &str| t.ident().is_some_and(|id| id == s);
+    let is_brace = |t: &Tree| matches!(t, Tree::Group(proc_macro2::Delimiter::Brace, ..));
     while i < trees.len() {
         let t = &trees[i];
         if is_ident(t, "impl") {
             // impl header up to the body.
             out.push(t.clone());
-            out.extend(g.decl.clone());
-            let mut header = vec![];
-            i += 1;
-            while i < trees.len() && !matches!(&trees[i], TokenTree::Group(gr) if gr.delimiter() == proc_macro2::Delimiter::Brace) {
-                header.push(trees[i].clone());
+            out.extend(g.decl.iter().cloned());
+            let start = i + 1;
+            i = start;
+            while i < trees.len() && !is_brace(&trees[i]) {
                 i += 1;
             }
-            out.extend(turbofish(header.into_iter().collect(), g));
-            out.extend(g.wc.clone());
-            if i < trees.len() {
-                if let TokenTree::Group(gr) = &trees[i] {
-                    let mut ng = proc_macro2::Group::new(gr.delimiter(), turbofish(gr.stream(), g));
-                    ng.set_span(gr.span());
-                    out.push(TokenTree::Group(ng));
-                }
+            out.extend(turbofish(&trees[start..i], g));
+            out.extend(g.wc.iter().cloned());
+            if let Some(Tree::Group(d, span, inner)) = trees.get(i) {
+                out.push(Tree::Group(*d, *span, turbofish(inner, g)));
             }
             i += 1;
             continue;
@@ -6518,64 +6502,56 @@ fn genericize(ts: TokenStream, g: &Gen) -> TokenStream {
             if !alias {
                 // Datatype attributes go before the visibility and `tracked`.
                 let mut moved = vec![];
-                while let Some(TokenTree::Ident(id)) = out.last() {
-                    if id == "pub" || id == "tracked" {
+                while let Some(last) = out.last() {
+                    if is_ident(last, "pub") || is_ident(last, "tracked") {
                         moved.push(out.pop().unwrap());
                     } else {
                         break;
                     }
                 }
-                out.extend(g.attrs.clone());
+                out.extend(g.attrs.iter().cloned());
                 out.extend(moved.into_iter().rev());
             }
             out.push(t.clone());
             if let Some(name) = trees.get(i + 1) {
                 out.push(name.clone());
-                out.extend(g.decl.clone());
+                out.extend(g.decl.iter().cloned());
             }
             i += 2;
-            let mut rest = vec![];
+            let start = i.min(trees.len());
             while i < trees.len() {
-                let stop = matches!(&trees[i], TokenTree::Group(gr) if gr.delimiter() == proc_macro2::Delimiter::Brace && !alias)
-                    || matches!(&trees[i], TokenTree::Punct(p) if p.as_char() == '=' && alias);
+                let stop = (is_brace(&trees[i]) && !alias) || (trees[i].is_punct('=') && alias);
                 if stop {
                     break;
                 }
-                rest.push(trees[i].clone());
                 i += 1;
             }
-            out.extend(turbofish(rest.into_iter().collect(), g));
-            out.extend(g.wc.clone());
+            out.extend(turbofish(&trees[start..i.min(trees.len())], g));
+            out.extend(g.wc.iter().cloned());
             continue;
         }
         match t {
-            TokenTree::Group(gr) => {
+            Tree::Group(d, span, inner) => {
                 // Not an item header: rewrite uses.
-                let mut ng = proc_macro2::Group::new(gr.delimiter(), turbofish(gr.stream(), g));
-                ng.set_span(gr.span());
-                out.push(TokenTree::Group(ng));
-                i += 1;
+                out.push(Tree::Group(*d, *span, turbofish(inner, g)));
             }
-            _ => {
-                let one: TokenStream = std::iter::once(t.clone()).collect();
-                // Decide using the neighbours, as `turbofish` does.
-                let window: TokenStream = trees[i.saturating_sub(2)..(i + 4).min(trees.len())].iter().cloned().collect();
-                let _ = window;
-                out.extend(turbofish_at(&trees, i, g).unwrap_or(one));
-                i += 1;
-            }
+            _ => match turbofish_at(trees, i, g) {
+                Some(r) => out.extend(r),
+                None => out.push(t.clone()),
+            },
         }
+        i += 1;
     }
-    out.into_iter().collect()
+    out
 }
 
 /// The rewrite of `trees[i]` if it is a bare use of a generated generic type.
-fn turbofish_at(trees: &[TokenTree], i: usize, g: &Gen) -> Option<TokenStream> {
-    let TokenTree::Ident(id) = &trees[i] else { return None };
+fn turbofish_at(trees: &[Tree], i: usize, g: &Gen) -> Option<Vec<Tree>> {
+    let id = trees[i].ident()?;
     if !g.names.contains(&id.to_string()) {
         return None;
     }
-    let punct = |j: usize, c: char| matches!(trees.get(j), Some(TokenTree::Punct(p)) if p.as_char() == c);
+    let punct = |j: usize, c: char| trees.get(j).is_some_and(|t| t.is_punct(c));
     if i >= 1 && punct(i - 1, '.') {
         return None;
     }
@@ -6583,7 +6559,7 @@ fn turbofish_at(trees: &[TokenTree], i: usize, g: &Gen) -> Option<TokenStream> {
         return None;
     }
     if i >= 1 {
-        if let TokenTree::Ident(prev) = &trees[i - 1] {
+        if let Some(prev) = trees[i - 1].ident() {
             if ["struct", "enum", "type", "fn", "mod", "trait", "use"].contains(&prev.to_string().as_str()) {
                 return None;
             }
@@ -6596,29 +6572,24 @@ fn turbofish_at(trees: &[TokenTree], i: usize, g: &Gen) -> Option<TokenStream> {
         return None;
     }
     let args = &g.args;
-    Some(quote! {#id::<#args>})
+    Some(to_trees(quote! {#id::<#args>}))
 }
 
-fn turbofish(ts: TokenStream, g: &Gen) -> TokenStream {
-    let trees: Vec<TokenTree> = ts.into_iter().collect();
+fn turbofish(trees: &[Tree], g: &Gen) -> Vec<Tree> {
     let mut out = vec![];
     for i in 0..trees.len() {
         // `hide`/`reveal` name the function by an untyped path.
-        let after_hide = i >= 1 && matches!(&trees[i - 1], TokenTree::Ident(id) if id == "hide" || id == "reveal");
+        let after_hide = i >= 1 && trees[i - 1].ident().is_some_and(|id| id == "hide" || id == "reveal");
         match &trees[i] {
-            TokenTree::Group(gr) if after_hide => out.push(TokenTree::Group(gr.clone())),
-            TokenTree::Group(gr) => {
-                let mut ng = proc_macro2::Group::new(gr.delimiter(), turbofish(gr.stream(), g));
-                ng.set_span(gr.span());
-                out.push(TokenTree::Group(ng));
-            }
-            t => match turbofish_at(&trees, i, g) {
+            Tree::Group(..) if after_hide => out.push(trees[i].clone()),
+            Tree::Group(d, span, inner) => out.push(Tree::Group(*d, *span, turbofish(inner, g))),
+            t => match turbofish_at(trees, i, g) {
                 Some(r) => out.extend(r),
                 None => out.push(t.clone()),
             },
         }
     }
-    out.into_iter().collect()
+    out
 }
 
 /// Append items to the last `verus! { .. }` block inside the generated module,

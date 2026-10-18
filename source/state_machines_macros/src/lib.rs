@@ -22,6 +22,7 @@ mod simplification;
 mod simplify_asserts;
 mod to_relation;
 mod to_token_stream;
+mod token_trees;
 mod token_transition_checks;
 mod transitions;
 mod util;
