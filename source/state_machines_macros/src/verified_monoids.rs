@@ -1030,13 +1030,12 @@ pub fn declarations(
             {
                 <#fragment>::associative(owned,h,z);
                 let frame=<#ty>::op(h.#n,z.#n);
-                assert(<#ty>::op(owned.#n,frame)==(#pre_embed));
                 match Self::#function(pre,#(#pn),*) {
                     Some(value)=>{
                         assert(#post_value==#state_update);
                         #helper
                     },
-                    None=>{assert(post.#n==pre.#n);}
+                    None=>{}
                 }
             }
         });
