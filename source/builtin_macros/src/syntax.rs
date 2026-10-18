@@ -199,7 +199,7 @@ macro_rules! quote_verbatim {
         {
             let sp = $span;
             let $b = crate::syntax::Builtin(sp);
-            quote_verbatim!{ $span, $attrs => $($tok)* }
+            quote_verbatim!{ sp, $attrs => $($tok)* }
         }
     };
     ($span:expr, $attrs:tt => $($tok:tt)*) => {
@@ -909,7 +909,6 @@ impl Visitor {
         spec: &mut SignatureSpec,
         ret_pat: Option<&Pat>,
         ret_ty: Option<&TType>,
-        _span: Span,
         // is the function a ImplItemFn or TraitImplFn
         is_impl_fn: bool,
         // some closures also use this function to handle
@@ -1414,8 +1413,6 @@ impl Visitor {
 
         self.inside_ghost += 1; // for requires, ensures, etc.
 
-        let sig_span = sig.span().clone();
-
         if let Some(pat) = &ret_pat {
             if let Some(err_stmt) = check_verus_return_idents(pat, &sig.inputs) {
                 stmts.push(err_stmt);
@@ -1426,7 +1423,6 @@ impl Visitor {
             &mut sig.spec,
             ret_pat.as_ref(),
             ret_ty.as_ref(),
-            sig_span,
             is_impl_fn,
             false,
             &sig.ident,
@@ -2978,7 +2974,8 @@ impl Visitor {
             unreachable!();
         };
 
-        let span = binary.span();
+        // The span is computed (by printing the whole expression) only by the rewrites
+        // below that use it; `&&`, `||` and exec operators are left unchanged.
         let low_prec_op = match binary.op {
             BinOp::Equiv(verus_syn::token::Equiv { spans }) => {
                 let spans = [spans[1], spans[2]];
@@ -3009,6 +3006,7 @@ impl Visitor {
             let bin = ExprBinary { attrs, op, left, right };
             *expr = Expr::Binary(bin);
         } else if let Some(imply) = ply {
+            let span = binary.span();
             let attrs = std::mem::take(&mut binary.attrs);
             let func = Box::new(Expr::Verbatim(
                 quote_spanned_builtin!(verus_builtin, span => #verus_builtin::imply),
@@ -3027,6 +3025,7 @@ impl Visitor {
             let atomically = None;
             *expr = Expr::Call(ExprCall { attrs, func, paren_token, args, atomically });
         } else if verus_eq {
+            let span = binary.span();
             let attrs = std::mem::take(&mut binary.attrs);
             let func = match binary.op {
                 BinOp::BigEq(_) | BinOp::BigNe(_) => Box::new(Expr::Verbatim(
@@ -3060,69 +3059,70 @@ impl Visitor {
             let attrs = &binary.attrs;
             let left = &binary.left;
             let right = &binary.right;
+            let span = || binary.span();
             match binary.op {
                 BinOp::Eq(..) => {
-                    *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_eq(#left, #right));
+                    *expr = quote_verbatim!(verus_builtin, span(), attrs => #verus_builtin::spec_eq(#left, #right));
                 }
                 BinOp::Ne(..) => {
-                    *expr = quote_verbatim!(verus_builtin, span, attrs => ! #verus_builtin::spec_eq(#left, #right));
+                    *expr = quote_verbatim!(verus_builtin, span(), attrs => ! #verus_builtin::spec_eq(#left, #right));
                 }
                 BinOp::Le(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_le(#right));
+                    *expr = quote_verbatim!(span(), attrs => #left.spec_le(#right));
                 }
                 BinOp::Lt(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_lt(#right));
+                    *expr = quote_verbatim!(span(), attrs => #left.spec_lt(#right));
                 }
                 BinOp::Ge(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_ge(#right));
+                    *expr = quote_verbatim!(span(), attrs => #left.spec_ge(#right));
                 }
                 BinOp::Gt(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_gt(#right));
+                    *expr = quote_verbatim!(span(), attrs => #left.spec_gt(#right));
                 }
                 BinOp::Add(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_add(#right));
+                    *expr = quote_verbatim!(span(), attrs => #left.spec_add(#right));
                 }
                 BinOp::Sub(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_sub(#right));
+                    *expr = quote_verbatim!(span(), attrs => #left.spec_sub(#right));
                 }
                 BinOp::Mul(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_mul(#right));
+                    *expr = quote_verbatim!(span(), attrs => #left.spec_mul(#right));
                 }
                 BinOp::Div(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
                     *expr =
-                        quote_verbatim!(span, attrs => #left.spec_euclidean_or_real_div(#right));
+                        quote_verbatim!(span(), attrs => #left.spec_euclidean_or_real_div(#right));
                 }
                 BinOp::Rem(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_euclidean_mod(#right));
+                    *expr = quote_verbatim!(span(), attrs => #left.spec_euclidean_mod(#right));
                 }
                 BinOp::BitAnd(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_bitand(#right));
+                    *expr = quote_verbatim!(span(), attrs => #left.spec_bitand(#right));
                 }
                 BinOp::BitOr(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_bitor(#right));
+                    *expr = quote_verbatim!(span(), attrs => #left.spec_bitor(#right));
                 }
                 BinOp::BitXor(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_bitxor(#right));
+                    *expr = quote_verbatim!(span(), attrs => #left.spec_bitxor(#right));
                 }
                 BinOp::Shl(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_shl(#right));
+                    *expr = quote_verbatim!(span(), attrs => #left.spec_shl(#right));
                 }
                 BinOp::Shr(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_shr(#right));
+                    *expr = quote_verbatim!(span(), attrs => #left.spec_shr(#right));
                 }
                 _ => {
                     // nothing to do
@@ -5783,12 +5783,10 @@ pub(crate) fn sig_specs_attr(
         }
     }
 
-    let sig_span = sig.span().clone();
     spec_stmts.extend(visitor.take_sig_specs(
         &mut spec,
         ret_pat.as_ref(),
         ret_ty.as_ref(),
-        sig_span,
         is_impl_fn,
         is_closure,
         &sig.ident,
