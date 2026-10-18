@@ -3,14 +3,14 @@ use vstd::std_specs::iter::{FromIteratorSpec, FromIteratorSpecImpl, IteratorSpec
 
 verus! {
 
-// A collection whose contents match the iterator's initial remaining sequence.
+// A collection that exhausts its iterator and contains its initial remaining sequence.
 pub struct Collected<A> {
     pub values: Vec<A>,
 }
 
 impl<A> FromIteratorSpecImpl<A> for Collected<A> {
-    open spec fn from_iter_ensures(remaining: Seq<A>, s: Self) -> bool {
-        remaining == s.values@
+    open spec fn from_iter_ensures(remaining: Seq<A>, will_return_none: bool, s: Self) -> bool {
+        will_return_none && remaining == s.values@
     }
 }
 
@@ -26,6 +26,8 @@ impl<A> core::iter::FromIterator<A> for Collected<A> {
             invariant
                 call_ensures(T::into_iter, (src,), initial),
                 iter.obeys_prophetic_iter_laws() == initial.obeys_prophetic_iter_laws(),
+                initial.obeys_prophetic_iter_laws() ==> iter.will_return_none()
+                    == initial.will_return_none(),
                 initial.obeys_prophetic_iter_laws() ==> initial.remaining() == values@
                     + iter.remaining(),
         {
@@ -35,8 +37,8 @@ impl<A> core::iter::FromIterator<A> for Collected<A> {
                 },
                 None => {
                     let s = Collected { values };
-                    assert(initial.obeys_prophetic_iter_laws() ==> initial.remaining()
-                        == s.values@);
+                    assert(initial.obeys_prophetic_iter_laws() ==> initial.remaining() == s.values@
+                        && initial.will_return_none());
                     return s;
                 },
             }
@@ -60,6 +62,7 @@ fn generic_collection<A, I: Iterator<Item = A>, B: core::iter::FromIterator<A>>(
     ensures
         iter.obeys_prophetic_iter_laws() ==> <B as FromIteratorSpec<A>>::from_iter_ensures(
             iter.remaining(),
+            iter.will_return_none(),
             out,
         ),
 {
