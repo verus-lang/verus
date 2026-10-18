@@ -467,10 +467,27 @@ fn prepend_let_stmt(
     }
 }
 
+thread_local! {
+    static PLAIN: std::cell::Cell<bool> = std::cell::Cell::new(false);
+}
+
+/// `to_relation` without the per-conjunct error messages, for relations that
+/// only generated proofs establish (the verified backend's strong relations).
+pub fn to_relation_plain(sops: &Vec<SimplStmt>, weak: bool) -> TokenStream {
+    PLAIN.with(|p| p.set(true));
+    let r = to_relation(sops, weak);
+    PLAIN.with(|p| p.set(false));
+    r
+}
+
 fn prepend_conjunct(e: &Expr, p: Option<TokenStream>, msg: &str) -> Option<TokenStream> {
     let msg_lit = Lit::Str(LitStr::new(msg, e.span()));
-    let err_attr = quote_spanned! { e.span() =>
-        #[verifier::custom_err(#msg_lit)] /* vattr */
+    let err_attr = if PLAIN.with(|p| p.get()) {
+        quote! {}
+    } else {
+        quote_spanned! { e.span() =>
+            #[verifier::custom_err(#msg_lit)] /* vattr */
+        }
     };
     match p {
         None => Some(quote_spanned! { e.span() => #err_attr (#e) }),

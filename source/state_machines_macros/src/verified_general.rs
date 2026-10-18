@@ -811,10 +811,16 @@ pub fn output_with_ready(
             .collect();
         let preserved: HashSet<String> =
             sm.fields.iter().map(|f| f.name.to_string()).filter(|f| !assigned.contains(f)).collect();
-        let relation = crate::to_relation::to_relation(
-            &crate::simplification::merge_preserved(sops.clone(), &preserved),
-            false,
-        );
+        // The strong relation of a non-init transition is only established by
+        // the generated executor: it needs no per-conjunct error messages.
+        let relation = if tr.kind == TransitionKind::Init {
+            crate::to_relation::to_relation(&sops, false)
+        } else {
+            crate::to_relation::to_relation_plain(
+                &crate::simplification::merge_preserved(sops.clone(), &preserved),
+                false,
+            )
+        };
         let weak = crate::to_relation::to_is_enabled_condition_weak(&sops);
         let enabling = crate::to_relation::to_is_enabled_condition_strong(&sops);
         let safe_body = execute(&sops, true);
@@ -1283,7 +1289,7 @@ pub fn output_with_ready(
                 ops.push(quote!{
                 pub open spec fn #owned_post(owned:#ft,pre:#st,post:#st,#(#params),*)->#ft {#fe{#marker_value #(#newfields),*}}
                 pub open spec fn #req(owned:#ft,h:#ft,#(#params),*)->bool {
-                    true #(&& #owned_req)* #(&& #observed_req)* && forall|z:#ft,pre:#st|::vstd::prelude::imply(pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre),
+                    true #(&& #owned_req)* #(&& #observed_req)* && forall|z:#ft,pre:#st|::vstd::prelude::imply(#[trigger] ::vstd::resource::tsm::completes_with::<#pt>(<#ft>::op(owned,h),z,pre),
                         #se::#enabled(pre,#(#pn),*)&&#se::#owners(pre,owned,h,#(#pn),*))
                 }
                 pub open spec fn #output(owned:#ft,h:#ft,new:#ft,#(#params),*)->bool {
@@ -1299,6 +1305,7 @@ pub fn output_with_ready(
                     let outputs=ISet::new(|new:#ft|Self::#output(owned,h,new,#(#pn),*));
                     assert forall|z:#ft,pre:#st|pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre)
                         implies ::vstd::resource::tsm::update_point::<#pt>(owned,h,z,pre,outputs) by {
+                        assert(::vstd::resource::tsm::completes_with::<#pt>(<#ft>::op(owned,h),z,pre));
                         assert(#se::#owners(pre,owned,h,#(#pn),*));
                         let post=#se::#run(pre,#(#pn),*);
                         #(#effect_calls)*
@@ -1629,7 +1636,7 @@ fn storage_operations(
             pub open spec fn #req(owned:#ft,h:#ft,deposit:#map,#(#params),*)->bool {
                 true #(&& #owned_req)* #(&& #observed_req)* &&
                 forall|z:#ft,pre:#st|::vstd::prelude::imply(
-                    pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre),
+                    #[trigger] ::vstd::resource::tsm::completes_with::<#pt>(<#ft>::op(owned,h),z,pre),
                     #se::#enabled(pre,#(#pn),*)&&deposit==#se::#deposited(pre,#(#pn),*)&&#se::#owners(pre,owned,h,#(#pn),*))
             }
             pub open spec fn #output(owned:#ft,h:#ft,new:#ft,deposit:#map,withdrawn:#map,#(#params),*)->bool {
@@ -1664,6 +1671,7 @@ fn storage_operations(
                 let outputs=#outputs;
                 assert forall|z:#ft,pre:#st|Self::invariant(pre)&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre)
                     implies ::vstd::resource::tsm_storage::exchange_point::<#pt>(owned,h,z,pre,deposit,outputs) by {
+                        assert(::vstd::resource::tsm::completes_with::<#pt>(<#ft>::op(owned,h),z,pre));
                         let post=#se::#run(pre,#(#pn),*);
                         #(#effect_calls)*
                         let new=Self::#owned_post(owned,pre,post,#(#pn),*);
