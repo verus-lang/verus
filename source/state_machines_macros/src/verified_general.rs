@@ -1535,6 +1535,7 @@ fn storage_operations(
     }
     let pair = Ident::new(&pair_name, proc_macro2::Span::mixed_site());
     let witness = format_ident!("{}_witness", n);
+    let output_at = format_ident!("__tsm_{}_output_at", n);
     let outputs =
         quote! {ISet::new(|#pair:(#ft,#map)|Self::#output(owned,h,#pair.0,deposit,#pair.1,#(#pn),*))};
     let lifted = quote! {#outputs.map(|#pair:(#ft,#map)|(<#ft>::op(#pair.0,h),#pair.1))};
@@ -1640,12 +1641,12 @@ fn storage_operations(
         quote! {}
     };
     let frame_withdrawn = if monotone {
-        quote! {assert(Self::#output(owned,h,new,deposit,IMap::empty(),#(#pn),*));}
+        quote! {assert(Self::#output_at(owned,h,new,deposit,IMap::empty(),#(#pn,)* z,pre,post));}
     } else {
         quote! {
             let withdrawn=Self::storage(pre).union_prefer_right(deposit).remove_keys(Self::storage(post).dom());
             #withdrawal_proof
-            assert(Self::#output(owned,h,new,deposit,withdrawn,#(#pn),*));
+            assert(Self::#output_at(owned,h,new,deposit,withdrawn,#(#pn,)* z,pre,post));
         }
     };
     // The exchange's witnesses for one frame (`exchange_point`).
@@ -1664,12 +1665,15 @@ fn storage_operations(
                     #[trigger] ::vstd::resource::tsm::completes_with::<#pt>(<#ft>::op(owned,h),z,pre),
                     #se::#enabled(pre,#(#pn),*)&&deposit==#se::#deposited(pre,#(#pn),*)&&#se::#owners(pre,owned,h,#(#pn),*))
             }
-            pub open spec fn #output(owned:#ft,h:#ft,new:#ft,deposit:#map,withdrawn:#map,#(#params),*)->bool {
-                #withdrawal_shape && exists|z:#ft,pre:#st,post:#st|pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre)
+            pub open spec fn #output_at(owned:#ft,h:#ft,new:#ft,deposit:#map,withdrawn:#map,#(#params,)* z:#ft,pre:#st,post:#st)->bool {
+                pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre)
                     &&#se::#strong(pre,post,#(#pn),*)&&post.invariant()&&new==Self::#owned_post(owned,pre,post,#(#pn),*)
                     &&<#ft>::op(<#ft>::op(new,h),z)==Self::embed(post)
                     &&(#output_storage)
                     #withdrawn_value
+            }
+            pub open spec fn #output(owned:#ft,h:#ft,new:#ft,deposit:#map,withdrawn:#map,#(#params),*)->bool {
+                #withdrawal_shape && exists|z:#ft,pre:#st,post:#st| #[trigger] Self::#output_at(owned,h,new,deposit,withdrawn,#(#pn,)* z,pre,post)
             }
             pub proof fn #witness(owned:#ft,h:#ft,new:#ft,deposit:#map,withdrawn:#map,#(#params),*)
                 ->(result:(#st,#st,#ft))
@@ -1682,11 +1686,7 @@ fn storage_operations(
                     #witness_storage
                     #withdrawn_result
             {
-                let (z,pre,post)=choose|z:#ft,pre:#st,post:#st|pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre)
-                    &&#se::#strong(pre,post,#(#pn),*)&&post.invariant()&&new==Self::#owned_post(owned,pre,post,#(#pn),*)
-                    &&<#ft>::op(<#ft>::op(new,h),z)==Self::embed(post)
-                    &&(#output_storage)
-                    #withdrawn_value;
+                let (z,pre,post)=choose|z:#ft,pre:#st,post:#st| #[trigger] Self::#output_at(owned,h,new,deposit,withdrawn,#(#pn,)* z,pre,post);
                 (pre,post,z)
             }
             pub proof fn #frame(owned:#ft,h:#ft,deposit:#map,#(#params),*)
