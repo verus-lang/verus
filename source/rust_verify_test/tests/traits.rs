@@ -634,7 +634,7 @@ test_verify_one_file! {
         struct Q<A: T>(spec_fn(A::X) -> int);
         struct S(Q<S>);
         impl T for S { type X = int; }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+    } => Err(err) => assert_vir_error_msg(err, "recursively uses type test_crate::S in a non-positive position")
 }
 
 test_verify_one_file! {
