@@ -1301,7 +1301,6 @@ pub fn output_with_ready(
                         implies ::vstd::resource::tsm::update_point::<#pt>(owned,h,z,pre,outputs) by {
                         assert(#se::#owners(pre,owned,h,#(#pn),*));
                         let post=#se::#run(pre,#(#pn),*);
-                        assert(true #(&& #unchanged)*);
                         #(#effect_calls)*
                         let new=Self::#owned_post(owned,pre,post,#(#pn),*);
                         <#ft>::associative(new,h,z);
@@ -1667,7 +1666,6 @@ fn storage_operations(
                 assert forall|z:#ft,pre:#st|Self::invariant(pre)&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre)
                     implies ::vstd::resource::tsm_storage::exchange_point::<#pt>(owned,h,z,pre,deposit,outputs) by {
                         let post=#se::#run(pre,#(#pn),*);
-                        assert(true #(&& #unchanged)*);
                         #(#effect_calls)*
                         let new=Self::#owned_post(owned,pre,post,#(#pn),*);
                         <#ft>::associative(new,h,z);
