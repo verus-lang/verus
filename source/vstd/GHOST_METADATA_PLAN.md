@@ -167,7 +167,7 @@ impl<E> PointsToProperties for PointsToUnaligned<[E]> {
 
 On hold until the `PointsToSingleValue` trait is in:
 these become trait impls in its phase 2b
-(see [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md#phase-2b-slice-impls-ghost-steps-3-and-5)).
+(see [TYPED_POINTS_TO_IMPL_PLAN.md](TYPED_POINTS_TO_IMPL_PLAN.md#phase-2b-slice-impls-ghost-steps-3-and-5)).
 The inherent versions were written as listed below, with these details:
 
 - `PointsToUnaligned<[T]>` has `from_untyped`, `into_aligned`, `as_aligned`, `zero_sized`
@@ -660,7 +660,7 @@ Everything the plan trusts, in one place. The contracts are in the steps that in
 - **`PointsToSingleValue`** (the trait proposed in `GENERALIZATION_ASSESSMENT.md` §4) now comes
   before steps 3 and 5-8,
   so that the slice functions are trait impls with shared contracts.
-  See [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md#combined-order) for the combined order.
+  See [TYPED_POINTS_TO_IMPL_PLAN.md](TYPED_POINTS_TO_IMPL_PLAN.md#combined-order) for the combined order.
 - **`str`** follows the same pattern (metadata equal to the byte length), but it will be done in
   the rustlib repo (`/Users/estang/Documents/Verus/rustlib`), not in vstd. There, the view of a
   `str` is its bytes, rather than its characters as in vstd.
