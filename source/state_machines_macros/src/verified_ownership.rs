@@ -29,55 +29,70 @@ impl Compiler<'_> {
 
     /// Returning the fragment alongside the condition preserves effects across
     /// lexical scopes and across branches without moving bindings out of scope.
+    /// `None` stands for `(true, current)`: the statement has no ownership
+    /// condition and keeps the fragment, so the caller omits it.
     fn statement(
         &mut self,
         stmt: &TransitionStmt,
         current: TokenStream,
-    ) -> Result<TokenStream, Error> {
+    ) -> Result<Option<TokenStream>, Error> {
+        let trivial = |p: Option<TokenStream>, current: &TokenStream| p.unwrap_or(quote! {(true, #current)});
         match stmt {
             TransitionStmt::Block(_, children) => self.sequence(children, current),
             TransitionStmt::Split(span, kind, children) => match &**kind {
                 SplitKind::Let(pattern, ty, _, expression) => {
                     let ty = ty.as_ref().map(|ty| quote! {:#ty});
-                    let body = self.sequence(children, current)?;
-                    Ok(quote! {{let #pattern #ty = #expression; #body}})
+                    let Some(body) = self.sequence(children, current)? else { return Ok(None) };
+                    Ok(Some(quote! {{let #pattern #ty = #expression; #body}}))
                 }
                 SplitKind::If(condition) => {
                     let then_branch = self.statement(&children[0], current.clone())?;
                     let else_branch = match children.get(1) {
-                        Some(child) => self.statement(child, current)?,
-                        None => quote! {(true, #current)},
+                        Some(child) => self.statement(child, current.clone())?,
+                        None => None,
                     };
-                    Ok(quote! {if #condition {#then_branch} else {#else_branch}})
+                    if then_branch.is_none() && else_branch.is_none() {
+                        return Ok(None);
+                    }
+                    let then_branch = trivial(then_branch, &current);
+                    let else_branch = trivial(else_branch, &current);
+                    Ok(Some(quote! {if #condition {#then_branch} else {#else_branch}}))
                 }
                 SplitKind::Match(expression, arms) => {
                     if arms.len() != children.len() {
                         return Err(Error::new(*span, "ownership match has mismatched arms"));
                     }
-                    let cases = arms
+                    let bodies = children
                         .iter()
-                        .zip(children)
-                        .map(|(arm, child)| {
+                        .map(|child| self.statement(child, current.clone()))
+                        .collect::<Result<Vec<_>, Error>>()?;
+                    if bodies.iter().all(|b| b.is_none()) {
+                        return Ok(None);
+                    }
+                    let cases: Vec<_> = arms
+                        .iter()
+                        .zip(bodies)
+                        .map(|(arm, body)| {
                             let pattern = &arm.pat;
                             let guard =
                                 arm.guard.as_ref().map(|(keyword, expr)| quote! {#keyword #expr});
-                            let body = self.statement(child, current.clone())?;
-                            Ok(quote! {#pattern #guard => {#body}})
+                            let body = trivial(body, &current);
+                            quote! {#pattern #guard => {#body}}
                         })
-                        .collect::<Result<Vec<_>, Error>>()?;
-                    Ok(quote! {match #expression {#(#cases),*}})
+                        .collect();
+                    Ok(Some(quote! {match #expression {#(#cases),*}}))
                 }
                 SplitKind::Special(name, operation, _, pattern) => {
                     let field = self.fields.get(&name.to_string()).ok_or_else(|| {
                         Error::new(*span, "ownership operation refers to an unknown field")
                     })?;
                     if supported(&field.stype) {
-                        self.monoid(field, operation, pattern.as_deref(), children, current, *span)
+                        self.monoid(field, operation, pattern.as_deref(), children, current, *span).map(Some)
                     } else if operation.stmt.is_for_storage() {
                         // Storage bindings refer to the mathematical state's
                         // permission. Checked state safety and physical exchange
                         // obligations independently establish its provenance.
-                        let body = self.sequence(children, current)?;
+                        let Some(body) = self.sequence(children, current)? else { return Ok(None) };
                         match pattern {
                             Some(pattern) => {
                                 let observed = match &operation.elt {
@@ -90,9 +105,9 @@ impl Compiler<'_> {
                                         ));
                                     }
                                 };
-                                Ok(bind_pattern(pattern, observed, body))
+                                Ok(Some(bind_pattern(pattern, observed, body)))
                             }
-                            None => Ok(body),
+                            None => Ok(Some(body)),
                         }
                     } else {
                         Err(Error::new(*span, "unsupported ordered ownership component"))
@@ -102,7 +117,7 @@ impl Compiler<'_> {
             // Ordinary conditions, assertions and variable updates are checked
             // by the independent state executor. They do not change monoid
             // ownership and must not be treated as ownership assumptions here.
-            _ => Ok(quote! {(true, #current)}),
+            _ => Ok(None),
         }
     }
 
@@ -133,13 +148,15 @@ impl Compiler<'_> {
         &mut self,
         statements: &[TransitionStmt],
         current: TokenStream,
-    ) -> Result<TokenStream, Error> {
+    ) -> Result<Option<TokenStream>, Error> {
         let mut result = current;
         let mut declarations = Vec::new();
         let mut conditions = Vec::new();
+        let mut pairs = Vec::new();
         for statement in statements {
             let preserves = self.preserves_owned(statement);
-            let pair = self.statement(statement, result.clone())?;
+            let Some(pair) = self.statement(statement, result.clone())? else { continue };
+            pairs.push(pair.clone());
             let enabled = self.fresh("enabled");
             if preserves {
                 // The statement returns its input fragment unchanged. Keep
@@ -157,7 +174,11 @@ impl Compiler<'_> {
             }
             conditions.push(enabled);
         }
-        Ok(quote! {{#(#declarations)* (true #(&& #conditions)*, #result)}})
+        match pairs.len() {
+            0 => Ok(None),
+            1 => Ok(pairs.pop()),
+            _ => Ok(Some(quote! {{#(#declarations)* (true #(&& #conditions)*, #result)}})),
+        }
     }
 
     fn monoid(
@@ -276,13 +297,17 @@ impl Compiler<'_> {
             }
             _ => unreachable!(),
         };
-        let body = self.sequence(children, next)?;
-        let enabled = self.fresh("enabled");
-        let owned = self.fresh("owned");
-        let body = quote! {{
-            let (#enabled, #owned) = #body;
-            ((#condition) && #enabled, #owned)
-        }};
+        let body = match self.sequence(children, next.clone())? {
+            Some(body) => {
+                let enabled = self.fresh("enabled");
+                let owned = self.fresh("owned");
+                quote! {{
+                    let (#enabled, #owned) = #body;
+                    ((#condition) && #enabled, #owned)
+                }}
+            }
+            None => quote! {(#condition, #next)},
+        };
         let scoped = match pattern {
             Some(pattern) => {
                 let bound = match field.stype {
@@ -326,7 +351,9 @@ pub(crate) fn ownership_guard(
     let initial_ident = format_ident!("__tsm_ownership_initial", span = Span::mixed_site());
     let mut compiler =
         Compiler { fields, fragment: fragment_type, shared: shared_ident.clone(), next_ident: 0 };
-    let pair = compiler.statement(statement, quote! {#initial_ident})?;
+    let Some(pair) = compiler.statement(statement, quote! {#initial_ident})? else {
+        return Ok(quote! {true});
+    };
     Ok(quote! {{
         let #shared_ident = #shared;
         let #initial_ident = #initial_owned;
