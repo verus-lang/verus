@@ -1,5 +1,12 @@
 # Plan: ghost metadata on `PointsToUnaligned`
 
+> **Superseded.** Everything still to do here is now in
+> [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md) (design and specs:
+> Background, Borrowed-assembly axioms, Slice ↔ sequence conversions, Trusted surface, Deferred)
+> and [TYPED_POINTS_TO_IMPL_PLAN.md](TYPED_POINTS_TO_IMPL_PLAN.md)
+> (steps 3 and 5 → phase 2b, step 6 → phases 3b and 4, step 7 → phase 4b, step 8 → phase 5).
+> This file is kept only for history and is deleted in phase 5.
+
 Based on commit `cd02a6bae` on `verify-rustlib-refactor`. Uncommitted work (the `str` impls) is not
 taken into account. Line numbers refer to `points_to_permissions.rs` at that commit.
 
@@ -385,6 +392,12 @@ None of these mention `wf()`, alignment or decoding, so those facts are still pr
 (`PointsTo` has one field).
 
 #### Proved borrowed constructors
+
+(Superseded in structure by [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md#slice--sequence-conversions-phase-4):
+the constructors and conversions below are implemented on the unaligned types,
+`PointsToUnaligned<[T]>` ↔ `SeqPointsTo<T, PointsToUnaligned<T>>`, following the same proofs without the M4 wrap,
+and the `PointsTo` versions are compositions with the aligned/unaligned conversions.
+The proof sketches below still describe the element-level reasoning.)
 
 These are the borrowed counterparts of the owned `from_untyped` / `from_untyped_with_typed_value`.
 Each conversion below picks one depending on whether the permission is all valid or all empty.

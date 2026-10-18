@@ -1,22 +1,19 @@
 # Implementation plan: `PointsToSingleValue` trait and a generic typed `SeqPointsTo` (level 3)
 
-The phases for implementing the design in [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md),
-and how they interleave with [GHOST_METADATA_PLAN.md](GHOST_METADATA_PLAN.md).
+The phases for implementing the design in [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md).
 The design document has the target traits, impls, conversions and full specifications;
 this document has the order of work, the phase 0 spike results, and the risks.
+It supersedes GHOST_METADATA_PLAN.md, whose remaining steps are phases 2b, 3b, 4b and 5 here.
 
-**Status.** Ghost metadata steps 1, 2 and 4 are done
-(the `metadata` field,
+**Status.** Already done (from the earlier ghost metadata plan):
+the `metadata` field,
 the slice `PointsToPhys`/`PointsToProperties`/`View` impls,
-and `abs_decode_slice`).
-Ghost step 3 (empty slice permissions) was written as inherent functions,
-then reverted and saved in [step3_slice_wip.patch](step3_slice_wip.patch).
-This plan now comes before the rest of the ghost metadata plan,
-so that the slice functions are trait impls with shared contracts,
-and there are fewer separate specs to review.
-Step 3's bodies move into the trait impls in phase 2b.
+and `abs_decode_slice`.
+The empty slice functions were written as inherent functions,
+then reverted and saved in [step3_slice_wip.patch](step3_slice_wip.patch);
+their bodies move into the trait impls in phase 2b.
 Phase 0 (the spike) is done; see [Phase 0 results](#phase-0-results).
-See [Combined order](#combined-order).
+See [Order](#order).
 
 Each phase ends with both builds green (`source/tools/build-expand-errors.sh` and
 `source/tools/build-verify-core.sh`) and is meant to be a separate commit, so the work can stop after
@@ -151,6 +148,14 @@ These cover the [`SeqPointsTo` pointer change](TYPED_POINTS_TO_PLAN.md#seqpoints
     (`borrow`, `into_untyped`, `from_untyped`, `zero_sized`, `take`, `put`, `copy`, `copy_typed_value`,
     `from_untyped_with_value`). It differs from what `default_methods.rs` tested,
     a default proof body that needed a default *spec* body to unfold (which fails).
+14. **Dropping `SeqPointsTo`'s `T` parameter** (`SeqPointsTo<P>` with `ptr: Ghost<*mut [P::A]>`,
+    to avoid repeating `<A = T>` in every bound).
+    - *Done, rejected* (`seq_drop_t.rs`): Verus's Trait-Conflict-Checker reports
+      "the size for values of type `<P as Phys>::A` cannot be known at compilation time"
+      for `*mut [P::A]` in the struct field and in `type A = [P::A]`,
+      whether the bound is written `P: Phys<A: Sized>`, `where P::A: Sized`,
+      or through a subtrait with `Phys<A: Sized>` as supertrait. rustc accepts all three.
+      So `SeqPointsTo` keeps `T`, with `P: PointsToProperties<A = T>`.
 
 ### Phase 1: structural generalization and module layout (assessment section 1, groups 1-3)
 
@@ -201,15 +206,12 @@ Independent of the new traits; it changes existing ones.
    `from_seq`, `empty`, `zero_sized`/`zero_sized_helper`, `split`, `join`,
    `subrange`, `subrange_mut`, `from_untyped`, `from_untyped_with_typed_value`, `untyped_mut_join`,
    and the `View` / `SeqPointsToData` `ptr` field.
-5. Update the plan's ghost step 6 contracts and `from_refs`
-   (see [What this plan changes in the ghost metadata plan](#what-this-plan-changes-in-the-ghost-metadata-plan)).
-6. rustlib uses these types; update its call sites in the same change (not visible from this repo).
-7. Verify both builds.
+5. rustlib uses these types; update its call sites in the same change (not visible from this repo).
+6. Verify both builds.
 
 ### Phase 2: introduce the traits and the Sized impls
 
-Assumes ghost metadata step 1 (the field) is already in, so moved bodies include `metadata` from the
-start (see the combined order).
+The `metadata` field is already in, so moved bodies include it from the start.
 
 1. Add `TypedValue::value_ref` (`?Sized`). Restate the existing decode clauses with it where that
    simplifies things. `TypedValue<T>::value()` and `TypedValue<[T]>::value()` can stay as they are.
@@ -260,11 +262,11 @@ start (see the combined order).
 10. Verify. At this point `SeqPointsTo<T, PointsTo<T>>` is unchanged and just calls trait methods on
    its elements.
 
-### Phase 2b: slice impls (ghost steps 3 and 5)
+### Phase 2b: slice impls
 
 1. `impl<T> PointsToSingleValue for PointsToUnaligned<[T]>`,
-   reusing the bodies from the ghost step 3 code,
-   which was reverted and saved in [step3_slice_wip.patch](step3_slice_wip.patch).
+   reusing the bodies of the empty slice functions,
+   which were reverted and saved in [step3_slice_wip.patch](step3_slice_wip.patch).
    Its `size(len)` (`len * size_of::<T>()`) is already there from phase 1b,
    `satisfies_alignment` is `true`, and `metadata_matches(v, len)` is `v@.len() == len`.
    The inherent `PointsToUnaligned<[T]>::wf` from phase 2, step 3, is replaced by the trait's `wf`.
@@ -274,9 +276,14 @@ start (see the combined order).
    for `PointsTo<T>` and `PointsTo<[T]>` with one generic impl each.
    `PointsTo<[T]>` then has the trait with no slice-specific code.
 
-`borrow` (ghost step 5's `borrow_value`, renamed) is a trait method, so it comes with this phase.
-The inherent slice functions and the `_slice`-suffixed lemmas from step 3 are dropped,
-and so is the `PointsTo::<T>::zero_sized` turbofish it needed.
+`borrow` is a trait method, so it comes with this phase.
+For slices it is a field borrow of `Valid(t)`,
+the same way `TypedValue<[T]>::value()` already reads `&*self->0`.
+This needs `Tracked`'s `Deref` to take `A: ?Sized`.
+builtin's does, and so does rustlib's const impl used under `verus_verify_core`
+(`impl<A: ?Sized> const Deref for Tracked<A>` in `verified-1.95.0/core/src/ops/deref.rs`).
+The inherent slice functions and their `_slice`-suffixed lemmas are dropped,
+and so is the `PointsTo::<T>::zero_sized` turbofish they needed.
 
 ### Phase 2c: `PointsToRaw`
 
@@ -285,11 +292,15 @@ The design is in [`PointsToRaw`](TYPED_POINTS_TO_PLAN.md#pointstoraw). Run [phas
 1. The struct, its type invariant, and the specs `provenance`, `dom`, `is_range`, `contains_range`.
 2. `empty`, `split`, `join`, `ptr_bounds`, `provenance_non_null`, `is_disjoint`.
 3. `from_untyped(PointsToUntyped) -> PointsToRaw` and `into_untyped(start, len) -> PointsToUntyped`.
-   Items 1-3 go in `points_to.rs` and only need phase 1b, so they can land earlier.
+   Items 1-3 only need phase 1b, so they can land earlier.
 4. The generic `into_typed::<P: PointsToSingleValue>` / `from_typed::<P: PointsToSingleValue>`,
-   and `SeqPointsTo` versions (needs phases 2 and 2b),
-   in a second `impl PointsToRaw` block in `points_to_permissions.rs`, built on item 3.
-5. Port `Dealloc`, `allocate` and `deallocate` (trusted, unchanged).
+   and `SeqPointsTo` versions (needs phases 2 and 2b).
+
+All of `PointsToRaw` goes in `points_to_permissions.rs` (it is verified);
+it uses `PointsToUntyped` only through `from_seq` / `into_seq`.
+5. Port `allocate` and `deallocate` (trusted). `Dealloc` is dropped:
+   `ProvenanceData::orig_size` replaces its tracking of the original allocation size.
+   Where they go is open (trusted code shouldn't depend on the verified `PointsToRaw`).
 6. Add the trusted items to `POINTS_TO_AXIOMS.md` and note the removed `PointsToRaw` axioms.
 
 ### Phase 3: generic typed `SeqPointsTo`
@@ -311,115 +322,102 @@ SeqPointsTo<T, P>`, in this order (each step depends on the previous ones):
    `as_untyped_mut`.
 5. **Value operations:** the borrow/take/put/copy subrange functions and their helpers
    (renaming `borrow_value_subrange` to `borrow_subrange`).
-6. **`subrange_mut`:** keep it as an axiom on `SeqPointsTo<T, PointsTo<T>>` for now. With the ghost
-   metadata plan's M5 it becomes provable for any `P` (see below), so don't generalize the axiom.
+6. **`subrange_mut`:** keep it as an axiom on `SeqPointsTo<T, PointsTo<T>>` for now;
+   phase 3b proves it from M5, so don't generalize the axiom.
 7. Generalize `View` to `impl<T, P: PointsToSingleValueSized<A = T>> View for SeqPointsTo<T, P>`
    (`SeqPointsToData<T, P>`; `PointsToUntyped` keeps its own).
-   Leave in `impl<T> SeqPointsTo<T, PointsTo<T>>` only `is_aligned`, `is_disjoint_seqpt`
+   Move `is_disjoint_seqpt` too, with `other` generalized to any typed sequence.
+   Leave in `impl<T> SeqPointsTo<T, PointsTo<T>>` only `is_aligned`
    and `subrange_mut` (until proved).
 
 The recursive helpers are fine here because they're inherent methods. Only trait default methods
 can't recurse.
 
-### Phase 4: `SeqPointsTo<T, PointsToUnaligned<T>>` conversions
+### Phase 3b: borrowed-assembly axioms
 
-With the generic impl in place, the unaligned sequence exists. Add the conversions between the two
-sequence types (the "(Lower priority) add the unaligned conversions" TODO):
+The design is in [Borrowed-assembly axioms](TYPED_POINTS_TO_PLAN.md#borrowed-assembly-axioms-phase-3b).
+Needs phases 2b and 3.
 
-- `into_unaligned` / `into_aligned` (by value): convert each element and rebuild with `from_seq`.
-- `as_unaligned` / `as_aligned` (by reference): the element type changes, so this isn't a
-  `shr_ref_struct_wrap`. With the ghost metadata plan's `tracked_collect_perm_refs` and `from_refs`,
-  it is provable: borrow each element, convert it (`as_unaligned` / `as_aligned`), collect, wrap.
-  Without them it would need an axiom; leave it out until then.
-- `&mut` versions: provable the same way from M4-M6 once those exist.
+1. Confirm the two unbuilt assumptions first:
+   that `shr_ref_struct_wrap` accepts `tracked_ref`'s `&Tracked<T>` for `Valid`'s field
+   (the field-type check isn't robust to normalization),
+   and that Verus accepts disjoint `&mut` field borrows of a `PointsToUnaligned` inside the module.
+2. Add the shared axioms (`tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref`,
+   `from_raw_parts_ref`, `tracked_collect_perm_refs`),
+   then prove `TypedValue::valid_ref` and `SeqPointsTo::from_refs`.
+3. Add M1–M6.
+4. Prove the existing axioms that become provable, and remove them:
+   `PointsToUntyped::join_ref` (from `from_refs`), `join_mut` (M5 + M6),
+   and `SeqPointsTo::subrange_mut` (M5).
+   Restore `PointsToUntyped::split_mut` (M5 + M6).
+5. Prove `as_aligned_mut` (M4).
 
-Also add the unaligned slice conversions,
-`PointsToUnaligned<[T]>` ↔ `SeqPointsTo<T, PointsToUnaligned<T>>` (`&` and `&mut`),
-in a `PointsToUnaligned<T>`-specific sequence impl.
-They follow ghost step 6's aligned versions without the M4 wrap:
-each element is assembled directly with `from_raw_parts_ref` (shared) or M3 (`&mut`).
-Optionally, the aligned versions could then be proved from these
-plus the aligned/unaligned conversions, instead of separately.
+### Phase 4: sequence aligned/unaligned and slice ↔ sequence conversions
+
+Needs phase 3b's axioms (`from_raw_parts_ref`, `tracked_collect_perm_refs`, M1–M6).
+The design is in [Slice ↔ sequence conversions](TYPED_POINTS_TO_PLAN.md#slice--sequence-conversions-phase-4).
+
+1. Sequence aligned/unaligned conversions
+   (the "(Lower priority) add the unaligned conversions" TODO):
+   - `into_unaligned` / `into_aligned` (by value): convert each element and rebuild with `from_seq`.
+   - `as_unaligned` / `as_aligned` (by reference): the element type changes, so this isn't a
+     `shr_ref_struct_wrap`; borrow each element, convert it, collect with `tracked_collect_perm_refs`,
+     wrap with `from_refs`.
+   - `&mut` versions: the same way from M4-M6.
+2. The unaligned slice ↔ sequence conversions and borrowed constructors (the primary implementations),
+   `PointsToUnaligned<[T]>` ↔ `SeqPointsTo<T, PointsToUnaligned<T>>` (`&` and `&mut`):
+   each element is assembled directly with `from_raw_parts_ref` (shared) or M3 (`&mut`),
+   with M1/M2 for the typed values.
+3. The aligned versions, `PointsTo<[T]>` ↔ `SeqPointsTo<T, PointsTo<T>>`, and their borrowed constructors,
+   as compositions of 1, 2 and the single-permission aligned/unaligned conversions.
+
+### Phase 4b: restore the slice reference helpers
+
+These are where valid slice permissions come from:
+a real `&[T]` or `&mut [T]` supplies the tracked `[T]`.
+Restore the commented-out:
+
+- `SharedReference<[T]>::points_to` (`shared_reference.rs:126`): `&[T]` → `&PointsTo<[T]>`,
+  and `ptr_ref2_slice_ghost` (`:221`), the way back;
+- `mut_ref_to_shr_points_to_slice` (`raw_ptr_new.rs:683`): `&&mut [T]` → `&PointsTo<[T]>`;
+- `ptr_ref_slice` and `ptr_mut_ref_slice` (`raw_ptr_new.rs:524`, `:559`),
+  which go back from a pointer and a permission to a real reference.
+
+Update their contracts to the new specs, and review them when they're restored
+(they are trusted; where they go is part of the open placement decision in the design's Overview).
 
 ### Phase 5: docs
 
-Update `PORTING_STATUS.md`, `GENERALIZATION_ASSESSMENT.md` (mark level 3 done), and
-`POINTS_TO_AXIOMS.md` if any axiom's scope changed.
+- `PORTING_STATUS.md`: replace the "Port `impl<T> PointsTo<[T]>`" TODO and the unaligned-slices on-hold item;
+  note that `cast_points_to` / `cast_points_to_unaligned` now have a home.
+- `POINTS_TO_MIGRATION.md` §7–8: `PointsTo<[T]>` exists again for whole-slice values
+  (and `borrow` for `&[T]`, listed as "Not possible" in §7);
+  per-element validity is still `SeqPointsTo`.
+- `POINTS_TO_AXIOMS.md`: the phase 3b axioms and `abs_decode_slice`
+  (the slice-level ones may belong in `slice.rs`'s own docs instead),
+  the removed axioms (`join_ref`, `join_mut`, `subrange_mut`, `PointsToRaw`'s),
+  and any axiom whose scope changed.
+- `GENERALIZATION_ASSESSMENT.md`: mark level 3 done, and the §2 `ptr()` blocker resolved for slices.
+- Delete GHOST_METADATA_PLAN.md (superseded).
 
-## Interaction with the ghost metadata plan
-
-The two plans touch the same types, but neither depends on the other being finished. These are the
-points where they meet.
-
-### What the ghost metadata plan changes here
-
-- **The new field (ghost step 1).** `PointsToUnaligned` construction and destructuring sites get
-  `metadata: Ghost(())` / `metadata: _`. Phase 2 moves most of those sites from `PointsTo` into the
-  `PointsToUnaligned` impl, so doing ghost step 1 first means they're edited once.
-- **Trait shape.** The slice impls are why `PointsToSingleValue` doesn't require `A: Sized`, states
-  sizes with `Self::size(self.ptr()@.metadata)`, decodes through `value_ref`, and keeps by-value methods and constructors
-  in `PointsToSingleValueSized`.
-- **`subrange_mut` becomes provable.** M5 (`SeqPointsTo::from_seq_mut`) plus the existing
-  `tracked_seq_pt_mut` and `Seq::tracked_split_borrow_mut` give a proof of `subrange_mut` for any
-  `P`: borrow the sequence, split off the middle, wrap it with M5 at the offset pointer. This replaces
-  open decision 2 of the earlier version of this plan (whether to generalize the axiom). It is the
-  same result the reverted `wrap_mut` gave, but from a type-specific axiom.
-- **`join_ref`/`join_mut` become provable** (ghost plan, "Existing" trusted items), so the
-  assessment's section 1, group 2 idea of generalizing those axioms is no longer needed.
-- **`SeqPointsTo<T, PointsToUnaligned<T>>` borrowed conversions** (phase 4) become provable from
-  `from_refs` and M4-M6 instead of needing new axioms.
-
-### What this plan changes in the ghost metadata plan
-
-- **Steps 3 and 5 implement `PointsToSingleValue`** for `PointsToUnaligned<[T]>`
-  (phase 2b) instead of adding inherent functions;
-  `PointsTo<[T]>` gets it from the generic `PointsTo` impl.
-  Everything in step 3 is a trait method or part of the generic aligned/unaligned impl,
-  so no slice-only contracts remain (unless phase 0, items 7 or 8, fail).
-  Step 2's impls for `PointsToUnaligned<[T]>` stay as they are;
-  its `PointsTo<[T]>` impls are folded into the generic `PointsTo` impls in phase 2b.
-- **The `lemma_ptrs_len_same_valid` naming problem goes away.** The uncommitted step 3 code
-  used `_slice`-suffixed lemma names, because the broadcast group names lemmas by type,
-  and inherent functions with the same name on `PointsTo<T>` and `PointsTo<[T]>`
-  also made path calls like `PointsTo::zero_sized(p)` ambiguous.
-  As trait methods, each impl has its own `lemma_ptrs_len_same_valid` with no clash
-  (subject to phase 0, item 6, for broadcasting).
-- **Step 6's sequence-side functions** (`SeqPointsTo::<T, PointsTo<T>>::from_untyped_ref`,
-  `from_untyped_with_value_ref`, `as_slice_pt(_mut)`, and the `SeqPointsTo` side of `as_seq_pt(_mut)`)
-  go in the `PointsTo<T>`-specific impl, not the generic one: they produce or consume `PointsTo<[T]>`
-  and use M4. The unaligned counterparts (`SeqPointsTo<T, PointsToUnaligned<T>>` ↔
-  `PointsToUnaligned<[T]>`) are simpler (no M4 needed) and are added in phase 4.
-- **`from_refs` and M5** are already in the generic `SeqPointsTo<T, P>` impl in the ghost plan, which
-  matches phase 1.
-  After phase 1b their bound is `P: PointsToProperties<A = T>` (not `+ FixedSize`),
-  element offsets use `P::size(())`,
-  and their pointer argument is a thin `*mut T`, with `out.thin_ptr() == ptr` and `out.len() == perms.len()`.
-- **Step 6's conversions can state `out.ptr() == self.ptr()`** after phase 1b,
-  since `PointsTo<[T]>` and `SeqPointsTo<T, _>` then both have a `*mut [T]`,
-  instead of restating address, provenance and `len() == metadata`.
-
-### Combined order
+## Order
 
 | # | Step | Status | Why here |
 |---|---|---|---|
-| 1 | Ghost step 1: add the `metadata` field | done | Small; lets phase 2 move bodies once. |
-| 2 | Ghost steps 2 and 4: slice `PointsToPhys`/`PointsToProperties`/`View` impls, `abs_decode_slice` | done | Don't depend on the trait. |
-| 3 | Phase 0: spike | done ([results](#phase-0-results)) | Settles the trait mechanics before either plan commits to them. |
-| 4 | Phase 1: structural generic `SeqPointsTo` | next | Independent; small. |
-| 4b | Phase 0 check 10, then phase 1b: `SeqPointsTo` slice pointer, `size(metadata)`, no `FixedSize` | | Before phase 2, which writes the new traits against `PointsToPhys::size(metadata)`. |
-| 5 | Phase 2: traits + Sized impls | | Fixes the API the slice impls implement. |
-| 6 | Phase 2b: slice impls (ghost steps 3 and 5) | step 3 bodies in `step3_slice_wip.patch` | Uses the trait from row 5. |
-| 6b | Phase 0 check 11, then phase 2c: `PointsToRaw` | | Its generic typed conversions use rows 5-6; its untyped part only needs row 4b. |
-| 7 | Phase 3: generic typed `SeqPointsTo` | | Before ghost step 6, so step 6's code lands in the final impl structure. |
-| 8 | Ghost step 6: borrowed conversions and new axioms; then prove `subrange_mut`, `join_ref`, `join_mut` | | Needs rows 6-7. |
-| 9 | Phase 4 and ghost step 7 | | Both build on row 8. |
-| 10 | Phase 5 and ghost step 8: docs | | |
-| 11 | rustlib: `str` impls and conversions | | See [`str` in rustlib](TYPED_POINTS_TO_PLAN.md#str-in-rustlib). Needs rows 6 and 8. |
+| 1 | The `metadata` field; slice `PointsToPhys`/`PointsToProperties`/`View` impls; `abs_decode_slice` | done | Don't depend on the trait. |
+| 2 | Phase 0: spike | done ([results](#phase-0-results)) | Settles the trait mechanics first. |
+| 3 | Phase 1: structural generic `SeqPointsTo` | next | Independent; small. |
+| 3b | Phase 0 check 10, then phase 1b: `SeqPointsTo` slice pointer, `size(metadata)`, no `FixedSize` | | Before phase 2, which writes the new traits against `PointsToPhys::size(metadata)`. |
+| 4 | Phase 2: traits + Sized impls | | Fixes the API the slice impls implement. |
+| 5 | Phase 2b: slice impls | bodies in `step3_slice_wip.patch` | Uses the trait from row 4. |
+| 5b | Phase 0 check 11, then phase 2c: `PointsToRaw` | | Its generic typed conversions use rows 4-5; its untyped part only needs row 3b. |
+| 6 | Phase 3: generic typed `SeqPointsTo` | | Before phase 4, so the conversions land in the final impl structure. |
+| 7 | Phase 3b: borrowed-assembly axioms; prove `subrange_mut`, `join_ref`, `join_mut` | | Needs rows 5-6. |
+| 8 | Phase 4 and phase 4b | | Both build on row 7. |
+| 9 | Phase 5: docs | | |
+| 10 | rustlib: `str` impls and conversions | | See [`str` in rustlib](TYPED_POINTS_TO_PLAN.md#str-in-rustlib). Needs rows 5 and 7. |
 
-Row 4 can move later without affecting the slice work.
-Row 7 can also move after row 8,
-at the cost of moving step 6's sequence-side functions again in phase 3
-(they stay `PointsTo<T>`-specific, so that's mostly a relocation).
+Row 3 can move later without affecting the slice work.
 
 ## Risks
 
