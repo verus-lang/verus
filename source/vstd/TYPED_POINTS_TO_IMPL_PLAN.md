@@ -1,4 +1,4 @@
-# Implementation plan: `PointsToSingleValue` trait and a generic typed `SeqPointsTo` (level 3)
+# Implementation plan: `PointsToSingleValue` trait and typed `SeqPointsTo` (level 3)
 
 The phases for implementing the design in [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md).
 The design document has the target traits, impls, conversions and full specifications;
@@ -159,7 +159,7 @@ These cover the [`SeqPointsTo` pointer change](TYPED_POINTS_TO_NOTES.md#seqpoint
 
 ### Phase 1: structural generalization and module layout (assessment section 1, groups 1-3)
 
-Independent of the trait, and the generic typed impl needs these.
+Independent of the trait.
 The design is in [Module layout](TYPED_POINTS_TO_NOTES.md#module-layout).
 
 - Rename `PointsToSingleton` to `PointsToByte` (and `PointsToSingletonData` to `PointsToByteData`),
@@ -307,35 +307,15 @@ it uses `PointsToUntyped` only through `from_seq` / `into_seq`.
    They go in `raw_ptr_specs.rs`.
 6. Add the trusted items to `POINTS_TO_AXIOMS.md` and note the removed `PointsToRaw` axioms.
 
-### Phase 3: generic typed `SeqPointsTo`
+### Phase 3: typed `SeqPointsTo`
 
-Move the `SeqPointsTo<T, PointsTo<T>>` impl to `impl<T, P: PointsToSingleValueSized<A = T>>
-SeqPointsTo<T, P>`, in this order (each step depends on the previous ones):
+No generalization: there is no `SeqPointsTo<T, PointsToUnaligned<T>>`,
+so the typed impl stays `impl<T> SeqPointsTo<T, PointsTo<T>>`.
 
-1. **Specs:** `wf` (generic definition in the design), `bytes`/`bytes_inner`, `seq_typed_value`, `is_valid*`,
-   `is_empty`, `is_fully_empty`, `seq_value`, `value_subrange`, `stays_wf`.
-2. **Byte lemmas:** `typed_value_equiv`, `bytes_len_helper`/`bytes_len`, `bytes_subrange`,
-   `bytes_equiv`, `bytes_subrange_equiv`, `bytes_decode_helper`/`bytes_decode`, `bytes_inner_ext`.
-   These need `P::bytes_decode` plus `P::size(())` for each element's byte length. Expect most
-   of the trigger fixup work here, since `P::bytes()` is opaque in generic code.
-3. **Structure with alignment:** `split`, `join`, `subrange`, `zero_sized`/`zero_sized_helper`,
-   `ptrs_len_same_valid`/`lemma_ptrs_len_same_valid`,
-   using `P::lemma_satisfies_alignment_offset` and `P::satisfies_alignment_of_wf`.
-4. **Untyped conversions:** `into_untyped_with_typed_value`, `into_untyped`, `from_untyped`,
-   `from_untyped_with_typed_value`, `untyped_ref_join`/`as_untyped`, `untyped_mut_join`/
-   `as_untyped_mut`.
-5. **Value operations:** the borrow/take/put/copy subrange functions and their helpers
-   (renaming `borrow_value_subrange` to `borrow_subrange`).
-6. **`subrange_mut`:** keep it as an axiom on `SeqPointsTo<T, PointsTo<T>>` for now;
-   phase 3b proves it from M5 in the generic impl, so don't generalize the axiom.
-7. Generalize `View` to `impl<T, P: PointsToSingleValueSized<A = T>> View for SeqPointsTo<T, P>`
-   (`SeqPointsToData<T, P>`; `PointsToUntyped` keeps its own).
-   Move `is_disjoint_seqpt` too, with `other` generalized to any typed sequence.
-   Leave in `impl<T> SeqPointsTo<T, PointsTo<T>>` only `is_aligned`
-   and `subrange_mut` (until phase 3b moves it).
-
-The recursive helpers are fine here because they're inherent methods. Only trait default methods
-can't recurse.
+1. Update it for the phase 2 traits: calls to removed inherent `PointsTo<T>` methods
+   become trait method calls (`PointsTo<T>`'s open specs still unfold).
+2. Rename `borrow_value_subrange` to `borrow_subrange`.
+3. Keep `subrange_mut` as an axiom until phase 3b proves it.
 
 ### Phase 3b: borrowed-assembly axioms
 
@@ -347,35 +327,23 @@ Needs phases 2b and 3.
    (the field-type check isn't robust to normalization),
    and that Verus accepts disjoint `&mut` field borrows of a `PointsToUnaligned` inside the module.
 2. Add the shared axioms (`tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref`,
-   `from_raw_parts_ref`, `tracked_collect_perm_refs`),
-   then prove `TypedValue::valid_ref` and `SeqPointsTo::from_refs`.
-3. Add M1–M6.
-4. Prove the existing axioms that become provable, and remove them:
-   `PointsToUntyped::join_ref` (from `from_refs`), `join_mut` (M5 + M6),
-   and `SeqPointsTo::subrange_mut` (M5).
-   `subrange_mut` moves from `impl<T> SeqPointsTo<T, PointsTo<T>>` to the typed generic impl as a proof fn,
-   with `size_of::<T>()` → `P::size(())`.
-   Restore `PointsToUntyped::split_mut` (M5 + M6).
+   `from_raw_parts_ref`), then prove `TypedValue::valid_ref`.
+3. Add M1 and M3–M5.
+4. Prove the existing axiom that becomes provable, and remove it:
+   `SeqPointsTo::subrange_mut` (M5), staying on `SeqPointsTo<T, PointsTo<T>>`.
+   Restore `PointsToUntyped::split_mut` (M5 and `Seq::tracked_split_borrow_mut`).
+   `PointsToUntyped::join_ref` and `join_mut` stay axioms.
 5. Prove `as_aligned_mut` (M4).
 
-### Phase 4: sequence aligned/unaligned and slice ↔ sequence conversions
+### Phase 4: sequence → slice and slice indexing
 
-Needs phase 3b's axioms (`from_raw_parts_ref`, `tracked_collect_perm_refs`, M1–M6).
-The design is in [Slice ↔ sequence conversions](TYPED_POINTS_TO_PLAN.md#slice--sequence-conversions-phase-4).
+Needs phase 3b's axioms (`from_raw_parts_ref`, `tracked_slice_index`, `tracked_slice_from_refs`, M1, M3–M5).
+The design is in [Sequence → slice conversions and slice indexing](TYPED_POINTS_TO_PLAN.md#sequence--slice-conversions-and-slice-indexing-phase-4).
 
-1. Sequence aligned/unaligned conversions
-   (the "(Lower priority) add the unaligned conversions" TODO):
-   - `into_unaligned` / `into_aligned` (by value): convert each element and rebuild with `from_seq`.
-   - `as_unaligned` / `as_aligned` (by reference): the element type changes, so this isn't a
-     `shr_ref_struct_wrap`; borrow each element, convert it, collect with `tracked_collect_perm_refs`,
-     wrap with `from_refs`.
-   - `&mut` versions: the same way from M4-M6.
-2. The unaligned slice ↔ sequence conversions and borrowed constructors (the primary implementations),
-   `PointsToUnaligned<[T]>` ↔ `SeqPointsTo<T, PointsToUnaligned<T>>` (`&` and `&mut`):
-   each element is assembled directly with `from_raw_parts_ref` (shared) or M3 (`&mut`),
-   with M1/M2 for the typed values.
-3. The aligned versions, `PointsTo<[T]>` ↔ `SeqPointsTo<T, PointsTo<T>>`, and their borrowed constructors,
-   as compositions of 1, 2 and the single-permission aligned/unaligned conversions.
+1. `PointsToUnaligned::as_raw_parts_mut` in `points_to_ops.rs` (disjoint field borrows).
+2. The sequence → slice conversions, `SeqPointsTo<T, PointsTo<T>>` → `PointsTo<[T]>` (`&` and `&mut`),
+   as described in the design.
+3. `borrow_index` on `PointsToUnaligned<[T]>`, and on `PointsTo<[T]>` through the aligned/unaligned conversions.
 
 ### Phase 4b: restore the slice reference helpers
 
@@ -417,8 +385,8 @@ Update their contracts to the new specs, and review them when they're restored
 | 4 | Phase 2: traits + Sized impls | | Fixes the API the slice impls implement. |
 | 5 | Phase 2b: slice impls | bodies in `step3_slice_wip.patch` | Uses the trait from row 4. |
 | 5b | Phase 0 check 11, then phase 2c: `PointsToRaw` | | Its generic typed conversions use rows 4-5; its untyped part only needs row 3b. |
-| 6 | Phase 3: generic typed `SeqPointsTo` | | Before phase 4, so the conversions land in the final impl structure. |
-| 7 | Phase 3b: borrowed-assembly axioms; prove `subrange_mut`, `join_ref`, `join_mut` | | Needs rows 5-6. |
+| 6 | Phase 3: typed `SeqPointsTo` on the new traits | | Small; can merge into phase 2. |
+| 7 | Phase 3b: borrowed-assembly axioms; prove `subrange_mut` and `split_mut` | | Needs rows 5-6. |
 | 8 | Phase 4 and phase 4b | | Both build on row 7. |
 | 9 | Phase 5: docs | | |
 | 10 | rustlib: `str` impls and conversions | | See [`str` in rustlib](TYPED_POINTS_TO_NOTES.md#str-in-rustlib). Needs rows 5 and 7. |
@@ -431,9 +399,6 @@ Row 3 can move later without affecting the slice work.
   expressing `Self::A: Sized` are the load-bearing assumptions.
   The generic `PointsTo` impl (item 9) is not load-bearing:
   its fallback is per-type delegating impls, at the cost of the duplication it avoids.
-- **Proof fixups in phase 3.** Every fact about element bytes and values goes through opaque trait
-  specs, so proofs that currently unfold `PointsTo` definitions will need trait lemma calls. This is
-  likely the bulk of the effort.
 - **Broadcast cyclicity.** Moving lemmas into traits can change which functions are on a broadcast
   group's dependency path. The latest commit (`cd02a6bae`) already had to fix cyclicity errors of
   this kind.

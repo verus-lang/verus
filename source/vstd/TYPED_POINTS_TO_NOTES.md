@@ -5,6 +5,11 @@
 > the `SeqPointsTo` pointer change, `PointsToRaw`'s proofs, proof sketches, deferred items).
 > The specs to review and approve are in [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md);
 > where the two differ, that document wins.
+>
+> **Superseded: the generic typed `SeqPointsTo`.** There is no `SeqPointsTo<T, PointsToUnaligned<T>>`;
+> the only typed sequences are `SeqPointsTo<T, PointsTo<T>>`, so the typed impl is not generalized.
+> The sections below about `impl<T, P: PointsToSingleValueSized<A = T>> SeqPointsTo<T, P>`,
+> its generic `View`, and the sequence aligned/unaligned conversions no longer apply.
 
 This is the design and specification for "level 3" from
 [GENERALIZATION_ASSESSMENT.md](GENERALIZATION_ASSESSMENT.md#4-a-typedpointsto-trait-for-typed-permissions):

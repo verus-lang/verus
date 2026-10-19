@@ -1,4 +1,4 @@
-# Approved: `PointsToSingleValue` trait and a generic typed `SeqPointsTo` (level 3)
+# Approved: `PointsToSingleValue` trait and typed `SeqPointsTo` (level 3)
 
 Designs and specifications that have been reviewed and approved.
 Any change here, including to documentation, needs to be flagged for re-approval.
@@ -35,6 +35,9 @@ What is still under review is in [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.
 | `PointsToRaw` | no (no single pointer) | no | no | vstd | phase 2c |
 
 There is no `SeqPointsTo<str, _>`.
+There is no `SeqPointsTo<T, PointsToUnaligned<T>>`:
+the only typed sequences are `SeqPointsTo<T, PointsTo<T>>`
+(unaligned memory is a `PointsToUnaligned<T>` or `PointsToUnaligned<[T]>`).
 
 ## API changes not visible in the specs
 
@@ -59,8 +62,8 @@ removing it leaves a complete single-value and untyped API.
 | `points_to_model.rs` (trusted) | `points_to_ops.rs` (trusted) | `points_to_collections.rs` (verified) |
 |---|---|---|
 | the five trait definitions, with their default bodies | the `PointsToProperties` impls of `SeqPointsTo`, `PointsToUnaligned` and `PointsTo` | `PointsToRaw` (all of it) |
-| the struct definitions: `PointsToByte`, `TypedValue`, `SeqPointsTo`, `PointsToUntyped`, `PointsToUnaligned`, `PointsTo`; their closed accessors and the inherent spec fns (`typed_value`, `bytes`, `metadata`, `is_valid`, `value`, `value_ref`, `len`, `thin_ptr`, …); their `View` impls | the `PointsToSingleValue` impls (per type for `PointsToUnaligned`, generic for `PointsTo`) and the `PointsToSingleValueSized` impls | the typed `SeqPointsTo` impl (`impl<T, P: PointsToSingleValueSized<A = T>>`), including its `wf`, and its generic `View` |
-| well-formedness: every `PointsToPhys` impl (`ptr`, `size`, `wf_basic`), every `PointsToSingleValueSpec` impl (`typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment`, and the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic`), `wf_basic_unaligned`, `PointsToUntyped::wf` and `bytes` | the structural `SeqPointsTo` impl (except M5) and `PointsToUntyped`'s proofs | the `PointsTo<T>`- and `PointsToUnaligned<T>`-specific `SeqPointsTo` impls |
+| the struct definitions: `PointsToByte`, `TypedValue`, `SeqPointsTo`, `PointsToUntyped`, `PointsToUnaligned`, `PointsTo`; their closed accessors and the inherent spec fns (`typed_value`, `bytes`, `metadata`, `is_valid`, `value`, `value_ref`, `len`, `thin_ptr`, …); their `View` impls | the `PointsToSingleValue` impls (per type for `PointsToUnaligned`, generic for `PointsTo`) and the `PointsToSingleValueSized` impls | the typed `SeqPointsTo` impl (`impl<T> SeqPointsTo<T, PointsTo<T>>`), including its `wf`, and its `View` |
+| well-formedness: every `PointsToPhys` impl (`ptr`, `size`, `wf_basic`), every `PointsToSingleValueSpec` impl (`typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment`, and the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic`), `wf_basic_unaligned`, `PointsToUntyped::wf` and `bytes` | the structural `SeqPointsTo` impl (except M5) and `PointsToUntyped`'s proofs | |
 | the axioms: `PointsToByte`'s `PointsToProperties` impl, `PointsToUntyped::join_ref` / `join_mut`, `from_raw_parts_ref`, M1, M3–M5 | the aligned/unaligned conversions | the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`) |
 | the tracked getters and byte disjointness: `TypedValue::tracked_copy`, `valid_ref`; `PointsToByte::is_disjoint_byte` | the slice permissions' borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`) and `borrow_index`; `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`; `group_points_to_lemmas` | `group_points_to_collections_lemmas` |
 
@@ -1137,7 +1140,7 @@ pub trait PointsToSingleValue: PointsToSingleValueSpec + PointsToProperties {
 
 /// Restricts `PointsToSingleValue` to permissions whose value type is `Sized`,
 /// so its value can be moved in and out of the permission.
-/// These are the element permissions of a typed `SeqPointsTo`.
+/// `PointsTo<T>` permissions are the element permissions of a typed `SeqPointsTo`.
 pub trait PointsToSingleValueSized: PointsToSingleValue<A: Sized> {
     /// The alignment requirement is preserved by offsets that are multiples of the size.
     proof fn lemma_satisfies_alignment_offset(addr: usize, i: nat)
