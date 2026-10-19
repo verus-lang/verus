@@ -1178,14 +1178,14 @@ Every new trusted item: the summary, then the full definitions.
 | Item | Planned file | What it states | Uses |
 |---|---|---|---|
 | `abs_decode_slice` (already added) | `type_representation.rs` | A slice decodes exactly when each element's slot does. | slice `wf` |
-| `SharedReference<[T]>::points_to`, `ptr_ref2_slice_ghost` | `shared_reference.rs` (restored) | A shared slice reference gives a valid `PointsTo<[T]>`, and back. | sources of valid slice permissions (phase 4b) |
-| `ptr_ref_slice`, `ptr_mut_ref_slice` (`external_body`), `mut_ref_to_shr_points_to_slice` | `raw_ptr_new.rs` (restored) | Dereferencing a pointer with a valid `PointsTo<[T]>`; a `&&mut [T]` gives a shared `PointsTo<[T]>`. | exec slice reads and writes (phase 4b) |
 | `global_alloc_id` (`uninterp`) | with `allocate` (placement open) | The id of the global allocator's allocations. | `allocate` / `deallocate` |
 | `allocate`, `deallocate` (`external_body`) | open | Allocation gives a `PointsToRaw` for the new range with a global-allocator provenance; deallocation consumes one covering the whole allocation. | heap allocation |
 
-Minor changes to existing axioms (`ptr_ref`, `ptr_ref2`, `ptr_ref2_ghost`, `mut_ref_to_shr_points_to`, `SharedReference::points_to`)
+Minor changes to existing axioms (`ptr_ref`, `ptr_ref2`, `ptr_ref2_ghost`, `mut_ref_to_shr_points_to`, `SharedReference::points_to`,
+and the restored slice versions `ptr_ref_slice`, `ptr_ref2_slice_ghost`, `mut_ref_to_shr_points_to_slice`, `SharedReference<[T]>::points_to`)
 are approved and in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#minor-changes-to-existing-trusted-specs),
-and so are the strengthened `ptr_mut_ref`, the new `Seq` tracked operations
+and so are the strengthened `ptr_mut_ref`, `ptr_mut_ref_slice` and `ptr_mut_ref_str`,
+the other `str` reference helpers (minor changes), the new `Seq` tracked operations
 (`tracked_borrow_subrange`, `tracked_split_borrow_mut`),
 and the borrowed-assembly axioms (`tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref`,
 `PointsToUnaligned::from_raw_parts_ref`, `tracked_collect_perm_refs`, and M1–M6)
@@ -1197,7 +1197,6 @@ and the borrowed-assembly axioms (`tracked_slice_index`, `tracked_slice_from_ref
 |---|---|---|
 | `abs_decode_str` | A `str` decodes exactly when its bytes are valid UTF-8 and each decodes as a `u8`. | `str` `wf`, `str` ↔ `[u8]` |
 | `TypedValue::<str>::as_bytes_mut` | A `&mut` `str` typed value acts as a `&mut` byte-slice typed value; non-UTF-8 final bytes leave the `str` empty. | `as_bytes_mut`; the owned casts (`into_bytes`, `from_bytes`) |
-| `SharedReference<str>::points_to`, `ptr_ref2_str_ghost`, `ptr_ref_str`, `ptr_mut_ref_str`, `mut_ref_to_shr_points_to_str` | The `str` versions of the reference helpers (moved from vstd's commented-out code). | exec `str` code |
 
 Not trusted: the shared `&TypedValue<str>` → `&TypedValue<[u8]>` cast
 (from rustlib's existing `str::as_bytes_tracked` axiom and `valid_ref`)
@@ -1218,82 +1217,10 @@ the shared ones (`tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref`
 
 ### Slice reference helpers (phase 4b)
 
-Restored from commented-out code, each mirroring an existing Sized version.
-
-```rust
-// shared_reference.rs (restored from lines 126 and 221)
-impl<'a, T> SharedReference<'a, [T]> {
-    /// A shared slice reference gives a shared, valid slice permission.
-    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<[T]>)
-        ensures
-            pt.ptr() == self.ptr(),
-            pt.is_valid(),
-            pt.typed_value().value_ref()@ == self.value()@,
-            pt.wf(),
-    ;
-}
-
-/// The ghost version of `ptr_ref2` for slices.
-/// Because this doesn't constitute a retag,
-/// the returned value's pointer has the same provenance as the original pointer.
-pub axiom fn ptr_ref2_slice_ghost<'a, T>(ptr: *const [T], tracked perm: &PointsTo<[T]>)
-    -> (tracked v: SharedReference<'a, [T]>)
-    requires
-        perm.ptr() == ptr,
-        perm.is_valid(),
-        perm.wf(),
-    ensures
-        v.value()@ == perm.typed_value().value_ref()@,
-        v.ptr() == ptr,
-;
-
-// raw_ptr_new.rs (restored from lines 524, 559 and 683)
-/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
-#[verifier::external_body]
-pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<[T]>>) -> (v: &[T])
-    requires
-        perm.ptr() == ptr,
-        perm.is_valid(),
-        perm.wf(),
-    ensures
-        v@ == perm.typed_value().value_ref()@,
-    opens_invariants none
-    no_unwind
-{
-    unsafe { &*ptr }
-}
-
-/// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
-#[verifier::external_body]
-pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v: &mut [T])
-    requires
-        old(perm).ptr() == ptr,
-        old(perm).is_valid(),
-        old(perm).wf(),
-    ensures
-        final(perm).ptr() == ptr,
-        final(perm).is_valid(),
-        // The final bytes decode to the final value.
-        final(perm).wf(),
-        old(perm).typed_value().value_ref()@ == v@,
-        final(perm).typed_value().value_ref()@ == final(v)@,
-    opens_invariants none
-    no_unwind
-{
-    unsafe { &mut *ptr }
-}
-
-/// Convert from a shared reference to a `&'a mut [T]` to a `&'a PointsTo<[T]>`.
-pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T])
-    -> (tracked pt: &'a PointsTo<[T]>)
-    ensures
-        pt.ptr() == mut_ref_ptr(*mut_ref),
-        pt.is_valid(),
-        pt.typed_value().value_ref()@ == (*old(*mut_ref))@,
-        pt.wf(),
-        &*final(*mut_ref) == &*old(*mut_ref),
-;
-```
+Approved and in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md):
+`ptr_mut_ref_slice` with `ptr_mut_ref` in
+[New axioms and axioms with bigger changes](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes),
+and the rest in [Minor changes to existing trusted specs](TYPED_POINTS_TO_APPROVED.md#minor-changes-to-existing-trusted-specs).
 
 ### Allocation (phase 2c)
 
@@ -1397,67 +1324,9 @@ impl TypedValue<str> {
             final(self).is_valid() ==> final(self).value_ref()@ == final(out).value()@,
     ;
 }
-
-// The str reference helpers, moved from vstd's commented-out code.
-impl<'a> SharedReference<'a, str> {
-    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<str>)
-        ensures
-            pt.ptr() == self.ptr(),
-            pt.is_valid(),
-            pt.typed_value().value_ref() == self.value(),
-            pt.wf(),
-    ;
-}
-
-pub axiom fn ptr_ref2_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str>) -> (tracked v: SharedReference<'a, str>)
-    requires
-        perm.ptr() == ptr,
-        perm.is_valid(),
-        perm.wf(),
-    ensures
-        v.value() == perm.typed_value().value_ref(),
-        v.ptr() == ptr,
-;
-
-#[verifier::external_body]
-pub const fn ptr_ref_str(ptr: *const str, Tracked(perm): Tracked<&PointsTo<str>>) -> (v: &str)
-    requires
-        perm.ptr() == ptr,
-        perm.is_valid(),
-        perm.wf(),
-    ensures
-        v == perm.typed_value().value_ref(),
-    opens_invariants none
-    no_unwind
-{
-    unsafe { &*ptr }
-}
-
-#[verifier::external_body]
-pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo<str>>) -> (v: &mut str)
-    requires
-        old(perm).ptr() == ptr,
-        old(perm).is_valid(),
-        old(perm).wf(),
-    ensures
-        final(perm).ptr() == ptr,
-        final(perm).is_valid(),
-        // The final bytes decode to the final value.
-        final(perm).wf(),
-        old(perm).typed_value().value_ref() == &*v,
-        final(perm).typed_value().value_ref() == &*final(v),
-    opens_invariants none
-    no_unwind
-{
-    unsafe { &mut *ptr }
-}
-
-pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) -> (tracked pt: &'a PointsTo<str>)
-    ensures
-        pt.ptr() == mut_ref_ptr(*mut_ref),
-        pt.is_valid(),
-        pt.typed_value().value_ref() == &*old(*mut_ref),
-        pt.wf(),
-        &*final(*mut_ref) == &*old(*mut_ref),
-;
 ```
+
+The `str` reference helpers are approved and in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md):
+`ptr_mut_ref_str` with `ptr_mut_ref` in
+[New axioms and axioms with bigger changes](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes),
+and the rest in [Minor changes to existing trusted specs](TYPED_POINTS_TO_APPROVED.md#minor-changes-to-existing-trusted-specs).

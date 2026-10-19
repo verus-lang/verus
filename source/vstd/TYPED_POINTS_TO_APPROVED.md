@@ -70,7 +70,8 @@ Existing axioms with minor contract changes on this branch are in
 
 ## Minor changes to existing trusted specs
 
-Already in the code on this branch.
+The Sized ones are already in the code on this branch;
+the slice versions are restored in phase 4b, and the `str` versions move to rustlib.
 `ptr_mut_ref`'s change (it now also ensures `final(perm).wf()`) is a bigger change;
 it's in [New axioms and axioms with bigger changes](#new-axioms-and-axioms-with-bigger-changes).
 
@@ -80,6 +81,17 @@ it's in [New axioms and axioms with bigger changes](#new-axioms-and-axioms-with-
 | `mut_ref_to_shr_points_to` | `raw_ptr_new.rs` | Now ensures `pt.wf()`. | the source of valid permissions from `&mut T` |
 | `SharedReference::points_to` | `shared_reference.rs` | Now ensures `pt.wf()`. | the source of valid shared permissions |
 | `ptr_ref2` (`external_body`), `ptr_ref2_ghost` | `shared_reference.rs` | Now require `perm.wf()`. | exec code; `SharedReference` from a permission |
+| `ptr_ref_slice` (`external_body`; restored, phase 4b) | `raw_ptr_new.rs` | Restored from commented-out code; now requires `perm.wf()`. | exec slice reads |
+| `mut_ref_to_shr_points_to_slice` (restored, phase 4b) | `raw_ptr_new.rs` | Restored from commented-out code; now ensures `pt.wf()`. | the source of valid slice permissions from `&mut [T]` |
+| `SharedReference<[T]>::points_to` (restored, phase 4b) | `shared_reference.rs` | Restored from commented-out code; now ensures `pt.wf()`. | the source of valid shared slice permissions |
+| `ptr_ref2_slice_ghost` (restored, phase 4b) | `shared_reference.rs` | Restored from commented-out code; now requires `perm.wf()`. | `SharedReference<[T]>` from a slice permission |
+| `ptr_ref_str` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code; now requires `perm.wf()`. | exec `str` reads |
+| `mut_ref_to_shr_points_to_str` (rustlib) | rustlib | Moved from vstd's commented-out code; now ensures `pt.wf()`. | the source of valid `str` permissions from `&mut str` |
+| `SharedReference<str>::points_to` (rustlib) | rustlib | Moved from vstd's commented-out code; now ensures `pt.wf()`. | the source of valid shared `str` permissions |
+| `ptr_ref2_str_ghost` (rustlib) | rustlib | Moved from vstd's commented-out code; now requires `perm.wf()`. | `SharedReference<str>` from a `str` permission |
+
+The restored slice and `str` versions also state the value through `typed_value().value_ref()`
+(with `@` for slices) in place of the old `value()`, which the planned `PointsTo<[T]>` / `PointsTo<str>` don't have.
 
 ```rust
 // raw_ptr_new.rs
@@ -110,6 +122,34 @@ pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
         pt.value() == *old(*mut_ref),
         pt.wf(),
         *final(*mut_ref) == *old(*mut_ref),
+;
+
+// raw_ptr_new.rs, restored slice versions (phase 4b; from lines 524 and 683)
+
+/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
+#[verifier::external_body]
+pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<[T]>>) -> (v: &[T])
+    requires
+        perm.ptr() == ptr,
+        perm.is_valid(),
+        perm.wf(),
+    ensures
+        v@ == perm.typed_value().value_ref()@,
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &*ptr }
+}
+
+/// Convert from a shared reference to a `&'a mut [T]` to a `&'a PointsTo<[T]>`.
+pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T])
+    -> (tracked pt: &'a PointsTo<[T]>)
+    ensures
+        pt.ptr() == mut_ref_ptr(*mut_ref),
+        pt.is_valid(),
+        pt.typed_value().value_ref()@ == (*old(*mut_ref))@,
+        pt.wf(),
+        &*final(*mut_ref) == &*old(*mut_ref),
 ;
 
 // shared_reference.rs
@@ -164,6 +204,80 @@ pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) ->
         v.value() == perm.value(),
         v.ptr() == ptr,
 ;
+
+// shared_reference.rs, restored slice versions (phase 4b; from lines 126 and 221)
+
+impl<'a, T> SharedReference<'a, [T]> {
+    /// A shared slice reference gives a shared, valid slice permission.
+    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<[T]>)
+        ensures
+            pt.ptr() == self.ptr(),
+            pt.is_valid(),
+            pt.typed_value().value_ref()@ == self.value()@,
+            pt.wf(),
+    ;
+}
+
+/// The ghost version of `ptr_ref2` for slices.
+/// Because this doesn't constitute a retag,
+/// the returned value's pointer has the same provenance as the original pointer.
+pub axiom fn ptr_ref2_slice_ghost<'a, T>(ptr: *const [T], tracked perm: &PointsTo<[T]>)
+    -> (tracked v: SharedReference<'a, [T]>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_valid(),
+        perm.wf(),
+    ensures
+        v.value()@ == perm.typed_value().value_ref()@,
+        v.ptr() == ptr,
+;
+```
+
+```rust
+// rustlib: the str versions, moved from vstd's commented-out code.
+
+impl<'a> SharedReference<'a, str> {
+    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<str>)
+        ensures
+            pt.ptr() == self.ptr(),
+            pt.is_valid(),
+            pt.typed_value().value_ref() == self.value(),
+            pt.wf(),
+    ;
+}
+
+pub axiom fn ptr_ref2_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str>) -> (tracked v: SharedReference<'a, str>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_valid(),
+        perm.wf(),
+    ensures
+        v.value() == perm.typed_value().value_ref(),
+        v.ptr() == ptr,
+;
+
+#[verifier::external_body]
+pub const fn ptr_ref_str(ptr: *const str, Tracked(perm): Tracked<&PointsTo<str>>) -> (v: &str)
+    requires
+        perm.ptr() == ptr,
+        perm.is_valid(),
+        perm.wf(),
+    ensures
+        v == perm.typed_value().value_ref(),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &*ptr }
+}
+
+pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) -> (tracked pt: &'a PointsTo<str>)
+    ensures
+        pt.ptr() == mut_ref_ptr(*mut_ref),
+        pt.is_valid(),
+        pt.typed_value().value_ref() == &*old(*mut_ref),
+        pt.wf(),
+        &*final(*mut_ref) == &*old(*mut_ref),
+;
 ```
 
 ## New axioms and axioms with bigger changes
@@ -174,6 +288,8 @@ Specs approved so far; the full list of new trusted items is in
 | Item | File | What it states | Uses |
 |---|---|---|---|
 | `ptr_mut_ref` (`external_body`; existing, strengthened, already in the code) | `raw_ptr_new.rs` | Now also ensures `final(perm).wf()`: the final bytes decode to the final value (and requires `old(perm).wf()`). | exec writes through `&mut T` |
+| `ptr_mut_ref_slice` (`external_body`; restored, phase 4b) | `raw_ptr_new.rs` | Restored from commented-out code, strengthened the same way as `ptr_mut_ref`. | exec writes through `&mut [T]` |
+| `ptr_mut_ref_str` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code, strengthened the same way as `ptr_mut_ref`. | exec writes through `&mut str` |
 | `Seq::tracked_borrow_subrange` (`external_body`; already in the code) | `seq.rs` | Borrows a subrange of a borrowed tracked `Seq`. | `subrange_basic`, `split_ref` |
 | `Seq::tracked_split_borrow_mut` (`external_body`; already in the code) | `seq.rs` | Splits a mutable borrow of a tracked `Seq` in two. | `subrange_mut`, the `&mut` conversions |
 | `tracked_slice_index` (phase 3b) | `slice.rs` | Borrows an element of a borrowed slice. | shared slice → sequence |
@@ -209,6 +325,48 @@ pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>
         final(perm).wf(),
         old(perm).value() == *v,
         final(perm).value() == *final(v),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
+}
+
+// Restored slice version (phase 4b; from raw_ptr_new.rs line 559).
+// The value is stated as typed_value().value_ref()@ in place of the old value() (a Seq<T>).
+/// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
+#[verifier::external_body]
+pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v: &mut [T])
+    requires
+        old(perm).ptr() == ptr,
+        old(perm).is_valid(),
+        old(perm).wf(),
+    ensures
+        final(perm).ptr() == ptr,
+        final(perm).is_valid(),
+        // The final bytes decode to the final value.
+        final(perm).wf(),
+        old(perm).typed_value().value_ref()@ == v@,
+        final(perm).typed_value().value_ref()@ == final(v)@,
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
+}
+
+// rustlib: the str version, moved from vstd's commented-out code.
+#[verifier::external_body]
+pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo<str>>) -> (v: &mut str)
+    requires
+        old(perm).ptr() == ptr,
+        old(perm).is_valid(),
+        old(perm).wf(),
+    ensures
+        final(perm).ptr() == ptr,
+        final(perm).is_valid(),
+        // The final bytes decode to the final value.
+        final(perm).wf(),
+        old(perm).typed_value().value_ref() == &*v,
+        final(perm).typed_value().value_ref() == &*final(v),
     opens_invariants none
     no_unwind
 {
