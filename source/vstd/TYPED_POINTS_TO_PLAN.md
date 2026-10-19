@@ -646,7 +646,41 @@ so there are no sequence aligned/unaligned conversions.
 
 There are no slice → sequence conversions (`as_seq_pt`, `as_seq_pt_mut`);
 `borrow_index` borrows one element of a slice permission instead
-(approved; see [Slice indexing](TYPED_POINTS_TO_APPROVED.md#slice-indexing)).
+(in `points_to_ops.rs`; spec okayed, to be approved with its impl block).
+It needs no new axioms:
+the bytes come from `split_ref` on the untyped permission,
+a valid element's typed value from `tracked_slice_index` and `TypedValue::valid_ref`
+(an empty one from `tracked_static_mut_ref`, as in the other borrowed conversions),
+and the permission from `from_raw_parts_ref`.
+
+```rust
+impl<T> PointsToUnaligned<[T]> {
+    /// Borrows the permission to the element at index `i`.
+    /// If the slice permission is empty, so is the element's.
+    pub proof fn borrow_index(tracked &self, i: int) -> (tracked out: &PointsToUnaligned<T>)
+        requires
+            self.wf(),
+            0 <= i < self.ptr()@.metadata,
+        ensures
+            out.ptr() == ptr_mut_from_data::<T>(PtrData {
+                addr: (self.ptr()@.addr + i * size_of::<T>()) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: (),
+            }),
+            out.bytes() == self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+            self.typed_value().is_valid() ==> {
+                &&& out.typed_value().is_valid()
+                &&& out.typed_value().value() == self.typed_value().value_ref()@[i]
+            },
+            self.typed_value().is_empty() ==> out.typed_value().is_empty(),
+            out.wf(),
+    ;
+}
+// impl<T> PointsTo<[T]>: borrow_index(&self, i) -> &PointsTo<T>, the same contract;
+//   composed from as_unaligned, PointsToUnaligned::<[T]>::borrow_index and as_aligned
+//   (each element's address is aligned because the slice's is,
+//   and size_of::<T>() is a multiple of align_of::<T>()).
+```
 
 ```rust
 impl<T> SeqPointsTo<T, PointsTo<T>> {
@@ -967,7 +1001,7 @@ impl PointsToUnaligned<str> {
 
 `as_bytes_tracked` requires a UTF-8 value; `self.wf()` gives it through `abs_decode_str`.
 
-The rustlib axioms (`abs_decode_str`, the `str` reference helpers):
+The other rustlib axioms (`abs_decode_str`, the `str` reference helpers):
 see [New rustlib axioms](#new-rustlib-axioms).
 
 ## Inherent impls
