@@ -13,7 +13,7 @@ the phases, spike results and risks in [TYPED_POINTS_TO_IMPL_PLAN.md](TYPED_POIN
 
 ## Overview
 
-The permission types table and the four trait definitions are approved
+The permission types table, the trait impls table, the API changes not visible in the specs, and the four trait definitions are approved
 and are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md).
 
 **Written once vs per type.**
@@ -44,30 +44,6 @@ Sequences:
 | `PointsToUnaligned<T>`-specific (`points_to_permissions.rs`) | `SeqPointsTo<T, PointsToUnaligned<T>>` | the sequence side of the slice ↔ sequence conversions (`as_slice_pt`, `as_slice_pt_mut`) and the borrowed constructors (the primary implementations); `into_aligned`, `as_aligned`, `as_aligned_mut` |
 | `PointsTo<T>`-specific (`points_to_permissions.rs`) | `SeqPointsTo<T, PointsTo<T>>` | `is_aligned`; the slice ↔ sequence conversions and borrowed constructors as compositions over the `PointsToUnaligned<T>` versions; `into_unaligned`, `as_unaligned`, `as_unaligned_mut` |
 
-**API changes not visible in the specs.**
-Renames: `PointsToSingleton` → `PointsToByte`, `borrow_value` → `borrow`,
-`into_untyped_with_typed_value` → `into_raw_parts` (single permissions only),
-`borrow_value_subrange` → `borrow_subrange`,
-`PointsToProperties::ptrs_len_same_valid` → `ptrs_len_same`.
-Removed: `FixedSize`, `Dealloc`, and the inherent `PointsTo<T>` versions of the trait methods
-(`points_to_permissions.rs` re-exports the four traits instead; the prelude is unchanged).
-
-**Trait impls.** `T` is `Sized` (in `[T]`, it is the element type).
-"Generic" means one `impl<T: ?Sized> ... for PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T>`.
-
-| Type | `PointsToPhys`, `PointsToProperties`, `View` | `PointsToSingleValue` | `PointsToSingleValueSized` | Where | When |
-|---|---|---|---|---|---|
-| `PointsToUnaligned<T>` | `PointsToPhys`: per type; `PointsToProperties`: generic (phase 2) | yes | yes | vstd | phase 2 |
-| `PointsToUnaligned<[T]>` | `PointsToPhys`: per type (done); `PointsToProperties`: generic (phase 2) | yes | no | vstd | phase 2b |
-| `PointsToUnaligned<str>` | `PointsToPhys`: per type; `PointsToProperties`: generic | yes | no | rustlib | after phase 3b ([specs](#str-rustlib)) |
-| `PointsTo<T>` | yes, generic | yes, generic | yes | vstd | phase 2 (generic from phase 2b) |
-| `PointsTo<[T]>` | yes, generic | yes, generic | no | vstd, nothing slice-specific | phase 2b |
-| `PointsTo<str>` | yes, generic | yes, generic | no | vstd, nothing `str`-specific | once rustlib adds `PointsToUnaligned<str>` |
-| `SeqPointsTo<T, P>` (`A = [T]`) | yes (exists, generic) | no | no | vstd | pointer becomes `*mut [T]` in phase 1b |
-| `PointsToByte` (`A = u8`) | yes (exists) | no | no | vstd | — |
-| `PointsToRaw` | no (no single pointer) | no | no | vstd | phase 2c |
-
-There is no `SeqPointsTo<str, _>`.
 
 **Conversions.**
 

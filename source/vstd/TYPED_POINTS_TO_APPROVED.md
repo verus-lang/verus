@@ -17,6 +17,34 @@ What is still under review is in [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.
 | `SeqPointsTo<T, P>`, `P: PointsToProperties<A = T>` | `[T]` | length | `len * P::size(())` | `PointsToPhys`, `PointsToProperties` | one element permission `P` per element |
 | `PointsToRaw` | — | — | — | none (no single pointer) | a map from addresses to `PointsToByte`s, one provenance |
 
+## Trait impls
+
+`T` is `Sized` (in `[T]`, it is the element type).
+"Generic" means one `impl<T: ?Sized> ... for PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T>`.
+
+| Type | `PointsToPhys`, `PointsToProperties`, `View` | `PointsToSingleValue` | `PointsToSingleValueSized` | Where | When |
+|---|---|---|---|---|---|
+| `PointsToUnaligned<T>` | `PointsToPhys`: per type; `PointsToProperties`: generic (phase 2) | yes | yes | vstd | phase 2 |
+| `PointsToUnaligned<[T]>` | `PointsToPhys`: per type (done); `PointsToProperties`: generic (phase 2) | yes | no | vstd | phase 2b |
+| `PointsToUnaligned<str>` | `PointsToPhys`: per type; `PointsToProperties`: generic | yes | no | rustlib | after phase 3b ([specs](TYPED_POINTS_TO_PLAN.md#str-rustlib)) |
+| `PointsTo<T>` | yes, generic | yes, generic | yes | vstd | phase 2 (generic from phase 2b) |
+| `PointsTo<[T]>` | yes, generic | yes, generic | no | vstd, nothing slice-specific | phase 2b |
+| `PointsTo<str>` | yes, generic | yes, generic | no | vstd, nothing `str`-specific | once rustlib adds `PointsToUnaligned<str>` |
+| `SeqPointsTo<T, P>` (`A = [T]`) | yes (exists, generic) | no | no | vstd | pointer becomes `*mut [T]` in phase 1b |
+| `PointsToByte` (`A = u8`) | yes (exists) | no | no | vstd | — |
+| `PointsToRaw` | no (no single pointer) | no | no | vstd | phase 2c |
+
+There is no `SeqPointsTo<str, _>`.
+
+## API changes not visible in the specs
+
+Renames: `PointsToSingleton` → `PointsToByte`, `borrow_value` → `borrow`,
+`into_untyped_with_typed_value` → `into_raw_parts` (single permissions only),
+`borrow_value_subrange` → `borrow_subrange`,
+`PointsToProperties::ptrs_len_same_valid` → `ptrs_len_same`.
+Removed: `FixedSize`, `Dealloc`, and the inherent `PointsTo<T>` versions of the trait methods
+(`points_to_permissions.rs` re-exports the four traits instead; the prelude is unchanged).
+
 ## Trait definitions
 
 ```rust
