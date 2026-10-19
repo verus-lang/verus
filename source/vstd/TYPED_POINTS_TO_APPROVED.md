@@ -64,7 +64,7 @@ and `points_to_ops` is a child module of `points_to_model`;
 | the five trait definitions, with their default bodies | the `PTProperties` impls of `SeqPointsTo`, `PointsToUnaligned` and `PointsTo` | `PointsToRaw` (all of it) |
 | the struct definitions: `PointsToByte`, `TypedValue`, `SeqPointsTo`, `PointsToUntyped`, `PointsToUnaligned`, `PointsTo`; their closed accessors and the inherent spec fns (`typed_value`, `bytes`, `metadata`, `is_valid`, `value`, `value_ref`, `len`, `thin_ptr`, …); their `View` impls | the `PTValueOps` impls (per type for `PointsToUnaligned`, generic for `PointsTo`) and the `PTSizedValue` impls | the typed `SeqPointsTo` impl (`impl<T> SeqPointsTo<T, PointsTo<T>>`), including its `wf`, and its `View` |
 | well-formedness: every `PTPhys` impl (`ptr`, `size`, `wf_basic`), every `PTTypedValue` impl (`typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment`, and the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic`), `wf_basic_unaligned`, `PointsToUntyped::wf` and `bytes` | the structural `SeqPointsTo` impl (except M5) and `PointsToUntyped`'s proofs | |
-| the axioms: `PointsToByte`'s `PTProperties` impl, `PointsToUntyped::join_ref` / `join_mut`, `from_raw_parts_ref`, M1, M3–M5 | the aligned/unaligned conversions | the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`) |
+| the axioms: `PointsToByte`'s `PTProperties` impl, `PointsToUntyped::join_ref` / `join_mut`, `from_raw_parts_ref`, M1, M3–M5, `PointsTo::borrow_mut` | the aligned/unaligned conversions | the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`) |
 | the tracked getters and byte disjointness: `TypedValue::tracked_copy`, `valid_ref`; `PointsToByte::is_disjoint_byte` | the slice permissions' borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`); `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`; `group_points_to_lemmas` | `group_points_to_collections_lemmas` |
 
 `raw_ptr_new.rs` becomes two files:
@@ -317,7 +317,7 @@ Every new trusted item, relative to the `verify-rustlib` branch.
 |---|---|---|---|---|
 | `ptr_mut_ref` (`external_body`; existing, strengthened, already in the code) | `raw_ptr_specs.rs` | Now also ensures `final(perm).wf()`: the final bytes decode to the final value (and requires `old(perm).wf()`). | exec writes through `&mut T` | yes |
 | `ptr_mut_ref_slice` (`external_body`; restored, phase 4b) | `raw_ptr_specs.rs` | Restored from commented-out code, strengthened the same way as `ptr_mut_ref`. | exec writes through `&mut [T]` | yes |
-| `ptr_mut_ref_str` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code, strengthened the same way as `ptr_mut_ref`. | exec writes through `&mut str` | yes |
+| `ptr_mut_ref_str` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code, strengthened the same way as `ptr_mut_ref`, except that a final value that isn't valid UTF-8 leaves the permission empty. | exec writes through `&mut str` | |
 | `Seq::tracked_borrow_subrange` (`external_body`; already in the code) | `seq.rs` | Borrows a subrange of a borrowed tracked `Seq`. | `subrange_basic`, `split_ref` | yes |
 | `Seq::tracked_split_borrow_mut` (`external_body`; already in the code) | `seq.rs` | Splits a mutable borrow of a tracked `Seq` in two. | `subrange_mut`, the `&mut` conversions | yes |
 | `tracked_slice_index` (phase 3b) | `slice.rs` | Borrows an element of a borrowed slice. | `borrow_index` | yes |
@@ -330,6 +330,7 @@ Every new trusted item, relative to the `verify-rustlib` branch.
 | M5 `SeqPointsTo::from_seq_mut` (phase 3b) | `points_to_model.rs` | A `&mut Seq<P>` acts as a `&mut SeqPointsTo`. | `subrange_mut`, `split_mut` | yes |
 | `PointsToUntyped::join_ref` (already in the code) | `points_to_model.rs` | Two borrowed untyped permissions, the second starting where the first ends, act as one borrowed permission. | the typed sequences' `as_untyped`, shared sequence → slice | |
 | `PointsToUntyped::join_mut` (already in the code) | `points_to_model.rs` | The same for mutable borrows; the parts' final values are tied back if the joined permission keeps its pointers and length. | the typed sequences' `as_untyped_mut`, `&mut` sequence → slice | |
+| `PointsTo::borrow_mut` (already in the code) | `points_to_model.rs` | A mutable borrow of a valid permission's value; writing through it updates the value and the bytes together, keeping `wf()`. | ghost writes through a permission | |
 | `global_alloc_id` (`uninterp`) | `raw_ptr_specs.rs` | The id of the global allocator's allocations. | `allocate` / `deallocate` | |
 | `allocate`, `deallocate` (`external_body`; ported from `raw_ptr_old.rs`, without `Dealloc`) | `raw_ptr_specs.rs` | Allocation gives a well-formed `PointsToUntyped` for the new range with a global-allocator provenance; deallocation consumes one covering the whole allocation. | heap allocation | |
 | `abs_decode_slice` (already in the code) | `type_representation.rs` | A slice decodes exactly when each element's slot does. Its definition is in the code and isn't repeated here. | slice `wf` | yes |
@@ -394,11 +395,15 @@ pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo
         old(perm).wf(),
     ensures
         final(perm).ptr() == ptr,
-        final(perm).is_valid(),
-        // The final bytes decode to the final value.
         final(perm).wf(),
         old(perm).typed_value().value_ref() == &*v,
-        final(perm).typed_value().value_ref() == &*final(v),
+        // The final bytes decode to the final value if it is valid UTF-8;
+        // otherwise the permission ends empty.
+        valid_utf8(final(v)@) ==> {
+            &&& final(perm).is_valid()
+            &&& final(perm).typed_value().value_ref() == &*final(v)
+        },
+        !valid_utf8(final(v)@) ==> final(perm).typed_value().is_empty(),
     opens_invariants none
     no_unwind
 {
@@ -625,6 +630,25 @@ impl PointsToUntyped {
                 &&& final(joined).seq_pt() == final(self).seq_pt() + final(other).seq_pt()
                 &&& final(joined).bytes() == final(self).bytes() + final(other).bytes()
             },
+    ;
+}
+```
+
+**Mutable value borrow** (`points_to_model.rs`; already in the code).
+
+```rust
+impl<T> PointsTo<T> {
+    pub axiom fn borrow_mut(tracked &mut self) -> (tracked val: &mut T)
+        requires
+            self.wf(),
+            self.is_valid(),
+        ensures
+            *val == old(self).value(),
+            mut_ref_ptr(val) == old(self).ptr(),
+            final(self).is_valid(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).value() == *final(val),
+            final(self).wf(),
     ;
 }
 ```

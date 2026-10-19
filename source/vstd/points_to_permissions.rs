@@ -1610,7 +1610,6 @@ impl<T> PointsTo<T> {
             final(self).is_valid(),
             final(self).ptr() == old(self).ptr(),
             final(self).value() == *final(val),
-            Self::ptrs_len_same_valid(*old(self), *final(self)),
             final(self).wf(),
     ;
 

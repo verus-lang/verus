@@ -1020,7 +1020,7 @@ everything else exists today.
 | `impl<T> PointsToUnaligned<[T]>` | `from_untyped_ref`, `from_untyped_with_value_ref`, `borrow_index` (new, phase 4; the primary implementations). (removed in 2b: inherent `wf`) | |
 | `impl<T: ?Sized> PointsTo<T>` | closed `pt_unaligned`; `typed_value`, `metadata`, `bytes`, `is_valid`, `is_empty` (open, delegating); `tracked_pt_unaligned`; `from_unaligned_mut` (new axiom M4) | |
 | `impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | `into_unaligned`, `as_unaligned`, `as_unaligned_mut` (new, generic) | Contracts in [Generic `PointsTo` trait impls and aligned/unaligned conversions](#generic-pointsto-trait-impls-and-alignedunaligned-conversions). |
-| `impl<T> PointsTo<T>` | `value`, `is_aligned`, `is_disjoint_pointsto<S>`. (removed: `wf`, `stays_wf`, `lemma_ptrs_len_same_valid`, `zero_sized`, `bytes_decode`, the untyped conversions, the value operations) | Removed ones are `PTValueOps` / `PTSizedValue` methods. |
+| `impl<T> PointsTo<T>` | `value`, `is_aligned`, `is_disjoint_pointsto<S>`; `borrow_mut` (axiom). (removed: `wf`, `stays_wf`, `lemma_ptrs_len_same_valid`, `zero_sized`, `bytes_decode`, the untyped conversions, the value operations) | Removed ones are `PTValueOps` / `PTSizedValue` methods. |
 | `impl<T> PointsTo<[T]>` | `from_untyped_ref`, `from_untyped_with_value_ref`, `borrow_index` (new, phase 4; compositions over the `PointsToUnaligned` versions). (removed: inherent `wf`) | |
 | `impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P>` (`points_to_model.rs` / `points_to_ops.rs`) | `seq_pt`, `len`, `spec_index`, `thin_ptr`; `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut`, `from_seq`, `empty`, `into_seq` (moved here in phase 1); `split_basic`, `join_basic`, `subrange_basic` (new); `from_seq_mut` (new axiom M5) | Structural; stated with `wf_basic`. The only code touching the fields. |
 | `impl<T> SeqPointsTo<T, PointsTo<T>>` | `View` (`SeqPointsToData<T>`); `wf`, `bytes`, `bytes_inner`, `seq_typed_value`, `is_valid`, `is_empty`, `is_fully_empty`, `seq_value`, `is_valid_subrange`, `value_subrange`, `ptrs_len_same_valid`, `stays_wf`, `lemma_ptrs_len_same_valid`, `typed_value_equiv`, the byte lemmas, `split`, `join`, `subrange`, `subrange_mut` (proved in phase 3b), `zero_sized`, the untyped conversions, the value operations, `is_aligned`, `is_disjoint_seqpt`; `as_slice_pt`, `as_slice_pt_mut` (new, phase 4) | The only typed sequence impl. |
@@ -1040,13 +1040,6 @@ and `uninterp` specs that axioms constrain.
 
 **Existing, unchanged.** Approved; see [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#existing-unchanged-trusted-specs).
 
-**Existing, removed (become proofs).**
-
-| Item | File | Proved from |
-|---|---|---|
-| `SeqPointsTo::subrange_mut` (on `SeqPointsTo<T, PointsTo<T>>`) | `points_to_permissions.rs` today (`points_to_collections.rs` after the move) | M5, phase 3b |
-| `PointsToRaw`'s axioms (`empty`, `split`, `join`, `ptr_bounds`, `provenance_non_null`, `is_disjoint`, `into_typed*`, `into_raw`) | `raw_ptr_old.rs` (not in the current vstd) | `PointsToByte`'s axioms and `Map`'s tracked operations |
-
 **New.** See [New axioms](#new-axioms).
 
 **Dependency direction.**
@@ -1057,48 +1050,11 @@ The phase 3b axioms are stated on `PointsToUnaligned`, `PointsTo`, `SeqPointsTo`
 All of these are in the two trusted files (see [Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout)),
 so no trusted code depends on `points_to_collections.rs`.
 
-**Not trusted.**
-
-- No axiom turns an owned `SeqPointsTo<T, PointsTo<T>>` into an owned `PointsTo<[T]>`.
-- No new axiom mentions `wf()`, alignment or decoding, except `abs_decode_slice` and `abs_decode_str`.
-- Proved: `TypedValue::valid_ref`, the borrowed constructors, `borrow_index`,
-  the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`),
-  `borrow` for slices, and the empty slice functions.
-- Not needed at all: `PointsTo::borrow_mut`, `borrow_mut_subrange`, the reverted generic `wrap_mut`,
-  and any `&mut [T]` / `&mut T` slice axioms.
-
-**Review notes.**
-
-- **Duplicate references.** `tracked_slice_from_refs`
-  can be given the same reference more than once,
-  producing a borrowed slice with repeated elements.
-  This is harmless: a shared reference never guarantees uniqueness
-  (several `&T` to one value can already exist),
-  so distinctness is only derived through `&mut`,
-  which is why `is_disjoint` takes `&mut` even though it doesn't modify anything.
-- **The `&mut` axioms (M1, M3–M5)** are accepted.
-  Like `join_mut`, each hands out a `&mut` to something that isn't stored.
-  Each is sound because every final state of the result maps to a consistent final state of the borrowed parts
-  without duplicating a tracked value:
-  M1 drops values rather than duplicating them when the final state can't be distributed
-  (and M1 starts empty when the elements are mixed, so their values are hidden, then dropped unless the slice ends valid).
-- **The reference helpers that produce a `PointsTo` ensure `wf()`**
-  (`SharedReference::points_to`, `mut_ref_to_shr_points_to`, and their slice and `str` versions):
-  a real reference is aligned and its bytes decode to its value.
-  The Sized ones already do in the code.
-- **The `ptr_ref` family requires `wf()`** (`ptr_ref`, `ptr_mut_ref`, `ptr_ref2`, `ptr_ref2_ghost`,
-  and their slice and `str` versions; the Sized ones already in the code).
-  `ptr_mut_ref` and its slice / `str` versions also ensure `final(perm).wf()`:
-  they don't say the bytes stay the same, so this is what ties the final bytes to the final value.
-- **`global_alloc_id`.** It replaces what `Dealloc` guaranteed implicitly:
-  that the memory being freed came from the global allocator.
-  Only `allocate` ensures a provenance has this id,
-  so a `PointsToUntyped` covering a stack variable's whole allocation can't be passed to `deallocate`.
-
 ## New axioms
 
 All approved, including `allocate`, `deallocate` and `global_alloc_id`
-([TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes)).
+([TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes)),
+including `PointsTo::borrow_mut`.
 
 Minor changes to existing axioms (`ptr_ref`, `ptr_ref2`, `ptr_ref2_ghost`, `mut_ref_to_shr_points_to`, `SharedReference::points_to`,
 and the restored slice versions `ptr_ref_slice`, `ptr_ref2_slice_ghost`, `mut_ref_to_shr_points_to_slice`, `SharedReference<[T]>::points_to`)
