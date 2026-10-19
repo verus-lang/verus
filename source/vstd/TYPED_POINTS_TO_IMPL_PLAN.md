@@ -62,7 +62,7 @@ verified:
 
 If (1) or (2) fails, stop and revisit the design before continuing.
 If (7) or (8) fails, use the fallbacks in [Traits](TYPED_POINTS_TO_PLAN.md#traits).
-If (9) fails, use the fallback in [The generic `PointsTo` impl](TYPED_POINTS_TO_PLAN.md#the-generic-pointsto-impl).
+If (9) fails, use the fallback in [The generic `PointsTo` impl](TYPED_POINTS_TO_NOTES.md#the-generic-pointsto-impl).
 
 #### Phase 0 results
 
@@ -105,14 +105,14 @@ Other findings:
   verification time and trigger behavior at real scale (phase 3's risk),
   broadcast cyclicity with `group_vstd_default`,
   and the non-ghost build.
-- The spike was written before the [`SeqPointsTo` pointer change](TYPED_POINTS_TO_PLAN.md#seqpointstos-pointer-and-sizes),
+- The spike was written before the [`SeqPointsTo` pointer change](TYPED_POINTS_TO_NOTES.md#seqpointstos-pointer-and-sizes),
   so it still uses `FixedSize`, `size(self)` and a per-trait `size_for`.
   The size rows above are superseded by that design; the other results don't depend on it.
 
 #### Phase 0 pending checks
 
-These cover the [`SeqPointsTo` pointer change](TYPED_POINTS_TO_PLAN.md#seqpointstos-pointer-and-sizes),
-[`PointsToRaw`](TYPED_POINTS_TO_PLAN.md#pointstoraw) and [`wf_basic` and `wf`](TYPED_POINTS_TO_PLAN.md#wf_basic-and-wf).
+These cover the [`SeqPointsTo` pointer change](TYPED_POINTS_TO_NOTES.md#seqpointstos-pointer-and-sizes),
+[`PointsToRaw`](TYPED_POINTS_TO_NOTES.md#pointstoraw) and [`wf_basic` and `wf`](TYPED_POINTS_TO_NOTES.md#wf_basic-and-wf).
 
 10. **The new `SeqPointsTo` shape.**
     - *Done:* a generic inherent impl `impl<T, P: Typed<A = T>> Seq2<T, P>`
@@ -160,7 +160,7 @@ These cover the [`SeqPointsTo` pointer change](TYPED_POINTS_TO_PLAN.md#seqpoints
 ### Phase 1: structural generalization and module layout (assessment section 1, groups 1-3)
 
 Independent of the trait, and the generic typed impl needs these.
-The design is in [Module layout](TYPED_POINTS_TO_PLAN.md#module-layout).
+The design is in [Module layout](TYPED_POINTS_TO_NOTES.md#module-layout).
 
 - Rename `PointsToSingleton` to `PointsToByte` (and `PointsToSingletonData` to `PointsToByteData`),
   so it isn't confused with `PointsToSingleValue`.
@@ -185,7 +185,7 @@ The design is in [Module layout](TYPED_POINTS_TO_PLAN.md#module-layout).
 
 ### Phase 1b: `SeqPointsTo`'s slice pointer, `size(metadata)`, no `FixedSize`
 
-The design is in [`SeqPointsTo`'s pointer and sizes](TYPED_POINTS_TO_PLAN.md#seqpointstos-pointer-and-sizes).
+The design is in [`SeqPointsTo`'s pointer and sizes](TYPED_POINTS_TO_NOTES.md#seqpointstos-pointer-and-sizes).
 Run [phase 0 check 10](#phase-0-pending-checks) first.
 Independent of the new traits; it changes existing ones.
 
@@ -202,7 +202,7 @@ Independent of the new traits; it changes existing ones.
 3. Remove `FixedSize`: `P::const_size()` → `P::size(())`; drop the `size_eq_const_size` calls.
 4. Add `thin_ptr` to `SeqPointsTo<T, PointsTo<T>>`,
    and restate the typed impl's pointer contracts with it
-   (list in [`SeqPointsTo`'s pointer and sizes](TYPED_POINTS_TO_PLAN.md#seqpointstos-pointer-and-sizes)):
+   (list in [`SeqPointsTo`'s pointer and sizes](TYPED_POINTS_TO_NOTES.md#seqpointstos-pointer-and-sizes)):
    `from_seq`, `empty`, `zero_sized`/`zero_sized_helper`, `split`, `join`,
    `subrange`, `subrange_mut`, `from_untyped`, `from_untyped_with_typed_value`, `untyped_mut_join`,
    and the `View` / `SeqPointsToData` `ptr` field.
@@ -217,7 +217,7 @@ The `metadata` field is already in, so moved bodies include it from the start.
    simplifies things. `TypedValue<T>::value()` and `TypedValue<[T]>::value()` can stay as they are.
 2. Add `PointsToSingleValue` and `PointsToSingleValueSized` (next to `PointsToProperties` in `points_to.rs`, or at
    the top of `points_to_permissions.rs`).
-3. `PointsToUnaligned`'s pointer and `PointsToProperties` ([`wf_basic` and `wf`](TYPED_POINTS_TO_PLAN.md#wf_basic-and-wf)):
+3. `PointsToUnaligned`'s pointer and `PointsToProperties` ([`wf_basic` and `wf`](TYPED_POINTS_TO_NOTES.md#wf_basic-and-wf)):
    build `ptr` from the stored metadata in both `PointsToPhys` impls (Sized and slice),
    and replace the two `PointsToProperties` impls with one generic impl
    whose `wf_basic` is only `pt_untyped().wf()` and the byte count.
@@ -232,13 +232,13 @@ The `metadata` field is already in, so moved bodies include it from the start.
    and the typed `SeqPointsTo` gets an inherent `ptrs_len_same_valid` over its elements'.
 4. `impl<T> PointsToSingleValue + PointsToSingleValueSized for PointsToUnaligned<T>`: real bodies. Most are today's
    `PointsTo<T>` bodies with `self.pt_unaligned.` removed.
-   `wf` is the formula in [`wf_basic` and `wf`](TYPED_POINTS_TO_PLAN.md#wf_basic-and-wf), `metadata_matches` is `true`,
+   `wf` is the formula in [`wf_basic` and `wf`](TYPED_POINTS_TO_NOTES.md#wf_basic-and-wf), `metadata_matches` is `true`,
    `satisfies_alignment` is `true`, and `from_untyped` loses its alignment precondition.
 5. `impl<T> PointsToSingleValue for PointsTo<T>` (Sized only for now):
    one-line delegations to `self.pt_unaligned`,
    except `satisfies_alignment(addr)` (`PointsToUnaligned::<T>::satisfies_alignment(addr) && addr as nat % spec_align_of_val::<T>(arbitrary()) == 0`)
    and `from_untyped` (`PointsToUnaligned::from_untyped(u, m).into_aligned()`).
-   Write it in the shape of [the generic impl](TYPED_POINTS_TO_PLAN.md#the-generic-pointsto-impl),
+   Write it in the shape of [the generic impl](TYPED_POINTS_TO_NOTES.md#the-generic-pointsto-impl),
    so phase 2b only has to widen `impl<T>` to `impl<T: ?Sized> ... where ...`.
    It can't be generic yet: a `?Sized` `PointsToSingleValue` impl needs `?Sized` supertrait impls,
    and those would drop `PointsTo<[T]>`'s existing ones until `PointsToUnaligned<[T]>` has the trait.
@@ -270,7 +270,7 @@ The `metadata` field is already in, so moved bodies include it from the start.
    Its `size(len)` (`len * size_of::<T>()`) is already there from phase 1b,
    `satisfies_alignment` is `true`, and `metadata_matches(v, len)` is `v@.len() == len`.
    The inherent `PointsToUnaligned<[T]>::wf` from phase 2, step 3, is replaced by the trait's `wf`.
-2. Make the `PointsTo` impls generic ([The generic `PointsTo` impl](TYPED_POINTS_TO_PLAN.md#the-generic-pointsto-impl)):
+2. Make the `PointsTo` impls generic ([The generic `PointsTo` impl](TYPED_POINTS_TO_NOTES.md#the-generic-pointsto-impl)):
    widen phase 2's `PointsToSingleValue for PointsTo<T>` to `T: ?Sized`,
    and replace the per-type `PointsToPhys`/`PointsToProperties`/`View` impls
    for `PointsTo<T>` and `PointsTo<[T]>` with one generic impl each.
@@ -287,7 +287,7 @@ and so is the `PointsTo::<T>::zero_sized` turbofish they needed.
 
 ### Phase 2c: `PointsToRaw`
 
-The design is in [`PointsToRaw`](TYPED_POINTS_TO_PLAN.md#pointstoraw). Run [phase 0 check 11](#phase-0-pending-checks) first.
+The design is in [`PointsToRaw`](TYPED_POINTS_TO_NOTES.md#pointstoraw). Run [phase 0 check 11](#phase-0-pending-checks) first.
 
 1. The struct, its type invariant, and the specs `provenance`, `dom`, `is_range`, `contains_range`.
 2. `empty`, `split`, `join`, `ptr_bounds`, `provenance_non_null`, `is_disjoint`.
@@ -323,12 +323,12 @@ SeqPointsTo<T, P>`, in this order (each step depends on the previous ones):
 5. **Value operations:** the borrow/take/put/copy subrange functions and their helpers
    (renaming `borrow_value_subrange` to `borrow_subrange`).
 6. **`subrange_mut`:** keep it as an axiom on `SeqPointsTo<T, PointsTo<T>>` for now;
-   phase 3b proves it from M5, so don't generalize the axiom.
+   phase 3b proves it from M5 in the generic impl, so don't generalize the axiom.
 7. Generalize `View` to `impl<T, P: PointsToSingleValueSized<A = T>> View for SeqPointsTo<T, P>`
    (`SeqPointsToData<T, P>`; `PointsToUntyped` keeps its own).
    Move `is_disjoint_seqpt` too, with `other` generalized to any typed sequence.
    Leave in `impl<T> SeqPointsTo<T, PointsTo<T>>` only `is_aligned`
-   and `subrange_mut` (until proved).
+   and `subrange_mut` (until phase 3b moves it).
 
 The recursive helpers are fine here because they're inherent methods. Only trait default methods
 can't recurse.
@@ -349,6 +349,8 @@ Needs phases 2b and 3.
 4. Prove the existing axioms that become provable, and remove them:
    `PointsToUntyped::join_ref` (from `from_refs`), `join_mut` (M5 + M6),
    and `SeqPointsTo::subrange_mut` (M5).
+   `subrange_mut` moves from `impl<T> SeqPointsTo<T, PointsTo<T>>` to the typed generic impl as a proof fn,
+   with `size_of::<T>()` → `P::size(())`.
    Restore `PointsToUntyped::split_mut` (M5 + M6).
 5. Prove `as_aligned_mut` (M4).
 
@@ -415,7 +417,7 @@ Update their contracts to the new specs, and review them when they're restored
 | 7 | Phase 3b: borrowed-assembly axioms; prove `subrange_mut`, `join_ref`, `join_mut` | | Needs rows 5-6. |
 | 8 | Phase 4 and phase 4b | | Both build on row 7. |
 | 9 | Phase 5: docs | | |
-| 10 | rustlib: `str` impls and conversions | | See [`str` in rustlib](TYPED_POINTS_TO_PLAN.md#str-in-rustlib). Needs rows 5 and 7. |
+| 10 | rustlib: `str` impls and conversions | | See [`str` in rustlib](TYPED_POINTS_TO_NOTES.md#str-in-rustlib). Needs rows 5 and 7. |
 
 Row 3 can move later without affecting the slice work.
 
