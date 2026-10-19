@@ -14,7 +14,7 @@ the phases, spike results and risks in [TYPED_POINTS_TO_IMPL_PLAN.md](TYPED_POIN
 ## Overview
 
 The permission types table, the trait impls table, the API changes not visible in the specs,
-the existing (unchanged) trusted specs, and the four trait definitions are approved
+the existing (unchanged) trusted specs, the five trait definitions, and the module layout are approved
 and are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md).
 
 **Written once vs per type.**
@@ -39,11 +39,11 @@ Sequences:
 
 | Impl | Applies to | What it contains |
 |---|---|---|
-| structural `impl<T, P: PointsToProperties<A = T>>` (`points_to.rs`) | every sequence, untyped or typed | the only code touching the fields: accessors, `thin_ptr`, constructors, borrows, `split_basic`, `join_basic`, `subrange_basic` |
-| `PointsToUntyped` (`points_to.rs`) | `SeqPointsTo<u8, PointsToByte>` | its `View`, `bytes`, `wf`, `split` / `join` / `split_ref` wrappers, and its axioms |
-| typed `impl<T, P: PointsToSingleValueSized<A = T>>` (`points_to_permissions.rs`) | sequences of `PointsTo<T>` or `PointsToUnaligned<T>` | the generic `View`, `wf`, bytes and values, the typed `split` / `join` / `subrange` wrappers, `subrange_mut`, untyped conversions, value operations, `is_disjoint_seqpt`; so `SeqPointsTo<T, PointsToUnaligned<T>>` gets the whole typed API |
-| `PointsToUnaligned<T>`-specific (`points_to_permissions.rs`) | `SeqPointsTo<T, PointsToUnaligned<T>>` | the sequence side of the slice ↔ sequence conversions (`as_slice_pt`, `as_slice_pt_mut`) and the borrowed constructors (the primary implementations); `into_aligned`, `as_aligned`, `as_aligned_mut` |
-| `PointsTo<T>`-specific (`points_to_permissions.rs`) | `SeqPointsTo<T, PointsTo<T>>` | `is_aligned`; the slice ↔ sequence conversions and borrowed constructors as compositions over the `PointsToUnaligned<T>` versions; `into_unaligned`, `as_unaligned`, `as_unaligned_mut` |
+| structural `impl<T, P: PointsToProperties<A = T>>` (`points_to_model.rs` for the specs and M5, `points_to_ops.rs` for the rest) | every sequence, untyped or typed | the only code touching the fields: accessors, `thin_ptr`, constructors, borrows, `split_basic`, `join_basic`, `subrange_basic` |
+| `PointsToUntyped` (`points_to_model.rs` for `View`, `bytes`, `wf` and the axioms; `points_to_ops.rs` for the proofs) | `SeqPointsTo<u8, PointsToByte>` | its `View`, `bytes`, `wf`, `split` / `join` / `split_ref` wrappers, and its axioms |
+| typed `impl<T, P: PointsToSingleValueSized<A = T>>` (`points_to_collections.rs`) | sequences of `PointsTo<T>` or `PointsToUnaligned<T>` | the generic `View`, `wf`, bytes and values, the typed `split` / `join` / `subrange` wrappers, `subrange_mut`, untyped conversions, value operations, `is_disjoint_seqpt`; so `SeqPointsTo<T, PointsToUnaligned<T>>` gets the whole typed API |
+| `PointsToUnaligned<T>`-specific (`points_to_collections.rs`) | `SeqPointsTo<T, PointsToUnaligned<T>>` | the sequence side of the slice ↔ sequence conversions (`as_slice_pt`, `as_slice_pt_mut`) and the borrowed constructors (the primary implementations); `into_aligned`, `as_aligned`, `as_aligned_mut` |
+| `PointsTo<T>`-specific (`points_to_collections.rs`) | `SeqPointsTo<T, PointsTo<T>>` | `is_aligned`; the slice ↔ sequence conversions and borrowed constructors as compositions over the `PointsToUnaligned<T>` versions; `into_unaligned`, `as_unaligned`, `as_unaligned_mut` |
 
 
 **Conversions.**
@@ -61,29 +61,15 @@ Sequences:
 | `PointsToRaw` ↔ `PointsToUntyped` (a contiguous range) | yes | no | no | vstd | phase 2c |
 | `PointsToRaw` ↔ any `PointsToSingleValue` / `SeqPointsTo`, through `PointsToUntyped` | yes (into typed: empty value) | no | no | vstd | phase 2c |
 
-**Module layout** (on hold until the trusted axioms are reviewed):
-
-| `points_to.rs` | `points_to_permissions.rs` |
-|---|---|
-| the traits `PointsToPhys`, `PointsToProperties` (and wherever `PointsToSingleValue(Sized)` is declared) | `TypedValue` |
-| `PointsToByte` (axiomatized) | `PointsToUnaligned`, `PointsTo`, and their trait impls |
-| `struct SeqPointsTo`, its generic `PointsToPhys` / `PointsToProperties` impls | the typed `SeqPointsTo` impl and its generic `View` |
-| the structural `impl<T, P: PointsToProperties<A = T>> SeqPointsTo<T, P>` | the `PointsTo<T>`- and `PointsToUnaligned<T>`-specific `SeqPointsTo` impls |
-| `PointsToUntyped`'s impl and its axioms (`join_ref`, `join_mut`) | re-exports of the four traits |
-| | `PointsToRaw` |
+**Module layout.** Approved; see [Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout).
 
 **Still open.**
 
-- The module split (trusted in `points_to.rs`, verified in `points_to_permissions.rs`):
-  on hold until the trusted axioms are reviewed.
-  In particular, whether the verified `SeqPointsTo` struct, structural impl and `PointsToUntyped` proofs
-  stay in `points_to.rs`, and where phase 3b's new axioms go.
-- Where the trusted functions that use verified permission types go, decided together:
-  `allocate` / `deallocate` (use `PointsToRaw`),
-  `ptr_ref`, `ptr_mut_ref`, `mut_ref_to_shr_points_to` (use `PointsTo<T>`),
-  and the restored slice versions (`PointsTo<[T]>`).
-  Trusted code shouldn't depend on verified code
-  (see the dependency note in [Trusted surface](#trusted-surface)).
+- Imports: likely a `raw_ptr` directory that re-exports everything
+  (about 30 files import `raw_ptr_new` / `points_to_permissions` today, many in rustlib),
+  with `points_to_collections` outside `points_to_model`'s subtree.
+- Spike: Verus accepts private-field and `closed` spec access from the child module.
+- The `allocate` / `deallocate` specs with `PointsToUntyped` (below, still with `PointsToRaw`).
 
 ## Specifications
 
@@ -95,14 +81,19 @@ Bodies are omitted except for spec fns and trusted code.
 The trait definitions are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#trait-definitions).
 
 ```rust
-impl<T: ?Sized> PointsToSingleValue for PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T> {
-    // Everything delegates to self.pt_unaligned, except:
+impl<T: ?Sized> PointsToSingleValueSpec for PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T> {
+    // typed_value, bytes, metadata_matches delegate to self.pt_unaligned;
     open spec fn satisfies_alignment(addr: usize) -> bool {
         &&& PointsToUnaligned::<T>::satisfies_alignment(addr)
         &&& addr as nat % spec_align_of_val::<T>(arbitrary()) == 0
     }
+    // wf: the trait's default body; the lemmas delegate.
+}
+
+impl<T: ?Sized> PointsToSingleValue for PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T> {
+    // Everything delegates to self.pt_unaligned, except:
     // from_raw_parts: wraps the PointsToUnaligned result.
-    // wf, ptrs_len_same_valid, borrow, into_untyped, from_untyped, zero_sized: the trait's default bodies.
+    // ptrs_len_same_valid, borrow, into_untyped, from_untyped, zero_sized: the trait's default bodies.
 }
 
 impl<T> PointsToSingleValueSized for PointsTo<T> {
@@ -216,10 +207,8 @@ contracts use `Self::size(self.ptr()@.metadata)` instead of `self.size()`;
 and `ptrs_len_same_valid` is renamed `ptrs_len_same` (pointer-level; the decoding version is
 `PointsToSingleValue::ptrs_len_same_valid`), which `stays_wf_basic` now uses.
 
-`group_points_to_permissions_lemmas` contains `PointsToSingleValue::lemma_ptrs_len_same_valid`
-(in place of `PointsTo::lemma_ptrs_len_same_valid`),
-the typed `SeqPointsTo::lemma_ptrs_len_same_valid`,
-and `PointsToUntyped`'s lemma (renamed `lemma_ptrs_len_same_untyped`).
+The lemma groups (`group_points_to_lemmas`, `group_points_to_collections_lemmas`) are in
+[Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout).
 
 ### `PointsToUnaligned` (phases 2, 2b; `str` in rustlib)
 
@@ -267,7 +256,7 @@ impl<T: ?Sized> PointsToProperties for PointsToUnaligned<T> where PointsToUnalig
     // is_nonnull, ptr_bounds, provenance_not_none, is_disjoint, stays_wf_basic: delegate to pt_untyped.
 }
 
-// PointsToSingleValue spec items per impl (the operations' contracts are the trait's):
+// PointsToSingleValueSpec items per impl (the operations' contracts are PointsToSingleValue's):
 //                     typed_value          bytes                     metadata_matches(v, m)   satisfies_alignment(a)
 // PointsToUnaligned<T>    self.typed_value()   self.pt_untyped().bytes()  true                true
 // PointsToUnaligned<[T]>  (same)               (same)                    v@.len() == m       true
@@ -304,7 +293,8 @@ impl<T: ?Sized> View for PointsTo<T> where PointsToUnaligned<T>: PointsToSingleV
 
 ### `SeqPointsTo` (phase 1b; typed impl generalized in phase 3)
 
-In `points_to.rs`: the struct, its generic trait impls, the structural impl, and `PointsToUntyped`.
+In `points_to_model.rs` and `points_to_ops.rs` (see [Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout)):
+the struct, its generic trait impls, the structural impl, and `PointsToUntyped`.
 
 ```rust
 #[verifier::reject_recursive_types(T)]
@@ -502,7 +492,7 @@ impl SeqPointsTo<u8, PointsToByte> {   // PointsToUntyped
 }
 ```
 
-In `points_to_permissions.rs`: the typed sequence.
+In `points_to_collections.rs`: the typed sequence.
 `from_seq`, `empty`, `into_seq`, `tracked_seq_pt(_mut)` and `index_mut` have no typed versions.
 
 ```rust
@@ -1089,14 +1079,14 @@ everything else exists today.
 | `impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T>` | `into_unaligned`, `as_unaligned`, `as_unaligned_mut` (new, generic) | Contracts in [Generic `PointsTo` trait impls and aligned/unaligned conversions](#generic-pointsto-trait-impls-and-alignedunaligned-conversions). |
 | `impl<T> PointsTo<T>` | `value`, `is_aligned`, `is_disjoint_pointsto<S>`. (removed: `wf`, `stays_wf`, `lemma_ptrs_len_same_valid`, `zero_sized`, `bytes_decode`, the untyped conversions, the value operations) | Removed ones are `PointsToSingleValue` / `PointsToSingleValueSized` methods. |
 | `impl<T> PointsTo<[T]>` | `from_untyped_ref`, `from_untyped_with_value_ref`, `as_seq_pt`, `as_seq_pt_mut` (new, phase 4; compositions over the `PointsToUnaligned` versions). (removed: inherent `wf`) | |
-| `impl<T, P: PointsToProperties<A = T>> SeqPointsTo<T, P>` (`points_to.rs`) | `seq_pt`, `len`, `spec_index`, `thin_ptr`; `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut`, `from_seq`, `empty`, `into_seq` (moved here in phase 1); `split_basic`, `join_basic`, `subrange_basic` (new); `from_refs` (new), `from_seq_mut` (new axiom M5) | Structural; stated with `wf_basic`. The only code touching the fields. |
+| `impl<T, P: PointsToProperties<A = T>> SeqPointsTo<T, P>` (`points_to_model.rs` / `points_to_ops.rs`) | `seq_pt`, `len`, `spec_index`, `thin_ptr`; `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut`, `from_seq`, `empty`, `into_seq` (moved here in phase 1); `split_basic`, `join_basic`, `subrange_basic` (new); `from_refs` (new), `from_seq_mut` (new axiom M5) | Structural; stated with `wf_basic`. The only code touching the fields. |
 | `impl<T, P: PointsToSingleValueSized<A = T>> SeqPointsTo<T, P>` | `View` (generalized; `SeqPointsToData<T, P>`); `wf`, `bytes`, `bytes_inner`, `seq_typed_value`, `is_valid`, `is_empty`, `is_fully_empty`, `seq_value`, `is_valid_subrange`, `value_subrange`, `ptrs_len_same_valid`, `stays_wf`, `lemma_ptrs_len_same_valid`, `typed_value_equiv`, the byte lemmas, `split`, `join`, `subrange`, `subrange_mut` (proved in phase 3b), `zero_sized`, the untyped conversions, the value operations, `is_disjoint_seqpt` | Moved from `impl<T> SeqPointsTo<T, PointsTo<T>>` in phase 3. |
 | `impl<T> SeqPointsTo<T, PointsTo<T>>` | `is_aligned`; `from_untyped_ref`, `from_untyped_with_value_ref`, `as_slice_pt`, `as_slice_pt_mut` (new, phase 4; compositions); `into_unaligned`, `as_unaligned`, `as_unaligned_mut` (new, phase 4) | |
 | `impl<T> SeqPointsTo<T, PointsToUnaligned<T>>` | `into_aligned`, `as_aligned`, `as_aligned_mut`, `from_untyped_ref`, `from_untyped_with_value_ref`, `as_slice_pt`, `as_slice_pt_mut` (new, phase 4; the primary implementations) | |
-| `impl SeqPointsTo<u8, PointsToByte>` (`PointsToUntyped`, `points_to.rs`) | `View`, `bytes`, `wf`, `stays_wf`, `lemma_ptrs_len_same_untyped` (renamed), `zero_sized<T>`, `split`, `split_ref`, `join` (wrappers over the `_basic` primitives); `join_ref`, `join_mut`, `split_mut` (proved in phase 3b); `is_disjoint_untyped` | |
+| `impl SeqPointsTo<u8, PointsToByte>` (`PointsToUntyped`, `points_to_model.rs` / `points_to_ops.rs`) | `View`, `bytes`, `wf`, `stays_wf`, `lemma_ptrs_len_same_untyped` (renamed), `zero_sized<T>`, `split`, `split_ref`, `join` (wrappers over the `_basic` primitives); `join_ref`, `join_mut`, `split_mut` (proved in phase 3b); `is_disjoint_untyped` | |
 | `impl PointsToByte` (renamed from `PointsToSingleton`) | `byte`, `is_disjoint_byte` (renamed from `is_disjoint_singleton`, in phase 1 with the type) | |
 | `impl PointsToRaw` | everything in [`PointsToRaw` (phase 2c)](#pointstoraw-phase-2c) above (new) | Not a `PointsToPhys`. |
-| free functions | `tracked_slice_index`, `tracked_slice_from_refs`, `tracked_collect_perm_refs`, `tracked_collect_perm_muts` (M6), `tracked_ref` (new axioms, phase 3b); `allocate`, `deallocate` (ported, phase 2c; placement open; `Dealloc` dropped) | |
+| free functions | `tracked_slice_index`, `tracked_slice_from_refs`, `tracked_collect_perm_refs`, `tracked_collect_perm_muts` (M6), `tracked_ref` (new axioms, phase 3b); `allocate`, `deallocate` (ported, phase 2c, with `PointsToUntyped` in place of `PointsToRaw`; placement open; `Dealloc` dropped) | |
 | rustlib: `impl PointsToUnaligned<str>` | `into_bytes`, `from_bytes`, `as_bytes`, `as_bytes_mut` | |
 
 ## Trusted surface
@@ -1112,20 +1102,20 @@ and `uninterp` specs that axioms constrain.
 
 | Item | File | Proved from |
 |---|---|---|
-| `PointsToUntyped::join_ref` | `points_to_permissions.rs` today (`points_to.rs` after the move) | `tracked_collect_perm_refs` (via `from_refs`), phase 3b |
+| `PointsToUntyped::join_ref` | `points_to_permissions.rs` today (`points_to_model.rs` after the move) | `tracked_collect_perm_refs` (via `from_refs`), phase 3b |
 | `PointsToUntyped::join_mut` | same | M5 + M6, phase 3b |
-| `SeqPointsTo::subrange_mut` (on `SeqPointsTo<T, PointsTo<T>>`) | `points_to_permissions.rs` | M5, phase 3b; the proof is in the typed generic impl, so it covers every typed sequence |
+| `SeqPointsTo::subrange_mut` (on `SeqPointsTo<T, PointsTo<T>>`) | `points_to_permissions.rs` today (`points_to_collections.rs` after the move) | M5, phase 3b; the proof is in the typed generic impl, so it covers every typed sequence |
 | `PointsToRaw`'s axioms (`empty`, `split`, `join`, `ptr_bounds`, `provenance_non_null`, `is_disjoint`, `into_typed*`, `into_raw`) | `raw_ptr_old.rs` (not in the current vstd) | `PointsToByte`'s axioms and `Map`'s tracked operations |
 
 **New.** See [New axioms](#new-axioms).
 
-**Dependency direction (for the module split).**
-Trusted code already depends on verified code in one place:
-`ptr_ref`, `ptr_mut_ref` and `mut_ref_to_shr_points_to` in `raw_ptr_new.rs` take or produce `PointsTo<T>`,
-and the restored slice versions would produce `PointsTo<[T]>`.
-`allocate` / `deallocate` would add `PointsToRaw`.
-The phase 3b axioms are stated on the verified types (`PointsToUnaligned`, `PointsTo`, `SeqPointsTo`, `TypedValue`),
-though they only use their (closed) specs, not their fields.
+**Dependency direction.**
+`ptr_ref`, `ptr_mut_ref` and `mut_ref_to_shr_points_to` (in `raw_ptr_specs.rs`) take or produce `PointsTo<T>`,
+and the restored slice versions `PointsTo<[T]>`;
+`allocate` / `deallocate` use `PointsToUntyped`.
+The phase 3b axioms are stated on `PointsToUnaligned`, `PointsTo`, `SeqPointsTo` and `TypedValue`.
+All of these are in the two trusted files (see [Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout)),
+so no trusted code depends on `points_to_collections.rs`.
 
 **Not trusted.**
 

@@ -137,26 +137,11 @@ Sequences:
 
 **Module layout.**
 
-The split is trusted vs verified.
-`points_to.rs` has the trusted, low-level pieces (and what must live with them):
-
-- the traits
-- `PointsToByte`
-- the `SeqPointsTo` struct, its generic trait impls, and its structural impl
-- `PointsToUntyped`
-
-`points_to_permissions.rs` has the verified permissions:
-
-- `TypedValue`
-- `PointsToUnaligned` and `PointsTo`
-- the typed and `PointsTo<T>`-specific `SeqPointsTo` impls
-- `PointsToRaw`
-- re-exports of the traits
-
-`Dealloc` is dropped (`ProvenanceData::orig_size` replaces its tracking of the original allocation size).
-Where `allocate` / `deallocate` go is open: they're trusted,
-and trusted code shouldn't depend on verified code such as `PointsToRaw`.
-The module split as a whole is on hold until the trusted axioms are reviewed.
+Superseded: see [Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout)
+(trusted `points_to_model.rs` and `points_to_ops.rs`, verified `points_to_collections.rs`;
+`raw_ptr_new.rs` split into `raw_ptr_model.rs` and `raw_ptr_specs.rs`).
+`Dealloc` is dropped (`ProvenanceData::orig_size` replaces its tracking of the original allocation size),
+and `allocate` / `deallocate` use `PointsToUntyped`.
 
 The typed `SeqPointsTo` code never touches the struct's fields;
 it uses the structural impl's functions, whose names it doesn't redefine
@@ -207,16 +192,8 @@ and their trait methods together (the prelude is unchanged).
 
 **Still open.**
 
-- The module split (trusted in `points_to.rs`, verified in `points_to_permissions.rs`):
-  on hold until the trusted axioms are reviewed.
-  In particular, whether the verified `SeqPointsTo` struct, structural impl and `PointsToUntyped` proofs
-  stay in `points_to.rs`, and where phase 3b's new axioms go.
-- Where the trusted functions that use verified permission types go, decided together:
-  `allocate` / `deallocate` (use `PointsToRaw`),
-  `ptr_ref`, `ptr_mut_ref`, `mut_ref_to_shr_points_to` (use `PointsTo<T>`),
-  and the restored slice versions (`PointsTo<[T]>`).
-  Trusted code shouldn't depend on verified code
-  (see the dependency note in [Trusted surface](#trusted-surface)).
+- See "Still open" in [the plan's Overview](TYPED_POINTS_TO_PLAN.md#overview)
+  (the module layout is decided there).
 
 ## Target design
 
@@ -1236,26 +1213,11 @@ as for `PointsToPhys`/`PointsToProperties` today.
 
 ### Module layout
 
-The split is trusted vs verified:
-the trusted, low-level pieces go in `points_to.rs`,
-and the verified permissions in `points_to_permissions.rs`:
+The layout is in [Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout).
 
-| `points_to.rs` | `points_to_permissions.rs` |
-|---|---|
-| the traits `PointsToPhys`, `PointsToProperties` (and wherever `PointsToSingleValue(Sized)` is declared; phase 2, step 2) | `TypedValue` |
-| `PointsToByte` (axiomatized) | `PointsToUnaligned`, `PointsTo`, and their trait impls |
-| `struct SeqPointsTo`, its generic `PointsToPhys` / `PointsToProperties` impls | the typed `SeqPointsTo` impl (`impl<T, P: PointsToSingleValueSized<A = T>>`) and its generic `View` |
-| the structural `impl<T, P: PointsToProperties<A = T>> SeqPointsTo<T, P>` | the `PointsTo<T>`-specific `SeqPointsTo` impl (`is_aligned`, `subrange_mut`, the slice and aligned/unaligned conversions) |
-| `PointsToUntyped`'s impl and its axioms (`join_ref`, `join_mut`) | re-exports of the four traits ([Decisions](#decisions)) |
-| | `PointsToRaw` (entirely: proved from `PointsToByte`'s axioms; uses `PointsToUntyped` only through `from_seq` / `into_seq`) |
-
-`Dealloc` is dropped (`ProvenanceData::orig_size` replaces its size tracking).
-Where the trusted `allocate` / `deallocate` go is open,
-since trusted code shouldn't depend on verified code such as `PointsToRaw`.
-This layout is on hold until the trusted axioms are reviewed.
-
-Fields are private to the module that defines the struct,
-so only `points_to.rs` can touch `SeqPointsTo`'s `seq_pt` / `ptr`,
+Fields are private to the module that defines the struct (and its descendants),
+so only `points_to_model.rs` and its child `points_to_ops.rs`
+can touch `SeqPointsTo`'s `seq_pt` / `ptr`,
 write `SeqPointsTo { .. }` literals, or use `shr_ref_struct_wrap` on it.
 The typed impl uses only the structural impl's functions:
 

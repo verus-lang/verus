@@ -166,10 +166,13 @@ The design is in [Module layout](TYPED_POINTS_TO_NOTES.md#module-layout).
   so it isn't confused with `PointsToSingleValue`.
   Purely mechanical; also update the docs that mention it
   (`PORTING_STATUS.md`, `POINTS_TO_MIGRATION.md`, `GENERALIZATION_ASSESSMENT.md`).
-- Move `struct SeqPointsTo`, its generic `PointsToPhys` / `PointsToProperties` impls,
-  and `PointsToUntyped`'s impl from `points_to_permissions.rs` to `points_to.rs`.
+- Split `raw_ptr_new.rs` into `raw_ptr_model.rs` and `raw_ptr_specs.rs`,
+  and `points_to.rs` / `points_to_permissions.rs` into `points_to_model.rs`,
+  `points_to_ops.rs` (a child module of `points_to_model`) and `points_to_collections.rs`
+  ([Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout)).
+  Spike first: private-field and `closed` access from the child module, and `#[path]`.
 - Move `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut`, `from_seq`, `empty`, `into_seq` into the
-  structural `impl<T, P> SeqPointsTo<T, P>` in `points_to.rs`, stated with `wf_basic()` and `P::size(())`
+  structural `impl<T, P> SeqPointsTo<T, P>` (in `points_to_ops.rs`), stated with `wf_basic()` and `P::size(())`
   (after phase 1b; `P::const_size()` if phase 1 lands first).
   No typed versions with the same names (they'd be E0592 duplicates);
   typed callers get element `wf` by unfolding the typed `wf`.
@@ -178,7 +181,7 @@ The design is in [Module layout](TYPED_POINTS_TO_NOTES.md#module-layout).
   wrappers over them.
 - Rewrite the remaining typed field uses
   (`zero_sized_helper`, `into_untyped_with_typed_value`, `as_untyped_mut`, the borrow helpers)
-  with the structural functions, so the typed impl compiles from `points_to_permissions.rs`.
+  with the structural functions, so the typed impl compiles from `points_to_collections.rs`.
 - Keep the specialized `is_disjoint_seqpt` and `PointsToUntyped::is_disjoint_untyped`
   (no generic `is_disjoint_seq`).
 - Update call sites and verify.
@@ -215,8 +218,7 @@ The `metadata` field is already in, so moved bodies include it from the start.
 
 1. Add `TypedValue::value_ref` (`?Sized`). Restate the existing decode clauses with it where that
    simplifies things. `TypedValue<T>::value()` and `TypedValue<[T]>::value()` can stay as they are.
-2. Add `PointsToSingleValue` and `PointsToSingleValueSized` (next to `PointsToProperties` in `points_to.rs`, or at
-   the top of `points_to_permissions.rs`).
+2. Add `PointsToSingleValue` and `PointsToSingleValueSized` next to `PointsToProperties` in `points_to_model.rs`.
 3. `PointsToUnaligned`'s pointer and `PointsToProperties` ([`wf_basic` and `wf`](TYPED_POINTS_TO_NOTES.md#wf_basic-and-wf)):
    build `ptr` from the stored metadata in both `PointsToPhys` impls (Sized and slice),
    and replace the two `PointsToProperties` impls with one generic impl
@@ -296,11 +298,13 @@ The design is in [`PointsToRaw`](TYPED_POINTS_TO_NOTES.md#pointstoraw). Run [pha
 4. The generic `into_typed::<P: PointsToSingleValue>` / `from_typed::<P: PointsToSingleValue>`,
    and `SeqPointsTo` versions (needs phases 2 and 2b).
 
-All of `PointsToRaw` goes in `points_to_permissions.rs` (it is verified);
+All of `PointsToRaw` goes in `points_to_collections.rs` (it is verified);
 it uses `PointsToUntyped` only through `from_seq` / `into_seq`.
-5. Port `allocate` and `deallocate` (trusted). `Dealloc` is dropped:
+5. Port `allocate` and `deallocate` (trusted), returning and taking a `PointsToUntyped`
+   for the whole allocation, so nothing trusted depends on `PointsToRaw`.
+   `Dealloc` is dropped:
    `ProvenanceData::orig_size` replaces its tracking of the original allocation size.
-   Where they go is open (trusted code shouldn't depend on the verified `PointsToRaw`).
+   They go in `raw_ptr_specs.rs`.
 6. Add the trusted items to `POINTS_TO_AXIOMS.md` and note the removed `PointsToRaw` axioms.
 
 ### Phase 3: generic typed `SeqPointsTo`
