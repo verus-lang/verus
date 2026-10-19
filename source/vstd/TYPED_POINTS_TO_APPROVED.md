@@ -368,8 +368,6 @@ Specs approved so far; the full list of new trusted items is in
 | `PointsToUntyped::join_mut` (already in the code) | `points_to_model.rs` | The same for mutable borrows; the parts' final values are tied back if the joined permission keeps its pointers and length. | the typed sequences' `as_untyped_mut`, `&mut` sequence → slice |
 | `abs_decode_slice` (already in the code) | `type_representation.rs` | A slice decodes exactly when each element's slot does. Its definition is in the code and isn't repeated here. | slice `wf` |
 | `abs_decode_str` (rustlib) | rustlib (`type_representation`) | A `str` decodes exactly when its bytes are valid UTF-8 and each decodes as a `u8`. | `str` `wf`, `str` ↔ `[u8]` |
-| `TypedValue::<str>::as_bytes_mut` (rustlib) | rustlib | A `&mut` `str` typed value acts as a `&mut` byte-slice typed value; non-UTF-8 final bytes leave the `str` empty. | `as_bytes_mut`; the owned casts (`into_bytes`, `from_bytes`) |
-
 **`ptr_mut_ref`** (`raw_ptr_specs.rs`; existing, strengthened, already in the code).
 It now requires and ensures `wf()`.
 It doesn't say the bytes stay the same,
@@ -664,7 +662,7 @@ impl PointsToUntyped {
 }
 ```
 
-**`str` decoding and value cast** (new, rustlib).
+**`str` decoding** (new, rustlib).
 In rustlib a `str`'s view `s@` is its bytes (`Seq<u8>`).
 
 ```rust
@@ -684,24 +682,9 @@ pub broadcast axiom fn abs_decode_str(bytes: Seq<AbstractByte>, s: &str)
 ;
 ```
 
-```rust
-// rustlib, with TypedValue<str>
-impl TypedValue<str> {
-    /// A mutably borrowed `str` typed value acts as a mutably borrowed byte-slice typed value.
-    /// If the final bytes aren't valid UTF-8, the final `str` value is empty (the bytes are dropped).
-    pub axiom fn as_bytes_mut<'a>(tracked &'a mut self) -> (tracked out: &'a mut TypedValue<[u8]>)
-        ensures
-            out.is_valid() == old(self).is_valid(),
-            old(self).is_valid() ==> out.value()@ == old(self).value_ref()@,
-            final(self).is_valid() <==> final(out).is_valid() && valid_utf8(final(out).value()@),
-            final(self).is_valid() ==> final(self).value_ref()@ == final(out).value()@,
-    ;
-}
-```
-
-Not trusted: the shared `&TypedValue<str>` → `&TypedValue<[u8]>` cast
-(from rustlib's existing `str::as_bytes_tracked` axiom and `valid_ref`)
-and both owned casts (from `as_bytes_mut` and `tracked_swap`).
+Not trusted: the shared `&TypedValue<str>` ↔ `&TypedValue<[u8]>` casts
+(from rustlib's existing `str::as_bytes_tracked` / `str::from_bytes_tracked` axioms and `valid_ref`).
+There are no owned or `&mut` `str` ↔ `[u8]` casts.
 rustlib's existing `str` permission axioms (`as_str_ptr_verus`, `perm_init`, `perm_value_eq`, `perm_ptr`)
 are temporary stand-ins until `PointsTo<str>` is ported;
 they're replaced by the above and not part of this design.

@@ -54,8 +54,8 @@ Sequences:
 | `SeqPointsTo<T, PointsTo<T>>` → `PointsTo<[T]>` | no | yes | yes | vstd | phase 4 |
 | `PointsTo<[T]>` → `PointsTo<T>` at an index (`borrow_index`) | no | yes | no | vstd, composed from the unaligned version and the aligned/unaligned conversions | phase 4 |
 | `PointsToUnaligned<[T]>` → `PointsToUnaligned<T>` at an index (`borrow_index`) | no | yes | no | vstd | phase 4 |
-| `PointsToUnaligned<str>` ↔ `PointsToUnaligned<[u8]>` | yes | yes | yes | rustlib | after phase 3b ([specs](#str-rustlib)) |
-| `PointsTo<str>` ↔ `PointsTo<[u8]>` | yes | yes | yes | rustlib, via the unaligned versions and the aligned/unaligned conversions | after phase 3b |
+| `PointsToUnaligned<str>` ↔ `PointsToUnaligned<[u8]>` | no | yes | no | rustlib | after phase 3b ([specs](#str-rustlib)) |
+| `PointsTo<str>` ↔ `PointsTo<[u8]>` | no | yes | no | rustlib, via the unaligned versions and the aligned/unaligned conversions | after phase 3b |
 | `PointsToRaw` ↔ `PointsToUntyped` (a contiguous range) | yes | no | no | vstd | phase 2c |
 | `PointsToRaw` ↔ any `PointsToSingleValue` / `SeqPointsTo`, through `PointsToUntyped` | yes (into typed: empty value) | no | no | vstd | phase 2c |
 
@@ -923,10 +923,17 @@ rustlib writes `PointsToPhys` (`Metadata<str>` is the byte length; `size(len) = 
 and `PointsToSingleValue` for `PointsToUnaligned<str>`;
 `PointsTo<str>` comes from the generic impls (alignment 1, from `layout_of_str`).
 
+Only shared casts: there are no owned or `&mut` `str` ↔ `[u8]` permission casts.
+Both are proved, with no new axioms:
+the value from rustlib's existing `str::as_bytes_tracked` / `str::from_bytes_tracked` and `TypedValue::valid_ref`
+(an empty value from `tracked_static_mut_ref`),
+and the permission from `from_raw_parts_ref` with the same untyped bytes and metadata.
+
 ```rust
 impl PointsToUnaligned<str> {
-    /// The same bytes and metadata as a byte slice; the value becomes the string's bytes.
-    pub proof fn into_bytes(tracked self) -> (tracked out: PointsToUnaligned<[u8]>)
+    /// Borrows as a byte-slice permission to the same bytes, with the same metadata;
+    /// the value becomes the string's bytes.
+    pub proof fn as_bytes(tracked &self) -> (tracked out: &PointsToUnaligned<[u8]>)
         requires
             self.wf(),
         ensures
@@ -939,8 +946,9 @@ impl PointsToUnaligned<str> {
             out.wf(),
     ;
 
+    /// Borrows a byte-slice permission as a `str` permission to the same bytes, with the same metadata.
     /// Valid only if the value is valid UTF-8; otherwise empty.
-    pub proof fn from_bytes(tracked p: PointsToUnaligned<[u8]>) -> (tracked out: PointsToUnaligned<str>)
+    pub proof fn from_bytes_ref(tracked p: &PointsToUnaligned<[u8]>) -> (tracked out: &PointsToUnaligned<str>)
         requires
             p.wf(),
         ensures
@@ -952,17 +960,14 @@ impl PointsToUnaligned<str> {
             out.typed_value().is_valid() ==> out.typed_value().value_ref()@ == p.typed_value().value_ref()@,
             out.wf(),
     ;
-
-    // as_bytes(&self) -> &PointsToUnaligned<[u8]>: as into_bytes
-    //   (the value from str::as_bytes_tracked + TypedValue::valid_ref, then from_raw_parts_ref).
-    // as_bytes_mut(&mut self) -> &mut PointsToUnaligned<[u8]>: initially as into_bytes; finally,
-    //   if final(out).wf() and final(out).ptr() == out.ptr(), then final(self) is as from_bytes(final(out))
-    //   (the value from TypedValue::<str>::as_bytes_mut, then M3).
-    // PointsTo<str> versions: through the aligned/unaligned conversions (alignment 1).
 }
+// impl PointsTo<str>: as_bytes(&self) -> &PointsTo<[u8]> and from_bytes_ref(&PointsTo<[u8]>) -> &PointsTo<str>,
+//   the same contracts, through the aligned/unaligned conversions (alignment 1 for both).
 ```
 
-The rustlib axioms (`abs_decode_str`, `TypedValue::<str>::as_bytes_mut`, the `str` reference helpers):
+`as_bytes_tracked` requires a UTF-8 value; `self.wf()` gives it through `abs_decode_str`.
+
+The rustlib axioms (`abs_decode_str`, the `str` reference helpers):
 see [New rustlib axioms](#new-rustlib-axioms).
 
 ## Inherent impls
@@ -990,7 +995,8 @@ everything else exists today.
 | `impl PointsToByte` (renamed from `PointsToSingleton`) | `byte`, `is_disjoint_byte` (renamed from `is_disjoint_singleton`, in phase 1 with the type) | |
 | `impl PointsToRaw` | everything in [`PointsToRaw` (phase 2c)](#pointstoraw-phase-2c) above (new) | Not a `PointsToPhys`. |
 | free functions | `tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref` (new axioms, phase 3b); `allocate`, `deallocate` (ported, phase 2c, with `PointsToUntyped` in place of `PointsToRaw`; placement open; `Dealloc` dropped) | |
-| rustlib: `impl PointsToUnaligned<str>` | `into_bytes`, `from_bytes`, `as_bytes`, `as_bytes_mut` | |
+| rustlib: `impl PointsToUnaligned<str>` | `as_bytes`, `from_bytes_ref` | |
+| rustlib: `impl PointsTo<str>` | `as_bytes`, `from_bytes_ref` (through the aligned/unaligned conversions) | |
 
 ## Trusted surface
 
@@ -1171,6 +1177,6 @@ pub fn deallocate(p: *mut u8, size: usize, align: usize, Tracked(pt): Tracked<Po
 ### New rustlib axioms
 
 All approved and in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md):
-`abs_decode_str`, `TypedValue::<str>::as_bytes_mut` and `ptr_mut_ref_str` in
+`abs_decode_str` and `ptr_mut_ref_str` in
 [New axioms and axioms with bigger changes](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes),
 and the other `str` reference helpers in [Minor changes to existing trusted specs](TYPED_POINTS_TO_APPROVED.md#minor-changes-to-existing-trusted-specs).
