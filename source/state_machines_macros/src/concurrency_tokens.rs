@@ -2625,17 +2625,44 @@ fn bool_not_expr(e: &Expr) -> Expr {
 }
 
 fn with_prequel(pre: &Vec<PrequelElement>, include_assert_conditions: bool, e: Expr) -> Expr {
+    // Identifiers that the expression built so far may refer to. A `let` none
+    // of whose pattern identifiers occurs here is unused and is left out, so
+    // each condition is wrapped only in the bindings it (transitively) uses,
+    // not in every enclosing binding of the transition. (Over-approximate:
+    // identifiers are never removed, so a shadowed binding is kept as well.)
+    fn idents(ts: TokenStream, out: &mut HashSet<String>) {
+        for t in ts {
+            match t {
+                proc_macro2::TokenTree::Ident(id) => {
+                    out.insert(id.to_string());
+                }
+                proc_macro2::TokenTree::Group(g) => idents(g.stream(), out),
+                _ => {}
+            }
+        }
+    }
+    let mut needed = HashSet::new();
+    idents(quote! {#e}, &mut needed);
     let mut e = e;
     let span = e.span();
     for p in pre.iter().rev() {
         match p {
-            PrequelElement::Let(pat, None, init_e) => {
-                e = Expr::Verbatim(quote_spanned! { span => { let #pat = #init_e; #e } });
-            }
-            PrequelElement::Let(pat, Some(ty), init_e) => {
-                e = Expr::Verbatim(quote_spanned! { span => { let #pat: #ty = #init_e; #e } });
+            PrequelElement::Let(pat, ty, init_e) => {
+                let mut bound = HashSet::new();
+                idents(quote! {#pat}, &mut bound);
+                if bound.is_disjoint(&needed) {
+                    continue;
+                }
+                idents(quote! {#ty #init_e}, &mut needed);
+                e = match ty {
+                    None => Expr::Verbatim(quote_spanned! { span => { let #pat = #init_e; #e } }),
+                    Some(ty) => {
+                        Expr::Verbatim(quote_spanned! { span => { let #pat: #ty = #init_e; #e } })
+                    }
+                };
             }
             PrequelElement::Condition(cond_e) => {
+                idents(quote! {#cond_e}, &mut needed);
                 e = Expr::Verbatim(
                     quote_spanned_vstd! { vstd, span => #vstd::prelude::imply(#cond_e, #e) },
                 );
@@ -2654,9 +2681,11 @@ fn with_prequel(pre: &Vec<PrequelElement>, include_assert_conditions: bool, e: E
                 let mut arm_exprs = vec![Expr::Verbatim(quote! {true}); arms.len()];
                 arm_exprs[*idx] = e;
                 e = emit_match(span, match_e, arms, &arm_exprs);
+                idents(quote! {#e}, &mut needed);
             }
             PrequelElement::AssertCondition(cond_e) => {
                 if include_assert_conditions {
+                    idents(quote! {#cond_e}, &mut needed);
                     e = Expr::Verbatim(
                         quote_spanned_vstd! { vstd, span => #vstd::prelude::imply(#cond_e, #e) },
                     );
