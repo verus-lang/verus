@@ -3372,6 +3372,11 @@ fn shared_joins(take_shared: &[(Ident, TokenStream, Option<TokenStream>)], share
     out
 }
 
+/// Up to this many input or output tokens per operation, the inclusion and
+/// split steps are stated per piece (quadratic text, but the cheapest for the
+/// solver at these sizes); beyond it they are chained (linear text).
+const FEW_PIECES: usize = 8;
+
 /// Proofs that every input fragment is included in `op(owned, shared)`.
 fn inclusions(owned: &[TokenStream], shared: &[TokenStream], h: &TokenStream, owned_ident: &Ident) -> TokenStream {
     let t = quote! {::vstd::resource::tsm};
@@ -3395,25 +3400,44 @@ fn inclusions(owned: &[TokenStream], shared: &[TokenStream], h: &TokenStream, ow
         #t::fragment_included_op_left::<Protocol>(#owned_ident, #h);
         #t::fragment_included_op_right::<Protocol>(#owned_ident, #h);
     });
-    for (i, o) in owned.iter().enumerate() {
-        out.push(if i == 0 { quote! {#t::fragment_included_reflexive::<Protocol>(#o);} } else { quote! {} });
-        for j in (i + 1)..owned.len() {
+    // Few inputs: each input through every later accumulator (n(n+1)/2 steps).
+    // Otherwise each accumulator is included in the last one (from the last
+    // one down), then each input through its own accumulator in the last one
+    // and in `upper` (3n+1 steps).
+    let chain = |out: &mut Vec<TokenStream>, inputs: &[TokenStream], accs: &[Ident]| {
+        let Some(top) = accs.last() else { return };
+        if inputs.len() <= FEW_PIECES {
+            for (i, o) in inputs.iter().enumerate() {
+                if i == 0 {
+                    out.push(quote! {#t::fragment_included_reflexive::<Protocol>(#o);});
+                }
+                for j in (i + 1)..accs.len() {
+                    let (b, c) = (&accs[j - 1], &accs[j]);
+                    out.push(quote! {#t::fragment_included_transitive::<Protocol>(#o, #b, #c);});
+                }
+                out.push(quote! {#t::fragment_included_transitive::<Protocol>(#o, #top, #upper);});
+            }
+            return;
+        }
+        out.push(quote! {#t::fragment_included_reflexive::<Protocol>(#top);});
+        for j in (1..accs.len()).rev() {
             let (b, c) = (&accs[j - 1], &accs[j]);
-            out.push(quote! {#t::fragment_included_transitive::<Protocol>(#o, #b, #c);});
+            out.push(quote! {#t::fragment_included_transitive::<Protocol>(#b, #c, #top);});
         }
-        let last = &accs[owned.len() - 1];
-        out.push(quote! {#t::fragment_included_transitive::<Protocol>(#o, #last, #upper);});
-    }
+        for (i, o) in inputs.iter().enumerate() {
+            if i == 0 {
+                out.push(quote! {#t::fragment_included_reflexive::<Protocol>(#o);});
+            }
+            let a = &accs[i];
+            out.push(quote! {
+                #t::fragment_included_transitive::<Protocol>(#o, #a, #top);
+                #t::fragment_included_transitive::<Protocol>(#o, #top, #upper);
+            });
+        }
+    };
+    chain(&mut out, owned, &accs);
     let hs: Vec<Ident> = (0..shared.len()).map(|i| format_ident!("__tsm_hacc_{}", i)).collect();
-    for (i, s) in shared.iter().enumerate() {
-        out.push(if i == 0 { quote! {#t::fragment_included_reflexive::<Protocol>(#s);} } else { quote! {} });
-        for j in (i + 1)..shared.len() {
-            let (b, c) = (&hs[j - 1], &hs[j]);
-            out.push(quote! {#t::fragment_included_transitive::<Protocol>(#s, #b, #c);});
-        }
-        let last = &hs[shared.len() - 1];
-        out.push(quote! {#t::fragment_included_transitive::<Protocol>(#s, #last, #upper);});
-    }
+    chain(&mut out, shared, &hs);
     quote! {#(#out)*}
 }
 
@@ -5080,9 +5104,29 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     let expected_helper = outs.iter().rev().fold(quote! {Fragment::unit()}, |acc, (fr, _, _)| quote! {Fragment::op(#fr, #acc)});
     let expected_body = outs.iter().rev().fold(quote! {Fragment::unit()}, |acc, (_, fr, _)| quote! {Fragment::op(#fr, #acc)});
     let ext: Vec<_> = sm.fields.iter().map(|f| ext_step(f, &quote! {__tsm_out_frag}, &quote! {__tsm_expected})).collect();
+    // With many outputs, the remaining outputs after each piece are bound once
+    // from the end (re-stating each remainder is quadratic in the number of
+    // outputs; for a few outputs it is cheaper for the solver than the lets).
+    let tails: Vec<Ident> = (0..outs.len()).map(|i| format_ident!("__tsm_tail_{}", i)).collect();
     let mut splits = vec![];
+    for i in (0..outs.len()).rev().filter(|_| outs.len() > FEW_PIECES) {
+        let tail = &tails[i];
+        let value = match outs.get(i + 1) {
+            Some((_, fr2, _)) => {
+                let next = &tails[i + 1];
+                quote! {Fragment::op(#fr2, #next)}
+            }
+            None => quote! {Fragment::unit()},
+        };
+        splits.push(quote! {let ghost #tail = #value;});
+    }
     for (i, (_, fr, mk)) in outs.iter().enumerate() {
-        let tail = outs[i + 1..].iter().rev().fold(quote! {Fragment::unit()}, |acc, (_, fr2, _)| quote! {Fragment::op(#fr2, #acc)});
+        let tail = if outs.len() > FEW_PIECES {
+            let tail = &tails[i];
+            quote! {#tail}
+        } else {
+            outs[i + 1..].iter().rev().fold(quote! {Fragment::unit()}, |acc, (_, fr2, _)| quote! {Fragment::op(#fr2, #acc)})
+        };
         splits.push(quote! {
             let tracked (__tsm_piece, __tsm_left) = __tsm_left.split(#fr, #tail);
             #mk
