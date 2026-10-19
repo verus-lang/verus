@@ -129,6 +129,54 @@ pub struct VerusErasureCtxt {
     pub get_first_fn_def_id: DefId,
 }
 
+/// Information needed for "full erasure" mode.
+///
+/// Normal erasure (driven by the VerusErasureCtxt) is used for lifetime checking: it erases
+/// spec code but keeps proof code, and it relies on the results of Verus's mode checking.
+///
+/// Full erasure, by contrast, erases ALL ghost code (both spec and proof), leaving only exec code.
+/// It's used to build the MIR that rustc's const evaluation runs, which may happen during
+/// rustc's type-checking (i.e., before Verus's mode checking). Therefore, full erasure
+/// identifies ghost code purely syntactically, via a fixed set of functions (e.g., `assert`,
+/// `requires`) and attributes (e.g., the attribute on a `proof { ... }` block or on a ghost
+/// variable declaration).
+///
+/// Specifically:
+///  - A call to any function in `erase_call_fns` is erased, along with all its arguments.
+///  - Any expression with ghost attributes (e.g., a proof block) is erased.
+///  - Any `let` statement with ghost attributes has its initializer erased.
+///  - Any function or const with ghost attributes (e.g., spec mode) has its entire body erased.
+///
+/// An erased expression is replaced by `()` if it has unit type,
+/// by `Ghost::assume_new()` or `Tracked::assume_new()` if it has `Ghost` or `Tracked` type,
+/// and by `core::mem::zeroed()` otherwise (which should only happen for erroneous code
+/// or for bodies that are erased entirely).
+pub struct FullErasureCtxt {
+    pub erase_call_fns: HashSet<DefId>,
+    pub ghost_struct_def_id: DefId,
+    pub tracked_struct_def_id: DefId,
+    pub ghost_assume_new_fn_def_id: DefId,
+    pub tracked_assume_new_fn_def_id: DefId,
+    /// Returns true if the attributes (on an expression, let statement, or item)
+    /// indicate that the node is ghost code.
+    pub is_ghost_attrs: fn(&[rustc_hir::Attribute]) -> bool,
+}
+
+/// Used to communicate the FullErasureCtxt. This needs to be set before rustc's type-checking.
+static VERUS_FULL_ERASURE_CTXT: RwLock<Option<Arc<FullErasureCtxt>>> = RwLock::new(None);
+
+pub fn set_full_erasure_ctxt(full_erasure_ctxt: Arc<FullErasureCtxt>) {
+    let v: &mut Option<Arc<FullErasureCtxt>> = &mut VERUS_FULL_ERASURE_CTXT.write().unwrap();
+    if v.is_some() {
+        panic!("VERUS_FULL_ERASURE_CTXT has already been set");
+    }
+    *v = Some(full_erasure_ctxt);
+}
+
+pub fn get_full_erasure_ctxt() -> Option<Arc<FullErasureCtxt>> {
+    VERUS_FULL_ERASURE_CTXT.read().unwrap().clone()
+}
+
 /// Used to communicate the set of LocalDefIds that may require erasure.
 static VERUS_AWARE_DEF_IDS: RwLock<Option<Arc<HashSet<LocalDefId>>>> = RwLock::new(None);
 
@@ -227,10 +275,33 @@ pub(crate) struct VerusThirBuildCtxt {
     pub(crate) local_invariants: Vec<usize>,
     pub(crate) extra_thir: ExtraThir,
     pub(crate) local_def_id: LocalDefId,
+    /// If this is set, we are building the THIR in full-erasure mode,
+    /// and `ctxt` is always None.
+    pub(crate) full_erasure: Option<Arc<FullErasureCtxt>>,
 }
 
 impl VerusThirBuildCtxt {
-    pub(crate) fn new<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> Self {
+    pub(crate) fn new<'tcx>(
+        tcx: TyCtxt<'tcx>,
+        local_def_id: LocalDefId,
+        full_erasure: Option<Arc<FullErasureCtxt>>,
+    ) -> Self {
+        if full_erasure.is_some() {
+            return VerusThirBuildCtxt {
+                ctxt: None,
+                closure_overrides: HashMap::new(),
+                do_time_travel_prevention: false,
+                guard_pattern_vars: vec![],
+                local_invariants: vec![],
+                extra_thir: ExtraThir {
+                    local_invs_for_node: HashMap::new(),
+                    force_treat_inhabited: HashSet::new(),
+                },
+                local_def_id: local_def_id,
+                full_erasure,
+            };
+        }
+
         let fn_local_def_id = enclosing_fn_local_def_id(tcx, local_def_id);
         let verus_aware =
             VERUS_AWARE_DEF_IDS.read().unwrap().clone().unwrap().contains(&fn_local_def_id);
@@ -249,6 +320,7 @@ impl VerusThirBuildCtxt {
                 force_treat_inhabited: HashSet::new(),
             },
             local_def_id: local_def_id,
+            full_erasure: None,
         }
     }
 
@@ -1984,4 +2056,117 @@ fn get_ty_dummy_capture_idx<'tcx>(erasure_ctxt: &VerusErasureCtxt, tys: &'tcx [T
         }
     }
     panic!("MISSING DummyCapture (ty)");
+}
+
+/*////// Full erasure (see FullErasureCtxt) */
+
+/// If we're in full-erasure mode and the given item is entirely ghost (e.g., a spec const),
+/// then erase the entire body.
+pub(crate) fn full_erasure_erase_body<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    local_def_id: LocalDefId,
+    body_expr: &'tcx hir::Expr<'tcx>,
+) -> Option<ExprId> {
+    let fe = cx.verus_ctxt.full_erasure.clone()?;
+    let hir_id = cx.tcx.local_def_id_to_hir_id(local_def_id);
+    if !(fe.is_ghost_attrs)(cx.tcx.hir_attrs(hir_id)) {
+        return None;
+    }
+
+    let ty = cx.typeck_results.expr_ty(body_expr);
+    let kind = full_erasure_value_kind(cx, &fe, body_expr.hir_id, body_expr.span, ty);
+    let expr = expr_id_from_kind(cx, kind, body_expr.hir_id, body_expr.span, ty);
+    let expr_scope =
+        region::Scope { local_id: body_expr.hir_id.local_id, data: region::ScopeData::Node };
+    let kind = ExprKind::Scope { hir_id: body_expr.hir_id, region_scope: expr_scope, value: expr };
+    Some(expr_id_from_kind(cx, kind, body_expr.hir_id, body_expr.span, ty))
+}
+
+/// In full-erasure mode, should we drop the initializer of this `let` statement?
+pub(crate) fn full_erasure_erase_let<'tcx>(
+    cx: &ThirBuildCx<'tcx>,
+    stmt: &'tcx hir::Stmt<'tcx>,
+) -> bool {
+    match &cx.verus_ctxt.full_erasure {
+        Some(fe) => (fe.is_ghost_attrs)(cx.tcx.hir_attrs(stmt.hir_id)),
+        None => false,
+    }
+}
+
+/// In full-erasure mode, check if the given expression is ghost code, and if so,
+/// return the erased ExprKind (without visiting any subexpressions).
+pub(crate) fn full_erasure_mirror_expr_pre<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> Option<ExprKind<'tcx>> {
+    let fe = cx.verus_ctxt.full_erasure.clone()?;
+
+    let erase = if (fe.is_ghost_attrs)(cx.tcx.hir_attrs(expr.hir_id)) {
+        true
+    } else {
+        let callee = match &expr.kind {
+            hir::ExprKind::Call(fun, _args) => match cx.typeck_results.expr_ty(fun).kind() {
+                TyKind::FnDef(def_id, _) => Some(*def_id),
+                _ => None,
+            },
+            hir::ExprKind::MethodCall(..) => cx.typeck_results.type_dependent_def_id(expr.hir_id),
+            _ => None,
+        };
+        matches!(callee, Some(def_id) if fe.erase_call_fns.contains(&def_id))
+    };
+
+    if erase {
+        let ty = cx.typeck_results.expr_ty(expr);
+        Some(full_erasure_value_kind(cx, &fe, expr.hir_id, expr.span, ty))
+    } else {
+        None
+    }
+}
+
+/// Produce a value of the given type to replace an erased expression.
+fn full_erasure_value_kind<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    fe: &FullErasureCtxt,
+    hir_id: HirId,
+    span: Span,
+    ty: Ty<'tcx>,
+) -> ExprKind<'tcx> {
+    match ty.kind() {
+        TyKind::Tuple(tys) if tys.is_empty() => ExprKind::Tuple { fields: Box::new([]) },
+        TyKind::Adt(adt_def, args) if adt_def.did() == fe.ghost_struct_def_id => {
+            mk_call_no_args_kind(cx, hir_id, span, fe.ghost_assume_new_fn_def_id, args)
+        }
+        TyKind::Adt(adt_def, args) if adt_def.did() == fe.tracked_struct_def_id => {
+            mk_call_no_args_kind(cx, hir_id, span, fe.tracked_assume_new_fn_def_id, args)
+        }
+        _ => {
+            let zeroed = cx
+                .tcx
+                .get_diagnostic_item(rustc_span::sym::mem_zeroed)
+                .expect("core::mem::zeroed should exist");
+            let args = cx.tcx.mk_args(&[GenericArg::from(ty)]);
+            mk_call_no_args_kind(cx, hir_id, span, zeroed, args)
+        }
+    }
+}
+
+/// Produce the ExprKind for `f::<args>()`
+fn mk_call_no_args_kind<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    hir_id: HirId,
+    span: Span,
+    fn_def_id: DefId,
+    args: rustc_middle::ty::GenericArgsRef<'tcx>,
+) -> ExprKind<'tcx> {
+    let fn_ty =
+        cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, rustc_middle::ty::Binder::dummy(args)));
+    let fun_expr_kind = ExprKind::ZstLiteral { user_ty: None };
+    let fun_expr = expr_id_from_kind(cx, fun_expr_kind, hir_id, span, fn_ty);
+    ExprKind::Call {
+        ty: fn_ty,
+        fun: fun_expr,
+        args: Box::new([]),
+        from_hir_call: false,
+        fn_span: span,
+    }
 }

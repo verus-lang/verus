@@ -3084,6 +3084,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         self.verifier.time_import = time_import1 - time_import0;
         let verus_items = Arc::new(crate::verus_items::from_diagnostic_items(tcx));
         self.verifier.verus_items = Some(verus_items.clone());
+        crate::erase::setup_full_erasure_ctxt(tcx, &verus_items);
         let spans = SpanContextX::new(
             tcx,
             tcx.stable_crate_id(LOCAL_CRATE),
