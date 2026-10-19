@@ -76,6 +76,7 @@ pub type AllocId = int;
 pub ghost struct ProvenanceData {}
 
 impl ProvenanceData {
+    // Add tag fn to opaque Tag type and provenance equality fn
     /// The starting address of the pointer's allocation.
     pub uninterp spec fn start_addr(&self) -> usize;
 
@@ -459,7 +460,7 @@ pub open spec fn spec_cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> usize {
 }
 
 /// Return the address of a pointer.
-// TODO: ask Travis if this function is necessary - what purpose does it serve? We also have spec_cast_ptr_to_usize and spec_addr
+// TODO: remove once Travis's fix is in for diagnostic item conflict
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::spec_ptr_addr")]
 #[verifier::inline]
 pub open spec fn spec_ptr_addr<T: Sized>(ptr: *mut T) -> usize {

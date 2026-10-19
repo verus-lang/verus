@@ -1593,28 +1593,26 @@ impl<T> PointsTo<T> {
         }
     }
 
-    // Commented out: not essential for now (`borrow_mut_subrange` depends on it).
-    // /// This takes a mutable borrow of the `T` from the `TypedValue<T>` on `self`.
-    // ///
-    // /// Writing through the reference updates both the value and the underlying bytes,
-    // /// so `final(self)` is well-formed with bytes that decode to the final value.
-    // /// This is an axiom because the bytes live in separate ghost state from the `TypedValue<T>`,
-    // /// so they can't be updated through a borrow of the value alone.
-    // pub axiom fn borrow_mut(tracked &mut self) -> (tracked val: &mut T)
-    //     requires
-    //         self.wf(),
-    //         self.is_valid(),
-    //     ensures
-    //         *val == old(self).value(),
-    //         // mut_ref_ptr(val) == old(self).ptr(), // Travis: not necessarily true bc Box/enum, also odd thing to want, or necessary
-    //         // It's here to satisfy the precondition for ptr_mut_ref_join
-    //         // But can we define a more general function which takes a ptr and &mut PointsTo<T>, instead of a &mut T?
-    //         final(self).is_valid(),
-    //         final(self).ptr() == old(self).ptr(),
-    //         final(self).value() == *final(val),
-    //         Self::ptrs_len_same_valid(*old(self), *final(self)),
-    //         final(self).wf(),
-    // ;
+    
+    /// This takes a mutable borrow of the `T` from the `TypedValue<T>` on `self`.
+    ///
+    /// Writing through the reference updates both the value and the underlying bytes,
+    /// so `final(self)` is well-formed with bytes that decode to the final value.
+    /// This is an axiom because the bytes live in separate ghost state from the `TypedValue<T>`,
+    /// so they can't be updated through a borrow of the value alone.
+    pub axiom fn borrow_mut(tracked &mut self) -> (tracked val: &mut T)
+        requires
+            self.wf(),
+            self.is_valid(),
+        ensures
+            *val == old(self).value(),
+            mut_ref_ptr(val) == old(self).ptr(), 
+            final(self).is_valid(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).value() == *final(val),
+            Self::ptrs_len_same_valid(*old(self), *final(self)),
+            final(self).wf(),
+    ;
 
     /// This moves the `T` out from the `TypedValue<T>` on `self`, leaving `self` empty.
     pub proof fn take(tracked &mut self) -> (tracked val: T)
