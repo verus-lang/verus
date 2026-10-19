@@ -332,7 +332,7 @@ Every new trusted item, relative to the `verify-rustlib` branch.
 |---|---|---|---|---|
 | `ptr_mut_ref` (`external_body`; existing, strengthened, already in the code) | `ptr_specs.rs` | Now also ensures `final(perm).wf()`: the final bytes decode to the final value (and requires `old(perm).wf()`). | exec writes through `&mut T` | yes |
 | `ptr_mut_ref_slice` (`external_body`; restored, phase 4b) | `ptr_specs.rs` | Restored from commented-out code, strengthened the same way as `ptr_mut_ref`. | exec writes through `&mut [T]` | yes |
-| `ptr_mut_ref_str` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code, strengthened the same way as `ptr_mut_ref`, except that a final value that isn't valid UTF-8 leaves the permission empty. | exec writes through `&mut str` | |
+| `ptr_mut_ref_str` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code, strengthened the same way as `ptr_mut_ref`. | exec writes through `&mut str` | yes |
 | `Seq::tracked_borrow_subrange` (`external_body`; already in the code) | `seq.rs` | Borrows a subrange of a borrowed tracked `Seq`. | `subrange_basic`, `split_ref` | yes |
 | `Seq::tracked_split_borrow_mut` (`external_body`; already in the code) | `seq.rs` | Splits a mutable borrow of a tracked `Seq` in two. | `subrange_mut`, the `&mut` conversions | yes |
 | `tracked_slice_index` (phase 3b) | `slice.rs` | Borrows an element of a borrowed slice. | `borrow_index` | yes |
@@ -349,8 +349,6 @@ Every new trusted item, relative to the `verify-rustlib` branch.
 | `global_alloc_id` (`uninterp`) | `ptr_specs.rs` | The id of the global allocator's allocations. | `allocate` / `deallocate` | |
 | `allocate`, `deallocate` (`external_body`; ported from `raw_ptr_old.rs`, without `Dealloc`) | `ptr_specs.rs` | Allocation gives a well-formed `PointsToUntyped` for the new range with a global-allocator provenance; deallocation consumes one covering the whole allocation. | heap allocation | |
 | `abs_decode_slice` (already in the code) | `type_representation.rs` | A slice decodes exactly when each element's slot does. Its definition is in the code and isn't repeated here. | slice `wf` | yes |
-| `abs_decode_str` (rustlib) | rustlib (`type_representation`) | A `str` decodes exactly when its bytes are valid UTF-8 and each decodes as a `u8`. | `str` `wf`, `str` ↔ `[u8]` | |
-
 **`ptr_mut_ref`** (`ptr_specs.rs`; existing, strengthened, already in the code).
 It now requires and ensures `wf()`.
 It doesn't say the bytes stay the same,
@@ -410,15 +408,11 @@ pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo
         old(perm).wf(),
     ensures
         final(perm).ptr() == ptr,
+        final(perm).is_valid(),
+        // The final bytes decode to the final value.
         final(perm).wf(),
         old(perm).typed_value().value_ref() == &*v,
-        // The final bytes decode to the final value if it is valid UTF-8;
-        // otherwise the permission ends empty.
-        valid_utf8(final(v)@) ==> {
-            &&& final(perm).is_valid()
-            &&& final(perm).typed_value().value_ref() == &*final(v)
-        },
-        !valid_utf8(final(v)@) ==> final(perm).typed_value().is_empty(),
+        final(perm).typed_value().value_ref() == &*final(v),
     opens_invariants none
     no_unwind
 {
@@ -740,25 +734,9 @@ pub fn deallocate(ptr: *mut u8, size: usize, align: usize, Tracked(perm): Tracke
 }
 ```
 
-**`str` decoding** (new, rustlib).
-In rustlib a `str`'s view `s@` is its bytes (`Seq<u8>`).
-
-```rust
-// type_representation (rustlib): the str counterpart of abs_decode_slice
-/// The bytes decode to a `str` exactly when its bytes are valid UTF-8
-/// and each abstract byte decodes to the corresponding `u8`.
-/// The byte condition is `EncodingU8Slice::decode`'s, with `s@` for the slice's view,
-/// so `abs_decode::<str>(b, s) <==> valid_utf8(s@) && abs_decode::<[u8]>(b, v)` for any `v` with `v@ == s@`
-/// (by the existing `[u8]` axiom).
-pub broadcast axiom fn abs_decode_str(bytes: Seq<AbstractByte>, s: &str)
-    ensures
-        #[trigger] abs_decode::<str>(bytes, s) <==> {
-            &&& valid_utf8(s@)
-            &&& s@.len() == bytes.len()
-            &&& forall|i| 0 <= i < s@.len() ==> u8::decode(seq![bytes[i]], #[trigger] s@[i])
-        },
-;
-```
+**`str` decoding** (rustlib).
+`abs_decode::<str>` comes from rustlib's existing `EncodingStr` (with `abs_encode_impl_unsized`):
+the bytes' length and each byte's `u8` decoding. UTF-8 validity is not part of decoding.
 
 Not trusted: the shared `&TypedValue<str>` ↔ `&TypedValue<[u8]>` casts
 (from rustlib's existing `str::as_bytes_tracked` / `str::from_bytes_tracked` axioms and `valid_ref`).

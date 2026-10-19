@@ -25,11 +25,12 @@ Single-value permissions:
 |---|---|---|
 | `PTPhys for PointsToUnaligned<_>` | per type | `ptr` (same shape each time), the `size` formula, and `wf_basic` (one call to the generic `wf_basic_unaligned`) |
 | `PTProperties for PointsToUnaligned<_>` | per type (same body each time) | `ptrs_len_same`, and the pointer-level lemmas, all delegating to the untyped bytes |
-| `PTValueOps for PointsToUnaligned<_>` | per type | `typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment` (`true`); the lemmas (empty proofs); and the operations that touch the fields (`borrow_typed_value`, `take_typed_value`, `put_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_untyped`, `as_untyped_mut`) |
+| `PTTypedValue for PointsToUnaligned<_>` | per type | `typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment` (`true`); the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic` (empty proofs) |
+| `PTValueOps for PointsToUnaligned<_>` | per type | the remaining lemmas (`lemma_ptrs_len_same_valid`, `stays_wf`); the operations that touch the fields (`borrow_typed_value`, `take_typed_value`, `put_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_untyped`, `as_untyped_mut`) |
 | `PTSizedValue for PointsToUnaligned<T>` | once (Sized `T` only) | the two lemmas |
-| `PTPhys`, `PTProperties`, `View`, `PTValueOps` for `PointsTo<T: ?Sized>` | once (generic) | delegation to `self.pt_unaligned`, except `satisfies_alignment` (adds alignment) and `from_raw_parts` (wraps the result) |
+| `PTPhys`, `PTProperties`, `View`, `PTTypedValue`, `PTValueOps` for `PointsTo<T: ?Sized>` | once (generic) | delegation to `self.pt_unaligned`, except `satisfies_alignment` (adds alignment) and `from_raw_parts` (wraps the result) |
 | `PTSizedValue for PointsTo<T>` | once (Sized `T` only) | the two lemmas (`lemma_satisfies_alignment_offset` has the real alignment proof) |
-| trait default bodies | once (in the traits) | `wf`, `ptrs_len_same_valid`, `borrow`, `into_untyped`, `from_untyped`, `zero_sized`, `take`, `put`, `copy`, `copy_typed_value`, `from_untyped_with_value` |
+| trait default bodies | once (in the traits) | `PTTypedValue::wf`; `PTValueOps::ptrs_len_same_valid`, `borrow`, `into_untyped`, `from_untyped`, `zero_sized`; `PTSizedValue::take`, `put`, `copy`, `copy_typed_value`, `from_untyped_with_value` |
 | `impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | once (generic) | `into_aligned`, `as_aligned`, `as_aligned_mut` |
 | `impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | once (generic) | `into_unaligned`, `as_unaligned`, `as_unaligned_mut` |
 | `impl<T> PointsToUnaligned<[T]>` | once (slices) | `borrow_index` and the borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`): the primary implementations |
@@ -61,9 +62,6 @@ Sequences:
 
 **Module layout.** Approved; see [Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout).
 
-**Still open.**
-
-- Spike: Verus accepts private-field and `closed` spec access from the child module.
 
 ## Specifications
 
@@ -193,7 +191,7 @@ impl<T> PTPhys for PointsToUnaligned<[T]> {
 //                     typed_value          bytes                     metadata_matches(v, m)   satisfies_alignment(a)
 // PointsToUnaligned<T>    self.typed_value()   self.pt_untyped().bytes()  true                true
 // PointsToUnaligned<[T]>  (same)               (same)                    v@.len() == m       true
-// PointsToUnaligned<str>  (same)               (same)                    true                true   (rustlib; UTF-8 is in abs_decode::<str>)
+// PointsToUnaligned<str>  (same)               (same)                    true                true   (rustlib; decoding is EncodingStr's, without UTF-8)
 // wf: the trait's default body. For T and [T], this replaces today's per-type wf_basic clauses.
 ```
 
@@ -1003,9 +1001,12 @@ impl PointsToUnaligned<str> {
 //   the same contracts, through the aligned/unaligned conversions (alignment 1 for both).
 ```
 
-`as_bytes_tracked` requires a UTF-8 value; `self.wf()` gives it through `abs_decode_str`.
+On hold (asking Natalie): `as_bytes_tracked` requires a UTF-8 value (`self.inv()`), which `self.wf()` doesn't give,
+since UTF-8 isn't part of decoding.
+Options: drop `as_bytes_tracked`'s `requires self.inv()` in rustlib,
+or have `as_bytes` require `self.typed_value().is_valid() ==> valid_utf8(self.typed_value().value_ref()@)`.
 
-The other rustlib axioms (`abs_decode_str`, the `str` reference helpers):
+The other rustlib axioms (the `str` reference helpers):
 see [New rustlib axioms](#new-rustlib-axioms).
 
 ## Inherent impls
@@ -1099,6 +1100,6 @@ Approved; see [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axio
 ### New rustlib axioms
 
 All approved and in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md):
-`abs_decode_str` and `ptr_mut_ref_str` in
+`ptr_mut_ref_str` in
 [New axioms and axioms with bigger changes](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes),
 and the other `str` reference helpers in [Minor changes to existing trusted specs](TYPED_POINTS_TO_APPROVED.md#minor-changes-to-existing-trusted-specs).

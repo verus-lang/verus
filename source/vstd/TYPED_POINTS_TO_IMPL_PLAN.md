@@ -121,13 +121,16 @@ These cover the [`SeqPointsTo` pointer change](TYPED_POINTS_TO_NOTES.md#seqpoint
       The struct needs `#[verifier::reject_recursive_types(T)]`
       once `T` appears in the bound `P: Phys<A = T>`;
       the real `SeqPointsTo` will need it too.
-    - *Not run (routine):* the full struct with `ptr: Ghost<*mut [T]>`,
-      `PTPhys::size(len) = len * P::size(())`, and the `thin_ptr` contracts.
+    - *Done* (`seq_shape.rs`, verifies): the full struct with `ptr: Ghost<*mut [T]>`,
+      `PTPhys::size(len) = len * P::size(())`, `wf_basic` with the metadata clause and today's provenance clause,
+      `thin_ptr`, and `empty` / `from_seq` / `split_basic` with their `thin_ptr` contracts, generic over `P`.
+      For generic Sized `T`, `ptr()@.metadata == ()` is known, so elements' `P::size(metadata)` matches `P::size(())`;
+      `split_basic`'s address bound comes from an element's `ptr_bounds`; a few `nonlinear_arith` steps are needed.
 11. **`PointsToRaw`'s representation.**
     - *Known:* `#[verifier::type_invariant]` works on tracked structs
       (`raw_ptr.rs` line 370, with `use_type_invariant` in proof fns).
-    - *Not run (routine):* the recursive helper that removes a contiguous range's bytes,
-      in address order, into a `Seq`.
+    - *Done* (`raw_range.rs`, verifies): a `Map<int, Byte>` with a type invariant,
+      and the recursive helper that removes a contiguous range's bytes, in address order, into a `Seq`.
 12. **Generic `PTProperties` and `wf` for `PointsToUnaligned`.**
     - *Done:* trait default bodies for `spec` and `proof` fns are accepted on this branch
       (the trait needs `Sized`, which `PTPhys` has),
@@ -157,6 +160,16 @@ These cover the [`SeqPointsTo` pointer change](TYPED_POINTS_TO_NOTES.md#seqpoint
       whether the bound is written `P: Phys<A: Sized>`, `where P::A: Sized`,
       or through a subtrait with `Phys<A: Sized>` as supertrait. rustc accepts all three.
       So `SeqPointsTo` keeps `T`, with `P: PTProperties<A = T>`.
+15. **Child-module access** (for `points_to_ops` under `points_to_model`).
+    - *Done* (`child_module_access.rs`, verifies): a child module can build a struct literal
+      from the parent's private fields, unfold the parent's `closed` specs,
+      and return disjoint `&mut` borrows of two private fields (the shape of `as_raw_parts_mut`).
+    - *Done* (`child_module_access_neg.rs`): a sibling module can't
+      (private field: rustc E0616; `closed` body: doesn't unfold).
+16. **`TypedValue::valid_ref` from `tracked_ref`.**
+    - *Done* (`valid_ref.rs`, verifies): with a local `tracked_ref` axiom,
+      `shr_ref_struct_wrap(t, &TypedValue::Valid(*t), "Valid", "0")` proves `valid_ref`
+      for `T: ?Sized`, used at `u64` and at `str`.
 
 ### Phase 1: structural generalization and module layout (assessment section 1, groups 1-3)
 
@@ -174,7 +187,7 @@ The design is in [Module layout](TYPED_POINTS_TO_NOTES.md#module-layout).
   move `shared_reference.rs` in; `mod.rs` re-exports everything,
   and importers (vstd and rustlib) switch to `vstd::raw_ptr`.
   The old `raw_ptr.rs` is replaced.
-  Spike first: private-field and `closed` access from the child module.
+  Child-module access is confirmed ([phase 0 item 15](#phase-0-pending-checks)).
 - Move `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut`, `from_seq`, `empty`, `into_seq` into the
   structural `impl<T, P> SeqPointsTo<T, P>` (in `points_to_ops.rs`), stated with `wf_basic()` and `P::size(())`
   (after phase 1b; `P::const_size()` if phase 1 lands first).
@@ -193,7 +206,7 @@ The design is in [Module layout](TYPED_POINTS_TO_NOTES.md#module-layout).
 ### Phase 1b: `SeqPointsTo`'s slice pointer, `size(metadata)`, no `FixedSize`
 
 The design is in [`SeqPointsTo`'s pointer and sizes](TYPED_POINTS_TO_NOTES.md#seqpointstos-pointer-and-sizes).
-Run [phase 0 check 10](#phase-0-pending-checks) first.
+[Phase 0 check 10](#phase-0-pending-checks) is done (`seq_shape.rs`).
 Independent of the new traits; it changes existing ones.
 
 1. `PTPhys::size(self)` becomes `size(metadata: Metadata<Self::A>)` in every existing impl:
@@ -293,7 +306,7 @@ and so is the `PointsTo::<T>::zero_sized` turbofish they needed.
 
 ### Phase 2c: `PointsToRaw`
 
-The design is in [`PointsToRaw`](TYPED_POINTS_TO_NOTES.md#pointstoraw). Run [phase 0 check 11](#phase-0-pending-checks) first.
+The design is in [`PointsToRaw`](TYPED_POINTS_TO_NOTES.md#pointstoraw). [Phase 0 check 11](#phase-0-pending-checks) is done (`raw_range.rs`).
 
 1. The struct, its type invariant, and the specs `provenance`, `dom`, `is_range`, `contains_range`.
 2. `empty`, `split`, `join`, `ptr_bounds`, `provenance_non_null`, `is_disjoint`.
@@ -326,10 +339,10 @@ so the typed impl stays `impl<T> SeqPointsTo<T, PointsTo<T>>`.
 The design is in [Borrowed-assembly axioms](TYPED_POINTS_TO_PLAN.md#borrowed-assembly-axioms-phase-3b).
 Needs phases 2b and 3.
 
-1. Confirm the two unbuilt assumptions first:
-   that `shr_ref_struct_wrap` accepts `tracked_ref`'s `&Tracked<T>` for `Valid`'s field
-   (the field-type check isn't robust to normalization),
-   and that Verus accepts disjoint `&mut` field borrows of a `PointsToUnaligned` inside the module.
+1. Both assumptions are confirmed:
+   `shr_ref_struct_wrap` accepts `tracked_ref`'s `&Tracked<T>` for `Valid`'s field,
+   for `T: ?Sized` (phase 0 item 16),
+   and disjoint `&mut` field borrows work from the struct's module or a child (phase 0 item 15).
 2. Add the shared axioms (`tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref`,
    `from_raw_parts_ref`), then prove `TypedValue::valid_ref`.
 3. Add M1 and M3–M5.
@@ -385,10 +398,10 @@ Update their contracts to the new specs, and review them when they're restored
 | 1 | The `metadata` field; slice `PTPhys`/`PTProperties`/`View` impls; `abs_decode_slice` | done | Don't depend on the trait. |
 | 2 | Phase 0: spike | done ([results](#phase-0-results)) | Settles the trait mechanics first. |
 | 3 | Phase 1: structural generic `SeqPointsTo` | next | Independent; small. |
-| 3b | Phase 0 check 10, then phase 1b: `SeqPointsTo` slice pointer, `size(metadata)`, no `FixedSize` | | Before phase 2, which writes the new traits against `PTPhys::size(metadata)`. |
+| 3b | Phase 1b: `SeqPointsTo` slice pointer, `size(metadata)`, no `FixedSize` | | Before phase 2, which writes the new traits against `PTPhys::size(metadata)`. |
 | 4 | Phase 2: traits + Sized impls | | Fixes the API the slice impls implement. |
 | 5 | Phase 2b: slice impls | bodies in `step3_slice_wip.patch` | Uses the trait from row 4. |
-| 5b | Phase 0 check 11, then phase 2c: `PointsToRaw` | | Its generic typed conversions use rows 4-5; its untyped part only needs row 3b. |
+| 5b | Phase 2c: `PointsToRaw` | | Its generic typed conversions use rows 4-5; its untyped part only needs row 3b. |
 | 6 | Phase 3: typed `SeqPointsTo` on the new traits | | Small; can merge into phase 2. |
 | 7 | Phase 3b: borrowed-assembly axioms; prove `subrange_mut` and `split_mut` | | Needs rows 5-6. |
 | 8 | Phase 4 and phase 4b | | Both build on row 7. |
