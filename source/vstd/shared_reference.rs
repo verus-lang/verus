@@ -183,6 +183,7 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
     requires
         perm.ptr() == ptr,
         perm.is_valid(),
+        perm.wf(),
     ensures
         v.value() == perm.value(),
         v.ptr().addr() == ptr.addr(),
@@ -200,6 +201,7 @@ pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) ->
     requires
         perm.ptr() == ptr,
         perm.is_valid(),
+        perm.wf(),
     ensures
         v.value() == perm.value(),
         v.ptr() == ptr,

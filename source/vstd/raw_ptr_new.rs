@@ -492,6 +492,7 @@ pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> 
     requires
         perm.ptr() == ptr,
         perm.is_valid(),
+        perm.wf(),
     ensures
         v == perm.value(),
     opens_invariants none
@@ -540,9 +541,12 @@ pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>
     requires
         old(perm).ptr() == ptr,
         old(perm).is_valid(),
+        old(perm).wf(),
     ensures
         final(perm).ptr() == ptr,
         final(perm).is_valid(),
+        // The final bytes decode to the final value.
+        final(perm).wf(),
         old(perm).value() == *v,
         final(perm).value() == *final(v),
     opens_invariants none

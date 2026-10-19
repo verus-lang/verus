@@ -1145,8 +1145,10 @@ though they only use their (closed) specs, not their fields.
   (`SharedReference::points_to`, `mut_ref_to_shr_points_to`, and their slice and `str` versions):
   a real reference is aligned and its bytes decode to its value.
   The Sized ones already do in the code.
-  `ptr_mut_ref` / `ptr_mut_ref_slice` / `ptr_mut_ref_str` take a permission rather than produce one,
-  and still say nothing about `final(perm)`'s bytes.
+- **The `ptr_ref` family requires `wf()`** (`ptr_ref`, `ptr_mut_ref`, `ptr_ref2`, `ptr_ref2_ghost`,
+  and their slice and `str` versions; the Sized ones already in the code).
+  `ptr_mut_ref` and its slice / `str` versions also ensure `final(perm).wf()`:
+  they don't say the bytes stay the same, so this is what ties the final bytes to the final value.
 - **`global_alloc_id`.** It replaces what `Dealloc` guaranteed implicitly:
   that the memory being freed came from the global allocator.
   Only `allocate` ensures a provenance has this id,
@@ -1178,6 +1180,16 @@ Every new trusted item: the summary, then the full definitions.
 | `global_alloc_id` (`uninterp`) | with `allocate` (placement open) | The id of the global allocator's allocations. | `allocate` / `deallocate` |
 | `allocate`, `deallocate` (`external_body`) | open | Allocation gives a `PointsToRaw` for the new range with a global-allocator provenance; deallocation consumes one covering the whole allocation. | heap allocation |
 
+**Minor changes to existing vstd axioms** (already in the code on this branch).
+
+| Item | File | Change | Uses |
+|---|---|---|---|
+| `ptr_ref` (`external_body`) | `raw_ptr_new.rs` | Now requires `perm.wf()`. | exec reads |
+| `ptr_mut_ref` (`external_body`) | `raw_ptr_new.rs` | Now requires `old(perm).wf()` and ensures `final(perm).wf()` (the final bytes decode to the final value); full spec below. | exec writes through `&mut T` |
+| `mut_ref_to_shr_points_to` | `raw_ptr_new.rs` | Now ensures `pt.wf()`. | the source of valid permissions from `&mut T` |
+| `SharedReference::points_to` | `shared_reference.rs` | Now ensures `pt.wf()`. | the source of valid shared permissions |
+| `ptr_ref2` (`external_body`), `ptr_ref2_ghost` | `shared_reference.rs` | Now require `perm.wf()`. | exec code; `SharedReference` from a permission |
+
 **rustlib.**
 
 | Item | What it states | Uses |
@@ -1195,6 +1207,36 @@ they're replaced by the above and not part of this design.
 
 "New" means new relative to the `verify-rustlib` branch.
 `abs_decode_slice` is already in `type_representation.rs`, so its definition isn't repeated below.
+
+### `ptr_mut_ref` (minor change, already in the code)
+
+The existing axiom now requires and ensures `wf()`.
+It doesn't say the bytes stay the same,
+so `final(perm).wf()` is what tells callers the final bytes decode to the final value.
+
+```rust
+/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
+    requires
+        old(perm).ptr() == ptr,
+        old(perm).is_valid(),
+        old(perm).wf(),
+    ensures
+        final(perm).ptr() == ptr,
+        final(perm).is_valid(),
+        // The final bytes decode to the final value.
+        final(perm).wf(),
+        old(perm).value() == *v,
+        final(perm).value() == *final(v),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
+}
+```
 
 ### `Seq` tracked operations (already added)
 
@@ -1399,6 +1441,7 @@ pub axiom fn ptr_ref2_slice_ghost<'a, T>(ptr: *const [T], tracked perm: &PointsT
     requires
         perm.ptr() == ptr,
         perm.is_valid(),
+        perm.wf(),
     ensures
         v.value()@ == perm.typed_value().value_ref()@,
         v.ptr() == ptr,
@@ -1411,6 +1454,7 @@ pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<
     requires
         perm.ptr() == ptr,
         perm.is_valid(),
+        perm.wf(),
     ensures
         v@ == perm.typed_value().value_ref()@,
     opens_invariants none
@@ -1425,9 +1469,12 @@ pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut Poi
     requires
         old(perm).ptr() == ptr,
         old(perm).is_valid(),
+        old(perm).wf(),
     ensures
         final(perm).ptr() == ptr,
         final(perm).is_valid(),
+        // The final bytes decode to the final value.
+        final(perm).wf(),
         old(perm).typed_value().value_ref()@ == v@,
         final(perm).typed_value().value_ref()@ == final(v)@,
     opens_invariants none
@@ -1566,6 +1613,7 @@ pub axiom fn ptr_ref2_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str
     requires
         perm.ptr() == ptr,
         perm.is_valid(),
+        perm.wf(),
     ensures
         v.value() == perm.typed_value().value_ref(),
         v.ptr() == ptr,
@@ -1576,6 +1624,7 @@ pub const fn ptr_ref_str(ptr: *const str, Tracked(perm): Tracked<&PointsTo<str>>
     requires
         perm.ptr() == ptr,
         perm.is_valid(),
+        perm.wf(),
     ensures
         v == perm.typed_value().value_ref(),
     opens_invariants none
@@ -1589,9 +1638,12 @@ pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo
     requires
         old(perm).ptr() == ptr,
         old(perm).is_valid(),
+        old(perm).wf(),
     ensures
         final(perm).ptr() == ptr,
         final(perm).is_valid(),
+        // The final bytes decode to the final value.
+        final(perm).wf(),
         old(perm).typed_value().value_ref() == &*v,
         final(perm).typed_value().value_ref() == &*final(v),
     opens_invariants none
