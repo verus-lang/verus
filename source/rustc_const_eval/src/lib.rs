@@ -8,13 +8,48 @@
 #![feature(unqualified_local_imports)]
 #![feature(yeet_expr)]
 #![warn(unqualified_local_imports)]
+#![feature(rustc_private)]
 // tidy-alphabetical-end
+
+extern crate either;
+extern crate rustc_abi;
+extern crate rustc_apfloat;
+extern crate rustc_ast;
+extern crate rustc_data_structures;
+extern crate rustc_errors;
+extern crate rustc_hir;
+extern crate rustc_index;
+extern crate rustc_infer;
+extern crate rustc_macros;
+extern crate rustc_middle;
+extern crate rustc_mir_dataflow;
+extern crate rustc_mir_transform;
+extern crate rustc_session;
+extern crate rustc_span;
+extern crate rustc_target;
+extern crate rustc_trait_selection;
+
+// The files copied from rustc_mir_transform refer to `rustc_const_eval`
+extern crate self as rustc_const_eval;
 
 pub mod check_consts;
 pub mod const_eval;
 mod diagnostics;
 pub mod interpret;
 pub mod util;
+
+#[path = "../../rustc_const_eval_additional_files/verus.rs"]
+pub mod verus;
+
+// Files from rustc_mir_transform, needed to process the MIR used for const evaluation
+#[path = "../../rustc_mir_transform/src/ctfe_limit.rs"]
+mod ctfe_limit;
+#[path = "../../rustc_mir_transform/src/promote_consts.rs"]
+#[allow(unqualified_local_imports)]
+mod promote_consts;
+#[path = "../../rustc_mir_transform/src/required_consts.rs"]
+mod required_consts;
+use crate::verus::{MirPass, PassPolicy};
 
 use std::sync::atomic::AtomicBool;
 

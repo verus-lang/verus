@@ -2337,6 +2337,7 @@ dependencies = [
  "num-format",
  "regex",
  "rust_verify_test_macros",
+ "rustc_const_eval",
  "rustc_hir_analysis",
  "rustc_mir_build",
  "serde",
@@ -2369,6 +2370,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "rustc_const_eval"
+version = "0.0.0"
+dependencies = [
+ "rustc_mir_build",
+ "tracing",
 ]
 
 [[package]]
