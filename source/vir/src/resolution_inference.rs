@@ -265,11 +265,11 @@ The analysis is pretty weak right now but could be improved.
 */
 
 use crate::ast::{
-    Arm, ArrayKind, BoundsCheck, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, Exprs, FieldOpr,
-    Fun, FunWithVis, Function, Ident, Label, LocalOrTemp, Mode, ModeWrapperMode, Params, Path,
-    Pattern, PatternBinding, PatternX, Place, PlaceX, Primitive, ReadKind, SpannedTyped, Stmt,
-    StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind, VarBinders, VarIdent,
-    VarIdentDisambiguate, VariantCheck, VirErr,
+    Arm, ArrayKind, BoundsCheck, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
+    FunWithVis, Function, Ident, Label, LocalOrTemp, Mode, ModeWrapperMode, Params, Path, Pattern,
+    PatternBinding, PatternX, Place, PlaceX, Primitive, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
+    TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate,
+    VariantCheck, VirErr,
 };
 use crate::ast_to_sst::Maybe;
 use crate::ast_util::{
@@ -1142,19 +1142,17 @@ impl<'a> Builder<'a> {
                 Maybe::Some(bb)
             }
             ExprX::InvMask(_m) => Maybe::Some(bb),
-            ExprX::Return(e_opt, drops) => {
+            ExprX::Return(e_opt) => {
                 if let Some(e) = e_opt {
                     bb = unwrap!(self.build(e, bb));
                 }
-                bb = unwrap!(self.build_drops(drops, bb));
                 self.basic_blocks[bb].is_exit = true;
                 Maybe::Never
             }
-            ExprX::BreakOrContinue { label, is_break, value, drops } => {
+            ExprX::BreakOrContinue { label, is_break, value } => {
                 if let Some(value) = value {
                     bb = unwrap!(self.build(value, bb));
                 }
-                bb = unwrap!(self.build_drops(drops, bb));
                 let entry = self.get_loop(label);
                 if *is_break {
                     self.basic_blocks[bb].successors.push(entry.break_bb);
@@ -1245,7 +1243,7 @@ impl<'a> Builder<'a> {
                     Maybe::Some(bb)
                 }
             }
-            ExprX::Block(stmts, e_opt, drops) => {
+            ExprX::Block(stmts, e_opt) => {
                 let mut scope_count = 0;
                 for s in stmts.iter() {
                     bb = match self.build_stmt(s, bb) {
@@ -1273,14 +1271,13 @@ impl<'a> Builder<'a> {
                         }
                     };
                 }
-                // Drops are evaluated with the block's locals still in scope
-                let bb = self.build_drops(drops, bb);
                 for _i in 0..scope_count {
                     self.pop_scope();
                 }
-                bb
+                Maybe::Some(bb)
             }
             ExprX::Drop(local_or_temp) => {
+                // TODO: account for the unwinding path here
                 if let Some(fp) = self.local_or_temp_place(local_or_temp) {
                     self.push_instruction_propagate(
                         bb,
@@ -1314,14 +1311,6 @@ impl<'a> Builder<'a> {
                 Maybe::Some(bb)
             }
         }
-    }
-
-    fn build_drops(&mut self, drops: &Exprs, bb: BBIndex) -> Maybe<BBIndex> {
-        let mut bb = bb;
-        for d in drops.iter() {
-            bb = unwrap!(self.build(d, bb));
-        }
-        Maybe::Some(bb)
     }
 
     /// Get the place for the target of an ExprX::Drop, if it's a place tracked by the analysis.
@@ -4078,11 +4067,7 @@ fn apply_before_exprs(expr: Expr, before_exprs: Vec<Expr>) -> Expr {
     for e in before_exprs.into_iter() {
         stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
     }
-    SpannedTyped::new(
-        &expr.span,
-        &expr.typ,
-        ExprX::Block(Arc::new(stmts), Some(expr.clone()), Arc::new(vec![])),
-    )
+    SpannedTyped::new(&expr.span, &expr.typ, ExprX::Block(Arc::new(stmts), Some(expr.clone())))
 }
 
 fn apply_after_exprs(expr: Expr, after_exprs: Vec<Expr>) -> Expr {
@@ -4096,11 +4081,7 @@ fn apply_after_exprs(expr: Expr, after_exprs: Vec<Expr>) -> Expr {
         for e in after_exprs.into_iter() {
             stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
         }
-        SpannedTyped::new(
-            &expr.span,
-            &unit_typ(),
-            ExprX::Block(Arc::new(stmts), None, Arc::new(vec![])),
-        )
+        SpannedTyped::new(&expr.span, &unit_typ(), ExprX::Block(Arc::new(stmts), None))
     };
     SpannedTyped::new(&expr.span, &expr.typ, ExprX::EvalAndResolve(expr.clone(), e))
 }
@@ -4133,12 +4114,12 @@ fn apply_after_bool_exprs(expr: Expr, after_f: Vec<Expr>, after_t: Vec<Expr>) ->
             SpannedTyped::new(
                 &expr.span,
                 &unit_typ(),
-                ExprX::Block(Arc::new(t_stmts), Some(mk_bool(&expr.span, true)), Arc::new(vec![])),
+                ExprX::Block(Arc::new(t_stmts), Some(mk_bool(&expr.span, true))),
             ),
             Some(SpannedTyped::new(
                 &expr.span,
                 &unit_typ(),
-                ExprX::Block(Arc::new(f_stmts), Some(mk_bool(&expr.span, false)), Arc::new(vec![])),
+                ExprX::Block(Arc::new(f_stmts), Some(mk_bool(&expr.span, false))),
             )),
         ),
     )
@@ -4154,11 +4135,8 @@ fn apply_after_args_exprs(expr: Expr, exprs: Vec<Expr>) -> Expr {
             for e in exprs.into_iter() {
                 stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
             }
-            let block = SpannedTyped::new(
-                &expr.span,
-                &unit_typ(),
-                ExprX::Block(Arc::new(stmts), None, Arc::new(vec![])),
-            );
+            let block =
+                SpannedTyped::new(&expr.span, &unit_typ(), ExprX::Block(Arc::new(stmts), None));
             SpannedTyped::new(
                 &expr.span,
                 &expr.typ,
@@ -4211,11 +4189,8 @@ fn apply_temp_simplification(cfg: &CFG, place: &Place, exprs: Vec<Expr>) -> Plac
         stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
     }
 
-    let block_expr = SpannedTyped::new(
-        &place.span,
-        &unit_typ(),
-        ExprX::Block(Arc::new(stmts), None, Arc::new(vec![])),
-    );
+    let block_expr =
+        SpannedTyped::new(&place.span, &unit_typ(), ExprX::Block(Arc::new(stmts), None));
 
     SpannedTyped::new(&place.span, &place.typ, PlaceX::WithExpr(block_expr, tmp_local_place))
 }
@@ -4247,9 +4222,5 @@ fn add_decls_for_temps(
             }
         }
     }
-    SpannedTyped::new(
-        &expr.span,
-        &expr.typ,
-        ExprX::Block(Arc::new(stmts), Some(expr.clone()), Arc::new(vec![])),
-    )
+    SpannedTyped::new(&expr.span, &expr.typ, ExprX::Block(Arc::new(stmts), Some(expr.clone())))
 }

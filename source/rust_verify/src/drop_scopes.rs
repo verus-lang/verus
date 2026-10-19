@@ -24,7 +24,9 @@ use rustc_hir::HirId;
 use rustc_middle::middle::region::{Scope, ScopeData, ScopeTree};
 use rustc_span::Span;
 use std::sync::Arc;
-use vir::ast::{Expr, ExprX, LocalOrTemp, Mode, Place, PlaceX, Stmt, StmtX, VarIdent, VirErr};
+use vir::ast::{
+    BinaryOp, Expr, ExprX, LocalOrTemp, Mode, Place, PlaceX, Stmt, StmtX, VarIdent, VirErr,
+};
 use vir::ast_util::unit_typ;
 use vir::def::Spanned;
 
@@ -241,61 +243,53 @@ pub(crate) fn append_drops(bctx: &BodyCtxt, e: Expr, drops: Vec<Expr>) -> Expr {
     if drops.len() == 0 {
         return e;
     }
-    match append_drops_to_block(&e, &drops) {
-        Some(e) => e,
-        None => bctx.ctxt.spanned_typed_new_vir(
+    let right = if drops.len() == 1 {
+        drops[0].clone()
+    } else {
+        let stmts = Arc::new(drop_stmts(bctx, drops));
+        bctx.ctxt.spanned_typed_new_vir(
             &e.span,
-            &e.typ,
-            ExprX::Block(Arc::new(vec![]), Some(e.clone()), Arc::new(drops)),
-        ),
-    }
+            &vir::ast_util::unit_typ(),
+            ExprX::Block(stmts, None),
+        )
+    };
+    bctx.ctxt.spanned_typed_new_vir(
+        &e.span,
+        &e.typ,
+        ExprX::Binary(BinaryOp::Left, e.clone(), right),
+    )
 }
 
-fn drops_temp(drops: &Vec<Expr>, place: &Place) -> bool {
-    drops.iter().any(|d| matches!(&d.x, ExprX::Drop(LocalOrTemp::Temp(id)) if *id == place.span.id))
-}
-
-fn append_drops_to_block(e: &Expr, drops: &Vec<Expr>) -> Option<Expr> {
-    match &e.x {
-        ExprX::Block(stmts, tail, drops0) => {
-            let mut all_drops = (**drops0).clone();
-            all_drops.extend(drops.iter().cloned());
-            Some(e.new_x(ExprX::Block(stmts.clone(), tail.clone(), Arc::new(all_drops))))
+pub(crate) fn block_with_drops(
+    bctx: &BodyCtxt,
+    span: &Span,
+    stmts: Vec<Stmt>,
+    e: Option<Expr>,
+    drops: Vec<Expr>,
+) -> Expr {
+    let x = match &e {
+        Some(e) => ExprX::Block(Arc::new(stmts), Some(append_drops(bctx, e.clone(), drops))),
+        None => {
+            let mut stmts = stmts;
+            stmts.extend(drop_stmts(bctx, drops));
+            ExprX::Block(Arc::new(stmts), None)
         }
-        // If `e1` never returns, then neither of these orderings execute the drops:
-        ExprX::NeverToAny(e1) => {
-            Some(e.new_x(ExprX::NeverToAny(append_drops_to_block(e1, drops)?)))
-        }
-        // The drops can't affect the value already stored in the temporary,
-        // so it's equivalent to execute the drops before reading the temporary
-        // (as long as we aren't dropping the temporary itself):
-        ExprX::ReadPlace(place, rk) => match &place.x {
-            PlaceX::Temporary(e1) if !drops_temp(drops, place) => {
-                let e1 = append_drops_to_block(e1, drops)?;
-                Some(e.new_x(ExprX::ReadPlace(place.new_x(PlaceX::Temporary(e1)), *rk)))
-            }
-            _ => None,
-        },
-        ExprX::ImplicitReborrowOrSpecRead(place, b, span) => match &place.x {
-            PlaceX::Temporary(e1) if !drops_temp(drops, place) => {
-                let e1 = append_drops_to_block(e1, drops)?;
-                let place = place.new_x(PlaceX::Temporary(e1));
-                Some(e.new_x(ExprX::ImplicitReborrowOrSpecRead(place, *b, span.clone())))
-            }
-            _ => None,
-        },
-        _ => None,
-    }
+    };
+    let typ = match e {
+        Some(e) => e.typ.clone(),
+        None => unit_typ(),
+    };
+    bctx.spanned_typed_new(span.clone(), &typ, x)
 }
 
 /// Return an expression that executes the drops and then evaluates `e`.
-pub(crate) fn prepend_drops(bctx: &BodyCtxt, e: Expr, drops: Vec<Expr>) -> Expr {
+pub(crate) fn prepend_drops(bctx: &BodyCtxt, drops: Vec<Expr>, e: Expr) -> Expr {
     if drops.len() == 0 {
         return e;
     }
     bctx.ctxt.spanned_typed_new_vir(
         &e.span,
         &e.typ,
-        ExprX::Block(Arc::new(drop_stmts(bctx, drops)), Some(e.clone()), Arc::new(vec![])),
+        ExprX::Block(Arc::new(drop_stmts(bctx, drops)), Some(e.clone())),
     )
 }

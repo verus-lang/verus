@@ -319,15 +319,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::Fuel(_fun, _fuel, _is_broadcast_use) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::RevealString(_s) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::RevealByteString(_bs) => R::ret(|| expr_new(expr.x.clone())),
-            ExprX::BreakOrContinue { label, is_break, value, drops } => {
+            ExprX::BreakOrContinue { label, is_break, value } => {
                 let value = self.visit_opt_expr(value)?;
-                let drops = self.visit_exprs(drops)?;
                 R::ret(|| {
                     expr_new(ExprX::BreakOrContinue {
                         label: label.clone(),
                         is_break: *is_break,
                         value: R::get_opt(value),
-                        drops: R::get_vec_a(drops),
                     })
                 })
             }
@@ -674,10 +672,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     })
                 }
             },
-            ExprX::Return(e, drops) => {
+            ExprX::Return(e) => {
                 let e = self.visit_opt_expr(e)?;
-                let drops = self.visit_exprs(drops)?;
-                R::ret(|| expr_new(ExprX::Return(R::get_opt(e), R::get_vec_a(drops))))
+                R::ret(|| expr_new(ExprX::Return(R::get_opt(e))))
             }
             ExprX::Ghost { alloc_wrapper, tracked, expr } => {
                 let expr = self.visit_expr(expr)?;
@@ -693,7 +690,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::ProofInSpec(R::get(e))))
             }
-            ExprX::Block(stmts, e, drops) => {
+            ExprX::Block(stmts, e) => {
                 let mut scope_count = 0;
 
                 let stmts = R::map_vec_and_flatten(stmts, &mut |s| {
@@ -720,15 +717,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 })?;
 
                 let e = self.visit_opt_expr(e)?;
-                let drops = self.visit_exprs(drops)?;
 
                 for _i in 0..scope_count {
                     self.pop_scope();
                 }
 
-                R::ret(|| {
-                    expr_new(ExprX::Block(R::get_vec_a(stmts), R::get_opt(e), R::get_vec_a(drops)))
-                })
+                R::ret(|| expr_new(ExprX::Block(R::get_vec_a(stmts), R::get_opt(e))))
             }
             ExprX::NeverToAny(e) => {
                 let e = self.visit_expr(e)?;

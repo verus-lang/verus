@@ -126,7 +126,7 @@ fn clone_add_post_condition<'tcx>(
     let self_var;
 
     match &body.x {
-        ExprX::Block(_stmts, Some(last_expr), _) => match &last_expr.x {
+        ExprX::Block(_stmts, Some(last_expr)) => match &last_expr.x {
             ExprX::ReadPlace(pl, _) => match &pl.x {
                 PlaceX::Local(id) if &*id.0 == "self" => {
                     uses_copy = true;

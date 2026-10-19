@@ -2873,8 +2873,7 @@ fn check_expr(
             }
             Ok((Mode::Exec, Proph::No))
         }
-        ExprX::Return(e1, _drops) => {
-            // Note: drops are no-ops and don't need to be mode-checked
+        ExprX::Return(e1) => {
             if ctxt.check_ghost_blocks {
                 match (ctxt.fun_mode, typing.block_ghostness) {
                     (Mode::Exec, Ghost::Exec) => {}
@@ -2937,7 +2936,7 @@ fn check_expr(
             }
             Ok((Mode::Exec, Proph::No))
         }
-        ExprX::BreakOrContinue { label: _, is_break: _, value, drops: _ } => {
+        ExprX::BreakOrContinue { label: _, is_break: _, value } => {
             if typing.in_assert_by_body {
                 return Err(error(
                     &expr.span,
@@ -3045,11 +3044,10 @@ fn check_expr(
             let mut typing = typing.push_in_proof_in_spec(true);
             check_expr(ctxt, record, &mut typing, Mode::Proof, Expect(Mode::Spec), e1, outer_proph)
         }
-        // Note: drops are no-ops and don't need to be mode-checked
-        ExprX::Block(ss, Some(e1), _drops) if ss.len() == 0 => {
+        ExprX::Block(ss, Some(e1)) if ss.len() == 0 => {
             return check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph);
         }
-        ExprX::Block(ss, e1, _drops) => {
+        ExprX::Block(ss, e1) => {
             let mut typing = typing.push_var_multi_scope();
             for stmt in ss.iter() {
                 typing.add_var_multi_scope();
@@ -3196,7 +3194,7 @@ fn check_expr(
             // We get around this by partially destructing the body of the atomic function call,
             // finding the loop and mode checking it manually.
 
-            let ExprX::Block(stmts, Some(e), _) = &e.x else {
+            let ExprX::Block(stmts, Some(e)) = &e.x else {
                 return Err(error(
                     &expr.span,
                     "malformed atomic function call; please do not use `vstd::atomic::atomically` directly",

@@ -1,6 +1,7 @@
 use crate::ast::{
-    Expr, ExprX, Exprs, Fun, HeaderExprX, LoopInvariant, LoopInvariantKind, LoopInvariants,
-    MaskSpec, PlaceX, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent, VirErr, Visibility,
+    BinaryOp, Expr, ExprX, Exprs, Fun, HeaderExprX, LoopInvariant, LoopInvariantKind,
+    LoopInvariants, MaskSpec, PlaceX, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent,
+    VirErr, Visibility,
 };
 use crate::ast_util::air_unique_var;
 use crate::messages::error;
@@ -324,13 +325,13 @@ pub fn read_header(body: &mut Expr, allows: &HeaderAllows) -> Result<Header, Vir
     }
 
     match &body.x {
-        ExprX::Block(stmts, expr, drops) => {
+        ExprX::Block(stmts, expr) => {
             let mut expr = expr.clone();
             let mut block = Vec::new();
             for stmt in (**stmts).iter() {
                 let mut nested_header_block = NestedHeaderBlock::Unknown;
                 if let StmtX::Expr(e) = &stmt.x {
-                    if let ExprX::Block(b, e, _) = &e.x {
+                    if let ExprX::Block(b, e) = &e.x {
                         for s in b.iter() {
                             if let StmtX::Expr(e) = &s.x {
                                 if let ExprX::Header(_h) = &e.x {
@@ -384,7 +385,7 @@ pub fn read_header(body: &mut Expr, allows: &HeaderAllows) -> Result<Header, Vir
                     }
                 }
             }
-            *body = body.new_x(ExprX::Block(Arc::new(block), expr, drops.clone()));
+            *body = body.new_x(ExprX::Block(Arc::new(block), expr));
             Ok(header)
         }
         _ => read_header_block(&mut vec![], allows),
@@ -444,20 +445,6 @@ fn peel(expr: &Expr) -> &Expr {
     }
 }
 
-fn peels_to_block(expr: &Expr) -> bool {
-    match &expr.x {
-        ExprX::Block(..) => true,
-        ExprX::NeverToAny(e) => peels_to_block(e),
-        ExprX::ReadPlace(place, _) | ExprX::ImplicitReborrowOrSpecRead(place, _, _) => {
-            match &place.x {
-                PlaceX::Temporary(e) => peels_to_block(e),
-                _ => false,
-            }
-        }
-        _ => false,
-    }
-}
-
 /// Skip past nodes that can result from implicit adjustments
 fn peel_mut(expr: &mut Expr) -> &mut Expr {
     match &expr.x {
@@ -479,13 +466,9 @@ fn peel_mut(expr: &mut Expr) -> &mut Expr {
             let PlaceX::Temporary(e) = &mut Arc::make_mut(place).x else { unreachable!() };
             peel_mut(e)
         }
-        // A block that only exists to hold drops (see ExprX::Drop),
-        // wrapped around a block (possibly through the other nodes we skip past)
-        ExprX::Block(stmts, Some(e), drops)
-            if stmts.len() == 0 && drops.len() > 0 && peels_to_block(e) =>
-        {
-            let ExprX::Block(_, Some(e), _) = &mut Arc::make_mut(expr).x else { unreachable!() };
-            peel_mut(e)
+        ExprX::Binary(BinaryOp::Left, _, _) => {
+            let ExprX::Binary(_, l, _) = &mut Arc::make_mut(expr).x else { unreachable!() };
+            peel_mut(l)
         }
         _ => expr,
     }

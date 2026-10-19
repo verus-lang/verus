@@ -1397,7 +1397,7 @@ fn create_reveal_group<'tcx>(
     body: &vir::ast::Expr,
     span: Span,
 ) -> Result<(), VirErr> {
-    if let vir::ast::ExprX::Block(stmts, None, _) = &body.x {
+    if let vir::ast::ExprX::Block(stmts, None) = &body.x {
         let mut members: Vec<Fun> = Vec::new();
         for stmt in stmts.iter() {
             if let vir::ast::StmtX::Expr(expr) = &stmt.x {

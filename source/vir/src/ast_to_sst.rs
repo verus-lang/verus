@@ -1383,23 +1383,9 @@ pub(crate) fn expr_to_one_stm_with_post(
     Ok(stms_to_one_stm(&expr.span, stms))
 }
 
-/// Lower the drops attached to a Block, Return, or BreakOrContinue node.
-/// The Drop nodes themselves are no-ops, but resolution_inference may attach
-/// other code (i.e., resolution assumptions) to them.
-fn drops_to_stms(ctx: &Ctx, state: &mut State, drops: &Exprs) -> Result<Vec<Stm>, VirErr> {
-    let mut stms = vec![];
-    for d in drops.iter() {
-        let (mut d_stms, _) = expr_to_stm_opt(ctx, state, d)?;
-        stms.append(&mut d_stms);
-    }
-    Ok(stms)
-}
-
 fn find_last_span_in_expr<'x>(expr: &'x Expr, fn_span: &'x Span) -> &'x Span {
     match &expr.x {
-        ExprX::Block(_vec, block_expr, _drops) => {
-            block_expr.as_ref().map(|x| &x.span).unwrap_or(&fn_span)
-        }
+        ExprX::Block(_vec, block_expr) => block_expr.as_ref().map(|x| &x.span).unwrap_or(&fn_span),
         _ => &expr.span,
     }
 }
@@ -3627,7 +3613,7 @@ pub(crate) fn expr_to_stm_opt(
             let exp = mask.to_exp(ctx);
             Ok((stms, Maybe::Some(Value::Exp(exp))))
         }
-        ExprX::Return(e1, drops) => {
+        ExprX::Return(e1) => {
             let (mut stms, ret_exp) = match e1 {
                 None => (vec![], sst_unit_value(&expr.span)),
                 Some(e) => {
@@ -3637,7 +3623,6 @@ pub(crate) fn expr_to_stm_opt(
                     (ret_stms, exp)
                 }
             };
-            stms.append(&mut drops_to_stms(ctx, state, drops)?);
 
             let containing_closure = state.containing_closure.clone();
             match &containing_closure {
@@ -3669,7 +3654,7 @@ pub(crate) fn expr_to_stm_opt(
             stms.push(assume_false(&expr.span));
             Ok((stms, Maybe::Never))
         }
-        ExprX::BreakOrContinue { label, is_break, value, drops } => {
+        ExprX::BreakOrContinue { label, is_break, value } => {
             let mut stms = Vec::new();
             if let Some(value) = value {
                 assert!(*is_break);
@@ -3684,7 +3669,6 @@ pub(crate) fn expr_to_stm_opt(
                     stms.push(init_var(&expr.span, dest, &value));
                 }
             }
-            stms.append(&mut drops_to_stms(ctx, state, drops)?);
             let stmx = StmX::BreakOrContinue { label: label.clone(), is_break: *is_break };
             let stm = Spanned::new(expr.span.clone(), stmx);
             stms.push(stm);
@@ -3708,7 +3692,7 @@ pub(crate) fn expr_to_stm_opt(
             };
             Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
-        ExprX::Block(stmts, body_opt, drops) => {
+        ExprX::Block(stmts, body_opt) => {
             let mut stms: Vec<Stm> = Vec::new();
             let mut pre_local_decls: Vec<PreLocalDecl> = Vec::new();
             let mut binds: Vec<Bnd> = Vec::new();
@@ -3761,14 +3745,6 @@ pub(crate) fn expr_to_stm_opt(
             } else {
                 Maybe::Some(Value::ImplicitUnit(expr.span.clone()))
             };
-            if !matches!(exp, Maybe::Never) {
-                // The drops execute after the final expression, with the locals still in scope
-                let mut drop_stms = drops_to_stms(ctx, state, drops)?;
-                if drop_stms.len() > 0 {
-                    is_pure_exp = false;
-                }
-                stms.append(&mut drop_stms);
-            }
             for _ in pre_local_decls.iter() {
                 state.pop_scope();
             }

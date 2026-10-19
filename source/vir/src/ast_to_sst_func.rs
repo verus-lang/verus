@@ -327,7 +327,6 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                     },
                 )]),
                 Some(e.clone()),
-                Arc::new(vec![]),
             ),
         );
         let imply = crate::ast_util::mk_implies(&e.span, &awaited_call, &block);

@@ -674,7 +674,7 @@ pub fn mk_block(span: &Span, stmts: Vec<Stmt>, expr: Option<Expr>) -> Expr {
         Some(e) => e.typ.clone(),
         None => unit_typ(),
     };
-    SpannedTyped::new(span, &typ, ExprX::Block(Arc::new(stmts), expr, Arc::new(vec![])))
+    SpannedTyped::new(span, &typ, ExprX::Block(Arc::new(stmts), expr))
 }
 
 pub fn mk_mut_ref_future(span: &Span, expr: &Expr) -> Expr {

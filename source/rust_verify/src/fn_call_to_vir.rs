@@ -77,7 +77,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         return Ok(bctx.spanned_typed_new(
             expr.span,
             &expr_typ()?,
-            ExprX::Block(Arc::new(vec![]), None, Arc::new(vec![])),
+            ExprX::Block(Arc::new(vec![]), None),
         ));
     }
 
@@ -1590,7 +1590,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let proof = bctx.spanned_typed_new(
                         expr.span,
                         &unit_typ(),
-                        ExprX::Block(Arc::new(vec![]), None, Arc::new(vec![])),
+                        ExprX::Block(Arc::new(vec![]), None),
                     );
                     mk_expr(ExprX::AssertQuery {
                         requires,
