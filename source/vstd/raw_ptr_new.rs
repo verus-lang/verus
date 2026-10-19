@@ -675,6 +675,7 @@ pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
         pt.ptr() == mut_ref_ptr(*mut_ref),
         pt.is_valid(),
         pt.value() == *old(*mut_ref),
+        pt.wf(),
         *final(*mut_ref) == *old(*mut_ref),
 ;
 

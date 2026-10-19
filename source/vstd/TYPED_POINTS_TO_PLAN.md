@@ -84,7 +84,6 @@ Sequences:
   and the restored slice versions (`PointsTo<[T]>`).
   Trusted code shouldn't depend on verified code
   (see the dependency note in [Trusted surface](#trusted-surface)).
-- Whether the reference helpers should ensure `wf()` (see the review notes in [Trusted surface](#trusted-surface)).
 
 ## Specifications
 
@@ -1142,13 +1141,12 @@ though they only use their (closed) specs, not their fields.
   without duplicating a tracked value:
   M1/M2 drop values rather than duplicate them when the final state can't be distributed,
   and M6's finals are only tied when the length is unchanged.
-- **The reference helpers don't state `wf()`.**
-  The existing Sized ones (`SharedReference::points_to`, `mut_ref_to_shr_points_to`, `ptr_mut_ref`)
-  give a valid permission with the right pointer and value, but say nothing about its bytes or alignment,
-  and `ptr_mut_ref` says nothing about the final bytes.
-  The restored slice and `str` versions copy that.
-  A real reference does satisfy `wf()` (aligned, bytes decode to the value),
-  so `pt.wf()` / `final(perm).wf()` could be added to all of them together; to decide when reviewing.
+- **The reference helpers that produce a `PointsTo` ensure `wf()`**
+  (`SharedReference::points_to`, `mut_ref_to_shr_points_to`, and their slice and `str` versions):
+  a real reference is aligned and its bytes decode to its value.
+  The Sized ones already do in the code.
+  `ptr_mut_ref` / `ptr_mut_ref_slice` / `ptr_mut_ref_str` take a permission rather than produce one,
+  and still say nothing about `final(perm)`'s bytes.
 - **`global_alloc_id`.** It replaces what `Dealloc` guaranteed implicitly:
   that the memory being freed came from the global allocator.
   Only `allocate` ensures a provenance has this id,
@@ -1389,6 +1387,7 @@ impl<'a, T> SharedReference<'a, [T]> {
             pt.ptr() == self.ptr(),
             pt.is_valid(),
             pt.typed_value().value_ref()@ == self.value()@,
+            pt.wf(),
     ;
 }
 
@@ -1444,6 +1443,7 @@ pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut 
         pt.ptr() == mut_ref_ptr(*mut_ref),
         pt.is_valid(),
         pt.typed_value().value_ref()@ == (*old(*mut_ref))@,
+        pt.wf(),
         &*final(*mut_ref) == &*old(*mut_ref),
 ;
 ```
@@ -1558,6 +1558,7 @@ impl<'a> SharedReference<'a, str> {
             pt.ptr() == self.ptr(),
             pt.is_valid(),
             pt.typed_value().value_ref() == self.value(),
+            pt.wf(),
     ;
 }
 
@@ -1604,6 +1605,7 @@ pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) 
         pt.ptr() == mut_ref_ptr(*mut_ref),
         pt.is_valid(),
         pt.typed_value().value_ref() == &*old(*mut_ref),
+        pt.wf(),
         &*final(*mut_ref) == &*old(*mut_ref),
 ;
 ```

@@ -47,6 +47,7 @@ impl<'a, T> SharedReference<'a, T> {
             pt.ptr() == self.ptr(),
             pt.is_valid(),
             pt.value() == self.value(),
+            pt.wf(),
     ;
 }
 
