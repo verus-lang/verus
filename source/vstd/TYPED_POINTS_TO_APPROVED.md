@@ -181,6 +181,11 @@ Specs approved so far; the full list of new trusted items is in
 | `tracked_ref` (phase 3b) | `modes.rs` | A borrow is a borrowed `Tracked` of itself. | `TypedValue::valid_ref` |
 | `PointsToUnaligned::from_raw_parts_ref` (phase 3b) | with `PointsToUnaligned` (placement open) | Borrowed bytes and typed value act as one borrowed permission. | borrowed constructors, slice ↔ sequence, `str` ↔ `[u8]` |
 | `tracked_collect_perm_refs` (phase 3b) | with `SeqPointsTo` (placement open) | Borrowed permissions act as one borrowed `Seq`. | `from_refs`, `join_ref` |
+| M1 `TypedValue::<[T]>::from_elems_mut`, M2 `into_elems_mut` (phase 3b) | with `TypedValue` (placement open) | Per-element `&mut` typed values ↔ one `&mut` slice typed value. | `&mut` slice ↔ sequence |
+| M3 `PointsToUnaligned::from_raw_parts_mut` (phase 3b) | with `PointsToUnaligned` (placement open) | `&mut` bytes and typed value act as one `&mut` permission. | `&mut` conversions |
+| M4 `PointsTo::from_unaligned_mut` (phase 3b) | with `PointsTo` (placement open) | A `&mut PointsToUnaligned` acts as a `&mut PointsTo`. | `as_aligned_mut`, aligned `&mut` conversions |
+| M5 `SeqPointsTo::from_seq_mut` (phase 3b) | with `SeqPointsTo` (placement open) | A `&mut Seq<P>` acts as a `&mut SeqPointsTo`. | `subrange_mut`, `join_mut`, `&mut` conversions |
+| M6 `tracked_collect_perm_muts` (phase 3b) | with `SeqPointsTo` (placement open) | `&mut` permissions act as one `&mut Seq`. | `join_mut`, `&mut` conversions |
 
 **`ptr_mut_ref`** (`raw_ptr_new.rs`; existing, strengthened, already in the code).
 It now requires and ensures `wf()`.
@@ -295,6 +300,118 @@ pub axiom fn tracked_collect_perm_refs<'a, P: PointsToProperties>(tracked perms:
     -> (tracked out: &'a Seq<P>)
     ensures
         *out == perms.map_values(|r: &P| *r),
+;
+```
+
+**Mutable borrowed assembly (M1–M6)** (new, phase 3b).
+Each follows `PointsToUntyped::join_mut`'s pattern:
+the borrowed parts' final values are tied to the result's final value,
+conditionally where the structure could change.
+
+```rust
+// With TypedValue (placement open).
+impl<T> TypedValue<[T]> {
+    /// M1: per-element typed values -> one slice typed value.
+    /// If any element is empty, the slice starts empty.
+    pub axiom fn from_elems_mut<'a>(tracked elems: Seq<&'a mut TypedValue<T>>)
+        -> (tracked out: &'a mut TypedValue<[T]>)
+        ensures
+            // Initially: valid with the elements' values if every element is valid
+            // (a zero-length Seq counts as valid); otherwise empty.
+            (forall|i: int| 0 <= i < elems.len() ==> (#[trigger] *elems[i]).is_valid()) ==> {
+                &&& out.is_valid()
+                &&& out.value()@ == Seq::new(elems.len(), |i: int| (*elems[i]).value())
+            },
+            !(forall|i: int| 0 <= i < elems.len() ==> (#[trigger] *elems[i]).is_valid()) ==> out.is_empty(),
+            // Finally: a valid slice of the same length is distributed back to the elements;
+            // anything else leaves every element empty.
+            final(out).is_valid() && final(out).value()@.len() == elems.len() ==> forall|i: int|
+                0 <= i < elems.len() ==> {
+                    &&& (#[trigger] *final(elems[i])).is_valid()
+                    &&& (*final(elems[i])).value() == final(out).value()@[i]
+                },
+            !(final(out).is_valid() && final(out).value()@.len() == elems.len()) ==> forall|i: int|
+                0 <= i < elems.len() ==> (#[trigger] *final(elems[i])).is_empty(),
+    ;
+
+    /// M2: one slice typed value -> per-element typed values (the inverse of M1).
+    pub axiom fn into_elems_mut<'a>(tracked &'a mut self, len: nat)
+        -> (tracked elems: Seq<&'a mut TypedValue<T>>)
+        requires
+            old(self).is_valid() ==> old(self).value()@.len() == len,
+        ensures
+            // Initially: one element per slice element, each valid with its value, or each empty.
+            elems.len() == len,
+            old(self).is_valid() ==> forall|i: int| 0 <= i < len ==> {
+                &&& (#[trigger] *elems[i]).is_valid()
+                &&& (*elems[i]).value() == old(self).value()@[i]
+            },
+            old(self).is_empty() ==> forall|i: int| 0 <= i < len ==> (#[trigger] *elems[i]).is_empty(),
+            // Finally: if every element ends valid, the slice holds them;
+            // otherwise it ends empty (any remaining values are dropped).
+            (forall|i: int| 0 <= i < len ==> (#[trigger] *final(elems[i])).is_valid()) ==> {
+                &&& final(self).is_valid()
+                &&& final(self).value()@ == Seq::new(len, |i: int| (*final(elems[i])).value())
+            },
+            !(forall|i: int| 0 <= i < len ==> (#[trigger] *final(elems[i])).is_valid())
+                ==> final(self).is_empty(),
+    ;
+}
+```
+
+```rust
+// With PointsToUnaligned (placement open).
+impl<T: ?Sized> PointsToUnaligned<T> {
+    /// M3: the `&mut` version of `from_raw_parts_ref`.
+    pub axiom fn from_raw_parts_mut<'a>(
+        tracked pt_untyped: &'a mut PointsToUntyped,
+        tracked typed_value: &'a mut TypedValue<T>,
+        metadata: Metadata<T>,
+    ) -> (tracked out: &'a mut Self)
+        ensures
+            out.pt_untyped() == *old(pt_untyped),
+            out.typed_value() == *old(typed_value),
+            out.metadata() == metadata,
+            *final(pt_untyped) == final(out).pt_untyped(),
+            *final(typed_value) == final(out).typed_value(),
+    ;
+}
+```
+
+```rust
+// With PointsTo (placement open).
+impl<T: ?Sized> PointsTo<T> {
+    /// M4: a mutably borrowed `PointsToUnaligned<T>` acts as a mutably borrowed `PointsTo<T>`
+    /// (the `&mut` counterpart of the `shr_ref_struct_wrap` in `as_aligned`).
+    pub axiom fn from_unaligned_mut<'a>(tracked u: &'a mut PointsToUnaligned<T>)
+        -> (tracked out: &'a mut Self)
+        ensures
+            out.pt_unaligned() == *old(u),
+            *final(u) == final(out).pt_unaligned(),
+    ;
+}
+```
+
+```rust
+// With SeqPointsTo (placement open).
+impl<T, P: PointsToProperties<A = T>> SeqPointsTo<T, P> {
+    /// M5: a mutably borrowed `Seq<P>` acts as a mutably borrowed sequence with the given (ghost) pointer.
+    pub axiom fn from_seq_mut<'a>(tracked s: &'a mut Seq<P>, ptr: *mut [T]) -> (tracked out: &'a mut Self)
+        ensures
+            out.seq_pt() == *old(s),
+            out.ptr() == ptr,
+            *final(s) == final(out).seq_pt(),
+    ;
+}
+
+/// M6: the `&mut` version of `tracked_collect_perm_refs`.
+pub axiom fn tracked_collect_perm_muts<'a, P: PointsToProperties>(tracked perms: Seq<&'a mut P>)
+    -> (tracked out: &'a mut Seq<P>)
+    ensures
+        *out == Seq::new(perms.len(), |i: int| *perms[i]),
+        // Finally: the permissions are tied back only if the length is unchanged.
+        final(out).len() == perms.len() ==> forall|i: int|
+            0 <= i < perms.len() ==> *final(perms[i]) == #[trigger] final(out)[i],
 ;
 ```
 
