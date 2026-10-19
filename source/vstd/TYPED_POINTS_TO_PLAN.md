@@ -14,7 +14,7 @@ the phases, spike results and risks in [TYPED_POINTS_TO_IMPL_PLAN.md](TYPED_POIN
 ## Overview
 
 The permission types table, the trait impls table, the API changes not visible in the specs,
-the existing (unchanged) trusted specs, the five trait definitions, and the module layout are approved
+the existing (unchanged) trusted specs, the five trait definitions, the module layout, and the `TypedValue` impl are approved
 and are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md).
 
 **Written once vs per type.**
@@ -174,29 +174,7 @@ impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
 
 ### `TypedValue` (phase 2)
 
-```rust
-impl<T: ?Sized> TypedValue<T> {
-    /// If valid, a reference to the value; otherwise meaningless.
-    /// Generalizes `TypedValue<T>::value()` (Sized, by value) and `TypedValue<[T]>::value()` (-> &[T]),
-    /// which both stay.
-    pub open spec fn value_ref(&self) -> &T
-        recommends
-            self is Valid,
-    {
-        &*self->0
-    }
-
-    /// Borrows a value as a valid typed value (phase 3b; proved from the `tracked_ref` axiom).
-    pub proof fn valid_ref<'a>(tracked v: &'a T) -> (tracked out: &'a TypedValue<T>)
-        ensures
-            out.is_valid(),
-            out.value_ref() == v,
-    {
-        let tracked t = tracked_ref(v);
-        shr_ref_struct_wrap(t, &TypedValue::Valid(*t), "Valid", "0")
-    }
-}
-```
+Approved; see [`TypedValue`](TYPED_POINTS_TO_APPROVED.md#typedvalue-phase-2).
 
 ### `PTProperties` (changed in phase 1b)
 

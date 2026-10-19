@@ -1255,3 +1255,29 @@ pub trait PTSizedValue: PTValueOps<A: Sized> {
     }
 }
 ```
+
+## Impls
+
+### `TypedValue` (phase 2)
+
+```rust
+impl<T: ?Sized> TypedValue<T> {
+    /// If valid, a reference to the value; otherwise meaningless.
+    pub open spec fn value_ref(&self) -> &T
+        recommends
+            self.is_valid(),
+    {
+        &*self->0
+    }
+
+    /// Borrows a value as a valid typed value.
+    pub proof fn valid_ref<'a>(tracked v: &'a T) -> (tracked out: &'a Self)
+        ensures
+            out.is_valid(),
+            out.value_ref() == v,
+    {
+        let tracked t = tracked_ref(v);
+        shr_ref_struct_wrap(t, &TypedValue::Valid(*t), "Valid", "0")
+    }
+}
+```
