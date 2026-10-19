@@ -24,9 +24,9 @@ What is still under review is in [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.
 
 | Type | `PTPhys`, `PTProperties`, `View` | `PTTypedValue`, `PTValueOps` | `PTSizedValue` | Where | When |
 |---|---|---|---|---|---|
-| `PointsToUnaligned<T>` | `PTPhys`: per type; `PTProperties`: generic (phase 2) | yes | yes | vstd | phase 2 |
-| `PointsToUnaligned<[T]>` | `PTPhys`: per type (done); `PTProperties`: generic (phase 2) | yes | no | vstd | phase 2b |
-| `PointsToUnaligned<str>` | `PTPhys`: per type; `PTProperties`: generic | yes | no | rustlib | after phase 3b ([specs](TYPED_POINTS_TO_PLAN.md#str-rustlib)) |
+| `PointsToUnaligned<T>` | `PTPhys`, `PTProperties`: per type (phase 2) | yes | yes | vstd | phase 2 |
+| `PointsToUnaligned<[T]>` | `PTPhys`: per type (done); `PTProperties`: per type (phase 2) | yes | no | vstd | phase 2b |
+| `PointsToUnaligned<str>` | `PTPhys`, `PTProperties`: per type | yes | no | rustlib | after phase 3b ([specs](TYPED_POINTS_TO_PLAN.md#str-rustlib)) |
 | `PointsTo<T>` | yes, generic | yes, generic | yes | vstd | phase 2 (generic from phase 2b) |
 | `PointsTo<[T]>` | yes, generic | yes, generic | no | vstd, nothing slice-specific | phase 2b |
 | `PointsTo<str>` | yes, generic | yes, generic | no | vstd, nothing `str`-specific | once rustlib adds `PointsToUnaligned<str>` |

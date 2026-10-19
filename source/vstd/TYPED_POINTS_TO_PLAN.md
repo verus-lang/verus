@@ -24,7 +24,7 @@ Single-value permissions:
 | Code | Written | What it contains |
 |---|---|---|
 | `PTPhys for PointsToUnaligned<_>` | per type | `ptr` (same shape each time), the `size` formula, and `wf_basic` (one call to the generic `wf_basic_unaligned`) |
-| `PTProperties for PointsToUnaligned<T: ?Sized>` | once (generic) | `ptrs_len_same`, and the pointer-level lemmas, all delegating to the untyped bytes |
+| `PTProperties for PointsToUnaligned<_>` | per type (same body each time) | `ptrs_len_same`, and the pointer-level lemmas, all delegating to the untyped bytes |
 | `PTValueOps for PointsToUnaligned<_>` | per type | `typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment` (`true`); the lemmas (empty proofs); and the operations that touch the fields (`borrow_typed_value`, `take_typed_value`, `put_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_untyped`, `as_untyped_mut`) |
 | `PTSizedValue for PointsToUnaligned<T>` | once (Sized `T` only) | the two lemmas |
 | `PTPhys`, `PTProperties`, `View`, `PTValueOps` for `PointsTo<T: ?Sized>` | once (generic) | delegation to `self.pt_unaligned`, except `satisfies_alignment` (adds alignment) and `from_raw_parts` (wraps the result) |
@@ -68,115 +68,21 @@ Sequences:
   with `points_to_collections` outside `points_to_model`'s subtree.
 - Spike: Verus accepts private-field and `closed` spec access from the child module.
 - `PointsToUnaligned::as_raw_parts_mut` (proposed in
-  [Sequence → slice conversions](#sequence--slice-conversions-and-slice-indexing-phase-4)).
+  [`PointsToUnaligned`: proofs](#pointstounaligned-proofs)).
 
 ## Specifications
 
 Bodies are omitted except for spec fns and trusted code.
 "Unchanged" means the contract is today's, apart from `size()` → `Self::size(self.ptr()@.metadata)`.
 
-### Generic `PointsTo` trait impls and aligned/unaligned conversions
-
+Grouped by module ([layout](TYPED_POINTS_TO_APPROVED.md#module-layout)), from low-level to high-level permissions.
+An impl block with both spec fns and proofs is split as in the layout:
+the spec fns and axioms are under `points_to_model.rs`, the proofs under `points_to_ops.rs`.
 The trait definitions are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#trait-definitions).
 
-```rust
-impl<T: ?Sized> PTTypedValue for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
-    // typed_value, bytes, metadata_matches delegate to self.pt_unaligned;
-    open spec fn satisfies_alignment(addr: usize) -> bool {
-        &&& PointsToUnaligned::<T>::satisfies_alignment(addr)
-        &&& addr as nat % spec_align_of_val::<T>(arbitrary()) == 0
-    }
-    // wf: the trait's default body; the lemmas delegate.
-}
+### `points_to_model.rs` (trusted)
 
-impl<T: ?Sized> PTValueOps for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
-    // Everything delegates to self.pt_unaligned, except:
-    // from_raw_parts: wraps the PointsToUnaligned result.
-    // ptrs_len_same_valid, borrow, into_untyped, from_untyped, zero_sized: the trait's default bodies.
-}
-
-impl<T> PTSizedValue for PointsTo<T> {
-    // lemma_satisfies_alignment_offset: the alignment arithmetic; lemma_metadata_matches: empty.
-    // take, put, copy, copy_typed_value, from_untyped_with_value: the trait's default bodies.
-}
-
-impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
-    /// Converts to a `PointsTo<T>`, given that the address is aligned.
-    pub proof fn into_aligned(tracked self) -> (tracked out: PointsTo<T>)
-        requires
-            self.wf(),
-            <PointsTo<T> as PTValueOps>::satisfies_alignment(self.ptr()@.addr),
-        ensures
-            out.pt_unaligned() == self,
-            out.wf(),
-    ;
-
-    /// Borrows as a `PointsTo<T>`, given that the address is aligned.
-    pub proof fn as_aligned(tracked &self) -> (tracked out: &PointsTo<T>)
-        requires
-            self.wf(),
-            <PointsTo<T> as PTValueOps>::satisfies_alignment(self.ptr()@.addr),
-        ensures
-            out.pt_unaligned() == *self,
-            out.wf(),
-    ;
-
-    /// Mutably borrows as a `PointsTo<T>`, given that the address is aligned.
-    /// `final(self)` is the final `PointsTo<T>`'s underlying `PointsToUnaligned<T>`.
-    /// If the final `PointsTo<T>` satisfies `ptrs_len_same_valid` with the original,
-    /// `self` is well-formed afterwards.
-    pub proof fn as_aligned_mut(tracked &mut self) -> (tracked out: &mut PointsTo<T>)
-        requires
-            self.wf(),
-            <PointsTo<T> as PTValueOps>::satisfies_alignment(self.ptr()@.addr),
-        ensures
-            out.pt_unaligned() == *old(self),
-            out.wf(),
-            *final(self) == final(out).pt_unaligned(),
-            <PointsTo<T> as PTValueOps>::ptrs_len_same_valid(*out, *final(out)) ==> final(self).wf(),
-    ;
-}
-impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
-    /// Converts to a `PointsToUnaligned<T>`.
-    pub proof fn into_unaligned(tracked self) -> (tracked out: PointsToUnaligned<T>)
-        requires
-            self.wf(),
-        ensures
-            out == self.pt_unaligned(),
-            out.wf(),
-    ;
-
-    /// Borrows as a `PointsToUnaligned<T>`.
-    pub proof fn as_unaligned(tracked &self) -> (tracked out: &PointsToUnaligned<T>)
-        requires
-            self.wf(),
-        ensures
-            *out == self.pt_unaligned(),
-            out.wf(),
-    ;
-
-    /// Mutably borrows the underlying `PointsToUnaligned<T>`.
-    /// `final(self)` holds the final `PointsToUnaligned<T>`.
-    /// If the final unaligned permission satisfies `ptrs_len_same_valid` 
-    /// with the initial unaligned permission (so it keeps the same aligned address),
-    /// `self` is well-formed afterwards.
-    pub proof fn as_unaligned_mut(tracked &mut self) -> (tracked out: &mut PointsToUnaligned<T>)
-        requires
-            self.wf(),
-        ensures
-            *out == old(self).pt_unaligned(),
-            out.wf(),
-            final(self).pt_unaligned() == *final(out),
-            PointsToUnaligned::<T>::ptrs_len_same_valid(*out, *final(out)) ==> final(self).wf(),
-    ;
-}
-```
-
-### `TypedValue` (phase 2)
-
-Approved; see [`TypedValue`](TYPED_POINTS_TO_APPROVED.md#typedvalue-phase-2).
-
-### `PTProperties` (changed in phase 1b)
+#### `PTProperties` (changed in phase 1b)
 
 The trait is in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#trait-definitions). Compared with today's:
 contracts use `Self::size(self.ptr()@.metadata)` instead of `self.size()`;
@@ -187,7 +93,71 @@ and `ptrs_len_same_valid` is renamed `ptrs_len_same` (pointer-level; the decodin
 The lemma groups (`group_points_to_lemmas`, `group_points_to_collections_lemmas`) are in
 [Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout).
 
-### `PointsToUnaligned` (phases 2, 2b; `str` in rustlib)
+#### `SeqPointsTo` and `PointsToUntyped`: specs (phase 1b)
+
+```rust
+#[verifier::reject_recursive_types(T)]
+pub tracked struct SeqPointsTo<T, P: PTProperties<A = T>> {
+    seq_pt: Seq<P>,
+    ptr: Ghost<*mut [T]>,
+}
+
+impl<T, P: PTProperties<A = T>> PTPhys for SeqPointsTo<T, P> {
+    type A = [T];
+    closed spec fn ptr(self) -> *mut [T] { self.ptr@ }
+    open spec fn size(metadata: usize) -> nat { metadata as nat * P::size(()) }
+    open spec fn wf_basic(self) -> bool {
+        &&& self.ptr()@.metadata == self.len()   // new (was only in PointsToUntyped::wf)
+        &&& forall|i| 0 <= i < self.len() ==> {
+            &&& self[i].ptr()@.provenance == self.ptr()@.provenance
+            &&& self[i].ptr()@.addr == self.ptr()@.addr + i * P::size(())
+            &&& self[i].wf_basic()
+        }
+        &&& self.ptr()@.addr != 0
+        &&& /* provenance bounds: unchanged */
+    }
+}
+
+/// Structural specs for a sequence of any element permission.
+impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
+    /// The element permissions.
+    pub closed spec fn seq_pt(self) -> Seq<P> {
+        self.seq_pt
+    }
+
+    /// The number of element permissions.
+    pub open spec fn len(self) -> nat {
+        self.seq_pt().len()
+    }
+
+    pub open spec fn spec_index(self, index: int) -> P
+        recommends
+            0 <= index < self.len(),
+    {
+        self.seq_pt()[index]
+    }
+
+    /// The pointer to the first element, without the length.
+    /// For code that doesn't care about the slice metadata.
+    pub open spec fn thin_ptr(self) -> *mut T {
+        ptr_mut_from_data::<T>(PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: () })
+    }
+
+    // from_seq_mut (M5, axiom): see [Borrowed-assembly axioms](#borrowed-assembly-axioms-phase-3b).
+}
+
+impl SeqPointsTo<u8, PointsToByte> {   // PointsToUntyped
+    pub open spec fn wf(self) -> bool { self.wf_basic() }   // the metadata clause moved to wf_basic
+    // View, bytes: today's.
+    // join_ref, join_mut: axioms (see TYPED_POINTS_TO_APPROVED.md, Untyped joins).
+}
+```
+
+#### `TypedValue` (phase 2)
+
+Approved; see [`TypedValue`](TYPED_POINTS_TO_APPROVED.md#typedvalue-phase-2).
+
+#### `PointsToUnaligned`: specs (phases 2, 2b; `str` in rustlib)
 
 ```rust
 // The shared `wf_basic` body, written once.
@@ -224,15 +194,6 @@ impl<T> PTPhys for PointsToUnaligned<[T]> {
 // vstd's generic `impl<T: ?Sized> PTPhysSealed for PointsToUnaligned<T>` already covers `str`,
 // and vstd is a module of rustlib's `core`, so rustlib can still write this impl.)
 
-// One generic impl.
-impl<T: ?Sized> PTProperties for PointsToUnaligned<T> where PointsToUnaligned<T>: PTPhys<A = T> {
-    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
-        &&& new.ptr() == old.ptr()
-        &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
-    }
-    // is_nonnull, ptr_bounds, provenance_not_none, is_disjoint, stays_wf_basic: delegate to pt_untyped.
-}
-
 // PTTypedValue items per impl (the operations' contracts are PTValueOps's):
 //                     typed_value          bytes                     metadata_matches(v, m)   satisfies_alignment(a)
 // PointsToUnaligned<T>    self.typed_value()   self.pt_untyped().bytes()  true                true
@@ -241,7 +202,7 @@ impl<T: ?Sized> PTProperties for PointsToUnaligned<T> where PointsToUnaligned<T>
 // wf: the trait's default body. For T and [T], this replaces today's per-type wf_basic clauses.
 ```
 
-### `PointsTo` (generic; phase 2, widened in phase 2b)
+#### `PointsTo`: specs (generic; phase 2, widened in phase 2b)
 
 ```rust
 impl<T: ?Sized> PTPhys for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
@@ -250,81 +211,35 @@ impl<T: ?Sized> PTPhys for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A 
     open spec fn size(metadata: Metadata<T>) -> nat { <PointsToUnaligned<T> as PTPhys>::size(metadata) }
     open spec fn wf_basic(self) -> bool { self.pt_unaligned().wf_basic() }
 }
-impl<T: ?Sized> PTProperties for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
-    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
-        &&& new.ptr() == old.ptr()
-        &&& <PointsToUnaligned<T> as PTProperties>::ptrs_len_same(old.pt_unaligned(), new.pt_unaligned())
-    }
-    // proof fns delegate to pt_unaligned.
-}
+
 impl<T: ?Sized> View for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     type V = PointsToData<T>;
     open spec fn view(&self) -> PointsToData<T> {
         PointsToData { ptr: self.ptr(), value: self.typed_value(), bytes: self.bytes() }
     }
 }
-// PTValueOps: typed_value, bytes, metadata_matches delegate (naming the trait fns, phase 0 item 5);
-//   satisfies_alignment(a) = PointsToUnaligned::<T>::satisfies_alignment(a) && a as nat % spec_align_of_val::<T>(arbitrary()) == 0;
-//   wf: default body. (Sketch in the generic PointsTo trait impls section.)
+
+impl<T: ?Sized> PTTypedValue for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
+    // typed_value, bytes, metadata_matches delegate to self.pt_unaligned;
+    open spec fn satisfies_alignment(addr: usize) -> bool {
+        &&& PointsToUnaligned::<T>::satisfies_alignment(addr)
+        &&& addr as nat % spec_align_of_val::<T>(arbitrary()) == 0
+    }
+    // wf: the trait's default body; the lemmas delegate.
+}
 ```
 
-### `SeqPointsTo` (phase 1b)
+### `points_to_ops.rs` (trusted)
 
-In `points_to_model.rs` and `points_to_ops.rs` (see [Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout)):
-the struct, its generic trait impls, the structural impl, and `PointsToUntyped`.
+#### `SeqPointsTo` and `PointsToUntyped`: proofs (phase 1b)
 
 ```rust
-#[verifier::reject_recursive_types(T)]
-pub tracked struct SeqPointsTo<T, P: PTProperties<A = T>> {
-    seq_pt: Seq<P>,
-    ptr: Ghost<*mut [T]>,
-}
-
-impl<T, P: PTProperties<A = T>> PTPhys for SeqPointsTo<T, P> {
-    type A = [T];
-    closed spec fn ptr(self) -> *mut [T] { self.ptr@ }
-    open spec fn size(metadata: usize) -> nat { metadata as nat * P::size(()) }
-    open spec fn wf_basic(self) -> bool {
-        &&& self.ptr()@.metadata == self.len()   // new (was only in PointsToUntyped::wf)
-        &&& forall|i| 0 <= i < self.len() ==> {
-            &&& self[i].ptr()@.provenance == self.ptr()@.provenance
-            &&& self[i].ptr()@.addr == self.ptr()@.addr + i * P::size(())
-            &&& self[i].wf_basic()
-        }
-        &&& self.ptr()@.addr != 0
-        &&& /* provenance bounds: unchanged */
-    }
-}
-
 impl<T, P: PTProperties<A = T>> PTProperties for SeqPointsTo<T, P> {
     // ptrs_len_same (renamed from ptrs_len_same_valid; elements' ptrs_len_same), proof fns: unchanged.
 }
 
 /// Structural operations for a sequence of any element permission, stated with `wf_basic`.
 impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
-    /// The element permissions.
-    pub closed spec fn seq_pt(self) -> Seq<P> {
-        self.seq_pt
-    }
-
-    /// The number of element permissions.
-    pub open spec fn len(self) -> nat {
-        self.seq_pt().len()
-    }
-
-    pub open spec fn spec_index(self, index: int) -> P
-        recommends
-            0 <= index < self.len(),
-    {
-        self.seq_pt()[index]
-    }
-
-    /// The pointer to the first element, without the length.
-    /// For code that doesn't care about the slice metadata.
-    pub open spec fn thin_ptr(self) -> *mut T {
-        ptr_mut_from_data::<T>(PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: () })
-    }
-
     /// Borrows the element permissions.
     pub proof fn tracked_seq_pt(tracked &self) -> tracked &Seq<P>
         returns
@@ -432,21 +347,386 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             }),
             sub.wf_basic(),
     ;
-
-    // from_seq_mut (M5, axiom): see [Borrowed-assembly axioms](#borrowed-assembly-axioms-phase-3b).
 }
 
 impl SeqPointsTo<u8, PointsToByte> {   // PointsToUntyped
-    pub open spec fn wf(self) -> bool { self.wf_basic() }   // the metadata clause moved to wf_basic
     // split, join, split_ref: wrappers over split_basic / join_basic / subrange_basic (same contracts as today).
-    // View, bytes, stays_wf, lemma_ptrs_len_same_untyped, zero_sized, is_disjoint_untyped,
+    // stays_wf, lemma_ptrs_len_same_untyped, zero_sized, is_disjoint_untyped: today's contracts.
     // split_mut: today's (commented-out) contract, proved in phase 3b
     //   from M5 and Seq::tracked_split_borrow_mut.
-    // join_ref, join_mut: axioms (see TYPED_POINTS_TO_APPROVED.md, Untyped joins).
 }
 ```
 
-In `points_to_collections.rs`: the typed sequence.
+#### `PointsToUnaligned`: proofs
+
+```rust
+// One per type (T and [T]; rustlib writes the str one), the same body each time.
+// Not generic: the delegations need `wf_basic` and `ptr` to unfold,
+// and the per-type `PTPhys` bodies don't unfold in generic code.
+impl<T> PTProperties for PointsToUnaligned<T> {
+    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
+    }
+    // is_nonnull, ptr_bounds, provenance_not_none, is_disjoint, stays_wf_basic: delegate to pt_untyped.
+}
+// impl<T> PTProperties for PointsToUnaligned<[T]>: the same.
+// rustlib: impl PTProperties for PointsToUnaligned<str>: the same.
+
+// PTValueOps (per type) and PTSizedValue (for T): the traits' contracts.
+```
+
+**Proposed: `as_raw_parts_mut`** (proved; inherent, so no change to the approved traits).
+It borrows the two fields separately: the inverse of M3.
+Generic over `T: ?Sized`, so it covers `T`, `[T]` and rustlib's `str` without rustlib touching the fields.
+
+```rust
+impl<T: ?Sized> PointsToUnaligned<T> {
+    /// Mutably borrows the untyped bytes and the typed value separately
+    /// (the inverse of `from_raw_parts_mut`). The metadata is unchanged.
+    pub proof fn as_raw_parts_mut(tracked &mut self)
+        -> (tracked (pt_untyped, typed_value): (&mut PointsToUntyped, &mut TypedValue<T>))
+        ensures
+            *pt_untyped == old(self).pt_untyped(),
+            *typed_value == old(self).typed_value(),
+            final(self).pt_untyped() == *final(pt_untyped),
+            final(self).typed_value() == *final(typed_value),
+            final(self).metadata() == old(self).metadata(),
+    {
+        (&mut self.pt_untyped, &mut self.val)
+    }
+}
+```
+
+#### `PointsTo`: proofs and aligned/unaligned conversions
+
+```rust
+impl<T: ?Sized> PTProperties for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
+    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& <PointsToUnaligned<T> as PTProperties>::ptrs_len_same(old.pt_unaligned(), new.pt_unaligned())
+    }
+    // proof fns delegate to pt_unaligned.
+}
+
+impl<T: ?Sized> PTValueOps for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
+    // Everything delegates to self.pt_unaligned, except:
+    // from_raw_parts: wraps the PointsToUnaligned result.
+    // ptrs_len_same_valid, borrow, into_untyped, from_untyped, zero_sized: the trait's default bodies.
+}
+
+impl<T> PTSizedValue for PointsTo<T> {
+    // lemma_satisfies_alignment_offset: the alignment arithmetic; lemma_metadata_matches: empty.
+    // take, put, copy, copy_typed_value, from_untyped_with_value: the trait's default bodies.
+}
+
+impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
+    /// Converts to a `PointsTo<T>`, given that the address is aligned.
+    pub proof fn into_aligned(tracked self) -> (tracked out: PointsTo<T>)
+        requires
+            self.wf(),
+            <PointsTo<T> as PTValueOps>::satisfies_alignment(self.ptr()@.addr),
+        ensures
+            out.pt_unaligned() == self,
+            out.wf(),
+    ;
+
+    /// Borrows as a `PointsTo<T>`, given that the address is aligned.
+    pub proof fn as_aligned(tracked &self) -> (tracked out: &PointsTo<T>)
+        requires
+            self.wf(),
+            <PointsTo<T> as PTValueOps>::satisfies_alignment(self.ptr()@.addr),
+        ensures
+            out.pt_unaligned() == *self,
+            out.wf(),
+    ;
+
+    /// Mutably borrows as a `PointsTo<T>`, given that the address is aligned.
+    /// `final(self)` is the final `PointsTo<T>`'s underlying `PointsToUnaligned<T>`.
+    /// If the final `PointsTo<T>` satisfies `ptrs_len_same_valid` with the original,
+    /// `self` is well-formed afterwards.
+    pub proof fn as_aligned_mut(tracked &mut self) -> (tracked out: &mut PointsTo<T>)
+        requires
+            self.wf(),
+            <PointsTo<T> as PTValueOps>::satisfies_alignment(self.ptr()@.addr),
+        ensures
+            out.pt_unaligned() == *old(self),
+            out.wf(),
+            *final(self) == final(out).pt_unaligned(),
+            <PointsTo<T> as PTValueOps>::ptrs_len_same_valid(*out, *final(out)) ==> final(self).wf(),
+    ;
+}
+impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
+    /// Converts to a `PointsToUnaligned<T>`.
+    pub proof fn into_unaligned(tracked self) -> (tracked out: PointsToUnaligned<T>)
+        requires
+            self.wf(),
+        ensures
+            out == self.pt_unaligned(),
+            out.wf(),
+    ;
+
+    /// Borrows as a `PointsToUnaligned<T>`.
+    pub proof fn as_unaligned(tracked &self) -> (tracked out: &PointsToUnaligned<T>)
+        requires
+            self.wf(),
+        ensures
+            *out == self.pt_unaligned(),
+            out.wf(),
+    ;
+
+    /// Mutably borrows the underlying `PointsToUnaligned<T>`.
+    /// `final(self)` holds the final `PointsToUnaligned<T>`.
+    /// If the final unaligned permission satisfies `ptrs_len_same_valid` 
+    /// with the initial unaligned permission (so it keeps the same aligned address),
+    /// `self` is well-formed afterwards.
+    pub proof fn as_unaligned_mut(tracked &mut self) -> (tracked out: &mut PointsToUnaligned<T>)
+        requires
+            self.wf(),
+        ensures
+            *out == old(self).pt_unaligned(),
+            out.wf(),
+            final(self).pt_unaligned() == *final(out),
+            PointsToUnaligned::<T>::ptrs_len_same_valid(*out, *final(out)) ==> final(self).wf(),
+    ;
+}
+```
+
+#### Slices: indexing and borrowed constructors (phase 4)
+
+There are no slice → sequence conversions (`as_seq_pt`, `as_seq_pt_mut`);
+`borrow_index` borrows one element of a slice permission instead
+(spec okayed, to be approved with its impl block).
+It needs no new axioms:
+the bytes come from `split_ref` on the untyped permission,
+a valid element's typed value from `tracked_slice_index` and `TypedValue::valid_ref`
+(an empty one from `tracked_static_mut_ref`, as in the other borrowed conversions),
+and the permission from `from_raw_parts_ref`.
+
+The borrowed constructors are the borrowed counterparts of the owned `from_untyped` / `from_untyped_with_typed_value`.
+
+```rust
+impl<T> PointsToUnaligned<[T]> {
+    /// Borrows the permission to the element at index `i`.
+    /// If the slice permission is empty, so is the element's.
+    pub proof fn borrow_index(tracked &self, i: int) -> (tracked out: &PointsToUnaligned<T>)
+        requires
+            self.wf(),
+            0 <= i < self.ptr()@.metadata,
+        ensures
+            out.ptr() == ptr_mut_from_data::<T>(PtrData {
+                addr: (self.ptr()@.addr + i * size_of::<T>()) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: (),
+            }),
+            out.bytes() == self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+            self.typed_value().is_valid() ==> {
+                &&& out.typed_value().is_valid()
+                &&& out.typed_value().value() == self.typed_value().value_ref()@[i]
+            },
+            self.typed_value().is_empty() ==> out.typed_value().is_empty(),
+            out.wf(),
+    ;
+
+    /// An empty slice permission of `len` elements borrowed from untyped bytes.
+    pub proof fn from_untyped_ref<'a>(tracked pt_untyped: &'a PointsToUntyped, len: usize) -> (tracked out: &'a Self)
+        requires
+            pt_untyped.wf(),
+            pt_untyped.len() == len * size_of::<T>(),
+        ensures
+            out.ptr()@ == (PtrData { addr: pt_untyped.ptr()@.addr, provenance: pt_untyped.ptr()@.provenance, metadata: len }),
+            out.bytes() == pt_untyped.bytes(),
+            out.typed_value().is_empty(),
+            out.wf(),
+    ;
+
+    /// A valid slice permission holding `value`, borrowed from untyped bytes that decode to it.
+    pub proof fn from_untyped_with_value_ref<'a>(tracked pt_untyped: &'a PointsToUntyped, tracked value: &'a [T])
+        -> (tracked out: &'a Self)
+        requires
+            pt_untyped.wf(),
+            abs_decode::<[T]>(pt_untyped.bytes(), value),
+        ensures
+            out.ptr()@ == (PtrData { addr: pt_untyped.ptr()@.addr, provenance: pt_untyped.ptr()@.provenance, metadata: value@.len() as usize }),
+            out.bytes() == pt_untyped.bytes(),
+            out.typed_value().is_valid(),
+            out.typed_value().value_ref() == value,
+            out.wf(),
+    ;
+}
+// impl<T> PointsTo<[T]>: borrow_index(&self, i) -> &PointsTo<T>, the same contract;
+//   composed from as_unaligned, PointsToUnaligned::<[T]>::borrow_index and as_aligned
+//   (each element's address is aligned because the slice's is,
+//   and size_of::<T>() is a multiple of align_of::<T>()).
+// PointsTo<[T]> borrowed constructors: the same, plus alignment
+// (PointsTo::<T>::satisfies_alignment of the address) as a precondition.
+```
+
+### `points_to_collections.rs` (verified)
+
+#### `PointsToRaw` (phase 2c)
+
+```rust
+pub tracked struct PointsToRaw {
+    bytes: Map<int, PointsToByte>,
+    provenance: Ghost<Provenance>,
+}
+
+impl PointsToRaw {
+    #[verifier::type_invariant]
+    spec fn inv(self) -> bool {
+        &&& self.bytes.dom().finite()
+        &&& forall|a: int| #[trigger] self.bytes.dom().contains(a) ==> {
+            &&& self.bytes[a].ptr()@.addr == a
+            &&& self.bytes[a].ptr()@.provenance == self.provenance@
+            &&& self.provenance@ != Provenance::None
+            &&& self.provenance@.start_addr() <= a < self.provenance@.start_addr() + self.provenance@.alloc_len()
+        }
+    }
+
+    pub closed spec fn provenance(self) -> Provenance { self.provenance@ }
+    pub closed spec fn dom(self) -> Set<int> { self.bytes.dom() }
+    /// The abstract byte at `a` (new: the old PointsToRaw had no contents).
+    pub closed spec fn byte(self, a: int) -> AbstractByte recommends self.dom().contains(a) { self.bytes[a].byte() }
+    pub open spec fn is_range(self, start: int, len: int) -> bool { set_int_range(start, start + len) =~= self.dom() }
+    pub open spec fn contains_range(self, start: int, len: int) -> bool { set_int_range(start, start + len) <= self.dom() }
+    /// The contents of `[start, start + len)` as a sequence.
+    pub open spec fn bytes_range(self, start: int, len: nat) -> Seq<AbstractByte> { Seq::new(len, |i: int| self.byte(start + i)) }
+
+    pub proof fn empty(provenance: Provenance) -> (tracked out: Self)
+        ensures
+            out.dom() == Set::<int>::empty(),
+            out.provenance() == provenance,
+    ;
+
+    pub proof fn split(tracked self, range: Set<int>) -> (tracked res: (Self, Self))
+        requires
+            range.subset_of(self.dom()),
+        ensures
+            res.0.provenance() == self.provenance(),
+            res.1.provenance() == self.provenance(),
+            res.0.dom() == range,
+            res.1.dom() == self.dom().difference(range),
+            forall|a| res.0.dom().contains(a) ==> #[trigger] res.0.byte(a) == self.byte(a),
+            forall|a| res.1.dom().contains(a) ==> #[trigger] res.1.byte(a) == self.byte(a),
+    ;
+
+    pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
+        requires
+            self.provenance() == other.provenance(),
+        ensures
+            joined.provenance() == self.provenance(),
+            joined.dom() == self.dom() + other.dom(),
+            forall|a| self.dom().contains(a) ==> #[trigger] joined.byte(a) == self.byte(a),
+            forall|a| other.dom().contains(a) ==> #[trigger] joined.byte(a) == other.byte(a),
+            // (the domains are disjoint by is_disjoint, so these don't conflict)
+    ;
+
+    /// Stronger than the old axiom (`<` instead of `<=` at the end).
+    pub proof fn ptr_bounds(tracked &self)
+        requires
+            self.provenance().is_some(),
+        ensures
+            forall|a| self.dom().contains(a) ==> self.provenance().start_addr() <= a
+                < self.provenance().start_addr() + self.provenance().alloc_len(),
+    ;
+
+    pub proof fn provenance_non_null(tracked &self)
+        requires
+            self.dom() != Set::<int>::empty(),
+        ensures
+            self.provenance() != Provenance::None,
+    ;
+
+    pub proof fn is_disjoint(tracked &mut self, tracked other: &PointsToRaw)
+        requires
+            self.dom() != Set::<int>::empty(),
+            other.dom() != Set::<int>::empty(),
+        ensures
+            *old(self) == *final(self),
+            final(self).dom().intersect(other.dom()).is_empty(),
+    ;
+
+    pub proof fn from_untyped(tracked pt_untyped: PointsToUntyped) -> (tracked out: Self)
+        requires
+            pt_untyped.wf(),
+        ensures
+            out.provenance() == pt_untyped.ptr()@.provenance,
+            out.is_range(pt_untyped.ptr()@.addr as int, pt_untyped.len() as int),
+            out.bytes_range(pt_untyped.ptr()@.addr as int, pt_untyped.len()) == pt_untyped.bytes(),
+    ;
+
+    pub proof fn into_untyped(tracked self, start: usize, len: nat) -> (tracked out: PointsToUntyped)
+        requires
+            self.is_range(start as int, len as int),
+            len <= usize::MAX,
+            start != 0,
+            len == 0 ==> ptr_addr_in_bounds(ptr_mut_from_data::<[u8]>(
+                PtrData { addr: start, provenance: self.provenance(), metadata: 0 })),
+        ensures
+            out.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData { addr: start, provenance: self.provenance(), metadata: len as usize }),
+            out.bytes() == self.bytes_range(start as int, len),
+            out.wf(),
+    ;
+
+    /// Replaces into_typed<V> and into_typed_slice<V>: an empty permission of any PTValueOps type.
+    pub proof fn into_typed<P: PTValueOps>(tracked self, start: usize, metadata: Metadata<P::A>) -> (tracked out: P)
+        requires
+            self.is_range(start as int, P::size(metadata) as int),
+            P::satisfies_alignment(start),
+            start != 0,
+            P::size(metadata) == 0 ==> ptr_addr_in_bounds(ptr_mut_from_data::<P::A>(
+                PtrData { addr: start, provenance: self.provenance(), metadata })),
+        ensures
+            out.ptr() == ptr_mut_from_data::<P::A>(PtrData { addr: start, provenance: self.provenance(), metadata }),
+            out.bytes() == self.bytes_range(start as int, P::size(metadata)),
+            out.typed_value().is_empty(),
+            out.wf(),
+    ;
+
+    /// Replaces PointsTo<V>::into_raw and PointsTo<[V]>::into_raw; no is_uninit() requirement.
+    pub proof fn from_typed<P: PTValueOps>(tracked p: P) -> (tracked out: Self)
+        requires
+            p.wf(),
+        ensures
+            out.provenance() == p.ptr()@.provenance,
+            out.is_range(p.ptr()@.addr as int, P::size(p.ptr()@.metadata) as int),
+            out.bytes_range(p.ptr()@.addr as int, P::size(p.ptr()@.metadata)) == p.bytes(),
+    ;
+
+    /// Replaces into_typed_seq<V>.
+    pub proof fn into_typed_seq<T>(tracked self, start: usize, len: nat) -> (tracked out: SeqPointsTo<T, PointsTo<T>>)
+        requires
+            self.is_range(start as int, (len * size_of::<T>()) as int),
+            len <= usize::MAX,
+            PointsTo::<T>::satisfies_alignment(start),
+            start != 0,
+            len * size_of::<T>() == 0 ==> ptr_addr_in_bounds(ptr_mut_from_data::<T>(
+                PtrData { addr: start, provenance: self.provenance(), metadata: () })),
+        ensures
+            out.thin_ptr() == ptr_mut_from_data::<T>(PtrData { addr: start, provenance: self.provenance(), metadata: () }),
+            out.len() == len,
+            out.bytes() == self.bytes_range(start as int, len * size_of::<T>()),
+            out.is_fully_empty(),
+            out.wf(),
+    ;
+
+    /// Replaces SeqPointsTo<V>::into_raw.
+    pub proof fn from_typed_seq<T>(tracked s: SeqPointsTo<T, PointsTo<T>>) -> (tracked out: Self)
+        requires
+            s.wf(),
+        ensures
+            out.provenance() == s.ptr()@.provenance,
+            out.is_range(s.ptr()@.addr as int, (s.len() * size_of::<T>()) as int),
+            out.bytes_range(s.ptr()@.addr as int, s.len() * size_of::<T>()) == s.bytes(),
+    ;
+}
+
+```
+
+#### Typed `SeqPointsTo` (phase 1b)
+
 `from_seq`, `empty`, `into_seq`, `tracked_seq_pt(_mut)` and `index_mut` have no typed versions.
 
 ```rust
@@ -619,45 +899,10 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 There is no `SeqPointsTo<T, PointsToUnaligned<T>>`,
 so there are no sequence aligned/unaligned conversions.
 
-### Sequence → slice conversions and slice indexing (phase 4)
+#### Sequence → slice conversions (phase 4)
 
-There are no slice → sequence conversions (`as_seq_pt`, `as_seq_pt_mut`);
-`borrow_index` borrows one element of a slice permission instead
-(in `points_to_ops.rs`; spec okayed, to be approved with its impl block).
-It needs no new axioms:
-the bytes come from `split_ref` on the untyped permission,
-a valid element's typed value from `tracked_slice_index` and `TypedValue::valid_ref`
-(an empty one from `tracked_static_mut_ref`, as in the other borrowed conversions),
-and the permission from `from_raw_parts_ref`.
-
-```rust
-impl<T> PointsToUnaligned<[T]> {
-    /// Borrows the permission to the element at index `i`.
-    /// If the slice permission is empty, so is the element's.
-    pub proof fn borrow_index(tracked &self, i: int) -> (tracked out: &PointsToUnaligned<T>)
-        requires
-            self.wf(),
-            0 <= i < self.ptr()@.metadata,
-        ensures
-            out.ptr() == ptr_mut_from_data::<T>(PtrData {
-                addr: (self.ptr()@.addr + i * size_of::<T>()) as usize,
-                provenance: self.ptr()@.provenance,
-                metadata: (),
-            }),
-            out.bytes() == self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
-            self.typed_value().is_valid() ==> {
-                &&& out.typed_value().is_valid()
-                &&& out.typed_value().value() == self.typed_value().value_ref()@[i]
-            },
-            self.typed_value().is_empty() ==> out.typed_value().is_empty(),
-            out.wf(),
-    ;
-}
-// impl<T> PointsTo<[T]>: borrow_index(&self, i) -> &PointsTo<T>, the same contract;
-//   composed from as_unaligned, PointsToUnaligned::<[T]>::borrow_index and as_aligned
-//   (each element's address is aligned because the slice's is,
-//   and size_of::<T>() is a multiple of align_of::<T>()).
-```
+There are no slice → sequence conversions;
+see [Slices](#slices-indexing-and-borrowed-constructors-phase-4) for `borrow_index`.
 
 ```rust
 impl<T> SeqPointsTo<T, PointsTo<T>> {
@@ -694,244 +939,31 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 }
 ```
 
-How they're built (both in `points_to_collections.rs`, so without field access):
+How they're built (without field access):
 
 - `as_slice_pt`: the bytes from the sequence's `as_untyped` (`join_ref`),
   the typed value from `tracked_slice_from_refs` and `valid_ref`
   (or an empty one when any element is empty),
   then `from_raw_parts_ref` gives a `&PointsToUnaligned<[T]>` and `as_aligned` the `&PointsTo<[T]>`.
-- `as_slice_pt_mut`: each element through `as_unaligned_mut`, then `as_raw_parts_mut` (below)
+- `as_slice_pt_mut`: each element through `as_unaligned_mut`, then `as_raw_parts_mut` (in `points_to_ops.rs`)
   for its bytes and typed value; the bytes merged with `join_mut`, the typed values with M1,
   the permission assembled with M3, and `as_aligned_mut` (M4) for the `&mut PointsTo<[T]>`.
-
-**Proposed: `as_raw_parts_mut`** (proved, `points_to_ops.rs`; inherent, so no change to the approved traits).
-It borrows the two fields separately: the inverse of M3.
-Generic over `T: ?Sized`, so it covers `T`, `[T]` and rustlib's `str` without rustlib touching the fields.
-
-```rust
-impl<T: ?Sized> PointsToUnaligned<T> {
-    /// Mutably borrows the untyped bytes and the typed value separately
-    /// (the inverse of `from_raw_parts_mut`). The metadata is unchanged.
-    pub proof fn as_raw_parts_mut(tracked &mut self)
-        -> (tracked (pt_untyped, typed_value): (&mut PointsToUntyped, &mut TypedValue<T>))
-        ensures
-            *pt_untyped == old(self).pt_untyped(),
-            *typed_value == old(self).typed_value(),
-            final(self).pt_untyped() == *final(pt_untyped),
-            final(self).typed_value() == *final(typed_value),
-            final(self).metadata() == old(self).metadata(),
-    {
-        (&mut self.pt_untyped, &mut self.val)
-    }
-}
-```
-
-The borrowed constructors are the borrowed counterparts of the owned `from_untyped` / `from_untyped_with_typed_value`:
-
-```rust
-impl<T> PointsToUnaligned<[T]> {
-    /// An empty slice permission of `len` elements borrowed from untyped bytes.
-    pub proof fn from_untyped_ref<'a>(tracked pt_untyped: &'a PointsToUntyped, len: usize) -> (tracked out: &'a Self)
-        requires
-            pt_untyped.wf(),
-            pt_untyped.len() == len * size_of::<T>(),
-        ensures
-            out.ptr()@ == (PtrData { addr: pt_untyped.ptr()@.addr, provenance: pt_untyped.ptr()@.provenance, metadata: len }),
-            out.bytes() == pt_untyped.bytes(),
-            out.typed_value().is_empty(),
-            out.wf(),
-    ;
-
-    /// A valid slice permission holding `value`, borrowed from untyped bytes that decode to it.
-    pub proof fn from_untyped_with_value_ref<'a>(tracked pt_untyped: &'a PointsToUntyped, tracked value: &'a [T])
-        -> (tracked out: &'a Self)
-        requires
-            pt_untyped.wf(),
-            abs_decode::<[T]>(pt_untyped.bytes(), value),
-        ensures
-            out.ptr()@ == (PtrData { addr: pt_untyped.ptr()@.addr, provenance: pt_untyped.ptr()@.provenance, metadata: value@.len() as usize }),
-            out.bytes() == pt_untyped.bytes(),
-            out.typed_value().is_valid(),
-            out.typed_value().value_ref() == value,
-            out.wf(),
-    ;
-}
-// PointsTo<[T]> versions: the same, plus alignment
-// (PointsTo::<T>::satisfies_alignment of the address) as a precondition.
-```
 
 There are no borrowed constructors for sequences
 (they would need to collect borrowed element permissions into a borrowed `Seq`).
 
-### `PointsToRaw` (phase 2c)
+### `raw_ptr_specs.rs` (trusted)
 
-```rust
-pub tracked struct PointsToRaw {
-    bytes: Map<int, PointsToByte>,
-    provenance: Ghost<Provenance>,
-}
+`allocate`, `deallocate` and `global_alloc_id`: approved; see [Allocation](#allocation-phase-2c).
 
-impl PointsToRaw {
-    #[verifier::type_invariant]
-    spec fn inv(self) -> bool {
-        &&& self.bytes.dom().finite()
-        &&& forall|a: int| #[trigger] self.bytes.dom().contains(a) ==> {
-            &&& self.bytes[a].ptr()@.addr == a
-            &&& self.bytes[a].ptr()@.provenance == self.provenance@
-            &&& self.provenance@ != Provenance::None
-            &&& self.provenance@.start_addr() <= a < self.provenance@.start_addr() + self.provenance@.alloc_len()
-        }
-    }
+### rustlib
 
-    pub closed spec fn provenance(self) -> Provenance { self.provenance@ }
-    pub closed spec fn dom(self) -> Set<int> { self.bytes.dom() }
-    /// The abstract byte at `a` (new: the old PointsToRaw had no contents).
-    pub closed spec fn byte(self, a: int) -> AbstractByte recommends self.dom().contains(a) { self.bytes[a].byte() }
-    pub open spec fn is_range(self, start: int, len: int) -> bool { set_int_range(start, start + len) =~= self.dom() }
-    pub open spec fn contains_range(self, start: int, len: int) -> bool { set_int_range(start, start + len) <= self.dom() }
-    /// The contents of `[start, start + len)` as a sequence.
-    pub open spec fn bytes_range(self, start: int, len: nat) -> Seq<AbstractByte> { Seq::new(len, |i: int| self.byte(start + i)) }
-
-    pub proof fn empty(provenance: Provenance) -> (tracked out: Self)
-        ensures
-            out.dom() == Set::<int>::empty(),
-            out.provenance() == provenance,
-    ;
-
-    pub proof fn split(tracked self, range: Set<int>) -> (tracked res: (Self, Self))
-        requires
-            range.subset_of(self.dom()),
-        ensures
-            res.0.provenance() == self.provenance(),
-            res.1.provenance() == self.provenance(),
-            res.0.dom() == range,
-            res.1.dom() == self.dom().difference(range),
-            forall|a| res.0.dom().contains(a) ==> #[trigger] res.0.byte(a) == self.byte(a),
-            forall|a| res.1.dom().contains(a) ==> #[trigger] res.1.byte(a) == self.byte(a),
-    ;
-
-    pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
-        requires
-            self.provenance() == other.provenance(),
-        ensures
-            joined.provenance() == self.provenance(),
-            joined.dom() == self.dom() + other.dom(),
-            forall|a| self.dom().contains(a) ==> #[trigger] joined.byte(a) == self.byte(a),
-            forall|a| other.dom().contains(a) ==> #[trigger] joined.byte(a) == other.byte(a),
-            // (the domains are disjoint by is_disjoint, so these don't conflict)
-    ;
-
-    /// Stronger than the old axiom (`<` instead of `<=` at the end).
-    pub proof fn ptr_bounds(tracked &self)
-        requires
-            self.provenance().is_some(),
-        ensures
-            forall|a| self.dom().contains(a) ==> self.provenance().start_addr() <= a
-                < self.provenance().start_addr() + self.provenance().alloc_len(),
-    ;
-
-    pub proof fn provenance_non_null(tracked &self)
-        requires
-            self.dom() != Set::<int>::empty(),
-        ensures
-            self.provenance() != Provenance::None,
-    ;
-
-    pub proof fn is_disjoint(tracked &mut self, tracked other: &PointsToRaw)
-        requires
-            self.dom() != Set::<int>::empty(),
-            other.dom() != Set::<int>::empty(),
-        ensures
-            *old(self) == *final(self),
-            final(self).dom().intersect(other.dom()).is_empty(),
-    ;
-
-    pub proof fn from_untyped(tracked pt_untyped: PointsToUntyped) -> (tracked out: Self)
-        requires
-            pt_untyped.wf(),
-        ensures
-            out.provenance() == pt_untyped.ptr()@.provenance,
-            out.is_range(pt_untyped.ptr()@.addr as int, pt_untyped.len() as int),
-            out.bytes_range(pt_untyped.ptr()@.addr as int, pt_untyped.len()) == pt_untyped.bytes(),
-    ;
-
-    pub proof fn into_untyped(tracked self, start: usize, len: nat) -> (tracked out: PointsToUntyped)
-        requires
-            self.is_range(start as int, len as int),
-            len <= usize::MAX,
-            start != 0,
-            len == 0 ==> ptr_addr_in_bounds(ptr_mut_from_data::<[u8]>(
-                PtrData { addr: start, provenance: self.provenance(), metadata: 0 })),
-        ensures
-            out.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData { addr: start, provenance: self.provenance(), metadata: len as usize }),
-            out.bytes() == self.bytes_range(start as int, len),
-            out.wf(),
-    ;
-
-    /// Replaces into_typed<V> and into_typed_slice<V>: an empty permission of any PTValueOps type.
-    pub proof fn into_typed<P: PTValueOps>(tracked self, start: usize, metadata: Metadata<P::A>) -> (tracked out: P)
-        requires
-            self.is_range(start as int, P::size(metadata) as int),
-            P::satisfies_alignment(start),
-            start != 0,
-            P::size(metadata) == 0 ==> ptr_addr_in_bounds(ptr_mut_from_data::<P::A>(
-                PtrData { addr: start, provenance: self.provenance(), metadata })),
-        ensures
-            out.ptr() == ptr_mut_from_data::<P::A>(PtrData { addr: start, provenance: self.provenance(), metadata }),
-            out.bytes() == self.bytes_range(start as int, P::size(metadata)),
-            out.typed_value().is_empty(),
-            out.wf(),
-    ;
-
-    /// Replaces PointsTo<V>::into_raw and PointsTo<[V]>::into_raw; no is_uninit() requirement.
-    pub proof fn from_typed<P: PTValueOps>(tracked p: P) -> (tracked out: Self)
-        requires
-            p.wf(),
-        ensures
-            out.provenance() == p.ptr()@.provenance,
-            out.is_range(p.ptr()@.addr as int, P::size(p.ptr()@.metadata) as int),
-            out.bytes_range(p.ptr()@.addr as int, P::size(p.ptr()@.metadata)) == p.bytes(),
-    ;
-
-    /// Replaces into_typed_seq<V>.
-    pub proof fn into_typed_seq<T>(tracked self, start: usize, len: nat) -> (tracked out: SeqPointsTo<T, PointsTo<T>>)
-        requires
-            self.is_range(start as int, (len * size_of::<T>()) as int),
-            len <= usize::MAX,
-            PointsTo::<T>::satisfies_alignment(start),
-            start != 0,
-            len * size_of::<T>() == 0 ==> ptr_addr_in_bounds(ptr_mut_from_data::<T>(
-                PtrData { addr: start, provenance: self.provenance(), metadata: () })),
-        ensures
-            out.thin_ptr() == ptr_mut_from_data::<T>(PtrData { addr: start, provenance: self.provenance(), metadata: () }),
-            out.len() == len,
-            out.bytes() == self.bytes_range(start as int, len * size_of::<T>()),
-            out.is_fully_empty(),
-            out.wf(),
-    ;
-
-    /// Replaces SeqPointsTo<V>::into_raw.
-    pub proof fn from_typed_seq<T>(tracked s: SeqPointsTo<T, PointsTo<T>>) -> (tracked out: Self)
-        requires
-            s.wf(),
-        ensures
-            out.provenance() == s.ptr()@.provenance,
-            out.is_range(s.ptr()@.addr as int, (s.len() * size_of::<T>()) as int),
-            out.bytes_range(s.ptr()@.addr as int, s.len() * size_of::<T>()) == s.bytes(),
-    ;
-}
-
-```
-
-`allocate`, `deallocate` and `global_alloc_id` (trusted): see [Allocation](#allocation-phase-2c).
-
-### `str` (rustlib)
+#### `str` (rustlib)
 
 Signatures only; rustlib fixes the details.
 rustlib writes `PTPhys` (`Metadata<str>` is the byte length; `size(len) = len`;
-`wf_basic` is `self.wf_basic_unaligned()`), `View`
-and `PTValueOps` for `PointsToUnaligned<str>`;
+`wf_basic` is `self.wf_basic_unaligned()`), `PTProperties` (the same delegations as for `T` and `[T]`), `View`,
+`PTTypedValue` and `PTValueOps` for `PointsToUnaligned<str>`;
 `PointsTo<str>` comes from the generic impls (alignment 1, from `layout_of_str`).
 
 Only shared casts: there are no owned or `&mut` `str` ↔ `[u8]` permission casts.
@@ -993,11 +1025,11 @@ everything else exists today.
 | `impl<T> TypedValue<T>` | `value`, `tracked_copy` | Sized: by-value access |
 | `impl<T> TypedValue<[T]>` | `value` (-> `&[T]`); `from_elems_mut` (new axiom M1, phase 3b) | |
 | `impl<T: ?Sized> PointsToUnaligned<T>` | closed accessors `typed_value`, `pt_untyped`, `metadata`; `bytes`, `is_valid`, `is_empty` (inline); `tracked_pt_untyped`; `as_raw_parts_mut` (new, proposed, phase 4); `from_raw_parts_ref` (new axiom, phase 3b), `from_raw_parts_mut` (new axiom M3, phase 3b) | The inherent `typed_value`/`bytes` coexist with the trait's (phase 0, item 5). |
-| `impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | `into_aligned`, `as_aligned` (new, generic); `as_aligned_mut` (new, generic, phase 3b: needs M4) | Contracts in [Generic `PointsTo` trait impls and aligned/unaligned conversions](#generic-pointsto-trait-impls-and-alignedunaligned-conversions). |
+| `impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | `into_aligned`, `as_aligned` (new, generic); `as_aligned_mut` (new, generic, phase 3b: needs M4) | Contracts in [`PointsTo`: proofs and aligned/unaligned conversions](#pointsto-proofs-and-alignedunaligned-conversions). |
 | `impl<T> PointsToUnaligned<T>` | `value`; `is_disjoint_unaligned<S>`. (removed: `wf`, `stays_wf`, `zero_sized`) | |
 | `impl<T> PointsToUnaligned<[T]>` | `from_untyped_ref`, `from_untyped_with_value_ref`, `borrow_index` (new, phase 4; the primary implementations). (removed in 2b: inherent `wf`) | |
 | `impl<T: ?Sized> PointsTo<T>` | closed `pt_unaligned`; `typed_value`, `metadata`, `bytes`, `is_valid`, `is_empty` (open, delegating); `tracked_pt_unaligned`; `from_unaligned_mut` (new axiom M4) | |
-| `impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | `into_unaligned`, `as_unaligned`, `as_unaligned_mut` (new, generic) | Contracts in [Generic `PointsTo` trait impls and aligned/unaligned conversions](#generic-pointsto-trait-impls-and-alignedunaligned-conversions). |
+| `impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | `into_unaligned`, `as_unaligned`, `as_unaligned_mut` (new, generic) | Contracts in [`PointsTo`: proofs and aligned/unaligned conversions](#pointsto-proofs-and-alignedunaligned-conversions). |
 | `impl<T> PointsTo<T>` | `value`, `is_aligned`, `is_disjoint_pointsto<S>`; `borrow_mut` (axiom). (removed: `wf`, `stays_wf`, `lemma_ptrs_len_same_valid`, `zero_sized`, `bytes_decode`, the untyped conversions, the value operations) | Removed ones are `PTValueOps` / `PTSizedValue` methods. |
 | `impl<T> PointsTo<[T]>` | `from_untyped_ref`, `from_untyped_with_value_ref`, `borrow_index` (new, phase 4; compositions over the `PointsToUnaligned` versions). (removed: inherent `wf`) | |
 | `impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P>` (`points_to_model.rs` / `points_to_ops.rs`) | `seq_pt`, `len`, `spec_index`, `thin_ptr`; `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut`, `from_seq`, `empty`, `into_seq` (moved here in phase 1); `split_basic`, `join_basic`, `subrange_basic` (new); `from_seq_mut` (new axiom M5) | Structural; stated with `wf_basic`. The only code touching the fields. |

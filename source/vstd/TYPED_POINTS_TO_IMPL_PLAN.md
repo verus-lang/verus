@@ -139,9 +139,10 @@ These cover the [`SeqPointsTo` pointer change](TYPED_POINTS_TO_NOTES.md#seqpoint
       but generic code gets its facts only from the trait lemmas
       (`bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic`),
       which need per-impl proofs (empty, since `wf` unfolds at the concrete type).
-    - *Not run (low risk, same pattern as item 9):*
-      `impl<T: ?Sized> PTProperties for PointsToUnaligned<T> where PointsToUnaligned<T>: PTPhys<A = T>`
-      next to per-type `PTPhys` impls with the `ptr_mut_from_data` pointer.
+    - *Dropped:* a generic `impl<T: ?Sized> PTProperties for PointsToUnaligned<T>`
+      next to per-type `PTPhys` impls.
+      Its delegations need the per-type `wf_basic` and `ptr` bodies, which by the result above
+      don't unfold in generic code, so `PTProperties` is per type, like `PTPhys`.
 13. **Default proof bodies that call other trait methods.**
     *Known (no spike needed):* default proof bodies that only call other trait methods
     and use their contracts are fine. This covers the proof defaults in the trait
@@ -338,7 +339,7 @@ Needs phases 2b and 3.
 ### Phase 4: sequence → slice and slice indexing
 
 Needs phase 3b's axioms (`from_raw_parts_ref`, `tracked_slice_index`, `tracked_slice_from_refs`, M1, M3–M5).
-The design is in [Sequence → slice conversions and slice indexing](TYPED_POINTS_TO_PLAN.md#sequence--slice-conversions-and-slice-indexing-phase-4).
+The design is in [Sequence → slice conversions](TYPED_POINTS_TO_PLAN.md#sequence--slice-conversions-phase-4).
 
 1. `PointsToUnaligned::as_raw_parts_mut` in `points_to_ops.rs` (disjoint field borrows).
 2. The sequence → slice conversions, `SeqPointsTo<T, PointsTo<T>>` → `PointsTo<[T]>` (`&` and `&mut`),
