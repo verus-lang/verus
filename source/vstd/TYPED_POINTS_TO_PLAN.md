@@ -58,8 +58,6 @@ Sequences:
 | `PointsToUnaligned<str>` ↔ `PointsToUnaligned<[u8]>` | no | yes | no | rustlib | after phase 3b ([specs](#str-rustlib)) |
 | `PointsTo<str>` ↔ `PointsTo<[u8]>` | no | yes | no | rustlib, via the unaligned versions and the aligned/unaligned conversions | after phase 3b |
 | `PointsToRaw` ↔ `PointsToUntyped` (a contiguous range) | yes | no | no | vstd | phase 2c |
-| `PointsToRaw` ↔ any `PTValueOps` / `SeqPointsTo`, through `PointsToUntyped` | yes (into typed: empty value) | no | no | vstd | phase 2c |
-
 **Module layout.** Approved; see [Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout).
 
 
@@ -662,61 +660,11 @@ impl PointsToRaw {
             out.bytes() == self.bytes_range(start as int, len),
             out.wf(),
     ;
-
-    /// Replaces into_typed<V> and into_typed_slice<V>: an empty permission of any PTValueOps type.
-    pub proof fn into_typed<P: PTValueOps>(tracked self, start: usize, metadata: Metadata<P::A>) -> (tracked out: P)
-        requires
-            self.is_range(start as int, P::size(metadata) as int),
-            P::satisfies_alignment(start),
-            start != 0,
-            P::size(metadata) == 0 ==> ptr_addr_in_bounds(ptr_mut_from_data::<P::A>(
-                PtrData { addr: start, provenance: self.provenance(), metadata })),
-        ensures
-            out.ptr() == ptr_mut_from_data::<P::A>(PtrData { addr: start, provenance: self.provenance(), metadata }),
-            out.bytes() == self.bytes_range(start as int, P::size(metadata)),
-            out.typed_value().is_empty(),
-            out.wf(),
-    ;
-
-    /// Replaces PointsTo<V>::into_raw and PointsTo<[V]>::into_raw; no is_uninit() requirement.
-    pub proof fn from_typed<P: PTValueOps>(tracked p: P) -> (tracked out: Self)
-        requires
-            p.wf(),
-        ensures
-            out.provenance() == p.ptr()@.provenance,
-            out.is_range(p.ptr()@.addr as int, P::size(p.ptr()@.metadata) as int),
-            out.bytes_range(p.ptr()@.addr as int, P::size(p.ptr()@.metadata)) == p.bytes(),
-    ;
-
-    /// Replaces into_typed_seq<V>.
-    pub proof fn into_typed_seq<T>(tracked self, start: usize, len: nat) -> (tracked out: SeqPointsTo<T, PointsTo<T>>)
-        requires
-            self.is_range(start as int, (len * size_of::<T>()) as int),
-            len <= usize::MAX,
-            PointsTo::<T>::satisfies_alignment(start),
-            start != 0,
-            len * size_of::<T>() == 0 ==> ptr_addr_in_bounds(ptr_mut_from_data::<T>(
-                PtrData { addr: start, provenance: self.provenance(), metadata: () })),
-        ensures
-            out.thin_ptr() == ptr_mut_from_data::<T>(PtrData { addr: start, provenance: self.provenance(), metadata: () }),
-            out.len() == len,
-            out.bytes() == self.bytes_range(start as int, len * size_of::<T>()),
-            out.is_fully_empty(),
-            out.wf(),
-    ;
-
-    /// Replaces SeqPointsTo<V>::into_raw.
-    pub proof fn from_typed_seq<T>(tracked s: SeqPointsTo<T, PointsTo<T>>) -> (tracked out: Self)
-        requires
-            s.wf(),
-        ensures
-            out.provenance() == s.ptr()@.provenance,
-            out.is_range(s.ptr()@.addr as int, (s.len() * size_of::<T>()) as int),
-            out.bytes_range(s.ptr()@.addr as int, s.len() * size_of::<T>()) == s.bytes(),
-    ;
 }
-
 ```
+
+Typed permissions convert through `PointsToUntyped`:
+`into_untyped` followed by `PTValueOps::from_untyped` / `SeqPointsTo::from_untyped`, and back.
 
 #### Typed `SeqPointsTo` (phase 1b)
 

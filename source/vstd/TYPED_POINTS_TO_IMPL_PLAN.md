@@ -311,18 +311,17 @@ The design is in [`PointsToRaw`](TYPED_POINTS_TO_NOTES.md#pointstoraw). [Phase 0
 1. The struct, its type invariant, and the specs `provenance`, `dom`, `is_range`, `contains_range`.
 2. `empty`, `split`, `join`, `ptr_bounds`, `provenance_non_null`, `is_disjoint`.
 3. `from_untyped(PointsToUntyped) -> PointsToRaw` and `into_untyped(start, len) -> PointsToUntyped`.
-   Items 1-3 only need phase 1b, so they can land earlier.
-4. The generic `into_typed::<P: PTValueOps>` / `from_typed::<P: PTValueOps>`,
-   and `SeqPointsTo` versions (needs phases 2 and 2b).
+   These only need phase 1b, so they can land earlier.
+   There are no typed conversions on `PointsToRaw`: typed permissions go through `PointsToUntyped`.
 
 All of `PointsToRaw` goes in `points_to_collections.rs` (it is verified);
 it uses `PointsToUntyped` only through `from_seq` / `into_seq`.
-5. Port `allocate` and `deallocate` (trusted), returning and taking a `PointsToUntyped`
+4. Port `allocate` and `deallocate` (trusted), returning and taking a `PointsToUntyped`
    for the whole allocation, so nothing trusted depends on `PointsToRaw`.
    `Dealloc` is dropped:
    `ProvenanceData::orig_size` replaces its tracking of the original allocation size.
    They go in `ptr_specs.rs`.
-6. Add the trusted items to `POINTS_TO_AXIOMS.md` and note the removed `PointsToRaw` axioms.
+5. Add the trusted items to `POINTS_TO_AXIOMS.md` and note the removed `PointsToRaw` axioms.
 
 ### Phase 3: typed `SeqPointsTo`
 
@@ -401,7 +400,7 @@ Update their contracts to the new specs, and review them when they're restored
 | 3b | Phase 1b: `SeqPointsTo` slice pointer, `size(metadata)`, no `FixedSize` | | Before phase 2, which writes the new traits against `PTPhys::size(metadata)`. |
 | 4 | Phase 2: traits + Sized impls | | Fixes the API the slice impls implement. |
 | 5 | Phase 2b: slice impls | bodies in `step3_slice_wip.patch` | Uses the trait from row 4. |
-| 5b | Phase 2c: `PointsToRaw` | | Its generic typed conversions use rows 4-5; its untyped part only needs row 3b. |
+| 5b | Phase 2c: `PointsToRaw` | | Only needs row 3b; `allocate` / `deallocate` use `PointsToUntyped`. |
 | 6 | Phase 3: typed `SeqPointsTo` on the new traits | | Small; can merge into phase 2. |
 | 7 | Phase 3b: borrowed-assembly axioms; prove `subrange_mut` and `split_mut` | | Needs rows 5-6. |
 | 8 | Phase 4 and phase 4b | | Both build on row 7. |
