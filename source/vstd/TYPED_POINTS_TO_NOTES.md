@@ -144,7 +144,7 @@ Sequences:
 
 Superseded: see [Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout)
 (trusted `points_to_model.rs` and `points_to_ops.rs`, verified `points_to_collections.rs`;
-`raw_ptr_new.rs` split into `raw_ptr_model.rs` and `raw_ptr_specs.rs`).
+`raw_ptr_new.rs` split into `ptr_model.rs` and `ptr_specs.rs`, all in a `raw_ptr` directory).
 `Dealloc` is dropped (`ProvenanceData::orig_size` replaces its tracking of the original allocation size),
 and `allocate` / `deallocate` use `PointsToUntyped`.
 

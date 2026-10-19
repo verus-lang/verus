@@ -63,12 +63,7 @@ Sequences:
 
 **Still open.**
 
-- Imports: likely a `raw_ptr` directory that re-exports everything
-  (about 30 files import `raw_ptr_new` / `points_to_permissions` today, many in rustlib),
-  with `points_to_collections` outside `points_to_model`'s subtree.
 - Spike: Verus accepts private-field and `closed` spec access from the child module.
-- `PointsToUnaligned::as_raw_parts_mut` (proposed in
-  [`PointsToUnaligned`: proofs](#pointstounaligned-proofs)).
 
 ## Specifications
 
@@ -952,7 +947,7 @@ How they're built (without field access):
 There are no borrowed constructors for sequences
 (they would need to collect borrowed element permissions into a borrowed `Seq`).
 
-### `raw_ptr_specs.rs` (trusted)
+### `ptr_specs.rs` (trusted)
 
 `allocate`, `deallocate` and `global_alloc_id`: approved; see [Allocation](#allocation-phase-2c).
 
@@ -1037,7 +1032,7 @@ everything else exists today.
 | `impl SeqPointsTo<u8, PointsToByte>` (`PointsToUntyped`, `points_to_model.rs` / `points_to_ops.rs`) | `View`, `bytes`, `wf`, `stays_wf`, `lemma_ptrs_len_same_untyped` (renamed), `zero_sized<T>`, `split`, `split_ref`, `join` (wrappers over the `_basic` primitives); `join_ref`, `join_mut` (axioms); `split_mut` (proved in phase 3b); `is_disjoint_untyped` | |
 | `impl PointsToByte` (renamed from `PointsToSingleton`) | `byte`, `is_disjoint_byte` (renamed from `is_disjoint_singleton`, in phase 1 with the type) | |
 | `impl PointsToRaw` | everything in [`PointsToRaw` (phase 2c)](#pointstoraw-phase-2c) above (new) | Not a `PTPhys`. |
-| free functions | `tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref` (new axioms, phase 3b); `allocate`, `deallocate` (ported, phase 2c, with `PointsToUntyped` in place of `PointsToRaw`; in `raw_ptr_specs.rs`; `Dealloc` dropped) | |
+| free functions | `tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref` (new axioms, phase 3b); `allocate`, `deallocate` (ported, phase 2c, with `PointsToUntyped` in place of `PointsToRaw`; in `ptr_specs.rs`; `Dealloc` dropped) | |
 | rustlib: `impl PointsToUnaligned<str>` | `as_bytes`, `from_bytes_ref` | |
 | rustlib: `impl PointsTo<str>` | `as_bytes`, `from_bytes_ref` (through the aligned/unaligned conversions) | |
 
@@ -1053,7 +1048,7 @@ and `uninterp` specs that axioms constrain.
 **New.** See [New axioms](#new-axioms).
 
 **Dependency direction.**
-`ptr_ref`, `ptr_mut_ref` and `mut_ref_to_shr_points_to` (in `raw_ptr_specs.rs`) take or produce `PointsTo<T>`,
+`ptr_ref`, `ptr_mut_ref` and `mut_ref_to_shr_points_to` (in `ptr_specs.rs`) take or produce `PointsTo<T>`,
 and the restored slice versions `PointsTo<[T]>`;
 `allocate` / `deallocate` use `PointsToUntyped`.
 The phase 3b axioms are stated on `PointsToUnaligned`, `PointsTo`, `SeqPointsTo` and `TypedValue`.

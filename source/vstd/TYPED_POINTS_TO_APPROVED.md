@@ -69,11 +69,26 @@ and `points_to_ops` is a child module of `points_to_model`;
 
 `raw_ptr_new.rs` becomes two files:
 
-| `raw_ptr_model.rs` | `raw_ptr_specs.rs` |
+| `ptr_model.rs` | `ptr_specs.rs` |
 |---|---|
 | the module docs and model notes, `AllocId`, `ProvenanceData`, `provenance_properties`, `ptr_addr_in_bounds`, `Metadata`, `PtrData`, the `View` impls for `*mut T` / `*const T` | the pointer `==` `assume_specification`s |
 | the inverse functions: `ptr_mut_from_data`, `tracked_ptr_mut_from_data`, `ptr_from_data`, `axiom_ptr_mut_from_data`, `view_reverse_for_eq`, `ptrs_mut_eq`, `ptrs_mut_eq_sized` | null pointers, casts, `ptr_ref` / `ptr_mut_ref` (and the slice versions), `addr` / `with_addr`, the reference specs, `mut_ref_to_shr_points_to` (and the slice version), `cast_mut_ref_*`, `allocate` / `deallocate` |
 | `group_raw_ptr_axioms` (all four members are here) | |
+
+All of these are in a `raw_ptr` directory, which replaces the old `raw_ptr.rs`;
+`mod.rs` only declares the modules and re-exports them, so importers use `vstd::raw_ptr::*`.
+
+```
+vstd/raw_ptr/
+  mod.rs                       module declarations and re-exports only
+  ptr_model.rs
+  ptr_specs.rs
+  shared_reference.rs
+  points_to_model.rs
+  points_to_model/
+    points_to_ops.rs
+  points_to_collections.rs
+```
 
 ## Existing, unchanged trusted specs
 
@@ -85,11 +100,11 @@ Existing axioms with minor contract changes on this branch are in
 | Item | File | What it states | Uses |
 |---|---|---|---|
 | `PointsToByte` (`external_body` struct; `uninterp` `ptr`, `byte`) | `points_to_model.rs` | A permission to one byte, with its address and abstract byte. | everything byte-level |
-| `PointsToByte`'s `is_nonnull`, `ptr_bounds`, `provenance_not_none`, `is_disjoint` | `points_to_model.rs` | A byte permission's pointer is non-null, within its allocation, has non-null provenance; two byte permissions are at different addresses. | `PointsToUntyped`'s and `PointsToRaw`'s pointer-level lemmas || `ProvenanceData` (`external_body`; `uninterp` `start_addr`, `alloc_len`, `alignment`, `orig_size`, `alloc_id`), `provenance_properties` | `raw_ptr_model.rs` | The allocation model. `orig_size` replaces `Dealloc`'s size tracking. | pointer bounds, `allocate` / `deallocate` |
-| pointer model: `View for *mut T` (`uninterp`), `ptr_mut_from_data` (`uninterp`), `axiom_ptr_mut_from_data`, `ptrs_mut_eq`, `tracked_ptr_mut_from_data` | `raw_ptr_model.rs` | A pointer is its `PtrData` (address, provenance, metadata). | every pointer spec (e.g. the generic `PointsToUnaligned` pointer built from its metadata) |
-| `assume_specification`s for pointer `==`, `null`, `null_mut`, `addr`, `with_addr`; the `cast_*` `external_body` functions | `raw_ptr_specs.rs` | The exec pointer operations match the model. | exec code |
+| `PointsToByte`'s `is_nonnull`, `ptr_bounds`, `provenance_not_none`, `is_disjoint` | `points_to_model.rs` | A byte permission's pointer is non-null, within its allocation, has non-null provenance; two byte permissions are at different addresses. | `PointsToUntyped`'s and `PointsToRaw`'s pointer-level lemmas || `ProvenanceData` (`external_body`; `uninterp` `start_addr`, `alloc_len`, `alignment`, `orig_size`, `alloc_id`), `provenance_properties` | `ptr_model.rs` | The allocation model. `orig_size` replaces `Dealloc`'s size tracking. | pointer bounds, `allocate` / `deallocate` |
+| pointer model: `View for *mut T` (`uninterp`), `ptr_mut_from_data` (`uninterp`), `axiom_ptr_mut_from_data`, `ptrs_mut_eq`, `tracked_ptr_mut_from_data` | `ptr_model.rs` | A pointer is its `PtrData` (address, provenance, metadata). | every pointer spec (e.g. the generic `PointsToUnaligned` pointer built from its metadata) |
+| `assume_specification`s for pointer `==`, `null`, `null_mut`, `addr`, `with_addr`; the `cast_*` `external_body` functions | `ptr_specs.rs` | The exec pointer operations match the model. | exec code |
 | `SharedReference` (`external_body`; `uninterp` `value`, `ptr`), `ptr_nonnull`, `axiom_shared_ref_value_view` | `shared_reference.rs` | A shared reference with its pointer. | exec code; the source of valid shared permissions |
-| `shared_ref_ptr` (`uninterp`), `mut_ref_slice_len`, `ptr_mut_ref_join`, `tracked_mut_ref_slice_subrange`, `tracked_mut_ref_slice_idx`, `cast_mut_ref_to_ptr`, `cast_mut_ref_slice_to_ptr`, `cast_mut_ref_str_to_ptr` | `raw_ptr_specs.rs` | Reference ↔ pointer and permission boundary. | exec code; the source of valid permissions |
+| `shared_ref_ptr` (`uninterp`), `mut_ref_slice_len`, `ptr_mut_ref_join`, `tracked_mut_ref_slice_subrange`, `tracked_mut_ref_slice_idx`, `cast_mut_ref_to_ptr`, `cast_mut_ref_slice_to_ptr`, `cast_mut_ref_str_to_ptr` | `ptr_specs.rs` | Reference ↔ pointer and permission boundary. | exec code; the source of valid permissions |
 | `abs_encode`, `abs_decode`, `abs_can_be_encoded` (`uninterp`); `encode_decode_len`, `encode_decode_inverse`, `shared_ref_cannot_be_encoded`; the per-type encoding impls | `type_representation.rs` | The abstract-byte encoding of values. | every decode clause |
 | layout axioms (`layout_of_sized`, `layout_of_slices`, `layout_of_str`, `layout_of_unit_tuple`, `align_properties`, …) | `layout.rs` | Sizes and alignments of types and values. | sizes, `satisfies_alignment`, `lemma_satisfies_alignment_offset`, the `zero_sized` default |
 | `tracked_swap`, `tracked_static_mut_ref` | `modes.rs` | Swapping tracked values; a `'static` borrow of an owned value. | `take_typed_value`, empty cases of borrowed conversions |
@@ -106,12 +121,12 @@ it's in [New axioms and axioms with bigger changes](#new-axioms-and-axioms-with-
 
 | Item | File | Change | Uses |
 |---|---|---|---|
-| `ptr_ref` (`external_body`) | `raw_ptr_specs.rs` | Now requires `perm.wf()`. | exec reads |
-| `mut_ref_to_shr_points_to` | `raw_ptr_specs.rs` | Now ensures `pt.wf()`. | the source of valid permissions from `&mut T` |
+| `ptr_ref` (`external_body`) | `ptr_specs.rs` | Now requires `perm.wf()`. | exec reads |
+| `mut_ref_to_shr_points_to` | `ptr_specs.rs` | Now ensures `pt.wf()`. | the source of valid permissions from `&mut T` |
 | `SharedReference::points_to` | `shared_reference.rs` | Now ensures `pt.wf()`. | the source of valid shared permissions |
 | `ptr_ref2` (`external_body`), `ptr_ref2_ghost` | `shared_reference.rs` | Now require `perm.wf()`. | exec code; `SharedReference` from a permission |
-| `ptr_ref_slice` (`external_body`; restored, phase 4b) | `raw_ptr_specs.rs` | Restored from commented-out code; now requires `perm.wf()`. | exec slice reads |
-| `mut_ref_to_shr_points_to_slice` (restored, phase 4b) | `raw_ptr_specs.rs` | Restored from commented-out code; now ensures `pt.wf()`. | the source of valid slice permissions from `&mut [T]` |
+| `ptr_ref_slice` (`external_body`; restored, phase 4b) | `ptr_specs.rs` | Restored from commented-out code; now requires `perm.wf()`. | exec slice reads |
+| `mut_ref_to_shr_points_to_slice` (restored, phase 4b) | `ptr_specs.rs` | Restored from commented-out code; now ensures `pt.wf()`. | the source of valid slice permissions from `&mut [T]` |
 | `SharedReference<[T]>::points_to` (restored, phase 4b) | `shared_reference.rs` | Restored from commented-out code; now ensures `pt.wf()`. | the source of valid shared slice permissions |
 | `ptr_ref2_slice_ghost` (restored, phase 4b) | `shared_reference.rs` | Restored from commented-out code; now requires `perm.wf()`. | `SharedReference<[T]>` from a slice permission |
 | `ptr_ref_str` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code; now requires `perm.wf()`. | exec `str` reads |
@@ -123,7 +138,7 @@ The restored slice and `str` versions also state the value through `typed_value(
 (with `@` for slices) in place of the old `value()`, which the planned `PointsTo<[T]>` / `PointsTo<str>` don't have.
 
 ```rust
-// raw_ptr_specs.rs
+// ptr_specs.rs
 
 /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
@@ -153,7 +168,7 @@ pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
         *final(*mut_ref) == *old(*mut_ref),
 ;
 
-// raw_ptr_specs.rs, restored slice versions (phase 4b; from raw_ptr_new.rs lines 524 and 683)
+// ptr_specs.rs, restored slice versions (phase 4b; from raw_ptr_new.rs lines 524 and 683)
 
 /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 #[verifier::external_body]
@@ -315,8 +330,8 @@ Every new trusted item, relative to the `verify-rustlib` branch.
 
 | Item | File | What it states | Uses | Approved by Travis/Natalie |
 |---|---|---|---|---|
-| `ptr_mut_ref` (`external_body`; existing, strengthened, already in the code) | `raw_ptr_specs.rs` | Now also ensures `final(perm).wf()`: the final bytes decode to the final value (and requires `old(perm).wf()`). | exec writes through `&mut T` | yes |
-| `ptr_mut_ref_slice` (`external_body`; restored, phase 4b) | `raw_ptr_specs.rs` | Restored from commented-out code, strengthened the same way as `ptr_mut_ref`. | exec writes through `&mut [T]` | yes |
+| `ptr_mut_ref` (`external_body`; existing, strengthened, already in the code) | `ptr_specs.rs` | Now also ensures `final(perm).wf()`: the final bytes decode to the final value (and requires `old(perm).wf()`). | exec writes through `&mut T` | yes |
+| `ptr_mut_ref_slice` (`external_body`; restored, phase 4b) | `ptr_specs.rs` | Restored from commented-out code, strengthened the same way as `ptr_mut_ref`. | exec writes through `&mut [T]` | yes |
 | `ptr_mut_ref_str` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code, strengthened the same way as `ptr_mut_ref`, except that a final value that isn't valid UTF-8 leaves the permission empty. | exec writes through `&mut str` | |
 | `Seq::tracked_borrow_subrange` (`external_body`; already in the code) | `seq.rs` | Borrows a subrange of a borrowed tracked `Seq`. | `subrange_basic`, `split_ref` | yes |
 | `Seq::tracked_split_borrow_mut` (`external_body`; already in the code) | `seq.rs` | Splits a mutable borrow of a tracked `Seq` in two. | `subrange_mut`, the `&mut` conversions | yes |
@@ -331,12 +346,12 @@ Every new trusted item, relative to the `verify-rustlib` branch.
 | `PointsToUntyped::join_ref` (already in the code) | `points_to_model.rs` | Two borrowed untyped permissions, the second starting where the first ends, act as one borrowed permission. | the typed sequences' `as_untyped`, shared sequence → slice | |
 | `PointsToUntyped::join_mut` (already in the code) | `points_to_model.rs` | The same for mutable borrows; the parts' final values are tied back if the joined permission keeps its pointers and length. | the typed sequences' `as_untyped_mut`, `&mut` sequence → slice | |
 | `PointsTo::borrow_mut` (already in the code) | `points_to_model.rs` | A mutable borrow of a valid permission's value; writing through it updates the value and the bytes together, keeping `wf()`. | ghost writes through a permission | |
-| `global_alloc_id` (`uninterp`) | `raw_ptr_specs.rs` | The id of the global allocator's allocations. | `allocate` / `deallocate` | |
-| `allocate`, `deallocate` (`external_body`; ported from `raw_ptr_old.rs`, without `Dealloc`) | `raw_ptr_specs.rs` | Allocation gives a well-formed `PointsToUntyped` for the new range with a global-allocator provenance; deallocation consumes one covering the whole allocation. | heap allocation | |
+| `global_alloc_id` (`uninterp`) | `ptr_specs.rs` | The id of the global allocator's allocations. | `allocate` / `deallocate` | |
+| `allocate`, `deallocate` (`external_body`; ported from `raw_ptr_old.rs`, without `Dealloc`) | `ptr_specs.rs` | Allocation gives a well-formed `PointsToUntyped` for the new range with a global-allocator provenance; deallocation consumes one covering the whole allocation. | heap allocation | |
 | `abs_decode_slice` (already in the code) | `type_representation.rs` | A slice decodes exactly when each element's slot does. Its definition is in the code and isn't repeated here. | slice `wf` | yes |
 | `abs_decode_str` (rustlib) | rustlib (`type_representation`) | A `str` decodes exactly when its bytes are valid UTF-8 and each decodes as a `u8`. | `str` `wf`, `str` ↔ `[u8]` | |
 
-**`ptr_mut_ref`** (`raw_ptr_specs.rs`; existing, strengthened, already in the code).
+**`ptr_mut_ref`** (`ptr_specs.rs`; existing, strengthened, already in the code).
 It now requires and ensures `wf()`.
 It doesn't say the bytes stay the same,
 so `final(perm).wf()` is what tells callers the final bytes decode to the final value.
@@ -653,7 +668,7 @@ impl<T> PointsTo<T> {
 }
 ```
 
-**Allocation** (`raw_ptr_specs.rs`; phase 2c).
+**Allocation** (`ptr_specs.rs`; phase 2c).
 
 ```rust
 /// The `AllocId` of allocations made by the global allocator.

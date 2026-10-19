@@ -167,11 +167,14 @@ The design is in [Module layout](TYPED_POINTS_TO_NOTES.md#module-layout).
   so it isn't confused with `PTValueOps`.
   Purely mechanical; also update the docs that mention it
   (`PORTING_STATUS.md`, `POINTS_TO_MIGRATION.md`, `GENERALIZATION_ASSESSMENT.md`).
-- Split `raw_ptr_new.rs` into `raw_ptr_model.rs` and `raw_ptr_specs.rs`,
+- Create the `raw_ptr` directory ([Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout)):
+  split `raw_ptr_new.rs` into `ptr_model.rs` and `ptr_specs.rs`,
   and `points_to.rs` / `points_to_permissions.rs` into `points_to_model.rs`,
-  `points_to_ops.rs` (a child module of `points_to_model`) and `points_to_collections.rs`
-  ([Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout)).
-  Spike first: private-field and `closed` access from the child module, and `#[path]`.
+  `points_to_ops.rs` (a child module of `points_to_model`) and `points_to_collections.rs`;
+  move `shared_reference.rs` in; `mod.rs` re-exports everything,
+  and importers (vstd and rustlib) switch to `vstd::raw_ptr`.
+  The old `raw_ptr.rs` is replaced.
+  Spike first: private-field and `closed` access from the child module.
 - Move `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut`, `from_seq`, `empty`, `into_seq` into the
   structural `impl<T, P> SeqPointsTo<T, P>` (in `points_to_ops.rs`), stated with `wf_basic()` and `P::size(())`
   (after phase 1b; `P::const_size()` if phase 1 lands first).
@@ -305,7 +308,7 @@ it uses `PointsToUntyped` only through `from_seq` / `into_seq`.
    for the whole allocation, so nothing trusted depends on `PointsToRaw`.
    `Dealloc` is dropped:
    `ProvenanceData::orig_size` replaces its tracking of the original allocation size.
-   They go in `raw_ptr_specs.rs`.
+   They go in `ptr_specs.rs`.
 6. Add the trusted items to `POINTS_TO_AXIOMS.md` and note the removed `PointsToRaw` axioms.
 
 ### Phase 3: typed `SeqPointsTo`
