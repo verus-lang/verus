@@ -67,7 +67,6 @@ Sequences:
   (about 30 files import `raw_ptr_new` / `points_to_permissions` today, many in rustlib),
   with `points_to_collections` outside `points_to_model`'s subtree.
 - Spike: Verus accepts private-field and `closed` spec access from the child module.
-- The `allocate` / `deallocate` specs with `PointsToUntyped` (below, still with `PointsToRaw`).
 - `PointsToUnaligned::as_raw_parts_mut` (proposed in
   [Sequence → slice conversions](#sequence--slice-conversions-and-slice-indexing-phase-4)).
 
@@ -1028,7 +1027,7 @@ everything else exists today.
 | `impl SeqPointsTo<u8, PointsToByte>` (`PointsToUntyped`, `points_to_model.rs` / `points_to_ops.rs`) | `View`, `bytes`, `wf`, `stays_wf`, `lemma_ptrs_len_same_untyped` (renamed), `zero_sized<T>`, `split`, `split_ref`, `join` (wrappers over the `_basic` primitives); `join_ref`, `join_mut` (axioms); `split_mut` (proved in phase 3b); `is_disjoint_untyped` | |
 | `impl PointsToByte` (renamed from `PointsToSingleton`) | `byte`, `is_disjoint_byte` (renamed from `is_disjoint_singleton`, in phase 1 with the type) | |
 | `impl PointsToRaw` | everything in [`PointsToRaw` (phase 2c)](#pointstoraw-phase-2c) above (new) | Not a `PTPhys`. |
-| free functions | `tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref` (new axioms, phase 3b); `allocate`, `deallocate` (ported, phase 2c, with `PointsToUntyped` in place of `PointsToRaw`; placement open; `Dealloc` dropped) | |
+| free functions | `tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref` (new axioms, phase 3b); `allocate`, `deallocate` (ported, phase 2c, with `PointsToUntyped` in place of `PointsToRaw`; in `raw_ptr_specs.rs`; `Dealloc` dropped) | |
 | rustlib: `impl PointsToUnaligned<str>` | `as_bytes`, `from_bytes_ref` | |
 | rustlib: `impl PointsTo<str>` | `as_bytes`, `from_bytes_ref` (through the aligned/unaligned conversions) | |
 
@@ -1094,18 +1093,12 @@ so no trusted code depends on `points_to_collections.rs`.
 - **`global_alloc_id`.** It replaces what `Dealloc` guaranteed implicitly:
   that the memory being freed came from the global allocator.
   Only `allocate` ensures a provenance has this id,
-  so a `PointsToRaw` covering a stack variable's whole allocation can't be passed to `deallocate`.
+  so a `PointsToUntyped` covering a stack variable's whole allocation can't be passed to `deallocate`.
 
 ## New axioms
 
-Every new trusted item: the summary, then the full definitions.
-
-**vstd.**
-
-| Item | Planned file | What it states | Uses |
-|---|---|---|---|
-| `global_alloc_id` (`uninterp`) | with `allocate` (placement open) | The id of the global allocator's allocations. | `allocate` / `deallocate` |
-| `allocate`, `deallocate` (`external_body`) | open | Allocation gives a `PointsToRaw` for the new range with a global-allocator provenance; deallocation consumes one covering the whole allocation. | heap allocation |
+All approved, including `allocate`, `deallocate` and `global_alloc_id`
+([TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes)).
 
 Minor changes to existing axioms (`ptr_ref`, `ptr_ref2`, `ptr_ref2_ghost`, `mut_ref_to_shr_points_to`, `SharedReference::points_to`,
 and the restored slice versions `ptr_ref_slice`, `ptr_ref2_slice_ghost`, `mut_ref_to_shr_points_to_slice`, `SharedReference<[T]>::points_to`)
@@ -1140,73 +1133,7 @@ and the rest in [Minor changes to existing trusted specs](TYPED_POINTS_TO_APPROV
 
 ### Allocation (phase 2c)
 
-Ported from `raw_ptr_old.rs`, without `Dealloc`; placement open.
-
-```rust
-/// The `AllocId` of allocations made by the global allocator.
-/// Only `allocate` produces provenances with this id,
-/// so no other allocation (e.g. a stack variable's) can be shown to have it.
-pub uninterp spec fn global_alloc_id() -> AllocId;
-
-/// Allocate with the global allocator.
-/// The precondition should be consistent with the
-/// [documented safety conditions on `alloc`](https://doc.rust-lang.org/alloc/alloc/trait.GlobalAlloc.html#tymethod.alloc).
-/// Allocates exactly the requested size (`alloc_len == orig_size == size`),
-/// a stronger guarantee than `Allocator::allocate`, which may allocate a larger block.
-/// The byte contents are arbitrary (uninitialized).
-#[cfg(feature = "std")]
-#[verifier::external_body]
-pub fn allocate(size: usize, align: usize) -> (pt: (*mut u8, Tracked<PointsToRaw>))
-    requires
-        valid_layout(size, align),
-        size != 0,
-    ensures
-        pt.1@.provenance() is Some,
-        pt.0@.provenance == pt.1@.provenance(),
-        pt.0@.addr == pt.1@.provenance().unwrap().start_addr(),
-        pt.1@.provenance().unwrap().alloc_len() == size,
-        pt.1@.provenance().unwrap().orig_size() == size,
-        pt.1@.provenance().unwrap().alignment() == align,
-        pt.1@.provenance().unwrap().alloc_id() == global_alloc_id(),
-        pt.1@.is_range(pt.0@.addr as int, size as int),
-        // pt.0@.addr % align == 0 and pt.0@.addr + size <= usize::MAX follow from provenance_properties.
-    opens_invariants none
-{
-    // SAFETY: valid_layout is a precondition
-    let layout = unsafe { alloc::alloc::Layout::from_size_align_unchecked(size, align) };
-    // SAFETY: size != 0
-    let p = unsafe { ::alloc::alloc::alloc(layout) };
-    if p == core::ptr::null_mut() {
-        std::process::abort();
-    }
-    (p, Tracked::assume_new())
-}
-
-/// Deallocate with the global allocator.
-/// The provenance gives the
-/// [documented safety conditions on `dealloc`](https://doc.rust-lang.org/core/alloc/trait.GlobalAlloc.html#tymethod.dealloc)
-/// (same allocator, same layout);
-/// giving up the `PointsToRaw` for the whole allocation rules out use-after-free and double free.
-#[cfg(feature = "alloc")]
-#[verifier::external_body]
-pub fn deallocate(p: *mut u8, size: usize, align: usize, Tracked(pt): Tracked<PointsToRaw>)
-    requires
-        pt.provenance() is Some,
-        p@.provenance == pt.provenance(),
-        pt.provenance().unwrap().alloc_id() == global_alloc_id(),
-        p@.addr == pt.provenance().unwrap().start_addr(),
-        size == pt.provenance().unwrap().orig_size(),
-        align == pt.provenance().unwrap().alignment(),
-        pt.is_range(p@.addr as int, pt.provenance().unwrap().alloc_len() as int),
-    opens_invariants none
-{
-    // SAFETY: ensured by the provenance and the PointsToRaw
-    let layout = unsafe { alloc::alloc::Layout::from_size_align_unchecked(size, align) };
-    unsafe {
-        ::alloc::alloc::dealloc(p, layout);
-    }
-}
-```
+Approved; see [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes).
 
 ### New rustlib axioms
 

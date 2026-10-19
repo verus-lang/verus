@@ -311,8 +311,7 @@ pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) 
 
 ## New axioms and axioms with bigger changes
 
-Specs approved so far; the full list of new trusted items is in
-[TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md#new-axioms).
+Every new trusted item, relative to the `verify-rustlib` branch.
 
 | Item | File | What it states | Uses | Approved by Travis/Natalie |
 |---|---|---|---|---|
@@ -331,6 +330,8 @@ Specs approved so far; the full list of new trusted items is in
 | M5 `SeqPointsTo::from_seq_mut` (phase 3b) | `points_to_model.rs` | A `&mut Seq<P>` acts as a `&mut SeqPointsTo`. | `subrange_mut`, `split_mut` | yes |
 | `PointsToUntyped::join_ref` (already in the code) | `points_to_model.rs` | Two borrowed untyped permissions, the second starting where the first ends, act as one borrowed permission. | the typed sequences' `as_untyped`, shared sequence → slice | |
 | `PointsToUntyped::join_mut` (already in the code) | `points_to_model.rs` | The same for mutable borrows; the parts' final values are tied back if the joined permission keeps its pointers and length. | the typed sequences' `as_untyped_mut`, `&mut` sequence → slice | |
+| `global_alloc_id` (`uninterp`) | `raw_ptr_specs.rs` | The id of the global allocator's allocations. | `allocate` / `deallocate` | |
+| `allocate`, `deallocate` (`external_body`; ported from `raw_ptr_old.rs`, without `Dealloc`) | `raw_ptr_specs.rs` | Allocation gives a well-formed `PointsToUntyped` for the new range with a global-allocator provenance; deallocation consumes one covering the whole allocation. | heap allocation | |
 | `abs_decode_slice` (already in the code) | `type_representation.rs` | A slice decodes exactly when each element's slot does. Its definition is in the code and isn't repeated here. | slice `wf` | yes |
 | `abs_decode_str` (rustlib) | rustlib (`type_representation`) | A `str` decodes exactly when its bytes are valid UTF-8 and each decodes as a `u8`. | `str` `wf`, `str` ↔ `[u8]` | |
 
@@ -625,6 +626,78 @@ impl PointsToUntyped {
                 &&& final(joined).bytes() == final(self).bytes() + final(other).bytes()
             },
     ;
+}
+```
+
+**Allocation** (`raw_ptr_specs.rs`; phase 2c).
+
+```rust
+/// The `AllocId` of allocations made by the global allocator.
+/// Only `allocate` produces provenances with this id,
+/// so no other allocation (e.g. a stack variable's) can be shown to have it.
+pub uninterp spec fn global_alloc_id() -> AllocId;
+
+/// Allocate with the global allocator.
+/// The precondition should be consistent with the
+/// [documented safety conditions on `alloc`](https://doc.rust-lang.org/alloc/alloc/trait.GlobalAlloc.html#tymethod.alloc).
+/// Allocates exactly the requested size (`alloc_len == orig_size == size`),
+/// a stronger guarantee than `Allocator::allocate`, which may allocate a larger block.
+/// The byte contents are arbitrary (uninitialized).
+#[cfg(feature = "std")]
+#[verifier::external_body]
+pub fn allocate(size: usize, align: usize) -> ((ptr, perm): (*mut u8, Tracked<PointsToUntyped>))
+    requires
+        valid_layout(size, align),
+        size != 0,
+    ensures
+        perm@.ptr() == ptr_mut_from_data::<[u8]>(
+            PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: size },
+        ),
+        perm@.wf(),
+        ptr@.provenance is Some,
+        ptr@.addr == ptr@.provenance.unwrap().start_addr(),
+        ptr@.provenance.unwrap().alloc_len() == size,
+        ptr@.provenance.unwrap().orig_size() == size,
+        ptr@.provenance.unwrap().alignment() == align,
+        ptr@.provenance.unwrap().alloc_id() == global_alloc_id(),
+        // ptr@.addr % align == 0 and ptr@.addr + size <= usize::MAX follow from provenance_properties.
+    opens_invariants none
+{
+    // SAFETY: valid_layout is a precondition
+    let layout = unsafe { alloc::alloc::Layout::from_size_align_unchecked(size, align) };
+    // SAFETY: size != 0
+    let ptr = unsafe { ::alloc::alloc::alloc(layout) };
+    if ptr == core::ptr::null_mut() {
+        std::process::abort();
+    }
+    (ptr, Tracked::assume_new())
+}
+
+/// Deallocate with the global allocator.
+/// The provenance gives the
+/// [documented safety conditions on `dealloc`](https://doc.rust-lang.org/core/alloc/trait.GlobalAlloc.html#tymethod.dealloc)
+/// (same allocator, same layout);
+/// giving up the `PointsToUntyped` for the whole allocation rules out use-after-free and double free.
+#[cfg(feature = "alloc")]
+#[verifier::external_body]
+pub fn deallocate(ptr: *mut u8, size: usize, align: usize, Tracked(perm): Tracked<PointsToUntyped>)
+    requires
+        perm.wf(),
+        ptr@.provenance == perm.ptr()@.provenance,
+        ptr@.addr == perm.ptr()@.addr,
+        ptr@.provenance is Some,
+        ptr@.provenance.unwrap().alloc_id() == global_alloc_id(),
+        ptr@.addr == ptr@.provenance.unwrap().start_addr(),
+        perm.len() == ptr@.provenance.unwrap().alloc_len(),
+        size == ptr@.provenance.unwrap().orig_size(),
+        align == ptr@.provenance.unwrap().alignment(),
+    opens_invariants none
+{
+    // SAFETY: ensured by the provenance and the PointsToUntyped
+    let layout = unsafe { alloc::alloc::Layout::from_size_align_unchecked(size, align) };
+    unsafe {
+        ::alloc::alloc::dealloc(ptr, layout);
+    }
 }
 ```
 
