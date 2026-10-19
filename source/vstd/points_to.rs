@@ -7,9 +7,13 @@ use super::type_representation::*;
 
 verus! {
 
+// A private seal trait to prevent `PointsToPhys` from being implemented outside of vstd.
+pub(crate) trait PointsToPhysSealed {}
+
 /// Defines the physical memory region that a `PointsTo` permission covers,
 /// by specifying the pointer to memory and the size of the pointed-to region.
-pub trait PointsToPhys: Sized {
+#[allow(private_bounds)]
+pub trait PointsToPhys: Sized + PointsToPhysSealed {
     type A: ?Sized; //caller choice vs implementor choice, so maybe can go with implementor
 
     /// The pointer that this permission is associated with.
@@ -126,6 +130,8 @@ pub trait PointsToProperties: PointsToPhys {
 pub tracked struct PointsToSingleton {
     no_copy: NoCopy,
 }
+
+impl PointsToPhysSealed for PointsToSingleton {}
 
 impl PointsToPhys for PointsToSingleton {
     type A = u8;

@@ -20,6 +20,13 @@ pub tracked struct SeqPointsTo<T: ?Sized, PointsToPerm: PointsToProperties + Fix
     ptr: Ghost<*mut T>,
 }
 
+impl<T, PointsToPerm> PointsToPhysSealed for SeqPointsTo<T, PointsToPerm> where
+    T: ?Sized,
+    PointsToPerm: PointsToProperties + FixedSize,
+ {
+
+}
+
 impl<T, PointsToPerm> PointsToPhys for SeqPointsTo<T, PointsToPerm> where
     T: ?Sized,
     PointsToPerm: PointsToProperties + FixedSize,
@@ -727,6 +734,10 @@ impl<T: ?Sized> PointsToUnaligned<T> {
     }
 }
 
+impl<T: ?Sized> PointsToPhysSealed for PointsToUnaligned<T> {
+
+}
+
 impl<T> PointsToPhys for PointsToUnaligned<T> {
     type A = T;
 
@@ -1135,6 +1146,10 @@ impl<T: ?Sized> PointsTo<T> {
     {
         &self.pt_unaligned
     }
+}
+
+impl<T: ?Sized> PointsToPhysSealed for PointsTo<T> {
+
 }
 
 impl<T> PointsToPhys for PointsTo<T> {

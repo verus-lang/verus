@@ -254,8 +254,9 @@ impl<T> PointsToPhys for PointsToUnaligned<[T]> {
     open spec fn wf_basic(self) -> bool { self.wf_basic_unaligned() }
 }
 // rustlib: impl PointsToPhys for PointsToUnaligned<str> { type A = str; ptr: same; size(len) = len; wf_basic: same }
-// (Needs no `str` view. vstd is a module of rustlib's `core`, so a crate-private seal on `PointsToPhys`
-// would still let rustlib write this impl.)
+// (Needs no `str` view. `PointsToPhys` is sealed by the crate-private `PointsToPhysSealed`;
+// vstd's generic `impl<T: ?Sized> PointsToPhysSealed for PointsToUnaligned<T>` already covers `str`,
+// and vstd is a module of rustlib's `core`, so rustlib can still write this impl.)
 
 // One generic impl.
 impl<T: ?Sized> PointsToProperties for PointsToUnaligned<T> where PointsToUnaligned<T>: PointsToPhys<A = T> {
@@ -1091,7 +1092,7 @@ everything else exists today.
 | `impl<T> SeqPointsTo<T, PointsTo<T>>` | `is_aligned`; `from_untyped_ref`, `from_untyped_with_value_ref`, `as_slice_pt`, `as_slice_pt_mut` (new, phase 4; compositions); `into_unaligned`, `as_unaligned`, `as_unaligned_mut` (new, phase 4) | |
 | `impl<T> SeqPointsTo<T, PointsToUnaligned<T>>` | `into_aligned`, `as_aligned`, `as_aligned_mut`, `from_untyped_ref`, `from_untyped_with_value_ref`, `as_slice_pt`, `as_slice_pt_mut` (new, phase 4; the primary implementations) | |
 | `impl SeqPointsTo<u8, PointsToByte>` (`PointsToUntyped`, `points_to.rs`) | `View`, `bytes`, `wf`, `stays_wf`, `lemma_ptrs_len_same_untyped` (renamed), `zero_sized<T>`, `split`, `split_ref`, `join` (wrappers over the `_basic` primitives); `join_ref`, `join_mut`, `split_mut` (proved in phase 3b); `is_disjoint_untyped` | |
-| `impl PointsToByte` (renamed from `PointsToSingleton`) | `byte`, `is_disjoint_singleton` | |
+| `impl PointsToByte` (renamed from `PointsToSingleton`) | `byte`, `is_disjoint_byte` (renamed from `is_disjoint_singleton`, in phase 1 with the type) | |
 | `impl PointsToRaw` | everything in [`PointsToRaw` (phase 2c)](#pointstoraw-phase-2c) above (new) | Not a `PointsToPhys`. |
 | free functions | `tracked_slice_index`, `tracked_slice_from_refs`, `tracked_collect_perm_refs`, `tracked_collect_perm_muts` (M6), `tracked_ref` (new axioms, phase 3b); `allocate`, `deallocate` (ported, phase 2c; placement open; `Dealloc` dropped) | |
 | rustlib: `impl PointsToUnaligned<str>` | `into_bytes`, `from_bytes`, `as_bytes`, `as_bytes_mut` | |
@@ -1174,6 +1175,7 @@ Every new trusted item: the summary, then the full definitions.
 | Item | Planned file | What it states | Uses |
 |---|---|---|---|
 | `abs_decode_slice` (already added) | `type_representation.rs` | A slice decodes exactly when each element's slot does. | slice `wf` |
+| `ptr_mut_ref` (`external_body`; existing, strengthened, already in the code) | `raw_ptr_new.rs` | Now also ensures `final(perm).wf()`: the final bytes decode to the final value (and requires `old(perm).wf()`). Spec in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes). | exec writes through `&mut T` |
 | `Seq::tracked_borrow_subrange` (`external_body`, already added) | `seq.rs` | Borrows a subrange of a borrowed tracked `Seq`. | `subrange_basic`, `split_ref` |
 | `Seq::tracked_split_borrow_mut` (`external_body`, already added) | `seq.rs` | Splits a mutable borrow of a tracked `Seq` in two. | `subrange_mut`, the `&mut` conversions |
 | `tracked_slice_index` | `slice.rs` | Borrows an element of a borrowed slice. | shared slice → sequence |
@@ -1191,15 +1193,8 @@ Every new trusted item: the summary, then the full definitions.
 | `global_alloc_id` (`uninterp`) | with `allocate` (placement open) | The id of the global allocator's allocations. | `allocate` / `deallocate` |
 | `allocate`, `deallocate` (`external_body`) | open | Allocation gives a `PointsToRaw` for the new range with a global-allocator provenance; deallocation consumes one covering the whole allocation. | heap allocation |
 
-**Minor changes to existing vstd axioms** (already in the code on this branch).
-
-| Item | File | Change | Uses |
-|---|---|---|---|
-| `ptr_ref` (`external_body`) | `raw_ptr_new.rs` | Now requires `perm.wf()`. | exec reads |
-| `ptr_mut_ref` (`external_body`) | `raw_ptr_new.rs` | Now requires `old(perm).wf()` and ensures `final(perm).wf()` (the final bytes decode to the final value); full spec below. | exec writes through `&mut T` |
-| `mut_ref_to_shr_points_to` | `raw_ptr_new.rs` | Now ensures `pt.wf()`. | the source of valid permissions from `&mut T` |
-| `SharedReference::points_to` | `shared_reference.rs` | Now ensures `pt.wf()`. | the source of valid shared permissions |
-| `ptr_ref2` (`external_body`), `ptr_ref2_ghost` | `shared_reference.rs` | Now require `perm.wf()`. | exec code; `SharedReference` from a permission |
+Minor changes to existing axioms (`ptr_ref`, `ptr_ref2`, `ptr_ref2_ghost`, `mut_ref_to_shr_points_to`, `SharedReference::points_to`)
+are approved and in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#minor-changes-to-existing-trusted-specs).
 
 **rustlib.**
 
@@ -1218,36 +1213,6 @@ they're replaced by the above and not part of this design.
 
 "New" means new relative to the `verify-rustlib` branch.
 `abs_decode_slice` is already in `type_representation.rs`, so its definition isn't repeated below.
-
-### `ptr_mut_ref` (minor change, already in the code)
-
-The existing axiom now requires and ensures `wf()`.
-It doesn't say the bytes stay the same,
-so `final(perm).wf()` is what tells callers the final bytes decode to the final value.
-
-```rust
-/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
-/// The memory pointed to by `ptr` must be initialized.
-#[inline(always)]
-#[verifier::external_body]
-pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
-    requires
-        old(perm).ptr() == ptr,
-        old(perm).is_valid(),
-        old(perm).wf(),
-    ensures
-        final(perm).ptr() == ptr,
-        final(perm).is_valid(),
-        // The final bytes decode to the final value.
-        final(perm).wf(),
-        old(perm).value() == *v,
-        final(perm).value() == *final(v),
-    opens_invariants none
-    no_unwind
-{
-    unsafe { &mut *ptr }
-}
-```
 
 ### `Seq` tracked operations (already added)
 

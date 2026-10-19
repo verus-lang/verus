@@ -49,8 +49,8 @@ Removed: `FixedSize`, `Dealloc`, and the inherent `PointsTo<T>` versions of the 
 
 Trusted items the permissions rely on that exist today and don't change.
 "Uses" names the main dependents.
-Existing axioms with minor contract changes on this branch are in the plan's
-[New axioms](TYPED_POINTS_TO_PLAN.md#new-axioms) section.
+Existing axioms with minor contract changes on this branch are in
+[Minor changes to existing trusted specs](#minor-changes-to-existing-trusted-specs).
 
 | Item | File | What it states | Uses |
 |---|---|---|---|
@@ -68,12 +68,149 @@ Existing axioms with minor contract changes on this branch are in the plan's
 | `Map` tracked operations (`tracked_empty`, `tracked_remove_keys`, `tracked_union_prefer_right`, …) | `map.rs` | Building and splitting a tracked `Map`. | `PointsToRaw` |
 | `shr_ref_struct_wrap` | builtin | Borrowing a struct from a borrow of its only tracked field. | `as_aligned`, `subrange_basic`, `split_ref`, `from_refs` |
 
+## Minor changes to existing trusted specs
+
+Already in the code on this branch.
+`ptr_mut_ref`'s change (it now also ensures `final(perm).wf()`) is listed with the new trusted specs
+in [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md#new-axioms);
+its spec is in [New axioms and axioms with bigger changes](#new-axioms-and-axioms-with-bigger-changes).
+
+| Item | File | Change | Uses |
+|---|---|---|---|
+| `ptr_ref` (`external_body`) | `raw_ptr_new.rs` | Now requires `perm.wf()`. | exec reads |
+| `mut_ref_to_shr_points_to` | `raw_ptr_new.rs` | Now ensures `pt.wf()`. | the source of valid permissions from `&mut T` |
+| `SharedReference::points_to` | `shared_reference.rs` | Now ensures `pt.wf()`. | the source of valid shared permissions |
+| `ptr_ref2` (`external_body`), `ptr_ref2_ghost` | `shared_reference.rs` | Now require `perm.wf()`. | exec code; `SharedReference` from a permission |
+
+```rust
+// raw_ptr_new.rs
+
+/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T)
+    requires
+        perm.ptr() == ptr,
+        perm.is_valid(),
+        perm.wf(),
+    ensures
+        v == perm.value(),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &*ptr }
+}
+
+/// Convert from a shared reference to a `&'a mut T` to a `&'a PointsTo<T>`.
+pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> (tracked pt:
+    &'a PointsTo<T>)
+    ensures
+        pt.ptr() == mut_ref_ptr(*mut_ref),
+        pt.is_valid(),
+        pt.value() == *old(*mut_ref),
+        pt.wf(),
+        *final(*mut_ref) == *old(*mut_ref),
+;
+
+// shared_reference.rs
+
+impl<'a, T> SharedReference<'a, T> {
+    // NOTE: there does not exist a points_to_unaligned function because SharedReference
+    // by definition gives you an _aligned_ PointsTo.
+    // https://doc.rust-lang.org/std/primitive.reference.html
+    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
+        ensures
+            pt.ptr() == self.ptr(),
+            pt.is_valid(),
+            pt.value() == self.value(),
+            pt.wf(),
+    ;
+}
+
+/// Like [`ptr_ref`] but returns a `SharedReference` so it keeps track of the relationship
+/// between the pointers.
+/// Note the resulting reference's pointers does NOT have the same provenance.
+/// This is because in Rust models like Stacked Borrows / Tree Borrows, the pointer
+/// gets a new tag.
+#[inline(always)]
+#[verifier::external_body]
+pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: SharedReference<
+    'a,
+    T,
+>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_valid(),
+        perm.wf(),
+    ensures
+        v.value() == perm.value(),
+        v.ptr().addr() == ptr.addr(),
+        v.ptr()@.metadata == ptr@.metadata,
+    opens_invariants none
+    no_unwind
+{
+    SharedReference(unsafe { &*ptr })
+}
+
+/// Same as [`ptr_ref2`], but operates on ghost values.
+/// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) -> (tracked v:
+    SharedReference<'a, T>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_valid(),
+        perm.wf(),
+    ensures
+        v.value() == perm.value(),
+        v.ptr() == ptr,
+;
+```
+
+## New axioms and axioms with bigger changes
+
+Specs approved so far; the full list of new trusted items is in
+[TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md#new-axioms).
+
+**`ptr_mut_ref`** (`raw_ptr_new.rs`; existing, strengthened, already in the code).
+It now requires and ensures `wf()`.
+It doesn't say the bytes stay the same,
+so `final(perm).wf()` is what tells callers the final bytes decode to the final value.
+
+```rust
+/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
+    requires
+        old(perm).ptr() == ptr,
+        old(perm).is_valid(),
+        old(perm).wf(),
+    ensures
+        final(perm).ptr() == ptr,
+        final(perm).is_valid(),
+        // The final bytes decode to the final value.
+        final(perm).wf(),
+        old(perm).value() == *v,
+        final(perm).value() == *final(v),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
+}
+```
+
 ## Trait definitions
 
 ```rust
+// A private seal trait to prevent `PointsToPhys` from being implemented outside of vstd.
+pub(crate) trait PointsToPhysSealed {}
+
 /// Defines the physical memory region that a `PointsTo` permission covers,
 /// by specifying the pointer to memory and the size of the pointed-to region.
-pub trait PointsToPhys: Sized {
+#[allow(private_bounds)]
+pub trait PointsToPhys: Sized + PointsToPhysSealed {
     type A: ?Sized;
 
     /// The pointer that this permission is associated with.

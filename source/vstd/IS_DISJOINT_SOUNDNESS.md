@@ -6,8 +6,9 @@ by the suggested approach below:
 and `is_disjoint` and its specialized versions now require `other` to be well-formed.
 The reproduction now fails (`precondition not satisfied` on `other.wf_basic()`).
 The matching change to the approved trait design is in `TYPED_POINTS_TO_APPROVED.md` (approved 2026-10-19).
-Still open: the `is_disjoint_byte` rename
-and the unsealed-trait hole described under "Remaining hole".
+The unsealed-trait hole under "Remaining hole" is also fixed in the current code
+(`PointsToPhys` is sealed by `PointsToPhysSealed`).
+Still open: the `is_disjoint_byte` rename.
 
 ## Summary
 
@@ -160,9 +161,17 @@ impl PointsToPhys for Fake {
 ```
 
 This was already possible before the fix, since `other` had no requirements at all.
-A fix is to seal `PointsToPhys`
-(e.g. a `pub(crate)` supertrait, or Verus's `#[verifier::sealed]` if it supports trait sealing here),
-so only vstd can implement it.
+
+**Fixed** by sealing `PointsToPhys`,
+following vstd's existing `TrustedSpecSealed` pattern (`std_specs/core.rs`):
+a `pub(crate) trait PointsToPhysSealed {}` supertrait,
+implemented in vstd for `PointsToSingleton`, `SeqPointsTo<_, _>`,
+`PointsToUnaligned<T: ?Sized>` and `PointsTo<T: ?Sized>`.
+(`#[verifier::sealed]` doesn't fit: it blocks every Verus impl, including vstd's own.)
+The `Fake` impl above now fails to compile
+("`PointsToPhys` is a sealed trait").
+The seal impls for `PointsToUnaligned` and `PointsTo` are generic over `T: ?Sized`,
+so they already cover `str`.
 Only `PointsToPhys` needs sealing:
 its items are all specs, with no proof obligations,
 while impls of the subtraits have to prove their lemmas.
