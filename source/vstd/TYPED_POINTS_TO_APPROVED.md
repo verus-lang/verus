@@ -345,9 +345,9 @@ Every new trusted item, relative to the `verify-rustlib` branch.
 | M5 `SeqPointsTo::from_seq_mut` (phase 3b) | `points_to_model.rs` | A `&mut Seq<P>` acts as a `&mut SeqPointsTo`. | `subrange_mut`, `split_mut` | yes |
 | `PointsToUntyped::join_ref` (already in the code) | `points_to_model.rs` | Two borrowed untyped permissions, the second starting where the first ends, act as one borrowed permission. | the typed sequences' `as_untyped`, shared sequence → slice | |
 | `PointsToUntyped::join_mut` (already in the code) | `points_to_model.rs` | The same for mutable borrows; the parts' final values are tied back if the joined permission keeps its pointers and length. | the typed sequences' `as_untyped_mut`, `&mut` sequence → slice | |
-| `PointsTo::borrow_mut` (already in the code) | `points_to_model.rs` | A mutable borrow of a valid permission's value; writing through it updates the value and the bytes together, keeping `wf()`. | ghost writes through a permission | |
+| `PointsTo::borrow_mut` (already in the code) | `points_to_model.rs` | A mutable borrow of a valid permission's value; writing through it updates the value and the bytes together, keeping `wf()`. | ghost writes through a permission | yes |
 | `global_alloc_id` (`uninterp`) | `ptr_specs.rs` | The id of the global allocator's allocations. | `allocate` / `deallocate` | |
-| `allocate`, `deallocate` (`external_body`; ported from `raw_ptr_old.rs`, without `Dealloc`) | `ptr_specs.rs` | Allocation gives a well-formed `PointsToUntyped` for the new range with a global-allocator provenance; deallocation consumes one covering the whole allocation. | heap allocation | |
+| `allocate`, `deallocate` (`external_body`; ported from `raw_ptr_old.rs`, without `Dealloc`) | `ptr_specs.rs` | Allocation gives a well-formed `PointsToUntyped` for the new range with a global-allocator provenance; deallocation consumes one covering the whole allocation. | heap allocation | yes |
 | `abs_decode_slice` (already in the code) | `type_representation.rs` | A slice decodes exactly when each element's slot does. Its definition is in the code and isn't repeated here. | slice `wf` | yes |
 **`ptr_mut_ref`** (`ptr_specs.rs`; existing, strengthened, already in the code).
 It now requires and ensures `wf()`.
