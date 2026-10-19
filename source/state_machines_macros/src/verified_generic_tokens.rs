@@ -6182,16 +6182,42 @@ fn init_method(
     let mut skipped = false;
     lets(&parts.body, false, &mut early, &mut skipped);
     let mut deposits = vec![];
-    for f in &sm.fields {
-        if !f.stype.is_storage() {
-            continue;
+    let storage_fields: Vec<&Field> = sm.fields.iter().filter(|f| f.stype.is_storage()).collect();
+    if storage_fields.len() <= FEW_PIECES {
+        for f in &storage_fields {
+            let arg = format_ident!("param_token_{}", f.name);
+            let pack = store.pack(f, &quote! {#arg});
+            deposits.push(quote! {
+                #pack
+                __tsm_base.tracked_union_prefer_right(__tsm_packed);
+            });
         }
-        let arg = format_ident!("param_token_{}", f.name);
-        let pack = store.pack(f, &quote! {#arg});
-        deposits.push(quote! {
-            #pack
-            __tsm_base.tracked_union_prefer_right(__tsm_packed);
-        });
+    } else {
+        // Many storage fields: join the packed fields as a balanced tree, so
+        // that each key of the joined map is reached in O(log n) unfoldings.
+        let mut level: Vec<Ident> = vec![];
+        for (i, f) in storage_fields.iter().enumerate() {
+            let arg = format_ident!("param_token_{}", f.name);
+            let pack = store.pack(f, &quote! {#arg});
+            let piece = format_ident!("__tsm_packed_{}", i);
+            deposits.push(quote! {
+                #pack
+                let tracked mut #piece = __tsm_packed;
+            });
+            level.push(piece);
+        }
+        while level.len() > 1 {
+            let mut next = vec![];
+            for pair in level.chunks(2) {
+                if let [a, b] = pair {
+                    deposits.push(quote! {#a.tracked_union_prefer_right(#b);});
+                }
+                next.push(pair[0].clone());
+            }
+            level = next;
+        }
+        let root = &level[0];
+        deposits.push(quote! {__tsm_base.tracked_union_prefer_right(#root);});
     }
     let cm = ctx.cm;
     let id = if cm.is_some() {

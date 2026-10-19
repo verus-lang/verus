@@ -235,6 +235,23 @@ pub fn build(
             {#key_expr::#unpack_imap(input)}
         });
     }
+    // With many fields, the projection (the union of the tagged fields) is
+    // stated as one map whose per-key case split is a named function: a
+    // solver then looks a key up in one step, where the union takes one step
+    // per field and, beyond a few dozen fields, more instantiation depth than
+    // it explores.
+    let projection = if fields.len() <= 8 {
+        projection
+    } else {
+        let dom_fn = fresh("__storage_dom");
+        let val_fn = fresh("__storage_val");
+        protocol.push(quote! {
+            pub open spec fn #dom_fn(s:State #types,key:#key_name #types)->bool{match key{#(#domains)* _=>false,}}
+            pub open spec fn #val_fn(s:State #types,key:#key_name #types)->#value{match key{#(#values)* _=>arbitrary(),}}
+        });
+        quote! {IMap::new(|key:#key_name #types|Protocol #expr::#dom_fn(s,key),
+            |key:#key_name #types|Protocol #expr::#val_fn(s,key))}
+    };
     Ok(Output {
         key: verus_syn::parse2(quote!{#key_name #types})?,
         key_expr,

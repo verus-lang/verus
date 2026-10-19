@@ -662,6 +662,8 @@ pub fn output_with_ready(
     let carrier = crate::verified_storage_carrier::Carrier::build(sm,
         quote!{#(#caller_helpers)* #(#caller_invariants)* #(#caller_lemmas)*})?;
     let mut storage: Option<(Ident, Type, Type, TokenStream)> = None;
+    // Projections of the optional stores (without a carrier), joined below.
+    let mut option_projections: Vec<TokenStream> = vec![];
     let storage_fields:HashMap<_,_>=sm.fields.iter().map(|f|(f.name.to_string(),f.clone())).collect();
     let physical_count=sm.fields.iter().filter(|f|f.stype.is_storage()).count();
     if carrier.is_none()&&physical_count>1&&sm.fields.iter().any(|f|f.stype.is_storage()&&!matches!(f.stype,ShardableType::StorageOption(_))){return Err(Error::new(sm.name.span(),"multiple physical fields currently require homogeneous optional stores"));}
@@ -696,10 +698,10 @@ pub fn output_with_ready(
                 if carrier.is_some() { continue; }
                 let key=optional_storage_key(n,&storage_fields);
                 let projection=quote!{match s.#n {Some(v)=>IMap::empty().insert(#key,v),None=>IMap::empty()}};
-                if let Some((_,_,old_value,old_projection))=&mut storage{
+                if let Some((_,_,old_value,_))=&storage{
                     if old_value.to_token_stream().to_string()!=v.to_token_stream().to_string(){return Err(Error::new(f.type_span,"multiple optional stores require identical permission types"));}
-                    *old_projection=quote!{(#old_projection).union_prefer_right(#projection)};
-                }else{storage=Some((n.clone(),verus_syn::parse_quote!{int},v.clone(),projection));}
+                }else{storage=Some((n.clone(),verus_syn::parse_quote!{int},v.clone(),quote!{}));}
+                option_projections.push(projection);
                 continue;
             }
             ShardableType::StorageIMap(k, v) | ShardableType::StorageMap(k, v) => {
@@ -729,6 +731,16 @@ pub fn output_with_ready(
         ftypes.push(ty.clone());
         ff.push(quote! {pub #n:#ty});
         embeds.push(quote! {#n:#v});
+    }
+    if let Some((_, _, _, projection)) = &mut storage {
+        if !option_projections.is_empty() {
+            let mut parts = vec![];
+            if !projection.is_empty() {
+                parts.push(projection.clone());
+            }
+            parts.extend(option_projections);
+            *projection = crate::verified_storage_carrier::balanced_union(&parts);
+        }
     }
     if let Some(carrier) = &carrier {
         storage = Some((carrier.fields[0].name.clone(), carrier.key.clone(), carrier.value.clone(), carrier.projection.clone()));

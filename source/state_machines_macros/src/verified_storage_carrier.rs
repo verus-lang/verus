@@ -17,6 +17,26 @@ pub struct Carrier {
     homogeneous: bool,
 }
 
+/// The union (`union_prefer_right`) of `parts` as a balanced tree. It equals
+/// the left-to-right chain (the union is associative), but a solver reaches
+/// every part in O(log n) unfoldings instead of O(n): with dozens of storage
+/// fields the chain exceeds the instantiation depth the solver explores.
+/// Up to 8 parts it is the plain chain.
+pub fn balanced_union(parts: &[TokenStream]) -> TokenStream {
+    match parts.len() {
+        0 => quote! {IMap::empty()},
+        n if n <= 8 => {
+            let (first, rest) = (&parts[0], &parts[1..]);
+            rest.iter().fold(first.clone(), |acc, p| quote! {(#acc).union_prefer_right(#p)})
+        }
+        n => {
+            let (a, b) = parts.split_at(n / 2);
+            let (a, b) = (balanced_union(a), balanced_union(b));
+            quote! {(#a).union_prefer_right(#b)}
+        }
+    }
+}
+
 impl Carrier {
     /// Case split on the storage tag, for any carrier layout.
     pub fn tagged_cases(&self, index: TokenStream, goal: TokenStream) -> TokenStream {
@@ -428,19 +448,35 @@ impl Carrier {
             }
         };
         let options_only = fields.iter().all(|f| matches!(f.stype, ShardableType::StorageOption(_)));
+        let mut extra = quote! {};
         let projection = if options_only {
             // Finite unions of singleton tags; solvers reason about these more
             // reliably than about a closure-defined domain.
             let tags: Vec<_> = fields.iter().map(|f| {
                 let n = &f.name;
                 let tag = format_ident!("__tag_{}", n);
-                quote! {.union_prefer_right(#key_expr::#tag(s.#n))}
+                quote! {#key_expr::#tag(s.#n)}
             }).collect();
-            quote! {IMap::<#key_name #types,#value_name #types>::empty() #(#tags)*}
+            if tags.len() <= 8 {
+                quote! {IMap::<#key_name #types,#value_name #types>::empty() #(.union_prefer_right(#tags))*}
+            } else {
+                balanced_union(&tags)
+            }
         } else {
-            quote! {IMap::new(|key:#key_name #types|match key{#(#domains)*_=>false,},
-            |key:#key_name #types|match key{#(#values)*_=>arbitrary(),})}
+            // The per-key case split is a named function: instantiating the
+            // map's closures then costs a call, not a copy of the case split
+            // over every storage field.
+            let (dom_fn, val_fn) = (fresh(&mut names, "__storage_dom"), fresh(&mut names, "__storage_val"));
+            extra = quote! {
+                impl #decl Protocol #types #wc {
+                    pub open spec fn #dom_fn(s:State #types,key:#key_name #types)->bool{match key{#(#domains)*_=>false,}}
+                    pub open spec fn #val_fn(s:State #types,key:#key_name #types)->#value_name #types{match key{#(#values)*_=>arbitrary(),}}
+                }
+            };
+            quote! {IMap::new(|key:#key_name #types|Protocol #expr::#dom_fn(s,key),
+            |key:#key_name #types|Protocol #expr::#val_fn(s,key))}
         };
+        let declarations = quote! {#declarations #extra};
         Ok(Some(Self {
             fields,
             key: verus_syn::parse2(quote! {#key_name #types})?,
