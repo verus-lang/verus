@@ -646,7 +646,6 @@ pointer_specs!(ptr_const_specs, ptr_from_data, const);
 pub uninterp spec fn shared_ref_ptr<T: ?Sized>(s: ShadowData<&T>) -> *const T;
 
 /// The length of a `&mut [T]` should always match the metadata of its corresponding pointer.
-// TODO: ask Travis if this has to be axiomatized
 // TODO: define the equivalent shared ref version, using shadow data?
 pub axiom fn mut_ref_slice_len<T>(tracked b: &&mut [T])
     ensures
@@ -655,7 +654,6 @@ pub axiom fn mut_ref_slice_len<T>(tracked b: &&mut [T])
 
 ////////////////////////////////////////
 // Mutable reference conversions
-// TODO: ask Travis - do these have to be axiomatized?
 ///////////////////////////////////////
 /// Combine a pointer and a tracked `&mut T` to get an executable `&mut T`
 #[inline(always)]
@@ -744,7 +742,7 @@ pub axiom fn tracked_mut_ref_slice_idx<T>(
 ///
 /// However, the actual operation still requires a (nondeterministic) retag, so we need one function
 /// that produces both the raw pointer and the permission and ties the fresh pointer values together.
-// TODO: ask Travis if this function is done
+// TODO: add spatial provenance comparison
 pub open spec fn ptr_eq_up_to_tag<T: ?Sized>(p: *mut T, q: *mut T) -> bool {
     p.addr() == q.addr() && p@.metadata
         == q@.metadata

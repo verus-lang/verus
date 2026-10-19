@@ -586,8 +586,8 @@ impl PointsToUntyped {
             ),
             joined.wf(),
             Self::ptrs_len_same_valid(*joined, *final(joined)) ==> {
-                &&& Self::ptrs_len_same_valid(*old(self), *final(self))
-                &&& Self::ptrs_len_same_valid(*old(other), *final(other))
+                &&& final(self).ptr() == old(self).ptr()
+                &&& final(other).ptr() == old(other).ptr()
                 &&& final(self).wf()
                 &&& final(other).wf()
                 &&& final(joined).seq_pt() == final(self).seq_pt() + final(other).seq_pt()
