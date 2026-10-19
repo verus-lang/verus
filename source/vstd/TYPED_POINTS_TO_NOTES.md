@@ -1,4 +1,4 @@
-# Design notes: `PointsToSingleValue` trait and a generic typed `SeqPointsTo` (level 3)
+# Design notes: `PTValueOps` trait and a generic typed `SeqPointsTo` (level 3)
 
 > **Rationale and background only.** This is a snapshot of the full design document,
 > kept for the reasoning behind the specs (background, decisions, `wf_basic` vs `wf`,
@@ -8,13 +8,13 @@
 >
 > **Superseded: the generic typed `SeqPointsTo`.** There is no `SeqPointsTo<T, PointsToUnaligned<T>>`;
 > the only typed sequences are `SeqPointsTo<T, PointsTo<T>>`, so the typed impl is not generalized.
-> The sections below about `impl<T, P: PointsToSingleValueSized<A = T>> SeqPointsTo<T, P>`,
+> The sections below about `impl<T, P: PTSizedValue<A = T>> SeqPointsTo<T, P>`,
 > its generic `View`, and the sequence aligned/unaligned conversions no longer apply.
 
 This is the design and specification for "level 3" from
 [GENERALIZATION_ASSESSMENT.md](GENERALIZATION_ASSESSMENT.md#4-a-typedpointsto-trait-for-typed-permissions):
-a `PointsToSingleValue` trait implemented by `PointsTo<T>` and `PointsToUnaligned<T>`, and one generic
-`impl<T, P: PointsToSingleValueSized<A = T>> SeqPointsTo<T, P>` replacing most of today's
+a `PTValueOps` trait implemented by `PointsTo<T>` and `PointsToUnaligned<T>`, and one generic
+`impl<T, P: PTSizedValue<A = T>> SeqPointsTo<T, P>` replacing most of today's
 `impl<T> SeqPointsTo<T, PointsTo<T>>`. As a result, `SeqPointsTo<T, PointsToUnaligned<T>>` gets the
 full typed API without duplicating the ~1000-line impl.
 
@@ -47,7 +47,7 @@ and the commented-out `ptr_ref_slice` / `ptr_mut_ref_slice` (`raw_ptr_new.rs:524
 
 **Already done.**
 The `metadata: Ghost<Metadata<T>>` field on `PointsToUnaligned<T>` (`()` for Sized `T`, the element count for `[T]`);
-the slice `PointsToPhys` / `PointsToProperties` / `View` impls;
+the slice `PTPhys` / `PTProperties` / `View` impls;
 and the `abs_decode_slice` axiom in `type_representation.rs`
 (a slice decodes exactly when each element's `size_of::<T>()`-byte slot decodes to that element,
 the same per-element shape as the existing `[u8]` axiom).
@@ -63,7 +63,7 @@ and saved in [step3_slice_wip.patch](step3_slice_wip.patch); they become trait i
    and constructors and mutators don't have to prove one.
    `Metadata<T>` is `<T as Pointee>::Metadata` in ghost builds and `FakeMetadata<T>` otherwise
    (`raw_ptr_new.rs:166-175`); both are fine inside a `Ghost`.
-2. **One `PointsToPhys` impl per unsized type**, rather than one generic `?Sized` impl.
+2. **One `PTPhys` impl per unsized type**, rather than one generic `?Sized` impl.
    A generic `size` would need a new `size_of_metadata::<T>(m)` layout spec
    (the spec counterpart of the unstable `size_of_val_raw`)
    and axioms tying it to `size_of` and `spec_size_of_val` for every unsized type.
@@ -82,27 +82,27 @@ The whole design on one page; the sections after it give the details and full sp
 
 | Type | `A` | Pointer metadata | `size(metadata)` | Traits | Holds |
 |---|---|---|---|---|---|
-| `PointsToByte` (renamed from `PointsToSingleton`) | `u8` | `()` | `1` | `PointsToPhys`, `PointsToProperties` | one abstract byte (axiomatized, as today) |
-| `PointsToUntyped` = `SeqPointsTo<u8, PointsToByte>` | `[u8]` | length | `len` | `PointsToPhys`, `PointsToProperties` | a sequence of byte permissions |
-| `PointsToUnaligned<T>` | `T` | `()` | `size_of::<T>()` | the above + `PointsToSingleValue` + `PointsToSingleValueSized` | untyped bytes, a `TypedValue<T>`, and the ghost metadata |
-| `PointsToUnaligned<[T]>` | `[T]` | length | `len * size_of::<T>()` | the above, without `PointsToSingleValueSized` | the same, with a `TypedValue<[T]>` |
+| `PointsToByte` (renamed from `PointsToSingleton`) | `u8` | `()` | `1` | `PTPhys`, `PTProperties` | one abstract byte (axiomatized, as today) |
+| `PointsToUntyped` = `SeqPointsTo<u8, PointsToByte>` | `[u8]` | length | `len` | `PTPhys`, `PTProperties` | a sequence of byte permissions |
+| `PointsToUnaligned<T>` | `T` | `()` | `size_of::<T>()` | the above + `PTValueOps` + `PTSizedValue` | untyped bytes, a `TypedValue<T>`, and the ghost metadata |
+| `PointsToUnaligned<[T]>` | `[T]` | length | `len * size_of::<T>()` | the above, without `PTSizedValue` | the same, with a `TypedValue<[T]>` |
 | `PointsToUnaligned<str>` (rustlib) | `str` | byte length | `len` | as for `[T]` | the same, with a `TypedValue<str>` |
 | `PointsTo<X>` (for each `X` above) | `X` | as above | as above | as for `PointsToUnaligned<X>` | a `PointsToUnaligned<X>` at an aligned address |
-| `SeqPointsTo<T, P>`, `P: PointsToProperties<A = T>` | `[T]` | length | `len * P::size(())` | `PointsToPhys`, `PointsToProperties` | one element permission `P` per element |
+| `SeqPointsTo<T, P>`, `P: PTProperties<A = T>` | `[T]` | length | `len * P::size(())` | `PTPhys`, `PTProperties` | one element permission `P` per element |
 | `PointsToRaw` | — | — | — | none (no single pointer) | a map from addresses to `PointsToByte`s, one provenance |
 
 **Traits.**
 
-- `PointsToPhys`: `ptr`, and `size(metadata)` (instead of `size(self)`).
-- `PointsToProperties: PointsToPhys`: pointer-level well-formedness (`wf_basic`), its lemmas
+- `PTPhys`: `ptr`, and `size(metadata)` (instead of `size(self)`).
+- `PTProperties: PTPhys`: pointer-level well-formedness (`wf_basic`), its lemmas
   (`is_nonnull`, `ptr_bounds`, `provenance_not_none`, `is_disjoint`, `stays_wf_basic`),
   and `ptrs_len_same` (renamed from `ptrs_len_same_valid`).
-- `PointsToSingleValue: PointsToProperties`: a single, possibly-valid typed value:
+- `PTValueOps: PTProperties`: a single, possibly-valid typed value:
   `typed_value`, `bytes`, `wf` (pointer-level + alignment + decoding + `metadata_matches`),
   `ptrs_len_same_valid`, the hooks `satisfies_alignment(addr)` and `metadata_matches(value, metadata)`,
   lemmas, typed-value operations, and constructors and conversions
   (`into_raw_parts` / `from_raw_parts`, `into_untyped` / `from_untyped`, `as_untyped(_mut)`, `zero_sized`).
-- `PointsToSingleValueSized: PointsToSingleValue<A: Sized>`: by-value operations
+- `PTSizedValue: PTValueOps<A: Sized>`: by-value operations
   (`take`, `put`, `copy`, `copy_typed_value`, `from_untyped_with_value`),
   `lemma_satisfies_alignment_offset`, `lemma_metadata_matches`. The element bound of the typed `SeqPointsTo`.
 - `FixedSize` is removed: with `size(metadata)`, `A: Sized` means the size is fixed (`size(())`).
@@ -114,29 +114,29 @@ Single-value permissions:
 
 | Code | Written | What it contains |
 |---|---|---|
-| `PointsToPhys for PointsToUnaligned<_>` | per type | `ptr` (same shape each time) and the `size` formula |
-| `PointsToProperties for PointsToUnaligned<T: ?Sized>` | once (generic) | `wf_basic`, `ptrs_len_same`, and the pointer-level lemmas, all delegating to the untyped bytes |
-| `PointsToSingleValue for PointsToUnaligned<_>` | per type | `typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment` (`true`); the lemmas (empty proofs); and the operations that touch the fields (`borrow_typed_value`, `take_typed_value`, `put_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_untyped`, `as_untyped_mut`) |
-| `PointsToSingleValueSized for PointsToUnaligned<T>` | once (Sized `T` only) | the two lemmas |
-| `PointsToPhys`, `PointsToProperties`, `View`, `PointsToSingleValue` for `PointsTo<T: ?Sized>` | once (generic) | delegation to `self.pt_unaligned`, except `satisfies_alignment` (adds alignment) and `from_raw_parts` (wraps the result) |
-| `PointsToSingleValueSized for PointsTo<T>` | once (Sized `T` only) | the two lemmas (`lemma_satisfies_alignment_offset` has the real alignment proof) |
+| `PTPhys for PointsToUnaligned<_>` | per type | `ptr` (same shape each time) and the `size` formula |
+| `PTProperties for PointsToUnaligned<T: ?Sized>` | once (generic) | `wf_basic`, `ptrs_len_same`, and the pointer-level lemmas, all delegating to the untyped bytes |
+| `PTValueOps for PointsToUnaligned<_>` | per type | `typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment` (`true`); the lemmas (empty proofs); and the operations that touch the fields (`borrow_typed_value`, `take_typed_value`, `put_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_untyped`, `as_untyped_mut`) |
+| `PTSizedValue for PointsToUnaligned<T>` | once (Sized `T` only) | the two lemmas |
+| `PTPhys`, `PTProperties`, `View`, `PTValueOps` for `PointsTo<T: ?Sized>` | once (generic) | delegation to `self.pt_unaligned`, except `satisfies_alignment` (adds alignment) and `from_raw_parts` (wraps the result) |
+| `PTSizedValue for PointsTo<T>` | once (Sized `T` only) | the two lemmas (`lemma_satisfies_alignment_offset` has the real alignment proof) |
 | trait default bodies | once (in the traits) | `wf`, `ptrs_len_same_valid`, `borrow`, `into_untyped`, `from_untyped`, `zero_sized`, `take`, `put`, `copy`, `copy_typed_value`, `from_untyped_with_value` |
-| `impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T>` | once (generic) | `into_aligned`, `as_aligned`, `as_aligned_mut` |
-| `impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T>` | once (generic) | `into_unaligned`, `as_unaligned`, `as_unaligned_mut` |
+| `impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | once (generic) | `into_aligned`, `as_aligned`, `as_aligned_mut` |
+| `impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | once (generic) | `into_unaligned`, `as_unaligned`, `as_unaligned_mut` |
 | `impl<T> PointsToUnaligned<[T]>` | once (slices) | the slice side of the slice ↔ sequence conversions (`as_seq_pt`, `as_seq_pt_mut`) and the borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`): the primary implementations |
 | `impl<T> PointsTo<[T]>` | once (slices) | the same functions, as compositions over the `PointsToUnaligned<[T]>` versions and the aligned/unaligned conversions |
 
 So supporting a new value type (as rustlib does for `str`) means writing only
-`PointsToPhys`, `View` and `PointsToSingleValue` for `PointsToUnaligned<X>`;
+`PTPhys`, `View` and `PTValueOps` for `PointsToUnaligned<X>`;
 `PointsTo<X>`, the conversions and the derived operations come for free.
 
 Sequences:
 
 | Impl | Applies to | What it contains |
 |---|---|---|
-| structural `impl<T, P: PointsToProperties<A = T>>` (`points_to.rs`) | every sequence, untyped or typed | the only code touching the fields: accessors, `thin_ptr`, constructors, borrows, `split_basic`, `join_basic`, `subrange_basic` |
+| structural `impl<T, P: PTProperties<A = T>>` (`points_to.rs`) | every sequence, untyped or typed | the only code touching the fields: accessors, `thin_ptr`, constructors, borrows, `split_basic`, `join_basic`, `subrange_basic` |
 | `PointsToUntyped` (`points_to.rs`) | `SeqPointsTo<u8, PointsToByte>` | its `View`, `bytes`, `wf`, `split` / `join` / `split_ref` wrappers, and its axioms |
-| typed `impl<T, P: PointsToSingleValueSized<A = T>>` (`points_to_permissions.rs`) | sequences of `PointsTo<T>` or `PointsToUnaligned<T>` | the generic `View`, `wf`, bytes and values, the typed `split` / `join` / `subrange` wrappers, untyped conversions, value operations, `is_disjoint_seqpt`; so `SeqPointsTo<T, PointsToUnaligned<T>>` gets the whole typed API |
+| typed `impl<T, P: PTSizedValue<A = T>>` (`points_to_permissions.rs`) | sequences of `PointsTo<T>` or `PointsToUnaligned<T>` | the generic `View`, `wf`, bytes and values, the typed `split` / `join` / `subrange` wrappers, untyped conversions, value operations, `is_disjoint_seqpt`; so `SeqPointsTo<T, PointsToUnaligned<T>>` gets the whole typed API |
 | `PointsToUnaligned<T>`-specific (`points_to_permissions.rs`) | `SeqPointsTo<T, PointsToUnaligned<T>>` | the sequence side of the slice ↔ sequence conversions (`as_slice_pt`, `as_slice_pt_mut`) and the borrowed constructors (the primary implementations); `into_aligned`, `as_aligned`, `as_aligned_mut` |
 | `PointsTo<T>`-specific (`points_to_permissions.rs`) | `SeqPointsTo<T, PointsTo<T>>` | `is_aligned`, `subrange_mut`; the slice ↔ sequence conversions and borrowed constructors as compositions over the `PointsToUnaligned<T>` versions; `into_unaligned`, `as_unaligned`, `as_unaligned_mut` |
 
@@ -164,7 +164,7 @@ it uses the structural impl's functions, whose names it doesn't redefine
 - Renames: `PointsToSingleton` → `PointsToByte`, `borrow_value` → `borrow`,
   `into_untyped_with_typed_value` → `into_raw_parts` (single permissions only),
   `borrow_value_subrange` → `borrow_subrange`,
-  `PointsToProperties::ptrs_len_same_valid` → `ptrs_len_same`. New: `from_raw_parts`.
+  `PTProperties::ptrs_len_same_valid` → `ptrs_len_same`. New: `from_raw_parts`.
 - Kept as they are: the specialized `is_disjoint_*` functions;
   `SeqPointsTo`'s `into_untyped_with_typed_value` / `from_untyped_with_typed_value`.
 - The slice ↔ sequence conversions are implemented once, on the unaligned types;
@@ -188,11 +188,11 @@ it uses the structural impl's functions, whose names it doesn't redefine
 - Unchanged: `PointsToByte`'s axioms.
 
 **Views.** `PointsToUntyped` keeps its own `View`;
-every typed sequence gets one generic `View` (`SeqPointsToData<T, P>`) for `P: PointsToSingleValueSized<A = T>`.
+every typed sequence gets one generic `View` (`SeqPointsToData<T, P>`) for `P: PTSizedValue<A = T>`.
 
 **Trait methods in scope.** The inherent `PointsTo<T>` versions of the trait methods are removed (no wrappers).
-`points_to_permissions.rs` re-exports `PointsToPhys`, `PointsToProperties`, `PointsToSingleValue` and
-`PointsToSingleValueSized`, so `use vstd::points_to_permissions::*;` brings in the permission types
+`points_to_permissions.rs` re-exports `PTPhys`, `PTProperties`, `PTValueOps` and
+`PTSizedValue`, so `use vstd::points_to_permissions::*;` brings in the permission types
 and their trait methods together (the prelude is unchanged).
 
 **Still open.**
@@ -210,11 +210,11 @@ or (for `str`) done in rustlib afterwards.
 
 **Trait impls.** `T` is `Sized` (in `[T]`, it is the element type).
 
-| Type | `PointsToPhys`, `PointsToProperties`, `View` | `PointsToSingleValue` | `PointsToSingleValueSized` | Where | When |
+| Type | `PTPhys`, `PTProperties`, `View` | `PTValueOps` | `PTSizedValue` | Where | When |
 |---|---|---|---|---|---|
-| `PointsToUnaligned<T>` | `PointsToPhys`: per type; `PointsToProperties`: generic (phase 2) | yes | yes | vstd | phase 2 |
-| `PointsToUnaligned<[T]>` | `PointsToPhys`: per type (done); `PointsToProperties`: generic (phase 2) | yes | no | vstd | phase 2b |
-| `PointsToUnaligned<str>` | `PointsToPhys`: per type; `PointsToProperties`: generic | yes | no | rustlib | [after both plans](#str-in-rustlib) |
+| `PointsToUnaligned<T>` | `PTPhys`: per type; `PTProperties`: generic (phase 2) | yes | yes | vstd | phase 2 |
+| `PointsToUnaligned<[T]>` | `PTPhys`: per type (done); `PTProperties`: generic (phase 2) | yes | no | vstd | phase 2b |
+| `PointsToUnaligned<str>` | `PTPhys`: per type; `PTProperties`: generic | yes | no | rustlib | [after both plans](#str-in-rustlib) |
 | `PointsTo<T>` | yes, generic | yes, generic | yes | vstd | phase 2 (generic from phase 2b) |
 | `PointsTo<[T]>` | yes, generic | yes, generic | no | vstd, nothing slice-specific | phase 2b |
 | `PointsTo<str>` | yes, generic | yes, generic | no | vstd, nothing `str`-specific | once rustlib adds `PointsToUnaligned<str>` |
@@ -226,16 +226,16 @@ or (for `str`) done in rustlib afterwards.
 (see [`SeqPointsTo`'s pointer and sizes](#seqpointstos-pointer-and-sizes)).
 
 "Generic" means the impl is one
-`impl<T: ?Sized> ... for PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T>`
+`impl<T: ?Sized> ... for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T>`
 that delegates to `self.pt_unaligned`
 (see [The generic `PointsTo` impl](#the-generic-pointsto-impl)).
-For `PointsToUnaligned`, only `PointsToPhys` (which has the size formula) is per type;
-`PointsToProperties` is one generic impl
+For `PointsToUnaligned`, only `PTPhys` (which has the size formula) is per type;
+`PTProperties` is one generic impl
 (see [`wf_basic` and `wf`](#wf_basic-and-wf)).
-So `PointsToSingleValue` has four written impls:
+So `PTValueOps` has four written impls:
 three real ones for `PointsToUnaligned` (`T` and `[T]` in vstd, `str` in rustlib)
 and one generic delegating one for `PointsTo`.
-`PointsToSingleValueSized` has two, both for Sized `T`.
+`PTSizedValue` has two, both for Sized `T`.
 
 `SeqPointsTo` doesn't implement the typed traits;
 it is generic over its element permission `P` instead.
@@ -243,7 +243,7 @@ The typed sequence API comes from these inherent impls:
 
 | Sequence type | Inherent impl | When |
 |---|---|---|
-| `SeqPointsTo<T, PointsTo<T>>` | generic `impl<T, P: PointsToSingleValueSized<A = T>> SeqPointsTo<T, P>`, plus a small `PointsTo<T>`-specific impl (`is_aligned`, slice conversions) | phase 3 |
+| `SeqPointsTo<T, PointsTo<T>>` | generic `impl<T, P: PTSizedValue<A = T>> SeqPointsTo<T, P>`, plus a small `PointsTo<T>`-specific impl (`is_aligned`, slice conversions) | phase 3 |
 | `SeqPointsTo<T, PointsToUnaligned<T>>` | the same generic impl | phase 3 (it exists from then on) |
 | `PointsToUntyped` = `SeqPointsTo<u8, PointsToByte>` (was `SeqPointsTo<[u8], PointsToSingleton>`) | its own impl | — |
 
@@ -265,7 +265,7 @@ This supersedes [points_to_str_wip.rs](points_to_str_wip.rs).
 | `PointsToUnaligned<str>` ↔ `PointsToUnaligned<[u8]>` | yes | yes | yes | rustlib | [after both plans](#str-in-rustlib) |
 | `PointsTo<str>` ↔ `PointsTo<[u8]>` | yes | yes | yes | rustlib, via the unaligned versions and the aligned/unaligned conversions | [after both plans](#str-in-rustlib) |
 | `PointsToRaw` ↔ `PointsToUntyped` (a contiguous range) | yes | no | no | vstd | phase 2c |
-| `PointsToRaw` ↔ any `PointsToSingleValue` / `SeqPointsTo`, through `PointsToUntyped` | yes (into typed: empty value) | no | no | vstd | phase 2c |
+| `PointsToRaw` ↔ any `PTValueOps` / `SeqPointsTo`, through `PointsToUntyped` | yes (into typed: empty value) | no | no | vstd | phase 2c |
 
 Owned conversions between a slice permission and a `SeqPointsTo` are left out on purpose:
 valid slice permissions come from real `&[T]` / `&mut [T]` references
@@ -275,23 +275,23 @@ they can be proved through the untyped permission (`into_untyped`, then `from_un
 
 ### Traits
 
-`PointsToSingleValue` is implemented by every `PointsTo` and `PointsToUnaligned` impl
+`PTValueOps` is implemented by every `PointsTo` and `PointsToUnaligned` impl
 (`T`, `[T]`, and `str` in rustlib).
 Each of these holds a single typed value, one `TypedValue<A>` for the whole region,
 in contrast to `SeqPointsTo`, which holds one element permission (and value) per element.
-`PointsToSingleValueSized` adds what only fixed-size, `Sized` permissions can provide,
+`PTSizedValue` adds what only fixed-size, `Sized` permissions can provide,
 and is what typed `SeqPointsTo` elements need.
 
 There is no `FixedSize` supertrait:
-with `PointsToPhys::size` taking the metadata, a permission with `A: Sized` has constant size `size(())`,
-so "fixed size" is just `PointsToPhys<A: Sized>`
+with `PTPhys::size` taking the metadata, a permission with `A: Sized` has constant size `size(())`,
+so "fixed size" is just `PTPhys<A: Sized>`
 (see [`SeqPointsTo`'s pointer and sizes](#seqpointstos-pointer-and-sizes)).
 That is also all `SeqPointsTo` needs of its elements, so `PointsToByte` needs no extra trait.
 
 ```rust
 /// Defines the physical memory region that a `PointsTo` permission covers,
 /// by specifying the pointer to memory and the size of the pointed-to region.
-pub trait PointsToPhys: Sized {
+pub trait PTPhys: Sized {
     type A: ?Sized;
 
     /// The pointer that this permission is associated with.
@@ -304,9 +304,9 @@ pub trait PointsToPhys: Sized {
 }
 
 /// Defines properties which should hold of any `PointsTo` permission.
-pub trait PointsToProperties: PointsToPhys {
+pub trait PTProperties: PTPhys {
     /// Define basic well-formedness conditions on the permission's pointer.
-    /// `PointsToSingleValue::wf` builds on this to add conditions on the bytes and typed value.
+    /// `PTValueOps::wf` builds on this to add conditions on the bytes and typed value.
     spec fn wf_basic(self) -> bool;
 
     /// Guarantee that the pointer is non-null.
@@ -351,7 +351,7 @@ pub trait PointsToProperties: PointsToPhys {
     /// However, note that if one type is a ZST and the other is a non-ZST,
     /// the disjointness definition as stated here does not hold,
     /// since the ZST pointer could be in the middle of the non-ZST's range.
-    proof fn is_disjoint<OtherPointsToPerm: PointsToPhys>(
+    proof fn is_disjoint<OtherPointsToPerm: PTPhys>(
         tracked &mut self,
         tracked other: &OtherPointsToPerm,
     )
@@ -384,7 +384,7 @@ pub trait PointsToProperties: PointsToPhys {
 /// Defines the typed data tracked by a `PointsTo` permission
 /// to a single, possibly-valid value of type `Self::A`,
 /// along with well-formedness properties, constructors, and conversions.
-pub trait PointsToSingleValue: PointsToProperties {
+pub trait PTValueOps: PTProperties {
     /// The (possibly-valid) typed value that this permission tracks.
     spec fn typed_value(self) -> TypedValue<Self::A>;
 
@@ -667,10 +667,10 @@ pub trait PointsToSingleValue: PointsToProperties {
     }
 }
 
-/// Restricts `PointsToSingleValue` to permissions whose value type is `Sized`,
+/// Restricts `PTValueOps` to permissions whose value type is `Sized`,
 /// so its value can be moved in and out of the permission.
 /// These are the element permissions of a typed `SeqPointsTo`.
-pub trait PointsToSingleValueSized: PointsToSingleValue<A: Sized> {
+pub trait PTSizedValue: PTValueOps<A: Sized> {
     /// The alignment requirement is preserved by offsets that are multiples of the size.
     proof fn lemma_satisfies_alignment_offset(addr: usize, i: nat)
         requires
@@ -777,7 +777,7 @@ pub trait PointsToSingleValueSized: PointsToSingleValue<A: Sized> {
     }
 }
 
-impl<T: ?Sized> PointsToSingleValue for PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T> {
+impl<T: ?Sized> PTValueOps for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     // Everything delegates to self.pt_unaligned, except:
     open spec fn satisfies_alignment(addr: usize) -> bool {
         &&& PointsToUnaligned::<T>::satisfies_alignment(addr)
@@ -787,17 +787,17 @@ impl<T: ?Sized> PointsToSingleValue for PointsTo<T> where PointsToUnaligned<T>: 
     // wf, ptrs_len_same_valid, borrow, into_untyped, from_untyped, zero_sized: the trait's default bodies.
 }
 
-impl<T> PointsToSingleValueSized for PointsTo<T> {
+impl<T> PTSizedValue for PointsTo<T> {
     // lemma_satisfies_alignment_offset: the alignment arithmetic; lemma_metadata_matches: empty.
     // take, put, copy, copy_typed_value, from_untyped_with_value: the trait's default bodies.
 }
 
-impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T> {
+impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     /// Converts to a `PointsTo<T>`, given that the address is aligned.
     pub proof fn into_aligned(tracked self) -> (tracked out: PointsTo<T>)
         requires
             self.wf(),
-            <PointsTo<T> as PointsToSingleValue>::satisfies_alignment(self.ptr()@.addr),
+            <PointsTo<T> as PTValueOps>::satisfies_alignment(self.ptr()@.addr),
         ensures
             out.pt_unaligned() == self,
             out.wf(),
@@ -807,7 +807,7 @@ impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PointsToSingleV
     pub proof fn as_aligned(tracked &self) -> (tracked out: &PointsTo<T>)
         requires
             self.wf(),
-            <PointsTo<T> as PointsToSingleValue>::satisfies_alignment(self.ptr()@.addr),
+            <PointsTo<T> as PTValueOps>::satisfies_alignment(self.ptr()@.addr),
         ensures
             out.pt_unaligned() == *self,
             out.wf(),
@@ -820,15 +820,15 @@ impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PointsToSingleV
     pub proof fn as_aligned_mut(tracked &mut self) -> (tracked out: &mut PointsTo<T>)
         requires
             self.wf(),
-            <PointsTo<T> as PointsToSingleValue>::satisfies_alignment(self.ptr()@.addr),
+            <PointsTo<T> as PTValueOps>::satisfies_alignment(self.ptr()@.addr),
         ensures
             out.pt_unaligned() == *old(self),
             out.wf(),
             *final(self) == final(out).pt_unaligned(),
-            <PointsTo<T> as PointsToSingleValue>::ptrs_len_same_valid(*out, *final(out)) ==> final(self).wf(),
+            <PointsTo<T> as PTValueOps>::ptrs_len_same_valid(*out, *final(out)) ==> final(self).wf(),
     ;
 }
-impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T> {
+impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     /// Converts to a `PointsToUnaligned<T>`.
     pub proof fn into_unaligned(tracked self) -> (tracked out: PointsToUnaligned<T>)
         requires
@@ -866,13 +866,13 @@ impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = 
 
 Notes on the block above (plan context, not code documentation):
 
-- `PointsToPhys::size` takes the metadata instead of `self` from phase 1b on.
-- There is no `PointsToSingleValue::metadata()`: it is always `self.ptr()@.metadata`
+- `PTPhys::size` takes the metadata instead of `self` from phase 1b on.
+- There is no `PTValueOps::metadata()`: it is always `self.ptr()@.metadata`
   (see [`wf_basic` and `wf`](#wf_basic-and-wf)).
 - Default bodies, written once in the trait:
   `wf` and `ptrs_len_same_valid` (spec);
   `borrow`, `into_untyped`, `from_untyped`, `zero_sized`,
-  and in `PointsToSingleValueSized` `take`, `put`, `copy`, `copy_typed_value`, `from_untyped_with_value` (proof).
+  and in `PTSizedValue` `take`, `put`, `copy`, `copy_typed_value`, `from_untyped_with_value` (proof).
   The proof defaults only call other trait methods and follow from their contracts
   ([phase 0, item 13](TYPED_POINTS_TO_IMPL_PLAN.md#phase-0-pending-checks)).
   Each impl writes the rest:
@@ -880,7 +880,7 @@ Notes on the block above (plan context, not code documentation):
   and the operations that touch the fields
   (`borrow_typed_value`, `take_typed_value`, `put_typed_value`, `into_raw_parts`, `from_raw_parts`,
   `as_untyped`, `as_untyped_mut`).
-- `PointsToProperties` has only the pointer-level `ptrs_len_same`;
+- `PTProperties` has only the pointer-level `ptrs_len_same`;
   using one name in both traits would make method calls ambiguous.
 - `metadata_matches`: decoding doesn't fix a slice's length when `size_of::<T>() == 0`;
   for `str`, UTF-8 validity is part of `abs_decode::<str>`.
@@ -889,15 +889,15 @@ Notes on the block above (plan context, not code documentation):
   (`layout_of_sized`, `layout_of_slices`, `layout_of_str`; not true for `dyn`, which is out of scope).
   It includes the unaligned `satisfies_alignment`, which the generic impl can't see is `true`,
   so that `from_untyped` / `zero_sized` are provable by delegation.
-- `lemma_metadata_matches` is for generic code over `P: PointsToSingleValueSized`,
+- `lemma_metadata_matches` is for generic code over `P: PTSizedValue`,
   which can't unfold `metadata_matches` but has to establish it
   when calling `put_typed_value`, `from_raw_parts`, or anything relying on `ptrs_len_same_valid`
   (e.g. the typed `SeqPointsTo`'s `put_typed_value_subrange` and `from_untyped_with_typed_value`).
   The impls don't need it: `metadata_matches` unfolds to `true` at the concrete type.
-- `A: Sized` in `PointsToSingleValueSized` is an associated type bound,
-  so it is implied wherever `P: PointsToSingleValueSized` (phase 0, item 3).
+- `A: Sized` in `PTSizedValue` is an associated type bound,
+  so it is implied wherever `P: PTSizedValue` (phase 0, item 3).
 - `lemma_ptrs_len_same_valid` is broadcast through a group naming
-  `PointsToSingleValue::lemma_ptrs_len_same_valid` (phase 0, item 6).
+  `PTValueOps::lemma_ptrs_len_same_valid` (phase 0, item 6).
 - `as_aligned` is proved with `shr_ref_struct_wrap` (phase 0, item 8);
   `as_aligned_mut` is M4 (`PointsTo::from_unaligned_mut`, phase 3b) plus the `wf` facts;
   `as_unaligned_mut` is a plain field borrow (`&mut self.pt_unaligned`), so it is provable now.
@@ -907,30 +907,30 @@ Notes on the block above (plan context, not code documentation):
 
 With the stored metadata, every constructor and conversion of the empty slice functions
 (the reverted inherent versions, phase 2b) has one contract for both `T` and `[T]`.
-The only per-type pieces are `PointsToPhys::size` and the `PointsToUnaligned` bodies.
+The only per-type pieces are `PTPhys::size` and the `PointsToUnaligned` bodies.
 Sized callers pass `()` as the metadata to `from_untyped`.
 If phase 0 shows that `Metadata<Self::A>` doesn't normalize to `()` for Sized `A` in generic code,
 the fallback is the earlier split:
-`from_untyped(pt_untyped)` and `zero_sized` in `PointsToSingleValueSized`,
+`from_untyped(pt_untyped)` and `zero_sized` in `PTSizedValue`,
 and inherent slice versions taking `len`.
 
 Why the split falls here:
 
 - **By value vs by reference.** `take`, `put`, `copy` and `from_untyped_with_value` move an `A`, which
   needs `A: Sized`. Everything on `TypedValue<A>` and `&A` works for unsized `A`.
-- **Size.** Contracts in `PointsToSingleValue` use `Self::size(self.ptr()@.metadata)`,
+- **Size.** Contracts in `PTValueOps` use `Self::size(self.ptr()@.metadata)`,
   since a slice's size depends on its metadata.
-  Only `PointsToSingleValueSized` uses the constant `Self::size(())`.
+  Only `PTSizedValue` uses the constant `Self::size(())`.
 - **Constructors.** `from_untyped` and `zero_sized` need to know the size before a permission exists.
-  The metadata argument (or the pointer's metadata) gives it through `PointsToPhys::size`,
-  so they can be in `PointsToSingleValue` rather than split by sizedness.
+  The metadata argument (or the pointer's metadata) gives it through `PTPhys::size`,
+  so they can be in `PTValueOps` rather than split by sizedness.
 
 Contract conventions:
 
-- `PointsToSingleValue` contracts say `wf()` (the trait's), not `wf_basic()`:
+- `PTValueOps` contracts say `wf()` (the trait's), not `wf_basic()`:
   decoding, `metadata_matches` and alignment are in `wf`, not `wf_basic`
   (see [`wf_basic` and `wf`](#wf_basic-and-wf)).
-  `wf_basic()` is for `PointsToProperties`' own pointer-level lemmas and `SeqPointsTo`'s structural functions.
+  `wf_basic()` is for `PTProperties`' own pointer-level lemmas and `SeqPointsTo`'s structural functions.
 - Decoding is stated with a new `?Sized` spec `TypedValue::value_ref(&self) -> &T` (`&*self->0`),
   so `abs_decode(bytes, tv.value_ref())` reads the same for `T` and `[T]`. This generalizes the
   existing `TypedValue<[T]>::value() -> &[T]`.
@@ -944,7 +944,7 @@ Contract conventions:
 With the ghost `metadata` field, everything about a `PointsToUnaligned<T>` except its size formula
 can be written once for any `T: ?Sized`.
 So `wf_basic` keeps only the type-independent, pointer-level conditions,
-and the type-dependent ones move to `PointsToSingleValue::wf`.
+and the type-dependent ones move to `PTValueOps::wf`.
 
 **The pointer, generically.** `PointsToUnaligned<T>`'s pointer is built from the stored metadata:
 
@@ -963,15 +963,15 @@ the Sized impl currently uses `pt_untyped().ptr() as *mut T`.
 Then `self.ptr()@.metadata == self.metadata()` holds by `axiom_ptr_mut_from_data`
 (`ptr_mut_from_data(data)@ == data`),
 so the `metadata() == ptr()@.metadata` clause leaves `wf_basic`,
-and `PointsToSingleValue` has no `metadata()` (contracts use `ptr()@.metadata`).
+and `PTValueOps` has no `metadata()` (contracts use `ptr()@.metadata`).
 The closed inherent `PointsToUnaligned::metadata()` stays as the field accessor.
 
-`PointsToPhys` stays one small impl per type (`A`, this `ptr`, and the `size` formula),
+`PTPhys` stays one small impl per type (`A`, this `ptr`, and the `size` formula),
 since a generic `size` would need the `?Sized` size-from-metadata spec
 that [decision 2](#background) avoids.
 
-**`wf_basic`, generically.** One `impl<T: ?Sized> PointsToProperties for PointsToUnaligned<T>
-where PointsToUnaligned<T>: PointsToPhys<A = T>`:
+**`wf_basic`, generically.** One `impl<T: ?Sized> PTProperties for PointsToUnaligned<T>
+where PointsToUnaligned<T>: PTPhys<A = T>`:
 
 ```
 wf_basic() = pt_untyped().wf() && pt_untyped().len() == Self::size(self.ptr()@.metadata)
@@ -980,16 +980,16 @@ wf_basic() = pt_untyped().wf() && pt_untyped().len() == Self::size(self.ptr()@.m
 The byte count stays in `wf_basic`,
 since the generic `ptr_bounds` / `provenance_not_none` / `is_disjoint` delegate to `pt_untyped`
 and need it to equal the permission's size.
-`PointsToProperties`' pointer-level `ptrs_len_same` (renamed from `ptrs_len_same_valid`)
+`PTProperties`' pointer-level `ptrs_len_same` (renamed from `ptrs_len_same_valid`)
 is "same pointer, and `pt_untyped`'s `ptrs_len_same`",
 and `stays_wf_basic` follows from `PointsToUntyped::stays_wf`.
-The decode part moves to `PointsToSingleValue::ptrs_len_same_valid`, which `stays_wf` uses.
-This impl calls only `PointsToPhys` (a supertrait), never `PointsToSingleValue`:
+The decode part moves to `PTValueOps::ptrs_len_same_valid`, which `stays_wf` uses.
+This impl calls only `PTPhys` (a supertrait), never `PTValueOps`:
 a supertrait impl calling a subtrait impl is rejected as recursion
 (phase 0 follow-up, `size_cycle.rs`),
 which is why decoding can't stay in `wf_basic` once the impl is generic.
 
-**`wf`.** In `PointsToSingleValue`, for every `PointsToUnaligned` impl:
+**`wf`.** In `PTValueOps`, for every `PointsToUnaligned` impl:
 
 ```
 wf() = wf_basic()
@@ -1040,7 +1040,7 @@ so generic code uses the trait lemmas, proved per impl
 ### `SeqPointsTo`'s pointer and sizes
 
 **The pointer.** `SeqPointsTo<T, P>`'s pointer becomes `*mut [T]` (so `A = [T]`),
-with `T` always the element type and `P: PointsToProperties<A = T>`:
+with `T` always the element type and `P: PTProperties<A = T>`:
 
 | Sequence | Before | After |
 |---|---|---|
@@ -1053,23 +1053,23 @@ Element addresses are still `self.ptr()@.addr + i * P::size(())`.
 
 **Sizes.** With the length in every permission's pointer,
 size is a function of the pointer's metadata for every permission,
-so `PointsToPhys::size` takes the metadata instead of `self`,
+so `PTPhys::size` takes the metadata instead of `self`,
 and it is the only size function:
 
-- `PointsToPhys::size(metadata: Metadata<Self::A>) -> nat`, the only per-type formula:
+- `PTPhys::size(metadata: Metadata<Self::A>) -> nat`, the only per-type formula:
   `size_of::<T>()`, `len * size_of::<T>()`, `len` (`str`), `1` (`PointsToByte`),
   and `len * P::size(())` for `SeqPointsTo<T, P>`.
 - A permission's own size is written `Self::size(p.ptr()@.metadata)`
   (`Self::size(())` for Sized `A`).
   There is no `size(self)`, so nothing to keep in sync and no lemma relating them.
   Existing `self.size()` / `other.size()` uses change to this form,
-  including in `PointsToProperties`' contracts (`ptr_bounds`, `provenance_not_none`, `is_disjoint`).
+  including in `PTProperties`' contracts (`ptr_bounds`, `provenance_not_none`, `is_disjoint`).
 - `FixedSize` is removed: `const_size()` was always `size(())`,
   which is well-defined exactly when `A: Sized` (the only metadata is `()`).
-  Bounds `P: PointsToProperties + FixedSize` become `P: PointsToProperties<A: Sized>`
+  Bounds `P: PTProperties + FixedSize` become `P: PTProperties<A: Sized>`
   (or `<A = T>` with Sized `T`), `P::const_size()` becomes `P::size(())`,
   and `size_eq_const_size` calls go away.
-- `PointsToSingleValue` has no size function of its own,
+- `PTValueOps` has no size function of its own,
   and the inherent `size_of_metadata` helper from the earlier version isn't needed.
 
 For a `SeqPointsTo`, the size is `metadata * P::size(())`, which equals `len() * P::size(())`
@@ -1135,7 +1135,7 @@ pub tracked struct PointsToRaw {
 
 The public specs stay as in `raw_ptr_old.rs`:
 `provenance()`, `dom() = bytes.dom()`, `is_range`, `contains_range`.
-`PointsToRaw` doesn't implement `PointsToPhys`: it has no single pointer.
+`PointsToRaw` doesn't implement `PTPhys`: it has no single pointer.
 
 | Old axiom | New proof |
 |---|---|
@@ -1144,8 +1144,8 @@ The public specs stay as in `raw_ptr_old.rs`:
 | `join(other)` (same provenance) | `tracked_union_prefer_right` (the domain is the union either way) |
 | `ptr_bounds`, `provenance_non_null` | from the type invariant. (The old `ptr_bounds` allowed `a == start + alloc_len`; the new one gives `a < start + alloc_len`.) |
 | `is_disjoint(other)` | if some `a` is in both domains, borrow both bytes at `a` and use `PointsToByte::is_disjoint_byte` for a contradiction. One address, so no quantified tracked calls. |
-| `into_typed<V>`, `into_typed_slice<V>`, `into_typed_seq<V>` | `into_untyped(start, len) -> PointsToUntyped` (remove the range's bytes in address order into a `Seq`, then `from_seq` with a thin pointer), then `from_untyped`. One generic `into_typed::<P: PointsToSingleValue>(start, metadata)` covers `T`, `[T]` and `str`; `SeqPointsTo` uses its own `from_untyped`. |
-| `PointsTo<V>::into_raw`, `PointsTo<[V]>::into_raw`, `SeqPointsTo::into_raw` | `p.into_untyped()`, then `PointsToRaw::from_untyped` (insert each byte at its address). One generic `from_typed::<P: PointsToSingleValue>(p)`. |
+| `into_typed<V>`, `into_typed_slice<V>`, `into_typed_seq<V>` | `into_untyped(start, len) -> PointsToUntyped` (remove the range's bytes in address order into a `Seq`, then `from_seq` with a thin pointer), then `from_untyped`. One generic `into_typed::<P: PTValueOps>(start, metadata)` covers `T`, `[T]` and `str`; `SeqPointsTo` uses its own `from_untyped`. |
+| `PointsTo<V>::into_raw`, `PointsTo<[V]>::into_raw`, `SeqPointsTo::into_raw` | `p.into_untyped()`, then `PointsToRaw::from_untyped` (insert each byte at its address). One generic `from_typed::<P: PTValueOps>(p)`. |
 
 Differences from the old version:
 
@@ -1164,57 +1164,57 @@ Differences from the old version:
 `PointsTo<X>` is a `PointsToUnaligned<X>` plus an alignment requirement,
 so its trait impls are pure delegation to `self.pt_unaligned`,
 apart from alignment (to the value type for `T`, to the element type for `[T]`).
-The existing `PointsToPhys`/`PointsToProperties` impls for `PointsTo<T>` and `PointsTo<[T]>`
+The existing `PTPhys`/`PTProperties` impls for `PointsTo<T>` and `PointsTo<[T]>`
 are already line-for-line the same apart from that and `size`.
 Rather than one copy per type (three, one of them in rustlib),
 `PointsTo` gets one generic impl of each trait,
-bounded by `PointsToUnaligned<T>: PointsToSingleValue<A = T>`,
+bounded by `PointsToUnaligned<T>: PTValueOps<A = T>`,
 with the alignment written as `spec_align_of_val::<T>(arbitrary())`
 (see `satisfies_alignment` in [Traits](#traits)).
 Proofs that need the concrete alignment use the existing layout axioms.
 
-- `PointsToPhys`: `ptr` and `size` delegate.
-- `PointsToProperties`: `wf_basic` is `pt_unaligned().wf_basic()`; the rest delegates.
-  Alignment is in `PointsToSingleValue::wf` (see [`wf_basic` and `wf`](#wf_basic-and-wf)).
+- `PTPhys`: `ptr` and `size` delegate.
+- `PTProperties`: `wf_basic` is `pt_unaligned().wf_basic()`; the rest delegates.
+  Alignment is in `PTValueOps::wf` (see [`wf_basic` and `wf`](#wf_basic-and-wf)).
 - `View`: `PointsToData` is already `?Sized`.
-- `PointsToSingleValue`: delegates, except `satisfies_alignment` and the constructors, which wrap the
+- `PTValueOps`: delegates, except `satisfies_alignment` and the constructors, which wrap the
   `PointsToUnaligned` result.
   Spec delegations must name the trait function
-  (`<PointsToUnaligned<T> as PointsToSingleValue>::typed_value(self.pt_unaligned)`),
+  (`<PointsToUnaligned<T> as PTValueOps>::typed_value(self.pt_unaligned)`),
   not the inherent `?Sized` one of the same name:
   in generic code the inherent and trait versions aren't known to be equal,
   so the trait lemmas' postconditions wouldn't connect (phase 0, item 5).
-- `PointsToSingleValueSized` stays a per-`T` impl (only Sized `T` has it).
+- `PTSizedValue` stays a per-`T` impl (only Sized `T` has it).
 
 This does not conflict with [decision 2](#background)
-(one `PointsToPhys` impl per unsized type):
+(one `PTPhys` impl per unsized type):
 that decision avoids a `?Sized` size-from-metadata spec,
 and the generic `PointsTo` impl never computes a size itself.
 
 The fallback, if phase 0, item 9, fails, is one delegating impl per type,
-as for `PointsToPhys`/`PointsToProperties` today.
+as for `PTPhys`/`PTProperties` today.
 
 ### The generic `SeqPointsTo`
 
 - `wf()` becomes generic:
   `self.wf_basic() && P::satisfies_alignment(self.ptr()@.addr) && forall i. self[i].wf()`
-  (elements' `PointsToSingleValue::wf` includes decoding and their own alignment;
+  (elements' `PTValueOps::wf` includes decoding and their own alignment;
   the base pointer's alignment is kept separately, since an empty sequence has no elements to carry it).
   For `PointsTo<T>` this unfolds to today's definition plus the element `wf`.
-  `SeqPointsTo::wf_basic` (its generic `PointsToProperties` impl, which also covers `PointsToByte`)
-  stays on the elements' `wf_basic`, since `PointsToByte` has no `PointsToSingleValue::wf`;
+  `SeqPointsTo::wf_basic` (its generic `PTProperties` impl, which also covers `PointsToByte`)
+  stays on the elements' `wf_basic`, since `PointsToByte` has no `PTValueOps::wf`;
   its pointer-level lemmas (`ptr_bounds`, `is_disjoint`, ...) only need that.
   So element `wf` comes with the sequence's `wf()`, not its `wf_basic()`.
 - `PointsToUntyped = SeqPointsTo<u8, PointsToByte>` keeps its own
-  impl: `PointsToByte` doesn't implement `PointsToSingleValueSized`, so the impls don't overlap
+  impl: `PointsToByte` doesn't implement `PTSizedValue`, so the impls don't overlap
   (confirmed in [phase 0, item 10](TYPED_POINTS_TO_IMPL_PLAN.md#phase-0-pending-checks)).
-  `wf` and `bytes` stay inherent in both impls, not `PointsToProperties` methods.
+  `wf` and `bytes` stay inherent in both impls, not `PTProperties` methods.
 - Everything in today's `impl<T> SeqPointsTo<T, PointsTo<T>>` moves into the generic impl, with
   `size_of::<T>()` → `P::size(())`, alignment arithmetic → `P::lemma_satisfies_alignment_offset`, and direct
   field access (`elt.pt_unaligned.val`) → trait calls (`elt.take_typed_value()`).
 - What stays specific to `PointsTo<T>`: `is_aligned` (unfolds `satisfies_alignment`)
   and the slice conversions (compositions; phase 4).
-  `View` is generic over `P: PointsToSingleValueSized<A = T>` (see [Decisions](#decisions)).
+  `View` is generic over `P: PTSizedValue<A = T>` (see [Decisions](#decisions)).
 
 ### Module layout
 
@@ -1246,7 +1246,7 @@ The typed impl uses only the structural impl's functions:
 ### Specifications
 
 Every new or changed specification, for review.
-`PointsToPhys`, `PointsToProperties`, `PointsToSingleValue`, `PointsToSingleValueSized`
+`PTPhys`, `PTProperties`, `PTValueOps`, `PTSizedValue`
 and the generic aligned/unaligned conversions
 are in [Traits](#traits) and aren't repeated here.
 The slice ↔ sequence conversions are specified below
@@ -1273,15 +1273,15 @@ impl<T: ?Sized> TypedValue<T> {
 }
 ```
 
-#### `PointsToProperties` (changed in phase 1b)
+#### `PTProperties` (changed in phase 1b)
 
 The trait is in [Traits](#traits). Compared with today's:
 contracts use `Self::size(self.ptr()@.metadata)` instead of `self.size()`;
 `is_disjoint` compares `ptr()@.addr` instead of `ptr() as int`;
 and `ptrs_len_same_valid` is renamed `ptrs_len_same` (pointer-level; the decoding version is
-`PointsToSingleValue::ptrs_len_same_valid`), which `stays_wf_basic` now uses.
+`PTValueOps::ptrs_len_same_valid`), which `stays_wf_basic` now uses.
 
-`group_points_to_permissions_lemmas` contains `PointsToSingleValue::lemma_ptrs_len_same_valid`
+`group_points_to_permissions_lemmas` contains `PTValueOps::lemma_ptrs_len_same_valid`
 (in place of `PointsTo::lemma_ptrs_len_same_valid`),
 the typed `SeqPointsTo::lemma_ptrs_len_same_valid`,
 and `PointsToUntyped`'s lemma (renamed `lemma_ptrs_len_same_untyped`).
@@ -1290,7 +1290,7 @@ and `PointsToUntyped`'s lemma (renamed `lemma_ptrs_len_same_untyped`).
 
 ```rust
 // One per type; only `size` differs.
-impl<T> PointsToPhys for PointsToUnaligned<T> {
+impl<T> PTPhys for PointsToUnaligned<T> {
     type A = T;
     closed spec fn ptr(self) -> *mut T {
         ptr_mut_from_data::<T>(PtrData {
@@ -1301,15 +1301,15 @@ impl<T> PointsToPhys for PointsToUnaligned<T> {
     }
     open spec fn size(metadata: ()) -> nat { size_of::<T>() }
 }
-impl<T> PointsToPhys for PointsToUnaligned<[T]> {
+impl<T> PTPhys for PointsToUnaligned<[T]> {
     type A = [T];
     closed spec fn ptr(self) -> *mut [T] { /* same as above */ }
     open spec fn size(metadata: usize) -> nat { metadata as nat * size_of::<T>() }
 }
-// rustlib: impl PointsToPhys for PointsToUnaligned<str> { type A = str; ptr: same; size(len) = len }
+// rustlib: impl PTPhys for PointsToUnaligned<str> { type A = str; ptr: same; size(len) = len }
 
 // One generic impl.
-impl<T: ?Sized> PointsToProperties for PointsToUnaligned<T> where PointsToUnaligned<T>: PointsToPhys<A = T> {
+impl<T: ?Sized> PTProperties for PointsToUnaligned<T> where PointsToUnaligned<T>: PTPhys<A = T> {
     open spec fn wf_basic(self) -> bool {
         &&& self.pt_untyped().wf()
         &&& self.pt_untyped().len() == Self::size(self.ptr()@.metadata)
@@ -1321,7 +1321,7 @@ impl<T: ?Sized> PointsToProperties for PointsToUnaligned<T> where PointsToUnalig
     // is_nonnull, ptr_bounds, provenance_not_none, is_disjoint, stays_wf_basic: delegate to pt_untyped.
 }
 
-// PointsToSingleValue spec items per impl (the operations' contracts are the trait's):
+// PTValueOps spec items per impl (the operations' contracts are the trait's):
 //                     typed_value          bytes                     metadata_matches(v, m)   satisfies_alignment(a)
 // PointsToUnaligned<T>    self.typed_value()   self.pt_untyped().bytes()  true                true
 // PointsToUnaligned<[T]>  (same)               (same)                    v@.len() == m       true
@@ -1332,26 +1332,26 @@ impl<T: ?Sized> PointsToProperties for PointsToUnaligned<T> where PointsToUnalig
 #### `PointsTo` (generic; phase 2, widened in phase 2b)
 
 ```rust
-impl<T: ?Sized> PointsToPhys for PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T> {
+impl<T: ?Sized> PTPhys for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     type A = T;
     open spec fn ptr(self) -> *mut T { self.pt_unaligned().ptr() }
-    open spec fn size(metadata: Metadata<T>) -> nat { <PointsToUnaligned<T> as PointsToPhys>::size(metadata) }
+    open spec fn size(metadata: Metadata<T>) -> nat { <PointsToUnaligned<T> as PTPhys>::size(metadata) }
 }
-impl<T: ?Sized> PointsToProperties for PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T> {
+impl<T: ?Sized> PTProperties for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     open spec fn wf_basic(self) -> bool { self.pt_unaligned().wf_basic() }
     open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
         &&& new.ptr() == old.ptr()
-        &&& <PointsToUnaligned<T> as PointsToProperties>::ptrs_len_same(old.pt_unaligned(), new.pt_unaligned())
+        &&& <PointsToUnaligned<T> as PTProperties>::ptrs_len_same(old.pt_unaligned(), new.pt_unaligned())
     }
     // proof fns delegate to pt_unaligned.
 }
-impl<T: ?Sized> View for PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T> {
+impl<T: ?Sized> View for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     type V = PointsToData<T>;
     open spec fn view(&self) -> PointsToData<T> {
         PointsToData { ptr: self.ptr(), value: self.typed_value(), bytes: self.bytes() }
     }
 }
-// PointsToSingleValue: typed_value, bytes, metadata_matches delegate (naming the trait fns, phase 0 item 5);
+// PTValueOps: typed_value, bytes, metadata_matches delegate (naming the trait fns, phase 0 item 5);
 //   satisfies_alignment(a) = PointsToUnaligned::<T>::satisfies_alignment(a) && a as nat % spec_align_of_val::<T>(arbitrary()) == 0;
 //   wf: default body. (Sketch in Traits.)
 ```
@@ -1364,18 +1364,18 @@ The structural impl is the only code that touches the fields.
 
 ```rust
 #[verifier::reject_recursive_types(T)]
-pub tracked struct SeqPointsTo<T, P: PointsToProperties<A = T>> {
+pub tracked struct SeqPointsTo<T, P: PTProperties<A = T>> {
     seq_pt: Seq<P>,
     ptr: Ghost<*mut [T]>,
 }
 
-impl<T, P: PointsToProperties<A = T>> PointsToPhys for SeqPointsTo<T, P> {
+impl<T, P: PTProperties<A = T>> PTPhys for SeqPointsTo<T, P> {
     type A = [T];
     closed spec fn ptr(self) -> *mut [T] { self.ptr@ }
     open spec fn size(metadata: usize) -> nat { metadata as nat * P::size(()) }
 }
 
-impl<T, P: PointsToProperties<A = T>> PointsToProperties for SeqPointsTo<T, P> {
+impl<T, P: PTProperties<A = T>> PTProperties for SeqPointsTo<T, P> {
     open spec fn wf_basic(self) -> bool {
         &&& self.ptr()@.metadata == self.len()   // new (was only in PointsToUntyped::wf)
         &&& forall|i| 0 <= i < self.len() ==> {
@@ -1390,7 +1390,7 @@ impl<T, P: PointsToProperties<A = T>> PointsToProperties for SeqPointsTo<T, P> {
 }
 
 /// Structural operations for a sequence of any element permission, stated with `wf_basic`.
-impl<T, P: PointsToProperties<A = T>> SeqPointsTo<T, P> {
+impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
     /// The element permissions.
     pub closed spec fn seq_pt(self) -> Seq<P> {
         self.seq_pt
@@ -1574,7 +1574,7 @@ and the typed `split`, `join`, `subrange` and `zero_sized` are built on `split_b
 
 ```rust
 // Phase 1b: on SeqPointsTo<T, PointsTo<T>>.
-// Phase 3: moved to impl<T, P: PointsToSingleValueSized<A = T>>, with PointsTo<T> -> P,
+// Phase 3: moved to impl<T, P: PTSizedValue<A = T>>, with PointsTo<T> -> P,
 //          size_of::<T>() -> P::size(()), PointsTo::<T>::satisfies_alignment -> P::satisfies_alignment.
 impl<T> SeqPointsTo<T, PointsTo<T>> {
     pub open spec fn wf(self) -> bool {
@@ -1583,7 +1583,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         &&& forall|i| 0 <= i < self.len() ==> #[trigger] self[i].wf()
     }
 
-    /// The pointer-level `ptrs_len_same`, plus each element's `PointsToSingleValue::ptrs_len_same_valid`.
+    /// The pointer-level `ptrs_len_same`, plus each element's `PTValueOps::ptrs_len_same_valid`.
     /// Used by `stays_wf` and by the re-establishing clauses of `tracked_seq_pt_mut` / `index_mut` (unchanged).
     pub open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
         &&& Self::ptrs_len_same(old, new)
@@ -1734,13 +1734,13 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     // `View` moves to the generic impl below.
     // into_untyped*, as_untyped*, the value operations, the byte lemmas: unchanged,
     // except `borrow_value_subrange` is renamed `borrow_subrange`
-    // (matching `take_subrange` / `put_subrange` / `copy_subrange` and `PointsToSingleValue::borrow`).
+    // (matching `take_subrange` / `put_subrange` / `copy_subrange` and `PTValueOps::borrow`).
 
     /// Specializes `is_disjoint` to another typed sequence.
     /// Moves to the generic typed impl in phase 3 with everything else here
     /// (so `PointsToUnaligned` sequences get it too), with `other` generalized to any typed sequence.
     /// (`PointsToUntyped::is_disjoint_untyped` stays as it is.)
-    pub proof fn is_disjoint_seqpt<S, Q: PointsToSingleValueSized<A = S>>(
+    pub proof fn is_disjoint_seqpt<S, Q: PTSizedValue<A = S>>(
         tracked &mut self,
         tracked other: &SeqPointsTo<S, Q>,
     )
@@ -1767,9 +1767,9 @@ pub ghost struct SeqPointsToData<T, P> {
 
 // One View for every typed sequence (generalized from `SeqPointsTo<T, PointsTo<T>>`).
 // `PointsToUntyped` keeps its own `View` (`PointsToUntypedData`);
-// the two impls don't overlap, since `PointsToByte` doesn't implement `PointsToSingleValueSized`.
+// the two impls don't overlap, since `PointsToByte` doesn't implement `PTSizedValue`.
 #[cfg(verus_keep_ghost)]
-impl<T, P: PointsToSingleValueSized<A = T>> View for SeqPointsTo<T, P> {
+impl<T, P: PTSizedValue<A = T>> View for SeqPointsTo<T, P> {
     type V = SeqPointsToData<T, P>;
 
     open spec fn view(&self) -> SeqPointsToData<T, P> {
@@ -1829,7 +1829,7 @@ impl<T: ?Sized> PointsToUnaligned<T> {
 
 // Collects borrowed permissions (not arbitrary values) into a borrowed Seq.
 // Makes SeqPointsTo::from_refs provable (see the structural impl above).
-pub axiom fn tracked_collect_perm_refs<'a, P: PointsToProperties>(tracked perms: Seq<&'a P>)
+pub axiom fn tracked_collect_perm_refs<'a, P: PTProperties>(tracked perms: Seq<&'a P>)
     -> (tracked out: &'a Seq<P>)
     ensures
         *out == perms.map_values(|r: &P| *r),
@@ -1952,7 +1952,7 @@ impl<T: ?Sized> PointsTo<T> {
 // M5 (SeqPointsTo::from_seq_mut) is in the structural SeqPointsTo impl above.
 
 /// M6: the `&mut` version of `tracked_collect_perm_refs`.
-pub axiom fn tracked_collect_perm_muts<'a, P: PointsToProperties>(tracked perms: Seq<&'a mut P>)
+pub axiom fn tracked_collect_perm_muts<'a, P: PTProperties>(tracked perms: Seq<&'a mut P>)
     -> (tracked out: &'a mut Seq<P>)
     ensures
         *out == Seq::new(perms.len(), |i: int| *perms[i]),
@@ -2364,8 +2364,8 @@ impl PointsToRaw {
             out.wf(),
     ;
 
-    /// Replaces into_typed<V> and into_typed_slice<V>: an empty permission of any PointsToSingleValue type.
-    pub proof fn into_typed<P: PointsToSingleValue>(tracked self, start: usize, metadata: Metadata<P::A>) -> (tracked out: P)
+    /// Replaces into_typed<V> and into_typed_slice<V>: an empty permission of any PTValueOps type.
+    pub proof fn into_typed<P: PTValueOps>(tracked self, start: usize, metadata: Metadata<P::A>) -> (tracked out: P)
         requires
             self.is_range(start as int, P::size(metadata) as int),
             P::satisfies_alignment(start),
@@ -2380,7 +2380,7 @@ impl PointsToRaw {
     ;
 
     /// Replaces PointsTo<V>::into_raw and PointsTo<[V]>::into_raw; no is_uninit() requirement.
-    pub proof fn from_typed<P: PointsToSingleValue>(tracked p: P) -> (tracked out: Self)
+    pub proof fn from_typed<P: PTValueOps>(tracked p: P) -> (tracked out: Self)
         requires
             p.wf(),
         ensures
@@ -2656,20 +2656,20 @@ everything else exists today.
 | `impl<T> TypedValue<T>` | `value`, `tracked_copy` | Sized: by-value access |
 | `impl<T> TypedValue<[T]>` | `value` (-> `&[T]`); `from_elems_mut`, `into_elems_mut` (new axioms M1/M2, phase 3b) | |
 | `impl<T: ?Sized> PointsToUnaligned<T>` | closed accessors `typed_value`, `pt_untyped`, `metadata`; `bytes`, `is_valid`, `is_empty` (inline); `tracked_pt_untyped`; `from_raw_parts_ref` (new axiom, phase 3b), `from_raw_parts_mut` (new axiom M3, phase 3b) | The inherent `typed_value`/`bytes` coexist with the trait's (phase 0, item 5). |
-| `impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T>` | `into_aligned`, `as_aligned` (new, generic); `as_aligned_mut` (new, generic, phase 3b: needs M4) | Contracts in [Traits](#traits). |
+| `impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | `into_aligned`, `as_aligned` (new, generic); `as_aligned_mut` (new, generic, phase 3b: needs M4) | Contracts in [Traits](#traits). |
 | `impl<T> PointsToUnaligned<T>` | `value`; `is_disjoint_unaligned<S>`. (removed: `wf`, `stays_wf`, `zero_sized`) | |
 | `impl<T> PointsToUnaligned<[T]>` | `from_untyped_ref`, `from_untyped_with_value_ref`, `as_seq_pt`, `as_seq_pt_mut` (new, phase 4; the primary implementations). (removed in 2b: inherent `wf`) | |
 | `impl<T: ?Sized> PointsTo<T>` | closed `pt_unaligned`; `typed_value`, `metadata`, `bytes`, `is_valid`, `is_empty` (open, delegating); `tracked_pt_unaligned`; `from_unaligned_mut` (new axiom M4) | |
-| `impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T>` | `into_unaligned`, `as_unaligned`, `as_unaligned_mut` (new, generic) | Contracts in [Traits](#traits). |
-| `impl<T> PointsTo<T>` | `value`, `is_aligned`, `is_disjoint_pointsto<S>`. (removed: `wf`, `stays_wf`, `lemma_ptrs_len_same_valid`, `zero_sized`, `bytes_decode`, the untyped conversions, the value operations) | Removed ones are `PointsToSingleValue` / `PointsToSingleValueSized` methods. |
+| `impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | `into_unaligned`, `as_unaligned`, `as_unaligned_mut` (new, generic) | Contracts in [Traits](#traits). |
+| `impl<T> PointsTo<T>` | `value`, `is_aligned`, `is_disjoint_pointsto<S>`. (removed: `wf`, `stays_wf`, `lemma_ptrs_len_same_valid`, `zero_sized`, `bytes_decode`, the untyped conversions, the value operations) | Removed ones are `PTValueOps` / `PTSizedValue` methods. |
 | `impl<T> PointsTo<[T]>` | `from_untyped_ref`, `from_untyped_with_value_ref`, `as_seq_pt`, `as_seq_pt_mut` (new, phase 4; compositions over the `PointsToUnaligned` versions). (removed: inherent `wf`) | |
-| `impl<T, P: PointsToProperties<A = T>> SeqPointsTo<T, P>` (`points_to.rs`) | `seq_pt`, `len`, `spec_index`, `thin_ptr`; `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut`, `from_seq`, `empty`, `into_seq` (moved here in phase 1); `split_basic`, `join_basic`, `subrange_basic` (new); `from_refs` (new), `from_seq_mut` (new axiom M5) | Structural; stated with `wf_basic`. The only code touching the fields. |
-| `impl<T, P: PointsToSingleValueSized<A = T>> SeqPointsTo<T, P>` | `View` (generalized; `SeqPointsToData<T, P>`); `wf`, `bytes`, `bytes_inner`, `seq_typed_value`, `is_valid`, `is_empty`, `is_fully_empty`, `seq_value`, `is_valid_subrange`, `value_subrange`, `ptrs_len_same_valid`, `stays_wf`, `lemma_ptrs_len_same_valid`, `typed_value_equiv`, the byte lemmas, `split`, `join`, `subrange`, `zero_sized`, the untyped conversions, the value operations, `is_disjoint_seqpt` | Moved from `impl<T> SeqPointsTo<T, PointsTo<T>>` in phase 3. |
+| `impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P>` (`points_to.rs`) | `seq_pt`, `len`, `spec_index`, `thin_ptr`; `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut`, `from_seq`, `empty`, `into_seq` (moved here in phase 1); `split_basic`, `join_basic`, `subrange_basic` (new); `from_refs` (new), `from_seq_mut` (new axiom M5) | Structural; stated with `wf_basic`. The only code touching the fields. |
+| `impl<T, P: PTSizedValue<A = T>> SeqPointsTo<T, P>` | `View` (generalized; `SeqPointsToData<T, P>`); `wf`, `bytes`, `bytes_inner`, `seq_typed_value`, `is_valid`, `is_empty`, `is_fully_empty`, `seq_value`, `is_valid_subrange`, `value_subrange`, `ptrs_len_same_valid`, `stays_wf`, `lemma_ptrs_len_same_valid`, `typed_value_equiv`, the byte lemmas, `split`, `join`, `subrange`, `zero_sized`, the untyped conversions, the value operations, `is_disjoint_seqpt` | Moved from `impl<T> SeqPointsTo<T, PointsTo<T>>` in phase 3. |
 | `impl<T> SeqPointsTo<T, PointsTo<T>>` | `is_aligned`; `subrange_mut` (axiom until phase 3b); `from_untyped_ref`, `from_untyped_with_value_ref`, `as_slice_pt`, `as_slice_pt_mut` (new, phase 4; compositions); `into_unaligned`, `as_unaligned`, `as_unaligned_mut` (new, phase 4) | |
 | `impl<T> SeqPointsTo<T, PointsToUnaligned<T>>` | `into_aligned`, `as_aligned`, `as_aligned_mut`, `from_untyped_ref`, `from_untyped_with_value_ref`, `as_slice_pt`, `as_slice_pt_mut` (new, phase 4; the primary implementations) | |
 | `impl SeqPointsTo<u8, PointsToByte>` (`PointsToUntyped`, `points_to.rs`) | `View`, `bytes`, `wf`, `stays_wf`, `lemma_ptrs_len_same_untyped` (renamed), `zero_sized<T>`, `split`, `split_ref`, `join` (wrappers over the `_basic` primitives); `join_ref`, `join_mut` (axioms today, proved in phase 3b); `split_mut` (commented out, proved from M5/M6); `is_disjoint_untyped` | |
 | `impl PointsToByte` (renamed from `PointsToSingleton`) | `byte`, `is_disjoint_byte` (renamed from `is_disjoint_singleton`) | |
-| `impl PointsToRaw` | everything in [`PointsToRaw` (phase 2c)](#pointstoraw-phase-2c) above (new) | Not a `PointsToPhys`. |
+| `impl PointsToRaw` | everything in [`PointsToRaw` (phase 2c)](#pointstoraw-phase-2c) above (new) | Not a `PTPhys`. |
 | free functions | `tracked_slice_index`, `tracked_slice_from_refs`, `tracked_collect_perm_refs`, `tracked_collect_perm_muts` (M6), `tracked_ref` (new axioms, phase 3b); `allocate`, `deallocate` (ported, phase 2c; placement open; `Dealloc` dropped) | |
 | rustlib: `impl PointsToUnaligned<str>` | `into_bytes`, `from_bytes`, `as_bytes`, `as_bytes_mut` | |
 
@@ -2798,15 +2798,15 @@ so these impls are in the same crate as the traits and types,
 and the orphan and inherent-impl rules don't get in the way.
 
 rustlib writes impls for `PointsToUnaligned<str>` only.
-Not `PointsToSingleValueSized`: like slices, `str` is unsized.
+Not `PTSizedValue`: like slices, `str` is unsized.
 Per-impl pieces: `Metadata<str>` is the byte length (`usize`),
-`PointsToPhys::size(len)` is `len`,
+`PTPhys::size(len)` is `len`,
 `satisfies_alignment` is `true`,
 and `metadata_matches` is `true` (UTF-8 validity is part of `abs_decode::<str>`).
-`PointsToProperties` comes from the generic `PointsToUnaligned` impl,
-so rustlib writes only `PointsToPhys` (with the `ptr_mut_from_data` pointer,
-and `wf_basic` as the generic `wf_basic_unaligned`), `View` and `PointsToSingleValue`.
-None of `PointsToPhys` needs the `str` view.
+`PTProperties` comes from the generic `PointsToUnaligned` impl,
+so rustlib writes only `PTPhys` (with the `ptr_mut_from_data` pointer,
+and `wf_basic` as the generic `wf_basic_unaligned`), `View` and `PTValueOps`.
+None of `PTPhys` needs the `str` view.
 `PointsTo<str>`'s alignment comes from `layout_of_str` (`align_of::<u8>()`, i.e. 1).
 `layout_of_str` is `cfg`'d separately for `verus_verify_core`, but both versions state the alignment.
 `PointsTo<str>` then gets all its trait impls from the generic `PointsTo` impls,
@@ -2846,7 +2846,7 @@ The full definitions of the new trusted items are in [`str` (rustlib)](#str-rust
 `abs_decode_str`, `TypedValue::<str>::as_bytes_mut`, and the `str` reference helpers.
 
 What this requires of vstd:
-`PointsToSingleValue`, the generic `PointsTo` impls, the generic aligned/unaligned impl,
+`PTValueOps`, the generic `PointsTo` impls, the generic aligned/unaligned impl,
 `from_raw_parts_ref`, M3 and M4
 stay public and generic over `T: ?Sized`,
 not narrowed to slices.
@@ -2857,11 +2857,11 @@ Settled during design review (kept here with their reasons):
 
 1. **`View` for `SeqPointsTo`.** `PointsToUntyped` keeps its own `View`;
    one generic `View` (`SeqPointsToData<T, P>`) covers every typed sequence,
-   for `P: PointsToSingleValueSized<A = T>`.
+   for `P: PTSizedValue<A = T>`.
 2. **No inherent wrappers on `PointsTo<T>`.** The inherent methods are removed (phase 2, step 7);
    wrappers would bring back the duplication, now per type, since the trait side of `PointsTo` is one generic impl.
    Callers get the traits in scope through `points_to_permissions.rs`,
-   which re-exports `PointsToPhys`, `PointsToProperties`, `PointsToSingleValue` and `PointsToSingleValueSized`
+   which re-exports `PTPhys`, `PTProperties`, `PTValueOps` and `PTSizedValue`
    (not through the prelude, so code that doesn't use permissions doesn't get these method names in scope).
 
 ## Deferred
@@ -2871,7 +2871,7 @@ Settled during design review (kept here with their reasons):
   The rest touch the fields or need `wf` to unfold, so they stay per impl.
 - **`str`.** Done in rustlib; see [`str` in rustlib](#str-in-rustlib).
 - **Other unsized types.** `dyn` and custom DSTs are out of scope.
-  They would need the generic `PointsToPhys` that [decision 2](#background) avoids.
+  They would need the generic `PTPhys` that [decision 2](#background) avoids.
 - **Replace `tracked_ref` with a Verus change.**
   In VIR, `Tracked<A>` is a type decoration on `A`, not a struct (`rust_to_vir_base.rs:1149`),
   so `shr_ref_struct_wrap` can't produce a `&Tracked<A>`,
