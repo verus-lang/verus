@@ -61,7 +61,7 @@ verified:
    Also check that `FixedSize for PointsTo<T>` (Sized only) can sit next to the generic impls.
 
 If (1) or (2) fails, stop and revisit the design before continuing.
-If (7) or (8) fails, use the fallbacks in [Traits](TYPED_POINTS_TO_PLAN.md#traits).
+If (7) or (8) fails, use the fallbacks in [Traits](TYPED_POINTS_TO_NOTES.md#traits).
 If (9) fails, use the fallback in [The generic `PointsTo` impl](TYPED_POINTS_TO_NOTES.md#the-generic-pointsto-impl).
 
 #### Phase 0 results
@@ -71,7 +71,7 @@ run with `source/tools/verify-spike-all.sh` (each file separately, against the b
 It uses mock `PointsToUnaligned`/`PointsTo`/`SeqPointsTo` types
 that implement vstd's real `PointsToPhys`, `PointsToProperties` and `FixedSize`,
 with a Sized and a slice `PointsToUnaligned` impl,
-and `PointsToSingleValue`/`PointsToSingleValueSized` as in [Traits](TYPED_POINTS_TO_PLAN.md#traits).
+and `PointsToSingleValue`/`PointsToSingleValueSized` as in [Traits](TYPED_POINTS_TO_APPROVED.md#trait-definitions).
 A deliberately wrong call (aligned slice `zero_sized` without the alignment precondition)
 was checked to fail, so the passing results aren't vacuous.
 
@@ -85,7 +85,7 @@ was checked to fail, so the passing results aren't vacuous.
 | 6. Broadcast trait lemmas | works, through the trait path | `item6_*.rs` | A trait can declare a `broadcast proof fn`. A broadcast group must name the trait method (`Lemmas::lemma_good`); it then fires for every impl, in generic and concrete code. Naming the impl path (`Mock::lemma_good`) is "not found", and `broadcast use P::lemma` / `<P as Lemmas>::lemma` in a generic fn is E0401. The inherent-wrapper fallback also works. Impl-side broadcast fns warn about missing triggers (harmless; the trigger is on the declaration). |
 | 7. `Metadata<Self::A>` in trait signatures | works (ghost build) | `main.rs` | Impls can write `()` (Sized) and `usize` (slices) directly; a generic Sized caller passes `()` (`P::size_for(())`). The non-ghost build (`FakeMetadata`) wasn't tested here; these are all spec/proof signatures, which the existing `?Sized` `PointsToUnaligned::metadata` already has. |
 | 8. Generic aligned/unaligned impl, incl. `shr_ref_struct_wrap` | works | `main.rs` | Bounded only by `PointsToUnaligned<T>: PointsToSingleValue<A = T>`; checked at a Sized type and a slice. |
-| 9. Generic trait impls for `PointsTo` | works | `main.rs` | Generic `PointsToPhys`/`PointsToProperties`/`PointsToSingleValue` for `PointsTo<T: ?Sized>`, next to Sized-only `FixedSize`/`PointsToSingleValueSized`. The alignment, `spec_align_of_val::<T>(arbitrary())`, reduces to `align_of::<u32>()` / `align_of::<u16>()` at `u32` / `[u16]` via `layout_of_sized` / `layout_of_slices` (and to 1 for `str` via `layout_of_str`, `align_unsized.rs`), so no `align()` hook is needed. `zero_sized` calls `into_aligned` inside the impl without a cycle error. Requires `satisfies_alignment` to include the unaligned `satisfies_alignment` (see [Traits](TYPED_POINTS_TO_PLAN.md#traits)). |
+| 9. Generic trait impls for `PointsTo` | works | `main.rs` | Generic `PointsToPhys`/`PointsToProperties`/`PointsToSingleValue` for `PointsTo<T: ?Sized>`, next to Sized-only `FixedSize`/`PointsToSingleValueSized`. The alignment, `spec_align_of_val::<T>(arbitrary())`, reduces to `align_of::<u32>()` / `align_of::<u16>()` at `u32` / `[u16]` via `layout_of_sized` / `layout_of_slices` (and to 1 for `str` via `layout_of_str`, `align_unsized.rs`), so no `align()` hook is needed. `zero_sized` calls `into_aligned` inside the impl without a cycle error. Requires `satisfies_alignment` to include the unaligned `satisfies_alignment` (see [Traits](TYPED_POINTS_TO_APPROVED.md#trait-definitions)). |
 
 Follow-up checks:
 

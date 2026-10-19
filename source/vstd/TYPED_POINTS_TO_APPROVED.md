@@ -1,0 +1,510 @@
+# Approved: `PointsToSingleValue` trait and a generic typed `SeqPointsTo` (level 3)
+
+Designs and specifications that have been reviewed and approved.
+Any change here, including to documentation, needs to be flagged for re-approval.
+What is still under review is in [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md).
+
+## Permission types after all phases
+
+| Type | `A` | Pointer metadata | `size(metadata)` | Traits | Holds |
+|---|---|---|---|---|---|
+| `PointsToByte` (renamed from `PointsToSingleton`) | `u8` | `()` | `1` | `PointsToPhys`, `PointsToProperties` | one abstract byte (axiomatized, as today) |
+| `PointsToUntyped` = `SeqPointsTo<u8, PointsToByte>` | `[u8]` | length | `len` | `PointsToPhys`, `PointsToProperties` | a sequence of byte permissions |
+| `PointsToUnaligned<T>` | `T` | `()` | `size_of::<T>()` | the above + `PointsToSingleValue` + `PointsToSingleValueSized` | untyped bytes, a `TypedValue<T>`, and the ghost metadata |
+| `PointsToUnaligned<[T]>` | `[T]` | length | `len * size_of::<T>()` | the above, without `PointsToSingleValueSized` | the same, with a `TypedValue<[T]>` |
+| `PointsToUnaligned<str>` (rustlib) | `str` | byte length | `len` | as for `[T]` | the same, with a `TypedValue<str>` |
+| `PointsTo<X>` (for each `X` above) | `X` | as above | as above | as for `PointsToUnaligned<X>` | a `PointsToUnaligned<X>` at an aligned address |
+| `SeqPointsTo<T, P>`, `P: PointsToProperties<A = T>` | `[T]` | length | `len * P::size(())` | `PointsToPhys`, `PointsToProperties` | one element permission `P` per element |
+| `PointsToRaw` | — | — | — | none (no single pointer) | a map from addresses to `PointsToByte`s, one provenance |
+
+## Trait definitions
+
+```rust
+/// Defines the physical memory region that a `PointsTo` permission covers,
+/// by specifying the pointer to memory and the size of the pointed-to region.
+pub trait PointsToPhys: Sized {
+    type A: ?Sized;
+
+    /// The pointer that this permission is associated with.
+    spec fn ptr(self) -> *mut Self::A;
+
+    /// The size, in bytes, of the memory region tracked by a permission
+    /// whose pointer has the given metadata.
+    /// A permission `p` tracks `Self::size(p.ptr()@.metadata)` bytes.
+    spec fn size(metadata: Metadata<Self::A>) -> nat;
+}
+
+/// Defines properties which should hold of any `PointsTo` permission.
+pub trait PointsToProperties: PointsToPhys {
+    /// Define basic well-formedness conditions on the permission's pointer.
+    /// `PointsToSingleValue::wf` builds on this to add conditions on the bytes and typed value.
+    spec fn wf_basic(self) -> bool;
+
+    /// Guarantee that the pointer is non-null.
+    ///
+    /// See <https://doc.rust-lang.org/std/ptr/#safety>
+    proof fn is_nonnull(tracked &self)
+        requires
+            self.wf_basic(),
+        ensures
+            self.ptr()@.addr != 0,
+    ;
+
+    /// The memory associated with a pointer should always be within bounds of its spatial provenance.
+    proof fn ptr_bounds(tracked &self)
+        requires
+            self.ptr()@.provenance.is_some(),
+            self.wf_basic(),
+        ensures
+            self.ptr()@.addr as int >= self.ptr()@.provenance.unwrap().start_addr(),
+            self.ptr()@.addr + Self::size(self.ptr()@.metadata)
+                <= self.ptr()@.provenance.unwrap().start_addr() + self.ptr()@.provenance.unwrap().alloc_len(),
+    ;
+
+    /// If the size of the pointed-to region is nonzero,
+    /// then the pointer's provenance is non-null.
+    proof fn provenance_not_none(tracked &self)
+        requires
+            Self::size(self.ptr()@.metadata) != 0,
+            self.wf_basic(),
+        ensures
+            self.ptr()@.provenance != Provenance::None,
+    ;
+
+    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
+    /// since you cannot have two permissions to the same memory.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsTo as both arguments.)
+    /// Since both memory regions are non-zero-sized, this implies the pointers have distinct addresses.
+    ///
+    /// Note: If either memory region is zero-sized, we get disjointness "for free" without having to call this axiom,
+    /// since the empty memory range corresponding to a ZST cannot possibly intersect with any other memory.
+    /// However, note that if one type is a ZST and the other is a non-ZST,
+    /// the disjointness definition as stated here does not hold,
+    /// since the ZST pointer could be in the middle of the non-ZST's range.
+    proof fn is_disjoint<OtherPointsToPerm: PointsToPhys>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    )
+        requires
+            Self::size(self.ptr()@.metadata) != 0,
+            OtherPointsToPerm::size(other.ptr()@.metadata) != 0,
+            self.wf_basic(),
+        ensures
+            *old(self) == *final(self),
+            final(self).ptr()@.addr + Self::size(final(self).ptr()@.metadata) <= other.ptr()@.addr
+                || other.ptr()@.addr + OtherPointsToPerm::size(other.ptr()@.metadata) <= final(self).ptr()@.addr,
+    ;
+
+    /// Specifies that `new` keeps `old`'s pointers and length,
+    /// which is what `wf_basic` needs to carry over from `old`.
+    /// Each implementation defines what this means for its permission type.
+    spec fn ptrs_len_same(old: Self, new: Self) -> bool;
+
+    /// If `old` satisfies `wf_basic` and `new` satisfies `ptrs_len_same` with respect to it,
+    /// then `new` satisfies `wf_basic`.
+    proof fn stays_wf_basic(old: Self, new: Self)
+        requires
+            old.wf_basic(),
+            Self::ptrs_len_same(old, new),
+        ensures
+            new.wf_basic(),
+    ;
+}
+
+/// Defines the typed data tracked by a `PointsTo` permission
+/// to a single, possibly-valid value of type `Self::A`,
+/// along with well-formedness properties, constructors, and conversions.
+pub trait PointsToSingleValue: PointsToProperties {
+    /// The (possibly-valid) typed value that this permission tracks.
+    spec fn typed_value(self) -> TypedValue<Self::A>;
+
+    /// The abstract bytes of the memory that this permission tracks.
+    spec fn bytes(self) -> Seq<AbstractByte>;
+
+    /// Well-formedness: the pointer-level conditions (`wf_basic`),
+    /// the alignment requirement for this permission type,
+    /// and validity constraints.
+    open spec fn wf(self) -> bool {
+        &&& self.wf_basic()
+        &&& Self::satisfies_alignment(self.ptr()@.addr)
+        &&& self.typed_value().is_valid() ==> {
+            &&& abs_decode(self.bytes(), self.typed_value().value_ref())
+            &&& Self::metadata_matches(self.typed_value().value_ref(), self.ptr()@.metadata)
+        }
+    }
+
+    /// Invariants which must hold between `old` and `new` to preserve well-formedness (see `stays_wf`).
+    open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
+        &&& Self::ptrs_len_same(old, new)
+        &&& new.typed_value().is_valid() ==> {
+            &&& abs_decode(new.bytes(), new.typed_value().value_ref())
+            &&& Self::metadata_matches(new.typed_value().value_ref(), new.ptr()@.metadata)
+        }
+    }
+
+    /// Whether the pointer metadata `metadata` is consistent with `value`.
+    /// For a slice, this means the slice has `metadata` elements;
+    /// for other types, it is always `true`.
+    spec fn metadata_matches(value: &Self::A, metadata: Metadata<Self::A>) -> bool;
+
+    /// Whether `addr` satisfies this permission type's alignment requirement:
+    /// alignment to `Self::A` for `PointsTo`,
+    /// and no requirement (`true`) for `PointsToUnaligned`.
+    spec fn satisfies_alignment(addr: usize) -> bool;
+
+    /// Specifies conditions which must hold on the bytes and typed value if the permission is well-formed.
+    proof fn bytes_decode(&self)
+        requires
+            self.wf(),
+        ensures
+            self.bytes().len() == Self::size(self.ptr()@.metadata),
+            self.typed_value().is_valid() ==> {
+                &&& abs_decode(self.bytes(), self.typed_value().value_ref())
+                &&& Self::metadata_matches(self.typed_value().value_ref(), self.ptr()@.metadata)
+            },
+    ;
+
+    /// A well-formed permission's address satisfies the alignment requirement.
+    proof fn satisfies_alignment_of_wf(&self)
+        requires
+            self.wf(),
+        ensures
+            Self::satisfies_alignment(self.ptr()@.addr),
+    ;
+
+    /// Well-formedness implies the pointer-level well-formedness.
+    proof fn lemma_wf_basic(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf_basic(),
+    ;
+
+    /// Two well-formed permissions with the same pointer satisfy `ptrs_len_same_valid`.
+    broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self)
+        requires
+            old.wf(),
+            new.wf(),
+            new.ptr() == old.ptr(),
+        ensures
+            #[trigger] Self::ptrs_len_same_valid(old, new),
+    ;
+
+    /// If `old` is well-formed and `new` satisfies `ptrs_len_same_valid`,
+    /// then `new` is well-formed.
+    proof fn stays_wf(old: Self, new: Self)
+        requires
+            old.wf(),
+            Self::ptrs_len_same_valid(old, new),
+        ensures
+            new.wf(),
+    ;
+
+    /// Borrows the typed value.
+    proof fn borrow_typed_value(tracked &self) -> tracked &TypedValue<Self::A>
+        requires
+            self.wf(),
+        returns
+            self.typed_value(),
+    ;
+
+    /// Moves the typed value out, leaving `self` empty.
+    proof fn take_typed_value(tracked &mut self) -> (tracked v: TypedValue<Self::A>)
+        requires
+            self.wf(),
+        ensures
+            v == old(self).typed_value(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).typed_value().is_empty(),
+            final(self).wf(),
+    ;
+
+    /// Replaces the typed value with `v`.
+    /// If `v` is valid, the bytes must decode to its value and the metadata must match it.
+    proof fn put_typed_value(tracked &mut self, tracked v: TypedValue<Self::A>)
+        requires
+            self.wf(),
+            v.is_valid() ==> {
+                &&& abs_decode(self.bytes(), v.value_ref())
+                &&& Self::metadata_matches(v.value_ref(), self.ptr()@.metadata)
+            },
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).typed_value() == v,
+            final(self).wf(),
+    ;
+
+    /// Borrows the value, which must be valid.
+    proof fn borrow(tracked &self) -> tracked &Self::A
+        requires
+            self.wf(),
+            self.typed_value().is_valid(),
+        returns
+            self.typed_value().value_ref(),
+    {
+        match self.borrow_typed_value() {
+            TypedValue::Valid(b) => b,
+            TypedValue::Empty => proof_from_false(),
+        }
+    }
+
+    /// Splits the permission into an untyped permission to the same bytes and the typed value.
+    proof fn into_raw_parts(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<Self::A>))
+        requires
+            self.wf(),
+        ensures
+            pt_untyped.ptr() == ptr_mut_from_data::<[u8]>(PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: Self::size(self.ptr()@.metadata) as usize,
+            }),
+            pt_untyped.bytes() == self.bytes(),
+            pt_untyped.wf(),
+            v == self.typed_value(),
+    ;
+
+    /// Converts to an untyped permission for the same bytes,
+    /// dropping the typed value, if any.
+    proof fn into_untyped(tracked self) -> (tracked pt_untyped: PointsToUntyped)
+        requires
+            self.wf(),
+        ensures
+            pt_untyped.ptr() == ptr_mut_from_data::<[u8]>(PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: Self::size(self.ptr()@.metadata) as usize,
+            }),
+            pt_untyped.bytes() == self.bytes(),
+            pt_untyped.wf(),
+    {
+        let tracked (pt_untyped, _) = self.into_raw_parts();
+        pt_untyped
+    }
+
+    /// Borrows the underlying untyped permission.
+    proof fn as_untyped(tracked &self) -> (tracked pt_untyped: &PointsToUntyped)
+        requires
+            self.wf(),
+        ensures
+            pt_untyped.ptr() == ptr_mut_from_data::<[u8]>(PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: Self::size(self.ptr()@.metadata) as usize,
+            }),
+            pt_untyped.bytes() == self.bytes(),
+            pt_untyped.wf(),
+    ;
+
+    /// Mutably borrows the underlying untyped permission.
+    /// The typed value, if any, is dropped (call `take_typed_value` first to keep it).
+    /// 
+    /// `final(self)` is empty
+    /// and has the final untyped permission's bytes, address, and provenance,
+    /// but keeps its original pointer metadata (since this is a separate field).
+    /// If the final untyped permission has the same pointers and length as the original,
+    /// `self` is well-formed afterwards 
+    /// (including that the metadata still defines the size of bytes).
+    proof fn as_untyped_mut(tracked &mut self) -> (tracked pt_untyped: &mut PointsToUntyped)
+        requires
+            self.wf(),
+        ensures
+            pt_untyped.ptr() == ptr_mut_from_data::<[u8]>(PtrData {
+                addr: old(self).ptr()@.addr,
+                provenance: old(self).ptr()@.provenance,
+                metadata: Self::size(old(self).ptr()@.metadata) as usize,
+            }),
+            pt_untyped.bytes() == old(self).bytes(),
+            pt_untyped.wf(),
+            final(self).ptr() == ptr_mut_from_data::<Self::A>(PtrData {
+                addr: final(pt_untyped).ptr()@.addr,
+                provenance: final(pt_untyped).ptr()@.provenance,
+                metadata: old(self).ptr()@.metadata,
+            }),
+            final(self).bytes() == final(pt_untyped).bytes(),
+            final(self).typed_value().is_empty(),
+            PointsToUntyped::ptrs_len_same(*pt_untyped, *final(pt_untyped)) ==> final(self).wf(),
+    ;
+
+    /// Creates an empty permission to `pt_untyped`'s bytes, with the given pointer metadata.
+    proof fn from_untyped(tracked pt_untyped: PointsToUntyped, metadata: Metadata<Self::A>) -> (tracked out: Self)
+        requires
+            pt_untyped.wf(),
+            pt_untyped.len() == Self::size(metadata),
+            Self::satisfies_alignment(pt_untyped.ptr()@.addr),
+        ensures
+            out.ptr() == ptr_mut_from_data::<Self::A>(PtrData {
+                addr: pt_untyped.ptr()@.addr,
+                provenance: pt_untyped.ptr()@.provenance,
+                metadata,
+            }),
+            out.bytes() == pt_untyped.bytes(),
+            out.typed_value().is_empty(),
+            out.wf(),
+    {
+        Self::from_raw_parts(pt_untyped, TypedValue::Empty, metadata)
+    }
+
+    /// Creates a permission from an untyped permission, a typed value and pointer metadata.
+    /// The inverse of `into_raw_parts`.
+    /// If `typed_value` is valid, the bytes must decode to its value and the metadata must match it.
+    proof fn from_raw_parts(
+        tracked pt_untyped: PointsToUntyped,
+        tracked typed_value: TypedValue<Self::A>,
+        metadata: Metadata<Self::A>,
+    ) -> (tracked out: Self)
+        requires
+            pt_untyped.wf(),
+            pt_untyped.len() == Self::size(metadata),
+            Self::satisfies_alignment(pt_untyped.ptr()@.addr),
+            typed_value.is_valid() ==> {
+                &&& abs_decode(pt_untyped.bytes(), typed_value.value_ref())
+                &&& Self::metadata_matches(typed_value.value_ref(), metadata)
+            },
+        ensures
+            out.ptr() == ptr_mut_from_data::<Self::A>(PtrData {
+                addr: pt_untyped.ptr()@.addr,
+                provenance: pt_untyped.ptr()@.provenance,
+                metadata,
+            }),
+            out.bytes() == pt_untyped.bytes(),
+            out.typed_value() == typed_value,
+            out.wf(),
+    ;
+
+    /// Creates an empty permission to a zero-sized region,
+    /// at any non-null, in-bounds pointer that satisfies the alignment requirement.
+    proof fn zero_sized(ptr: *mut Self::A) -> (tracked out: Self)
+        requires
+            ptr@.addr != 0,
+            ptr_addr_in_bounds(ptr),
+            Self::size(ptr@.metadata) == 0,
+            Self::satisfies_alignment(ptr@.addr),
+        ensures
+            out.ptr() == ptr,
+            out.bytes().len() == 0,
+            out.typed_value().is_empty(),
+            out.wf(),
+    {
+        broadcast use axiom_ptr_mut_from_data, ptrs_mut_eq, layout_of_unit_tuple;
+
+        // PointsToUntyped::zero_sized needs a pointer to a zero-sized type.
+        let tracked pt_untyped = PointsToUntyped::zero_sized(ptr_mut_from_data::<()>(
+            PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: () },
+        ));
+        Self::from_untyped(pt_untyped, ptr@.metadata)
+    }
+}
+
+/// Restricts `PointsToSingleValue` to permissions whose value type is `Sized`,
+/// so its value can be moved in and out of the permission.
+/// These are the element permissions of a typed `SeqPointsTo`.
+pub trait PointsToSingleValueSized: PointsToSingleValue<A: Sized> {
+    /// The alignment requirement is preserved by offsets that are multiples of the size.
+    proof fn lemma_satisfies_alignment_offset(addr: usize, i: nat)
+        requires
+            Self::satisfies_alignment(addr),
+            addr + i * Self::size(()) <= usize::MAX,
+        ensures
+            Self::satisfies_alignment((addr + i * Self::size(())) as usize),
+    ;
+
+    /// The pointer metadata of a `Sized` value always matches `()`.
+    proof fn lemma_metadata_matches(value: &Self::A)
+        ensures
+            Self::metadata_matches(value, ()),
+    ;
+
+    /// Moves the value out, leaving `self` empty.
+    proof fn take(tracked &mut self) -> (tracked v: Self::A)
+        requires
+            self.wf(),
+            self.typed_value().is_valid(),
+        ensures
+            v == old(self).typed_value().value(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).typed_value().is_empty(),
+            final(self).wf(),
+    {
+        match self.take_typed_value() {
+            TypedValue::Valid(b) => b.get(),
+            TypedValue::Empty => proof_from_false(),
+        }
+    }
+
+    /// Puts `v` in the permission. The bytes must decode to `v`.
+    proof fn put(tracked &mut self, tracked v: Self::A)
+        requires
+            self.wf(),
+            abs_decode(self.bytes(), &v),
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).typed_value().is_valid(),
+            final(self).typed_value().value() == v,
+            final(self).wf(),
+    {
+        Self::lemma_metadata_matches(&v);
+        self.put_typed_value(TypedValue::Valid(Tracked(v)));
+    }
+
+    /// Copies `*v` into the permission. The bytes must decode to `*v`.
+    proof fn copy(tracked &mut self, tracked v: &Self::A) where Self::A: Copy
+        requires
+            self.wf(),
+            abs_decode(self.bytes(), v),
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).typed_value().is_valid(),
+            final(self).typed_value().value() == *v,
+            final(self).wf(),
+    {
+        self.put(*v);
+    }
+
+    /// Copies `*v` into the permission as its typed value.
+    /// If `*v` is valid, the bytes must decode to its value.
+    proof fn copy_typed_value(tracked &mut self, tracked v: &TypedValue<Self::A>) where Self::A: Copy
+        requires
+            self.wf(),
+            v.is_valid() ==> abs_decode(self.bytes(), &v.value()),
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).typed_value() == *v,
+            final(self).wf(),
+    {
+        if v.is_valid() {
+            Self::lemma_metadata_matches(&v.value());
+        }
+        self.put_typed_value(v.tracked_copy());
+    }
+
+    /// Creates a valid permission holding `value` from an untyped permission
+    /// whose bytes decode to `value`.
+    proof fn from_untyped_with_value(tracked pt_untyped: PointsToUntyped, tracked value: Self::A) -> (tracked out: Self)
+        requires
+            pt_untyped.wf(),
+            pt_untyped.len() == Self::size(()),
+            Self::satisfies_alignment(pt_untyped.ptr()@.addr),
+            abs_decode(pt_untyped.bytes(), &value),
+        ensures
+            out.ptr() == ptr_mut_from_data::<Self::A>(PtrData {
+                addr: pt_untyped.ptr()@.addr,
+                provenance: pt_untyped.ptr()@.provenance,
+                metadata: (),
+            }),
+            out.bytes() == pt_untyped.bytes(),
+            out.typed_value().is_valid(),
+            out.typed_value().value() == value,
+            out.wf(),
+    {
+        Self::lemma_metadata_matches(&value);
+        Self::from_raw_parts(pt_untyped, TypedValue::Valid(Tracked(value)), ())
+    }
+}
+```
