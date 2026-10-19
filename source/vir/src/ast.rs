@@ -768,6 +768,10 @@ pub enum BinaryOp {
     /// Index into an array or slice with the given bounds-checking
     /// `verus_builtin::array_index` lowers to this.
     Index(ArrayKind, BoundsCheck),
+    /// λ x y. x
+    /// This is useful if you want to add some side-effectful computation
+    /// after an expression and then return the expression
+    Left,
 }
 
 /// More complex binary operations (requires Clone rather than Copy)

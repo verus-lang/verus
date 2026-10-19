@@ -4019,6 +4019,8 @@ fn binary_op_exp(
             assume_fp_postcondition(&var_ident, e1, e2, op, &e1.typ, typ, span),
         ];
         return (stms, exp);
+    } else if let BinaryOp::Left = op {
+        e1.clone()
     } else {
         let pure_op = match op {
             // Ops with side-effects are turned into sst ops without side-effects
@@ -4038,6 +4040,7 @@ fn binary_op_exp(
             BinaryOp::Arith(ArithOp::TruncatingMod(_, _)) => unreachable!(),
             BinaryOp::Arith(ArithOp::TruncatingDiv(_, _)) => unreachable!(),
             BinaryOp::UninterpretedFloat(..) => unreachable!(),
+            BinaryOp::Left => unreachable!(),
 
             // Pure ops
             BinaryOp::BoolOrNoSC => sst::BinaryOp::Or,
