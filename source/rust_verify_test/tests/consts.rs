@@ -4,6 +4,76 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] verified_module_const_ordering_lifetime code! {
+        #[verifier::verify]
+        mod constants {
+            pub const LITERAL: usize = 1;
+            pub const COMPUTED: usize = 1 + 1;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] literal_const_typeck_lifetime code! {
+        #[verifier::verify]
+        mod constants {
+            pub const LENGTH: usize = 2;
+            pub struct Array([u8; LENGTH]);
+            pub struct S;
+            impl S {
+                pub const LENGTH: usize = 3;
+            }
+            pub trait T {
+                const LENGTH: usize = 4;
+            }
+            impl T for S {}
+            pub struct InherentArray([u8; S::LENGTH]);
+            pub struct TraitArray([u8; <S as T>::LENGTH]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] unused_spec_const_not_evaluated_lifetime code! {
+        #[verifier::verify]
+        mod constants {
+            #[verifier::spec]
+            pub const GHOST: usize = 3;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] unused_invalid_exec_const_evaluated_lifetime code! {
+        #[verifier::verify]
+        mod constants {
+            pub const BAD: usize = 1 / 0;
+        }
+    } => Err(err) => assert_rust_error_msg(err, "attempt to divide `1_usize` by zero")
+}
+
+test_verify_one_file! {
+    #[test] complex_typeck_const_remains_guarded_lifetime code! {
+        #[verifier::verify]
+        mod constants {
+            pub const LENGTH: usize = 1 + 1;
+            pub struct Array([u8; LENGTH]);
+        }
+    } => Err(err) => assert!(err.errors.iter().any(|error| error.message.contains("before ghost-code erasure is initialized")))
+}
+
+test_verify_one_file! {
+    #[test] spec_typeck_const_remains_guarded_lifetime code! {
+        #[verifier::verify]
+        mod constants {
+            #[verifier::spec]
+            pub const LENGTH: usize = 2;
+            pub struct Array([u8; LENGTH]);
+        }
+    } => Err(err) => assert!(err.errors.iter().any(|error| error.message.contains("before ghost-code erasure is initialized")))
+}
+
+test_verify_one_file! {
     #[test] test_const_eval1 verus_code!{
         #[repr(u8)]
         enum TestConst {

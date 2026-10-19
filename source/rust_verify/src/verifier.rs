@@ -2723,7 +2723,7 @@ impl Verifier {
         check_no_opaque_types_in_trait(ctxtx.tcx, &crate_items).map_err(map_err_diagnostics)?;
 
         if !self.args.no_lifetime {
-            crate::erase::setup_verus_aware_ids(&crate_items);
+            crate::erase::setup_verus_aware_ids(tcx, &crate_items);
         }
 
         let time_hir0 = Instant::now();
@@ -2910,6 +2910,14 @@ impl Verifier {
                 &erasure_modes,
             )
             .map_err(|e| (vec![e], Vec::new()))?;
+        }
+
+        // CTFE builds THIR and must see the initialized erasure context.
+        rustc_hir_analysis_verus::check_crate_const_and_static_initializers(tcx, |def_id| {
+            !rustc_mir_build_verus::verus::body_is_erased(def_id)
+        });
+        if tcx.dcx().err_count() != 0 {
+            return Ok(false);
         }
 
         // These can invoke mir_borrowck when opaque types are involved.
