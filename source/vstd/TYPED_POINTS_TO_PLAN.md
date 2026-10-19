@@ -947,7 +947,7 @@ There are no borrowed constructors for sequences
 
 ### `ptr_specs.rs` (trusted)
 
-`allocate`, `deallocate` and `global_alloc_id`: approved; see [Allocation](#allocation-phase-2c).
+`allocate` and `deallocate` (`global_alloc_id` is in `ptr_model.rs`): approved; see [Allocation](#allocation-phase-2c).
 
 ### rustlib
 

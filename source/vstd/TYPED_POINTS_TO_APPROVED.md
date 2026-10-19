@@ -71,7 +71,7 @@ and `points_to_ops` is a child module of `points_to_model`;
 
 | `ptr_model.rs` | `ptr_specs.rs` |
 |---|---|
-| the module docs and model notes, `AllocId`, `ProvenanceData`, `provenance_properties`, `ptr_addr_in_bounds`, `Metadata`, `PtrData`, the `View` impls for `*mut T` / `*const T` | the pointer `==` `assume_specification`s |
+| the module docs and model notes, `AllocId` and `global_alloc_id`, `ProvenanceData`, `provenance_properties`, `ptr_addr_in_bounds`, `Metadata`, `PtrData`, the `View` impls for `*mut T` / `*const T` | the pointer `==` `assume_specification`s |
 | the inverse functions: `ptr_mut_from_data`, `tracked_ptr_mut_from_data`, `ptr_from_data`, `axiom_ptr_mut_from_data`, `view_reverse_for_eq`, `ptrs_mut_eq`, `ptrs_mut_eq_sized` | null pointers, casts, `ptr_ref` / `ptr_mut_ref` (and the slice versions), `addr` / `with_addr`, the reference specs, `mut_ref_to_shr_points_to` (and the slice version), `cast_mut_ref_*`, `allocate` / `deallocate` |
 | `group_raw_ptr_axioms` (all four members are here) | |
 
@@ -346,7 +346,7 @@ Every new trusted item, relative to the `verify-rustlib` branch.
 | `PointsToUntyped::join_ref` (already in the code) | `points_to_model.rs` | Two borrowed untyped permissions, the second starting where the first ends, act as one borrowed permission. | the typed sequences' `as_untyped`, shared sequence → slice | |
 | `PointsToUntyped::join_mut` (already in the code) | `points_to_model.rs` | The same for mutable borrows; the parts' final values are tied back if the joined permission keeps its pointers and length. | the typed sequences' `as_untyped_mut`, `&mut` sequence → slice | |
 | `PointsTo::borrow_mut` (already in the code) | `points_to_model.rs` | A mutable borrow of a valid permission's value; writing through it updates the value and the bytes together, keeping `wf()`. | ghost writes through a permission | yes |
-| `global_alloc_id` (`uninterp`) | `ptr_specs.rs` | The id of the global allocator's allocations. | `allocate` / `deallocate` | |
+| `global_alloc_id` (`uninterp`) | `ptr_model.rs` | The id of the global allocator's allocations. | `allocate` / `deallocate` | yes |
 | `allocate`, `deallocate` (`external_body`; ported from `raw_ptr_old.rs`, without `Dealloc`) | `ptr_specs.rs` | Allocation gives a well-formed `PointsToUntyped` for the new range with a global-allocator provenance; deallocation consumes one covering the whole allocation. | heap allocation | yes |
 | `abs_decode_slice` (already in the code) | `type_representation.rs` | A slice decodes exactly when each element's slot does. Its definition is in the code and isn't repeated here. | slice `wf` | yes |
 **`ptr_mut_ref`** (`ptr_specs.rs`; existing, strengthened, already in the code).
@@ -632,8 +632,8 @@ impl PointsToUntyped {
             ),
             joined.wf(),
             Self::ptrs_len_same(*joined, *final(joined)) ==> {
-                &&& Self::ptrs_len_same(*old(self), *final(self))
-                &&& Self::ptrs_len_same(*old(other), *final(other))
+                &&& final(self).ptr() == old(self).ptr()
+                &&& final(other).ptr() == old(other).ptr()
                 &&& final(self).wf()
                 &&& final(other).wf()
                 &&& final(joined).seq_pt() == final(self).seq_pt() + final(other).seq_pt()
@@ -662,7 +662,7 @@ impl<T> PointsTo<T> {
 }
 ```
 
-**Allocation** (`ptr_specs.rs`; phase 2c).
+**Allocation** (phase 2c; `global_alloc_id` in `ptr_model.rs` next to `AllocId`, `allocate` / `deallocate` in `ptr_specs.rs`).
 
 ```rust
 /// The `AllocId` of allocations made by the global allocator.
