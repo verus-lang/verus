@@ -61,8 +61,8 @@ removing it leaves a complete single-value and untyped API.
 | the five trait definitions, with their default bodies | the `PointsToProperties` impls of `SeqPointsTo`, `PointsToUnaligned` and `PointsTo` | `PointsToRaw` (all of it) |
 | the struct definitions: `PointsToByte`, `TypedValue`, `SeqPointsTo`, `PointsToUntyped`, `PointsToUnaligned`, `PointsTo`; their closed accessors and the inherent spec fns (`typed_value`, `bytes`, `metadata`, `is_valid`, `value`, `value_ref`, `len`, `thin_ptr`, …); their `View` impls | the `PointsToSingleValue` impls (per type for `PointsToUnaligned`, generic for `PointsTo`) and the `PointsToSingleValueSized` impls | the typed `SeqPointsTo` impl (`impl<T, P: PointsToSingleValueSized<A = T>>`), including its `wf`, and its generic `View` |
 | well-formedness: every `PointsToPhys` impl (`ptr`, `size`, `wf_basic`), every `PointsToSingleValueSpec` impl (`typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment`, and the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic`), `wf_basic_unaligned`, `PointsToUntyped::wf` and `bytes` | the structural `SeqPointsTo` impl (except M5) and `PointsToUntyped`'s proofs | the `PointsTo<T>`- and `PointsToUnaligned<T>`-specific `SeqPointsTo` impls |
-| the axioms: `PointsToByte`'s `PointsToProperties` impl, `from_raw_parts_ref`, `tracked_collect_perm_refs`, M1–M6 | the aligned/unaligned conversions | the slice ↔ sequence conversions on both sides (`as_seq_pt(_mut)` on `PointsToUnaligned<[T]>` / `PointsTo<[T]>` as well), and the sequences' borrowed constructors |
-| the tracked getters and byte disjointness: `TypedValue::tracked_copy`, `valid_ref`; `PointsToByte::is_disjoint_byte` | the slice permissions' borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`); `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`; `group_points_to_lemmas` | `group_points_to_collections_lemmas` |
+| the axioms: `PointsToByte`'s `PointsToProperties` impl, `PointsToUntyped::join_ref` / `join_mut`, `from_raw_parts_ref`, M1, M3–M5 | the aligned/unaligned conversions | the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`) |
+| the tracked getters and byte disjointness: `TypedValue::tracked_copy`, `valid_ref`; `PointsToByte::is_disjoint_byte` | the slice permissions' borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`) and `borrow_index`; `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`; `group_points_to_lemmas` | `group_points_to_collections_lemmas` |
 
 - **Field access.** Private fields are visible only in the defining module and its descendants.
   So `points_to_ops` is a child module of `points_to_model`, and can touch the fields.
@@ -117,8 +117,7 @@ Existing axioms with minor contract changes on this branch are in
 | Item | File | What it states | Uses |
 |---|---|---|---|
 | `PointsToByte` (`external_body` struct; `uninterp` `ptr`, `byte`) | `points_to_model.rs` | A permission to one byte, with its address and abstract byte. | everything byte-level |
-| `PointsToByte`'s `is_nonnull`, `ptr_bounds`, `provenance_not_none`, `is_disjoint` | `points_to_model.rs` | A byte permission's pointer is non-null, within its allocation, has non-null provenance; two byte permissions are at different addresses. | `PointsToUntyped`'s and `PointsToRaw`'s pointer-level lemmas |
-| `ProvenanceData` (`external_body`; `uninterp` `start_addr`, `alloc_len`, `alignment`, `orig_size`, `alloc_id`), `provenance_properties` | `raw_ptr_model.rs` | The allocation model. `orig_size` replaces `Dealloc`'s size tracking. | pointer bounds, `allocate` / `deallocate` |
+| `PointsToByte`'s `is_nonnull`, `ptr_bounds`, `provenance_not_none`, `is_disjoint` | `points_to_model.rs` | A byte permission's pointer is non-null, within its allocation, has non-null provenance; two byte permissions are at different addresses. | `PointsToUntyped`'s and `PointsToRaw`'s pointer-level lemmas || `ProvenanceData` (`external_body`; `uninterp` `start_addr`, `alloc_len`, `alignment`, `orig_size`, `alloc_id`), `provenance_properties` | `raw_ptr_model.rs` | The allocation model. `orig_size` replaces `Dealloc`'s size tracking. | pointer bounds, `allocate` / `deallocate` |
 | pointer model: `View for *mut T` (`uninterp`), `ptr_mut_from_data` (`uninterp`), `axiom_ptr_mut_from_data`, `ptrs_mut_eq`, `tracked_ptr_mut_from_data` | `raw_ptr_model.rs` | A pointer is its `PtrData` (address, provenance, metadata). | every pointer spec (e.g. the generic `PointsToUnaligned` pointer built from its metadata) |
 | `assume_specification`s for pointer `==`, `null`, `null_mut`, `addr`, `with_addr`; the `cast_*` `external_body` functions | `raw_ptr_specs.rs` | The exec pointer operations match the model. | exec code |
 | `SharedReference` (`external_body`; `uninterp` `value`, `ptr`), `ptr_nonnull`, `axiom_shared_ref_value_view` | `shared_reference.rs` | A shared reference with its pointer. | exec code; the source of valid shared permissions |
@@ -128,7 +127,7 @@ Existing axioms with minor contract changes on this branch are in
 | `tracked_swap`, `tracked_static_mut_ref` | `modes.rs` | Swapping tracked values; a `'static` borrow of an owned value. | `take_typed_value`, empty cases of borrowed conversions |
 | `Seq` tracked operations (`tracked_borrow`, `tracked_borrow_mut`, `tracked_borrow_subrange_mut`, …) | `seq.rs` | Borrowing parts of a tracked `Seq`. | `as_untyped_mut`, `index_mut` |
 | `Map` tracked operations (`tracked_empty`, `tracked_remove_keys`, `tracked_union_prefer_right`, …) | `map.rs` | Building and splitting a tracked `Map`. | `PointsToRaw` |
-| `shr_ref_struct_wrap` | builtin | Borrowing a struct from a borrow of its only tracked field. | `as_aligned`, `subrange_basic`, `split_ref`, `from_refs` |
+| `shr_ref_struct_wrap` | builtin | Borrowing a struct from a borrow of its only tracked field. | `as_aligned`, `subrange_basic`, `split_ref` |
 
 ## Minor changes to existing trusted specs
 
@@ -354,16 +353,16 @@ Specs approved so far; the full list of new trusted items is in
 | `ptr_mut_ref_str` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code, strengthened the same way as `ptr_mut_ref`. | exec writes through `&mut str` |
 | `Seq::tracked_borrow_subrange` (`external_body`; already in the code) | `seq.rs` | Borrows a subrange of a borrowed tracked `Seq`. | `subrange_basic`, `split_ref` |
 | `Seq::tracked_split_borrow_mut` (`external_body`; already in the code) | `seq.rs` | Splits a mutable borrow of a tracked `Seq` in two. | `subrange_mut`, the `&mut` conversions |
-| `tracked_slice_index` (phase 3b) | `slice.rs` | Borrows an element of a borrowed slice. | shared slice → sequence |
+| `tracked_slice_index` (phase 3b) | `slice.rs` | Borrows an element of a borrowed slice. | `borrow_index` |
 | `tracked_slice_from_refs` (phase 3b) | `slice.rs` | Borrowed elements act as one borrowed slice. | shared sequence → slice |
 | `tracked_ref` (phase 3b) | `modes.rs` | A borrow is a borrowed `Tracked` of itself. | `TypedValue::valid_ref` |
-| `PointsToUnaligned::from_raw_parts_ref` (phase 3b) | `points_to_model.rs` | Borrowed bytes and typed value act as one borrowed permission. | borrowed constructors, slice ↔ sequence, `str` ↔ `[u8]` |
-| `tracked_collect_perm_refs` (phase 3b) | `points_to_model.rs` | Borrowed permissions act as one borrowed `Seq`. | `from_refs`, `join_ref` |
-| M1 `TypedValue::<[T]>::from_elems_mut`, M2 `into_elems_mut` (phase 3b) | `points_to_model.rs` | Per-element `&mut` typed values ↔ one `&mut` slice typed value. | `&mut` slice ↔ sequence |
+| `PointsToUnaligned::from_raw_parts_ref` (phase 3b) | `points_to_model.rs` | Borrowed bytes and typed value act as one borrowed permission. | borrowed constructors, `borrow_index`, sequence → slice, `str` ↔ `[u8]` |
+| M1 `TypedValue::<[T]>::from_elems_mut` (phase 3b) | `points_to_model.rs` | Per-element `&mut` typed values act as one `&mut` slice typed value. | `&mut` sequence → slice |
 | M3 `PointsToUnaligned::from_raw_parts_mut` (phase 3b) | `points_to_model.rs` | `&mut` bytes and typed value act as one `&mut` permission. | `&mut` conversions |
 | M4 `PointsTo::from_unaligned_mut` (phase 3b) | `points_to_model.rs` | A `&mut PointsToUnaligned` acts as a `&mut PointsTo`. | `as_aligned_mut`, aligned `&mut` conversions |
-| M5 `SeqPointsTo::from_seq_mut` (phase 3b) | `points_to_model.rs` | A `&mut Seq<P>` acts as a `&mut SeqPointsTo`. | `subrange_mut`, `join_mut`, `&mut` conversions |
-| M6 `tracked_collect_perm_muts` (phase 3b) | `points_to_model.rs` | `&mut` permissions act as one `&mut Seq`. | `join_mut`, `&mut` conversions |
+| M5 `SeqPointsTo::from_seq_mut` (phase 3b) | `points_to_model.rs` | A `&mut Seq<P>` acts as a `&mut SeqPointsTo`. | `subrange_mut`, `split_mut` |
+| `PointsToUntyped::join_ref` (already in the code) | `points_to_model.rs` | Two borrowed untyped permissions, the second starting where the first ends, act as one borrowed permission. | the typed sequences' `as_untyped`, shared sequence → slice |
+| `PointsToUntyped::join_mut` (already in the code) | `points_to_model.rs` | The same for mutable borrows; the parts' final values are tied back if the joined permission keeps its pointers and length. | the typed sequences' `as_untyped_mut`, `&mut` sequence → slice |
 | `abs_decode_slice` (already in the code) | `type_representation.rs` | A slice decodes exactly when each element's slot does. Its definition is in the code and isn't repeated here. | slice `wf` |
 | `abs_decode_str` (rustlib) | rustlib (`type_representation`) | A `str` decodes exactly when its bytes are valid UTF-8 and each decodes as a `u8`. | `str` `wf`, `str` ↔ `[u8]` |
 | `TypedValue::<str>::as_bytes_mut` (rustlib) | rustlib | A `&mut` `str` typed value acts as a `&mut` byte-slice typed value; non-UTF-8 final bytes leave the `str` empty. | `as_bytes_mut`; the owned casts (`into_bytes`, `from_bytes`) |
@@ -496,7 +495,7 @@ pub axiom fn tracked_ref<'a, T: ?Sized>(tracked t: &'a T) -> (tracked out: &'a T
 ```
 
 **Borrowed permission assembly** (new, phase 3b).
-Neither says anything about `wf()`: callers prove it from the parts.
+It says nothing about `wf()`: callers prove it from the parts.
 
 ```rust
 // points_to_model.rs, with PointsToUnaligned.
@@ -515,18 +514,7 @@ impl<T: ?Sized> PointsToUnaligned<T> {
 }
 ```
 
-```rust
-// points_to_model.rs, with SeqPointsTo.
-// Collects borrowed permissions (not arbitrary values) into a borrowed Seq.
-// Makes SeqPointsTo::from_refs provable.
-pub axiom fn tracked_collect_perm_refs<'a, P: PointsToProperties>(tracked perms: Seq<&'a P>)
-    -> (tracked out: &'a Seq<P>)
-    ensures
-        *out == perms.map_values(|r: &P| *r),
-;
-```
-
-**Mutable borrowed assembly (M1–M6)** (new, phase 3b).
+**Mutable borrowed assembly (M1, M3–M5)** (new, phase 3b; there is no M2 or M6).
 Each follows `PointsToUntyped::join_mut`'s pattern:
 the borrowed parts' final values are tied to the result's final value,
 conditionally where the structure could change.
@@ -555,29 +543,6 @@ impl<T> TypedValue<[T]> {
                 },
             !(final(out).is_valid() && final(out).value()@.len() == elems.len()) ==> forall|i: int|
                 0 <= i < elems.len() ==> (#[trigger] *final(elems[i])).is_empty(),
-    ;
-
-    /// M2: one slice typed value -> per-element typed values (the inverse of M1).
-    pub axiom fn into_elems_mut<'a>(tracked &'a mut self, len: nat)
-        -> (tracked elems: Seq<&'a mut TypedValue<T>>)
-        requires
-            old(self).is_valid() ==> old(self).value()@.len() == len,
-        ensures
-            // Initially: one element per slice element, each valid with its value, or each empty.
-            elems.len() == len,
-            old(self).is_valid() ==> forall|i: int| 0 <= i < len ==> {
-                &&& (#[trigger] *elems[i]).is_valid()
-                &&& (*elems[i]).value() == old(self).value()@[i]
-            },
-            old(self).is_empty() ==> forall|i: int| 0 <= i < len ==> (#[trigger] *elems[i]).is_empty(),
-            // Finally: if every element ends valid, the slice holds them;
-            // otherwise it ends empty (any remaining values are dropped).
-            (forall|i: int| 0 <= i < len ==> (#[trigger] *final(elems[i])).is_valid()) ==> {
-                &&& final(self).is_valid()
-                &&& final(self).value()@ == Seq::new(len, |i: int| (*final(elems[i])).value())
-            },
-            !(forall|i: int| 0 <= i < len ==> (#[trigger] *final(elems[i])).is_valid())
-                ==> final(self).is_empty(),
     ;
 }
 ```
@@ -626,16 +591,74 @@ impl<T, P: PointsToProperties<A = T>> SeqPointsTo<T, P> {
             *final(s) == final(out).seq_pt(),
     ;
 }
+```
 
-/// M6: the `&mut` version of `tracked_collect_perm_refs`.
-pub axiom fn tracked_collect_perm_muts<'a, P: PointsToProperties>(tracked perms: Seq<&'a mut P>)
-    -> (tracked out: &'a mut Seq<P>)
-    ensures
-        *out == Seq::new(perms.len(), |i: int| *perms[i]),
-        // Finally: the permissions are tied back only if the length is unchanged.
-        final(out).len() == perms.len() ==> forall|i: int|
-            0 <= i < perms.len() ==> *final(perms[i]) == #[trigger] final(out)[i],
-;
+**Untyped joins** (`points_to_model.rs`; new relative to `verify-rustlib`, already in the code).
+The contracts are the code's,
+with `ptrs_len_same_valid` renamed `ptrs_len_same` and "singleton" renamed "byte" in the docs.
+
+```rust
+impl PointsToUntyped {
+    /// Joins shared borrows of two `PointsToUntyped` permissions into a shared borrow of a
+    /// single `PointsToUntyped`, under the same conditions as `join`.
+    ///
+    /// This is the shared-borrow analogue of `join`. It's an axiom because the joined permission
+    /// isn't stored anywhere that could be borrowed.
+    pub axiom fn join_ref<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked joined: &'a Self)
+        requires
+            self.wf(),
+            other.wf(),
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len(),
+        ensures
+            joined.seq_pt() == self.seq_pt() + other.seq_pt(),
+            joined.bytes() == self.bytes() + other.bytes(),
+            joined.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (self.len() + other.len()) as usize,
+                },
+            ),
+            joined.wf(),
+    ;
+
+    /// Joins mutable borrows of two `PointsToUntyped` permissions into a mutable borrow of a
+    /// single `PointsToUntyped`, under the same conditions as `join`.
+    ///
+    /// If the joined permission keeps its pointers and length, then so do `self` and `other`, and
+    /// their final byte permissions concatenate to the joined permission's final ones.
+    ///
+    /// This is the mutable-borrow analogue of `join`. It's an axiom because the joined permission
+    /// isn't stored anywhere that could be borrowed.
+    pub axiom fn join_mut<'a>(tracked &'a mut self, tracked other: &'a mut Self) -> (tracked joined:
+        &'a mut Self)
+        requires
+            self.wf(),
+            other.wf(),
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len(),
+        ensures
+            joined.seq_pt() == old(self).seq_pt() + old(other).seq_pt(),
+            joined.bytes() == old(self).bytes() + old(other).bytes(),
+            joined.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: old(self).ptr()@.addr,
+                    provenance: old(self).ptr()@.provenance,
+                    metadata: (old(self).len() + old(other).len()) as usize,
+                },
+            ),
+            joined.wf(),
+            Self::ptrs_len_same(*joined, *final(joined)) ==> {
+                &&& Self::ptrs_len_same(*old(self), *final(self))
+                &&& Self::ptrs_len_same(*old(other), *final(other))
+                &&& final(self).wf()
+                &&& final(other).wf()
+                &&& final(joined).seq_pt() == final(self).seq_pt() + final(other).seq_pt()
+                &&& final(joined).bytes() == final(self).bytes() + final(other).bytes()
+            },
+    ;
+}
 ```
 
 **`str` decoding and value cast** (new, rustlib).
@@ -679,6 +702,45 @@ and both owned casts (from `as_bytes_mut` and `tracked_swap`).
 rustlib's existing `str` permission axioms (`as_str_ptr_verus`, `perm_init`, `perm_value_eq`, `perm_ptr`)
 are temporary stand-ins until `PointsTo<str>` is ported;
 they're replaced by the above and not part of this design.
+
+## Slice indexing
+
+Borrows one element of a slice permission (phase 4; in `points_to_ops.rs`).
+There are no slice → sequence conversions.
+Needs no new axioms:
+the bytes come from `split_ref` on the untyped permission,
+a valid element's typed value from `tracked_slice_index` and `TypedValue::valid_ref`
+(an empty one from `tracked_static_mut_ref`, as in the other borrowed conversions),
+and the permission from `from_raw_parts_ref`.
+
+```rust
+impl<T> PointsToUnaligned<[T]> {
+    /// Borrows the permission to the element at index `i`.
+    /// If the slice permission is empty, so is the element's.
+    pub proof fn borrow_index(tracked &self, i: int) -> (tracked out: &PointsToUnaligned<T>)
+        requires
+            self.wf(),
+            0 <= i < self.ptr()@.metadata,
+        ensures
+            out.ptr() == ptr_mut_from_data::<T>(PtrData {
+                addr: (self.ptr()@.addr + i * size_of::<T>()) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: (),
+            }),
+            out.bytes() == self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+            self.typed_value().is_valid() ==> {
+                &&& out.typed_value().is_valid()
+                &&& out.typed_value().value() == self.typed_value().value_ref()@[i]
+            },
+            self.typed_value().is_empty() ==> out.typed_value().is_empty(),
+            out.wf(),
+    ;
+}
+// impl<T> PointsTo<[T]>: borrow_index(&self, i) -> &PointsTo<T>, the same contract;
+//   composed from as_unaligned, PointsToUnaligned::<[T]>::borrow_index and as_aligned
+//   (each element's address is aligned because the slice's is,
+//   and size_of::<T>() is a multiple of align_of::<T>()).
+```
 
 ## Trait definitions
 
