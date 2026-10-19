@@ -1177,7 +1177,6 @@ Every new trusted item: the summary, then the full definitions.
 
 | Item | Planned file | What it states | Uses |
 |---|---|---|---|
-| `abs_decode_slice` (already added) | `type_representation.rs` | A slice decodes exactly when each element's slot does. | slice `wf` |
 | `global_alloc_id` (`uninterp`) | with `allocate` (placement open) | The id of the global allocator's allocations. | `allocate` / `deallocate` |
 | `allocate`, `deallocate` (`external_body`) | open | Allocation gives a `PointsToRaw` for the new range with a global-allocator provenance; deallocation consumes one covering the whole allocation. | heap allocation |
 
@@ -1191,22 +1190,12 @@ and the borrowed-assembly axioms (`tracked_slice_index`, `tracked_slice_from_ref
 `PointsToUnaligned::from_raw_parts_ref`, `tracked_collect_perm_refs`, and M1–M6)
 ([TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes)).
 
-**rustlib.**
-
-| Item | What it states | Uses |
-|---|---|---|
-| `abs_decode_str` | A `str` decodes exactly when its bytes are valid UTF-8 and each decodes as a `u8`. | `str` `wf`, `str` ↔ `[u8]` |
-| `TypedValue::<str>::as_bytes_mut` | A `&mut` `str` typed value acts as a `&mut` byte-slice typed value; non-UTF-8 final bytes leave the `str` empty. | `as_bytes_mut`; the owned casts (`into_bytes`, `from_bytes`) |
-
-Not trusted: the shared `&TypedValue<str>` → `&TypedValue<[u8]>` cast
-(from rustlib's existing `str::as_bytes_tracked` axiom and `valid_ref`)
-and both owned casts (from `as_bytes_mut` and `tracked_swap`).
-rustlib's existing `str` permission axioms (`as_str_ptr_verus`, `perm_init`, `perm_value_eq`, `perm_ptr`)
-are temporary stand-ins until `PointsTo<str>` is ported;
-they're replaced by the above and not part of this design.
+**rustlib.** All new rustlib axioms are approved
+([TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes)).
 
 "New" means new relative to the `verify-rustlib` branch.
-`abs_decode_slice` is already in `type_representation.rs`, so its definition isn't repeated below.
+`abs_decode_slice` (already in `type_representation.rs`) is approved and listed in
+[TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes).
 
 ### Borrowed-assembly axioms (phase 3b)
 
@@ -1294,38 +1283,7 @@ pub fn deallocate(p: *mut u8, size: usize, align: usize, Tracked(pt): Tracked<Po
 
 ### New rustlib axioms
 
-In rustlib a `str`'s view `s@` is its bytes (`Seq<u8>`).
-
-```rust
-// type_representation (rustlib): the str counterpart of abs_decode_slice
-/// The bytes decode to a `str` exactly when its bytes are valid UTF-8
-/// and each abstract byte decodes to the corresponding `u8`.
-/// The byte condition is `EncodingU8Slice::decode`'s, with `s@` for the slice's view,
-/// so `abs_decode::<str>(b, s) <==> valid_utf8(s@) && abs_decode::<[u8]>(b, v)` for any `v` with `v@ == s@`
-/// (by the existing `[u8]` axiom).
-pub broadcast axiom fn abs_decode_str(bytes: Seq<AbstractByte>, s: &str)
-    ensures
-        #[trigger] abs_decode::<str>(bytes, s) <==> {
-            &&& valid_utf8(s@)
-            &&& s@.len() == bytes.len()
-            &&& forall|i| 0 <= i < s@.len() ==> u8::decode(seq![bytes[i]], #[trigger] s@[i])
-        },
-;
-
-impl TypedValue<str> {
-    /// A mutably borrowed `str` typed value acts as a mutably borrowed byte-slice typed value.
-    /// If the final bytes aren't valid UTF-8, the final `str` value is empty (the bytes are dropped).
-    pub axiom fn as_bytes_mut<'a>(tracked &'a mut self) -> (tracked out: &'a mut TypedValue<[u8]>)
-        ensures
-            out.is_valid() == old(self).is_valid(),
-            old(self).is_valid() ==> out.value()@ == old(self).value_ref()@,
-            final(self).is_valid() <==> final(out).is_valid() && valid_utf8(final(out).value()@),
-            final(self).is_valid() ==> final(self).value_ref()@ == final(out).value()@,
-    ;
-}
-```
-
-The `str` reference helpers are approved and in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md):
-`ptr_mut_ref_str` with `ptr_mut_ref` in
+All approved and in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md):
+`abs_decode_str`, `TypedValue::<str>::as_bytes_mut` and `ptr_mut_ref_str` in
 [New axioms and axioms with bigger changes](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes),
-and the rest in [Minor changes to existing trusted specs](TYPED_POINTS_TO_APPROVED.md#minor-changes-to-existing-trusted-specs).
+and the other `str` reference helpers in [Minor changes to existing trusted specs](TYPED_POINTS_TO_APPROVED.md#minor-changes-to-existing-trusted-specs).

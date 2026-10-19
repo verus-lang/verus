@@ -302,6 +302,9 @@ Specs approved so far; the full list of new trusted items is in
 | M4 `PointsTo::from_unaligned_mut` (phase 3b) | with `PointsTo` (placement open) | A `&mut PointsToUnaligned` acts as a `&mut PointsTo`. | `as_aligned_mut`, aligned `&mut` conversions |
 | M5 `SeqPointsTo::from_seq_mut` (phase 3b) | with `SeqPointsTo` (placement open) | A `&mut Seq<P>` acts as a `&mut SeqPointsTo`. | `subrange_mut`, `join_mut`, `&mut` conversions |
 | M6 `tracked_collect_perm_muts` (phase 3b) | with `SeqPointsTo` (placement open) | `&mut` permissions act as one `&mut Seq`. | `join_mut`, `&mut` conversions |
+| `abs_decode_slice` (already in the code) | `type_representation.rs` | A slice decodes exactly when each element's slot does. Its definition is in the code and isn't repeated here. | slice `wf` |
+| `abs_decode_str` (rustlib) | rustlib (`type_representation`) | A `str` decodes exactly when its bytes are valid UTF-8 and each decodes as a `u8`. | `str` `wf`, `str` ↔ `[u8]` |
+| `TypedValue::<str>::as_bytes_mut` (rustlib) | rustlib | A `&mut` `str` typed value acts as a `&mut` byte-slice typed value; non-UTF-8 final bytes leave the `str` empty. | `as_bytes_mut`; the owned casts (`into_bytes`, `from_bytes`) |
 
 **`ptr_mut_ref`** (`raw_ptr_new.rs`; existing, strengthened, already in the code).
 It now requires and ensures `wf()`.
@@ -572,6 +575,48 @@ pub axiom fn tracked_collect_perm_muts<'a, P: PointsToProperties>(tracked perms:
             0 <= i < perms.len() ==> *final(perms[i]) == #[trigger] final(out)[i],
 ;
 ```
+
+**`str` decoding and value cast** (new, rustlib).
+In rustlib a `str`'s view `s@` is its bytes (`Seq<u8>`).
+
+```rust
+// type_representation (rustlib): the str counterpart of abs_decode_slice
+/// The bytes decode to a `str` exactly when its bytes are valid UTF-8
+/// and each abstract byte decodes to the corresponding `u8`.
+/// The byte condition is `EncodingU8Slice::decode`'s, with `s@` for the slice's view,
+/// so `abs_decode::<str>(b, s) <==> valid_utf8(s@) && abs_decode::<[u8]>(b, v)` for any `v` with `v@ == s@`
+/// (by the existing `[u8]` axiom).
+pub broadcast axiom fn abs_decode_str(bytes: Seq<AbstractByte>, s: &str)
+    ensures
+        #[trigger] abs_decode::<str>(bytes, s) <==> {
+            &&& valid_utf8(s@)
+            &&& s@.len() == bytes.len()
+            &&& forall|i| 0 <= i < s@.len() ==> u8::decode(seq![bytes[i]], #[trigger] s@[i])
+        },
+;
+```
+
+```rust
+// rustlib, with TypedValue<str>
+impl TypedValue<str> {
+    /// A mutably borrowed `str` typed value acts as a mutably borrowed byte-slice typed value.
+    /// If the final bytes aren't valid UTF-8, the final `str` value is empty (the bytes are dropped).
+    pub axiom fn as_bytes_mut<'a>(tracked &'a mut self) -> (tracked out: &'a mut TypedValue<[u8]>)
+        ensures
+            out.is_valid() == old(self).is_valid(),
+            old(self).is_valid() ==> out.value()@ == old(self).value_ref()@,
+            final(self).is_valid() <==> final(out).is_valid() && valid_utf8(final(out).value()@),
+            final(self).is_valid() ==> final(self).value_ref()@ == final(out).value()@,
+    ;
+}
+```
+
+Not trusted: the shared `&TypedValue<str>` → `&TypedValue<[u8]>` cast
+(from rustlib's existing `str::as_bytes_tracked` axiom and `valid_ref`)
+and both owned casts (from `as_bytes_mut` and `tracked_swap`).
+rustlib's existing `str` permission axioms (`as_str_ptr_verus`, `perm_init`, `perm_value_eq`, `perm_ptr`)
+are temporary stand-ins until `PointsTo<str>` is ported;
+they're replaced by the above and not part of this design.
 
 ## Trait definitions
 
