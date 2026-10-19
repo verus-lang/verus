@@ -1299,17 +1299,16 @@ In rustlib a `str`'s view `s@` is its bytes (`Seq<u8>`).
 ```rust
 // type_representation (rustlib): the str counterpart of abs_decode_slice
 /// The bytes decode to a `str` exactly when its bytes are valid UTF-8
-/// and each byte decodes to the corresponding `u8`
-/// (so `abs_decode::<str>(b, s) <==> valid_utf8(s@) && abs_decode::<[u8]>(b, v)` for any `v` with `v@ == s@`,
-/// by `abs_decode_slice` with `size_of::<u8>() == 1`).
+/// and each abstract byte decodes to the corresponding `u8`.
+/// The byte condition is `EncodingU8Slice::decode`'s, with `s@` for the slice's view,
+/// so `abs_decode::<str>(b, s) <==> valid_utf8(s@) && abs_decode::<[u8]>(b, v)` for any `v` with `v@ == s@`
+/// (by the existing `[u8]` axiom).
 pub broadcast axiom fn abs_decode_str(bytes: Seq<AbstractByte>, s: &str)
     ensures
         #[trigger] abs_decode::<str>(bytes, s) <==> {
             &&& valid_utf8(s@)
-            &&& bytes.len() == s@.len()
-            &&& forall|i: int|
-                #![trigger s@[i]]
-                0 <= i < s@.len() ==> abs_decode::<u8>(bytes.subrange(i, i + 1), &s@[i])
+            &&& s@.len() == bytes.len()
+            &&& forall|i| 0 <= i < s@.len() ==> u8::decode(seq![bytes[i]], #[trigger] s@[i])
         },
 ;
 
