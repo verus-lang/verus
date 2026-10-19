@@ -1175,12 +1175,6 @@ Every new trusted item: the summary, then the full definitions.
 | Item | Planned file | What it states | Uses |
 |---|---|---|---|
 | `abs_decode_slice` (already added) | `type_representation.rs` | A slice decodes exactly when each element's slot does. | slice `wf` |
-| `ptr_mut_ref` (`external_body`; existing, strengthened, already in the code) | `raw_ptr_new.rs` | Now also ensures `final(perm).wf()`: the final bytes decode to the final value (and requires `old(perm).wf()`). Spec in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes). | exec writes through `&mut T` |
-| `Seq::tracked_borrow_subrange` (`external_body`, already added) | `seq.rs` | Borrows a subrange of a borrowed tracked `Seq`. | `subrange_basic`, `split_ref` |
-| `Seq::tracked_split_borrow_mut` (`external_body`, already added) | `seq.rs` | Splits a mutable borrow of a tracked `Seq` in two. | `subrange_mut`, the `&mut` conversions |
-| `tracked_slice_index` | `slice.rs` | Borrows an element of a borrowed slice. | shared slice → sequence |
-| `tracked_slice_from_refs` | `slice.rs` | Borrowed elements act as one borrowed slice. | shared sequence → slice |
-| `tracked_ref` | `modes.rs` | A borrow is a borrowed `Tracked` of itself. | `TypedValue::valid_ref` |
 | `PointsToUnaligned::from_raw_parts_ref` | with `PointsToUnaligned` (placement open) | Borrowed bytes and typed value act as one borrowed permission. | borrowed constructors, slice ↔ sequence, `str` ↔ `[u8]` |
 | `tracked_collect_perm_refs` | with `SeqPointsTo` (placement open) | Borrowed permissions act as one borrowed `Seq`. | `from_refs`, `join_ref` |
 | M1 `TypedValue::<[T]>::from_elems_mut`, M2 `into_elems_mut` | with `TypedValue` (placement open) | Per-element `&mut` typed values ↔ one `&mut` slice typed value. | `&mut` slice ↔ sequence |
@@ -1194,7 +1188,11 @@ Every new trusted item: the summary, then the full definitions.
 | `allocate`, `deallocate` (`external_body`) | open | Allocation gives a `PointsToRaw` for the new range with a global-allocator provenance; deallocation consumes one covering the whole allocation. | heap allocation |
 
 Minor changes to existing axioms (`ptr_ref`, `ptr_ref2`, `ptr_ref2_ghost`, `mut_ref_to_shr_points_to`, `SharedReference::points_to`)
-are approved and in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#minor-changes-to-existing-trusted-specs).
+are approved and in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#minor-changes-to-existing-trusted-specs),
+and so are the strengthened `ptr_mut_ref`, the new `Seq` tracked operations
+(`tracked_borrow_subrange`, `tracked_split_borrow_mut`),
+and `tracked_slice_index`, `tracked_slice_from_refs` and `tracked_ref`
+([TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes)).
 
 **rustlib.**
 
@@ -1214,61 +1212,14 @@ they're replaced by the above and not part of this design.
 "New" means new relative to the `verify-rustlib` branch.
 `abs_decode_slice` is already in `type_representation.rs`, so its definition isn't repeated below.
 
-### `Seq` tracked operations (already added)
-
-```rust
-// seq.rs, impl<A> Seq<A>
-#[verifier(external_body)]
-pub proof fn tracked_borrow_subrange(tracked &self, i: int, j: int) -> (tracked ret: &Self)
-    requires
-        0 <= i <= j <= self.len(),
-    ensures
-        *ret == self.subrange(i, j),
-{
-    unimplemented!()
-}
-
-/// Split a mutable borrow of a sequence into two at index `mid`.
-#[verifier(external_body)]
-pub proof fn tracked_split_borrow_mut(tracked &mut self, mid: int) -> (tracked (s1, s2): (
-    &mut Self,
-    &mut Self,
-))
-    requires
-        0 <= mid <= self.len(),
-    ensures
-        *s1 == old(self).take(mid),
-        *s2 == old(self).skip(mid),
-        *final(self) == *final(s1) + *final(s2),
-{
-    unimplemented!()
-}
-```
-
 ### Borrowed-assembly axioms (phase 3b)
 
 **Shared.**
 
+`tracked_slice_index`, `tracked_slice_from_refs` and `tracked_ref` are approved and in
+[TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes).
+
 ```rust
-// slice.rs: no permissions involved
-pub axiom fn tracked_slice_index<'a, T>(tracked s: &'a [T], i: int) -> (tracked e: &'a T)
-    requires
-        0 <= i < s@.len(),
-    ensures
-        *e == s@[i],
-;
-
-pub axiom fn tracked_slice_from_refs<'a, T>(tracked refs: Seq<&'a T>) -> (tracked s: &'a [T])
-    ensures
-        s@ == refs.map_values(|r: &T| *r),
-;
-
-// modes.rs, next to tracked_swap
-pub axiom fn tracked_ref<'a, T: ?Sized>(tracked t: &'a T) -> (tracked out: &'a Tracked<T>)
-    ensures
-        &**out == t,
-;
-
 // The borrowed version of the struct literal; no wf.
 impl<T: ?Sized> PointsToUnaligned<T> {
     pub axiom fn from_raw_parts_ref<'a>(

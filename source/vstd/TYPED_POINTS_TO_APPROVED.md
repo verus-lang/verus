@@ -71,9 +71,8 @@ Existing axioms with minor contract changes on this branch are in
 ## Minor changes to existing trusted specs
 
 Already in the code on this branch.
-`ptr_mut_ref`'s change (it now also ensures `final(perm).wf()`) is listed with the new trusted specs
-in [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md#new-axioms);
-its spec is in [New axioms and axioms with bigger changes](#new-axioms-and-axioms-with-bigger-changes).
+`ptr_mut_ref`'s change (it now also ensures `final(perm).wf()`) is a bigger change;
+it's in [New axioms and axioms with bigger changes](#new-axioms-and-axioms-with-bigger-changes).
 
 | Item | File | Change | Uses |
 |---|---|---|---|
@@ -172,6 +171,15 @@ pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) ->
 Specs approved so far; the full list of new trusted items is in
 [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.md#new-axioms).
 
+| Item | File | What it states | Uses |
+|---|---|---|---|
+| `ptr_mut_ref` (`external_body`; existing, strengthened, already in the code) | `raw_ptr_new.rs` | Now also ensures `final(perm).wf()`: the final bytes decode to the final value (and requires `old(perm).wf()`). | exec writes through `&mut T` |
+| `Seq::tracked_borrow_subrange` (`external_body`; already in the code) | `seq.rs` | Borrows a subrange of a borrowed tracked `Seq`. | `subrange_basic`, `split_ref` |
+| `Seq::tracked_split_borrow_mut` (`external_body`; already in the code) | `seq.rs` | Splits a mutable borrow of a tracked `Seq` in two. | `subrange_mut`, the `&mut` conversions |
+| `tracked_slice_index` (phase 3b) | `slice.rs` | Borrows an element of a borrowed slice. | shared slice → sequence |
+| `tracked_slice_from_refs` (phase 3b) | `slice.rs` | Borrowed elements act as one borrowed slice. | shared sequence → slice |
+| `tracked_ref` (phase 3b) | `modes.rs` | A borrow is a borrowed `Tracked` of itself. | `TypedValue::valid_ref` |
+
 **`ptr_mut_ref`** (`raw_ptr_new.rs`; existing, strengthened, already in the code).
 It now requires and ensures `wf()`.
 It doesn't say the bytes stay the same,
@@ -199,6 +207,62 @@ pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>
 {
     unsafe { &mut *ptr }
 }
+```
+
+**`Seq` tracked operations** (`seq.rs`; new relative to `verify-rustlib`, already in the code).
+
+```rust
+// seq.rs, impl<A> Seq<A>
+#[verifier(external_body)]
+pub proof fn tracked_borrow_subrange(tracked &self, i: int, j: int) -> (tracked ret: &Self)
+    requires
+        0 <= i <= j <= self.len(),
+    ensures
+        *ret == self.subrange(i, j),
+{
+    unimplemented!()
+}
+
+/// Split a mutable borrow of a sequence into two at index `mid`.
+#[verifier(external_body)]
+pub proof fn tracked_split_borrow_mut(tracked &mut self, mid: int) -> (tracked (s1, s2): (
+    &mut Self,
+    &mut Self,
+))
+    requires
+        0 <= mid <= self.len(),
+    ensures
+        *s1 == old(self).take(mid),
+        *s2 == old(self).skip(mid),
+        *final(self) == *final(s1) + *final(s2),
+{
+    unimplemented!()
+}
+```
+
+**Borrowed slices and `Tracked`** (new, phase 3b).
+
+```rust
+// slice.rs: no permissions involved
+pub axiom fn tracked_slice_index<'a, T>(tracked s: &'a [T], i: int) -> (tracked e: &'a T)
+    requires
+        0 <= i < s@.len(),
+    ensures
+        *e == s@[i],
+;
+
+pub axiom fn tracked_slice_from_refs<'a, T>(tracked refs: Seq<&'a T>) -> (tracked s: &'a [T])
+    ensures
+        s@ == refs.map_values(|r: &T| *r),
+;
+```
+
+```rust
+// modes.rs, next to tracked_swap
+pub axiom fn tracked_ref<'a, T: ?Sized>(tracked t: &'a T) -> (tracked out: &'a Tracked<T>)
+    ensures
+        &**out == t,
+;
 ```
 
 ## Trait definitions
