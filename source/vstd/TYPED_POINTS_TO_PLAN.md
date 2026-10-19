@@ -13,52 +13,10 @@ the phases, spike results and risks in [TYPED_POINTS_TO_IMPL_PLAN.md](TYPED_POIN
 
 ## Overview
 
-The permission types table, the trait impls table, the API changes not visible in the specs,
-the existing (unchanged) trusted specs, the five trait definitions, the module layout, and the `TypedValue` impl are approved
+The permission types table, the trait impls table, the written once vs per type tables, the conversions table,
+the API changes not visible in the specs, the existing (unchanged) trusted specs, the five trait definitions,
+the module layout, and the `TypedValue` impl are approved
 and are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md).
-
-**Written once vs per type.**
-
-Single-value permissions:
-
-| Code | Written | What it contains |
-|---|---|---|
-| `PTPhys for PointsToUnaligned<_>` | per type | `ptr` (same shape each time), the `size` formula, and `wf_basic` (one call to the generic `wf_basic_unaligned`) |
-| `PTProperties for PointsToUnaligned<_>` | per type (same body each time) | `ptrs_len_same`, and the pointer-level lemmas, all delegating to the untyped bytes |
-| `PTTypedValue for PointsToUnaligned<_>` | per type | `typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment` (`true`); the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic` (empty proofs) |
-| `PTValueOps for PointsToUnaligned<_>` | per type | the remaining lemmas (`lemma_ptrs_len_same_valid`, `stays_wf`); the operations that touch the fields (`borrow_typed_value`, `take_typed_value`, `put_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_untyped`, `as_untyped_mut`) |
-| `PTSizedValue for PointsToUnaligned<T>` | once (Sized `T` only) | the two lemmas |
-| `PTPhys`, `PTProperties`, `View`, `PTTypedValue`, `PTValueOps` for `PointsTo<T: ?Sized>` | once (generic) | delegation to `self.pt_unaligned`, except `satisfies_alignment` (adds alignment) and `from_raw_parts` (wraps the result) |
-| `PTSizedValue for PointsTo<T>` | once (Sized `T` only) | the two lemmas (`lemma_satisfies_alignment_offset` has the real alignment proof) |
-| trait default bodies | once (in the traits) | `PTTypedValue::wf`; `PTValueOps::ptrs_len_same_valid`, `borrow`, `into_untyped`, `from_untyped`, `zero_sized`; `PTSizedValue::take`, `put`, `copy`, `copy_typed_value`, `from_untyped_with_value` |
-| `impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | once (generic) | `into_aligned`, `as_aligned`, `as_aligned_mut` |
-| `impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | once (generic) | `into_unaligned`, `as_unaligned`, `as_unaligned_mut` |
-| `impl<T> PointsToUnaligned<[T]>` | once (slices) | `borrow_index` and the borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`): the primary implementations |
-| `impl<T> PointsTo<[T]>` | once (slices) | the same functions, as compositions over the `PointsToUnaligned<[T]>` versions and the aligned/unaligned conversions |
-
-Sequences:
-
-| Impl | Applies to | What it contains |
-|---|---|---|
-| structural `impl<T, P: PTProperties<A = T>>` (`points_to_model.rs` for the specs and M5, `points_to_ops.rs` for the rest) | every sequence, untyped or typed | the only code touching the fields: accessors, `thin_ptr`, constructors, borrows, `split_basic`, `join_basic`, `subrange_basic` |
-| `PointsToUntyped` (`points_to_model.rs` for `View`, `bytes`, `wf` and the axioms; `points_to_ops.rs` for the proofs) | `SeqPointsTo<u8, PointsToByte>` | its `View`, `bytes`, `wf`, `split` / `join` / `split_ref` wrappers, and its axioms |
-| typed `impl<T> SeqPointsTo<T, PointsTo<T>>` (`points_to_collections.rs`) | sequences of `PointsTo<T>` (the only typed sequences) | `View`, `wf`, bytes and values, the typed `split` / `join` / `subrange` wrappers, `subrange_mut`, untyped conversions, value operations, `is_aligned`, `is_disjoint_seqpt`, and the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`) |
-
-
-**Conversions.**
-
-| From ↔ to | Owned | `&` | `&mut` | Where | When |
-|---|---|---|---|---|---|
-| `PointsTo<T>` ↔ `PointsToUnaligned<T>` | yes | yes | yes (to unaligned: field borrow; to aligned: M4) | vstd, generic aligned/unaligned impl | phase 2; `as_aligned_mut` in phase 3b |
-| `PointsTo<[T]>` ↔ `PointsToUnaligned<[T]>` | yes | yes | yes (same) | vstd, same generic impl | phase 2b; `as_aligned_mut` in phase 3b |
-| `PointsTo<str>` ↔ `PointsToUnaligned<str>` | yes | yes | yes (same) | vstd, same generic impl, no `str`-specific code | once rustlib adds `PointsToUnaligned<str>` |
-| `SeqPointsTo<T, PointsTo<T>>` → `PointsTo<[T]>` | no | yes | yes | vstd | phase 4 |
-| `PointsTo<[T]>` → `PointsTo<T>` at an index (`borrow_index`) | no | yes | no | vstd, composed from the unaligned version and the aligned/unaligned conversions | phase 4 |
-| `PointsToUnaligned<[T]>` → `PointsToUnaligned<T>` at an index (`borrow_index`) | no | yes | no | vstd | phase 4 |
-| `PointsToUnaligned<str>` ↔ `PointsToUnaligned<[u8]>` | no | yes | no | rustlib | after phase 3b ([specs](#str-rustlib)) |
-| `PointsTo<str>` ↔ `PointsTo<[u8]>` | no | yes | no | rustlib, via the unaligned versions and the aligned/unaligned conversions | after phase 3b |
-| `PointsToRaw` ↔ `PointsToUntyped` (a contiguous range) | yes | no | no | vstd | phase 2c |
-**Module layout.** Approved; see [Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout).
 
 
 ## Specifications
