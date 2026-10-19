@@ -89,9 +89,9 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_attr_syntax_items_ownership code! {
-        struct S;
-
         verus! {
+            struct S;
+
             #[verifier::external_body]
             proof fn produce() -> tracked S {
                 panic!()
@@ -103,9 +103,10 @@ test_verify_one_file! {
 
         #[verus_spec(requires 1 + 1 == 2)]
         fn test() {
+            #[verifier::exec]
             const C: u64 = {
                 proof! {
-                    let s = produce();
+                    let tracked s = produce();
                     consume(s);
                     consume(s);
                 }
@@ -175,10 +176,13 @@ test_verify_one_file! {
         }
 
         fn test() {
+            #[verifier::exec]
             const C: u64 = {
-                let s = produce();
-                consume(s);
-                consume(s);
+                proof {
+                    let s = produce();
+                    consume(s);
+                    consume(s);
+                }
                 4 + 5
             };
 
