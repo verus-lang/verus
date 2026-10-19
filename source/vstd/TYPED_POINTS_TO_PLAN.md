@@ -23,8 +23,8 @@ Single-value permissions:
 
 | Code | Written | What it contains |
 |---|---|---|
-| `PointsToPhys for PointsToUnaligned<_>` | per type | `ptr` (same shape each time) and the `size` formula |
-| `PointsToProperties for PointsToUnaligned<T: ?Sized>` | once (generic) | `wf_basic`, `ptrs_len_same`, and the pointer-level lemmas, all delegating to the untyped bytes |
+| `PointsToPhys for PointsToUnaligned<_>` | per type | `ptr` (same shape each time), the `size` formula, and `wf_basic` (one call to the generic `wf_basic_unaligned`) |
+| `PointsToProperties for PointsToUnaligned<T: ?Sized>` | once (generic) | `ptrs_len_same`, and the pointer-level lemmas, all delegating to the untyped bytes |
 | `PointsToSingleValue for PointsToUnaligned<_>` | per type | `typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment` (`true`); the lemmas (empty proofs); and the operations that touch the fields (`borrow_typed_value`, `take_typed_value`, `put_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_untyped`, `as_untyped_mut`) |
 | `PointsToSingleValueSized for PointsToUnaligned<T>` | once (Sized `T` only) | the two lemmas |
 | `PointsToPhys`, `PointsToProperties`, `View`, `PointsToSingleValue` for `PointsTo<T: ?Sized>` | once (generic) | delegation to `self.pt_unaligned`, except `satisfies_alignment` (adds alignment) and `from_raw_parts` (wraps the result) |
@@ -224,7 +224,17 @@ and `PointsToUntyped`'s lemma (renamed `lemma_ptrs_len_same_untyped`).
 ### `PointsToUnaligned` (phases 2, 2b; `str` in rustlib)
 
 ```rust
+// The shared `wf_basic` body, written once.
+impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PointsToPhys<A = T> {
+    pub open spec fn wf_basic_unaligned(self) -> bool {
+        &&& self.pt_untyped().wf()
+        &&& self.pt_untyped().len() == Self::size(self.ptr()@.metadata)
+    }
+}
+
 // One per type; only `size` differs.
+// `wf_basic` is in `PointsToPhys` so that `is_disjoint` can require it of `other`
+// (see IS_DISJOINT_SOUNDNESS.md).
 impl<T> PointsToPhys for PointsToUnaligned<T> {
     type A = T;
     closed spec fn ptr(self) -> *mut T {
@@ -235,20 +245,19 @@ impl<T> PointsToPhys for PointsToUnaligned<T> {
         })
     }
     open spec fn size(metadata: ()) -> nat { size_of::<T>() }
+    open spec fn wf_basic(self) -> bool { self.wf_basic_unaligned() }
 }
 impl<T> PointsToPhys for PointsToUnaligned<[T]> {
     type A = [T];
     closed spec fn ptr(self) -> *mut [T] { /* same as above */ }
     open spec fn size(metadata: usize) -> nat { metadata as nat * size_of::<T>() }
+    open spec fn wf_basic(self) -> bool { self.wf_basic_unaligned() }
 }
-// rustlib: impl PointsToPhys for PointsToUnaligned<str> { type A = str; ptr: same; size(len) = len }
+// str: impl PointsToPhys for PointsToUnaligned<str> { type A = str; ptr: same; size(len) = len; wf_basic: same }
+// (Needs no `str` view, so it can live in vstd if `PointsToPhys` is sealed.)
 
 // One generic impl.
 impl<T: ?Sized> PointsToProperties for PointsToUnaligned<T> where PointsToUnaligned<T>: PointsToPhys<A = T> {
-    open spec fn wf_basic(self) -> bool {
-        &&& self.pt_untyped().wf()
-        &&& self.pt_untyped().len() == Self::size(self.ptr()@.metadata)
-    }
     open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
         &&& new.ptr() == old.ptr()
         &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
@@ -271,9 +280,9 @@ impl<T: ?Sized> PointsToPhys for PointsTo<T> where PointsToUnaligned<T>: PointsT
     type A = T;
     open spec fn ptr(self) -> *mut T { self.pt_unaligned().ptr() }
     open spec fn size(metadata: Metadata<T>) -> nat { <PointsToUnaligned<T> as PointsToPhys>::size(metadata) }
+    open spec fn wf_basic(self) -> bool { self.pt_unaligned().wf_basic() }
 }
 impl<T: ?Sized> PointsToProperties for PointsTo<T> where PointsToUnaligned<T>: PointsToSingleValue<A = T> {
-    open spec fn wf_basic(self) -> bool { self.pt_unaligned().wf_basic() }
     open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
         &&& new.ptr() == old.ptr()
         &&& <PointsToUnaligned<T> as PointsToProperties>::ptrs_len_same(old.pt_unaligned(), new.pt_unaligned())
@@ -306,9 +315,6 @@ impl<T, P: PointsToProperties<A = T>> PointsToPhys for SeqPointsTo<T, P> {
     type A = [T];
     closed spec fn ptr(self) -> *mut [T] { self.ptr@ }
     open spec fn size(metadata: usize) -> nat { metadata as nat * P::size(()) }
-}
-
-impl<T, P: PointsToProperties<A = T>> PointsToProperties for SeqPointsTo<T, P> {
     open spec fn wf_basic(self) -> bool {
         &&& self.ptr()@.metadata == self.len()   // new (was only in PointsToUntyped::wf)
         &&& forall|i| 0 <= i < self.len() ==> {
@@ -319,6 +325,9 @@ impl<T, P: PointsToProperties<A = T>> PointsToProperties for SeqPointsTo<T, P> {
         &&& self.ptr()@.addr != 0
         &&& /* provenance bounds: unchanged */
     }
+}
+
+impl<T, P: PointsToProperties<A = T>> PointsToProperties for SeqPointsTo<T, P> {
     // ptrs_len_same (renamed from ptrs_len_same_valid; elements' ptrs_len_same), proof fns: unchanged.
 }
 

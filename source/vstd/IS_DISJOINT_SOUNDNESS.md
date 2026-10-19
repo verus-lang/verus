@@ -1,7 +1,13 @@
 # Soundness bug: `is_disjoint` doesn't require `other` to be well-formed
 
-**Status:** open; found 2026-10-19 on `verify-rustlib-refactor`, not yet fixed.
-The proof of `false` below verifies against vstd at this point.
+**Status:** fixed in the current code on `verify-rustlib-refactor` (2026-10-19),
+by the suggested approach below:
+`wf_basic` moved into `PointsToPhys`,
+and `is_disjoint` and its specialized versions now require `other` to be well-formed.
+The reproduction now fails (`precondition not satisfied` on `other.wf_basic()`).
+The matching change to the approved trait design is in `TYPED_POINTS_TO_APPROVED.md` (approved 2026-10-19).
+Still open: the `is_disjoint_byte` rename
+and the unsealed-trait hole described under "Remaining hole".
 
 ## Summary
 
@@ -134,6 +140,45 @@ for the same reason:
 `is_disjoint_singleton` doesn't strictly need it (a byte permission's `wf_basic` is always `true`),
 but update it the same way for consistency,
 and rename it to `is_disjoint_byte` to match the planned `PointsToSingleton` → `PointsToByte` rename.
+
+## Remaining hole: `PointsToPhys` can be implemented outside vstd
+
+The base axiom trusts every `PointsToPhys` impl's `wf_basic` to tie `size()` to memory it really owns.
+That holds for vstd's impls,
+but the trait is public and unsealed,
+so user code can write an impl with no memory behind it:
+
+```rust
+struct Fake { p: Ghost<*mut u8> }
+impl PointsToPhys for Fake {
+    type A = u8;
+    spec fn ptr(self) -> *mut u8 { self.p@ }
+    spec fn size(self) -> nat { 1 }
+    spec fn wf_basic(self) -> bool { true }
+}
+// byte.is_disjoint(&Fake { p: Ghost(byte.ptr()) }) proves false.
+```
+
+This was already possible before the fix, since `other` had no requirements at all.
+A fix is to seal `PointsToPhys`
+(e.g. a `pub(crate)` supertrait, or Verus's `#[verifier::sealed]` if it supports trait sealing here),
+so only vstd can implement it.
+Only `PointsToPhys` needs sealing:
+its items are all specs, with no proof obligations,
+while impls of the subtraits have to prove their lemmas.
+
+Effect on rustlib's `str` permissions:
+in the current code, `PointsToUnaligned<str>`'s `wf_basic` mentions `self.value()@.len()`,
+which needs the `str` view (bytes) that only rustlib defines,
+so that impl couldn't move into vstd as written.
+In the planned design it can:
+`PointsToPhys` for `str` is just `ptr`, `size(len) = len`,
+and the generic pointer-level `wf_basic` (`pt_untyped().wf()` and `pt_untyped().len() == size`),
+none of which mention the `str` view.
+The view-dependent parts (`abs_decode::<str>`, `metadata_matches`)
+are in `PointsToSingleValue`,
+which rustlib can still implement, since only `PointsToPhys` is sealed.
+So sealing should land with or after the overhaul's `PointsToUnaligned` phase (phase 2), not before.
 
 ## Coordination with the points-to overhaul
 

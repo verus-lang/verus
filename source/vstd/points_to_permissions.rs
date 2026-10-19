@@ -35,12 +35,7 @@ impl<T, PointsToPerm> PointsToPhys for SeqPointsTo<T, PointsToPerm> where
     open spec fn size(self) -> nat {
         self.seq_pt().len() * PointsToPerm::const_size()
     }
-}
 
-impl<T, PointsToPerm> PointsToProperties for SeqPointsTo<T, PointsToPerm> where
-    T: ?Sized,
-    PointsToPerm: PointsToProperties + FixedSize,
- {
     open spec fn wf_basic(self) -> bool {
         // Defining the provenance and address for the individual PointsToPerms
         &&& forall|i|
@@ -62,7 +57,12 @@ impl<T, PointsToPerm> PointsToProperties for SeqPointsTo<T, PointsToPerm> where
                 + self.ptr()@.provenance.unwrap().alloc_len()
         }
     }
+}
 
+impl<T, PointsToPerm> PointsToProperties for SeqPointsTo<T, PointsToPerm> where
+    T: ?Sized,
+    PointsToPerm: PointsToProperties + FixedSize,
+ {
     /// Non-nullness is guaranteed by the invariant.
     proof fn is_nonnull(tracked &self) {
     }
@@ -263,6 +263,7 @@ impl PointsToUntyped {
             self.len() != 0,
             other.len() != 0,
             self.wf(),
+            other.wf(),
         ensures
             *old(self) == *final(self),
             final(self).ptr() as int + final(self).len() <= other.ptr() as int || other.ptr() as int
@@ -738,6 +739,17 @@ impl<T> PointsToPhys for PointsToUnaligned<T> {
     open spec fn size(self) -> nat {
         size_of::<T>()
     }
+
+    /// A `PointsToUnaligned` is well-formed if its memory region is `size_of::<T>()`,
+    /// validity of the typed memory implies that the bytes decode to its value,
+    /// the underlying `PointsToUntyped` is well-formed,
+    /// and the stored metadata is the pointer's metadata.
+    open spec fn wf_basic(self) -> bool {
+        &&& self.bytes().len() == size_of::<T>()
+        &&& self.is_valid() ==> #[trigger] abs_decode::<T>(self.bytes(), &self.value())
+        &&& self.pt_untyped().wf()
+        &&& self.metadata() == self.ptr()@.metadata
+    }
 }
 
 impl<T> FixedSize for PointsToUnaligned<T> {
@@ -751,17 +763,6 @@ impl<T> FixedSize for PointsToUnaligned<T> {
 }
 
 impl<T> PointsToProperties for PointsToUnaligned<T> {
-    /// A `PointsToUnaligned` is well-formed if its memory region is `size_of::<T>()`,
-    /// validity of the typed memory implies that the bytes decode to its value,
-    /// the underlying `PointsToUntyped` is well-formed,
-    /// and the stored metadata is the pointer's metadata.
-    open spec fn wf_basic(self) -> bool {
-        &&& self.bytes().len() == size_of::<T>()
-        &&& self.is_valid() ==> #[trigger] abs_decode::<T>(self.bytes(), &self.value())
-        &&& self.pt_untyped().wf()
-        &&& self.metadata() == self.ptr()@.metadata
-    }
-
     /// Non-nullness follows from the underlying `PointsToUntyped`'s invariant,
     /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
     proof fn is_nonnull(tracked &self) {
@@ -893,6 +894,7 @@ impl<T> PointsToUnaligned<T> {
             size_of::<T>() != 0,
             size_of::<S>() != 0,
             self.wf(),
+            other.wf(),
         ensures
             *old(self) == *final(self),
             final(self).ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
@@ -932,9 +934,7 @@ impl<T> PointsToPhys for PointsToUnaligned<[T]> {
     open spec fn size(self) -> nat {
         self.metadata() as nat * size_of::<T>()
     }
-}
 
-impl<T> PointsToProperties for PointsToUnaligned<[T]> {
     /// A `PointsToUnaligned<[T]>` is well-formed if its memory region is `size()` bytes,
     /// validity of the typed memory implies that the slice has `metadata()` elements
     /// and that the bytes decode to it,
@@ -949,7 +949,9 @@ impl<T> PointsToProperties for PointsToUnaligned<[T]> {
         &&& self.pt_untyped().wf()
         &&& self.metadata() == self.ptr()@.metadata
     }
+}
 
+impl<T> PointsToProperties for PointsToUnaligned<[T]> {
     /// Non-nullness follows from the underlying `PointsToUntyped`'s invariant,
     /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
     proof fn is_nonnull(tracked &self) {
@@ -1147,6 +1149,13 @@ impl<T> PointsToPhys for PointsTo<T> {
     open spec fn size(self) -> nat {
         size_of::<T>()
     }
+
+    /// A `PointsTo` is well-formed if its pointer is aligned to `T`,
+    /// and the underlying `PointsToUnaligned` is well-formed.
+    open spec fn wf_basic(self) -> bool {
+        &&& self.ptr()@.addr as nat % align_of::<T>() == 0
+        &&& self.pt_unaligned().wf()
+    }
 }
 
 impl<T> FixedSize for PointsTo<T> {
@@ -1160,13 +1169,6 @@ impl<T> FixedSize for PointsTo<T> {
 }
 
 impl<T> PointsToProperties for PointsTo<T> {
-    /// A `PointsTo` is well-formed if its pointer is aligned to `T`,
-    /// and the underlying `PointsToUnaligned` is well-formed.
-    open spec fn wf_basic(self) -> bool {
-        &&& self.ptr()@.addr as nat % align_of::<T>() == 0
-        &&& self.pt_unaligned().wf()
-    }
-
     /// Non-nullness follows from the underlying `PointsToUnaligned`'s invariant,
     /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
     proof fn is_nonnull(tracked &self) {
@@ -1226,16 +1228,16 @@ impl<T> PointsToPhys for PointsTo<[T]> {
     open spec fn size(self) -> nat {
         self.pt_unaligned().size()
     }
-}
 
-impl<T> PointsToProperties for PointsTo<[T]> {
     /// A `PointsTo<[T]>` is well-formed if its pointer is aligned to `T`,
     /// and the underlying `PointsToUnaligned` is well-formed.
     open spec fn wf_basic(self) -> bool {
         &&& self.ptr()@.addr as nat % align_of::<T>() == 0
         &&& self.pt_unaligned().wf()
     }
+}
 
+impl<T> PointsToProperties for PointsTo<[T]> {
     /// Non-nullness follows from the underlying `PointsToUnaligned`'s invariant,
     /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
     proof fn is_nonnull(tracked &self) {
@@ -1363,6 +1365,7 @@ impl<T> PointsTo<T> {
             size_of::<T>() != 0,
             size_of::<S>() != 0,
             self.wf(),
+            other.wf(),
         ensures
             *old(self) == *final(self),
             final(self).ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
@@ -3464,6 +3467,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             size_of::<T>() != 0,
             size_of::<S>() != 0,
             self.wf(),
+            other.wf(),
         ensures
             *old(self) == *final(self),
             final(self).ptr() as int + final(self).len() * size_of::<T>() <= other.ptr() as int

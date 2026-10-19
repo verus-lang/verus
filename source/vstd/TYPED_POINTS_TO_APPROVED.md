@@ -83,14 +83,15 @@ pub trait PointsToPhys: Sized {
     /// whose pointer has the given metadata.
     /// A permission `p` tracks `Self::size(p.ptr()@.metadata)` bytes.
     spec fn size(metadata: Metadata<Self::A>) -> nat;
+
+    /// Define basic well-formedness conditions on the permission's pointer,
+    /// including that the permission holds `Self::size(self.ptr()@.metadata)` bytes.
+    /// `PointsToSingleValue::wf` builds on this to add conditions on the bytes and typed value.
+    spec fn wf_basic(self) -> bool;
 }
 
 /// Defines properties which should hold of any `PointsTo` permission.
 pub trait PointsToProperties: PointsToPhys {
-    /// Define basic well-formedness conditions on the permission's pointer.
-    /// `PointsToSingleValue::wf` builds on this to add conditions on the bytes and typed value.
-    spec fn wf_basic(self) -> bool;
-
     /// Guarantee that the pointer is non-null.
     ///
     /// See <https://doc.rust-lang.org/std/ptr/#safety>
@@ -133,6 +134,8 @@ pub trait PointsToProperties: PointsToPhys {
     /// However, note that if one type is a ZST and the other is a non-ZST,
     /// the disjointness definition as stated here does not hold,
     /// since the ZST pointer could be in the middle of the non-ZST's range.
+    ///
+    /// Both permissions must be `wf_basic`, since that is what ties `size` to the memory actually held.
     proof fn is_disjoint<OtherPointsToPerm: PointsToPhys>(
         tracked &mut self,
         tracked other: &OtherPointsToPerm,
@@ -141,6 +144,7 @@ pub trait PointsToProperties: PointsToPhys {
             Self::size(self.ptr()@.metadata) != 0,
             OtherPointsToPerm::size(other.ptr()@.metadata) != 0,
             self.wf_basic(),
+            other.wf_basic(),
         ensures
             *old(self) == *final(self),
             final(self).ptr()@.addr + Self::size(final(self).ptr()@.metadata) <= other.ptr()@.addr

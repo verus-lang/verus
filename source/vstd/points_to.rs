@@ -17,6 +17,19 @@ pub trait PointsToPhys: Sized {
 
     /// The size of the memory region that this permission tracks.
     spec fn size(self) -> nat;
+
+    /// Define basic well-formed-ness conditions.
+    /// This function is designed to apply to a generic trait implementation
+    /// of this trait for a `PointsTo` permission,
+    /// and specific implementatations of the `PointsTo` permissions can define additional well-formedness properites.
+    /// Among other things, it ties `size()` to the memory the permission actually holds.
+    ///
+    /// It lives in `PointsToPhys` (rather than `PointsToProperties`)
+    /// so that `PointsToProperties::is_disjoint` can require it of a generic `other` permission
+    /// without `PointsToProperties` referring to itself.
+    ///
+    /// See `SeqPointsTo` and `PointsToUntyped` for an example.
+    spec fn wf_basic(self) -> bool;
 }
 
 /// Restricts `PointsToPhys` to permissions whose pointed-to size is determined by the type alone.
@@ -37,14 +50,6 @@ pub trait FixedSize: PointsToPhys {
 
 /// Defines properties which should hold of any `PointsTo` permission.
 pub trait PointsToProperties: PointsToPhys {
-    /// Define basic well-formed-ness conditions.
-    /// This function is designed to apply to a generic trait implementation
-    /// of this trait for a `PointsTo` permission,
-    /// and specific implementatations of the `PointsTo` permissions can define additional well-formedness properites.
-    ///
-    /// See `SeqPointsTo` and `PointsToUntyped` for an example.
-    spec fn wf_basic(self) -> bool;
-
     /// Guarantee that the pointer is non-null.
     ///
     /// See <https://doc.rust-lang.org/std/ptr/#safety>
@@ -87,6 +92,8 @@ pub trait PointsToProperties: PointsToPhys {
     /// However, note that if one type is a ZST and the other is a non-ZST,
     /// the disjointness definition as stated here here does not hold,
     /// since the ZST pointer could be in the middle of the non-ZST's range.
+    ///
+    /// Both permissions must be `wf_basic`, since that is what ties `size()` to the memory actually held.
     proof fn is_disjoint<OtherPointsToPerm: PointsToPhys>(
         tracked &mut self,
         tracked other: &OtherPointsToPerm,
@@ -95,6 +102,7 @@ pub trait PointsToProperties: PointsToPhys {
             self.size() != 0,
             other.size() != 0,
             self.wf_basic(),
+            other.wf_basic(),
         ensures
             *old(self) == *final(self),
             final(self).ptr() as int + final(self).size() <= other.ptr() as int
@@ -133,14 +141,14 @@ impl PointsToPhys for PointsToSingleton {
     open spec fn size(self) -> nat {
         size_of::<u8>()
     }
-}
 
-impl PointsToProperties for PointsToSingleton {
     /// A `PointsToSingleton` is always well-formed.
     open spec fn wf_basic(self) -> bool {
         true
     }
+}
 
+impl PointsToProperties for PointsToSingleton {
     /// Guarantee that the `PointsToSingleton` points to a non-null address.
     ///
     /// See <https://doc.rust-lang.org/std/ptr/#safety>
@@ -193,6 +201,9 @@ impl PointsToSingleton {
     /// so you cannot pass the same PointsTo as both arguments.)
     /// Since `u8` is not a ZST, this implies the pointers have distinct addresses.
     pub proof fn is_disjoint_singleton(tracked &mut self, tracked other: &Self)
+        requires
+            self.wf_basic(),
+            other.wf_basic(),
         ensures
             *old(self) == *final(self),
             final(self).ptr() as int + size_of::<u8>() <= other.ptr() as int || other.ptr() as int
