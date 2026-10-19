@@ -234,7 +234,7 @@ impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PointsToPhys<A 
 
 // One per type; only `size` differs.
 // `wf_basic` is in `PointsToPhys` so that `is_disjoint` can require it of `other`
-// (see IS_DISJOINT_SOUNDNESS.md).
+// (a generic `other` bounded by `PointsToProperties` would be a trait cycle).
 impl<T> PointsToPhys for PointsToUnaligned<T> {
     type A = T;
     closed spec fn ptr(self) -> *mut T {
