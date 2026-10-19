@@ -69,6 +69,9 @@ pub(crate) fn mirror_expr_pre<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx Expr<'tcx>,
 ) -> Option<rustc_middle::thir::ExprKind<'tcx>> {
+    if cx.verus_ctxt.full_erasure.is_some() {
+        return crate::verus::full_erasure_mirror_expr_pre(cx, expr);
+    }
     match expr.kind {
         ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
             let (call_erasure, _) = handle_call(&cx.verus_ctxt, expr);
