@@ -817,6 +817,20 @@ pub proof fn fragment_included_op_right<M: Machine>(a: M::Fragment, b: M::Fragme
     assert(M::Fragment::op(b, a) == M::Fragment::op(a, b));
 }
 
+/// A remainder of `source` in `upper` (if `source` is included in `upper`).
+pub open spec fn fragment_frame<M: Machine>(source: M::Fragment, upper: M::Fragment) -> M::Fragment {
+    choose|frame: M::Fragment| M::Fragment::op(source, frame) == upper
+}
+
+/// `fragment_frame` is a remainder of an included fragment.
+pub proof fn fragment_included_frame<M: Machine>(source: M::Fragment, upper: M::Fragment)
+    requires
+        fragment_included::<M>(source, upper),
+    ensures
+        M::Fragment::op(source, fragment_frame::<M>(source, upper)) == upper,
+{
+}
+
 pub proof fn fragment_included_completion<M: Machine>(
     source: M::Fragment,
     upper: M::Fragment,

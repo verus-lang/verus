@@ -3377,6 +3377,17 @@ fn shared_joins(take_shared: &[(Ident, TokenStream, Option<TokenStream>)], share
 /// solver at these sizes); beyond it they are chained (linear text).
 const FEW_PIECES: usize = 8;
 
+/// `lemma` with `__tsm_c` bound to a remainder of `frag` in `upper` (which
+/// includes it).
+fn frame_block(frag: &TokenStream, upper: &TokenStream, lemma: &TokenStream) -> TokenStream {
+    quote! {{
+        let __tsm_fr = #frag;
+        ::vstd::resource::tsm::fragment_included_frame::<Protocol>(__tsm_fr, #upper);
+        let __tsm_c = ::vstd::resource::tsm::fragment_frame::<Protocol>(__tsm_fr, #upper);
+        #lemma
+    }}
+}
+
 /// Proofs that every input fragment is included in `op(owned, shared)`.
 fn inclusions(owned: &[TokenStream], shared: &[TokenStream], h: &TokenStream, owned_ident: &Ident) -> TokenStream {
     let t = quote! {::vstd::resource::tsm};
@@ -4970,11 +4981,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         .map(|(frag, lemma)| {
             let frag = in_body(frag.clone());
             let lemma = in_body(lemma.clone());
-            quote! {{
-                let __tsm_fr = #frag; let __tsm_c = choose|__tsm_c: Fragment| Fragment::op(__tsm_fr, __tsm_c) == Fragment::op(#owned_ident, #h);
-                assert(Fragment::op(__tsm_fr, __tsm_c) == Fragment::op(#owned_ident, #h));
-                #lemma
-            }}
+            frame_block(&frag, &quote! {Fragment::op(#owned_ident, #h)}, &lemma)
         })
         .collect();
     let safety_after = if has_assert(&tr.body) {
@@ -5289,11 +5296,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     let frames_post: Vec<_> = incl_frames
         .iter()
         .map(|(frag, lemma)| {
-            quote! {{
-                let __tsm_fr = #frag; let __tsm_c = choose|__tsm_c: Fragment| Fragment::op(__tsm_fr, __tsm_c) == Fragment::op(#owned_ident, #h_param);
-                assert(Fragment::op(__tsm_fr, __tsm_c) == Fragment::op(#owned_ident, #h_param));
-                #lemma
-            }}
+            frame_block(frag, &quote! {Fragment::op(#owned_ident, #h_param)}, lemma)
         })
         .collect();
     // Borrowed fragments are included in `h` itself, which separates them
@@ -5304,12 +5307,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         .collect();
     let shared_steps: Vec<_> = shared_frags
         .iter()
-        .map(|sf| {
-            quote! {{
-                let __tsm_d = choose|__tsm_d: Fragment| Fragment::op(#sf, __tsm_d) == #h_param;
-                assert(Fragment::op(#sf, __tsm_d) == #h_param);
-            }}
-        })
+        .map(|sf| quote! {::vstd::resource::tsm::fragment_included_frame::<Protocol>(#sf, #h_param);})
         .collect();
     let frames_ready: Vec<_> = shared_steps.iter().cloned().chain(frames_post.iter().cloned()).collect();
     let ready_fn = format_ident!("__tsm_ready_{}", tr.name);
@@ -5644,11 +5642,7 @@ fn read_only_method(
     let frames_at: Vec<_> = incl_frames
         .iter()
         .map(|(frag, lemma)| {
-            quote! {{
-                let __tsm_fr = #frag; let __tsm_c = choose|__tsm_c: Fragment| Fragment::op(__tsm_fr, __tsm_c) == #shared_ident.fragment();
-                assert(Fragment::op(__tsm_fr, __tsm_c) == #shared_ident.fragment());
-                #lemma
-            }}
+            frame_block(frag, &quote! {#shared_ident.fragment()}, lemma)
         })
         .collect();
     let use_invs = quote! {};
@@ -5793,11 +5787,7 @@ fn read_only_optional(
         let frames: Vec<_> = const_frames
             .iter()
             .map(|(frag, lemma)| {
-                quote! {{
-                    let __tsm_fr = #frag; let __tsm_c = choose|__tsm_c: Fragment| Fragment::op(__tsm_fr, __tsm_c) == #hf;
-                    assert(Fragment::op(__tsm_fr, __tsm_c) == #hf);
-                    #lemma
-                }}
+                frame_block(frag, &quote! {#hf}, lemma)
             })
             .collect();
         quote! {
@@ -5834,11 +5824,7 @@ fn read_only_optional(
     let frames_at: Vec<_> = incl_frames
         .iter()
         .map(|(frag, lemma)| {
-            quote! {{
-                let __tsm_fr = #frag; let __tsm_c = choose|__tsm_c: Fragment| Fragment::op(__tsm_fr, __tsm_c) == #hf;
-                assert(Fragment::op(__tsm_fr, __tsm_c) == #hf);
-                #lemma
-            }}
+            frame_block(frag, &quote! {#hf}, lemma)
         })
         .collect();
     Ok(quote! {
@@ -5911,11 +5897,7 @@ fn guard_method(
     let frames: Vec<_> = incl_frames
         .iter()
         .map(|(frag, lemma)| {
-            quote! {{
-                let __tsm_fr = #frag; let __tsm_c = choose|__tsm_c: Fragment| Fragment::op(__tsm_fr, __tsm_c) == __tsm_f;
-                assert(Fragment::op(__tsm_fr, __tsm_c) == __tsm_f);
-                #lemma
-            }}
+            frame_block(frag, &quote! {__tsm_f}, lemma)
         })
         .collect();
     let mut guards = vec![];
