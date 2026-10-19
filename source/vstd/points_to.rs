@@ -24,10 +24,6 @@ pub trait PointsToPhys: Sized {
     /// and specific implementatations of the `PointsTo` permissions can define additional well-formedness properites.
     /// Among other things, it ties `size()` to the memory the permission actually holds.
     ///
-    /// It lives in `PointsToPhys` (rather than `PointsToProperties`)
-    /// so that `PointsToProperties::is_disjoint` can require it of a generic `other` permission
-    /// without `PointsToProperties` referring to itself.
-    ///
     /// See `SeqPointsTo` and `PointsToUntyped` for an example.
     spec fn wf_basic(self) -> bool;
 }

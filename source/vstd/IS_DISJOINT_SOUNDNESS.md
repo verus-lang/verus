@@ -167,18 +167,13 @@ Only `PointsToPhys` needs sealing:
 its items are all specs, with no proof obligations,
 while impls of the subtraits have to prove their lemmas.
 
-Effect on rustlib's `str` permissions:
-in the current code, `PointsToUnaligned<str>`'s `wf_basic` mentions `self.value()@.len()`,
-which needs the `str` view (bytes) that only rustlib defines,
-so that impl couldn't move into vstd as written.
-In the planned design it can:
-`PointsToPhys` for `str` is just `ptr`, `size(len) = len`,
-and the generic pointer-level `wf_basic` (`pt_untyped().wf()` and `pt_untyped().len() == size`),
-none of which mention the `str` view.
-The view-dependent parts (`abs_decode::<str>`, `metadata_matches`)
-are in `PointsToSingleValue`,
-which rustlib can still implement, since only `PointsToPhys` is sealed.
-So sealing should land with or after the overhaul's `PointsToUnaligned` phase (phase 2), not before.
+Effect on rustlib's `str` permissions: none, with a crate-private seal.
+In rustlib, vstd is compiled as a module of `core`,
+so `core`'s `str` impls are in the same crate as the seal and can still implement `PointsToPhys`,
+while crates outside `core` (or outside a standalone vstd) can't.
+(If the impl ever had to move into vstd, the planned design would also allow it:
+`PointsToPhys` for `str` is just `ptr`, `size(len) = len` and the generic pointer-level `wf_basic`,
+none of which mention the `str` view.)
 
 ## Coordination with the points-to overhaul
 

@@ -2837,7 +2837,9 @@ Per-impl pieces: `Metadata<str>` is the byte length (`usize`),
 `satisfies_alignment` is `true`,
 and `metadata_matches` is `true` (UTF-8 validity is part of `abs_decode::<str>`).
 `PointsToProperties` comes from the generic `PointsToUnaligned` impl,
-so rustlib writes only `PointsToPhys` (with the `ptr_mut_from_data` pointer), `View` and `PointsToSingleValue`.
+so rustlib writes only `PointsToPhys` (with the `ptr_mut_from_data` pointer,
+and `wf_basic` as the generic `wf_basic_unaligned`), `View` and `PointsToSingleValue`.
+None of `PointsToPhys` needs the `str` view.
 `PointsTo<str>`'s alignment comes from `layout_of_str` (`align_of::<u8>()`, i.e. 1).
 `layout_of_str` is `cfg`'d separately for `verus_verify_core`, but both versions state the alignment.
 `PointsTo<str>` then gets all its trait impls from the generic `PointsTo` impls,

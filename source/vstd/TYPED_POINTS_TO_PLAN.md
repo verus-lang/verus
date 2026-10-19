@@ -253,8 +253,9 @@ impl<T> PointsToPhys for PointsToUnaligned<[T]> {
     open spec fn size(metadata: usize) -> nat { metadata as nat * size_of::<T>() }
     open spec fn wf_basic(self) -> bool { self.wf_basic_unaligned() }
 }
-// str: impl PointsToPhys for PointsToUnaligned<str> { type A = str; ptr: same; size(len) = len; wf_basic: same }
-// (Needs no `str` view, so it can live in vstd if `PointsToPhys` is sealed.)
+// rustlib: impl PointsToPhys for PointsToUnaligned<str> { type A = str; ptr: same; size(len) = len; wf_basic: same }
+// (Needs no `str` view. vstd is a module of rustlib's `core`, so a crate-private seal on `PointsToPhys`
+// would still let rustlib write this impl.)
 
 // One generic impl.
 impl<T: ?Sized> PointsToProperties for PointsToUnaligned<T> where PointsToUnaligned<T>: PointsToPhys<A = T> {
@@ -1019,7 +1020,8 @@ impl PointsToRaw {
 ### `str` (rustlib)
 
 Signatures only; rustlib fixes the details.
-rustlib writes `PointsToPhys` (`Metadata<str>` is the byte length; `size(len) = len`), `View`
+rustlib writes `PointsToPhys` (`Metadata<str>` is the byte length; `size(len) = len`;
+`wf_basic` is `self.wf_basic_unaligned()`), `View`
 and `PointsToSingleValue` for `PointsToUnaligned<str>`;
 `PointsTo<str>` comes from the generic impls (alignment 1, from `layout_of_str`).
 
