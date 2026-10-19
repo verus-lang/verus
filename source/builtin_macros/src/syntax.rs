@@ -4742,6 +4742,10 @@ impl VisitMut for Visitor {
         }
     }
 
+    fn visit_foreign_item_fn_mut(&mut self, fun: &mut verus_syn::ForeignItemFn) {
+        fun.attrs.push(mk_verus_attr(fun.span(), quote! { verus_macro }));
+    }
+
     fn visit_impl_item_fn_mut(&mut self, method: &mut ImplItemFn) {
         if self.rustdoc {
             crate::rustdoc::process_impl_item_method(method);

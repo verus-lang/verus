@@ -3496,6 +3496,11 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let body_visibility = vir::ast::BodyVisibility::Visibility(visibility.clone());
     let opaqueness = Opaqueness::Opaque;
 
+    if !vattrs.external_body {
+        return Err(err_span_bare(span, "extern function cannot be checked")
+            .help("to tell Verus to trust this function, either mark this function `#[verifier::external_body]` and use an empty specification; or mark it `#[verifier::external]` and use `assume_specification` to provide a spec"));
+    }
+
     let func = FunctionX {
         name,
         proxy: None,
