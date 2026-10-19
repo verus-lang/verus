@@ -753,11 +753,11 @@ with `PointsTo` in place of `PointsToUnaligned`, plus alignment where the result
 
 ```rust
 impl<T> SeqPointsTo<T, PointsToUnaligned<T>> {
-    /// A `PointsToUnaligned<[T]>` is all valid or all empty.
+    /// A `PointsToUnaligned<[T]>` is all valid or all empty,
+    /// so a sequence with any empty element gives an empty slice permission.
     pub proof fn as_slice_pt(tracked &self) -> (tracked out: &PointsToUnaligned<[T]>)
         requires
             self.wf(),
-            self.is_valid() || self.is_fully_empty(),
         ensures
             out.ptr() == self.ptr(),
             out.bytes() == self.bytes(),
@@ -766,10 +766,12 @@ impl<T> SeqPointsTo<T, PointsToUnaligned<T>> {
             out.wf(),
     ;
 
+    /// As for `as_slice_pt`, a sequence with any empty element gives an empty slice permission.
+    /// If the slice is still empty when the borrow ends, every element ends empty
+    /// (the values of any valid elements are dropped).
     pub proof fn as_slice_pt_mut(tracked &mut self) -> (tracked out: &mut PointsToUnaligned<[T]>)
         requires
             self.wf(),
-            self.is_valid() || self.is_fully_empty(),
         ensures
             // initially: as for as_slice_pt, with old(self)
             final(out).wf() && final(out).ptr() == out.ptr() ==> {
@@ -1151,7 +1153,8 @@ though they only use their (closed) specs, not their fields.
   Like `join_mut`, each hands out a `&mut` to something that isn't stored.
   Each is sound because every final state of the result maps to a consistent final state of the borrowed parts
   without duplicating a tracked value:
-  M1/M2 drop values rather than duplicate them when the final state can't be distributed,
+  M1/M2 drop values rather than duplicate them when the final state can't be distributed
+  (and M1 starts empty when the elements are mixed, so their values are hidden, then dropped unless the slice ends valid),
   and M6's finals are only tied when the length is unchanged.
 - **The reference helpers that produce a `PointsTo` ensure `wf()`**
   (`SharedReference::points_to`, `mut_ref_to_shr_points_to`, and their slice and `str` versions):
@@ -1175,8 +1178,6 @@ Every new trusted item: the summary, then the full definitions.
 | Item | Planned file | What it states | Uses |
 |---|---|---|---|
 | `abs_decode_slice` (already added) | `type_representation.rs` | A slice decodes exactly when each element's slot does. | slice `wf` |
-| `PointsToUnaligned::from_raw_parts_ref` | with `PointsToUnaligned` (placement open) | Borrowed bytes and typed value act as one borrowed permission. | borrowed constructors, slice ↔ sequence, `str` ↔ `[u8]` |
-| `tracked_collect_perm_refs` | with `SeqPointsTo` (placement open) | Borrowed permissions act as one borrowed `Seq`. | `from_refs`, `join_ref` |
 | M1 `TypedValue::<[T]>::from_elems_mut`, M2 `into_elems_mut` | with `TypedValue` (placement open) | Per-element `&mut` typed values ↔ one `&mut` slice typed value. | `&mut` slice ↔ sequence |
 | M3 `PointsToUnaligned::from_raw_parts_mut` | with `PointsToUnaligned` (placement open) | `&mut` bytes and typed value act as one `&mut` permission. | `&mut` conversions |
 | M4 `PointsTo::from_unaligned_mut` | with `PointsTo` (placement open) | A `&mut PointsToUnaligned` acts as a `&mut PointsTo`. | `as_aligned_mut`, aligned `&mut` conversions |
@@ -1191,7 +1192,8 @@ Minor changes to existing axioms (`ptr_ref`, `ptr_ref2`, `ptr_ref2_ghost`, `mut_
 are approved and in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#minor-changes-to-existing-trusted-specs),
 and so are the strengthened `ptr_mut_ref`, the new `Seq` tracked operations
 (`tracked_borrow_subrange`, `tracked_split_borrow_mut`),
-and `tracked_slice_index`, `tracked_slice_from_refs` and `tracked_ref`
+and the shared borrowed-assembly axioms (`tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref`,
+`PointsToUnaligned::from_raw_parts_ref`, `tracked_collect_perm_refs`)
 ([TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes)).
 
 **rustlib.**
@@ -1214,52 +1216,27 @@ they're replaced by the above and not part of this design.
 
 ### Borrowed-assembly axioms (phase 3b)
 
-**Shared.**
-
-`tracked_slice_index`, `tracked_slice_from_refs` and `tracked_ref` are approved and in
-[TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes).
-
-```rust
-// The borrowed version of the struct literal; no wf.
-impl<T: ?Sized> PointsToUnaligned<T> {
-    pub axiom fn from_raw_parts_ref<'a>(
-        tracked pt_untyped: &'a PointsToUntyped,
-        tracked typed_value: &'a TypedValue<T>,
-        metadata: Metadata<T>,
-    ) -> (tracked out: &'a Self)
-        ensures
-            out.pt_untyped() == *pt_untyped,
-            out.typed_value() == *typed_value,
-            out.metadata() == metadata,
-    ;
-}
-
-// Collects borrowed permissions (not arbitrary values) into a borrowed Seq.
-// Makes SeqPointsTo::from_refs provable.
-pub axiom fn tracked_collect_perm_refs<'a, P: PointsToProperties>(tracked perms: Seq<&'a P>)
-    -> (tracked out: &'a Seq<P>)
-    ensures
-        *out == perms.map_values(|r: &P| *r),
-;
-```
+**Shared.** All approved and in
+[TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes):
+`tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref`,
+`PointsToUnaligned::from_raw_parts_ref` and `tracked_collect_perm_refs`.
 
 **`&mut`.**
 
 ```rust
 impl<T> TypedValue<[T]> {
     /// M1: per-element typed values -> one slice typed value.
+    /// If any element is empty, the slice starts empty.
     pub axiom fn from_elems_mut<'a>(tracked elems: Seq<&'a mut TypedValue<T>>)
         -> (tracked out: &'a mut TypedValue<[T]>)
-        requires
-            (forall|i: int| 0 <= i < elems.len() ==> (#[trigger] *elems[i]).is_valid())
-                || (forall|i: int| 0 <= i < elems.len() ==> (#[trigger] *elems[i]).is_empty()),
         ensures
-            // Initially: valid with the elements' values (a zero-length Seq counts as valid), or empty.
+            // Initially: valid with the elements' values if every element is valid
+            // (a zero-length Seq counts as valid); otherwise empty.
             (forall|i: int| 0 <= i < elems.len() ==> (#[trigger] *elems[i]).is_valid()) ==> {
                 &&& out.is_valid()
                 &&& out.value()@ == Seq::new(elems.len(), |i: int| (*elems[i]).value())
             },
-            elems.len() > 0 && (*elems[0]).is_empty() ==> out.is_empty(),
+            !(forall|i: int| 0 <= i < elems.len() ==> (#[trigger] *elems[i]).is_valid()) ==> out.is_empty(),
             // Finally: a valid slice of the same length is distributed back to the elements;
             // anything else leaves every element empty.
             final(out).is_valid() && final(out).value()@.len() == elems.len() ==> forall|i: int|

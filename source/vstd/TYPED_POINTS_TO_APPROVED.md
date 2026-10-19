@@ -179,6 +179,8 @@ Specs approved so far; the full list of new trusted items is in
 | `tracked_slice_index` (phase 3b) | `slice.rs` | Borrows an element of a borrowed slice. | shared slice → sequence |
 | `tracked_slice_from_refs` (phase 3b) | `slice.rs` | Borrowed elements act as one borrowed slice. | shared sequence → slice |
 | `tracked_ref` (phase 3b) | `modes.rs` | A borrow is a borrowed `Tracked` of itself. | `TypedValue::valid_ref` |
+| `PointsToUnaligned::from_raw_parts_ref` (phase 3b) | with `PointsToUnaligned` (placement open) | Borrowed bytes and typed value act as one borrowed permission. | borrowed constructors, slice ↔ sequence, `str` ↔ `[u8]` |
+| `tracked_collect_perm_refs` (phase 3b) | with `SeqPointsTo` (placement open) | Borrowed permissions act as one borrowed `Seq`. | `from_refs`, `join_ref` |
 
 **`ptr_mut_ref`** (`raw_ptr_new.rs`; existing, strengthened, already in the code).
 It now requires and ensures `wf()`.
@@ -262,6 +264,37 @@ pub axiom fn tracked_slice_from_refs<'a, T>(tracked refs: Seq<&'a T>) -> (tracke
 pub axiom fn tracked_ref<'a, T: ?Sized>(tracked t: &'a T) -> (tracked out: &'a Tracked<T>)
     ensures
         &**out == t,
+;
+```
+
+**Borrowed permission assembly** (new, phase 3b).
+Neither says anything about `wf()`: callers prove it from the parts.
+
+```rust
+// With PointsToUnaligned (placement open).
+// The borrowed version of the struct literal; no wf.
+impl<T: ?Sized> PointsToUnaligned<T> {
+    pub axiom fn from_raw_parts_ref<'a>(
+        tracked pt_untyped: &'a PointsToUntyped,
+        tracked typed_value: &'a TypedValue<T>,
+        metadata: Metadata<T>,
+    ) -> (tracked out: &'a Self)
+        ensures
+            out.pt_untyped() == *pt_untyped,
+            out.typed_value() == *typed_value,
+            out.metadata() == metadata,
+    ;
+}
+```
+
+```rust
+// With SeqPointsTo (placement open).
+// Collects borrowed permissions (not arbitrary values) into a borrowed Seq.
+// Makes SeqPointsTo::from_refs provable.
+pub axiom fn tracked_collect_perm_refs<'a, P: PointsToProperties>(tracked perms: Seq<&'a P>)
+    -> (tracked out: &'a Seq<P>)
+    ensures
+        *out == perms.map_values(|r: &P| *r),
 ;
 ```
 
