@@ -417,7 +417,8 @@ impl<'tcx> interpret::Machine<'tcx> for CompileTimeMachine<'tcx> {
         instance: ty::InstanceKind<'tcx>,
     ) -> &'tcx mir::Body<'tcx> {
         match instance {
-            ty::InstanceKind::Item(def) => ecx.tcx.mir_for_ctfe(def),
+            // Verus: use the full-erasure MIR
+            ty::InstanceKind::Item(def) => crate::verus::mir_for_ctfe(ecx.tcx.tcx, def),
             _ => ecx.tcx.instance_mir(instance),
         }
     }

@@ -361,7 +361,8 @@ pub fn eval_to_const_value_raw_provider<'tcx>(
 ) -> ::rustc_middle::mir::interpret::EvalToConstValueResult<'tcx> {
     crate::assert_typing_mode(key.typing_env.typing_mode());
 
-    if let Some((value, _ty)) = tcx.trivial_const(key.value.instance.def_id()) {
+    // Verus: avoid the trivial_const query, which is based on the non-full-erasure MIR
+    if let Some((value, _ty)) = crate::verus::trivial_const(tcx, key.value.instance.def_id()) {
         return Ok(value);
     }
 
@@ -455,7 +456,8 @@ fn eval_in_interpreter<'tcx, R: InterpretationResult<'tcx>>(
         CompileTimeMachine::new(CanAccessMutGlobal::from(is_static), CheckAlignment::Error),
     );
 
-    let result = if let Some((value, ty)) = tcx.trivial_const(def) {
+    // Verus: avoid the trivial_const query, which is based on the non-full-erasure MIR
+    let result = if let Some((value, ty)) = crate::verus::trivial_const(tcx, def) {
         eval_trivial_const_using_ecx(&mut ecx, cid, value, ty)
     } else {
         ecx.load_mir(cid.instance.def, cid.promoted)
