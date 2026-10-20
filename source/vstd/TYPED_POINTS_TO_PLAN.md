@@ -21,8 +21,10 @@ and are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md).
 
 ## Specifications
 
-Bodies are omitted except for spec fns and trusted code.
-"Unchanged" means the contract is today's, apart from `size()` → `Self::size(self.ptr()@.metadata)`.
+`points_to_model.rs` is written out as the final code: every item, with its documentation and body.
+Approved axioms are named in a comment, not repeated; their code is in TYPED_POINTS_TO_APPROVED.md.
+In the other modules, bodies are omitted except for spec fns and trusted code,
+and "unchanged" means the contract is today's, apart from `size()` → `Self::size(self.ptr()@.metadata)`.
 
 Grouped by module ([layout](TYPED_POINTS_TO_APPROVED.md#module-layout)), from low-level to high-level permissions.
 An impl block with both spec fns and proofs is split as in the layout:
@@ -31,56 +33,184 @@ The trait definitions are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPRO
 
 ### `points_to_model.rs` (trusted)
 
-#### `PTProperties` (changed in phase 1b)
-
-The trait is in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#trait-definitions). Compared with today's:
-contracts use `Self::size(self.ptr()@.metadata)` instead of `self.size()`;
-`is_disjoint` compares `ptr()@.addr` instead of `ptr() as int`;
-and `ptrs_len_same_valid` is renamed `ptrs_len_same` (pointer-level; the decoding version is
-`PTValueOps::ptrs_len_same_valid`), which `stays_wf_basic` now uses.
-
+The five trait definitions, with their default bodies, are approved
+([TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#trait-definitions)).
 The lemma groups (`group_points_to_lemmas`, `group_points_to_collections_lemmas`) are in
 [Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout).
+
+#### `PointsToByte` (phase 1)
+
+```rust
+/// Permission to access a byte of memory.
+#[verifier::external_body]
+pub tracked struct PointsToByte {
+    no_copy: NoCopy,
+}
+
+impl PTPhysSealed for PointsToByte {}
+
+impl PTPhys for PointsToByte {
+    type A = u8;
+
+    /// This permission points to a single byte of memory.
+    uninterp spec fn ptr(self) -> *mut u8;
+
+    /// This permission tracks a single byte of memory.
+    open spec fn size(metadata: ()) -> nat {
+        1
+    }
+
+    /// A `PointsToByte` is always well-formed.
+    open spec fn wf_basic(self) -> bool {
+        true
+    }
+}
+
+impl PTProperties for PointsToByte {
+    /// Guarantee that the `PointsToByte` points to a non-null address.
+    ///
+    /// See <https://doc.rust-lang.org/std/ptr/#safety>
+    axiom fn is_nonnull(tracked &self);
+
+    /// The memory associated with a pointer should always be within bounds of its spatial provenance.
+    axiom fn ptr_bounds(tracked &self);
+
+    /// Since `u8` is not a ZST, the pointer's provenance is non-null.
+    /// <https://doc.rust-lang.org/std/ptr/index.html#provenance>
+    axiom fn provenance_not_none(tracked &self);
+
+    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
+    /// since you cannot have two permissions to the same memory.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsTo as both arguments.)
+    /// Since `u8` is not a ZST, this implies the pointers have distinct addresses.
+    axiom fn is_disjoint<OtherPointsToPerm: PTPhys>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    );
+
+    /// A `PointsToByte` only needs to keep its pointer.
+    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
+        new.ptr() == old.ptr()
+    }
+
+    /// Trivial, since a `PointsToByte` is always well-formed.
+    proof fn stays_wf_basic(old: Self, new: Self) {
+    }
+}
+
+impl PointsToByte {
+    /// The byte that this permission tracks.
+    pub uninterp spec fn byte(self) -> AbstractByte;
+
+    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
+    /// since you cannot have two permissions to the same memory.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsTo as both arguments.)
+    /// Since `u8` is not a ZST, this implies the pointers have distinct addresses.
+    pub proof fn is_disjoint_byte(tracked &mut self, tracked other: &Self)
+        requires
+            self.wf_basic(),
+            other.wf_basic(),
+        ensures
+            *old(self) == *final(self),
+            final(self).ptr()@.addr + size_of::<u8>() <= other.ptr()@.addr
+                || other.ptr()@.addr + size_of::<u8>() <= final(self).ptr()@.addr,
+    {
+        broadcast use group_vstd_default;
+
+        self.is_disjoint(other);
+    }
+}
+
+/// The interface for a `PointsToByte` permission,
+/// which represents permission to access a single byte in memory.
+/// We track the pointer to that memory as well as
+/// the abstract byte corresponding to Rust's abstract machine.
+#[cfg(verus_keep_ghost)]
+pub ghost struct PointsToByteData {
+    pub ptr: *mut u8,
+    pub byte: AbstractByte,
+}
+
+#[cfg(verus_keep_ghost)]
+impl View for PointsToByte {
+    type V = PointsToByteData;
+
+    open spec fn view(&self) -> Self::V {
+        PointsToByteData { ptr: self.ptr(), byte: self.byte() }
+    }
+}
+```
 
 #### `SeqPointsTo` and `PointsToUntyped`: specs (phase 1b)
 
 ```rust
+/// Permission to access a contiguous sequence of values of type `T` in memory.
+/// Internally represented as one element permission `P` per element,
+/// along with a `*mut [T]` pointer to the whole region.
 // `A = T` is bound on the impls, not here,
-// so recursive types like `struct Tree { children: Vec<Tree> }` are allowed.
+// so that recursive types like `struct Tree { children: Vec<Tree> }` are allowed.
 #[verifier::accept_recursive_types(T)]
 pub tracked struct SeqPointsTo<T, P: PTProperties> {
     seq_pt: Seq<P>,
     ptr: Ghost<*mut [T]>,
 }
 
+impl<T, P: PTProperties> PTPhysSealed for SeqPointsTo<T, P> {}
+
 impl<T, P: PTProperties<A = T>> PTPhys for SeqPointsTo<T, P> {
     type A = [T];
-    closed spec fn ptr(self) -> *mut [T] { self.ptr@ }
-    open spec fn size(metadata: usize) -> nat { metadata as nat * P::size(()) }
+
+    /// The pointer to the whole region; its metadata is the number of elements.
+    closed spec fn ptr(self) -> *mut [T] {
+        self.ptr@
+    }
+
+    /// The size of the pointed-to region is given by the length of the sequence (the pointer's metadata)
+    /// times the size of the permission type in the sequence.
+    open spec fn size(metadata: usize) -> nat {
+        metadata as nat * P::size(())
+    }
+
     open spec fn wf_basic(self) -> bool {
-        &&& self.ptr()@.metadata == self.len()   // new (was only in PointsToUntyped::wf)
-        &&& forall|i| 0 <= i < self.len() ==> {
-            &&& self[i].ptr()@.provenance == self.ptr()@.provenance
-            &&& self[i].ptr()@.addr == self.ptr()@.addr + i * P::size(())
-            &&& self[i].wf_basic()
-        }
+        // The pointer's metadata is the number of permissions
+        &&& self.ptr()@.metadata == self.len()
+        // Defining the provenance and address for the individual permissions
+        &&& forall|i|
+            #![trigger self[i].ptr()@.provenance]
+            #![trigger self[i].ptr()@.addr]
+            #![trigger self[i].wf_basic()]
+            0 <= i < self.len() ==> {
+                &&& self[i].ptr()@.provenance == self.ptr()@.provenance
+                &&& self[i].ptr()@.addr == self.ptr()@.addr + i * P::size(())
+                &&& self[i].wf_basic()
+            }
+        // The ptr is non-null
         &&& self.ptr()@.addr != 0
-        &&& /* provenance bounds: unchanged */
+        // If ptr's provenance is Some, the address is in bounds of the provenance
+        &&& self.ptr()@.provenance.is_some() ==> {
+            &&& self.ptr()@.provenance.unwrap().start_addr() <= self.ptr()@.addr
+            &&& self.ptr()@.addr <= self.ptr()@.provenance.unwrap().start_addr()
+                + self.ptr()@.provenance.unwrap().alloc_len()
+        }
     }
 }
 
-/// Structural specs for a sequence of any element permission.
 impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
-    /// The element permissions.
+    /// The sequence of permissions that the `SeqPointsTo` contains.
     pub closed spec fn seq_pt(self) -> Seq<P> {
         self.seq_pt
     }
 
-    /// The number of element permissions.
+    /// The length of the sequence of `P` permissions.
+    #[verifier::inline]
     pub open spec fn len(self) -> nat {
         self.seq_pt().len()
     }
 
+    /// `[]` operator, synonymous with `index`.
+    #[verifier::inline]
     pub open spec fn spec_index(self, index: int) -> P
         recommends
             0 <= index < self.len(),
@@ -89,96 +219,576 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
     }
 
     /// The pointer to the first element, without the length.
-    /// For code that doesn't care about the slice metadata.
     pub open spec fn thin_ptr(self) -> *mut T {
         ptr_mut_from_data::<T>(PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: () })
     }
 
-    // from_seq_mut (M5, axiom): see [Borrowed-assembly axioms](#borrowed-assembly-axioms-phase-3b).
+    // Approved axiom: from_seq_mut (M5).
 }
 
-impl SeqPointsTo<u8, PointsToByte> {   // PointsToUntyped
-    pub open spec fn wf(self) -> bool { self.wf_basic() }   // the metadata clause moved to wf_basic
-    // View, bytes: today's.
-    // join_ref, join_mut: axioms (see TYPED_POINTS_TO_APPROVED.md, Untyped joins).
+/// Permission to access an (untyped) contiguous sequence of bytes in memory.
+/// Internally represented as a sequence of `PointsToByte` permissions,
+/// along with a `*mut [u8]` pointer to the region of bytes.
+pub type PointsToUntyped = SeqPointsTo<u8, PointsToByte>;
+
+/// The interface for a `PointsToUntyped` permission,
+/// which represents permission to access an (untyped) contiguous sequence of bytes in memory.
+/// We track the pointer to that memory as well as
+/// the abstract bytes corresponding to Rust's abstract machine.
+#[cfg(verus_keep_ghost)]
+pub ghost struct PointsToUntypedData {
+    pub ptr: *mut [u8],
+    pub bytes: Seq<AbstractByte>,
+}
+
+#[cfg(verus_keep_ghost)]
+impl View for PointsToUntyped {
+    type V = PointsToUntypedData;
+
+    open spec fn view(&self) -> Self::V {
+        PointsToUntypedData { ptr: self.ptr(), bytes: self.bytes() }
+    }
+}
+
+impl PointsToUntyped {
+    /// The contiguous sequence of bytes that this permission tracks.
+    pub open spec fn bytes(self) -> Seq<AbstractByte> {
+        self.seq_pt().map(|i: int, pt_byte: PointsToByte| pt_byte.byte())
+    }
+
+    /// The well-formed-ness properties which must hold of every `SeqPointsTo` (`wf_basic`),
+    /// which include that the `*mut [u8]` pointer's metadata matches the number of `PointsToByte` permissions.
+    pub open spec fn wf(self) -> bool {
+        self.wf_basic()
+    }
+
+    // Approved axioms: join_ref, join_mut.
 }
 ```
 
 #### `TypedValue` (phase 2)
 
-Approved; see [`TypedValue`](TYPED_POINTS_TO_APPROVED.md#typedvalue-phase-2).
+`value_ref` and `valid_ref` are approved
+([`TypedValue`](TYPED_POINTS_TO_APPROVED.md#typedvalue-phase-2)); the rest exists today.
+
+```rust
+/// Represents (typed) contents of memory.
+// Don't use std Option here in order to avoid circular dependency issues
+// with verifying the standard library.
+// (Also, using our own enum here lets us have more meaningful
+// variant names like Empty/Valid.)
+#[verifier::accept_recursive_types(T)]
+pub tracked enum TypedValue<T: ?Sized> {
+    /// Represents uninitialized memory.
+    Empty,
+    /// Represents initialized memory with the given value of type `T`.
+    Valid(Tracked<T>),
+}
+
+impl<T: ?Sized> TypedValue<T> {
+    /// Returns `true` if it is a [`TypedValue::Valid`] value.
+    #[verifier::inline]
+    pub open spec fn is_valid(&self) -> bool {
+        self is Valid
+    }
+
+    /// Returns `true` if it is a [`TypedValue::Empty`] value.
+    #[verifier::inline]
+    pub open spec fn is_empty(&self) -> bool {
+        self is Empty
+    }
+
+    // Approved: value_ref, valid_ref.
+}
+
+impl<T> TypedValue<T> {
+    /// If it is a [`TypedValue::Valid`] value, returns the value.
+    /// Otherwise, the return value is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> T
+        recommends
+            self is Valid,
+    {
+        *self->0
+    }
+
+    /// Copies a `TypedValue<T>` out of a shared reference, given that `T` is `Copy`.
+    pub proof fn tracked_copy(tracked &self) -> (tracked out: TypedValue<T>) where T: Copy
+        ensures
+            out == *self,
+    {
+        match self {
+            TypedValue::Valid(b) => TypedValue::Valid(Tracked(**b)),
+            TypedValue::Empty => TypedValue::Empty,
+        }
+    }
+}
+
+impl<T> TypedValue<[T]> {
+    /// If it is a [`TypedValue::Valid`] value, returns the value.
+    /// Otherwise, the return value is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> &[T]
+        recommends
+            self is Valid,
+    {
+        &*self->0
+    }
+
+    // Approved axiom: from_elems_mut (M1).
+    // Axiom (in APPROVED.md, awaiting approval): from_elems_ref.
+}
+```
 
 #### `PointsToUnaligned`: specs (phases 2, 2b; `str` in rustlib)
 
+rustlib writes the `PTPhys`, `PTProperties` and `PTTypedValue` impls for `PointsToUnaligned<str>`
+in the same shape as the `[T]` ones (`size(len) = len`; `metadata_matches` is `true`, since `str` decoding is `EncodingStr`'s).
+`PTPhys` is sealed by the crate-private `PTPhysSealed`,
+but vstd's `impl<T: ?Sized> PTPhysSealed for PointsToUnaligned<T>` already covers `str`,
+and vstd is a module of rustlib's `core`, so rustlib can write these impls.
+
 ```rust
-// The shared `wf_basic` body, written once.
+/// Permission to access memory which may decode to a valid value of type `T`;
+/// this memory is not guaranteed to be aligned to `T`.
+/// Internally represented as a possibly-valid value of type `T`,
+/// along with a `PointsToUntyped` permission to the underlying bytes,
+/// and the metadata of the `*mut T` pointer.
+pub tracked struct PointsToUnaligned<T: ?Sized> {
+    val: TypedValue<T>,
+    pt_untyped: PointsToUntyped,
+    metadata: Ghost<Metadata<T>>,
+}
+
+/// The interface for a `PointsToUnaligned` or `PointsTo` permission,
+/// which represents permission to access memory
+/// whose bytes may decode to a valid value of type `T`.
+/// We track the pointer to that memory,
+/// the (possibly-valid) typed value, and its abstract bytes.
+///
+/// If `value` is `Valid(v)`, this signifies that `ptr` points to initialized memory,
+/// and `v` is consistent with the bytes `ptr` points to.
+/// We also have all the ghost state associated with type `T`.
+///
+/// If `value` is `Empty`, then we have no knowledge about what's in memory,
+/// and we assume `ptr` points to uninitialized memory.
+/// (To be pedantic, the bytes might be initialized in Rust's abstract machine,
+///  but we don't know, so we have to pretend they're uninitialized.)
+#[cfg(verus_keep_ghost)]
+pub ghost struct PointsToData<T: ?Sized> {
+    pub ptr: *mut T,
+    pub value: TypedValue<T>,
+    pub bytes: Seq<AbstractByte>,
+}
+
+#[cfg(verus_keep_ghost)]
+impl<T: ?Sized> View for PointsToUnaligned<T> where PointsToUnaligned<T>: PTTypedValue<A = T> {
+    type V = PointsToData<T>;
+
+    open spec fn view(&self) -> Self::V {
+        PointsToData {
+            ptr: self.ptr(),
+            value: <Self as PTTypedValue>::typed_value(*self),
+            bytes: <Self as PTTypedValue>::bytes(*self),
+        }
+    }
+}
+
+impl<T: ?Sized> PointsToUnaligned<T> {
+    /// The (possibly-valid) typed value that this permission tracks.
+    pub closed spec fn typed_value(self) -> TypedValue<T> {
+        self.val
+    }
+
+    /// The underlying `PointsToUntyped` permission to the pointed-to bytes.
+    pub closed spec fn pt_untyped(self) -> PointsToUntyped {
+        self.pt_untyped
+    }
+
+    /// The metadata of the `*mut T` pointer this permission is for.
+    pub closed spec fn metadata(self) -> Metadata<T> {
+        self.metadata@
+    }
+
+    /// The contiguous sequence of bytes that this permission tracks.
+    #[verifier::inline]
+    pub open spec fn bytes(self) -> Seq<AbstractByte> {
+        self.pt_untyped().bytes()
+    }
+
+    /// Returns `true` if the permission's associated memory is valid for the type `T`.
+    #[verifier::inline]
+    pub open spec fn is_valid(&self) -> bool {
+        self.typed_value().is_valid()
+    }
+
+    /// Returns `true` if the permission's associated memory is not valid for the type `T`.
+    #[verifier::inline]
+    pub open spec fn is_empty(&self) -> bool {
+        self.typed_value().is_empty()
+    }
+
+    /// Returns a tracked reference to the underlying `PointsToUntyped` permission.
+    ///
+    /// This has no `wf()` requires/ensures,
+    /// which gives flexibility for getting the underlying `PointsToUntyped`
+    /// when the permission is not well-formed.
+    /// If `self.wf()`, then the returned permission is `wf()`.
+    pub proof fn tracked_pt_untyped(tracked &self) -> tracked &PointsToUntyped
+        returns
+            self.pt_untyped(),
+    {
+        &self.pt_untyped
+    }
+
+    // Approved axioms: from_raw_parts_ref, from_raw_parts_mut (M3).
+}
+
 impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTPhys<A = T> {
+    /// A `PointsToUnaligned` is well-formed at the pointer level (`wf_basic`)
+    /// if its memory region is `Self::size(self.ptr()@.metadata)` bytes,
+    /// and the underlying `PointsToUntyped` is well-formed.
+    /// Every `PTPhys` impl for `PointsToUnaligned` uses this as its `wf_basic`.
     pub open spec fn wf_basic_unaligned(self) -> bool {
         &&& self.pt_untyped().wf()
         &&& self.pt_untyped().len() == Self::size(self.ptr()@.metadata)
     }
 }
 
-// One per type; only `size` differs.
-// `wf_basic` is in `PTPhys` so that `is_disjoint` can require it of `other`
-// (a generic `other` bounded by `PTProperties` would be a trait cycle).
+impl<T> PointsToUnaligned<T> {
+    /// If the permission's associated memory is valid,
+    /// returns the value that the pointer points to.
+    /// Otherwise, the result is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> T
+        recommends
+            self.is_valid(),
+    {
+        self.typed_value().value()
+    }
+}
+
+impl<T: ?Sized> PTPhysSealed for PointsToUnaligned<T> {}
+
 impl<T> PTPhys for PointsToUnaligned<T> {
     type A = T;
+
+    /// Builds the `*mut T` from the underlying untyped pointer's address and provenance
+    /// and the stored metadata.
     closed spec fn ptr(self) -> *mut T {
-        ptr_mut_from_data::<T>(PtrData {
-            addr: self.pt_untyped().ptr()@.addr,
-            provenance: self.pt_untyped().ptr()@.provenance,
-            metadata: self.metadata(),   // closed inherent accessor for the ghost field
-        })
+        ptr_mut_from_data::<T>(
+            PtrData {
+                addr: self.pt_untyped().ptr()@.addr,
+                provenance: self.pt_untyped().ptr()@.provenance,
+                metadata: self.metadata(),
+            },
+        )
     }
-    open spec fn size(metadata: ()) -> nat { size_of::<T>() }
-    open spec fn wf_basic(self) -> bool { self.wf_basic_unaligned() }
+
+    /// The size of the pointed-to region is the size of `T`.
+    open spec fn size(metadata: ()) -> nat {
+        size_of::<T>()
+    }
+
+    /// A `PointsToUnaligned` is well-formed at the pointer level
+    /// if its memory region is `size_of::<T>()` bytes,
+    /// and the underlying `PointsToUntyped` is well-formed.
+    open spec fn wf_basic(self) -> bool {
+        self.wf_basic_unaligned()
+    }
 }
+
 impl<T> PTPhys for PointsToUnaligned<[T]> {
     type A = [T];
-    closed spec fn ptr(self) -> *mut [T] { /* same as above */ }
-    open spec fn size(metadata: usize) -> nat { metadata as nat * size_of::<T>() }
-    open spec fn wf_basic(self) -> bool { self.wf_basic_unaligned() }
-}
-// rustlib: impl PTPhys for PointsToUnaligned<str> { type A = str; ptr: same; size(len) = len; wf_basic: same }
-// (Needs no `str` view. `PTPhys` is sealed by the crate-private `PTPhysSealed`;
-// vstd's generic `impl<T: ?Sized> PTPhysSealed for PointsToUnaligned<T>` already covers `str`,
-// and vstd is a module of rustlib's `core`, so rustlib can still write this impl.)
 
-// PTTypedValue items per impl (the operations' contracts are PTValueOps's):
-//                     typed_value          bytes                     metadata_matches(v, m)   satisfies_alignment(a)
-// PointsToUnaligned<T>    self.typed_value()   self.pt_untyped().bytes()  true                true
-// PointsToUnaligned<[T]>  (same)               (same)                    v@.len() == m       true
-// PointsToUnaligned<str>  (same)               (same)                    true                true   (rustlib; decoding is EncodingStr's, without UTF-8)
-// wf: the trait's default body. For T and [T], this replaces today's per-type wf_basic clauses.
+    /// Builds the `*mut [T]` from the underlying untyped pointer's address and provenance
+    /// and the stored metadata.
+    closed spec fn ptr(self) -> *mut [T] {
+        ptr_mut_from_data::<[T]>(
+            PtrData {
+                addr: self.pt_untyped().ptr()@.addr,
+                provenance: self.pt_untyped().ptr()@.provenance,
+                metadata: self.metadata(),
+            },
+        )
+    }
+
+    /// The size of the pointed-to region is the number of elements times the size of `T`.
+    open spec fn size(metadata: usize) -> nat {
+        metadata as nat * size_of::<T>()
+    }
+
+    /// A `PointsToUnaligned<[T]>` is well-formed at the pointer level
+    /// if its memory region is `Self::size(self.ptr()@.metadata)` bytes,
+    /// and the underlying `PointsToUntyped` is well-formed.
+    open spec fn wf_basic(self) -> bool {
+        self.wf_basic_unaligned()
+    }
+}
+
+impl<T> PTTypedValue for PointsToUnaligned<T> {
+    /// The inherent `typed_value` accessor.
+    open spec fn typed_value(self) -> TypedValue<T> {
+        PointsToUnaligned::<T>::typed_value(self)
+    }
+
+    /// The underlying untyped permission's bytes.
+    open spec fn bytes(self) -> Seq<AbstractByte> {
+        self.pt_untyped().bytes()
+    }
+
+    /// Always `true`: a `Sized` value has no pointer metadata.
+    open spec fn metadata_matches(value: &T, metadata: ()) -> bool {
+        true
+    }
+
+    /// Always `true`: a `PointsToUnaligned` has no alignment requirement.
+    open spec fn satisfies_alignment(addr: usize) -> bool {
+        true
+    }
+
+    proof fn bytes_decode(&self) {
+    }
+
+    proof fn satisfies_alignment_of_wf(&self) {
+    }
+
+    proof fn lemma_wf_basic(&self) {
+    }
+}
+
+impl<T> PTTypedValue for PointsToUnaligned<[T]> {
+    /// The inherent `typed_value` accessor.
+    open spec fn typed_value(self) -> TypedValue<[T]> {
+        PointsToUnaligned::<[T]>::typed_value(self)
+    }
+
+    /// The underlying untyped permission's bytes.
+    open spec fn bytes(self) -> Seq<AbstractByte> {
+        self.pt_untyped().bytes()
+    }
+
+    /// The slice has `metadata` elements.
+    open spec fn metadata_matches(value: &[T], metadata: usize) -> bool {
+        value@.len() == metadata
+    }
+
+    /// Always `true`: a `PointsToUnaligned` has no alignment requirement.
+    open spec fn satisfies_alignment(addr: usize) -> bool {
+        true
+    }
+
+    proof fn bytes_decode(&self) {
+    }
+
+    proof fn satisfies_alignment_of_wf(&self) {
+    }
+
+    proof fn lemma_wf_basic(&self) {
+    }
+}
 ```
 
 #### `PointsTo`: specs (generic; phase 2, widened in phase 2b)
 
-```rust
-impl<T: ?Sized> PTPhys for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
-    type A = T;
-    open spec fn ptr(self) -> *mut T { self.pt_unaligned().ptr() }
-    open spec fn size(metadata: Metadata<T>) -> nat { <PointsToUnaligned<T> as PTPhys>::size(metadata) }
-    open spec fn wf_basic(self) -> bool { self.pt_unaligned().wf_basic() }
+The generic impls name the `PointsToUnaligned` trait functions (`<PointsToUnaligned<T> as PTTypedValue>::...`),
+since the inherent accessors don't unfold to them for a generic `T`.
+`wf` is overridden: the trait's default body doesn't unfold at `PointsToUnaligned<T>` for a generic `T`,
+so with the default, `self.wf()` doesn't give `pt_unaligned.wf()`, which every delegation needs
+([phase 0, item 17](TYPED_POINTS_TO_IMPL_PLAN.md#phase-0-pending-checks)).
+
+````rust
+/**
+Permission to access possibly-initialized, _typed_ memory.
+
+The associated pointer ([`points_to.ptr()`](PTPhys::ptr)) is always a valid pointer for constructing
+a reference to the underlying data. That means it's always aligned to its type
+([`is_aligned`](PointsTo::is_aligned)) and is non-null ([`is_nonnull`](PTProperties::is_nonnull)).
+
+### Notes
+
+The invariants on a `PointsTo` are a little more restrictive than is necessary for all
+Rust operations you might want to do. For example:
+
+1. With a null pointer to a ZST, Rust lets you read and write (though not take a reference).
+
+```
+#[derive(Copy, Clone)]
+#[repr(align(64))]
+struct X { }
+
+fn zst_test() {
+    let x_ptr: *mut X = std::ptr::null_mut();
+
+    let x = unsafe { *x_ptr };  // allowed
+
+    let x = X { };
+    unsafe { *x_ptr = x; }      // allowed
+
+    let j = unsafe { &*x_ptr }; // not allowed because ptr is null
+}
+```
+
+2. The [`std::ptr::read_unaligned`] and [`std::ptr::write_unaligned`] don't require the pointer
+   to be aligned.
+
+Currently, the first use-case isn't supported because `PointsTo` enforces non-nullness.
+For the second, use `PointsToUnaligned`, which doesn't enforce alignment.
+*/
+
+// ptr |--> Valid(v) means:
+//   bytes in this memory are consistent with value v
+//   and we have all the ghost state associated with type V
+//
+// ptr |--> Empty means:
+//   no knowledge about what's in memory
+//   (to be pedantic, the bytes might be initialized in rust's abstract machine,
+//   but we don't know so we have to pretend they're uninitialized)
+pub tracked struct PointsTo<T: ?Sized> {
+    pt_unaligned: PointsToUnaligned<T>,
 }
 
+#[cfg(verus_keep_ghost)]
 impl<T: ?Sized> View for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     type V = PointsToData<T>;
-    open spec fn view(&self) -> PointsToData<T> {
-        PointsToData { ptr: self.ptr(), value: self.typed_value(), bytes: self.bytes() }
+
+    open spec fn view(&self) -> Self::V {
+        PointsToData {
+            ptr: self.ptr(),
+            value: <Self as PTTypedValue>::typed_value(*self),
+            bytes: <Self as PTTypedValue>::bytes(*self),
+        }
+    }
+}
+
+impl<T: ?Sized> PointsTo<T> {
+    /// The underlying `PointsToUnaligned` permission to the pointed-to memory.
+    pub closed spec fn pt_unaligned(self) -> PointsToUnaligned<T> {
+        self.pt_unaligned
+    }
+
+    /// The (possibly-valid) typed value that this permission tracks.
+    pub open spec fn typed_value(self) -> TypedValue<T> {
+        self.pt_unaligned().typed_value()
+    }
+
+    /// The metadata of the `*mut T` pointer this permission is for.
+    pub open spec fn metadata(self) -> Metadata<T> {
+        self.pt_unaligned().metadata()
+    }
+
+    /// The contiguous sequence of bytes that this permission tracks.
+    #[verifier::inline]
+    pub open spec fn bytes(self) -> Seq<AbstractByte> {
+        self.pt_unaligned().bytes()
+    }
+
+    /// Returns `true` if the permission's associated memory is valid for the type `T`.
+    #[verifier::inline]
+    pub open spec fn is_valid(&self) -> bool {
+        self.typed_value().is_valid()
+    }
+
+    /// Returns `true` if the permission's associated memory is not valid for the type `T`.
+    #[verifier::inline]
+    pub open spec fn is_empty(&self) -> bool {
+        self.typed_value().is_empty()
+    }
+
+    /// Returns a tracked reference to the underlying `PointsToUnaligned` permission.
+    ///
+    /// This has no `wf()` requires/ensures,
+    /// which gives flexibility for getting the underlying `PointsToUnaligned`
+    /// when the permission is not well-formed.
+    /// If `self.wf()`, then the returned permission is `wf()`.
+    pub proof fn tracked_pt_unaligned(tracked &self) -> tracked &PointsToUnaligned<T>
+        returns
+            self.pt_unaligned(),
+    {
+        &self.pt_unaligned
+    }
+
+    // Approved axiom: from_unaligned_mut (M4).
+}
+
+impl<T> PointsTo<T> {
+    /// If the permission's associated memory is valid,
+    /// returns the value that the pointer points to.
+    /// Otherwise, the result is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> T
+        recommends
+            self.is_valid(),
+    {
+        self.typed_value().value()
+    }
+
+    // Approved axiom: borrow_mut.
+}
+
+impl<T: ?Sized> PTPhysSealed for PointsTo<T> {}
+
+impl<T: ?Sized> PTPhys for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
+    type A = T;
+
+    /// Delegates to the underlying `PointsToUnaligned`'s pointer.
+    open spec fn ptr(self) -> *mut T {
+        self.pt_unaligned().ptr()
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`'s size.
+    open spec fn size(metadata: Metadata<T>) -> nat {
+        <PointsToUnaligned<T> as PTPhys>::size(metadata)
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`'s `wf_basic`.
+    /// Alignment is part of `wf`, through `satisfies_alignment`.
+    open spec fn wf_basic(self) -> bool {
+        self.pt_unaligned().wf_basic()
     }
 }
 
 impl<T: ?Sized> PTTypedValue for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
-    // typed_value, bytes, metadata_matches delegate to self.pt_unaligned;
+    /// Delegates to the underlying `PointsToUnaligned`'s typed value.
+    open spec fn typed_value(self) -> TypedValue<T> {
+        <PointsToUnaligned<T> as PTTypedValue>::typed_value(self.pt_unaligned())
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`'s bytes.
+    open spec fn bytes(self) -> Seq<AbstractByte> {
+        <PointsToUnaligned<T> as PTTypedValue>::bytes(self.pt_unaligned())
+    }
+
+    /// A `PointsTo` is well-formed if its pointer is aligned to `T`,
+    /// and the underlying `PointsToUnaligned` is well-formed.
+    open spec fn wf(self) -> bool {
+        &&& self.pt_unaligned().wf()
+        &&& Self::satisfies_alignment(self.ptr()@.addr)
+    }
+
+    /// The same as for `PointsToUnaligned`.
+    open spec fn metadata_matches(value: &T, metadata: Metadata<T>) -> bool {
+        <PointsToUnaligned<T> as PTTypedValue>::metadata_matches(value, metadata)
+    }
+
+    /// The `PointsToUnaligned` requirement, plus alignment to `T`.
     open spec fn satisfies_alignment(addr: usize) -> bool {
-        &&& PointsToUnaligned::<T>::satisfies_alignment(addr)
+        &&& <PointsToUnaligned<T> as PTTypedValue>::satisfies_alignment(addr)
         &&& addr as nat % spec_align_of_val::<T>(arbitrary()) == 0
     }
-    // wf: the trait's default body; the lemmas delegate.
+
+    proof fn bytes_decode(&self) {
+        self.pt_unaligned().bytes_decode();
+    }
+
+    proof fn satisfies_alignment_of_wf(&self) {
+    }
+
+    proof fn lemma_wf_basic(&self) {
+        self.pt_unaligned().lemma_wf_basic();
+    }
 }
-```
+````
 
 ### `points_to_ops.rs` (trusted)
 
@@ -363,7 +973,10 @@ impl<T: ?Sized> PTProperties for PointsTo<T> where PointsToUnaligned<T>: PTValue
 impl<T: ?Sized> PTValueOps for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     // Everything delegates to self.pt_unaligned, except:
     // from_raw_parts: wraps the PointsToUnaligned result.
-    // ptrs_len_same_valid, borrow, into_untyped, from_untyped, zero_sized: the trait's default bodies.
+    // borrow, into_untyped, from_untyped, zero_sized: the trait's default bodies.
+    // ptrs_len_same_valid is overridden, for the same reason as `wf`:
+    //   new.ptr() == old.ptr()
+    //   && <PointsToUnaligned<T> as PTValueOps>::ptrs_len_same_valid(old.pt_unaligned(), new.pt_unaligned())
 }
 
 impl<T> PTSizedValue for PointsTo<T> {
@@ -843,8 +1456,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 How they're built (without field access):
 
 - `as_slice_pt`: the bytes from the sequence's `as_untyped` (`join_ref`),
-  the typed value from `tracked_slice_from_refs` and `valid_ref`
-  (or an empty one when any element is empty),
+  the typed value from `from_elems_ref` on the elements' typed values
+  (empty when any element is empty),
   then `from_raw_parts_ref` gives a `&PointsToUnaligned<[T]>` and `as_aligned` the `&PointsTo<[T]>`.
 - `as_slice_pt_mut`: each element through `as_unaligned_mut`, then `as_raw_parts_mut` (in `points_to_ops.rs`)
   for its bytes and typed value; the bytes merged with `join_mut`, the typed values with M1,
@@ -863,9 +1476,9 @@ There are no borrowed constructors for sequences
 
 Signatures only; rustlib fixes the details.
 rustlib writes `PTPhys` (`Metadata<str>` is the byte length; `size(len) = len`;
-`wf_basic` is `self.wf_basic_unaligned()`), `PTProperties` (the same delegations as for `T` and `[T]`), `View`,
+`wf_basic` is `self.wf_basic_unaligned()`), `PTProperties` (the same delegations as for `T` and `[T]`),
 `PTTypedValue` and `PTValueOps` for `PointsToUnaligned<str>`;
-`PointsTo<str>` comes from the generic impls (alignment 1, from `layout_of_str`).
+its `View` and everything for `PointsTo<str>` come from the generic impls (alignment 1, from `layout_of_str`).
 
 Only shared casts: there are no owned or `&mut` `str` ↔ `[u8]` permission casts.
 Both are proved, with no new axioms:
@@ -927,7 +1540,7 @@ everything else exists today.
 |---|---|---|
 | `impl<T: ?Sized> TypedValue<T>` | `is_valid`, `is_empty`; `value_ref` (new); `valid_ref` (new, phase 3b) | |
 | `impl<T> TypedValue<T>` | `value`, `tracked_copy` | Sized: by-value access |
-| `impl<T> TypedValue<[T]>` | `value` (-> `&[T]`); `from_elems_mut` (new axiom M1, phase 3b) | |
+| `impl<T> TypedValue<[T]>` | `value` (-> `&[T]`); `from_elems_ref` (new axiom, phase 3b); `from_elems_mut` (new axiom M1, phase 3b) | |
 | `impl<T: ?Sized> PointsToUnaligned<T>` | closed accessors `typed_value`, `pt_untyped`, `metadata`; `bytes`, `is_valid`, `is_empty` (inline); `tracked_pt_untyped`; `as_raw_parts_mut` (new, proposed, phase 4); `from_raw_parts_ref` (new axiom, phase 3b), `from_raw_parts_mut` (new axiom M3, phase 3b) | The inherent `typed_value`/`bytes` coexist with the trait's (phase 0, item 5). |
 | `impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | `into_aligned`, `as_aligned` (new, generic); `as_aligned_mut` (new, generic, phase 3b: needs M4) | Contracts in [`PointsTo`: proofs and aligned/unaligned conversions](#pointsto-proofs-and-alignedunaligned-conversions). |
 | `impl<T> PointsToUnaligned<T>` | `value`; `is_disjoint_unaligned<S>`. (removed: `wf`, `stays_wf`, `zero_sized`) | |
@@ -941,7 +1554,7 @@ everything else exists today.
 | `impl SeqPointsTo<u8, PointsToByte>` (`PointsToUntyped`, `points_to_model.rs` / `points_to_ops.rs`) | `View`, `bytes`, `wf`, `stays_wf`, `lemma_ptrs_len_same_untyped` (renamed), `zero_sized<T>`, `split`, `split_ref`, `join` (wrappers over the `_basic` primitives); `join_ref`, `join_mut` (axioms); `split_mut` (proved in phase 3b); `is_disjoint_untyped` | |
 | `impl PointsToByte` (renamed from `PointsToSingleton`) | `byte`, `is_disjoint_byte` (renamed from `is_disjoint_singleton`, in phase 1 with the type) | |
 | `impl PointsToRaw` | everything in [`PointsToRaw` (phase 2c)](#pointstoraw-phase-2c) above (new) | Not a `PTPhys`. |
-| free functions | `tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref` (new axioms, phase 3b); `allocate`, `deallocate` (ported, phase 2c, with `PointsToUntyped` in place of `PointsToRaw`; in `ptr_specs.rs`; `Dealloc` dropped) | |
+| free functions | `tracked_slice_index`, `tracked_ref` (new axioms, phase 3b); `allocate`, `deallocate` (ported, phase 2c, with `PointsToUntyped` in place of `PointsToRaw`; in `ptr_specs.rs`; `Dealloc` dropped) | |
 | rustlib: `impl PointsToUnaligned<str>` | `as_bytes`, `from_bytes_ref` | |
 | rustlib: `impl PointsTo<str>` | `as_bytes`, `from_bytes_ref` (through the aligned/unaligned conversions) | |
 
@@ -966,9 +1579,9 @@ so no trusted code depends on `points_to_collections.rs`.
 
 ## New axioms
 
-All approved, including `allocate`, `deallocate` and `global_alloc_id`
-([TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes)),
-including `PointsTo::borrow_mut`.
+All in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes)
+and approved, including `allocate`, `deallocate`, `global_alloc_id` and `PointsTo::borrow_mut`,
+except `TypedValue::<[T]>::from_elems_ref` and the untyped joins `join_ref` / `join_mut` (waiting on Travis).
 
 Minor changes to existing axioms (`ptr_ref`, `ptr_ref2`, `ptr_ref2_ghost`, `mut_ref_to_shr_points_to`, `SharedReference::points_to`,
 and the restored slice versions `ptr_ref_slice`, `ptr_ref2_slice_ghost`, `mut_ref_to_shr_points_to_slice`, `SharedReference<[T]>::points_to`)
@@ -976,8 +1589,8 @@ are approved and in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#mi
 and so are the strengthened `ptr_mut_ref`, `ptr_mut_ref_slice` and `ptr_mut_ref_str`,
 the other `str` reference helpers (minor changes), the new `Seq` tracked operations
 (`tracked_borrow_subrange`, `tracked_split_borrow_mut`),
-and the borrowed-assembly axioms (`tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref`,
-`PointsToUnaligned::from_raw_parts_ref`, M1, M3–M5, and the untyped joins `join_ref` / `join_mut`)
+and the borrowed-assembly axioms (`tracked_slice_index`, `tracked_ref`,
+`PointsToUnaligned::from_raw_parts_ref`, M1, M3–M5)
 ([TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes)).
 
 **rustlib.** All new rustlib axioms are approved
@@ -989,10 +1602,10 @@ and the borrowed-assembly axioms (`tracked_slice_index`, `tracked_slice_from_ref
 
 ### Borrowed-assembly axioms (phase 3b)
 
-All approved and in
+All in
 [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes):
-the shared ones (`tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref`,
-`PointsToUnaligned::from_raw_parts_ref`) and the `&mut` ones (M1, M3–M5).
+the shared ones (`tracked_slice_index`, `tracked_ref`, `PointsToUnaligned::from_raw_parts_ref`,
+and `TypedValue::<[T]>::from_elems_ref`, which is waiting on Travis) and the `&mut` ones (M1, M3–M5).
 
 ### Slice reference helpers (phase 4b)
 

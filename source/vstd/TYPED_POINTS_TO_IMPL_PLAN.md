@@ -160,7 +160,7 @@ These cover the [`SeqPointsTo` pointer change](TYPED_POINTS_TO_NOTES.md#seqpoint
       for `*mut [P::A]` in the struct field and in `type A = [P::A]`,
       whether the bound is written `P: Phys<A: Sized>`, `where P::A: Sized`,
       or through a subtrait with `Phys<A: Sized>` as supertrait. rustc accepts all three.
-      So `SeqPointsTo` keeps `T`, with `P: PTProperties<A = T>`.
+      So `SeqPointsTo` keeps `T`, with `P: PTProperties<A = T>` on the impls (item 10).
 15. **Child-module access** (for `points_to_ops` under `points_to_model`).
     - *Done* (`child_module_access.rs`, verifies): a child module can build a struct literal
       from the parent's private fields, unfold the parent's `closed` specs,
@@ -171,6 +171,17 @@ These cover the [`SeqPointsTo` pointer change](TYPED_POINTS_TO_NOTES.md#seqpoint
     - *Done* (`valid_ref.rs`, verifies): with a local `tracked_ref` axiom,
       `shr_ref_struct_wrap(t, &TypedValue::Valid(*t), "Valid", "0")` proves `valid_ref`
       for `T: ?Sized`, used at `u64` and at `str`.
+17. **The generic `PointsTo` impl with default `wf`.**
+    - *Done* (`generic_wf_delegate.rs`): with `wf` as the trait default,
+      the generic impl can't delegate its lemmas to `pt_unaligned`:
+      `pt_unaligned.wf()` is a default body at a generic type, so it doesn't unfold
+      and can't be built from the parts of `self.wf()`.
+      (`PointsTo`'s own default `wf` does unfold inside its impl.)
+      Overriding `wf` as `self.pt_unaligned().wf()` plus alignment verifies, delegating every lemma.
+      So the generic `PointsTo` overrides `wf`, and `ptrs_len_same_valid` for the same reason;
+      `PointsToUnaligned` keeps the defaults.
+    - *Done* (`recursive_points_to.rs`, verifies): today's `PointsTo<T>` allows recursive types
+      (`PointsTo<Node>`, `PointsTo<[Node]>` inside `Node`) with no attribute.
 
 ### Phase 1: structural generalization and module layout (assessment section 1, groups 1-3)
 
@@ -343,8 +354,8 @@ Needs phases 2b and 3.
    `shr_ref_struct_wrap` accepts `tracked_ref`'s `&Tracked<T>` for `Valid`'s field,
    for `T: ?Sized` (phase 0 item 16),
    and disjoint `&mut` field borrows work from the struct's module or a child (phase 0 item 15).
-2. Add the shared axioms (`tracked_slice_index`, `tracked_slice_from_refs`, `tracked_ref`,
-   `from_raw_parts_ref`), then prove `TypedValue::valid_ref`.
+2. Add the shared axioms (`tracked_slice_index`, `tracked_ref`,
+   `from_raw_parts_ref`, `TypedValue::<[T]>::from_elems_ref`), then prove `TypedValue::valid_ref`.
 3. Add M1 and M3–M5.
 4. Prove the existing axiom that becomes provable, and remove it:
    `SeqPointsTo::subrange_mut` (M5), staying on `SeqPointsTo<T, PointsTo<T>>`.
@@ -354,7 +365,7 @@ Needs phases 2b and 3.
 
 ### Phase 4: sequence → slice and slice indexing
 
-Needs phase 3b's axioms (`from_raw_parts_ref`, `tracked_slice_index`, `tracked_slice_from_refs`, M1, M3–M5).
+Needs phase 3b's axioms (`from_raw_parts_ref`, `tracked_slice_index`, `from_elems_ref`, M1, M3–M5).
 The design is in [Sequence → slice conversions](TYPED_POINTS_TO_PLAN.md#sequence--slice-conversions-phase-4).
 
 1. `PointsToUnaligned::as_raw_parts_mut` in `points_to_ops.rs` (disjoint field borrows).

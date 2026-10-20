@@ -10,6 +10,10 @@
 > the only typed sequences are `SeqPointsTo<T, PointsTo<T>>`, so the typed impl is not generalized.
 > The sections below about `impl<T, P: PTSizedValue<A = T>> SeqPointsTo<T, P>`,
 > its generic `View`, and the sequence aligned/unaligned conversions no longer apply.
+>
+> **Superseded: `tracked_slice_from_refs`.** It is replaced by `TypedValue::<[T]>::from_elems_ref`
+> (the shared counterpart of M1, in `points_to_model.rs`), so the axiom only covers `TypedValue`s,
+> which have no physical memory. Mentions of `tracked_slice_from_refs` below no longer apply.
 
 This is the design and specification for "level 3" from
 [GENERALIZATION_ASSESSMENT.md](GENERALIZATION_ASSESSMENT.md#4-a-typedpointsto-trait-for-typed-permissions):
@@ -1013,9 +1017,10 @@ The two hooks differ in when they're used:
 
 `wf() ==> satisfies_alignment(ptr()@.addr)` and `wf() ==> wf_basic()` hold by definition
 (`satisfies_alignment_of_wf`, `lemma_wf_basic`).
-The generic `PointsTo` uses the same default body;
-since it delegates `wf_basic`, `bytes`, `typed_value` and `metadata_matches`,
-that amounts to `pt_unaligned.wf()` plus `PointsTo`'s alignment.
+The generic `PointsTo` overrides it as `pt_unaligned.wf()` plus `PointsTo`'s alignment
+(and `ptrs_len_same_valid` likewise):
+with the default, `pt_unaligned.wf()` couldn't be derived in the generic impl
+([phase 0, item 17](TYPED_POINTS_TO_IMPL_PLAN.md#phase-0-pending-checks)).
 `wf` can be written once as a trait default body,
 but it doesn't unfold in generic code,
 so generic code uses the trait lemmas, proved per impl
