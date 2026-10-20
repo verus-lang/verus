@@ -1,5 +1,5 @@
 #! /bin/bash
-# Checks links between the guide, the state machines book and verusdoc (#2191).
+# Checks links between the guide, the state machines book and verusdoc.
 # Links to https://verus-lang.github.io/verus/ are checked against a local build.
 # Run from `source/` after `tools/docs-cargo.sh`; needs `mdbook` and `lychee` on PATH.
 
