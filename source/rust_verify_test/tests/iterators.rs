@@ -282,6 +282,361 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+const CUSTOM_STEP: &str = code_str! {
+    #![feature(step_trait)]
+    use vstd::prelude::*;
+
+    verus! {
+        #[derive(Clone, Copy, PartialEq, PartialOrd)]
+        pub struct S(pub u8);
+    }
+
+    // The executable implementation steps normally; its spec model below does not.
+    impl core::iter::Step for S {
+        fn steps_between(a: &S, b: &S) -> (usize, Option<usize>) {
+            if a.0 <= b.0 {
+                let n = (b.0 - a.0) as usize;
+                (n, Some(n))
+            } else {
+                (0, None)
+            }
+        }
+
+        fn forward_checked(a: S, n: usize) -> Option<S> {
+            a.0.checked_add(u8::try_from(n).ok()?).map(S)
+        }
+
+        fn backward_checked(a: S, n: usize) -> Option<S> {
+            a.0.checked_sub(u8::try_from(n).ok()?).map(S)
+        }
+
+        fn forward_overflowing(a: S, n: usize) -> (S, bool) {
+            (S(a.0.wrapping_add(n as u8)), Self::forward_checked(a, n).is_none())
+        }
+
+        fn backward_overflowing(a: S, n: usize) -> (S, bool) {
+            (S(a.0.wrapping_sub(n as u8)), Self::backward_checked(a, n).is_none())
+        }
+    }
+};
+
+test_verify_one_file_with_options! {
+    #[test] range_custom_step_model ["no-auto-import-verus_builtin"] =>
+    FEATURE_PRELUDE.to_string() + CUSTOM_STEP + verus_code_str! {
+        use vstd::std_specs::iter::StepSpecImpl;
+
+        // Claiming obeys does not make an incoherent model valid for ranges.
+        impl StepSpecImpl for S {
+            open spec fn obeys_step_spec() -> bool { true }
+            open spec fn spec_steps_between(self, end: Self) -> Option<usize> { Some(1) }
+            open spec fn spec_steps_between_int(self, end: Self) -> int { 1 }
+            open spec fn spec_forward_checked(self, count: usize) -> Option<Self> { Some(S(7)) }
+            open spec fn spec_forward_checked_int(self, count: int) -> Option<Self> { Some(S(7)) }
+            open spec fn spec_backward_checked(self, count: usize) -> Option<Self> { None }
+            open spec fn spec_backward_checked_int(self, count: int) -> Option<Self> { None }
+            open spec fn spec_forward_overflowing(self, count: usize) -> (Self, bool) { (S(7), false) }
+            open spec fn spec_backward_overflowing(self, count: usize) -> (Self, bool) { (self, true) }
+        }
+
+        fn exclusive()
+            ensures false, // FAILS
+        {
+            let mut r = S(0)..S(1);
+            let _ = r.next();
+        }
+
+        fn inclusive()
+            ensures false, // FAILS
+        {
+            let mut r = S(0)..=S(1);
+            let _ = r.next();
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] range_custom_step_next_not_deterministic ["no-auto-import-verus_builtin"] =>
+    FEATURE_PRELUDE.to_string() + code_str! {
+        #![feature(step_trait)]
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use vstd::prelude::*;
+
+        static COUNTER: AtomicU64 = AtomicU64::new(100);
+
+        verus! {
+            #[derive(Clone, Copy, PartialEq, PartialOrd)]
+            pub struct S(pub u64);
+
+            // No StepSpecImpl: the spec_range_next model must not imply
+            // that equal ranges produce equal results for an arbitrary Step type.
+            fn two() -> (r: (Option<S>, Option<S>))
+                ensures r.0 == r.1, // FAILS
+            {
+                let mut a = S(0)..S(u64::MAX);
+                let mut b = S(0)..S(u64::MAX);
+                let _ = a.next();
+                let _ = b.next();
+                (a.next(), b.next())
+            }
+        }
+
+        impl core::iter::Step for S {
+            fn steps_between(_: &S, _: &S) -> (usize, Option<usize>) { (0, None) }
+            fn forward_checked(_: S, _: usize) -> Option<S> {
+                Some(S(COUNTER.fetch_add(1, Ordering::SeqCst)))
+            }
+            fn backward_checked(_: S, _: usize) -> Option<S> { None }
+            fn forward_overflowing(a: S, n: usize) -> (S, bool) {
+                (Self::forward_checked(a, n).unwrap(), false)
+            }
+            fn backward_overflowing(a: S, _: usize) -> (S, bool) { (a, true) }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] range_primitive_step_specs code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        macro_rules! check_ranges {
+            ($t:ty, $test:ident) => {
+                verus! {
+                    fn $test() {
+                        let mut r = (1 as $t)..(3 as $t);
+                        assert(r.obeys_prophetic_iter_laws());
+                        assert(r.remaining() =~= seq![1 as $t, 2 as $t]);
+                        assert(r.decrease() == Some(2nat));
+                        assert(r.peek(0) == Some(1 as $t));
+                        let x = r.next();
+                        assert(x == Some(1 as $t));
+                        assert(r.start == 2 && r.end == 3);
+                        let x = r.next();
+                        assert(x == Some(2 as $t));
+                        let x = r.next();
+                        assert(x == None::<$t>);
+
+                        let mut r = (1 as $t)..=(2 as $t);
+                        assert(r.obeys_prophetic_iter_laws());
+                        assert(r.remaining() =~= seq![1 as $t, 2 as $t]);
+                        assert(r.decrease() == Some(2nat));
+                        assert(r.peek(0) == Some(1 as $t));
+                        let x = r.next();
+                        assert(x == Some(1 as $t));
+                        let x = r.next();
+                        assert(x == Some(2 as $t));
+                        assert(r.remaining() =~= Seq::<$t>::empty());
+                        let x = r.next();
+                        assert(x == None::<$t>);
+                    }
+                }
+            };
+        }
+
+        check_ranges!(u8, check_u8);
+        check_ranges!(u16, check_u16);
+        check_ranges!(u32, check_u32);
+        check_ranges!(u64, check_u64);
+        check_ranges!(u128, check_u128);
+        check_ranges!(usize, check_usize);
+        check_ranges!(i8, check_i8);
+        check_ranges!(i16, check_i16);
+        check_ranges!(i32, check_i32);
+        check_ranges!(i64, check_i64);
+        check_ranges!(i128, check_i128);
+        check_ranges!(isize, check_isize);
+    } => Ok(())
+}
+
+// Reuse the honest example's type and spec definitions, replacing only its
+// executable Step implementation in the negative tests below.
+fn custom_step_model_code() -> String {
+    let example = include_str!("../../../examples/iterators/custom_step.rs");
+    let (model, _) = example.split_once("impl Step for Index").unwrap();
+    FEATURE_PRELUDE.to_string() + model + "\n}\n"
+}
+
+test_verify_one_file_with_options! {
+    #[test] step_overrides_must_obey_model ["no-auto-import-verus_builtin"] =>
+    custom_step_model_code() + verus_code_str! {
+        impl Step for Index {
+            fn steps_between(_start: &Self, _end: &Self) -> (usize, Option<usize>) {
+                (0, Some(0)) // FAILS
+            }
+            fn forward_checked(_start: Self, _count: usize) -> Option<Self> {
+                None // FAILS
+            }
+            fn backward_checked(_start: Self, _count: usize) -> Option<Self> {
+                None // FAILS
+            }
+            fn forward_overflowing(_start: Self, _count: usize) -> (Self, bool) {
+                (Index(0), true) // FAILS
+            }
+            fn backward_overflowing(_start: Self, _count: usize) -> (Self, bool) {
+                (Index(0), true) // FAILS
+            }
+            fn forward(start: Self, _count: usize) -> Self {
+                start // FAILS
+            }
+            fn backward(start: Self, _count: usize) -> Self {
+                start // FAILS
+            }
+            unsafe fn forward_unchecked(start: Self, _count: usize) -> Self {
+                start // FAILS
+            }
+            unsafe fn backward_unchecked(start: Self, _count: usize) -> Self {
+                start // FAILS
+            }
+        }
+    } => Err(err) => {
+        // Each overflowing override violates both the new complete result
+        // model and the existing checked-result/overflow contracts.
+        assert_eq!(err.errors.len(), 11);
+        for error in err.errors {
+            assert!(error.message.contains("postcondition not satisfied"));
+            // The failed inherited postcondition has no source text in the
+            // imported vstd; inspect the implementation's exit span instead.
+            assert!(error.spans.iter().flat_map(|span| &span.text)
+                .any(|line| line.text.contains("FAILS")));
+        }
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test] step_overflow_contracts ["no-auto-import-verus_builtin"] =>
+    FEATURE_PRELUDE.to_string() + code_str! {
+        #![feature(step_trait)]
+        use vstd::prelude::*;
+        use core::iter::Step;
+
+        verus! {
+            fn forward() {
+                let _ = <u8 as Step>::forward(255, 1); // FAILS: may panic.
+            }
+            fn backward() {
+                let _ = <u8 as Step>::backward(0, 1); // FAILS: may panic.
+            }
+            fn forward_unchecked() {
+                let _ = unsafe { <u8 as Step>::forward_unchecked(255, 1) }; // FAILS
+            }
+            fn backward_unchecked() {
+                let _ = unsafe { <u8 as Step>::backward_unchecked(0, 1) }; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] step_wide_counts ["no-auto-import-verus_builtin"] =>
+    FEATURE_PRELUDE.to_string() + code_str! {
+        #![feature(step_trait)]
+        use vstd::prelude::*;
+        use core::iter::Step;
+
+        verus! {
+            fn composed_counts() {
+                // Rust's Step implementations can compose successful steps
+                // even when their counts cannot be added in usize.
+                let n = usize::MAX;
+                let count = n.checked_add(1);
+                assert(count == None::<usize>);
+                let first = <u128 as Step>::forward_checked(0, n);
+                assert(first == Some(n as u128));
+                let result = <u128 as Step>::forward_checked(first.unwrap(), 1);
+                assert(result == Some((n + 1) as u128));
+
+                let first = <u128 as Step>::backward_checked(u128::MAX, n);
+                assert(first == Some((u128::MAX - n) as u128));
+                let result = <u128 as Step>::backward_checked(first.unwrap(), 1);
+                assert(result == Some((u128::MAX - n - 1) as u128));
+
+                let (unsigned, unsigned_overflow) = <u8 as Step>::forward_overflowing(250, 256);
+                let (signed, signed_overflow) = <i8 as Step>::forward_overflowing(-120, 200);
+                let (wrapped, wrapped_overflow) = <i8 as Step>::forward_overflowing(-120, 256);
+                proof {
+                    reveal(vstd::std_specs::range::step_spec_wrapping_value);
+                    assert(vstd::std_specs::range::step_spec_wrapping_value(250, 256, 0, 255)
+                        == 250) by (compute);
+                    assert(vstd::std_specs::range::step_spec_wrapping_value(-120, 256, -128, 127)
+                        == -120) by (compute);
+                    assert(unsigned == 250 && unsigned_overflow);
+                    assert(signed == 80 && !signed_overflow);
+                    assert(wrapped == -120 && wrapped_overflow);
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] step_overflowing_must_obey_fold ["no-auto-import-verus_builtin"] => {
+        let example = include_str!("../../../examples/iterators/custom_step.rs");
+        let (program, _) = example.split_once("pub broadcast proof fn index_step_laws()").unwrap();
+        // Both the executable methods and their models return zero on overflow.
+        // Their individual postconditions still hold, but repeated forward
+        // steps after overflow disagree with one bulk step.
+        let program = program.replace("(Index(i), overflow)",
+            "(if overflow { Index(0) } else { Index(i) }, overflow)");
+        FEATURE_PRELUDE.to_string() + &program + code_str! {
+            proof fn rejected_laws() {
+                reveal(vstd::std_specs::range::step_spec_wrapping_value);
+                assert(vstd::std_specs::range::step_spec_wrapping_value(0, 1, 0, 255)
+                    == 1) by (compute);
+                let (one, first_overflow) = StepSpec::spec_forward_overflowing(Index(255), 1);
+                let (two, bulk_overflow) = StepSpec::spec_forward_overflowing(Index(255), 2);
+                let (next, next_overflow) = StepSpec::spec_forward_overflowing(one, 1);
+                assert(one == Index(0) && first_overflow);
+                assert(two == Index(0) && bulk_overflow);
+                assert(next == Index(1) && !next_overflow);
+                reveal(step_spec_overflowing_is_well_formed);
+                assert(!step_spec_overflowing_is_well_formed::<Index>());
+                assert(step_spec_overflowing_is_well_formed::<Index>()); // FAILS
+            }
+        } + "\n}\n"
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] step_forward_overrides_use_preconditions ["no-auto-import-verus_builtin"] =>
+    custom_step_model_code() + verus_code_str! {
+        impl Step for Index {
+            fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
+                <u8 as Step>::steps_between(&start.0, &end.0)
+            }
+            fn forward_checked(start: Self, count: usize) -> Option<Self> {
+                match <u8 as Step>::forward_checked(start.0, count) {
+                    Some(i) => Some(Index(i)),
+                    None => None,
+                }
+            }
+            fn backward_checked(start: Self, count: usize) -> Option<Self> {
+                match <u8 as Step>::backward_checked(start.0, count) {
+                    Some(i) => Some(Index(i)),
+                    None => None,
+                }
+            }
+            fn forward_overflowing(start: Self, count: usize) -> (Self, bool) {
+                let (i, overflow) = <u8 as Step>::forward_overflowing(start.0, count);
+                (Index(i), overflow)
+            }
+            fn backward_overflowing(start: Self, count: usize) -> (Self, bool) {
+                let (i, overflow) = <u8 as Step>::backward_overflowing(start.0, count);
+                (Index(i), overflow)
+            }
+
+            // The strengthened preconditions justify these unchecked steps.
+            fn forward(start: Self, count: usize) -> Self {
+                let i = unsafe { <u8 as Step>::forward_unchecked(start.0, count) };
+                Index(i)
+            }
+            fn backward(start: Self, count: usize) -> Self {
+                let i = unsafe { <u8 as Step>::backward_unchecked(start.0, count) };
+                Index(i)
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] skip_works verus_code! {
         use vstd::prelude::*;

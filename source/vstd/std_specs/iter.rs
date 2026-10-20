@@ -988,9 +988,10 @@ pub open spec fn trigger_peek_implications<T>(x: T) -> bool { true }
 pub trait ExIterStep: Clone + PartialOrd + Sized {
     type ExternalTraitSpecificationFor: core::iter::Step;
 
-    // REVIEW: it would be nice to be able to use SpecOrd::spec_lt (not yet supported)
-    // TODO: We should now be able to use cmp_spec or partial_cmp_spec here.
-    spec fn spec_is_lt(self, other: Self) -> bool;
+    /// The executable methods agree with the spec functions below.
+    /// Range clients additionally need a separate proof of the model's laws,
+    /// expressed by range::step_spec_is_well_formed.
+    spec fn obeys_step_spec() -> bool;
 
     spec fn spec_steps_between(self, end: Self) -> Option<usize>;
 
@@ -1003,6 +1004,95 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
     spec fn spec_backward_checked(self, count: usize) -> Option<Self>;
 
     spec fn spec_backward_checked_int(self, count: int) -> Option<Self>;
+
+    /// Models the returned value even after overflow, so the documented fold
+    /// invariants can constrain successive overflowing steps.
+    spec fn spec_forward_overflowing(self, count: usize) -> (Self, bool);
+
+    spec fn spec_backward_overflowing(self, count: usize) -> (Self, bool);
+
+    /// Exact upper bound, and the documented lower bound for a reversed range or a distance that overflows usize.
+    fn steps_between(start: &Self, end: &Self) -> ((lower, upper): (usize, Option<usize>))
+        ensures
+            Self::obeys_step_spec() ==> upper == start.spec_steps_between(*end),
+            Self::obeys_step_spec() ==> lower ==
+                match upper {
+                    Some(n) => n,
+                    None => if start.spec_steps_between_int(*end) >= 0 { usize::MAX } else { 0 },
+                },
+    ;
+
+    /// None on overflow; composition and try_fold invariants are checked by range::step_spec_is_well_formed laws.
+    fn forward_checked(start: Self, count: usize) -> (ret: Option<Self>)
+        ensures
+            Self::obeys_step_spec() ==> ret == start.spec_forward_checked(count),
+    ;
+
+    /// None on overflow; composition and try_fold invariants are checked by range::step_spec_is_well_formed laws.
+    fn backward_checked(start: Self, count: usize) -> (ret: Option<Self>)
+        ensures
+            Self::obeys_step_spec() ==> ret == start.spec_backward_checked(count),
+    ;
+
+    /// Reports overflow and agrees with forward_checked when it succeeds. The fold law checks overflow values.
+    fn forward_overflowing(start: Self, count: usize) -> ((ret, overflow): (Self, bool))
+        ensures
+            Self::obeys_step_spec() ==> (ret, overflow) == start.spec_forward_overflowing(count),
+            Self::obeys_step_spec() ==> overflow == start.spec_forward_checked(count).is_none(),
+            Self::obeys_step_spec() && !overflow ==>
+                start.spec_forward_checked(count) == Some(ret),
+    ;
+
+    /// Reports overflow and agrees with backward_checked when it succeeds. The fold law checks overflow values.
+    fn backward_overflowing(start: Self, count: usize) -> ((ret, overflow): (Self, bool))
+        ensures
+            Self::obeys_step_spec() ==> (ret, overflow) == start.spec_backward_overflowing(count),
+            Self::obeys_step_spec() ==> overflow == start.spec_backward_checked(count).is_none(),
+            Self::obeys_step_spec() && !overflow ==>
+                start.spec_backward_checked(count) == Some(ret),
+    ;
+
+    /// Preconditions rule out panics that the docs allow
+    fn forward(start: Self, count: usize) -> (ret: Self)
+        requires
+            Self::obeys_step_spec(),
+            start.spec_forward_checked(count).is_some(),
+        ensures
+            start.spec_forward_checked(count) == Some(ret),
+        default_ensures
+            call_ensures(Self::forward_checked, (start, count), Some(ret)),
+    ;
+
+    /// Preconditions rule out panics that the docs allow
+    fn backward(start: Self, count: usize) -> (ret: Self)
+        requires
+            Self::obeys_step_spec(),
+            start.spec_backward_checked(count).is_some(),
+        ensures
+            start.spec_backward_checked(count) == Some(ret),
+        default_ensures
+            call_ensures(Self::backward_checked, (start, count), Some(ret)),
+    ;
+
+    unsafe fn forward_unchecked(start: Self, count: usize) -> (ret: Self)
+        requires
+            Self::obeys_step_spec(),
+            start.spec_forward_checked(count).is_some(),
+        ensures
+            start.spec_forward_checked(count) == Some(ret),
+        default_ensures
+            call_ensures(Self::forward, (start, count), ret),
+    ;
+
+    unsafe fn backward_unchecked(start: Self, count: usize) -> (ret: Self)
+        requires
+            Self::obeys_step_spec(),
+            start.spec_backward_checked(count).is_some(),
+        ensures
+            start.spec_backward_checked(count) == Some(ret),
+        default_ensures
+            call_ensures(Self::backward, (start, count), ret),
+    ;
 }
 
 
