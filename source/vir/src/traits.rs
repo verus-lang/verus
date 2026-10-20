@@ -1380,32 +1380,6 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     Arc::new(vec![Arc::new(CommandX::Global(axiom))])
 }
 
-// REVIEW: this check was inert for a long time because `merge_external_traits`
-// intentionally de-duplicated all impls before this was called.
-// It's not called at all any more. Should it be?
-#[allow(dead_code)]
-pub(crate) fn check_no_dupe_impls(krate: &Krate, other_crates: &[Krate]) -> Result<(), VirErr> {
-    let mut paths = HashMap::<Path, TraitImpl>::new();
-    for trait_impl in
-        krate.trait_impls.iter().chain(other_crates.iter().map(|k| k.trait_impls.iter()).flatten())
-    {
-        match paths.get(&trait_impl.x.impl_path) {
-            Some(prev_trait_impl) => {
-                let e = error(
-                    &prev_trait_impl.span,
-                    "duplicate specification for this trait implementation",
-                )
-                .primary_span(&trait_impl.span);
-                return Err(e);
-            }
-            None => {
-                paths.insert(trait_impl.x.impl_path.clone(), trait_impl.clone());
-            }
-        }
-    }
-    Ok(())
-}
-
 pub type MergedTraits = Arc<MergedTraitsX>;
 pub struct MergedTraitsX {
     pub traits: Vec<Trait>,
