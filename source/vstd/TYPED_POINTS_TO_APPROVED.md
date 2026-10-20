@@ -1372,7 +1372,9 @@ pub trait PTSizedValue: PTValueOps<A: Sized> {
 
 ## Impls
 
-All in `points_to_model.rs`, written out as the final code.
+The `points_to_model.rs` impls are written out as the final code.
+The `points_to_ops.rs` impls are written out without their proof bodies;
+trait impl methods there don't restate their contracts, which are the trait's.
 Axioms are named in a comment, not repeated;
 their code is in [New axioms and axioms with bigger changes](#new-axioms-and-axioms-with-bigger-changes).
 
@@ -2134,3 +2136,162 @@ impl<T: ?Sized> PTTypedValue for PointsTo<T> where PointsToUnaligned<T>: PTValue
     }
 }
 ````
+
+### `points_to_ops.rs`: `SeqPointsTo`'s `PTProperties` and structural operations (phase 1b)
+
+`points_to_ops.rs` is a child module of `points_to_model.rs`, so it can use the structs' private fields
+([phase 0, item 15](TYPED_POINTS_TO_IMPL_PLAN.md#phase-0-pending-checks)).
+
+```rust
+impl<T, P: PTProperties<A = T>> PTProperties for SeqPointsTo<T, P> {
+    /// Non-nullness is guaranteed by the invariant.
+    proof fn is_nonnull(tracked &self);
+
+    /// If the sequence is nonempty, this follows from the last element's `ptr_bounds`.
+    /// Otherwise, `wf_basic`'s provenance clause guarantees it.
+    proof fn ptr_bounds(tracked &self);
+
+    /// If the size is non-zero, the length must be nonzero.
+    /// Then this follows from the `provenance_not_none` property of an individual `P`.
+    proof fn provenance_not_none(tracked &self);
+
+    /// Finds the element whose range contains `other`'s start address
+    /// (or the first or last element, if `other` starts outside `self`'s range),
+    /// and uses that element's `is_disjoint`.
+    proof fn is_disjoint<OtherPointsToPerm: PTPhys>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    );
+
+    /// `new` has the same pointer and length as `old`, and each element of `new` keeps the
+    /// corresponding element of `old`'s pointer and satisfies its `ptrs_len_same`.
+    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& new.len() == old.len()
+        &&& forall|i: int|
+            #![trigger new[i]]
+            0 <= i < new.len() ==> P::ptrs_len_same(old[i], new[i]) && new[i].ptr() == old[i].ptr()
+    }
+
+    proof fn stays_wf_basic(old: Self, new: Self);
+}
+
+impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
+    /// Borrows the sequence of permissions.
+    pub proof fn tracked_seq_pt(tracked &self) -> tracked &Seq<P>
+        returns
+            self.seq_pt(),
+    ;
+
+    /// Mutably borrows the sequence of permissions, leaving the pointer unchanged.
+    /// If the final permissions keep their original pointers and lengths,
+    /// `self` satisfies `wf_basic` afterwards.
+    pub proof fn tracked_seq_pt_mut(tracked &mut self) -> (tracked ret: &mut Seq<P>)
+        ensures
+            *ret == old(self).seq_pt(),
+            final(self).seq_pt() == *final(ret),
+            final(self).ptr() == old(self).ptr(),
+            old(self).wf_basic() && Self::ptrs_len_same(*old(self), *final(self)) ==> final(self).wf_basic(),
+    ;
+
+    /// Mutably borrows the permission at index `i`, leaving the pointer unchanged.
+    pub proof fn index_mut(tracked &mut self, i: int) -> (tracked ret: &mut P)
+        requires
+            0 <= i < self.len(),
+        ensures
+            *ret == old(self)[i],
+            final(self).seq_pt() == old(self).seq_pt().update(i, *final(ret)),
+            final(self).ptr() == old(self).ptr(),
+            old(self).wf_basic() && P::ptrs_len_same(*ret, *final(ret)) && final(ret).ptr() == ret.ptr() ==> final(self).wf_basic(),
+    ;
+
+    /// Creates a `SeqPointsTo` from a sequence of permissions at consecutive offsets from `ptr`.
+    pub proof fn from_seq(tracked perms: Seq<P>, ptr: *mut T) -> (tracked out: Self)
+        requires
+            forall|i: int| 0 <= i < perms.len() ==> #[trigger] perms[i].wf_basic(),
+            forall|i: int| 0 <= i < perms.len() ==> {
+                &&& (#[trigger] perms[i]).ptr()@.provenance == ptr@.provenance
+                &&& perms[i].ptr()@.addr == ptr@.addr + i * P::size(())
+            },
+            ptr@.addr != 0,
+            ptr_addr_in_bounds(ptr),
+            perms.len() <= usize::MAX,
+        ensures
+            out.seq_pt() == perms,
+            out.ptr() as *mut T == ptr,
+            out.wf_basic(),
+    ;
+
+    /// Creates an empty sequence at `ptr`.
+    pub proof fn empty(ptr: *mut T) -> (tracked out: Self)
+        requires
+            ptr@.addr != 0,
+            ptr_addr_in_bounds(ptr),
+        ensures
+            out.seq_pt() == Seq::<P>::empty(),
+            out.ptr() as *mut T == ptr,
+            out.wf_basic(),
+    ;
+
+    /// Consumes this `SeqPointsTo`, returning the underlying `Seq<P>`.
+    pub proof fn into_seq(tracked self) -> (tracked perms: Seq<P>)
+        returns
+            self.seq_pt(),
+    ;
+
+    /// Splits into the first `mid` permissions and the rest.
+    pub proof fn split_basic(tracked self, mid: nat) -> (tracked (first, second): (Self, Self))
+        requires
+            self.wf_basic(),
+            mid <= self.len(),
+        ensures
+            first.seq_pt() == self.seq_pt().take(mid as int),
+            second.seq_pt() == self.seq_pt().skip(mid as int),
+            first.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: mid as usize,
+            }),
+            second.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: (self.ptr()@.addr + mid * P::size(())) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: (self.len() - mid) as usize,
+            }),
+            first.wf_basic(),
+            second.wf_basic(),
+    ;
+
+    /// Concatenates two sequences, provided that `other` starts where `self` ends
+    /// and they have the same provenance.
+    pub proof fn join_basic(tracked self, tracked other: Self) -> (tracked joined: Self)
+        requires
+            self.wf_basic(),
+            other.wf_basic(),
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len() * P::size(()),
+        ensures
+            joined.seq_pt() == self.seq_pt() + other.seq_pt(),
+            joined.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: (self.len() + other.len()) as usize,
+            }),
+            joined.wf_basic(),
+    ;
+
+    /// Borrows the sub-sequence of `len` permissions starting at `start`.
+    pub proof fn subrange_basic(tracked &self, start: nat, len: nat) -> (tracked sub: &Self)
+        requires
+            self.wf_basic(),
+            start + len <= self.len(),
+        ensures
+            sub.seq_pt() == self.seq_pt().subrange(start as int, (start + len) as int),
+            sub.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: (self.ptr()@.addr + start * P::size(())) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: len as usize,
+            }),
+            sub.wf_basic(),
+    ;
+}
+```
