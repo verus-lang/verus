@@ -61,7 +61,8 @@ Run the `build` task:
 cargo make build
 ```
 
-For more details, see the `Makefile.toml` file, which contains the task definitions for `cargo make`.
+For more detail on the exact commands each `cargo-make` task runs, refer to their definitions in
+`source/Makefile.toml`.
 
 ### Build with Vargo
 

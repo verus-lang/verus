@@ -339,3 +339,6 @@ any changes to those tools to take effect.
 | `vargo fmt`                  | `cargo make fmt`                |
 | `vargo fmt --exclude vstd`   | `cargo make fmt-exclude-vstd`   |
 | `vargo fmt -p vstd`          | `cargo make fmt-vstd`           |
+
+For more detail on the exact commands each `cargo-make` task runs, refer to their definitions in
+`source/Makefile.toml`.
