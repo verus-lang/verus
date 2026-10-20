@@ -41,7 +41,8 @@ For a machine with fields `f_1 … f_n`, the macro generates:
   `embed : State → Fragment`. `embed(s)` is the fragment that owns all of `s`. A
   machine with storage fields also implements
   `vstd::resource::tsm_storage::StorageMachine`, where `storage(s)` is the map of
-  currently deposited values.
+  currently deposited values, an `IMap<__StorageKey, __StorageValue>` tagged by
+  storage field (see "Storage" below).
 
 A fragment `a` is valid when it can be completed to the whole of some state that
 satisfies the invariant:
@@ -134,12 +135,12 @@ with the following properties:
 * the strong transition relation holds between `s` and `s'`;
 * `invariant(s')` holds;
 * the output, composed with `shared · c`, is `embed(s')`;
-* the withdrawn map is `(storage(s) ∪ deposit) \ dom(storage(s'))`.
+* the withdrawn map is `(storage(s) ∪ deposit) \\ dom(storage(s'))`.
 
 A client usually needs only consequences of this statement. Its witnesses can be
 extracted with `t_witness`. Readonly transitions and properties take a borrowed
 token and ensure facts about every completion. Storage guards return a shared
-reference into the guarded storage map.
+reference into the guarded storage value.
 
 ### Local readiness
 
@@ -349,30 +350,67 @@ Steps 2 and 4 are generated as separate proof functions, each verified in its ow
 solver context (`#[verifier::spinoff_prover]`). The proof cost of an operation is
 then independent of the size of the rest of the generated module.
 
-Storage operations deposit and withdraw through the raw protocol's storage map. With
-one `storage_map` or `storage_imap` field its keys and values are the field's own;
-`storage_option` fields of one value type use an index key. Any other combination
-of storage fields (several map fields, or option and map fields, or options of
-different value types) uses a carrier keyed by `__StorageKey`, which tags each key
-with its field: if all storage fields store one value type, the values are the
-payloads themselves (the homogeneous carrier, whose transfers re-key tracked maps,
-including infinite ones); otherwise they are tagged too (`__StorageValue`). A
-machine without storage fields uses the plain `vstd::resource::tsm::Token`.
+### Storage
+
+The raw protocol's storage is one map `IMap<M::__StorageKey, M::__StorageValue>`,
+the storage of vstd's `StorageResource<K, V, P>`, for every machine with storage
+fields (also one with a single storage field, or with storage fields of one
+payload type). The two generated enums have one variant per storage field `f`:
+
+```rust
+tokenized_state_machine!{ M { fields {
+    #[sharding(storage_map)]    pub m: Map<Foo, Bar>,
+    #[sharding(storage_option)] pub o: Option<Baz>,
+} ... } }
+
+pub enum __StorageKey   { m(Foo), o }       // a key variant per storage field
+pub enum __StorageValue { m(Bar), o(Baz) }  // its payload
+```
+
+A `storage_map` or `storage_imap` field's entry at `k` is stored under
+`__StorageKey::f(k)`, a `storage_option` field's value under `__StorageKey::f`,
+always as `__StorageValue::f(v)`. Each enum takes the machine's type parameters
+that its variants mention. The state's storage `s.__storage()` is the union of
+the fields' tagged parts `__tag_f(s.f)` (`__tag_f(s.f.to_imap())` for a
+`storage_map`); with several storage fields not all `storage_option`, it is
+defined per key (`State::__storage_dom`/`__storage_val`, which keeps the solver's
+work per key independent of the number of fields), and `State::__storage_tags(s)`
+states the union. A machine without storage fields uses the plain
+`vstd::resource::tsm::Token`.
+
+For each storage field `f` the machine's module has helpers (generic over the
+type parameters the storage types mention): `__tag_f`/`__untag_f` (spec) between
+the field's value and its tagged part, the tracked conversions `__pack_f` (a
+field's `Option<V>`, or a finite `Map<K, V>`, to its tagged part) and `__unpack_f`
+(back, for a finite tagged part), `__borrow_f` (a reference to a stored payload)
+and `__unwrap_f` (the payload of one tracked `__StorageValue`). Tagging and
+untagging a tracked map move its entries one by one, so they need a finite
+domain.
+
+Raw clients therefore pass and receive tagged maps: the initializer takes the
+initial storage (`initialize(IMap::tracked_empty())`, or `__pack_f` of the
+initial value), a deposit is the tagged map of the deposited values (built with
+`tracked_insert(M::__StorageKey::f(k), M::__StorageValue::f(v))`, or
+`M::__pack_f(Some(v))`), a withdrawal returns one
+(`M::__unwrap_f(w.tracked_remove(M::__StorageKey::f(k)))`), and a guard returns a
+reference into one (`M::__borrow_f(g, k)`). A transition's deposited value is
+the union of its deposits' tagged parts (one deposit: the tagged part itself).
+Comparisons of client-built maps with the machine's values are extensional
+(`assert(d =~= M::State::t_deposited(pre))`). The examples
+`raw_forms_storage_option.rs`, `raw_forms_storage_map.rs`,
+`raw_forms_storage_many_fields.rs` and `tagged_storage_api.rs` show these forms.
 
 A storage guard guards from the joined observation of its borrowed tokens; a guard
 that borrows no token guards from the instance's unit token. For the general
 operands of the trusted interface (`guard f >= (e)`), whose output types
 `&Option<V>` and `&Map<K, V>` are not references into the guarded storage, the
 generic interface returns references into the storage instead: `&V` for
-`guard f >= (Some(v))`, `Option<&V>` for any other operand of a `storage_option`
-field, and for a `storage_map` or `storage_imap` field `&IMap<K, V>` (equal to
-`m.to_imap()`, or `m` for a `storage_imap`) if the field is the only storage field
-and the guard the property's only guard. Otherwise the guarded storage contains no
-map of type `IMap<K, V>` (its keys are tagged by field, or it holds the other
-guards' values too), and the guard returns a map of references into it:
-`Map<K, &V>` with the domain of `m` and `*out[k] == m[k]` (`IMap<K, &V>` for a
-`storage_imap`, built key by key, so its operand must have a finite domain,
-which the machine states with a `require`). A guard may have several outputs.
+`guard f >= (Some(v))` and `Option<&V>` for any other operand of a
+`storage_option` field. For a `storage_map` field it returns a map of references
+into the storage, `Map<K, &V>` with the domain of `m` and `*out[k] == m[k]`;
+for a `storage_imap` field `IMap<K, &V>`, built key by key, so its operand must
+have a finite domain, which the machine states with a `require`. A guard may
+have several outputs.
 
 ### Differences from the trusted interface
 
@@ -389,8 +427,15 @@ which the machine states with a `require`). A guard may have several outputs.
   (`Token::empty`), so the signature is unchanged.
 * **`count` tokens** do not implement `CountToken` (see above).
 * **Guards of general operands** return references into the guarded storage
-  (`&V`, `Option<&V>`, `&IMap<K, V>`, or `Map<K, &V>`/`IMap<K, &V>`, see above)
+  (`&V`, `Option<&V>`, or `Map<K, &V>`/`IMap<K, &V>`, see "Storage" above)
   instead of `&Option<V>` or `&Map<K, V>`.
+* **General `storage_imap` operands need a finite domain.** A general deposit
+  into, withdrawal from or guard of a `storage_imap` field, and its initial
+  value, are tagged into (or taken out of) the storage map key by key, so the
+  operand's domain must be finite; the machine states it with a `require`
+  (for a withdrawal, also in an invariant). Verification reports a diagnostic
+  at the operand otherwise. Singleton operands and `storage_map` fields (finite
+  maps) need nothing.
 * **Persistent tokens and `Instance` in machines with type parameters** are not
   `Copy` where they own their resources (see above); clients call `clone` (with
   `&mut self` for persistent tokens of a machine with storage).
@@ -421,12 +466,11 @@ which the machine states with a `require`). A guard may have several outputs.
   * labeled machines: init and transition labels (also with the machine's type
     parameters) are the first parameters of the generated operations.
 
-  A general deposit into or withdrawal from a `storage_imap` field stored in
-  the tagged carrier (with storage fields of other payload types) packs or
-  untags its values one by one, so its operand needs a finite domain, which the
-  machine states with a `require`; verification reports a diagnostic at the
-  operand otherwise. A borrowed multiset part needs a similar `require` (see
-  above).
+  General deposits into, withdrawals from and guards of `storage_imap` fields,
+  and their initial values, need operands of a finite domain, which the
+  machine states with a `require` (see "Differences" above; verification
+  reports a diagnostic at the operand otherwise). A borrowed multiset part
+  needs a similar `require` (see above).
 
 ## Comparison
 
@@ -439,7 +483,7 @@ which the machine states with a `require`). A guard may have several outputs.
 | `Instance` | None; the location is that of the token | `Copy` value carrying the location (and shared resources); with type parameters, possibly an owned copy (`clone`) |
 | Operations without input tokens | Take a token of the instance (it may own the unit fragment) | Take a `Unit` in machines with storage; unchanged otherwise |
 | `vstd::tokens` traits | Not implemented | Implemented, with proofs |
-| Source compatibility with `tokenized_state_machine!` clients | No | Yes, except for `Unit` (storage machines), `count` tokens without `CountToken`, the outputs of guards of general operands, and non-`Copy` persistent tokens and instances of machines with type parameters (see above) |
+| Source compatibility with `tokenized_state_machine!` clients | No | Yes, except for `Unit` (storage machines), `count` tokens without `CountToken`, the outputs of guards of general operands, finite domains of general `storage_imap` operands, and non-`Copy` persistent tokens and instances of machines with type parameters (see above) |
 | Field kinds and statement forms | Those supported by the verified backend | A subset (see above), on top of the raw backend |
 | Trusted code added | None | None |
 

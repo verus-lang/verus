@@ -154,11 +154,13 @@ needs to be `'static`.
 
 A guard of a general operand returns a reference into the guarded storage
 instead of `&Option<V>` or `&Map<K, V>`: `&V` for `guard f >= (Some(v))`,
-`Option<&V>` for another operand of a `storage_option` field, and `&IMap<K, V>`
-for one of a `storage_map` field that is the only storage field and the
-property's only guard. Otherwise a guard of a `storage_map` (`storage_imap`)
-field returns a map of references `Map<K, &V>` (`IMap<K, &V>`, whose operand
-needs a finite domain).
+`Option<&V>` for another operand of a `storage_option` field, and a map of
+references `Map<K, &V>` for a `storage_map` field (`IMap<K, &V>` for a
+`storage_imap` field, whose operand needs a finite domain). The guarded storage
+holds the payloads tagged by field, so no `&Map<K, V>` or `&IMap<K, V>` of the
+operand exists in it. A client that compared the output with the operand
+(`*g == m`) compares domains and entries instead
+(`g.dom() == m.dom()`, `*g[k] == m[k]`).
 
 #### Count tokens and infinite collections
 
@@ -177,9 +179,10 @@ needs a finite domain).
 Some statement forms need conditions the trusted interface does not state, which
 the machine states with a `require` (verification reports a diagnostic at the
 statement otherwise): a borrowed multiset part (`have f >= (e)`) must not
-contain an element twice, and the operand of a general deposit into, withdrawal
-from or guard of a `storage_imap` field that is not stored on its own needs a
-finite domain. The complete list is in
+contain an element twice, and the general operands of a `storage_imap` field
+(deposits, withdrawals, guards, and its initial value) need a finite domain;
+they are tagged into the storage map key by key (a withdrawal's finiteness may
+also come from an invariant). The complete list is in
 [Checked tokens: raw and generic interfaces](state_machines/src/checked-token-interfaces.md).
 Such a machine needs the raw interface (Change 3) or a rewritten transition.
 
@@ -205,6 +208,21 @@ verified_tokenized_state_machine!{
 ```
 
 `#[verified_generic_tokens]` selects the default interface explicitly.
+
+The raw protocol's storage value is one map `IMap<M::__StorageKey,
+M::__StorageValue>`, tagged by storage field: the key `__StorageKey::f(k)`
+(`__StorageKey::f` for a `storage_option`) holds `__StorageValue::f(v)`. Raw
+clients pass and receive such maps: `initialize(IMap::tracked_empty())`, a
+deposit built with `tracked_insert(M::__StorageKey::f(k), M::__StorageValue::f(v))`
+or `M::__pack_f(Some(v))` (`M::__pack_f(m)` for a finite `Map`), a withdrawal
+taken apart with `M::__unwrap_f(w.tracked_remove(M::__StorageKey::f(k)))`, and a
+guard read with `M::__borrow_f(g, k)`; see
+[Checked tokens: raw and generic interfaces](state_machines/src/checked-token-interfaces.md).
+Raw clients of earlier checked versions port as follows: those that passed
+`IMap<K, V>` (one map field) or `IMap<int, V>` (options of one value type, keyed
+by index) tag their keys and values (the `M::__StorageKey::__pack_f`-style
+helpers of the earlier tagged carrier are now `M::__pack_f`). Comparisons of
+client-built maps with the machine's deposited values are extensional (`=~=`).
 
 Earlier checked versions generated one of several field-shape-specific interfaces
 by default, marked by `#[verified_field_tokens]`, with `#[verified_local_ready]`
@@ -406,7 +424,7 @@ Contracts and resource proofs can still change.
 | System | Operations without input tokens, storage machines | Take only `&self`. | Take an extra `Unit` (`Instance::unit_from_<field>`). |
 | System | `imap`/`iset` token collections | `IMapToken`/`ISetToken`. | Generated `<field>_map`/`<field>_set` types with the same methods. |
 | System | Type parameters | Unconstrained. | Unconstrained; a guard borrowing no token takes a `&Unit` in a machine with storage; persistent tokens (and an instance owning resources) are not `Copy`. |
-| System | Raw resources and local readiness | Not available. | `#[verified_raw_tokens]`, optionally with `#[verified_local_ready(..)]`. |
+| System | Raw resources and local readiness | Not available. | `#[verified_raw_tokens]`, optionally with `#[verified_local_ready(..)]`; storage values are maps `IMap<M::__StorageKey, M::__StorageValue>` tagged by storage field. |
 | Example | Interner equality | An unrestricted generic helper has a trusted, unimplemented body. | The helper requires `T: VerifiedEq` and calls a checked provider. |
 | Example | Disk interpretation | A two-argument spec function returns a described authority token. | A three-argument spec predicate returns `bool` and constrains a supplied authority token. |
 | Example | Rc/Arc invariant identity | The invariant uses the original instance value. | An added `Ghost<Loc>` field supplies an identity parameter. |

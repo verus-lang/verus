@@ -90,7 +90,8 @@ They generate a mathematical `State`, a resource-algebra `Fragment`, and a
 associativity, commutativity, unit laws, and component validity obligations.
 `Protocol` implements the existing
 [Machine interface](../vstd/resource/tsm.rs). A stored-resource protocol also
-implements [StorageMachine](../vstd/resource/tsm_storage.rs).
+implements [StorageMachine](../vstd/resource/tsm_storage.rs), whose storage is
+one `IMap<__StorageKey, __StorageValue>` tagged by storage field (see below).
 
 The library defines completion by an invariant-satisfying state:
 
@@ -105,11 +106,13 @@ public specification descriptor as an ownership certificate.
 
 The generated `Token` alias refers to the library's `Token<Protocol>` or
 `StorageToken<Protocol>` for these routes. `StorageToken<M>` is an alias for
-`StorageTokenOf<M, M::Key, M::Value, M::Fragment>`, whose declaration (like its
-carrier `StorageCarrier`) has no trait bounds. A storage payload that contains
-the machine's own tokens is then an ordinary datatype cycle, checked by Verus's
-strict-positivity rule, rather than a cycle through the `StorageMachine` impl,
-which Verus rejects outright.
+`StorageTokenOf<M, M::Key, M::Value, M::Fragment>`, which holds a
+`StorageResource<M::Key, M::Value, StorageCarrier<M, M::Fragment>>`; its
+declaration (like the carrier `StorageCarrier`) has no trait bounds, and the key
+and value types are the concrete generated enums. A storage payload that
+contains the machine's own tokens is then an ordinary datatype cycle through
+`__StorageValue`, checked by Verus's strict-positivity rule, rather than a cycle
+through the `StorageMachine` impl, which Verus rejects outright.
 
 ## Relations, safety, induction, and updates
 
@@ -172,13 +175,18 @@ logical field token. Deposits consume tracked payloads. Withdrawals return
 tracked payloads from the same exchange witness. Guards borrow actual stored
 payloads, and their references retain the required owner lifetime.
 
-Multiple physical fields can require a field-tagged key/value carrier.
-[verified_storage_carrier.rs](../state_machines_macros/src/verified_storage_carrier.rs)
-and [verified_storage_homogeneous_carrier.rs](../state_machines_macros/src/verified_storage_homogeneous_carrier.rs)
-implement the supported layouts and checked packing and extraction.
-Carrier tags distinguish field namespaces. They do not replace custody of the
-payloads. Finite-map conversions must also prove the required domain and payload
-equalities before tracked extraction.
+The stored resources are one map of vstd's storage protocol,
+`IMap<__StorageKey, __StorageValue>`, for every machine with storage fields
+([verified_storage_tagged.rs](../state_machines_macros/src/verified_storage_tagged.rs)):
+a storage field `f`'s entry at `k` is stored under the key `__StorageKey::f(k)`
+(`__StorageKey::f` for a `storage_option` field) as `__StorageValue::f(v)`. The
+generated per-field helpers convert a field's value to its tagged part and back
+(`__tag_f`/`__untag_f`, and the checked tracked conversions `__pack_f`,
+`__unpack_f`, `__borrow_f`, `__unwrap_f`). Tags distinguish field namespaces;
+they do not replace custody of the payloads. Tracked conversions move entries
+one by one, so a general operand of a `storage_imap` field (deposit, withdrawal,
+guard, initial value) needs a finite domain, which the machine states with a
+`require`.
 
 ## Instances, metadata, and duplication
 
