@@ -124,7 +124,7 @@ These cover the [`SeqPointsTo` pointer change](TYPED_POINTS_TO_NOTES.md#seqpoint
       and `A = T` goes on the impls.
     - *Done* (`seq_shape.rs`, verifies): the full struct with `ptr: Ghost<*mut [T]>`,
       `PTPhys::size(len) = len * P::size(())`, `wf_basic` with the metadata clause and today's provenance clause,
-      `thin_ptr`, and `empty` / `from_seq` / `split_basic` with their `thin_ptr` contracts, generic over `P`.
+      and `empty` / `from_seq` / `split_basic` with their thin-pointer (`ptr() as *mut T`) contracts, generic over `P`.
       For generic Sized `T`, `ptr()@.metadata == ()` is known, so elements' `P::size(metadata)` matches `P::size(())`;
       `split_basic`'s address bound comes from an element's `ptr_bounds`; a few `nonlinear_arith` steps are needed.
 11. **`PointsToRaw`'s representation.**
@@ -232,8 +232,9 @@ Independent of the new traits; it changes existing ones.
    `wf_basic` gains `ptr()@.metadata == len()`;
    `PointsToUntyped = SeqPointsTo<u8, PointsToByte>`, and its `wf()` loses the clause that moved.
 3. Remove `FixedSize`: `P::const_size()` → `P::size(())`; drop the `size_eq_const_size` calls.
-4. Add `thin_ptr` to `SeqPointsTo<T, PointsTo<T>>`,
+4. Add `thin_ptr` (`self.ptr() as *mut T`) to `SeqPointsTo<T, PointsTo<T>>` in `points_to_collections.rs`,
    and restate the typed impl's pointer contracts with it
+   (the structural impl's contracts use `ptr() as *mut T` directly)
    (list in [`SeqPointsTo`'s pointer and sizes](TYPED_POINTS_TO_NOTES.md#seqpointstos-pointer-and-sizes)):
    `from_seq`, `empty`, `zero_sized`/`zero_sized_helper`, `split`, `join`,
    `subrange`, `subrange_mut`, `from_untyped`, `from_untyped_with_typed_value`, `untyped_mut_join`,

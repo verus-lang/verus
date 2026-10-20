@@ -69,7 +69,7 @@ impl PTPhys for PointsToByte {
 impl PTProperties for PointsToByte {
     /// Guarantee that the `PointsToByte` points to a non-null address.
     ///
-    /// See <https://doc.rust-lang.org/std/ptr/#safety>
+    /// See <https://doc.rust-lang.org/std/ptr/#safety>.
     axiom fn is_nonnull(tracked &self);
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
@@ -89,7 +89,7 @@ impl PTProperties for PointsToByte {
         tracked other: &OtherPointsToPerm,
     );
 
-    /// A `PointsToByte` only needs to keep its pointer.
+    /// If the pointer stays the same, `old` and `new` are permissions to the same memory.
     open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
         new.ptr() == old.ptr()
     }
@@ -103,11 +103,7 @@ impl PointsToByte {
     /// The byte that this permission tracks.
     pub uninterp spec fn byte(self) -> AbstractByte;
 
-    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
-    /// since you cannot have two permissions to the same memory.
-    /// (`self` is an &mut reference to enforce distinctness,
-    /// so you cannot pass the same PointsTo as both arguments.)
-    /// Since `u8` is not a ZST, this implies the pointers have distinct addresses.
+    /// Specializes `is_disjoint` to the case when the other permission is a `PointsToByte`.
     pub proof fn is_disjoint_byte(tracked &mut self, tracked other: &Self)
         requires
             self.wf_basic(),
@@ -147,9 +143,10 @@ impl View for PointsToByte {
 
 ```rust
 /// Permission to access a contiguous sequence of values of type `T` in memory.
-/// Internally represented as one element permission `P` per element,
+/// Internally represented as a sequence of permissions `P`,
 /// along with a `*mut [T]` pointer to the whole region.
-// `A = T` is bound on the impls, not here,
+// We expect the associated type `A` from `PTProperties` to be the same as `T`,
+// but `A = T` is bound on the impls
 // so that recursive types like `struct Tree { children: Vec<Tree> }` are allowed.
 #[verifier::accept_recursive_types(T)]
 pub tracked struct SeqPointsTo<T, P: PTProperties> {
@@ -169,6 +166,10 @@ impl<T, P: PTProperties<A = T>> PTPhys for SeqPointsTo<T, P> {
 
     /// The size of the pointed-to region is given by the length of the sequence (the pointer's metadata)
     /// times the size of the permission type in the sequence.
+    ///
+    /// Note that since this impl block restricts `P` to permissions satisfying `PTProperties`
+    /// with the associated type set to `T` (which is implicitly `Sized`), 
+    /// `P` is a permission whose pointer has `()` metadata.
     open spec fn size(metadata: usize) -> nat {
         metadata as nat * P::size(())
     }
@@ -216,11 +217,6 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             0 <= index < self.len(),
     {
         self.seq_pt()[index]
-    }
-
-    /// The pointer to the first element, without the length.
-    pub open spec fn thin_ptr(self) -> *mut T {
-        ptr_mut_from_data::<T>(PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: () })
     }
 
     // Approved axiom: from_seq_mut (M5).
@@ -842,7 +838,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             r.len() <= usize::MAX,
         ensures
             s.seq_pt() == r,
-            s.thin_ptr() == ptr,
+            s.ptr() as *mut T == ptr,
             s.wf_basic(),
     ;
 
@@ -853,7 +849,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             ptr_addr_in_bounds(ptr),
         ensures
             s.seq_pt() == Seq::<P>::empty(),
-            s.thin_ptr() == ptr,
+            s.ptr() as *mut T == ptr,
             s.wf_basic(),
     ;
 
@@ -871,8 +867,8 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
         ensures
             first.seq_pt() == self.seq_pt().take(mid as int),
             second.seq_pt() == self.seq_pt().skip(mid as int),
-            first.thin_ptr() == self.thin_ptr(),
-            second.thin_ptr() == ptr_mut_from_data::<T>(PtrData {
+            first.ptr() as *mut T == self.ptr() as *mut T,
+            second.ptr() as *mut T == ptr_mut_from_data::<T>(PtrData {
                 addr: (self.ptr()@.addr + mid * P::size(())) as usize,
                 provenance: self.ptr()@.provenance,
                 metadata: (),
@@ -890,7 +886,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             other.ptr()@.addr == self.ptr()@.addr + self.len() * P::size(()),
         ensures
             joined.seq_pt() == self.seq_pt() + other.seq_pt(),
-            joined.thin_ptr() == self.thin_ptr(),
+            joined.ptr() as *mut T == self.ptr() as *mut T,
             joined.wf_basic(),
     ;
 
@@ -901,7 +897,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             start + len <= self.len(),
         ensures
             sub.seq_pt() == self.seq_pt().subrange(start as int, (start + len) as int),
-            sub.thin_ptr() == ptr_mut_from_data::<T>(PtrData {
+            sub.ptr() as *mut T == ptr_mut_from_data::<T>(PtrData {
                 addr: (self.ptr()@.addr + start * P::size(())) as usize,
                 provenance: self.ptr()@.provenance,
                 metadata: (),
@@ -1246,6 +1242,11 @@ Typed permissions convert through `PointsToUntyped`:
 ```rust
 // The only typed sequence impl (there is no generic typed impl).
 impl<T> SeqPointsTo<T, PointsTo<T>> {
+    /// The pointer to the first element, without the length.
+    pub open spec fn thin_ptr(self) -> *mut T {
+        self.ptr() as *mut T
+    }
+
     pub open spec fn wf(self) -> bool {
         &&& self.wf_basic()
         &&& PointsTo::<T>::satisfies_alignment(self.ptr()@.addr)
@@ -1549,8 +1550,8 @@ everything else exists today.
 | `impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | `into_unaligned`, `as_unaligned`, `as_unaligned_mut` (new, generic) | Contracts in [`PointsTo`: proofs and aligned/unaligned conversions](#pointsto-proofs-and-alignedunaligned-conversions). |
 | `impl<T> PointsTo<T>` | `value`, `is_aligned`, `is_disjoint_pointsto<S>`; `borrow_mut` (axiom). (removed: `wf`, `stays_wf`, `lemma_ptrs_len_same_valid`, `zero_sized`, `bytes_decode`, the untyped conversions, the value operations) | Removed ones are `PTValueOps` / `PTSizedValue` methods. |
 | `impl<T> PointsTo<[T]>` | `from_untyped_ref`, `from_untyped_with_value_ref`, `borrow_index` (new, phase 4; compositions over the `PointsToUnaligned` versions). (removed: inherent `wf`) | |
-| `impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P>` (`points_to_model.rs` / `points_to_ops.rs`) | `seq_pt`, `len`, `spec_index`, `thin_ptr`; `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut`, `from_seq`, `empty`, `into_seq` (moved here in phase 1); `split_basic`, `join_basic`, `subrange_basic` (new); `from_seq_mut` (new axiom M5) | Structural; stated with `wf_basic`. The only code touching the fields. |
-| `impl<T> SeqPointsTo<T, PointsTo<T>>` | `View` (`SeqPointsToData<T>`); `wf`, `bytes`, `bytes_inner`, `seq_typed_value`, `is_valid`, `is_empty`, `is_fully_empty`, `seq_value`, `is_valid_subrange`, `value_subrange`, `ptrs_len_same_valid`, `stays_wf`, `lemma_ptrs_len_same_valid`, `typed_value_equiv`, the byte lemmas, `split`, `join`, `subrange`, `subrange_mut` (proved in phase 3b), `zero_sized`, the untyped conversions, the value operations, `is_aligned`, `is_disjoint_seqpt`; `as_slice_pt`, `as_slice_pt_mut` (new, phase 4) | The only typed sequence impl. |
+| `impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P>` (`points_to_model.rs` / `points_to_ops.rs`) | `seq_pt`, `len`, `spec_index`; `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut`, `from_seq`, `empty`, `into_seq` (moved here in phase 1); `split_basic`, `join_basic`, `subrange_basic` (new); `from_seq_mut` (new axiom M5) | Structural; stated with `wf_basic`. The only code touching the fields. |
+| `impl<T> SeqPointsTo<T, PointsTo<T>>` | `View` (`SeqPointsToData<T>`); `thin_ptr`, `wf`, `bytes`, `bytes_inner`, `seq_typed_value`, `is_valid`, `is_empty`, `is_fully_empty`, `seq_value`, `is_valid_subrange`, `value_subrange`, `ptrs_len_same_valid`, `stays_wf`, `lemma_ptrs_len_same_valid`, `typed_value_equiv`, the byte lemmas, `split`, `join`, `subrange`, `subrange_mut` (proved in phase 3b), `zero_sized`, the untyped conversions, the value operations, `is_aligned`, `is_disjoint_seqpt`; `as_slice_pt`, `as_slice_pt_mut` (new, phase 4) | The only typed sequence impl. |
 | `impl SeqPointsTo<u8, PointsToByte>` (`PointsToUntyped`, `points_to_model.rs` / `points_to_ops.rs`) | `View`, `bytes`, `wf`, `stays_wf`, `lemma_ptrs_len_same_untyped` (renamed), `zero_sized<T>`, `split`, `split_ref`, `join` (wrappers over the `_basic` primitives); `join_ref`, `join_mut` (axioms); `split_mut` (proved in phase 3b); `is_disjoint_untyped` | |
 | `impl PointsToByte` (renamed from `PointsToSingleton`) | `byte`, `is_disjoint_byte` (renamed from `is_disjoint_singleton`, in phase 1 with the type) | |
 | `impl PointsToRaw` | everything in [`PointsToRaw` (phase 2c)](#pointstoraw-phase-2c) above (new) | Not a `PTPhys`. |
