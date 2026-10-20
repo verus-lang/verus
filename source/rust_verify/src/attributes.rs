@@ -407,6 +407,7 @@ pub(crate) enum Attr {
     MigratePostconditionsWithMutRefs(bool),
     TrackedSwap,
     TrackedTakeOption,
+    Permission(String),
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -620,6 +621,17 @@ pub(crate) fn parse_attrs(
                     if arg == "loop_isolation" && r == "false" =>
                 {
                     v.push(Attr::LoopIsolation(false))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Lit(LitKind::Str, r)]))
+                    if arg == "permission" =>
+                {
+                    v.push(Attr::Permission(r.clone()))
+                }
+                AttrTree::Fun(span, arg, _) if arg == "permission" => {
+                    return err_span(
+                        *span,
+                        "expected a string literal (e.g., `#[verifier::permission(\"x\")]`)",
+                    );
                 }
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
                     if arg == "deprecated_postcondition_mut_ref_style" && r == "true" =>

@@ -1296,7 +1296,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | CastToInteger
                         | MutRefCurrent
                         | MutRefFuture(_)
-                        | MutRefFinal(_) => ok,
+                        | MutRefFinal(_)
+                        | PointsToContents => ok,
                         MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
@@ -1427,7 +1428,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Length(..)
                         | MutRefCurrent
                         | MutRefFuture(_)
-                        | MutRefFinal(_) => ok,
+                        | MutRefFinal(_)
+                        | PointsToContents => ok,
                     }
                 }
                 // !(!(e_inner)) == e_inner

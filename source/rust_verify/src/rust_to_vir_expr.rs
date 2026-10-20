@@ -956,12 +956,14 @@ pub(crate) fn block_to_vir<'tcx>(
     span: &Span,
     ty: &Typ,
 ) -> Result<vir::ast::Expr, VirErr> {
+    let current_perm_len = { bctx.permission_vars.borrow().len() };
     let mut vir_stmts: Vec<vir::ast::Stmt> = Vec::new();
     let mut stmts_iter = block.stmts.iter();
     while let Some(mut some_stmts) = stmts_to_vir(bctx, &mut stmts_iter)? {
         vir_stmts.append(&mut some_stmts);
     }
     let vir_expr = block.expr.map(|expr| expr_to_vir_consume(bctx, &expr)).transpose()?;
+    bctx.permission_vars.borrow_mut().truncate(current_perm_len);
 
     let x = ExprX::Block(Arc::new(vir_stmts), vir_expr);
     Ok(bctx.spanned_typed_new(span.clone(), ty, x))
@@ -1585,7 +1587,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?;
             let inner_ty = get_inner_ty();
             let inner_place = inner_expr.to_place(bctx, expr.span, inner_ty)?;
-            let p = deref_primitive(bctx, expr.span, inner_ty, &inner_place)?;
+            let p = deref_primitive(bctx, expr.span, None, inner_ty, &inner_place)?;
             Ok(ExprOrPlace::Place(p))
         }
         Adjust::Deref(DerefAdjustKind::Overloaded(deref)) => {
@@ -2695,7 +2697,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 } else {
                     let inner_ty = bctx.types.expr_ty_adjusted(arg);
                     let inner = expr_to_vir_place(bctx, arg)?;
-                    let p = deref_primitive(bctx, expr.span, inner_ty, &inner)?;
+                    let p = deref_primitive(bctx, expr.span, Some(expr.hir_id), inner_ty, &inner)?;
                     return Ok(ExprOrPlace::Place(p));
                 }
             }
@@ -3909,6 +3911,13 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     let parsed_attrs = parse_attrs_opt(attrs, None);
     let infer_mode = parsed_attrs.contains(&Attr::InferMode);
     let prophetic = parsed_attrs.contains(&Attr::Prophetic);
+    let permissions: Vec<_> = parsed_attrs
+        .iter()
+        .filter_map(|attr| match attr {
+            Attr::Permission(p) => Some(p.clone()),
+            _ => None,
+        })
+        .collect();
     let els = if let Some(els) = els {
         if matches!(mode, Mode::Spec | Mode::Proof) {
             unsupported_err!(els.span, "let-else in spec/proof", els);
@@ -3979,6 +3988,24 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     };
 
     let vir_pattern = pattern_to_vir(bctx, pattern)?;
+
+    if permissions.len() > 0 {
+        let PatternX::Var(binding) = &vir_pattern.x else {
+            return err_span(
+                pattern.span,
+                "the #[verifier::permissions] attribute cannot apply to let-decl with nontrivial patterns",
+            );
+        };
+        let mut r = bctx.permission_vars.borrow_mut();
+        for p in permissions.into_iter() {
+            r.push(crate::context::PermissionVar {
+                name: binding.name.clone(),
+                typ: binding.typ.clone(),
+                place_descriptor: p,
+            });
+        }
+    }
+
     let mode = if infer_mode { None } else { Some((mode, proph_mode)) };
     Ok(vec![bctx.spanned_new(
         pattern.span,
@@ -4551,10 +4578,14 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
 ///   - Box<T> -> T
 ///   - &T -> T
 ///   - &mut T -> T
-///   - *mut T -> T (unsupported)
+///   - *mut T -> T
+///
+/// `hir_id` is the HirId of the explicit Unary Deref expression, if any
+/// (raw pointers are never dereferenced implicitly).
 pub(crate) fn deref_primitive<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
+    hir_id: Option<HirId>,
     ty: rustc_middle::ty::Ty<'tcx>,
     place: &Place,
 ) -> Result<Place, VirErr> {
@@ -4576,15 +4607,113 @@ pub(crate) fn deref_primitive<'tcx>(
             Ok(place.clone())
         }
         TyKind::RawPtr(..) => {
-            unsupported_err!(
-                span,
-                format!(
-                    "dereferencing a raw pointer. Currently, Verus only supports raw pointers through the permissioned raw_ptr interface: https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html"
-                )
-            );
+            let place_descriptor = vir::points_to::get_place_descriptor(place);
+            let vars = bctx.permission_vars.borrow();
+            let candidate_opt = match place_descriptor {
+                Some(place_descriptor) => {
+                    vars.iter().rev().find(|v| v.place_descriptor == place_descriptor)
+                }
+                None => None,
+            };
+
+            let t = match &*undecorate_typ(&place.typ) {
+                TypX::Primitive(Primitive::Ptr, t) => t[0].clone(),
+                _ => panic!("expected mut ref"),
+            };
+
+            let permission_place = match candidate_opt {
+                Some(candidate) => {
+                    Some(get_permission_place(bctx, span, &candidate.name, &t, &candidate.typ)?)
+                }
+                None => None,
+            };
+
+            let placex = PlaceX::DerefRaw(place.clone(), permission_place);
+            let deref_place = bctx.spanned_typed_new(span, &t, placex);
+            let Some(hir_id) = hir_id else {
+                return err_span(span, "Verus Internal Error: expected HirId for raw deref");
+            };
+            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+            erasure_info.deref_raw_hir_vir_ids.push((Some(hir_id), deref_place.span.id));
+            Ok(deref_place)
         }
         _ => {
             unsupported_err!(span, format!("primitive deref operation for {ty:?}"))
+        }
+    }
+}
+
+fn get_permission_place<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    name: &VarIdent,
+    pointee_typ: &Typ,
+    typ: &Typ,
+) -> Result<Place, VirErr> {
+    let local = bctx.spanned_typed_new(span, typ, PlaceX::Local(name.clone()));
+    get_permission_place_rec(bctx, span, pointee_typ, typ, typ, local)
+}
+
+fn get_permission_place_rec<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    pointee_typ: &Typ,
+    original_typ: &Typ,
+    typ: &Typ,
+    place: Place,
+) -> Result<Place, VirErr> {
+    match &**typ {
+        TypX::Datatype(Dt::Path(pt), typ_args, _)
+            if *pt == vir::path!(CrateId::Vstd => "raw_ptr", "PointsTo") =>
+        {
+            if !types_equal(pointee_typ, &typ_args[0]) {
+                return Err(vir::messages::error(
+                    &place.span,
+                    format!(
+                        "permission is for type {:}, expected {:}",
+                        typ_to_diagnostic_str(&typ_args[0]),
+                        typ_to_diagnostic_str(&pointee_typ)
+                    ),
+                ));
+            }
+            Ok(place)
+        }
+        TypX::MutRef(t) => {
+            let p1 = bctx.spanned_typed_new(span, t, PlaceX::DerefMut(place));
+            get_permission_place_rec(bctx, span, pointee_typ, original_typ, t, p1)
+        }
+        TypX::Decorate(TypDecoration::Ref, None, t) => {
+            get_permission_place_rec(bctx, span, pointee_typ, original_typ, t, place)
+        }
+        TypX::Decorate(TypDecoration::Box, _, t) => {
+            get_permission_place_rec(bctx, span, pointee_typ, original_typ, t, place)
+        }
+        TypX::Datatype(Dt::Path(path), t, _)
+            if *path == vir::path!(CrateId::Core => "option", "Option") =>
+        {
+            let field_opr = FieldOpr {
+                datatype: Dt::Path(path.clone()),
+                variant: Arc::new("Some".to_string()),
+                field: Arc::new("0".to_string()),
+                get_variant: false,
+                check: VariantCheck::None,
+            };
+            let p1 = bctx.spanned_typed_new(span, &t[0], PlaceX::Field(field_opr, place));
+            get_permission_place_rec(bctx, span, pointee_typ, original_typ, &t[0], p1)
+        }
+        TypX::Decorate(TypDecoration::Tracked, _, t) => {
+            let p1 = bctx.spanned_typed_new(
+                span,
+                t,
+                PlaceX::ModeUnwrap(place, vir::ast::ModeWrapperMode::Proof),
+            );
+            get_permission_place_rec(bctx, span, pointee_typ, original_typ, t, p1)
+        }
+        _ => {
+            return Err(vir::messages::error(
+                &place.span,
+                format!("place of type `{:}` is not accepted for the `verifier::permission` annotation", vir::ast_util::typ_to_diagnostic_str(original_typ)),
+            ).help("acceptable types include, `vstd::raw_ptr::PointsTo`, shared reference to such, mutable reference to such, `Tracked` wrapper of such, or an `Option` of such"));
         }
     }
 }
@@ -4704,7 +4833,7 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Result<Pl
     //  - dereference is not inside an `old` node
     //  - there is no `old` node between the dereference and the variable
     if bctx.in_postcondition && !bctx.in_old {
-        if let Some(local_place) = vir::ast_util::place_get_local(place) {
+        if let Some(local_place) = vir::ast_util::place_get_local_physical(place) {
             let PlaceX::Local(name) = &local_place.x else { unreachable!() };
             if bctx.is_param_for_innermost_fn_or_non_spec_closure(name) {
                 return Err(vir::messages::error(
@@ -4864,7 +4993,7 @@ evaluation of `*x` early.
 Therefore, this should only be called on a place when you know how that place is being used.
 For example, when constructing an expression like `&mut P` or `P = rhs`, you can go ahead
 and call `simplify_place_by_cancelling` on P. But if P is only partially constructed
-might be composed with an Index place later, it's not safe to call this yet.
+and might be composed with an Index place later, it's not safe to call this yet.
 */
 pub(crate) fn simplify_place_by_cancelling(place: &Place) -> Place {
     match &place.x {
@@ -4919,6 +5048,7 @@ pub(crate) fn simplify_place_by_cancelling(place: &Place) -> Place {
         PlaceX::WithExpr(..) | PlaceX::UserDefinedTypInvariantObligation(..) => {
             panic!("simplify_place_by_cancelling got unexpected place kind");
         }
+        PlaceX::DerefRaw(..) => place.clone(),
     }
 }
 

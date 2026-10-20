@@ -1,0 +1,381 @@
+// Annotated MIR for `test` in sample_assign.rs: assignment (PermUsage::Write)
+//
+// Source:
+//     (*(*a).next).f = 5;
+//
+// This is the MIR used by Verus for lifetime checking (the "PromoteTemps.before" dump),
+// with span comments and StorageLive/StorageDead statements removed.
+// Most of the body is erasure/shadow-variable boilerplate; the interesting part is at the
+// end, marked with `// <==`.
+//
+// Important locals:
+//     _1   = a: *mut Node
+//     _50  = ma: &PointsTo<Node>  (permission for `a`, inner pointer)
+//     _74  = mb: PointsTo<Pair>  (permission for `(*a).next`, outermost pointer)
+//
+// Key lines:
+//     _88 = &(*_50);
+//     _89 = &mut ((*((*_1).0: *mut Pair)).0: u64);
+//     _90 = &mut _74;
+//     _91 = vstd::raw_ptr::PointsTo::<Pair>::borrow_mut(move _90) -> [return: bb27, unwind unreachable];
+//     _92 = &mut (*_91);
+//     _93 = vstd::prelude::mutable_reference_tie::<Pair, u64>(move _92, move _89) -> [return: bb28, unwind unreachable];
+//     ((*_93).0: u64) = const 5_u64;
+
+
+fn test(_1: *mut Node, _2: vstd::prelude::Tracked<&vstd::raw_ptr::PointsTo<Node>>, _3: vstd::prelude::Tracked<vstd::raw_ptr::PointsTo<Pair>>) -> () {
+    debug a => _1;
+    debug verus_tmp_ma => _2;
+    debug verus_tmp_mb => _3;
+    let mut _0: ();
+    let mut _4: *mut Node;
+    let mut _5: ();
+    let mut _7: ();
+    let mut _9: ();
+    let mut _12: ();
+    let _13: ();
+    let mut _14: ((), ());
+    let mut _15: ();
+    let mut _16: &vstd::raw_ptr::PointsTo<Node>;
+    let mut _17: vstd::prelude::Tracked<&vstd::raw_ptr::PointsTo<Node>>;
+    let mut _18: ();
+    let mut _19: &vstd::raw_ptr::PointsTo<Node>;
+    let mut _20: ();
+    let mut _23: ();
+    let _24: ();
+    let mut _25: ((), ());
+    let mut _26: ();
+    let mut _27: vstd::raw_ptr::PointsTo<Pair>;
+    let mut _28: vstd::prelude::Tracked<vstd::raw_ptr::PointsTo<Pair>>;
+    let mut _29: ();
+    let mut _30: vstd::raw_ptr::PointsTo<Pair>;
+    let mut _31: ();
+    let _32: ();
+    let mut _33: (&&vstd::raw_ptr::PointsTo<Node>, &&vstd::raw_ptr::PointsTo<Node>, &*mut Node, &vstd::raw_ptr::PointsTo<Pair>, &vstd::raw_ptr::PointsTo<Pair>, &&vstd::raw_ptr::PointsTo<Node>);
+    let mut _34: &&vstd::raw_ptr::PointsTo<Node>;
+    let mut _35: &&vstd::raw_ptr::PointsTo<Node>;
+    let mut _36: &*mut Node;
+    let mut _37: &vstd::raw_ptr::PointsTo<Pair>;
+    let mut _38: &vstd::raw_ptr::PointsTo<Pair>;
+    let mut _39: &&vstd::raw_ptr::PointsTo<Node>;
+    let mut _42: ();
+    let _43: ();
+    let mut _44: ((), ());
+    let mut _45: ();
+    let mut _46: &vstd::raw_ptr::PointsTo<Node>;
+    let mut _47: ();
+    let mut _48: &vstd::raw_ptr::PointsTo<Node>;
+    let mut _49: ();
+    let mut _52: ();
+    let _53: ();
+    let mut _56: ();
+    let _57: ();
+    let mut _58: ((), ());
+    let mut _59: ();
+    let mut _60: &vstd::raw_ptr::PointsTo<Node>;
+    let mut _61: ();
+    let mut _62: &vstd::raw_ptr::PointsTo<Node>;
+    let mut _63: ();
+    let mut _66: ();
+    let _67: ();
+    let mut _68: ((), ());
+    let mut _69: ();
+    let mut _70: vstd::raw_ptr::PointsTo<Pair>;
+    let mut _71: ();
+    let mut _72: vstd::raw_ptr::PointsTo<Pair>;
+    let mut _73: ();
+    let mut _76: ();
+    let _77: ();
+    let mut _80: ();
+    let _81: ();
+    let mut _82: ((), ());
+    let mut _83: ();
+    let mut _84: vstd::raw_ptr::PointsTo<Pair>;
+    let mut _85: ();
+    let mut _86: vstd::raw_ptr::PointsTo<Pair>;
+    let mut _87: ();
+    let mut _88: &vstd::raw_ptr::PointsTo<Node>;
+    let mut _89: &mut u64;
+    let mut _90: &mut vstd::raw_ptr::PointsTo<Pair>;
+    let mut _91: &mut Pair;
+    let mut _92: &mut Pair;
+    let mut _93: &mut Pair;
+    scope 1 {
+        debug (Verus spec a) => _4;
+        let mut _6: vstd::prelude::Tracked<&vstd::raw_ptr::PointsTo<Node>>;
+        scope 2 {
+            debug (Verus spec verus_tmp_ma) => _6;
+            let mut _8: vstd::prelude::Tracked<vstd::raw_ptr::PointsTo<Pair>>;
+            scope 3 {
+                debug (Verus spec verus_tmp_mb) => _8;
+                let _10: &vstd::raw_ptr::PointsTo<Node>;
+                scope 4 {
+                    debug ma => _10;
+                    let mut _11: &vstd::raw_ptr::PointsTo<Node>;
+                    scope 5 {
+                        debug (Verus spec ma) => _11;
+                        let _21: vstd::raw_ptr::PointsTo<Pair>;
+                        scope 6 {
+                            debug mb => _21;
+                            let mut _22: vstd::raw_ptr::PointsTo<Pair>;
+                            scope 7 {
+                                debug (Verus spec mb) => _22;
+                                let _40: &vstd::raw_ptr::PointsTo<Node>;
+                                scope 8 {
+                                    debug verus_tmp => _40;
+                                    let mut _41: &vstd::raw_ptr::PointsTo<Node>;
+                                    scope 9 {
+                                        debug (Verus spec verus_tmp) => _41;
+                                        let mut _50: &vstd::raw_ptr::PointsTo<Node>;
+                                        scope 10 {
+                                            debug ma => _50;
+                                            let mut _51: &vstd::raw_ptr::PointsTo<Node>;
+                                            scope 11 {
+                                                debug (Verus spec ma) => _51;
+                                                let _54: &vstd::raw_ptr::PointsTo<Node>;
+                                                let _64: vstd::raw_ptr::PointsTo<Pair>;
+                                                scope 12 {
+                                                    debug verus_tmp_ma => _54;
+                                                    let mut _55: &vstd::raw_ptr::PointsTo<Node>;
+                                                    scope 13 {
+                                                        debug (Verus spec verus_tmp_ma) => _55;
+                                                    }
+                                                }
+                                                scope 14 {
+                                                    debug verus_tmp => _64;
+                                                    let mut _65: vstd::raw_ptr::PointsTo<Pair>;
+                                                    scope 15 {
+                                                        debug (Verus spec verus_tmp) => _65;
+                                                        let mut _74: vstd::raw_ptr::PointsTo<Pair>;
+                                                        scope 16 {
+                                                            debug mb => _74;
+                                                            let mut _75: vstd::raw_ptr::PointsTo<Pair>;
+                                                            scope 17 {
+                                                                debug (Verus spec mb) => _75;
+                                                                let mut _78: vstd::raw_ptr::PointsTo<Pair>;
+                                                                scope 18 {
+                                                                    debug verus_tmp_mb => _78;
+                                                                    let mut _79: vstd::raw_ptr::PointsTo<Pair>;
+                                                                    scope 19 {
+                                                                        debug (Verus spec verus_tmp_mb) => _79;
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    bb0: {
+        _5 = ();
+        _4 = vstd::prelude::erased_ghost_value::<(), *mut Node>(move _5) -> [return: bb1, unwind: bb29];
+    }
+
+    bb1: {
+        FakeRead(ForLet(None), _4);
+        _7 = ();
+        _6 = vstd::prelude::erased_ghost_value::<(), vstd::prelude::Tracked<&vstd::raw_ptr::PointsTo<Node>>>(move _7) -> [return: bb2, unwind: bb29];
+    }
+
+    bb2: {
+        FakeRead(ForLet(None), _6);
+        _9 = ();
+        _8 = vstd::prelude::erased_ghost_value::<(), vstd::prelude::Tracked<vstd::raw_ptr::PointsTo<Pair>>>(move _9) -> [return: bb3, unwind: bb29];
+    }
+
+    bb3: {
+        FakeRead(ForLet(None), _8);
+        _12 = ();
+        _11 = vstd::prelude::erased_ghost_value::<(), &vstd::raw_ptr::PointsTo<Node>>(move _12) -> [return: bb4, unwind: bb29];
+    }
+
+    bb4: {
+        FakeRead(ForLet(None), _11);
+        _17 = copy _2;
+        _16 = vstd::prelude::Tracked::<&vstd::raw_ptr::PointsTo<Node>>::get(move _17) -> [return: bb5, unwind: bb29];
+    }
+
+    bb5: {
+        _10 = move _16;
+        _15 = const ();
+        _20 = ();
+        _19 = vstd::prelude::erased_ghost_value::<(), &vstd::raw_ptr::PointsTo<Node>>(move _20) -> [return: bb6, unwind: bb29];
+    }
+
+    bb6: {
+        _11 = move _19;
+        _18 = const ();
+        _14 = (move _15, move _18);
+        _13 = vstd::prelude::erased_ghost_value::<((), ()), ()>(move _14) -> [return: bb7, unwind: bb29];
+    }
+
+    bb7: {
+        _23 = ();
+        _22 = vstd::prelude::erased_ghost_value::<(), vstd::raw_ptr::PointsTo<Pair>>(move _23) -> [return: bb8, unwind: bb29];
+    }
+
+    bb8: {
+        FakeRead(ForLet(None), _22);
+        _28 = move _3;
+        _27 = vstd::prelude::Tracked::<vstd::raw_ptr::PointsTo<Pair>>::get(move _28) -> [return: bb9, unwind: bb29];
+    }
+
+    bb9: {
+        _21 = move _27;
+        _26 = const ();
+        _31 = ();
+        _30 = vstd::prelude::erased_ghost_value::<(), vstd::raw_ptr::PointsTo<Pair>>(move _31) -> [return: bb10, unwind: bb29];
+    }
+
+    bb10: {
+        _22 = move _30;
+        _29 = const ();
+        _25 = (move _26, move _29);
+        _24 = vstd::prelude::erased_ghost_value::<((), ()), ()>(move _25) -> [return: bb11, unwind: bb29];
+    }
+
+    bb11: {
+        _34 = &_11;
+        _35 = &_11;
+        _36 = &_4;
+        _37 = &_22;
+        _38 = &_22;
+        _39 = &_11;
+        _33 = (move _34, move _35, move _36, move _37, move _38, move _39);
+        _32 = vstd::prelude::erased_ghost_value::<(&&vstd::raw_ptr::PointsTo<Node>, &&vstd::raw_ptr::PointsTo<Node>, &*mut Node, &vstd::raw_ptr::PointsTo<Pair>, &vstd::raw_ptr::PointsTo<Pair>, &&vstd::raw_ptr::PointsTo<Node>), ()>(move _33) -> [return: bb12, unwind: bb29];
+    }
+
+    bb12: {
+        _42 = ();
+        _41 = vstd::prelude::erased_ghost_value::<(), &vstd::raw_ptr::PointsTo<Node>>(move _42) -> [return: bb13, unwind: bb29];
+    }
+
+    bb13: {
+        FakeRead(ForLet(None), _41);
+        _46 = copy _10;
+        _40 = move _46;
+        _45 = const ();
+        _49 = ();
+        _48 = vstd::prelude::erased_ghost_value::<(), &vstd::raw_ptr::PointsTo<Node>>(move _49) -> [return: bb14, unwind: bb29];
+    }
+
+    bb14: {
+        _41 = move _48;
+        _47 = const ();
+        _44 = (move _45, move _47);
+        _43 = vstd::prelude::erased_ghost_value::<((), ()), ()>(move _44) -> [return: bb15, unwind: bb29];
+    }
+
+    bb15: {
+        _52 = ();
+        _51 = vstd::prelude::erased_ghost_value::<(), &vstd::raw_ptr::PointsTo<Node>>(move _52) -> [return: bb16, unwind: bb29];
+    }
+
+    bb16: {
+        FakeRead(ForLet(None), _51);
+        _54 = copy _40;
+        FakeRead(ForLet(None), _54);
+        _56 = ();
+        _55 = vstd::prelude::erased_ghost_value::<(), &vstd::raw_ptr::PointsTo<Node>>(move _56) -> [return: bb17, unwind: bb29];
+    }
+
+    bb17: {
+        FakeRead(ForLet(None), _55);
+        _60 = copy _54;
+        _50 = move _60;
+        _59 = const ();
+        _63 = ();
+        _62 = vstd::prelude::erased_ghost_value::<(), &vstd::raw_ptr::PointsTo<Node>>(move _63) -> [return: bb18, unwind: bb29];
+    }
+
+    bb18: {
+        _51 = move _62;
+        _61 = const ();
+        _58 = (move _59, move _61);
+        _57 = vstd::prelude::erased_ghost_value::<((), ()), ()>(move _58) -> [return: bb19, unwind: bb29];
+    }
+
+    bb19: {
+        _53 = const ();
+        _66 = ();
+        _65 = vstd::prelude::erased_ghost_value::<(), vstd::raw_ptr::PointsTo<Pair>>(move _66) -> [return: bb20, unwind: bb29];
+    }
+
+    bb20: {
+        FakeRead(ForLet(None), _65);
+        _70 = move _21;
+        _64 = move _70;
+        _69 = const ();
+        _73 = ();
+        _72 = vstd::prelude::erased_ghost_value::<(), vstd::raw_ptr::PointsTo<Pair>>(move _73) -> [return: bb21, unwind: bb29];
+    }
+
+    bb21: {
+        _65 = move _72;
+        _71 = const ();
+        _68 = (move _69, move _71);
+        _67 = vstd::prelude::erased_ghost_value::<((), ()), ()>(move _68) -> [return: bb22, unwind: bb29];
+    }
+
+    bb22: {
+        _76 = ();
+        _75 = vstd::prelude::erased_ghost_value::<(), vstd::raw_ptr::PointsTo<Pair>>(move _76) -> [return: bb23, unwind: bb29];
+    }
+
+    bb23: {
+        FakeRead(ForLet(None), _75);
+        _78 = move _64;
+        FakeRead(ForLet(None), _78);
+        _80 = ();
+        _79 = vstd::prelude::erased_ghost_value::<(), vstd::raw_ptr::PointsTo<Pair>>(move _80) -> [return: bb24, unwind: bb29];
+    }
+
+    bb24: {
+        FakeRead(ForLet(None), _79);
+        _84 = move _78;
+        _74 = move _84;
+        _83 = const ();
+        _87 = ();
+        _86 = vstd::prelude::erased_ghost_value::<(), vstd::raw_ptr::PointsTo<Pair>>(move _87) -> [return: bb25, unwind: bb29];
+    }
+
+    bb25: {
+        _75 = move _86;
+        _85 = const ();
+        _82 = (move _83, move _85);
+        _81 = vstd::prelude::erased_ghost_value::<((), ()), ()>(move _82) -> [return: bb26, unwind: bb29];
+    }
+
+    bb26: {
+        _77 = const ();
+        _88 = &(*_50);   // <== inner pointer `a`: momentary shared borrow of its permission `ma`
+        _89 = &mut ((*((*_1).0: *mut Pair)).0: u64);   // <== t1 = &mut (*(*a).next).f   (borrow of the original place)
+        _90 = &mut _74;   // <== &mut mb   (outermost permission; requires mb to be mutable and not borrowed)
+        _91 = vstd::raw_ptr::PointsTo::<Pair>::borrow_mut(move _90) -> [return: bb27, unwind unreachable];   // <== t2 = PointsTo::borrow_mut(&mut mb): &mut Pair
+    }
+
+    bb27: {
+        _92 = &mut (*_91);   // <== reborrow of t2
+        _93 = vstd::prelude::mutable_reference_tie::<Pair, u64>(move _92, move _89) -> [return: bb28, unwind unreachable];   // <== t = mutable_reference_tie(t2, t1): &mut Pair
+    }
+
+    bb28: {
+        ((*_93).0: u64) = const 5_u64;   // <== the assignment writes to the permission-rooted place `(*t).f`, so the assigned value must have the type from the PointsTo
+        _0 = const ();
+        return;
+    }
+
+    bb29 (cleanup): {
+        resume;
+    }
+}

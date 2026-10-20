@@ -1,12 +1,12 @@
-use crate::ast::{FieldOpr, Typ, TypX, UnaryOp, UnaryOpr, VarIdent};
+use crate::ast::{CrateId, Dt, FieldOpr, Typ, TypX, UnaryOp, UnaryOpr, VarIdent};
 use crate::ast_util::undecorate_typ;
-use crate::def::Spanned;
+use crate::def::{Spanned, suffix_global_id};
 use crate::messages::Span;
 use crate::poly::typ_is_poly;
 use crate::sst::{
     BinaryOp, Dest, Exp, ExpX, LocalDecl, LocalDeclKind, Pars, Stm, StmX, Stms, UniqueIdent,
 };
-use crate::sst_to_air::{apply_field, try_unbox};
+use crate::sst_to_air::{apply_field, fun_to_air_ident, try_unbox};
 use crate::sst_visitor::exp_visitor_check;
 use air::ast::{ExprX, Ident, StmtX};
 use air::scope_map::ScopeMap;
@@ -33,6 +33,7 @@ pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
     match &exp.x {
         ExpX::Loc(x) => get_loc_var(x),
         ExpX::Unary(UnaryOp::MutRefCurrent, x) => get_loc_var(x),
+        ExpX::Unary(UnaryOp::PointsToContents, x) => get_loc_var(x),
         ExpX::UnaryOpr(UnaryOpr::Field { .. }, x) => get_loc_var(x),
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), x) => get_loc_var(x),
         ExpX::Binary(BinaryOp::Index(..), x, _idx) => get_loc_var(x),
@@ -145,6 +146,9 @@ pub(crate) fn locs_may_overlap(loc1: &Exp, loc2: &Exp) -> bool {
                 ExpX::Unary(UnaryOp::MutRefCurrent, x) => {
                     e = x;
                 }
+                ExpX::Unary(UnaryOp::PointsToContents, x) => {
+                    e = x;
+                }
                 ExpX::UnaryOpr(UnaryOpr::Field { .. }, x) => {
                     e = x;
                 }
@@ -162,6 +166,9 @@ pub(crate) fn locs_may_overlap(loc1: &Exp, loc2: &Exp) -> bool {
         for _i in 0..d {
             match &e.x {
                 ExpX::Unary(UnaryOp::MutRefCurrent, x) => {
+                    e = x;
+                }
+                ExpX::Unary(UnaryOp::PointsToContents, x) => {
                     e = x;
                 }
                 ExpX::UnaryOpr(UnaryOpr::Field { .. }, x) => {
@@ -193,6 +200,13 @@ pub(crate) fn locs_may_overlap(loc1: &Exp, loc2: &Exp) -> bool {
     loop {
         match (&loc1.x, &loc2.x) {
             (ExpX::Unary(UnaryOp::MutRefCurrent, x1), ExpX::Unary(UnaryOp::MutRefCurrent, x2)) => {
+                loc1 = x1;
+                loc2 = x2;
+            }
+            (
+                ExpX::Unary(UnaryOp::PointsToContents, x1),
+                ExpX::Unary(UnaryOp::PointsToContents, x2),
+            ) => {
                 loc1 = x1;
                 loc2 = x2;
             }
@@ -680,6 +694,7 @@ struct Projection {
 #[derive(Clone, Debug, ToDebugSNode)]
 enum ProjectionKind {
     MutRefCurrent,
+    PointsToContents,
     Field(FieldOpr),
 }
 
@@ -763,6 +778,16 @@ fn loc_to_subloc(exp: &Exp) -> (Sublocation, bool) {
             }
             (subloc, done)
         }
+        ExpX::Unary(UnaryOp::PointsToContents, e) => {
+            let (mut subloc, done) = loc_to_subloc(e);
+            if !done {
+                subloc.projections.push(Projection {
+                    typ: exp.typ.clone(),
+                    kind: ProjectionKind::PointsToContents,
+                });
+            }
+            (subloc, done)
+        }
         ExpX::UnaryOpr(UnaryOpr::Field(field_opr), e) => {
             let (mut subloc, done) = loc_to_subloc(e);
             if !done {
@@ -787,11 +812,14 @@ fn loc_to_subloc(exp: &Exp) -> (Sublocation, bool) {
 fn equiv_proj_kind(a: &ProjectionKind, b: &ProjectionKind) -> bool {
     match (a, b) {
         (ProjectionKind::MutRefCurrent, ProjectionKind::MutRefCurrent) => true,
+        (ProjectionKind::PointsToContents, ProjectionKind::PointsToContents) => true,
         (ProjectionKind::Field(f1), ProjectionKind::Field(f2)) => {
             f1.variant == f2.variant && f1.field == f2.field
         }
 
-        (ProjectionKind::MutRefCurrent, _) | (ProjectionKind::Field(_), _) => false,
+        (ProjectionKind::MutRefCurrent, _)
+        | (ProjectionKind::PointsToContents, _)
+        | (ProjectionKind::Field(_), _) => false,
     }
 }
 
@@ -799,6 +827,7 @@ impl ProjectionKind {
     fn is_field(&self, variant: &Ident, field: &Ident) -> bool {
         match self {
             ProjectionKind::MutRefCurrent => false,
+            ProjectionKind::PointsToContents => false,
             ProjectionKind::Field(opr) => &opr.variant == variant && &opr.field == field,
         }
     }
@@ -939,6 +968,51 @@ impl SublocationTree {
                 let c2 = Arc::new(ExprX::Apply(current.clone(), Arc::new(vec![loc2.clone()])));
 
                 Self::gather_preserved_locations(ctx, &children[0].1, &c1, &c2, out);
+            }
+            ProjectionKind::PointsToContents => {
+                assert!(children.len() == 1);
+
+                let mut f1 = loc1.clone();
+                let mut f2 = loc2.clone();
+                let mut base_typ = &node.typ;
+
+                let undecorated_typ = undecorate_typ(&node.typ);
+                if let TypX::Boxed(native_typ) = &*undecorated_typ
+                    && !typ_is_poly(ctx, native_typ)
+                {
+                    f1 = try_unbox(ctx, f1, native_typ).expect("try_unbox");
+                    f2 = try_unbox(ctx, f2, native_typ).expect("try_unbox");
+                    base_typ = native_typ;
+                }
+                let t_typ = match &*undecorate_typ(base_typ) {
+                    TypX::Datatype(Dt::Path(_), args, _) => args[0].clone(),
+                    _ => panic!("internal error: gather_preserved_locations expected PointsTo"),
+                };
+
+                let mut loc1_args = crate::sst_to_air::typ_to_ids(ctx, &t_typ);
+                let mut loc2_args = loc1_args.clone();
+                let f1 = crate::sst_to_air::as_box(ctx, f1, base_typ);
+                let f2 = crate::sst_to_air::as_box(ctx, f2, base_typ);
+                loc1_args.push(f1.clone());
+                loc2_args.push(f2.clone());
+                let loc1_args = Arc::new(loc1_args);
+                let loc2_args = Arc::new(loc2_args);
+
+                for f in &[
+                    crate::fun!(CrateId::Vstd => "raw_ptr", "points_to_ptr"),
+                    crate::fun!(CrateId::Vstd => "raw_ptr", "points_to_init"),
+                ] {
+                    let name = suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &f));
+                    let p1 = Arc::new(ExprX::Apply(name.clone(), loc1_args.clone()));
+                    let p2 = Arc::new(ExprX::Apply(name.clone(), loc2_args.clone()));
+                    out.push((p1, p2));
+                }
+
+                let f = crate::fun!(CrateId::Vstd => "raw_ptr", "points_to_contents");
+                let name = suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &f));
+                let p1 = Arc::new(ExprX::Apply(name.clone(), loc1_args.clone()));
+                let p2 = Arc::new(ExprX::Apply(name.clone(), loc2_args.clone()));
+                Self::gather_preserved_locations(ctx, &children[0].1, &p1, &p2, out);
             }
             ProjectionKind::Field(first_field_opr) => {
                 let datatype = &ctx.datatype_map[&first_field_opr.datatype];

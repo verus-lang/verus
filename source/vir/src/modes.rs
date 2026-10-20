@@ -1,15 +1,16 @@
 use crate::ast::{
     AssertQueryMode, AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail,
     Datatype, DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, InvAtomicity,
-    ItemKind, Krate, LogicalOp, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName,
-    OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind,
-    SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind,
-    UnwindSpec, VarIdent, VirErr,
+    ItemKind, Krate, LogicalOp, Mode, ModeCoercion, ModeWrapperMode, MultiOp,
+    MutRefFutureSourceName, OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place,
+    PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr,
+    UnfinalizedReadKind, UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name, typ_to_diagnostic_str};
 use crate::def::{Spanned, user_local_name};
 use crate::messages::{Span, error, internal_error};
 use crate::messages::{error_bare, error_with_label};
+use crate::points_to::permission_place_to_friendly_string;
 use crate::resolution_types::ResolutionTypes;
 use crate::util::vec_map_result;
 use air::scope_map::ScopeMap;
@@ -426,6 +427,10 @@ pub struct ErasureModes {
     pub binder_modes: Vec<(Span, Mode)>,
     // Modes of calls and struct Ctors
     pub ctor_modes: Vec<(Span, Mode)>,
+    // For each PlaceX::DerefRaw node, the permission place,
+    // or None if there is no permission.
+    // Used by lifetime checking to emit borrows of the permission.
+    pub deref_raw_permissions: Vec<(Span, Option<Place>)>,
 }
 
 impl Ghost {
@@ -1226,7 +1231,7 @@ fn check_place(
     // Thus, for non-mut, we record the mode of the *whole expression*, and for mut,
     // we stor the mode of the local (the second case is in `check_place_rec`).
     if !access.is_mut() {
-        if let Some(var_place) = crate::ast_util::place_get_local(place) {
+        if let Some(var_place) = crate::ast_util::place_get_local_physical(place) {
             let var_mode = match &var_place.x {
                 PlaceX::Local(var) => typing.get(var, &place.span)?.0,
                 _ => unreachable!(),
@@ -1357,6 +1362,37 @@ fn check_place_rec_inner(
             let deref_mode = if mode == Mode::Spec { Mode::Spec } else { Mode::Exec };
             Ok((deref_mode, proph))
         }
+        PlaceX::DerefRaw(p, permission_place) => {
+            let (mode, proph) = check_place_rec(
+                ctxt,
+                record,
+                typing,
+                note,
+                outer_mode,
+                p,
+                access,
+                expect,
+                outer_proph,
+            )?;
+
+            // TODO: I think we can be much more lenient here
+            if mode != Mode::Exec || !matches!(typing.block_ghostness, Ghost::Exec) {
+                return Err(error(
+                    &place.span,
+                    &format!("to dereference a pointer, it must be exec mode"),
+                ));
+            }
+
+            if let Some(permission_place) = permission_place {
+                check_permission_place(ctxt, typing, permission_place, permission_place)?;
+            }
+            record
+                .erasure_modes
+                .deref_raw_permissions
+                .push((place.span.clone(), permission_place.clone()));
+
+            Ok((Mode::Exec, proph))
+        }
         PlaceX::Local(var) => {
             let (mode, proph) = typing.get(var, &place.span)?;
             let proph = proph.to_proph(var, &place.span);
@@ -1453,6 +1489,98 @@ fn check_place_rec_inner(
             // If we try to do `exec[spec]` outside a ghost block, it will get caught by
             // the above check.
             Ok((place_mode, place_proph))
+        }
+    }
+}
+
+fn check_permission_place(
+    ctxt: &Ctxt,
+    typing: &mut Typing,
+    full_place: &Place,
+    place: &Place,
+) -> Result<(), VirErr> {
+    match &place.x {
+        PlaceX::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }, p) => {
+            check_permission_place(ctxt, typing, full_place, p)?;
+            let field_mode = match datatype {
+                Dt::Path(path) => {
+                    let datatype = &ctxt.datatypes[path];
+                    let field = get_field(&datatype.x.get_variant(variant).fields, field);
+                    field.a.1
+                }
+                Dt::Tuple(_) => Mode::Exec,
+            };
+            if field_mode == Mode::Spec {
+                return Err(error(
+                    &place.span,
+                    &format!(
+                        "Verus Internal Error: the permission (`{:}`) used for this raw ptr operation must be a tracked place (field `{:}` is ghost mode)",
+                        permission_place_to_friendly_string(full_place),
+                        field
+                    ),
+                ));
+            }
+            Ok(())
+        }
+        PlaceX::Local(var) => {
+            let (mode, _proph) = typing.get(var, &place.span)?;
+            if mode == Mode::Spec {
+                return Err(error(
+                    &place.span,
+                    &format!(
+                        "Verus Internal Error: the permission (`{:}`) used for this raw ptr operation must be a tracked place (local variable `{:}` is ghost mode)",
+                        permission_place_to_friendly_string(full_place),
+                        user_local_name(var)
+                    ),
+                ));
+            }
+            Ok(())
+        }
+        PlaceX::DerefMut(p) => check_permission_place(ctxt, typing, full_place, p),
+        PlaceX::ModeUnwrap(p, ModeWrapperMode::Proof) => {
+            check_permission_place(ctxt, typing, full_place, p)
+        }
+        PlaceX::ModeUnwrap(_p, ModeWrapperMode::Spec) => {
+            return Err(error(
+                &place.span,
+                &format!("Verus Internal Error: check_permission_place got unexpected Ghost node"),
+            ));
+        }
+        PlaceX::DerefRaw(_p, _permission_place) => {
+            return Err(error(
+                &place.span,
+                &format!(
+                    "Verus Internal Error: check_permission_place got unexpected DerefRaw node"
+                ),
+            ));
+        }
+        PlaceX::Temporary(_e) => {
+            return Err(error(
+                &place.span,
+                &format!(
+                    "Verus Internal Error: check_permission_place got unexpected Temporary node"
+                ),
+            ));
+        }
+        PlaceX::Index(..) => {
+            return Err(error(
+                &place.span,
+                &format!("Verus Internal Error: check_permission_place got unexpected Index node"),
+            ));
+        }
+        PlaceX::WithExpr(..) => {
+            return Err(error(
+                &place.span,
+                &format!("Verus Internal Error: WithExpr node shouldn't exist yet"),
+            ));
+        }
+        PlaceX::UserDefinedTypInvariantObligation(..) => {
+            return Err(error(
+                &place.span,
+                &format!(
+                    "Verus Internal Error: UserDefinedTypInvariantObligation node shouldn't exist yet"
+                ),
+            ));
         }
     }
 }
@@ -1568,7 +1696,7 @@ fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place, typ: &Typ)
     // that we need this extra allowance in the first place, i.e., if it's not a mutable
     // reference, then we can just check directly if it's a tracked location and there's
     // no need for all this guesswork.
-    if !crate::ast_util::place_has_deref_mut(place) {
+    if !crate::ast_util::place_has_deref_mut_or_raw(place) {
         return false;
     }
 
@@ -1594,6 +1722,9 @@ fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place, typ: &Typ)
             | PlaceX::UserDefinedTypInvariantObligation(p, _)
             | PlaceX::Index(p, ..) => {
                 place = p;
+            }
+            PlaceX::DerefRaw(..) => {
+                todo!();
             }
         }
     }
@@ -4061,8 +4192,12 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> 
             }
         }
     }
-    let erasure_modes =
-        ErasureModes { local_modes: vec![], binder_modes: vec![], ctor_modes: vec![] };
+    let erasure_modes = ErasureModes {
+        local_modes: vec![],
+        binder_modes: vec![],
+        ctor_modes: vec![],
+        deref_raw_permissions: vec![],
+    };
     let special_paths = SpecialPaths::new();
     let mut ctxt = Ctxt {
         funs,

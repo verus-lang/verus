@@ -94,6 +94,60 @@ pub struct LocalInvariantBody {
     pub guard_var: LocalVarId,
 }
 
+/// A projection in a permission place (see `RawDerefPermission`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PermissionProjection {
+    /// Dereference a mutable reference
+    DerefMut,
+    /// Dereference a shared reference
+    DerefShared,
+    /// Dereference a Box
+    DerefBox,
+    /// Field of a struct or enum variant (looked up by name)
+    Field { variant: String, field: String },
+    /// `Tracked<T> -> T` (not a place projection in Rust; the MIR builder emits a call
+    /// to `Deref::deref` or `DerefMut::deref_mut`)
+    DerefTracked,
+    /// `PointsTo<T> -> T` (not a place projection in Rust; the MIR builder emits a call
+    /// to `PointsTo::borrow` or `PointsTo::borrow_mut`)
+    DerefPointsTo,
+}
+
+impl PermissionProjection {
+    /// Can this projection be expressed as a Rust place projection?
+    pub fn is_place_projection(&self) -> bool {
+        match self {
+            PermissionProjection::DerefMut
+            | PermissionProjection::DerefShared
+            | PermissionProjection::DerefBox
+            | PermissionProjection::Field { .. } => true,
+            PermissionProjection::DerefTracked | PermissionProjection::DerefPointsTo => false,
+        }
+    }
+}
+
+/// The permission place to use for a given raw pointer dereference, e.g., `perm`,
+/// `(*perm_ref)`, or `perm_opt.Some.0`.
+/// Unlike in VIR, all dereferences are explicit (including Box and shared references).
+#[derive(Debug, Clone)]
+pub struct RawDerefPermission {
+    /// HirId of the binder of the permission variable
+    pub local: HirId,
+    pub projections: Vec<PermissionProjection>,
+}
+
+/// The permission to use for a given raw pointer dereference, in two forms.
+#[derive(Debug, Clone)]
+pub struct RawDerefPermissions {
+    /// Projects to the `PointsTo<T>` (or the `Tracked` it's contained in, if any);
+    /// this is a Rust place. Used when we only need to borrow the permission.
+    pub perm: RawDerefPermission,
+    /// Projects all the way to the `T`; for use when the raw pointer dereference is the
+    /// outermost one in a place (see verus_raw_ptrs.rs).
+    /// `perm.projections` is always a prefix of `deep_perm.projections`.
+    pub deep_perm: RawDerefPermission,
+}
+
 /// Global context with all information across the krate.
 /// This is created after mode-checking and passed here via the VERUS_ERASURE_CTXT global.
 #[derive(Debug)]
@@ -120,11 +174,23 @@ pub struct VerusErasureCtxt {
 
     pub local_invariant_bodies: HashMap<HirId, LocalInvariantBody>,
 
+    /// For each raw pointer dereference (HirId of the Unary Deref expression)
+    /// the permission to use, or None if there is no permission. (See verus_raw_ptrs.rs)
+    /// Every raw pointer dereference in Verus-aware code should be in this map.
+    pub raw_deref_permissions: HashMap<HirId, Option<RawDerefPermissions>>,
+
     /// Some DefIds from builtin that we'll need to handle directly
     pub erased_ghost_value_fn_def_id: DefId,
     pub shadow_ghost_value_fn_def_id: DefId,
     pub dummy_capture_struct_def_id: DefId,
     pub mutable_reference_tie_fn_def_id: DefId,
+    pub shared_reference_tie_fn_def_id: DefId,
+    pub tracked_struct_def_id: DefId,
+    /// `vstd::raw_ptr::PointsTo` and its `borrow` and `borrow_mut` functions
+    /// (None if vstd is not available)
+    pub points_to_struct_def_id: Option<DefId>,
+    pub points_to_borrow_fn_def_id: Option<DefId>,
+    pub points_to_borrow_mut_fn_def_id: Option<DefId>,
     pub two_phase_mutable_reference_tie_fn_def_id: DefId,
     pub get_first_fn_def_id: DefId,
 }
@@ -216,6 +282,19 @@ pub(crate) struct ExtraThir {
     pub local_invs_for_node: HashMap<ExprId, Vec<LocalInvariantBody>>,
     /// Treat this call as having an inhabited return type (i.e., don't prune the CFG)
     pub force_treat_inhabited: HashSet<ExprId>,
+    /// Maps the pointer operand `p` of a raw pointer dereference `*p` to a
+    /// place expression for its permission, or None if there is no permission.
+    /// (See verus_raw_ptrs.rs)
+    /// If `check_raw_deref_permissions` is set, every raw pointer dereference should
+    /// be in this map.
+    pub raw_deref_permissions: HashMap<ExprId, Option<crate::verus_raw_ptrs::PermExprs>>,
+    /// Should the MIR builder emit borrows of raw pointer permissions?
+    /// (True for Verus-aware bodies.)
+    pub check_raw_deref_permissions: bool,
+    /// Maps the pointer operand `p` of a raw pointer dereference `*p` to how its permission
+    /// is used, in the case that `*p` is the outermost raw dereference of a place and the
+    /// usage is something other than a read. (See verus_raw_ptrs.rs)
+    pub raw_deref_outer_usage: HashMap<ExprId, crate::verus_raw_ptrs::PermUsage>,
 }
 
 /// Per-body context (i.e., one for each function or closure).
@@ -247,6 +326,9 @@ impl VerusThirBuildCtxt {
             extra_thir: ExtraThir {
                 local_invs_for_node: HashMap::new(),
                 force_treat_inhabited: HashSet::new(),
+                raw_deref_permissions: HashMap::new(),
+                raw_deref_outer_usage: HashMap::new(),
+                check_raw_deref_permissions: do_time_travel_prevention,
             },
             local_def_id: local_def_id,
         }

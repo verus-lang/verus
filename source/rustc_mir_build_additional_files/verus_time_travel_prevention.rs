@@ -245,7 +245,17 @@ pub(crate) fn expr_post<'tcx>(
         return kind;
     }
 
+    crate::verus_raw_ptrs::borrow_post(cx, hir_expr, &kind);
+
     match &kind {
+        ExprKind::RawBorrow { mutability, arg } => {
+            crate::verus_raw_ptrs::raw_borrow_post(cx, *mutability, *arg);
+            kind
+        }
+        ExprKind::AssignOp { lhs, .. } => {
+            crate::verus_raw_ptrs::assign_post(cx, *lhs);
+            kind
+        }
         ExprKind::Borrow { borrow_kind: BorrowKind::Mut { kind: borrow_kind_mut }, arg: _ } => {
             let two_phase = match borrow_kind_mut {
                 MutBorrowKind::Default | MutBorrowKind::ClosureCapture => false,
@@ -279,6 +289,7 @@ pub(crate) fn expr_post<'tcx>(
             // Note: We don't need to handle AssignOp because it only applies to primitive types.
             let lhs = *lhs;
             let rhs = *rhs;
+            crate::verus_raw_ptrs::assign_post(cx, lhs);
             if let Some(shadow_lhs) = shadow_place(cx, hir_expr.hir_id, hir_expr.span, lhs) {
                 let main_assign = expr_id_from_kind(cx, kind, hir_expr.hir_id, hir_expr.span, ty);
                 let rhs_ty = cx.thir.exprs[rhs].ty;
@@ -1296,6 +1307,11 @@ fn shadow_place_rec<'tcx>(
             if matches!(ty.kind(), TyKind::Ref(_, _, Mutability::Not)) {
                 // Mutable borrow from behind immutable reference: this will be a normal
                 // error so skip special handling
+                return None;
+            }
+            if ty.is_raw_ptr() {
+                // A place behind a raw pointer has no shadow place; instead, borrows
+                // are tied to the pointer's permission (see verus_raw_ptrs.rs)
                 return None;
             }
 

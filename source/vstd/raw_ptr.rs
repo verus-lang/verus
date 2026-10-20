@@ -142,7 +142,8 @@ and alignment.
 //   but we don't know so we have to pretend they're uninitialized)
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
-pub tracked struct PointsTo<T> {
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::PointsTo")]
+pub tracked struct PointsTo<T: ?Sized> {
     phantom: core::marker::PhantomData<T>,
     no_copy: NoCopy,
 }
@@ -226,35 +227,90 @@ pub assume_specification<T: core::marker::PointeeSized>[ <*const T as PartialEq<
         res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata),
 ;
 
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::points_to_ptr")]
+pub uninterp spec fn points_to_ptr<T: ?Sized>(p: PointsTo<T>) -> *mut T;
+
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::points_to_contents")]
+pub uninterp spec fn points_to_contents<T: ?Sized>(p: PointsTo<T>) -> Ghost<T>;
+
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::points_to_init")]
+pub uninterp spec fn points_to_init<T: ?Sized>(p: PointsTo<T>) -> bool;
+
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::points_to_update_contents")]
+pub uninterp spec fn points_to_update_contents<T: ?Sized>(p: PointsTo<T>, t: Ghost<T>) -> PointsTo<
+    T,
+>;
+
+pub broadcast axiom fn points_to_update_contents_def<T: ?Sized>(p: PointsTo<T>, t: Ghost<T>)
+    ensures
+        #![trigger points_to_update_contents(p, t)]
+        points_to_ptr(points_to_update_contents(p, t)) == points_to_ptr(p),
+        points_to_init(points_to_update_contents(p, t)) <==> points_to_init(p),
+        points_to_init(p) ==> points_to_contents(points_to_update_contents(p, t)) == t,
+;
+
 impl<T> View for PointsTo<T> {
     type V = PointsToData<T>;
 
-    uninterp spec fn view(&self) -> Self::V;
+    open spec fn view(&self) -> Self::V {
+        PointsToData {
+            ptr: points_to_ptr(*self),
+            opt_value: if points_to_init(*self) {
+                MemContents::Init(*points_to_contents(*self))
+            } else {
+                MemContents::Uninit
+            },
+        }
+    }
 }
 
-impl<T> PointsTo<T> {
+impl<T: ?Sized> PointsTo<T> {
+    // These are used by lifetime checking for native raw pointer dereferences
+    #[doc(hidden)]
+    #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::PointsTo::borrow")]
+    pub axiom fn borrow(tracked &self) -> (tracked t: &T)
+        requires
+            points_to_init(*self),
+        ensures
+            &*t == &*points_to_contents(*self),
+    ;
+
+    #[doc(hidden)]
+    #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::PointsTo::borrow_mut")]
+    pub axiom fn borrow_mut(tracked &mut self) -> (tracked t: &mut T)
+        requires
+            points_to_init(*self),
+        ensures
+            &*t == &*points_to_contents(*old(self)),
+            points_to_init(*final(self)),
+            points_to_ptr(*final(self)) == points_to_ptr(*old(self)),
+            &*points_to_contents(*final(self)) == &*final(t),
+    ;
+
     /// The pointer that this permission is associated with.
     #[verifier::inline]
     pub open spec fn ptr(&self) -> *mut T {
-        self.view().ptr
+        points_to_ptr(*self)
     }
 
+    /// Returns `true` if the permission's associated memory is initialized.
+    #[verifier::inline]
+    pub open spec fn is_init(&self) -> bool {
+        points_to_init(*self)
+    }
+}
+
+impl<T> PointsTo<T> {
     /// The (possibly uninitialized) memory that this permission gives access to.
     #[verifier::inline]
     pub open spec fn opt_value(&self) -> MemContents<T> {
         self.view().opt_value
     }
 
-    /// Returns `true` if the permission's associated memory is initialized.
-    #[verifier::inline]
-    pub open spec fn is_init(&self) -> bool {
-        self.opt_value().is_init()
-    }
-
     /// Returns `true` if the permission's associated memory is uninitialized.
     #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
-        self.opt_value().is_uninit()
+        !points_to_init(*self)
     }
 
     /// If the permission's associated memory is initialized,
@@ -265,7 +321,7 @@ impl<T> PointsTo<T> {
         recommends
             self.is_init(),
     {
-        self.opt_value().value()
+        *points_to_contents(*self)
     }
 
     /// Guarantee that the `PointsTo` points to a non-null address.
@@ -690,6 +746,7 @@ pub broadcast group group_raw_ptr_axioms {
     axiom_ptr_mut_from_data,
     ptrs_mut_eq,
     ptrs_mut_eq_sized,
+    points_to_update_contents_def,
 }
 
 /// Tracked object that indicates a given provenance has been exposed.
