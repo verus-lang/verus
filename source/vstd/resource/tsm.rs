@@ -112,7 +112,7 @@ impl<M: Machine> ResourceAlgebra for Inved<M> {
     }
 
     open spec fn op(a: Self, b: Self) -> Self {
-        // Avoid matching on `(a, b)`: each unfolding would build a tuple term.
+        // repeated `is` checks seem to be faster than matching on tuples.
         if a is Unit {
             b
         } else if b is Unit {
