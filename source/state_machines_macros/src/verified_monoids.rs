@@ -349,14 +349,11 @@ fn collect(
     s: &TransitionStmt,
     fields: &HashMap<String, Field>,
     kinds: &mut HashMap<String, HashSet<EffectOp>>,
-) -> Result<HashMap<String, usize>, Error> {
-    let mut counts: HashMap<String, usize> = HashMap::new();
+) -> Result<(), Error> {
     match s {
         TransitionStmt::Block(_, children) => {
             for child in children {
-                for (n, count) in collect(child, fields, kinds)? {
-                    *counts.entry(n).or_default() += count;
-                }
+                collect(child, fields, kinds)?;
             }
         }
         TransitionStmt::Split(span, kind, children) => {
@@ -393,24 +390,16 @@ fn collect(
                     };
                     if let Some(modify) = modify {
                         kinds.entry(n.to_string()).or_default().insert(modify);
-                        counts.insert(n.to_string(), 1);
                     }
                 }
             }
-            let mut alternatives: HashMap<String, usize> = HashMap::new();
             for child in children {
-                for (n, count) in collect(child, fields, kinds)? {
-                    let previous = alternatives.entry(n).or_default();
-                    *previous = (*previous).max(count);
-                }
-            }
-            for (n, count) in alternatives {
-                *counts.entry(n).or_default() += count;
+                collect(child, fields, kinds)?;
             }
         }
         _ => {}
     }
-    Ok(counts)
+    Ok(())
 }
 
 fn replacement_order(

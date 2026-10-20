@@ -1092,7 +1092,6 @@ fn persistent_clone(f: &Field, store: &Store, cm: &Option<Cm>, frag: &TokenStrea
     };
     if !store.has() {
         let same: Vec<_> = observers.iter().map(|o| quote! {<#nt as #tr>::#o(&s) == <#nt as #tr>::#o(self)}).collect();
-        let _ = &nt;
         let base_dup = match cm {
             Some(cm) => {
                 let d = cm.share(cm.opt_ref(quote! {self.desc}));
@@ -2055,7 +2054,6 @@ fn reservation(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream {
             quote! {::vstd::resource::tsm_instance_id(raw.loc(), false)},
         ),
         Some(cm) => {
-            let dty = &cm.d;
             let ok = cm.ok(quote! {self.desc->Some_0});
             let ploc = cm.ploc(quote! {self.desc->Some_0});
             let kappa_s = cm.kappa(quote! {self.desc->Some_0});
@@ -4007,7 +4005,6 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             quote! {},
         ),
         Some(cm) => {
-            let dty = &cm.d;
             let ok = cm.ok(quote! {self.__desc});
             let ploc = cm.ploc(quote! {self.__desc});
             let kappa = cm.kappa(quote! {self.__desc});
@@ -4304,9 +4301,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                 let params: HashSet<String> = args.iter().map(|a| quote! {#a}.to_string()).collect();
                 // (Persistent tokens of a machine with type parameters own their raw
                 // tokens; see `leaks`.)
-                let _ = &params;
                 let needs_static = base && !ctx.owned_base
-                    || sm.fields.iter().any(|f| kind(f).is_some_and(|k| k.persistent()) && leaks(true))
                     || cm.as_ref().is_some_and(|cm| !cm.owned && mentions(&cm.d, &params));
                 let wc = if needs_static {
                     let bounds: Vec<_> = args.iter().map(|a| quote! {#a: 'static}).collect();
@@ -4793,7 +4788,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     if unit_param {
         in_params.push(quote! {tracked __tsm_unit: Unit});
     }
-    let mut unit_req = if unit_param { quote! {__tsm_unit.instance_id() == (*self).id(),} } else { quote! {} };
+    let unit_req = if unit_param { quote! {__tsm_unit.instance_id() == (*self).id(),} } else { quote! {} };
     let req = if !unit_req.is_empty() {
         if req.is_empty() { quote! {requires #unit_req} } else { quote! {#req, #unit_req} }
     } else {
@@ -6717,8 +6712,8 @@ pub fn normalize_initial_requirements(bundle:&mut crate::parse_token_stream::SMB
     for index in 0..bundle.sm.transitions.len() {
         let tr=&bundle.sm.transitions[index];
         if tr.kind!=TransitionKind::Init {continue;}
-        let mut values=HashMap::new();let mut requirements=Vec::new();
-        initial_statements(&tr.body,&mut values,&mut requirements)?;
+        let mut requirements=Vec::new();
+        initial_statements(&tr.body,&mut requirements)?;
         let params:Vec<_>=tr.params.iter().map(|p|{let n=&p.name;let t=&p.ty;quote!{#n:#t}}).collect();
         let names:Vec<_>=tr.params.iter().map(|p|&p.name).collect();
         let mut replacements=Vec::new();
@@ -6785,7 +6780,7 @@ fn initial_fresh(sm: &SM, tr: &Transition, label: &str) -> Ident {
     }
     fn expressions(s:&TransitionStmt,names:&mut HashSet<String>) {
         match s {
-            TransitionStmt::Block(xs,children)=>{let _=xs;for c in children {expressions(c,names);}},
+            TransitionStmt::Block(_,children)=>{for c in children {expressions(c,names);}},
             TransitionStmt::Initialize(_,_,e)|TransitionStmt::Update(_,_,e)|TransitionStmt::Require(_,e)|TransitionStmt::Assert(_,e,_)=>tokens(quote!{#e},names),
             TransitionStmt::Split(_,split,children)=>{
                 match &**split {
@@ -6806,20 +6801,14 @@ fn initial_fresh(sm: &SM, tr: &Transition, label: &str) -> Ident {
     Ident::new(&candidate, Span::mixed_site())
 }
 
-fn initial_statements(
-    stmt: &TransitionStmt,
-    values: &mut HashMap<String, Expr>,
-    requirements: &mut Vec<Expr>,
-) -> Result<(), Error> {
+fn initial_statements(stmt: &TransitionStmt, requirements: &mut Vec<Expr>) -> Result<(), Error> {
     match stmt {
         TransitionStmt::Block(_, children) => {
             for child in children {
-                initial_statements(child, values, requirements)?;
+                initial_statements(child, requirements)?;
             }
         }
-        TransitionStmt::Initialize(_, name, value) => {
-            values.insert(name.to_string(), value.clone());
-        }
+        TransitionStmt::Initialize(..) => {}
         TransitionStmt::Require(_, value) => requirements.push(value.clone()),
         _ => {
             return Err(Error::new(

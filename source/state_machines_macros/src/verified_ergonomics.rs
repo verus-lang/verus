@@ -59,17 +59,7 @@ pub fn field_api(
         });
         specs.push(accessors(field));
         let mut group = vec![index];
-        projection(
-            names,
-            types,
-            &group,
-            name,
-            fragment,
-            token,
-            sm,
-            &mut specs,
-            &mut proofs,
-        )?;
+        projection(names, types, &group, name, token, sm, &mut specs, &mut proofs)?;
         if !constants.is_empty() && !matches!(field.stype, ShardableType::Constant(_)) {
             group.extend(
                 names
@@ -79,17 +69,7 @@ pub fn field_api(
                     .map(|(i, _)| i),
             );
             let grouped = format_ident!("{}_with_constants", name);
-            projection(
-                names,
-                types,
-                &group,
-                &grouped,
-                fragment,
-                token,
-                sm,
-                &mut specs,
-                &mut proofs,
-            )?;
+            projection(names, types, &group, &grouped, token, sm, &mut specs, &mut proofs)?;
         }
         if matches!(field.stype, ShardableType::Count) {
             let split = format_ident!("split_{}", name);
@@ -225,7 +205,6 @@ fn projection(
     types: &[TokenStream],
     selected: &[usize],
     label: &Ident,
-    _fragment: &TokenStream,
     token: &TokenStream,
     sm: &SM,
     specs: &mut Vec<TokenStream>,

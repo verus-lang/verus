@@ -10,15 +10,13 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::{HashMap, HashSet};
 use verus_syn::spanned::Spanned;
-use verus_syn::{Error, Expr, Ident, Type};
+use verus_syn::{Error, Expr, Ident};
 
 struct Straight {
     updates: HashMap<String, Expr>,
     requires: Vec<Expr>,
     assertions: Vec<(Expr, AssertProof)>,
     count_ops: Vec<(Ident, MonoidStmtType, Expr)>,
-    multiset_ops: Vec<(Ident, MonoidStmtType, Expr)>,
-    storage_op: Option<(Ident, MonoidStmtType, Expr, AssertProof)>,
 }
 
 fn flatten(stmt: &TransitionStmt, out: &mut Straight) -> Result<(), Error> {
@@ -37,66 +35,28 @@ fn flatten(stmt: &TransitionStmt, out: &mut Straight) -> Result<(), Error> {
             }
         }
         TransitionStmt::Require(span, e) => {
-            if !out.assertions.is_empty() || out.storage_op.is_some() {
+            if !out.assertions.is_empty() {
                 return Err(Error::new(
                     *span,
-                    "verified backend requires require statements before assert and storage statements",
+                    "verified backend requires require statements before assert statements",
                 ));
             }
             out.requires.push(e.clone());
         }
         TransitionStmt::Assert(_, e, p) => out.assertions.push((e.clone(), p.clone())),
         TransitionStmt::Split(span, kind, children) => {
-            if let SplitKind::Special(id, op, proof, None) = &**kind {
-                if let MonoidElt::SingletonMultiset(value) = &op.elt {
-                    if matches!(
-                        op.stmt,
-                        MonoidStmtType::Add(false) | MonoidStmtType::Remove | MonoidStmtType::Have
-                    ) {
-                        if (!out.assertions.is_empty() || out.storage_op.is_some())
-                            && !matches!(op.stmt, MonoidStmtType::Add(false))
-                        {
-                            return Err(Error::new(
-                                *span,
-                                "verified backend requires remove/have statements before assert and storage statements",
-                            ));
-                        }
-                        out.multiset_ops.push((id.clone(), op.stmt, value.clone()));
-                        for child in children {
-                            flatten(child, out)?;
-                        }
-                        return Ok(());
-                    }
-                }
-                if let MonoidElt::OptionSome(Some(value)) = &op.elt {
-                    if matches!(
-                        op.stmt,
-                        MonoidStmtType::Deposit | MonoidStmtType::Withdraw | MonoidStmtType::Guard
-                    ) {
-                        if out.storage_op.is_some() {
-                            return Err(Error::new(
-                                *span,
-                                "verified backend currently permits one storage operation per transition",
-                            ));
-                        }
-                        out.storage_op = Some((id.clone(), op.stmt, value.clone(), proof.clone()));
-                        for child in children {
-                            flatten(child, out)?;
-                        }
-                        return Ok(());
-                    }
-                }
+            if let SplitKind::Special(id, op, _, None) = &**kind {
                 if let MonoidElt::General(amount) = &op.elt {
                     if matches!(
                         op.stmt,
                         MonoidStmtType::Add(false) | MonoidStmtType::Remove | MonoidStmtType::Have
                     ) {
-                        if (!out.assertions.is_empty() || out.storage_op.is_some())
+                        if !out.assertions.is_empty()
                             && !matches!(op.stmt, MonoidStmtType::Add(false))
                         {
                             return Err(Error::new(
                                 *span,
-                                "verified backend requires remove/have statements before assert and storage statements",
+                                "verified backend requires remove/have statements before assert statements",
                             ));
                         }
                         out.count_ops.push((id.clone(), op.stmt, amount.clone()));
@@ -107,10 +67,7 @@ fn flatten(stmt: &TransitionStmt, out: &mut Straight) -> Result<(), Error> {
                     }
                 }
             }
-            return Err(Error::new(
-                *span,
-                "verified backend supports count and multiset add/remove/have and storage_option Some(value) deposit/withdraw/guard",
-            ));
+            return Err(Error::new(*span, "verified backend supports count add/remove/have"));
         }
         TransitionStmt::SubUpdate(span, _, _, _) | TransitionStmt::PostCondition(span, _) => {
             return Err(Error::new(
@@ -226,7 +183,6 @@ struct Ctx<'a> {
     token_expr: TokenStream,
     marker_field: Option<TokenStream>,
     marker_value: Option<TokenStream>,
-    storage_field: Option<(Ident, Type)>,
 }
 
 /// The per-field declarations of `State` and `Fragment` and the embedding of a state.
@@ -236,7 +192,6 @@ struct FieldDecls<'a> {
     fragment_types: Vec<TokenStream>,
     names: Vec<&'a Ident>,
     embed: Vec<TokenStream>,
-    storage_field: Option<(Ident, Type)>,
 }
 
 /// The items the transitions contribute to the `State` and `Protocol` impls.
@@ -259,37 +214,20 @@ struct Names<'a> {
     frame_lemma: Ident,
     safety: Ident,
     strong: Ident,
-    dep: Ident,
-    wd: Ident,
-    gd: Ident,
     shared_req: Ident,
     owned_next: Ident,
     shared_frame: Ident,
     shared_tr: Ident,
 }
 
-/// A transition's storage effect: the next storage value, the asserted condition, and the
-/// deposited, withdrawn and guarded maps.
-struct StorageEffect<'a> {
-    next: Option<TokenStream>,
-    condition: Option<(TokenStream, &'a AssertProof)>,
-    deposit: TokenStream,
-    withdraw: TokenStream,
-    guard: Option<TokenStream>,
-}
-
-/// A transition's count and multiset effects on the state and on the fragment, with the
-/// requirements and frame facts they need.
+/// A transition's count effects on the state and on the fragment, with the
+/// requirements they need.
 #[derive(Default)]
 struct MonoidEffects {
     count_next: HashMap<String, TokenStream>,
     count_local: HashMap<String, TokenStream>,
-    bag_next: HashMap<String, TokenStream>,
-    bag_local: HashMap<String, TokenStream>,
     req_state: Vec<TokenStream>,
     req_local: Vec<TokenStream>,
-    bag_frame_facts: Vec<TokenStream>,
-    bag_frame_updates: Vec<TokenStream>,
 }
 
 /// A transition's requirements and facts, on the state and on the consumed fragment.
@@ -302,35 +240,22 @@ struct Conditions {
     required_ownership: Vec<TokenStream>,
 }
 
-/// The fragment a shared-input transition leaves to the consumed token, with its requirements
-/// and multiset frame proofs.
+/// The fragment a shared-input transition leaves to the consumed token, with its requirements.
 struct SharedFragment {
     fields: Vec<TokenStream>,
     owned_requirements: Vec<TokenStream>,
-    bag_proofs: Vec<TokenStream>,
-}
-
-/// The signature and result pieces of a storage exchange that differ between deposits,
-/// withdrawals and plain updates.
-struct ExchangeShape {
-    dep_param: TokenStream,
-    dep_req: TokenStream,
-    dep_init: TokenStream,
-    return_ty: TokenStream,
-    out_token: TokenStream,
-    out_map: TokenStream,
-    result: TokenStream,
 }
 
 /// The straight-line emitter's module for the machine, or an error for machines outside its
-/// subset (which `output_raw` then routes to the general emitter).
+/// subset (which `output_raw` then routes to the general emitter). Machines with storage or
+/// multiset fields never get here: `verified_general::needed` sends them to the general emitter.
 fn basic_output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     let sm = &bundle.sm;
     if sm.init_label.is_some() || sm.transition_label.is_some() {
         return Err(Error::new(sm.name.span(), "verified backend does not yet support labels"));
     }
     let decls = field_declarations(sm)?;
-    let ctx = machine_context(sm, decls.storage_field.clone());
+    let ctx = machine_context(sm);
     let (field_specs, field_takes) = crate::verified_ergonomics::field_api(
         sm,
         &ctx.fragment_ty,
@@ -348,7 +273,7 @@ fn basic_output(bundle: &SMBundle) -> Result<TokenStream, Error> {
 
 /// The machine context: the generated type names applied to the machine's generic
 /// arguments, the phantom marker of generic machines, and the field table.
-fn machine_context(sm: &SM, storage_field: Option<(Ident, Type)>) -> Ctx<'_> {
+fn machine_context(sm: &SM) -> Ctx<'_> {
     let (generics, datatype_attrs) = datatype_generics(sm);
     let (decl, where_clause) = generics_for_decl(&generics);
     let fields = sm.fields.iter().map(|f| (f.name.to_string(), f.clone())).collect();
@@ -374,7 +299,6 @@ fn machine_context(sm: &SM, storage_field: Option<(Ident, Type)>) -> Ctx<'_> {
         marker_value: marker_type
             .as_ref()
             .map(|_| quote! { __tsm_phantom: core::marker::PhantomData, }),
-        storage_field,
     }
 }
 
@@ -387,7 +311,6 @@ fn field_declarations(sm: &SM) -> Result<FieldDecls<'_>, Error> {
         fragment_types: vec![],
         names: vec![],
         embed: vec![],
-        storage_field: None,
     };
     for field in &sm.fields {
         let n = &field.name;
@@ -401,28 +324,14 @@ fn field_declarations(sm: &SM) -> Result<FieldDecls<'_>, Error> {
                 (quote! { Option<AgreementRA<#t>> }, quote! { Some(AgreementRA::Agree(s.#n)) })
             }
             ShardableType::NotTokenized(_) => continue,
-            ShardableType::StorageOption(t) => {
-                if decls.storage_field.is_some() {
-                    return Err(Error::new(
-                        field.type_span,
-                        "verified backend supports one storage_option field",
-                    ));
-                }
-                decls.storage_field = Some((n.clone(), t.clone()));
-                continue;
-            }
             ShardableType::Count => (
                 quote! { ::vstd::resource::tsm::CountRA },
                 quote! { ::vstd::resource::tsm::CountRA { count: s.#n } },
             ),
-            ShardableType::Multiset(t) => (
-                quote! { ::vstd::resource::tsm_finite_multiset::FiniteMultisetRA<#t> },
-                quote! { ::vstd::resource::tsm_finite_multiset::finite_multiset_frag(s.#n) },
-            ),
             _ => {
                 return Err(Error::new(
                     field.type_span,
-                    "verified backend currently supports variable, constant, not_tokenized, count, multiset, and storage_option fields",
+                    "verified backend currently supports variable, constant, not_tokenized, and count fields",
                 ));
             }
         };
@@ -467,18 +376,14 @@ fn transition_items(
         requires: vec![],
         assertions: vec![],
         count_ops: vec![],
-        multiset_ops: vec![],
-        storage_op: None,
     };
     flatten(&trans.body, &mut flat)?;
     let n = transition_names(trans);
     let mut used = HashSet::new();
-    let storage = storage_effect(ctx, &flat, &mut used)?;
     let mut effects = MonoidEffects::default();
     count_effects(ctx, &flat, &mut used, &mut effects)?;
-    multiset_effects(ctx, &flat, &mut used, &mut effects)?;
-    let (next_fields, out_fields) = post_fields(ctx, trans, &flat, &storage, &effects, &mut used)?;
-    let conds = conditions(ctx, &n, &flat, &storage, &effects, used)?;
+    let (next_fields, out_fields) = post_fields(ctx, trans, &flat, &effects, &mut used)?;
+    let conds = conditions(ctx, &n, &flat, &effects, used)?;
     let shared = shared_fragment(ctx, &flat, &n)?;
     let (induct_call, induction) = induction_lemma(ctx, bundle, trans, &n)?;
     items.induction.extend(induction);
@@ -493,40 +398,12 @@ fn transition_items(
         pub open spec fn #next(s: #state_ty, #(#params),*) -> #state_ty { #state_expr { #marker_value #(#next_fields),* } }
     });
     items.relations.push(step_relations(ctx, &n, &conds));
-    let storage_extras = if let Some((_, ty)) = &ctx.storage_field {
-        items.operations.push(storage_maps(ctx, &n, &storage, ty));
-        let contract = storage_frame_contract(ctx, &n, &quote! { f });
-        let (gd, pnames) = (&n.gd, &n.pnames);
-        quote! { #contract Self::#gd(f, #(#pnames),*).submap_of(Self::storage(s)), }
-    } else {
-        quote! {}
-    };
-    items.operations.push(frame_items(
-        ctx,
-        &n,
-        &conds,
-        &out_fields,
-        &effects,
-        &storage_extras,
-        &induct_call,
-    ));
-    let storage_op = flat.storage_op.as_ref().map(|(_, op, _, _)| *op);
-    if let Some((_, ty)) = &ctx.storage_field {
-        if storage.guard.is_some() {
-            items.operations.push(guard_operation(ctx, &n, ty));
-        } else {
-            let shape = exchange_shape(ctx, &n, storage_op, ty, &quote! { token.fragment() });
-            items.operations.push(exchange_operation(ctx, &n, &shape));
-        }
-    } else {
-        items.operations.push(update_operation(ctx, &n));
-    }
+    items.operations.push(frame_items(ctx, &n, &conds, &out_fields, &induct_call));
+    items.operations.push(update_operation(ctx, &n));
     // A shared input contributes observations, while modifications apply
     // exclusively to the consumed fragment. This is the proof-producing
     // counterpart of VerusSync's borrowed token inputs.
-    if storage.guard.is_none() {
-        shared_items(ctx, &n, &shared, storage_op, items);
-    }
+    shared_items(ctx, &n, &shared, items);
     Ok(())
 }
 
@@ -552,55 +429,11 @@ fn transition_names(trans: &Transition) -> Names<'_> {
         frame_lemma: format_ident!("{}_frame", tr),
         safety: format_ident!("{}_safety", tr),
         strong: format_ident!("{}_strong", tr),
-        dep: format_ident!("{}_deposit", tr),
-        wd: format_ident!("{}_withdraw", tr),
-        gd: format_ident!("{}_guarded", tr),
         shared_req: format_ident!("{}_shared_requires", tr),
         owned_next: format_ident!("{}_owned_fragment", tr),
         shared_frame: format_ident!("{}_shared_frame", tr),
         shared_tr: format_ident!("{}_with_shared", tr),
     }
-}
-
-/// The effect of the transition's storage operation, if any, on the state and on storage.
-fn storage_effect<'a>(
-    ctx: &Ctx,
-    flat: &'a Straight,
-    used: &mut HashSet<String>,
-) -> Result<StorageEffect<'a>, Error> {
-    let fields = &ctx.fields;
-    let mut storage = StorageEffect {
-        next: None,
-        condition: None,
-        deposit: quote! { IMap::empty() },
-        withdraw: quote! { IMap::empty() },
-        guard: None,
-    };
-    if let Some((id, op, value, proof)) = &flat.storage_op {
-        if !matches!(fields[&id.to_string()].stype, ShardableType::StorageOption(_)) {
-            return Err(Error::new(
-                id.span(),
-                "verified storage operations require a storage_option field",
-            ));
-        }
-        let value_state = rewrite(value, fields, false, &mut HashSet::new())?;
-        let value_local = rewrite(value, fields, true, used)?;
-        let condition = if matches!(op, MonoidStmtType::Deposit) {
-            storage.next = Some(quote! { Some(#value_state) });
-            storage.deposit = quote! { IMap::empty().insert(0int, #value_local) };
-            quote! { s.#id is None }
-        } else {
-            if matches!(op, MonoidStmtType::Withdraw) {
-                storage.next = Some(quote! { None });
-                storage.withdraw = quote! { IMap::empty().insert(0int, #value_local) };
-            } else {
-                storage.guard = Some(quote! { IMap::empty().insert(0int, #value_local) });
-            }
-            quote! { s.#id == Some(#value_state) }
-        };
-        storage.condition = Some((condition, proof));
-    }
-    Ok(storage)
 }
 
 /// Adds the effects of the transition's count operations to `effects`.
@@ -652,61 +485,11 @@ fn count_effects(
     Ok(())
 }
 
-/// Adds the effects of the transition's singleton multiset operations to `effects`.
-fn multiset_effects(
-    ctx: &Ctx,
-    flat: &Straight,
-    used: &mut HashSet<String>,
-    effects: &mut MonoidEffects,
-) -> Result<(), Error> {
-    let fields = &ctx.fields;
-    for (id, op, value) in &flat.multiset_ops {
-        if !matches!(fields[&id.to_string()].stype, ShardableType::Multiset(_)) {
-            return Err(Error::new(
-                id.span(),
-                "verified singleton multiset operations require a multiset field",
-            ));
-        }
-        let value_state = rewrite(value, fields, false, &mut HashSet::new())?;
-        let value_local = rewrite(value, fields, true, used)?;
-        if matches!(op, MonoidStmtType::Have) && effects.bag_next.contains_key(&id.to_string()) {
-            return Err(Error::new(
-                id.span(),
-                "verified backend requires have before add/remove on the same multiset field",
-            ));
-        }
-        effects.bag_frame_facts.push(quote! { ::vstd::resource::tsm_finite_multiset::finite_multiset_owned_frame(f.#id,z.#id,s.#id,#value_local); });
-        if !matches!(op, MonoidStmtType::Add(false)) {
-            effects.req_state.push(quote! { s.#id.count(#value_state) >= 1 });
-            effects.req_local.push(quote! { f.#id.at(#value_local).count >= 1 });
-        }
-        if matches!(op, MonoidStmtType::Add(false) | MonoidStmtType::Remove) {
-            if effects.bag_next.contains_key(&id.to_string()) {
-                return Err(Error::new(
-                    id.span(),
-                    "verified backend currently permits one add/remove per multiset field per transition",
-                ));
-            }
-            if matches!(op, MonoidStmtType::Add(false)) {
-                effects.bag_next.insert(id.to_string(), quote! { s.#id.insert(#value_state) });
-                effects.bag_local.insert(id.to_string(), quote! { f.#id.insert(#value_local) });
-                effects.bag_frame_updates.push(quote! { ::vstd::resource::tsm_finite_multiset::finite_multiset_add_frame(f.#id,z.#id,s.#id,#value_local); });
-            } else {
-                effects.bag_next.insert(id.to_string(), quote! { s.#id.remove(#value_state) });
-                effects.bag_local.insert(id.to_string(), quote! { f.#id.remove(#value_local) });
-                effects.bag_frame_updates.push(quote! { ::vstd::resource::tsm_finite_multiset::finite_multiset_remove_frame(f.#id,z.#id,s.#id,#value_local); });
-            }
-        }
-    }
-    Ok(())
-}
-
 /// The fields of the next state and of the fragment the transition produces.
 fn post_fields(
     ctx: &Ctx,
     trans: &Transition,
     flat: &Straight,
-    storage: &StorageEffect,
     effects: &MonoidEffects,
     used: &mut HashSet<String>,
 ) -> Result<(Vec<TokenStream>, Vec<TokenStream>), Error> {
@@ -735,28 +518,15 @@ fn post_fields(
             if trans.kind == TransitionKind::Init {
                 return Err(Error::new(n.span(), "initialization must initialize every field"));
             }
-            if matches!(field.stype, ShardableType::StorageOption(_)) {
-                if let Some(value) = &storage.next {
-                    next_fields.push(quote! { #n: #value });
-                } else {
-                    next_fields.push(quote! { #n: s.#n });
-                }
-            } else if let Some(count) = effects.count_next.get(&n.to_string()) {
+            if let Some(count) = effects.count_next.get(&n.to_string()) {
                 next_fields.push(quote! { #n: #count });
                 let local = &effects.count_local[&n.to_string()];
                 out_fields.push(quote! { #n: ::vstd::resource::tsm::CountRA { count: #local } });
-            } else if let Some(value) = effects.bag_next.get(&n.to_string()) {
-                next_fields.push(quote! { #n: #value });
-                let local = &effects.bag_local[&n.to_string()];
-                out_fields.push(quote! { #n: #local });
             } else {
                 next_fields.push(quote! { #n: s.#n });
             }
-            if !matches!(
-                field.stype,
-                ShardableType::NotTokenized(_) | ShardableType::StorageOption(_)
-            ) && !effects.count_local.contains_key(&n.to_string())
-                && !effects.bag_local.contains_key(&n.to_string())
+            if !matches!(field.stype, ShardableType::NotTokenized(_))
+                && !effects.count_local.contains_key(&n.to_string())
             {
                 out_fields.push(quote! { #n: f.#n });
             }
@@ -765,13 +535,12 @@ fn post_fields(
     Ok((next_fields, out_fields))
 }
 
-/// The transition's requirements and asserted facts (the storage condition last), and the
-/// ownership of every field the fragment-level terms read.
+/// The transition's requirements and asserted facts, and the ownership of every field the
+/// fragment-level terms read.
 fn conditions(
     ctx: &Ctx,
     n: &Names,
     flat: &Straight,
-    storage: &StorageEffect,
     effects: &MonoidEffects,
     mut used: HashSet<String>,
 ) -> Result<Conditions, Error> {
@@ -793,14 +562,6 @@ fn conditions(
             asserts.push(quote! { assert(#es) by #block });
         } else {
             asserts.push(quote! { assert(#es); });
-        }
-    }
-    if let Some((condition, proof)) = &storage.condition {
-        fact_state.push(condition.clone());
-        if let Some(block) = &proof.proof {
-            asserts.push(quote! { assert(#condition) by #block });
-        } else {
-            asserts.push(quote! { assert(#condition); });
         }
     }
     let mut used: Vec<_> = used.into_iter().collect();
@@ -827,11 +588,10 @@ fn conditions(
 fn shared_fragment(ctx: &Ctx, flat: &Straight, n: &Names) -> Result<SharedFragment, Error> {
     let fields = &ctx.fields;
     let (local, pnames) = (&n.local, &n.pnames);
-    let mut shared =
-        SharedFragment { fields: vec![], owned_requirements: vec![], bag_proofs: vec![] };
+    let mut shared = SharedFragment { fields: vec![], owned_requirements: vec![] };
     for field in &ctx.sm.fields {
         let id = &field.name;
-        if matches!(field.stype, ShardableType::NotTokenized(_) | ShardableType::StorageOption(_)) {
+        if matches!(field.stype, ShardableType::NotTokenized(_)) {
             continue;
         }
         if flat.updates.contains_key(&id.to_string()) {
@@ -850,18 +610,6 @@ fn shared_fragment(ctx: &Ctx, flat: &Straight, n: &Names) -> Result<SharedFragme
                 quote! { (owned.#id.count - (#amount)) as nat }
             };
             shared.fields.push(quote! { #id: ::vstd::resource::tsm::CountRA { count: #count } });
-        } else if let Some((_, op, value)) = flat.multiset_ops.iter().find(|(n, op, _)| {
-            n == id && matches!(op, MonoidStmtType::Add(false) | MonoidStmtType::Remove)
-        }) {
-            let value = rewrite(value, fields, true, &mut HashSet::new())?;
-            if matches!(op, MonoidStmtType::Add(false)) {
-                shared.fields.push(quote! { #id: owned.#id.insert(#value) });
-                shared.bag_proofs.push(quote! { ::vstd::resource::tsm_finite_multiset::finite_multiset_add_frame(owned.#id,h.#id,f.#id.values,#value); });
-            } else {
-                shared.owned_requirements.push(quote! { owned.#id.at(#value).count >= 1 });
-                shared.fields.push(quote! { #id: owned.#id.remove(#value) });
-                shared.bag_proofs.push(quote! { ::vstd::resource::tsm_finite_multiset::finite_multiset_remove_frame(owned.#id,h.#id,f.#id.values,#value); });
-            }
         } else {
             shared.fields.push(quote! { #id: owned.#id });
         }
@@ -928,23 +676,14 @@ fn init_items(
         })
         .collect();
     items.relations.push(quote! { pub open spec fn #tr(post:#state_ty, #(#params),*) -> bool { post == #state_expr { #marker_value #(#init_fields),* } && true #(&& (#req_state))* } });
-    let (base_param, base_req, allocation) = if let Some((_, ty)) = &ctx.storage_field {
-        (
-            quote! { tracked __tsm_base: IMap<int, #ty>, },
-            quote! { __tsm_base == Self::storage(#state_expr { #marker_value #(#init_fields),* }), },
-            quote! { #token_expr::alloc_state(s, __tsm_base) },
-        )
-    } else {
-        (quote! {}, quote! {}, quote! { #token_expr::alloc_state(s) })
-    };
     items.operations.push(quote! {
-        pub proof fn #tr(#base_param #(#params),*) -> (tracked token: #token_ty)
-            requires #base_req true #(&& (#req_local))*
+        pub proof fn #tr(#(#params),*) -> (tracked token: #token_ty)
+            requires true #(&& (#req_local))*
             ensures token.fragment() == #protocol_expr::embed(#state_expr { #marker_value #(#init_fields),* })
         {
             let s = #state_expr { #marker_value #(#init_fields),* };
             #induct_call
-            #allocation
+            #token_expr::alloc_state(s)
         }
     });
 }
@@ -967,37 +706,12 @@ fn step_relations(ctx: &Ctx, n: &Names, conds: &Conditions) -> TokenStream {
     }
 }
 
-/// The deposited, withdrawn and guarded storage maps of a transition as spec functions.
-fn storage_maps(ctx: &Ctx, n: &Names, storage: &StorageEffect, ty: &Type) -> TokenStream {
-    let (dep, wd, gd, params, fragment_ty) = (&n.dep, &n.wd, &n.gd, &n.params, &ctx.fragment_ty);
-    let (deposit, withdraw) = (&storage.deposit, &storage.withdraw);
-    let guard_map = storage.guard.clone().unwrap_or_else(|| quote! { IMap::empty() });
-    quote! {
-        pub open spec fn #dep(f:#fragment_ty, #(#params),*) -> IMap<int,#ty> { #deposit }
-        pub open spec fn #wd(f:#fragment_ty, #(#params),*) -> IMap<int,#ty> { #withdraw }
-        pub open spec fn #gd(f:#fragment_ty, #(#params),*) -> IMap<int,#ty> { #guard_map }
-    }
-}
-
-/// The frame lemma's storage postconditions for the fragment `frag`: the deposit is fresh,
-/// the withdrawal is available and the next storage is the exchanged one.
-fn storage_frame_contract(ctx: &Ctx, n: &Names, frag: &TokenStream) -> TokenStream {
-    let (next, dep, wd, pnames, state_expr) = (&n.next, &n.dep, &n.wd, &n.pnames, &ctx.state_expr);
-    quote! {
-        Self::storage(s).dom().disjoint(Self::#dep(#frag, #(#pnames),*).dom()),
-        Self::#wd(#frag, #(#pnames),*).submap_of(Self::storage(s).union_prefer_right(Self::#dep(#frag, #(#pnames),*))),
-        Self::storage(#state_expr::#next(s, #(#pnames),*)) == Self::storage(s).union_prefer_right(Self::#dep(#frag, #(#pnames),*)).remove_keys(Self::#wd(#frag, #(#pnames),*).dom()),
-    }
-}
-
 /// The fragment-level requirement, facts and output of a transition, and its frame lemma.
 fn frame_items(
     ctx: &Ctx,
     n: &Names,
     conds: &Conditions,
     out_fields: &[TokenStream],
-    effects: &MonoidEffects,
-    storage_extras: &TokenStream,
     induct_call: &TokenStream,
 ) -> TokenStream {
     let (next, local, req, facts, frame_lemma, safety) =
@@ -1007,16 +721,6 @@ fn frame_items(
     let (fragment_ty, fragment_expr) = (&ctx.fragment_ty, &ctx.fragment_expr);
     let (required_ownership, req_local, fact_local) =
         (&conds.required_ownership, &conds.req_local, &conds.fact_local);
-    let (bag_frame_facts, bag_frame_updates) =
-        (&effects.bag_frame_facts, &effects.bag_frame_updates);
-    let storage_proof = if ctx.storage_field.is_some() {
-        let (dep, wd) = (&n.dep, &n.wd);
-        quote! {
-            assert(::vstd::prelude::ext_equal(Self::storage(post), Self::storage(s).union_prefer_right(Self::#dep(f, #(#pnames),*)).remove_keys(Self::#wd(f, #(#pnames),*).dom())));
-        }
-    } else {
-        quote! {}
-    };
     quote! {
         pub open spec fn #req(f: #fragment_ty, #(#params),*) -> bool {
             true #(&& (#required_ownership))* #(&& (#req_local))*
@@ -1025,120 +729,17 @@ fn frame_items(
         pub open spec fn #local(f: #fragment_ty, #(#params),*) -> #fragment_ty { #fragment_expr { #marker_value #(#out_fields),* } }
         pub proof fn #frame_lemma(f: #fragment_ty, z: #fragment_ty, s:#state_ty, #(#params),*)
             requires Self::#req(f, #(#pnames),*), s.invariant(), #fragment_expr::op(f,z) == Self::embed(s)
-            ensures #storage_extras Self::#facts(f, #(#pnames),*), #state_expr::#next(s, #(#pnames),*).invariant(),
+            ensures Self::#facts(f, #(#pnames),*), #state_expr::#next(s, #(#pnames),*).invariant(),
                 #fragment_expr::op(Self::#local(f, #(#pnames),*),z) == Self::embed(#state_expr::#next(s, #(#pnames),*))
         {
-            #(#bag_frame_facts)*
             #state_expr::#safety(s, #(#pnames),*);
             let post = #state_expr::#next(s, #(#pnames),*);
             #induct_call
-            #(#bag_frame_updates)*
-            #storage_proof
         }
     }
 }
 
-/// The token operation of a storage guard: a shared token borrows the guarded map.
-fn guard_operation(ctx: &Ctx, n: &Names, ty: &Type) -> TokenStream {
-    let (tr, req, facts, frame_lemma, gd) = (n.tr, &n.req, &n.facts, &n.frame_lemma, &n.gd);
-    let (pnames, params) = (&n.pnames, &n.params);
-    let (state_ty, fragment_ty, fragment_expr, token_ty) =
-        (&ctx.state_ty, &ctx.fragment_ty, &ctx.fragment_expr, &ctx.token_ty);
-    quote! {
-        pub proof fn #tr(tracked token: &#token_ty, #(#params),*) -> (tracked out: &IMap<int,#ty>)
-            requires Self::#req(token.fragment(), #(#pnames),*)
-            ensures *out == Self::#gd(token.fragment(), #(#pnames),*), Self::#facts(token.fragment(), #(#pnames),*)
-        {
-            let f = token.fragment();
-            assert forall|z:#fragment_ty, s:#state_ty| s.invariant() && #fragment_expr::op(f,z) == Self::embed(s)
-                implies Self::#gd(f, #(#pnames),*).submap_of(Self::storage(s)) by {
-                Self::#frame_lemma(f,z,s, #(#pnames),*);
-            }
-            token.validate();
-            let (z,s) = choose|z:#fragment_ty, s:#state_ty| s.invariant() && #fragment_expr::op(f,z) == Self::embed(s);
-            Self::#frame_lemma(f,z,s, #(#pnames),*);
-            token.guard(Self::#gd(f, #(#pnames),*))
-        }
-    }
-}
-
-/// The deposit parameter, withdrawal result and contract pieces of a storage exchange whose
-/// input fragment is `frag`.
-fn exchange_shape(
-    ctx: &Ctx,
-    n: &Names,
-    storage_op: Option<MonoidStmtType>,
-    ty: &Type,
-    frag: &TokenStream,
-) -> ExchangeShape {
-    let (dep, wd, pnames, token_ty) = (&n.dep, &n.wd, &n.pnames, &ctx.token_ty);
-    let is_deposit = storage_op.is_some_and(|op| matches!(op, MonoidStmtType::Deposit));
-    let is_withdraw = storage_op.is_some_and(|op| matches!(op, MonoidStmtType::Withdraw));
-    let (dep_param, dep_req, dep_init) = if is_deposit {
-        (
-            quote! { tracked __tsm_deposit: IMap<int,#ty>, },
-            quote! { __tsm_deposit == Self::#dep(#frag, #(#pnames),*), },
-            quote! {},
-        )
-    } else {
-        (quote! {}, quote! {}, quote! { let tracked __tsm_deposit = IMap::tracked_empty(); })
-    };
-    let (return_ty, out_token, out_map, result) = if is_withdraw {
-        (
-            quote! { (#token_ty, IMap<int,#ty>) },
-            quote! { out.0 },
-            quote! { out.1 == Self::#wd(#frag, #(#pnames),*), },
-            quote! { (updated, resources) },
-        )
-    } else {
-        (quote! { #token_ty }, quote! { out }, quote! {}, quote! { updated })
-    };
-    ExchangeShape { dep_param, dep_req, dep_init, return_ty, out_token, out_map, result }
-}
-
-/// The token operation of a transition on a machine with storage: the token is exchanged
-/// for its next fragment, taking the deposit and returning the withdrawal.
-fn exchange_operation(ctx: &Ctx, n: &Names, shape: &ExchangeShape) -> TokenStream {
-    let (tr, next, local, req, facts, frame_lemma, dep, wd) =
-        (n.tr, &n.next, &n.local, &n.req, &n.facts, &n.frame_lemma, &n.dep, &n.wd);
-    let (pnames, params) = (&n.pnames, &n.params);
-    let (state_ty, state_expr, fragment_ty, fragment_expr, token_ty) =
-        (&ctx.state_ty, &ctx.state_expr, &ctx.fragment_ty, &ctx.fragment_expr, &ctx.token_ty);
-    let ExchangeShape { dep_param, dep_req, dep_init, return_ty, out_token, out_map, result } =
-        shape;
-    quote! {
-        pub proof fn #tr(tracked token:#token_ty, #dep_param #(#params),*) -> (tracked out:#return_ty)
-            requires #dep_req Self::#req(token.fragment(), #(#pnames),*)
-            ensures #out_map #out_token.loc() == token.loc(),
-                #out_token.fragment() == Self::#local(token.fragment(), #(#pnames),*), Self::#facts(token.fragment(), #(#pnames),*)
-        {
-            let f = token.fragment();
-            #dep_init
-            assert forall|z:#fragment_ty, s:#state_ty| s.invariant() && #fragment_expr::op(f,z) == Self::embed(s)
-                implies {
-                    Self::storage(s).dom().disjoint(Self::#dep(f, #(#pnames),*).dom())
-                    && Self::#wd(f, #(#pnames),*).submap_of(Self::storage(s).union_prefer_right(Self::#dep(f, #(#pnames),*)))
-                    && (exists|post:#state_ty| post.invariant()
-                        && #fragment_expr::op(Self::#local(f, #(#pnames),*),z) == Self::embed(post)
-                        && Self::storage(post) == Self::storage(s).union_prefer_right(Self::#dep(f, #(#pnames),*)).remove_keys(Self::#wd(f, #(#pnames),*).dom()))
-                } by {
-                    Self::#frame_lemma(f,z,s, #(#pnames),*);
-                    let post = #state_expr::#next(s, #(#pnames),*);
-                    assert(post.invariant()
-                        && #fragment_expr::op(Self::#local(f, #(#pnames),*),z) == Self::embed(post)
-                        && Self::storage(post) == Self::storage(s).union_prefer_right(Self::#dep(f, #(#pnames),*)).remove_keys(Self::#wd(f, #(#pnames),*).dom()));
-                }
-            token.validate();
-            let (z,s) = choose|z:#fragment_ty, s:#state_ty| s.invariant() && #fragment_expr::op(f,z) == Self::embed(s);
-            Self::#frame_lemma(f,z,s, #(#pnames),*);
-            let tracked (updated, resources) = token.exchange(__tsm_deposit, Self::#local(f, #(#pnames),*), Self::#wd(f, #(#pnames),*));
-            #result
-        }
-    }
-}
-
-/// The token operation of a transition on a machine without storage: the token is updated
-/// to its next fragment.
+/// The token operation of a transition: the token is updated to its next fragment.
 fn update_operation(ctx: &Ctx, n: &Names) -> TokenStream {
     let (tr, next, local, req, facts, frame_lemma) =
         (n.tr, &n.next, &n.local, &n.req, &n.facts, &n.frame_lemma);
@@ -1167,26 +768,14 @@ fn update_operation(ctx: &Ctx, n: &Names) -> TokenStream {
 
 /// Adds the shared-input variant of a transition: its requirement, owned output and frame
 /// lemma, and the operation taking a borrowed token.
-fn shared_items(
-    ctx: &Ctx,
-    n: &Names,
-    shared: &SharedFragment,
-    storage_op: Option<MonoidStmtType>,
-    items: &mut Items,
-) {
+fn shared_items(ctx: &Ctx, n: &Names, shared: &SharedFragment, items: &mut Items) {
     let (next, local, req, facts, frame_lemma) =
         (&n.next, &n.local, &n.req, &n.facts, &n.frame_lemma);
     let (shared_req, owned_next, shared_frame) = (&n.shared_req, &n.owned_next, &n.shared_frame);
     let (pnames, params) = (&n.pnames, &n.params);
     let (state_ty, state_expr, fragment_ty, fragment_expr, marker_value) =
         (&ctx.state_ty, &ctx.state_expr, &ctx.fragment_ty, &ctx.fragment_expr, &ctx.marker_value);
-    let (shared_fields, shared_owned_requirements, shared_bag_proofs) =
-        (&shared.fields, &shared.owned_requirements, &shared.bag_proofs);
-    let shared_storage_contract = if ctx.storage_field.is_some() {
-        storage_frame_contract(ctx, n, &quote! { #fragment_expr::op(owned,h) })
-    } else {
-        quote! {}
-    };
+    let (shared_fields, shared_owned_requirements) = (&shared.fields, &shared.owned_requirements);
     items.operations.push(quote! {
         pub open spec fn #shared_req(owned:#fragment_ty, h:#fragment_ty, #(#params),*) -> bool {
             let f = #fragment_expr::op(owned,h);
@@ -1199,66 +788,19 @@ fn shared_items(
         pub proof fn #shared_frame(owned:#fragment_ty, h:#fragment_ty, z:#fragment_ty, s:#state_ty, #(#params),*)
             requires Self::#shared_req(owned,h, #(#pnames),*), s.invariant(),
                 #fragment_expr::op(#fragment_expr::op(owned,h),z) == Self::embed(s)
-            ensures #shared_storage_contract Self::#facts(#fragment_expr::op(owned,h), #(#pnames),*),
+            ensures Self::#facts(#fragment_expr::op(owned,h), #(#pnames),*),
                 #state_expr::#next(s, #(#pnames),*).invariant(),
                 #fragment_expr::op(#fragment_expr::op(Self::#owned_next(owned,h, #(#pnames),*),h),z) == Self::embed(#state_expr::#next(s, #(#pnames),*))
         {
             let f = #fragment_expr::op(owned,h);
             Self::#frame_lemma(f,z,s, #(#pnames),*);
-            #(#shared_bag_proofs)*
             assert(#fragment_expr::op(Self::#owned_next(owned,h, #(#pnames),*),h) == Self::#local(f, #(#pnames),*));
         }
     });
-    if let Some((_, ty)) = &ctx.storage_field {
-        let frag = quote! { #fragment_expr::op(token.fragment(),shared.fragment()) };
-        let shape = exchange_shape(ctx, n, storage_op, ty, &frag);
-        items.operations.push(shared_exchange_operation(ctx, n, &shape));
-    } else {
-        items.operations.push(shared_update_operation(ctx, n));
-    }
+    items.operations.push(shared_update_operation(ctx, n));
 }
 
-/// The shared-input token operation on a machine with storage.
-fn shared_exchange_operation(ctx: &Ctx, n: &Names, shape: &ExchangeShape) -> TokenStream {
-    let (next, facts, dep, wd, pnames, params) =
-        (&n.next, &n.facts, &n.dep, &n.wd, &n.pnames, &n.params);
-    let (shared_req, owned_next, shared_frame, shared_tr) =
-        (&n.shared_req, &n.owned_next, &n.shared_frame, &n.shared_tr);
-    let (state_ty, state_expr, fragment_ty, fragment_expr, token_ty) =
-        (&ctx.state_ty, &ctx.state_expr, &ctx.fragment_ty, &ctx.fragment_expr, &ctx.token_ty);
-    let ExchangeShape { dep_param, dep_req, dep_init, return_ty, out_token, out_map, result } =
-        shape;
-    quote! {
-        pub proof fn #shared_tr(tracked mut token:#token_ty, tracked shared:&#token_ty, #dep_param #(#params),*) -> (tracked out:#return_ty)
-            requires #dep_req token.loc()==shared.loc(), Self::#shared_req(token.fragment(),shared.fragment(), #(#pnames),*)
-            ensures #out_map #out_token.loc()==token.loc(),
-                #out_token.fragment()==Self::#owned_next(token.fragment(),shared.fragment(), #(#pnames),*),
-                Self::#facts(#fragment_expr::op(token.fragment(),shared.fragment()), #(#pnames),*)
-        {
-            let owned=token.fragment(); let h=shared.fragment(); let f=#fragment_expr::op(owned,h);
-            #dep_init
-            assert forall|z:#fragment_ty,s:#state_ty| s.invariant() && #fragment_expr::op(f,z)==Self::embed(s)
-                implies Self::storage(s).dom().disjoint(Self::#dep(f, #(#pnames),*).dom())
-                    && Self::#wd(f, #(#pnames),*).submap_of(Self::storage(s).union_prefer_right(Self::#dep(f, #(#pnames),*)))
-                    && (exists|post:#state_ty| post.invariant()
-                        && #fragment_expr::op(#fragment_expr::op(Self::#owned_next(owned,h, #(#pnames),*),h),z)==Self::embed(post)
-                        && Self::storage(post)==Self::storage(s).union_prefer_right(Self::#dep(f, #(#pnames),*)).remove_keys(Self::#wd(f, #(#pnames),*).dom())) by {
-                Self::#shared_frame(owned,h,z,s, #(#pnames),*);
-                let post=#state_expr::#next(s, #(#pnames),*);
-                assert(post.invariant()
-                    && #fragment_expr::op(#fragment_expr::op(Self::#owned_next(owned,h, #(#pnames),*),h),z)==Self::embed(post)
-                    && Self::storage(post)==Self::storage(s).union_prefer_right(Self::#dep(f, #(#pnames),*)).remove_keys(Self::#wd(f, #(#pnames),*).dom()));
-            }
-            token.validate_2(shared);
-            let (z,s)=choose|z:#fragment_ty,s:#state_ty| s.invariant() && #fragment_expr::op(f,z)==Self::embed(s);
-            Self::#shared_frame(owned,h,z,s, #(#pnames),*);
-            let tracked (updated,resources)=token.exchange_with_shared(shared,__tsm_deposit,Self::#owned_next(owned,h, #(#pnames),*),Self::#wd(f, #(#pnames),*));
-            #result
-        }
-    }
-}
-
-/// The shared-input token operation on a machine without storage.
+/// The shared-input token operation: the token is updated with a shared token as a frame.
 fn shared_update_operation(ctx: &Ctx, n: &Names) -> TokenStream {
     let (next, facts, pnames, params) = (&n.next, &n.facts, &n.pnames, &n.params);
     let (shared_req, owned_next, shared_frame, shared_tr) =
@@ -1288,8 +830,8 @@ fn shared_update_operation(ctx: &Ctx, n: &Names) -> TokenStream {
     }
 }
 
-/// The machine's module: the `State`, `Fragment` and `Protocol` types with their algebra,
-/// storage and the transitions' items.
+/// The machine's module: the `State`, `Fragment` and `Protocol` types with their algebra
+/// and the transitions' items.
 fn assemble(
     ctx: &Ctx,
     bundle: &SMBundle,
@@ -1309,33 +851,6 @@ fn assemble(
     let Items { relations, operations, induction } = items;
     let inv_names: Vec<_> = bundle.extras.invariants.iter().map(|i| &i.func.sig.ident).collect();
     let normal = &bundle.normal_fns;
-    let mut broadcasts = vec![];
-    if sm.fields.iter().any(|f| matches!(f.stype, ShardableType::Multiset(_))) {
-        broadcasts.push(quote! { ::vstd::multiset::group_multiset_axioms });
-    }
-    if ctx.storage_field.is_some() {
-        broadcasts.push(quote! { ::vstd::imap::group_imap_lemmas });
-    }
-    let multiset_definition = if broadcasts.is_empty() {
-        quote! {}
-    } else {
-        quote! { broadcast use { #(#broadcasts),* }; }
-    };
-    let storage_definition = if let Some((field, ty)) = &ctx.storage_field {
-        quote! {
-            use ::vstd::resource::tsm_storage::StorageMachine;
-            impl #decl StorageMachine for #protocol_ty #where_clause {
-                type Key = int;
-                type Value = #ty;
-                open spec fn storage(s:#state_ty)->IMap<int,#ty> {
-                    match s.#field { Some(value) => IMap::empty().insert(0int,value), None => IMap::empty() }
-                }
-            }
-            pub type Token #decl #where_clause = ::vstd::resource::tsm_storage::StorageToken<#protocol_ty>;
-        }
-    } else {
-        quote! { pub type Token #decl #where_clause = ::vstd::resource::tsm::Token<#protocol_ty>; }
-    };
     quote! {
         pub mod #name {
             use super::*;
@@ -1345,7 +860,6 @@ fn assemble(
                 use ::vstd::resource::exclusive::ExclusiveRA;
                 use ::vstd::resource::agree::AgreementRA;
                 use ::vstd::resource::tsm::Machine;
-                #multiset_definition
                 #(#datatype_attrs)*
                 pub struct State #decl #where_clause { #marker_field #(#state_fields),* }
                 impl #decl #state_ty #where_clause {
@@ -1375,7 +889,7 @@ fn assemble(
                     open spec fn invariant(s:#state_ty)->bool { s.invariant() }
                     open spec fn embed(s:#state_ty)->#fragment_ty { #fragment_expr { #marker_value #(#embed),* } }
                 }
-                #storage_definition
+                pub type Token #decl #where_clause = ::vstd::resource::tsm::Token<#protocol_ty>;
                 impl #decl #protocol_ty #where_clause { #field_takes #(#operations)* }
             }
         }
