@@ -10,11 +10,11 @@ args = ["clean"]
 
 [tasks.fmt]
 dependencies = [
-    "fmt-verus",
+    "fmt-exclude-vstd",
     "fmt-vstd",
 ]
 
-[tasks.fmt-verus]
+[tasks.fmt-exclude-vstd]
 command = "cargo-verus"
 install_crate = false
 args = ["fmt", "${@}"]
@@ -59,10 +59,12 @@ args = ["install", "--path", "rust_verify"]
 
 [tasks.build]
 dependencies = [
-    "build-cargo-verus",
-    "build-verus",
+    "build-exclude-vstd",
     "build-vstd",
 ]
+
+[tasks.build-exclude-vstd]
+dependencies = ["build-cargo-verus"]
 
 [tasks.build-vstd]
 command = "cargo-verus"
