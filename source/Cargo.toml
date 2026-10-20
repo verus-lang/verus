@@ -224,3 +224,7 @@ useless_format = "allow"
 [profile.dev.package]
 insta.opt-level = 3
 similar.opt-level = 3
+
+# The test binaries only spawn the verifier, so optimizing them is wasted work
+[profile.release.package]
+rust_verify_test.opt-level = 0
