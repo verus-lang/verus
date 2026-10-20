@@ -76,23 +76,23 @@ fn test_locals_reverse_order() {
 bb0 (entry, exit):
     Overwrite(a)
     Overwrite(b)
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(x)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_1)
-    MoveFrom(Temp_1)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_1)        // mk()
+    MoveFrom(Temp_1)         // mk()
     Overwrite(y)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_2)
-    MoveFrom(Temp_2)
+    ScopeDrop(Temp_1)        // mk()
+    Overwrite(Temp_2)        // mk()
+    MoveFrom(Temp_2)         // mk()
     Overwrite(z)
-    ScopeDrop(Temp_2)
+    ScopeDrop(Temp_2)        // mk()
     ScopeDrop(z)
-    Overwrite(Temp_3)
-    MoveFrom(Temp_3)
+    Overwrite(Temp_3)        // mk()
+    MoveFrom(Temp_3)         // mk()
     Overwrite(w)
-    ScopeDrop(Temp_3)
+    ScopeDrop(Temp_3)        // mk()
     ScopeDrop(w)
     ScopeDrop(y)
     ScopeDrop(x)
@@ -119,25 +119,25 @@ fn test_statement_temporaries() {
         &[],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_3)
-    ScopeDrop(Temp_3)
-    Overwrite(Temp_4)
-    Overwrite(Temp_5)
-    Overwrite(Temp_6)
-    Overwrite(Temp_7)
-    Overwrite(Temp_8)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    Overwrite(Temp_2)        // use_ref(&&mk())
+    ScopeDrop(Temp_2)        // use_ref(&&mk())
+    ScopeDrop(Temp_1)        // &mk()
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_3)        // mk()
+    ScopeDrop(Temp_3)        // mk()
+    Overwrite(Temp_4)        // mk()
+    Overwrite(Temp_5)        // &mk()
+    Overwrite(Temp_6)        // mk()
+    Overwrite(Temp_7)        // &mk()
+    Overwrite(Temp_8)        // use_ref(&&mk()) + use_ref(&&mk())
     Overwrite(n)
-    ScopeDrop(Temp_8)
-    ScopeDrop(Temp_7)
-    ScopeDrop(Temp_6)
-    ScopeDrop(Temp_5)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_8)        // use_ref(&&mk()) + use_ref(&&mk())
+    ScopeDrop(Temp_7)        // &mk()
+    ScopeDrop(Temp_6)        // mk()
+    ScopeDrop(Temp_5)        // &mk()
+    ScopeDrop(Temp_4)        // mk()
     ScopeDrop(n)
 "#,
     );
@@ -159,21 +159,21 @@ fn test_nested_call_args() {
         &[],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
-    Overwrite(Temp_3)
-    Overwrite(Temp_4)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    Overwrite(Temp_2)        // mk()
+    Overwrite(Temp_3)        // &mk()
+    Overwrite(Temp_4)        // two(use_ref(&&mk()), use_ref(&&mk()))
     Overwrite(n)
-    ScopeDrop(Temp_4)
-    ScopeDrop(Temp_3)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_5)
-    MoveFrom(Temp_5)
+    ScopeDrop(Temp_4)        // two(use_ref(&&mk()), use_ref(&&mk()))
+    ScopeDrop(Temp_3)        // &mk()
+    ScopeDrop(Temp_2)        // mk()
+    ScopeDrop(Temp_1)        // &mk()
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_5)        // mk()
+    MoveFrom(Temp_5)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_5)
+    ScopeDrop(Temp_5)        // mk()
     ScopeDrop(k)
     ScopeDrop(n)
 "#,
@@ -197,12 +197,12 @@ fn test_let_wildcard() {
         &[],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_1)
-    MoveFrom(Temp_1)
+    Overwrite(Temp_0)        // mk()
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_1)        // mk()
+    MoveFrom(Temp_1)         // mk()
     Overwrite(x)
-    ScopeDrop(Temp_1)
+    ScopeDrop(Temp_1)        // mk()
     ScopeDrop(x)
 "#,
     );
@@ -224,15 +224,15 @@ fn test_fn_tail_expr_2021() {
         &["--edition 2021"],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_1)        // mk()
+    Overwrite(Temp_2)        // &mk()
     ScopeDrop(a)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
+    ScopeDrop(Temp_2)        // &mk()
+    ScopeDrop(Temp_1)        // mk()
 "#,
     );
 }
@@ -253,14 +253,14 @@ fn test_fn_tail_expr_2024() {
         &["--edition 2024"],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_1)        // mk()
+    Overwrite(Temp_2)        // &mk()
+    ScopeDrop(Temp_2)        // &mk()
+    ScopeDrop(Temp_1)        // mk()
     ScopeDrop(a)
 "#,
     );
@@ -282,22 +282,22 @@ fn test_block_tail_expr_2021() {
         &["--edition 2021"],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_1)        // mk()
+    Overwrite(Temp_2)        // &mk()
     ScopeDrop(a)
-    Overwrite(Temp_3)
+    Overwrite(Temp_3)        // {...}
     Overwrite(n)
-    ScopeDrop(Temp_3)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_4)
-    MoveFrom(Temp_4)
+    ScopeDrop(Temp_3)        // {...}
+    ScopeDrop(Temp_2)        // &mk()
+    ScopeDrop(Temp_1)        // mk()
+    Overwrite(Temp_4)        // mk()
+    MoveFrom(Temp_4)         // mk()
     Overwrite(m)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_4)        // mk()
     ScopeDrop(m)
     ScopeDrop(n)
 "#,
@@ -319,22 +319,22 @@ fn test_block_tail_expr_2024() {
         &["--edition 2024"],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_1)        // mk()
+    Overwrite(Temp_2)        // &mk()
+    ScopeDrop(Temp_2)        // &mk()
+    ScopeDrop(Temp_1)        // mk()
     ScopeDrop(a)
-    Overwrite(Temp_3)
+    Overwrite(Temp_3)        // {...}
     Overwrite(n)
-    ScopeDrop(Temp_3)
-    Overwrite(Temp_4)
-    MoveFrom(Temp_4)
+    ScopeDrop(Temp_3)        // {...}
+    Overwrite(Temp_4)        // mk()
+    MoveFrom(Temp_4)         // mk()
     Overwrite(m)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_4)        // mk()
     ScopeDrop(m)
     ScopeDrop(n)
 "#,
@@ -357,17 +357,17 @@ fn test_extend_borrow() {
         &[],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
     Overwrite(r)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_2)
-    MoveFrom(Temp_2)
+    ScopeDrop(Temp_1)        // &mk()
+    Overwrite(Temp_2)        // mk()
+    MoveFrom(Temp_2)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_2)
+    ScopeDrop(Temp_2)        // mk()
     ScopeDrop(k)
     ScopeDrop(r)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_0)        // mk()
 "#,
     );
 }
@@ -387,23 +387,23 @@ fn test_extend_tuple() {
         &[],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
-    Overwrite(Temp_3)
-    Overwrite(Temp_4)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // mk()
+    Overwrite(Temp_2)        // &mk()
+    Overwrite(Temp_3)        // mk()
+    Overwrite(Temp_4)        // (&mk(), use_ref(&&mk()), &mk())
     Overwrite(t)
-    ScopeDrop(Temp_4)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_5)
-    MoveFrom(Temp_5)
+    ScopeDrop(Temp_4)        // (&mk(), use_ref(&&mk()), &mk())
+    ScopeDrop(Temp_2)        // &mk()
+    ScopeDrop(Temp_1)        // mk()
+    Overwrite(Temp_5)        // mk()
+    MoveFrom(Temp_5)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_5)
+    ScopeDrop(Temp_5)        // mk()
     ScopeDrop(k)
     ScopeDrop(t)
-    ScopeDrop(Temp_3)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_3)        // mk()
+    ScopeDrop(Temp_0)        // mk()
 "#,
     );
 }
@@ -423,22 +423,22 @@ fn test_extend_block_tail() {
         &[],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_1)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_1)        // mk()
     ScopeDrop(a)
-    Overwrite(Temp_2)
+    Overwrite(Temp_2)        // {...}
     Overwrite(r)
-    ScopeDrop(Temp_2)
-    Overwrite(Temp_3)
-    MoveFrom(Temp_3)
+    ScopeDrop(Temp_2)        // {...}
+    Overwrite(Temp_3)        // mk()
+    MoveFrom(Temp_3)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_3)
+    ScopeDrop(Temp_3)        // mk()
     ScopeDrop(k)
     ScopeDrop(r)
-    ScopeDrop(Temp_1)
+    ScopeDrop(Temp_1)        // mk()
 "#,
     );
 }
@@ -461,25 +461,25 @@ bb0 (entry):
     Overwrite(c)
     -> bb1, bb2
 bb1:
-    Overwrite(Temp_0)
+    Overwrite(Temp_0)        // mk()
     -> bb3
 bb2:
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
-    ScopeDrop(Temp_2)
+    Overwrite(Temp_1)        // mk()
+    Overwrite(Temp_2)        // { &mk() }
+    ScopeDrop(Temp_2)        // { &mk() }
     -> bb3
 bb3 (exit):
-    Overwrite(Temp_3)
+    Overwrite(Temp_3)        // if c {...}
     Overwrite(r)
-    ScopeDrop(Temp_3)
-    Overwrite(Temp_4)
-    MoveFrom(Temp_4)
+    ScopeDrop(Temp_3)        // if c {...}
+    Overwrite(Temp_4)        // mk()
+    MoveFrom(Temp_4)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_4)        // mk()
     ScopeDrop(k)
     ScopeDrop(r)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_1)        // mk()
+    ScopeDrop(Temp_0)        // mk()
     ScopeDrop(c)
 "#,
     );
@@ -500,17 +500,17 @@ fn test_extend_field() {
         &[],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk().x
     Overwrite(r)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_2)
-    MoveFrom(Temp_2)
+    ScopeDrop(Temp_1)        // &mk().x
+    Overwrite(Temp_2)        // mk()
+    MoveFrom(Temp_2)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_2)
+    ScopeDrop(Temp_2)        // mk()
     ScopeDrop(k)
     ScopeDrop(r)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_0)        // mk()
 "#,
     );
 }
@@ -530,17 +530,17 @@ fn test_extend_tuple_struct_ctor() {
         &[],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // Some(&mk())
     Overwrite(r)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_2)
-    MoveFrom(Temp_2)
+    ScopeDrop(Temp_1)        // Some(&mk())
+    Overwrite(Temp_2)        // mk()
+    MoveFrom(Temp_2)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_2)
+    ScopeDrop(Temp_2)        // mk()
     ScopeDrop(k)
     ScopeDrop(r)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_0)        // mk()
 "#,
     );
 }
@@ -563,25 +563,25 @@ bb0 (entry):
     Overwrite(c)
     -> bb1, bb2
 bb1:
-    Overwrite(Temp_0)
+    Overwrite(Temp_0)        // mk()
     -> bb3
 bb2:
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
-    ScopeDrop(Temp_2)
+    Overwrite(Temp_1)        // mk()
+    Overwrite(Temp_2)        // &mk()
+    ScopeDrop(Temp_2)        // &mk()
     -> bb3
 bb3 (exit):
-    Overwrite(Temp_3)
+    Overwrite(Temp_3)        // match c {...}
     Overwrite(r)
-    ScopeDrop(Temp_3)
-    Overwrite(Temp_4)
-    MoveFrom(Temp_4)
+    ScopeDrop(Temp_3)        // match c {...}
+    Overwrite(Temp_4)        // mk()
+    MoveFrom(Temp_4)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_4)        // mk()
     ScopeDrop(k)
     ScopeDrop(r)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_1)        // mk()
+    ScopeDrop(Temp_0)        // mk()
     ScopeDrop(c)
 "#,
     );
@@ -606,23 +606,23 @@ fn test_if_condition() {
         &[],
         r#"
 bb0 (entry):
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    ScopeDrop(Temp_1)        // &mk()
+    ScopeDrop(Temp_0)        // mk()
     -> bb1, bb2
 bb1:
-    Overwrite(Temp_2)
-    MoveFrom(Temp_2)
+    Overwrite(Temp_2)        // mk()
+    MoveFrom(Temp_2)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_2)
+    ScopeDrop(Temp_2)        // mk()
     ScopeDrop(a)
     -> bb3
 bb2:
-    Overwrite(Temp_3)
-    MoveFrom(Temp_3)
+    Overwrite(Temp_3)        // mk()
+    MoveFrom(Temp_3)         // mk()
     Overwrite(b)
-    ScopeDrop(Temp_3)
+    ScopeDrop(Temp_3)        // mk()
     ScopeDrop(b)
     -> bb3
 bb3 (exit):
@@ -651,38 +651,38 @@ fn test_if_let_2021() {
         &["--edition 2021"],
         r#"
 bb0 (entry):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
-    Overwrite(Temp_3)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_1)        // mk()
+    Overwrite(Temp_2)        // &mk()
+    Overwrite(Temp_3)        // opt(&&mk())
     -> bb1, bb2
 bb1:
     Overwrite(v)
-    Overwrite(Temp_4)
-    MoveFrom(Temp_4)
+    Overwrite(Temp_4)        // mk()
+    MoveFrom(Temp_4)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_4)        // mk()
     ScopeDrop(a)
     ScopeDrop(v)
     -> bb3
 bb2:
-    Overwrite(Temp_5)
-    MoveFrom(Temp_5)
+    Overwrite(Temp_5)        // mk()
+    MoveFrom(Temp_5)         // mk()
     Overwrite(b)
-    ScopeDrop(Temp_5)
+    ScopeDrop(Temp_5)        // mk()
     ScopeDrop(b)
     -> bb3
 bb3 (exit):
-    ScopeDrop(Temp_3)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_6)
-    MoveFrom(Temp_6)
+    ScopeDrop(Temp_3)        // opt(&&mk())
+    ScopeDrop(Temp_2)        // &mk()
+    ScopeDrop(Temp_1)        // mk()
+    Overwrite(Temp_6)        // mk()
+    MoveFrom(Temp_6)         // mk()
     Overwrite(j)
-    ScopeDrop(Temp_6)
+    ScopeDrop(Temp_6)        // mk()
     ScopeDrop(j)
     ScopeDrop(k)
 "#,
@@ -710,41 +710,41 @@ fn test_if_let_2024() {
         &["--edition 2024"],
         r#"
 bb0 (entry):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
-    Overwrite(Temp_3)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_1)        // mk()
+    Overwrite(Temp_2)        // &mk()
+    Overwrite(Temp_3)        // opt(&&mk())
     -> bb1, bb2
 bb1:
     Overwrite(v)
-    Overwrite(Temp_4)
-    MoveFrom(Temp_4)
+    Overwrite(Temp_4)        // mk()
+    MoveFrom(Temp_4)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_4)        // mk()
     ScopeDrop(a)
     ScopeDrop(v)
-    ScopeDrop(Temp_3)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
+    ScopeDrop(Temp_3)        // opt(&&mk())
+    ScopeDrop(Temp_2)        // &mk()
+    ScopeDrop(Temp_1)        // mk()
     -> bb3
 bb2:
-    ScopeDrop(Temp_3)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_5)
-    MoveFrom(Temp_5)
+    ScopeDrop(Temp_3)        // opt(&&mk())
+    ScopeDrop(Temp_2)        // &mk()
+    ScopeDrop(Temp_1)        // mk()
+    Overwrite(Temp_5)        // mk()
+    MoveFrom(Temp_5)         // mk()
     Overwrite(b)
-    ScopeDrop(Temp_5)
+    ScopeDrop(Temp_5)        // mk()
     ScopeDrop(b)
     -> bb3
 bb3 (exit):
-    Overwrite(Temp_6)
-    MoveFrom(Temp_6)
+    Overwrite(Temp_6)        // mk()
+    MoveFrom(Temp_6)         // mk()
     Overwrite(j)
-    ScopeDrop(Temp_6)
+    ScopeDrop(Temp_6)        // mk()
     ScopeDrop(j)
     ScopeDrop(k)
 "#,
@@ -771,48 +771,48 @@ fn test_else_if_let_2021() {
         &["--edition 2021"],
         r#"
 bb0 (entry):
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    Overwrite(Temp_2)        // opt(&&mk())
     -> bb1, bb2
 bb1:
     Overwrite(v)
-    Overwrite(Temp_3)
-    MoveFrom(Temp_3)
+    Overwrite(Temp_3)        // mk()
+    MoveFrom(Temp_3)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_3)
+    ScopeDrop(Temp_3)        // mk()
     ScopeDrop(a)
     ScopeDrop(v)
     -> bb6
 bb2:
-    Overwrite(Temp_4)
-    Overwrite(Temp_5)
-    Overwrite(Temp_6)
+    Overwrite(Temp_4)        // mk()
+    Overwrite(Temp_5)        // &mk()
+    Overwrite(Temp_6)        // opt(&&mk())
     -> bb3, bb4
 bb3:
     Overwrite(w)
-    Overwrite(Temp_7)
-    MoveFrom(Temp_7)
+    Overwrite(Temp_7)        // mk()
+    MoveFrom(Temp_7)         // mk()
     Overwrite(b)
-    ScopeDrop(Temp_7)
+    ScopeDrop(Temp_7)        // mk()
     ScopeDrop(b)
     ScopeDrop(w)
     -> bb5
 bb4:
     -> bb5
 bb5:
-    ScopeDrop(Temp_6)
-    ScopeDrop(Temp_5)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_6)        // opt(&&mk())
+    ScopeDrop(Temp_5)        // &mk()
+    ScopeDrop(Temp_4)        // mk()
     -> bb6
 bb6 (exit):
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_8)
-    MoveFrom(Temp_8)
+    ScopeDrop(Temp_2)        // opt(&&mk())
+    ScopeDrop(Temp_1)        // &mk()
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_8)        // mk()
+    MoveFrom(Temp_8)         // mk()
     Overwrite(j)
-    ScopeDrop(Temp_8)
+    ScopeDrop(Temp_8)        // mk()
     ScopeDrop(j)
 "#,
     );
@@ -838,54 +838,54 @@ fn test_else_if_let_2024() {
         &["--edition 2024"],
         r#"
 bb0 (entry):
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    Overwrite(Temp_2)        // opt(&&mk())
     -> bb1, bb2
 bb1:
     Overwrite(v)
-    Overwrite(Temp_3)
-    MoveFrom(Temp_3)
+    Overwrite(Temp_3)        // mk()
+    MoveFrom(Temp_3)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_3)
+    ScopeDrop(Temp_3)        // mk()
     ScopeDrop(a)
     ScopeDrop(v)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_2)        // opt(&&mk())
+    ScopeDrop(Temp_1)        // &mk()
+    ScopeDrop(Temp_0)        // mk()
     -> bb6
 bb2:
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_4)
-    Overwrite(Temp_5)
-    Overwrite(Temp_6)
+    ScopeDrop(Temp_2)        // opt(&&mk())
+    ScopeDrop(Temp_1)        // &mk()
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_4)        // mk()
+    Overwrite(Temp_5)        // &mk()
+    Overwrite(Temp_6)        // opt(&&mk())
     -> bb3, bb4
 bb3:
     Overwrite(w)
-    Overwrite(Temp_7)
-    MoveFrom(Temp_7)
+    Overwrite(Temp_7)        // mk()
+    MoveFrom(Temp_7)         // mk()
     Overwrite(b)
-    ScopeDrop(Temp_7)
+    ScopeDrop(Temp_7)        // mk()
     ScopeDrop(b)
     ScopeDrop(w)
-    ScopeDrop(Temp_6)
-    ScopeDrop(Temp_5)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_6)        // opt(&&mk())
+    ScopeDrop(Temp_5)        // &mk()
+    ScopeDrop(Temp_4)        // mk()
     -> bb5
 bb4:
-    ScopeDrop(Temp_6)
-    ScopeDrop(Temp_5)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_6)        // opt(&&mk())
+    ScopeDrop(Temp_5)        // &mk()
+    ScopeDrop(Temp_4)        // mk()
     -> bb5
 bb5:
     -> bb6
 bb6 (exit):
-    Overwrite(Temp_8)
-    MoveFrom(Temp_8)
+    Overwrite(Temp_8)        // mk()
+    MoveFrom(Temp_8)         // mk()
     Overwrite(j)
-    ScopeDrop(Temp_8)
+    ScopeDrop(Temp_8)        // mk()
     ScopeDrop(j)
 "#,
     );
@@ -908,44 +908,44 @@ fn test_and_or() {
         &[],
         r#"
 bb0 (entry):
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    ScopeDrop(Temp_1)        // &mk()
+    ScopeDrop(Temp_0)        // mk()
     -> bb1, bb2
 bb1:
-    Overwrite(Temp_2)
-    Overwrite(Temp_3)
-    ScopeDrop(Temp_3)
-    ScopeDrop(Temp_2)
+    Overwrite(Temp_2)        // mk()
+    Overwrite(Temp_3)        // &mk()
+    ScopeDrop(Temp_3)        // &mk()
+    ScopeDrop(Temp_2)        // mk()
     -> bb2
 bb2:
     -> bb3, bb4
 bb3:
-    Overwrite(Temp_4)
-    MoveFrom(Temp_4)
+    Overwrite(Temp_4)        // mk()
+    MoveFrom(Temp_4)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_4)        // mk()
     ScopeDrop(a)
     -> bb5
 bb4:
     -> bb5
 bb5:
-    Overwrite(Temp_5)
-    Overwrite(Temp_6)
-    ScopeDrop(Temp_6)
-    ScopeDrop(Temp_5)
+    Overwrite(Temp_5)        // mk()
+    Overwrite(Temp_6)        // &mk()
+    ScopeDrop(Temp_6)        // &mk()
+    ScopeDrop(Temp_5)        // mk()
     -> bb6, bb7
 bb6:
-    Overwrite(Temp_7)
-    Overwrite(Temp_8)
-    ScopeDrop(Temp_8)
-    ScopeDrop(Temp_7)
+    Overwrite(Temp_7)        // mk()
+    Overwrite(Temp_8)        // &mk()
+    ScopeDrop(Temp_8)        // &mk()
+    ScopeDrop(Temp_7)        // mk()
     -> bb7
 bb7 (exit):
-    Overwrite(Temp_9)
+    Overwrite(Temp_9)        // { use_ref(&&...) == 0 } || { use_ref(&&...) == 1 }
     Overwrite(b)
-    ScopeDrop(Temp_9)
+    ScopeDrop(Temp_9)        // { use_ref(&&...) == 0 } || { use_ref(&&...) == 1 }
     ScopeDrop(b)
 "#,
     );
@@ -970,34 +970,34 @@ fn test_match_arms() {
         &[],
         r#"
 bb0 (entry):
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    Overwrite(Temp_2)        // opt(&&mk())
     -> bb1, bb2
 bb1:
     Overwrite(v)
-    Overwrite(Temp_3)
-    MoveFrom(Temp_3)
+    Overwrite(Temp_3)        // mk()
+    MoveFrom(Temp_3)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_3)
+    ScopeDrop(Temp_3)        // mk()
     ScopeDrop(a)
     ScopeDrop(v)
     -> bb3
 bb2:
-    Overwrite(Temp_4)
-    MoveFrom(Temp_4)
+    Overwrite(Temp_4)        // mk()
+    MoveFrom(Temp_4)         // mk()
     Overwrite(b)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_4)        // mk()
     ScopeDrop(b)
     -> bb3
 bb3 (exit):
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_5)
-    MoveFrom(Temp_5)
+    ScopeDrop(Temp_2)        // opt(&&mk())
+    ScopeDrop(Temp_1)        // &mk()
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_5)        // mk()
+    MoveFrom(Temp_5)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_5)
+    ScopeDrop(Temp_5)        // mk()
     ScopeDrop(k)
 "#,
     );
@@ -1025,10 +1025,10 @@ bb0 (entry):
 bb1:
     MoveFrom(o.Some_0)
     Overwrite(d)
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_0)        // mk()
     ScopeDrop(a)
     ScopeDrop(d)
     -> bb3
@@ -1056,20 +1056,20 @@ fn test_match_rvalue_scrutinee() {
         &[],
         r#"
 bb0 (entry):
-    Overwrite(Temp_0)
+    Overwrite(Temp_0)        // mk()
     -> bb1
 bb1:
-    MoveFrom(Temp_0)
+    MoveFrom(Temp_0)         // mk()
     Overwrite(d)
-    Overwrite(Temp_1)
-    MoveFrom(Temp_1)
+    Overwrite(Temp_1)        // mk()
+    MoveFrom(Temp_1)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_1)
+    ScopeDrop(Temp_1)        // mk()
     ScopeDrop(a)
     ScopeDrop(d)
     -> bb2
 bb2 (exit):
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_0)        // mk()
 "#,
     );
 }
@@ -1097,19 +1097,19 @@ bb0 (entry):
 bb1:
     -> bb7
 bb2:
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    ScopeDrop(Temp_1)        // &mk()
+    ScopeDrop(Temp_0)        // mk()
     -> bb3, bb4
 bb3:
     -> bb5
 bb4:
     Overwrite(m)
-    Overwrite(Temp_2)
-    MoveFrom(Temp_2)
+    Overwrite(Temp_2)        // mk()
+    MoveFrom(Temp_2)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_2)
+    ScopeDrop(Temp_2)        // mk()
     ScopeDrop(a)
     ScopeDrop(m)
     -> bb7
@@ -1143,10 +1143,10 @@ bb0 (entry):
     Overwrite(n)
     -> bb1, bb2
 bb1:
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    ScopeDrop(Temp_1)        // &mk()
+    ScopeDrop(Temp_0)        // mk()
     -> bb3
 bb2:
     -> bb3
@@ -1178,37 +1178,37 @@ fn test_loop_break_continue() {
         &[],
         r#"
 bb0 (entry):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_0)        // mk()
     -> bb1
 bb1:
-    Overwrite(Temp_1)
-    MoveFrom(Temp_1)
+    Overwrite(Temp_1)        // mk()
+    MoveFrom(Temp_1)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_1)
+    ScopeDrop(Temp_1)        // mk()
     -> bb3, bb4
 bb2 (exit):
-    Overwrite(Temp_6)
+    Overwrite(Temp_6)        // loop {...}
     Overwrite(v)
-    ScopeDrop(Temp_6)
+    ScopeDrop(Temp_6)        // loop {...}
     ScopeDrop(v)
     ScopeDrop(k)
 bb3:
-    Overwrite(Temp_2)
-    Overwrite(Temp_3)
-    ScopeDrop(Temp_3)
-    ScopeDrop(Temp_2)
+    Overwrite(Temp_2)        // mk()
+    Overwrite(Temp_3)        // &mk()
+    ScopeDrop(Temp_3)        // &mk()
+    ScopeDrop(Temp_2)        // mk()
     ScopeDrop(a)
     -> bb2
 bb4:
     -> bb5
 bb5:
-    Overwrite(Temp_4)
-    MoveFrom(Temp_4)
+    Overwrite(Temp_4)        // mk()
+    MoveFrom(Temp_4)         // mk()
     Overwrite(b)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_4)        // mk()
     -> bb6, bb7
 bb6:
     ScopeDrop(b)
@@ -1217,10 +1217,10 @@ bb6:
 bb7:
     -> bb8
 bb8:
-    Overwrite(Temp_5)
-    MoveFrom(Temp_5)
+    Overwrite(Temp_5)        // mk()
+    MoveFrom(Temp_5)         // mk()
     Overwrite(c)
-    ScopeDrop(Temp_5)
+    ScopeDrop(Temp_5)        // mk()
     ScopeDrop(c)
     ScopeDrop(b)
     ScopeDrop(a)
@@ -1253,17 +1253,17 @@ fn test_labeled_break_continue() {
 bb0 (entry):
     -> bb1
 bb1:
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_0)        // mk()
     -> bb3
 bb2 (exit):
 bb3:
-    Overwrite(Temp_1)
-    MoveFrom(Temp_1)
+    Overwrite(Temp_1)        // mk()
+    MoveFrom(Temp_1)         // mk()
     Overwrite(b)
-    ScopeDrop(Temp_1)
+    ScopeDrop(Temp_1)        // mk()
     -> bb5, bb6
 bb4:
     ScopeDrop(a)
@@ -1306,26 +1306,26 @@ fn test_while_cond() {
         &[],
         r#"
 bb0 (entry):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_0)        // mk()
     -> bb1
 bb1:
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
+    Overwrite(Temp_1)        // mk()
+    Overwrite(Temp_2)        // &mk()
+    ScopeDrop(Temp_2)        // &mk()
+    ScopeDrop(Temp_1)        // mk()
     -> bb3, bb4
 bb2 (exit):
     ScopeDrop(k)
 bb3:
     -> bb2
 bb4:
-    Overwrite(Temp_3)
-    MoveFrom(Temp_3)
+    Overwrite(Temp_3)        // mk()
+    MoveFrom(Temp_3)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_3)
+    ScopeDrop(Temp_3)        // mk()
     ScopeDrop(a)
     -> bb1
 "#,
@@ -1351,29 +1351,29 @@ fn test_while_let_2021() {
 bb0 (entry):
     -> bb1
 bb1:
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    Overwrite(Temp_2)        // opt(&&mk())
     -> bb3, bb4
 bb2 (exit):
 bb3:
     Overwrite(v)
-    Overwrite(Temp_3)
-    MoveFrom(Temp_3)
+    Overwrite(Temp_3)        // mk()
+    MoveFrom(Temp_3)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_3)
+    ScopeDrop(Temp_3)        // mk()
     ScopeDrop(a)
     ScopeDrop(v)
     -> bb5
 bb4:
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_2)        // opt(&&mk())
+    ScopeDrop(Temp_1)        // &mk()
+    ScopeDrop(Temp_0)        // mk()
     -> bb2
 bb5:
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_2)        // opt(&&mk())
+    ScopeDrop(Temp_1)        // &mk()
+    ScopeDrop(Temp_0)        // mk()
     -> bb1
 "#,
     );
@@ -1398,27 +1398,27 @@ fn test_while_let_2024() {
 bb0 (entry):
     -> bb1
 bb1:
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    Overwrite(Temp_2)        // opt(&&mk())
     -> bb3, bb4
 bb2 (exit):
 bb3:
     Overwrite(v)
-    Overwrite(Temp_3)
-    MoveFrom(Temp_3)
+    Overwrite(Temp_3)        // mk()
+    MoveFrom(Temp_3)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_3)
+    ScopeDrop(Temp_3)        // mk()
     ScopeDrop(a)
     ScopeDrop(v)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_2)        // opt(&&mk())
+    ScopeDrop(Temp_1)        // &mk()
+    ScopeDrop(Temp_0)        // mk()
     -> bb5
 bb4:
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_2)        // opt(&&mk())
+    ScopeDrop(Temp_1)        // &mk()
+    ScopeDrop(Temp_0)        // mk()
     -> bb2
 bb5:
     -> bb1
@@ -1448,30 +1448,30 @@ fn test_return_early() {
         r#"
 bb0 (entry):
     Overwrite(p)
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_0)        // mk()
     -> bb1, bb2
 bb1 (exit):
-    Overwrite(Temp_1)
-    MoveFrom(Temp_1)
+    Overwrite(Temp_1)        // mk()
+    MoveFrom(Temp_1)         // mk()
     Overwrite(b)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_2)
-    Overwrite(Temp_3)
-    ScopeDrop(Temp_3)
-    ScopeDrop(Temp_2)
+    ScopeDrop(Temp_1)        // mk()
+    Overwrite(Temp_2)        // mk()
+    Overwrite(Temp_3)        // &mk()
+    ScopeDrop(Temp_3)        // &mk()
+    ScopeDrop(Temp_2)        // mk()
     ScopeDrop(b)
     ScopeDrop(a)
     ScopeDrop(p)
 bb2:
     -> bb3
 bb3 (exit):
-    Overwrite(Temp_4)
-    MoveFrom(Temp_4)
+    Overwrite(Temp_4)        // mk()
+    MoveFrom(Temp_4)         // mk()
     Overwrite(c)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_4)        // mk()
     ScopeDrop(c)
     ScopeDrop(a)
     ScopeDrop(p)
@@ -1500,16 +1500,16 @@ fn test_return_in_loop() {
         r#"
 bb0 (entry):
     Overwrite(p)
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(a)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_0)        // mk()
     -> bb1
 bb1:
-    Overwrite(Temp_1)
-    MoveFrom(Temp_1)
+    Overwrite(Temp_1)        // mk()
+    MoveFrom(Temp_1)         // mk()
     Overwrite(b)
-    ScopeDrop(Temp_1)
+    ScopeDrop(Temp_1)        // mk()
     -> bb3, bb4
 bb2:
 bb3 (exit):
@@ -1545,33 +1545,33 @@ fn test_let_else() {
         &[],
         r#"
 bb0 (entry):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
-    Overwrite(Temp_3)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_1)        // mk()
+    Overwrite(Temp_2)        // &mk()
+    Overwrite(Temp_3)        // opt(&&mk())
     -> bb1, bb2
 bb1 (exit):
-    ScopeDrop(Temp_3)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_4)
-    MoveFrom(Temp_4)
+    ScopeDrop(Temp_3)        // opt(&&mk())
+    ScopeDrop(Temp_2)        // &mk()
+    ScopeDrop(Temp_1)        // mk()
+    Overwrite(Temp_4)        // mk()
+    MoveFrom(Temp_4)         // mk()
     Overwrite(e)
-    ScopeDrop(Temp_4)
+    ScopeDrop(Temp_4)        // mk()
     ScopeDrop(e)
     ScopeDrop(k)
 bb2 (exit):
     Overwrite(v)
-    ScopeDrop(Temp_3)
-    ScopeDrop(Temp_2)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_5)
-    MoveFrom(Temp_5)
+    ScopeDrop(Temp_3)        // opt(&&mk())
+    ScopeDrop(Temp_2)        // &mk()
+    ScopeDrop(Temp_1)        // mk()
+    Overwrite(Temp_5)        // mk()
+    MoveFrom(Temp_5)         // mk()
     Overwrite(j)
-    ScopeDrop(Temp_5)
+    ScopeDrop(Temp_5)        // mk()
     ScopeDrop(j)
     ScopeDrop(v)
     ScopeDrop(k)
@@ -1597,22 +1597,22 @@ fn test_let_else_extended() {
         &[],
         r#"
 bb0 (entry):
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // Some(&mk())
     -> bb1, bb2
 bb1 (exit):
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_1)        // Some(&mk())
+    ScopeDrop(Temp_0)        // mk()
 bb2 (exit):
     Overwrite(r)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_2)
-    MoveFrom(Temp_2)
+    ScopeDrop(Temp_1)        // Some(&mk())
+    Overwrite(Temp_2)        // mk()
+    MoveFrom(Temp_2)         // mk()
     Overwrite(j)
-    ScopeDrop(Temp_2)
+    ScopeDrop(Temp_2)        // mk()
     ScopeDrop(j)
     ScopeDrop(r)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_0)        // mk()
 "#,
     );
 }
@@ -1635,24 +1635,24 @@ fn test_patterns_and_shadowing() {
         &[],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0.0)
-    MoveFrom(Temp_0.1)
+    Overwrite(Temp_0)        // (mk(), mk())
+    MoveFrom(Temp_0.0)       // (mk(), mk())
+    MoveFrom(Temp_0.1)       // (mk(), mk())
     Overwrite(a)
     Overwrite(b)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_1)
-    MoveFrom(Temp_1.0)
+    ScopeDrop(Temp_0)        // (mk(), mk())
+    Overwrite(Temp_1)        // (mk(), mk())
+    MoveFrom(Temp_1.0)       // (mk(), mk())
     Overwrite(c)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_2)
-    MoveFrom(Temp_2)
+    ScopeDrop(Temp_1)        // (mk(), mk())
+    Overwrite(Temp_2)        // mk()
+    MoveFrom(Temp_2)         // mk()
     Overwrite(x)
-    ScopeDrop(Temp_2)
-    Overwrite(Temp_3)
-    MoveFrom(Temp_3)
+    ScopeDrop(Temp_2)        // mk()
+    Overwrite(Temp_3)        // mk()
+    MoveFrom(Temp_3)         // mk()
     Overwrite(x)
-    ScopeDrop(Temp_3)
+    ScopeDrop(Temp_3)        // mk()
     ScopeDrop(x)
     ScopeDrop(x)
     ScopeDrop(c)
@@ -1678,10 +1678,10 @@ fn test_uninit_let() {
         &[],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(y)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_0)        // mk()
     Overwrite(x)
     ScopeDrop(y)
     ScopeDrop(x)
@@ -1706,20 +1706,20 @@ fn test_assign() {
         &[],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(x)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_0)        // mk()
     Overwrite(x)
-    Overwrite(Temp_1)
-    MoveFrom(Temp_1)
+    Overwrite(Temp_1)        // (mk(), 0)
+    MoveFrom(Temp_1)         // (mk(), 0)
     Overwrite(t)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_2)
-    Overwrite(Temp_3)
+    ScopeDrop(Temp_1)        // (mk(), 0)
+    Overwrite(Temp_2)        // mk()
+    Overwrite(Temp_3)        // &mk()
     Overwrite(t.1)
-    ScopeDrop(Temp_3)
-    ScopeDrop(Temp_2)
+    ScopeDrop(Temp_3)        // &mk()
+    ScopeDrop(Temp_2)        // mk()
     ScopeDrop(t)
     ScopeDrop(x)
 "#,
@@ -1745,14 +1745,14 @@ fn test_method_autoref() {
         &[],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    Overwrite(Temp_1)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // m(&mk())
     Overwrite(n)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_2)
-    Mutate(Temp_2)
-    ScopeDrop(Temp_2)
+    ScopeDrop(Temp_1)        // m(&mk())
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_2)        // mk()
+    Mutate(Temp_2)           // mk()
+    ScopeDrop(Temp_2)        // mk()
     ScopeDrop(n)
 "#,
     );
@@ -1774,17 +1774,17 @@ fn test_closure() {
         &[],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(k)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_4)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_4)        // { |...| ... }
     Overwrite(f)
-    ScopeDrop(Temp_4)
-    Overwrite(Temp_5)
-    MoveFrom(Temp_5)
+    ScopeDrop(Temp_4)        // { |...| ... }
+    Overwrite(Temp_5)        // mk()
+    MoveFrom(Temp_5)         // mk()
     Overwrite(j)
-    ScopeDrop(Temp_5)
+    ScopeDrop(Temp_5)        // mk()
     ScopeDrop(j)
     ScopeDrop(f)
     ScopeDrop(k)
@@ -1792,15 +1792,15 @@ bb1 (entry):
     Overwrite(a)
     -> bb2
 bb2 (exit):
-    Overwrite(Temp_1)
-    MoveFrom(Temp_1)
+    Overwrite(Temp_1)        // mk()
+    MoveFrom(Temp_1)         // mk()
     Overwrite(b)
-    ScopeDrop(Temp_1)
-    Overwrite(Temp_2)
-    Overwrite(Temp_3)
+    ScopeDrop(Temp_1)        // mk()
+    Overwrite(Temp_2)        // mk()
+    Overwrite(Temp_3)        // &mk()
     ScopeDrop(b)
-    ScopeDrop(Temp_3)
-    ScopeDrop(Temp_2)
+    ScopeDrop(Temp_3)        // &mk()
+    ScopeDrop(Temp_2)        // mk()
     ScopeDrop(a)
 "#,
     );
@@ -1821,19 +1821,19 @@ fn test_closure_return() {
         r#"
 bb0 (entry, exit):
     Overwrite(p)
-    Overwrite(Temp_1)
+    Overwrite(Temp_1)        // { |...| ... }
     Overwrite(f)
-    ScopeDrop(Temp_1)
+    ScopeDrop(Temp_1)        // { |...| ... }
     ScopeDrop(f)
     ScopeDrop(p)
 bb1 (entry):
     Overwrite(a)
     -> bb2
 bb2:
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
     Overwrite(b)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_0)        // mk()
     -> bb3, bb4
 bb3 (exit):
     ScopeDrop(b)
@@ -1867,15 +1867,15 @@ fn test_vec_index() {
         r#"
 bb0 (entry, exit):
     Overwrite(v)
-    Overwrite(Temp_0)
+    Overwrite(Temp_0)        // vec_index(&v, 0)
     Overwrite(n)
-    ScopeDrop(Temp_0)
-    Overwrite(Temp_1)
-    Overwrite(Temp_2)
+    ScopeDrop(Temp_0)        // vec_index(&v, 0)
+    Overwrite(Temp_1)        // vec_index(&v, 0)
+    Overwrite(Temp_2)        // &vec_index(&v, 0)
     Overwrite(r)
-    ScopeDrop(Temp_2)
+    ScopeDrop(Temp_2)        // &vec_index(&v, 0)
     ScopeDrop(r)
-    ScopeDrop(Temp_1)
+    ScopeDrop(Temp_1)        // vec_index(&v, 0)
     ScopeDrop(n)
     ScopeDrop(v)
 "#,
@@ -1900,7 +1900,7 @@ fn test_ghost_code_no_drops() {
         r#"
 bb0 (entry, exit):
     Overwrite(a)
-    Overwrite(Temp_0)
+    Overwrite(Temp_0)        // 5
     ScopeDrop(a)
 "#,
     );
@@ -1922,13 +1922,13 @@ fn test_struct_update() {
         &[],
         r#"
 bb0 (entry, exit):
-    Overwrite(Temp_0)
-    MoveFrom(Temp_0.b)
-    Overwrite(Temp_1)
-    MoveFrom(Temp_1)
+    Overwrite(Temp_0)        // mk_s()
+    MoveFrom(Temp_0.b)       // mk_s()
+    Overwrite(Temp_1)        // S { a: mk(), ..mk_s() }
+    MoveFrom(Temp_1)         // S { a: mk(), ..mk_s() }
     Overwrite(s)
-    ScopeDrop(Temp_1)
-    ScopeDrop(Temp_0)
+    ScopeDrop(Temp_1)        // S { a: mk(), ..mk_s() }
+    ScopeDrop(Temp_0)        // mk_s()
     ScopeDrop(s)
 "#,
     );
