@@ -45,8 +45,10 @@ The lemma groups (`group_points_to_lemmas`, `group_points_to_collections_lemmas`
 #### `SeqPointsTo` and `PointsToUntyped`: specs (phase 1b)
 
 ```rust
-#[verifier::reject_recursive_types(T)]
-pub tracked struct SeqPointsTo<T, P: PTProperties<A = T>> {
+// `A = T` is bound on the impls, not here,
+// so recursive types like `struct Tree { children: Vec<Tree> }` are allowed.
+#[verifier::accept_recursive_types(T)]
+pub tracked struct SeqPointsTo<T, P: PTProperties> {
     seq_pt: Seq<P>,
     ptr: Ghost<*mut [T]>,
 }

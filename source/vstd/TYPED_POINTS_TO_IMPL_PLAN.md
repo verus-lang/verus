@@ -118,9 +118,10 @@ These cover the [`SeqPointsTo` pointer change](TYPED_POINTS_TO_NOTES.md#seqpoint
     - *Done:* a generic inherent impl `impl<T, P: Typed<A = T>> Seq2<T, P>`
       next to `impl Seq2<u8, Byte>` (where `Byte` doesn't implement `Typed`),
       both defining `wf`, is accepted, with no E0592 (`seq_overlap.rs`).
-      The struct needs `#[verifier::reject_recursive_types(T)]`
-      once `T` appears in the bound `P: Phys<A = T>`;
-      the real `SeqPointsTo` will need it too.
+      A struct bound `P: Phys<A = T>` forces `#[verifier::reject_recursive_types(T)]`,
+      which would reject types like `struct Tree { children: Vec<Tree> }` (`recursive_types.rs`).
+      So the struct bound is `P: PTProperties` with `accept_recursive_types(T)`,
+      and `A = T` goes on the impls.
     - *Done* (`seq_shape.rs`, verifies): the full struct with `ptr: Ghost<*mut [T]>`,
       `PTPhys::size(len) = len * P::size(())`, `wf_basic` with the metadata clause and today's provenance clause,
       `thin_ptr`, and `empty` / `from_seq` / `split_basic` with their `thin_ptr` contracts, generic over `P`.
@@ -215,8 +216,8 @@ Independent of the new traits; it changes existing ones.
    `SeqPointsTo` (`len * P::size(())`).
    Rewrite `x.size()` uses as `X::size(x.ptr()@.metadata)`,
    starting with `PTProperties`' own contracts.
-2. `SeqPointsTo`: `ptr: Ghost<*mut [T]>`, bound `P: PTProperties<A = T>`
-   (with `#[verifier::reject_recursive_types(T)]`),
+2. `SeqPointsTo`: `ptr: Ghost<*mut [T]>`, struct bound `P: PTProperties`
+   (with `#[verifier::accept_recursive_types(T)]`; impls bound `P: PTProperties<A = T>`),
    `wf_basic` gains `ptr()@.metadata == len()`;
    `PointsToUntyped = SeqPointsTo<u8, PointsToByte>`, and its `wf()` loses the clause that moved.
 3. Remove `FixedSize`: `P::const_size()` → `P::size(())`; drop the `size_eq_const_size` calls.

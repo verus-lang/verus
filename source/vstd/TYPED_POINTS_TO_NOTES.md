@@ -1363,8 +1363,8 @@ In `points_to.rs`: the struct, its generic trait impls, the structural impl, and
 The structural impl is the only code that touches the fields.
 
 ```rust
-#[verifier::reject_recursive_types(T)]
-pub tracked struct SeqPointsTo<T, P: PTProperties<A = T>> {
+#[verifier::accept_recursive_types(T)]
+pub tracked struct SeqPointsTo<T, P: PTProperties> {
     seq_pt: Seq<P>,
     ptr: Ghost<*mut [T]>,
 }
