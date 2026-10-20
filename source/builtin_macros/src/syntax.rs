@@ -149,6 +149,60 @@ fn path_matches_idents(path: &Path, expected: &[&str]) -> bool {
             .all(|(segment, expected)| segment.ident == *expected)
 }
 
+/// A stub keeps ghost item names in scope (e.g., for imports to be valid). Its body panics if called.
+///
+/// A `cfg` condition may remove a ghost function during verification. We must
+/// keep that condition on the exec stub too, otherwise, the placeholder could
+/// hide an imported function with the same name, and the compiled program could
+/// call a different function (the stub) from the one Verus verified.
+///
+/// `test` is special because it removes an item from ordinary builds, but copying it would make
+/// the test harness run the panicking placeholder so we replace it with `cfg(test)` instead
+/// (though I can't think of use cases where ghost code will be marked as #[test]).
+/// Remove `ignore` and `should_panic` too, since the placeholder is no longer a test.
+/// Preserve all other attributes.
+fn filter_ghost_stub_attrs(attrs: &mut Vec<Attribute>) {
+    /// Rewrite an attribute, returning false if it should be removed.
+    fn rewrite_attribute(meta: &mut Meta) -> bool {
+        match meta {
+            Meta::Path(path) if path_is_ident(path, "test") => {
+                *meta = parse_quote_spanned!(path.span() => cfg(test));
+                true
+            }
+            _ if path_is_ident(meta.path(), "ignore")
+                || path_is_ident(meta.path(), "should_panic") =>
+            {
+                false
+            }
+            Meta::List(list) if path_is_ident(&list.path, "cfg_attr") => {
+                let parsed = list.parse_args_with(|input: ParseStream| {
+                    // Copy the condition unchanged; only the attributes need rewriting.
+                    let mut condition = TokenStream::new();
+                    while !input.peek(Token![,]) {
+                        condition.extend([input.parse::<TokenTree>()?]);
+                    }
+                    input.parse::<Token![,]>()?;
+                    let nested_attrs = Punctuated::<Meta, Token![,]>::parse_terminated(input)?;
+                    Ok((condition, nested_attrs))
+                });
+                // Leave attributes we cannot parse unchanged. An outer cfg_attr may
+                // disable them; otherwise rustc can report the error.
+                let Ok((condition, nested_attrs)) = parsed else { return true };
+                if condition.is_empty() {
+                    return true;
+                }
+                let mut nested_attrs: Vec<_> = nested_attrs.into_iter().collect();
+                nested_attrs.retain_mut(rewrite_attribute);
+                list.tokens = quote! { #condition, #(#nested_attrs),* };
+                !nested_attrs.is_empty()
+            }
+            _ => true,
+        }
+    }
+
+    attrs.retain_mut(|attr| rewrite_attribute(&mut attr.meta));
+}
+
 fn split_off_proof_note_attrs(attrs: Vec<Attribute>) -> (Vec<Attribute>, Vec<Attribute>) {
     let (mut proof_note_attrs, other_attrs): (Vec<Attribute>, Vec<Attribute>) =
         attrs.into_iter().partition(|attr| {
@@ -1236,6 +1290,12 @@ impl Visitor {
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
 
         let has_body = semi_token.is_none();
+        if self.erase_ghost.erase()
+            && has_body
+            && !matches!(sig.mode, FnMode::Exec(_) | FnMode::Default)
+        {
+            filter_ghost_stub_attrs(attrs);
+        }
         let atomic_perm_clause = self.handle_atomic_spec(sig, vis, &mut stmts);
 
         // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
@@ -1868,7 +1928,7 @@ impl Visitor {
         // Therefore, we leave arbitrary named stubs in the place of the erased ghost items:
         // - For erased pub spec or proof Fn item x, keep decl, replace body with panic!()
         // - For erased pub Const item x, keep as-is (REVIEW: it's not clear what expressions we can support)
-        // - For erased non-pub Fn and Const item x, leave "use bool as x;"
+        // - For erased non-pub Fn and Const item x, leave a stub "fn x()" with the same conditional presence
         // - Leave Struct and Enum as-is (REVIEW: we could leave stubs with PhantomData fields)
         for item in items.iter_mut() {
             let span = item.span();
@@ -1902,7 +1962,7 @@ impl Visitor {
                     | FnMode::ProofAxiom(_)
                         if erase_ghost =>
                     {
-                        Some((fun.sig.ident.clone(), fun.vis.clone()))
+                        Some((fun.sig.ident.clone(), fun.vis.clone(), fun.attrs.clone()))
                     }
                     _ => None,
                 },
@@ -1914,7 +1974,7 @@ impl Visitor {
                         | FnMode::SpecChecked(_)
                         | FnMode::Proof(_)
                         | FnMode::ProofAxiom(_),
-                    ) if erase_ghost => Some((c.ident.clone(), c.vis.clone())),
+                    ) if erase_ghost => Some((c.ident.clone(), c.vis.clone(), c.attrs.clone())),
                     _ => None,
                 },
                 /*
@@ -1933,10 +1993,17 @@ impl Visitor {
                 */
                 _ => None,
             };
-            if let Some((name, vis)) = erase_fn {
-                *item = Item::Verbatim(quote_spanned! {
+            if let Some((name, vis, mut attrs)) = erase_fn {
+                let mut item_fn: ItemFn = parse_quote_spanned! {
                     span => #[allow(unused_imports)] #vis fn #name() { ::core::unimplemented!() }
-                });
+                };
+                filter_ghost_stub_attrs(&mut attrs);
+                // Verbatim items bypass the usual attribute visitor.
+                for attr in &mut attrs {
+                    self.visit_attribute_mut(attr);
+                }
+                item_fn.attrs.extend(attrs);
+                *item = Item::Verbatim(item_fn.to_token_stream());
             }
         }
         for item in items.iter_mut() {
@@ -2263,11 +2330,12 @@ impl Visitor {
             paths,
         } = item_broadcast_group;
         if self.erase_ghost.erase() {
-            if matches!(vis, Visibility::Public(_)) {
+            if !self.erase_ghost.erase_all() || matches!(vis, Visibility::Public(_)) {
                 let mut item_fn: ItemFn = parse_quote_spanned! { span =>
                     #vis fn #ident() { ::core::panic!() }
                 };
                 item_fn.attrs.extend(attrs.into_iter().cloned());
+                filter_ghost_stub_attrs(&mut item_fn.attrs);
                 item_fn.to_token_stream()
             } else {
                 TokenStream::new()
