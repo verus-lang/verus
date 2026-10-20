@@ -2078,3 +2078,40 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] maybe_uninit_array_assume_init verus_code! {
+        use core::mem::MaybeUninit;
+        use vstd::prelude::*;
+        use vstd::std_specs::maybe_uninit::MaybeUninitAdditionalSpecFns;
+
+        fn test() {
+            let a = [MaybeUninit::new(1u8), MaybeUninit::new(2u8)];
+            let r = unsafe { MaybeUninit::array_assume_init(a) };
+            assert(r@[0] == 1u8);
+            assert(r@[1] == 2u8);
+        }
+
+        fn test_generic<T>(a: [MaybeUninit<T>; 2])
+            requires
+                forall|i: int| #![auto] 0 <= i < 2 ==> a@[i].mem_contents().is_init(),
+        {
+            let r = unsafe { MaybeUninit::array_assume_init(a) };
+            assert(r@[0] == a@[0].mem_contents().value());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] maybe_uninit_array_assume_init_requires_init verus_code! {
+        use core::mem::MaybeUninit;
+        use vstd::prelude::*;
+
+        fn test() {
+            let a = [MaybeUninit::new(1u8), MaybeUninit::<u8>::uninit()];
+            let _r = unsafe { MaybeUninit::array_assume_init(a) };
+        }
+    } => Err(err) => {
+        assert!(err.errors.iter().all(|e| e.rendered.contains("precondition not satisfied")));
+    }
+}
