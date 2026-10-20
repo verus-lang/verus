@@ -5238,11 +5238,23 @@ fn ty_is_float_or_ref_float<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
 /// code that the syntax macro might emit.
 /// (After this point, we use the Label to identify the loop.)
 fn loop_isolation_boundary_check(
-    span: Span,
+    _span: Span,
     block: &vir::ast::Expr,
 ) -> Result<(bool, vir::ast::Label), VirErr> {
-    let err =
-        || crate::internal_err!(span, "loop_isolation_boundary block not of the expected form");
+    let err = || panic!("asdfsd"); // || crate::internal_err!(span, "loop_isolation_boundary block not of the expected form");
+
+    fn stmt_is_drop(s: &vir::ast::Stmt) -> bool {
+        match &s.x {
+            StmtX::Expr(e) if matches!(&e.x, ExprX::Drop(..)) => true,
+            _ => false,
+        }
+    }
+    fn skip_drop(e: &vir::ast::Expr) -> &vir::ast::Expr {
+        match &e.x {
+            ExprX::Binary(BinaryOp::Left, e1, _e2) => e1,
+            _ => e,
+        }
+    }
 
     let ExprX::Block(stmts, Some(e)) = &block.x else {
         return err();
@@ -5256,6 +5268,7 @@ fn loop_isolation_boundary_check(
     //   let x = match y { mut z => loop { } }; x
     // }
 
+    let e = skip_drop(e);
     let ExprX::ReadPlace(place, _) = &e.x else {
         return err();
     };
@@ -5266,8 +5279,12 @@ fn loop_isolation_boundary_check(
     if stmts.len() == 0 {
         return err();
     }
+    let last_stmt = stmts.iter().rev().find(|stmt| !stmt_is_drop(stmt));
+    let Some(last_stmt) = last_stmt else {
+        return err();
+    };
     let StmtX::Decl { pattern, mode: _, init: Some(init), els: None, assert_irrefutable: false } =
-        &stmts[stmts.len() - 1].x
+        &last_stmt.x
     else {
         return err();
     };
@@ -5288,7 +5305,7 @@ fn loop_isolation_boundary_check(
         return err();
     }
 
-    if let ExprX::Loop { loop_isolation, label, .. } = &&arms[0].x.body.x {
+    if let ExprX::Loop { loop_isolation, label, .. } = &skip_drop(&arms[0].x.body).x {
         return Ok((*loop_isolation, label.clone()));
     }
 
