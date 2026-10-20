@@ -124,6 +124,7 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
 //         &(self.as_ref())[idx]
 //     }
 
+//     /// A shared slice reference gives a shared, valid slice permission.
 //     pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<[T]>)
 //         ensures
 //             pt.ptr() == self.ptr(),
@@ -207,8 +208,9 @@ pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) ->
         v.ptr() == ptr,
 ;
 
-// /// Same as [`ptr_ref2`], but operates on ghost values.
-// /// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+// /// The ghost version of `ptr_ref2` for `str`.
+// /// Because this doesn't constitute a retag,
+// /// the returned value's pointer has the same provenance as the original pointer.
 // pub axiom fn ptr_ref2_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str>) -> (tracked v:
 //     SharedReference<'a, str>)
 //     requires
@@ -219,8 +221,9 @@ pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) ->
 //         v.ptr() == ptr,
 // ;
 
-// /// Same as [`ptr_ref2`], but operates on ghost values.
-// /// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+// /// The ghost version of `ptr_ref2` for slices.
+// /// Because this doesn't constitute a retag,
+// /// the returned value's pointer has the same provenance as the original pointer.
 // pub axiom fn ptr_ref2_slice_ghost<'a, T>(
 //     ptr: *const [T],
 //     tracked perm: &PointsTo<[T]>,

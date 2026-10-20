@@ -1594,7 +1594,8 @@ impl<T> PointsTo<T> {
     }
 
     
-    /// This takes a mutable borrow of the `T` from the `TypedValue<T>` on `self`.
+    /// This takes a mutable borrow of the `T` from a mutable borrow of a `PointsTo<T>`.
+    /// The pointer of this borrow matches the permission's pointer.
     ///
     /// Writing through the reference updates both the value and the underlying bytes,
     /// so `final(self)` is well-formed with bytes that decode to the final value.

@@ -534,7 +534,7 @@ pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> 
 // {
 //     unsafe { &*ptr }
 // }
-/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
+/// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
@@ -556,7 +556,7 @@ pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>
     unsafe { &mut *ptr }
 }
 
-// /// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
+// /// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
 // /// The memory pointed to by `ptr` must be initialized.
 // TODO: move to rustlib
 // #[inline(always)]
@@ -576,7 +576,7 @@ pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>
 // {
 //     unsafe { &mut *ptr }
 // }
-// /// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
+// /// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
 // /// The memory pointed to by `ptr` must be initialized.
 // TODO: add back in
 // #[inline(always)]
@@ -683,7 +683,7 @@ pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
 ;
 
 // TODO: move to rustlib
-// /// Convert from a shared reference to a `&'a mut str` to a `&'a PointsTo<str>`.
+// /// Convert from a shared reference to a `&'a mut [T]` to a `&'a PointsTo<[T]>`.
 // pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T]) -> (tracked pt:
 //     &'a PointsTo<[T]>)
 //     ensures
@@ -692,7 +692,7 @@ pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
 //         pt.value() == (*old(*mut_ref))@,
 //         &*final(*mut_ref) == &*old(*mut_ref),
 // ;
-// /// Convert from a shared reference to a `&'a mut [T]` to a `&'a PointsTo<[T]>`.
+// /// Convert from a shared reference to a `&'a mut str` to a `&'a PointsTo<str>`.
 // pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) -> (tracked pt:
 //     &'a PointsTo<str>)
 //     ensures

@@ -217,6 +217,7 @@ impl<A> Seq<A> {
         unimplemented!()
     }
 
+    /// Take a tracked subrange of a sequence.
     #[verifier(external_body)]
     pub proof fn tracked_borrow_subrange(tracked &self, i: int, j: int) -> (tracked ret: &Self)
         requires
@@ -242,7 +243,7 @@ impl<A> Seq<A> {
         unimplemented!()
     }
 
-    /// Split a mutable borrow of a sequence into two at index `mid`.
+    /// Split a tracked mutable borrow of a sequence into two at index `mid`.
     #[verifier(external_body)]
     pub proof fn tracked_split_borrow_mut(tracked &mut self, mid: int) -> (tracked (s1, s2): (
         &mut Self,
