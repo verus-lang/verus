@@ -22,7 +22,7 @@ The generated spec function is `closed` by default. You can control its
 publish mode and opaqueness with additional `verus_verify` arguments:
 `#[verus_verify(dual_spec, open)]`, `#[verus_verify(dual_spec, closed)]` and
 `#[verus_verify(dual_spec, opaque)]`, which respectively mark the generated
-spec function [`open`, `closed`](modules.html) or
+spec function [`open`, `closed`](spec_functions.md) or
 [`opaque`](reference-attributes.html).
 
 Here is an example:
