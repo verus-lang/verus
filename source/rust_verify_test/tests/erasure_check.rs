@@ -256,3 +256,52 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+// Known gaps: programs whose compiled code differs from the verified code, but that the check
+// accepts. In each one, `get` is verified to return 0 and the compiled `get` returns 42.
+
+test_verify_one_file_with_options! {
+    // The two programs have exec nodes at different locations; a node that only one program has
+    // is not compared (except for control flow).
+    #[ignore = "known gap: exec code present only in the verified program is not reported"]
+    #[test] gap_exec_code_only_in_one_program ["-V check-erasure"] => verus_code! {
+        use vstd::prelude::*;
+        fn get() -> (r: u8)
+            ensures r == 0,
+        {
+            #[cfg(verus_keep_ghost_body)]
+            { 0 }
+            #[cfg(not(verus_keep_ghost_body))]
+            { 42 }
+        }
+    } => Err(err) => assert_erasure_diff(err, "", "{ 0 }")
+}
+
+test_verify_one_file_with_options! {
+    #[ignore = "known gap: exec code present only in the compiled program is not reported"]
+    #[test] gap_exec_code_only_in_compiled_program ["-V check-erasure"] => verus_code! {
+        use vstd::prelude::*;
+        fn get() -> (r: u8)
+            ensures r == 0,
+        {
+            let mut r = 0;
+            #[cfg(not(verus_keep_ghost_body))]
+            { r = 42; }
+            r
+        }
+    } => Err(err) => assert_erasure_diff(err, "", "{ r = 42; }")
+}
+
+test_verify_one_file_with_options! {
+    // Both programs have the same nodes with the same types; only the value of the literal that
+    // `cfg!` expands to differs.
+    #[ignore = "known gap: literal values are not compared"]
+    #[test] gap_literal_value ["-V check-erasure"] => verus_code! {
+        use vstd::prelude::*;
+        fn get() -> (r: u8)
+            ensures r == 0,
+        {
+            if cfg!(verus_keep_ghost_body) { 0 } else { 42 }
+        }
+    } => Err(err) => assert_erasure_diff(err, "", "cfg!(verus_keep_ghost_body)")
+}
