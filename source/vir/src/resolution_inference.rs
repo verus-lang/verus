@@ -374,6 +374,8 @@ struct LocalCollection<'a> {
     /// Map AstId to temp id
     ast_id_to_temp_id: HashMap<AstId, TempId>,
     next_temp_id: u64,
+    /// The expression of each PlaceX::Temporary, indexed by TempId (only used for logging)
+    temp_exprs: Vec<Expr>,
 
     datatypes: &'a HashMap<Path, Datatype>,
     functions: &'a HashMap<Fun, Function>,
@@ -596,6 +598,7 @@ fn new_cfg<'a>(
             ident_to_idx: HashMap::new(),
             ast_id_to_temp_id: HashMap::new(),
             next_temp_id: 0,
+            temp_exprs: vec![],
             datatypes,
             functions,
             var_modes,
@@ -1509,7 +1512,7 @@ impl<'a> Builder<'a> {
                 if *mode == Mode::Spec {
                     Maybe::Some((ComputedPlaceTyped::Ghost(None), bb))
                 } else {
-                    let temp_name = self.locals.new_temp_name(place.span.id);
+                    let temp_name = self.locals.new_temp_name(place.span.id, e);
 
                     let fpt = FlattenedPlaceTyped {
                         local: temp_name,
@@ -2274,9 +2277,10 @@ fn check_illegal_muts(
 ////// Place trees
 
 impl<'a> LocalCollection<'a> {
-    fn new_temp_name(&mut self, ast_id: AstId) -> LocalName {
+    fn new_temp_name(&mut self, ast_id: AstId, expr: &Expr) -> LocalName {
         let temp_id = TempId(self.next_temp_id);
         self.next_temp_id += 1;
+        self.temp_exprs.push(expr.clone());
         if let Some(prev) = self.ast_id_to_temp_id.get(&ast_id) {
             panic!("attempt to override entry AstId({ast_id}) => {prev:?} with {temp_id:?}");
         };
@@ -3180,7 +3184,7 @@ fn pretty_cfg_for_log(cfg: &CFG) -> String {
         let attrs = if attrs.len() > 0 { format!(" ({})", attrs.join(", ")) } else { "".into() };
         v.push(format!("bb{i}{attrs}:\n"));
         for instr in bb.instructions.iter() {
-            v.push(format!("    {}\n", pretty_instr(&cfg.locals, instr)));
+            v.push(format!("    {}\n", pretty_instr_annotated(&cfg.locals, instr)));
         }
         let succs: Vec<_> = bb
             .successors
@@ -3310,6 +3314,26 @@ fn pretty_instr(locals: &LocalCollection, instr: &Instruction) -> String {
         InstructionKind::ScopeDrop(fp) => ("ScopeDrop", fp),
     };
     format!("{:}({:})", name, pretty_flattened_place(locals, fp))
+}
+
+/// Like pretty_instr, but if the instruction is on a temporary, add a comment with the
+/// temporary's expression.
+fn pretty_instr_annotated(locals: &LocalCollection, instr: &Instruction) -> String {
+    let s = pretty_instr(locals, instr);
+    let fp = match &instr.kind {
+        InstructionKind::MoveFrom(fp)
+        | InstructionKind::Overwrite(fp)
+        | InstructionKind::Mutate(fp)
+        | InstructionKind::DropFrom(fp)
+        | InstructionKind::ScopeDrop(fp) => fp,
+    };
+    match &locals.locals[fp.local].name {
+        LocalName::Temporary(_, TempId(i)) => {
+            let e = crate::succinct_printer::succinct_expr(&locals.temp_exprs[*i as usize]);
+            format!("{s:<24} // {e}")
+        }
+        LocalName::Named(_) => s,
+    }
 }
 
 fn pretty_local_name(l: &LocalName) -> String {
