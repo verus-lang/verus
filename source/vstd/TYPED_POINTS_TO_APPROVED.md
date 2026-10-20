@@ -105,7 +105,7 @@ and `points_to_ops` is a child module of `points_to_model`;
 | the five trait definitions, with their default bodies | the `PTProperties` impls of `SeqPointsTo`, `PointsToUnaligned` and `PointsTo` | `PointsToRaw` (all of it) |
 | the struct definitions: `PointsToByte`, `TypedValue`, `SeqPointsTo`, `PointsToUntyped`, `PointsToUnaligned`, `PointsTo`; their closed accessors and the inherent spec fns (`typed_value`, `bytes`, `metadata`, `is_valid`, `value`, `value_ref`, `len`, `thin_ptr`, …); their `View` impls | the `PTValueOps` impls (per type for `PointsToUnaligned`, generic for `PointsTo`) and the `PTSizedValue` impls | the typed `SeqPointsTo` impl (`impl<T> SeqPointsTo<T, PointsTo<T>>`), including its `wf`, and its `View` |
 | well-formedness: every `PTPhys` impl (`ptr`, `size`, `wf_basic`), every `PTTypedValue` impl (`typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment`, and the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic`), `wf_basic_unaligned`, `PointsToUntyped::wf` and `bytes` | the structural `SeqPointsTo` impl (except M5) and `PointsToUntyped`'s proofs | |
-| the axioms: `PointsToByte`'s `PTProperties` impl, `PointsToUntyped::join_ref` / `join_mut`, `from_raw_parts_ref`, M1, M3–M5, `PointsTo::borrow_mut` | the aligned/unaligned conversions | the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`) |
+| the axioms: `PointsToByte`'s `PTProperties` impl, `PointsToUntyped::join_ref` / `join_mut`, `from_raw_parts_ref`, `TypedValue::from_elems_ref`, M1, M3–M5, `PointsTo::borrow_mut` | the aligned/unaligned conversions | the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`) |
 | the tracked getters and byte disjointness: `TypedValue::tracked_copy`, `valid_ref`; `PointsToByte::is_disjoint_byte` | the slice permissions' borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`); `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`; `group_points_to_lemmas` | `group_points_to_collections_lemmas` |
 
 `raw_ptr_new.rs` becomes two files:
@@ -178,9 +178,9 @@ it's in [New axioms and axioms with bigger changes](#new-axioms-and-axioms-with-
 The restored slice and `str` versions also state the value through `typed_value().value_ref()`
 (with `@` for slices) in place of the old `value()`, which the planned `PointsTo<[T]>` / `PointsTo<str>` don't have.
 
-```rust
-// ptr_specs.rs
+`ptr_specs.rs`:
 
+```rust
 /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
@@ -208,10 +208,14 @@ pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
         pt.wf(),
         *final(*mut_ref) == *old(*mut_ref),
 ;
+```
 
-// ptr_specs.rs, restored slice versions (phase 4b; from raw_ptr_new.rs lines 524 and 683)
+`ptr_specs.rs`, the restored slice versions (phase 4b):
 
+```rust
 /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
 #[verifier::external_body]
 pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<[T]>>) -> (v: &[T])
     requires
@@ -236,9 +240,11 @@ pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut 
         pt.wf(),
         &*final(*mut_ref) == &*old(*mut_ref),
 ;
+```
 
-// shared_reference.rs
+`shared_reference.rs`:
 
+```rust
 impl<'a, T> SharedReference<'a, T> {
     // NOTE: there does not exist a points_to_unaligned function because SharedReference
     // by definition gives you an _aligned_ PointsTo.
@@ -289,9 +295,11 @@ pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) ->
         v.value() == perm.value(),
         v.ptr() == ptr,
 ;
+```
 
-// shared_reference.rs, restored slice versions (phase 4b; from lines 126 and 221)
+`shared_reference.rs`, the restored slice versions (phase 4b):
 
+```rust
 impl<'a, T> SharedReference<'a, [T]> {
     /// A shared slice reference gives a shared, valid slice permission.
     pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<[T]>)
@@ -318,9 +326,9 @@ pub axiom fn ptr_ref2_slice_ghost<'a, T>(ptr: *const [T], tracked perm: &PointsT
 ;
 ```
 
-```rust
-// rustlib: the str versions, moved from vstd's commented-out code.
+rustlib, the `str` versions (moved from vstd's commented-out code):
 
+```rust
 impl<'a> SharedReference<'a, str> {
     pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<str>)
         ensures
@@ -331,6 +339,9 @@ impl<'a> SharedReference<'a, str> {
     ;
 }
 
+/// The ghost version of `ptr_ref2` for `str`.
+/// Because this doesn't constitute a retag,
+/// the returned value's pointer has the same provenance as the original pointer.
 pub axiom fn ptr_ref2_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str>) -> (tracked v: SharedReference<'a, str>)
     requires
         perm.ptr() == ptr,
@@ -341,6 +352,9 @@ pub axiom fn ptr_ref2_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str
         v.ptr() == ptr,
 ;
 
+/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
 #[verifier::external_body]
 pub const fn ptr_ref_str(ptr: *const str, Tracked(perm): Tracked<&PointsTo<str>>) -> (v: &str)
     requires
@@ -355,6 +369,7 @@ pub const fn ptr_ref_str(ptr: *const str, Tracked(perm): Tracked<&PointsTo<str>>
     unsafe { &*ptr }
 }
 
+/// Convert from a shared reference to a `&'a mut str` to a `&'a PointsTo<str>`.
 pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) -> (tracked pt: &'a PointsTo<str>)
     ensures
         pt.ptr() == mut_ref_ptr(*mut_ref),
@@ -377,7 +392,7 @@ Every new trusted item, relative to the `verify-rustlib` branch.
 | `Seq::tracked_borrow_subrange` (`external_body`; already in the code) | `seq.rs` | Borrows a subrange of a borrowed tracked `Seq`. | `subrange_basic`, `split_ref` | yes |
 | `Seq::tracked_split_borrow_mut` (`external_body`; already in the code) | `seq.rs` | Splits a mutable borrow of a tracked `Seq` in two. | `subrange_mut`, the `&mut` conversions | yes |
 | `tracked_slice_index` (phase 3b) | `slice.rs` | Borrows an element of a borrowed slice. | `borrow_index` | yes |
-| `tracked_slice_from_refs` (phase 3b) | `slice.rs` | Borrowed elements act as one borrowed slice. | shared sequence → slice | yes |
+| `TypedValue::<[T]>::from_elems_ref` (phase 3b) | `points_to_model.rs` | Per-element shared typed values act as one shared slice typed value (the shared counterpart of M1). Replaces the generic `tracked_slice_from_refs`, so it only covers `TypedValue`s, which have no physical memory. | shared sequence → slice | |
 | `tracked_ref` (phase 3b) | `modes.rs` | A borrow is a borrowed `Tracked` of itself. | `TypedValue::valid_ref` | yes |
 | `PointsToUnaligned::from_raw_parts_ref` (phase 3b) | `points_to_model.rs` | Borrowed bytes and typed value act as one borrowed permission. | borrowed constructors, `borrow_index`, sequence → slice, `str` ↔ `[u8]` | yes |
 | M1 `TypedValue::<[T]>::from_elems_mut` (phase 3b) | `points_to_model.rs` | Per-element `&mut` typed values act as one `&mut` slice typed value. | `&mut` sequence → slice | yes |
@@ -396,7 +411,7 @@ It doesn't say the bytes stay the same,
 so `final(perm).wf()` is what tells callers the final bytes decode to the final value.
 
 ```rust
-/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
+/// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
@@ -417,10 +432,15 @@ pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>
 {
     unsafe { &mut *ptr }
 }
+```
 
-// Restored slice version (phase 4b; from raw_ptr_new.rs line 559).
-// The value is stated as typed_value().value_ref()@ in place of the old value() (a Seq<T>).
+The restored slice version (phase 4b),
+with the value stated as `typed_value().value_ref()@` in place of the old `value()` (a `Seq<T>`):
+
+```rust
 /// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
 #[verifier::external_body]
 pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v: &mut [T])
     requires
@@ -439,8 +459,14 @@ pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut Poi
 {
     unsafe { &mut *ptr }
 }
+```
 
-// rustlib: the str version, moved from vstd's commented-out code.
+rustlib, the `str` version (moved from vstd's commented-out code):
+
+```rust
+/// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
 #[verifier::external_body]
 pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo<str>>) -> (v: &mut str)
     requires
@@ -461,10 +487,10 @@ pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo
 }
 ```
 
-**`Seq` tracked operations** (`seq.rs`; new relative to `verify-rustlib`, already in the code).
+**`Seq` tracked operations** (`seq.rs`, in `impl<A> Seq<A>`; new relative to `verify-rustlib`, already in the code).
 
 ```rust
-// seq.rs, impl<A> Seq<A>
+/// Take a tracked subrange of a sequence.
 #[verifier(external_body)]
 pub proof fn tracked_borrow_subrange(tracked &self, i: int, j: int) -> (tracked ret: &Self)
     requires
@@ -475,7 +501,7 @@ pub proof fn tracked_borrow_subrange(tracked &self, i: int, j: int) -> (tracked 
     unimplemented!()
 }
 
-/// Split a mutable borrow of a sequence into two at index `mid`.
+/// Split a tracked mutable borrow of a sequence into two at index `mid`.
 #[verifier(external_body)]
 pub proof fn tracked_split_borrow_mut(tracked &mut self, mid: int) -> (tracked (s1, s2): (
     &mut Self,
@@ -494,23 +520,22 @@ pub proof fn tracked_split_borrow_mut(tracked &mut self, mid: int) -> (tracked (
 
 **Borrowed slices and `Tracked`** (new, phase 3b).
 
+`slice.rs` (no permissions involved):
+
 ```rust
-// slice.rs: no permissions involved
+/// Borrows the element at index `i` of a borrowed slice.
 pub axiom fn tracked_slice_index<'a, T>(tracked s: &'a [T], i: int) -> (tracked e: &'a T)
     requires
         0 <= i < s@.len(),
     ensures
         *e == s@[i],
 ;
-
-pub axiom fn tracked_slice_from_refs<'a, T>(tracked refs: Seq<&'a T>) -> (tracked s: &'a [T])
-    ensures
-        s@ == refs.map_values(|r: &T| *r),
-;
 ```
 
+`modes.rs`, next to `tracked_swap`:
+
 ```rust
-// modes.rs, next to tracked_swap
+/// Converts a borrowed value to a borrowed `Tracked` of that value.
 pub axiom fn tracked_ref<'a, T: ?Sized>(tracked t: &'a T) -> (tracked out: &'a Tracked<T>)
     ensures
         &**out == t,
@@ -520,10 +545,14 @@ pub axiom fn tracked_ref<'a, T: ?Sized>(tracked t: &'a T) -> (tracked out: &'a T
 **Borrowed permission assembly** (new, phase 3b).
 It says nothing about `wf()`: callers prove it from the parts.
 
+`points_to_model.rs`, with `PointsToUnaligned`:
+
 ```rust
-// points_to_model.rs, with PointsToUnaligned.
-// The borrowed version of the struct literal; no wf.
 impl<T: ?Sized> PointsToUnaligned<T> {
+    /// Converts a borrowed untyped permission and a borrowed typed value, with the given pointer metadata,
+    /// into one borrowed `PointsToUnaligned` permission.
+    /// This is the borrowed version of building the permission from its parts.
+    /// It says nothing about `wf()`: callers prove it from the parts.
     pub axiom fn from_raw_parts_ref<'a>(
         tracked pt_untyped: &'a PointsToUntyped,
         tracked typed_value: &'a TypedValue<T>,
@@ -537,15 +566,36 @@ impl<T: ?Sized> PointsToUnaligned<T> {
 }
 ```
 
+`points_to_model.rs`, with `TypedValue` (the shared counterpart of M1):
+
+```rust
+impl<T> TypedValue<[T]> {
+    /// A sequence of borrows of typed values acts as one borrow of a slice typed value.
+    /// If any element is empty, the slice is empty.
+    pub axiom fn from_elems_ref<'a>(tracked elems: Seq<&'a TypedValue<T>>)
+        -> (tracked out: &'a TypedValue<[T]>)
+        ensures
+            // Valid with the elements' values if every element is valid
+            // (a zero-length Seq counts as valid); otherwise empty.
+            (forall|i: int| 0 <= i < elems.len() ==> (#[trigger] *elems[i]).is_valid()) ==> {
+                &&& out.is_valid()
+                &&& out.value()@ == Seq::new(elems.len(), |i: int| (*elems[i]).value())
+            },
+            !(forall|i: int| 0 <= i < elems.len() ==> (#[trigger] *elems[i]).is_valid()) ==> out.is_empty(),
+    ;
+}
+```
+
 **Mutable borrowed assembly (M1, M3–M5)** (new, phase 3b; there is no M2 or M6).
 Each follows `PointsToUntyped::join_mut`'s pattern:
 the borrowed parts' final values are tied to the result's final value,
 conditionally where the structure could change.
 
+`points_to_model.rs`, with `TypedValue` (M1):
+
 ```rust
-// points_to_model.rs, with TypedValue.
 impl<T> TypedValue<[T]> {
-    /// M1: per-element typed values -> one slice typed value.
+    /// A sequence of mutable borrows of typed values acts as one mutable borrow of a slice typed value.
     /// If any element is empty, the slice starts empty.
     pub axiom fn from_elems_mut<'a>(tracked elems: Seq<&'a mut TypedValue<T>>)
         -> (tracked out: &'a mut TypedValue<[T]>)
@@ -570,10 +620,14 @@ impl<T> TypedValue<[T]> {
 }
 ```
 
+`points_to_model.rs`, with `PointsToUnaligned` (M3):
+
 ```rust
-// points_to_model.rs, with PointsToUnaligned.
 impl<T: ?Sized> PointsToUnaligned<T> {
-    /// M3: the `&mut` version of `from_raw_parts_ref`.
+    /// Converts a mutable borrow of an untyped permission and a mutable borrow of a typed value, with the given pointer metadata,
+    /// into one mutably borrowed `PointsToUnaligned` permission.
+    /// The borrowed parts' final values are the final permission's parts.
+    /// It says nothing about `wf()`: callers prove it from the parts.
     pub axiom fn from_raw_parts_mut<'a>(
         tracked pt_untyped: &'a mut PointsToUntyped,
         tracked typed_value: &'a mut TypedValue<T>,
@@ -589,10 +643,11 @@ impl<T: ?Sized> PointsToUnaligned<T> {
 }
 ```
 
+`points_to_model.rs`, with `PointsTo` (M4):
+
 ```rust
-// points_to_model.rs, with PointsTo.
 impl<T: ?Sized> PointsTo<T> {
-    /// M4: a mutably borrowed `PointsToUnaligned<T>` acts as a mutably borrowed `PointsTo<T>`
+    /// A mutably borrowed `PointsToUnaligned<T>` acts as a mutably borrowed `PointsTo<T>`
     /// (the `&mut` counterpart of the `shr_ref_struct_wrap` in `as_aligned`).
     pub axiom fn from_unaligned_mut<'a>(tracked u: &'a mut PointsToUnaligned<T>)
         -> (tracked out: &'a mut Self)
@@ -603,10 +658,11 @@ impl<T: ?Sized> PointsTo<T> {
 }
 ```
 
+`points_to_model.rs`, with `SeqPointsTo` (M5):
+
 ```rust
-// points_to_model.rs, with SeqPointsTo.
 impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
-    /// M5: a mutably borrowed `Seq<P>` acts as a mutably borrowed sequence with the given (ghost) pointer.
+    /// A mutably borrowed `Seq<P>` acts as a mutably borrowed `SeqPointsTo<T, P>` with the given pointer.
     pub axiom fn from_seq_mut<'a>(tracked s: &'a mut Seq<P>, ptr: *mut [T]) -> (tracked out: &'a mut Self)
         ensures
             out.seq_pt() == *old(s),
@@ -688,6 +744,13 @@ impl PointsToUntyped {
 
 ```rust
 impl<T> PointsTo<T> {
+    /// This takes a mutable borrow of the `T` from a mutable borrow of a `PointsTo<T>`. 
+    /// The pointer of this borrow matches the permission's pointer.
+    ///
+    /// Writing through the reference updates both the value and the underlying bytes,
+    /// so `final(self)` is well-formed with bytes that decode to the final value.
+    /// This is an axiom because the bytes live in separate ghost state from the `TypedValue<T>`,
+    /// so they can't be updated through a borrow of the value alone.
     pub axiom fn borrow_mut(tracked &mut self) -> (tracked val: &mut T)
         requires
             self.wf(),
@@ -705,18 +768,25 @@ impl<T> PointsTo<T> {
 
 **Allocation** (phase 2c; `global_alloc_id` in `ptr_model.rs` next to `AllocId`, `allocate` / `deallocate` in `ptr_specs.rs`).
 
+`ptr_model.rs`, next to `AllocId`:
+
 ```rust
 /// The `AllocId` of allocations made by the global allocator.
-/// Only `allocate` produces provenances with this id,
-/// so no other allocation (e.g. a stack variable's) can be shown to have it.
 pub uninterp spec fn global_alloc_id() -> AllocId;
+```
 
+`ptr_specs.rs`:
+
+```rust
 /// Allocate with the global allocator.
 /// The precondition should be consistent with the
 /// [documented safety conditions on `alloc`](https://doc.rust-lang.org/alloc/alloc/trait.GlobalAlloc.html#tymethod.alloc).
-/// Allocates exactly the requested size (`alloc_len == orig_size == size`),
-/// a stronger guarantee than `Allocator::allocate`, which may allocate a larger block.
+/// Returns a pointer with a corresponding [`PointsToUntyped`] permission.
 /// The byte contents are arbitrary (uninitialized).
+///
+/// Here we allocate exactly the size of memory requested
+/// (shown by having both the `Provenance` `orig_size` and `alloc_len` be the provided `size`).
+/// This is a stronger guarantee than `Allocator::allocate`, which may allocate a larger block of memory.
 #[cfg(feature = "std")]
 #[verifier::external_body]
 pub fn allocate(size: usize, align: usize) -> ((ptr, perm): (*mut u8, Tracked<PointsToUntyped>))
@@ -748,10 +818,18 @@ pub fn allocate(size: usize, align: usize) -> ((ptr, perm): (*mut u8, Tracked<Po
 }
 
 /// Deallocate with the global allocator.
-/// The provenance gives the
-/// [documented safety conditions on `dealloc`](https://doc.rust-lang.org/core/alloc/trait.GlobalAlloc.html#tymethod.dealloc)
-/// (same allocator, same layout);
-/// giving up the `PointsToUntyped` for the whole allocation rules out use-after-free and double free.
+///
+/// The provenance ensures that the
+/// [documented safety conditions on `dealloc`](https://doc.rust-lang.org/1.82.0/core/alloc/trait.GlobalAlloc.html#tymethod.dealloc)
+/// are satisfied; by also giving up the [`PointsToUntyped`] permission for the whole allocation,
+/// we ensure there can be no use-after-free bug as a result of this deallocation.
+/// In order to do so, the parameters of the provenance and the [`PointsToUntyped`] permission
+/// must match the parameters of the deallocation.
+///
+/// We have two different ways to track size within the provenance:
+/// `orig_size`, the original requested size, and `alloc_len`, the size of memory actually allocated.
+/// According to the `Allocator` documentation, it's possible to have `orig_size <= alloc_len`.
+/// Here, we restrict them to be the same.
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
 pub fn deallocate(ptr: *mut u8, size: usize, align: usize, Tracked(perm): Tracked<PointsToUntyped>)
