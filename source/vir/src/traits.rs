@@ -31,8 +31,8 @@ impl DemoteTraitLookup {
         all_functions: &HashMap<Fun, crate::ast::FunctionStub>,
     ) -> Self {
         let traits_iter =
-            || krate.traits.iter().chain(other_krates.iter().map(|k| k.traits.iter()).flatten());
-        let funs_iter = || all_functions.iter().map(|(name, _)| name.clone());
+            || krate.traits.iter().chain(other_krates.iter().flat_map(|k| k.traits.iter()));
+        let funs_iter = || all_functions.keys().map(|name| name.clone());
 
         let traits: HashSet<Path> = traits_iter().map(|t| t.x.name.clone()).collect();
         let internal_traits: HashSet<Path> =
@@ -1399,7 +1399,7 @@ pub fn merge_external_traits(
     use crate::well_formed::trait_conflict_error;
     let mut traits: Vec<Trait> = Vec::new();
     let mut prev_trait_index: HashMap<Path, usize> = HashMap::new();
-    for t in krate.traits.iter().chain(other_crates.iter().map(|k| k.traits.iter()).flatten()) {
+    for t in krate.traits.iter().chain(other_crates.iter().flat_map(|k| k.traits.iter())) {
         if t.x.proxy.is_some() {
             if let Some(index) = prev_trait_index.get(&t.x.name) {
                 let prev = &traits[*index];
@@ -1484,8 +1484,7 @@ pub fn merge_external_traits(
     // Also remove any duplicate auto-imported trait impls:
     let mut trait_impls: Vec<TraitImpl> = Vec::new();
     let mut trait_impl_set: HashSet<Path> = HashSet::new();
-    for ti in
-        krate.trait_impls.iter().chain(other_crates.iter().map(|k| k.trait_impls.iter()).flatten())
+    for ti in krate.trait_impls.iter().chain(other_crates.iter().flat_map(|k| k.trait_impls.iter()))
     {
         if ti.x.auto_imported && trait_impl_set.contains(&ti.x.impl_path) {
             continue;

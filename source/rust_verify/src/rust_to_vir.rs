@@ -702,7 +702,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
 
     check_anon_consts(&ctxt, &mut state, &mut infos, crate_items)?;
 
-    let function_stubs = infos.iter().map(|info| info.iter_stubs()).flatten().cloned().collect();
+    let function_stubs = infos.iter().flat_map(|info| info.iter_stubs()).cloned().collect();
     crate::rust_to_vir_impl::collect_external_trait_impls(
         &ctxt,
         imported,

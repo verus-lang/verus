@@ -1,3 +1,5 @@
+#![allow(clippy::arc_with_non_send_sync)]
+
 use crate::boundary_suggestions::build_boundary_suggestion;
 use crate::config::Args;
 use crate::context::Context;
@@ -243,7 +245,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let other_vir_crates = self.get_other_vir_crates()?;
         let pre_crate = self.get_pre_crate()?;
         let mut stubs = HashMap::new();
-        for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
+        for stub in pre_crate.infos.iter().flat_map(|info| info.iter_stubs()) {
             let found = stubs.insert(stub.x.name.clone(), stub.clone());
             if let Some(found) = found {
                 return Err(self.emit_error(vir::well_formed::func_conflict_error(&stub, &found)));
@@ -471,7 +473,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let mut cratex = (*pre_crate.krate_without_funs).clone();
         let mut found_err = None;
         let mut all_dyn_compatability_checks = vec![initial_wf_results.dyn_compatability_checks];
-        for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
+        for stub in pre_crate.infos.iter().flat_map(|info| info.iter_stubs()) {
             match self.get_checked_function(&stub.x.name) {
                 Ok((function, _, _, dyn_compatability_checks)) => {
                     cratex.functions.push(function);
@@ -561,7 +563,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         // Resolution inference
         // Make sure to do this before the res_info goes stale
         let mut res_infos = HashMap::<Fun, Arc<ResolutionInfo>>::new();
-        for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
+        for stub in pre_crate.infos.iter().flat_map(|info| info.iter_stubs()) {
             match self.get_checked_function(&stub.x.name) {
                 Ok((_, _, Some(res_info), _)) => {
                     let found = res_infos.insert(stub.x.name.clone(), res_info.clone());
@@ -602,7 +604,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
 
         let pre_crate = self.get_pre_crate()?;
         let mut e = ErasureModes { local_modes: vec![], binder_modes: vec![], ctor_modes: vec![] };
-        for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
+        for stub in pre_crate.infos.iter().flat_map(|info| info.iter_stubs()) {
             let (_, erasure_modes, _, _) = self.get_checked_function(&stub.x.name)?;
             merge_erasure_modes(&mut e, erasure_modes);
         }

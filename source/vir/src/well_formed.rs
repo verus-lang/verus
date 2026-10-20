@@ -121,7 +121,7 @@ pub fn finish_dyn_compatability_checks(
     }
 
     let mut errors = vec![];
-    for (path, span) in checks.iter().map(|s| s.iter()).flatten() {
+    for (path, span) in checks.iter().flat_map(|s| s.iter()) {
         if let Err(err) = dyn_compatability_check(&trait_map, path, span) {
             errors.push(err);
         }
@@ -1959,7 +1959,7 @@ fn check_conflicts(
 ) -> Result<HashMap<Path, Datatype>, VirErr> {
     let mut dts: HashMap<Path, Datatype> = HashMap::new();
     for datatype in
-        krate.datatypes.iter().chain(other_crates.iter().map(|k| k.datatypes.iter()).flatten())
+        krate.datatypes.iter().chain(other_crates.iter().flat_map(|k| k.datatypes.iter()))
     {
         let path = match &datatype.x.name {
             Dt::Path(p) => p,
@@ -2173,7 +2173,7 @@ fn check_reveal_groups(
     let reveal_groups: HashSet<Fun> = krate
         .reveal_groups
         .iter()
-        .chain(other_krates.iter().map(|k| k.reveal_groups.iter()).flatten())
+        .chain(other_krates.iter().flat_map(|k| k.reveal_groups.iter()))
         .map(|g| g.x.name.clone())
         .collect();
 
