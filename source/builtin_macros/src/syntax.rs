@@ -1113,7 +1113,7 @@ impl Visitor {
                         }
                     }
                     Err(err_expr) => {
-                        exprs.exprs[0] = *err_expr;
+                        spec_stmts.push(Stmt::Expr(*err_expr, Some(Semi { spans: [token.span] })));
                         false
                     }
                 };
