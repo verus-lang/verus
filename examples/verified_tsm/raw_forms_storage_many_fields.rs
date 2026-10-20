@@ -1,8 +1,8 @@
 //! Raw backend storage with many (nine) storage fields. The raw protocol's
 //! storage is one `IMap<__StorageKey, __StorageValue>`, tagged by field, as for
 //! any number of storage fields (`raw_forms_storage_option.rs`); with a map
-//! field among them, `State::__storage_tags` states it as the union of the
-//! fields' tagged parts.
+//! field among them, it is defined per key (`State::__storage_dom`/
+//! `__storage_val`).
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 use vstd::resource::algebra::ResourceAlgebra;

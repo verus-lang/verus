@@ -374,8 +374,8 @@ that its variants mention. The state's storage `s.__storage()` is the union of
 the fields' tagged parts `__tag_f(s.f)` (`__tag_f(s.f.to_imap())` for a
 `storage_map`); with several storage fields not all `storage_option`, it is
 defined per key (`State::__storage_dom`/`__storage_val`, which keeps the solver's
-work per key independent of the number of fields), and `State::__storage_tags(s)`
-states the union. A machine without storage fields uses the plain
+work per key independent of the number of fields), equal to the union
+extensionally (clients compare with `=~=`). A machine without storage fields uses the plain
 `vstd::resource::tsm::Token`.
 
 For each storage field `f` the machine's module has helpers (generic over the

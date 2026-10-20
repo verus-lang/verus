@@ -456,8 +456,8 @@ proof fn arbitrary_actual_carrier(tracked p_m: IMap<int, Goo>, tracked p_opt: Op
     let tracked p_opt = Y::__pack_storage_opt(p_opt);
     tagged.tracked_union_prefer_right(p_opt);
     assert forall|s: Y::State| Y::State::initialize(s, m, opt) implies tagged == s.__storage() by {
-        Y::State::__storage_tags(s);
         assert(p_m.to_imap() =~= m);
+        assert(tagged =~= s.__storage());
     }
     let tracked token = Y::Protocol::initialize(tagged, m, opt);
 }

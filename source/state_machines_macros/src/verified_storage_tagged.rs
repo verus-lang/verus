@@ -11,8 +11,8 @@
 //! parts (`__tag_f(s.f)`, `__tag_f(s.f.to_imap())` for a `storage_map`). It is
 //! written as that union for a machine with one storage field or only
 //! `storage_option` fields; otherwise it is defined per key by two named spec
-//! functions of `State` (`__storage_dom`/`__storage_val`), and the lemma
-//! `State::__storage_tags(s)` states the union.
+//! functions of `State` (`__storage_dom`/`__storage_val`), equal to the union
+//! extensionally.
 //!
 //! Per storage field `f` the layout also generates, as functions of the
 //! machine's module (generic over the type parameters the storage types
@@ -237,9 +237,6 @@ pub struct Tagged {
     /// The named per-key functions of the state's storage (`__storage_dom`/`__storage_val`).
     dom_fn: Ident,
     val_fn: Ident,
-    /// The lemma stating the storage as the union of the fields' tagged parts
-    /// (`__storage_tags`; with `dom_fn`/`val_fn`).
-    tags_fn: Ident,
     /// Every storage field is a `storage_option`.
     options_only: bool,
     /// The state's storage is written as the union of its fields' tagged
@@ -320,10 +317,9 @@ impl Tagged {
         let helpers = Params::new(sm, &quote! {#(#key_variants)* #(#value_variants)*});
         let dom_fn = fresh(&mut names, "__storage_dom");
         let val_fn = fresh(&mut names, "__storage_val");
-        let tags_fn = fresh(&mut names, "__storage_tags");
         let options_only = fields.iter().all(|f| matches!(f.stype, ShardableType::StorageOption(_)));
         let by_tags = options_only || fields.len() == 1;
-        Ok(Some(Tagged { fields, key, value, helpers, dom_fn, val_fn, tags_fn, options_only, by_tags }))
+        Ok(Some(Tagged { fields, key, value, helpers, dom_fn, val_fn, options_only, by_tags }))
     }
 
     /// The key type (`__StorageKey<..>`).
@@ -731,25 +727,12 @@ impl Tagged {
         let storage_fns = if self.by_tags {
             quote! {}
         } else {
-            let (dom, val, tags_fn) = (&self.dom_fn, &self.val_fn, &self.tags_fn);
-            let tags = self.tags(&quote! {s});
-            let k = format_ident!("__tsm_key", span = Span::mixed_site());
-            let dom_cases = self.cases(&k, &quote! {s.__storage().contains_key(#k) == (#tags).contains_key(#k)});
-            let val_cases = self.cases(&k, &quote! {s.__storage()[#k] == (#tags)[#k]});
+            let (dom, val) = (&self.dom_fn, &self.val_fn);
             quote! {
                 /// Whether the storage of `s` holds `key`.
                 pub open spec fn #dom(s: #st, key: #kt) -> bool { match key { #(#domains)* } }
                 /// The storage of `s` at `key`.
                 pub open spec fn #val(s: #st, key: #kt) -> #vt { match key { #(#values)* } }
-                /// The storage of `s` is the union of the tagged parts of its storage fields.
-                pub proof fn #tags_fn(s: #st)
-                    ensures s.__storage() == #tags,
-                {
-                    assert(::vstd::prelude::ext_equal(s.__storage(), #tags)) by {
-                        assert forall|#k: #kt| s.__storage().contains_key(#k) == (#tags).contains_key(#k) by {#dom_cases};
-                        assert forall|#k: #kt| s.__storage().contains_key(#k) implies s.__storage()[#k] == (#tags)[#k] by {#val_cases};
-                    }
-                }
             }
         };
         quote! {
