@@ -12,8 +12,8 @@ We're porting its contents, piece by piece, into the new, compositionally-built 
 representation makes that possible. The new model builds `PointsTo<T>` on top of
 `PointsToUnaligned<T>` (which now directly holds a `TypedValue<T>` — a tracked `Tracked<T>` when valid —
 plus a `PointsToUntyped`), which is built on `PointsToUntyped = SeqPointsTo<[u8],
-PointsToSingleton>`, bottoming out at `PointsToSingleton` (the one remaining
-`#[verifier::external_body]` primitive, in `points_to.rs`). Because `PointsToUnaligned<T>` is no
+PointsToByte>`, bottoming out at `PointsToByte` (the one remaining
+`#[verifier::external_body]` primitive, in `raw_ptr_final/points_to_model.rs`). Because `PointsToUnaligned<T>` is no
 longer opaque, a lot of what used to require an axiom can now be proved by directly manipulating
 its fields.
 
@@ -75,7 +75,7 @@ invariant on `impl<T: ?Sized> PointsTo<T>` is just there for reference and won't
 
 - `mem_contents_seq`/`len`/`spec_index`, `is_init`/`is_uninit`/`is_fully_uninit`, `value` →
   `seq_typed_value`/`len`/`spec_index`, `is_valid`/`is_empty`/`is_fully_empty`, `seq_value`.
-- `is_nonnull`/`ptr_bounds`/`provenance_non_null` → the `PointsToProperties` trait methods;
+- `is_nonnull`/`ptr_bounds`/`provenance_non_null` → the `PTProperties` trait methods;
   `is_aligned` → `wf()` includes alignment; `is_disjoint` → `is_disjoint_seqpt` / trait
   `is_disjoint`.
 - `abstract_bytes_decode` → `bytes_decode`/`bytes_equiv`/`bytes_len`.
@@ -230,7 +230,7 @@ The old `impl SeqPointsTo<u8>` is ported as `SeqPointsTo<T, PointsTo<T>>::from_u
   - To avoid cycles, `points_to_permissions.rs`, `points_to.rs`, and `type_representation.rs` no
     longer `broadcast use group_vstd_default` at module level (matching the other modules in the
     default group). Functions that need it use it in their body. Functions the lemmas depend on
-    (the `PointsToProperties` impl methods and the lemmas themselves) use the specific groups
+    (the `PTProperties` impl methods and the lemmas themselves) use the specific groups
     `{group_raw_ptr_axioms, group_layout_axioms, group_seq_axioms}` instead, and
     `type_representation.rs` uses `{group_layout_axioms, group_seq_axioms}` at module level.
 
@@ -248,9 +248,9 @@ The old `impl SeqPointsTo<u8>` is ported as `SeqPointsTo<T, PointsTo<T>>::from_u
   `tracked_pt_unaligned` intentionally have no `wf` clauses (they live in `?Sized` impl blocks,
   where `wf` isn't defined); each has a comment explaining this. Follow-up: `PointsTo::borrow` now
   requires `self.wf()` for consistency, and `SeqPointsTo::tracked_seq_pt` now ensures every element
-  is `wf()` (like `into_seq`). The `PointsToProperties` trait contracts in `points_to.rs` were
+  is `wf()` (like `into_seq`). The `PTProperties` trait contracts in `points_to.rs` were
   checked and already require `wf_basic()`; note `is_disjoint` puts no `wf` requirement on `other`
-  (its bound is only `PointsToPhys`).
+  (its bound is only `PTPhys`).
 - [x] Removed the `Tracked<...>` wrappers around `PointsTo::pt_unaligned` and
   `PointsToUnaligned::pt_untyped`, since the structs holding them are themselves `tracked`. This
   dropped the `.get()`/`.borrow()`/`.borrow_mut()` calls, the `Tracked(...)` in constructors, and the
@@ -308,10 +308,10 @@ The old `impl SeqPointsTo<u8>` is ported as `SeqPointsTo<T, PointsTo<T>>::from_u
   write (`put(*val)` / `put_typed_value(val.tracked_copy())`). The `SeqPointsTo` ones are not:
   `Seq` isn't `Copy`, so copying a borrowed `&Seq` needs an element-by-element helper.
   `copy_typed_value_subrange` is also a port of the old `copy_mem_contents_subrange`.
-- [x] Moved `ptrs_len_same` / `ptrs_len_same_valid_decode` into the `PointsToProperties` trait as a
+- [x] Moved `ptrs_len_same` / `ptrs_len_same_valid_decode` into the `PTProperties` trait as a
   single method, `ptrs_len_same_valid(old, new)`, together with
   `stays_wf_basic(old, new)` (`old.wf_basic()` and `ptrs_len_same_valid` imply `new.wf_basic()`).
-  - Implementations: `PointsToSingleton` (same pointer; `stays_wf_basic` is trivial), the generic
+  - Implementations: `PointsToByte` (same pointer; `stays_wf_basic` is trivial), the generic
     `SeqPointsTo<T, P>` (same pointer and length, plus per-element `P::ptrs_len_same_valid` and
     element pointers; `stays_wf_basic` calls `P::stays_wf_basic` per element),
     `PointsToUnaligned<T>` and `PointsTo<T>`. The generic `SeqPointsTo` definition replaces both

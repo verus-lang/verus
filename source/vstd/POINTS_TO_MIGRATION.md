@@ -5,42 +5,43 @@ Reference for updating code that used anything from `raw_ptr.rs`. This is not on
 covers the rest of `raw_ptr.rs`:
 
 * **The raw pointer model:** `PtrData`, `Provenance` / `ProvenanceData`, `ptr_mut_from_data`, and
-  the axioms about them. These now live in `raw_ptr_new.rs`, and `Dealloc` is folded into
+  the axioms about them. These now live in `raw_ptr_final/ptr_model.rs`, and `Dealloc` is folded into
   `ProvenanceData`.
 * **The trusted specs** for exec pointer operations: pointer casts, `ptr_ref` / `ptr_mut_ref`,
-  `ptr_mut_ref_join`, `SharedReference`, and so on. These now live in `raw_ptr_new.rs` and
-  `shared_reference.rs`, stated against the new permissions.
+  `ptr_mut_ref_join`, `SharedReference`, and so on. These now live in `raw_ptr_final/ptr_specs.rs` and
+  `raw_ptr_final/shared_reference.rs`, stated against the new permissions.
 
 It describes the API as of this branch (`verify-rustlib-refactor`). The port is not finished (see
 [What is not available yet](#8-what-is-not-available-yet)), and
 [PORTING_STATUS.md](PORTING_STATUS.md) tracks progress.
 
-Everything below was written by comparing the signatures in `raw_ptr.rs` against
-`points_to_permissions.rs`, `points_to.rs`, `raw_ptr_new.rs` and `shared_reference.rs`. The new
-files verify in vstd.
+Everything below was written by comparing the signatures in the old `raw_ptr.rs` against
+the files in the new `raw_ptr_final/` directory. The new files verify in vstd.
 
 ## 1. Where things live
 
-`vstd::raw_ptr` is no longer compiled into vstd (it is commented out in `vstd.rs`). Its contents
-were split across three modules, so **replace each `use vstd::raw_ptr::*;` (or `use
-crate::vstd::raw_ptr::...`) with imports of whichever of these modules the code actually needs**:
+`vstd::raw_ptr` is no longer compiled into vstd (it is commented out in `vstd.rs`).
+Its replacement, `vstd::raw_ptr_final`, is a directory of modules, and `raw_ptr_final/mod.rs` re-exports all of them,
+so **replace each `use vstd::raw_ptr::*;` (or `use crate::vstd::raw_ptr::...`) with
+`use vstd::raw_ptr_final::*;`**. The contents are split as follows:
 
-| What the import was for | New module |
+| What the import was for | Module (re-exported from `vstd::raw_ptr_final`) |
 |---|---|
-| The permissions: `PointsTo<T>`, `PointsToUnaligned<T>`, `SeqPointsTo<T, P>`, `PointsToUntyped`, `TypedValue<T>` | `vstd::points_to_permissions`, together with `vstd::points_to` (see below) |
-| The pointer/provenance model: `PtrData`, `Provenance`, `ProvenanceData`, `AllocId`, `ptr_addr_in_bounds`, `ptr_mut_from_data`, `ptr_from_data`, `ptr_null*`, the pointer casts (`cast_ptr_to_thin_ptr`, `cast_slice_ptr_to_slice_ptr`, ...), `group_raw_ptr_axioms` | `vstd::raw_ptr_new` |
-| Exec/proof functions that turn pointers and permissions into references: `ptr_ref`, `ptr_mut_ref`, `ptr_mut_ref_join`, `mut_ref_to_shr_points_to`, `tracked_mut_ref_slice_subrange`/`_idx`, `cast_mut_ref_to_ptr` (and the slice/`str` versions) | `vstd::raw_ptr_new` |
-| `SharedReference`, `ptr_ref2`, `ptr_ref2_ghost` | `vstd::shared_reference` |
+| The permissions: `PointsTo<T>`, `PointsToUnaligned<T>`, `SeqPointsTo<T, P>`, `PointsToUntyped`, `TypedValue<T>` | `raw_ptr_final::points_to_model` (definitions), `raw_ptr_final::points_to_model::points_to_ops` (operations), `raw_ptr_final::points_to_collections` (the typed `SeqPointsTo<T, PointsTo<T>>`) |
+| The pointer/provenance model: `PtrData`, `Provenance`, `ProvenanceData`, `AllocId`, `ptr_addr_in_bounds`, `ptr_mut_from_data`, `ptr_from_data`, `group_raw_ptr_axioms` | `raw_ptr_final::ptr_model` |
+| `ptr_null*` and the pointer casts (`cast_ptr_to_thin_ptr`, `cast_slice_ptr_to_slice_ptr`, ...) | `raw_ptr_final::ptr_specs` |
+| Exec/proof functions that turn pointers and permissions into references: `ptr_ref`, `ptr_mut_ref`, `ptr_mut_ref_join`, `mut_ref_to_shr_points_to`, `tracked_mut_ref_slice_subrange`/`_idx`, `cast_mut_ref_to_ptr` (and the slice/`str` versions) | `raw_ptr_final::ptr_specs` |
+| `SharedReference`, `ptr_ref2`, `ptr_ref2_ghost` | `raw_ptr_final::shared_reference` |
 | `Dealloc` / `DeallocData` | removed; folded into `ProvenanceData` (see [`Dealloc` → provenance](#dealloc--provenance)) |
 
 `mut_ref_ptr` is a builtin and comes from the prelude, so it needs no `raw_ptr` import.
 
-`vstd::points_to` holds the permission traits (`PointsToPhys`, `PointsToProperties`, `FixedSize`)
-and `PointsToSingleton`. These are new and have no `raw_ptr` counterpart, so `points_to` never
-replaces a `raw_ptr` import on its own. It is needed alongside `points_to_permissions` because
-`ptr()` and `size()` on the new types are **trait methods** (`PointsToPhys`), and `wf_basic` and
+`raw_ptr_final::points_to_model` also holds the permission traits (`PTPhys`, `PTProperties`, `FixedSize`)
+and `PointsToByte`. These are new and have no counterpart in the old `raw_ptr`.
+`ptr()` and `size()` on the new types are **trait methods** (`PTPhys`), and `wf_basic` and
 the `is_nonnull` / `ptr_bounds` / `provenance_not_none` / `is_disjoint` lemmas come from
-`PointsToProperties`. Without `use vstd::points_to::*;`, calls like `perm.ptr()` will not resolve.
+`PTProperties`, so the traits must be in scope; `use vstd::raw_ptr_final::*;` brings them in.
+Without them, calls like `perm.ptr()` will not resolve.
 
 ## 2. Representation: from opaque to concrete
 
@@ -52,8 +53,8 @@ New: the permissions are ordinary tracked structs built on top of each other:
 ```
 PointsTo<T>            { pt_unaligned: PointsToUnaligned<T> }          // + aligned to T
 PointsToUnaligned<T>   { val: TypedValue<T>, pt_untyped: PointsToUntyped }
-PointsToUntyped        = SeqPointsTo<[u8], PointsToSingleton>
-PointsToSingleton      // external_body: the single remaining primitive (one byte)
+PointsToUntyped        = SeqPointsTo<[u8], PointsToByte>
+PointsToByte           // external_body: the single remaining primitive (one byte)
 TypedValue<T>          = Empty | Valid(Tracked<T>)
 ```
 
@@ -82,7 +83,7 @@ New permissions have **no type invariant**. Well-formedness is an explicit predi
 * `PointsTo<T>::wf()`: the above plus the address is aligned to `T`.
 * `SeqPointsTo<T, P>::wf()`: see [section 6](#6-seqpointsto).
 
-Each type also has a predicate `ptrs_len_same_valid(old, new)` (a `PointsToProperties` trait
+Each type also has a predicate `ptrs_len_same_valid(old, new)` (a `PTProperties` trait
 method): `new` keeps `old`'s pointers and length and, for typed values, still decodes. The inherent
 `stays_wf(old, new)` lemma turns `old.wf()` plus that predicate into `new.wf()`.
 
@@ -173,7 +174,7 @@ possibly-empty `TypedValue<T>` (e.g. `borrow_value` vs `borrow_typed_value`).
 ### `Dealloc` → provenance
 
 The `Dealloc` permission (and `DeallocData`) no longer exists: it was folded into the provenance
-model in `raw_ptr_new.rs`. Its main purpose was `Dealloc::size`, the originally requested
+model in `raw_ptr_final/ptr_model.rs`. Its main purpose was `Dealloc::size`, the originally requested
 allocation size, and `ProvenanceData` now records that as `orig_size()`. Everything else `Dealloc`
 exposed was already derived from its provenance, so read these facts off the pointer's provenance
 (`ptr@.provenance.unwrap()`, for an allocation with `Some` provenance):
@@ -198,9 +199,9 @@ exposed was already derived from its provenance, so read these facts off the poi
 | Function | Change |
 |---|---|
 | `zero_sized(ptr)` | Same idea. The inline provenance-bounds requirement is now `ptr_addr_in_bounds(ptr)`. Ensures `wf()`, `is_empty()`, `bytes().len() == size_of::<T>()`. |
-| `is_nonnull`, `ptr_bounds`, `provenance_not_none` | Now `PointsToProperties` trait methods; require `wf_basic()`. `ptr_bounds` is stated with `self.size()`. |
+| `is_nonnull`, `ptr_bounds`, `provenance_not_none` | Now `PTProperties` trait methods; require `wf_basic()`. `ptr_bounds` is stated with `self.size()`. |
 | `is_aligned` | Requires `wf()` (no type invariant). |
-| `is_disjoint<S>` | Now `is_disjoint_pointsto<S>`; additionally requires `self.wf()`. The generic trait method `is_disjoint` works against any `PointsToPhys`. |
+| `is_disjoint<S>` | Now `is_disjoint_pointsto<S>`; additionally requires `self.wf()`. The generic trait method `is_disjoint` works against any `PTPhys`. |
 | `into_unaligned`, `as_unaligned` | Require `wf()`, ensure `perm.wf()`, `perm@ == self@`. |
 | `abstract_bytes_decode` | `bytes_decode`, requires `wf()`. |
 | `cast_to_untyped` | Renamed to `into_untyped_with_typed_value`. Returns `(PointsToUntyped, TypedValue<T>)` instead of `(PointsTo<[u8]>, Option<T>)`, with `typed_value == self.typed_value()`. Requires `wf()`. Ensures `pt_untyped.wf()` and `pt_untyped.len() == size_of::<T>()`; no `is_fully_uninit` (untyped has no validity). |
@@ -219,7 +220,7 @@ exposed was already derived from its provenance, so read these facts off the poi
 
 | Function | Change |
 |---|---|
-| `is_nonnull`, `ptr_bounds`, `provenance_not_none`, `is_disjoint` | `PointsToProperties` trait methods, delegating to the underlying `PointsToUntyped`. `is_disjoint_unaligned<S>` is the specialized form. |
+| `is_nonnull`, `ptr_bounds`, `provenance_not_none`, `is_disjoint` | `PTProperties` trait methods, delegating to the underlying `PointsToUntyped`. `is_disjoint_unaligned<S>` is the specialized form. |
 | `into_aligned` | Now requires `wf()` and aligned address; ensures `perm.wf()`. |
 | `as_aligned` | Proved with `shr_ref_struct_wrap` (was an axiom); requires `wf()` and aligned address, ensures `perm.wf()`. |
 | `zero_sized` | Now defined on `PointsToUnaligned<T>` (generic in `T`); the old one was `PointsToUnaligned<[u8]>::zero_sized<T>`. Ensures `wf()`. The untyped equivalent is `PointsToUntyped::zero_sized<T>`. |
@@ -245,7 +246,7 @@ permission's `wf()`.
 
 The old `SeqPointsTo<T>` wrapped a `Seq<PointsTo<T>>` and a pointer. The new
 `SeqPointsTo<T, PointsToPerm>` is generic over the element permission, which is how
-`PointsToUntyped` (elements are `PointsToSingleton`) and the typed sequence
+`PointsToUntyped` (elements are `PointsToByte`) and the typed sequence
 (`SeqPointsTo<T, PointsTo<T>>`) share one definition. `SeqPointsTo<T, PointsTo<T>>` has a `View`
 (`SeqPointsToData { ptr, seq_pt }`).
 
@@ -366,10 +367,8 @@ longer compiled into vstd, code that depends on them can't be migrated until the
 
 ## 9. Migration checklist
 
-1. Replace `raw_ptr` imports with `points_to_permissions`, `raw_ptr_new` and/or
-   `shared_reference`, depending on what each import was for (see [section 1](#1-where-things-live)).
-   Wherever you import `points_to_permissions`, also import `points_to` to bring the traits into
-   scope.
+1. Replace `use vstd::raw_ptr::*;` with `use vstd::raw_ptr_final::*;`, which re-exports the new
+   modules, including the traits (see [section 1](#1-where-things-live)).
 2. Rename per [section 4](#4-renames) (`is_init` → `is_valid`, `mem_contents` → `typed_value`,
    `abstract_bytes` → `bytes`, `MemContents` → `TypedValue`, ...). On sequences, `mem_contents` →
    `seq_typed_value` and `value` → `seq_value`. `PointsTo::borrow` → `borrow_value`.

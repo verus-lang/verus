@@ -20,7 +20,7 @@ verified. None of the generic versions sketched here have been checked by Verus 
   adds alignment of the base pointer.
 - `PointsTo<T>::const_size()` and `PointsToUnaligned<T>::const_size()` are both `size_of::<T>()`.
 - `PointsTo<T>::ptrs_len_same_valid` already includes `new.ptr() == old.ptr()`.
-- `PointsToPhys`, `FixedSize` and `PointsToProperties` are only implemented for sized `PointsTo<T>`
+- `PTPhys`, `FixedSize` and `PTProperties` are only implemented for sized `PointsTo<T>`
   and `PointsToUnaligned<T>`. For `?Sized` `T` there is no `ptr()`, `wf_basic()` or `wf()`.
 - `size_of` and `align_of` are `V: Sized`. `spec_size_of_val` and `spec_align_of_val` are `?Sized`
   but take a `&V`, which an `Empty` permission doesn't have. `abs_decode` is `?Sized`.
@@ -102,7 +102,7 @@ function bodies. Most functions take `requires self.wf()` and mention `self.ptr(
 `T` neither exists:
 
 - **Trait impls are Sized-only.** `FixedSize` can't apply to an unsized `T` anyway (only
-  `SeqPointsTo` elements need it), but `PointsToPhys`/`PointsToProperties` would need `?Sized` impls.
+  `SeqPointsTo` elements need it), but `PTPhys`/`PTProperties` would need `?Sized` impls.
 - **`ptr()` doesn't work for unsized types.** `PointsToUnaligned::ptr()` is
   `pt_untyped().ptr() as *mut T`, which for an unsized `T` would have to invent the metadata (e.g. a
   slice's length). The struct would need to store a `Ghost<*mut T>`, or each unsized type would need
@@ -185,7 +185,7 @@ neatly here because `wf()` is `wf_basic()` for both types, so trait contracts ca
 with nothing lost. (That isn't true of `PointsToUntyped`, which is why section 1 needed wrappers.)
 
 ```rust
-pub trait TypedPointsTo: PointsToProperties {   // Self::A is the T
+pub trait TypedPointsTo: PTProperties {   // Self::A is the T
     spec fn typed_value(self) -> TypedValue<Self::A>;
     spec fn bytes(self) -> Seq<AbstractByte>;
 
@@ -245,7 +245,7 @@ more lines to duplicate.
 - **Opaque specs in generic code.** Inside a generic impl, `P::bytes()` and `P::typed_value()` can't
   be unfolded, so any fact the proofs need must be a trait lemma (for example
   `bytes().len() == const_size()`). Expect trigger and fixup work, like the `ptrs_len_same` move into
-  `PointsToProperties`.
+  `PTProperties`.
 - **Default `proof fn` bodies.** Supported on this branch: see `test_default1`-`test_default20` in
   `rust_verify_test/tests/traits.rs`. Default proof bodies are verified and inherited (`test_default7`),
   can call a required method of the same trait and use its `ensures` (`test_default8`, the level 2
@@ -271,7 +271,7 @@ trait. Most of the table in section 3 becomes trait methods implemented by both 
 `from_untyped`/`from_untyped_with_value` become trait methods via the `ptr_ok` hook.
 
 **Section 1 (`SeqPointsTo` generalization).** Groups 1-3 are unchanged: they only need
-`PointsToProperties`. Most of group 4 moves into a second generic impl bounded by
+`PTProperties`. Most of group 4 moves into a second generic impl bounded by
 `P: TypedPointsTo + FixedSize`:
 
 | Group 4 item | With `TypedPointsTo` |
@@ -293,7 +293,7 @@ before committing to per-instantiation `wf`s.
 **Section 2 (`?Sized`).** The trait doesn't remove the blockers: unsized `T` still needs `ptr()`,
 `size()`, alignment and `wf()` definitions first. Two points for when that happens:
 
-- `PointsToPhys` requires `Self: Sized`, but `type A` can already be unsized (`PointsToUntyped` has
+- `PTPhys` requires `Self: Sized`, but `type A` can already be unsized (`PointsToUntyped` has
   `A = [u8]`), so `TypedPointsTo` itself can be stated for unsized `A`.
 - The by-value methods (`take`, `put`, `copy`, `from_parts` with a value) would need
   `where Self::A: Sized` and the by-reference ones a `?Sized` way to get `&A` out of a `TypedValue`.
