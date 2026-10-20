@@ -16,10 +16,7 @@ command = "cargo"
 args = ["clean"]
 
 [tasks.fmt]
-dependencies = [
-    "fmt-exclude-vstd",
-    "fmt-vstd",
-]
+dependencies = ["fmt-exclude-vstd", "fmt-vstd"]
 
 [tasks.fmt-exclude-vstd]
 command = "cargo-verus"
@@ -33,7 +30,12 @@ dependencies = [
 
 [tasks.fmt-verus-prettyplease]
 command = "cargo"
-args = ["fmt", "--manifest-path", "../dependencies/prettyplease/Cargo.toml", "${@}"]
+args = [
+    "fmt",
+    "--manifest-path",
+    "../dependencies/prettyplease/Cargo.toml",
+    "${@}",
+]
 
 [tasks.fmt-verus-syn]
 command = "cargo"
@@ -46,29 +48,29 @@ args = ["fmt", "--manifest-path", "vstd/Cargo.toml", "${@}"]
 dependencies = ["install-cargo-verus"]
 
 [tasks.install]
-dependencies = [
-    "install-cargo-verus",
-    "install-verus",
-]
+dependencies = ["install-cargo-verus", "install-verus"]
 
+# There's no need to list `build-cargo-verus` as a dependency,
+# because `cargo install --path` does an incremental `build`.
 [tasks.install-cargo-verus]
 command = "cargo"
 args = ["install", "--path", "cargo-verus"]
 
+# There's no need to list `build-verus` as a dependency,
+# because `cargo install --path` does an incremental `build`.
 [tasks.install-verus]
 command = "cargo"
 args = ["install", "--path", "verus"]
 dependencies = ["install-rust-verify"]
 
+# There's no need to list `build-rust-verify` as a dependency,
+# because `cargo install --path` does an incremental `build`.
 [tasks.install-rust-verify]
 command = "cargo"
 args = ["install", "--path", "rust_verify"]
 
 [tasks.build]
-dependencies = [
-    "build-exclude-vstd",
-    "build-vstd",
-]
+dependencies = ["build-exclude-vstd", "build-vstd"]
 
 [tasks.build-exclude-vstd]
 dependencies = ["build-cargo-verus"]
