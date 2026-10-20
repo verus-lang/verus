@@ -2,31 +2,54 @@
 default_to_workspace = false
 
 [tasks.default]
-alias = "vstd"
+alias = "build"
 
 [tasks.clean]
 command = "cargo"
 args = ["clean"]
 
 [tasks.fmt]
+dependencies = [
+    "fmt-verus-prettyplease",
+    "fmt-verus-syn",
+    "fmt-verus",
+    "fmt-vstd",
+]
+
+[tasks.fmt-verus]
 command = "cargo"
 args = ["run", "--release", "-p", "cargo-verus", "--", "fmt"]
 
-[tasks.vstd]
+[tasks.fmt-verus-prettyplease]
+command = "cargo"
+args = ["fmt", "--manifest-path", "../dependencies/prettyplease/Cargo.toml"]
+
+[tasks.fmt-verus-syn]
+command = "cargo"
+args = ["fmt", "--manifest-path", "../dependencies/syn/Cargo.toml"]
+
+[tasks.fmt-vstd]
+command = "cargo"
+args = ["run", "--release", "-p", "cargo-verus", "--", "fmt", "--manifest-path", "vstd/Cargo.toml"]
+
+[tasks.build]
+dependencies = ["build-cargo-verus", "build-vstd"]
+
+[tasks.build-vstd]
 command = "cargo"
 args = ["run", "--release", "-p", "cargo-verus", "--", "build", "--manifest-path", "vstd/Cargo.toml"]
-dependencies = ["cargo-verus"]
+dependencies = ["build-cargo-verus"]
 
-[tasks.cargo-verus]
+[tasks.build-cargo-verus]
 command = "cargo"
 args = ["build", "--release", "-p", "cargo-verus"]
-dependencies = ["verus"]
+dependencies = ["build-verus"]
 
-[tasks.verus]
+[tasks.build-verus]
 command = "cargo"
 args = ["build", "--release", "-p", "verus"]
-dependencies = ["rust_verify"]
+dependencies = ["build-rust-verify"]
 
-[tasks.rust_verify]
+[tasks.build-rust-verify]
 command = "cargo"
 args = ["build", "--release", "-p", "rust_verify"]
