@@ -57,17 +57,17 @@ To check the Verus and vendored dependencies' source code, and `vstd`'s formatti
 type the following from the `source` directory:
 
 ```sh
-cargo verus fmt --check
+cargo make fmt --check
 ```
 
-If the source code follows the guidelines, `cargo verus fmt --check` will produce no output.
+If the source code follows the guidelines, `cargo make fmt --check` will produce no output.
 Otherwise, it will report suggestions on how to reformat the source code, and will output a
 non-zero status code.
 
 To automatically apply these suggestions to the source code, type:
 
 ```sh
-cargo verus fmt
+cargo make fmt
 ```
 
 If you want to use VS Code with `rust-analyzer` to edit the source code of Verus,
@@ -238,16 +238,18 @@ Stylistically, inside `vstd`:
 
 - We add a `lemma_` prefix to the name of a lemma (i.e., a `proof fn`) to make its purpose explicit.
 - We try to make lemmas associated functions when possible, e.g., `my_map.lemma_remove_keys_len(keys)`, not `lemma_remove_keys_len(my_map, keys)`.
-- Run `cargo verus fmt --manifest-path vstd/Cargo.toml` inside `source/` to format `vstd` using `verusfmt`.
+- Run `cargo make fmt-vstd` inside `source/` to format `vstd` using `verusfmt`.
 
 ### Tips for testing and verifying your contribution
 
 If you're contributing to the standard library, you should also test the
 standalone build of that library by running the following from the repository
 root:
+
 ```
 cargo build --manifest-path source/vstd/Cargo.toml
 ```
+
 Don't run `cargo build` from inside `source/vstd`: Cargo would then pick up
 `source/.cargo/config.toml`, which sets `--cfg verus_keep_ghost` and makes
 `rustc` try to compile the ghost code, which only Verus can do.
@@ -323,14 +325,17 @@ See `dependencies/syn/README.md` for details.
 
 ### Cheat Sheet: Vargo to Cargo
 
-For brevity, this section assumes installing `cargo-verus` via `cargo install --path cargo-verus`. Without that, replace `cargo verus $ARGS` with `cargo run -p cargo-verus -- $ARGS` instead.
+The following section assumes that `cargo-make` has been installed via `cargo install cargo-make`.
 
-| Vargo                        | Cargo                                                                |
-| ---------------------------- | -------------------------------------------------------------------- |
-| `source ../tools/activate`   | `cargo install --path cargo-verus`                                   |
-| `vargo build --exclude vstd` | `cargo build`                                                        |
-| `vargo build`                | `cargo build && cargo verus build --manifest-path vstd/Cargo.toml`   |
-| `vargo build -p vstd`        | `cargo verus build --manifest-path vstd/Cargo.toml`                  |
-| `vargo fmt --exclude vstd`   | `cargo verus fmt`                                                    |
-| `vargo fmt`                  | `cargo verus fmt && cargo verus fmt --manifest-path vstd/Cargo.toml` |
-| `vargo fmt -p vstd`          | `cargo verus fmt --manifest-path vstd/Cargo.toml`                    |
+**IMPORTANT**: The `cargo-make` tasks that depend on `cargo-verus`, `verus`, or `rust_verify`, install them automatically _only if they are missing_. You **must** re-run `cargo make install` for
+any changes to those tools to take effect.
+
+| Vargo                        | Cargo                           |
+| ---------------------------- | ------------------------------- |
+| `source ../tools/activate`   | `cargo make install`            |
+| `vargo build`                | `cargo make build`              |
+| `vargo build --exclude vstd` | `cargo make build-exclude-vstd` |
+| `vargo build -p vstd`        | `cargo make build-vstd`         |
+| `vargo fmt`                  | `cargo make fmt`                |
+| `vargo fmt --exclude vstd`   | `cargo make fmt-exclude-vstd`   |
+| `vargo fmt -p vstd`          | `cargo make fmt-vstd`           |

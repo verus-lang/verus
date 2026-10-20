@@ -53,17 +53,15 @@ rustup toolchain install
 
 The recommended way to build Verus is by using the Cargo-based tooling.
 
-Run the following commands:
+The following assumes that the `cargo-make` tool was installed via `cargo install cargo-make`.
+
+Run the `build` task:
 
 ```sh
-cargo build --release
-cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
+cargo make build
 ```
 
-The first command builds Verus and its supporting libraries. The second builds and verifies
-`vstd`, and places its required artifacts in `target-verus/release` alongside the other Verus
-artifacts. Omit `--release` from both commands for a debug build, which uses `target-verus/debug`
-instead.
+For more details, see the `Makefile.toml` file, which contains the task definitions for `cargo make`.
 
 ### Build with Vargo
 
@@ -102,7 +100,7 @@ After running the build steps above, you can verify an example file.
 From the `source` directory, run:
 
 ```sh
-cargo run -p rust_verify --release -- ../examples/vectors.rs
+cargo run --release -p rust_verify -- ../examples/vectors.rs
 ```
 
 You can also run the verifier directly with:
