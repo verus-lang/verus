@@ -10,46 +10,76 @@ args = ["clean"]
 
 [tasks.fmt]
 dependencies = [
-    "fmt-verus-prettyplease",
-    "fmt-verus-syn",
     "fmt-verus",
     "fmt-vstd",
 ]
 
 [tasks.fmt-verus]
-command = "cargo"
-args = ["run", "--release", "-p", "cargo-verus", "--", "fmt"]
+command = "cargo-verus"
+install_crate = false
+args = ["fmt", "${@}"]
+dependencies = [
+    "fmt-verus-prettyplease",
+    "fmt-verus-syn",
+    "install-cargo-verus",
+]
 
 [tasks.fmt-verus-prettyplease]
 command = "cargo"
-args = ["fmt", "--manifest-path", "../dependencies/prettyplease/Cargo.toml"]
+args = ["fmt", "--manifest-path", "../dependencies/prettyplease/Cargo.toml", "${@}"]
 
 [tasks.fmt-verus-syn]
 command = "cargo"
-args = ["fmt", "--manifest-path", "../dependencies/syn/Cargo.toml"]
+args = ["fmt", "--manifest-path", "../dependencies/syn/Cargo.toml", "${@}"]
 
 [tasks.fmt-vstd]
+command = "cargo-verus"
+install_crate = false
+args = ["fmt", "--manifest-path", "vstd/Cargo.toml", "${@}"]
+dependencies = ["install-cargo-verus"]
+
+[tasks.install]
+dependencies = [
+    "install-cargo-verus",
+    "install-verus",
+]
+
+[tasks.install-cargo-verus]
 command = "cargo"
-args = ["run", "--release", "-p", "cargo-verus", "--", "fmt", "--manifest-path", "vstd/Cargo.toml"]
+args = ["install", "--path", "cargo-verus"]
+
+[tasks.install-verus]
+command = "cargo"
+args = ["install", "--path", "verus"]
+dependencies = ["install-rust-verify"]
+
+[tasks.install-rust-verify]
+command = "cargo"
+args = ["install", "--path", "rust_verify"]
 
 [tasks.build]
-dependencies = ["build-cargo-verus", "build-vstd"]
+dependencies = [
+    "build-cargo-verus",
+    "build-verus",
+    "build-vstd",
+]
 
 [tasks.build-vstd]
-command = "cargo"
-args = ["run", "--release", "-p", "cargo-verus", "--", "build", "--manifest-path", "vstd/Cargo.toml"]
-dependencies = ["build-cargo-verus"]
+command = "cargo-verus"
+install_crate = false
+args = ["build", "--manifest-path", "vstd/Cargo.toml", "${@}"]
+dependencies = ["install-cargo-verus"]
 
 [tasks.build-cargo-verus]
 command = "cargo"
-args = ["build", "--release", "-p", "cargo-verus"]
+args = ["build", "--release", "-p", "cargo-verus", "${@}"]
 dependencies = ["build-verus"]
 
 [tasks.build-verus]
 command = "cargo"
-args = ["build", "--release", "-p", "verus"]
+args = ["build", "--release", "-p", "verus", "${@}"]
 dependencies = ["build-rust-verify"]
 
 [tasks.build-rust-verify]
 command = "cargo"
-args = ["build", "--release", "-p", "rust_verify"]
+args = ["build", "--release", "-p", "rust_verify", "${@}"]
