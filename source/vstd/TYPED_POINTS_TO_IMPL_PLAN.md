@@ -233,12 +233,14 @@ Independent of the new traits; it changes existing ones.
    `PointsToUntyped = SeqPointsTo<u8, PointsToByte>`, and its `wf()` loses the clause that moved.
 3. Remove `FixedSize`: `P::const_size()` → `P::size(())`; drop the `size_eq_const_size` calls.
 4. Add `thin_ptr` (`self.ptr() as *mut T`) to `SeqPointsTo<T, PointsTo<T>>` in `points_to_collections.rs`,
-   and restate the typed impl's pointer contracts with it
-   (the structural impl's contracts use `ptr() as *mut T` directly)
-   (list in [`SeqPointsTo`'s pointer and sizes](TYPED_POINTS_TO_NOTES.md#seqpointstos-pointer-and-sizes)):
-   `from_seq`, `empty`, `zero_sized`/`zero_sized_helper`, `split`, `join`,
-   `subrange`, `subrange_mut`, `from_untyped`, `from_untyped_with_typed_value`, `untyped_mut_join`,
-   and the `View` / `SeqPointsToData` `ptr` field.
+   and restate the pointer contracts
+   ([`SeqPointsTo`'s pointer and sizes](TYPED_POINTS_TO_NOTES.md#seqpointstos-pointer-and-sizes)):
+   constructors from a thin pointer (`from_seq`, `empty`, `zero_sized`/`zero_sized_helper`)
+   state it with `ptr() as *mut T` or `thin_ptr()`;
+   `split`, `join`, `subrange`, `subrange_mut` (and their `_basic` versions) state the full `*mut [T]`;
+   `from_untyped`, `from_untyped_with_typed_value` state the address and provenance;
+   `untyped_mut_join` keeps a thin `base`;
+   and the `View` / `SeqPointsToData` `ptr` field is `thin_ptr()`.
 5. rustlib uses these types; update its call sites in the same change (not visible from this repo).
 6. Verify both builds.
 

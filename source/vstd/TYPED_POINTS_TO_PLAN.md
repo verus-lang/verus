@@ -48,6 +48,29 @@ All of `points_to_model.rs`'s impl blocks
 A child module of `points_to_model.rs`, so it can use the structs' private fields
 ([phase 0, item 15](TYPED_POINTS_TO_IMPL_PLAN.md#phase-0-pending-checks)).
 
+#### Open question: spec fns in the `points_to_ops.rs` impls
+
+The approved layout puts the `PTProperties` impls of `SeqPointsTo`, `PointsToUnaligned` and `PointsTo`
+in `points_to_ops.rs`, but each of them defines a spec fn, `ptrs_len_same`
+(`ptrs_len_same_valid` until phase 2).
+These definitions are part of what trusted contracts mean:
+
+- `PointsToUntyped::join_mut`, an axiom in `points_to_model.rs`,
+  states its final-value clause under `Self::ptrs_len_same(*joined, *final(joined))`,
+  which is `SeqPointsTo`'s definition in `points_to_ops.rs`.
+- `PTValueOps::as_untyped_mut` (and today's `PointsTo::as_untyped_mut`)
+  states `final(self).wf()` under `PointsToUntyped::ptrs_len_same`.
+
+So the meaning of trusted items in `points_to_model.rs` depends on definitions in `points_to_ops.rs`.
+The same applies from phase 2 to the generic `PTValueOps for PointsTo<T>` impl,
+which overrides the spec fn `ptrs_len_same_valid`
+([phase 0, item 17](TYPED_POINTS_TO_IMPL_PLAN.md#phase-0-pending-checks))
+and is also placed in `points_to_ops.rs`.
+
+A trait impl can't be split across files,
+so moving the spec fns to `points_to_model.rs` means moving the whole impls, proof fns included.
+To be decided later.
+
 #### `SeqPointsTo` and `PointsToUntyped`: proofs (phase 1b)
 
 `SeqPointsTo`'s `PTProperties` impl and the structural `impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P>`
