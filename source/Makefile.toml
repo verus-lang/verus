@@ -1,3 +1,9 @@
+# This file contains task definitions for the `cargo-make` tool.
+#
+# Each task is meant to be executed from the `source` workspace as `cargo make $TASK`.
+#
+# If you used Vargo before, refer to the "Cheat Sheet: Vargo to Cargo" section in `CONTRIBUTING.md`.
+
 [config]
 default_to_workspace = false
 
