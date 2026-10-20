@@ -35,8 +35,7 @@ mod verified_ownership;
 mod verified_readiness;
 mod verified_state_relations;
 mod verified_steps;
-mod verified_storage_carrier;
-mod verified_storage_homogeneous_carrier;
+mod verified_storage_tagged;
 mod verified_take_step;
 mod verified_tokens;
 

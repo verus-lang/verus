@@ -12,7 +12,7 @@ use quote::{format_ident, quote, ToTokens};
 use std::collections::{HashMap, HashSet};
 use verus_syn::Error;
 use verus_syn::spanned::Spanned;
-use verus_syn::{Ident, Type};
+use verus_syn::Ident;
 
 /// Adds the fields `stmt` updates to `out`.
 fn writes(stmt: &TransitionStmt, out: &mut HashSet<String>) {
@@ -86,6 +86,7 @@ pub fn needs_general_emitter(sm: &SM) -> bool {
                 f.stype,
                 ShardableType::StorageMap(..)
                     | ShardableType::StorageIMap(..)
+                    | ShardableType::StorageOption(_)
                     | ShardableType::Bool
                     | ShardableType::PersistentBool
                     | ShardableType::PersistentCount
@@ -270,9 +271,8 @@ fn modified(
 /// tokens do not expose keys. Physical map exchange must observe those keys.
 ///
 /// Withdrawal keys are evaluated in the checked full-State relation and the
-/// same-witness actual output map, not in a local physical input map (in both
-/// storage layouts: the exchange's withdrawal is the difference of the witness
-/// states' storage). So they may read fields the operation does not own, or use
+/// same-witness actual output map, not in a local physical input map (the
+/// exchange's withdrawal is the difference of the witness states' storage). So they may read fields the operation does not own, or use
 /// `pre` as a whole (as the trusted macro, which ignores storage keys, allows);
 /// only their `variable` and `constant` reads are recorded. Deposits and guards
 /// still require exact local ordinary observations.
@@ -334,65 +334,44 @@ fn has_deposit(s: &TransitionStmt) -> bool {
     }
 }
 
-fn optional_storage_key(name:&Ident,fields:&HashMap<String,Field>)->TokenStream{
- let mut names:Vec<_>=fields.values().filter(|f|f.stype.is_storage()).map(|f|f.name.to_string()).collect();names.sort();
- let index=names.iter().position(|n|*n==name.to_string()).expect("validated storage field");
- let literal=verus_syn::LitInt::new(&format!("{index}int"),name.span());quote!{#literal}
-}
-fn deposit_expression(
+/// The deposit of a transition body: the union of its deposits, each a tagged
+/// part of the storage (`verified_storage_tagged`), without a leading empty map
+/// (a single deposit is its tagged part itself, e.g. the `__pack_f` of its
+/// operand).
+fn storage_deposit(
     s: &TransitionStmt,
     fields: &HashMap<String, Field>,
+    storage: &crate::verified_storage_tagged::Tagged,
 ) -> Result<TokenStream, Error> {
-    deposit_expression_mode(s, fields, false, None)
-}
-fn local_deposit_expression(
-    s: &TransitionStmt,
-    fields: &HashMap<String, Field>,
-) -> Result<TokenStream, Error> {
-    deposit_expression_mode(s, fields, true, None)
-}
-fn deposit_expression_mode(
-    s: &TransitionStmt,
-    fields: &HashMap<String, Field>,
-    normalize: bool,
-    carrier: Option<&crate::verified_storage_carrier::Carrier>,
-) -> Result<TokenStream, Error> {
-    let empty = quote! {IMap::empty()};
+    let empty = storage.unit();
     Ok(match s {
         TransitionStmt::Block(_, xs) => {
             let pieces: Vec<_> = xs
                 .iter()
                 .filter(|x| has_deposit(x))
-                .map(|s| deposit_expression_mode(s, fields, normalize, carrier))
+                .map(|s| storage_deposit(s, fields, storage))
                 .collect::<Result<_, _>>()?;
             let mut pieces = pieces.into_iter();
-            let mut value = if normalize {
-                pieces.next().unwrap_or(empty)
-            } else {
-                empty
-            };
+            let mut value = pieces.next().unwrap_or(empty);
             for piece in pieces {
-                value = quote! {(#value).union_prefer_right(#piece)};
+                value = storage.op(value, piece);
             }
             value
         }
         TransitionStmt::Split(span, k, xs) => match &**k {
             SplitKind::Let(p, t, LetKind::Normal, e) => {
                 let t = t.as_ref().map(|t| quote! {:#t});
-                let child = deposit_expression_mode(&xs[0], fields, normalize, carrier)?;
+                let child = storage_deposit(&xs[0], fields, storage)?;
                 quote! {{let #p #t=#e;#child}}
             }
             SplitKind::Let(_, _, LetKind::BirdsEye, _) if has_deposit(s) => {
-                return Err(Error::new(
-                    *span,
-                    "a deposited resource cannot depend on a birds_eye binding",
-                ));
+                return Err(Error::new(*span, "a deposited resource cannot depend on a birds_eye binding"));
             }
             SplitKind::If(e) => {
-                let a = deposit_expression_mode(&xs[0], fields, normalize, carrier)?;
+                let a = storage_deposit(&xs[0], fields, storage)?;
                 let b = xs
                     .get(1)
-                    .map(|s| deposit_expression_mode(s, fields, normalize, carrier))
+                    .map(|s| storage_deposit(s, fields, storage))
                     .transpose()?
                     .unwrap_or(empty);
                 quote! {if #e{#a}else{#b}}
@@ -404,43 +383,20 @@ fn deposit_expression_mode(
                     .map(|(arm, child)| {
                         let p = &arm.pat;
                         let guard = arm.guard.as_ref().map(|(i, e)| quote! {#i #e});
-                        let value = deposit_expression_mode(child, fields, normalize, carrier)?;
+                        let value = storage_deposit(child, fields, storage)?;
                         Ok(quote! {#p #guard=>{#value}})
                     })
                     .collect::<Result<_, Error>>()?;
                 quote! {match #e{#(#cases),*}}
             }
-            SplitKind::Special(name, op, _, _) if op.stmt.is_deposit() && carrier.is_some() => {
-                carrier.unwrap().singleton(name, &op.elt)?
-            },
-            SplitKind::Special(name, op, _, _) if op.stmt.is_deposit() => match &op.elt {
-                MonoidElt::SingletonKV(k, Some(v)) => quote! {IMap::empty().insert(#k,#v)},
-                MonoidElt::OptionSome(Some(v)) => {let key=optional_storage_key(name,fields);quote! {IMap::empty().insert(#key,#v)}},
-                MonoidElt::General(value) => match &fields[&name.to_string()].stype {
-                    ShardableType::StorageOption(_) => {let key=optional_storage_key(name,fields);quote! {
-                        match #value {
-                            Some(__tsm_stored_value) => IMap::empty().insert(#key,__tsm_stored_value),
-                            None => IMap::empty(),
-                        }
-                    }},
-                    ShardableType::StorageMap(..) => quote! {(#value).to_imap()},
-                    ShardableType::StorageIMap(..) => quote! {#value},
-                    _ => {
-                        return Err(Error::new(
-                            *span,
-                            "a physical deposit requires a storage operand",
-                        ))
-                    }
-                },
-                _ => {
-                    return Err(Error::new(
-                        *span,
-                        "verified deposit requires an explicit optional or map value",
-                    ));
-                }
-            },
+            SplitKind::Special(name, op, _, _) if op.stmt.is_deposit() => storage
+                .singleton(name, &op.elt)
+                .map_err(|_| Error::new(*span, "verified deposit requires an explicit optional or map value"))?,
             SplitKind::Special(name, op, _, binding) => {
-                let child = deposit_expression_mode(&xs[0], fields, normalize, carrier)?;
+                let child = match xs.first() {
+                    Some(x) => storage_deposit(x, fields, storage)?,
+                    None => empty,
+                };
                 if let Some(pattern) = binding {
                     let observed = match &op.elt {
                         MonoidElt::OptionSome(None) => quote! {pre.#name->Some_0},
@@ -524,7 +480,7 @@ fn guard_option_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Ve
 fn guarded_storage(
     s: &TransitionStmt,
     fields: &HashMap<String, Field>,
-    carrier: Option<&crate::verified_storage_carrier::Carrier>,
+    storage: &crate::verified_storage_tagged::Tagged,
 ) -> Result<TokenStream, Error> {
     fn convert(s: &mut TransitionStmt) -> bool {
         match s {
@@ -558,7 +514,7 @@ fn guarded_storage(
             "verified sequential properties require a storage guard",
         ));
     }
-    deposit_expression_mode(&clone, fields, false, carrier)
+    storage_deposit(&clone, fields, storage)
 }
 
 /// The statements as proof code, or with `safety` as the enabling condition.
@@ -664,17 +620,9 @@ pub fn output_with_ready(
     let mut temps = vec![];
     let mut posts = vec![];
     let mut observations = vec![];
-    let caller_helpers=&bundle.normal_fns;
-    let caller_invariants:Vec<_>=bundle.extras.invariants.iter().map(|item|&item.func).collect();
-    let caller_lemmas:Vec<_>=bundle.extras.lemmas.iter().map(|item|&item.func).collect();
-    let carrier = crate::verified_storage_carrier::Carrier::build(sm,
-        quote!{#(#caller_helpers)* #(#caller_invariants)* #(#caller_lemmas)*})?;
-    let mut storage: Option<(Ident, Type, Type, TokenStream)> = None;
-    // Projections of the optional stores (without a carrier), joined below.
-    let mut option_projections: Vec<TokenStream> = vec![];
-    let storage_fields:HashMap<_,_>=sm.fields.iter().map(|f|(f.name.to_string(),f.clone())).collect();
-    let physical_count=sm.fields.iter().filter(|f|f.stype.is_storage()).count();
-    if carrier.is_none()&&physical_count>1&&sm.fields.iter().any(|f|f.stype.is_storage()&&!matches!(f.stype,ShardableType::StorageOption(_))){return Err(Error::new(sm.name.span(),"multiple physical fields currently require homogeneous optional stores"));}
+    // The tagged storage layout (`verified_storage_tagged`).
+    let tagged = crate::verified_storage_tagged::Tagged::build(&bundle)?;
+    let storage = tagged.as_ref();
 
     for f in &sm.fields {
         let n = &f.name;
@@ -701,33 +649,12 @@ pub fn output_with_ready(
                 (quote! {Option<AgreementRA<#t>>}, quote! {Some(AgreementRA::Agree(s.#n))})
             }
             ShardableType::NotTokenized(_) => continue,
-            s if monoids::is_monoid_type(s) => (monoids::component_type(s), monoids::embed(s, quote! {s.#n})),
-            ShardableType::StorageOption(v) => {
-                if carrier.is_some() { continue; }
-                let key=optional_storage_key(n,&storage_fields);
-                let projection=quote!{match s.#n {Some(v)=>IMap::empty().insert(#key,v),None=>IMap::empty()}};
-                if let Some((_,_,old_value,_))=&storage{
-                    if old_value.to_token_stream().to_string()!=v.to_token_stream().to_string(){return Err(Error::new(f.type_span,"multiple optional stores require identical permission types"));}
-                }else{storage=Some((n.clone(),verus_syn::parse_quote!{int},v.clone(),quote!{}));}
-                option_projections.push(projection);
-                continue;
+            s if monoids::is_monoid_type(s) => {
+                (monoids::component_type(s), monoids::embed(s, quote! {s.#n}))
             }
-            ShardableType::StorageIMap(k, v) | ShardableType::StorageMap(k, v) => {
-                if carrier.is_some() { continue; }
-                if storage.is_some() {
-                    return Err(Error::new(
-                        f.type_span,
-                        "verified sequential backend supports one storage field",
-                    ));
-                }
-                let projection = if matches!(f.stype, ShardableType::StorageMap(..)) {
-                    quote! {s.#n.to_imap()}
-                } else {
-                    quote! {s.#n}
-                };
-                storage = Some((n.clone(), k.clone(), v.clone(), projection));
-                continue;
-            }
+            ShardableType::StorageOption(_)
+            | ShardableType::StorageIMap(..)
+            | ShardableType::StorageMap(..) => continue,
             _ => {
                 return Err(Error::new(
                     f.type_span,
@@ -740,20 +667,6 @@ pub fn output_with_ready(
         ff.push(quote! {pub #n:#ty});
         embeds.push(quote! {#n:#v});
     }
-    if let Some((_, _, _, projection)) = &mut storage {
-        if !option_projections.is_empty() {
-            let mut parts = vec![];
-            if !projection.is_empty() {
-                parts.push(projection.clone());
-            }
-            parts.extend(option_projections);
-            *projection = crate::verified_storage_carrier::balanced_union(&parts);
-        }
-    }
-    if let Some(carrier) = &carrier {
-        storage = Some((carrier.fields[0].name.clone(), carrier.key.clone(), carrier.value.clone(), carrier.projection.clone()));
-    }
-    let carrier_declarations = carrier.as_ref().map(|c| &c.declarations);
     let (field_specs, field_takes) =
         crate::verified_ergonomics::field_api(sm, &ft, &tt, &names, &ftypes)?;
     let invnames: Vec<_> = bundle.extras.invariants.iter().map(|i| &i.func.sig.ident).collect();
@@ -935,7 +848,7 @@ pub fn output_with_ready(
                 quote! {pre.invariant() && Self::#strong(pre,post,#(#pn),*)}
             };
             let b = &f.block;
-            let cardinality_hints: Vec<_> = if carrier.is_some() && !init {
+            let cardinality_hints: Vec<_> = if storage.is_some_and(|p| p.fields.len() > 1) && !init {
                 effects.iter().filter(|effect| matches!(effect.field.stype, ShardableType::Multiset(_))
                     && effect.op == monoids::EffectOp::Remove && !effect.replacement)
                     .map(|effect| {
@@ -959,75 +872,64 @@ pub fn output_with_ready(
             quote! {}
         };
         let no_withdraw = !withdraw;
-        let monotone_storage = if no_withdraw {
-            quote! {,pre.__storage().submap_of(post.__storage())}
-        } else {
-            quote! {}
-        };
         let storage_index =
             format_ident!("__tsm_storage_index", span = proc_macro2::Span::mixed_site());
-        let agreement_goal=quote!{pre.__storage()[#storage_index]==post.__storage()[#storage_index]};
-        let agreement_hint=carrier.as_ref().map(|c|c.pointwise(quote!{#storage_index},agreement_goal)).unwrap_or_default();
-        let deposit_domain_goal=quote!{Self::#deposited(pre,#(#pn),*).contains_key(#storage_index)
-            == post.__storage().remove_keys(pre.__storage().dom()).contains_key(#storage_index)};
-        let deposit_domain_hint=carrier.as_ref().map(|c|c.pointwise(quote!{#storage_index},deposit_domain_goal)).unwrap_or_default();
-        let monotone_proof = if no_withdraw {
-            quote! {
-                assert(pre.__storage().submap_of(post.__storage())) by {
-                    assert forall|#storage_index| pre.__storage().contains_key(#storage_index)
-                        implies post.__storage().contains_key(#storage_index)&&pre.__storage()[#storage_index]==post.__storage()[#storage_index] by {};
+        let (storage_ens, storage_proof) = match storage {
+            Some(p) if !init => {
+                let pre_s = quote! {pre.__storage()};
+                let post_s = quote! {post.__storage()};
+                let dep = quote! {Self::#deposited(pre,#(#pn),*)};
+                let agrees = p.agrees(pre_s.clone(), post_s.clone());
+                let agrees_proof = p.prove_agrees(&storage_index, pre_s.clone(), post_s.clone());
+                let grow = p.le(pre_s.clone(), post_s.clone());
+                let grow_proof = if no_withdraw { p.prove_le(&storage_index, pre_s.clone(), post_s.clone()) } else { quote! {} };
+                let grow_ens = if no_withdraw { quote! {,#grow} } else { quote! {} };
+                if paired {
+                    let transferred = p.op(pre_s.clone(), quote! {physical_deposit});
+                    let disjoint = p.disjoint(pre_s.clone(), dep.clone());
+                    let within = p.le(post_s.clone(), p.op(pre_s.clone(), dep.clone()));
+                    let covered = p.le(p.op(pre_s.clone(), dep.clone()), post_s.clone());
+                    let covered_ens = if no_withdraw { quote! {,#covered} } else { quote! {} };
+                    let covered_proof = if no_withdraw {
+                        p.prove_le(&storage_index, transferred.clone(), post_s.clone())
+                    } else {
+                        quote! {}
+                    };
+                    (
+                        quote! {,#agrees,#disjoint,#within #grow_ens #covered_ens},
+                        {
+                            let disjoint_proof = p.prove_disjoint(&storage_index, pre_s.clone(), quote! {physical_deposit});
+                            let within_proof = p.prove_le(&storage_index, post_s.clone(), transferred.clone());
+                            quote! {
+                                let physical_deposit=#dep;
+                                #agrees_proof
+                                #grow_proof
+                                #disjoint_proof
+                                #within_proof
+                                #covered_proof
+                            }
+                        },
+                    )
+                } else {
+                    let delta = p.minus(post_s.clone(), pre_s.clone());
+                    let delta_proof = p.prove_eq(&storage_index, dep.clone(), delta.clone());
+                    (
+                        quote! {,#agrees,#dep==#delta #grow_ens},
+                        quote! {
+                            #grow_proof
+                            #agrees_proof
+                            #delta_proof
+                        },
+                    )
                 }
             }
-        } else {
-            quote! {}
+            _ => (quote! {}, quote! {}),
         };
-        let storage_ens = if storage.is_some() && !init && paired {
-            quote! {,pre.__storage().agrees(post.__storage()),
-            pre.__storage().dom().disjoint(Self::#deposited(pre,#(#pn),*).dom()),
-            post.__storage().submap_of(pre.__storage().union_prefer_right(Self::#deposited(pre,#(#pn),*)))}
-        } else if storage.is_some() && !init {
-            quote! {,pre.__storage().agrees(post.__storage()),Self::#deposited(pre,#(#pn),*)==post.__storage().remove_keys(pre.__storage().dom()) #monotone_storage}
-        } else {
-            quote! {}
-        };
-        let storage_proof = if storage.is_some() && !init && paired {
-            quote! {
-                let physical_deposit=Self::#deposited(pre,#(#pn),*);
-                assert(pre.__storage().agrees(post.__storage())) by {
-                    assert forall|#storage_index| pre.__storage().contains_key(#storage_index)&&post.__storage().contains_key(#storage_index)
-                        implies pre.__storage()[#storage_index]==post.__storage()[#storage_index] by {#agreement_hint};
-                }
-                assert(pre.__storage().dom().disjoint(physical_deposit.dom())) by {
-                    assert forall|#storage_index| pre.__storage().contains_key(#storage_index)
-                        implies !physical_deposit.contains_key(#storage_index) by {};
-                }
-                let transferred=pre.__storage().union_prefer_right(physical_deposit);
-                assert(post.__storage().submap_of(transferred)) by {
-                    assert forall|#storage_index| post.__storage().contains_key(#storage_index)
-                        implies transferred.contains_key(#storage_index)&&post.__storage()[#storage_index]==transferred[#storage_index] by {};
-                }
-            }
-        } else if storage.is_some() && !init {
-            quote! {
-                #monotone_proof
-                assert(pre.__storage().agrees(post.__storage())) by {
-                    assert forall|#storage_index| pre.__storage().contains_key(#storage_index)&&post.__storage().contains_key(#storage_index)
-                        implies pre.__storage()[#storage_index]==post.__storage()[#storage_index] by {#agreement_hint};
-                }
-                assert(::vstd::prelude::ext_equal(Self::#deposited(pre,#(#pn),*),post.__storage().remove_keys(pre.__storage().dom()))) by {
-                    assert forall|#storage_index| Self::#deposited(pre,#(#pn),*).contains_key(#storage_index)
-                        == post.__storage().remove_keys(pre.__storage().dom()).contains_key(#storage_index) by {#deposit_domain_hint};
-                    assert forall|#storage_index| Self::#deposited(pre,#(#pn),*).contains_key(#storage_index)
-                        implies Self::#deposited(pre,#(#pn),*)[#storage_index]==post.__storage().remove_keys(pre.__storage().dom())[#storage_index] by {};
-                }
-            }
-        } else {
-            quote! {}
-        };
-        if let Some((_, k, v, _)) = &storage {
+        if let Some(p) = storage {
             if !init {
-                let expression = deposit_expression_mode(&tr.body, &fields, false, carrier.as_ref())?;
-                relations.push(quote!{#ready_inline pub open spec fn #deposited(pre:#st,#(#params),*)->IMap<#k,#v>{#expression}});
+                let expression = storage_deposit(&tr.body, &fields, p)?;
+                let sty = p.ty();
+                relations.push(quote!{#ready_inline pub open spec fn #deposited(pre:#st,#(#params),*)->#sty{#expression}});
             }
         }
         relations.push(quote! {
@@ -1051,9 +953,10 @@ pub fn output_with_ready(
             }
         });
         if guard_property {
-            let (storage_n, key, val, _) = storage.as_ref().unwrap();
+            let p = storage.unwrap();
+            let sty = p.ty();
             let guarded = format_ident!("{}_guarded", n);
-            let expression = guarded_storage(&tr.body, &fields, carrier.as_ref())?;
+            let expression = guarded_storage(&tr.body, &fields, p)?;
             // Values bound by `have m >= [k => ..]` on exclusive map fields are
             // observed from the owned fragment at k, so the guarded value stays
             // a function of the fragment and is linked to `pre` by map_owned_frame.
@@ -1112,20 +1015,14 @@ pub fn output_with_ready(
                     }
                 });
             }
-            // Tagged multi-field carriers need a per-tag split to lift the
-            // field-level guard fact to the combined storage map.
-            let guard_cases = match carrier.as_ref() {
-                Some(c) => {
-                    let k = format_ident!("__tsm_guard_key", span = proc_macro2::Span::mixed_site());
-                    let kt = &c.key;
-                    let goal = quote! {Self::storage(pre).contains_key(#k)
-                        && Self::storage(pre)[#k] == Self::#guarded(f,#(#pn),*)[#k]};
-                    let cases = c.tagged_cases(quote! {#k}, goal.clone());
-                    quote! {assert forall|#k:#kt| Self::#guarded(f,#(#pn),*).contains_key(#k) implies #goal by {#cases}}
-                }
-                None => quote! {},
-            };
-            relations.push(quote!{pub open spec fn #guarded(pre:#st,#(#params),*)->IMap<#key,#val>{#expression}});
+            // The guard's storage fact, by a case split on each key's field.
+            let guard_cases = p.prove_le_by_cases(
+                &format_ident!("__tsm_guard_key", span = proc_macro2::Span::mixed_site()),
+                quote! {Self::#guarded(f,#(#pn),*)},
+                quote! {Self::storage(pre)},
+            );
+            let guard_le = p.le(quote! {Self::#guarded(f,#(#pn),*)}, quote! {Self::storage(pre)});
+            relations.push(quote!{pub open spec fn #guarded(pre:#st,#(#params),*)->#sty{#expression}});
             let mut observed_req: Vec<_> = names
                 .iter()
                 .filter(|n| read.contains(&n.to_string()))
@@ -1152,7 +1049,7 @@ pub fn output_with_ready(
                 })
                 .collect();
             ops.push(quote!{
-                pub open spec fn #guarded(f:#ft,#(#params),*)->IMap<#key,#val>{#se::#guarded(#observed_base,#(#pn),*)}
+                pub open spec fn #guarded(f:#ft,#(#params),*)->#sty{#se::#guarded(#observed_base,#(#pn),*)}
                 pub open spec fn #req(f:#ft,#(#params),*)->bool {
                     true #(&& #observed_req)* &&
                     forall|z:#ft,pre:#st|::vstd::prelude::imply(pre.invariant()&&<#ft>::op(f,z)==Self::embed(pre),
@@ -1163,7 +1060,7 @@ pub fn output_with_ready(
                     ensures ::vstd::resource::tsm_storage::frame_guard::<#pt>(f,Self::#guarded(f,#(#pn),*))
                 {
                     assert forall|z:#ft,pre:#st|Self::invariant(pre)&&<#ft>::op(f,z)==Self::embed(pre)
-                        implies Self::#guarded(f,#(#pn),*).submap_of(Self::storage(pre)) by {
+                        implies #guard_le by {
                         <#ft>::op_unit(f);
                         assert(#se::#enabled(pre,#(#pn),*));
                         let post=#se::#run(pre,#(#pn),*);
@@ -1173,20 +1070,19 @@ pub fn output_with_ready(
                         // The guard's storage fact (with its user proof) comes from safety.
                         #se::#safety(pre,#(#pn),*);
                         #guard_cases
-                        assert(Self::#guarded(f,#(#pn),*).submap_of(Self::storage(pre)));
                     }
                 }
-                pub proof fn #n(tracked token:&#tt,#(#params),*)->(tracked out:&IMap<#key,#val>)
+                pub proof fn #n(tracked token:&#tt,#(#params),*)->(tracked out:&#sty)
                     requires Self::#req(token.fragment(),#(#pn),*)
                     ensures *out==Self::#guarded(token.fragment(),#(#pn),*)
                 {Self::#frame(token.fragment(),#(#pn),*);token.guard(Self::#guarded(token.fragment(),#(#pn),*))}
             });
-            let _ = storage_n;
         } else if init {
             let base_req = quote! {#se::#enabled(#(#pn),*)};
-            if let Some((_, k, v, _)) = &storage {
+            if let Some(p) = storage {
+                let sty = p.ty();
                 ops.push(quote!{
-                    pub proof fn #n(tracked base:IMap<#k,#v>,#(#params),*)->(tracked out:#tt)
+                    pub proof fn #n(tracked base:#sty,#(#params),*)->(tracked out:#tt)
                         requires #base_req,forall|s:#st|::vstd::prelude::imply(#se::#strong(s,#(#pn),*),base==s.__storage())
                         ensures exists|s:#st|#se::#n(s,#(#pn),*)&&s.invariant()&&out.fragment()==Self::embed(s)
                     {let s=#se::#run(#(#pn),*);#te::alloc_state(s,base)}
@@ -1227,7 +1123,7 @@ pub fn output_with_ready(
                     }
                 })
                 .collect();
-            if let Some((_, key, val, _)) = &storage {
+            if let Some(layout) = storage {
                 ops.push(storage_operations(
                     &n,
                     &strong,
@@ -1253,8 +1149,7 @@ pub fn output_with_ready(
                     &observed_req,
                     &newfields,
                     &effect_calls,
-                    key,
-                    val,
+                    layout,
                     withdraw,
                     has_deposit(&tr.body),
                     paired,
@@ -1263,8 +1158,9 @@ pub fn output_with_ready(
                     relations
                         .push(crate::verified_readiness::declared_requires_spec(tr, &st, &params)?);
                     let local_deposited = format_ident!("{}_local_deposited", n);
-                    let local_expression = deposit_expression_mode(&tr.body, &fields, true, carrier.as_ref())?;
-                    relations.push(quote! {#[verifier::inline] pub open spec fn #local_deposited(pre:#st,#(#params),*)->IMap<#key,#val>{#local_expression}});
+                    let local_expression = storage_deposit(&tr.body, &fields, layout)?;
+                    let sty = layout.ty();
+                    relations.push(quote! {#[verifier::inline] pub open spec fn #local_deposited(pre:#st,#(#params),*)->#sty{#local_expression}});
                     let reads: Vec<_> = names
                         .iter()
                         .copied()
@@ -1285,8 +1181,7 @@ pub fn output_with_ready(
                             owned: &owned_req,
                             observed: &observed_req,
                             reads: &reads,
-                            key,
-                            val,
+                            storage: layout,
                             deposits: has_deposit(&tr.body),
                             withdraws: withdraw,
                             paired,
@@ -1343,18 +1238,18 @@ pub fn output_with_ready(
             }
         }
     }
-    let (storage_state, storage_trait, token_type, mut broadcast) = if let Some((
-        _,
-        k,
-        v,
-        projection,
-    )) = &storage
+    let (storage_state, storage_trait, token_type, mut broadcast) = if let Some(p) = storage
     {
+        let sty = p.ty();
+        let (key_ty, value_ty) = (p.key_ty(), p.value_ty());
+        let storage_decl = p.decl(&decl, &where_clause, &st);
+        let projection = p.projection(quote! {s});
         (
-            quote! {pub open spec fn __storage(&self)->IMap<#k,#v>{let s=*self;#projection}},
-            quote! {impl #decl ::vstd::resource::tsm_storage::StorageMachine for #pt #where_clause {
-                type Key=#k;type Value=#v;
-                open spec fn storage(s:#st)->IMap<#k,#v>{s.__storage()}
+            quote! {pub open spec fn __storage(&self)->#sty{let s=*self;#projection}},
+            quote! {#storage_decl
+            impl #decl ::vstd::resource::tsm_storage::StorageMachine for #pt #where_clause {
+                type Key=#key_ty;type Value=#value_ty;
+                open spec fn storage(s:#st)->#sty{s.__storage()}
             }},
             quote! {::vstd::resource::tsm_storage::StorageToken<#pt>},
             quote! {broadcast use {::vstd::iset::group_iset_lemmas,::vstd::imap::group_imap_lemmas,::vstd::map::group_map_lemmas};},
@@ -1436,17 +1331,18 @@ pub fn output_with_ready(
     let observation_result = if local_ready.is_empty() {
         quote! {}
     } else {
-        let Some((_, key, val, _)) = &storage else {
+        let Some(p) = storage else {
             return Err(Error::new(
                 name.span(),
                 "local-ready currently requires a physical storage protocol",
             ));
         };
+        let sty = p.ty();
         quote! {
             #(#datatype_attrs)*
             pub tracked struct TransitionObservation #decl #where_clause {
                 pub tracked token:#tt,
-                pub tracked withdrawn:IMap<#key,#val>,
+                pub tracked withdrawn:#sty,
                 pub ghost before:#st,
                 pub ghost after:#st,
                 pub ghost frame:#ft,
@@ -1461,7 +1357,6 @@ pub fn output_with_ready(
             use ::vstd::resource::tsm::Machine;
             use ::vstd::resource::tsm_storage::StorageMachine;
             #broadcast
-            #carrier_declarations
             #(#datatype_attrs)*
             pub struct State #decl #where_clause {#marker #(#sf),*}
             impl #decl #st #where_clause {
@@ -1531,13 +1426,17 @@ fn storage_operations(
     observed_req: &Vec<TokenStream>,
     newfields: &Vec<TokenStream>,
     effect_calls: &Vec<TokenStream>,
-    key: &Type,
-    val: &Type,
+    storage: &crate::verified_storage_tagged::Tagged,
     withdraws: bool,
     deposits: bool,
     paired: bool,
 ) -> TokenStream {
-    let map = quote! {IMap<#key,#val>};
+    let map = storage.ty();
+    let unit = storage.unit();
+    let tracked_unit = storage.tracked_unit();
+    let pre_s = quote! {pre.__storage()};
+    let post_s = quote! {post.__storage()};
+    let withdrawn_spec = storage.minus(storage.op(pre_s.clone(), quote! {deposit}), post_s.clone());
     let mut pair_name = "__tsm_storage_exchange_pair".to_string();
     while pn.iter().any(|name| name.to_string() == pair_name) {
         pair_name.push('_');
@@ -1566,28 +1465,28 @@ fn storage_operations(
     let deposit_spec = if deposits {
         quote! {deposit}
     } else {
-        quote! {IMap::empty()}
+        unit.clone()
     };
     let deposit_init = if deposits {
         quote! {}
     } else {
-        quote! {let tracked deposit:#map=IMap::tracked_empty();}
+        quote! {let tracked deposit:#map=#tracked_unit;}
     };
     let return_ens = if withdraws {
         quote! {Self::#output(owned.fragment(),shared.fragment(),out.0.fragment(),#deposit_spec,out.1,#(#pn),*)}
     } else {
-        quote! {Self::#output(owned.fragment(),shared.fragment(),out.fragment(),#deposit_spec,IMap::empty(),#(#pn),*)}
+        quote! {Self::#output(owned.fragment(),shared.fragment(),out.fragment(),#deposit_spec,#unit,#(#pn),*)}
     };
     let plain_ens = if withdraws {
         quote! {Self::#output(owned.fragment(),<#ft>::unit(),out.0.fragment(),#deposit_spec,out.1,#(#pn),*)}
     } else {
-        quote! {Self::#output(owned.fragment(),<#ft>::unit(),out.fragment(),#deposit_spec,IMap::empty(),#(#pn),*)}
+        quote! {Self::#output(owned.fragment(),<#ft>::unit(),out.fragment(),#deposit_spec,#unit,#(#pn),*)}
     };
     let return_value = if withdraws {
         quote! {(out,withdrawn)}
     } else {
         quote! {
-            assert(::vstd::prelude::ext_equal(withdrawn,IMap::empty()));
+            assert(withdrawn==#unit);
             out
         }
     };
@@ -1598,62 +1497,58 @@ fn storage_operations(
     let withdrawn_value = if monotone {
         quote! {}
     } else {
-        quote! {&&withdrawn==pre.__storage().union_prefer_right(deposit).remove_keys(post.__storage().dom())}
-    };
-    let withdrawn_result = if monotone {
-        quote! {}
-    } else {
-        quote! {,withdrawn==result.0.__storage().union_prefer_right(deposit).remove_keys(result.1.__storage().dom())}
+        quote! {&&withdrawn==#withdrawn_spec}
     };
     let withdrawal_shape = if withdraws {
         quote! {true}
     } else {
-        quote! {withdrawn==IMap::empty()}
+        quote! {withdrawn==#unit}
     };
+    let st_pre = quote! {Self::storage(pre)};
+    let st_post = quote! {Self::storage(post)};
+    let whole = storage.op(st_pre.clone(), quote! {deposit});
     let withdrawal_proof = if withdraws {
         quote! {}
     } else if paired {
+        // The old storage and the deposit are covered by the new storage
+        // (the executor's `covered` fact): nothing is withdrawn.
         quote! {
-            assert(Self::storage(pre).submap_of(Self::storage(post)));
-            assert(::vstd::prelude::ext_equal(withdrawn,IMap::empty())) by {
-                assert forall|key| !withdrawn.contains_key(key) by {};
+            assert(::vstd::prelude::ext_equal(withdrawn,#unit)) by {
+                assert forall|__tsm_key| !withdrawn.contains_key(__tsm_key) by {};
             }
         }
     } else {
-        quote! {::vstd::resource::tsm_storage::storage_withdrawn_none(Self::storage(pre),Self::storage(post),deposit);}
+        quote! {::vstd::resource::tsm_storage::storage_withdrawn_none(#st_pre,#st_post,deposit);}
     };
     let output_storage = if paired {
+        let disjoint = storage.disjoint(pre_s.clone(), quote! {deposit});
+        let within = storage.le(post_s.clone(), storage.op(pre_s.clone(), quote! {deposit}));
         quote! {
             deposit==#se::#deposited(pre,#(#pn),*)
-                &&pre.__storage().dom().disjoint(deposit.dom())
-                &&post.__storage().submap_of(pre.__storage().union_prefer_right(deposit))
+                &&#disjoint
+                &&#within
         }
     } else {
-        quote! {deposit==post.__storage().remove_keys(pre.__storage().dom())}
-    };
-    let witness_storage = if paired {
-        quote! {
-            deposit==#se::#deposited(result.0,#(#pn),*),
-            result.0.__storage().dom().disjoint(deposit.dom()),
-            result.1.__storage().submap_of(result.0.__storage().union_prefer_right(deposit))
-        }
-    } else {
-        quote! {deposit==result.1.__storage().remove_keys(result.0.__storage().dom())}
+        let delta = storage.minus(post_s.clone(), pre_s.clone());
+        quote! {deposit==#delta}
     };
     let transfer_proof = if paired {
+        let disjoint = storage.disjoint(st_pre.clone(), quote! {deposit});
+        let within = storage.le(st_post.clone(), whole.clone());
         quote! {
             assert(deposit==#se::#deposited(pre,#(#pn),*));
-            assert(Self::storage(pre).dom().disjoint(deposit.dom()));
-            assert(Self::storage(post).submap_of(Self::storage(pre).union_prefer_right(deposit)));
+            assert(#disjoint);
+            assert(#within);
         }
     } else {
         quote! {}
     };
     let frame_withdrawn = if monotone {
-        quote! {assert(Self::#output_at(owned,h,new,deposit,IMap::empty(),#(#pn,)* z,pre,post));}
+        quote! {assert(Self::#output_at(owned,h,new,deposit,#unit,#(#pn,)* z,pre,post));}
     } else {
+        let withdrawn = storage.minus(whole.clone(), st_post.clone());
         quote! {
-            let withdrawn=Self::storage(pre).union_prefer_right(deposit).remove_keys(Self::storage(post).dom());
+            let withdrawn=#withdrawn;
             #withdrawal_proof
             assert(Self::#output_at(owned,h,new,deposit,withdrawn,#(#pn,)* z,pre,post));
         }

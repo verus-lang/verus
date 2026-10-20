@@ -7,7 +7,7 @@ use crate::parse_token_stream::{parse_result_to_smir, ParseResult, SMBundle};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
-use verus_syn::{punctuated::Punctuated, Error, Ident, Token, Type};
+use verus_syn::{punctuated::Punctuated, Error, Ident, Token};
 
 /// Selects the client interface. The default is the generic field-token
 /// interface (`verified_generic_tokens`, which may also be written explicitly):
@@ -307,8 +307,7 @@ pub struct Context<'a> {
     pub owned: &'a [TokenStream],
     pub observed: &'a [TokenStream],
     pub reads: &'a [&'a Ident],
-    pub key: &'a Type,
-    pub val: &'a Type,
+    pub storage: &'a crate::verified_storage_tagged::Tagged,
     pub deposits: bool,
     pub withdraws: bool,
     pub paired: bool,
@@ -512,8 +511,7 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         owned,
         observed,
         reads,
-        key,
-        val,
+        storage,
         deposits,
         withdraws,
         paired,
@@ -548,7 +546,9 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     let before = fresh(sm,tr, "before_state");
     let after = fresh(sm,tr, "after_state");
     let witness_frame = fresh(sm,tr, "witness_frame");
-    let map = quote! {IMap<#key, #val>};
+    let map = storage.ty();
+    let unit = storage.unit();
+    let tracked_unit = storage.tracked_unit();
     let dep_param = if deposits {
         quote! {tracked deposit:#map,}
     } else {
@@ -562,7 +562,7 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     let dep_value = if deposits {
         quote! {deposit}
     } else {
-        quote! {IMap::<#key,#val>::empty()}
+        unit.clone()
     };
     let ret = if withdraws {
         quote! {tracked out:(#tt,#map)}
@@ -572,7 +572,7 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     let call = if withdraws {
         quote! {let tracked (#next,#returned_map)=Self::#local(owned,#dep_arg #(#pn),*);}
     } else {
-        quote! {let tracked #next=Self::#local(owned,#dep_arg #(#pn),*);let tracked #returned_map:#map=IMap::tracked_empty();}
+        quote! {let tracked #next=Self::#local(owned,#dep_arg #(#pn),*);let tracked #returned_map:#map=#tracked_unit;}
     };
     let out = if withdraws {
         quote! {out.0}
@@ -582,20 +582,48 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     let wd = if withdraws {
         quote! {out.1}
     } else {
-        quote! {IMap::empty()}
+        unit.clone()
     };
     let wd_shape = if withdraws {
         quote! {}
     } else {
-        quote! {,#certificate.withdrawn==IMap::empty()}
+        quote! {,#certificate.withdrawn==#unit}
     };
+    let before_s = quote! {#certificate.before.__storage()};
+    let after_s = quote! {#certificate.after.__storage()};
     let physical = if paired {
+        let disjoint = storage.disjoint(before_s.clone(), dep_value.clone());
+        let within = storage.le(after_s.clone(), storage.op(before_s.clone(), dep_value.clone()));
         quote! {#dep_value==#se::#deposited(#certificate.before,#(#pn),*),
-        #certificate.before.__storage().dom().disjoint(#dep_value.dom()),
-        #certificate.after.__storage().submap_of(#certificate.before.__storage().union_prefer_right(#dep_value)),}
+        #disjoint,
+        #within,}
     } else {
-        quote! {#dep_value==#certificate.after.__storage().remove_keys(#certificate.before.__storage().dom()),}
+        let delta = storage.minus(after_s.clone(), before_s.clone());
+        quote! {#dep_value==#delta,}
     };
+    let withdrawn_value = storage.minus(storage.op(before_s.clone(), dep_value.clone()), after_s.clone());
+    // A step that withdraws nothing and has one storage operation per path:
+    // its outputs do not state the withdrawn storage (only that it is the
+    // unit), so the certificate derives it from the storage growing.
+    let monotone_withdrawn = if !withdraws && !paired {
+        let (b, a) = (quote! {#before.__storage()}, quote! {#after.__storage()});
+        let grow = storage.prove_le(
+            &format_ident!("__tsm_storage_index", span = proc_macro2::Span::mixed_site()),
+            b.clone(),
+            a.clone(),
+        );
+        quote! {
+            #grow
+            ::vstd::resource::tsm_storage::storage_withdrawn_none(#b,#a,#physical_deposit);
+        }
+    } else {
+        quote! {}
+    };
+    let deposit_eq = storage.prove_eq(
+        &format_ident!("__tsm_deposit_index", span = proc_macro2::Span::mixed_site()),
+        quote! {#se::#local_deposited(#full_state,#(#pn),*)},
+        quote! {#se::#deposited(#full_state,#(#pn),*)},
+    );
     let set_hints=singleton_set_remove_hints(tr,&observation,&full_state,&completion_frame,ft,se,&owners,pn);
     let map_hints=singleton_map_remove_hints(sm,tr,&observation,&full_state,&completion_frame,ft,se,&owners,pn);
     Ok(quote! {
@@ -623,7 +651,7 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
                 assert(#se::#owners(#full_state,owned,h,#(#pn),*));
                 #(#set_hints)*
                 #(#map_hints)*
-                assert(::vstd::prelude::ext_equal(#se::#local_deposited(#full_state,#(#pn),*),#se::#deposited(#full_state,#(#pn),*)));
+                #deposit_eq
             }
         }
         pub proof fn #local_shared(tracked owned:#tt,tracked shared:&#tt,#dep_param #(#params),*)->(#ret)
@@ -649,7 +677,7 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
                 #certificate.token.fragment()==Self::#owned_post(owned.fragment(),#certificate.before,#certificate.after,#(#pn),*),
                 <#ft>::op(<#ft>::op(#certificate.token.fragment(),<#ft>::unit()),#certificate.frame)==Self::embed(#certificate.after),
                 #physical
-                #certificate.withdrawn==#certificate.before.__storage().union_prefer_right(#dep_value).remove_keys(#certificate.after.__storage().dom()),
+                #certificate.withdrawn==#withdrawn_value,
                 Self::#output(owned.fragment(),<#ft>::unit(),#certificate.token.fragment(),#dep_value,#certificate.withdrawn,#(#pn),*)
                 #wd_shape
         {
@@ -657,6 +685,7 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
             let ghost #physical_deposit=#dep_value;
             #call
             let (#before,#after,#witness_frame)=Self::#witness(#initial,<#ft>::unit(),#next.fragment(),#physical_deposit,#returned_map,#(#pn),*);
+            #monotone_withdrawn
             #result_expr{token:#next,withdrawn:#returned_map,before:#before,after:#after,frame:#witness_frame}
         }
     })

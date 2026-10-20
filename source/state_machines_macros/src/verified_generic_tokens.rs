@@ -129,205 +129,91 @@ fn check_fields(sm: &SM) -> Result<(), Error> {
 // ---------------------------------------------------------------------------
 // Storage layout
 
-#[derive(PartialEq, Eq)]
-enum StoreKind {
-    None,
-    /// `__StorageKey`/`__StorageValue`, tagged by field.
-    Carrier,
-    /// The storage field's own key and value types (one map field, or
-    /// storage options indexed by their position).
-    Plain,
-    /// `__StorageKey` tagged by field, with the fields' common payload type
-    /// as the value (storage fields that need a tagged carrier and all store
-    /// one payload type).
-    Homog,
-}
-
+/// The raw protocol's storage: the tagged layout (`verified_storage_tagged`),
+/// one `IMap<__StorageKey, __StorageValue>` with a key and a value variant per
+/// storage field.
 struct Store {
-    kind: StoreKind,
-    key: TokenStream,
-    val: TokenStream,
-    index: HashMap<String, usize>,
+    t: Option<crate::verified_storage_tagged::Tagged>,
 }
 
 impl Store {
-    fn new(sm: &SM) -> Result<Store, Error> {
-        let fields: Vec<&Field> = sm.fields.iter().filter(|f| f.stype.is_storage()).collect();
-        if fields.is_empty() {
-            return Ok(Store { kind: StoreKind::None, key: quote! {()}, val: quote! {()}, index: HashMap::new() });
-        }
-        let has_option = fields.iter().any(|f| matches!(f.stype, ShardableType::StorageOption(_)));
-        let map_count = fields
-            .iter()
-            .filter(|f| matches!(f.stype, ShardableType::StorageMap(..) | ShardableType::StorageIMap(..)))
-            .count();
-        let mut names: Vec<String> = fields.iter().map(|f| f.name.to_string()).collect();
-        names.sort();
-        let index: HashMap<String, usize> = names.iter().enumerate().map(|(i, n)| (n.clone(), i)).collect();
-        // The raw backend's layout choice (`verified_storage_carrier`).
-        let option_types: HashSet<String> = fields
-            .iter()
-            .filter_map(|f| match &f.stype {
-                ShardableType::StorageOption(v) => Some(quote! {#v}.to_string()),
-                _ => None,
-            })
-            .collect();
-        if fields.len() >= 2 && (has_option && map_count > 0 || map_count > 1 || option_types.len() > 1) {
-            {
-                let owned: Vec<Field> = fields.iter().map(|f| (*f).clone()).collect();
-                if let Some(v) = crate::verified_storage_homogeneous_carrier::payload(&owned) {
-                    // One payload type: keys are tagged (`__StorageKey`), values
-                    // are the payloads themselves.
-                    return Ok(Store { kind: StoreKind::Homog, key: quote! {__StorageKey}, val: quote! {#v}, index });
-                }
-            }
-            return Ok(Store {
-                kind: StoreKind::Carrier,
-                key: quote! {__StorageKey},
-                val: quote! {__StorageValue},
-                index,
-            });
-        }
-        match &fields[0].stype {
-            ShardableType::StorageMap(k, v) | ShardableType::StorageIMap(k, v) => {
-                Ok(Store { kind: StoreKind::Plain, key: quote! {#k}, val: quote! {#v}, index })
-            }
-            ShardableType::StorageOption(v) => Ok(Store { kind: StoreKind::Plain, key: quote! {int}, val: quote! {#v}, index }),
-            _ => unreachable!(),
-        }
+    fn new(bundle: &SMBundle) -> Result<Store, Error> {
+        Ok(Store { t: crate::verified_storage_tagged::Tagged::build(bundle)? })
     }
     fn has_storage(&self) -> bool {
-        self.kind != StoreKind::None
+        self.t.is_some()
+    }
+    fn layout(&self) -> &crate::verified_storage_tagged::Tagged {
+        self.t.as_ref().expect("storage")
     }
     fn storage_ty(&self) -> TokenStream {
-        let (k, v) = (&self.key, &self.val);
-        quote! {::vstd::imap::IMap<#k, #v>}
+        self.layout().ty()
     }
-    fn empty(&self) -> TokenStream {
-        let (k, v) = (&self.key, &self.val);
-        quote! {::vstd::imap::IMap::<#k, #v>::empty()}
+    fn unit(&self) -> TokenStream {
+        self.layout().unit()
     }
-    fn option_index(&self, f: &Field) -> TokenStream {
-        let lit = verus_syn::LitInt::new(&format!("{}int", self.index[&f.name.to_string()]), f.name.span());
-        quote! {#lit}
+    fn tracked_unit(&self) -> TokenStream {
+        self.layout().tracked_unit()
     }
-    /// The storage key of a singleton operand.
+    /// The storage key of a singleton operand (at `k`, or of a `storage_option` field).
     fn key_of(&self, f: &Field, k: Option<&Expr>) -> TokenStream {
-        let n = &f.name;
-        match (&self.kind, k) {
-            (StoreKind::Carrier | StoreKind::Homog, Some(k)) => quote! {__StorageKey::#n(#k)},
-            (StoreKind::Carrier | StoreKind::Homog, None) => quote! {__StorageKey::#n},
-            (_, Some(k)) => quote! {#k},
-            (_, None) => self.option_index(f),
-        }
+        self.layout().key_of(&f.name, k.map(|k| quote! {#k}).as_ref())
     }
+    /// The storage value holding payload `v` of `f`.
     fn wrap(&self, f: &Field, v: TokenStream) -> TokenStream {
-        let n = &f.name;
-        if self.kind == StoreKind::Carrier { quote! {__StorageValue::#n(#v)} } else { v }
+        self.layout().wrap(&f.name, v)
     }
-    /// Convert a tracked storage value into the field's payload.
+    /// Statements turning the tracked storage value `name` of `f` into its payload.
     fn unwrap(&self, f: &Field, name: &Ident) -> TokenStream {
-        let n = &f.name;
-        if self.kind == StoreKind::Carrier {
-            quote! {
-                let tracked #name = match #name {__StorageValue::#n(x) => Some(x), _ => None};
-                let tracked #name = #name.tracked_unwrap();
-            }
-        } else {
-            quote! {}
-        }
+        self.layout().unwrap(&f.name, name)
     }
-    /// The storage map of a general operand `e` of field `f`.
+    /// The payload at the singleton location `k` of `f` in `base`.
+    fn at(&self, base: &TokenStream, f: &Field, k: Option<&Expr>) -> TokenStream {
+        let key = self.key_of(f, k);
+        self.layout().payload(&f.name, quote! {#base[#key]})
+    }
+    /// The tagged part of the general operand `e` of `f`.
     fn tagged(&self, f: &Field, e: &TokenStream) -> TokenStream {
-        let n = &f.name;
-        match (&self.kind, &f.stype) {
-            (StoreKind::Carrier | StoreKind::Homog, ShardableType::StorageMap(..)) => {
-                let tag = format_ident!("__tag_{}", n);
-                quote! {__StorageKey::#tag((#e).to_imap())}
-            }
-            (StoreKind::Carrier | StoreKind::Homog, _) => {
-                let tag = format_ident!("__tag_{}", n);
-                quote! {__StorageKey::#tag(#e)}
-            }
-            (_, ShardableType::StorageMap(..)) => quote! {(#e).to_imap()},
-            (_, ShardableType::StorageIMap(..)) => quote! {(#e)},
-            (_, _) => {
-                let i = self.option_index(f);
-                let empty = self.empty();
-                quote! {(match #e {Some(__tsm_v) => #empty.insert(#i, __tsm_v), None => #empty})}
-            }
-        }
+        self.layout().tagged(f, e)
     }
-    /// Statements producing a tracked storage map `__tsm_packed` from the
-    /// tracked general operand `p`, equal to `tagged(f, p)`.
-    fn pack(&self, f: &Field, p: &TokenStream) -> TokenStream {
-        let n = &f.name;
-        match (&self.kind, &f.stype) {
-            (StoreKind::Homog, ShardableType::StorageMap(..)) => {
-                let pack = format_ident!("__pack_imap_{}", n);
-                quote! {
-                    let tracked __tsm_imap = ::vstd::resource::tsm_generic::tracked_map_to_imap(#p);
-                    let tracked __tsm_packed = __StorageKey::#pack(__tsm_imap);
-                }
-            }
-            (StoreKind::Homog, ShardableType::StorageIMap(..)) => {
-                let pack = format_ident!("__pack_imap_{}", n);
-                quote! {let tracked __tsm_packed = __StorageKey::#pack(#p);}
-            }
-            (StoreKind::Homog, _) => {
-                let pack = format_ident!("__pack_{}", n);
-                quote! {let tracked __tsm_packed = __StorageKey::#pack(#p);}
-            }
-            (StoreKind::Carrier, ShardableType::StorageIMap(..)) => {
-                // The carrier packs finite maps.
-                let pack = format_ident!("__pack_{}", n);
+    /// Statements producing the tracked tagged part `__tsm_packed` of the
+    /// tracked general operand `p` of `f`. Packing builds the tagged map key
+    /// by key, so a `storage_imap` operand needs a finite domain; `what`
+    /// describes the operand in the diagnostic (e.g. "a deposit into").
+    fn pack(&self, f: &Field, p: &TokenStream, what: &str) -> TokenStream {
+        let pack = self.layout().helper("__pack_", &f.name);
+        match &f.stype {
+            ShardableType::StorageIMap(..) => {
                 let msg = format!(
-                    "generic field tokens: a deposit into storage_imap field `{}` (stored with differently typed storage fields) needs a finite domain (state it with a `require`, or use #[verified_raw_tokens])",
-                    n
+                    "generic field tokens: {} storage_imap field `{}` needs a finite domain (state it with a `require`)",
+                    what, f.name
                 );
                 quote! {
                     #[verifier::custom_err(#msg)]
                     assert((#p).dom().finite());
                     let tracked __tsm_finite = ::vstd::resource::tsm_generic::tracked_imap_to_map(#p);
-                    let tracked __tsm_packed = __StorageKey::#pack(__tsm_finite);
+                    let tracked __tsm_packed = #pack(__tsm_finite);
                 }
             }
-            (StoreKind::Carrier, _) => {
-                let pack = format_ident!("__pack_{}", n);
-                quote! {let tracked __tsm_packed = __StorageKey::#pack(#p);}
-            }
-            (_, ShardableType::StorageMap(..)) => {
-                quote! {let tracked __tsm_packed = ::vstd::resource::tsm_generic::tracked_map_to_imap(#p);}
-            }
-            (_, ShardableType::StorageIMap(..)) => quote! {let tracked __tsm_packed = #p;},
-            (_, _) => {
-                let i = self.option_index(f);
-                let map = self.storage_ty();
-                quote! {
-                    let tracked mut __tsm_packed: #map = ::vstd::imap::IMap::tracked_empty();
-                    let tracked __tsm_opt = #p;
-                    if __tsm_opt is Some {
-                        __tsm_packed.tracked_insert(#i, __tsm_opt.tracked_unwrap());
-                    }
-                }
-            }
+            _ => quote! {let tracked __tsm_packed = #pack(#p);},
         }
     }
     /// Statements withdrawing the general operand `e` of `f` from the tracked
-    /// map `__tsm_withdrawn` into `p`.
+    /// map `__tsm_withdrawn` into `p`. Unpacking takes the tagged part apart
+    /// key by key, so a `storage_imap` operand needs a finite domain.
     fn unpack(&self, f: &Field, p: &Ident, e: &TokenStream) -> TokenStream {
         let n = &f.name;
         let tagged = self.tagged(f, e);
-        match (&self.kind, &f.stype) {
-            (StoreKind::Carrier, ShardableType::StorageMap(..)) => {
-                let unpack = format_ident!("__unpack_{}", n);
-                let untag = format_ident!("__untag_{}", n);
-                let tag_finite = format_ident!("__tag_finite_{}", n);
+        let unpack = self.layout().helper("__unpack_", n);
+        match &f.stype {
+            ShardableType::StorageMap(..) => {
+                let untag = self.layout().helper("__untag_", n);
+                let tag_finite = self.layout().helper("__tag_finite_", n);
                 quote! {
                     let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #tagged);
-                    assert(::vstd::prelude::ext_equal(__StorageKey::#untag(__tsm_part), (#e).to_imap()));
-                    __StorageKey::#tag_finite(#e);
-                    let tracked #p = __StorageKey::#unpack(__tsm_part);
+                    assert(::vstd::prelude::ext_equal(#untag(__tsm_part), (#e).to_imap()));
+                    #tag_finite(#e);
+                    let tracked #p = #unpack(__tsm_part);
                     assert(#p.to_imap() == (#e).to_imap());
                     assert forall|k| #p.dom().contains(k) == #[trigger] (#e).dom().contains(k) by {
                         assert(#p.to_imap().contains_key(k) == (#e).to_imap().contains_key(k));
@@ -338,91 +224,38 @@ impl Store {
                     assert(::vstd::prelude::ext_equal(#p, #e));
                 }
             }
-            (StoreKind::Carrier, ShardableType::StorageIMap(..)) => {
-                // The tagged carrier unpacks finite maps: its values are
-                // tagged, and no tracked operation untags infinitely many.
-                let unpack = format_ident!("__unpack_{}", n);
-                let shape = format_ident!("__carrier_shape_{}", n);
+            ShardableType::StorageIMap(..) => {
+                let shape = self.layout().helper("__tag_shape_", n);
                 let msg = format!(
-                    "generic field tokens: a general withdrawal from storage_imap field `{}` (stored with differently typed storage fields) needs a finite domain (state it with a `require`, or use #[verified_raw_tokens])",
+                    "generic field tokens: a general withdrawal from storage_imap field `{}` needs a finite domain (state it with a `require` or in an invariant)",
                     n
                 );
                 let at = e.clone().into_iter().next().map_or(Span::call_site(), |t| t.span());
+                // The operation's proof hides the invariant; the finiteness
+                // may come from it (e.g. for a `birds_eye` operand).
                 let fin = quote::quote_spanned! {at=>
-                    #[verifier::custom_err(#msg)]
-                    assert((#e).dom().finite());
+                    {
+                        reveal(State::invariant);
+                        #[verifier::custom_err(#msg)]
+                        assert((#e).dom().finite());
+                    }
                 };
                 quote! {
                     #fin
-                    Protocol::#shape(#e);
+                    #shape(#e);
                     let tracked __tsm_part = __tsm_withdrawn.tracked_remove_keys(#tagged.dom());
                     assert(::vstd::prelude::ext_equal(__tsm_part, #tagged));
-                    let tracked __tsm_finite = __StorageKey::#unpack(__tsm_part);
+                    let tracked __tsm_finite = #unpack(__tsm_part);
                     let tracked #p = ::vstd::resource::tsm_generic::tracked_map_to_imap(__tsm_finite);
                     assert(::vstd::prelude::ext_equal(#p, #e));
                 }
             }
-            (StoreKind::Homog, ShardableType::StorageMap(..) | ShardableType::StorageIMap(..)) => {
-                let unpack = format_ident!("__unpack_imap_{}", n);
-                let untag = format_ident!("__untag_{}", n);
-                let native = if matches!(f.stype, ShardableType::StorageMap(..)) { quote! {(#e).to_imap()} } else { quote! {(#e)} };
-                let to_native = if matches!(f.stype, ShardableType::StorageMap(..)) {
-                    quote! {
-                        ::vstd::set::lemma_to_iset_finite((#e).dom());
-                        assert(::vstd::prelude::ext_equal((#e).to_imap().dom(), (#e).dom().to_iset()));
-                        let tracked #p = ::vstd::resource::tsm_generic::tracked_imap_to_map(__tsm_native);
-                        assert(::vstd::prelude::ext_equal(#p, #e)) by {
-                            assert forall|k| #p.dom().contains(k) == #[trigger] (#e).dom().contains(k) by {
-                                assert(#p.to_imap().contains_key(k) == (#e).to_imap().contains_key(k));
-                            }
-                            assert forall|k| #p.dom().contains(k) implies #[trigger] #p[k] == (#e)[k] by {
-                                assert(#p.to_imap()[k] == (#e).to_imap()[k]);
-                            }
-                        }
-                    }
-                } else {
-                    quote! {let tracked #p = __tsm_native;}
-                };
+            _ => {
+                let lemma = self.layout().helper("__untag_tag_", n);
                 quote! {
                     let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #tagged);
-                    assert(::vstd::prelude::ext_equal(__StorageKey::#untag(__tsm_part), #native));
-                    let tracked __tsm_native = __StorageKey::#unpack(__tsm_part);
-                    assert(__tsm_native == #native);
-                    #to_native
-                }
-            }
-            (StoreKind::Carrier | StoreKind::Homog, _) => {
-                let unpack = format_ident!("__unpack_{}", n);
-                let lemma = format_ident!("__tsm_untag_tag_{}", n);
-                quote! {
-                    let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #tagged);
-                    Instance::#lemma(#e);
-                    let tracked #p = __StorageKey::#unpack(__tsm_part);
-                }
-            }
-            (_, ShardableType::StorageMap(..)) => quote! {
-                let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #tagged);
-                let tracked #p = ::vstd::resource::tsm_generic::tracked_imap_to_map(__tsm_part);
-                assert(::vstd::prelude::ext_equal(#p, #e)) by {
-                    assert forall|k| #p.dom().contains(k) == #[trigger] (#e).dom().contains(k) by {
-                        assert(#p.to_imap().contains_key(k) == (#e).to_imap().contains_key(k));
-                    }
-                    assert forall|k| #p.dom().contains(k) implies #[trigger] #p[k] == (#e)[k] by {
-                        assert(#p.to_imap()[k] == (#e).to_imap()[k]);
-                    }
-                }
-            },
-            (_, ShardableType::StorageIMap(..)) => quote! {
-                let tracked #p = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #e);
-            },
-            (_, _) => {
-                let i = self.option_index(f);
-                quote! {
-                    let tracked #p = if (#e) is Some {
-                        Some(__tsm_withdrawn.tracked_remove(#i))
-                    } else {
-                        None
-                    };
+                    #lemma(#e);
+                    let tracked #p = #unpack(__tsm_part);
                 }
             }
         }
@@ -3529,15 +3362,10 @@ enum GuardShape {
     SomeOf(TokenStream),
     /// `guard f >= (e)` on a `storage_option`: `Option<&V>`.
     OptionGeneral(TokenStream),
-    /// `guard f >= (m)` on a `storage_map` (one storage field): `&IMap<K, V>`
-    /// equal to `m.to_imap()`.
-    MapGeneral(TokenStream),
-    /// `guard f >= (m)` on a `storage_imap` (one storage field): `&IMap<K, V>`.
-    IMapGeneral(TokenStream),
-    /// `guard f >= (m)` on a `storage_map` or `storage_imap` otherwise (with
-    /// other storage fields, or other guards): no `&IMap<K, V>` exists in the
-    /// guarded storage, so a map of references to the guarded values,
-    /// `Map<K, &V>` (`IMap<K, &V>` of a finite domain for a `storage_imap`).
+    /// `guard f >= (m)` on a `storage_map` or `storage_imap`: the guarded
+    /// storage holds the tagged values, not a `&Map<K, V>`, so a map of
+    /// references to the guarded values, `Map<K, &V>` (`IMap<K, &V>` of a
+    /// finite domain for a `storage_imap`).
     MapRefs(TokenStream),
 }
 
@@ -3561,17 +3389,8 @@ fn some_arg(e: &Expr) -> Option<TokenStream> {
 /// The output shapes of a guard's general operands. The trusted interface
 /// returns `&Option<V>` (or `&Map<K, V>`) for them, which is not a
 /// reference into the guarded storage; see `rewrite_guard_outputs`.
-fn guard_shapes(sm: &SM, store: &Store, parts: &ExchangeParts) -> Result<HashMap<String, GuardShape>, Error> {
+fn guard_shapes(sm: &SM, parts: &ExchangeParts) -> HashMap<String, GuardShape> {
     let mut out = HashMap::new();
-    let count = sm
-        .fields
-        .iter()
-        .flat_map(|f| parts.params.get(&f.name.to_string()).into_iter().flatten())
-        .filter(|p| p.inout_type == InoutType::BorrowOut)
-        .count();
-    // The guarded storage is the field's own map exactly when it is the only
-    // storage field and this is the only guard.
-    let whole = store.kind == StoreKind::Plain && count == 1;
     for f in &sm.fields {
         for p in parts.params.get(&f.name.to_string()).into_iter().flatten() {
             if p.inout_type != InoutType::BorrowOut {
@@ -3581,8 +3400,6 @@ fn guard_shapes(sm: &SM, store: &Store, parts: &ExchangeParts) -> Result<HashMap
                 Some(MonoidElt::General(e)) => match (&f.stype, some_arg(e)) {
                     (ShardableType::StorageOption(_), Some(v)) => GuardShape::SomeOf(v),
                     (ShardableType::StorageOption(_), None) => GuardShape::OptionGeneral(quote! {#e}),
-                    (ShardableType::StorageMap(..), _) if whole => GuardShape::MapGeneral(quote! {#e}),
-                    (ShardableType::StorageIMap(..), _) if whole => GuardShape::IMapGeneral(quote! {#e}),
                     _ => GuardShape::MapRefs(quote! {#e}),
                 },
                 _ => GuardShape::Single,
@@ -3590,7 +3407,7 @@ fn guard_shapes(sm: &SM, store: &Store, parts: &ExchangeParts) -> Result<HashMap
             out.insert(p.name.to_string(), shape);
         }
     }
-    Ok(out)
+    out
 }
 
 /// Replace the trusted interface's output type and postcondition
@@ -3608,7 +3425,7 @@ fn rewrite_guard_outputs(sm: &SM, parts: &mut ExchangeParts, shapes: &HashMap<St
                 _ => continue,
             };
             match shape.clone() {
-                GuardShape::Single | GuardShape::IMapGeneral(_) => continue,
+                GuardShape::Single => continue,
                 GuardShape::SomeOf(a) => (
                     Some(quote! {&'a #v}),
                     Box::new(move |_e: TokenStream| quote! {::vstd::prelude::equal(*#id, #a)}),
@@ -3619,10 +3436,6 @@ fn rewrite_guard_outputs(sm: &SM, parts: &mut ExchangeParts, shapes: &HashMap<St
                         ((#id is Some) == ((#e) is Some)
                             && ::vstd::prelude::imply(#id is Some, ::vstd::prelude::equal(*(#id->Some_0), (#e)->Some_0)))
                     }),
-                ),
-                GuardShape::MapGeneral(_) => (
-                    Some(quote! {&'a ::vstd::imap::IMap<#k, #v>}),
-                    Box::new(move |e: TokenStream| quote! {::vstd::prelude::equal(*#id, (#e).to_imap())}),
                 ),
                 GuardShape::MapRefs(_) => {
                     let infinite = matches!(f.map(|f| &f.stype), Some(ShardableType::StorageIMap(..)));
@@ -3898,7 +3711,7 @@ fn borrows_token(sm: &SM, bundle: &SMBundle, tr: &Transition) -> Result<bool, Er
 pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     let sm = &bundle.sm;
     check_fields(sm)?;
-    let store = Store::new(sm)?;
+    let store = Store::new(bundle)?;
     INHERENT_PERSISTENT_COUNT.with(|c| c.set(!leaks(sm.generics.is_some()) && store.has_storage()));
     let cm = Constants::new(sm);
     let mut any_unit = false;
@@ -4138,22 +3951,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     // reason about it.
     let reachable = reachable_state(&cm, &quote! {self.__desc}, &format_ident!("__tsm_s"));
     let kappa_idem = cm.as_ref().map(|cm| cm.kappa_items());
-    // `untag(tag(e)) == e` for the tagged storage options, for general
-    // withdrawals (proved here, apart from an operation's other facts).
-    let untag_tag: Vec<_> = sm
-        .fields
-        .iter()
-        .filter_map(|f| match &f.stype {
-            ShardableType::StorageOption(v) if matches!(store.kind, StoreKind::Carrier | StoreKind::Homog) => {
-                let n = &f.name;
-                let (lemma, tag, untag) = (format_ident!("__tsm_untag_tag_{}", n), format_ident!("__tag_{}", n), format_ident!("__untag_{}", n));
-                Some(quote! {
-                    proof fn #lemma(e: Option<#v>) ensures __StorageKey::#untag(__StorageKey::#tag(e)) == e {}
-                })
-            }
-            _ => None,
-        })
-        .collect();
+    let untag_tag: Vec<TokenStream> = vec![];
     items.push(quote! {
         /// The instance carries only its location (and shared, leaked
         /// resources), so it is freely duplicable (`Copy`, as in the trusted
@@ -4303,8 +4101,10 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                 let (generics, attrs) = crate::verified_tokens::datatype_generics(sm);
                 let (decl, wc) = crate::to_token_stream::generics_for_decl(&generics);
                 let args = crate::to_token_stream::get_generic_args(&sm.generics.as_ref().unwrap().params);
+                // (The storage enums are named with their own parameters by
+                // `verified_storage_tagged`.)
                 let mut names: HashSet<String> =
-                    ["Fragment", "Protocol", "State", "Token", "Instance", "Unit", "__StorageKey", "__StorageValue"]
+                    ["Fragment", "Protocol", "State", "Token", "Instance", "Unit"]
                         .iter().map(|s| s.to_string()).collect();
                 let attrs = quote! {#(#attrs)*};
                 // Leaked `&'static` tokens (the instance's base token and persistent
@@ -4417,7 +4217,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     let store = ctx.store;
     // `imap`/`iset` collections are the generated reservation types.
     let mut parts = exchange_parts_with(bundle, tr, &HashMap::new(), true)?;
-    let shapes = guard_shapes(sm, store, &parts)?;
+    let shapes = guard_shapes(sm, &parts);
     rewrite_guard_outputs(sm, &mut parts, &shapes);
     let parts = parts;
     let (ret, req, ens) = signature_tokens(&parts);
@@ -4496,17 +4296,12 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
             continue;
         }
         let key = match q.p.elt.as_ref() {
-            Some(MonoidElt::SingletonKV(k, _)) => store.key_of(f, Some(k)),
-            Some(MonoidElt::OptionSome(_)) => store.key_of(f, None),
+            Some(MonoidElt::SingletonKV(k, _)) => Some(k),
+            Some(MonoidElt::OptionSome(_)) => None,
             _ => continue,
         };
         let ty = &q.p.ty;
-        let fname = &f.name;
-        let actual = if store.kind == StoreKind::Carrier {
-            quote! {match __tsm_withdrawn[#key] {__StorageValue::#fname(__tsm_x) => __tsm_x, _ => ::vstd::prelude::arbitrary::<#ty>()}}
-        } else {
-            quote! {__tsm_withdrawn[#key]}
-        };
+        let actual = store.at(&quote! {__tsm_withdrawn}, f, key);
         withdrawn_arb.insert(q.p.name.to_string(), quote! {::vstd::prelude::arbitrary::<#ty>()});
         let pname = &q.p.name;
         withdrawn_binds.push(quote! {let #pname: #ty = #actual;});
@@ -4899,7 +4694,8 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     let join_shared = shared_joins(&take_shared, &shared_ident);
     // Deposits: storage inputs.
     let mut deposits = vec![];
-    let mut deposit_spec = store.empty();
+    // The deposit (a spec value).
+    let mut deposit_spec = if store.has_storage() { store.unit() } else { quote! {} };
     let mut withdrawals = vec![];
     for q in &params {
         let f = q.field;
@@ -4922,7 +4718,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
                 deposit_spec = quote! {#deposit_spec.insert(#key, #val)};
             }
             (InoutType::In, MonoidElt::General(_)) => {
-                let pack = store.pack(f, &quote! {#pname});
+                let pack = store.pack(f, &quote! {#pname}, "a deposit into");
                 deposits.push(quote! {
                     #pack
                     __tsm_deposit.tracked_union_prefer_right(__tsm_packed);
@@ -5157,7 +4953,8 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     }
     let has_deposit = params.iter().any(|q| q.field.stype.is_storage() && q.p.inout_type == InoutType::In);
     let has_withdraw = params.iter().any(|q| q.field.stype.is_storage() && q.p.inout_type == InoutType::Out);
-    let map_ty = store.storage_ty();
+    let map_ty = if store.has_storage() { store.storage_ty() } else { quote! {()} };
+    let withdrawn_unit = if store.has_storage() { store.tracked_unit() } else { quote! {()} };
     // With a borrowed observation, the exchange (frame lemma and output
     // lifting) is a separate proof (`exchange_fn`), as the raw protocol's
     // operations are.
@@ -5181,7 +4978,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
                 quote! {
                     #owned_ident.op_unit();
                     let tracked __tsm_out = Protocol::#raw(__tsm_acc, #dep_arg #(#pn),*);
-                    let tracked __tsm_withdrawn: #map_ty = ::vstd::imap::IMap::tracked_empty();
+                    let tracked __tsm_withdrawn: #map_ty = #withdrawn_unit;
                 }
             }
         }
@@ -5238,36 +5035,25 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         if !f.stype.is_storage() || q.p.inout_type != InoutType::Out {
             continue;
         }
+        let fname = &f.name;
+        let st = quote! {<Protocol as ::vstd::resource::tsm_storage::StorageMachine>::storage(pre)};
+        // A withdrawn singleton holds the operand's value; a bound value is
+        // the stored one (unless deposited by the same operation, which is out
+        // of scope).
+        let single = |key: TokenStream, value: Option<TokenStream>| match value {
+            Some(v) => {
+                let v = store.wrap(f, v);
+                quote! {__tsm_withdrawn.contains_key(#key) && __tsm_withdrawn[#key] == #v}
+            }
+            None => quote! {__tsm_withdrawn.contains_key(#key) && __tsm_withdrawn[#key] is #fname
+                && ::vstd::prelude::imply(!__tsm_deposit.contains_key(#key), __tsm_withdrawn[#key] == #st[#key])},
+        };
         match q.p.elt.as_ref() {
-            Some(MonoidElt::SingletonKV(k, Some(v))) => {
-                let key = store.key_of(f, Some(k));
-                let val = store.wrap(f, quote! {#v});
-                withdraw_facts.push(quote! {__tsm_withdrawn.contains_key(#key) && __tsm_withdrawn[#key] == #val})
+            Some(MonoidElt::SingletonKV(k, v)) => {
+                withdraw_facts.push(single(store.key_of(f, Some(k)), v.as_ref().map(|v| quote! {#v})))
             }
-            Some(MonoidElt::SingletonKV(k, None)) => {
-                let key = store.key_of(f, Some(k));
-                let fname = &f.name;
-                let variant = if store.kind == StoreKind::Carrier { quote! {&& __tsm_withdrawn[#key] is #fname} } else { quote! {} };
-                // The bound value is the stored one (unless deposited by the same
-                // operation, which is out of scope).
-                let stored = quote! {&& ::vstd::prelude::imply(!__tsm_deposit.contains_key(#key),
-                    __tsm_withdrawn[#key] == <Protocol as ::vstd::resource::tsm_storage::StorageMachine>::storage(pre)[#key])};
-                withdraw_facts.push(quote! {__tsm_withdrawn.contains_key(#key) #variant #stored})
-            }
-            Some(MonoidElt::OptionSome(Some(v))) => {
-                let key = store.key_of(f, None);
-                let val = store.wrap(f, quote! {#v});
-                withdraw_facts.push(quote! {__tsm_withdrawn.contains_key(#key) && __tsm_withdrawn[#key] == #val})
-            }
-            Some(MonoidElt::OptionSome(None)) => {
-                let key = store.key_of(f, None);
-                let fname = &f.name;
-                let variant = if store.kind == StoreKind::Carrier { quote! {&& __tsm_withdrawn[#key] is #fname} } else { quote! {} };
-                // The bound value is the stored one (unless deposited by the same
-                // operation, which is out of scope).
-                let stored = quote! {&& ::vstd::prelude::imply(!__tsm_deposit.contains_key(#key),
-                    __tsm_withdrawn[#key] == <Protocol as ::vstd::resource::tsm_storage::StorageMachine>::storage(pre)[#key])};
-                withdraw_facts.push(quote! {__tsm_withdrawn.contains_key(#key) #variant #stored})
+            Some(MonoidElt::OptionSome(v)) => {
+                withdraw_facts.push(single(store.key_of(f, None), v.as_ref().map(|v| quote! {#v})))
             }
             Some(MonoidElt::General(e)) => withdraw_facts.push(store.withdraw_general_fact(f, &quote! {#e})),
             _ => {}
@@ -5512,8 +5298,9 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         }
     };
     let deposit_stmts = if store.has_storage() {
+        let unit = store.tracked_unit();
         quote! {
-            let tracked mut __tsm_deposit: #map_ty = ::vstd::imap::IMap::tracked_empty();
+            let tracked mut __tsm_deposit: #map_ty = #unit;
             #(#deposits)*
             assert(__tsm_deposit == #deposit_spec_body);
         }
@@ -5926,41 +5713,18 @@ fn guard_method(
         }
         let pname = &q.p.name;
         let fname = &f.name;
-        let borrow = format_ident!("__borrow_{}", fname);
-        match (shapes.get(&pname.to_string()), &store.kind) {
-            (Some(GuardShape::SomeOf(_)), StoreKind::Carrier | StoreKind::Homog) => {
-                guards.push(quote! {let tracked #pname = __StorageKey::#borrow(__tsm_guard).tracked_unwrap();});
+        let borrow = store.layout().helper("__borrow_", fname);
+        let unwrap = quote! {::vstd::std_specs::option::OptionAdditionalFns::tracked_unwrap};
+        match shapes.get(&pname.to_string()) {
+            Some(GuardShape::SomeOf(_)) => {
+                guards.push(quote! {let tracked #pname = #unwrap(#borrow(__tsm_guard));});
                 continue;
             }
-            (Some(GuardShape::SomeOf(_)), _) => {
-                let i = store.option_index(f);
-                guards.push(quote! {let tracked #pname = __tsm_guard.tracked_borrow(#i);});
+            Some(GuardShape::OptionGeneral(e)) => {
+                guards.push(quote! {let tracked #pname = if (#e) is Some { #borrow(__tsm_guard) } else { None };});
                 continue;
             }
-            (Some(GuardShape::OptionGeneral(e)), StoreKind::Carrier | StoreKind::Homog) => {
-                guards.push(quote! {let tracked #pname = if (#e) is Some { __StorageKey::#borrow(__tsm_guard) } else { None };});
-                continue;
-            }
-            (Some(GuardShape::OptionGeneral(e)), _) => {
-                let i = store.option_index(f);
-                guards.push(quote! {let tracked #pname = if (#e) is Some { Some(__tsm_guard.tracked_borrow(#i)) } else { None };});
-                continue;
-            }
-            (Some(GuardShape::MapGeneral(e)), _) => {
-                guards.push(quote! {
-                    let tracked #pname = __tsm_guard;
-                    assert(::vstd::prelude::ext_equal(*#pname, (#e).to_imap()));
-                });
-                continue;
-            }
-            (Some(GuardShape::IMapGeneral(e)), _) => {
-                guards.push(quote! {
-                    let tracked #pname = __tsm_guard;
-                    assert(::vstd::prelude::ext_equal(*#pname, #e));
-                });
-                continue;
-            }
-            (Some(GuardShape::MapRefs(e)), _) => {
+            Some(GuardShape::MapRefs(e)) => {
                 let (helper, fact, call) = guard_refs(store, f, &format_ident!("__tsm_guard_refs_{}_{}", tr.name, pname), pname, &e)?;
                 helpers.push(helper);
                 ref_facts.push(fact);
@@ -5969,27 +5733,12 @@ fn guard_method(
             }
             _ => {}
         }
-        match (&store.kind, q.p.elt.as_ref()) {
-            (StoreKind::Carrier, Some(MonoidElt::SingletonKV(k, _))) => {
-                let borrow = format_ident!("__borrow_{}", fname);
-                guards.push(quote! {let tracked #pname = __StorageKey::#borrow(__tsm_guard, #k).tracked_unwrap();})
+        match q.p.elt.as_ref() {
+            Some(MonoidElt::SingletonKV(k, _)) => {
+                guards.push(quote! {let tracked #pname = #unwrap(#borrow(__tsm_guard, #k));})
             }
-            (StoreKind::Carrier, Some(MonoidElt::OptionSome(_))) => {
-                let borrow = format_ident!("__borrow_{}", fname);
-                guards.push(quote! {let tracked #pname = __StorageKey::#borrow(__tsm_guard).tracked_unwrap();})
-            }
-            (StoreKind::Homog, Some(MonoidElt::SingletonKV(k, _))) => {
-                guards.push(quote! {let tracked #pname = __tsm_guard.tracked_borrow(__StorageKey::#fname(#k));})
-            }
-            (StoreKind::Homog, Some(MonoidElt::OptionSome(_))) => {
-                guards.push(quote! {let tracked #pname = __tsm_guard.tracked_borrow(__StorageKey::#fname);})
-            }
-            (StoreKind::Plain, Some(MonoidElt::SingletonKV(k, _))) => {
-                guards.push(quote! {let tracked #pname = __tsm_guard.tracked_borrow(#k);})
-            }
-            (StoreKind::Plain, Some(MonoidElt::OptionSome(_))) => {
-                let i = store.option_index(f);
-                guards.push(quote! {let tracked #pname = __tsm_guard.tracked_borrow(#i);})
+            Some(MonoidElt::OptionSome(_)) => {
+                guards.push(quote! {let tracked #pname = #unwrap(#borrow(__tsm_guard));})
             }
             _ => return err(f.name.span(), "unsupported storage guard for generic field tokens"),
         }
@@ -6063,15 +5812,9 @@ fn guard_refs(store: &Store, f: &Field, helper: &Ident, pname: &Ident, e: &Token
         _ => return err(f.name.span(), "internal: map guard of a non-map field"),
     };
     let skey = store.key_of(f, Some(&verus_syn::parse_quote! {kk}));
-    let skey_c = store.key_of(f, Some(&verus_syn::parse_quote! {kc}));
     let sval = store.wrap(f, quote! {e[kk]});
-    let borrow = match store.kind {
-        StoreKind::Carrier => {
-            let b = format_ident!("__borrow_{}", n);
-            quote! {__StorageKey::#b(m, kc).tracked_unwrap()}
-        }
-        _ => quote! {m.tracked_borrow(#skey_c)},
-    };
+    let b = store.layout().helper("__borrow_", n);
+    let borrow = quote! {::vstd::std_specs::option::OptionAdditionalFns::tracked_unwrap(#b(m, kc))};
     let map = store.storage_ty();
     let (set_ty, emap_ty, out_ty, empty, choose_len, contains_len, remove_len, finite) = if infinite {
         (
@@ -6131,7 +5874,7 @@ fn guard_refs(store: &Store, f: &Field, helper: &Ident, pname: &Ident, e: &Token
     let tagged = store.tagged(f, e);
     let fin = if infinite {
         let msg = format!(
-            "generic field tokens: a guard of a general operand of storage_imap field `{}` (with other storage fields or guards) needs a finite domain (state it with a `require`, or use #[verified_raw_tokens])",
+            "generic field tokens: a guard of a general operand of storage_imap field `{}` needs a finite domain (state it with a `require`)",
             n
         );
         let at = e.clone().into_iter().next().map_or(Span::call_site(), |t| t.span());
@@ -6186,7 +5929,7 @@ fn init_method(
     if storage_fields.len() <= FEW_PIECES {
         for f in &storage_fields {
             let arg = format_ident!("param_token_{}", f.name);
-            let pack = store.pack(f, &quote! {#arg});
+            let pack = store.pack(f, &quote! {#arg}, "the initial value of");
             deposits.push(quote! {
                 #pack
                 __tsm_base.tracked_union_prefer_right(__tsm_packed);
@@ -6198,7 +5941,7 @@ fn init_method(
         let mut level: Vec<Ident> = vec![];
         for (i, f) in storage_fields.iter().enumerate() {
             let arg = format_ident!("param_token_{}", f.name);
-            let pack = store.pack(f, &quote! {#arg});
+            let pack = store.pack(f, &quote! {#arg}, "the initial value of");
             let piece = format_ident!("__tsm_packed_{}", i);
             deposits.push(quote! {
                 #pack
@@ -6395,9 +6138,10 @@ fn init_method(
     let init_strong = format_ident!("{}_strong", tr.name);
     let (base_init, call) = if store.has_storage() {
         let map_ty = store.storage_ty();
+        let unit = store.tracked_unit();
         (
             quote! {
-                let tracked mut __tsm_base: #map_ty = ::vstd::imap::IMap::tracked_empty();
+                let tracked mut __tsm_base: #map_ty = #unit;
                 #(#deposits)*
                 assert forall|__tsm_s: State| State::#init_strong(__tsm_s, #(#pn),*) implies __tsm_base == __tsm_s.__storage() by {
                     assert(::vstd::prelude::ext_equal(__tsm_base, __tsm_s.__storage()));
