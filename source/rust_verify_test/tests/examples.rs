@@ -30,24 +30,43 @@ examples_in_dir!("../../examples/storage_protocol");
 examples_in_dir!("../../examples/integer_ring");
 
 fn run_example_for_file(file_path: &str) {
+    run_example(file_path, false)
+}
+
+/// The run with the checked state-machine macro (`--cfg verus_verified_tsm`) of an example
+/// that selects its macro by that cfg. A header line
+/// `// verified-tsm: <command> [--- reason]` (one of the first-line commands) overrides the
+/// first line's expectation for this run.
+fn run_example_for_file_tsm(file_path: &str) {
+    run_example(file_path, true)
+}
+
+fn run_example(file_path: &str, verified_tsm: bool) {
     let relative_path = Path::new(file_path);
 
     let mut path = std::path::PathBuf::from("rust_verify");
     path.extend(relative_path);
     let path = path.to_str().expect("invalid example path");
 
-    let mut reader =
-        std::io::BufReader::new(std::fs::File::open(relative_path).expect("cannot open file"));
-    let mut first_line = String::new();
-    let first_line_elements: Vec<_> = {
-        use std::io::BufRead;
-        reader.read_line(&mut first_line).expect("unable to read first line");
-        first_line.trim().split(" ").collect()
+    let text = std::fs::read_to_string(relative_path).expect("cannot open file");
+    let first_line = text.lines().next().unwrap_or("").to_string();
+    let tsm_line = text
+        .lines()
+        .take(20)
+        .find_map(|l| l.trim().strip_prefix("// verified-tsm: "))
+        .map(|rest| format!("// rust_verify/tests/example.rs {}", rest.trim()));
+    let first_line = match (verified_tsm, tsm_line) {
+        (true, Some(line)) => line,
+        _ => first_line,
     };
+    let first_line_elements: Vec<_> = first_line.trim().split(" ").collect();
 
     let mut mode = Mode::ExpectSuccess;
 
     let mut options = vec![];
+    if verified_tsm {
+        options.push(TSM_VERIFIED_OPTION);
+    }
 
     if let ["//", "rust_verify/tests/example.rs", command, ..] = &first_line_elements[..] {
         match *command {
@@ -99,7 +118,11 @@ fn run_example_for_file(file_path: &str) {
     let target_dir = target_dir.parent().unwrap().parent().unwrap();
     let example_out_dir = target_dir
         .join("test_inputs")
-        .join(format!("example-{}", relative_path.file_stem().unwrap().to_str().unwrap()));
+        .join(format!(
+            "example-{}{}",
+            relative_path.file_stem().unwrap().to_str().unwrap(),
+            if verified_tsm { "-verified-tsm" } else { "" }
+        ));
     if example_out_dir.exists() {
         std::fs::remove_dir_all(&example_out_dir).unwrap();
     }

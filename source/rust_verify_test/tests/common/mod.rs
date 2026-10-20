@@ -344,12 +344,21 @@ pub fn run_verus(
         } else if *option == "--edition 2018" {
             verus_args.push("--edition".to_string());
             verus_args.push("2018".to_string());
+        } else if *option == TSM_VERIFIED_OPTION {
+            verus_args.push("--cfg".to_string());
+            verus_args.push(TSM_VERIFIED_CFG.to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
     }
     if use_internal_test_mode {
         verus_args.insert(0, "--internal-test-mode".to_string());
+    }
+    // VERUS_TSM=verified selects the checked macro for every test of this run (including
+    // tests and examples not written with `test_verify_tsm!`); see `tsm_verified_forced`.
+    if tsm_verified_forced() && !options.contains(&TSM_VERIFIED_OPTION) {
+        verus_args.push("--cfg".to_string());
+        verus_args.push(TSM_VERIFIED_CFG.to_string());
     }
     if no_external_by_default {
         verus_args.push("--no-external-by-default".to_string());
@@ -729,6 +738,98 @@ macro_rules! test_verify_one_file {
     };
 }
 
+/// Test option selecting the checked `verified_tokenized_state_machine!`: the verifier gets
+/// `--cfg verus_verified_tsm`, under which the test prelude (and example files) import
+/// `verified_tokenized_state_machine as tokenized_state_machine` and
+/// `verified_state_machine_model as state_machine`.
+pub const TSM_VERIFIED_OPTION: &str = "--verified-tsm";
+pub const TSM_VERIFIED_CFG: &str = "verus_verified_tsm";
+
+/// `VERUS_TSM=verified` forces the checked macro for every test and example of the run.
+pub fn tsm_verified_forced() -> bool {
+    std::env::var("VERUS_TSM").map(|v| v == "verified").unwrap_or(false)
+}
+
+pub fn with_tsm_verified<'a>(options: &[&'a str]) -> Vec<&'a str> {
+    let mut options = options.to_vec();
+    options.push(TSM_VERIFIED_OPTION);
+    options
+}
+
+/// Runs one test for both state-machine macros: generates `mod <name> { fn trusted; fn verified }`.
+///
+/// ```ignore
+/// test_verify_tsm! { #[test] name IMPORTS.to_string() + verus_code_str!{..} => Ok(()) }
+/// test_verify_tsm! { #[test] name [options] BODY => Err(e) => assert_vir_error_msg(e, "x") }
+/// // per-macro expectation for the checked macro:
+/// test_verify_tsm! { #[test] name BODY => Ok(()) ; verified => Err(e) => assert_fails(e, 1) }
+/// // case not (yet) supported by the checked macro (reported as an ignored test):
+/// test_verify_tsm! { #[test] name BODY => Ok(()) ; verified ignore "reason" }
+/// // case only meaningful for the trusted macro (no checked test is generated):
+/// test_verify_tsm! { #[test] name BODY => Ok(()) ; trusted_only "reason" }
+/// ```
+#[macro_export]
+macro_rules! test_verify_tsm {
+    ($(#[$attrs:meta])* $name:ident $([$($opt:expr),* $(,)?])? $body:expr => Ok(()) $(; $($v:tt)*)?) => {
+        $crate::test_verify_tsm!(@mod [$(#[$attrs])*] $name [$($($opt),*)?] [$body]
+            [Ok(())] [] [$($($v)*)?]);
+    };
+    ($(#[$attrs:meta])* $name:ident $([$($opt:expr),* $(,)?])? $body:expr => $result:pat => $assertions:expr $(; $($v:tt)*)?) => {
+        $crate::test_verify_tsm!(@mod [$(#[$attrs])*] $name [$($($opt),*)?] [$body]
+            [$result] [$assertions] [$($($v)*)?]);
+    };
+    (@mod [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($tr:tt)*] [$($ta:tt)*] [$($v:tt)*]) => {
+        mod $name {
+            #[allow(unused_imports)]
+            use super::*;
+            $($attrs)*
+            fn trusted() {
+                let result = verify_one_file(::std::stringify!($name), $body, &[$($opt),*]);
+                $crate::test_verify_tsm!(@check result [$($tr)*] [$($ta)*]);
+            }
+            $crate::test_verify_tsm!(@verified [$($attrs)*] $name [$($opt),*] [$body] [$($tr)*] [$($ta)*] $($v)*);
+        }
+    };
+    (@verified [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($tr:tt)*] [$($ta:tt)*]) => {
+        $crate::test_verify_tsm!(@verified_fn [$($attrs)*] $name [$($opt),*] [$body] [$($tr)*] [$($ta)*]);
+    };
+    (@verified [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($tr:tt)*] [$($ta:tt)*] verified => Ok(())) => {
+        $crate::test_verify_tsm!(@verified_fn [$($attrs)*] $name [$($opt),*] [$body] [Ok(())] []);
+    };
+    (@verified [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($tr:tt)*] [$($ta:tt)*] verified => $vr:pat => $va:expr) => {
+        $crate::test_verify_tsm!(@verified_fn [$($attrs)*] $name [$($opt),*] [$body] [$vr] [$va]);
+    };
+    (@verified [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($tr:tt)*] [$($ta:tt)*] verified ignore $reason:literal) => {
+        $crate::test_verify_tsm!(@verified_fn [$($attrs)* #[ignore = $reason]] $name [$($opt),*] [$body] [$($tr)*] [$($ta)*]);
+    };
+    (@verified [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($tr:tt)*] [$($ta:tt)*] trusted_only $reason:literal) => {
+        const _: &str = $reason;
+    };
+    (@verified_fn [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($vr:tt)*] [$($va:tt)*]) => {
+        $($attrs)*
+        fn verified() {
+            let options = with_tsm_verified(&[$($opt),*]);
+            let result = verify_one_file(
+                &::std::format!("{}__verified", ::std::stringify!($name)), $body, &options);
+            $crate::test_verify_tsm!(@check result [$($vr)*] [$($va)*]);
+        }
+    };
+    (@check $result:ident [Ok(())] []) => {
+        match $result {
+            Ok(err) => assert_eq!(err.warnings.len(), 0),
+            Err(err) => assert!(false, "expected Ok(()), got {:?}", err),
+        }
+    };
+    (@check $result:ident [$p:pat] [$a:expr]) => {
+        #[allow(irrefutable_let_patterns)]
+        if let $p = $result {
+            $a
+        } else {
+            assert!(false, "result does not match the expected pattern");
+        }
+    };
+}
+
 // We run the bit-vector tests twice; once with interpreter-based simplification on
 // (to mirror what the end-user sees) and once with it off (to check that our SMT encoding
 // of bit-vector operations is correct).
@@ -852,6 +953,15 @@ pub fn assert_fails(err: TestErr, count: usize) {
                 .find(|x| x.text.contains("FAILS"))
                 .is_some()
         );
+    }
+}
+
+/// Assert `count` verification failures, wherever reported (for the checked state-machine
+/// macro, whose generated safety-condition proofs report at the macro invocation).
+pub fn assert_fails_anywhere(err: TestErr, count: usize) {
+    assert_eq!(err.errors.len(), count, "errors: {:?}", err.errors);
+    for e in &err.errors {
+        assert!(e.code.is_none(), "expected a verification failure, got rustc error: {}", e.message);
     }
 }
 
