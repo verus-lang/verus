@@ -209,7 +209,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_call_extern_external verus_code! {
         extern "C" {
-            #[verifier(external)]
+            #[verifier::external]
             fn stuff();
         }
 
@@ -475,7 +475,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_attr_on_foreign_function verus_code! {
         extern "C" {
-            #[verifier(external_fn_specification)]
+            #[verifier::external_fn_specification]
             fn stuff();
         }
     } => Err(err) => assert_vir_error_msg(err, "assume_specification not supported here")
