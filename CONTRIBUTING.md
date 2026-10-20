@@ -327,7 +327,7 @@ See `dependencies/syn/README.md` for details.
 
 The following section assumes that `cargo-make` has been installed via `cargo install cargo-make`.
 
-**IMPORTANT**: The `cargo-make` tasks that depend on `cargo-verus`, `verus`, or `rust_verify`,
+**IMPORTANT**: The `cargo-make` tasks that need to run `cargo-verus`, `verus`, or `rust_verify`,
 install them automatically _only if they are missing_. You **must** re-run `cargo make install` for
 any changes to those tools to take effect.
 
