@@ -197,11 +197,7 @@ impl PointsToSingleton {
     /// The byte that this permission tracks.
     pub uninterp spec fn byte(self) -> AbstractByte;
 
-    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
-    /// since you cannot have two permissions to the same memory.
-    /// (`self` is an &mut reference to enforce distinctness,
-    /// so you cannot pass the same PointsTo as both arguments.)
-    /// Since `u8` is not a ZST, this implies the pointers have distinct addresses.
+    /// Specializes `is_disjoint` to the case when the other permission is a `PointsToSingleton`.
     pub proof fn is_disjoint_singleton(tracked &mut self, tracked other: &Self)
         requires
             self.wf_basic(),
