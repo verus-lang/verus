@@ -2047,9 +2047,9 @@ test_verify_one_file_with_options! {
             // stops us from saying f::<ty>(x) for ty that doesn't implement T.
 
             // So we manually emit the AIR that corresponds to the f::<B>(x) call.
-            inline_air_stmt("(assume (tr_bound%test_crate!T. $ TYPE%test_crate!B.))");
-            inline_air_stmt("(assert (= (test_crate!f.? $ TYPE%test_crate!B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!B. (I (Sub i! 0))))))");
-            inline_air_stmt("(assume (= (test_crate!f.? $ TYPE%test_crate!B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!B. (I (Sub i! 0))))))");
+            inline_air_stmt("(assume (tr_bound%test_crate!t%T. $ TYPE%test_crate!t%B.))");
+            inline_air_stmt("(assert (= (test_crate!f.? $ TYPE%test_crate!t%B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!t%B. (I (Sub i! 0))))))");
+            inline_air_stmt("(assume (= (test_crate!f.? $ TYPE%test_crate!t%B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!t%B. (I (Sub i! 0))))))");
             assert(false);
         }
     } => Ok(())
@@ -2068,8 +2068,8 @@ test_verify_one_file_with_options! {
             // stops us from saying f::<ty>(x) for ty that doesn't implement T.
 
             // So we manually emit the AIR that corresponds to the f::<B>(x) call.
-            // inline_air_stmt("(assume (tr_bound%test_crate!T. $ TYPE%test_crate!B.))");
-            inline_air_stmt("(assert (= (test_crate!f.? $ TYPE%test_crate!B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!B. (I (Sub i! 0))))))");
+            // inline_air_stmt("(assume (tr_bound%test_crate!t%T. $ TYPE%test_crate!t%B.))");
+            inline_air_stmt("(assert (= (test_crate!f.? $ TYPE%test_crate!t%B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!t%B. (I (Sub i! 0))))))");
         }
     } => Err(err) => { assert!(err.errors.len() == 1); }
 }

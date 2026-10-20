@@ -14,12 +14,12 @@ use crate::ast_util::{
 };
 use crate::context::Ctx;
 use crate::def::{self, Spanned};
-use crate::fun;
 use crate::inv_masks::{MaskQueryKind, MaskSet};
 use crate::messages::{
     Message, Span, ToAny, WarningAllow, error, error_with_label, error_with_secondary_label,
     internal_error,
 };
+use crate::real_fun;
 use crate::sst;
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
@@ -3795,7 +3795,7 @@ pub(crate) fn expr_to_stm_opt(
                 ExprX::Call {
                     target: CallTarget::Fun(
                         crate::ast::CallTargetKind::Static,
-                        fun!(CrateId::Vstd => "future", "exec_await"),
+                        real_fun!(CrateId::Vstd => "future"; "exec_await"),
                         Arc::new(vec![e.typ.clone()]),
                         Arc::new(vec![]),
                         attrs,

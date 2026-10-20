@@ -51,8 +51,8 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
                             let vattrs = ctxt.get_verifier_attrs(attrs)?;
                             if let Some((spec, imp)) = vattrs.external_trait_extension {
                                 let path = ctxt.def_id_to_vir_path(trait_def_id);
-                                let spec = path.replace_last(Arc::new(spec.clone()));
-                                let imp = path.replace_last(Arc::new(imp.clone()));
+                                let spec = path.replace_last(vir::def::in_type_ns(&spec));
+                                let imp = path.replace_last(vir::def::in_type_ns(&imp));
                                 let m = &mut external_info.external_trait_extension_impl_map;
                                 assert!(!m.contains_key(&imp));
                                 m.insert(imp, spec);
@@ -535,8 +535,8 @@ pub(crate) fn translate_trait<'tcx>(
     };
     state.external_info.local_trait_ids.push(target_trait_id);
     let external_trait_extension = if let Some((spec, imp)) = external_trait_extension {
-        let spec = orig_trait_path.replace_last(Arc::new(spec.clone()));
-        let imp = orig_trait_path.replace_last(Arc::new(imp.clone()));
+        let spec = orig_trait_path.replace_last(vir::def::in_type_ns(&spec));
+        let imp = orig_trait_path.replace_last(vir::def::in_type_ns(&imp));
         Some((spec, imp))
     } else {
         None

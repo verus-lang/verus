@@ -5,11 +5,11 @@ use crate::pre_header::PreHeader;
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir::State;
 use crate::rust_to_vir_base::{
-    check_fn_opaque_ty, check_generics_bounds_no_polarity, def_id_to_vir_path, local_to_var,
-    no_body_param_to_var,
+    check_fn_opaque_ty, check_generics_bounds_no_polarity, local_to_var, no_body_param_to_var,
 };
 use crate::rust_to_vir_base::{mk_visibility, qpath_to_ident};
 use crate::rust_to_vir_expr::{expr_to_vir_consume, pat_to_mut_var};
+use crate::rust_to_vir_path::def_id_to_vir_path;
 use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
@@ -110,15 +110,6 @@ impl<'tcx> FnOrConstSig<'tcx> {
     }
 }
 
-pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
-    // turn a::b::c into a::b::method_name
-    let mut pathx = (**path).clone();
-    let mut segments = (*pathx.segments).clone();
-    *segments.last_mut().expect("empty path") = Arc::new(method_name);
-    pathx.segments = Arc::new(segments);
-    Arc::new(pathx)
-}
-
 struct Autospec {
     /// This function should redirect to the following function:
     redirect_to: Option<vir::ast::Fun>,
@@ -126,6 +117,72 @@ struct Autospec {
     /// (for when_used_as_spec, the user supplies the function, but for allow_in_spec,
     /// we have to create one from the 'returns' clause)
     new_func: Option<vir::ast::FunctionStub>,
+}
+
+fn get_sibling<'tcx>(
+    ctxt: &Context<'tcx>,
+    span: Span,
+    def_id: DefId,
+    name: &str,
+) -> Result<DefId, VirErr> {
+    let tcx = ctxt.tcx;
+
+    if let Some(impl_id) = tcx.impl_of_assoc(def_id)
+        && !tcx.impl_is_of_trait(impl_id)
+    {
+        let symbol = rustc_span::Symbol::intern(&*name);
+        let c: Vec<_> = tcx.associated_items(impl_id).filter_by_name_unhygienic(symbol).collect();
+        if c.len() == 1 {
+            return Ok(c[0].def_id);
+        } else if c.len() == 0 {
+            return err_span(
+                span,
+                format!(
+                    "unable to find sibling impl item of name `{name:}` (should be in the same `impl` block)"
+                ),
+            );
+        } else {
+            return err_span(span, format!("sibling impl item of name `{name:}` is ambiguous"));
+        }
+    }
+
+    if let Some(trait_id) = tcx.trait_of_assoc(def_id) {
+        let symbol = rustc_span::Symbol::intern(&*name);
+        let c: Vec<_> = tcx.associated_items(trait_id).filter_by_name_unhygienic(symbol).collect();
+        if c.len() == 1 {
+            return Ok(c[0].def_id);
+        } else if c.len() == 0 {
+            return err_span(
+                span,
+                format!(
+                    "unable to find sibling trait item of name `{name:}` (should be in the same trait declaration)"
+                ),
+            );
+        } else {
+            return err_span(span, format!("sibling trait item of name `{name:}` is ambiguous"));
+        }
+    }
+
+    let module = tcx.parent_module_from_def_id(def_id.expect_local());
+    for item_id in tcx.hir_module_items(module).free_items() {
+        let item = tcx.hir_item(item_id);
+        match item.kind {
+            rustc_hir::ItemKind::Fn { ident, .. } if ident.name.as_str() == name => {
+                return Ok(item.owner_id.to_def_id());
+            }
+            rustc_hir::ItemKind::Const(ident, ..) if ident.name.as_str() == name => {
+                return Ok(item.owner_id.to_def_id());
+            }
+            _ => {}
+        }
+    }
+
+    return err_span(
+        span,
+        format!(
+            "unable to find item of name `{name:}` in this module (should be a top-level item in the module)"
+        ),
+    );
 }
 
 fn handle_autospec<'tcx>(
@@ -142,19 +199,10 @@ fn handle_autospec<'tcx>(
                 format!("a function cannot be marked both 'when_used_as_spec' and 'allow_in_spec'"),
             );
         }
-        let mut this_path = crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(
-            ctxt.tcx, def_id,
-        );
-        if matches!(&functionx.kind, FunctionKind::TraitMethodImpl { .. }) {
-            // pop off impl&%n:: (we want method_name, not Self::method_name)
-            this_path = this_path.pop_segment();
-        }
-        let path = autospec_fun(&this_path, method_name.clone());
+        let sibling_def_id = get_sibling(ctxt, span, def_id, &method_name)?;
+        let path = ctxt.def_id_to_vir_path(sibling_def_id);
         Ok(Autospec { redirect_to: Some(Arc::new(FunX { path })), new_func: None })
     } else if vattrs.allow_in_spec {
-        let mut this_path = crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(
-            ctxt.tcx, def_id,
-        );
         if functionx.mode != Mode::Exec {
             return err_span(span, format!("allow_in_spec can only be used on an exec function"));
         }
@@ -195,15 +243,10 @@ fn handle_autospec<'tcx>(
             },
         );
 
-        if functionx.proxy.is_some() {
-            // Naively, this_path may contain a mangled _verus_external_fn_specification_ name.
-            // Clean this up before sending it to autospec_return_clause_spec_fn_name:
-            this_path = this_path.pop_segment().push_segment(functionx.name.path.last_segment());
-        }
         let new_func = ctxt.spanned_new(
             span,
             FunctionStubX {
-                name: vir::def::autospec_return_clause_spec_fn_name(&this_path),
+                name: vir::def::autospec_return_clause_spec_fn_name(&functionx.name.path),
                 proxy: None,
                 kind: FunctionKind::Static,
                 visibility: functionx.visibility.clone(),
@@ -1252,11 +1295,8 @@ fn assume_specification_mismatch_type_error<'tcx, A>(
     t1: String,
     t2: String,
 ) -> Result<A, VirErr> {
-    let ex = crate::rust_to_vir_base::def_id_to_friendly(
-        ctxt.tcx,
-        Some(&ctxt.verus_items),
-        external_def_id,
-    );
+    let ex =
+        crate::rust_to_vir_path::def_id_to_friendly(ctxt.tcx, &ctxt.verus_items, external_def_id);
     err_span(
         span,
         format!(
@@ -1631,11 +1671,8 @@ pub(crate) fn check_item_fn<'tcx>(
         let from_trait_id = ctxt.tcx.parent(id);
         let from_path = ctxt.def_id_to_vir_path(from_trait_id);
         let to_path = ctxt.def_id_to_vir_path(to_trait_id);
-        let to_spec_path = if let Some(name) = to_spec_name {
-            Some(from_path.pop_segment().push_segment(Arc::new(name.clone())))
-        } else {
-            None
-        };
+        let to_spec_path =
+            to_spec_name.map(|name| from_path.replace_last(vir::def::in_type_ns(&name)));
         Some((from_path, to_path, to_spec_path))
     } else {
         None
@@ -2826,20 +2863,17 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
                     true
                 }
             } else {
-                use crate::rust_to_vir_base::def_path_to_vir_path;
+                use crate::rust_to_vir_path::def_path_to_segments_without_disambiguation;
                 use crate::verus_items::RustItem;
-                use vir::def::krate_to_string_ignore_stable_id;
                 let id = tp.trait_ref.def_id;
                 let rust_item = crate::verus_items::get_rust_item(tcx, id);
                 let is_local = id.is_local();
                 let mut is_external_trait_private_bound = false;
                 let is_match = |ignore: &Vec<String>| -> bool {
-                    if let Some(path) = def_path_to_vir_path(tcx, tcx.def_path(id)) {
-                        ignore.len() == path.segments.len() + 1
-                            && ignore[0] == krate_to_string_ignore_stable_id(&path.krate)
-                            && (0..path.segments.len())
-                                .into_iter()
-                                .all(|i| ignore[i + 1] == path.segments[i].to_string())
+                    if let Some(segments) =
+                        def_path_to_segments_without_disambiguation(tcx, tcx.def_path(id))
+                    {
+                        *ignore == segments
                     } else {
                         false
                     }

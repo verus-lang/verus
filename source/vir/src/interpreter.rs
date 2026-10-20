@@ -841,10 +841,7 @@ fn eval_array(
                                     array_exp.typ
                                 ),
                             };
-                            let seq_type_path = Arc::new(PathX {
-                                krate: CrateId::Vstd,
-                                segments: strs_to_idents(vec!["seq", "Seq"]),
-                            });
+                            let seq_type_path = crate::real_path!(CrateId::Vstd => "seq", "Seq");
                             let seq_typ = Arc::new(TypX::Datatype(
                                 Dt::Path(seq_type_path),
                                 Arc::new(vec![inner_typ]),
@@ -921,8 +918,7 @@ pub(crate) fn is_seq_to_sst_fun(fun: &Fun) -> bool {
 /// macro definition in vstd's seq.rs.
 // TODO: More robust way of pointing to vstd's sequence functions
 fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirErr> {
-    let seq_type_path =
-        Arc::new(PathX { krate: CrateId::Vstd, segments: strs_to_idents(vec!["seq", "Seq"]) });
+    let seq_type_path = crate::real_path!(CrateId::Vstd => "seq", "Seq");
     let seq_typ = Arc::new(TypX::Datatype(
         Dt::Path(seq_type_path),
         Arc::new(vec![inner_typ.clone()]),
@@ -950,11 +946,7 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirEr
         Ok(seq)
     } else {
         // Describe the sequence in terms of a view on an array literal
-        let path_view = Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: strs_to_idents(vec!["array", "array_view"]),
-        });
-        let fun_view = Arc::new(FunX { path: path_view });
+        let fun_view = crate::real_fun!(CrateId::Vstd => "array"; "array_view");
         let array = cleanup_array(span, inner_typ.clone(), s)?;
         let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(s.len())));
         let array_view = new_seq_exp(ExpX::Call(

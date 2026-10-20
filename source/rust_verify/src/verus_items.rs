@@ -752,7 +752,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
 
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
 
-        ("verus::vstd::std_specs::fmt::rt::Argument", VerusItem::RustPrivate(RustPrivate::Path(vir::path!(CrateId::Core => "fmt", "rt", "Argument")))),
+        ("verus::vstd::std_specs::fmt::rt::Argument", VerusItem::RustPrivate(RustPrivate::Path(vir::real_path!(CrateId::Core => "fmt", "rt", "Argument")))),
         ("verus::vstd::std_specs::fmt::rt::Argument::new_binary", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_binary".to_owned())))),
         ("verus::vstd::std_specs::fmt::rt::Argument::new_debug", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_debug".to_owned())))),
         ("verus::vstd::std_specs::fmt::rt::Argument::new_debug_noop", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_debug_noop".to_owned())))),
