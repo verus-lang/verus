@@ -884,9 +884,10 @@ pub trait PTPhys: Sized + PTPhysSealed {
     /// A permission `p` tracks `Self::size(p.ptr()@.metadata)` bytes.
     spec fn size(metadata: Metadata<Self::A>) -> nat;
 
-    /// Define basic well-formedness conditions on the permission's pointer,
-    /// including that the permission holds `Self::size(self.ptr()@.metadata)` bytes.
-    /// `PTValueOps::wf` builds on this to add conditions on the bytes and typed value.
+    /// Define basic well-formedness conditions on the permission's pointer
+    /// which are necessary to ensure all of the `PTProperties` requirements.
+    /// `PTTypedValue::wf` builds on this to add conditions on the bytes and typed value,
+    /// as well as adding pointer conditions specific to a given permission type.
     spec fn wf_basic(self) -> bool;
 }
 

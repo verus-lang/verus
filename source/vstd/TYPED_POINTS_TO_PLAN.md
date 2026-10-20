@@ -54,7 +54,7 @@ and vstd is a module of rustlib's `core`, so rustlib can write these impls.
 /// this memory is not guaranteed to be aligned to `T`.
 /// Internally represented as a possibly-valid value of type `T`,
 /// along with a `PointsToUntyped` permission to the underlying bytes,
-/// and the metadata of the `*mut T` pointer.
+/// and the (ghost) metadata of the `*mut T` pointer.
 pub tracked struct PointsToUnaligned<T: ?Sized> {
     val: TypedValue<T>,
     pt_untyped: PointsToUntyped,
@@ -134,7 +134,9 @@ impl<T: ?Sized> PointsToUnaligned<T> {
     /// This has no `wf()` requires/ensures,
     /// which gives flexibility for getting the underlying `PointsToUntyped`
     /// when the permission is not well-formed.
-    /// If `self.wf()`, then the returned permission is `wf()`.
+    /// However, the `wf()` conditions on `self` should imply that `pt_untyped` is `wf()`.
+    // This is implemented by making `PTTypedValue::wf` on `self` include `wf_basic_unaligned`, 
+    // which includes `self.pt_untyped().wf()`.
     pub proof fn tracked_pt_untyped(tracked &self) -> tracked &PointsToUntyped
         returns
             self.pt_untyped(),
@@ -336,15 +338,6 @@ fn zst_test() {
 Currently, the first use-case isn't supported because `PointsTo` enforces non-nullness.
 For the second, use `PointsToUnaligned`, which doesn't enforce alignment.
 */
-
-// ptr |--> Valid(v) means:
-//   bytes in this memory are consistent with value v
-//   and we have all the ghost state associated with type V
-//
-// ptr |--> Empty means:
-//   no knowledge about what's in memory
-//   (to be pedantic, the bytes might be initialized in rust's abstract machine,
-//   but we don't know so we have to pretend they're uninitialized)
 pub tracked struct PointsTo<T: ?Sized> {
     pt_unaligned: PointsToUnaligned<T>,
 }
@@ -401,7 +394,8 @@ impl<T: ?Sized> PointsTo<T> {
     /// This has no `wf()` requires/ensures,
     /// which gives flexibility for getting the underlying `PointsToUnaligned`
     /// when the permission is not well-formed.
-    /// If `self.wf()`, then the returned permission is `wf()`.
+    /// However, the `wf()` conditions on `self` should imply that `pt_unaligned` is `wf()`.
+    // This is implemented by making `PTTypedValue::wf` on `self` include `self.pt_unaligned().wf()`.
     pub proof fn tracked_pt_unaligned(tracked &self) -> tracked &PointsToUnaligned<T>
         returns
             self.pt_unaligned(),
@@ -443,7 +437,8 @@ impl<T: ?Sized> PTPhys for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A 
     }
 
     /// Delegates to the underlying `PointsToUnaligned`'s `wf_basic`.
-    /// Alignment is part of `wf`, through `satisfies_alignment`.
+    /// This does not capture all well-formedness conditions:
+    /// pointer alignment is specified in `PTTypedValue::wf`.
     open spec fn wf_basic(self) -> bool {
         self.pt_unaligned().wf_basic()
     }
@@ -467,12 +462,14 @@ impl<T: ?Sized> PTTypedValue for PointsTo<T> where PointsToUnaligned<T>: PTValue
         &&& Self::satisfies_alignment(self.ptr()@.addr)
     }
 
-    /// The same as for `PointsToUnaligned`.
+    /// Delegates to `PointsToUnaligned::metadata_matches`.
     open spec fn metadata_matches(value: &T, metadata: Metadata<T>) -> bool {
         <PointsToUnaligned<T> as PTTypedValue>::metadata_matches(value, metadata)
     }
 
-    /// The `PointsToUnaligned` requirement, plus alignment to `T`.
+    /// The pointer's address is aligned to `T`.
+    /// Includes the (trivial) `PointsToUnaligned` requirement
+    /// to satisfy generic preconditions defined over the trait `PTValueOps`.
     open spec fn satisfies_alignment(addr: usize) -> bool {
         &&& <PointsToUnaligned<T> as PTTypedValue>::satisfies_alignment(addr)
         &&& addr as nat % spec_align_of_val::<T>(arbitrary()) == 0
@@ -690,7 +687,7 @@ impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = 
     pub proof fn into_aligned(tracked self) -> (tracked out: PointsTo<T>)
         requires
             self.wf(),
-            <PointsTo<T> as PTValueOps>::satisfies_alignment(self.ptr()@.addr),
+            <PointsTo<T> as PTTypedValue>::satisfies_alignment(self.ptr()@.addr),
         ensures
             out.pt_unaligned() == self,
             out.wf(),
@@ -700,7 +697,7 @@ impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = 
     pub proof fn as_aligned(tracked &self) -> (tracked out: &PointsTo<T>)
         requires
             self.wf(),
-            <PointsTo<T> as PTValueOps>::satisfies_alignment(self.ptr()@.addr),
+            <PointsTo<T> as PTTypedValue>::satisfies_alignment(self.ptr()@.addr),
         ensures
             out.pt_unaligned() == *self,
             out.wf(),
@@ -713,7 +710,7 @@ impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = 
     pub proof fn as_aligned_mut(tracked &mut self) -> (tracked out: &mut PointsTo<T>)
         requires
             self.wf(),
-            <PointsTo<T> as PTValueOps>::satisfies_alignment(self.ptr()@.addr),
+            <PointsTo<T> as PTTypedValue>::satisfies_alignment(self.ptr()@.addr),
         ensures
             out.pt_unaligned() == *old(self),
             out.wf(),
