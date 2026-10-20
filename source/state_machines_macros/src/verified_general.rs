@@ -1387,6 +1387,7 @@ pub fn output_with_ready(
             }
             #storage_trait
             #(#labels)*
+            #[allow(type_alias_bounds)]
             pub type Token #decl #where_clause=#token_type;
             #observation_result
             impl #decl #pt #where_clause {

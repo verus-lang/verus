@@ -233,7 +233,8 @@ pub fn output(sm: &SM) -> Result<TokenStream, Error> {
         declarations.push(quote! {
             #(#attributes)*
             #[allow(non_camel_case_types)]
-            #[is_variant]
+            // As the trusted macro: no deprecation warning, and no `is_variant` import needed.
+            #[::vstd::prelude::is_variant_no_deprecation_warning]
             pub enum #datatype #decl #wc {
                 #(#variants,)*
                 dummy_to_use_type_params(State #types),

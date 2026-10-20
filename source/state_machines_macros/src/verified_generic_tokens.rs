@@ -3768,11 +3768,11 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
         match &f.stype {
             ShardableType::Map(k, v) | ShardableType::PersistentMap(k, v) => {
                 let alias = format_ident!("{}_map", n);
-                items.push(quote! {#[allow(non_camel_case_types)] pub type #alias = ::vstd::tokens::MapToken<#k, #v, #nt>;});
+                items.push(quote! {#[allow(non_camel_case_types, type_alias_bounds)] pub type #alias = ::vstd::tokens::MapToken<#k, #v, #nt>;});
             }
             ShardableType::Set(e) | ShardableType::PersistentSet(e) => {
                 let alias = format_ident!("{}_set", n);
-                items.push(quote! {#[allow(non_camel_case_types)] pub type #alias = ::vstd::tokens::SetToken<#e, #nt>;});
+                items.push(quote! {#[allow(non_camel_case_types, type_alias_bounds)] pub type #alias = ::vstd::tokens::SetToken<#e, #nt>;});
             }
             ShardableType::IMap(..) | ShardableType::PersistentIMap(..)
             | ShardableType::ISet(_) | ShardableType::PersistentISet(_) => {
@@ -3780,7 +3780,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             }
             ShardableType::Multiset(e) => {
                 let alias = format_ident!("{}_multiset", n);
-                items.push(quote! {#[allow(non_camel_case_types)] pub type #alias = ::vstd::tokens::MultisetToken<#e, #nt>;});
+                items.push(quote! {#[allow(non_camel_case_types, type_alias_bounds)] pub type #alias = ::vstd::tokens::MultisetToken<#e, #nt>;});
             }
             _ => {}
         }

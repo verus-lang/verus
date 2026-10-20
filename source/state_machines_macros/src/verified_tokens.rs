@@ -894,6 +894,7 @@ fn assemble(
                     open spec fn invariant(s:#state_ty)->bool { s.invariant() }
                     open spec fn embed(s:#state_ty)->#fragment_ty { #fragment_expr { #marker_value #(#embed),* } }
                 }
+                #[allow(type_alias_bounds)]
                 pub type Token #decl #where_clause = ::vstd::resource::tsm::Token<#protocol_ty>;
                 impl #decl #protocol_ty #where_clause { #field_takes #(#operations)* }
             }
