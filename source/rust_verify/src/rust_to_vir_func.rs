@@ -19,7 +19,7 @@ use rustc_hir::{
 };
 use rustc_middle::ty::{
     AdtDef, AliasTermKind, AliasTyKind, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind,
-    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind, TyCtxt,
+    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind, Ty, TyCtxt,
     TyKind, TypingEnv, ValTreeKind, Value,
 };
 use rustc_mir_build_verus::verus::BodyErasure;
@@ -368,6 +368,7 @@ fn body_to_vir<'tcx>(
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     param_names: Vec<VarIdent>,
+    param_tys: &[Ty<'tcx>],
     external_opaque_type_map: Option<HashMap<Path, Path>>,
     is_async: bool,
 ) -> Result<vir::ast::Expr, VirErr> {
@@ -391,8 +392,8 @@ fn body_to_vir<'tcx>(
         data: rustc_middle::middle::region::ScopeData::Arguments,
     };
     let (e, drops) = bctx.in_drop_scope(args_scope, || {
-        for param_name in param_names.iter() {
-            bctx.schedule_local_drop_in(args_scope, param_name, body.value.span);
+        for (param_name, ty) in param_names.iter().zip(param_tys.iter()) {
+            bctx.schedule_local_drop_in(args_scope, param_name, body.value.span, *ty);
         }
         expr_to_vir_consume(&bctx, body_expr)
     })?;
@@ -1907,6 +1908,7 @@ pub(crate) fn check_item_fn<'tcx>(
             &external_trait_from_to,
             None,
             param_names,
+            &inputs,
             assume_specification_opaque_type_map.clone(),
             false,
         )?;
@@ -2288,6 +2290,9 @@ pub(crate) fn finish_function<'tcx>(
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
             let param_names = params.iter().map(|p| p.x.name.clone()).collect::<Vec<_>>();
 
+            let fn_sig = ctxt.tcx.fn_sig(def_id).skip_binder();
+            let inputs = fn_sig.inputs().skip_binder();
+
             let mut vir_body = body_to_vir(
                 ctxt,
                 def_id,
@@ -2298,6 +2303,7 @@ pub(crate) fn finish_function<'tcx>(
                 &external_trait_from_to,
                 migrate_postcondition_vars.clone(),
                 param_names,
+                &inputs,
                 assume_specification_opaque_type_map.clone(),
                 is_async,
             )?;
@@ -3366,6 +3372,7 @@ pub(crate) fn finish_const_or_static<'tcx>(
         &None,
         None,
         vec![],
+        &[],
         None,
         false,
     )?;

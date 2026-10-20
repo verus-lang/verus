@@ -181,7 +181,7 @@ impl ExprOrPlace {
             ExprOrPlace::Expr(e) => {
                 let typ = bctx.mid_ty_to_vir(expr.span, &ty)?;
                 let place = SpannedTyped::new(&e.span, &typ, PlaceX::Temporary(e.clone()));
-                bctx.schedule_temp_drop(expr, &place);
+                bctx.schedule_temp_drop(expr, &place, ty);
                 Ok(place)
             }
             ExprOrPlace::Place(p) => Ok(p.clone()),
@@ -375,21 +375,26 @@ pub(crate) fn extract_tuple<'tcx>(expr: &'tcx Expr<'tcx>) -> Vec<&'tcx Expr<'tcx
 pub(crate) fn closure_param_typs<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
-) -> Result<Vec<Typ>, VirErr> {
+) -> Result<(Vec<rustc_middle::ty::Ty<'tcx>>, Vec<Typ>), VirErr> {
     let node_type = bctx.types.node_type(expr.hir_id);
     match node_type.kind() {
         TyKind::Closure(_def, substs) => {
             let sig = substs.as_closure().sig();
-            let mut args: Vec<Typ> = Vec::new();
+            let mut args: Vec<rustc_middle::ty::Ty> = Vec::new();
             // REVIEW: rustc docs refer to skip_binder as "dangerous"
             for t in sig.inputs().skip_binder().iter() {
-                args.push(bctx.mid_ty_to_vir(expr.span, t)?);
+                args.push(*t);
             }
             assert!(args.len() == 1);
-            match &*args[0] {
-                TypX::Datatype(Dt::Tuple(_), typs, ..) => Ok((**typs).clone()),
+            let tys: Vec<rustc_middle::ty::Ty> = match args[0].kind() {
+                TyKind::Tuple(tys) => tys.iter().collect(),
                 _ => panic!("expected tuple type"),
+            };
+            let mut typs = vec![];
+            for ty in tys.iter() {
+                typs.push(bctx.mid_ty_to_vir(expr.span, ty)?);
             }
+            Ok((tys, typs))
         }
         _ => panic!("closure_param_types expected Closure type"),
     }
@@ -3649,7 +3654,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 // tgt[idx] is equivalent to either *index(tgt, idx) or *index_mut(tgt, idx)
                 // (The * on the outside isn't part of the adjustments; we add it here)
                 let mut p = bctx.spanned_typed_new(expr.span, &call_ret_typ, PlaceX::Temporary(e));
-                bctx.schedule_temp_drop(expr, &p);
+
+                // since this type is always a reference, we don't need to schedule a drop
+                // for the temporary
+
                 if mutbl {
                     // mutable deref
                     p = deref_mut(bctx, expr.span, &p)?;
@@ -4313,7 +4321,8 @@ fn unwrap_parameter_to_vir<'tcx>(
 /// Schedule drops for all the variables bound by the pattern
 fn schedule_pattern_binding_drops<'tcx>(bctx: &BodyCtxt<'tcx>, pat: &Pat<'tcx>) {
     pat.each_binding_or_first(&mut |_binding_mode, hir_id, span, ident| {
-        bctx.schedule_local_drop(hir_id, &local_to_var(&ident, hir_id.local_id), span);
+        let ty = bctx.types.node_type(hir_id);
+        bctx.schedule_local_drop(hir_id, &local_to_var(&ident, hir_id.local_id), span, ty);
     });
 }
 
@@ -4512,7 +4521,7 @@ pub(crate) fn closure_to_vir<'tcx>(
         );
         let body = bctx.ctxt.tcx.hir_body(*body_id);
 
-        let typs = closure_param_typs(bctx, closure_expr)?;
+        let (tys, typs) = closure_param_typs(bctx, closure_expr)?;
         assert!(typs.len() == body.params.len());
 
         let mut pattern_stmts: Vec<vir::ast::Stmt> = Vec::new();
@@ -4551,8 +4560,10 @@ pub(crate) fn closure_to_vir<'tcx>(
             let args_scope =
                 Scope { local_id: body.value.hir_id.local_id, data: ScopeData::Arguments };
             let (vir_body, drops) = body_bctx.in_drop_scope(args_scope, || {
-                for (param, hir_param) in params.iter().zip(body.params.iter()) {
-                    body_bctx.schedule_local_drop_in(args_scope, &param.name, hir_param.span);
+                for ((param, hir_param), ty) in
+                    params.iter().zip(body.params.iter()).zip(tys.iter())
+                {
+                    body_bctx.schedule_local_drop_in(args_scope, &param.name, hir_param.span, *ty);
                     if !matches!(
                         hir_param.pat.kind,
                         PatKind::Binding(BindingMode(ByRef::No, _), _, _, None)
@@ -4920,12 +4931,14 @@ pub(crate) fn deref_overloaded<'tcx>(
                     ty,
                 )?,
             };
+
+            // No need to schedule drop because it's a reference
             let temp_place = bctx.spanned_typed_new(
                 span,
                 &ref_of_target_typ,
                 PlaceX::Temporary(call_expr.clone()),
             );
-            bctx.schedule_temp_drop(hir_expr, &temp_place);
+
             // Immutable dereference is implicit
             Ok(temp_place)
         }
@@ -4946,13 +4959,14 @@ pub(crate) fn deref_overloaded<'tcx>(
                 ty,
             )?;
 
+            // No need to schedule drop because it's a reference
             let temp_place = bctx.spanned_typed_new(
                 span,
                 &ref_of_target_typ,
                 PlaceX::Temporary(call_expr.clone()),
             );
-            bctx.schedule_temp_drop(hir_expr, &temp_place);
 
+            // Immutable dereference is implicit
             deref_mut(bctx, span, &temp_place)
         }
         _ => {
@@ -5238,10 +5252,11 @@ fn ty_is_float_or_ref_float<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
 /// code that the syntax macro might emit.
 /// (After this point, we use the Label to identify the loop.)
 fn loop_isolation_boundary_check(
-    _span: Span,
+    span: Span,
     block: &vir::ast::Expr,
 ) -> Result<(bool, vir::ast::Label), VirErr> {
-    let err = || panic!("asdfsd"); // || crate::internal_err!(span, "loop_isolation_boundary block not of the expected form");
+    let err =
+        || crate::internal_err!(span, "loop_isolation_boundary block not of the expected form");
 
     fn stmt_is_drop(s: &vir::ast::Stmt) -> bool {
         match &s.x {

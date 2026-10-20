@@ -2582,7 +2582,7 @@ fn extract_ensures<'tcx>(
                 BodyErasure { erase_body: true, ret_spec: true },
             );
 
-            let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
+            let (_, typs) = closure_param_typs(bctx, expr)?;
             let body = tcx.hir_body(closure.body);
             let mut xs: Vec<VarIdent> = Vec::new();
             for param in body.params.iter() {
@@ -2626,7 +2626,7 @@ fn extract_quant<'tcx>(
             );
 
             let body = tcx.hir_body(closure.body);
-            let typs = closure_param_typs(bctx, expr)?;
+            let (_, typs) = closure_param_typs(bctx, expr)?;
             assert!(typs.len() == body.params.len());
             let mut binders: Vec<VarBinder<Typ>> = Vec::new();
             for (x, t) in body.params.iter().zip(typs) {
@@ -2697,7 +2697,7 @@ fn extract_assert_forall_by<'tcx>(
             );
 
             let body = tcx.hir_body(closure.body);
-            let typs = closure_param_typs(bctx, expr)?;
+            let (_, typs) = closure_param_typs(bctx, expr)?;
             assert!(body.params.len() == typs.len());
             let mut binders: Vec<VarBinder<Typ>> = Vec::new();
             for (x, t) in body.params.iter().zip(typs) {
@@ -2759,7 +2759,7 @@ fn extract_choose<'tcx>(
             let closure_body = tcx.hir_body(closure.body);
             let mut params: Vec<VarBinder<Typ>> = Vec::new();
             let mut vars: Vec<vir::ast::Expr> = Vec::new();
-            let typs = closure_param_typs(bctx, expr)?;
+            let (_, typs) = closure_param_typs(bctx, expr)?;
             assert!(closure_body.params.len() == typs.len());
             for (x, typ) in closure_body.params.iter().zip(typs) {
                 let name = pat_to_var(x.pat)?;
