@@ -322,7 +322,7 @@ and so is the `PointsTo::<T>::zero_sized` turbofish they needed.
 The design is in [`PointsToRaw`](TYPED_POINTS_TO_NOTES.md#pointstoraw). [Phase 0 check 11](#phase-0-pending-checks) is done (`raw_range.rs`).
 
 1. The struct, its type invariant, and the specs `provenance`, `dom`, `is_range`, `contains_range`.
-2. `empty`, `split`, `join`, `ptr_bounds`, `provenance_non_null`, `is_disjoint`.
+2. `empty`, `split`, `join`, `ptr_bounds`, `provenance_not_none` (renamed from `provenance_non_null`), `is_disjoint`.
 3. `from_untyped(PointsToUntyped) -> PointsToRaw` and `into_untyped(start, len) -> PointsToUntyped`.
    These only need phase 1b, so they can land earlier.
    There are no typed conversions on `PointsToRaw`: typed permissions go through `PointsToUntyped`.
