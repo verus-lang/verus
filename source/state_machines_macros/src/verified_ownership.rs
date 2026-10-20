@@ -6,7 +6,7 @@
 //! state safety, invariant preservation, or resource updates.
 use crate::ast::*;
 use crate::verified_monoids::{
-    EffectOp, bind_pattern, element, element_type, supported, updated_component,
+    EffectOp, bind_pattern, is_monoid_type, operand, operand_type, updated_component,
 };
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
@@ -86,8 +86,8 @@ impl Compiler<'_> {
                     let field = self.fields.get(&name.to_string()).ok_or_else(|| {
                         Error::new(*span, "ownership operation refers to an unknown field")
                     })?;
-                    if supported(&field.stype) {
-                        self.monoid(field, operation, pattern.as_deref(), children, current, *span).map(Some)
+                    if is_monoid_type(&field.stype) {
+                        self.monoid_statement(field, operation, pattern.as_deref(), children, current, *span).map(Some)
                     } else if operation.stmt.is_for_storage() {
                         // Storage bindings refer to the mathematical state's
                         // permission. Checked state safety and physical exchange
@@ -130,7 +130,7 @@ impl Compiler<'_> {
                 let local = match &**kind {
                     SplitKind::Special(name, operation, _, _) => {
                         match self.fields.get(&name.to_string()) {
-                            Some(field) if supported(&field.stype) => {
+                            Some(field) if is_monoid_type(&field.stype) => {
                                 matches!(operation.stmt, MonoidStmtType::Have)
                             }
                             _ => true,
@@ -181,7 +181,7 @@ impl Compiler<'_> {
         }
     }
 
-    fn monoid(
+    fn monoid_statement(
         &mut self,
         field: &Field,
         operation: &SpecialOp,
@@ -226,7 +226,7 @@ impl Compiler<'_> {
             ) => {
                 quote! {::vstd::imap::IMap::empty().insert(#key,(#observer).#name.at(#key)->Some_0->Agree_0)}
             }
-            _ => element(field, operation, span)?,
+            _ => operand(field, operation, span)?,
         };
         // Evaluate the candidate before a pattern can shadow any name in its
         // key/value expression (e.g. `remove map -= [key => let key]`).
@@ -335,12 +335,12 @@ impl Compiler<'_> {
             }
             None => body,
         };
-        let value_type = element_type(&field.stype);
+        let value_type = operand_type(&field.stype);
         Ok(quote! {{let #value_ident: #value_type = #observed_value; #scoped}})
     }
 }
 
-pub(crate) fn ownership_guard(
+pub(crate) fn ownership_condition(
     statement: &TransitionStmt,
     fields: &HashMap<String, Field>,
     fragment_type: &TokenStream,

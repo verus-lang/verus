@@ -41,7 +41,7 @@ fn updates_unowned(sm: &SM) -> bool {
 /// Exclude updates of unowned fields from the token read footprint only.
 /// The original executor, State relations, safety and all-frame obligations
 /// continue to process the untouched original transition.
-fn unowned_token_footprint(stmt: &mut TransitionStmt, fields: &HashMap<String, Field>) {
+fn drop_unowned_updates(stmt: &mut TransitionStmt, fields: &HashMap<String, Field>) {
     match stmt {
         TransitionStmt::Update(span, n, _) | TransitionStmt::SubUpdate(span, n, _, _)
             if matches!(fields[&n.to_string()].stype, ShardableType::NotTokenized(_)) =>
@@ -49,13 +49,13 @@ fn unowned_token_footprint(stmt: &mut TransitionStmt, fields: &HashMap<String, F
             *stmt = TransitionStmt::Block(*span, vec![]);
         }
         TransitionStmt::Block(_, children) | TransitionStmt::Split(_, _, children) => {
-            for child in children { unowned_token_footprint(child, fields); }
+            for child in children { drop_unowned_updates(child, fields); }
         }
         _ => {}
     }
 }
 
-pub fn needed(sm: &SM) -> bool {
+pub fn needs_general_emitter(sm: &SM) -> bool {
     fn walk(s: &TransitionStmt) -> bool {
         match s {
             TransitionStmt::Block(_, xs) => xs.iter().any(walk),
@@ -128,7 +128,7 @@ struct StoragePath {
 /// location withdrawn earlier on the same path cannot be checked. Syntactically
 /// identical locations are rejected here; other overlaps fail in the generated
 /// storage proof.
-fn storage_paths(
+fn check_storage_paths(
     s: &TransitionStmt,
     fields: &HashMap<String, Field>,
     path: &mut StoragePath,
@@ -136,7 +136,7 @@ fn storage_paths(
     match s {
         TransitionStmt::Block(_, children) => {
             for child in children {
-                storage_paths(child, fields, path)?;
+                check_storage_paths(child, fields, path)?;
             }
         }
         TransitionStmt::Split(span, kind, children) => {
@@ -182,7 +182,7 @@ fn storage_paths(
                 let start = path.clone();
                 for child in children {
                     let mut branch = start.clone();
-                    storage_paths(child, fields, &mut branch)?;
+                    check_storage_paths(child, fields, &mut branch)?;
                     for location in branch.withdrawn {
                         if !path.withdrawn.contains(&location) {
                             path.withdrawn.push(location);
@@ -196,7 +196,7 @@ fn storage_paths(
                 }
             } else {
                 for child in children {
-                    storage_paths(child, fields, path)?;
+                    check_storage_paths(child, fields, path)?;
                 }
             }
         }
@@ -224,7 +224,7 @@ fn modified(
         }
         TransitionStmt::Split(span, k, xs) => {
             if let SplitKind::Special(n, op, _, _) = &**k {
-                if monoids::supported(&fields[&n.to_string()].stype) {
+                if monoids::is_monoid_type(&fields[&n.to_string()].stype) {
                     // Checked separately by the monoid operand/order analyzer.
                 } else if !storage
                     || !(matches!(op.stmt, MonoidStmtType::Deposit | MonoidStmtType::Withdraw)
@@ -318,12 +318,12 @@ fn storage_key_reads(
     Ok(())
 }
 
-fn deposits(s: &TransitionStmt) -> bool {
+fn has_deposit(s: &TransitionStmt) -> bool {
     match s {
-        TransitionStmt::Block(_, xs) => xs.iter().any(deposits),
+        TransitionStmt::Block(_, xs) => xs.iter().any(has_deposit),
         TransitionStmt::Split(_, k, xs) => {
             matches!(&**k,SplitKind::Special(_,op,_,_) if op.stmt.is_deposit())
-                || xs.iter().any(deposits)
+                || xs.iter().any(has_deposit)
         }
         _ => false,
     }
@@ -357,7 +357,7 @@ fn deposit_expression_mode(
         TransitionStmt::Block(_, xs) => {
             let pieces: Vec<_> = xs
                 .iter()
-                .filter(|x| deposits(x))
+                .filter(|x| has_deposit(x))
                 .map(|s| deposit_expression_mode(s, fields, normalize, carrier))
                 .collect::<Result<_, _>>()?;
             let mut pieces = pieces.into_iter();
@@ -377,7 +377,7 @@ fn deposit_expression_mode(
                 let child = deposit_expression_mode(&xs[0], fields, normalize, carrier)?;
                 quote! {{let #p #t=#e;#child}}
             }
-            SplitKind::Let(_, _, LetKind::BirdsEye, _) if deposits(s) => {
+            SplitKind::Let(_, _, LetKind::BirdsEye, _) if has_deposit(s) => {
                 return Err(Error::new(
                     *span,
                     "a deposited resource cannot depend on a birds_eye binding",
@@ -516,7 +516,7 @@ fn guard_option_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Ve
     out
 }
 
-fn guarded_expression(
+fn guarded_storage(
     s: &TransitionStmt,
     fields: &HashMap<String, Field>,
     carrier: Option<&crate::verified_storage_carrier::Carrier>,
@@ -693,7 +693,7 @@ pub fn output_with_ready(
                 (quote! {Option<AgreementRA<#t>>}, quote! {Some(AgreementRA::Agree(s.#n))})
             }
             ShardableType::NotTokenized(_) => continue,
-            s if monoids::supported(s) => (monoids::component(s), monoids::embed(s, quote! {s.#n})),
+            s if monoids::is_monoid_type(s) => (monoids::component_type(s), monoids::embed(s, quote! {s.#n})),
             ShardableType::StorageOption(v) => {
                 if carrier.is_some() { continue; }
                 let key=optional_storage_key(n,&storage_fields);
@@ -845,14 +845,14 @@ pub fn output_with_ready(
             &fields,
             matches!(tr.kind, TransitionKind::Property | TransitionKind::ReadonlyTransition),
         )?;
-        storage_paths(&tr.body,&fields,&mut StoragePath::default())?;
+        check_storage_paths(&tr.body,&fields,&mut StoragePath::default())?;
         // Paired exchange outputs when some path has several storage operations.
         let paired = storage_ops > 1;
-        let effects = monoids::analyze(tr, &fields)?;
+        let effects = monoids::transition_effects(tr, &fields)?;
         for e in &effects {
             changed.insert(e.field.name.to_string());
         }
-        let owner_expression = crate::verified_ownership::ownership_guard(
+        let owner_expression = crate::verified_ownership::ownership_condition(
             &tr.body,
             &fields,
             &ft,
@@ -863,12 +863,12 @@ pub fn output_with_ready(
         let ownership_inline=if crate::verified_readiness::inline_ownership(sm,tr) {ready_inline.clone()}else{quote!{}};
         relations.push(quote!{#ownership_inline pub open spec fn #owners(pre:#st,owned:#ft,h:#ft,#(#params),*)->bool{(#owner_expression)&&(#extra_ownership)}});
         let (effect_declarations, effect_calls) =
-            monoids::declarations(&effects, &st, &ft, &pt, &strong, &owners, &pn, &params);
+            monoids::effect_declarations(&effects, &st, &ft, &pt, &strong, &owners, &pn, &params);
         relations.push(effect_declarations);
         let mut access_errors = vec![];
         let mut token_footprint=tr.body.clone();
         if updates_unowned(sm) {
-            unowned_token_footprint(&mut token_footprint,&fields);
+            drop_unowned_updates(&mut token_footprint,&fields);
         }
         let (mut read, _) = crate::field_access_visitor::find_all_accesses(
             &mut token_footprint,
@@ -1045,7 +1045,7 @@ pub fn output_with_ready(
         if guard_property {
             let (storage_n, key, val, _) = storage.as_ref().unwrap();
             let guarded = format_ident!("{}_guarded", n);
-            let expression = guarded_expression(&tr.body, &fields, carrier.as_ref())?;
+            let expression = guarded_storage(&tr.body, &fields, carrier.as_ref())?;
             // Values bound by `have m >= [k => ..]` on exclusive map fields are
             // observed from the owned fragment at k, so the guarded value stays
             // a function of the fragment and is linked to `pre` by map_owned_frame.
@@ -1248,11 +1248,12 @@ pub fn output_with_ready(
                     key,
                     val,
                     withdraw,
-                    deposits(&tr.body),
+                    has_deposit(&tr.body),
                     paired,
                 ));
                 if local_ready.contains(&n.to_string()) {
-                    relations.push(crate::verified_readiness::declared_api(tr, &st, &params)?);
+                    relations
+                        .push(crate::verified_readiness::declared_requires_spec(tr, &st, &params)?);
                     let local_deposited = format_ident!("{}_local_deposited", n);
                     let local_expression = deposit_expression_mode(&tr.body, &fields, true, carrier.as_ref())?;
                     relations.push(quote! {#[verifier::inline] pub open spec fn #local_deposited(pre:#st,#(#params),*)->IMap<#key,#val>{#local_expression}});
@@ -1261,7 +1262,7 @@ pub fn output_with_ready(
                         .copied()
                         .filter(|n| read.contains(&n.to_string()))
                         .collect();
-                    ops.push(crate::verified_readiness::api(
+                    ops.push(crate::verified_readiness::local_ready_api(
                         crate::verified_readiness::Context {
                             sm,
                             tr,
@@ -1278,7 +1279,7 @@ pub fn output_with_ready(
                             reads: &reads,
                             key,
                             val,
-                            deposits: deposits(&tr.body),
+                            deposits: has_deposit(&tr.body),
                             withdraws: withdraw,
                             paired,
                         },
@@ -1368,11 +1369,11 @@ pub fn output_with_ready(
     let setters: Vec<_> = sm
         .fields
         .iter()
-        .filter(|f| monoids::supported(&f.stype))
+        .filter(|f| monoids::is_monoid_type(&f.stype))
         .map(|f| {
             let n = &f.name;
             let setter = format_ident!("__tsm_set_{}", n);
-            let t = monoids::component(&f.stype);
+            let t = monoids::component_type(&f.stype);
             quote! {pub open spec fn #setter(self,part:#t)->Self{Self{#n:part,..self}}}
         })
         .collect();

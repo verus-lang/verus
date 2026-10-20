@@ -64,7 +64,7 @@ pub(crate) fn reserve_stmt(stmt: &crate::ast::TransitionStmt, names: &mut HashSe
     }
 }
 
-fn occupied(sm: &SM) -> HashSet<String> {
+fn used_names(sm: &SM) -> HashSet<String> {
     let mut names = HashSet::new();
     let generics = &sm.generics;
     let fields = &sm.fields_named_ast;
@@ -102,7 +102,7 @@ pub fn output(sm: &SM) -> Result<TokenStream, Error> {
     let mut declarations = Vec::new();
     let mut methods = Vec::new();
     let mut proofs = Vec::new();
-    let mut names = occupied(sm);
+    let mut names = used_names(sm);
 
     for is_init in [true, false] {
         let datatype = if is_init {

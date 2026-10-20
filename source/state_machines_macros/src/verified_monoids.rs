@@ -18,7 +18,7 @@ pub struct Effect {
     pub replacement: bool,
 }
 
-pub fn supported(s: &ShardableType) -> bool {
+pub fn is_monoid_type(s: &ShardableType) -> bool {
     matches!(
         s,
         ShardableType::Count
@@ -38,7 +38,7 @@ pub fn supported(s: &ShardableType) -> bool {
             | ShardableType::PersistentISet(_)
     )
 }
-pub fn component(s: &ShardableType) -> TokenStream {
+pub fn component_type(s: &ShardableType) -> TokenStream {
     match s {
         ShardableType::PersistentBool | ShardableType::PersistentCount => {
             quote! {::vstd::resource::tsm_persistent::PersistentCountRA}
@@ -102,7 +102,7 @@ pub fn embed(s: &ShardableType, value: TokenStream) -> TokenStream {
         _ => unreachable!(),
     }
 }
-pub fn element_type(s: &ShardableType) -> Type {
+pub fn operand_type(s: &ShardableType) -> Type {
     match s {
         ShardableType::Count | ShardableType::PersistentCount => verus_syn::parse_quote! {nat},
         ShardableType::Bool | ShardableType::PersistentBool => verus_syn::parse_quote! {bool},
@@ -123,7 +123,7 @@ pub fn element_type(s: &ShardableType) -> Type {
         _ => unreachable!(),
     }
 }
-pub(crate) fn element(
+pub(crate) fn operand(
     f: &Field,
     op: &SpecialOp,
     span: proc_macro2::Span,
@@ -226,7 +226,7 @@ pub(crate) fn bind_pattern(
         None => body,
     }
 }
-fn wanted(op: &SpecialOp, kind: EffectOp) -> bool {
+fn is_of_kind(op: &SpecialOp, kind: EffectOp) -> bool {
     match kind {
         EffectOp::Add => op.is_add(),
         EffectOp::Remove => op.is_remove(),
@@ -236,7 +236,7 @@ fn has_effect(s: &TransitionStmt, target: &Ident, kind: EffectOp) -> bool {
     match s {
         TransitionStmt::Block(_, xs) => xs.iter().any(|s| has_effect(s, target, kind)),
         TransitionStmt::Split(_, k, xs) => {
-            matches!(&**k,SplitKind::Special(n,op,_,_) if n==target&&wanted(op,kind))
+            matches!(&**k,SplitKind::Special(n,op,_,_) if n==target&&is_of_kind(op,kind))
                 || xs.iter().any(|s| has_effect(s, target, kind))
         }
         _ => false,
@@ -284,8 +284,8 @@ fn effect_expression(s: &TransitionStmt, f: &Field, kind: EffectOp) -> Result<To
                     .collect::<Result<_, Error>>()?;
                 quote! {match #e{#(#cases),*}}
             }
-            SplitKind::Special(n, op, _, _) if n == &f.name && wanted(op, kind) => {
-                let value = element(f, op, *span)?;
+            SplitKind::Special(n, op, _, _) if n == &f.name && is_of_kind(op, kind) => {
+                let value = operand(f, op, *span)?;
                 match xs.first() {
                     Some(rest) if has_effect(rest, &f.name, kind) => {
                         sequential(f, quote! {Some(#value)}, effect_expression(rest, f, kind)?)
@@ -345,7 +345,7 @@ fn sequential(f: &Field, a: TokenStream, b: TokenStream) -> TokenStream {
     }}
 }
 
-fn collect(
+fn collect_modifiers(
     s: &TransitionStmt,
     fields: &HashMap<String, Field>,
     kinds: &mut HashMap<String, HashSet<EffectOp>>,
@@ -353,14 +353,14 @@ fn collect(
     match s {
         TransitionStmt::Block(_, children) => {
             for child in children {
-                collect(child, fields, kinds)?;
+                collect_modifiers(child, fields, kinds)?;
             }
         }
         TransitionStmt::Split(span, kind, children) => {
             if let SplitKind::Special(n, op, _, pat) = &**kind {
                 let f = &fields[&n.to_string()];
-                if supported(&f.stype) {
-                    element(f, op, *span)?;
+                if is_monoid_type(&f.stype) {
+                    operand(f, op, *span)?;
                     if pat.is_some()
                         && !matches!(
                             f.stype,
@@ -394,7 +394,7 @@ fn collect(
                 }
             }
             for child in children {
-                collect(child, fields, kinds)?;
+                collect_modifiers(child, fields, kinds)?;
             }
         }
         _ => {}
@@ -402,7 +402,7 @@ fn collect(
     Ok(())
 }
 
-fn replacement_order(
+fn check_replacement_order(
     s: &TransitionStmt,
     target: &Ident,
     mut stages: HashSet<u8>,
@@ -410,7 +410,7 @@ fn replacement_order(
     match s {
         TransitionStmt::Block(_, children) => {
             for child in children {
-                stages = replacement_order(child, target, stages)?;
+                stages = check_replacement_order(child, target, stages)?;
             }
         }
         TransitionStmt::Split(span, kind, children) => {
@@ -434,13 +434,13 @@ fn replacement_order(
                         outcomes.extend(stages.clone());
                     }
                     for child in children {
-                        outcomes.extend(replacement_order(child, target, stages.clone())?);
+                        outcomes.extend(check_replacement_order(child, target, stages.clone())?);
                     }
                     stages = outcomes;
                 }
                 _ => {
                     for child in children {
-                        stages = replacement_order(child, target, stages)?;
+                        stages = check_replacement_order(child, target, stages)?;
                     }
                 }
             }
@@ -508,7 +508,7 @@ fn check_binding_order(
         }
         TransitionStmt::Split(span, kind, children) => {
             if let SplitKind::Special(name, operation, _, pattern) = &**kind {
-                if supported(&fields[&name.to_string()].stype) {
+                if is_monoid_type(&fields[&name.to_string()].stype) {
                     if pattern.is_some()
                         && matches!(operation.stmt, MonoidStmtType::Have)
                         && modified.contains(&name.to_string())
@@ -541,10 +541,13 @@ fn check_binding_order(
     Ok(())
 }
 
-pub fn analyze(tr: &Transition, fields: &HashMap<String, Field>) -> Result<Vec<Effect>, Error> {
+pub fn transition_effects(
+    tr: &Transition,
+    fields: &HashMap<String, Field>,
+) -> Result<Vec<Effect>, Error> {
     check_binding_order(&tr.body, fields, &mut HashSet::new())?;
     let mut kinds = HashMap::new();
-    collect(&tr.body, fields, &mut kinds)?;
+    collect_modifiers(&tr.body, fields, &mut kinds)?;
     let mut names: Vec<_> = kinds.keys().cloned().collect();
     names.sort();
     names.into_iter().map(|n|{
@@ -554,7 +557,7 @@ pub fn analyze(tr: &Transition, fields: &HashMap<String, Field>) -> Result<Vec<E
             if !replaceable(&field.stype){
                 return Err(Error::new(*tr.body.get_span(),"verified replacement supports exclusive monoid fields only"));
             }
-            replacement_order(&tr.body,&field.name,HashSet::from([0]))?;
+            check_replacement_order(&tr.body,&field.name,HashSet::from([0]))?;
             let old=effect_expression(&tr.body,&field,EffectOp::Remove)?;
             let new=effect_expression(&tr.body,&field,EffectOp::Add)?;
             if single_replacement(&tr.body,&field.name,HashSet::from([0])).map_or(false,|stages|!stages.contains(&1)) {
@@ -731,7 +734,7 @@ pub(crate) fn updated_component(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn declarations(
+pub fn effect_declarations(
     effects: &[Effect],
     state: &TokenStream,
     fragment: &TokenStream,
@@ -747,13 +750,13 @@ pub fn declarations(
         let n = &effect.field.name;
         let function = &effect.function;
         let expression = &effect.expression;
-        let basic_element = element_type(&effect.field.stype);
+        let basic_element = operand_type(&effect.field.stype);
         let elem: Type = if effect.replacement {
             verus_syn::parse_quote! {(#basic_element,#basic_element)}
         } else {
             basic_element
         };
-        let ty = component(&effect.field.stype);
+        let ty = component_type(&effect.field.stype);
         let own_fn = format_ident!("{}_owned", function);
         let lemma = format_ident!("{}_frame", function);
         let update = updated(effect, quote! {owned.#n}, quote! {value});

@@ -194,10 +194,10 @@ impl Store {
             _ => unreachable!(),
         }
     }
-    fn has(&self) -> bool {
+    fn has_storage(&self) -> bool {
         self.kind != StoreKind::None
     }
-    fn map_ty(&self) -> TokenStream {
+    fn storage_ty(&self) -> TokenStream {
         let (k, v) = (&self.key, &self.val);
         quote! {::vstd::imap::IMap<#k, #v>}
     }
@@ -300,7 +300,7 @@ impl Store {
             (_, ShardableType::StorageIMap(..)) => quote! {let tracked __tsm_packed = #p;},
             (_, _) => {
                 let i = self.option_index(f);
-                let map = self.map_ty();
+                let map = self.storage_ty();
                 quote! {
                     let tracked mut __tsm_packed: #map = ::vstd::imap::IMap::tracked_empty();
                     let tracked __tsm_opt = #p;
@@ -444,8 +444,8 @@ impl Store {
 /// the constants' agreement fragment `κ` (its `base`). The descriptor's type
 /// involves no protocol type, so it needs no `'static` bound on the machine's
 /// type parameters unless a constant's type mentions them.
-struct Cm {
-    d: TokenStream,
+struct Constants {
+    desc_ty: TokenStream,
     consts: Vec<Field>,
     /// The descriptor's type mentions a type parameter of the machine: a
     /// leaked `&'static` descriptor would need the parameters to be
@@ -454,8 +454,8 @@ struct Cm {
     owned: bool,
 }
 
-impl Cm {
-    fn new(sm: &SM) -> Option<Cm> {
+impl Constants {
+    fn new(sm: &SM) -> Option<Constants> {
         let consts: Vec<Field> = sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::Constant(_))).cloned().collect();
         if consts.is_empty() {
             return None;
@@ -467,20 +467,20 @@ impl Cm {
                 _ => unreachable!(),
             })
             .collect();
-        let d = quote! {::vstd::resource::pcm::Resource<Option<::vstd::resource::agree::AgreementRA<((#(#tys,)*), ::vstd::resource::Loc)>>>};
+        let desc_ty = quote! {::vstd::resource::pcm::Resource<Option<::vstd::resource::agree::AgreementRA<((#(#tys,)*), ::vstd::resource::Loc)>>>};
         let owned = match &sm.generics {
             Some(g) => {
                 let args = crate::to_token_stream::get_generic_args(&g.params);
                 let params: HashSet<String> = args.iter().map(|a| quote! {#a}.to_string()).collect();
-                mentions(&d, &params)
+                mentions(&desc_ty, &params)
             }
             None => false,
         };
-        Some(Cm { d, consts, owned })
+        Some(Constants { desc_ty, consts, owned })
     }
     /// The type of a descriptor held by a token, unit or instance.
     fn held(&self) -> TokenStream {
-        let d = &self.d;
+        let d = &self.desc_ty;
         if self.owned { quote! {#d} } else { quote! {&'static #d} }
     }
     /// A descriptor to hold, from a reference `r` to one.
@@ -493,32 +493,32 @@ impl Cm {
     }
     /// The type of a descriptor parameter from which held copies are made.
     fn src_ty(&self) -> TokenStream {
-        let d = &self.d;
+        let d = &self.desc_ty;
         if self.owned { quote! {&#d} } else { quote! {&'static #d} }
     }
     /// A reference to the descriptor in an `Option<held>` place.
     fn opt_ref(&self, e: TokenStream) -> TokenStream {
         if self.owned { quote! {#e.tracked_borrow()} } else { quote! {#e.tracked_unwrap()} }
     }
-    fn ok(&self, d: TokenStream) -> TokenStream {
+    fn is_valid(&self, d: TokenStream) -> TokenStream {
         quote! {((#d).value() is Some && (#d).value()->Some_0 is Agree)}
     }
-    fn val(&self, d: TokenStream) -> TokenStream {
+    fn value(&self, d: TokenStream) -> TokenStream {
         quote! {(#d).value()->Some_0->Agree_0}
     }
-    fn ploc(&self, d: TokenStream) -> TokenStream {
-        let v = self.val(d);
+    fn protocol_loc(&self, d: TokenStream) -> TokenStream {
+        let v = self.value(d);
         quote! {(#v).1}
     }
     fn constant(&self, d: TokenStream, i: usize) -> TokenStream {
-        let v = self.val(d);
+        let v = self.value(d);
         let i = verus_syn::Index::from(i);
         quote! {((#v).0).#i}
     }
     /// `κ` for the constants of descriptor `d` (`Instance::__tsm_kappa` of its
     /// constants: the fragment is spelled out once, in that spec fn).
     fn kappa(&self, d: TokenStream) -> TokenStream {
-        let v = self.val(d);
+        let v = self.value(d);
         quote! {Instance::__tsm_kappa((#v).0)}
     }
     /// The constants' tuple type.
@@ -536,12 +536,12 @@ impl Cm {
     /// `op(κ, κ) == κ` for the constants of descriptor `d` (a call of the
     /// instance's `__tsm_kappa_idem` lemma). Proving it in place, among an
     /// operation's other facts, can be very expensive for the solver.
-    fn idem(&self, d: TokenStream) -> TokenStream {
-        let v = self.val(d);
+    fn kappa_idem(&self, d: TokenStream) -> TokenStream {
+        let v = self.value(d);
         quote! {Instance::__tsm_kappa_idem((#v).0);}
     }
     /// The `__tsm_kappa` spec fn and the `__tsm_kappa_idem` lemma.
-    fn idem_lemma(&self) -> TokenStream {
+    fn kappa_items(&self) -> TokenStream {
         let t = self.tuple_ty();
         let k = self.consts.iter().enumerate().fold(quote! {Fragment::unit()}, |acc, (i, c)| {
             let w = format_ident!("with_{}", c.name);
@@ -570,7 +570,7 @@ fn mentions(ts: &TokenStream, names: &HashSet<String>) -> bool {
 }
 
 /// `&& s.c == desc.c` for every constant `c` of descriptor `desc`.
-fn const_eqs(cm: &Option<Cm>, desc: &TokenStream, s: &Ident) -> TokenStream {
+fn const_eqs(cm: &Option<Constants>, desc: &TokenStream, s: &Ident) -> TokenStream {
     match cm {
         None => quote! {},
         Some(cm) => {
@@ -591,7 +591,7 @@ fn const_eqs(cm: &Option<Cm>, desc: &TokenStream, s: &Ident) -> TokenStream {
 
 /// Some invariant-satisfying state has the constants of `desc`: the
 /// instance's type invariant, established by the initializer.
-fn reachable_state(cm: &Option<Cm>, desc: &TokenStream, s: &Ident) -> TokenStream {
+fn reachable_state(cm: &Option<Constants>, desc: &TokenStream, s: &Ident) -> TokenStream {
     let eqs = const_eqs(cm, desc, s);
     quote! {(exists|#s: State| #[trigger] #s.invariant() #eqs)}
 }
@@ -757,7 +757,7 @@ fn id_call(f: &Field, x: TokenStream) -> TokenStream {
     observer_call(f, &format_ident!("instance_id"), x)
 }
 
-fn token_type(f: &Field, store: &Store, generic: bool, cm: &Option<Cm>) -> TokenStream {
+fn token_type(f: &Field, store: &Store, generic: bool, cm: &Option<Constants>) -> TokenStream {
     let n = &f.name;
     let nt = tyname(f);
     let k = kind(f).unwrap();
@@ -883,15 +883,15 @@ fn token_type(f: &Field, store: &Store, generic: bool, cm: &Option<Cm>) -> Token
                 },
             ),
             Some(cm) => {
-                let dty = &cm.d;
-                let d_ok = cm.ok(quote! {d});
-                let d_ploc = cm.ploc(quote! {d});
+                let dty = &cm.desc_ty;
+                let d_ok = cm.is_valid(quote! {d});
+                let d_ploc = cm.protocol_loc(quote! {d});
                 let d_kappa = cm.kappa(quote! {d});
-                let s_ok = cm.ok(quote! {self.desc->Some_0});
-                let s_ploc = cm.ploc(quote! {self.desc->Some_0});
+                let s_ok = cm.is_valid(quote! {self.desc->Some_0});
+                let s_ploc = cm.protocol_loc(quote! {self.desc->Some_0});
                 let s_kappa = cm.kappa(quote! {self.desc->Some_0});
-                let desc_ok = cm.ok(quote! {desc});
-                let desc_ploc = cm.ploc(quote! {desc});
+                let desc_ok = cm.is_valid(quote! {desc});
+                let desc_ploc = cm.protocol_loc(quote! {desc});
                 let desc_kappa = cm.kappa(quote! {desc});
                 let wrap_base = wrap(quote! {base});
                 let borrow_base_body = unwrap_field(quote! {base});
@@ -1045,7 +1045,12 @@ fn leaks(generic: bool) -> bool {
 /// the raw token is duplicated from a shared reference (`Token::duplicate`),
 /// as `clone(&self)`; a storage-protocol resource can only be split, so in a
 /// machine with storage `clone` takes `&mut self`.
-fn persistent_clone(f: &Field, store: &Store, cm: &Option<Cm>, frag: &TokenStream) -> TokenStream {
+fn persistent_clone(
+    f: &Field,
+    store: &Store,
+    cm: &Option<Constants>,
+    frag: &TokenStream,
+) -> TokenStream {
     let n = &f.name;
     let saved_data: Vec<TokenStream> = token_data(f).iter().map(|(d, _)| quote! {saved.#d}).collect();
     let frag_saved = single_fragment(f, &saved_data);
@@ -1090,7 +1095,7 @@ fn persistent_clone(f: &Field, store: &Store, cm: &Option<Cm>, frag: &TokenStrea
         Kind::PersistentCount => vec![format_ident!("count")],
         _ => vec![],
     };
-    if !store.has() {
+    if !store.has_storage() {
         let same: Vec<_> = observers.iter().map(|o| quote! {<#nt as #tr>::#o(&s) == <#nt as #tr>::#o(self)}).collect();
         let base_dup = match cm {
             Some(cm) => {
@@ -1201,7 +1206,7 @@ fn copy_impls(nt: &TokenStream, copy: bool, generic: bool) -> (TokenStream, Toke
 
 /// The component assertions that let two compatible real tokens of one field
 /// agree (or conflict).
-fn component(f: &Field, x: TokenStream, slot: &Option<TokenStream>) -> TokenStream {
+fn field_component(f: &Field, x: TokenStream, slot: &Option<TokenStream>) -> TokenStream {
     let n = &f.name;
     match slot {
         Some(s) => quote! {(#x).#n.at(#s)},
@@ -1210,7 +1215,7 @@ fn component(f: &Field, x: TokenStream, slot: &Option<TokenStream>) -> TokenStre
 }
 
 /// The vstd token trait implementations of one field token type.
-fn token_traits(f: &Field, instance_id: &TokenStream, store: &Store, cm: &Option<Cm>, generic: bool) -> TokenStream {
+fn token_traits(f: &Field, instance_id: &TokenStream, store: &Store, cm: &Option<Constants>, generic: bool) -> TokenStream {
     let n = &f.name;
     let nt = tyname(f);
     let k = kind(f).unwrap();
@@ -1231,8 +1236,8 @@ fn token_traits(f: &Field, instance_id: &TokenStream, store: &Store, cm: &Option
     let real_conflict = {
         // (re-emit with the embed expression)
         let slot = slot_of("mine");
-        let c_f = component(f, quote! {Fragment::op(f, frame)}, &slot);
-        let c_e = component(f, embed(quote! {st}), &slot);
+        let c_f = field_component(f, quote! {Fragment::op(f, frame)}, &slot);
+        let c_e = field_component(f, embed(quote! {st}), &slot);
         let e_st = embed(quote! {st});
         quote! {
             let tracked mut r = raw.tracked_unwrap();
@@ -1272,9 +1277,9 @@ fn token_traits(f: &Field, instance_id: &TokenStream, store: &Store, cm: &Option
     // Agreement of two tokens on their value.
     let agree_body = |cond: TokenStream| {
         let slot = slot_of("self");
-        let c1 = component(f, quote! {Fragment::op(self.raw->Some_0.fragment(), f1)}, &slot);
-        let c2 = component(f, quote! {Fragment::op(other.raw->Some_0.fragment(), f2)}, &slot);
-        let ce = component(f, embed(quote! {st}), &slot);
+        let c1 = field_component(f, quote! {Fragment::op(self.raw->Some_0.fragment(), f1)}, &slot);
+        let c2 = field_component(f, quote! {Fragment::op(other.raw->Some_0.fragment(), f2)}, &slot);
+        let ce = field_component(f, embed(quote! {st}), &slot);
         let fake_case = if k.persistent() {
             quote! {
                 let tracked j = self.__fake().join_shared(other.__fake());
@@ -1392,7 +1397,7 @@ fn token_traits(f: &Field, instance_id: &TokenStream, store: &Store, cm: &Option
             // storage `clone` takes `&mut self`, so `weaken` does too, and the
             // operations are inherent (`MonotonicCountToken::weaken` takes `&self`).
             let pat_extra = if cm.is_some() { quote! {base, desc,} } else { quote! {} };
-            if !store.has() {
+            if !store.has_storage() {
                 quote! {
                     impl ::vstd::tokens::MonotonicCountToken for #nt {
                         #id_fn
@@ -1538,7 +1543,7 @@ fn token_traits(f: &Field, instance_id: &TokenStream, store: &Store, cm: &Option
 
 /// Split a bulk token into single-value tokens, and the reverse join, for one
 /// collection field.
-fn collection_helpers(f: &Field, cm: &Option<Cm>) -> TokenStream {
+fn collection_helpers(f: &Field, cm: &Option<Constants>) -> TokenStream {
     let n = &f.name;
     let nt = tyname(f);
     let k = kind(f).unwrap();
@@ -1549,7 +1554,7 @@ fn collection_helpers(f: &Field, cm: &Option<Cm>) -> TokenStream {
         ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};};
     let pointwise = quote! {::vstd::resource::tsm_collections::Pointwise};
     let id_of = |x: TokenStream| id_call(f, x);
-    // Mode-dependent pieces (see `Cm`): without constants a token is linked to
+    // Mode-dependent pieces (see `Constants`): without constants a token is linked to
     // its instance by the location; with constants, by the descriptor `d`, and
     // each new token gets a copy of `κ`, split off `kappa`.
     let (sid, split_params, split_reqs, take_kp, kp_args, rec_split, link_param, lloc, lid, larg, into_suffix) = match cm {
@@ -1567,9 +1572,9 @@ fn collection_helpers(f: &Field, cm: &Option<Cm>) -> TokenStream {
             quote! {},
         ),
         Some(cm) => {
-            let dty = &cm.d;
-            let d_ok = cm.ok(quote! {d});
-            let ploc = cm.ploc(quote! {d});
+            let dty = &cm.desc_ty;
+            let d_ok = cm.is_valid(quote! {d});
+            let ploc = cm.protocol_loc(quote! {d});
             let kappa = cm.kappa(quote! {d});
             (
                 quote! {::vstd::resource::tsm_instance_id(d.loc(), false)},
@@ -1599,7 +1604,7 @@ fn collection_helpers(f: &Field, cm: &Option<Cm>) -> TokenStream {
     let lreq = match cm {
         None => quote! {},
         Some(cm) => {
-            let ok = cm.ok(quote! {d});
+            let ok = cm.is_valid(quote! {d});
             quote! {#ok,}
         }
     };
@@ -1982,7 +1987,7 @@ fn resname(f: &Field) -> Ident {
 /// `insert` (or `from_map`) are kept individually (`parts`, finitely many).
 /// It provides the operations of `vstd::tokens::IMapToken`/`ISetToken`;
 /// `from_map` and `into_map` require finite maps.
-fn reservation(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream {
+fn reservation_type(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenStream {
     let n = &f.name;
     let nt = tyname(f);
     let k = kind(f).unwrap();
@@ -2035,7 +2040,7 @@ fn reservation(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream {
             pub open spec fn contains(self, element: #kt) -> bool {self.set().contains(element)}
         }
     };
-    // Mode-dependent fields and checks (see `Cm`).
+    // Mode-dependent fields and checks (see `Constants`).
     let (extra_fields, extra_pat, none_extra, real_inv, none_inv, lemma_link, unwrap_desc, mint, mint_args, split_args, bulk_params, bulk_reqs, bulk_fields, bulk_id) = match cm {
         None => (
             quote! {},
@@ -2054,12 +2059,12 @@ fn reservation(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream {
             quote! {::vstd::resource::tsm_instance_id(raw.loc(), false)},
         ),
         Some(cm) => {
-            let ok = cm.ok(quote! {self.desc->Some_0});
-            let ploc = cm.ploc(quote! {self.desc->Some_0});
+            let ok = cm.is_valid(quote! {self.desc->Some_0});
+            let ploc = cm.protocol_loc(quote! {self.desc->Some_0});
             let kappa_s = cm.kappa(quote! {self.desc->Some_0});
             let kappa_d = cm.kappa(quote! {dref});
-            let d_ok = cm.ok(quote! {d});
-            let d_ploc = cm.ploc(quote! {d});
+            let d_ok = cm.is_valid(quote! {d});
+            let d_ploc = cm.protocol_loc(quote! {d});
             let d_kappa = cm.kappa(quote! {d});
             (
                 {
@@ -2245,9 +2250,9 @@ fn reservation(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream {
                 },
             ),
             Some(cm) => {
-                let dty = &cm.d;
-                let ok = cm.ok(quote! {d});
-                let ploc = cm.ploc(quote! {d});
+                let dty = &cm.desc_ty;
+                let ok = cm.is_valid(quote! {d});
+                let ploc = cm.protocol_loc(quote! {d});
                 let desc_unwrap = cm.opt_ref(quote! {desc});
                 (
                     quote! {tracked d: &#dty},
@@ -2561,7 +2566,7 @@ fn reservation(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream {
 
 /// `__observe` of a reservation collection: an observation including the
 /// sub-collection `e` (`None` only if `e` is empty), for borrowed collections.
-fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream {
+fn reservation_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenStream {
     let n = &f.name;
     let nt = tyname(f);
     let k = kind(f).unwrap();
@@ -2569,7 +2574,7 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
     let factory = format_ident!("field_{}", n);
     let t = quote! {::vstd::resource::tsm};
     let tr = trait_path(f);
-    let obs = if store.has() {
+    let obs = if store.has_storage() {
         quote! {::vstd::resource::tsm_storage::StorageObservation<'a, Protocol>}
     } else {
         quote! {::vstd::resource::tsm::Observation<'a, Protocol>}
@@ -2594,13 +2599,13 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
             quote! {::vstd::resource::tsm_instance_id_injective(self.bulk->Some_0.loc(), false, loc, false);},
         ),
         Some(cm) => {
-            let dty = &cm.d;
-            let ok = cm.ok(quote! {d});
+            let dty = &cm.desc_ty;
+            let ok = cm.is_valid(quote! {d});
             let self_desc = cm.opt_ref(quote! {self.desc});
             (
                 quote! {tracked d: &#dty},
                 quote! {self.instance_id() == ::vstd::resource::tsm_instance_id(d.loc(), false), #ok},
-                cm.ploc(quote! {d}),
+                cm.protocol_loc(quote! {d}),
                 quote! {d},
                 quote! {
                     ::vstd::resource::tsm_instance_id_injective(self.desc->Some_0.loc(), false, d.loc(), false);
@@ -2664,7 +2669,7 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
     let (larg_id, link_ok) = match cm {
         None => (quote! {loc}, quote! {}),
         Some(cm) => {
-            let ok = cm.ok(quote! {d});
+            let ok = cm.is_valid(quote! {d});
             (quote! {d.loc()}, quote! {#ok,})
         }
     };
@@ -2866,7 +2871,7 @@ fn reservation_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream
 /// tokens show each element of `e` at least once, so `e` must not contain
 /// an element twice (shared references to two tokens do not show that the
 /// two are distinct resources).
-fn finite_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream {
+fn finite_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenStream {
     let n = &f.name;
     let nt = tyname(f);
     let k = kind(f).unwrap();
@@ -2877,7 +2882,7 @@ fn finite_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream {
     let imply = quote! {::vstd::prelude::imply};
     let lemmas = quote! {broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
         ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};};
-    let obs = if store.has() {
+    let obs = if store.has_storage() {
         quote! {::vstd::resource::tsm_storage::StorageObservation<'a, Protocol>}
     } else {
         quote! {::vstd::resource::tsm::Observation<'a, Protocol>}
@@ -2885,9 +2890,9 @@ fn finite_observe(f: &Field, cm: &Option<Cm>, store: &Store) -> TokenStream {
     let (link_param, link_req, link_loc, larg, lid) = match cm {
         None => (quote! {loc: ::vstd::resource::Loc}, quote! {}, quote! {loc}, quote! {loc}, quote! {loc}),
         Some(cm) => {
-            let dty = &cm.d;
-            let ok = cm.ok(quote! {d});
-            (quote! {tracked d: &#dty}, quote! {#ok,}, cm.ploc(quote! {d}), quote! {d}, quote! {d.loc()})
+            let dty = &cm.desc_ty;
+            let ok = cm.is_valid(quote! {d});
+            (quote! {tracked d: &#dty}, quote! {#ok,}, cm.protocol_loc(quote! {d}), quote! {d}, quote! {d.loc()})
         }
     };
     let id = quote! {::vstd::resource::tsm_instance_id(#lid, false)};
@@ -3770,7 +3775,7 @@ struct Ctx<'a> {
     /// constants: `κ`), for operations of a machine without storage that
     /// consume no token (`__base`).
     base: bool,
-    cm: &'a Option<Cm>,
+    cm: &'a Option<Constants>,
     /// Initializers also come in a variant that returns a `Unit` (machines
     /// with storage in which an operation takes a `Unit`).
     unit_init: bool,
@@ -3790,7 +3795,7 @@ fn is_read_only(parts: &ExchangeParts, params: &[Param]) -> bool {
         && !parts.in_params.iter().any(|p| p.to_string().contains("& mut"))
 }
 
-fn params_of<'a>(sm: &'a SM, parts: &'a ExchangeParts, var_params: &'a [TokenParam]) -> Vec<Param<'a>> {
+fn token_params<'a>(sm: &'a SM, parts: &'a ExchangeParts, var_params: &'a [TokenParam]) -> Vec<Param<'a>> {
     let mut params: Vec<Param> = vec![];
     for f in &sm.fields {
         for p in parts.params.get(&f.name.to_string()).into_iter().flatten() {
@@ -3841,7 +3846,7 @@ fn variable_params(sm: &SM, parts: &ExchangeParts) -> Vec<TokenParam> {
 /// token collections (which may be empty).
 fn guard_without_token(sm: &SM, parts: &ExchangeParts) -> bool {
     let vars = variable_params(sm, parts);
-    let params = params_of(sm, parts, &vars);
+    let params = token_params(sm, parts, &vars);
     params.iter().any(|q| q.p.inout_type == InoutType::BorrowOut)
         && !params.iter().any(|q| q.p.inout_type == InoutType::BorrowIn && !q.p.is_collection && !q.field.stype.is_storage())
 }
@@ -3853,7 +3858,7 @@ fn needs_unit(sm: &SM, bundle: &SMBundle, tr: &Transition) -> Result<bool, Error
     }
     let parts = exchange_parts_with(bundle, tr, &HashMap::new(), true)?;
     let vars = variable_params(sm, &parts);
-    let params = params_of(sm, &parts, &vars);
+    let params = token_params(sm, &parts, &vars);
     let guard = params.iter().any(|q| q.p.inout_type == InoutType::BorrowOut);
     if guard || is_read_only(&parts, &params) {
         return Ok(false);
@@ -3871,7 +3876,7 @@ fn borrows_token(sm: &SM, bundle: &SMBundle, tr: &Transition) -> Result<bool, Er
     }
     let parts = exchange_parts_with(bundle, tr, &HashMap::new(), true)?;
     let vars = variable_params(sm, &parts);
-    let params = params_of(sm, &parts, &vars);
+    let params = token_params(sm, &parts, &vars);
     Ok(params.iter().any(|q| !q.field.stype.is_storage() && !q.p.is_collection && q.p.inout_type == InoutType::BorrowIn))
 }
 
@@ -3880,8 +3885,8 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     let sm = &bundle.sm;
     check_fields(sm)?;
     let store = Store::new(sm)?;
-    INHERENT_PERSISTENT_COUNT.with(|c| c.set(!leaks(sm.generics.is_some()) && store.has()));
-    let cm = Cm::new(sm);
+    INHERENT_PERSISTENT_COUNT.with(|c| c.set(!leaks(sm.generics.is_some()) && store.has_storage()));
+    let cm = Constants::new(sm);
     let mut any_unit = false;
     // Fields of which some operation borrows a token collection.
     let mut borrowed_colls: HashSet<String> = HashSet::new();
@@ -3910,10 +3915,10 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     // the parameters to be `'static` (the instance cannot own the token: a
     // storage token splits but does not duplicate, so the instance would not
     // be clonable); such guards borrow a `Unit` instead.
-    let guard_unit = guard_base && store.has() && sm.generics.is_some();
-    let base = !store.has() && unit_from_base || guard_base && !guard_unit;
-    let ctx = Ctx { sm, store: &store, base, cm: &cm, unit_init: store.has() && (any_unit || guard_unit),
-        owned_base: base && sm.generics.is_some() && !store.has(), guard_unit };
+    let guard_unit = guard_base && store.has_storage() && sm.generics.is_some();
+    let base = !store.has_storage() && unit_from_base || guard_base && !guard_unit;
+    let ctx = Ctx { sm, store: &store, base, cm: &cm, unit_init: store.has_storage() && (any_unit || guard_unit),
+        owned_base: base && sm.generics.is_some() && !store.has_storage(), guard_unit };
     // The trusted macro's specifications call the token traits' methods.
     let mut items = vec![quote! {
         #[allow(unused_imports)]
@@ -3944,7 +3949,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             }
             ShardableType::IMap(..) | ShardableType::PersistentIMap(..)
             | ShardableType::ISet(_) | ShardableType::PersistentISet(_) => {
-                items.push(reservation(f, &cm, &store));
+                items.push(reservation_type(f, &cm, &store));
             }
             ShardableType::Multiset(e) => {
                 let alias = format_ident!("{}_multiset", n);
@@ -3961,7 +3966,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     // `'static` bound) where it can duplicate it (without storage), and owns
     // its descriptor where the descriptor's type mentions a parameter; it is
     // then not `Copy`, and `clone` duplicates them.
-    let owned_base = base && generic && !store.has();
+    let owned_base = base && generic && !store.has_storage();
     let inst_is_copy = !(owned_base || cm.as_ref().is_some_and(|cm| cm.owned));
     let (inst_derive, inst_copy) = copy_impls(&quote! {Instance}, inst_is_copy, generic);
     let generic_args = sm.generics.as_ref().map(|g| crate::to_token_stream::get_generic_args(&g.params));
@@ -4005,8 +4010,8 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             quote! {},
         ),
         Some(cm) => {
-            let ok = cm.ok(quote! {self.__desc});
-            let ploc = cm.ploc(quote! {self.__desc});
+            let ok = cm.is_valid(quote! {self.__desc});
+            let ploc = cm.protocol_loc(quote! {self.__desc});
             let kappa = cm.kappa(quote! {self.__desc});
             let const_fns: Vec<_> = cm
                 .consts
@@ -4019,8 +4024,8 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                     quote! {pub closed spec fn #n(&self) -> #t {#v}}
                 })
                 .collect();
-            let u_ok = cm.ok(quote! {self.desc});
-            let u_ploc = cm.ploc(quote! {self.desc});
+            let u_ok = cm.is_valid(quote! {self.desc});
+            let u_ploc = cm.protocol_loc(quote! {self.desc});
             let u_kappa = cm.kappa(quote! {self.desc});
             let u_kappa_d = cm.kappa(quote! {desc});
             let u_held = cm.held();
@@ -4118,7 +4123,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     // that observe no fragment (e.g. a property over the constants only)
     // reason about it.
     let reachable = reachable_state(&cm, &quote! {self.__desc}, &format_ident!("__tsm_s"));
-    let kappa_idem = cm.as_ref().map(|cm| cm.idem_lemma());
+    let kappa_idem = cm.as_ref().map(|cm| cm.kappa_items());
     // `untag(tag(e)) == e` for the tagged storage options, for general
     // withdrawals (proved here, apart from an operation's other facts).
     let untag_tag: Vec<_> = sm
@@ -4235,7 +4240,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             }
         });
     }
-    if base && !store.has() {
+    if base && !store.has_storage() {
         let unit_value = match &cm {
             None => quote! {Unit {raw: self.__base.empty()}},
             Some(_) => quote! {
@@ -4261,7 +4266,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
         if tr.kind == TransitionKind::ReadonlyTransition {
             continue;
         }
-        match method(bundle, &ctx, tr) {
+        match instance_method(bundle, &ctx, tr) {
             Ok(m) => methods.push(m),
             Err(e) => errors.push(e),
         }
@@ -4302,7 +4307,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                 // (Persistent tokens of a machine with type parameters own their raw
                 // tokens; see `leaks`.)
                 let needs_static = base && !ctx.owned_base
-                    || cm.as_ref().is_some_and(|cm| !cm.owned && mentions(&cm.d, &params));
+                    || cm.as_ref().is_some_and(|cm| !cm.owned && mentions(&cm.desc_ty, &params));
                 let wc = if needs_static {
                     let bounds: Vec<_> = args.iter().map(|a| quote! {#a: 'static}).collect();
                     match &generics.as_ref().and_then(|g| g.where_clause.as_ref()) {
@@ -4316,7 +4321,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                     wc
                 };
                 let args = quote! {#args};
-                let g = Gen { decl: to_trees(decl), wc: to_trees(wc), args: args.clone(), attrs: to_trees(attrs), names: std::mem::take(&mut names) };
+                let g = MachineGenerics { decl: to_trees(decl), wc: to_trees(wc), args: args.clone(), attrs: to_trees(attrs), names: std::mem::take(&mut names) };
                 resolve_types(genericize(&out, &g), Some(&args))
             }
         };
@@ -4391,7 +4396,7 @@ fn ensures_steps(parts: &ExchangeParts, in_body: &dyn Fn(TokenStream) -> TokenSt
     }).collect()
 }
 
-fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, Error> {
+fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, Error> {
     let sm = &bundle.sm;
     let store = ctx.store;
     // `imap`/`iset` collections are the generated reservation types.
@@ -4401,7 +4406,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     let parts = parts;
     let (ret, req, ens) = signature_tokens(&parts);
     let vars = variable_params(sm, &parts);
-    let params = params_of(sm, &parts, &vars);
+    let params = token_params(sm, &parts, &vars);
     if tr.kind == TransitionKind::Init {
         let plain = init_method(bundle, ctx, tr, &parts, ret, req, ens, false)?;
         if !ctx.unit_init {
@@ -4509,7 +4514,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     let late_helper: Vec<_> = late.iter().map(|e| in_helper(e.clone())).collect();
     let loc = quote! {self.__l()};
     let cm = ctx.cm;
-    // A token's link to the instance (see `Cm`).
+    // A token's link to the instance (see `Constants`).
     let link = match cm {
         Some(cm) => cm.by_ref(quote! {self.__desc}),
         None => quote! {self.__l()},
@@ -4784,7 +4789,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     // machines) or splits one off the instance's shared token.
     let mut in_params = in_params.clone();
     let needs_unit = take_owned.is_empty();
-    let unit_param = needs_unit && store.has();
+    let unit_param = needs_unit && store.has_storage();
     if unit_param {
         in_params.push(quote! {tracked __tsm_unit: Unit});
     }
@@ -4834,7 +4839,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 let tracked __tsm_acc = #p.__borrow_raw(#link).empty();
             });
             if let Some(cm) = cm {
-                let idem = cm.idem(quote! {self.__desc});
+                let idem = cm.kappa_idem(quote! {self.__desc});
                 join_owned.push(quote! {
                     #idem
                     let tracked __tsm_kappa = #p.__borrow_base(#link).duplicate();
@@ -4849,7 +4854,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
                 let tracked __tsm_acc = self.__base.empty();
             });
             if let Some(cm) = cm {
-                let idem = cm.idem(quote! {self.__desc});
+                let idem = cm.kappa_idem(quote! {self.__desc});
                 join_owned.push(quote! {
                     #idem
                     let tracked __tsm_kappa = self.__base.duplicate();
@@ -5136,12 +5141,12 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     }
     let has_deposit = params.iter().any(|q| q.field.stype.is_storage() && q.p.inout_type == InoutType::In);
     let has_withdraw = params.iter().any(|q| q.field.stype.is_storage() && q.p.inout_type == InoutType::Out);
-    let map_ty = store.map_ty();
+    let map_ty = store.storage_ty();
     // With a borrowed observation, the exchange (frame lemma and output
     // lifting) is a separate proof (`exchange_fn`), as the raw protocol's
     // operations are.
     let exchange_fn = format_ident!("__tsm_exchange_{}", tr.name);
-    let call = match (store.has(), has_shared) {
+    let call = match (store.has_storage(), has_shared) {
         (true, true) => quote! {
             let tracked (__tsm_out, __tsm_withdrawn) =
                 Self::#exchange_fn(__tsm_acc, &#shared_ident, __tsm_deposit, #owned_ident, #h, #(#pn),*);
@@ -5307,7 +5312,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     let frames_ready: Vec<_> = shared_steps.iter().cloned().chain(frames_post.iter().cloned()).collect();
     let ready_fn = format_ident!("__tsm_ready_{}", tr.name);
     let api_reqs: Vec<_> = parts.reqs.iter().map(|r| in_helper(quote! {#r})).collect();
-    let (dep_param, dep_arg, dep_req, dep_goal, dep_ext) = if store.has() {
+    let (dep_param, dep_arg, dep_req, dep_goal, dep_ext) = if store.has_storage() {
         (
             quote! {__tsm_deposit: #map_ty},
             quote! {__tsm_deposit},
@@ -5318,7 +5323,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     } else {
         (quote! {}, quote! {}, quote! {}, quote! {}, quote! {})
     };
-    let dep_comma = if store.has() { quote! {,} } else { quote! {} };
+    let dep_comma = if store.has_storage() { quote! {,} } else { quote! {} };
     // The facts about `op(owned, h)` outside the completion quantifier
     // (ownership of read and updated variables) come from one completion.
     let (ready_req, ready_pre) = if has_shared {
@@ -5335,7 +5340,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     };
     // A deposit may depend on a transition's `assert`s (the API's precondition
     // then only constrains it under them), which hold by the safety lemma.
-    let ready_safety = if store.has() && has_assert(&tr.body) {
+    let ready_safety = if store.has_storage() && has_assert(&tr.body) {
         quote! {State::#safety(pre, #(#pn),*);}
     } else {
         quote! {}
@@ -5390,7 +5395,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             }
         }
     };
-    let (post_store_params, _post_store_args, witness_call) = if store.has() {
+    let (post_store_params, _post_store_args, witness_call) = if store.has_storage() {
         (
             quote! {__tsm_deposit: #map_ty, __tsm_withdrawn: #map_ty,},
             quote! {__tsm_deposit, __tsm_withdrawn,},
@@ -5411,12 +5416,12 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             },
         )
     };
-    let outputs_req = if store.has() {
+    let outputs_req = if store.has_storage() {
         quote! {Protocol::#outputs_fn(#owned_ident, #h_param, __tsm_out_frag, __tsm_deposit, __tsm_withdrawn, #(#pn),*)}
     } else {
         quote! {Protocol::#outputs_fn(#owned_ident, #h_param, __tsm_out_frag, #(#pn),*)}
     };
-    let exchange_helper = match (store.has(), has_shared) {
+    let exchange_helper = match (store.has_storage(), has_shared) {
         (true, true) => quote! {
             proof fn #exchange_fn<'b>(tracked acc: Token,
                 tracked obs: &::vstd::resource::tsm_storage::StorageObservation<'b, Protocol>,
@@ -5490,7 +5495,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
             (pre, post, __tsm_z)
         }
     };
-    let deposit_stmts = if store.has() {
+    let deposit_stmts = if store.has_storage() {
         quote! {
             let tracked mut __tsm_deposit: #map_ty = ::vstd::imap::IMap::tracked_empty();
             #(#deposits)*
@@ -5499,7 +5504,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     } else {
         quote! {}
     };
-    let withdraw_stmts = if store.has() {
+    let withdraw_stmts = if store.has_storage() {
         quote! {
             let tracked mut __tsm_withdrawn = __tsm_withdrawn;
             #(#withdrawals)*
@@ -5516,7 +5521,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
         quote! {}
     };
     let bind_h = if has_shared { quote! {let ghost __tsm_hv = #shared_ident.fragment();} } else { quote! {} };
-    let post_args = if store.has() { quote! {__tsm_deposit, __tsm_withdrawn} } else { quote! {} };
+    let post_args = if store.has_storage() { quote! {__tsm_deposit, __tsm_withdrawn} } else { quote! {} };
     // The trusted macro's specifications use the old `&mut` postcondition style.
     let mut_style = if inouts.is_empty() {
         quote! {}
@@ -5527,7 +5532,7 @@ fn method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, 
     // The output tokens' copies of `κ` are split off `κ`.
     let out_idem = match cm {
         Some(cm) if !outs.is_empty() => {
-            let idem = cm.idem(quote! {self.__desc});
+            let idem = cm.kappa_idem(quote! {self.__desc});
             let kappa = cm.kappa(quote! {self.__desc});
             quote! {#idem let ghost __tsm_k = #kappa;}
         }
@@ -6051,7 +6056,7 @@ fn guard_refs(store: &Store, f: &Field, helper: &Ident, pname: &Ident, e: &Token
         }
         _ => quote! {m.tracked_borrow(#skey_c)},
     };
-    let map = store.map_ty();
+    let map = store.storage_ty();
     let (set_ty, emap_ty, out_ty, empty, choose_len, contains_len, remove_len, finite) = if infinite {
         (
             quote! {::vstd::iset::ISet<#k>},
@@ -6228,7 +6233,7 @@ fn init_method(
             let alloc = quote! {::vstd::resource::pcm::Resource::alloc(
                 Some(::vstd::resource::agree::AgreementRA::Agree(((#(#vals,)*), __tsm_all_loc))))};
             let desc_alloc = if cm.owned { alloc } else { quote! {::vstd::modes::tracked_static_ref(#alloc)} };
-            let idem = cm.idem(quote! {__tsm_desc});
+            let idem = cm.kappa_idem(quote! {__tsm_desc});
             takes.push(quote! {
                 let tracked __tsm_desc = #desc_alloc;
                 Fragment::unit().op_unit();
@@ -6307,7 +6312,7 @@ fn init_method(
     let phantom = if sm.generics.is_some() && !ctx.base { quote! {, __tsm_phantom: ::core::marker::PhantomData} } else { quote! {} };
     let base_hold = if ctx.owned_base { quote! {__tsm_base_tok} } else { quote! {::vstd::modes::tracked_static_ref(__tsm_base_tok)} };
     let base_stmt = match (cm, ctx.base) {
-        (None, true) if store.has() => quote! {
+        (None, true) if store.has_storage() => quote! {
             Fragment::commutative(Fragment::unit(), __tsm_rest.fragment());
             __tsm_rest.fragment().op_unit();
             let ghost __tsm_rf = __tsm_rest.fragment();
@@ -6370,8 +6375,8 @@ fn init_method(
     };
     let init_fn = &tr.name;
     let init_strong = format_ident!("{}_strong", tr.name);
-    let (base_init, call) = if store.has() {
-        let map_ty = store.map_ty();
+    let (base_init, call) = if store.has_storage() {
+        let map_ty = store.storage_ty();
         (
             quote! {
                 let tracked mut __tsm_base: #map_ty = ::vstd::imap::IMap::tracked_empty();
@@ -6507,7 +6512,7 @@ fn resolve_types(trees: Vec<Tree>, args: Option<&TokenStream>) -> Vec<Tree> {
 }
 
 /// The machine's type parameters, applied to the generated items.
-struct Gen {
+struct MachineGenerics {
     decl: Vec<Tree>,
     wc: Vec<Tree>,
     args: TokenStream,
@@ -6520,7 +6525,7 @@ struct Gen {
 /// structs, type aliases and impls get the declaration and where clause, and
 /// each bare use of a generated generic type gets `::<args>` (valid in both
 /// type and expression position).
-fn genericize(trees: &[Tree], g: &Gen) -> Vec<Tree> {
+fn genericize(trees: &[Tree], g: &MachineGenerics) -> Vec<Tree> {
     let mut out: Vec<Tree> = vec![];
     let mut i = 0;
     let is_ident = |t: &Tree, s: &str| t.ident().is_some_and(|id| id == s);
@@ -6593,7 +6598,7 @@ fn genericize(trees: &[Tree], g: &Gen) -> Vec<Tree> {
 }
 
 /// The rewrite of `trees[i]` if it is a bare use of a generated generic type.
-fn turbofish_at(trees: &[Tree], i: usize, g: &Gen) -> Option<Vec<Tree>> {
+fn turbofish_at(trees: &[Tree], i: usize, g: &MachineGenerics) -> Option<Vec<Tree>> {
     let id = trees[i].ident()?;
     if !g.names.contains(&id.to_string()) {
         return None;
@@ -6622,7 +6627,7 @@ fn turbofish_at(trees: &[Tree], i: usize, g: &Gen) -> Option<Vec<Tree>> {
     Some(to_trees(quote! {#id::<#args>}))
 }
 
-fn turbofish(trees: &[Tree], g: &Gen) -> Vec<Tree> {
+fn turbofish(trees: &[Tree], g: &MachineGenerics) -> Vec<Tree> {
     let mut out = vec![];
     for i in 0..trees.len() {
         // `hide`/`reveal` name the function by an untyped path.
@@ -6713,7 +6718,7 @@ pub fn normalize_initial_requirements(bundle:&mut crate::parse_token_stream::SMB
         let tr=&bundle.sm.transitions[index];
         if tr.kind!=TransitionKind::Init {continue;}
         let mut requirements=Vec::new();
-        initial_statements(&tr.body,&mut requirements)?;
+        initial_requires(&tr.body,&mut requirements)?;
         let params:Vec<_>=tr.params.iter().map(|p|{let n=&p.name;let t=&p.ty;quote!{#n:#t}}).collect();
         let names:Vec<_>=tr.params.iter().map(|p|&p.name).collect();
         let mut replacements=Vec::new();
@@ -6801,11 +6806,11 @@ fn initial_fresh(sm: &SM, tr: &Transition, label: &str) -> Ident {
     Ident::new(&candidate, Span::mixed_site())
 }
 
-fn initial_statements(stmt: &TransitionStmt, requirements: &mut Vec<Expr>) -> Result<(), Error> {
+fn initial_requires(stmt: &TransitionStmt, requirements: &mut Vec<Expr>) -> Result<(), Error> {
     match stmt {
         TransitionStmt::Block(_, children) => {
             for child in children {
-                initial_statements(child, requirements)?;
+                initial_requires(child, requirements)?;
             }
         }
         TransitionStmt::Initialize(..) => {}

@@ -93,11 +93,11 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
     if selected.is_empty() {
         return crate::verified_tokens::output_raw(bundle);
     }
-    validate_api_names(&bundle, &selected)?;
+    check_local_ready_names(&bundle, &selected)?;
     crate::verified_general::output_with_ready(bundle, &selected)
 }
 
-fn validate_api_names(bundle: &SMBundle, selected: &HashSet<String>) -> Result<(), Error> {
+fn check_local_ready_names(bundle: &SMBundle, selected: &HashSet<String>) -> Result<(), Error> {
     let sm = &bundle.sm;
     let mut state = HashSet::from(["invariant".to_string(), "__storage".to_string()]);
     let mut protocol = HashSet::from(["__observed".to_string()]);
@@ -275,7 +275,7 @@ fn declared_requires(s: &TransitionStmt) -> Result<TokenStream, Error> {
     }
 }
 
-pub fn declared_api(
+pub fn declared_requires_spec(
     tr: &Transition,
     st: &TokenStream,
     params: &[TokenStream],
@@ -487,7 +487,7 @@ fn singleton_map_remove_hints(sm:&SM,tr:&Transition,observation:&Ident,completio
     }).collect()
 }
 
-pub fn api(c: Context<'_>) -> Result<TokenStream, Error> {
+pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     let Context {
         sm,
         tr,

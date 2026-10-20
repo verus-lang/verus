@@ -84,7 +84,7 @@ fn statements(body: &[SimplStmt]) -> Result<TokenStream, Error> {
     Ok(output)
 }
 
-fn outside_self(tokens: TokenStream, state_type: &TokenStream) -> TokenStream {
+fn replace_self(tokens: TokenStream, state_type: &TokenStream) -> TokenStream {
     let mut output = TokenStream::new();
     for token in tokens {
         match token {
@@ -92,7 +92,7 @@ fn outside_self(tokens: TokenStream, state_type: &TokenStream) -> TokenStream {
             TokenTree::Group(group) => {
                 let mut replacement = proc_macro2::Group::new(
                     group.delimiter(),
-                    outside_self(group.stream(), state_type),
+                    replace_self(group.stream(), state_type),
                 );
                 replacement.set_span(group.span());
                 output.extend([TokenTree::Group(replacement)]);
@@ -228,7 +228,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
         });
         let outside_parameters: Vec<_> = parameters
             .into_iter()
-            .map(|p| outside_self(p, &quote! {State #types}))
+            .map(|p| replace_self(p, &quote! {State #types}))
             .collect();
         wrappers.push(quote! {
             pub proof fn #name #declaration (#wrapper_input #(#outside_parameters),*)

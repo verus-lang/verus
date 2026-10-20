@@ -13,7 +13,7 @@ pub fn field_api(
     names: &[&Ident],
     types: &[TokenStream],
 ) -> Result<(TokenStream, TokenStream), Error> {
-    validate_names(sm, names)?;
+    check_helper_names(sm, names)?;
     // Both unit laws of every component, proved once: the projection laws
     // below only need them, so each costs one call instead of one per field.
     let unit_laws: Vec<_> = names
@@ -45,7 +45,7 @@ pub fn field_api(
             ShardableType::Constant(_) => quote! {
                 Some(::vstd::resource::agree::AgreementRA::Agree(value))
             },
-            s if monoids::supported(s) => monoids::embed(s, quote! {value}),
+            s if monoids::is_monoid_type(s) => monoids::embed(s, quote! {value}),
             _ => unreachable!(),
         };
         let factory = format_ident!("field_{}", name);
@@ -59,7 +59,7 @@ pub fn field_api(
         });
         specs.push(accessors(field));
         let mut group = vec![index];
-        projection(names, types, &group, name, token, sm, &mut specs, &mut proofs)?;
+        projection_helpers(names, types, &group, name, token, sm, &mut specs, &mut proofs)?;
         if !constants.is_empty() && !matches!(field.stype, ShardableType::Constant(_)) {
             group.extend(
                 names
@@ -69,7 +69,7 @@ pub fn field_api(
                     .map(|(i, _)| i),
             );
             let grouped = format_ident!("{}_with_constants", name);
-            projection(names, types, &group, &grouped, token, sm, &mut specs, &mut proofs)?;
+            projection_helpers(names, types, &group, &grouped, token, sm, &mut specs, &mut proofs)?;
         }
         if matches!(field.stype, ShardableType::Count) {
             let split = format_ident!("split_{}", name);
@@ -105,7 +105,7 @@ pub fn field_api(
     Ok((quote! {#(#specs)*}, quote! {#(#proofs)*}))
 }
 
-fn validate_names(sm: &SM, names: &[&Ident]) -> Result<(), Error> {
+fn check_helper_names(sm: &SM, names: &[&Ident]) -> Result<(), Error> {
     let mut fragment = HashSet::from(["empty".to_string(), "combine".to_string()]);
     let mut protocol = HashSet::new();
     let constants = sm
@@ -200,7 +200,7 @@ fn check_operation_name(sm: &SM, name: &Ident) -> Result<(), Error> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn projection(
+fn projection_helpers(
     names: &[&Ident],
     types: &[TokenStream],
     selected: &[usize],
