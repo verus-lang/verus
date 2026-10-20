@@ -3,10 +3,12 @@
 //! This emitter preserves the ordinary weak, strong, and enabling definitions.
 //! It does not construct resources or derive strong enabling from weak enabling.
 //! Constructors require strong enabling and use checked induction hooks. Source
-//! assertion proof blocks are never emitted.
+//! assertions (with their proof blocks) are checked under the invariant in
+//! assume-free `<transition>_asserts` lemmas, as in the ordinary generator.
 use crate::ast::TransitionKind;
 use crate::lemmas::{check_lemmas, get_transition};
 use crate::parse_token_stream::{ParseResult, SMBundle, parse_result_to_smir};
+use crate::safety_conditions::{has_any_assert_simpl_vec, safety_condition_body_checked};
 use crate::simplification::simplify_ops;
 use crate::to_relation::{
     to_is_enabled_condition_strong, to_is_enabled_condition_weak, to_relation,
@@ -68,11 +70,29 @@ pub fn output(bundle: SMBundle) -> Result<TokenStream, Error> {
     });
     let mut definitions = Vec::new();
     for transition in &sm.transitions {
+        let body = simplify_ops(sm, &transition.body, transition.kind);
+        // As the ordinary generator: the safety conditions (`assert`s) of a transition or
+        // property are proof obligations under the invariant. The trusted macro assumes the
+        // invariant in `<t>_asserts`; here it is a precondition, and requirements guard
+        // their paths (`safety_condition_body_checked`), so nothing is assumed.
+        if transition.kind != TransitionKind::Init && has_any_assert_simpl_vec(&body) {
+            let name = format_ident!("{}_asserts", transition.name);
+            let parameters = transition.params.iter().map(|parameter| {
+                let name = &parameter.name;
+                let ty = &parameter.ty;
+                quote! {#name: #ty}
+            });
+            let obligations = safety_condition_body_checked(&body);
+            definitions.push(quote! {
+                pub proof fn #name(pre: Self, #(#parameters),*)
+                    requires pre.invariant(),
+                { #obligations }
+            });
+        }
         // Match the ordinary generator: properties have no state relation.
         if transition.kind == TransitionKind::Property {
             continue;
         }
-        let body = simplify_ops(sm, &transition.body, transition.kind);
         let relation = to_relation(&body, true);
         let strong_relation = to_relation(&body, false);
         let enabling = to_is_enabled_condition_weak(&body);

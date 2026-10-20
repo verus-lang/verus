@@ -140,6 +140,48 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
     }
 }
 
+/// The safety conditions without `assume`: as `safety_condition_body_simpl_vec`, but a
+/// `require A` guards the rest of its path (`if A { rest }`) instead of assuming `A`. The
+/// continuation after a split is copied into each branch, so every assertion is checked under
+/// exactly the requirements and branch conditions of its path. Used by the checked model.
+pub fn safety_condition_body_checked(sops: &[SimplStmt]) -> proc_macro2::TokenStream {
+    checked_with(sops, proc_macro2::TokenStream::new())
+}
+
+fn checked_with(sops: &[SimplStmt], cont: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let Some((first, rest)) = sops.split_first() else {
+        return cont;
+    };
+    let k = checked_with(rest, cont);
+    match first {
+        SimplStmt::Let(span, pat, ty, v, child, _) => {
+            let ty = ty.as_ref().map(|ty| quote! {: #ty});
+            let body = checked_with(child, k);
+            quote_spanned! {*span => { let #pat #ty = #v; #body } }
+        }
+        SimplStmt::Split(span, split_kind, es, _) => match &**split_kind {
+            SplitKind::If(cond) => {
+                assert!(es.len() == 2);
+                let t1 = checked_with(&es[0].1, k.clone());
+                let t2 = checked_with(&es[1].1, k);
+                quote_spanned! {*span => if #cond { #t1 } else { #t2 } }
+            }
+            SplitKind::Match(match_e, arms) => {
+                let cases: Vec<_> = es.iter().map(|e| checked_with(&e.1, k.clone())).collect();
+                let m = emit_match(*span, match_e, arms, &cases);
+                quote! {#m}
+            }
+            _ => panic!("should SplitKind should have been translated out"),
+        },
+        SimplStmt::Require(span, e) => quote_spanned! {*span => if #e { #k } },
+        SimplStmt::PostCondition(..) => k,
+        SimplStmt::Assert(..) | SimplStmt::Assign(..) => {
+            let a = safety_condition_body_simpl(first, true);
+            quote! {#a #k}
+        }
+    }
+}
+
 /// Returns true if there are any 'assert' statements.
 pub fn has_any_assert_simpl_vec(sops: &Vec<SimplStmt>) -> bool {
     for sop in sops.iter() {
