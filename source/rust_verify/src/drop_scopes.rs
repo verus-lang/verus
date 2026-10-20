@@ -22,6 +22,7 @@
 use crate::context::BodyCtxt;
 use rustc_hir::HirId;
 use rustc_middle::middle::region::{Scope, ScopeData, ScopeTree};
+use rustc_middle::ty::Ty;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
@@ -115,8 +116,8 @@ impl<'tcx> BodyCtxt<'tcx> {
     /// If the scope isn't on the stack, use the nearest enclosing scope that is.
     /// (This can happen if we translate some HIR construct without traversing every
     /// HIR node in it; in most cases, the skipped HIR nodes don't have any drops.)
-    fn schedule_drop(&self, scope: Scope, local_or_temp: LocalOrTemp, span: Span) {
-        if !self.emits_drops() {
+    fn schedule_drop(&self, scope: Scope, local_or_temp: LocalOrTemp, span: Span, ty: Ty<'tcx>) {
+        if !self.emits_drops() || !self.ty_needs_drop(ty) {
             return;
         }
         let scope_tree = self.scope_tree();
@@ -137,31 +138,68 @@ impl<'tcx> BodyCtxt<'tcx> {
     /// (where `place` is the `PlaceX::Temporary` node).
     /// The temporary is dropped at the end of `expr`'s temporary scope,
     /// which may be extended by temporary lifetime extension.
-    pub(crate) fn schedule_temp_drop(&self, expr: &rustc_hir::Expr<'tcx>, place: &Place) {
-        if !self.emits_drops() {
+    pub(crate) fn schedule_temp_drop(
+        &self,
+        expr: &rustc_hir::Expr<'tcx>,
+        place: &Place,
+        ty: Ty<'tcx>,
+    ) {
+        if !self.emits_drops() || !self.ty_needs_drop(ty) {
             return;
         }
         assert!(matches!(place.x, PlaceX::Temporary(_)));
         let temp_lifetime = self.scope_tree().temporary_scope(expr.hir_id.local_id);
         if let Some(scope) = temp_lifetime.temp_lifetime {
-            self.schedule_drop(scope, LocalOrTemp::Temp(place.span.id), expr.span);
+            self.schedule_drop(scope, LocalOrTemp::Temp(place.span.id), expr.span, ty);
         }
     }
 
     /// Schedule a drop for a local variable bound at the pattern with id `hir_id`.
-    pub(crate) fn schedule_local_drop(&self, hir_id: HirId, var: &VarIdent, span: Span) {
-        if !self.emits_drops() {
+    pub(crate) fn schedule_local_drop(
+        &self,
+        hir_id: HirId,
+        var: &VarIdent,
+        span: Span,
+        ty: Ty<'tcx>,
+    ) {
+        if !self.emits_drops() || !self.ty_needs_drop(ty) {
             return;
         }
         if let Some(scope) = self.scope_tree().var_scope(hir_id.local_id) {
-            self.schedule_drop(scope, LocalOrTemp::Local(var.clone()), span);
+            self.schedule_drop(scope, LocalOrTemp::Local(var.clone()), span, ty);
         }
+    }
+
+    /// Does this type have drop glue?
+    fn ty_needs_drop(&self, ty: Ty<'tcx>) -> bool {
+        // Replace free vars with ReErased
+        let ty = rustc_middle::ty::fold_regions(self.ctxt.tcx, ty, |region, debruijn| match region
+            .kind()
+        {
+            rustc_middle::ty::RegionKind::ReEarlyParam(..) => self.ctxt.tcx.lifetimes.re_erased,
+            rustc_middle::ty::RegionKind::ReBound(
+                rustc_middle::ty::BoundVarIndexKind::Bound(d),
+                _,
+            ) if d == debruijn => self.ctxt.tcx.lifetimes.re_erased,
+            _ => region,
+        });
+        let typing_env = rustc_middle::ty::TypingEnv::new(
+            self.ctxt.tcx.param_env(self.fun_id),
+            rustc_middle::ty::TypingMode::non_body_analysis(),
+        );
+        ty.needs_drop(self.ctxt.tcx, typing_env)
     }
 
     /// Schedule a drop for a local variable in the given scope, which must be on the stack.
     /// (Used for function parameters.)
-    pub(crate) fn schedule_local_drop_in(&self, scope: Scope, var: &VarIdent, span: Span) {
-        self.schedule_drop(scope, LocalOrTemp::Local(var.clone()), span);
+    pub(crate) fn schedule_local_drop_in(
+        &self,
+        scope: Scope,
+        var: &VarIdent,
+        span: Span,
+        ty: Ty<'tcx>,
+    ) {
+        self.schedule_drop(scope, LocalOrTemp::Local(var.clone()), span, ty);
     }
 
     /// All drops currently scheduled in scopes strictly inside the scope of the given
