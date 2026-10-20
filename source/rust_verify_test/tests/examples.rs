@@ -24,6 +24,7 @@ examples_in_dir!("../../examples/state_machines/reference-examples");
 examples_in_dir!("../../examples/std_test");
 examples_in_dir!("../../examples/cuckoo_hash_table");
 examples_in_dir!("../../examples/iterators");
+examples_in_dir!("../../examples/storage_protocol");
 
 #[cfg(feature = "singular")]
 examples_in_dir!("../../examples/integer_ring");
