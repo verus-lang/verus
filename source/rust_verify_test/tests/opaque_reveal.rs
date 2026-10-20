@@ -214,7 +214,7 @@ test_verify_one_file! {
         fn aproof(a: nat) {
             reveal(m1);
         }
-    } => Err(err) => assert_rust_error_msg(err, "expected value, found module")
+    } => Err(err) => assert_rust_error_msg(err, "cannot find value `m1` in this scope")
 }
 
 test_verify_one_file! {
