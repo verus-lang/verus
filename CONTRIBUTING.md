@@ -241,11 +241,14 @@ Stylistically, inside `vstd`:
 ### Tips for testing and verifying your contribution
 
 If you're contributing to the standard library, you should also test the
-standalone build of that library with
+standalone build of that library by running the following from the repository
+root:
 ```
-cd source/vstd
-cargo build
+cargo build --manifest-path source/vstd/Cargo.toml
 ```
+Don't run `cargo build` from inside `source/vstd`: Cargo would then pick up
+`source/.cargo/config.toml`, which sets `--cfg verus_keep_ghost` and makes
+`rustc` try to compile the ghost code, which only Verus can do.
 
 A common error you'll find at this stage is that imports of specific
 identifiers with `use` (as opposed to blanket imports using `*`) don't work
