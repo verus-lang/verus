@@ -888,3 +888,314 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// Closure preconditions must cover values reachable from the back, even when
+// the inner iterator's forward prophecy is empty.
+test_verify_one_file! {
+    #[test] nested_adapters_require_completion_or_unconditional_callability verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn diverge()
+            ensures false,
+        {
+            loop {}
+        }
+
+        fn first(x: u32) -> (y: u32)
+            ensures x != 1, y == x,
+        {
+            if x == 1 { diverge(); }
+            x
+        }
+
+        fn nested_map() {
+            let input = vec![1u32, 2, 3].into_iter();
+            let ghost original = input;
+            let middle = input.map(first);
+            proof {
+                if middle.remaining().len() > 0 {
+                    assert(call_ensures(first, (original.remaining()[0],), middle.remaining()[0]));
+                    assert(false);
+                }
+                assert(middle.remaining().len() == 0);
+            }
+            let second = |x: u32| -> u32
+                requires x != 3,
+            {
+                if x == 3 {
+                    assert(false);
+                    panic!("");
+                }
+                x
+            };
+            let mut output = middle.map(second); // FAILS
+            output.next_back();
+        }
+
+        fn nested_filter() {
+            let input = vec![1u32, 2, 3].into_iter();
+            let ghost original = input;
+            let middle = input.map(first);
+            proof {
+                if middle.remaining().len() > 0 {
+                    assert(call_ensures(first, (original.remaining()[0],), middle.remaining()[0]));
+                    assert(false);
+                }
+                assert(middle.remaining().len() == 0);
+            }
+            let predicate = |x: &u32| -> bool
+                requires *x != 3,
+            { true };
+            let mut output = middle.filter(predicate); // FAILS
+            output.next_back();
+        }
+
+        fn filter_then_map() {
+            let predicate = |x: &u32| -> (keep: bool)
+                ensures *x != 1, keep,
+            {
+                if *x == 1 { diverge(); }
+                true
+            };
+            let middle = vec![1u32, 2, 3].into_iter().filter(predicate);
+            let second = |x: u32| -> u32
+                requires x != 3,
+            { x };
+            let mut output = middle.map(second); // FAILS
+            output.next_back();
+        }
+
+        fn through_skip() {
+            let middle = vec![1u32, 2, 3].into_iter().map(first).skip(0);
+            let second = |x: u32| -> u32
+                requires x != 3,
+            { x };
+            let mut output = middle.map(second); // FAILS
+            output.next_back();
+        }
+
+        fn through_take() {
+            let middle = vec![1u32, 2, 3].into_iter().map(first).take(3);
+            let second = |x: u32| -> u32
+                requires x != 3,
+            { x };
+            let mut output = middle.map(second); // FAILS
+            output.next_back();
+        }
+
+        fn through_rev() {
+            let middle = vec![1u32, 2, 3].into_iter().map(first).rev();
+            let second = |x: u32| -> u32
+                requires x != 3,
+            { x };
+            let mut output = middle.map(second); // FAILS
+            output.next();
+        }
+
+        fn through_mut_ref() {
+            let mut middle = vec![1u32, 2, 3].into_iter().map(first);
+            let second = |x: u32| -> u32
+                requires x != 3,
+            { x };
+            let mut output = (&mut middle).map(second); // FAILS
+            output.next_back();
+        }
+
+        fn through_zip() {
+            let middle = vec![1u32, 2, 3].into_iter().map(first).zip(0..3u32);
+            let second = |x: (u32, u32)| -> u32
+                requires x.0 != 3,
+            { x.0 };
+            let mut output = middle.map(second); // FAILS
+            output.next_back();
+        }
+
+        struct Unspecified;
+
+        impl Iterator for Unspecified {
+            type Item = u32;
+
+            fn next(&mut self) -> Option<u32> { Some(3) }
+        }
+
+        impl vstd::std_specs::iter::IteratorSpecImpl for Unspecified {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool { false }
+            open spec fn remaining(&self) -> Seq<u32> { Seq::empty() }
+            // Without the iterator laws, this completion claim cannot justify
+            // checking closure preconditions against the empty sequence.
+            open spec fn will_return_none(&self) -> bool { true }
+            open spec fn decrease(&self) -> Option<nat> { None }
+            open spec fn peek(&self, index: int) -> Option<u32> { None }
+        }
+
+        fn no_laws_means_arbitrary_inputs() {
+            let second = |x: u32| -> u32
+                requires x != 3,
+            { x };
+            let mut output = Unspecified.map(second); // FAILS
+            output.next();
+        }
+
+        fn safe_partial_closure_is_conservatively_rejected() {
+            let middle = vec![1u32, 2, 3].into_iter().map(first);
+            let second = |x: u32| -> u32
+                requires x != 1,
+            { x };
+            // This closure accepts every actual output of `first`, but without
+            // completion, Option 1 requires it to accept every u32.
+            let mut output = middle.map(second); // FAILS
+            output.next_back();
+        }
+    } => Err(err) => assert_fails(err, 10)
+}
+
+test_verify_one_file! {
+    #[test] unconditionally_callable_adapters_allow_backward_iteration_without_completion verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn diverge()
+            ensures false,
+        {
+            loop {}
+        }
+
+        fn first(x: u32) -> (y: u32)
+            ensures x != 1, y == x,
+        {
+            if x == 1 { diverge(); }
+            x
+        }
+
+        fn safe_nested_map() {
+            let input = vec![1u32, 2, 3].into_iter();
+            let ghost original = input;
+            let middle = input.map(first);
+            proof {
+                if middle.remaining().len() > 0 {
+                    assert(call_ensures(first, (original.remaining()[0],), middle.remaining()[0]));
+                    assert(false);
+                }
+                assert(middle.remaining().len() == 0);
+                assert(!middle.will_return_none());
+            }
+            let second = |x: u32| -> (y: u32)
+                requires x <= u32::MAX,
+                ensures y == x,
+            { x };
+            let mut output = middle.map(second);
+            let _ = output.next_back();
+        }
+
+        fn safe_nested_filter_and_rev() {
+            let middle = vec![1u32, 2, 3].into_iter().map(first);
+            let predicate = |x: &u32| -> (keep: bool)
+                requires *x <= u32::MAX,
+                ensures keep,
+            { true };
+            let mut output = middle.filter(predicate).rev();
+            let _ = output.next();
+        }
+
+        fn unconditionally_callable_after_next_back() {
+            let mut middle = vec![1u32, 2, 3].into_iter().map(first);
+            middle.next_back();
+            let second = |x: u32| -> (y: u32)
+                requires x <= u32::MAX,
+                ensures y == x,
+            { x };
+            let mut output = middle.map(second);
+            let _ = output.next_back();
+        }
+
+        fn completing_inputs_allow_partial_closures() {
+            let input = vec![2u32, 3].into_iter();
+            let mapped = input.map(|x: u32| -> (y: u32)
+                requires x > 1,
+                ensures y == x,
+            { x });
+            let values: Vec<u32> = mapped.collect();
+            assert(values@ == seq![2u32, 3u32]);
+
+            let input = vec![2u32, 3].into_iter();
+            let filtered = input.filter(|x: &u32| -> (keep: bool)
+                requires *x > 1,
+                ensures keep,
+            { true });
+            let values: Vec<u32> = filtered.collect();
+            proof { reveal_with_fuel(Seq::filter_index, 3); }
+            assert(values@ == seq![2u32, 3u32]);
+        }
+
+        fn take_zero_supplies_a_complete_empty_input() {
+            let input = vec![1u32, 2, 3].into_iter().map(first).take(0);
+            assert(input.will_return_none());
+            let mapped = input.map(|x: u32| -> u32
+                requires false,
+            { x });
+            let values: Vec<u32> = mapped.collect();
+            assert(values@.len() == 0);
+        }
+
+        fn zip_must_reach_the_completing_side() {
+            let input = vec![1u32, 2, 3].into_iter();
+            let ghost original = input;
+            let middle = input.map(first);
+            proof {
+                if middle.remaining().len() > 0 {
+                    assert(call_ensures(first, (original.remaining()[0],), middle.remaining()[0]));
+                    assert(false);
+                }
+                assert(!middle.will_return_none());
+            }
+            let output = middle.zip(0..3u32);
+            assert(!output.will_return_none());
+
+            let input = vec![1u32, 2, 3].into_iter();
+            let ghost original = input;
+            let middle = input.map(first);
+            proof {
+                if middle.remaining().len() > 0 {
+                    assert(call_ensures(first, (original.remaining()[0],), middle.remaining()[0]));
+                    assert(false);
+                }
+                assert(!middle.will_return_none());
+            }
+            let output = (0..3u32).zip(middle);
+            assert(!output.will_return_none());
+        }
+
+        fn zip_checks_the_first_side_before_the_second() {
+            let input = vec![1u32].into_iter();
+            let ghost original = input;
+            let middle = input.map(first);
+            proof {
+                if middle.remaining().len() > 0 {
+                    assert(call_ensures(first, (original.remaining()[0],), middle.remaining()[0]));
+                    assert(false);
+                }
+                assert(!middle.will_return_none());
+            }
+            let mut output = Vec::<u32>::new().into_iter().zip(middle);
+            assert(output.will_return_none());
+            let result = output.next();
+            assert(result is None);
+
+            let input = vec![1u32].into_iter();
+            let ghost original = input;
+            let middle = input.map(first);
+            proof {
+                if middle.remaining().len() > 0 {
+                    assert(call_ensures(first, (original.remaining()[0],), middle.remaining()[0]));
+                    assert(false);
+                }
+                assert(!middle.will_return_none());
+            }
+            let output = middle.zip(Vec::<u32>::new().into_iter());
+            assert(!output.will_return_none());
+        }
+    } => Ok(())
+}

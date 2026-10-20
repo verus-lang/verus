@@ -16,8 +16,9 @@ pub trait ExIterator {
 
     /// This iterator obeys the specifications below on `next`,
     /// expressed in terms of prophetic spec functions.
-    /// Only iterators that terminate (i.e., eventually return None
-    /// and then continue to return None) should use this interface.
+    /// Only finite iterators (i.e., that eventually return None
+    /// and then continue to return None) or infinite iterators that
+    /// never return None should use this interface.
     spec fn obeys_prophetic_iter_laws(&self) -> bool;
 
     /// Sequence of items that will (eventually) be returned
@@ -169,6 +170,9 @@ pub trait ExIterator {
             // so it needs a decreases metric to prove termination.
             self.decrease() is Some,
             forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
+            // Without a complete input sequence, the predicate must accept every possible item
+            (self.obeys_prophetic_iter_laws() && self.will_return_none())
+                || (forall |x: Self::Item| #![auto] call_requires(predicate, (&x, ))),
         ensures
             self.obeys_prophetic_iter_laws() ==> filter_post(self, predicate, r),
     ;
@@ -247,6 +251,9 @@ pub trait ExIterator {
             F: FnMut(Self::Item) -> B,
         requires
             forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+            // Without a complete input sequence, the predicate must accept every possible item.
+            (self.obeys_prophetic_iter_laws() && self.will_return_none())
+                || (forall |x: Self::Item| #![auto] call_requires(f, (x, ))),
         ensures
             self.obeys_prophetic_iter_laws() ==> map_post(self, f, r),
     ;
@@ -493,6 +500,7 @@ pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F, r: core::iter::Fil
         i.obeys_prophetic_iter_laws(),
         i.decrease() is Some,
         forall |k| #![auto] 0 <= k < i.remaining().len() ==> call_requires(f, (&i.remaining()[k], )),
+        i.will_return_none() || (forall |x: I::Item| #![auto] call_requires(f, (&x, ))),
         #[trigger] filter_post(i, f, r),
     ensures
         {
@@ -835,9 +843,7 @@ impl<A, B> IteratorSpecImpl for Zip<A, B>
     }
 
     #[verifier::prophetic]
-    closed spec fn will_return_none(&self) -> bool {
-        zip_iter_fst(*self).will_return_none() || zip_iter_snd(*self).will_return_none()
-    }
+    uninterp spec fn will_return_none(&self) -> bool;
 
     closed spec fn decrease(&self) -> Option<nat> {
         match (zip_iter_fst(*self).decrease(), zip_iter_snd(*self).decrease()) {
@@ -870,7 +876,11 @@ pub broadcast axiom fn zip_postcondition<I, U>(i: I, other: U, r: Zip<I, <U as I
         call_ensures(U::into_iter, (other,), zip_iter_snd(r)),
         zip_iter_fst(r) == i,
         IteratorSpec::remaining(&r) == i.remaining().zip_truncate(zip_iter_snd(r).remaining()),
-        IteratorSpec::will_return_none(&r) ==> i.will_return_none() || zip_iter_snd(r).will_return_none(),
+        // `Zip::next` calls the first iterator before the second. A completing
+        // iterator only stops the zip if it is reached before the other diverges.
+        IteratorSpec::will_return_none(&r) <==>
+            (i.will_return_none() && i.remaining().len() <= zip_iter_snd(r).remaining().len())
+            || (zip_iter_snd(r).will_return_none() && zip_iter_snd(r).remaining().len() < i.remaining().len()),
         IteratorSpec::decrease(&r) is Some == (i.decrease() is Some || zip_iter_snd(r).decrease() is Some),
 ;
 

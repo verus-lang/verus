@@ -195,6 +195,7 @@ impl<Item, Iter, F> MapIterator<Item, Iter, F>
           && self.iter.remaining() =~= self.prophs@.pred().iter.remaining()[self.idx@..]
           && self.prophs@.pred().f == self.f
           && (forall |i| #![auto] 0 <= i < self.iter.remaining().len() ==> call_requires(self.f, (self.iter.remaining()[i], )))
+          && (self.iter.will_return_none() || (forall |x: Iter::Item| #![auto] call_requires(self.f, (x, ))))
           && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.remaining().len() ==> !self.prophs@.has_resolved(i))
           && self.iter.obeys_prophetic_iter_laws()
     }
@@ -203,7 +204,8 @@ impl<Item, Iter, F> MapIterator<Item, Iter, F>
         requires
             iter.obeys_prophetic_iter_laws(),
             forall |i| #![auto] 0 <= i < iter.remaining().len() ==>
-                call_requires(f, (iter.remaining()[i], ))
+                call_requires(f, (iter.remaining()[i], )),
+            iter.will_return_none() || (forall |x: Iter::Item| #![auto] call_requires(f, (x, ))),
         ensures
             IteratorSpec::remaining(&s).len() <= iter.remaining().len(),
             forall |i| #![auto] 0 <= i < IteratorSpec::remaining(&s).len() ==>
@@ -368,6 +370,7 @@ impl<Iter, F> FilterIterator<Iter, F>
         && self.iter.remaining() =~= self.prophs@.pred().iter.remaining()[self.idx@..]
         && self.prophs@.pred().f == self.f
         && (forall |i| #![auto] 0 <= i < self.iter.remaining().len() ==> self.f.requires((&self.iter.remaining()[i], )))
+        && (self.iter.will_return_none() || (forall |x: Iter::Item| #![auto] call_requires(self.f, (&x, ))))
         && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.remaining().len() ==> !self.prophs@.has_resolved(i))
         && self.iter.obeys_prophetic_iter_laws()
         // We need this to prove termination of our loop in `next()`
@@ -379,7 +382,8 @@ impl<Iter, F> FilterIterator<Iter, F>
             iter.obeys_prophetic_iter_laws(),
             iter.decrease() is Some,
             forall |i| #![auto] 0 <= i < iter.remaining().len() ==>
-                f.requires((&iter.remaining()[i], ))
+                f.requires((&iter.remaining()[i], )),
+            iter.will_return_none() || (forall |x: Iter::Item| #![auto] call_requires(f, (&x, ))),
         ensures
             s.keep().len() <= iter.remaining().len(),
             forall |j| 0 <= j < s.keep().len() ==> f.ensures((&iter.remaining()[j],), #[trigger] s.keep()[j]),
