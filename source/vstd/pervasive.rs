@@ -86,6 +86,8 @@ pub trait FnWithRequiresEnsures<Args, Output>: Sized {
     spec fn requires(self, args: Args) -> bool;
 
     spec fn ensures(self, args: Args, output: Output) -> bool;
+
+    spec fn opens_invariants(self, args: Args) -> ISet<int>;
 }
 
 #[cfg(verus_keep_ghost)]
@@ -101,6 +103,11 @@ impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output = Output>> FnWith
     #[verifier::inline]
     open spec fn ensures(self, args: Args, output: Output) -> bool {
         call_ensures(self, args, output)
+    }
+
+    #[verifier::inline]
+    open spec fn opens_invariants(self, args: Args) -> ISet<int> {
+        call_opens_invariants(self, args)
     }
 }
 
@@ -137,6 +144,7 @@ proof fn proof_nonstatic_call<Args: core::marker::Tuple, Output, F>(
         call_requires(f, args),
     ensures
         call_ensures(f, args, output),
+    opens_invariants call_opens_invariants(f, args)
 {
     unimplemented!();
 }

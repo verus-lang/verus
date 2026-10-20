@@ -59,6 +59,7 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
     let resolved = str_to_node(HAS_RESOLVED);
     let closure_req = str_to_node(CLOSURE_REQ);
     let closure_ens = str_to_node(CLOSURE_ENS);
+    let closure_opens_invariants = str_to_node(CLOSURE_OPENS_INVARIANTS);
     let default_ens = str_to_node(DEFAULT_ENS);
     #[allow(non_snake_case)]
     let Poly = str_to_node(POLY);
@@ -1032,6 +1033,7 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
 
         (declare-fun [closure_req] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly]) Bool)
         (declare-fun [closure_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
+        (declare-fun [closure_opens_invariants] (/*[decoration] skipped */ [typ] [decoration] [typ] [decoration] [typ] [Poly] [Poly]) Poly)
         (declare-fun [default_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
 
         // Decreases

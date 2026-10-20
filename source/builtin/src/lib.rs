@@ -2075,6 +2075,15 @@ pub fn call_ensures<Args: core::marker::Tuple, F: FnOnce<Args>>(
     unimplemented!();
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::call_opens_invariants"]
+pub fn call_opens_invariants<Args: core::marker::Tuple, F: FnOnce<Args>, I>(
+    _f: F,
+    _args: Args,
+) -> I {
+    unimplemented!();
+}
+
 // Support for proof_fn
 
 /// FnProof is the type of proof closures; the syntax proof_fn is used to wrap FnProof
@@ -2089,7 +2098,14 @@ pub struct FnProof<'a, Options, ArgModes, OutMode, Args, Output> {
 
 #[doc(hidden)]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::FOpts")]
-pub struct FOpts<const USAGE: u8, ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8> {
+pub struct FOpts<
+    const USAGE: u8,
+    ReqEns,
+    const COPY: u8,
+    const SEND: u8,
+    const SYNC: u8,
+    const OPENS: u8,
+> {
     _no_sync_send: NoSyncSend,
     _req_ens: PhantomData<ReqEns>,
 }
@@ -2097,7 +2113,7 @@ pub struct FOpts<const USAGE: u8, ReqEns, const COPY: u8, const SEND: u8, const 
 // Note: the names Trk and RqEn are kept short;
 // otherwise, Rust will create a "*.long-type-*" file whenever there is a type error involving
 // FnProof<...> that doesn't fit into a short enough string.
-// For further brevity, integers are used for USAGE, COPY, SEND, SYNC,
+// For further brevity, integers are used for USAGE, COPY, SEND, SYNC, OPENS,
 // and () is used as the type to indicate "not tracked" or "no ReqEns".
 
 pub const PROOF_FN_ONCE: u8 = 1;
@@ -2106,6 +2122,7 @@ pub const PROOF_FN: u8 = 3;
 pub const PROOF_FN_COPY: u8 = 4;
 pub const PROOF_FN_SEND: u8 = 5;
 pub const PROOF_FN_SYNC: u8 = 6;
+pub const PROOF_FN_OPENS: u8 = 7;
 
 // tracked
 #[doc(hidden)]
@@ -2117,15 +2134,26 @@ pub struct Trk;
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::RqEn")]
 pub struct RqEn<R>(PhantomData<R>);
 
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::ProofFnOnce")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::ProofFnNoOpens")]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
-pub trait ProofFnOnce {}
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::ProofFnMut")]
+pub trait ProofFnNoOpens {}
+
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::ProofFnOnceOpens")]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
-pub trait ProofFnMut: ProofFnOnce {}
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::ProofFn")]
+pub trait ProofFnOnceOpens {}
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::ProofFnMutOpens")]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
-pub trait ProofFn: ProofFnMut {}
+pub trait ProofFnMutOpens: ProofFnOnceOpens {}
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::ProofFnOpens")]
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ProofFnOpens: ProofFnMutOpens {}
+
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ProofFnOnce: ProofFnOnceOpens + ProofFnNoOpens {}
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ProofFnMut: ProofFnOnce + ProofFnMutOpens + ProofFnNoOpens {}
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ProofFn: ProofFnMut + ProofFnOpens + ProofFnNoOpens {}
 
 // We define ProofFnReqEns<R> as a wrapper around a trait with an associated type,
 // because the broadcast lemma for ProofFnReqEns needs an associated type to trigger properly
@@ -2149,54 +2177,76 @@ pub trait ProofFnReqEnsDef<Args, Output> {
     fn ens(_args: Args, _output: Output) -> bool;
 }
 
+impl<const USAGE: u8, ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8, const OPENS: u8>
+    ProofFnOnceOpens for FOpts<USAGE, ReqEns, COPY, SEND, SYNC, OPENS>
+{
+}
+impl<ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8, const OPENS: u8> ProofFnMutOpens
+    for FOpts<PROOF_FN_MUT, ReqEns, COPY, SEND, SYNC, OPENS>
+{
+}
+impl<ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8, const OPENS: u8> ProofFnMutOpens
+    for FOpts<PROOF_FN, ReqEns, COPY, SEND, SYNC, OPENS>
+{
+}
+impl<ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8, const OPENS: u8> ProofFnOpens
+    for FOpts<PROOF_FN, ReqEns, COPY, SEND, SYNC, OPENS>
+{
+}
+
 impl<const USAGE: u8, ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8> ProofFnOnce
-    for FOpts<USAGE, ReqEns, COPY, SEND, SYNC>
+    for FOpts<USAGE, ReqEns, COPY, SEND, SYNC, 0>
 {
 }
 impl<ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8> ProofFnMut
-    for FOpts<PROOF_FN_MUT, ReqEns, COPY, SEND, SYNC>
+    for FOpts<PROOF_FN_MUT, ReqEns, COPY, SEND, SYNC, 0>
 {
 }
 impl<ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8> ProofFnMut
-    for FOpts<PROOF_FN, ReqEns, COPY, SEND, SYNC>
+    for FOpts<PROOF_FN, ReqEns, COPY, SEND, SYNC, 0>
 {
 }
 impl<ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8> ProofFn
-    for FOpts<PROOF_FN, ReqEns, COPY, SEND, SYNC>
+    for FOpts<PROOF_FN, ReqEns, COPY, SEND, SYNC, 0>
 {
 }
-impl<const USAGE: u8, R, const COPY: u8, const SEND: u8, const SYNC: u8> ProofFnReqEnsAssoc
-    for FOpts<USAGE, RqEn<R>, COPY, SEND, SYNC>
+
+impl<const USAGE: u8, R, const COPY: u8, const SEND: u8, const SYNC: u8, const OPENS: u8>
+    ProofFnReqEnsAssoc for FOpts<USAGE, RqEn<R>, COPY, SEND, SYNC, OPENS>
 {
     type ReqEns = R;
 }
-impl<const USAGE: u8, R, const COPY: u8, const SEND: u8, const SYNC: u8> ProofFnReqEns<R>
-    for FOpts<USAGE, RqEn<R>, COPY, SEND, SYNC>
+impl<const USAGE: u8, R, const COPY: u8, const SEND: u8, const SYNC: u8, const OPENS: u8>
+    ProofFnReqEns<R> for FOpts<USAGE, RqEn<R>, COPY, SEND, SYNC, OPENS>
 {
 }
-impl<const USAGE: u8, ReqEns, const SEND: u8, const SYNC: u8> Clone
-    for FOpts<USAGE, ReqEns, PROOF_FN_COPY, SEND, SYNC>
+impl<const USAGE: u8, ReqEns, const SEND: u8, const SYNC: u8, const OPENS: u8> Clone
+    for FOpts<USAGE, ReqEns, PROOF_FN_COPY, SEND, SYNC, OPENS>
 {
     fn clone(&self) -> Self {
         unimplemented!()
     }
 }
-impl<const USAGE: u8, ReqEns, const SEND: u8, const SYNC: u8> Copy
-    for FOpts<USAGE, ReqEns, PROOF_FN_COPY, SEND, SYNC>
+impl<const USAGE: u8, ReqEns, const SEND: u8, const SYNC: u8, const OPENS: u8> Copy
+    for FOpts<USAGE, ReqEns, PROOF_FN_COPY, SEND, SYNC, OPENS>
 {
 }
-unsafe impl<const USAGE: u8, ReqEns, const COPY: u8, const SYNC: u8> Send
-    for FOpts<USAGE, ReqEns, COPY, PROOF_FN_SEND, SYNC>
+unsafe impl<const USAGE: u8, ReqEns, const COPY: u8, const SYNC: u8, const OPENS: u8> Send
+    for FOpts<USAGE, ReqEns, COPY, PROOF_FN_SEND, SYNC, OPENS>
 {
 }
-unsafe impl<const USAGE: u8, ReqEns, const COPY: u8, const SEND: u8> Sync
-    for FOpts<USAGE, ReqEns, COPY, SEND, PROOF_FN_SYNC>
+unsafe impl<const USAGE: u8, ReqEns, const COPY: u8, const SEND: u8, const OPENS: u8> Sync
+    for FOpts<USAGE, ReqEns, COPY, SEND, PROOF_FN_SYNC, OPENS>
+{
+}
+impl<const USAGE: u8, ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8> ProofFnNoOpens
+    for FOpts<USAGE, ReqEns, COPY, SEND, SYNC, 0>
 {
 }
 
 #[cfg(verus_keep_ghost)]
-impl<'a, Options: ProofFnOnce, ArgModes, OutMode, Args: core::marker::Tuple, Output> FnOnce<Args>
-    for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
+impl<'a, Options: ProofFnOnceOpens, ArgModes, OutMode, Args: core::marker::Tuple, Output>
+    FnOnce<Args> for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
 {
     type Output = Output;
     extern "rust-call" fn call_once(self, _: Args) -> <Self as FnOnce<Args>>::Output {
@@ -2205,7 +2255,7 @@ impl<'a, Options: ProofFnOnce, ArgModes, OutMode, Args: core::marker::Tuple, Out
 }
 
 #[cfg(verus_keep_ghost)]
-impl<'a, Options: ProofFnMut, ArgModes, OutMode, Args: core::marker::Tuple, Output> FnMut<Args>
+impl<'a, Options: ProofFnMutOpens, ArgModes, OutMode, Args: core::marker::Tuple, Output> FnMut<Args>
     for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
 {
     extern "rust-call" fn call_mut(&mut self, _: Args) -> <Self as FnOnce<Args>>::Output {
@@ -2214,7 +2264,7 @@ impl<'a, Options: ProofFnMut, ArgModes, OutMode, Args: core::marker::Tuple, Outp
 }
 
 #[cfg(verus_keep_ghost)]
-impl<'a, Options: ProofFn, ArgModes, OutMode, Args: core::marker::Tuple, Output> Fn<Args>
+impl<'a, Options: ProofFnOpens, ArgModes, OutMode, Args: core::marker::Tuple, Output> Fn<Args>
     for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
 {
     extern "rust-call" fn call(&self, _: Args) -> <Self as FnOnce<Args>>::Output {
@@ -2314,6 +2364,7 @@ pub fn closure_to_fn_proof<
     const COPY: u8,
     const SEND: u8,
     const SYNC: u8,
+    const OPENS: u8,
     ArgModes,
     OutMode,
     Args,
@@ -2321,7 +2372,7 @@ pub fn closure_to_fn_proof<
     F: 'a,
 >(
     _f: F,
-) -> FnProof<'a, FOpts<USAGE, (), COPY, SEND, SYNC>, ArgModes, OutMode, Args, Output>
+) -> FnProof<'a, FOpts<USAGE, (), COPY, SEND, SYNC, OPENS>, ArgModes, OutMode, Args, Output>
 where
     ProofFnConfirm: ConfirmUsage<Args, Output, USAGE, F>,
     ProofFnConfirm: ConfirmCopy<COPY, F>,

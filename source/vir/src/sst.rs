@@ -51,6 +51,7 @@ pub type UniqueIdent = VarIdent;
 pub enum InternalFun {
     ClosureReq,
     ClosureEns,
+    ClosureOpensInvariants,
     DefaultEns,
     CheckDecreaseHeight,
     OpenInvariantMask(Fun, usize),

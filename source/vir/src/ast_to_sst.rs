@@ -1764,6 +1764,7 @@ pub(crate) fn expr_to_stm_opt(
             let f = match bsf {
                 BuiltinSpecFun::ClosureReq => InternalFun::ClosureReq,
                 BuiltinSpecFun::ClosureEns => InternalFun::ClosureEns,
+                BuiltinSpecFun::ClosureOpensInvariants => InternalFun::ClosureOpensInvariants,
                 BuiltinSpecFun::DefaultEns => InternalFun::DefaultEns,
             };
             Ok((
@@ -2142,10 +2143,11 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::NonSpecClosure {
             params,
-            proof_fn_modes: _,
+            proof_fn_modes,
             body,
             requires,
             ensures,
+            mask_spec,
             ret,
             external_spec,
         } => {
@@ -2154,8 +2156,17 @@ pub(crate) fn expr_to_stm_opt(
             // Emit the internals of the closure (ClosureInner behaves like a dead-end)
             // This includes assuming the requires, asserting the ensures, everything else
 
-            let (inner_stms, typ_inv_vars) =
-                exec_closure_body_stms(ctx, state, params, ret, body, requires, ensures)?;
+            let (inner_stms, typ_inv_vars) = exec_closure_body_stms(
+                ctx,
+                state,
+                params,
+                ret,
+                body,
+                requires,
+                ensures,
+                mask_spec,
+                proof_fn_modes.is_some(),
+            )?;
             let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(inner_stms)));
             let clos =
                 Spanned::new(expr.span.clone(), StmX::ClosureInner { body: block, typ_inv_vars });
@@ -4728,15 +4739,12 @@ fn exec_closure_body_stms(
     body: &Expr,
     requires: &Exprs,
     ensures: &Exprs,
+    mask_spec: &Option<MaskSpec>,
+    is_proof: bool,
 ) -> Result<(Vec<Stm>, Arc<Vec<(UniqueIdent, Typ)>>), VirErr> {
     let mut typ_inv_vars = vec![];
 
     state.push_scope();
-
-    // Right now there is no way to specify an invariant mask on a closure function
-    // All closure funcs are assumed to have mask set 'full'
-    let mut mask = Some(MaskSet::full(&body.span));
-    std::mem::swap(&mut state.mask, &mut mask);
 
     let mut param_set = HashSet::<VarIdent>::new();
 
@@ -4756,6 +4764,26 @@ fn exec_closure_body_stms(
         let stm = Spanned::new(req.span.clone(), StmX::Assume(exp));
         stms.push(stm);
     }
+
+    // Inv mask
+    let mut mask = if is_proof {
+        if let Some(mask_spec) = mask_spec {
+            let mask_sst = mask_spec.map_to_sst(&mut |expr| {
+                let (check_stms, exp) = expr_to_pure_exp_check(ctx, state, expr)?;
+                stms.extend(check_stms);
+                Ok(exp)
+            })?;
+            Some(mask_sst)
+        } else {
+            Some(MaskSet::empty(&body.span))
+        }
+    } else {
+        // Right now there is no way to specify an invariant mask on an exec closure function
+        // All exec closure funcs are assumed to have mask set 'full'
+        assert!(mask_spec.is_none());
+        Some(MaskSet::full(&body.span))
+    };
+    std::mem::swap(&mut state.mask, &mut mask);
 
     let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::ExecClosureRet));
     state.declare_var_stm(&ret.name, &ret.a, kind, false);

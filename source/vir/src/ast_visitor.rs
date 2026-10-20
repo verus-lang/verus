@@ -411,6 +411,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 body,
                 requires,
                 ensures,
+                mask_spec,
                 ret: r,
                 external_spec,
             } => {
@@ -423,6 +424,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 }
 
                 let requires = self.visit_exprs(requires)?;
+                let mask_spec = R::map_opt(mask_spec, &mut |ms| self.visit_mask_spec(ms))?;
 
                 self.push_scope();
                 let b = R::get_or(&ret, r);
@@ -448,6 +450,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         body: R::get(body),
                         requires: R::get_vec_a(requires),
                         ensures: R::get_vec_a(ensures),
+                        mask_spec: R::get_opt(mask_spec),
                         ret: R::get(ret),
                         external_spec: R::get_opt(external_spec),
                     })
