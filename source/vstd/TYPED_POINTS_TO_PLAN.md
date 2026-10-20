@@ -52,15 +52,15 @@ A child module of `points_to_model.rs`, so it can use the structs' private field
 
 ```rust
 impl<T, P: PTProperties<A = T>> PTProperties for SeqPointsTo<T, P> {
-    /// Non-nullness is part of `wf_basic`.
+    /// Non-nullness is guaranteed by the invariant.
     proof fn is_nonnull(tracked &self);
 
-    /// If the sequence is nonempty, this follows from the last element's `ptr_bounds`;
-    /// otherwise from `wf_basic`'s provenance clause.
+    /// If the sequence is nonempty, this follows from the last element's `ptr_bounds`.
+    /// Otherwise, `wf_basic`'s provenance clause guarantees it.
     proof fn ptr_bounds(tracked &self);
 
-    /// If the size is nonzero, the length is nonzero,
-    /// so this follows from the first element's `provenance_not_none`.
+    /// If the size is non-zero, the length must be nonzero.
+    /// Then this follows from the `provenance_not_none` property of an individual `P`.
     proof fn provenance_not_none(tracked &self);
 
     /// Finds the element whose range contains `other`'s start address
@@ -81,21 +81,19 @@ impl<T, P: PTProperties<A = T>> PTProperties for SeqPointsTo<T, P> {
             0 <= i < new.len() ==> P::ptrs_len_same(old[i], new[i]) && new[i].ptr() == old[i].ptr()
     }
 
-    /// Each element stays `wf_basic` by the element type's `stays_wf_basic`.
     proof fn stays_wf_basic(old: Self, new: Self);
 }
 
-/// Structural operations for a sequence of any element permission, stated with `wf_basic`.
 impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
-    /// Borrows the element permissions.
+    /// Borrows the sequence of permissions.
     pub proof fn tracked_seq_pt(tracked &self) -> tracked &Seq<P>
         returns
             self.seq_pt(),
     ;
 
-    /// Mutably borrows the element permissions; the pointer is unchanged.
-    /// If the final permissions keep the original pointers and lengths,
-    /// `self` is pointer-level well-formed (`wf_basic`) afterwards.
+    /// Mutably borrows the sequence of permissions, leaving the pointer unchanged.
+    /// If the final permissions keep their original pointers and lengths,
+    /// `self` satisfies `wf_basic` afterwards.
     pub proof fn tracked_seq_pt_mut(tracked &mut self) -> (tracked ret: &mut Seq<P>)
         ensures
             *ret == old(self).seq_pt(),
@@ -104,7 +102,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             old(self).wf_basic() && Self::ptrs_len_same(*old(self), *final(self)) ==> final(self).wf_basic(),
     ;
 
-    /// Mutably borrows the element permission at index `i`; the pointer is unchanged.
+    /// Mutably borrows the permission at index `i`, leaving the pointer unchanged.
     pub proof fn index_mut(tracked &mut self, i: int) -> (tracked ret: &mut P)
         requires
             0 <= i < self.len(),
@@ -112,44 +110,44 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             *ret == old(self)[i],
             final(self).seq_pt() == old(self).seq_pt().update(i, *final(ret)),
             final(self).ptr() == old(self).ptr(),
-            old(self).wf_basic() && P::ptrs_len_same(*ret, *final(ret)) ==> final(self).wf_basic(),
+            old(self).wf_basic() && P::ptrs_len_same(*ret, *final(ret)) && final(ret).ptr() == ret.ptr() ==> final(self).wf_basic(),
     ;
 
-    /// Creates a sequence from element permissions at consecutive offsets from `ptr`.
-    pub proof fn from_seq(tracked r: Seq<P>, ptr: *mut T) -> (tracked s: Self)
+    /// Creates a `SeqPointsTo` from a sequence of permissions at consecutive offsets from `ptr`.
+    pub proof fn from_seq(tracked perms: Seq<P>, ptr: *mut T) -> (tracked out: Self)
         requires
-            forall|i: int| 0 <= i < r.len() ==> #[trigger] r[i].wf_basic(),
-            forall|i: int| 0 <= i < r.len() ==> {
-                &&& (#[trigger] r[i]).ptr()@.provenance == ptr@.provenance
-                &&& r[i].ptr()@.addr == ptr@.addr + i * P::size(())
+            forall|i: int| 0 <= i < perms.len() ==> #[trigger] perms[i].wf_basic(),
+            forall|i: int| 0 <= i < perms.len() ==> {
+                &&& (#[trigger] perms[i]).ptr()@.provenance == ptr@.provenance
+                &&& perms[i].ptr()@.addr == ptr@.addr + i * P::size(())
             },
             ptr@.addr != 0,
             ptr_addr_in_bounds(ptr),
-            r.len() <= usize::MAX,
+            perms.len() <= usize::MAX,
         ensures
-            s.seq_pt() == r,
-            s.ptr() as *mut T == ptr,
-            s.wf_basic(),
+            out.seq_pt() == perms,
+            out.ptr() as *mut T == ptr,
+            out.wf_basic(),
     ;
 
     /// Creates an empty sequence at `ptr`.
-    pub proof fn empty(ptr: *mut T) -> (tracked s: Self)
+    pub proof fn empty(ptr: *mut T) -> (tracked out: Self)
         requires
             ptr@.addr != 0,
             ptr_addr_in_bounds(ptr),
         ensures
-            s.seq_pt() == Seq::<P>::empty(),
-            s.ptr() as *mut T == ptr,
-            s.wf_basic(),
+            out.seq_pt() == Seq::<P>::empty(),
+            out.ptr() as *mut T == ptr,
+            out.wf_basic(),
     ;
 
-    /// Returns the element permissions.
-    pub proof fn into_seq(tracked self) -> (tracked r: Seq<P>)
+    /// Consumes this `SeqPointsTo`, returning the underlying `Seq<P>`.
+    pub proof fn into_seq(tracked self) -> (tracked perms: Seq<P>)
         returns
             self.seq_pt(),
     ;
 
-    /// Splits into the first `mid` element permissions and the rest.
+    /// Splits into the first `mid` permissions and the rest.
     pub proof fn split_basic(tracked self, mid: nat) -> (tracked (first, second): (Self, Self))
         requires
             self.wf_basic(),
@@ -157,17 +155,22 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
         ensures
             first.seq_pt() == self.seq_pt().take(mid as int),
             second.seq_pt() == self.seq_pt().skip(mid as int),
-            first.ptr() as *mut T == self.ptr() as *mut T,
-            second.ptr() as *mut T == ptr_mut_from_data::<T>(PtrData {
+            first.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: mid as usize,
+            }),
+            second.ptr() == ptr_mut_from_data::<[T]>(PtrData {
                 addr: (self.ptr()@.addr + mid * P::size(())) as usize,
                 provenance: self.ptr()@.provenance,
-                metadata: (),
+                metadata: (self.len() - mid) as usize,
             }),
             first.wf_basic(),
             second.wf_basic(),
     ;
 
-    /// Concatenates two sequences, where `other` starts where `self` ends.
+    /// Concatenates two sequences, provided that `other` starts where `self` ends 
+    /// and they have the same provenance.
     pub proof fn join_basic(tracked self, tracked other: Self) -> (tracked joined: Self)
         requires
             self.wf_basic(),
@@ -176,21 +179,25 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             other.ptr()@.addr == self.ptr()@.addr + self.len() * P::size(()),
         ensures
             joined.seq_pt() == self.seq_pt() + other.seq_pt(),
-            joined.ptr() as *mut T == self.ptr() as *mut T,
+            joined.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: (self.len() + other.len()) as usize,
+            }),
             joined.wf_basic(),
     ;
 
-    /// Borrows the sub-sequence of `len` element permissions starting at `start`.
+    /// Borrows the sub-sequence of `len` permissions starting at `start`.
     pub proof fn subrange_basic(tracked &self, start: nat, len: nat) -> (tracked sub: &Self)
         requires
             self.wf_basic(),
             start + len <= self.len(),
         ensures
             sub.seq_pt() == self.seq_pt().subrange(start as int, (start + len) as int),
-            sub.ptr() as *mut T == ptr_mut_from_data::<T>(PtrData {
+            sub.ptr() == ptr_mut_from_data::<[T]>(PtrData {
                 addr: (self.ptr()@.addr + start * P::size(())) as usize,
                 provenance: self.ptr()@.provenance,
-                metadata: (),
+                metadata: len as usize,
             }),
             sub.wf_basic(),
     ;
@@ -385,56 +392,62 @@ and the per-type `PTPhys` bodies don't unfold in generic code
 
 ```rust
 impl<T> PTProperties for PointsToUnaligned<T> {
-    /// Delegates to the underlying `PointsToUntyped`.
+    /// Non-nullness follows from the underlying `PointsToUntyped`'s invariant,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
     proof fn is_nonnull(tracked &self);
 
-    /// Delegates to the underlying `PointsToUntyped`.
+    /// Delegates to the underlying `PointsToUntyped`'s `ptr_bounds`,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
     proof fn ptr_bounds(tracked &self);
 
-    /// Delegates to the underlying `PointsToUntyped`.
+    /// Delegates to the underlying `PointsToUntyped`'s `provenance_not_none`.
     proof fn provenance_not_none(tracked &self);
 
-    /// Delegates to the underlying `PointsToUntyped`.
+    /// Delegates to the underlying `PointsToUntyped`'s `is_disjoint`,
+    /// since the two permissions track the same memory range.
     proof fn is_disjoint<OtherPointsToPerm: PTPhys>(
         tracked &mut self,
         tracked other: &OtherPointsToPerm,
     );
 
-    /// `new` keeps `old`'s pointer,
-    /// and the underlying `PointsToUntyped`s keep their pointers and length.
+    /// `new` has the same pointer and the same underlying `PointsToUntyped` pointers and length as
+    /// `old`.
     open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
         &&& new.ptr() == old.ptr()
         &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
     }
 
-    /// From `PointsToUntyped::stays_wf` on the underlying permissions.
+    /// Delegates to `PointsToUntyped::stays_wf` for the underlying bytes.
     proof fn stays_wf_basic(old: Self, new: Self);
 }
 
 impl<T> PTProperties for PointsToUnaligned<[T]> {
-    /// Delegates to the underlying `PointsToUntyped`.
+    /// Non-nullness follows from the underlying `PointsToUntyped`'s invariant,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
     proof fn is_nonnull(tracked &self);
 
-    /// Delegates to the underlying `PointsToUntyped`.
+    /// Delegates to the underlying `PointsToUntyped`'s `ptr_bounds`,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
     proof fn ptr_bounds(tracked &self);
 
-    /// Delegates to the underlying `PointsToUntyped`.
+    /// Delegates to the underlying `PointsToUntyped`'s `provenance_not_none`.
     proof fn provenance_not_none(tracked &self);
 
-    /// Delegates to the underlying `PointsToUntyped`.
+    /// Delegates to the underlying `PointsToUntyped`'s `is_disjoint`,
+    /// since the two permissions track the same memory range.
     proof fn is_disjoint<OtherPointsToPerm: PTPhys>(
         tracked &mut self,
         tracked other: &OtherPointsToPerm,
     );
 
-    /// `new` keeps `old`'s pointer,
-    /// and the underlying `PointsToUntyped`s keep their pointers and length.
+    /// `new` has the same pointer (so the same metadata) as `old`,
+    /// and the same underlying `PointsToUntyped` pointers and length.
     open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
         &&& new.ptr() == old.ptr()
         &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
     }
 
-    /// From `PointsToUntyped::stays_wf` on the underlying permissions.
+    /// Delegates to `PointsToUntyped::stays_wf` for the underlying bytes.
     proof fn stays_wf_basic(old: Self, new: Self);
 }
 
@@ -560,37 +573,40 @@ impl<T: ?Sized> PointsToUnaligned<T> {
 
 ```rust
 impl<T: ?Sized> PTProperties for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
-    /// Delegates to the underlying `PointsToUnaligned`.
+    /// Non-nullness follows from the underlying `PointsToUnaligned`'s invariant,
+    /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
     proof fn is_nonnull(tracked &self);
 
-    /// Delegates to the underlying `PointsToUnaligned`.
+    /// Delegates to the underlying `PointsToUnaligned`'s `ptr_bounds`,
+    /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
     proof fn ptr_bounds(tracked &self);
 
-    /// Delegates to the underlying `PointsToUnaligned`.
+    /// Delegates to the underlying `PointsToUnaligned`'s `provenance_not_none`.
     proof fn provenance_not_none(tracked &self);
 
-    /// Delegates to the underlying `PointsToUnaligned`.
+    /// Delegates to the underlying `PointsToUnaligned`'s `is_disjoint`,
+    /// since the two permissions track the same memory range.
     proof fn is_disjoint<OtherPointsToPerm: PTPhys>(
         tracked &mut self,
         tracked other: &OtherPointsToPerm,
     );
 
-    /// `new` keeps `old`'s pointer,
-    /// and the underlying `PointsToUnaligned`s satisfy their `ptrs_len_same`.
+    /// `new` has the same pointer as `old`, and they satisfy the `PointsToUnaligned` requirements
+    /// for preserving pointer-level well-formed-ness.
     open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
         &&& new.ptr() == old.ptr()
         &&& <PointsToUnaligned<T> as PTProperties>::ptrs_len_same(old.pt_unaligned(), new.pt_unaligned())
     }
 
-    /// Delegates to the underlying `PointsToUnaligned`.
+    /// Delegates to `PointsToUnaligned`'s `stays_wf_basic`.
     proof fn stays_wf_basic(old: Self, new: Self);
 }
 
 impl<T: ?Sized> PTValueOps for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     // borrow, into_untyped, from_untyped, zero_sized: the trait's default bodies.
 
-    /// `new` keeps `old`'s pointer,
-    /// and the underlying `PointsToUnaligned`s satisfy their `ptrs_len_same_valid`.
+    /// `new` has the same pointer as `old`, and they satisfy the `PointsToUnaligned` requirements
+    /// for preserving well-formed-ness.
     /// Overridden for the same reason as `wf`:
     /// the default body doesn't unfold at `PointsToUnaligned<T>` for a generic `T`.
     open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
@@ -1172,7 +1188,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 
     /// We can construct a `SeqPointsTo` with `length`-many `PointsTo` permissions,
     /// provided that `T` is zero-sized and that the pointer is non-null and aligned.
-    pub proof fn zero_sized(ptr: *mut T, length: nat) -> (tracked s: Self)
+    pub proof fn zero_sized(ptr: *mut T, length: nat) -> (tracked out: Self)
         requires
             ptr@.addr != 0,
             PointsTo::<T>::satisfies_alignment(ptr@.addr),
@@ -1180,10 +1196,10 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             size_of::<T>() == 0,
             length <= usize::MAX,    // new
         ensures
-            forall|i| 0 <= i < s.len() ==> (#[trigger] s[i]).is_empty(),
-            s.thin_ptr() == ptr,
-            s.len() == length,
-            s.wf(),
+            forall|i| 0 <= i < out.len() ==> (#[trigger] out[i]).is_empty(),
+            out.thin_ptr() == ptr,
+            out.len() == length,
+            out.wf(),
     ;
 
     /// The length of the abstract bytes matches the size of this type multiplied by the number of elements this permission represents.
@@ -1291,11 +1307,15 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             second.seq_pt() == self.seq_pt().skip(mid as int),
             first.bytes() == self.bytes().take(mid as int * size_of::<T>()),
             second.bytes() == self.bytes().skip(mid as int * size_of::<T>()),
-            first.thin_ptr() == self.thin_ptr(),   // was first.ptr() == self.ptr()
-            second.thin_ptr() == ptr_mut_from_data::<T>(PtrData {
+            first.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: mid as usize,
+            }),
+            second.ptr() == ptr_mut_from_data::<[T]>(PtrData {
                 addr: (self.ptr()@.addr + mid * size_of::<T>()) as usize,
                 provenance: self.ptr()@.provenance,
-                metadata: (),
+                metadata: (self.len() - mid) as usize,
             }),
             first.wf(),
             second.wf(),
@@ -1312,7 +1332,11 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             self.ptr()@.provenance == other.ptr()@.provenance,
             other.ptr()@.addr == self.ptr()@.addr + self.len() * size_of::<T>(),
         ensures
-            joined.thin_ptr() == self.thin_ptr(),  // was joined.ptr() == self.ptr()
+            joined.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: (self.len() + other.len()) as usize,
+            }),
             joined.seq_pt() == self.seq_pt() + other.seq_pt(),
             joined.bytes() == self.bytes() + other.bytes(),
             joined.wf(),
@@ -1327,10 +1351,10 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             start_index + len <= self.len(),
         ensures
             sub.wf(),
-            sub.thin_ptr() == ptr_mut_from_data::<T>(PtrData {
+            sub.ptr() == ptr_mut_from_data::<[T]>(PtrData {
                 addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize,
                 provenance: self.ptr()@.provenance,
-                metadata: (),
+                metadata: len as usize,
             }),
             sub.seq_pt() == self.seq_pt().subrange(start_index as int, (start_index + len) as int),
     ;
@@ -1351,13 +1375,13 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             i <= j <= self.len(),
         ensures
             r.wf(),
-            r.thin_ptr() == ptr_mut_from_data::<T>(PtrData {
+            r.ptr() == ptr_mut_from_data::<[T]>(PtrData {
                 addr: (old(self).ptr()@.addr + i * size_of::<T>()) as usize,
                 provenance: old(self).ptr()@.provenance,
-                metadata: (),
+                metadata: (j - i) as usize,
             }),
             r.seq_pt() == old(self).seq_pt().subrange(i as int, j as int),
-            final(r).wf() && final(r).ptr() == r.ptr() ==> {   // same ptr: same thin_ptr and length
+            final(r).wf() && final(r).ptr() == r.ptr() ==> {   // same ptr: same address and length
                 &&& final(self).wf()
                 &&& final(self).ptr() == old(self).ptr()
                 &&& final(self).seq_pt() == old(self).seq_pt().subrange(0, i as int) + final(r).seq_pt()
@@ -1718,7 +1742,7 @@ How they're built (without field access):
   the permission assembled with M3, and `as_aligned_mut` (M4) for the `&mut PointsTo<[T]>`.
 
 There are no borrowed constructors for sequences
-(they would need to collect borrowed element permissions into a borrowed `Seq`).
+(they would need to collect borrowed permissions into a borrowed `Seq`).
 
 ### `ptr_specs.rs` (trusted)
 
