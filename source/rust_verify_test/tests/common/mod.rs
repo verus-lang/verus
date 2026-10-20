@@ -338,6 +338,9 @@ pub fn run_verus(
         } else if *option == "--log-smt" {
             verus_args.push("--log".to_string());
             verus_args.push("smt".to_string());
+        } else if *option == "--log-resolution-cfg" {
+            verus_args.push("--log".to_string());
+            verus_args.push("resolution-cfg".to_string());
         } else if let Some(log_dir) = option.strip_prefix("--log-dir=") {
             verus_args.push("--log-dir".to_string());
             verus_args.push(log_dir.to_string());

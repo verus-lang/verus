@@ -354,6 +354,7 @@ fn mk_bctx<'tcx>(
         header_setting: HeaderSetting::Fn,
         external_opaque_type_map,
         label_map: std::rc::Rc::new(std::cell::RefCell::new((HashMap::new(), 0))),
+        drop_scopes: Default::default(),
     }
 }
 
@@ -378,12 +379,24 @@ fn body_to_vir<'tcx>(
         external_body,
         external_trait_from_to,
         migrate_postcondition_vars,
-        param_names,
+        param_names.clone(),
         external_opaque_type_map,
     );
     let body_expr =
         if is_async { extract_desugared_async_body(&bctx.ctxt, body)? } else { &body.value };
-    let e = expr_to_vir_consume(&bctx, body_expr)?;
+    // As in rustc's MIR builder, the parameters are in their own scope, outside the body,
+    // so they are dropped after everything in the body.
+    let args_scope = rustc_middle::middle::region::Scope {
+        local_id: body.value.hir_id.local_id,
+        data: rustc_middle::middle::region::ScopeData::Arguments,
+    };
+    let (e, drops) = bctx.in_drop_scope(args_scope, || {
+        for param_name in param_names.iter() {
+            bctx.schedule_local_drop_in(args_scope, param_name, body.value.span);
+        }
+        expr_to_vir_consume(&bctx, body_expr)
+    })?;
+    let e = crate::drop_scopes::append_drops(&bctx, e, drops);
 
     if external_body {
         match &e.x {

@@ -329,6 +329,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
+            ExprX::Drop(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::AirStmt(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Nondeterministic => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Call { target, args, post_args, body } => {

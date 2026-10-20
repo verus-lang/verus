@@ -1,6 +1,7 @@
 use crate::ast::{
-    Expr, ExprX, Exprs, Fun, HeaderExprX, LoopInvariant, LoopInvariantKind, LoopInvariants,
-    MaskSpec, PlaceX, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent, VirErr, Visibility,
+    BinaryOp, Expr, ExprX, Exprs, Fun, HeaderExprX, LoopInvariant, LoopInvariantKind,
+    LoopInvariants, MaskSpec, PlaceX, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent,
+    VirErr, Visibility,
 };
 use crate::ast_util::air_unique_var;
 use crate::messages::error;
@@ -464,6 +465,10 @@ fn peel_mut(expr: &mut Expr) -> &mut Expr {
             };
             let PlaceX::Temporary(e) = &mut Arc::make_mut(place).x else { unreachable!() };
             peel_mut(e)
+        }
+        ExprX::Binary(BinaryOp::Left, _, _) => {
+            let ExprX::Binary(_, l, _) = &mut Arc::make_mut(expr).x else { unreachable!() };
+            peel_mut(l)
         }
         _ => expr,
     }

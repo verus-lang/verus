@@ -288,6 +288,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::InvMask(..)
             | ExprX::Old(..)
             | ExprX::Await(..)
+            | ExprX::Drop(..)
         => None,
         ExprX::NonSpecClosure { .. } => Some(OuterProphReason::NonSpecClosure),
         ExprX::Loop { .. } => Some(OuterProphReason::Loop),
@@ -514,6 +515,8 @@ struct Record {
     mut_bor_place_modes: HashMap<crate::messages::AstId, (Mode, Option<ProofModeMutRefNote>)>,
     /// Nodes to set the 'assert_irrefutable' flag
     assert_irrefutable: HashSet<crate::messages::AstId>,
+    /// If Some, log the CFG built by resolution_inference for each function
+    cfg_logs: Option<Vec<(Fun, String)>>,
 }
 
 #[derive(Debug)]
@@ -3291,6 +3294,7 @@ fn check_expr(
             Ok((Mode::Spec, proph))
         }
         ExprX::AirStmt(_) => Ok((Mode::Exec, Proph::No)),
+        ExprX::Drop(_) => Ok((outer_mode, Proph::No)),
         ExprX::NeverToAny(e) => {
             let expect = Expect(expect.meet(Mode::Proof));
             let (mode, _p) = check_expr(ctxt, record, typing, outer_mode, expect, e, outer_proph)?;
@@ -3680,6 +3684,7 @@ fn check_function(
         infer_spec_for_implicit_reborrows,
         mut_bor_place_modes,
         assert_irrefutable,
+        cfg_logs: _,
     } = record;
     // Reset the fields that are per-function
     *type_inv_info = TypeInvInfo { ctor_needs_check: HashMap::new() };
@@ -4036,6 +4041,7 @@ fn check_function(
                     &record.temporary_modes,
                     &rtypes,
                     dual_mode_fn,
+                    record.cfg_logs.as_mut().map(|logs| (&functionx.name, logs)),
                 )?;
             }
         }
@@ -4045,7 +4051,12 @@ fn check_function(
     Ok(())
 }
 
-pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> {
+/// If `log_cfgs` is set, also returns the CFG built by resolution_inference
+/// for each function (pretty-printed).
+pub fn check_crate(
+    krate: &Krate,
+    log_cfgs: bool,
+) -> Result<(Krate, ErasureModes, Vec<(Fun, String)>), Vec<VirErr>> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -4082,6 +4093,7 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> 
         infer_spec_for_implicit_reborrows: None,
         mut_bor_place_modes: HashMap::new(),
         assert_irrefutable: HashSet::new(),
+        cfg_logs: if log_cfgs { Some(vec![]) } else { None },
     };
 
     let mut kratex = (**krate).clone();
@@ -4107,5 +4119,9 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> 
             errors.push(err);
         }
     }
-    if errors.len() > 0 { Err(errors) } else { Ok((Arc::new(kratex), record.erasure_modes)) }
+    if errors.len() > 0 {
+        Err(errors)
+    } else {
+        Ok((Arc::new(kratex), record.erasure_modes, record.cfg_logs.unwrap_or_default()))
+    }
 }

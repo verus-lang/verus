@@ -57,6 +57,7 @@ use crate::attributes::{
     get_var_mode, parse_attrs, parse_attrs_opt,
 };
 use crate::context::{BodyCtxt, Context, HeaderSetting};
+use crate::drop_scopes::{append_drops, block_with_drops, drop_stmts, node_scope, prepend_drops};
 use crate::erase::{MiscCall, ResolvedCall};
 use crate::fn_call_to_vir::{const_var_to_vir, fn_call_to_vir};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
@@ -66,7 +67,7 @@ use crate::rust_to_vir_base::{
     typ_of_expr_adjusted, typ_of_node_unadjusted,
 };
 use crate::rust_to_vir_ctor::{resolve_braces_ctor, resolve_ctor};
-use crate::util::{err_span, slice_vec_map_result, vec_map_result};
+use crate::util::{err_span, vec_map_result};
 use crate::verus_items::{
     self, CompilableOprItem, DummyCaptureItem, InvariantItem, OpenAtomicUpdateItem,
     OpenInvariantBlockItem, RustItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem, VstdItem,
@@ -82,6 +83,7 @@ use rustc_hir::{
     StructTailExpr, UnOp,
 };
 use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
+use rustc_middle::middle::region::{FirstStatementIndex, Scope, ScopeData};
 use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AllowTwoPhase, AutoBorrow, AutoBorrowMutability, DerefAdjustKind,
     PatAdjust, PatAdjustment, PointerCoercion,
@@ -99,9 +101,9 @@ use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck, CallTarget,
     Constant, CrateId, Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExprX, ImplPath,
     InequalityOp, IntRange, IntegerTypeBitwidth, InvAtomicity, Mode, OverflowBehavior, PatternX,
-    Place, PlaceX, Primitive, ProofNoteLabel, SignedDivEdgeCaseBehavior, SpannedTyped, StmtX,
-    Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind,
-    UninterpretedFloatBinaryOp, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
+    Place, PlaceX, Primitive, ProofNoteLabel, SignedDivEdgeCaseBehavior, SpannedTyped, StmtX, Typ,
+    TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, UninterpretedFloatBinaryOp,
+    VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     bool_typ, ident_binder, mk_tuple_field_opr, mk_tuple_typ, mk_tuple_x, str_unique_var,
@@ -167,16 +169,20 @@ pub(crate) enum ExprOrPlace {
 
 impl ExprOrPlace {
     /// If necessary, coerce the expression to a `Place` by creating a temporary.
+    /// `expr` is the HIR expression being materialized; it determines where the
+    /// temporary gets dropped.
     pub(crate) fn to_place<'tcx>(
         &self,
         bctx: &BodyCtxt<'tcx>,
-        span: Span,
+        expr: &Expr<'tcx>,
         ty: rustc_middle::ty::Ty<'tcx>,
     ) -> Result<Place, VirErr> {
         match self {
             ExprOrPlace::Expr(e) => {
-                let typ = bctx.mid_ty_to_vir(span, &ty)?;
-                Ok(SpannedTyped::new(&e.span, &typ, PlaceX::Temporary(e.clone())))
+                let typ = bctx.mid_ty_to_vir(expr.span, &ty)?;
+                let place = SpannedTyped::new(&e.span, &typ, PlaceX::Temporary(e.clone()));
+                bctx.schedule_temp_drop(expr, &place);
+                Ok(place)
             }
             ExprOrPlace::Place(p) => Ok(p.clone()),
         }
@@ -226,12 +232,12 @@ impl ExprOrPlace {
     pub(crate) fn immut_bor<'tcx>(
         &self,
         bctx: &BodyCtxt<'tcx>,
-        span: Span,
+        expr: &Expr<'tcx>,
         inner_ty: rustc_middle::ty::Ty<'tcx>,
     ) -> Result<vir::ast::Expr, VirErr> {
         // We always need to create a Temporary here,
         // since the expression might require resolution.
-        let p = self.to_place(bctx, span, inner_ty)?;
+        let p = self.to_place(bctx, expr, inner_ty)?;
         let rk = vir::ast::ReadKind::ImmutBor;
         let rk = UnfinalizedReadKind { preliminary_kind: rk, id: bctx.ctxt.unique_read_kind_id() };
         let typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, p.typ.clone()));
@@ -242,7 +248,7 @@ impl ExprOrPlace {
     pub(crate) fn unused<'tcx>(
         &self,
         bctx: &BodyCtxt<'tcx>,
-        span: Span,
+        expr: &Expr<'tcx>,
         ty: rustc_middle::ty::Ty<'tcx>,
     ) -> Result<vir::ast::Expr, VirErr> {
         // Try to avoid cluttering the VIR with Unused nodes when they aren't necessary
@@ -252,7 +258,7 @@ impl ExprOrPlace {
             }
         }
 
-        let p = self.to_place(bctx, span, ty)?;
+        let p = self.to_place(bctx, expr, ty)?;
         let rk = vir::ast::ReadKind::Unused;
         let rk = UnfinalizedReadKind { preliminary_kind: rk, id: bctx.ctxt.unique_read_kind_id() };
         Ok(bctx.ctxt.spanned_typed_new_vir(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk)))
@@ -487,7 +493,19 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
 
     let adjustments = bctx.types.expr_adjustments(expr);
 
-    expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustments.len())
+    // Like rustc's MIR builder, we enter the expression's scope (which includes the
+    // adjustments). If the expression is a terminating scope, then some temporaries
+    // may be dropped when we leave this scope.
+    let (expr_or_place, drops) = bctx.in_drop_scope(node_scope(expr.hir_id), || {
+        expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustments.len())
+    })?;
+    if drops.len() == 0 {
+        Ok(expr_or_place)
+    } else {
+        // Terminating scopes are always in value contexts, so it's okay to consume here
+        let e = expr_or_place.consume(bctx, bctx.types.expr_ty_adjusted(expr));
+        Ok(ExprOrPlace::Expr(append_drops(bctx, e, drops)))
+    }
 }
 
 pub(crate) fn expr_to_vir_consume<'tcx>(
@@ -501,7 +519,7 @@ pub(crate) fn expr_to_vir_place<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Place, VirErr> {
-    Ok(expr_to_vir(bctx, expr)?.to_place(bctx, expr.span, bctx.types.expr_ty_adjusted(expr))?)
+    Ok(expr_to_vir(bctx, expr)?.to_place(bctx, expr, bctx.types.expr_ty_adjusted(expr))?)
 }
 
 pub(crate) fn expr_to_vir<'tcx>(
@@ -954,17 +972,53 @@ pub(crate) fn block_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     block: &Block<'tcx>,
     span: &Span,
-    ty: &Typ,
 ) -> Result<vir::ast::Expr, VirErr> {
-    let mut vir_stmts: Vec<vir::ast::Stmt> = Vec::new();
-    let mut stmts_iter = block.stmts.iter();
-    while let Some(mut some_stmts) = stmts_to_vir(bctx, &mut stmts_iter)? {
-        vir_stmts.append(&mut some_stmts);
-    }
-    let vir_expr = block.expr.map(|expr| expr_to_vir_consume(bctx, &expr)).transpose()?;
+    let (vir_stmts, vir_expr, drops) = block_to_vir_parts(bctx, block)?;
+    Ok(block_with_drops(bctx, span, vir_stmts, vir_expr, drops))
+}
 
-    let x = ExprX::Block(Arc::new(vir_stmts), vir_expr);
-    Ok(bctx.spanned_typed_new(span.clone(), ty, x))
+/// Translate the statements and the tail expression of a block,
+/// returning them along with the drops that execute at the end of the block.
+///
+/// This follows the scope structure of rustc's MIR builder (see `ast_block_stmts`):
+/// the block has its own scope, and each `let` statement opens a new "remainder" scope
+/// which lasts until the end of the block.
+fn block_to_vir_parts<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    block: &Block<'tcx>,
+) -> Result<(Vec<vir::ast::Stmt>, Option<vir::ast::Expr>, Vec<vir::ast::Expr>), VirErr> {
+    let block_scope = node_scope(block.hir_id);
+    bctx.push_drop_scope(block_scope);
+    let mut remainder_scopes = vec![];
+    let r: Result<_, VirErr> = (|| {
+        let mut vir_stmts: Vec<vir::ast::Stmt> = Vec::new();
+        let mut i = 0;
+        while i < block.stmts.len() {
+            let remainder = if let StmtKind::Let(..) = &block.stmts[i].kind {
+                let remainder = Scope {
+                    local_id: block.hir_id.local_id,
+                    data: ScopeData::Remainder(FirstStatementIndex::from_usize(i)),
+                };
+                bctx.push_drop_scope(remainder);
+                remainder_scopes.push(remainder);
+                Some(remainder)
+            } else {
+                None
+            };
+            let (mut some_stmts, n) = stmts_to_vir(bctx, &block.stmts[i..], remainder)?;
+            vir_stmts.append(&mut some_stmts);
+            i += n;
+        }
+        let vir_expr = block.expr.map(|expr| expr_to_vir_consume(bctx, &expr)).transpose()?;
+        Ok((vir_stmts, vir_expr))
+    })();
+    let mut drops = vec![];
+    for scope in remainder_scopes.into_iter().rev() {
+        drops.append(&mut bctx.pop_drop_scope(scope));
+    }
+    drops.append(&mut bctx.pop_drop_scope(block_scope));
+    let (vir_stmts, vir_expr) = r?;
+    Ok((vir_stmts, vir_expr, drops))
 }
 
 /// Check for the #[verifier(invariant_block)] attribute
@@ -1215,20 +1269,14 @@ fn invariant_block_to_vir<'tcx>(
     let (vir_body, block_hir_id) = match mid_stmt.kind {
         StmtKind::Expr(e @ Expr { kind: ExprKind::Block(body, None), .. }) => {
             assert!(!is_invariant_block(bctx, e)?);
-            let vir_stmts: Stmts = Arc::new(
-                slice_vec_map_result(body.stmts, |stmt| stmt_to_vir(bctx, stmt))?
-                    .into_iter()
-                    .flatten()
-                    .collect(),
-            );
-            let vir_expr = body.expr.map(|expr| expr_to_vir_consume(bctx, &expr)).transpose()?;
-            let ty = typ_of_node_unadjusted(bctx, e.span, &e.hir_id)?;
+            let ((vir_stmts, vir_expr, mut drops), mut stmt_drops) =
+                bctx.in_drop_scope(node_scope(mid_stmt.hir_id), || block_to_vir_parts(bctx, body))?;
+            drops.append(&mut stmt_drops);
             // NOTE: we use body.span here instead of e.span
             // body.span leads to better error messages
             // (e.g., the "Cannot show invariant holds at end of block" error)
             // (e.span or mid_stmt.span would expose macro internals)
-            let vir_body =
-                bctx.spanned_typed_new(body.span, &ty, ExprX::Block(vir_stmts, vir_expr));
+            let vir_body = block_with_drops(bctx, &body.span, vir_stmts, vir_expr, drops);
             (vir_body, body.hir_id)
         }
         _ => {
@@ -1378,7 +1426,7 @@ fn open_au_block_to_vir<'tcx>(
                 default_binding_modes: true,
                 ..
             },
-        init: Some(body_expr @ Expr { kind: ExprKind::Block(body_block, None), .. }),
+        init: Some(Expr { kind: ExprKind::Block(body_block, None), .. }),
         els: None,
         ..
     }) = mid_stmt.kind
@@ -1478,19 +1526,11 @@ fn open_au_block_to_vir<'tcx>(
         return malformed_au_block_err(expr, line!());
     }
 
-    let mut vir_stmts = Vec::new();
-    for stmt in body_block.stmts {
-        vir_stmts.extend(stmt_to_vir(bctx, stmt)?);
-    }
+    let ((vir_stmts, vir_expr, mut drops), mut stmt_drops) =
+        bctx.in_drop_scope(node_scope(mid_stmt.hir_id), || block_to_vir_parts(bctx, body_block))?;
+    drops.append(&mut stmt_drops);
 
-    let vir_body = bctx.spanned_typed_new(
-        body_block.span,
-        &typ_of_node_unadjusted(bctx, body_expr.span, &body_expr.hir_id)?,
-        ExprX::Block(
-            Arc::new(vir_stmts),
-            body_block.expr.map(|expr| expr_to_vir_consume(bctx, &expr)).transpose()?,
-        ),
-    );
+    let vir_body = block_with_drops(bctx, &body_block.span, vir_stmts, vir_expr, drops);
 
     let au_vir_arg = expr_to_vir_consume(bctx, au_arg)?;
     let au_vir_binder = Arc::new(VarBinderX {
@@ -1584,7 +1624,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             let inner_expr =
                 expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?;
             let inner_ty = get_inner_ty();
-            let inner_place = inner_expr.to_place(bctx, expr.span, inner_ty)?;
+            let inner_place = inner_expr.to_place(bctx, expr, inner_ty)?;
             let p = deref_primitive(bctx, expr.span, inner_ty, &inner_place)?;
             Ok(ExprOrPlace::Place(p))
         }
@@ -1614,15 +1654,15 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 return Ok(ExprOrPlace::Place(bctx.spanned_typed_new(
                     expr.span,
                     &typ,
-                    PlaceX::ModeUnwrap(inner.to_place(bctx, expr.span, inner_ty)?, mwm),
+                    PlaceX::ModeUnwrap(inner.to_place(bctx, expr, inner_ty)?, mwm),
                 )));
             }
 
             let ref_inner = if mutbl {
-                let inner_place = inner.to_place(bctx, expr.span, inner_ty)?;
+                let inner_place = inner.to_place(bctx, expr, inner_ty)?;
                 borrow_mut_vir(bctx, expr.span, &inner_place, AllowTwoPhase::No)
             } else {
-                inner.immut_bor(bctx, expr.span, inner_ty)?
+                inner.immut_bor(bctx, expr, inner_ty)?
             };
             let ref_inner_ty = bctx.ctxt.tcx.mk_ty_from_kind(TyKind::Ref(
                 bctx.ctxt.tcx.lifetimes.re_erased,
@@ -1632,7 +1672,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             let out_ty = adjustment.target;
             let p = deref_overloaded(
                 bctx,
-                expr.span,
+                expr,
                 deref.method_call(bctx.ctxt.tcx),
                 ref_inner_ty,
                 out_ty,
@@ -1644,7 +1684,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             // Similar to ExprKind::AddrOf
             let new_expr =
                 expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?
-                    .immut_bor(bctx, expr.span, get_inner_ty())?;
+                    .immut_bor(bctx, expr, get_inner_ty())?;
             Ok(ExprOrPlace::Expr(new_expr))
         }
         Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Mut { allow_two_phase_borrow })) => {
@@ -1672,7 +1712,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                         return Ok(inner_inner);
                     } else {
                         // In other cases, we need to delay the decision until mode checking
-                        let p = inner_inner.to_place(bctx, expr.span, inner_inner_ty)?;
+                        let p = inner_inner.to_place(bctx, expr, inner_inner_ty)?;
                         let b = match allow_two_phase_borrow {
                             AllowTwoPhase::Yes => true,
                             AllowTwoPhase::No => false,
@@ -1690,7 +1730,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             }
 
             let place = expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?
-                .to_place(bctx, expr.span, get_inner_ty())?;
+                .to_place(bctx, expr, get_inner_ty())?;
             Ok(ExprOrPlace::Expr(borrow_mut_vir(bctx, expr.span, &place, *allow_two_phase_borrow)))
         }
         Adjust::GenericReborrow(_) => {
@@ -1981,6 +2021,57 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
     return Ok(mk_expr(ExprX::Match(place_vir, Arc::new(vir_arms), false))?);
 }
 
+/// Translate `if let pat = init { lhs } else { rhs }` to a match expression,
+/// where `lhs_body` and `rhs_body` translate the branches.
+///
+/// Following rustc, the scrutinee, the bindings, and the then-branch are in the
+/// `if_then_scope`; if the pattern fails to match, we exit this scope before executing
+/// the else-branch.
+fn cond_let_expr_to_vir_match<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    cond: &Expr<'tcx>,
+    if_then_scope: Scope,
+    lhs_body: impl FnOnce() -> Result<vir::ast::Expr, VirErr>,
+    lhs_span: Span,
+    rhs_body: impl FnOnce() -> Result<vir::ast::Expr, VirErr>,
+    rhs_span: Span,
+) -> Result<ExprX, VirErr> {
+    let ExprKind::Let(LetExpr { pat, init: expr, .. }) = &cond.kind else {
+        panic!("Expected let expression");
+    };
+    // if let
+    let ((vir_place, pattern, lhs_body, failure_drops), then_drops) =
+        bctx.in_drop_scope(if_then_scope, || {
+            let vir_place = expr_to_vir_place(bctx, expr)?;
+            let vir_place = simplify_place_by_cancelling(&vir_place);
+            let failure_drops = bctx.drops_for_exit_from(if_then_scope);
+            let pattern = pattern_to_vir(bctx, pat)?;
+            schedule_pattern_binding_drops(bctx, pat);
+            let lhs_body = lhs_body()?;
+            Ok((vir_place, pattern, lhs_body, failure_drops))
+        })?;
+    let lhs_body = append_drops(bctx, lhs_body, then_drops);
+    let rhs_body = prepend_drops(bctx, failure_drops, rhs_body()?);
+    let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
+    /* lhs */
+    {
+        let guard =
+            bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
+        let vir_arm = ArmX { pattern, guard, body: lhs_body };
+        vir_arms.push(bctx.spanned_new(lhs_span, vir_arm));
+    }
+    /* rhs */
+    {
+        let pat_typ = vir_arms[0].x.pattern.typ.clone();
+        let pattern = bctx.spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard);
+        let guard =
+            bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
+        let vir_arm = ArmX { pattern, guard, body: rhs_body };
+        vir_arms.push(bctx.spanned_new(rhs_span, vir_arm));
+    }
+    Ok(ExprX::Match(vir_place, Arc::new(vir_arms), false))
+}
+
 pub(crate) fn expr_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -2001,39 +2092,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         check_lit_int(&bctx.ctxt, expr.span, in_negative_literal, i, &typ)?;
         let c = vir::ast_util::const_int_from_u128(i);
         mk_expr(ExprX::Const(c))
-    };
-
-    let cond_let_expr_to_vir_match = |cond: &Expr<'tcx>,
-                                      lhs_body,
-                                      lhs_span,
-                                      rhs_body,
-                                      rhs_span|
-     -> Result<ExprX, VirErr> {
-        let ExprKind::Let(LetExpr { pat, init: expr, .. }) = &cond.kind else {
-            panic!("Expected let expression");
-        };
-        // if let
-        let vir_place = expr_to_vir_place(bctx, expr)?;
-        let vir_place = simplify_place_by_cancelling(&vir_place);
-        let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
-        /* lhs */
-        {
-            let pattern = pattern_to_vir(bctx, pat)?;
-            let guard =
-                bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
-            let vir_arm = ArmX { pattern, guard, body: lhs_body };
-            vir_arms.push(bctx.spanned_new(lhs_span, vir_arm));
-        }
-        /* rhs */
-        {
-            let pat_typ = vir_arms[0].x.pattern.typ.clone();
-            let pattern = bctx.spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard);
-            let guard =
-                bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
-            let vir_arm = ArmX { pattern, guard, body: rhs_body };
-            vir_arms.push(bctx.spanned_new(rhs_span, vir_arm));
-        }
-        Ok(ExprX::Match(vir_place, Arc::new(vir_arms), false))
     };
 
     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
@@ -2094,7 +2152,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
             if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
                 let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
-                let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?)?;
+                let block = block_to_vir(bctx, body, &expr.span)?;
                 let tracked = match g_attr {
                     GhostBlockAttr::Proof => false,
                     GhostBlockAttr::Tracked => true,
@@ -2107,7 +2165,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 };
                 mk_expr(ExprX::Ghost { alloc_wrapper: false, tracked, expr: block })
             } else {
-                let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?)?;
+                let block = block_to_vir(bctx, body, &expr.span)?;
                 if crate::attributes::is_proof_in_spec(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
                     mk_expr(ExprX::ProofInSpec(block))
                 } else if crate::attributes::is_loop_isolation_boundary(
@@ -2438,7 +2496,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 (_, TypX::Int(_)) if bctx.types.expr_ty_adjusted(source).is_enum() => {
                     let mk_expr =
                         move |x: ExprX| Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x));
-                    let place = source_vir.to_place(bctx, expr.span, source_ty)?;
+                    let place = source_vir.to_place(bctx, source, source_ty)?;
                     let place = simplify_place_by_cancelling(&place);
                     let cast_to = expr_cast_enum_int_to_vir(bctx, source, place, mk_expr)?;
                     Ok(ExprOrPlace::Expr(mk_ty_clip(
@@ -2513,7 +2571,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => {
             let inner_ty = bctx.types.expr_ty_adjusted(e);
-            let new_expr = expr_to_vir_inner(bctx, e)?.immut_bor(bctx, expr.span, inner_ty)?;
+            let new_expr = expr_to_vir_inner(bctx, e)?.immut_bor(bctx, e, inner_ty)?;
             Ok(ExprOrPlace::Expr(new_expr))
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
@@ -2690,7 +2748,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         .types
                         .type_dependent_def_id(expr.hir_id)
                         .expect("cannot get the function definition id for a deref");
-                    let p = deref_overloaded(bctx, expr.span, fn_def_id, inner_ty, out_ty, &inner)?;
+                    let p = deref_overloaded(bctx, expr, fn_def_id, inner_ty, out_ty, &inner)?;
                     return Ok(ExprOrPlace::Place(p));
                 } else {
                     let inner_ty = bctx.types.expr_ty_adjusted(arg);
@@ -3061,29 +3119,52 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             Ok(ExprOrPlace::Place(vir))
         }
         ExprKind::If(cond, lhs, rhs) => {
+            let if_then_scope = bctx.if_then_scope(lhs.hir_id);
             let cond = cond.peel_drop_temps();
             match cond.kind {
                 ExprKind::Let(_) => {
-                    let (rhs_vir, rhs_span) = if let Some(rhs) = rhs {
-                        (expr_to_vir_consume(bctx, &rhs)?, rhs.span)
-                    } else {
-                        (
-                            mk_expr(ExprX::Block(Arc::new(Vec::new()), None))?.expect_expr(),
-                            cond.span,
-                        )
-                    };
+                    let rhs_span = if let Some(rhs) = rhs { rhs.span } else { cond.span };
                     mk_expr(cond_let_expr_to_vir_match(
+                        bctx,
                         cond,
-                        expr_to_vir_consume(bctx, &lhs)?,
+                        if_then_scope,
+                        || expr_to_vir_consume(bctx, &lhs),
                         lhs.span,
-                        rhs_vir,
+                        || {
+                            if let Some(rhs) = rhs {
+                                expr_to_vir_consume(bctx, &rhs)
+                            } else {
+                                let x = ExprX::Block(Arc::new(Vec::new()), None);
+                                Ok(mk_expr(x)?.expect_expr())
+                            }
+                        },
                         rhs_span,
                     )?)
                 }
                 _ => {
-                    let vir_cond = expr_to_vir_consume(bctx, cond)?;
-                    let vir_lhs = expr_to_vir_consume(bctx, lhs)?;
+                    // The condition and the then-branch are in the if_then_scope
+                    // (since the condition is a terminating scope, this is usually empty)
+                    let ((vir_cond, vir_lhs, failure_drops), then_drops) =
+                        bctx.in_drop_scope(if_then_scope, || {
+                            let vir_cond = expr_to_vir_consume(bctx, cond)?;
+                            let failure_drops = bctx.drops_for_exit_from(if_then_scope);
+                            let vir_lhs = expr_to_vir_consume(bctx, lhs)?;
+                            Ok((vir_cond, vir_lhs, failure_drops))
+                        })?;
+                    let vir_lhs = append_drops(bctx, vir_lhs, then_drops);
                     let vir_rhs = rhs.map(|e| expr_to_vir_consume(bctx, e)).transpose()?;
+                    let vir_rhs = if failure_drops.len() == 0 {
+                        vir_rhs
+                    } else {
+                        let rhs = match vir_rhs {
+                            Some(rhs) => rhs,
+                            None => {
+                                let x = ExprX::Block(Arc::new(Vec::new()), None);
+                                mk_expr(x)?.expect_expr()
+                            }
+                        };
+                        Some(prepend_drops(bctx, failure_drops, rhs))
+                    };
                     mk_expr(ExprX::If(vir_cond, vir_lhs, vir_rhs))
                 }
             }
@@ -3102,16 +3183,31 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let vir_place = simplify_place_by_cancelling(&vir_place);
             let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
             for arm in arms.iter() {
-                let pattern = pattern_to_vir(bctx, &arm.pat)?;
-                let guard = match &arm.guard {
-                    None => bctx.spanned_typed_new(
-                        expr.span,
-                        &bool_typ(),
-                        ExprX::Const(Constant::Bool(true)),
-                    ),
-                    Some(guard_expr) => expr_to_vir_consume(bctx, guard_expr)?,
-                };
-                let body = expr_to_vir_consume(bctx, &arm.body)?;
+                // Each arm is a terminating scope, which contains the bindings.
+                // If there's a guard, the guard and body are additionally
+                // in a MatchGuard scope.
+                let arm_scope = node_scope(arm.hir_id);
+                let ((pattern, guard, body), arm_drops) = bctx.in_drop_scope(arm_scope, || {
+                    let pattern = pattern_to_vir(bctx, &arm.pat)?;
+                    let guard_scope =
+                        Scope { local_id: arm.hir_id.local_id, data: ScopeData::MatchGuard };
+                    let ((guard, body), guard_drops) = bctx.in_drop_scope(guard_scope, || {
+                        let guard = match &arm.guard {
+                            None => bctx.spanned_typed_new(
+                                expr.span,
+                                &bool_typ(),
+                                ExprX::Const(Constant::Bool(true)),
+                            ),
+                            Some(guard_expr) => expr_to_vir_consume(bctx, guard_expr)?,
+                        };
+                        // Bindings are only moved into after the guard succeeds
+                        schedule_pattern_binding_drops(bctx, &arm.pat);
+                        let body = expr_to_vir_consume(bctx, &arm.body)?;
+                        Ok((guard, body))
+                    })?;
+                    Ok((pattern, guard, append_drops(bctx, body, guard_drops)))
+                })?;
+                let body = append_drops(bctx, body, arm_drops);
                 let vir_arm = ArmX { pattern, guard, body };
                 vir_arms.push(bctx.spanned_new(arm.span, vir_arm));
             }
@@ -3120,8 +3216,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Loop(block, label, LoopSource::Loop, header_span) => {
             let label = bctx.fresh_label(expr.hir_id, label);
             let allow_complex_invariants = allow_complex_invariants();
-            let typ = typ_of_node_unadjusted(bctx, block.span, &block.hir_id)?;
-            let mut body = block_to_vir(bctx, block, &expr.span, &typ)?;
+            let mut body = block_to_vir(bctx, block, &expr.span)?;
             let mut header =
                 vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
             let allow_no_decreases = expr_vattrs.assume_termination
@@ -3168,8 +3263,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             )))
         }
         ExprKind::Loop(
-            Block {
-                stmts: [], expr: Some(Expr { kind: ExprKind::If(cond, body, other), .. }), ..
+            loop_block @ Block {
+                stmts: [],
+                expr: Some(if_expr @ Expr { kind: ExprKind::If(cond, body, other), .. }),
+                ..
             },
             label,
             LoopSource::While,
@@ -3213,37 +3310,73 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 unsupported_err!(expr.span, "loop else");
             }
             let body_span = body.span;
-            let mut body = expr_to_vir_consume(bctx, body)?;
-            let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
-            let (cond, body) = match &cond.peel_drop_temps().kind {
+            // We skip over the loop's block and the `if` expression in the HIR,
+            // but we still need to enter their scopes, and the if_then_scope.
+            let block_scope = node_scope(loop_block.hir_id);
+            let if_scope = node_scope(if_expr.hir_id);
+            let if_then_scope = bctx.if_then_scope(body.hir_id);
+            bctx.push_drop_scope(block_scope);
+            bctx.push_drop_scope(if_scope);
+            let r: Result<_, VirErr> = (|| match &cond.peel_drop_temps().kind {
                 ExprKind::Let(_) => {
-                    let body_ty = body.typ.clone();
-                    let wildcard_body = bctx.spanned_typed_new(
-                        cond.span,
-                        &body_ty,
-                        ExprX::BreakOrContinue {
-                            label: label.clone(),
-                            is_break: true,
-                            value: None,
+                    let mut header = None;
+                    let body_ty = std::cell::RefCell::new(None);
+                    let match_x = cond_let_expr_to_vir_match(
+                        bctx,
+                        cond,
+                        if_then_scope,
+                        || {
+                            let mut body = expr_to_vir_consume(bctx, body)?;
+                            header = Some(vir::headers::read_header(
+                                &mut body,
+                                &vir::headers::HeaderAllows::Loop,
+                            )?);
+                            *body_ty.borrow_mut() = Some(body.typ.clone());
+                            Ok(body)
                         },
-                    );
-                    (
-                        None,
-                        bctx.spanned_typed_new(
-                            cond.span,
-                            &body_ty,
-                            cond_let_expr_to_vir_match(
-                                cond,
-                                body,
-                                body_span,
-                                wildcard_body,
-                                cond.span,
-                            )?,
-                        ),
-                    )
+                        body_span,
+                        || {
+                            let drops = bctx.drops_for_exit_to(expr.hir_id);
+                            Ok(prepend_drops(
+                                bctx,
+                                drops,
+                                bctx.spanned_typed_new(
+                                    cond.span,
+                                    body_ty.borrow().as_ref().unwrap(),
+                                    ExprX::BreakOrContinue {
+                                        label: label.clone(),
+                                        is_break: true,
+                                        value: None,
+                                    },
+                                ),
+                            ))
+                        },
+                        cond.span,
+                    )?;
+                    let body_ty = body_ty.into_inner().unwrap();
+                    let body = bctx.spanned_typed_new(cond.span, &body_ty, match_x);
+                    Ok((None, body, header.unwrap()))
                 }
-                _ => (Some(expr_to_vir_consume(bctx, cond)?), body),
-            };
+                _ => {
+                    let ((cond, mut body), then_drops) =
+                        bctx.in_drop_scope(if_then_scope, || {
+                            let cond = expr_to_vir_consume(bctx, cond)?;
+                            let body = expr_to_vir_consume(bctx, body)?;
+                            Ok((cond, body))
+                        })?;
+                    let header =
+                        vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
+                    let body = append_drops(bctx, body, then_drops);
+                    Ok((Some(cond), body, header))
+                }
+            })();
+            let mut drops = bctx.pop_drop_scope(if_scope);
+            drops.append(&mut bctx.pop_drop_scope(block_scope));
+            let (cond, body, header) = r?;
+            // Note: in the case where `cond` is Some and evaluates to false,
+            // there is no place for the drops. However, the drops should always be empty
+            // in this case, since the condition is a terminating scope.
+            let body = append_drops(bctx, body, drops);
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
                 *header_span,
                 &expr_typ()?,
@@ -3261,23 +3394,83 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 },
             )))
         }
-        ExprKind::Ret(expr) => {
-            let expr = match expr {
+        ExprKind::Ret(opt_expr) => {
+            let opt_expr = match opt_expr {
                 None => None,
                 Some(expr) => Some(expr_to_vir_consume(bctx, expr)?),
             };
-            mk_expr(ExprX::Return(expr))
+            // Exit all scopes, including the scope of the function's parameters
+            let drops = bctx.drops_for_return();
+            let e = match opt_expr {
+                None => prepend_drops(
+                    bctx,
+                    drops,
+                    bctx.spanned_typed_new(expr.span, &expr_typ()?, ExprX::Return(None)),
+                ),
+                Some(e) => bctx.spanned_typed_new(
+                    expr.span,
+                    &expr_typ()?,
+                    ExprX::Return(Some(append_drops(bctx, e, drops))),
+                ),
+            };
+            Ok(ExprOrPlace::Expr(e))
         }
         ExprKind::Break(dest, value) => {
             let label = bctx.label_from_dest(expr.span, dest)?;
             let value = value.map(|value| expr_to_vir_consume(bctx, value)).transpose()?;
-            mk_expr(ExprX::BreakOrContinue { label, is_break: true, value })
+            // Exit all scopes inside the loop
+            let drops = bctx.drops_for_exit_to(dest.target_id.unwrap());
+
+            let e = match value {
+                None => prepend_drops(
+                    bctx,
+                    drops,
+                    bctx.spanned_typed_new(
+                        expr.span,
+                        &expr_typ()?,
+                        ExprX::BreakOrContinue { label, is_break: true, value: None },
+                    ),
+                ),
+                Some(e) => bctx.spanned_typed_new(
+                    expr.span,
+                    &expr_typ()?,
+                    ExprX::BreakOrContinue {
+                        label,
+                        is_break: true,
+                        value: Some(append_drops(bctx, e, drops)),
+                    },
+                ),
+            };
+            Ok(ExprOrPlace::Expr(e))
         }
         ExprKind::Continue(dest) => {
             let label = bctx.label_from_dest(expr.span, dest)?;
-            mk_expr(ExprX::BreakOrContinue { label, is_break: false, value: None })
+            // Exit all scopes inside the loop
+            let drops = bctx.drops_for_exit_to(dest.target_id.unwrap());
+            let e = prepend_drops(
+                bctx,
+                drops,
+                bctx.spanned_typed_new(
+                    expr.span,
+                    &expr_typ()?,
+                    ExprX::BreakOrContinue { label, is_break: false, value: None },
+                ),
+            );
+            Ok(ExprOrPlace::Expr(e))
         }
         ExprKind::Struct(qpath, fields, struct_tail) => {
+            // The fields are evaluated before the struct_tail
+            let vir_fields = Arc::new(
+                fields
+                    .iter()
+                    .map(|f| -> Result<_, VirErr> {
+                        let vir = expr_to_vir_consume(bctx, f.expr)?;
+                        let ident = field_ident_from_rust(f.ident.as_str());
+                        Ok(ident_binder(&ident, &vir))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
+
             let update = match struct_tail {
                 StructTailExpr::Base(tail_expr) => {
                     let place = expr_to_vir_place(bctx, tail_expr)?;
@@ -3299,17 +3492,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let ctor = resolve_braces_ctor(bctx.ctxt.tcx, res, ty, true, expr.span)?;
             let variant_name = ctor.variant_name(bctx.ctxt.tcx, fields);
             let path = bctx.ctxt.def_id_to_vir_path(ctor.adt_def_id);
-
-            let vir_fields = Arc::new(
-                fields
-                    .iter()
-                    .map(|f| -> Result<_, VirErr> {
-                        let vir = expr_to_vir_consume(bctx, f.expr)?;
-                        let ident = field_ident_from_rust(f.ident.as_str());
-                        Ok(ident_binder(&ident, &vir))
-                    })
-                    .collect::<Result<Vec<_>, _>>()?,
-            );
 
             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
             let resolved_call = ResolvedCall::BracesCtor(
@@ -3467,6 +3649,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 // tgt[idx] is equivalent to either *index(tgt, idx) or *index_mut(tgt, idx)
                 // (The * on the outside isn't part of the adjustments; we add it here)
                 let mut p = bctx.spanned_typed_new(expr.span, &call_ret_typ, PlaceX::Temporary(e));
+                bctx.schedule_temp_drop(expr, &p);
                 if mutbl {
                     // mutable deref
                     p = deref_mut(bctx, expr.span, &p)?;
@@ -3869,10 +4052,11 @@ fn expr_assign_to_vir_innermost<'tcx>(
     rhs: &Expr<'tcx>,
     op_kind: Option<&Spanned<AssignOpKind>>,
 ) -> Result<ExprOrPlace, vir::messages::Message> {
+    // The right-hand side is evaluated first
+    let vir_rhs = expr_to_vir_consume(bctx, rhs)?;
+
     let vir_lhs = expr_to_vir_place(bctx, lhs)?;
     let vir_lhs = simplify_place_by_cancelling(&vir_lhs);
-
-    let vir_rhs = expr_to_vir_consume(bctx, rhs)?;
 
     let op = match op_kind {
         Some(op) => match assignop_kind_to_binaryop(bctx, op, span, lhs, rhs)? {
@@ -3898,33 +4082,68 @@ fn expr_assign_to_vir_innermost<'tcx>(
     })
 }
 
-pub(crate) fn let_stmt_to_vir<'tcx>(
+/// `remainder` is the remainder scope opened by the `let` statement, which contains the
+/// bound variables (see `block_to_vir_parts`).
+fn let_stmt_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    stmt: &Stmt<'tcx>,
     pattern: &rustc_hir::Pat<'tcx>,
     initializer: &Option<&Expr<'tcx>>,
     els: &Option<&Block<'tcx>>,
     attrs: &[Attribute],
+    remainder: Option<Scope>,
+) -> Result<Vec<vir::ast::Stmt>, VirErr> {
+    // As in rustc's MIR builder, the initializer is evaluated in the scope
+    // of the statement, so non-extended temporaries are dropped at the end of the statement.
+    let stmt_scope = node_scope(stmt.hir_id);
+    let (mut vir_stmts, drops) = bctx.in_drop_scope(stmt_scope, || {
+        let_stmt_to_vir_in_scope(bctx, stmt_scope, pattern, initializer, els, attrs, remainder)
+    })?;
+    vir_stmts.append(&mut drop_stmts(bctx, drops));
+    Ok(vir_stmts)
+}
+
+fn let_stmt_to_vir_in_scope<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    stmt_scope: Scope,
+    pattern: &rustc_hir::Pat<'tcx>,
+    initializer: &Option<&Expr<'tcx>>,
+    els: &Option<&Block<'tcx>>,
+    attrs: &[Attribute],
+    remainder: Option<Scope>,
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     let mode = get_var_mode(bctx.mode, attrs);
     let parsed_attrs = parse_attrs_opt(attrs, None);
     let infer_mode = parsed_attrs.contains(&Attr::InferMode);
     let prophetic = parsed_attrs.contains(&Attr::Prophetic);
-    let els = if let Some(els) = els {
+    if let Some(els) = els {
         if matches!(mode, Mode::Spec | Mode::Proof) {
             unsupported_err!(els.span, "let-else in spec/proof", els);
         }
-        let init = initializer.unwrap();
-        let init_type = typ_of_expr_adjusted(bctx, els.span, &init.hir_id)?;
-        let els_typ = typ_of_node_unadjusted(bctx, els.span, &els.hir_id)?;
-        let els_block = block_to_vir(bctx, els, &els.span, &els_typ)?;
-        Some(bctx.spanned_typed_new(els.span, &init_type, ExprX::NeverToAny(els_block)))
-    } else {
-        None
-    };
+    }
     let init = match initializer {
         Some(e) => Some(simplify_place_by_cancelling(&expr_to_vir_place(bctx, e)?)),
         None => None,
     };
+    let els = if let Some(els) = els {
+        let init = initializer.unwrap();
+        let init_type = typ_of_expr_adjusted(bctx, els.span, &init.hir_id)?;
+        // If the pattern fails to match, then the temporaries of the initializer
+        // (including extended temporaries) get dropped before executing the `else` block.
+        // The `else` block itself is outside these scopes.
+        let outer_scope = remainder.unwrap_or(stmt_scope);
+        let failure_drops = bctx.drops_for_exit_from(outer_scope);
+        let suspended = bctx.suspend_drop_scopes_from(outer_scope);
+        let els_block = block_to_vir(bctx, els, &els.span);
+        bctx.resume_drop_scopes(suspended);
+        let els_block = prepend_drops(bctx, failure_drops, els_block?);
+        Some(bctx.spanned_typed_new(els.span, &init_type, ExprX::NeverToAny(els_block)))
+    } else {
+        None
+    };
+    if mode != Mode::Spec {
+        schedule_pattern_binding_drops(bctx, pattern);
+    }
 
     let unwrapped_binding = parse_attrs_opt(attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))
         .contains(&Attr::UnwrappedBinding);
@@ -4091,9 +4310,26 @@ fn unwrap_parameter_to_vir<'tcx>(
     }
 }
 
+/// Schedule drops for all the variables bound by the pattern
+fn schedule_pattern_binding_drops<'tcx>(bctx: &BodyCtxt<'tcx>, pat: &Pat<'tcx>) {
+    pat.each_binding_or_first(&mut |_binding_mode, hir_id, span, ident| {
+        bctx.schedule_local_drop(hir_id, &local_to_var(&ident, hir_id.local_id), span);
+    });
+}
+
 pub(crate) fn stmt_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     stmt: &Stmt<'tcx>,
+) -> Result<Vec<vir::ast::Stmt>, VirErr> {
+    stmt_in_block_to_vir(bctx, stmt, None)
+}
+
+/// `remainder` is the remainder scope opened by the statement, if it's a `let`
+/// in a block (see `block_to_vir_parts`).
+fn stmt_in_block_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    stmt: &Stmt<'tcx>,
+    remainder: Option<Scope>,
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     if bctx.external_body {
         // we want just requires/ensures, not the whole body
@@ -4110,19 +4346,26 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 return Ok(vec![]);
             }
 
-            let ep = expr_to_vir(bctx, expr)?;
-            let vir_expr = match &ep {
-                ExprOrPlace::Expr(expr) if matches!(&expr.x, ExprX::Header(..)) => expr.clone(),
-                _ => {
-                    // Just writing `x;` technically counts as a move of a `x`
-                    // but for the sake of resolution analysis, we don't want to treat
-                    // it as a move (since it will just get dropped) so it gets the special
-                    // 'Unused' kind
-                    let expr_ty = bctx.types.expr_ty_adjusted(expr);
-                    ep.unused(bctx, expr.span, expr_ty)?
+            // Every statement is a terminating scope
+            let (vir_expr, drops) = bctx.in_drop_scope(node_scope(stmt.hir_id), || {
+                let ep = expr_to_vir(bctx, expr)?;
+                match &ep {
+                    ExprOrPlace::Expr(expr) if matches!(&expr.x, ExprX::Header(..)) => {
+                        Ok(expr.clone())
+                    }
+                    _ => {
+                        // Just writing `x;` technically counts as a move of a `x`
+                        // but for the sake of resolution analysis, we don't want to treat
+                        // it as a move (since it will just get dropped) so it gets the special
+                        // 'Unused' kind
+                        let expr_ty = bctx.types.expr_ty_adjusted(expr);
+                        ep.unused(bctx, expr, expr_ty)
+                    }
                 }
-            };
-            Ok(vec![bctx.spanned_new(expr.span, StmtX::Expr(vir_expr))])
+            })?;
+            let mut vir_stmts = vec![bctx.spanned_new(expr.span, StmtX::Expr(vir_expr))];
+            vir_stmts.append(&mut drop_stmts(bctx, drops));
+            Ok(vir_stmts)
         }
         StmtKind::Item(item_id) => {
             let attrs = bctx.ctxt.tcx.hir_attrs(item_id.hir_id());
@@ -4172,7 +4415,15 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 }
             }
 
-            let_stmt_to_vir(bctx, pat, init, els, bctx.ctxt.tcx.hir_attrs(stmt.hir_id))
+            let_stmt_to_vir(
+                bctx,
+                stmt,
+                pat,
+                init,
+                els,
+                bctx.ctxt.tcx.hir_attrs(stmt.hir_id),
+                remainder,
+            )
         }
     }
 }
@@ -4194,23 +4445,24 @@ pub(crate) fn get_open_visibility_qualifier<'tcx>(
     Ok(crate::rust_to_vir_base::mk_visibility_from_vis(ctxt, vis))
 }
 
-pub(crate) fn stmts_to_vir<'tcx>(
+/// Translate the first statement (or first 2 statements, for an unwrap_parameter header)
+/// and return the number of statements consumed.
+/// `remainder` is the remainder scope opened by the first statement, if it's a `let`.
+fn stmts_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    stmts: &mut impl Iterator<Item = &'tcx Stmt<'tcx>>,
-) -> Result<Option<Vec<vir::ast::Stmt>>, VirErr> {
-    if let Some(stmt) = stmts.next() {
-        let attrs = crate::attributes::parse_attrs_opt(bctx.ctxt.tcx.hir_attrs(stmt.hir_id), None);
-        if let [Attr::UnwrapParameter] = attrs[..] {
-            if let Some(stmt2) = stmts.next() {
-                return Ok(Some(unwrap_parameter_to_vir(bctx, stmt, stmt2)?));
-            } else {
-                return err_span(stmt.span, "ill-formed unwrap_parameter header");
-            }
+    stmts: &'tcx [Stmt<'tcx>],
+    remainder: Option<Scope>,
+) -> Result<(Vec<vir::ast::Stmt>, usize), VirErr> {
+    let stmt = &stmts[0];
+    let attrs = crate::attributes::parse_attrs_opt(bctx.ctxt.tcx.hir_attrs(stmt.hir_id), None);
+    if let [Attr::UnwrapParameter] = attrs[..] {
+        if let Some(stmt2) = stmts.get(1) {
+            return Ok((unwrap_parameter_to_vir(bctx, stmt, stmt2)?, 2));
+        } else {
+            return err_span(stmt.span, "ill-formed unwrap_parameter header");
         }
-        Ok(Some(stmt_to_vir(bctx, stmt)?))
-    } else {
-        Ok(None)
     }
+    Ok((stmt_in_block_to_vir(bctx, stmt, remainder)?, 1))
 }
 
 pub(crate) fn is_ignorable_dummy_capture_operation<'tcx>(
@@ -4294,7 +4546,24 @@ pub(crate) fn closure_to_vir<'tcx>(
             &BodyCtxt { params: std::rc::Rc::new(all_params), ..bctx }
         };
 
-        let mut body = expr_to_vir_consume(body_bctx, &body.value)?;
+        // The closure body has its own scopes, including a scope for the parameters.
+        let mut body = body_bctx.with_fresh_drop_scopes(|| {
+            let args_scope =
+                Scope { local_id: body.value.hir_id.local_id, data: ScopeData::Arguments };
+            let (vir_body, drops) = body_bctx.in_drop_scope(args_scope, || {
+                for (param, hir_param) in params.iter().zip(body.params.iter()) {
+                    body_bctx.schedule_local_drop_in(args_scope, &param.name, hir_param.span);
+                    if !matches!(
+                        hir_param.pat.kind,
+                        PatKind::Binding(BindingMode(ByRef::No, _), _, _, None)
+                    ) {
+                        schedule_pattern_binding_drops(body_bctx, hir_param.pat);
+                    }
+                }
+                expr_to_vir_consume(body_bctx, &body.value)
+            })?;
+            Ok::<_, VirErr>(append_drops(body_bctx, vir_body, drops))
+        })?;
 
         let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Closure)?;
         let vir::headers::Header { mut require, mut ensure, ensure_id_typ, .. } = header;
@@ -4604,17 +4873,20 @@ pub(crate) fn deref_primitive<'tcx>(
 ///
 /// Doesn't handle Tracked or Ghost, those should be handled by caller.
 ///
+/// hir_expr: the HIR expression being dereferenced (which determines where the
+///   temporary holding the result of deref/deref_mut is dropped)
 /// fn_def_id: DefId of deref or deref_mut
 /// ty: the `&T` or `&mut T`
 /// target_ty: the output type, `<T as Deref>::Target`
 pub(crate) fn deref_overloaded<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    span: Span,
+    hir_expr: &Expr<'tcx>,
     fn_def_id: DefId,
     ty: rustc_middle::ty::Ty<'tcx>,
     target_ty: rustc_middle::ty::Ty<'tcx>,
     expr: &vir::ast::Expr,
 ) -> Result<Place, VirErr> {
+    let span = hir_expr.span;
     match ty.kind() {
         TyKind::Ref(_, inner_ty, rustc_ast::Mutability::Not) => {
             // deref
@@ -4653,6 +4925,7 @@ pub(crate) fn deref_overloaded<'tcx>(
                 &ref_of_target_typ,
                 PlaceX::Temporary(call_expr.clone()),
             );
+            bctx.schedule_temp_drop(hir_expr, &temp_place);
             // Immutable dereference is implicit
             Ok(temp_place)
         }
@@ -4678,6 +4951,7 @@ pub(crate) fn deref_overloaded<'tcx>(
                 &ref_of_target_typ,
                 PlaceX::Temporary(call_expr.clone()),
             );
+            bctx.schedule_temp_drop(hir_expr, &temp_place);
 
             deref_mut(bctx, span, &temp_place)
         }
@@ -5014,7 +5288,7 @@ fn loop_isolation_boundary_check(
         return err();
     }
 
-    if let ExprX::Loop { loop_isolation, label, .. } = &arms[0].x.body.x {
+    if let ExprX::Loop { loop_isolation, label, .. } = &&arms[0].x.body.x {
         return Ok((*loop_isolation, label.clone()));
     }
 

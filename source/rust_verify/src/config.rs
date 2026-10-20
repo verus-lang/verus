@@ -40,6 +40,7 @@ pub const CALL_GRAPH_FILE_SUFFIX_FULL_INITIAL: &str = "-call-graph-full-initial.
 pub const CALL_GRAPH_FILE_SUFFIX_FULL_SIMPLIFIED: &str = "-call-graph-full-simplified.dot";
 pub const CALL_GRAPH_FILE_SUFFIX_NOSTD_INITIAL: &str = "-call-graph-nostd-initial.dot";
 pub const CALL_GRAPH_FILE_SUFFIX_NOSTD_SIMPLIFIED: &str = "-call-graph-nostd-simplified.dot";
+pub const RESOLUTION_CFG_FILE_SUFFIX: &str = "-resolution-cfg.txt";
 
 #[derive(Debug, Default)]
 pub struct LogArgs {
@@ -57,6 +58,7 @@ pub struct LogArgs {
     pub log_triggers: bool,
     pub log_impl_names: bool,
     pub log_call_graph: bool,
+    pub log_resolution_cfg: bool,
 }
 
 /// Describes the relationship between this crate and vstd.
@@ -347,6 +349,7 @@ pub fn parse_args_with_imports(
     const LOG_TRIGGERS: &str = "triggers";
     const LOG_IMPL_NAMES: &str = "impl-names";
     const LOG_CALL_GRAPH: &str = "call-graph";
+    const LOG_RESOLUTION_CFG: &str = "resolution-cfg";
 
     const LOG_ITEMS: &[(&str, &str)] = &[
         (LOG_VIR, "Log VIR"),
@@ -366,6 +369,7 @@ pub fn parse_args_with_imports(
         (LOG_TRIGGERS, "Log automatically chosen triggers"),
         (LOG_IMPL_NAMES, "Log rustc's internal trait impl names"),
         (LOG_CALL_GRAPH, "Log the call graph"),
+        (LOG_RESOLUTION_CFG, "Log the control flow graphs built by resolution inference"),
     ];
 
     const OPT_TRIGGERS: &str = "triggers";
@@ -773,6 +777,7 @@ pub fn parse_args_with_imports(
             log_triggers: log.contains_key(LOG_TRIGGERS),
             log_impl_names: log.contains_key(LOG_IMPL_NAMES),
             log_call_graph: log.contains_key(LOG_CALL_GRAPH),
+            log_resolution_cfg: log.contains_key(LOG_RESOLUTION_CFG),
         },
         show_triggers: if matches.opt_present(OPT_TRIGGERS) {
             if matches.opt_present(OPT_TRIGGERS_MODE) {
