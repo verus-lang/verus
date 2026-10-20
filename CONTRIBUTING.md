@@ -331,15 +331,15 @@ The following section assumes that `cargo-make` has been installed via `cargo in
 install them automatically _only if they are missing_. You **must** re-run `cargo make install` for
 any changes to those tools to take effect.
 
-| Vargo                        | Cargo                           |
-| ---------------------------- | ------------------------------- |
-| `source ../tools/activate`   | `cargo make install`            |
-| `vargo build`                | `cargo make build`              |
-| `vargo build --exclude vstd` | `cargo make build-exclude-vstd` |
-| `vargo build -p vstd`        | `cargo make build-vstd`         |
-| `vargo fmt`                  | `cargo make fmt`                |
-| `vargo fmt --exclude vstd`   | `cargo make fmt-exclude-vstd`   |
-| `vargo fmt -p vstd`          | `cargo make fmt-vstd`           |
+| Vargo                                  | Cargo                                     |
+| -------------------------------------- | ----------------------------------------- |
+| `source ../tools/activate`             | `cargo make install`                      |
+| `vargo build`                          | `cargo make build`                        |
+| `vargo build --exclude vstd`           | `cargo make build-exclude-vstd`           |
+| `vargo build -p vstd`                  | `cargo make build-vstd`                   |
+| `vargo fmt` [`--check`]                | `cargo make fmt` [`--check`]              |
+| `vargo fmt --exclude vstd` [`--check`] | `cargo make fmt-exclude-vstd` [`--check`] |
+| `vargo fmt -p vstd` [`--check`]        | `cargo make fmt-vstd` [`--check`]         |
 
 For more detail on the exact commands each `cargo-make` task runs, refer to their definitions in
 `source/Makefile.toml`.
