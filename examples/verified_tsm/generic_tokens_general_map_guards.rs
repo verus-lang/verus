@@ -1,20 +1,19 @@
 //! Guards of general operands of `storage_map` and `storage_imap` fields
-//! that are not the only storage field, or not the property's only guard.
+//! with other storage fields, or with other guards in one property.
 //!
-//! The trusted interface returns `&Map<K, V>` for `guard f >= (m)`. With
-//! one storage field and one guard, the generic interface returns the
-//! guarded storage itself, `&IMap<K, V>` (`generic_tokens_general_guards.rs`).
-//! Otherwise no map of type `IMap<K, V>` exists in the guarded storage (it is
-//! tagged by field, or holds the other guards' values too), so the guard
-//! returns a map of references into the storage: `Map<K, &V>` with the
-//! domain of `m` and `*out[k] == m[k]` (`IMap<K, &V>` for a `storage_imap`,
-//! whose operand then needs a finite domain, stated with a `require`).
+//! The trusted interface returns `&Map<K, V>` for `guard f >= (m)`. No map of
+//! type `IMap<K, V>` exists in the guarded storage (its keys and values are
+//! tagged by field), so the guard returns a map of references into the
+//! storage: `Map<K, &V>` with the domain of `m` and `*out[k] == m[k]`
+//! (`IMap<K, &V>` for a `storage_imap`, whose operand then needs a finite
+//! domain, stated with a `require`); also with one storage field and one
+//! guard (`generic_tokens_general_guards.rs`).
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 use vstd::tokens::*;
 
-// A `storage_map` and a `storage_option` of different payload types: the
-// tagged carrier. Several guards in one property.
+// A `storage_map` and a `storage_option` of different payload types.
+// Several guards in one property.
 verified_tokenized_state_machine! {
     Mixed {
         fields {
@@ -106,8 +105,8 @@ verified_tokenized_state_machine! {
     }
 }
 
-// Two storage fields of one payload type (the homogeneous carrier),
-// including a `storage_imap`.
+// Two storage fields of one payload type, including a `storage_imap` (whose
+// initial value is moved into the tagged storage key by key: a finite domain).
 verified_tokenized_state_machine! {
     Homogeneous {
         fields {
@@ -131,6 +130,7 @@ verified_tokenized_state_machine! {
 
         init!{
             initialize(l: Map<int, u64>, r: IMap<int, u64>) {
+                require(r.dom().finite());
                 init left_owners = l;
                 init right_owners = r;
                 init left = l;

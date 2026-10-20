@@ -99,15 +99,12 @@ verified_tokenized_state_machine! {
 verus! {
 
 proof fn raw_client() {
-    let tracked mut base = IMap::tracked_empty();
-    base.tracked_insert(0int, 5u64);
-    assert forall|s: RawPublished::State| RawPublished::State::initialize_strong(s, 5)
-        implies base == s.__storage() by {
-        assert(base =~= s.__storage());
-    }
+    // The storage is one `IMap<__StorageKey, __StorageValue>`; `__pack_cell`
+    // tags the `Option` of the `storage_option` field.
+    let tracked base = RawPublished::__pack_cell(Some(5u64));
     let tracked token = RawPublished::Protocol::initialize(base, 5);
     let tracked g = RawPublished::Protocol::peek(&token);
-    assert(g.contains_key(0int) && g[0int] == 5);
+    assert(*g =~= RawPublished::__tag_cell(Some(5u64)));
 }
 
 proof fn client() {

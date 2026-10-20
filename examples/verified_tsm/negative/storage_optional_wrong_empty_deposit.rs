@@ -13,10 +13,7 @@ fn wrong_empty_transfer() {
         cell.id(),
         None,
     );
-    let tracked mut deposited = IMap::tracked_empty();
-    proof {
-        deposited.tracked_insert(0int, permission);
-    }
+    let tracked deposited = OptionalStorage::__pack_stored(Some(permission));
     let tracked owner = OptionalStorage::Protocol::deposit_optional(owner, deposited, None);
 }
 

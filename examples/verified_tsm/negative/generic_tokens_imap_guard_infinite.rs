@@ -1,7 +1,7 @@
-// EXPECTED-ERROR: a guard of a general operand of storage_imap field `right` (with other storage fields or guards) needs a finite domain
-// A general guard of a `storage_imap` field that is not the only storage
-// field returns `IMap<K, &V>`, built key by key: its operand needs a finite
-// domain, which this machine does not state.
+// EXPECTED-ERROR: a guard of a general operand of storage_imap field `right` needs a finite domain
+// A general guard of a `storage_imap` field returns `IMap<K, &V>`, built key by
+// key from the tagged storage: its operand needs a finite domain, which this
+// machine does not state.
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 use vstd::tokens::*;

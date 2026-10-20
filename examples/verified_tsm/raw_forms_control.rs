@@ -75,11 +75,14 @@ verified_tokenized_state_machine! {
     }
 }
 proof fn control_history() {
+    // The storage is one `IMap<__StorageKey, __StorageValue>`: here the tagged
+    // `storage_map` field's map, `__tag_stored(s.stored.to_imap())`.
+    let tracked base = IMap::tracked_empty();
     assert forall|s: Control::State| Control::State::initialize_strong(s, 0)
-        implies IMap::<int, Tok>::empty() == s.__storage() by {
-        assert(IMap::<int, Tok>::empty() =~= s.__storage());
+        implies base == s.__storage() by {
+        assert(base =~= s.__storage());
     }
-    let tracked token = Control::Protocol::initialize(IMap::tracked_empty(), 0);
+    let tracked token = Control::Protocol::initialize(base, 0);
     let tracked token = Control::Protocol::birds(token, 7);
     assert(token.fragment().n->Some_0->Exclusive_0 == 7);
 }

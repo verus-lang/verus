@@ -104,8 +104,9 @@ proof fn shelf_client<T>(tracked v: T, x: T)
     let tracked (Tracked(inst), Tracked(owners), Tracked(unit)) = Shelf::Instance::<T>::initialize_with_unit(m, stored);
     assert(owners.map() =~= m);
     let tracked g = inst.peek_many(m, &owners, &unit);
-    assert(*g == m.to_imap());
-    assert(g[1] == x);
+    assert(g.dom() == m.dom());
+    assert(m.dom().contains(1));
+    assert(*g[1] == x);
 }
 
 }

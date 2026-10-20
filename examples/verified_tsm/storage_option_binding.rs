@@ -56,20 +56,16 @@ pub fn stored_option_binding_demo() -> (out: u64)
 {
     let (cell, Tracked(permission)) = PCell::new(7u64);
     let ghost p = permission;
-    let tracked mut base = IMap::tracked_empty();
-    proof {
-        base.tracked_insert(0int, permission);
-    }
+    // The storage is one `IMap<__StorageKey, __StorageValue>`: here the tagged
+    // `Option` of the one `storage_option` field (`__pack_stored`).
+    let tracked base = StoredOption::__pack_stored(Some(permission));
     let tracked token = StoredOption::Protocol::<u64>::initialize(base, p);
     let tracked (token, mut withdrawn) = StoredOption::Protocol::<u64>::take(token);
-    let tracked mut permission = withdrawn.tracked_remove(0int);
+    let tracked mut permission = StoredOption::__unwrap_stored(withdrawn.tracked_remove(StoredOption::__StorageKey::stored));
     let before = cell.replace(Tracked(&mut permission), 9u64);
     assert(before == 7);
     let ghost p = permission;
-    let tracked mut deposit = IMap::tracked_empty();
-    proof {
-        deposit.tracked_insert(0int, permission);
-    }
+    let tracked deposit = StoredOption::__pack_stored(Some(permission));
     assert(!token.fragment().full->Some_0->Exclusive_0);
     assert(token.fragment().expected->Some_0->Exclusive_0 == None);
     assert(token.fragment().cell->Some_0->Agree_0 == p.id());
@@ -95,7 +91,7 @@ pub fn stored_option_binding_demo() -> (out: u64)
     assert(token.fragment().full->Some_0->Exclusive_0);
     assert(token.fragment().expected->Some_0->Exclusive_0 == Some(p));
     let tracked (_token, mut withdrawn) = StoredOption::Protocol::<u64>::take(token);
-    let tracked permission = withdrawn.tracked_remove(0int);
+    let tracked permission = StoredOption::__unwrap_stored(withdrawn.tracked_remove(StoredOption::__StorageKey::stored));
     cell.into_inner(Tracked(permission))
 }
 

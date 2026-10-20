@@ -24,9 +24,10 @@ verified_tokenized_state_machine! {
 
 pub proof fn rejected() {
     let tracked base = IMap::tracked_empty();
+    assert(base =~= WrongDeposit::__tag_stored(IMap::empty()));
     let tracked token = WrongDeposit::Protocol::initialize(base);
     let tracked mut deposit = IMap::tracked_empty();
-    deposit.tracked_insert(1nat, 42nat);
+    deposit.tracked_insert(WrongDeposit::__StorageKey::stored(1nat), WrongDeposit::__StorageValue::stored(42nat));
     let tracked _token = WrongDeposit::Protocol::put(token, deposit);
 }
 

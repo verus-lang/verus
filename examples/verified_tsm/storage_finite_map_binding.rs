@@ -78,21 +78,25 @@ pub fn stored_finite_map_demo() -> (out: u64)
 {
     let (cell, Tracked(permission)) = PCell::new(7u64);
     let ghost p = permission;
-    let tracked mut base = IMap::tracked_empty();
+    // The storage is one `IMap<__StorageKey, __StorageValue>`; `__pack_stored`
+    // tags a finite map of the `stored` field.
+    let tracked mut base = Map::tracked_empty();
     proof {
         base.tracked_insert(0nat, permission);
     }
-    assert(Map::empty().insert(0nat, p).to_imap() =~= base);
-    let tracked token = StoredFiniteMap::Protocol::<u64>::initialize(base, p);
-    let tracked (token, mut withdrawn) = StoredFiniteMap::Protocol::<u64>::take(token);
-    let tracked mut permission = withdrawn.tracked_remove(0nat);
+    assert(Map::empty().insert(0nat, p) =~= base);
+    let tracked token = StoredFiniteMap::Protocol::<u64>::initialize(StoredFiniteMap::__pack_stored(base), p);
+    let tracked (token, withdrawn) = StoredFiniteMap::Protocol::<u64>::take(token);
+    let tracked mut withdrawn = withdrawn;
+    let tracked mut permission = StoredFiniteMap::__unwrap_stored(withdrawn.tracked_remove(StoredFiniteMap::__StorageKey::stored(0nat)));
     let before = cell.replace(Tracked(&mut permission), 9u64);
     assert(before == 7);
     let ghost p = permission;
-    let tracked mut deposit = IMap::tracked_empty();
+    let tracked mut deposit = Map::tracked_empty();
     proof {
         deposit.tracked_insert(0nat, permission);
     }
+    let tracked deposit = StoredFiniteMap::__pack_stored(deposit);
     assert(!token.fragment().full->Some_0->Exclusive_0);
     assert(token.fragment().expected->Some_0->Exclusive_0 == None);
     assert(token.fragment().cell->Some_0->Agree_0 == p.id());
@@ -109,14 +113,17 @@ pub fn stored_finite_map_demo() -> (out: u64)
                     == StoredFiniteMap::Protocol::<u64>::embed(
                     pre,
                 ) implies StoredFiniteMap::State::<u64>::put_enabled(pre, p) && deposit
-                == StoredFiniteMap::State::<u64>::put_deposited(pre, p) by {};
+                == StoredFiniteMap::State::<u64>::put_deposited(pre, p) by {
+                assert(deposit =~= StoredFiniteMap::State::<u64>::put_deposited(pre, p));
+            };
         }
     }
     let tracked token = StoredFiniteMap::Protocol::<u64>::put(token, deposit, p);
     assert(token.fragment().full->Some_0->Exclusive_0);
     assert(token.fragment().expected->Some_0->Exclusive_0 == Some(p));
-    let tracked (_token, mut withdrawn) = StoredFiniteMap::Protocol::<u64>::take_birds(token);
-    let tracked permission = withdrawn.tracked_remove(0nat);
+    let tracked (_token, withdrawn) = StoredFiniteMap::Protocol::<u64>::take_birds(token);
+    let tracked mut withdrawn = withdrawn;
+    let tracked permission = StoredFiniteMap::__unwrap_stored(withdrawn.tracked_remove(StoredFiniteMap::__StorageKey::stored(0nat)));
     cell.into_inner(Tracked(permission))
 }
 

@@ -109,6 +109,9 @@ verified_tokenized_state_machine! {
 
         transition!{
             store(m: Map<int, int>) {
+                // A general deposit into a `storage_imap` field is tagged key
+                // by key: its domain is finite.
+                require(m.to_imap().dom().finite());
                 remove free -= (m.dom());
                 add claims += (m);
                 deposit vault += (m.to_imap());
@@ -165,6 +168,8 @@ proof fn bank_client() {
     deposit.tracked_insert(2int, 20int);
     assert(deposit == m.to_imap());
     assert(m.dom() <= free.set());
+    assert(m.to_imap().dom() =~= m.dom().to_iset());
+    vstd::set::lemma_to_iset_finite(m.dom());
     // The operation consumes only a token collection, so it takes a unit.
     let tracked mut epoch = epoch;
     let tracked u = inst.unit_from_epoch(&mut epoch);

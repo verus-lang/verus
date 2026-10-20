@@ -6,10 +6,10 @@
 //!
 //! * `guard f >= (Some(v))` on a `storage_option`: `&V` (as for `Some(v)`);
 //! * `guard f >= (e)` on a `storage_option`: `Option<&V>`;
-//! * `guard f >= (m)` on a `storage_map` (the only storage field):
-//!   `&IMap<K, V>`, equal to `m.to_imap()`;
-//! * `guard f >= (m)` on a `storage_imap` (the only storage field): `&IMap<K, V>`,
-//!   as in the trusted interface.
+//! * `guard f >= (m)` on a `storage_map`: `Map<K, &V>`, the guarded values
+//!   at the keys of `m`;
+//! * `guard f >= (m)` on a `storage_imap`: `IMap<K, &V>`, likewise (built key by
+//!   key, so `m` needs a finite domain, stated with a `require`).
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 use vstd::tokens::*;
@@ -141,6 +141,7 @@ verified_tokenized_state_machine! {
 
         init!{
             initialize(m: IMap<int, u64>) {
+                require(m.dom().finite());
                 init owners = m;
                 init store = m;
             }
@@ -148,6 +149,7 @@ verified_tokenized_state_machine! {
 
         property!{
             peek_many(m: IMap<int, u64>) {
+                require(m.dom().finite());
                 have owners >= (m);
                 guard store >= (m);
             }
@@ -185,8 +187,9 @@ proof fn store_client() {
     let tracked (Tracked(inst), Tracked(owners)) = Store::Instance::initialize(m, stored);
     assert(owners.map() =~= m);
     let tracked g = inst.peek_many(m, &owners);
-    assert(*g == m.to_imap());
-    assert(g[2] == 20);
+    assert(g.dom() == m.dom());
+    assert(m.dom().contains(2));
+    assert(*g[2] == 20);
 }
 
 proof fn istore_client() {
@@ -197,7 +200,9 @@ proof fn istore_client() {
     let tracked (Tracked(inst), Tracked(owners)) = IStore::Instance::initialize(m, stored);
     assert(owners.map() =~= m);
     let tracked g = inst.peek_many(m, &owners);
-    assert(*g == m);
+    assert(g.dom() == m.dom());
+    assert(m.dom().contains(1));
+    assert(*g[1] == 10);
 }
 
 }

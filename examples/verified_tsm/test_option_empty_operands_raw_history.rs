@@ -228,11 +228,11 @@ pub proof fn no_op_ready(owned: SafeY::Fragment)
             frame,
         ) == SafeY::Protocol::embed(pre) implies SafeY::State::tr1_enabled(pre)
         && SafeY::State::tr1_owners_enabled(pre, owned, SafeY::Fragment::unit()) && IMap::empty()
-        == SafeY::State::tr1_deposited(pre) && SafeY::State::tr2_enabled(pre)
+        =~= SafeY::State::tr1_deposited(pre) && SafeY::State::tr2_enabled(pre)
         && SafeY::State::tr2_owners_enabled(pre, owned, SafeY::Fragment::unit()) && IMap::empty()
-        == SafeY::State::tr2_deposited(pre) && SafeY::State::tr3_enabled(pre)
+        =~= SafeY::State::tr2_deposited(pre) && SafeY::State::tr3_enabled(pre)
         && SafeY::State::tr3_owners_enabled(pre, owned, SafeY::Fragment::unit()) && IMap::empty()
-        == SafeY::State::tr3_deposited(pre) by {};
+        =~= SafeY::State::tr3_deposited(pre) by {};
 }
 
 pub proof fn retained_permission_ready(owned: SafeY::Fragment, value: int)
@@ -301,9 +301,10 @@ pub proof fn empty_resource_history() {
 }
 
 pub proof fn present_resource_history() {
-    let tracked mut base = IMap::tracked_empty();
+    // The storage is one `IMap<__StorageKey, __StorageValue>`; `__pack_storage_opt`
+    // tags the `Option` of the `storage_option` field.
     let tracked actual_permission = 9int;
-    base.tracked_insert(0int, actual_permission);
+    let tracked base = SafeY::__pack_storage_opt(Some(actual_permission));
     let tracked token = SafeY::Protocol::initialize(base, Some(7int), Some(9int));
     let tracked guard = SafeY::Protocol::ro(&token);
     assert(*guard =~= IMap::empty());
@@ -350,7 +351,7 @@ pub proof fn present_resource_history() {
     ));
     retained_permission_ready(token.fragment(), 9int);
     let tracked retained = SafeY::Protocol::retained_permission(&token, 9int);
-    let tracked actual_borrow = retained.tracked_borrow(0int);
+    let tracked actual_borrow = SafeY::__borrow_storage_opt(retained).tracked_unwrap();
     assert(*actual_borrow == 9int);
     token.validate();
 }

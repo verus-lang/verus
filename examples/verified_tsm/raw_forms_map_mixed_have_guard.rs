@@ -85,22 +85,24 @@ proof fn client(tracked a: u64, tracked b: u64)
         b == 20,
 {
     let m = Map::<nat, u64>::empty().insert(1nat, 10u64).insert(2nat, 20u64);
-    let tracked mut base = IMap::tracked_empty();
+    let tracked mut base = Map::tracked_empty();
     base.tracked_insert(1nat, a);
     base.tracked_insert(2nat, b);
-    assert(base =~= m.to_imap());
-    let tracked token = Mixed::Protocol::initialize(base, m);
+    assert(base =~= m);
+    // The storage is one `IMap<__StorageKey, __StorageValue>`; `__pack_store`
+    // tags a finite map of the `store` field.
+    let tracked token = Mixed::Protocol::initialize(Mixed::__pack_store(base), m);
     let s = choose|s: Mixed::State|
         Mixed::State::initialize(s, m) && s.invariant()
         && token.fragment() == Mixed::Protocol::embed(s);
     // The general operand and the singleton overlap at key 2.
     peek_ready(token.fragment(), s, m, 2nat, 20u64);
     let tracked g = Mixed::Protocol::peek(&token, m, 2nat, 20u64);
-    assert(g.contains_key(2nat) && g[2nat] == 20);
+    assert(g.contains_key(Mixed::__StorageKey::store(2nat)) && g[Mixed::__StorageKey::store(2nat)] == Mixed::__StorageValue::store(20));
     let e = Map::<nat, u64>::empty();
     peek_ready(token.fragment(), s, e, 1nat, 10u64);
     let tracked g = Mixed::Protocol::peek(&token, e, 1nat, 10u64);
-    assert(g[1nat] == 10);
+    assert(g[Mixed::__StorageKey::store(1nat)] == Mixed::__StorageValue::store(10));
 }
 
 fn main() {}

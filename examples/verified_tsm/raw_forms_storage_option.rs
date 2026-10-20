@@ -1,7 +1,7 @@
 //! Raw backend statement forms over several `storage_option` fields: deposits
 //! into, withdrawals from and guards of two cells on one path, for cells of one
-//! permission type (integer-keyed carrier) and of different permission types
-//! (field-tagged carrier).
+//! permission type and of different permission types (both stored as one
+//! `IMap<__StorageKey, __StorageValue>`, tagged by field).
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 use vstd::resource::algebra::ResourceAlgebra;
@@ -94,14 +94,14 @@ verified_tokenized_state_machine! {
 
 proof fn same_cells(tracked a: Tok, tracked b: Tok) {
     assert forall|s: SameCells::State| SameCells::State::initialize_strong(s)
-        implies IMap::<int, Tok>::empty() == s.__storage() by {
-        assert(IMap::<int, Tok>::empty() =~= s.__storage());
+        implies IMap::<SameCells::__StorageKey, SameCells::__StorageValue>::empty() == s.__storage() by {
+        assert(IMap::<SameCells::__StorageKey, SameCells::__StorageValue>::empty() =~= s.__storage());
     }
     let tracked token = SameCells::Protocol::initialize(IMap::tracked_empty());
     let ghost f = token.fragment();
     let tracked mut d = IMap::tracked_empty();
-    d.tracked_insert(0int, a);
-    d.tracked_insert(1int, b);
+    d.tracked_insert(SameCells::__StorageKey::left, SameCells::__StorageValue::left(a));
+    d.tracked_insert(SameCells::__StorageKey::right, SameCells::__StorageValue::right(b));
     assert forall|z: SameCells::Fragment, pre: SameCells::State|
         pre.invariant() && SameCells::Fragment::op(SameCells::Fragment::op(f, SameCells::Fragment::unit()), z)
             == SameCells::Protocol::embed(pre)
@@ -110,24 +110,25 @@ proof fn same_cells(tracked a: Tok, tracked b: Tok) {
     }
     let tracked token = SameCells::Protocol::fill(token, d, a, b);
     let tracked both = SameCells::Protocol::both(&token, a, b);
-    assert(both[0int] == a && both[1int] == b);
+    assert(both[SameCells::__StorageKey::left] == SameCells::__StorageValue::left(a)
+        && both[SameCells::__StorageKey::right] == SameCells::__StorageValue::right(b));
     let ghost before = token.fragment();
     let tracked (token, mut w) = SameCells::Protocol::drain(token);
     let (pre, post, frame) = SameCells::Protocol::drain_witness(
         before, SameCells::Fragment::unit(), token.fragment(), IMap::empty(), w);
-    assert(w.contains_key(0int) && w.contains_key(1int));
-    let tracked a2 = w.tracked_remove(0int);
+    assert(w.contains_key(SameCells::__StorageKey::left) && w[SameCells::__StorageKey::left] is left);
+    let tracked a2 = SameCells::__unwrap_left(w.tracked_remove(SameCells::__StorageKey::left));
     assert(a2 == a);
 }
 
 proof fn mixed_cells(tracked a: Tok, tracked b: Other) {
+    // Payloads of different types are tagged by field, as for one type.
     assert forall|s: MixedCells::State| MixedCells::State::initialize_strong(s)
         implies IMap::<MixedCells::__StorageKey, MixedCells::__StorageValue>::empty() == s.__storage() by {
         assert(IMap::<MixedCells::__StorageKey, MixedCells::__StorageValue>::empty() =~= s.__storage());
     }
     let tracked token = MixedCells::Protocol::initialize(IMap::tracked_empty());
     let ghost f = token.fragment();
-    // Payloads of different types share one carrier, tagged by field.
     let tracked mut d = IMap::tracked_empty();
     d.tracked_insert(MixedCells::__StorageKey::left, MixedCells::__StorageValue::left(a));
     d.tracked_insert(MixedCells::__StorageKey::right, MixedCells::__StorageValue::right(b));
@@ -142,12 +143,8 @@ proof fn mixed_cells(tracked a: Tok, tracked b: Other) {
     let tracked (token, mut w) = MixedCells::Protocol::drain(token, a, b);
     let (pre, post, frame) = MixedCells::Protocol::drain_witness(
         before, MixedCells::Fragment::unit(), token.fragment(), IMap::empty(), w, a, b);
-    assert(w.contains_key(MixedCells::__StorageKey::right));
-    let tracked tagged = w.tracked_remove(MixedCells::__StorageKey::right);
-    let tracked b2 = match tagged {
-        MixedCells::__StorageValue::right(b2) => b2,
-        _ => proof_from_false(),
-    };
+    assert(w.contains_key(MixedCells::__StorageKey::right) && w[MixedCells::__StorageKey::right] is right);
+    let tracked b2 = MixedCells::__unwrap_right(w.tracked_remove(MixedCells::__StorageKey::right));
     assert(b2 == b);
 }
 

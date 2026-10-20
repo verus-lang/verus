@@ -79,12 +79,24 @@ pub open spec fn auth_of(f: Slots::Fragment) -> Map<nat, Tok> {
     f.auth->Some_0->Exclusive_0
 }
 
+/// The storage of `Slots`: one `IMap<__StorageKey, __StorageValue>`, with the
+/// `stored` entry at `k` under `__StorageKey::stored(k)`.
+pub type Storage = IMap<Slots::__StorageKey, Slots::__StorageValue>;
+
+pub open spec fn at(k: nat) -> Slots::__StorageKey {
+    Slots::__StorageKey::stored(k)
+}
+
+pub open spec fn val(t: Tok) -> Slots::__StorageValue {
+    Slots::__StorageValue::stored(t)
+}
+
 /// A whole-state token determines the completion, so the deposits are known.
-proof fn deposits_known(f: Slots::Fragment, d: IMap<nat, Tok>, a: Tok, b: Tok)
+proof fn deposits_known(f: Slots::Fragment, d: Storage, a: Tok, b: Tok)
     requires
         f.auth is Some && f.auth->Some_0 is Exclusive,
         !auth_of(f).contains_key(1nat) && !auth_of(f).contains_key(2nat),
-        d == IMap::empty().insert(1nat, a).insert(2nat, b),
+        d == IMap::empty().insert(at(1nat), val(a)).insert(at(2nat), val(b)),
     ensures
         Slots::Protocol::put_two_requires(f, Slots::Fragment::unit(), d, a, b),
 {
@@ -97,12 +109,12 @@ proof fn deposits_known(f: Slots::Fragment, d: IMap<nat, Tok>, a: Tok, b: Tok)
     }
 }
 
-proof fn rotate_ready(f: Slots::Fragment, d: IMap<nat, Tok>, a: Tok, b: Tok)
+proof fn rotate_ready(f: Slots::Fragment, d: Storage, a: Tok, b: Tok)
     requires
         f.auth is Some && f.auth->Some_0 is Exclusive,
         auth_of(f).contains_key(1nat) && auth_of(f)[1nat] == a,
         !auth_of(f).contains_key(3nat) && !auth_of(f).contains_key(4nat),
-        d == IMap::empty().insert(3nat, b).insert(4nat, a),
+        d == IMap::empty().insert(at(3nat), val(b)).insert(at(4nat), val(a)),
     ensures
         Slots::Protocol::rotate_requires(f, Slots::Fragment::unit(), d, a, b),
 {
@@ -121,29 +133,30 @@ proof fn history(tracked a: Tok, tracked b: Tok, tracked c: Tok, tracked e: Tok)
         e == a,
 {
     assert(IMap::<nat, Tok>::empty() =~= Map::<nat, Tok>::empty().to_imap());
+    assert(Slots::__tag_stored(IMap::empty()) =~= IMap::empty());
     let tracked token = Slots::Protocol::initialize(IMap::tracked_empty());
-    let tracked mut d = IMap::tracked_empty();
-    d.tracked_insert(1nat, a);
-    d.tracked_insert(2nat, b);
+    let tracked mut d: Storage = IMap::tracked_empty();
+    d.tracked_insert(at(1nat), Slots::__StorageValue::stored(a));
+    d.tracked_insert(at(2nat), Slots::__StorageValue::stored(b));
     deposits_known(token.fragment(), d, a, b);
     let tracked token = Slots::Protocol::put_two(token, d, a, b);
     let tracked both = Slots::Protocol::two(&token, a, b);
-    assert(both.contains_key(1nat) && both[1nat] == a);
+    assert(both.contains_key(at(1nat)) && both[at(1nat)] == val(a));
     let tracked (token, mut w) = Slots::Protocol::take_two(token, a, b);
-    let tracked a = w.tracked_remove(1nat);
-    let tracked b = w.tracked_remove(2nat);
-    let tracked mut d = IMap::tracked_empty();
-    d.tracked_insert(1nat, a);
-    d.tracked_insert(2nat, b);
+    let tracked a = Slots::__unwrap_stored(w.tracked_remove(at(1nat)));
+    let tracked b = Slots::__unwrap_stored(w.tracked_remove(at(2nat)));
+    let tracked mut d: Storage = IMap::tracked_empty();
+    d.tracked_insert(at(1nat), Slots::__StorageValue::stored(a));
+    d.tracked_insert(at(2nat), Slots::__StorageValue::stored(b));
     deposits_known(token.fragment(), d, a, b);
     let tracked token = Slots::Protocol::put_two(token, d, a, b);
     // Withdraw slot 1 while depositing slots 3 and 4 in the same exchange.
-    let tracked mut d = IMap::tracked_empty();
-    d.tracked_insert(3nat, c);
-    d.tracked_insert(4nat, e);
+    let tracked mut d: Storage = IMap::tracked_empty();
+    d.tracked_insert(at(3nat), Slots::__StorageValue::stored(c));
+    d.tracked_insert(at(4nat), Slots::__StorageValue::stored(e));
     rotate_ready(token.fragment(), d, a, b);
     let tracked (token, mut w) = Slots::Protocol::rotate(token, d, a, b);
-    let tracked a2 = w.tracked_remove(1nat);
+    let tracked a2 = Slots::__unwrap_stored(w.tracked_remove(at(1nat)));
     assert(a2 == a);
     assert(auth_of(token.fragment()) =~= Map::empty().insert(2nat, b).insert(3nat, b).insert(4nat, a));
 }

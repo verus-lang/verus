@@ -15,7 +15,8 @@ pub fn cannot_choose_an_unobserved_guard_key() {
     let ghost p = permission;
     let tracked mut base = IMap::tracked_empty();
     proof {
-        base.tracked_insert(0int, permission);
+        base.tracked_insert(GuardedReaders::__StorageKey::stored(0int), GuardedReaders::__StorageValue::stored(permission));
+        assert(base =~= GuardedReaders::__tag_stored(IMap::empty().insert(0int, p)));
     }
     let tracked all = GuardedReaders::Protocol::<u64>::initialize(base, p);
     let ghost reader = GuardedReaders::Fragment::<u64> {

@@ -757,11 +757,11 @@ pub proof fn initial_tokens(
         token.fragment().m == map_frag(IMap::empty().insert(1int, value)),
 {
     let entries = IMap::<int, Goo>::empty().insert(1int, value);
-    let tracked mut base = IMap::tracked_empty();
+    let tracked mut base = Map::tracked_empty();
     base.tracked_insert(StorageKey::MapKey(1int), map_permission);
     base.tracked_insert(StorageKey::Optional, option_permission);
-    assert(base =~= packed(entries, Some(value)));
-    let tracked token = SafeY::Protocol::initialize(base, entries, Some(value));
+    assert(base.to_imap() =~= packed(entries, Some(value)));
+    let tracked token = SafeY::Protocol::initialize(SafeY::__pack_stored(base), entries, Some(value));
     let initial = choose|state: SafeY::State|
         SafeY::State::initialize(state, entries, Some(value)) && state.invariant()
             && token.fragment() == SafeY::Protocol::embed(state);
@@ -867,7 +867,7 @@ pub proof fn test_inst1() {
     original_have_ready(token.fragment(), Goo::Bar);
     let tracked token = SafeY::Protocol::tr7(token, 1int);
     let tracked (token, mut opt_withdrawn) = SafeY::Protocol::tr1(token);
-    let tracked wi = opt_withdrawn.tracked_remove(StorageKey::Optional);
+    let tracked wi = SafeY::__unwrap_stored(opt_withdrawn.tracked_remove(SafeY::__StorageKey::stored(StorageKey::Optional)));
     assert(wi == Goo::Bar);
     original_map_remove_ready(token.fragment(), Goo::Bar);
     let old = token.fragment();
@@ -885,8 +885,8 @@ pub proof fn test_inst1() {
     packed_map_at(pre.m, pre.opt, 1int);
     packed_map_at(post.m, post.opt, 1int);
     assert(!post.stored.dom().contains(StorageKey::MapKey(1int)));
-    assert(map_withdrawn[StorageKey::MapKey(1int)] == Goo::Bar);
-    let tracked wi2 = map_withdrawn.tracked_remove(StorageKey::MapKey(1int));
+    assert(map_withdrawn[SafeY::__StorageKey::stored(StorageKey::MapKey(1int))] == SafeY::__StorageValue::stored(Goo::Bar));
+    let tracked wi2 = SafeY::__unwrap_stored(map_withdrawn.tracked_remove(SafeY::__StorageKey::stored(StorageKey::MapKey(1int))));
     assert(wi2 == Goo::Bar);
     token.validate();
 }
@@ -896,7 +896,7 @@ pub proof fn test_inst2() {
     original_have_ready(token.fragment(), Goo::Qux(8u64));
     let tracked token = SafeY::Protocol::tr8(token, 1int);
     let tracked (token, mut opt_withdrawn) = SafeY::Protocol::tr2(token);
-    let tracked wi = opt_withdrawn.tracked_remove(StorageKey::Optional);
+    let tracked wi = SafeY::__unwrap_stored(opt_withdrawn.tracked_remove(SafeY::__StorageKey::stored(StorageKey::Optional)));
     assert(wi == Goo::Qux(8u64));
     original_map_remove_ready(token.fragment(), Goo::Qux(8u64));
     let old = token.fragment();
@@ -914,8 +914,8 @@ pub proof fn test_inst2() {
     packed_map_at(pre.m, pre.opt, 1int);
     packed_map_at(post.m, post.opt, 1int);
     assert(!post.stored.dom().contains(StorageKey::MapKey(1int)));
-    assert(map_withdrawn[StorageKey::MapKey(1int)] == Goo::Qux(8u64));
-    let tracked wi2 = map_withdrawn.tracked_remove(StorageKey::MapKey(1int));
+    assert(map_withdrawn[SafeY::__StorageKey::stored(StorageKey::MapKey(1int))] == SafeY::__StorageValue::stored(Goo::Qux(8u64)));
+    let tracked wi2 = SafeY::__unwrap_stored(map_withdrawn.tracked_remove(SafeY::__StorageKey::stored(StorageKey::MapKey(1int))));
     assert(wi2 == Goo::Qux(8u64));
     token.validate();
 }
@@ -929,7 +929,7 @@ pub proof fn test_inst3() {
     original_have_ready(token.fragment(), Goo::Tal(8u64, 9u64));
     let tracked token = SafeY::Protocol::tr9(token, 1int);
     let tracked (token, mut opt_withdrawn) = SafeY::Protocol::tr3(token);
-    let tracked wi = opt_withdrawn.tracked_remove(StorageKey::Optional);
+    let tracked wi = SafeY::__unwrap_stored(opt_withdrawn.tracked_remove(SafeY::__StorageKey::stored(StorageKey::Optional)));
     assert(wi == Goo::Tal(8u64, 9u64));
     original_map_remove_ready(token.fragment(), Goo::Tal(8u64, 9u64));
     let old = token.fragment();
@@ -947,8 +947,8 @@ pub proof fn test_inst3() {
     packed_map_at(pre.m, pre.opt, 1int);
     packed_map_at(post.m, post.opt, 1int);
     assert(!post.stored.dom().contains(StorageKey::MapKey(1int)));
-    assert(map_withdrawn[StorageKey::MapKey(1int)] == Goo::Tal(8u64, 9u64));
-    let tracked wi2 = map_withdrawn.tracked_remove(StorageKey::MapKey(1int));
+    assert(map_withdrawn[SafeY::__StorageKey::stored(StorageKey::MapKey(1int))] == SafeY::__StorageValue::stored(Goo::Tal(8u64, 9u64)));
+    let tracked wi2 = SafeY::__unwrap_stored(map_withdrawn.tracked_remove(SafeY::__StorageKey::stored(StorageKey::MapKey(1int))));
     assert(wi2 == Goo::Tal(8u64, 9u64));
     token.validate();
 }

@@ -31,7 +31,8 @@ verified_tokenized_state_machine! {
 
 pub proof fn rejected() {
     let tracked mut base = IMap::tracked_empty();
-    base.tracked_insert(0nat, 42nat);
+    base.tracked_insert(KeyRead::__StorageKey::stored(0nat), KeyRead::__StorageValue::stored(42nat));
+    assert(base =~= KeyRead::__tag_stored(IMap::empty().insert(0nat, 42nat)));
     let tracked token = KeyRead::Protocol::initialize(base);
     let owned = KeyRead::Fragment { key: None, full: Some(ExclusiveRA::Exclusive(true)) };
     let key = KeyRead::Fragment { key: Some(AgreementRA::Agree(0nat)), full: None };

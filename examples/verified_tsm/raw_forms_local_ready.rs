@@ -48,17 +48,21 @@ verified_tokenized_state_machine! {
 }
 proof fn client(tracked a: Tok, tracked b: Tok, tracked c: Tok) {
     assert(IMap::<nat, Tok>::empty() =~= Map::<nat, Tok>::empty().to_imap());
+    // The storage is one `IMap<__StorageKey, __StorageValue>`: the `stored`
+    // entry at `k` is under `__StorageKey::stored(k)`.
+    assert(SubUp::__tag_stored(IMap::empty()) =~= IMap::empty());
     let tracked token = SubUp::Protocol::initialize(IMap::tracked_empty());
     let tracked mut d = IMap::tracked_empty();
-    d.tracked_insert(1nat, a);
-    d.tracked_insert(2nat, b);
-    assert(d =~= IMap::empty().insert(1nat, a).union_prefer_right(IMap::empty().insert(2nat, b)));
+    d.tracked_insert(SubUp::__StorageKey::stored(1nat), SubUp::__StorageValue::stored(a));
+    d.tracked_insert(SubUp::__StorageKey::stored(2nat), SubUp::__StorageValue::stored(b));
+    assert(d =~= IMap::empty().insert(SubUp::__StorageKey::stored(1nat), SubUp::__StorageValue::stored(a))
+        .union_prefer_right(IMap::empty().insert(SubUp::__StorageKey::stored(2nat), SubUp::__StorageValue::stored(b))));
     let tracked token = SubUp::Protocol::put_two_local(token, d, a, b);
     let tracked mut d = IMap::tracked_empty();
-    d.tracked_insert(3nat, c);
-    assert(d =~= IMap::empty().insert(3nat, c));
+    d.tracked_insert(SubUp::__StorageKey::stored(3nat), SubUp::__StorageValue::stored(c));
+    assert(d =~= IMap::empty().insert(SubUp::__StorageKey::stored(3nat), SubUp::__StorageValue::stored(c)));
     let tracked (token, mut w) = SubUp::Protocol::swap_local(token, d, a, c);
-    let tracked a2 = w.tracked_remove(1nat);
+    let tracked a2 = SubUp::__unwrap_stored(w.tracked_remove(SubUp::__StorageKey::stored(1nat)));
     assert(a2 == a);
 }
 fn main() {}

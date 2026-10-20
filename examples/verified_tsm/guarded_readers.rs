@@ -44,9 +44,12 @@ pub fn borrowed_reader_demo() -> (out: u64)
 {
     let (cell, Tracked(permission)) = PCell::new(7u64);
     let ghost p = permission;
+    // The storage is one `IMap<__StorageKey, __StorageValue<T>>`: the `stored`
+    // entry at `k` is under `__StorageKey::stored(k)`.
     let tracked mut base = IMap::tracked_empty();
     proof {
-        base.tracked_insert(0int, permission);
+        base.tracked_insert(GuardedReaders::__StorageKey::stored(0int), GuardedReaders::__StorageValue::stored(permission));
+        assert(base =~= GuardedReaders::__tag_stored(IMap::empty().insert(0int, p)));
     }
     let tracked token = GuardedReaders::Protocol::<u64>::initialize(base, p);
     proof {
@@ -72,7 +75,7 @@ pub fn borrowed_reader_demo() -> (out: u64)
         }
     }
     let tracked guarded = GuardedReaders::Protocol::<u64>::reader_guard(&token, p);
-    let tracked permission = guarded.tracked_borrow(0int);
+    let tracked permission = GuardedReaders::__borrow_stored(guarded, 0int).tracked_unwrap();
     *cell.borrow(Tracked(permission))
 }
 

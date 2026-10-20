@@ -29,11 +29,13 @@ verified_tokenized_state_machine! {
             &&& self.k > 0
             &&& self.v.dom().contains(self.k)
             &&& self.v[self.k] == 5
+            // General storage_imap withdrawals need finite operands.
+            &&& self.v.dom().finite()
         }
 
         init!{
             initialize(k: int, m: IMap<int, int>) {
-                require(k > 0 && m.dom().contains(k) && m[k] == 5);
+                require(k > 0 && m.dom().contains(k) && m[k] == 5 && m.dom().finite());
                 init k = k;
                 init v = m;
             }
@@ -67,6 +69,7 @@ verified_tokenized_state_machine! {
         #[inductive(take_rest)]
         fn take_rest_inductive(pre: Self, post: Self) {
             assert(post.v.dom().contains(post.k));
+            assert(post.v.dom() =~= ISet::empty().insert(post.k));
         }
     }
 }

@@ -161,14 +161,14 @@ pub fn guarded_cell_demo() -> (value: u64)
 {
     let (cell, Tracked(permission)) = PCell::new(42u64);
     let ghost p = permission;
+    // The machine's storage is one `IMap<__StorageKey, __StorageValue>`;
+    // `__pack_perm` tags the `Option` of the `storage_option` field and
+    // `__borrow_perm` borrows its value.
     let tracked token = DepositedCell::Protocol::initialize(IMap::tracked_empty(), p);
-    let tracked mut deposit = IMap::tracked_empty();
-    proof {
-        deposit.tracked_insert(0int, permission);
-    }
+    let tracked deposit = DepositedCell::__pack_perm(Some(permission));
     let tracked token = DepositedCell::Protocol::deposit_local(token, deposit, p);
     let tracked guard = DepositedCell::Protocol::get_perm_ref(&token, p);
-    let value = *cell.borrow(Tracked(guard.tracked_borrow(0int)));
+    let value = *cell.borrow(Tracked(DepositedCell::__borrow_perm(guard).tracked_unwrap()));
     assert(value == 42);
     value
 }

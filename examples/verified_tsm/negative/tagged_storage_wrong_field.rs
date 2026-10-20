@@ -32,27 +32,27 @@ fn main() {
     proof {
         native.tracked_insert(4nat, pb);
     }
-    let tracked tagged_first = ActualTransfers::__StorageKey::__pack_first(Some(pa));
-    let tracked tagged_second = ActualTransfers::__StorageKey::__pack_second(native);
+    let tracked tagged_first = ActualTransfers::__pack_first(Some(pa));
+    let tracked tagged_second = ActualTransfers::__pack_second(native);
     proof {
         assert(tagged_first.dom().disjoint(tagged_second.dom()));
-        assert(tagged_first == ActualTransfers::__StorageKey::__tag_first(
-            ActualTransfers::__StorageKey::__untag_first(tagged_first),
+        assert(tagged_first == ActualTransfers::__tag_first(
+            ActualTransfers::__untag_first(tagged_first),
         ));
-        assert(tagged_second == ActualTransfers::__StorageKey::__tag_second(
-            ActualTransfers::__StorageKey::__untag_second(tagged_second),
+        assert(tagged_second == ActualTransfers::__tag_second(
+            ActualTransfers::__untag_second(tagged_second),
         ));
         assert(tagged_second.dom().finite());
     }
-    let tracked p_ref = ActualTransfers::__StorageKey::__borrow_first(&tagged_first);
-    let tracked q_ref = ActualTransfers::__StorageKey::__borrow_second(&tagged_second, 4nat);
+    let tracked p_ref = ActualTransfers::__borrow_first(&tagged_first);
+    let tracked q_ref = ActualTransfers::__borrow_second(&tagged_second, 4nat);
     let tracked p_ref = vstd::std_specs::option::OptionAdditionalFns::tracked_unwrap(p_ref);
     let av = a.borrow(Tracked(p_ref));
     let tracked q_ref = vstd::std_specs::option::OptionAdditionalFns::tracked_unwrap(q_ref);
     let bv = b.borrow(Tracked(q_ref));
     assert(*av == 17u64);
     assert(*bv);
-    let tracked pa = ActualTransfers::__StorageKey::__unpack_first(tagged_second);
+    let tracked pa = ActualTransfers::__unpack_first(tagged_second);
 }
 
 } // verus!

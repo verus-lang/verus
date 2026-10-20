@@ -58,14 +58,13 @@ fn optional_physical_transfer() -> (out: u64)
 {
     let (cell, Tracked(permission)) = PCell::new(7u64);
     let ghost value = permission;
-    let tracked mut initial = IMap::tracked_empty();
-    proof {
-        initial.tracked_insert(0int, permission);
-    }
+    // The machine's storage is one `IMap<__StorageKey, __StorageValue>`;
+    // `__pack_stored` tags the `Option` of the `storage_option` field.
+    let tracked initial = OptionalStorage::__pack_stored(Some(permission));
     let tracked token = OptionalStorage::Protocol::initialize(initial, cell.id(), Some(value));
     let tracked guard = OptionalStorage::Protocol::guard_optional(&token, Some(value));
     proof {
-        assert(guard[0int] == value);
+        assert(*guard =~= OptionalStorage::__tag_stored(Some(value)));
     }
     let ghost before = token.fragment();
     let tracked (token, empty) = OptionalStorage::Protocol::withdraw_optional(token, None);
@@ -80,19 +79,15 @@ fn optional_physical_transfer() -> (out: u64)
         );
     }
     proof {
-        assert(empty.dom().is_empty());
+        assert(empty =~= IMap::empty());
     }
-    let tracked token = OptionalStorage::Protocol::deposit_optional_local(
-        token,
-        IMap::tracked_empty(),
-        None,
-    );
+    let tracked token = OptionalStorage::Protocol::deposit_optional_local(token, IMap::tracked_empty(), None);
     let tracked empty_guard = OptionalStorage::Protocol::guard_optional(&token, None);
     proof {
-        assert(empty_guard.dom().is_empty());
+        assert(*empty_guard =~= IMap::empty());
     }
     let ghost before = token.fragment();
-    let tracked (token, mut withdrawn) = OptionalStorage::Protocol::withdraw_optional(
+    let tracked (token, withdrawn) = OptionalStorage::Protocol::withdraw_optional(
         token,
         Some(value),
     );
@@ -107,24 +102,27 @@ fn optional_physical_transfer() -> (out: u64)
         );
         assert(token.fragment().auth->Some_0->Exclusive_0 is None);
     }
-    let tracked mut permission = withdrawn.tracked_remove(0int);
+    let tracked mut withdrawn = withdrawn;
+    let tracked mut permission = OptionalStorage::__unwrap_stored(
+        withdrawn.tracked_remove(OptionalStorage::__StorageKey::stored),
+    );
     let old = cell.replace(Tracked(&mut permission), 9u64);
     assert(old == 7u64);
     let ghost value = permission;
-    let tracked mut deposit = IMap::tracked_empty();
-    proof {
-        deposit.tracked_insert(0int, permission);
-    }
+    let tracked deposit = OptionalStorage::__pack_stored(Some(permission));
     let tracked token = OptionalStorage::Protocol::deposit_optional_local(
         token,
         deposit,
         Some(value),
     );
-    let tracked (_, mut withdrawn) = OptionalStorage::Protocol::withdraw_optional(
+    let tracked (_, withdrawn) = OptionalStorage::Protocol::withdraw_optional(
         token,
         Some(value),
     );
-    let tracked permission = withdrawn.tracked_remove(0int);
+    let tracked mut withdrawn = withdrawn;
+    let tracked permission = OptionalStorage::__unwrap_stored(
+        withdrawn.tracked_remove(OptionalStorage::__StorageKey::stored),
+    );
     cell.into_inner(Tracked(permission))
 }
 

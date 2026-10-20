@@ -55,16 +55,19 @@ fn physical_map_transfer() -> (out: (u64, u64))
     let (right, Tracked(right_permission)) = PCell::new(8u64);
     let values = Ghost(Map::empty().insert(0nat, left_permission).insert(1nat, right_permission));
     let empty = Ghost(Map::<nat, PointsTo<u64>>::empty());
-    let tracked mut initial = IMap::tracked_empty();
+    // The storage is one `IMap<__StorageKey, __StorageValue>`; `__pack_stored`
+    // tags a finite map of the `stored` field.
+    let tracked mut initial = Map::tracked_empty();
     proof {
         initial.tracked_insert(0nat, left_permission);
         initial.tracked_insert(1nat, right_permission);
-        assert(initial =~= values@.to_imap());
+        assert(initial =~= values@);
     }
+    let tracked initial = MapStorage::__pack_stored(initial);
     let tracked token = MapStorage::Protocol::initialize(initial, values@);
     let tracked guard = MapStorage::Protocol::guard_many(&token, values@);
     proof {
-        assert(*guard =~= values@.to_imap());
+        assert(*guard =~= MapStorage::__tag_stored(values@.to_imap()));
     }
     let ghost before = token.fragment();
     let tracked (token, empty_output) = MapStorage::Protocol::withdraw_many(token, empty@);
@@ -77,22 +80,18 @@ fn physical_map_transfer() -> (out: (u64, u64))
             empty_output,
             empty@,
         );
-        assert(IMap::empty() =~= empty@.to_imap());
+        assert(IMap::empty() =~= MapStorage::__tag_stored(empty@.to_imap()));
     }
     proof {
         assert(empty_output.dom().is_empty());
     }
-    let tracked token = MapStorage::Protocol::deposit_many_local(
-        token,
-        IMap::tracked_empty(),
-        empty@,
-    );
+    let tracked token = MapStorage::Protocol::deposit_many_local(token, IMap::tracked_empty(), empty@);
     let tracked empty_guard = MapStorage::Protocol::guard_many(&token, empty@);
     proof {
         assert(empty_guard.dom().is_empty());
     }
     let ghost before = token.fragment();
-    let tracked (token, mut withdrawn) = MapStorage::Protocol::withdraw_many(token, values@);
+    let tracked (token, withdrawn) = MapStorage::Protocol::withdraw_many(token, values@);
     proof {
         let (pre, post, frame) = MapStorage::Protocol::withdraw_many_witness(
             before,
@@ -104,21 +103,24 @@ fn physical_map_transfer() -> (out: (u64, u64))
         );
         assert(token.fragment().auth->Some_0->Exclusive_0 =~= Map::empty());
     }
-    let tracked mut left_permission = withdrawn.tracked_remove(0nat);
-    let tracked mut right_permission = withdrawn.tracked_remove(1nat);
+    let tracked mut withdrawn = withdrawn;
+    let tracked mut left_permission = MapStorage::__unwrap_stored(withdrawn.tracked_remove(MapStorage::__StorageKey::stored(0nat)));
+    let tracked mut right_permission = MapStorage::__unwrap_stored(withdrawn.tracked_remove(MapStorage::__StorageKey::stored(1nat)));
     left.replace(Tracked(&mut left_permission), 9u64);
     right.replace(Tracked(&mut right_permission), 11u64);
     let values = Ghost(Map::empty().insert(0nat, left_permission).insert(1nat, right_permission));
-    let tracked mut deposit = IMap::tracked_empty();
+    let tracked mut deposit = Map::tracked_empty();
     proof {
         deposit.tracked_insert(0nat, left_permission);
         deposit.tracked_insert(1nat, right_permission);
-        assert(deposit =~= values@.to_imap());
+        assert(deposit =~= values@);
     }
+    let tracked deposit = MapStorage::__pack_stored(deposit);
     let tracked token = MapStorage::Protocol::deposit_many_local(token, deposit, values@);
-    let tracked (_, mut withdrawn) = MapStorage::Protocol::withdraw_many(token, values@);
-    let tracked left_permission = withdrawn.tracked_remove(0nat);
-    let tracked right_permission = withdrawn.tracked_remove(1nat);
+    let tracked (_, withdrawn) = MapStorage::Protocol::withdraw_many(token, values@);
+    let tracked mut withdrawn = withdrawn;
+    let tracked left_permission = MapStorage::__unwrap_stored(withdrawn.tracked_remove(MapStorage::__StorageKey::stored(0nat)));
+    let tracked right_permission = MapStorage::__unwrap_stored(withdrawn.tracked_remove(MapStorage::__StorageKey::stored(1nat)));
     (left.into_inner(Tracked(left_permission)), right.into_inner(Tracked(right_permission)))
 }
 

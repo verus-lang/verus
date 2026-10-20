@@ -1,4 +1,4 @@
-// EXPECTED-ERROR: physical field conflicts with a generated carrier helper
+// EXPECTED-ERROR: `__pack_first` conflicts with a generated storage helper of field `first`
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 verified_tokenized_state_machine! {

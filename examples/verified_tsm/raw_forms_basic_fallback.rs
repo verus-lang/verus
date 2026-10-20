@@ -67,17 +67,18 @@ verified_tokenized_state_machine! {
     }
 }
 proof fn basic_history(tracked a: Tok, tracked b: Tok) {
+    // The storage is one `IMap<__StorageKey, __StorageValue>`, tagged by field.
     assert forall|s: Basic::State| Basic::State::initialize_strong(s, 3)
-        implies IMap::<int, Tok>::empty() == s.__storage() by {
-        assert(IMap::<int, Tok>::empty() =~= s.__storage());
+        implies IMap::<Basic::__StorageKey, Basic::__StorageValue>::empty() == s.__storage() by {
+        assert(IMap::<Basic::__StorageKey, Basic::__StorageValue>::empty() =~= s.__storage());
     }
     let tracked token = Basic::Protocol::initialize(IMap::tracked_empty(), 3);
     let tracked token = Basic::Protocol::count_have_before_add(token, 0);
     let tracked token = Basic::Protocol::bump_hidden(token);
     let ghost f = token.fragment();
     let tracked mut d = IMap::tracked_empty();
-    d.tracked_insert(0int, a);
-    d.tracked_insert(1int, b);
+    d.tracked_insert(Basic::__StorageKey::cell, Basic::__StorageValue::cell(a));
+    d.tracked_insert(Basic::__StorageKey::cell2, Basic::__StorageValue::cell2(b));
     assert forall|z: Basic::Fragment, pre: Basic::State|
         pre.invariant() && Basic::Fragment::op(Basic::Fragment::op(f, Basic::Fragment::unit()), z)
             == Basic::Protocol::embed(pre)
@@ -85,8 +86,8 @@ proof fn basic_history(tracked a: Tok, tracked b: Tok) {
         assert(Basic::State::put_both_deposited(pre, a, b) =~= d);
     }
     let tracked token = Basic::Protocol::put_both(token, d, a, b);
-    let tracked (token, mut w) = Basic::Protocol::take_both(token, a, b);
-    assert(w.contains_key(0int));
+    let tracked (token, w) = Basic::Protocol::take_both(token, a, b);
+    assert(w.contains_key(Basic::__StorageKey::cell));
 }
 
 fn main() {}

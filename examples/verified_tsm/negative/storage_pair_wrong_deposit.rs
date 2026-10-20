@@ -13,12 +13,13 @@ fn incorrect_physical_keys() {
     let ghost incoming_value = incoming;
     let tracked mut initial = IMap::tracked_empty();
     proof {
-        initial.tracked_insert(0nat, old);
+        initial.tracked_insert(PhysicalPair::__StorageKey::stored(0nat), PhysicalPair::__StorageValue::stored(old));
+        assert(initial =~= PhysicalPair::__tag_stored(IMap::empty().insert(0nat, old_value)));
     }
     let tracked token = PhysicalPair::Protocol::initialize(initial, old_value);
     let tracked mut supplied = IMap::tracked_empty();
     proof {
-        supplied.tracked_insert(2nat, incoming);
+        supplied.tracked_insert(PhysicalPair::__StorageKey::stored(2nat), PhysicalPair::__StorageValue::stored(incoming));
     }
     let tracked token = PhysicalPair::Protocol::swap(token, supplied, old_value, incoming_value);
 }

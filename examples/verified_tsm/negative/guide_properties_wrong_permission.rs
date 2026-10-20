@@ -12,10 +12,7 @@ fn wrong_permission_guard() {
     let ghost p = permission;
     let ghost wrong = other_permission;
     let tracked token = DepositedCell::Protocol::initialize(IMap::tracked_empty(), p);
-    let tracked mut deposit = IMap::tracked_empty();
-    proof {
-        deposit.tracked_insert(0int, permission);
-    }
+    let tracked deposit = DepositedCell::__pack_perm(Some(permission));
     let tracked token = DepositedCell::Protocol::deposit_local(token, deposit, p);
     // The deposited Bool does not authorize an arbitrary permission argument.
     let tracked guard = DepositedCell::Protocol::get_perm_ref(&token, wrong);

@@ -482,16 +482,16 @@ pub proof fn tr1_ready(owned: SafeY::Fragment, initial: Y::State, deposit: IMap<
     requires
         owned == SafeY::Protocol::embed(full_snapshot(initial)),
         Y::State::tr1_enabled_strong(initial),
-        deposit == packed(Some(14int), IMap::<int, int>::empty().insert(17int, 18int)),
+        deposit =~= packed(Some(14int), IMap::<int, int>::empty().insert(17int, 18int)),
     ensures
-        SafeY::Protocol::tr1_requires(owned, SafeY::Fragment::unit(), deposit),
+        SafeY::Protocol::tr1_requires(owned, SafeY::Fragment::unit(), SafeY::__tag_stored(deposit)),
 {
     SafeY::Fragment::op_unit(owned);
     assert forall|frame: SafeY::Fragment, pre: SafeY::State|
         pre.invariant() && SafeY::Fragment::op(
             SafeY::Fragment::op(owned, SafeY::Fragment::unit()),
             frame,
-        ) == SafeY::Protocol::embed(pre) implies SafeY::State::tr1_enabled(pre) && deposit
+        ) == SafeY::Protocol::embed(pre) implies SafeY::State::tr1_enabled(pre) && SafeY::__tag_stored(deposit)
         == SafeY::State::tr1_deposited(pre) && SafeY::State::tr1_owners_enabled(
         pre,
         owned,
@@ -552,16 +552,16 @@ pub proof fn tr4_ready(owned: SafeY::Fragment, initial: Y::State, deposit: IMap<
     requires
         owned == SafeY::Protocol::embed(full_snapshot(initial)),
         Y::State::tr4_enabled_strong(initial),
-        deposit == IMap::empty().insert(StorageKey::OptionalValue(12int), 12int),
+        deposit =~= IMap::empty().insert(StorageKey::OptionalValue(12int), 12int),
     ensures
-        SafeY::Protocol::tr4_requires(owned, SafeY::Fragment::unit(), deposit),
+        SafeY::Protocol::tr4_requires(owned, SafeY::Fragment::unit(), SafeY::__tag_stored(deposit)),
 {
     SafeY::Fragment::op_unit(owned);
     assert forall|frame: SafeY::Fragment, pre: SafeY::State|
         pre.invariant() && SafeY::Fragment::op(
             SafeY::Fragment::op(owned, SafeY::Fragment::unit()),
             frame,
-        ) == SafeY::Protocol::embed(pre) implies SafeY::State::tr4_enabled(pre) && deposit
+        ) == SafeY::Protocol::embed(pre) implies SafeY::State::tr4_enabled(pre) && SafeY::__tag_stored(deposit)
         == SafeY::State::tr4_deposited(pre) && SafeY::State::tr4_owners_enabled(
         pre,
         owned,
@@ -584,29 +584,29 @@ pub proof fn full_exchange_history() {
     };
     let tracked permission13 = 13int;
     let tracked permission16 = 16int;
-    let tracked mut base: IMap<StorageKey, int> = IMap::tracked_empty();
+    let tracked mut base: Map<StorageKey, int> = Map::tracked_empty();
     base.tracked_insert(StorageKey::OptionalValue(13int), permission13);
     base.tracked_insert(StorageKey::MapKey(15int), permission16);
     packed_pair(13int, 15int, 16int);
-    assert(base =~= packed(initial.storage_opt, initial.storage_map));
-    let tracked token = SafeY::Protocol::initialize(base, initial);
+    assert(base.to_imap() =~= packed(initial.storage_opt, initial.storage_map));
+    let tracked token = SafeY::Protocol::initialize(SafeY::__pack_stored(base), initial);
     assert(token.fragment() == SafeY::Protocol::embed(full_snapshot(initial)));
     let tracked permission14 = 14int;
     let tracked permission18 = 18int;
-    let tracked mut deposit: IMap<StorageKey, int> = IMap::tracked_empty();
+    let tracked mut deposit: Map<StorageKey, int> = Map::tracked_empty();
     deposit.tracked_insert(StorageKey::OptionalValue(14int), permission14);
     deposit.tracked_insert(StorageKey::MapKey(17int), permission18);
-    let deposited = deposit;
+    let deposited = deposit.to_imap();
     packed_pair(14int, 17int, 18int);
     assert(deposited =~= packed(Some(14int), IMap::<int, int>::empty().insert(17int, 18int)));
     let old = token.fragment();
     tr1_ready(old, initial, deposited);
-    let tracked (token, mut withdrawn) = SafeY::Protocol::tr1(token, deposit);
+    let tracked (token, mut withdrawn) = SafeY::Protocol::tr1(token, SafeY::__pack_stored(deposit));
     let (pre, post, frame) = SafeY::Protocol::tr1_witness(
         old,
         SafeY::Fragment::unit(),
         token.fragment(),
-        deposited,
+        SafeY::__tag_stored(deposited),
         withdrawn,
     );
     assert(pre.auth == initial);
@@ -617,13 +617,13 @@ pub proof fn full_exchange_history() {
     assert(post.auth.mset =~= Multiset::empty().insert(11int).insert(12int));
     assert(post.auth.storage_opt == Some(14int));
     assert(post.auth.storage_map == IMap::<int, int>::empty().insert(17int, 18int));
-    assert(withdrawn =~= IMap::empty().insert(StorageKey::OptionalValue(13int), 13int).insert(
+    assert(withdrawn =~= SafeY::__tag_stored(IMap::empty().insert(StorageKey::OptionalValue(13int), 13int).insert(
         StorageKey::MapKey(15int),
         16int,
-    ));
+    )));
     // These values come from the returned tracked map, never from a witness.
-    let tracked returned13 = withdrawn.tracked_remove(StorageKey::OptionalValue(13int));
-    let tracked returned16 = withdrawn.tracked_remove(StorageKey::MapKey(15int));
+    let tracked returned13 = SafeY::__unwrap_stored(withdrawn.tracked_remove(SafeY::__StorageKey::stored(StorageKey::OptionalValue(13int))));
+    let tracked returned16 = SafeY::__unwrap_stored(withdrawn.tracked_remove(SafeY::__StorageKey::stored(StorageKey::MapKey(15int))));
     assert(returned13 == 13int && returned16 == 16int);
     assert(withdrawn =~= IMap::empty());
     token.validate();
@@ -641,20 +641,21 @@ pub proof fn full_redeposit_and_have_history() {
     };
     packed_optional(None);
     packed_optional(Some(12int));
+    assert(SafeY::__tag_stored(IMap::empty()) =~= IMap::empty());
     let tracked token = SafeY::Protocol::initialize(IMap::tracked_empty(), initial);
     assert(token.fragment() == SafeY::Protocol::embed(full_snapshot(initial)));
     let tracked permission12 = 12int;
-    let tracked mut deposit: IMap<StorageKey, int> = IMap::tracked_empty();
+    let tracked mut deposit: Map<StorageKey, int> = Map::tracked_empty();
     deposit.tracked_insert(StorageKey::OptionalValue(12int), permission12);
-    let deposited = deposit;
+    let deposited = deposit.to_imap();
     let old = token.fragment();
     tr4_ready(old, initial, deposited);
-    let tracked token = SafeY::Protocol::tr4(token, deposit);
+    let tracked token = SafeY::Protocol::tr4(token, SafeY::__pack_stored(deposit));
     let (pre, post, frame) = SafeY::Protocol::tr4_witness(
         old,
         SafeY::Fragment::unit(),
         token.fragment(),
-        deposited,
+        SafeY::__tag_stored(deposited),
         IMap::empty(),
     );
     assert(pre.auth == initial);
@@ -676,21 +677,21 @@ pub proof fn full_redeposit_and_have_history() {
     original_protocol_refinement(pre, post);
     assert(post.auth == initial);
     assert(token.fragment() == SafeY::Protocol::embed(full_snapshot(initial)));
-    assert(withdrawn =~= IMap::empty().insert(StorageKey::OptionalValue(12int), 12int));
-    let tracked returned12 = withdrawn.tracked_remove(StorageKey::OptionalValue(12int));
+    assert(withdrawn =~= SafeY::__tag_stored(IMap::empty().insert(StorageKey::OptionalValue(12int), 12int)));
+    let tracked returned12 = SafeY::__unwrap_stored(withdrawn.tracked_remove(SafeY::__StorageKey::stored(StorageKey::OptionalValue(12int))));
     assert(returned12 == 12int);
     assert(withdrawn =~= IMap::empty());
-    let tracked mut redeposit: IMap<StorageKey, int> = IMap::tracked_empty();
+    let tracked mut redeposit: Map<StorageKey, int> = Map::tracked_empty();
     redeposit.tracked_insert(StorageKey::OptionalValue(12int), returned12);
-    let deposited_again = redeposit;
+    let deposited_again = redeposit.to_imap();
     let old = token.fragment();
     tr4_ready(old, initial, deposited_again);
-    let tracked token = SafeY::Protocol::tr4(token, redeposit);
+    let tracked token = SafeY::Protocol::tr4(token, SafeY::__pack_stored(redeposit));
     let (pre, post, frame) = SafeY::Protocol::tr4_witness(
         old,
         SafeY::Fragment::unit(),
         token.fragment(),
-        deposited_again,
+        SafeY::__tag_stored(deposited_again),
         IMap::empty(),
     );
     assert(pre.auth == initial);

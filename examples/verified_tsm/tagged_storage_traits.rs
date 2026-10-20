@@ -53,8 +53,10 @@ fn require_traits<T: Send + Sync>() {
 }
 
 fn main() {
-    require_traits::<Mixed::__StorageKey<u64>>();
-    require_traits::<Mixed::__StorageValue<u64>>();
+    // The storage enums mention no type parameter of the machine (each enum
+    // takes the parameters its variants mention).
+    require_traits::<Mixed::__StorageKey>();
+    require_traits::<Mixed::__StorageValue>();
     require_traits::<Mixed::Token<u64>>();
 }
 

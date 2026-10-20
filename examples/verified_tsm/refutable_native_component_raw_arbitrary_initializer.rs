@@ -442,20 +442,24 @@ proof fn correct_tr(pre: Y::State, post: Y::State, key: int) {
 } // verus!
 verus! {
 
-proof fn arbitrary_actual_carrier(tracked p_m: IMap<int, Goo>, tracked p_opt: Option<Goo>) {
+proof fn arbitrary_actual_carrier(tracked p_m: IMap<int, Goo>, tracked p_opt: Option<Goo>)
+    requires
+        p_m.dom().finite(),
+{
     let ghost m = p_m;
     let ghost opt = p_opt;
-    let tracked mut p_m = Y::Protocol::__carrier_pack_imap_storage_m(p_m);
-    let tracked p_opt =
-        <<Y::Protocol as vstd::resource::tsm_storage::StorageMachine>::Key>::__pack_storage_opt(
-        p_opt,
-    );
-    assert(p_m.dom().disjoint(p_opt.dom()));
-    p_m.tracked_union_prefer_right(p_opt);
-    assert forall|s: Y::State| Y::State::initialize(s, m, opt) implies p_m == s.__storage() by {
-        assert(vstd::prelude::ext_equal(p_m, s.__storage()));
+    // The storage is one `IMap<__StorageKey, __StorageValue>`, the union of
+    // the fields' tagged parts. Tagging a map moves its entries one by one, so
+    // the initial `storage_imap` resources need a finite domain.
+    let tracked p_m = vstd::resource::tsm_generic::tracked_imap_to_map(p_m);
+    let tracked mut tagged = Y::__pack_storage_m(p_m);
+    let tracked p_opt = Y::__pack_storage_opt(p_opt);
+    tagged.tracked_union_prefer_right(p_opt);
+    assert forall|s: Y::State| Y::State::initialize(s, m, opt) implies tagged == s.__storage() by {
+        Y::State::__storage_tags(s);
+        assert(p_m.to_imap() =~= m);
     }
-    let tracked token = Y::Protocol::initialize(p_m, m, opt);
+    let tracked token = Y::Protocol::initialize(tagged, m, opt);
 }
 
 fn main() {
