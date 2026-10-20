@@ -1371,10 +1371,265 @@ pub trait PTSizedValue: PTValueOps<A: Sized> {
 
 ## Impls
 
-### `TypedValue` (phase 2)
+All in `points_to_model.rs`, written out as the final code.
+Axioms are named in a comment, not repeated;
+their code is in [New axioms and axioms with bigger changes](#new-axioms-and-axioms-with-bigger-changes).
+
+### `PointsToByte` (phase 1)
 
 ```rust
+/// Permission to access a byte of memory.
+#[verifier::external_body]
+pub tracked struct PointsToByte {
+    no_copy: NoCopy,
+}
+
+impl PTPhysSealed for PointsToByte {}
+
+impl PTPhys for PointsToByte {
+    type A = u8;
+
+    /// This permission points to a single byte of memory.
+    uninterp spec fn ptr(self) -> *mut u8;
+
+    /// This permission tracks a single byte of memory.
+    open spec fn size(metadata: ()) -> nat {
+        1
+    }
+
+    /// A `PointsToByte` is always well-formed.
+    open spec fn wf_basic(self) -> bool {
+        true
+    }
+}
+
+impl PTProperties for PointsToByte {
+    /// Guarantee that the `PointsToByte` points to a non-null address.
+    ///
+    /// See <https://doc.rust-lang.org/std/ptr/#safety>.
+    axiom fn is_nonnull(tracked &self);
+
+    /// The memory associated with a pointer should always be within bounds of its spatial provenance.
+    axiom fn ptr_bounds(tracked &self);
+
+    /// Since `u8` is not a ZST, the pointer's provenance is non-null.
+    /// <https://doc.rust-lang.org/std/ptr/index.html#provenance>
+    axiom fn provenance_not_none(tracked &self);
+
+    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
+    /// since you cannot have two permissions to the same memory.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsTo as both arguments.)
+    /// Since `u8` is not a ZST, this implies the pointers have distinct addresses.
+    axiom fn is_disjoint<OtherPointsToPerm: PTPhys>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    );
+
+    /// If the pointer stays the same, `old` and `new` are permissions to the same memory.
+    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
+        new.ptr() == old.ptr()
+    }
+
+    /// Trivial, since a `PointsToByte` is always well-formed.
+    proof fn stays_wf_basic(old: Self, new: Self) {
+    }
+}
+
+impl PointsToByte {
+    /// The byte that this permission tracks.
+    pub uninterp spec fn byte(self) -> AbstractByte;
+
+    /// Specializes `is_disjoint` to the case when the other permission is a `PointsToByte`.
+    pub proof fn is_disjoint_byte(tracked &mut self, tracked other: &Self)
+        requires
+            self.wf_basic(),
+            other.wf_basic(),
+        ensures
+            *old(self) == *final(self),
+            final(self).ptr()@.addr + size_of::<u8>() <= other.ptr()@.addr
+                || other.ptr()@.addr + size_of::<u8>() <= final(self).ptr()@.addr,
+    {
+        broadcast use group_vstd_default;
+
+        self.is_disjoint(other);
+    }
+}
+
+/// The interface for a `PointsToByte` permission,
+/// which represents permission to access a single byte in memory.
+/// We track the pointer to that memory as well as
+/// the abstract byte corresponding to Rust's abstract machine.
+#[cfg(verus_keep_ghost)]
+pub ghost struct PointsToByteData {
+    pub ptr: *mut u8,
+    pub byte: AbstractByte,
+}
+
+#[cfg(verus_keep_ghost)]
+impl View for PointsToByte {
+    type V = PointsToByteData;
+
+    open spec fn view(&self) -> Self::V {
+        PointsToByteData { ptr: self.ptr(), byte: self.byte() }
+    }
+}
+```
+
+### `SeqPointsTo` and `PointsToUntyped`: specs (phase 1b)
+
+```rust
+/// Permission to access a contiguous sequence of values of type `T` in memory.
+/// Internally represented as a sequence of permissions `P`,
+/// along with a `*mut [T]` pointer to the whole region.
+// We expect the associated type `A` from `PTProperties` to be the same as `T`,
+// but `A = T` is bound on the impls
+// so that recursive types like `struct Tree { children: Vec<Tree> }` are allowed.
+#[verifier::accept_recursive_types(T)]
+pub tracked struct SeqPointsTo<T, P: PTProperties> {
+    seq_pt: Seq<P>,
+    ptr: Ghost<*mut [T]>,
+}
+
+impl<T, P: PTProperties> PTPhysSealed for SeqPointsTo<T, P> {}
+
+impl<T, P: PTProperties<A = T>> PTPhys for SeqPointsTo<T, P> {
+    type A = [T];
+
+    /// The pointer to the whole region; its metadata is the number of elements.
+    closed spec fn ptr(self) -> *mut [T] {
+        self.ptr@
+    }
+
+    /// The size of the pointed-to region is given by the length of the sequence (the pointer's metadata)
+    /// times the size of the permission type in the sequence.
+    ///
+    /// Note that since this impl block restricts `P` to permissions satisfying `PTProperties`
+    /// with the associated type set to `T` (which is implicitly `Sized`),
+    /// `P` is a permission whose pointer has `()` metadata.
+    open spec fn size(metadata: usize) -> nat {
+        metadata as nat * P::size(())
+    }
+
+    open spec fn wf_basic(self) -> bool {
+        // The pointer's metadata is the number of permissions
+        &&& self.ptr()@.metadata == self.len()
+        // Defining the provenance and address for the individual permissions
+        &&& forall|i|
+            #![trigger self[i].ptr()@.provenance]
+            #![trigger self[i].ptr()@.addr]
+            #![trigger self[i].wf_basic()]
+            0 <= i < self.len() ==> {
+                &&& self[i].ptr()@.provenance == self.ptr()@.provenance
+                &&& self[i].ptr()@.addr == self.ptr()@.addr + i * P::size(())
+                &&& self[i].wf_basic()
+            }
+        // The ptr is non-null
+        &&& self.ptr()@.addr != 0
+        // If ptr's provenance is Some, the address is in bounds of the provenance
+        &&& self.ptr()@.provenance.is_some() ==> {
+            &&& self.ptr()@.provenance.unwrap().start_addr() <= self.ptr()@.addr
+            &&& self.ptr()@.addr <= self.ptr()@.provenance.unwrap().start_addr()
+                + self.ptr()@.provenance.unwrap().alloc_len()
+        }
+    }
+}
+
+impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
+    /// The sequence of permissions that the `SeqPointsTo` contains.
+    pub closed spec fn seq_pt(self) -> Seq<P> {
+        self.seq_pt
+    }
+
+    /// The length of the sequence of `P` permissions.
+    #[verifier::inline]
+    pub open spec fn len(self) -> nat {
+        self.seq_pt().len()
+    }
+
+    /// `[]` operator, synonymous with `index`.
+    #[verifier::inline]
+    pub open spec fn spec_index(self, index: int) -> P
+        recommends
+            0 <= index < self.len(),
+    {
+        self.seq_pt()[index]
+    }
+
+    // Axiom: from_seq_mut (M5).
+}
+
+/// Permission to access an (untyped) contiguous sequence of bytes in memory.
+/// Internally represented as a sequence of `PointsToByte` permissions,
+/// along with a `*mut [u8]` pointer to the region of bytes.
+pub type PointsToUntyped = SeqPointsTo<u8, PointsToByte>;
+
+/// The interface for a `PointsToUntyped` permission,
+/// which represents permission to access an (untyped) contiguous sequence of bytes in memory.
+/// We track the pointer to that memory as well as
+/// the abstract bytes corresponding to Rust's abstract machine.
+#[cfg(verus_keep_ghost)]
+pub ghost struct PointsToUntypedData {
+    pub ptr: *mut [u8],
+    pub bytes: Seq<AbstractByte>,
+}
+
+#[cfg(verus_keep_ghost)]
+impl View for PointsToUntyped {
+    type V = PointsToUntypedData;
+
+    open spec fn view(&self) -> Self::V {
+        PointsToUntypedData { ptr: self.ptr(), bytes: self.bytes() }
+    }
+}
+
+impl PointsToUntyped {
+    /// The contiguous sequence of bytes that this permission tracks.
+    pub open spec fn bytes(self) -> Seq<AbstractByte> {
+        self.seq_pt().map(|i: int, pt_byte: PointsToByte| pt_byte.byte())
+    }
+
+    /// The well-formed-ness properties which must hold of every `SeqPointsTo` (`wf_basic`),
+    /// which include that the `*mut [u8]` pointer's metadata matches the number of `PointsToByte` permissions.
+    pub open spec fn wf(self) -> bool {
+        self.wf_basic()
+    }
+
+    // Axioms: join_ref, join_mut.
+}
+```
+
+### `TypedValue` (phase 2)
+
+`value_ref` and `valid_ref` are new; the rest exists today.
+
+```rust
+/// Represents (typed) contents of memory.
+// Don't use std Option here in order to avoid circular dependency issues
+// with verifying the standard library.
+// (Also, using our own enum here lets us have more meaningful
+// variant names like Empty/Valid.)
+#[verifier::accept_recursive_types(T)]
+pub tracked enum TypedValue<T: ?Sized> {
+    /// Represents uninitialized memory.
+    Empty,
+    /// Represents initialized memory with the given value of type `T`.
+    Valid(Tracked<T>),
+}
+
 impl<T: ?Sized> TypedValue<T> {
+    /// Returns `true` if it is a [`TypedValue::Valid`] value.
+    #[verifier::inline]
+    pub open spec fn is_valid(&self) -> bool {
+        self is Valid
+    }
+
+    /// Returns `true` if it is a [`TypedValue::Empty`] value.
+    #[verifier::inline]
+    pub open spec fn is_empty(&self) -> bool {
+        self is Empty
+    }
+
     /// If valid, a reference to the value; otherwise meaningless.
     pub open spec fn value_ref(&self) -> &T
         recommends
@@ -1392,5 +1647,42 @@ impl<T: ?Sized> TypedValue<T> {
         let tracked t = tracked_ref(v);
         shr_ref_struct_wrap(t, &TypedValue::Valid(*t), "Valid", "0")
     }
+}
+
+impl<T> TypedValue<T> {
+    /// If it is a [`TypedValue::Valid`] value, returns the value.
+    /// Otherwise, the return value is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> T
+        recommends
+            self is Valid,
+    {
+        *self->0
+    }
+
+    /// Copies a `TypedValue<T>` out of a shared reference, given that `T` is `Copy`.
+    pub proof fn tracked_copy(tracked &self) -> (tracked out: TypedValue<T>) where T: Copy
+        ensures
+            out == *self,
+    {
+        match self {
+            TypedValue::Valid(b) => TypedValue::Valid(Tracked(**b)),
+            TypedValue::Empty => TypedValue::Empty,
+        }
+    }
+}
+
+impl<T> TypedValue<[T]> {
+    /// If it is a [`TypedValue::Valid`] value, returns the value.
+    /// Otherwise, the return value is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> &[T]
+        recommends
+            self is Valid,
+    {
+        &*self->0
+    }
+
+    // Axioms: from_elems_mut (M1), from_elems_ref.
 }
 ```
