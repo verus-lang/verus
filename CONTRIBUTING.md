@@ -57,7 +57,7 @@ To check the Verus and vendored dependencies' source code, and `vstd`'s formatti
 type the following from the `source` directory:
 
 ```sh
-cargo run -p cargo-verus -- fmt --check
+cargo verus fmt --check
 ```
 
 If the source code follows the guidelines, `cargo verus fmt --check` will produce no output.
@@ -238,7 +238,7 @@ Stylistically, inside `vstd`:
 
 - We add a `lemma_` prefix to the name of a lemma (i.e., a `proof fn`) to make its purpose explicit.
 - We try to make lemmas associated functions when possible, e.g., `my_map.lemma_remove_keys_len(keys)`, not `lemma_remove_keys_len(my_map, keys)`.
-- Run `cargo run -p cargo-verus -- fmt --manifest-path vstd/Cargo.toml` inside `source/` to format `vstd` using `verusfmt`.
+- Run `cargo verus fmt --manifest-path vstd/Cargo.toml` inside `source/` to format `vstd` using `verusfmt`.
 
 ### Tips for testing and verifying your contribution
 
@@ -266,7 +266,7 @@ build Verus first following the instructions above (with `cargo build --release`
 run, from inside `source/`:
 
 ```sh
-cargo run --release -p cargo-verus -- verify --manifest-path vstd/Cargo.toml --features std,alloc
+cargo verus verify --manifest-path vstd/Cargo.toml --features std,alloc
 ```
 
 ## Best practices for publishing Verus-verified code on crates.io

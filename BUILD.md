@@ -43,7 +43,7 @@ process does not expect.
 
 You should be in the `source` subdirectory.
 
-First, ensure that the necessary rust toolchain is installed. Run the following command:
+First, ensure that the necessary Rust toolchain is installed. Run the following command:
 
 ```sh
 rustup toolchain install
