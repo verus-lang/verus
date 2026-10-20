@@ -6,7 +6,7 @@ use super::endian::*;
 use super::layout::*;
 use super::math::*;
 use super::prelude::*;
-use super::raw_ptr_new::*;
+use super::raw_ptr_final::*;
 use super::seq::*;
 use super::type_representation::*;
 use crate::vstd::group_vstd_default;

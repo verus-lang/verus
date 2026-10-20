@@ -9,7 +9,7 @@ use super::invariant::*;
 use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
-pub use super::points_to_permissions::TypedValue;
+pub use super::raw_ptr_final::TypedValue;
 use super::set::*;
 use super::*;
 

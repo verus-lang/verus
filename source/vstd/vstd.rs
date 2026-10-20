@@ -56,12 +56,12 @@ pub mod modes;
 pub mod multiset;
 pub mod multiset_lib;
 pub mod pervasive;
-pub mod points_to;
-pub mod points_to_permissions;
 pub mod predicate;
 pub mod proph;
 // pub mod raw_ptr;
-pub mod raw_ptr_new;
+// The old raw_ptr_new.rs, points_to.rs, points_to_permissions.rs and shared_reference.rs
+// are kept for reference but not built; their contents are in the raw_ptr_final/ directory.
+pub mod raw_ptr_final;
 pub mod relations;
 pub mod resource;
 pub mod rwlock;
@@ -70,7 +70,6 @@ pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
 pub mod shared;
-pub mod shared_reference;
 // comment out - pptr depends on raw_ptr_old
 // #[cfg(feature = "alloc")]
 // pub mod simple_pptr;
@@ -121,8 +120,8 @@ pub broadcast group group_vstd_default {
     array::group_array_axioms,
     #[cfg(not(verus_verify_core))]
     string::group_string_axioms,
-    raw_ptr_new::group_raw_ptr_axioms,
-    points_to_permissions::group_points_to_permissions_lemmas,
+    raw_ptr_final::group_raw_ptr_axioms,
+    raw_ptr_final::group_points_to_lemmas,
     layout::group_layout_axioms,
     //
     // core std_specs

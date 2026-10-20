@@ -1,5 +1,5 @@
 use super::super::prelude::*;
-use super::super::points_to_permissions::TypedValue;
+use super::super::raw_ptr_final::TypedValue;
 
 verus! {
 
