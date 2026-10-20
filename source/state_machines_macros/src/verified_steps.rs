@@ -8,6 +8,7 @@ use quote::{format_ident, quote};
 use std::collections::HashSet;
 use verus_syn::{Error, Ident};
 
+/// Adds every identifier in `tokens` (without `r#`) to `names`.
 fn reserve(tokens: TokenStream, names: &mut HashSet<String>) {
     for token in tokens {
         match token {
@@ -64,6 +65,7 @@ pub(crate) fn reserve_stmt(stmt: &crate::ast::TransitionStmt, names: &mut HashSe
     }
 }
 
+/// Every identifier the machine's generics, fields and transitions use.
 fn used_names(sm: &SM) -> HashSet<String> {
     let mut names = HashSet::new();
     let generics = &sm.generics;
@@ -82,6 +84,7 @@ fn used_names(sm: &SM) -> HashSet<String> {
     names
 }
 
+/// A fresh `__tsm_aggregate_<label>` name, reserved in `names`.
 fn fresh(names: &mut HashSet<String>, label: &str) -> Ident {
     let mut name = format!("__tsm_aggregate_{label}");
     while names.contains(&name) {
@@ -91,6 +94,8 @@ fn fresh(names: &mut HashSet<String>, label: &str) -> Ident {
     Ident::new(&name, Span::mixed_site())
 }
 
+/// The `Config`/`Step` datatypes, the aggregate `init`/`next` relations and the `show`
+/// lemmas introducing them.
 pub fn output(sm: &SM) -> Result<TokenStream, Error> {
     let (generics, attributes) = crate::verified_tokens::datatype_generics(sm);
     let (decl, wc) = generics_for_decl(&generics);

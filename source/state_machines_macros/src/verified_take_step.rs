@@ -11,6 +11,7 @@ use quote::{format_ident, quote};
 use std::collections::HashSet;
 use verus_syn::{Error, Ident};
 
+/// Adds every identifier in `tokens` to `names`; rejects raw `update_tmp_` identifiers.
 fn reserve(tokens: TokenStream, names: &mut HashSet<String>) -> Result<(), Error> {
     for token in tokens {
         match token {
@@ -27,6 +28,7 @@ fn reserve(tokens: TokenStream, names: &mut HashSet<String>) -> Result<(), Error
     Ok(())
 }
 
+/// A fresh `__tsm_checked_take_step_<label>` name, reserved in `names`.
 fn fresh(names: &mut HashSet<String>, label: &str) -> Ident {
     let mut name = format!("__tsm_checked_take_step_{label}");
     while names.contains(&name) {
@@ -84,6 +86,7 @@ fn statements(body: &[SimplStmt]) -> Result<TokenStream, Error> {
     Ok(output)
 }
 
+/// `tokens` with every `Self` replaced by `state_type`.
 fn replace_self(tokens: TokenStream, state_type: &TokenStream) -> TokenStream {
     let mut output = TokenStream::new();
     for token in tokens {
@@ -103,6 +106,8 @@ fn replace_self(tokens: TokenStream, state_type: &TokenStream) -> TokenStream {
     output
 }
 
+/// The checked next-state constructors of the transitions (as `State` methods) and their
+/// `take_step` wrappers.
 pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     let sm = &bundle.sm;
     let (generics, _) = crate::verified_tokens::datatype_generics(sm);

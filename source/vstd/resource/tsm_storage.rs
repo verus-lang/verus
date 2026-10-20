@@ -307,6 +307,7 @@ pub struct StorageCarrier<M, F> {
 /// The carrier used by [`StorageToken`].
 pub type Carrier<M> = StorageCarrier<M, <M as Machine>::Fragment>;
 
+/// The carrier value holding `fragment`.
 pub open spec fn carrier_of<M: StorageMachine>(fragment: M::Fragment) -> Carrier<M> {
     StorageCarrier { fragment, machine: core::marker::PhantomData }
 }
@@ -424,6 +425,8 @@ pub proof fn frame_exchange_with_extra<M: StorageMachine>(
     }
 }
 
+/// A checked frame exchange of machine fragments is a storage-protocol exchange of their
+/// carriers.
 pub proof fn frame_exchange_sound<M: StorageMachine>(
     old: M::Fragment,
     deposit: IMap<M::Key, M::Value>,
@@ -461,6 +464,8 @@ pub proof fn frame_exchange_sound<M: StorageMachine>(
     }
 }
 
+/// A checked nondeterministic frame exchange of machine fragments is a nondeterministic
+/// storage-protocol exchange of their carriers.
 pub proof fn frame_exchange_nondeterministic_sound<M: StorageMachine>(
     old: M::Fragment,
     deposit: IMap<M::Key, M::Value>,
@@ -512,6 +517,8 @@ pub proof fn frame_exchange_nondeterministic_sound<M: StorageMachine>(
     }
 }
 
+/// `frame_exchange_nondeterministic_sound` for an exchange whose frame includes a shared
+/// fragment.
 pub proof fn frame_exchange_nondeterministic_shared_sound<M: StorageMachine>(
     old: M::Fragment,
     shared: M::Fragment,
@@ -576,6 +583,7 @@ pub proof fn frame_exchange_nondeterministic_shared_sound<M: StorageMachine>(
     }
 }
 
+/// A checked frame guard of a machine fragment is a storage-protocol guard of its carrier.
 pub proof fn frame_guard_sound<M: StorageMachine>(
     fragment: M::Fragment,
     guarded: IMap<M::Key, M::Value>,
@@ -723,6 +731,7 @@ impl<M: StorageMachine> StorageTokenOf<M, M::Key, M::Value, M::Fragment> {
         )
     }
 
+    /// Proves `fact` from every completion compatible with both tokens.
     pub proof fn facts_2(tracked &self, tracked other: &Self, fact: bool)
         requires
             self.loc() == other.loc(),
@@ -794,6 +803,7 @@ impl<M: StorageMachine> StorageTokenOf<M, M::Key, M::Value, M::Fragment> {
         )
     }
 
+    /// Proves `fact` from every completion compatible with all three tokens.
     pub proof fn facts_3(tracked &self, tracked second: &Self, tracked third: &Self, fact: bool)
         requires
             self.loc() == second.loc(),
@@ -966,6 +976,7 @@ impl<M: StorageMachine> StorageTokenOf<M, M::Key, M::Value, M::Fragment> {
         StorageResource::guard(&self.resource, guarded)
     }
 
+    /// Proves `fact` from every completion of the token.
     pub proof fn facts(tracked &self, fact: bool)
         requires
             forall|frame: M::Fragment, state: M::State|

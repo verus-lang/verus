@@ -50,6 +50,8 @@ pub fn construct(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     }
 }
 
+/// The model's module: `State` with its relations, the aggregate relations and the checked
+/// `take_step` constructors.
 pub fn output(bundle: SMBundle) -> Result<TokenStream, Error> {
     let sm = &bundle.sm;
     let steps = crate::verified_steps::output(sm)?;

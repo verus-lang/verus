@@ -9,6 +9,8 @@ use quote::{format_ident, quote};
 use std::collections::HashSet;
 use verus_syn::Error;
 
+/// The pure weak relations and enabling conditions of the mutating transitions, as `State`
+/// methods; rejects names that collide with other `State` methods.
 pub fn output(bundle: &SMBundle, state: &TokenStream) -> Result<Vec<TokenStream>, Error> {
     let sm = &bundle.sm;
     let mut methods: HashSet<String> = ["invariant", "__storage"]

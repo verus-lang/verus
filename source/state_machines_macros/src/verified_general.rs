@@ -14,6 +14,7 @@ use verus_syn::Error;
 use verus_syn::spanned::Spanned;
 use verus_syn::{Ident, Type};
 
+/// Adds the fields `stmt` updates to `out`.
 fn writes(stmt: &TransitionStmt, out: &mut HashSet<String>) {
     match stmt {
         TransitionStmt::Update(_, n, _) | TransitionStmt::SubUpdate(_, n, _, _) => {
@@ -55,6 +56,8 @@ fn drop_unowned_updates(stmt: &mut TransitionStmt, fields: &HashMap<String, Fiel
     }
 }
 
+/// Whether the machine is outside the straight-line emitter's subset (`verified_tokens`),
+/// so that its raw interface is generated here.
 pub fn needs_general_emitter(sm: &SM) -> bool {
     fn walk(s: &TransitionStmt) -> bool {
         match s {
@@ -205,6 +208,8 @@ fn check_storage_paths(
     Ok(())
 }
 
+/// Adds the fields `s` updates to `out`; returns the most storage operations on one path
+/// and whether any of them withdraws. Rejects unsupported storage operations.
 fn modified(
     s: &TransitionStmt,
     out: &mut HashSet<String>,
@@ -483,7 +488,6 @@ fn guard_map_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<(
     out
 }
 
-/// Exclusive `option` fields borrowed by `have f >= Some(..)` in a guard.
 /// The `option` and `persistent_option` fields of `have o >= Some(..)`
 /// statements, each with whether it is persistent.
 fn guard_option_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<(Ident, bool)> {
@@ -516,6 +520,7 @@ fn guard_option_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Ve
     out
 }
 
+/// The storage a guard property borrows: the deposit its guards would make.
 fn guarded_storage(
     s: &TransitionStmt,
     fields: &HashMap<String, Field>,
@@ -556,6 +561,7 @@ fn guarded_storage(
     deposit_expression_mode(&clone, fields, false, carrier)
 }
 
+/// The statements as proof code, or with `safety` as the enabling condition.
 /// Safety uses nested conditionals for requirements. Later requirements cannot
 /// enter the proof context of an earlier assertion.
 fn execute(xs: &[SimplStmt], safety: bool) -> TokenStream {
@@ -622,6 +628,8 @@ fn execute(xs: &[SimplStmt], safety: bool) -> TokenStream {
 pub fn output(bundle: SMBundle) -> Result<TokenStream, Error> {
     output_with_ready(bundle, &HashSet::new())
 }
+/// The raw interface, with checked local-ready operations for the transitions in
+/// `local_ready`.
 pub fn output_with_ready(
     bundle: SMBundle,
     local_ready: &HashSet<String>,
@@ -1495,6 +1503,8 @@ pub fn output_with_ready(
     })
 }
 
+/// The operations of a transition on a machine with storage: its requirement, outputs,
+/// witness and frame lemma, and its storage exchanges.
 #[allow(clippy::too_many_arguments)]
 fn storage_operations(
     n: &Ident,

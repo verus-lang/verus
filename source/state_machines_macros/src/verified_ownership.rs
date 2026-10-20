@@ -13,6 +13,8 @@ use quote::{format_ident, quote};
 use std::collections::HashMap;
 use verus_syn::{Error, Ident};
 
+/// Compiles a transition body to its ordered `(enabled, owned_fragment)` ownership
+/// expression.
 struct Compiler<'a> {
     fields: &'a HashMap<String, Field>,
     fragment: &'a TokenStream,
@@ -21,6 +23,7 @@ struct Compiler<'a> {
 }
 
 impl Compiler<'_> {
+    /// A fresh hygienic `__tsm_ownership_<purpose>_<n>` binder.
     fn fresh(&mut self, purpose: &str) -> Ident {
         let index = self.next_ident;
         self.next_ident += 1;
@@ -144,6 +147,8 @@ impl Compiler<'_> {
         }
     }
 
+    /// The pair of a statement sequence, each statement starting from the owned fragment its
+    /// predecessor leaves; `None` as for `statement`.
     fn sequence(
         &mut self,
         statements: &[TransitionStmt],
@@ -181,6 +186,7 @@ impl Compiler<'_> {
         }
     }
 
+    /// The pair of a monoid `add`, `remove` or `have` on `field`, followed by `children`.
     fn monoid_statement(
         &mut self,
         field: &Field,
@@ -340,6 +346,8 @@ impl Compiler<'_> {
     }
 }
 
+/// The ordered ownership condition of `statement`: each `remove` and `have` finds its
+/// operand in the owned fragment (a `have` also in `shared`).
 pub(crate) fn ownership_condition(
     statement: &TransitionStmt,
     fields: &HashMap<String, Field>,

@@ -6,6 +6,8 @@ use quote::{format_ident, quote};
 use std::collections::HashSet;
 use verus_syn::{Error, Ident};
 
+/// The per-field `Fragment` helpers (constructors, accessors, projections and their laws)
+/// and the `Protocol` operations splitting a token by field (`take_*`, `split_*`).
 pub fn field_api(
     sm: &SM,
     fragment: &TokenStream,
@@ -105,6 +107,7 @@ pub fn field_api(
     Ok((quote! {#(#specs)*}, quote! {#(#proofs)*}))
 }
 
+/// Rejects fields whose generated helper names collide.
 fn check_helper_names(sm: &SM, names: &[&Ident]) -> Result<(), Error> {
     let mut fragment = HashSet::from(["empty".to_string(), "combine".to_string()]);
     let mut protocol = HashSet::new();
@@ -169,6 +172,8 @@ fn check_helper_names(sm: &SM, names: &[&Ident]) -> Result<(), Error> {
     Ok(())
 }
 
+/// Rejects a `Protocol` helper name that is also the name of an item generated for a
+/// transition.
 fn check_operation_name(sm: &SM, name: &Ident) -> Result<(), Error> {
     for tr in &sm.transitions {
         for suffix in [
@@ -199,6 +204,8 @@ fn check_operation_name(sm: &SM, name: &Ident) -> Result<(), Error> {
     Ok(())
 }
 
+/// Adds the `select_*`, `without_*` and `take_*` helpers of the fields `selected` (named
+/// after `label`) to `specs` and `proofs`.
 #[allow(clippy::too_many_arguments)]
 fn projection_helpers(
     names: &[&Ident],
@@ -251,6 +258,7 @@ fn projection_helpers(
     Ok(())
 }
 
+/// The `owns_*`/`value_*` (or `contains_*`) spec accessors of `field`.
 fn accessors(field: &Field) -> TokenStream {
     let name = &field.name;
     let owns = format_ident!("owns_{}", name);

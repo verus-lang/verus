@@ -10,6 +10,8 @@ pub enum EffectOp {
     Add,
     Remove,
 }
+/// A transition's composed `add` or `remove` effect on one monoid field (with `replacement`,
+/// a remove-then-add pair), defined by the spec fn `function`.
 pub struct Effect {
     pub field: Field,
     pub op: EffectOp,
@@ -18,6 +20,8 @@ pub struct Effect {
     pub replacement: bool,
 }
 
+/// Whether fields of this kind are monoid fields, whose ownership effects this module
+/// analyzes.
 pub fn is_monoid_type(s: &ShardableType) -> bool {
     matches!(
         s,
@@ -38,6 +42,7 @@ pub fn is_monoid_type(s: &ShardableType) -> bool {
             | ShardableType::PersistentISet(_)
     )
 }
+/// The fragment component type of a monoid field.
 pub fn component_type(s: &ShardableType) -> TokenStream {
     match s {
         ShardableType::PersistentBool | ShardableType::PersistentCount => {
@@ -66,6 +71,7 @@ pub fn component_type(s: &ShardableType) -> TokenStream {
         _ => unreachable!(),
     }
 }
+/// The fragment component owning exactly the field value `value`.
 pub fn embed(s: &ShardableType, value: TokenStream) -> TokenStream {
     match s {
         ShardableType::Count => quote! {::vstd::resource::tsm::CountRA{count:#value}},
@@ -102,6 +108,7 @@ pub fn embed(s: &ShardableType, value: TokenStream) -> TokenStream {
         _ => unreachable!(),
     }
 }
+/// The type of a monoid field's operands.
 pub fn operand_type(s: &ShardableType) -> Type {
     match s {
         ShardableType::Count | ShardableType::PersistentCount => verus_syn::parse_quote! {nat},
@@ -123,6 +130,7 @@ pub fn operand_type(s: &ShardableType) -> Type {
         _ => unreachable!(),
     }
 }
+/// The canonical operand of a monoid operation on `f`.
 pub(crate) fn operand(
     f: &Field,
     op: &SpecialOp,
@@ -197,6 +205,7 @@ pub(crate) fn operand(
     }
 }
 
+/// `value` as an `ISet` (finite sets through `to_iset`).
 fn set_view(s: &ShardableType, value: TokenStream) -> TokenStream {
     match s {
         ShardableType::Set(_) | ShardableType::PersistentSet(_) => quote! {(#value).to_iset()},
@@ -205,6 +214,7 @@ fn set_view(s: &ShardableType, value: TokenStream) -> TokenStream {
     }
 }
 
+/// `value` as an `IMap` (finite maps through `to_imap`).
 fn map_view(s: &ShardableType, value: TokenStream) -> TokenStream {
     match s {
         ShardableType::Map(..) | ShardableType::PersistentMap(..) => quote! {(#value).to_imap()},
@@ -226,6 +236,7 @@ pub(crate) fn bind_pattern(
         None => body,
     }
 }
+/// Whether `op` is a modifier of kind `kind`.
 fn is_of_kind(op: &SpecialOp, kind: EffectOp) -> bool {
     match kind {
         EffectOp::Add => op.is_add(),
@@ -242,6 +253,8 @@ fn has_effect(s: &TransitionStmt, target: &Ident, kind: EffectOp) -> bool {
         _ => false,
     }
 }
+/// The composed operand (an `Option`) of the `kind` operations on `f` in `s`; `None` on
+/// paths without one.
 fn effect_expression(s: &TransitionStmt, f: &Field, kind: EffectOp) -> Result<TokenStream, Error> {
     if !has_effect(s, &f.name, kind) {
         return Ok(quote! {None});
@@ -345,6 +358,8 @@ fn sequential(f: &Field, a: TokenStream, b: TokenStream) -> TokenStream {
     }}
 }
 
+/// Adds the modifier kinds applied to each monoid field to `kinds`; rejects unsupported
+/// operations and element bindings.
 fn collect_modifiers(
     s: &TransitionStmt,
     fields: &HashMap<String, Field>,
@@ -402,6 +417,8 @@ fn collect_modifiers(
     Ok(())
 }
 
+/// Rejects a removal from `target` after an addition to it on some path; returns the
+/// stages reached (see `single_replacement`).
 fn check_replacement_order(
     s: &TransitionStmt,
     target: &Ident,
@@ -541,6 +558,7 @@ fn check_binding_order(
     Ok(())
 }
 
+/// The effects of `tr` on its monoid fields, sorted by field name.
 pub fn transition_effects(
     tr: &Transition,
     fields: &HashMap<String, Field>,
@@ -608,6 +626,7 @@ fn replaceable(s: &ShardableType) -> bool {
     )
 }
 
+/// The owned component `owner` after `effect` with operand `value`.
 pub fn updated(effect: &Effect, owner: TokenStream, value: TokenStream) -> TokenStream {
     if effect.replacement {
         return match effect.field.stype {
@@ -642,6 +661,7 @@ pub fn updated(effect: &Effect, owner: TokenStream, value: TokenStream) -> Token
     }
     updated_component(&effect.field.stype, effect.op, owner, value)
 }
+/// The requirement that the owned fragment holds every entry a map effect removes.
 pub fn extra_ownership(effects: &[Effect], pn: &[&Ident]) -> TokenStream {
     let conditions:Vec<_>=effects.iter().filter_map(|effect|{
         let key_type=match &effect.field.stype {
@@ -660,6 +680,7 @@ pub fn extra_ownership(effects: &[Effect], pn: &[&Ident]) -> TokenStream {
     }).collect();
     quote! {true #(&&(#conditions))*}
 }
+/// The component `owner` after one `op` with operand `value`.
 pub(crate) fn updated_component(
     stype: &ShardableType,
     op: EffectOp,
@@ -733,6 +754,8 @@ pub(crate) fn updated_component(
     }
 }
 
+/// The effect spec fns, owned-component spec fns and frame lemmas of `effects`, and the
+/// calls of the frame lemmas.
 #[allow(clippy::too_many_arguments)]
 pub fn effect_declarations(
     effects: &[Effect],
@@ -1035,6 +1058,8 @@ pub fn effect_declarations(
     (quote! {#(#definitions)*}, calls)
 }
 
+/// The owned component of `field` after the transition, if the transition has an effect
+/// on it.
 pub fn owned_expression(
     effects: &[Effect],
     field: &Ident,

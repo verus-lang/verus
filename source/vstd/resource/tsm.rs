@@ -97,6 +97,7 @@ pub open spec fn completes<M: Machine>(fragment: M::Fragment) -> bool {
         M::invariant(state) && M::Fragment::op(fragment, frame) == M::embed(state)
 }
 
+/// A machine fragment as a resource: valid if it completes to an invariant state.
 pub enum Inved<M: Machine> {
     Unit,
     Value(M::Fragment),
@@ -293,6 +294,8 @@ pub proof fn frame_update_sound<M: Machine>(old: M::Fragment, new: M::Fragment)
     }
 }
 
+/// A checked nondeterministic frame update of machine fragments is a frame-preserving
+/// update of the resources holding them.
 pub proof fn frame_update_nondeterministic_sound<M: Machine>(
     old: M::Fragment,
     outputs: ISet<M::Fragment>,
@@ -475,6 +478,7 @@ impl<M: Machine> Token<M> {
         )
     }
 
+    /// Proves `fact` from every completion compatible with both tokens.
     pub proof fn facts_2(tracked &self, tracked other: &Self, fact: bool)
         requires
             self.loc() == other.loc(),
@@ -556,6 +560,7 @@ impl<M: Machine> Token<M> {
         )
     }
 
+    /// Proves `fact` from every completion compatible with all three tokens.
     pub proof fn facts_3(tracked &self, tracked second: &Self, tracked third: &Self, fact: bool)
         requires
             self.loc() == second.loc(),

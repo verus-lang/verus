@@ -12,6 +12,8 @@ use std::collections::{HashMap, HashSet};
 use verus_syn::spanned::Spanned;
 use verus_syn::{Error, Expr, Ident};
 
+/// A transition body flattened to straight-line updates, requirements, assertions and
+/// count operations.
 struct Straight {
     updates: HashMap<String, Expr>,
     requires: Vec<Expr>,
@@ -19,6 +21,7 @@ struct Straight {
     count_ops: Vec<(Ident, MonoidStmtType, Expr)>,
 }
 
+/// Adds `stmt` to `out`; rejects statements outside the straight-line subset.
 fn flatten(stmt: &TransitionStmt, out: &mut Straight) -> Result<(), Error> {
     match stmt {
         TransitionStmt::Block(_, xs) => {
@@ -78,6 +81,8 @@ fn flatten(stmt: &TransitionStmt, out: &mut Straight) -> Result<(), Error> {
     }
     Ok(())
 }
+/// `e` with its field reads rewritten to reads of the state `s` or, with `fragment`, of the
+/// fragment `f` (whose read fields are added to `used`).
 fn rewrite_fields(
     e: &Expr,
     fields: &HashMap<String, Field>,

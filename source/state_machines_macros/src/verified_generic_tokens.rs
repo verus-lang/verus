@@ -77,6 +77,7 @@ impl Kind {
     }
 }
 
+/// The token kind of `f`; `None` for fields without field tokens.
 fn kind(f: &Field) -> Option<Kind> {
     match f.stype {
         ShardableType::Variable(_) => Some(Kind::Variable),
@@ -99,6 +100,7 @@ fn kind(f: &Field) -> Option<Kind> {
     }
 }
 
+/// Rejects fields without generic tokens and field names that clash with generated types.
 fn check_fields(sm: &SM) -> Result<(), Error> {
     for f in &sm.fields {
         match f.stype {
@@ -500,16 +502,20 @@ impl Constants {
     fn opt_ref(&self, e: TokenStream) -> TokenStream {
         if self.owned { quote! {#e.tracked_borrow()} } else { quote! {#e.tracked_unwrap()} }
     }
+    /// Whether descriptor `d` holds an agreement value.
     fn is_valid(&self, d: TokenStream) -> TokenStream {
         quote! {((#d).value() is Some && (#d).value()->Some_0 is Agree)}
     }
+    /// The `(constants, location)` value of descriptor `d`.
     fn value(&self, d: TokenStream) -> TokenStream {
         quote! {(#d).value()->Some_0->Agree_0}
     }
+    /// The protocol location of descriptor `d`.
     fn protocol_loc(&self, d: TokenStream) -> TokenStream {
         let v = self.value(d);
         quote! {(#v).1}
     }
+    /// Constant `i` of descriptor `d`.
     fn constant(&self, d: TokenStream, i: usize) -> TokenStream {
         let v = self.value(d);
         let i = verus_syn::Index::from(i);
@@ -757,6 +763,8 @@ fn id_call(f: &Field, x: TokenStream) -> TokenStream {
     observer_call(f, &format_ident!("instance_id"), x)
 }
 
+/// The token type of field `f`: its struct with its type invariant, its internal
+/// operations, and its trait impls.
 fn token_type(f: &Field, store: &Store, generic: bool, cm: &Option<Constants>) -> TokenStream {
     let n = &f.name;
     let nt = tyname(f);
@@ -1204,8 +1212,8 @@ fn copy_impls(nt: &TokenStream, copy: bool, generic: bool) -> (TokenStream, Toke
     }
 }
 
-/// The component assertions that let two compatible real tokens of one field
-/// agree (or conflict).
+/// The component of field `f` in the fragment `x` (at `slot`, for collections), as
+/// compared when two compatible real tokens of one field agree (or conflict).
 fn field_component(f: &Field, x: TokenStream, slot: &Option<TokenStream>) -> TokenStream {
     let n = &f.name;
     match slot {
@@ -3720,6 +3728,7 @@ fn drop_derefs(ts: TokenStream, names: &HashSet<String>) -> TokenStream {
     out.into_iter().collect()
 }
 
+/// A token parameter of an operation, with its field.
 struct Param<'a> {
     field: &'a Field,
     p: &'a TokenParam,
@@ -3768,6 +3777,7 @@ fn reads(sm: &SM, tr: &Transition) -> HashSet<String> {
     a.union(&b).cloned().collect()
 }
 
+/// The machine-wide choices every `Instance` method is generated under.
 struct Ctx<'a> {
     sm: &'a SM,
     store: &'a Store,
@@ -3786,6 +3796,8 @@ struct Ctx<'a> {
     guard_unit: bool,
 }
 
+/// Whether an operation only borrows tokens, updates no variable and has only ghost
+/// outputs.
 fn is_read_only(parts: &ExchangeParts, params: &[Param]) -> bool {
     let guard = params.iter().any(|q| q.p.inout_type == InoutType::BorrowOut);
     !guard
@@ -3795,6 +3807,8 @@ fn is_read_only(parts: &ExchangeParts, params: &[Param]) -> bool {
         && !parts.in_params.iter().any(|p| p.to_string().contains("& mut"))
 }
 
+/// The token parameters of an operation (those of `variable` fields from `var_params`), in
+/// field order.
 fn token_params<'a>(sm: &'a SM, parts: &'a ExchangeParts, var_params: &'a [TokenParam]) -> Vec<Param<'a>> {
     let mut params: Vec<Param> = vec![];
     for f in &sm.fields {
@@ -4396,6 +4410,8 @@ fn ensures_steps(parts: &ExchangeParts, in_body: &dyn Fn(TokenStream) -> TokenSt
     }).collect()
 }
 
+/// The `Instance` method of a transition (of an initializer, also its `_with_unit`
+/// variant if needed).
 fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<TokenStream, Error> {
     let sm = &bundle.sm;
     let store = ctx.store;
@@ -6145,6 +6161,8 @@ fn guard_refs(store: &Store, f: &Field, helper: &Ident, pname: &Ident, e: &Token
     Ok((def, fact, call))
 }
 
+/// The `Instance` method of an initializer (with `with_unit`, the variant that also returns
+/// a `Unit`).
 fn init_method(
     bundle: &SMBundle,
     ctx: &Ctx,
@@ -6627,6 +6645,7 @@ fn turbofish_at(trees: &[Tree], i: usize, g: &MachineGenerics) -> Option<Vec<Tre
     Some(to_trees(quote! {#id::<#args>}))
 }
 
+/// `trees` with `::<args>` added to every bare use of a generated generic type.
 fn turbofish(trees: &[Tree], g: &MachineGenerics) -> Vec<Tree> {
     let mut out = vec![];
     for i in 0..trees.len() {
@@ -6742,6 +6761,8 @@ pub fn normalize_initial_requirements(bundle:&mut crate::parse_token_stream::SMB
     Ok(())
 }
 
+/// A fresh `__tsm_storage_<label>` name, unused by the fields, parameters, generics and
+/// body of `tr`.
 fn initial_fresh(sm: &SM, tr: &Transition, label: &str) -> Ident {
     let mut unavailable: HashSet<_> = sm.fields.iter().map(|f| f.name.to_string()).collect();
     unavailable.extend(tr.params.iter().map(|p| p.name.to_string()));
@@ -6806,6 +6827,8 @@ fn initial_fresh(sm: &SM, tr: &Transition, label: &str) -> Ident {
     Ident::new(&candidate, Span::mixed_site())
 }
 
+/// Adds the `require`s of a straight-line initializer to `requirements`; rejects other
+/// statements.
 fn initial_requires(stmt: &TransitionStmt, requirements: &mut Vec<Expr>) -> Result<(), Error> {
     match stmt {
         TransitionStmt::Block(_, children) => {

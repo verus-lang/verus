@@ -21,6 +21,7 @@ pub proof fn split_off<M: Machine>(tracked token: Token<M>, part: M::Fragment)
     token.split(part, remainder)
 }
 
+/// `split_off` for storage tokens.
 pub proof fn split_off_storage<M: StorageMachine>(tracked token: StorageToken<M>, part: M::Fragment)
     -> (tracked out: (StorageToken<M>, StorageToken<M>))
     requires exists|remainder: M::Fragment|

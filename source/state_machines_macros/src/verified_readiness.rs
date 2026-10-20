@@ -97,6 +97,7 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
     crate::verified_general::output_with_ready(bundle, &selected)
 }
 
+/// Rejects local-ready item names that collide with other generated items.
 fn check_local_ready_names(bundle: &SMBundle, selected: &HashSet<String>) -> Result<(), Error> {
     let sm = &bundle.sm;
     let mut state = HashSet::from(["invariant".to_string(), "__storage".to_string()]);
@@ -223,6 +224,8 @@ fn contains_require(s: &TransitionStmt) -> bool {
     }
 }
 
+/// The transition's `require` conditions as one expression, keeping its `let`s, `if`s and
+/// `match`es.
 fn declared_requires(s: &TransitionStmt) -> Result<TokenStream, Error> {
     if !contains_require(s) {
         return Ok(quote! {true});
@@ -275,6 +278,7 @@ fn declared_requires(s: &TransitionStmt) -> Result<TokenStream, Error> {
     }
 }
 
+/// The `<tr>_declared_requires` spec fn: the transition's own requirements on `pre`.
 pub fn declared_requires_spec(
     tr: &Transition,
     st: &TokenStream,
@@ -287,6 +291,8 @@ pub fn declared_requires_spec(
     )
 }
 
+/// What `local_ready_api` uses of the machine and of one local-ready transition (`st`/`se`:
+/// state type/expression, `ft`: fragment type, `tt`: token type, `pn`: parameter names).
 pub struct Context<'a> {
     pub sm: &'a SM,
     pub tr: &'a Transition,
@@ -308,6 +314,8 @@ pub struct Context<'a> {
     pub paired: bool,
 }
 
+/// A `__tsm_<stem>_<n>` name that no parameter, field, generic or body identifier of `tr`
+/// uses.
 fn fresh(sm:&SM,tr:&Transition,stem:&str)->Ident {
     fn reserve(tokens:TokenStream,names:&mut HashSet<String>){for token in tokens{match token{
         proc_macro2::TokenTree::Ident(n)=>{names.insert(n.to_string());},
@@ -487,6 +495,8 @@ fn singleton_map_remove_hints(sm:&SM,tr:&Transition,observation:&Ident,completio
     }).collect()
 }
 
+/// The local-ready items of a transition: `_local_requires`, `_local_ready`, `_local`,
+/// `_local_with_shared` and `_observed`.
 pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     let Context {
         sm,
