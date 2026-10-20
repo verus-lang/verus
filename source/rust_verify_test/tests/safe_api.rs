@@ -444,6 +444,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] trait_decl_with_default_issue3214 ["-V check-api-safety"] => verus_code! {
+        use vstd::prelude::*;
         pub trait Foo {
             fn test(x: u8)
                 requires x > 0,
