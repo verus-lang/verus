@@ -82,7 +82,6 @@ below with the reason.
   the generic interface.
 * `negative/local_ready_hidden_state.rs`: a withdrawal whose stored value the supplied
   fragments do not show fails the generated readiness lemma.
-* `negative/local_ready_special_require.rs`: diagnostic for a `require` on a special binding.
 * `negative/default_tokens_local_ready_unknown.rs`: names are checked on the generic interface.
 
 ## Interface selection

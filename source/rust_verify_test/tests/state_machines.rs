@@ -10147,3 +10147,142 @@ test_verify_one_file_with_options! {
         }}
     } => Ok(())
 }
+
+// Checked-macro test of `#[verified_local_ready]` for values bound by patterns (the trusted
+// macro has no local-ready operations): `remove`/`have` of a map entry `[k => let v]` (map, imap,
+// persistent map), of `Some(let x)` (option, persistent option), refutable patterns, bound
+// values in requirements, updates, conditions, later keys and deposits, and a `let`-bound
+// withdrawal. The local requirement used to read such a value from `__observed(..)`, which is
+// arbitrary, so no client could establish it; the local state now takes it from the supplied
+// fragments. The clients establish each local requirement from their tokens, some with the
+// observed entry in the shared fragment.
+test_verify_one_file_with_options! {
+    #[test] implicit_bindings_local_ready_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::tsm::Machine;
+        pub enum Tag { A(int), B }
+        verified_tokenized_state_machine!{
+            #[verified_raw_tokens]
+            #[verified_local_ready(map_remove_bound, map_have_bound, imap_remove_readd,
+                pmap_have_bound, option_remove_readd, poption_have_bound, refutable_option,
+                refutable_map, bound_condition, bound_key, put, take)]
+            X {
+            fields {
+                #[sharding(map)] pub m: Map<int, int>,
+                #[sharding(imap)] pub im: IMap<int, int>,
+                #[sharding(persistent_map)] pub pm: Map<int, int>,
+                #[sharding(option)] pub o: Option<int>,
+                #[sharding(persistent_option)] pub po: Option<int>,
+                #[sharding(option)] pub ro: Option<Tag>,
+                #[sharding(map)] pub rm: Map<int, Tag>,
+                #[sharding(variable)] pub cnt: int,
+                #[sharding(option)] pub held: Option<int>,
+                #[sharding(variable)] pub full: bool,
+                #[sharding(storage_option)] pub st: Option<int>,
+            }
+            #[invariant] pub fn stored(&self) -> bool {
+                self.st == self.held && self.full == (self.held is Some)
+            }
+            init!{ initialize() {
+                init m = Map::empty().insert(1, 5).insert(12, 13); init im = IMap::empty().insert(2, 6);
+                init pm = Map::empty().insert(3, 7); init o = Some(8); init po = Some(9);
+                init ro = Some(Tag::A(10)); init rm = Map::empty().insert(4, Tag::A(11));
+                init cnt = 0; init held = None; init full = false; init st = None;
+            } }
+            init!{ initialize_held(v: int) {
+                init m = Map::empty(); init im = IMap::empty(); init pm = Map::empty(); init o = None;
+                init po = None; init ro = None; init rm = Map::empty(); init cnt = 0;
+                init held = Some(v); init full = true; init st = Some(v);
+            } }
+            transition!{ map_remove_bound(k: int) {
+                remove m -= [k => let v]; require(v > 0); update cnt = v;
+            } }
+            transition!{ map_have_bound(k: int) { have m >= [k => let v]; require(v > 0); } }
+            transition!{ imap_remove_readd(k: int) {
+                remove im -= [k => let v]; require(v > 0); add im += [k => v + 1];
+            } }
+            transition!{ pmap_have_bound(k: int) { have pm >= [k => let v]; require(v > 0); } }
+            transition!{ option_remove_readd() {
+                remove o -= Some(let x); require(x > 0); add o += Some(x + 1);
+            } }
+            transition!{ poption_have_bound() { have po >= Some(let x); require(x > 0); } }
+            transition!{ refutable_option() {
+                remove ro -= Some(let Tag::A(x)); require(x > 0); add ro += Some(Tag::B);
+            } }
+            transition!{ refutable_map(k: int) { have rm >= [k => let Tag::A(x)]; require(x > 0); } }
+            transition!{ bound_condition(k: int, j: int) {
+                remove m -= [k => let v];
+                if v > 0 { remove m -= [j => let w]; require(w > v); } else { update cnt = 0; }
+            } }
+            transition!{ bound_key() { remove o -= Some(let x); have m >= [x + 4 => let v]; require(v == 13); } }
+            transition!{ put() {
+                remove o -= Some(let x); require(!pre.full);
+                add held += Some(x); deposit st += Some(x); update full = true;
+            } }
+            transition!{ take() { remove held -= Some(let x); withdraw st -= Some(let y); update full = false; } }
+            #[inductive(initialize)] fn initialize_inductive(post: Self) { }
+            #[inductive(initialize_held)] fn initialize_held_inductive(post: Self, v: int) { }
+            #[inductive(map_remove_bound)] fn map_remove_bound_inductive(pre: Self, post: Self, k: int) { }
+            #[inductive(map_have_bound)] fn map_have_bound_inductive(pre: Self, post: Self, k: int) { }
+            #[inductive(imap_remove_readd)] fn imap_remove_readd_inductive(pre: Self, post: Self, k: int) { }
+            #[inductive(pmap_have_bound)] fn pmap_have_bound_inductive(pre: Self, post: Self, k: int) { }
+            #[inductive(option_remove_readd)] fn option_remove_readd_inductive(pre: Self, post: Self) { }
+            #[inductive(poption_have_bound)] fn poption_have_bound_inductive(pre: Self, post: Self) { }
+            #[inductive(refutable_option)] fn refutable_option_inductive(pre: Self, post: Self) { }
+            #[inductive(refutable_map)] fn refutable_map_inductive(pre: Self, post: Self, k: int) { }
+            #[inductive(bound_condition)] fn bound_condition_inductive(pre: Self, post: Self, k: int, j: int) { }
+            #[inductive(bound_key)] fn bound_key_inductive(pre: Self, post: Self) { }
+            #[inductive(put)] fn put_inductive(pre: Self, post: Self) { }
+            #[inductive(take)] fn take_inductive(pre: Self, post: Self) { }
+        }}
+
+        proof fn start() -> (tracked t: X::Token)
+            ensures t.fragment() == X::Protocol::embed(X::State {
+                m: Map::empty().insert(1, 5).insert(12, 13), im: IMap::empty().insert(2, 6),
+                pm: Map::empty().insert(3, 7), o: Some(8), po: Some(9), ro: Some(Tag::A(10)),
+                rm: Map::empty().insert(4, Tag::A(11)), cnt: 0, held: None, full: false, st: None })
+        {
+            let tracked t = X::Protocol::initialize(IMap::tracked_empty());
+            let s = choose|s: X::State| X::State::initialize(s) && s.invariant() && t.fragment() == X::Protocol::embed(s);
+            assert(s.m =~= Map::empty().insert(1, 5).insert(12, 13));
+            t
+        }
+
+        proof fn owned_clients() {
+            let tracked t = X::Protocol::map_remove_bound_local(start(), 1);
+            let tracked t = X::Protocol::map_have_bound_local(start(), 1);
+            let tracked t = X::Protocol::imap_remove_readd_local(start(), 2);
+            let tracked t = X::Protocol::pmap_have_bound_local(start(), 3);
+            let tracked t = X::Protocol::option_remove_readd_local(start());
+            let tracked t = X::Protocol::poption_have_bound_local(start());
+            let tracked t = X::Protocol::refutable_option_local(start());
+            let tracked t = X::Protocol::refutable_map_local(start(), 4);
+            let tracked t = X::Protocol::bound_condition_local(start(), 1, 12);
+            let tracked t = X::Protocol::bound_key_local(start());
+        }
+
+        // The observed entry is in the shared fragment.
+        proof fn shared_clients() {
+            let tracked (m, rest) = X::Protocol::take_m(start());
+            let tracked rest = X::Protocol::map_have_bound_local_with_shared(rest, &m, 1);
+            let tracked (po, rest) = X::Protocol::take_po(start());
+            let tracked rest = X::Protocol::poption_have_bound_local_with_shared(rest, &po);
+        }
+
+        // The deposit is the removed option's value.
+        proof fn deposit_client(tracked v: int) requires v == 8 {
+            let tracked mut d = IMap::tracked_empty();
+            d.tracked_insert(X::__StorageKey::st, X::__StorageValue::st(v));
+            assert(d =~= IMap::empty().insert(X::__StorageKey::st, X::__StorageValue::st(8)));
+            let tracked t = X::Protocol::put_local(start(), d);
+        }
+
+        // The withdrawn value is bound by a pattern; the invariant links it to `held`.
+        proof fn withdraw_client(tracked v: int) {
+            let tracked mut b = IMap::tracked_empty();
+            b.tracked_insert(X::__StorageKey::st, X::__StorageValue::st(v));
+            let tracked t = X::Protocol::initialize_held(b, v);
+            let s = choose|s: X::State| X::State::initialize_held(s, v) && s.invariant() && t.fragment() == X::Protocol::embed(s);
+            let tracked (t, w) = X::Protocol::take_local(t);
+        }
+    } => Ok(())
+}

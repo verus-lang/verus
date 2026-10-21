@@ -99,6 +99,30 @@ pub type MultisetFragment<V> = Pointwise<V, CountRA>;
 pub type OptionFragment<V> = Option<ExclusiveRA<V>>;
 pub type PersistentOptionFragment<V> = Option<AgreementRA<V>>;
 
+/// The value of an exclusive entry that one of two fragment components holds:
+/// `first`'s if it has one, else `second`'s (the local state of a local-ready
+/// operation reads a pattern-bound value so from its owned and shared
+/// fragments).
+pub open spec fn exclusive_entry<V>(first: OptionFragment<V>, second: OptionFragment<V>) -> V {
+    if first is Some {
+        first->Some_0->Exclusive_0
+    } else {
+        second->Some_0->Exclusive_0
+    }
+}
+
+/// `exclusive_entry` of persistent (agreement) entries.
+pub open spec fn agreement_entry<V>(
+    first: PersistentOptionFragment<V>,
+    second: PersistentOptionFragment<V>,
+) -> V {
+    if first is Some {
+        first->Some_0->Agree_0
+    } else {
+        second->Some_0->Agree_0
+    }
+}
+
 pub open spec fn option_frag<V>(value: Option<V>) -> OptionFragment<V> {
     match value {
         None => None,

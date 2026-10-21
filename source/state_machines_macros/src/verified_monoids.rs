@@ -253,6 +253,18 @@ fn has_effect(s: &TransitionStmt, target: &Ident, kind: EffectOp) -> bool {
         _ => false,
     }
 }
+/// Whether `tokens` mention a name that `pattern` binds.
+fn mentions_bound(pattern: &verus_syn::Pat, tokens: &TokenStream) -> bool {
+    fn mentions(tokens: TokenStream, names: &[Ident]) -> bool {
+        tokens.into_iter().any(|token| match token {
+            proc_macro2::TokenTree::Ident(name) => names.contains(&name),
+            proc_macro2::TokenTree::Group(group) => mentions(group.stream(), names),
+            _ => false,
+        })
+    }
+    mentions(tokens.clone(), &crate::ident_visitor::pattern_get_bound_idents(pattern))
+}
+
 /// The composed operand (an `Option`) of the `kind` operations on `f` in `s`; `None` on
 /// paths without one.
 fn effect_expression(s: &TransitionStmt, f: &Field, kind: EffectOp) -> Result<TokenStream, Error> {
@@ -297,11 +309,26 @@ fn effect_expression(s: &TransitionStmt, f: &Field, kind: EffectOp) -> Result<To
                     .collect::<Result<_, Error>>()?;
                 quote! {match #e{#(#cases),*}}
             }
-            SplitKind::Special(n, op, _, _) if n == &f.name && is_of_kind(op, kind) => {
+            SplitKind::Special(n, op, _, pattern) if n == &f.name && is_of_kind(op, kind) => {
                 let value = operand(f, op, *span)?;
                 match xs.first() {
                     Some(rest) if has_effect(rest, &f.name, kind) => {
-                        sequential(f, quote! {Some(#value)}, effect_expression(rest, f, kind)?)
+                        let rest = effect_expression(rest, f, kind)?;
+                        // The later operands may use this statement's binding
+                        // (e.g. in a condition), bound as below.
+                        let rest = match (pattern, &op.elt) {
+                            (Some(p), MonoidElt::OptionSome(None) | MonoidElt::SingletonKV(_, None))
+                                if mentions_bound(p, &rest) =>
+                            {
+                                let bound = match &op.elt {
+                                    MonoidElt::SingletonKV(k, None) => quote! {pre.#n[#k]},
+                                    _ => quote! {pre.#n->Some_0},
+                                };
+                                bind_pattern(p, bound, rest)
+                            }
+                            _ => rest,
+                        };
+                        sequential(f, quote! {Some(#value)}, rest)
                     }
                     _ => quote! {Some(#value)},
                 }
