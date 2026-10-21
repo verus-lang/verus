@@ -992,6 +992,29 @@ fn local_sequence_hints(
     Ok((hints, covered))
 }
 
+/// Whether `stmt` has a storage operation under a `let`, `if` or `match`
+/// (which `<tr>_deposited` and `<tr>_local_deposited` then keep).
+fn scoped_deposits(stmt: &TransitionStmt) -> bool {
+    fn storage(stmt: &TransitionStmt) -> bool {
+        match stmt {
+            TransitionStmt::Block(_, children) => children.iter().any(storage),
+            TransitionStmt::Split(_, split, children) => {
+                matches!(&**split, SplitKind::Special(_, operation, ..) if operation.stmt.is_for_storage())
+                    || children.iter().any(storage)
+            }
+            _ => false,
+        }
+    }
+    match stmt {
+        TransitionStmt::Block(_, children) => children.iter().any(scoped_deposits),
+        TransitionStmt::Split(_, split, children) => {
+            let scope = matches!(&**split, SplitKind::Let(..) | SplitKind::If(_) | SplitKind::Match(..));
+            (scope && children.iter().any(storage)) || children.iter().any(scoped_deposits)
+        }
+        _ => false,
+    }
+}
+
 /// The local-ready items of a transition: `_local_requires`, `_local_ready`, `_local`,
 /// `_local_with_shared` and `_observed`.
 pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
@@ -1117,11 +1140,20 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     } else {
         quote! {}
     };
-    let deposit_eq = storage.prove_eq(
-        &format_ident!("__tsm_deposit_index", span = proc_macro2::Span::mixed_site()),
+    let deposit_index = format_ident!("__tsm_deposit_index", span = proc_macro2::Span::mixed_site());
+    let (local_deposit, full_deposit) = (
         quote! {#se::#local_deposited(#full_state,#(#pn),*)},
         quote! {#se::#deposited(#full_state,#(#pn),*)},
     );
+    let deposit_eq = if scoped_deposits(&tr.body) {
+        // Both deposit functions are inline: name them, as Verus cannot
+        // choose a trigger in their `let`/`if`/`match` bodies.
+        let (local_name, full_name) = (fresh(sm, tr, "local_deposit"), fresh(sm, tr, "deposit"));
+        let eq = storage.prove_eq(&deposit_index, quote! {#local_name}, quote! {#full_name});
+        quote! {let #local_name = #local_deposit; let #full_name = #full_deposit; #eq}
+    } else {
+        storage.prove_eq(&deposit_index, local_deposit, full_deposit)
+    };
     let (sequence_hints,sequenced)=local_sequence_hints(sm,tr,&full_state,&completion_frame,ft)?;
     let set_hints=singleton_set_remove_hints(tr,&observation,&full_state,&completion_frame,ft,se,&owners,pn,&sequenced);
     let map_hints=singleton_map_remove_hints(sm,tr,&observation,&full_state,&completion_frame,ft,se,&owners,pn,&sequenced);

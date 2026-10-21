@@ -10090,3 +10090,60 @@ test_verify_one_file_with_options! {
         }}
     } => Ok(())
 }
+
+// Storage operations under a branch (and after a `let`) in a `#[verified_local_ready]`
+// transition (checked macro only): the readiness proof's deposit equality quantified over the
+// inline `<tr>_local_deposited`/`<tr>_deposited`, whose `let`/`match` bodies Verus cannot
+// choose a trigger in ("Could not automatically infer triggers").
+test_verify_one_file_with_options! {
+    #[test] branch_storage_local_ready_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        pub struct Tok { pub v: int }
+        pub enum Cmd { Put(int), Take, Nop }
+
+        verified_tokenized_state_machine!{
+            #[verified_raw_tokens]
+            #[verified_local_ready(branchy, keyed)]
+            X {
+            fields {
+                #[sharding(variable)] pub auth: Map<int, Tok>,
+                #[sharding(storage_map)] pub stored: Map<int, Tok>,
+                #[sharding(variable)] pub n: int,
+                #[sharding(constant)] pub k: int,
+                #[sharding(map)] pub m: Map<int, int>,
+            }
+            #[invariant] pub fn same(&self) -> bool { self.auth == self.stored }
+            init!{ initialize(k: int) {
+                init auth = Map::empty(); init stored = Map::empty(); init n = 0; init k = k;
+                init m = Map::empty();
+            } }
+            transition!{ branchy(cmd: Cmd, t: Tok, a: Map<int, int>, b: Map<int, int>) {
+                let key = pre.k + 1;
+                match cmd {
+                    Cmd::Put(v) => {
+                        require(!pre.auth.contains_key(key));
+                        remove m -= (a);
+                        deposit stored += [key => t];
+                        update auth = pre.auth.insert(key, t);
+                        update n = v;
+                    }
+                    Cmd::Take => {
+                        require(pre.auth.contains_key(key) && pre.auth[key] == t);
+                        withdraw stored -= [key => t];
+                        update auth = pre.auth.remove(key);
+                    }
+                    Cmd::Nop => {}
+                }
+                have m >= (b);
+            } }
+            transition!{ keyed(t: Tok) {
+                let key = pre.k + 1;
+                require(!pre.auth.contains_key(key));
+                deposit stored += [key => t];
+                update auth = pre.auth.insert(key, t);
+            } }
+            #[inductive(initialize)] fn initialize_inductive(post: Self, k: int) {}
+            #[inductive(branchy)] fn branchy_inductive(pre: Self, post: Self, cmd: Cmd, t: Tok, a: Map<int, int>, b: Map<int, int>) {}
+            #[inductive(keyed)] fn keyed_inductive(pre: Self, post: Self, t: Tok) {}
+        }}
+    } => Ok(())
+}
