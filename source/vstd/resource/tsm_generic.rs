@@ -232,6 +232,30 @@ pub proof fn multiset_included_many<V>(
 {
 }
 
+/// A multiset token collection included in the shared part `shared` of a
+/// fragment that completes to `whole`: it is contained in `shared`, and
+/// together with the owned part in `whole`.
+pub proof fn multiset_shared_included_many<V>(
+    tok: FiniteMultisetRA<V>,
+    rest: FiniteMultisetRA<V>,
+    owned: FiniteMultisetRA<V>,
+    shared: FiniteMultisetRA<V>,
+    frame: FiniteMultisetRA<V>,
+    whole: Multiset<V>,
+    observed: Multiset<V>,
+)
+    requires
+        shared == FiniteMultisetRA::op(tok, rest),
+        FiniteMultisetRA::op(FiniteMultisetRA::op(owned, shared), frame) == finite_multiset_frag(
+            whole,
+        ),
+        tok.values == observed,
+    ensures
+        observed.subset_of(shared.values),
+        owned.values.add(observed).subset_of(whole),
+{
+}
+
 /// A persistent map token's entry is the state's entry.
 pub proof fn persistent_map_included_owned_at<K, V>(
     owned: PersistentMapFragment<K, V>,

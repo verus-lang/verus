@@ -758,6 +758,94 @@ pub proof fn set_included_owned_many<K>(
     set_have_many_frame(owned, SetFragment::op(rest, frame), set, observed);
 }
 
+/// The owned and the shared part of a valid map fragment hold exclusive
+/// entries, and never the same key. Operations that observe a map field again
+/// after removing from it rely on this to separate the operands.
+pub proof fn map_parts_exclusive<K, V>(
+    owned: MapFragment<K, V>, shared: MapFragment<K, V>, frame: MapFragment<K, V>, map: IMap<K, V>,
+)
+    requires
+        MapFragment::op(MapFragment::op(owned, shared), frame) == map_frag(map),
+    ensures
+        forall|key: K| #![trigger owned.at(key)] #![trigger shared.at(key)]
+            (owned.at(key) is None || shared.at(key) is None)
+            && (owned.at(key) is Some ==> owned.at(key)->Some_0 is Exclusive)
+            && (shared.at(key) is Some ==> shared.at(key)->Some_0 is Exclusive),
+{
+    assert forall|key: K| #![trigger owned.at(key)] #![trigger shared.at(key)]
+        (owned.at(key) is None || shared.at(key) is None)
+        && (owned.at(key) is Some ==> owned.at(key)->Some_0 is Exclusive)
+        && (shared.at(key) is Some ==> shared.at(key)->Some_0 is Exclusive) by {
+        assert(MapFragment::op(MapFragment::op(owned, shared), frame).at(key) == map_frag(map).at(key));
+    }
+}
+
+/// A map token collection included in the shared part `shared` of a valid
+/// fragment: its entries are exact in `shared` and absent from the owned part.
+pub proof fn map_shared_included_many<K, V>(
+    tok: MapFragment<K, V>, rest: MapFragment<K, V>, owned: MapFragment<K, V>,
+    shared: MapFragment<K, V>, frame: MapFragment<K, V>, map: IMap<K, V>, observed: IMap<K, V>,
+)
+    requires
+        shared == MapFragment::op(tok, rest),
+        MapFragment::op(MapFragment::op(owned, shared), frame) == map_frag(map),
+        forall|key: K| observed.contains_key(key)
+            ==> #[trigger] tok.at(key) == Some(ExclusiveRA::Exclusive(observed[key])),
+    ensures
+        forall|key: K| #![trigger shared.at(key)] #![trigger owned.at(key)]
+            #![trigger observed.contains_key(key)] observed.contains_key(key)
+            ==> shared.at(key) == Some(ExclusiveRA::Exclusive(observed[key])) && owned.at(key) is None,
+{
+    assert forall|key: K| #![trigger shared.at(key)] #![trigger owned.at(key)]
+        #![trigger observed.contains_key(key)] observed.contains_key(key)
+        implies shared.at(key) == Some(ExclusiveRA::Exclusive(observed[key])) && owned.at(key) is None by {
+        assert(tok.at(key) == Some(ExclusiveRA::Exclusive(observed[key])));
+        assert(MapFragment::op(MapFragment::op(owned, shared), frame).at(key) == map_frag(map).at(key));
+    }
+}
+
+/// `map_parts_exclusive` for a set fragment.
+pub proof fn set_parts_exclusive<K>(
+    owned: SetFragment<K>, shared: SetFragment<K>, frame: SetFragment<K>, set: ISet<K>,
+)
+    requires
+        SetFragment::op(SetFragment::op(owned, shared), frame) == set_frag(set),
+    ensures
+        forall|key: K| #![trigger owned.at(key)] #![trigger shared.at(key)]
+            (owned.at(key) is None || shared.at(key) is None)
+            && (owned.at(key) is Some ==> owned.at(key)->Some_0 is Exclusive)
+            && (shared.at(key) is Some ==> shared.at(key)->Some_0 is Exclusive),
+{
+    assert forall|key: K| #![trigger owned.at(key)] #![trigger shared.at(key)]
+        (owned.at(key) is None || shared.at(key) is None)
+        && (owned.at(key) is Some ==> owned.at(key)->Some_0 is Exclusive)
+        && (shared.at(key) is Some ==> shared.at(key)->Some_0 is Exclusive) by {
+        assert(SetFragment::op(SetFragment::op(owned, shared), frame).at(key) == set_frag(set).at(key));
+    }
+}
+
+/// `map_shared_included_many` for a set token collection.
+pub proof fn set_shared_included_many<K>(
+    tok: SetFragment<K>, rest: SetFragment<K>, owned: SetFragment<K>,
+    shared: SetFragment<K>, frame: SetFragment<K>, set: ISet<K>, observed: ISet<K>,
+)
+    requires
+        shared == SetFragment::op(tok, rest),
+        SetFragment::op(SetFragment::op(owned, shared), frame) == set_frag(set),
+        forall|key: K| observed.contains(key) ==> #[trigger] tok.at(key) == Some(ExclusiveRA::Exclusive(())),
+    ensures
+        forall|key: K| #![trigger shared.at(key)] #![trigger owned.at(key)]
+            #![trigger observed.contains(key)] observed.contains(key)
+            ==> shared.at(key) == Some(ExclusiveRA::Exclusive(())) && owned.at(key) is None,
+{
+    assert forall|key: K| #![trigger shared.at(key)] #![trigger owned.at(key)]
+        #![trigger observed.contains(key)] observed.contains(key)
+        implies shared.at(key) == Some(ExclusiveRA::Exclusive(())) && owned.at(key) is None by {
+        assert(tok.at(key) == Some(ExclusiveRA::Exclusive(())));
+        assert(SetFragment::op(SetFragment::op(owned, shared), frame).at(key) == set_frag(set).at(key));
+    }
+}
+
 /// A whole exclusive observation justifies a general set Have operand.
 pub proof fn set_have_many_frame<K>(
     owned: SetFragment<K>,

@@ -9692,3 +9692,106 @@ test_verify_tsm! {
         }}
     } => Err(e) => assert_vir_error_msg(e, "tokenized transitions support one field or index update of a field per path")
 }
+
+// Regression (checked macro): a general `remove` or `have` of a `map`, `imap`, `set`, `iset` or
+// `multiset` field after a `remove` of the same field failed the generated readiness proof
+// (`__tsm_ready_<tr>`, "assertion failed" at the macro). The later operand is observed in the
+// fragment the removal leaves, and the transition's enabling condition needs it disjoint from the
+// removed operand (for a multiset: their sum in the state); the inclusion of each input token in
+// `op(owned, h)` does not say that. Singleton later operands, and general ones after no removal,
+// were not affected.
+test_verify_tsm! {
+    #[test] general_operand_after_remove_same_field IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(map)] pub m: Map<int, int>,
+                #[sharding(imap)] pub im: IMap<int, int>,
+                #[sharding(set)] pub s: Set<int>,
+                #[sharding(iset)] pub is: ISet<int>,
+                #[sharding(multiset)] pub ms: Multiset<int>,
+            }
+
+            init!{ initialize() {
+                init m = Map::empty(); init im = IMap::empty(); init s = Set::empty();
+                init is = ISet::empty(); init ms = Multiset::empty();
+            } }
+
+            // The reported case: constant operands.
+            transition!{ map_constants() {
+                remove m -= ( Map::<int, int>::empty().insert(0, 1) );
+                have m >= ( Map::<int, int>::empty().insert(2, 3) );
+            } }
+
+            transition!{ map_remove_have(a: Map<int, int>, b: Map<int, int>) {
+                remove m -= (a);
+                have m >= (b);
+            } }
+            transition!{ map_remove_remove(a: Map<int, int>, b: Map<int, int>) {
+                remove m -= (a);
+                remove m -= (b);
+            } }
+            transition!{ map_remove_remove_have_add(a: Map<int, int>, b: Map<int, int>, c: Map<int, int>) {
+                remove m -= (a);
+                remove m -= (b);
+                have m >= (c);
+                add m += (a);
+            } }
+            transition!{ map_singleton_remove_have(k: int, v: int, b: Map<int, int>) {
+                remove m -= [k => v];
+                have m >= (b);
+            } }
+
+            transition!{ imap_remove_have(a: IMap<int, int>, b: IMap<int, int>) {
+                remove im -= (a);
+                have im >= (b);
+            } }
+            transition!{ imap_remove_remove_have(a: IMap<int, int>, b: IMap<int, int>, c: IMap<int, int>) {
+                remove im -= (a);
+                remove im -= (b);
+                have im >= (c);
+            } }
+
+            transition!{ set_remove_have(a: Set<int>, b: Set<int>) {
+                remove s -= (a);
+                have s >= (b);
+            } }
+            transition!{ set_remove_remove_have(a: Set<int>, b: Set<int>, c: Set<int>) {
+                remove s -= (a);
+                remove s -= (b);
+                have s >= (c);
+            } }
+            transition!{ set_singleton_remove_have(e: int, b: Set<int>) {
+                remove s -= set { e };
+                have s >= (b);
+            } }
+
+            transition!{ iset_remove_have(a: ISet<int>, b: ISet<int>) {
+                remove is -= (a);
+                have is >= (b);
+            } }
+            transition!{ iset_remove_remove(a: ISet<int>, b: ISet<int>) {
+                remove is -= (a);
+                remove is -= (b);
+            } }
+
+            // The checked macro's generic interface requires a borrowed multiset
+            // operand without repeated elements.
+            transition!{ multiset_remove_have(a: Multiset<int>, b: Multiset<int>) {
+                require(forall|x: int| b.count(x) <= 1);
+                remove ms -= (a);
+                have ms >= (b);
+            } }
+            transition!{ multiset_remove_remove_have(a: Multiset<int>, b: Multiset<int>, c: Multiset<int>) {
+                require(forall|x: int| c.count(x) <= 1);
+                remove ms -= (a);
+                remove ms -= (b);
+                have ms >= (c);
+            } }
+            transition!{ multiset_singleton_remove_have(e: int, b: Multiset<int>) {
+                require(forall|x: int| b.count(x) <= 1);
+                remove ms -= {e};
+                have ms >= (b);
+            } }
+        }}
+    } => Ok(())
+}

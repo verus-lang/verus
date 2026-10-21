@@ -3177,6 +3177,156 @@ fn included_lemma(f: &Field, vals: &[TokenStream], tok: TokenStream, coll: Optio
     }
 }
 
+/// Readiness facts for a general operand that a `remove` or `have` observes
+/// after a `remove` of the same exclusive collection field. The ownership
+/// condition observes it in the fragment that the earlier removal leaves
+/// (`map_remove_many(owned.f, ..)`, joined with the shared part for a `have`),
+/// and the transition's enabling condition in the state without the earlier
+/// operand. Neither follows from the inclusion of each input in
+/// `op(owned, h)`: they need the inputs to be separate parts of a valid
+/// fragment. So for each such operand `x` and earlier removed operand `r`,
+/// `r` and `x` are disjoint (a `multiset` operand: their sum is in the
+/// state), and a borrowed `x` is exact in `h` and absent from `owned`. A
+/// singleton operand after a removal, and a general one after none, need
+/// nothing (their keys are ground terms, or the fragment is the initial one).
+/// Stated inside the completion quantifier (`__tsm_z`, `pre`).
+fn sequence_hints(
+    params: &[Param],
+    owned: &Ident,
+    h: &Ident,
+    in_helper: &dyn Fn(TokenStream) -> TokenStream,
+) -> Vec<TokenStream> {
+    let c = quote! {::vstd::resource::tsm_collections};
+    let t = quote! {::vstd::resource::tsm};
+    let mut out = vec![];
+    let mut fields: Vec<&Field> = vec![];
+    for q in params {
+        if !fields.iter().any(|f| f.name == q.field.name) {
+            fields.push(q.field);
+        }
+    }
+    for f in fields {
+        let Some(k) = kind(f) else { continue };
+        if !matches!(k, Kind::Map | Kind::IMap | Kind::Set | Kind::ISet | Kind::Multiset) {
+            continue;
+        }
+        let n = &f.name;
+        let factory = format_ident!("field_{}", n);
+        let inputs: Vec<&Param> = params
+            .iter()
+            .filter(|q| {
+                q.field.name == f.name
+                    && matches!(q.p.inout_type, InoutType::In | InoutType::BorrowIn)
+            })
+            .collect();
+        // The state and an operand as the pointwise fragments' (infinite) domains.
+        let native = |e: &TokenStream| match k {
+            Kind::Map => quote! {(#e).to_imap()},
+            Kind::Set => quote! {(#e).to_iset()},
+            _ => quote! {(#e)},
+        };
+        let pre_native = match k {
+            Kind::Map => quote! {pre.#n.to_imap()},
+            Kind::Set => quote! {pre.#n.to_iset()},
+            _ => quote! {pre.#n},
+        };
+        let member = |e: &TokenStream, key: &TokenStream| match k {
+            Kind::Map | Kind::IMap => quote! {(#e).dom().contains(#key)},
+            _ => quote! {(#e).contains(#key)},
+        };
+        let native_member = |e: &TokenStream, key: &TokenStream| {
+            let ne = native(e);
+            match k {
+                Kind::Map => quote! {#ne.contains_key(#key)},
+                _ => member(&ne, key),
+            }
+        };
+        let mut both_owned = false;
+        for (j, x) in inputs.iter().enumerate() {
+            let Some(MonoidElt::General(ex)) = x.p.elt.as_ref().filter(|_| x.p.is_collection)
+            else {
+                continue;
+            };
+            let removed: Vec<&&Param> =
+                inputs[..j].iter().filter(|q| q.p.inout_type == InoutType::In).collect();
+            if removed.is_empty() {
+                continue;
+            }
+            let ex = quote! {#ex};
+            if x.p.inout_type == InoutType::BorrowIn {
+                let observed = native(&ex);
+                let lemma = match k {
+                    Kind::Map | Kind::IMap => quote! {#c::map_shared_included_many},
+                    Kind::Set | Kind::ISet => quote! {#c::set_shared_included_many},
+                    _ => quote! {::vstd::resource::tsm_generic::multiset_shared_included_many},
+                };
+                out.push(in_helper(quote! {{
+                    let __tsm_fr = Fragment::#factory(#ex);
+                    #t::fragment_included_frame::<Protocol>(__tsm_fr, #h);
+                    let __tsm_c = #t::fragment_frame::<Protocol>(__tsm_fr, #h);
+                    #lemma(__tsm_fr.#n, __tsm_c.#n, #owned.#n, #h.#n, __tsm_z.#n, #pre_native, #observed);
+                }}));
+            } else {
+                both_owned = true;
+            }
+            if k == Kind::Multiset {
+                // The sum of the removed operands (owned) and `x` is in the
+                // state: by the lemma above (`x` borrowed), or by `owned`.
+                continue;
+            }
+            for r in removed {
+                // A key of `r` is owned (`owned` is the join of the inputs);
+                // one of `x` is owned exclusively by another input, or shared.
+                let key = format_ident!("__tsm_key", span = Span::mixed_site());
+                let kt = quote! {#key};
+                let x_member = member(&ex, &kt);
+                let x_native = native_member(&ex, &kt);
+                let separate = quote! {
+                    if #x_member { assert(#x_native); assert(#owned.#n.at(#kt) is Some); }
+                };
+                out.push(in_helper(match (r.p.elt.as_ref(), r.p.is_collection) {
+                    (Some(MonoidElt::General(er)), true) => {
+                        let er = quote! {#er};
+                        let r_member = member(&er, &kt);
+                        let r_native = native_member(&er, &kt);
+                        quote! {
+                            assert forall|#key| #r_member implies !#x_member by {
+                                assert(#r_native);
+                                #separate
+                            }
+                        }
+                    }
+                    _ => {
+                        let pname = &r.p.name;
+                        let datum = if k.map_like() {
+                            quote! {#pname.__k}
+                        } else {
+                            quote! {#pname.__e}
+                        };
+                        let x_at = member(&ex, &datum);
+                        quote! {
+                            assert(!#x_at) by {
+                                let #key = #datum;
+                                #separate
+                            }
+                        }
+                    }
+                }));
+            }
+        }
+        if both_owned && k != Kind::Multiset {
+            // Two owned inputs are separate parts of `owned`.
+            let lemma = if k.map_like() {
+                quote! {#c::map_parts_exclusive}
+            } else {
+                quote! {#c::set_parts_exclusive}
+            };
+            out.insert(0, quote! {#lemma(#owned.#n, #h.#n, __tsm_z.#n, #pre_native);});
+        }
+    }
+    out
+}
+
 /// The constant's included lemma, for the instance's constant fragment.
 fn constant_lemma(f: &Field, frag: &TokenStream) -> TokenStream {
     let n = &f.name;
@@ -5195,6 +5345,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
             }).collect::<Vec<_>>()
         })
         .collect();
+    let seq_hints = sequence_hints(&params, &owned_ident, &h_param, &in_helper);
     let ready = quote! {
         proof fn #ready_fn(&self, #(#ghost_params,)* #(#tparams,)* #owned_ident: Fragment, #h_param: Fragment #dep_comma #dep_param)
             requires
@@ -5218,6 +5369,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
                     #dep_goal
                     && State::#owners(pre, #owned_ident, #h_param, #(#pn),*) by {
                 #(#frames_ready)*
+                #(#seq_hints)*
                 #ready_safety
                 #dep_ext
             }
