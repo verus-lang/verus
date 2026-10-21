@@ -532,8 +532,19 @@ fn execute(xs: &[SimplStmt], safety: bool) -> TokenStream {
     match first {
         SimplStmt::Require(_, e) if safety => quote! { if #e { #tail } else { false } },
         SimplStmt::Require(..) => tail,
-        SimplStmt::Assert(_, e, p) => {
+        SimplStmt::Assert(span, e, p) => {
             let a = match &p.proof {
+                // As in the trusted macro (`safety_conditions.rs`): the
+                // condition is reported at its statement, with its message.
+                Some(b) if !p.error_msg.is_empty() => {
+                    let assert_fn = Ident::new(&p.error_msg, *span);
+                    quote::quote_spanned! {*span =>
+                        assert(#e) by {
+                            #b
+                            ::vstd::state_machine_internal::#assert_fn(#e);
+                        }
+                    }
+                }
                 Some(b) => quote! {assert(#e) by #b},
                 None => quote! {assert(#e);},
             };
