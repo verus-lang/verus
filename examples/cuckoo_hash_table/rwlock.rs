@@ -366,7 +366,7 @@ struct_with_invariants!{
 /// is dropped. You must call [`release_write`](WriteHandle::release_write).
 /// Verus does not check that lock is released.
 pub struct WriteHandle<'a, V, Pred: RwLockPredicate<V>> {
-    tracked handle: Tracked<RwLockToks::writer<Pred, V, InternalPred<V, Pred>>>,
+    handle: Tracked<RwLockToks::writer<Pred, V, InternalPred<V, Pred>>>,
     rwlock: &'a RwLock<V, Pred>,
 }
 
@@ -376,7 +376,7 @@ pub struct WriteHandle<'a, V, Pred: RwLockPredicate<V>> {
 /// is dropped. You must call [`release_read`](ReadHandle::release_read).
 /// Verus does not check that lock is released.
 pub struct ReadHandle<'a, V, Pred: RwLockPredicate<V>> {
-    tracked handle: Tracked<RwLockToks::reader<Pred, V, InternalPred<V, Pred>>>,
+    handle: Tracked<RwLockToks::reader<Pred, V, InternalPred<V, Pred>>>,
     rwlock: &'a RwLock<V, Pred>,
 }
 

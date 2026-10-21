@@ -1800,7 +1800,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] tracked_recursive_type1 ["vstd"] => verus_code! {
         use vstd::prelude::*;
-        enum E<'a> {
+        tracked enum E<'a> {
             None,
             Some(tracked proof_fn<'a>[Once]() -> tracked E<'a>),
         }
