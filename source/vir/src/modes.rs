@@ -699,14 +699,12 @@ mod typing {
 
         #[must_use]
         pub(super) fn push_loop<'a>(&'a mut self, label: Label, new_loop: Loop) -> Typing<'a> {
-            let mut loops = self.loops.clone();
-            let found = loops.insert(label, new_loop);
-            assert!(found.is_none());
-            swap(&mut loops, &mut self.internal_state.loops);
+            assert!(!self.internal_state.loops.contains_key(&label));
+            self.internal_state.loops.insert(label.clone(), new_loop);
             Typing {
                 internal_state: self.internal_state,
                 internal_undo: Some(Box::new(move |state| {
-                    state.loops = loops;
+                    state.loops.remove(&label);
                 })),
             }
         }
