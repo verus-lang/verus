@@ -1299,7 +1299,7 @@ pub(crate) fn ieee_float_prelude() -> Vec<Node> {
     let ieee_float_lt = str_to_node(IEEE_FLOAT_LT);
     let ieee_float_gt = str_to_node(IEEE_FLOAT_GT);
 
-    // Floats are encoded as Int bit patterns. Each operation also takes its operand's float type, 
+    // Floats are encoded as Int bit patterns. Each operation also takes its operand's float type,
     // to distinguish values that have same bits but are of different float type (32 vs. 64).
     nodes_vec!(
         (declare-fun [ieee_float_cast] ([typ] [typ] Poly) Poly)
