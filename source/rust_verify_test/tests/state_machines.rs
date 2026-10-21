@@ -2446,7 +2446,6 @@ test_verify_tsm! {
             }
         }}
     } => Err(e) => assert_one_fails(e)
-    ; verified ignore "checked macro bug: the generic interface's guard method refers to an unbound `original_field_t` (E0425)"
 }
 
 test_verify_tsm! {
@@ -2467,7 +2466,6 @@ test_verify_tsm! {
             }
         }}
     } => Err(e) => assert_one_fails(e)
-    ; verified ignore "checked macro bug: the generic interface's guard method refers to an unbound `original_field_t` (E0425)"
 }
 
 test_verify_tsm! {
@@ -2488,7 +2486,6 @@ test_verify_tsm! {
             }
         }}
     } => Err(e) => assert_one_fails(e)
-    ; verified ignore "checked macro bug: the generic interface's guard method refers to an unbound `original_field_t` (E0425)"
 }
 
 test_verify_tsm! {
@@ -2516,7 +2513,152 @@ test_verify_tsm! {
             }
         }}
     } => Err(e) => assert_one_fails(e)
-    ; verified ignore "checked macro bug: the generic interface's guard method refers to an unbound `original_field_t` (E0425)"
+}
+
+// The `by` blocks are needed (the invariant is opaque): they prove the
+// operations' inherent safety conditions.
+test_verify_tsm! {
+    #[test] inherent_safety_condition_by_block_needed IMPORTS.to_string() + verus_code_str! {
+        #[verifier::opaque]
+        pub open spec fn full(v: int) -> bool { v == 0 }
+
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(constant)]
+                pub k: int,
+
+                #[sharding(variable)]
+                pub v: int,
+
+                #[sharding(storage_option)]
+                pub s: Option<int>,
+
+                #[sharding(storage_map)]
+                pub m: Map<int, int>,
+            }
+
+            #[invariant]
+            pub fn inv(&self) -> bool {
+                &&& (self.s is Some <==> full(self.v))
+                &&& (full(self.v) ==> self.s == Some(self.k))
+                &&& (self.m.dom().contains(1) <==> full(self.v))
+                &&& (full(self.v) ==> self.m[1] == self.k)
+            }
+
+            init!{
+                initialize(k: int) {
+                    init k = k;
+                    init v = 0;
+                    init s = Option::Some(k);
+                    init m = Map::empty().insert(1, k);
+                }
+            }
+
+            transition!{
+                take() {
+                    require pre.v == 0;
+                    update v = 1;
+                    withdraw s -= Some(pre.k) by { reveal(full); };
+                    withdraw m -= [1 => pre.k] by { reveal(full); };
+                }
+            }
+
+            transition!{
+                give() {
+                    require pre.v == 1;
+                    update v = 0;
+                    deposit s += Some(pre.k) by { reveal(full); };
+                    deposit m += [1 => pre.k] by { reveal(full); };
+                }
+            }
+
+            property!{
+                peek() {
+                    require pre.v == 0;
+                    guard s >= Some(pre.k) by { reveal(full); };
+                    guard m >= [1 => pre.k] by { reveal(full); };
+                }
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self, k: int) { reveal(full); }
+
+            #[inductive(take)]
+            fn take_inductive(pre: Self, post: Self) { reveal(full); }
+
+            #[inductive(give)]
+            fn give_inductive(pre: Self, post: Self) { reveal(full); }
+        }}
+    } => Ok(())
+}
+
+test_verify_tsm! {
+    #[test] inherent_safety_condition_by_block_missing IMPORTS.to_string() + verus_code_str! {
+        #[verifier::opaque]
+        pub open spec fn full(v: int) -> bool { v == 0 }
+
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(constant)]
+                pub k: int,
+
+                #[sharding(variable)]
+                pub v: int,
+
+                #[sharding(storage_option)]
+                pub s: Option<int>,
+            }
+
+            #[invariant]
+            pub fn inv(&self) -> bool {
+                &&& (self.s is Some <==> full(self.v))
+                &&& (full(self.v) ==> self.s == Some(self.k))
+            }
+
+            init!{
+                initialize(k: int) {
+                    init k = k;
+                    init v = 0;
+                    init s = Option::Some(k);
+                }
+            }
+
+            transition!{
+                take() {
+                    require pre.v == 0;
+                    update v = 1;
+                    withdraw s -= Some(pre.k); // FAILS
+                }
+            }
+
+            transition!{
+                give() {
+                    require pre.v == 1;
+                    update v = 0;
+                    deposit s += Some(pre.k); // FAILS
+                }
+            }
+
+            property!{
+                peek() {
+                    require pre.v == 0;
+                    guard s >= Some(pre.k); // FAILS
+                }
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self, k: int) { reveal(full); }
+
+            #[inductive(take)]
+            fn take_inductive(pre: Self, post: Self) { reveal(full); }
+
+            #[inductive(give)]
+            fn give_inductive(pre: Self, post: Self) { reveal(full); }
+        }}
+    } => Err(e) => assert_fails(e, 3)
+    // (the checked macro reports the three conditions, which have no `by`
+    // block, at the macro invocation: one diagnostic)
+    ; verified => Err(e) => assert_fails_anywhere(e, 1)
 }
 
 test_verify_tsm! {
@@ -4183,7 +4325,7 @@ test_verify_tsm! {
 
         } // verus!
     } => Ok(())
-    ; verified ignore "checked macro gap: `by` blocks of special operations do not discharge the checked inherent safety conditions"
+    ; verified ignore "checked macro: unsupported form (tr1 withdraws and then deposits the same storage location, here with general operands, which fails in the generated storage proof); also a gap: a general-operand `remove map` followed by `have map` is not proved ready"
 }
 
 test_verify_tsm! {
@@ -4454,7 +4596,7 @@ test_verify_tsm! {
 
         } // verus!
     } => Ok(())
-    ; verified ignore "checked macro gap: `by` blocks of special operations do not discharge the checked inherent safety conditions"
+    ; verified ignore "checked macro: unsupported form (tr1 withdraws and then deposits the same storage location, here with general operands, which fails in the generated storage proof); also a gap: a general-operand `remove map` followed by `have map` is not proved ready"
 }
 
 test_verify_tsm! {
@@ -6402,7 +6544,6 @@ test_verify_tsm! {
             }
         }}
     } => Err(e) => assert_fails(e, 6)
-    ; verified ignore "checked macro bug: a `by` block mentioning `pre.<storage field>` refers to an unbound `param_token_*` (E0425)"
 }
 
 test_verify_tsm! {
@@ -6998,7 +7139,6 @@ test_verify_tsm! {
 
         }
     } => Err(e) => assert_fails(e, 10)
-    ; verified ignore "checked macro bug: a `by` block mentioning `pre.<storage field>` refers to an unbound `param_token_*` (E0425)"
 }
 
 test_verify_tsm! {
@@ -7026,6 +7166,8 @@ test_verify_tsm! {
 
             init!{
                 initialize(m: IMap<int, Goo>, opt: Option<Goo>) {
+                    // (the checked macro's storage tokens need a finite initial storage)
+                    require m.dom().finite();
                     init m = m;
                     init storage_m = m;
                     init opt = opt;
@@ -7594,7 +7736,6 @@ test_verify_tsm! {
 
         }
     } => Err(e) => assert_fails(e, 10)
-    ; verified ignore "checked macro bug: a `by` block mentioning `pre.<storage field>` refers to an unbound `param_token_*` (E0425)"
 }
 
 test_verify_tsm! {
