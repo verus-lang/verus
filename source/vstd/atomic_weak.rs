@@ -54,7 +54,7 @@ impl<T> AtomicHistory<T> {
     pub open spec fn contains_timestamp(&self, timestamp: nat) -> bool {
         self.0.dom().contains(timestamp)
     }
- 
+
     pub open spec fn index(&self, timestamp: nat) -> (T, ThreadView)
         recommends
             self.contains_timestamp(timestamp),
@@ -103,8 +103,9 @@ impl<T> AtomicHistory<T> {
 
     pub broadcast proof fn insert_def(&self, timestamp: nat, val: T, view: ThreadView)
         ensures
-            #[trigger] self.insert(timestamp, val, view).0 == self.0.insert(timestamp, (val, view))
-    {}
+            #[trigger] self.insert(timestamp, val, view).0 == self.0.insert(timestamp, (val, view)),
+    {
+    }
 
     pub open spec fn remove(&self, timestamp: nat) -> Self {
         AtomicHistory(self.0.remove(timestamp))
@@ -112,8 +113,9 @@ impl<T> AtomicHistory<T> {
 
     pub broadcast proof fn remove_def(&self, timestamp: nat)
         ensures
-            #[trigger] self.remove(timestamp).0 == self.0.remove(timestamp)
-    {}
+            #[trigger] self.remove(timestamp).0 == self.0.remove(timestamp),
+    {
+    }
 
     pub open spec fn is_singleton(&self, timestamp: nat, val: (T, ThreadView)) -> bool {
         &&& self.contains_timestamp(timestamp)
@@ -183,7 +185,7 @@ pub broadcast group group_view_history {
     AtomicHistory::insert_def,
     AtomicHistory::remove_def,
     AtomicPointsTo::get_timestamp_monotonic,
-    AtomicPointsTo::get_timestamp_loc
+    AtomicPointsTo::get_timestamp_loc,
 }
 
 #[verifier::external_body]
@@ -218,9 +220,9 @@ impl<T> AtomicPointsTo<T> {
 
     pub broadcast axiom fn get_timestamp_loc(&self, other: Self, v: ThreadView)
         requires
-            self.loc() == other.loc()
+            self.loc() == other.loc(),
         ensures
-            #[trigger] self.get_timestamp(v) == #[trigger] other.get_timestamp(v)
+            #[trigger] self.get_timestamp(v) == #[trigger] other.get_timestamp(v),
     ;
 
     pub axiom fn disjoint(tracked &mut self, tracked other: &Self)
