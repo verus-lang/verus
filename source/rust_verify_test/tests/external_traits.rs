@@ -523,6 +523,35 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait_extension_inherited_ensures_context_order_issue3298 verus_code! {
+        use vstd::prelude::*;
+
+        pub trait Key {
+            fn key_eq(&self, other: &Self) -> bool;
+        }
+
+        pub open spec fn uses_key<K: Key>() -> bool { true }
+
+        pub open spec fn early() -> bool { uses_key::<Item>() }
+
+        pub struct Item { pub value: u32 }
+
+        impl Key for Item {
+            fn key_eq(&self, other: &Self) -> bool { self == other }
+        }
+
+        impl PartialEq for Item {
+            fn eq(&self, other: &Self) -> bool { self.value == other.value }
+        }
+
+        impl vstd::std_specs::cmp::PartialEqSpecImpl for Item {
+            open spec fn obeys_eq_spec() -> bool { true }
+            open spec fn eq_spec(&self, other: &Self) -> bool { self.value == other.value }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait_extension_cycle verus_code! {
         #[verifier::external]
         trait T<A> {

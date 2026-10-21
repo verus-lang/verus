@@ -473,6 +473,7 @@ pub(crate) fn expand_call_graph(
     trait_map: &HashMap<Path, crate::ast::Trait>,
     trait_impl_map: &HashMap<(Fun, Path), Fun>,
     trait_impl_from_extension: &HashMap<Path, Path>,
+    trait_impl_to_extensions: &HashMap<Path, Vec<Path>>,
     reveal_group_set: &HashSet<Fun>,
     call_graph: &mut GraphBuilder<Node>,
     span_infos: &mut Vec<Span>,
@@ -702,6 +703,60 @@ pub(crate) fn expand_call_graph(
     if let FunctionKind::TraitMethodImpl { inherit_body_from: Some(f_trait), .. } = &function.x.kind
     {
         crate::ast_visitor::function_visitor_check::<VirErr, _>(&func_map[f_trait], add_calls)?;
+    }
+
+    // Add f --> D::g where f implements T::f for D: T and T::f's requires/ensures/returns
+    // (which f inherits) call Self::g for a spec method g implemented by D: T
+    // (or by D: TSpec, where TSpec is an external_trait_extension of T).
+    // Without this edge, D::g's definition axiom may be emitted after f is checked,
+    // leaving g uninterpreted in f's postcondition (sound, but incomplete).
+    // TraitReqEns deliberately has no D: T --> D: T edge (it would merge all of D: T's
+    // spec methods into one SCC), so the dependency is added per call here.
+    if let FunctionKind::TraitMethodImpl {
+        method, impl_path, trait_path, inherit_body_from, ..
+    } = &function.x.kind
+    {
+        let trait_typ_params = trait_map[trait_path].x.typ_param_names_with_self();
+        let mut impl_paths = vec![impl_path.clone()];
+        if let Some(extensions) = trait_impl_to_extensions.get(impl_path) {
+            impl_paths.extend(extensions.iter().cloned());
+        }
+        let decl = &func_map[method];
+        let mut spec_exprs: Vec<&crate::ast::Expr> = decl
+            .x
+            .require
+            .iter()
+            .chain(decl.x.ensure.0.iter())
+            .chain(decl.x.returns.iter())
+            .collect();
+        if inherit_body_from.is_some() {
+            // default_ensures apply only when the default body is inherited
+            spec_exprs.extend(decl.x.ensure.1.iter());
+        }
+        let mut add_self_calls = |e: &crate::ast::Expr| {
+            if let ExprX::Call { target: CallTarget::Fun(_, callee, ts, _, _), .. } = &e.x {
+                // Only calls of the form Self::g(...) / <Self as T<A1..An>>::g(...),
+                // i.e. whose leading type args are exactly T's own type parameters
+                let is_self_call = ts.len() >= trait_typ_params.len()
+                    && ts
+                        .iter()
+                        .zip(trait_typ_params.iter())
+                        .all(|(t, x)| matches!(&**t, TypX::TypParam(y) if y == x));
+                if is_self_call {
+                    for imp in &impl_paths {
+                        if let Some(target) = trait_impl_map.get(&(callee.clone(), imp.clone())) {
+                            if target != &function.x.name {
+                                call_graph.add_edge(f_node.clone(), Node::Fun(target.clone()));
+                            }
+                        }
+                    }
+                }
+            }
+            crate::visitor::VisitorControlFlow::Recurse
+        };
+        for expr in spec_exprs {
+            crate::ast_visitor::expr_visitor_walk(expr, &mut add_self_calls);
+        }
     }
 
     for fun in &function.x.extra_dependencies {
