@@ -44,14 +44,17 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] struct_fails1 ["--no-external-by-default"] => code! {
+        #[verifier::proof]
         struct S {
             #[verifier::spec] i: bool,
             j: bool,
         }
+        #[verifier::proof]
         fn test(i: bool, #[verifier::spec] j: bool) {
+            #[verifier::proof]
             let s = S { i, j };
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
 
 test_verify_one_file! {
@@ -69,45 +72,54 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] struct_fails1b ["--no-external-by-default"] => code! {
+        #[verifier::proof]
         struct S {
             #[verifier::spec] i: bool,
             j: bool,
         }
+        #[verifier::proof]
         fn test(i: bool, #[verifier::spec] j: bool) {
+            #[verifier::proof]
             let s = S { j, i };
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
 
 test_verify_one_file_with_options! {
     #[test] struct_fails2 ["--no-external-by-default"] => code! {
+        #[verifier::proof]
         struct S {
             #[verifier::spec] i: bool,
             j: bool,
         }
-        fn test(i: bool, j: bool) {
+        #[verifier::proof]
+        fn test(#[verifier::proof] i: bool, #[verifier::proof] j: bool) {
+            #[verifier::proof]
             let s = S { i, j };
+            #[verifier::proof]
             let ii = s.i;
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
 
 test_verify_one_file_with_options! {
     #[test] struct_fails3 ["--no-external-by-default"] => code! {
+        #[verifier::proof]
         struct S {
             #[verifier::spec] i: bool,
             j: bool,
         }
-        fn test(i: bool, #[verifier::spec] j: bool) {
+        #[verifier::proof]
+        fn test(#[verifier::proof] i: bool, #[verifier::spec] j: bool) {
             #[verifier::spec] let s = S { i, j };
-            let jj = s.j;
+            #[verifier::proof] let jj = s.j;
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
 
 test_verify_one_file! {
     #[test] struct_fails4a verus_code! {
-        struct S {
+        tracked struct S {
             ghost i: bool,
             j: bool,
         }
@@ -119,7 +131,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] struct_fails4b verus_code! {
-        struct S {
+        tracked struct S {
             ghost i: bool,
             j: bool,
         }
@@ -131,7 +143,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] struct_fails4c verus_code! {
-        struct S {
+        tracked struct S {
             ghost i: bool,
             j: bool,
         }
@@ -143,7 +155,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] struct_fails5a verus_code! {
-        struct S {
+        tracked struct S {
             ghost i: bool,
             j: bool,
         }
@@ -160,7 +172,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] struct_fails5b verus_code! {
-        struct S {
+        tracked struct S {
             ghost i: bool,
             j: bool,
         }
@@ -177,7 +189,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] struct_fails5c verus_code! {
-        struct S {
+        tracked struct S {
             ghost i: bool,
             j: bool,
         }
@@ -408,20 +420,22 @@ test_verify_one_file! {
 }
 
 const FIELD_UPDATE: &str = code_str! {
+    #[verifier::proof]
     struct S {
         #[verifier::spec] a: u64,
-        b: bool,
+        #[verifier::proof] b: bool,
     }
 };
 
 test_verify_one_file_with_options! {
     #[test] test_field_update_fail ["--no-external-by-default"] => FIELD_UPDATE.to_string() + code_str! {
+        #[verifier::proof]
         fn test() {
-            let mut s = S { a: 5, b: false };
+            #[verifier::proof] let mut s = S { a: 5, b: false };
             #[verifier::spec] let b = true;
             s.b = b;
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
 
 test_verify_one_file_with_options! {
@@ -432,11 +446,13 @@ test_verify_one_file_with_options! {
             *a = *a + 1;
         }
 
+        verus!{
         fn test() {
-            let mut s = S { a: 5, b: false };
+            let tracked mut s = S { a: 5, b: false };
             muts_exec(&mut s.a);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access proof-mode place in executable context")
 }
 
 const PROOF_FN_COMMON: &str = code_str! {
@@ -492,15 +508,11 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mut_arg_fail3 verus_code! {
-        struct S {
-            ghost g: bool,
-        }
-
         fn f(x: &mut bool) {}
 
-        fn g(e: S) {
-            let mut e = e;
-            f(&mut e.g); // fails, exec <- ghost assign
+        fn g() {
+            let ghost b = true;
+            f(&mut b); // fails, exec <- ghost assign
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot access spec-mode place in executable context")
 }
@@ -539,17 +551,15 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mut_arg_fail6 verus_code! {
-        struct S {
+        tracked struct S {
             tracked t: bool,
         }
 
         proof fn f(x: &mut bool) {}
 
-        fn g(e: S) {
-            let mut e = e;
-            proof {
-                f(&mut e.t); // fails, tracked <- ghost out assign
-            }
+        proof fn g(tracked e: S) {
+            let tracked mut e = e;
+            f(&mut e.t); // fails, tracked <- ghost out assign
         }
     } => Err(err) => assert_vir_error_msg(err, "mutable borrow is not allowed in spec context")
 }
@@ -952,7 +962,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_or_pattern_mode_inconsistent verus_code! {
-        enum Foo {
+        #[verifier::proof] enum Foo {
             Bar(#[verifier::spec] u64),
             Qux(#[verifier::proof] u64),
         }
@@ -965,7 +975,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_or_pattern_mode_inconsistent2 verus_code! {
-        enum Foo {
+        #[verifier::proof] enum Foo {
             Bar(#[verifier::spec] u64, #[verifier::proof] u64),
         }
 
@@ -1000,6 +1010,7 @@ test_verify_one_file! {
     #[test] test_struct_pattern_fields_out_of_order_success_issue_348 verus_code! {
         struct X { }
 
+        #[verifier::proof]
         struct Foo {
             #[verifier::spec] a: u64,
             #[verifier::proof] b: X,
@@ -1869,4 +1880,20 @@ test_verify_one_file! {
         #[verifier::spec]
         spec(checked) fn s() -> bool { true }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] mode_ghost_in_exec_struct verus_code! {
+          struct X {
+              ghost f: u64,
+          }
+    } => Err(err) => assert_vir_error_msg(err, "field in an exec-mode datatype cannot have a mode qualifier")
+}
+
+test_verify_one_file! {
+    #[test] mode_tracked_in_exec_struct verus_code! {
+          struct X {
+              tracked f: u64,
+          }
+    } => Err(err) => assert_vir_error_msg(err, "field in an exec-mode datatype cannot have a mode qualifier")
 }
