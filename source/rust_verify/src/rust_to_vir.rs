@@ -16,7 +16,7 @@ use crate::rust_to_vir_func::{
 };
 use crate::rust_to_vir_global::TypIgnoreImplPaths;
 use crate::rust_to_vir_impl::ExternalInfo;
-use crate::util::err_span_vec;
+use crate::util::{err_span, err_span_vec};
 use crate::verus_items::{self, VerusItem};
 use crate::{unsupported_err, unsupported_err_vec, unsupported_err_vec_unless};
 use std::collections::HashSet;
@@ -403,6 +403,25 @@ pub(crate) fn get_root_module_path<'tcx>(ctxt: &ContextX<'tcx>) -> Path {
     ctxt.def_id_to_vir_path(rustc_hir::CRATE_OWNER_ID.to_def_id())
 }
 
+/// The code emitted by the Verus macros refers to these crates by absolute paths
+/// (e.g., `::core::cfg!`, `::vstd::prelude`), so an `extern crate` item must not
+/// make these names refer to a different crate.
+const RESERVED_EXTERN_CRATE_NAMES: &[&str] =
+    &["core", "vstd", "verus_builtin", "verus_builtin_macros"];
+
+fn check_extern_crate_alias<'tcx>(item: &'tcx Item<'tcx>) -> Result<(), VirErr> {
+    if let ItemKind::ExternCrate(Some(orig_name), ident) = &item.kind {
+        let alias = ident.name.as_str();
+        if RESERVED_EXTERN_CRATE_NAMES.contains(&alias) && orig_name.as_str() != alias {
+            return err_span(
+                item.span,
+                format!("Verus does not support renaming a crate to `{alias}` with `extern crate`"),
+            );
+        }
+    }
+    Ok(())
+}
+
 pub fn crate_to_vir<'a, 'tcx>(
     mut ctxtx: ContextX<'tcx>,
     imported: &Vec<Krate>,
@@ -443,6 +462,9 @@ pub fn crate_to_vir<'a, 'tcx>(
 
     let mut typs_sizes_set: HashMap<TypIgnoreImplPaths, u128> = HashMap::new();
     for item in crate::util::iter_crate_free_items(tcx) {
+        if let Err(err) = check_extern_crate_alias(item) {
+            errors.push(err);
+        }
         if let Err(err) =
             crate::rust_to_vir_global::process_const_early(&mut ctxtx, &mut typs_sizes_set, item)
         {
