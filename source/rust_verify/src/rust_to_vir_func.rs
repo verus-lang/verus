@@ -34,7 +34,7 @@ use std::sync::Arc;
 use std::vec;
 use vir::ast::{
     BodyVisibility, CrateId, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionStubX, FunctionX,
-    ItemKind, KrateX, Mode, OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypDecoration, TypX,
+    ItemKind, Mode, OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypDecoration, TypX,
     UnwrapParameter, VarIdent, VirErr, Visibility,
 };
 use vir::ast_util::{air_unique_var, unit_typ};
@@ -1558,8 +1558,14 @@ pub(crate) struct ConstInfo {
     is_static: bool,
 }
 
+pub(crate) struct ForeignFunctionInfo {
+    pub function_stub: vir::ast::FunctionStub,
+    pub function_full: vir::ast::Function,
+}
+
 pub(crate) enum FunctionOrConstInfo<'tcx> {
     Function(FunctionInfo<'tcx>),
+    ForeignFunction(ForeignFunctionInfo),
     Const(ConstInfo),
 }
 
@@ -1568,6 +1574,7 @@ impl<'tcx> FunctionOrConstInfo<'tcx> {
         let (f, opt_f) = match self {
             FunctionOrConstInfo::Function(f) => (&f.function, f.function_for_autospec.as_ref()),
             FunctionOrConstInfo::Const(f) => (&f.function, f.function_for_autospec.as_ref()),
+            FunctionOrConstInfo::ForeignFunction(f) => (&f.function_stub, None),
         };
         std::iter::once(f).chain(opt_f.into_iter())
     }
@@ -2271,6 +2278,10 @@ pub(crate) fn finish_item<'tcx>(
         }
         FunctionOrConstInfo::Const(const_info) => {
             finish_const_or_static(ctxt, const_info, functions)
+        }
+        FunctionOrConstInfo::ForeignFunction(foreign_function_info) => {
+            functions.push(foreign_function_info.function_full.clone());
+            Ok(())
         }
     }
 }
@@ -3502,7 +3513,7 @@ pub(crate) fn finish_const_or_static<'tcx>(
 pub(crate) fn check_foreign_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
-    vir: &mut KrateX,
+    infos: &mut Vec<FunctionOrConstInfo<'tcx>>,
     id: DefId,
     span: Span,
     visibility: vir::ast::Visibility,
@@ -3605,7 +3616,12 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     };
     let function = ctxt.spanned_new(span, func);
     state.insert_fun_warn_config(ctxt, &function.x.name, id);
-    vir.functions.push(function);
+
+    infos.push(FunctionOrConstInfo::ForeignFunction(ForeignFunctionInfo {
+        function_full: function.clone(),
+        function_stub: vir::ast_util::function_to_stub(&function),
+    }));
+
     Ok(())
 }
 

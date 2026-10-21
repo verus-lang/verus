@@ -374,7 +374,7 @@ fn check_item<'tcx>(
 fn check_foreign_item<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
-    vir: &mut KrateX,
+    infos: &mut Vec<FunctionOrConstInfo<'tcx>>,
     _id: &ForeignItemId,
     item: &'tcx ForeignItem<'tcx>,
 ) -> Result<(), VirErr> {
@@ -384,7 +384,7 @@ fn check_foreign_item<'tcx>(
             check_foreign_item_fn(
                 ctxt,
                 state,
-                vir,
+                infos,
                 item.owner_id.to_def_id(),
                 item.span,
                 mk_visibility(ctxt, item.owner_id.to_def_id()),
@@ -639,7 +639,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
                         if let Err(err) = check_foreign_item(
                             &ctxt,
                             &mut state,
-                            &mut vir,
+                            &mut infos,
                             &foreign_item_id,
                             foreign_item,
                         ) {
