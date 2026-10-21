@@ -94,6 +94,331 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// Regression tests for issue #3142.
+// The infinite counter from the guide, with an open remaining() so that the
+// collect regressions also exercise the prophetic specifications.
+const INFINITE_COLLECT_COMMON: &str = verus_code_str! {
+    use vstd::modes::tracked_swap;
+    use vstd::prelude::*;
+    use vstd::proph::ProphecyGhost;
+    use vstd::std_specs::iter::*;
+
+    pub struct IterCtr {
+        pub count: u64,
+        pub len: Tracked<ProphecyGhost<nat>>,
+    }
+
+    impl IterCtr {
+        fn new() -> Self {
+            IterCtr { count: 0, len: Tracked(ProphecyGhost::new()) }
+        }
+    }
+
+    impl Iterator for IterCtr {
+        type Item = u64;
+
+        fn next(&mut self) -> (ret: Option<Self::Item>) {
+            proof {
+                let tracked mut new = ProphecyGhost::new();
+                tracked_swap(&mut new, &mut self.len);
+                new.resolve_dependent(&self.len, |x: nat| (x + 1) as nat);
+            }
+            let ret = self.count;
+            if self.count == u64::MAX {
+                self.count = 0;
+            } else {
+                self.count = self.count + 1;
+            }
+            Some(ret)
+        }
+    }
+
+    impl IteratorSpecImpl for IterCtr {
+        open spec fn obeys_prophetic_iter_laws(&self) -> bool { true }
+
+        #[verifier::prophetic]
+        open spec fn remaining(&self) -> Seq<Self::Item> {
+            Seq::new(self.len@.value(), |i: int|
+                ((i + self.count) % (u64::MAX as int + 1)) as u64)
+        }
+
+        open spec fn will_return_none(&self) -> bool { false }
+        open spec fn decrease(&self) -> Option<nat> { None }
+        open spec fn peek(&self, index: int) -> Option<Self::Item> {
+            Some((index % (u64::MAX as int + 1)) as u64)
+        }
+    }
+
+    pub struct Nothing;
+
+    impl FromIterator<u64> for Nothing {
+        fn from_iter<T: IntoIterator<Item = u64>>(iter: T) -> Self {
+            let _ = iter.into_iter();
+            Nothing
+        }
+    }
+
+    impl FromIteratorSpecImpl<u64> for Nothing {
+        open spec fn from_iter_ensures(remaining: Seq<u64>, will_return_none: bool, s: Self) -> bool { true }
+    }
+};
+
+test_verify_one_file! {
+    #[test] collect_without_into_iter_does_not_imply_none
+    // Keep the exact early-returning implementation from the issue: it does
+    // not even convert its input. The branch's existential contract rejects
+    // that implementation, and collect must still not establish false.
+    INFINITE_COLLECT_COMMON.replace("let _ = iter.into_iter();", "") + verus_code_str! {
+        fn test() {
+            let n: Nothing = IterCtr::new().collect();
+            assert(false); // FAILS
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(err.errors.iter().any(|e| e.message == "postcondition not satisfied"));
+        assert!(err.errors.iter().any(|e| e.message == "assertion failed"));
+    }
+}
+
+test_verify_one_file! {
+    #[test] collect_user_from_iterator_does_not_imply_none
+    INFINITE_COLLECT_COMMON.to_string() + verus_code_str! {
+        fn test() {
+            let it = IterCtr::new();
+            let n: Nothing = it.collect();
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] collect_one_next_does_not_imply_none
+    INFINITE_COLLECT_COMMON.to_string() + verus_code_str! {
+        pub struct One;
+
+        impl FromIterator<u64> for One {
+            fn from_iter<T: IntoIterator<Item = u64>>(iter: T) -> Self {
+                let mut it = iter.into_iter();
+                it.next();
+                One
+            }
+        }
+
+        impl FromIteratorSpecImpl<u64> for One {
+            open spec fn from_iter_ensures(remaining: Seq<u64>, will_return_none: bool, s: Self) -> bool { true }
+        }
+
+        fn test() {
+            let n: One = IterCtr::new().collect();
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] collect_adaptors_do_not_imply_none
+    INFINITE_COLLECT_COMMON.to_string() + verus_code_str! {
+        impl FromIterator<(u64, u64)> for Nothing {
+            fn from_iter<T: IntoIterator<Item = (u64, u64)>>(iter: T) -> Self {
+                let _ = iter.into_iter();
+                Nothing
+            }
+        }
+
+        impl FromIteratorSpecImpl<(u64, u64)> for Nothing {
+            open spec fn from_iter_ensures(remaining: Seq<(u64, u64)>, will_return_none: bool, s: Self) -> bool {
+                true
+            }
+        }
+
+        fn skip() {
+            let n: Nothing = IterCtr::new().skip(3).collect();
+            assert(false); // FAILS
+        }
+
+        fn map() {
+            let n: Nothing = IterCtr::new().map(|x: u64| -> u64 { x }).collect();
+            assert(false); // FAILS
+        }
+
+        fn mut_ref() {
+            let mut it = IterCtr::new();
+            let n: Nothing = (&mut it).collect();
+            assert(false); // FAILS
+        }
+
+        fn zip() {
+            let a = IterCtr::new();
+            let b = IterCtr::new();
+            let n: Nothing = a.zip(b).collect();
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] collect_vec_of_other_item_type_does_not_imply_none
+    INFINITE_COLLECT_COMMON.to_string() + verus_code_str! {
+        pub struct Id;
+
+        impl FromIterator<Id> for Vec<u64> {
+            fn from_iter<T: IntoIterator<Item = Id>>(iter: T) -> Self {
+                let _ = iter.into_iter();
+                Vec::new()
+            }
+        }
+
+        impl FromIteratorSpecImpl<Id> for Vec<u64> {
+            open spec fn from_iter_ensures(remaining: Seq<Id>, will_return_none: bool, s: Self) -> bool { true }
+        }
+
+        fn test() {
+            let v: Vec<u64> = IterCtr::new().map(|x: u64| -> Id { Id }).collect();
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] collect_overridden_fold_does_not_imply_none
+    INFINITE_COLLECT_COMMON.to_string() + verus_code_str! {
+        use std::collections::HashSet;
+
+        pub struct FoldCtr { pub inner: IterCtr }
+
+        impl Iterator for FoldCtr {
+            type Item = u64;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.inner.next()
+            }
+
+            fn fold<B, F>(self, init: B, f: F) -> B
+                where F: FnMut(B, Self::Item) -> B,
+            {
+                init
+            }
+        }
+
+        impl IteratorSpecImpl for FoldCtr {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool { true }
+
+            #[verifier::prophetic]
+            open spec fn remaining(&self) -> Seq<Self::Item> {
+                IteratorSpec::remaining(&self.inner)
+            }
+
+            open spec fn will_return_none(&self) -> bool { false }
+            open spec fn decrease(&self) -> Option<nat> { None }
+            open spec fn peek(&self, index: int) -> Option<Self::Item> {
+                IteratorSpec::peek(&self.inner, index)
+            }
+        }
+
+        fn test() {
+            let it = FoldCtr { inner: IterCtr::new() };
+            let s: HashSet<u64> = it.collect();
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] collect_adaptors_are_complete verus_code! {
+        use vstd::prelude::*;
+
+        fn mapped_collect() {
+            let v: Vec<u64> = vec![1, 2, 3];
+            let it = v.into_iter().map(|x: u64| -> (r: u64)
+                ensures r == x,
+            { x });
+            let w: Vec<u64> = it.collect();
+            assert(w.len() == 3);
+            assert(w@ == seq![1u64, 2, 3]);
+        }
+
+        fn filtered_collect() {
+            let v: Vec<u64> = vec![1, 2, 3];
+            let it = v.into_iter().filter(|x: &u64| -> (r: bool)
+                ensures r == true,
+            { true });
+            let w: Vec<u64> = it.collect();
+            reveal_with_fuel(Seq::filter_index, 4);
+            assert(w.len() == 3);
+        }
+
+        fn mapped_from_iter() {
+            let v: Vec<u64> = vec![1, 2, 3];
+            let it = v.into_iter().map(|x: u64| -> (r: u64)
+                ensures r == x,
+            { x });
+            let w: Vec<u64> = Vec::from_iter(it);
+            assert(w.len() == 3);
+            assert(w@ == seq![1u64, 2, 3]);
+        }
+
+        fn filtered_from_iter() {
+            let v: Vec<u64> = vec![1, 2, 3];
+            let it = v.into_iter().filter(|x: &u64| -> (r: bool)
+                ensures r == true,
+            { true });
+            let w: Vec<u64> = Vec::from_iter(it);
+            reveal_with_fuel(Seq::filter_index, 4);
+            assert(w.len() == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] from_iter_must_establish_claimed_termination verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        pub struct ClaimsToExhaust;
+
+        impl FromIterator<u64> for ClaimsToExhaust {
+            fn from_iter<T: IntoIterator<Item = u64>>(src: T) -> Self {
+                let it = src.into_iter();
+                ClaimsToExhaust // FAILS
+            }
+        }
+
+        impl FromIteratorSpecImpl<u64> for ClaimsToExhaust {
+            open spec fn from_iter_ensures(
+                remaining: Seq<u64>, will_return_none: bool, s: Self,
+            ) -> bool {
+                will_return_none
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "postcondition not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] collect_with_early_return_works
+    INFINITE_COLLECT_COMMON.to_string() + verus_code_str! {
+        fn finite() {
+            let n: Nothing = vec![1u64, 2, 3].into_iter().collect();
+        }
+
+        fn without_laws<I: Iterator<Item = u64>>(it: I)
+            requires
+                !it.obeys_prophetic_iter_laws(),
+        {
+            let n: Nothing = it.collect();
+        }
+
+        fn direct_from_iter() {
+            // FromIterator itself does not require exhaustion or termination.
+            let n = Nothing::from_iter(IterCtr::new());
+        }
+
+        fn take_zero() {
+            let v: Vec<u64> = IterCtr::new().take(0).collect();
+            assert(v@ == Seq::<u64>::empty());
+        }
+    } => Ok(())
+}
+
 // Regression tests for issue #3165.
 test_verify_one_file! {
     #[test] from_iter_works verus_code! {

@@ -154,8 +154,7 @@ pub trait ExIterator {
             Self: Sized,
         ensures
             self.obeys_prophetic_iter_laws() ==>
-                self.will_return_none() &&
-                FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
+                FromIteratorSpec::from_iter_ensures(self.remaining(), self.will_return_none(), collection),
     ;
 
     fn filter<P>(self, predicate: P) -> (r: core::iter::Filter<Self, P>)
@@ -409,7 +408,7 @@ pub assume_specification<I: Iterator>[ <I as IntoIterator>::into_iter ](i: I) ->
 pub trait ExFromIterator<A>: Sized {
     type ExternalTraitSpecificationFor: FromIterator<A>;
 
-    spec fn from_iter_ensures(remaining: Seq<A>, s: Self) -> bool;
+    spec fn from_iter_ensures(remaining: Seq<A>, will_return_none: bool, s: Self) -> bool;
 
     // from_iter may be nondeterministic, which we represent with an existential
     #[verifier::impls_cannot_extend_spec]
@@ -419,7 +418,7 @@ pub trait ExFromIterator<A>: Sized {
             exists |initial: T::IntoIter|
                 #[trigger] call_ensures(T::into_iter, (iter,), initial)
                 && (initial.obeys_prophetic_iter_laws() ==>
-                    Self::from_iter_ensures(initial.remaining(), s)),
+                    Self::from_iter_ensures(initial.remaining(), initial.will_return_none(), s)),
     ;
 }
 
