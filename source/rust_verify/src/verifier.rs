@@ -17,7 +17,7 @@ use air::profiler::Profiler;
 use rustc_errors::{Diag, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
-use rustc_session::config::ErrorOutputType;
+use rustc_session::config::{ErrorOutputType, OutputType};
 
 use vir::messages::{
     Message, MessageLabel, MessageLevel, MessageX, ToAny, message, note, note_bare, warning,
@@ -3137,11 +3137,12 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         }
 
         rustc_interface::passes::write_dep_info(tcx);
-        if self.verifier.has_second_compile_pass() {
+        if self.verifier.has_second_compile_pass()
+            && tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo)
+        {
             // Change the extension of dep-info file from `.d` to `.verus.d`
             //   so that the second compiler pass does not overwrite it.
-            let dep_info_name =
-                tcx.output_filenames(()).path(rustc_session::config::OutputType::DepInfo);
+            let dep_info_name = tcx.output_filenames(()).path(OutputType::DepInfo);
             let dep_info_path_d = dep_info_name.as_path();
             let dep_info_path_verus_d = dep_info_path_d.with_extension("verus.d");
             std::fs::rename(dep_info_path_d, &dep_info_path_verus_d).unwrap_or_else(|err| {
