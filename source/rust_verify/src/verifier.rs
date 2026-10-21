@@ -3144,11 +3144,13 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 tcx.output_filenames(()).path(rustc_session::config::OutputType::DepInfo);
             let dep_info_path_d = dep_info_name.as_path();
             let dep_info_path_verus_d = dep_info_path_d.with_extension("verus.d");
-            std::fs::rename(dep_info_path_d, &dep_info_path_verus_d).expect(&format!(
-                "rename {} to {}",
-                dep_info_path_d.display(),
-                dep_info_path_verus_d.display(),
-            ));
+            std::fs::rename(dep_info_path_d, &dep_info_path_verus_d).unwrap_or_else(|err| {
+                panic!(
+                    "error: failed to rename {} to {} due to {err}",
+                    dep_info_path_d.display(),
+                    dep_info_path_verus_d.display(),
+                )
+            });
         }
         self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
 
