@@ -26,10 +26,13 @@ use vir::messages::error;
 // The proxy and the target declare distinct associated types in Rust. Rewrite
 // only projections from this proxy to the matching target member so that their
 // trait bounds can be compared using the same associated-type identities.
+// The marker stands in for Self in both predicate lists and must not be mapped,
+// even when the target declares an associated type with the same name.
 struct ExternalTraitProjectionRewriter<'tcx> {
     tcx: TyCtxt<'tcx>,
     proxy_trait_id: DefId,
     target_trait_id: DefId,
+    marker_type_id: DefId,
 }
 
 impl<'tcx> TypeFolder<TyCtxt<'tcx>> for ExternalTraitProjectionRewriter<'tcx> {
@@ -42,6 +45,7 @@ impl<'tcx> TypeFolder<TyCtxt<'tcx>> for ExternalTraitProjectionRewriter<'tcx> {
         if let TyKind::Alias(rigid, alias_ty) = *ty.kind()
             && let AliasTyKind::Projection { def_id } = alias_ty.kind
             && self.tcx.parent(def_id) == self.proxy_trait_id
+            && def_id != self.marker_type_id
         {
             let proxy_item = self.tcx.associated_item(def_id);
             let target_item =
@@ -59,8 +63,6 @@ impl<'tcx> TypeFolder<TyCtxt<'tcx>> for ExternalTraitProjectionRewriter<'tcx> {
                 );
                 return self.tcx.mk_ty_from_kind(TyKind::Alias(rigid, alias_ty));
             }
-            // The marker associated type has no target member. It stands in
-            // for Self in both predicate lists and must remain unchanged.
         }
         ty
     }
@@ -232,10 +234,18 @@ pub(crate) fn translate_trait<'tcx>(
                     .unwrap_or_else(|_| clause.skip_norm_wip())
             })
             .collect();
+        let marker_type_id = if let TyKind::Alias(_, marker_ty) = *ex_trait_ref_for.self_ty().kind()
+            && let AliasTyKind::Projection { def_id } = marker_ty.kind
+        {
+            def_id
+        } else {
+            unreachable!("external trait specification Self must be the marker projection")
+        };
         let mut projection_rewriter = ExternalTraitProjectionRewriter {
             tcx,
             proxy_trait_id: trait_def_id,
             target_trait_id: ex_trait_ref_for.def_id,
+            marker_type_id,
         };
         let mut preds2 = proxy_predicates
             .instantiate(tcx, ex_trait_ref_for.args)

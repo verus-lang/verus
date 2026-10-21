@@ -73,6 +73,54 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] external_trait_marker_name_collision verus_code! {
+        #[verifier::external]
+        trait T {
+            type ExternalTraitSpecificationFor;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+        }
+
+        #[verifier::external]
+        trait SizedT: Sized {
+            type ExternalTraitSpecificationFor;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExSizedT: Sized {
+            type ExternalTraitSpecificationFor: SizedT;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] external_trait_custom_marker_name_collision verus_code! {
+        #[verifier::external]
+        trait Build<A>: Sized {}
+
+        #[verifier::external_trait_specification]
+        trait ExBuild<A>: Sized {
+            type ExternalTraitSpecificationFor: Build<A>;
+        }
+
+        #[verifier::external]
+        trait T: Build<Self::ExternalTraitSpecificationFor> {
+            type Marker;
+            type ExternalTraitSpecificationFor;
+        }
+
+        #[verifier::external_trait_specification(Marker)]
+        trait ExT: Build<Self::ExternalTraitSpecificationFor> {
+            type Marker: T;
+            type ExternalTraitSpecificationFor;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait verus_code! {
         trait Tr {
             fn foo();
