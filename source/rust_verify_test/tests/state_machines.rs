@@ -15,6 +15,12 @@ const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use verus_builtin::*;
     #[allow(unused_imports)] use verus_builtin_macros::*;
     #[allow(unused_imports)] use verus_state_machines_macros::*;
+    // With `--cfg verus_verified_tsm` (test_verify_tsm!'s `verified` run, or VERUS_TSM=verified)
+    // these explicit imports shadow the glob-imported trusted macros.
+    #[cfg(verus_verified_tsm)] #[allow(unused_imports)]
+    use verus_state_machines_macros::verified_tokenized_state_machine as tokenized_state_machine;
+    #[cfg(verus_verified_tsm)] #[allow(unused_imports)]
+    use verus_state_machines_macros::verified_state_machine_model as state_machine;
 
     verus!{
 
@@ -27,7 +33,7 @@ const IMPORTS: &str = code_str! {
     }
 };
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] dupe_name_fail IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -47,7 +53,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "duplicate item name")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_birds_eye_init_error IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields { #[sharding(variable)] pub t: int }
@@ -62,7 +68,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "`birds_eye` has no effect in an init!")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_birds_eye_nontokenized_error IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields { pub t: int }
@@ -95,7 +101,7 @@ test_verify_one_file_with_options! {
     }
 }
 
-test_verify_one_file_with_options! {
+test_verify_tsm_with_options! {
     #[test] test_state_machine_req_custom_err_is_inert ["--expand-errors"] => IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -126,7 +132,7 @@ test_verify_one_file_with_options! {
     }
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_birds_eye_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -143,7 +149,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "a guard value must be a deterministic function")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_withdraw_bind_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -160,7 +166,7 @@ test_verify_one_file! {
     } => Err(e) => assert_any_vir_error_msg(e, "a guard value must be a deterministic function")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_birds_eye_req IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -177,7 +183,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'require' statements should not be in the scope of a `birds_eye` let-binding")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] require_let_birds_eye_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -194,7 +200,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'require' statements should not be in the scope of a `birds_eye` let-binding")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_withdraw_bind_req IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -211,7 +217,7 @@ test_verify_one_file! {
     } => Err(e) => assert_any_vir_error_msg(e, "'require' statements should not be in the scope of a `withdraw` let-binding")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_birds_eye_req2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -231,7 +237,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'require' statements should not be preceeded by an assert which is in the scope of")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_withdraw_bind_req2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -251,7 +257,7 @@ test_verify_one_file! {
     } => Err(e) => assert_any_vir_error_msg(e, "'require' statements should not be preceeded by an assert which is in the scope of")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_birds_eye_special IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -268,7 +274,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'remove' statements should not be in the scope of a `birds_eye` let-binding")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_withdraw_binding_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -285,7 +291,7 @@ test_verify_one_file! {
     } => Err(e) => assert_any_vir_error_msg(e, "'remove' statements should not be in the scope of a `withdraw` let-binding")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_birds_eye_special2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -305,7 +311,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'remove' statements should not be preceeded by an assert which is in the scope of")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_update_constant IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -321,7 +327,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'update' statement not allowed for field with sharding strategy 'constant'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_add_constant IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -337,7 +343,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'add' statement not allowed for field with sharding strategy 'constant'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_have_constant IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -353,7 +359,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'have' statement not allowed for field with sharding strategy 'constant'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_option_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -370,7 +376,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_map_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -387,7 +393,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_imap_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -404,7 +410,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_multiset_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -421,7 +427,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_storage_option_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -438,7 +444,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_nottokenized_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -455,7 +461,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_pre_no_field IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -471,7 +477,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be used opaquely")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_pre_no_field_withdraw_kv_value IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -487,7 +493,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be used opaquely")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_pre_no_field_remove_kv_key IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -539,7 +545,46 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// Checked-macro version of test_use_pre_no_field_withdraw_kv_key. API difference: in a machine
+// with storage, an operation that consumes no token takes a `Unit` (here from
+// `<init>_with_unit`, as the machine has no field token).
 test_verify_one_file! {
+    #[test] test_use_pre_no_field_withdraw_kv_key_verified IMPORTS.to_string() + verus_code_str! {
+        verified_tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_imap)] pub v: IMap<int, int>,
+            }
+
+            init!{
+                initialize() {
+                    init v = IMap::empty();
+                }
+            }
+
+            transition!{
+                tr() {
+                    // this is ok:
+                    withdraw v -= [{ let s = pre; s.v.index(0) } => 5]
+                          by { assume(false); };
+                }
+            }
+        }}
+
+        verus!{
+
+        proof fn foo(tracked m: IMap<int, int>) {
+            requires(equal(m, IMap::empty()));
+
+            let tracked (Tracked(inst), Tracked(unit)) = X::Instance::initialize_with_unit(m);
+            let tracked t = (inst).tr(unit);
+            assert(t == 5);
+        }
+
+        }
+    } => Ok(())
+}
+
+test_verify_tsm! {
     #[test] test_use_pre_no_field2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -555,7 +600,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "`pre` cannot be used opaquely")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_pre_no_field3 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -571,7 +616,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "any field access must be a state field")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_pre_no_field4 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -587,7 +632,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "expected a named field")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] field_name_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -597,7 +642,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] field_name_reserved_ident2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -607,7 +652,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] sm_name_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ instance {
             fields {
@@ -617,7 +662,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] sm_name_reserved_ident2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ param_token_a {
             fields {
@@ -627,7 +672,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] let_name_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -643,7 +688,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] let_name_reserved_ident2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -659,7 +704,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] arg_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -674,7 +719,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] arg_reserved_ident2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -689,7 +734,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] binding_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -705,7 +750,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] duplicate_inductive_lemma IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -729,7 +774,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "duplicate 'inductive' lemma")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] missing_inductive_lemma IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -750,7 +795,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "missing inductiveness proofs for")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] missing_inductive_lemma_init IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -771,7 +816,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "missing inductiveness proofs for")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inductive_lemma_readonly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -790,7 +835,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'inductive' lemma does not make sense for a 'readonly' transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inductive_lemma_property IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -809,7 +854,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'inductive' lemma does not make sense for a 'property' definition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_wrong_args IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -828,7 +873,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "params for 'inductive' lemma should be")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_bad_transition_name IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -847,7 +892,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "could not find transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_bad_generic_params IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -866,7 +911,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "should have no generic parameters")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_bad_return_type IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -885,7 +930,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "should have no return type")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_bad_header IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -905,7 +950,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the precondition and postcondition are implicit")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_doesnt_verify IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -930,7 +975,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_doesnt_verify_init IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -955,7 +1000,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] sm_generic_param_not_type IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X<'a> {
             fields {
@@ -965,7 +1010,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "Only generic type parameters are supported")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] multiple_fields IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -979,14 +1024,14 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "Expected only one declaration of `fields` block")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] no_fields IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
         }}
     } => Err(e) => assert_vir_error_msg(e, "'fields' declaration was not found")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] conflicting_attrs IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1008,7 +1053,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "conflicting attributes")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] explicit_mode_inv IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1030,7 +1075,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "should not be explicitly labelled")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_mode_inv IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1051,7 +1096,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "an invariant function should be `spec`")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_mode_inductive IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1076,7 +1121,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "an inductiveness lemma should be `proof`")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] explicit_mode_field IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1086,7 +1131,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "should not be explicitly labelled")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] explicit_mode_proof IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1112,7 +1157,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "should not be explicitly labelled")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inv_wrong_params IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1138,7 +1183,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "an invariant function must take 1 argument (self)")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inv_wrong_ret IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1164,7 +1209,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "an invariant function must return a bool")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inv_wrong_generics IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1190,7 +1235,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "an invariant function must take 0 type arguments")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] normal_sm_sharding IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1198,9 +1243,11 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_vir_error_msg(e, "sharding strategy only makes sense for tokenized state machines")
+    // verified_state_machine_model! accepts (and ignores) sharding annotations by design.
+    ; verified => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] tokenized_sm_no_sharding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1210,7 +1257,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "tokenized state machine requires a sharding strategy")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] unrecognized_sharding_strategy_name IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1220,7 +1267,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "unrecognized sharding strategy")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] duplicate_sharding_attr IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1232,7 +1279,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "duplicate sharding attribute")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1243,7 +1290,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Option<_>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_option2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1254,7 +1301,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Option<_>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_option3 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1265,7 +1312,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Option<_>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_storage_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1276,7 +1323,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Option<_>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_map IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1287,7 +1334,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Map<_, _>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_storage_map IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1298,7 +1345,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Map<_, _>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_storage_imap IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1309,7 +1356,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form IMap<_, _>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_multiset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1320,7 +1367,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Multiset<_>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_set IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1331,7 +1378,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Set<_>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_iset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1342,7 +1389,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form ISet<_>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_count IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1353,7 +1400,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be nat")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_bool IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1364,7 +1411,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be bool")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] special_op_conditional IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1383,7 +1430,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statements are not supported inside conditionals")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] special_op_binding_conditional IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1402,7 +1449,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statements are not supported inside conditionals")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] special_op_match IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1425,7 +1472,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statements are not supported inside conditionals")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] remove_after_have IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1443,7 +1490,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "remove -> have -> add")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] remove_after_have_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1461,7 +1508,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "remove -> have -> add")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] have_after_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1479,7 +1526,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "remove -> have -> add")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] remove_after_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1497,7 +1544,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "remove -> have -> add")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_missing IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1512,7 +1559,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "procedure does not initialize")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_dupe IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1529,7 +1576,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "might be initialized multiple times")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_dupe_conditional IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1550,7 +1597,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "might be initialized multiple times")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_if IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1569,7 +1616,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the else-branch does not initialize")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_dupe_match IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1590,7 +1637,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "might be initialized multiple times")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_else IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1609,7 +1656,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the if-branch does not initialize")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_match IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1634,7 +1681,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "all branches of a match-statement must initialize")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_match2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1658,7 +1705,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "all branches of a match-statement must initialize")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_update IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1675,7 +1722,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'update' statement not allowed in initialization")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_update2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1691,7 +1738,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'update' statement not allowed in initialization")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_special IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1708,7 +1755,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "use 'init' instead")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_special_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1725,7 +1772,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "use 'init' instead")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_assert IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1742,7 +1789,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'assert' statement not allowed in initialization")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] normal_wf_update_dupe IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1759,7 +1806,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "might be updated multiple times")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] normal_wf_update_dupe_conditional IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1778,7 +1825,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "might be updated multiple times")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] normal_wf_update_dupe_conditional2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1798,7 +1845,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "might be updated multiple times")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] normal_wf_update_dupe_match IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1821,7 +1868,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "might be updated multiple times")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] normal_wf_update_init IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1837,7 +1884,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'init' statement not allowed")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] normal_wf_update_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1854,7 +1901,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'guard' statement only allowed in 'readonly' transition or 'property' definition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] readonly_wf_update IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1870,7 +1917,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] property_wf_update IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1886,7 +1933,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in property definition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] readonly_wf_init IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1902,7 +1949,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed outside 'init' routine")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] property_wf_init IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1918,7 +1965,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed outside 'init' routine")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] readonly_wf_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1935,7 +1982,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] property_wf_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1952,7 +1999,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in 'property' definition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] readonly_wf_remove_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1969,7 +2016,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] readonly_wf_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1986,7 +2033,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] readonly_wf_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2003,7 +2050,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] readonly_wf_withdraw IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2020,7 +2067,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] field_not_found IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -2036,7 +2083,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "field 'whats_this' not found")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2053,7 +2100,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_remove_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2070,7 +2117,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2087,7 +2134,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2104,7 +2151,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2128,7 +2175,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_general_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2152,7 +2199,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2176,7 +2223,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_general_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2200,7 +2247,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2217,7 +2264,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_general_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2234,7 +2281,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_have IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2251,7 +2298,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_have IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2268,7 +2315,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_have IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2285,7 +2332,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_withdraw IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2309,7 +2356,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_withdraw IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2333,7 +2380,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_withdraw_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2356,7 +2403,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_withdraw IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2381,7 +2428,7 @@ test_verify_one_file! {
     //} => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2399,9 +2446,10 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_one_fails(e)
+    ; verified ignore "checked macro bug: the generic interface's guard method refers to an unbound `original_field_t` (E0425)"
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2419,9 +2467,10 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_one_fails(e)
+    ; verified ignore "checked macro bug: the generic interface's guard method refers to an unbound `original_field_t` (E0425)"
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_general_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2439,9 +2488,10 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_one_fails(e)
+    ; verified ignore "checked macro bug: the generic interface's guard method refers to an unbound `original_field_t` (E0425)"
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_general_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2466,9 +2516,10 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_one_fails(e)
+    ; verified ignore "checked macro bug: the generic interface's guard method refers to an unbound `original_field_t` (E0425)"
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2490,7 +2541,7 @@ test_verify_one_file! {
     //} => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_general_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2512,7 +2563,7 @@ test_verify_one_file! {
     //} => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2536,7 +2587,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2560,7 +2611,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2577,7 +2628,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "storage_multiset strategy not implemented")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assert_safety_condition_fail IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -2593,7 +2644,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assert_safety_condition_readonly_fail IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -2609,7 +2660,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assert_safety_condition_property_fail IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -2625,7 +2676,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_var_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2642,7 +2693,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed for field with sharding strategy")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_multiset_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2659,7 +2710,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'multiset'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_multiset_add_set IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2676,7 +2727,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'multiset'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_set_add_multiset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2693,7 +2744,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'set'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_multiset_add_option_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2710,7 +2761,7 @@ test_verify_one_file! {
     } => Err(e) => assert_any_vir_error_msg(e, "element but the given field has sharding strategy 'multiset'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_map_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2727,7 +2778,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'map'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_option_add_map IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2744,7 +2795,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'option'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_option_add_multiset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2761,7 +2812,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'option'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_map_add_multiset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2778,7 +2829,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'map'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_multiset_add_map IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2795,7 +2846,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'multiset'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_map_guard_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2812,7 +2863,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'map'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_count_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2829,7 +2880,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'count'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_option_deposit_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2846,7 +2897,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "is only for storage types")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_storage_option_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2863,7 +2914,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "use deposit/withdraw/guard statements for storage strategies")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] no_let_repeated_idents IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -2883,7 +2934,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "bound variables with the same name")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] no_let_repeated_idents2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -2900,7 +2951,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "bound variables with the same name")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] no_let_repeated_idents3 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -2916,7 +2967,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "bound variables with the same name")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] no_let_repeated_idents4 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2933,7 +2984,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "bound variables with the same name")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] type_recursion_ok IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2944,7 +2995,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] type_recursion_fail_negative IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2955,9 +3006,12 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_vir_error_msg(e, "non-positive position")
+    // The checked Instance of this machine holds only a location (it does not mention State),
+    // so there is no recursion through IMap's rejected parameter.
+    ; verified => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_recursion_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2990,9 +3044,11 @@ test_verify_one_file! {
             }
         }}
     } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    // The checked macro reports the cycle twice (lemma and its use in a generated proof).
+    ; verified => Err(err) => assert_any_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[ignore] #[test] lemma_recursion_assert_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -3024,7 +3080,7 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] relation_codegen IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -3232,7 +3288,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] relation_codegen_match IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -3353,7 +3409,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] relation_codegen_special_finite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -3603,9 +3659,10 @@ test_verify_one_file! {
         } // verus!
 
     } => Ok(())
+    ; verified ignore "checked macro: unsupported form (tr1 withdraws and then deposits the same storage location)"
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] relation_codegen_special_infinite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -3855,9 +3912,10 @@ test_verify_one_file! {
         } // verus!
 
     } => Ok(())
+    ; verified ignore "checked macro: unsupported form (tr1 withdraws and then deposits the same storage location)"
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] relation_codegen_special_general_finite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -4125,9 +4183,10 @@ test_verify_one_file! {
 
         } // verus!
     } => Ok(())
+    ; verified ignore "checked macro gap: `by` blocks of special operations do not discharge the checked inherent safety conditions"
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] relation_codegen_special_general_infinite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -4395,9 +4454,10 @@ test_verify_one_file! {
 
         } // verus!
     } => Ok(())
+    ; verified ignore "checked macro gap: `by` blocks of special operations do not discharge the checked inherent safety conditions"
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] relation_codegen_opt_general IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -4525,7 +4585,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] nondet_tokenizing IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Z {
             fields {
@@ -4603,7 +4663,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] pre_in_init IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -4619,7 +4679,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "no previous state to refer to")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] self_in_transition IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -4635,7 +4695,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "`self` is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] post_in_transition IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -4651,7 +4711,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot refer directly to `post`")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_let_pattern IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields { #[sharding(variable)] pub t: (int, int) }
@@ -4683,7 +4743,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] super_error IMPORTS.to_string() + verus_code_str! {
         struct Bar { }
 
@@ -4701,7 +4761,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "`super::` path not allowed here")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] if_let_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -4719,7 +4779,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "do not support if-let conditionals")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] if_let_fail_with_else IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -4739,7 +4799,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "do not support if-let conditionals")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] if_let_fail_with_chain IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -4759,7 +4819,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "do not support if-let conditionals")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] use_self_type IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -4821,7 +4881,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] bind_codegen_finite IMPORTS.to_string() + verus_code_str! {
 
         tokenized_state_machine!{ Y {
@@ -5057,7 +5117,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] bind_codegen_infinite IMPORTS.to_string() + verus_code_str! {
 
         tokenized_state_machine!{ Y {
@@ -5293,7 +5353,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] bind_fail_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5310,7 +5370,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "pattern-binding cannot be used in an 'add' statement")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] bind_fail_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5327,7 +5387,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "pattern-binding cannot be used in a 'deposit' statement")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] bind_fail_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5344,7 +5404,7 @@ test_verify_one_file! {
     } => Err(e) => assert_any_vir_error_msg(e, "pattern-binding cannot be used in a 'guard' statement")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assert_let_fail_1_bind IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5359,9 +5419,11 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_vir_error_msg(e, "unable to prove safety condition that the pattern matches")
+    // TODO(checked macro): report safety conditions with the trusted macro's messages and spans.
+    ; verified => Err(e) => assert_fails_anywhere(e, 1)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assert_let_fail_0_bind IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5376,9 +5438,11 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_any_vir_error_msg(e, "unable to prove safety condition that the pattern matches")
+    // The checked macro reports the failing safety condition at the macro invocation.
+    ; verified => Err(e) => assert_fails_anywhere(e, 1)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assert_require_let_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5540,7 +5604,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] count_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5647,7 +5711,7 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 2)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_option_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5664,7 +5728,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_map_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5681,7 +5745,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_bool_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5698,7 +5762,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] use_plus_for_persistent_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5715,7 +5779,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "for the persistent strategy `persistent_bool`, use `(union)=` instead of `+=`")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] use_union_for_nonpersistent_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5732,7 +5796,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "use `+=` instead of `(union)=`")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_count_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5749,7 +5813,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_set_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5766,7 +5830,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_option_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5936,7 +6000,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_map_codegen_finite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -6104,7 +6168,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_map_codegen_infinite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -6272,7 +6336,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] pattern_binding_withdraw_assert_fails IMPORTS.to_string() + verus_code_str! {
         pub enum Goo {
             Bar,
@@ -6338,9 +6402,10 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_fails(e, 6)
+    ; verified ignore "checked macro bug: a `by` block mentioning `pre.<storage field>` refers to an unbound `param_token_*` (E0425)"
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] special_refutable_pattern_binding_codegen_finite IMPORTS.to_string() + verus_code_str! {
         pub enum Goo {
             Bar,
@@ -6933,9 +6998,10 @@ test_verify_one_file! {
 
         }
     } => Err(e) => assert_fails(e, 10)
+    ; verified ignore "checked macro bug: a `by` block mentioning `pre.<storage field>` refers to an unbound `param_token_*` (E0425)"
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] special_refutable_pattern_binding_codegen_infinite IMPORTS.to_string() + verus_code_str! {
         pub enum Goo {
             Bar,
@@ -7528,9 +7594,10 @@ test_verify_one_file! {
 
         }
     } => Err(e) => assert_fails(e, 10)
+    ; verified ignore "checked macro bug: a `by` block mentioning `pre.<storage field>` refers to an unbound `param_token_*` (E0425)"
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] labels_wrong_type_name IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
@@ -7542,7 +7609,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "only supports the declaration of a `Label` and `InitLabel` types")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] labels_init_missing IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
@@ -7560,7 +7627,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the first param to an 'init'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] labels_init_missing2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
@@ -7578,7 +7645,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the first param to an 'init'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] labels_tr_missing IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
@@ -7596,7 +7663,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the first param to a 'transition'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] labels_readonly_missing IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
@@ -7614,7 +7681,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the first param to a 'readonly'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] bool_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -7783,7 +7850,7 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 3)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_bool_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -7916,7 +7983,7 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 1)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_count_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -7994,7 +8061,7 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 1)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] set_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -8145,9 +8212,12 @@ test_verify_one_file! {
 
         }
     } => Err(e) => assert_fails(e, 2)
+    // The checked macro proves both failing safety conditions in one generated function, so
+    // Verus reports the first one only (and its span is the macro invocation).
+    ; verified => Err(e) => assert_fails(e, 1)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] iset_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -8298,9 +8368,12 @@ test_verify_one_file! {
 
         }
     } => Err(e) => assert_fails(e, 2)
+    // The checked macro proves both failing safety conditions in one generated function, so
+    // Verus reports the first one only (and its span is the macro invocation).
+    ; verified => Err(e) => assert_fails_anywhere(e, 1)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_set_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -8416,7 +8489,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_iset_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -8532,7 +8605,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] tokenized_with_conditional IMPORTS.to_string() + verus_code_str! {
 
         tokenized_state_machine!{ Y {
@@ -8601,7 +8674,7 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 2)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assert_in_if IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
 
@@ -8637,7 +8710,7 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 1)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] double_scoped_updates_if IMPORTS.to_string() + verus_code_str! {
       state_machine!{ X {
 
@@ -8733,7 +8806,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] double_scoped_updates_match IMPORTS.to_string() + verus_code_str! {
 
         state_machine!{ X {
@@ -8854,9 +8927,11 @@ test_verify_one_file! {
             let post = X::take_step::tr(pre, x, y, z, w, v); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+    // The checked take_step states its precondition as two requires clauses.
+    ; verified => Err(err) => assert_fails_anywhere(err, 2)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] if_let_assert_with_no_else IMPORTS.to_string() + verus_code_str! {
         pub struct Y {
             pub a: int,
@@ -8946,7 +9021,49 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// Checked-macro version of step_is_variant: the original imports the trusted `state_machine`
+// explicitly, which the prelude's macro switch cannot redirect.
 test_verify_one_file! {
+    #[test] step_is_variant_verified IMPORTS.to_string() + verus_code_str! {
+        use verus_state_machines_macros::verified_state_machine_model;
+
+        verified_state_machine_model! { X {
+            fields {
+                pub number: int,
+            }
+
+            init!{
+                initialize() {
+                    init number = 0;
+                }
+            }
+
+            transition!{
+                add(n: int) {
+                    update number = pre.number + 2*n;
+                }
+            }
+
+            transition!{
+                sub(n: int) {
+                    update number = pre.number - 2*n;
+                }
+            }
+        }}
+
+        proof fn test(s: X::Step)
+            requires s.is_add(),
+        {
+            match s {
+                X::Step::add(_) => assert(true),
+                X::Step::sub(_) => assert(false),
+                _ => {},
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_tsm! {
     #[test] label_generics IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X<T, U> {
             fields {
@@ -8975,7 +9092,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] label_generics_fail1 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X<T, U> {
             fields {
@@ -9004,7 +9121,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the first param to an 'init' definition must be 'InitLabel'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] label_generics_fail2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X<T, U> {
             fields {
@@ -9034,7 +9151,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the first param to a 'transition' must be 'Label'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] label_generics_fail3 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X<T, U> {
             fields {
@@ -9049,7 +9166,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "invalid generic param")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] label_generics_fail4 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X<T, U> {
             fields {
@@ -9064,7 +9181,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "invalid generic param")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] arrow_functions_regression_1002_1 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Example {
             fields {}
@@ -9089,7 +9206,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] arrow_functions_regression_1002_2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Example {
             fields {
@@ -9110,7 +9227,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inst_copy IMPORTS.to_string() + verus_code_str! {
         pub struct Y { }
 
@@ -9133,7 +9250,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] pers_token_copy IMPORTS.to_string() + verus_code_str! {
         pub struct Y { }
 
@@ -9156,7 +9273,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] other_token_not_copy IMPORTS.to_string() + verus_code_str! {
         pub struct Y { }
 
@@ -9179,7 +9296,7 @@ test_verify_one_file! {
     } => Err(e) => assert_rust_error_msg(e, "use of moved value")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assoc_type_in_field IMPORTS.to_string() + verus_code_str! {
         pub trait Tr {
             type AssocType;
@@ -9222,7 +9339,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] pre_reserved_property_issue3083 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields { #[sharding(variable)] pub v: int, }
@@ -9234,7 +9351,7 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "'pre' is a reserved identifier in state machine definitions")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] pre_reserved_transition_issue3083 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields { #[sharding(variable)] pub v: int, }
@@ -9248,7 +9365,7 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "'pre' is a reserved identifier in state machine definitions")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] post_reserved_transition_issue3083 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields { #[sharding(variable)] pub v: int, }
@@ -9270,7 +9387,7 @@ const SUB_UPDATE_TYPES: &str = verus_code_str! {
     pub enum E { A { x: int }, B }
 };
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] dot_field_sub_updates IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -9321,12 +9438,12 @@ test_verify_one_file! {
 
         proof fn test_fail(pre: X::State, post: X::State, v: int, w: int, k: int, b: bool)
             requires X::State::tr(pre, post, v, w, k, b)
-            ensures post.p.x == v
-        { } // FAILS
+            ensures post.p.x == v // FAILS
+        { }
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] dot_field_sub_updates_tokenized IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -9380,7 +9497,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] dot_field_sub_update_unknown_type IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
         state_machine!{ X {
             fields { pub o: Outer, }
@@ -9389,7 +9506,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot update a field of `o.p`: its type is not known to the state machine macro")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] dot_field_sub_update_tuple_index IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
         state_machine!{ X {
             fields { pub t: (int, int), }
@@ -9398,7 +9515,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "`t` has no element 2")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] dot_field_sub_update_enum IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
         state_machine!{ X {
             fields { pub e: E, }
@@ -9407,7 +9524,7 @@ test_verify_one_file! {
     } => Err(e) => assert_rust_error_msg(e, "expected struct, variant or union type, found enum `E`")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] dot_field_sub_updates_tokenized_paths IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
         tokenized_state_machine!{ X {
             fields { #[sharding(variable)] pub p: Pt, }

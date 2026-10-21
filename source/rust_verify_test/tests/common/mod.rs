@@ -830,6 +830,19 @@ macro_rules! test_verify_tsm {
     };
 }
 
+/// `test_verify_one_file_with_options!` syntax for `test_verify_tsm!`.
+#[macro_export]
+macro_rules! test_verify_tsm_with_options {
+    ($(#[$attrs:meta])* $name:ident [$($opt:expr),* $(,)?] => $body:expr => Ok(()) $(; $($v:tt)*)?) => {
+        $crate::test_verify_tsm!(@mod [$(#[$attrs])*] $name [$($opt),*] [$body]
+            [Ok(())] [] [$($($v)*)?]);
+    };
+    ($(#[$attrs:meta])* $name:ident [$($opt:expr),* $(,)?] => $body:expr => $result:pat => $assertions:expr $(; $($v:tt)*)?) => {
+        $crate::test_verify_tsm!(@mod [$(#[$attrs])*] $name [$($opt),*] [$body]
+            [$result] [$assertions] [$($($v)*)?]);
+    };
+}
+
 // We run the bit-vector tests twice; once with interpreter-based simplification on
 // (to mirror what the end-user sees) and once with it off (to check that our SMT encoding
 // of bit-vector operations is correct).
