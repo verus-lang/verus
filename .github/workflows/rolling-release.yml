@@ -111,6 +111,17 @@ jobs:
             --data-binary @./verus-x86-win/verus-x86-win.zip \
             "${UPLOAD_URL%%\{*}?name=verus-${{ env.RELEASE_NAME }}-x86-win.zip"
 
+      - name: upload release for arm64-win
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPLOAD_URL: ${{ steps.update_release.outputs.upload_url }}
+        run: |
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/zip" \
+            --data-binary @./verus-arm64-win/verus-arm64-win.zip \
+            "${UPLOAD_URL%%\{*}?name=verus-${{ env.RELEASE_NAME }}-arm64-win.zip"
+
       - name: publish release
         uses: verus-lang/action-update-release@v0.2
         env:

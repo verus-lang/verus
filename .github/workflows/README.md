@@ -69,7 +69,7 @@ the commit via `ci.yml`.
 
 **Jobs:**
 
-1. **`build`** (macOS ARM64, macOS x64, Windows x64, Linux x64, Linux ARM64)
+1. **`build`** (macOS ARM64, macOS x64, Windows x64, Windows ARM64, Linux x64, Linux ARM64)
    - Builds release binary artifacts for every supported platform
    - Uploads `verus-<arch>-<os>.zip` artifacts
 
