@@ -351,7 +351,7 @@ fn simplify_lambda(
             ctxt.lambda_count += 1;
             let _ = ctxt.lambda_map.insert(closure, closure_fun.clone());
             if let Some(obs) = &ctxt.air_observer {
-                obs.borrow_mut().on_lambda_decl(&closure_fun, binders, &e1);
+                obs.borrow_mut().on_lambda_decl(&closure_fun, binders, &body);
             }
 
             // f(holes): (Fun (t_params) t_body)
