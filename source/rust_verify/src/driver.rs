@@ -336,13 +336,12 @@ pub fn run(
         );
     }
 
-    let compile_status =
-        if !verifier.compile && (verifier.args.no_erasure_check || verifier.args.no_lifetime) {
-            Ok(())
-        } else {
-            let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
-            run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
-        };
+    let compile_status = if !verifier.has_second_compile_pass() {
+        Ok(())
+    } else {
+        let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
+        run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
+    };
 
     let time2 = Instant::now();
 

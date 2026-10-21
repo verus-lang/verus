@@ -484,6 +484,11 @@ impl CommandBatch {
 }
 
 impl Verifier {
+    /// Whether a second invocation of `rustc_driver::run_compiler` is necessary to generate code.
+    pub fn has_second_compile_pass(&self) -> bool {
+        self.compile || (!self.args.no_erasure_check && !self.args.no_lifetime)
+    }
+
     pub fn new(
         args: Args,
         via_cargo_args: Option<CargoVerusArgs>,
@@ -3132,6 +3137,19 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         }
 
         rustc_interface::passes::write_dep_info(tcx);
+        if self.verifier.has_second_compile_pass() {
+            // Change the extension of dep-info files from `.d` to `.verus.d`
+            //   so that the second compiler pass does not overwrite them.
+            let dep_info_name =
+                tcx.output_filenames(()).path(rustc_session::config::OutputType::DepInfo);
+            let dep_info_path_d = dep_info_name.as_path();
+            let dep_info_path_verus_d = dep_info_path_d.with_extension("verus.d");
+            std::fs::rename(dep_info_path_d, &dep_info_path_verus_d).expect(&format!(
+                "rename {} to {}",
+                dep_info_path_d.display(),
+                dep_info_path_verus_d.display(),
+            ));
+        }
         self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
 
         let time_import0 = Instant::now();
