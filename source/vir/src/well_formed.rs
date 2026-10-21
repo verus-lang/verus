@@ -1635,6 +1635,21 @@ fn check_datatype<Emit: EmitError>(
         for field in variant.fields.iter() {
             let typ = &field.a.0;
             check_typ(ctxt, typ, &dt.span, emit)?;
+
+            if dt.x.mode == Mode::Exec && field.a.1 != Mode::Exec {
+                let (wrapper, mode) = match field.a.1 {
+                    Mode::Spec => ("Ghost", "ghost"),
+                    Mode::Proof => ("Tracked", "tracked"),
+                    Mode::Exec => unreachable!(),
+                };
+                return Err(error(
+                    &dt.span,
+                    "field in an exec-mode datatype cannot have a mode qualifier",
+                )
+                .help(format!("try using the `{wrapper:}` type to embed {mode:} data in an exec-mode struct"))
+                .help("if you meant for the datatype to be only used in ghost code, mark it `ghost struct` or `tracked struct`")
+                );
+            }
         }
     }
 
