@@ -996,8 +996,6 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// verus-lang/verus#2674: a fresh range's end bound is still Included, but an
-// exhausted one is not - both directions in one file (one expected failure).
 test_verify_one_file! {
     #[test] test_range_inclusive_end_bound_exhausted verus_code! {
         use vstd::prelude::*;
@@ -1024,32 +1022,28 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-// Same fact one level down: `slice_range_end` (used by `copy_within`) treats
-// an exhausted range's end as excluded, not included.
 test_verify_one_file! {
-    #[test] test_slice_range_end_treats_exhausted_range_as_excluded verus_code! {
+    #[test] test_slice_range_end_uses_start_when_flagged verus_code! {
         use std::ops::RangeInclusive;
         use vstd::prelude::*;
         use vstd::std_specs::range::{slice_range_end, RangeInclusiveView};
 
         proof fn correct(r: RangeInclusive<usize>)
             requires
-                r@ == (RangeInclusiveView { start: 2, end: 2, exhausted: true }),
+                r@ == (RangeInclusiveView { start: 0, end: usize::MAX, exhausted: true }),
         {
-            assert(slice_range_end(&r, 5) == 2);
+            assert(slice_range_end(&r, 5) == 0);
         }
 
-        proof fn rejects_included(r: RangeInclusive<usize>)
+        proof fn rejects_stored_end(r: RangeInclusive<usize>)
             requires
-                r@ == (RangeInclusiveView { start: 2, end: 2, exhausted: true }),
+                r@ == (RangeInclusiveView { start: 0, end: usize::MAX, exhausted: true }),
         {
-            assert(slice_range_end(&r, 5) == 3); // FAILS
+            assert(slice_range_end(&r, 5) == usize::MAX); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
 
-// `is_empty()`: not empty fresh, empty once exhausted - even though
-// `start <= end` alone (1 <= 1) would wrongly say otherwise.
 test_verify_one_file! {
     #[test] test_range_inclusive_is_empty verus_code! {
         use vstd::prelude::*;
@@ -1065,7 +1059,7 @@ test_verify_one_file! {
             let _ = r.next();
             let empty = r.is_empty();
             assert(empty);
-            assert(!empty); // FAILS: exhausted despite start <= end
+            assert(!empty); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -1409,7 +1403,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     // GitHub issue #3145
     #[test] test_slice_index_exhausted_range_inclusive verus_code! {
-        use core::ops::{Bound, RangeBounds};
+        use core::ops::{Bound, RangeBounds, RangeInclusive};
         use vstd::prelude::*;
 
         fn advance<I: Iterator<Item = usize>>(it: &mut I) {
@@ -1439,9 +1433,18 @@ test_verify_one_file! {
                 _ => false,
             };
             if exhausted_at_2 {
-                let t = &v.as_slice()[r];
-                assert(t@.len() == 0);
+                let _ = &v.as_slice()[r]; // FAILS
             }
+        }
+
+        fn test_index_with_stored_end_bound(r: RangeInclusive<usize>)
+            requires
+                r@.exhausted,
+                r@.end < 3,
+        {
+            let v: Vec<u8> = vec![10, 20, 30];
+            let t = &v.as_slice()[r];
+            assert(t@.len() == 0);
         }
 
         fn test_index_oob() {
@@ -1456,5 +1459,74 @@ test_verify_one_file! {
                 let _ = &v.as_slice()[r]; // FAILS
             }
         }
-    } => Err(err) => assert_fails(err, 2)
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] test_range_inclusive_overflow_end_bound_index verus_code! {
+        use core::ops::{Bound, RangeBounds};
+        use vstd::prelude::*;
+
+        fn test() {
+            let v: Vec<u8> = vec![7];
+            let mut r = 0usize..=0usize;
+            let _ = r.next_back();
+            match r.end_bound() {
+                Bound::Excluded(e) => {
+                    if *e == 0 {
+                        let _ = &v[r]; // FAILS
+                    }
+                }
+                _ => {}
+            }
+        }
+    } => Err(err) => {
+        assert!(err.errors[0].message.contains("precondition not satisfied"));
+        assert_one_fails(err);
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_range_inclusive_overflow_contains_index verus_code! {
+        use core::ops::{Bound, RangeBounds};
+        use vstd::prelude::*;
+
+        fn test() {
+            let v: Vec<u8> = vec![7];
+            let mut r = 0usize..=0usize;
+            let _ = r.next_back();
+            match r.start_bound() {
+                Bound::Included(s) => {
+                    if *s == 0 && !r.contains(&0usize) {
+                        let _ = &v[r]; // FAILS
+                    }
+                }
+                _ => {}
+            }
+        }
+    } => Err(err) => {
+        assert!(err.errors[0].message.contains("precondition not satisfied"));
+        assert_one_fails(err);
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_range_inclusive_overflow_flag ["--compile"] => verus_code! {
+        use core::ops::{Bound, RangeBounds, RangeInclusive};
+        use vstd::prelude::*;
+        use vstd::std_specs::range::RangeInclusiveView;
+
+        fn flagged(r: RangeInclusive<usize>)
+            requires
+                r@ == (RangeInclusiveView { start: 0, end: usize::MAX, exhausted: true }),
+        {
+            let end = r.end_bound();
+            let contains_zero = r.contains(&0usize);
+            assert(end == Bound::Excluded(&0usize));
+            assert(!contains_zero);
+            let mut values = [7u8, 9];
+            values.copy_within(r, 1);
+            assert(values@ == seq![7u8, 9]);
+        }
+    } => Ok(())
 }

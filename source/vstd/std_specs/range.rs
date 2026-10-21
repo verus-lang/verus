@@ -20,6 +20,10 @@ pub struct ExRangeInclusive<Idx>(RangeInclusive<Idx>);
 pub struct RangeInclusiveView<Idx> {
     pub start: Idx,
     pub end: Idx,
+    /// Rust's internal empty-range flag. Iteration sets it when an endpoint
+    /// overflows or underflows; folds also set it when exhausting the range.
+    /// Stored endpoints may be wrapped when this flag is set. A range can also
+    /// be empty with the flag clear if its endpoints are reversed or incomparable.
     pub exhausted: bool,
 }
 
@@ -39,7 +43,7 @@ impl<Idx, U> ContainsSpec<Idx, U> for RangeInclusive<Idx> where
 
     open spec fn contains_spec(&self, i: &U) -> bool {
         self@.start.is_le(&i) && if self@.exhausted {
-            i.is_lt(&self@.end)
+            i.is_lt(&self@.start)
         } else {
             i.is_le(&self@.end)
         }
@@ -93,8 +97,7 @@ pub assume_specification<Idx: PartialOrd<Idx>, U>[ RangeInclusive::<Idx>::contai
             == r.contains_spec(i),
 ;
 
-// A range is empty once its iterator is exhausted, or if it was never valid
-// to begin with (start > end).
+// A range is empty when the flag is set or its endpoints are reversed or incomparable.
 pub open spec fn spec_range_inclusive_is_empty<Idx: PartialOrd<Idx>>(
     r: &RangeInclusive<Idx>,
 ) -> bool {
@@ -282,12 +285,12 @@ pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::start_bo
         result == Bound::Included(&range@.start),
 ;
 
-// Shared with `RangeBoundsSpecImpl::spec_end_bound` below, so the two can't
-// drift apart: `end_bound()` returns `Included` while the range is not
-// exhausted and `Excluded` after it is exhausted.
+// Shared with the exec specification and `RangeBoundsSpecImpl::spec_end_bound`.
+// With the flag set, the bounds describe an empty range at start, independently
+// of a possibly wrapped end.
 pub open spec fn spec_range_inclusive_end_bound<T>(r: &RangeInclusive<T>) -> Bound<&T> {
     if r@.exhausted {
-        Bound::Excluded(&r@.end)
+        Bound::Excluded(&r@.start)
     } else {
         Bound::Included(&r@.end)
     }
@@ -512,8 +515,9 @@ pub open spec fn slice_range_end<R: RangeBoundsSpec<usize>>(range: &R, len: nat)
 }
 
 /// The bounds with which std's `SliceIndex` impls for `RangeInclusive<usize>` index:
-/// `start..end + 1`, or the empty range `end + 1..end + 1` if the range is exhausted
-/// (unlike `end_bound()`, which reports `Excluded(end)` for an exhausted range).
+/// `start..end + 1`, or the empty range `end + 1..end + 1` if the flag is set.
+/// The stored end is still subject to bounds checks, even though `end_bound()`
+/// reports `Excluded(start)` when the flag is set.
 pub open spec fn spec_range_inclusive_slice_bounds(r: &RangeInclusive<usize>) -> (
     Bound<usize>,
     Bound<usize>,
