@@ -632,7 +632,7 @@ impl Visitor {
                 let Some((_, ty)) = self.inside_impl.as_deref() else {
                     let span = receiver.span();
                     let err = "cannot resolve type of `self` in function definition";
-                    return parse_quote_spanned!(span => _: compile_error!(#err));
+                    return parse_quote_spanned!(span => _: ::core::compile_error!(#err));
                 };
 
                 let mut ty = ty.clone();
@@ -706,7 +706,7 @@ impl Visitor {
 
             InvariantNameSet::Set(InvariantNameSetSet { mut expr }) => {
                 self.visit_expr_mut(&mut expr);
-                let typ = quote_vstd! { vstd => #vstd::iset::ISet<int> };
+                let typ = quote_vstd! { vstd => #vstd::iset::ISet<#vstd::prelude::int> };
                 quote_spanned_builtin!(verus_builtin, expr.span() =>
                     #verus_builtin::inv_mask_set::<_, #typ>(#expr)
                 )
@@ -796,7 +796,7 @@ impl Visitor {
                             the entire impl block, not just this method";
                         self.additional_items.push(parse_quote_spanned!(
                             receiver.self_token.span() =>
-                                const _FAILED_TO_RESOLVE_SELF: () = compile_error!(#err);
+                                const _FAILED_TO_RESOLVE_SELF: () = ::core::compile_error!(#err);
                         ));
                         return None;
                     }
@@ -894,7 +894,7 @@ impl Visitor {
         self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
             impl #impl_generics #pred_ident #ty_generics #where_clause {
                 #[allow(private_interfaces)]
-                pub open spec fn args(self, #args_full_tokens ) -> bool {
+                pub open spec fn args(self, #args_full_tokens ) -> ::core::primitive::bool {
                     #vstd::atomic::pred_args::< Self, ( #args_ty_tokens ) >(self)
                         == ( #args_pat_tokens )
                 }
@@ -902,12 +902,12 @@ impl Visitor {
         ));
 
         let mut impl_members = quote_spanned_vstd!(vstd, full_span =>
-            open spec fn req(self, #old_pat: #old_ty) -> bool {
+            open spec fn req(self, #old_pat: #old_ty) -> ::core::primitive::bool {
                 let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
                 #atomic_req
             }
 
-            open spec fn ens(self, #old_pat: #old_ty, #new_pat: #new_ty) -> bool {
+            open spec fn ens(self, #old_pat: #old_ty, #new_pat: #new_ty) -> ::core::primitive::bool {
                 let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
                 #atomic_ens
             }
@@ -919,7 +919,7 @@ impl Visitor {
         if let Some(outer_mask) = outer_mask {
             let mask_expr = self.inv_name_set_to_mask_expr(outer_mask.set);
             let fn_tokens = &quote_spanned_vstd!(vstd, outer_mask.token.span =>
-                open spec fn outer_mask(self) -> #vstd::iset::ISet<vstd::prelude::int> {
+                open spec fn outer_mask(self) -> #vstd::iset::ISet<#vstd::prelude::int> {
                     let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
                     #mask_expr
                 }
@@ -931,7 +931,7 @@ impl Visitor {
         if let Some(inner_mask) = inner_mask {
             let mask_expr = self.inv_name_set_to_mask_expr(inner_mask.set);
             let fn_tokens = &quote_spanned_vstd!(vstd, inner_mask.token.span =>
-                open spec fn inner_mask(self) -> #vstd::iset::ISet<vstd::prelude::int> {
+                open spec fn inner_mask(self) -> #vstd::iset::ISet<#vstd::prelude::int> {
                     let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
                     #mask_expr
                 }
@@ -1085,8 +1085,9 @@ impl Visitor {
                         if exprs.exprs.len() == 0 {
                             let err =
                                 "when using #![trigger f(x)], at least one ensures is required";
-                            let expr =
-                                Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                            let expr = Expr::Verbatim(
+                                quote_spanned!(token.span => ::core::compile_error!(#err)),
+                            );
                             spec_stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
                             false
                         } else {
@@ -1215,7 +1216,8 @@ impl Visitor {
                 self.visit_expr_mut(expr);
                 if matches!(expr, Expr::Tuple(..)) {
                     let err = "decreases cannot be a tuple; use `decreases x, y` rather than `decreases (x, y)`";
-                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                    let expr =
+                        Expr::Verbatim(quote_spanned!(token.span => ::core::compile_error!(#err)));
                     spec_stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
                 }
             }
@@ -1348,7 +1350,7 @@ impl Visitor {
             ) => {
                 stmts.push(stmt_with_semi!(
                     spec_token.span =>
-                    compile_error!("non-private spec function must be marked open or closed to indicate whether the function body is public (pub open) or private (pub closed)")
+                    ::core::compile_error!("non-private spec function must be marked open or closed to indicate whether the function body is public (pub open) or private (pub closed)")
                 ));
             }
             _ => {}
@@ -1363,7 +1365,7 @@ impl Visitor {
             let publish_span = sig.publish.span();
             stmts.push(stmt_with_semi!(
                 publish_span =>
-                compile_error!("only `spec` functions can be marked `open`, `closed`, or `uninterp`")
+                ::core::compile_error!("only `spec` functions can be marked `open`, `closed`, or `uninterp`")
             ));
         }
 
@@ -1372,28 +1374,28 @@ impl Visitor {
             let broadcast_span = sig.broadcast.span();
             stmts.push(stmt_with_semi!(
                 broadcast_span =>
-                compile_error!("only `proof` functions can be marked `broadcast`")
+                ::core::compile_error!("only `proof` functions can be marked `broadcast`")
             ));
         }
 
         if !is_trait && matches!(sig.mode, FnMode::Proof(_)) && !has_body {
             stmts.push(stmt_with_semi!(
                 sig.mode.span() =>
-                compile_error!("a `proof` function must have a body (if you intentionally want to omit the body, use the `axiom` keyword)")
+                ::core::compile_error!("a `proof` function must have a body (if you intentionally want to omit the body, use the `axiom` keyword)")
             ));
         }
 
         if matches!(sig.mode, FnMode::ProofAxiom(_)) && has_body && !self.erase_ghost.erase() {
             stmts.push(stmt_with_semi!(
                 sig.mode.span() =>
-                compile_error!("an `axiom` should not have a body")
+                ::core::compile_error!("an `axiom` should not have a body")
             ));
         }
 
         if is_trait && matches!(sig.mode, FnMode::ProofAxiom(_)) {
             stmts.push(stmt_with_semi!(
                 sig.mode.span() =>
-                compile_error!("`axiom` keyword unexpected in trait declarations")
+                ::core::compile_error!("`axiom` keyword unexpected in trait declarations")
             ));
         }
 
@@ -1423,7 +1425,7 @@ impl Visitor {
         let (unimpl, ext_attrs) = match (&sig.mode, semi_token, is_trait) {
             (FnMode::ProofAxiom(_), Some(semi), false) => {
                 let unimpl = vec![Stmt::Expr(
-                    Expr::Verbatim(quote_spanned!(semi.span => unimplemented!())),
+                    Expr::Verbatim(quote_spanned!(semi.span => ::core::unimplemented!())),
                     None,
                 )];
                 (unimpl, vec![mk_verus_attr(semi.span, quote! { external_body })])
@@ -1431,7 +1433,7 @@ impl Visitor {
             (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => {
                 // uninterpreted function
                 let unimpl = vec![Stmt::Expr(
-                    Expr::Verbatim(quote_spanned!(semi.span => unimplemented!())),
+                    Expr::Verbatim(quote_spanned!(semi.span => ::core::unimplemented!())),
                     None,
                 )];
                 #[cfg(verus_keep_ghost)]
@@ -1547,7 +1549,7 @@ impl Visitor {
             if let Some(expr) = con_expr.take() {
                 let mut stmts = Vec::new();
                 stmts.push(Stmt::Expr(
-                    Expr::Verbatim(quote_spanned!(con_span => unsafe { core::mem::zeroed() })),
+                    Expr::Verbatim(quote_spanned!(con_span => unsafe { ::core::mem::zeroed() })),
                     None,
                 ));
                 *con_expr = Some(Box::new(Expr::Block(verus_syn::ExprBlock {
@@ -1955,7 +1957,7 @@ impl Visitor {
                     ) if erase_ghost => {
                         // replace body with panic!()
                         let expr: Expr = Expr::Verbatim(quote_spanned! {
-                            span => { panic!() }
+                            span => { ::core::panic!() }
                         });
                         let stmt = Stmt::Expr(expr, None);
                         fun.block.stmts = vec![stmt];
@@ -2007,7 +2009,7 @@ impl Visitor {
             };
             if let Some((name, vis, mut attrs)) = erase_fn {
                 let mut item_fn: ItemFn = parse_quote_spanned! {
-                    span => #[allow(unused_imports)] #vis fn #name() { unimplemented!() }
+                    span => #[allow(unused_imports)] #vis fn #name() { ::core::unimplemented!() }
                 };
                 filter_ghost_stub_attrs(&mut attrs);
                 // Verbatim items bypass the usual attribute visitor.
@@ -2046,7 +2048,7 @@ impl Visitor {
                     let static_assert_size = if self.erase_ghost.erase() {
                         quote! {
                             if ::core::mem::size_of::<#type_>() != #size_lit {
-                                panic!("does not have the expected size");
+                                ::core::panic!("does not have the expected size");
                             }
                         }
                     } else {
@@ -2056,7 +2058,7 @@ impl Visitor {
                         if self.erase_ghost.erase() {
                             quote! {
                                 if ::core::mem::align_of::<#type_>() != #align_lit {
-                                    panic!("does not have the expected alignment");
+                                    ::core::panic!("does not have the expected alignment");
                                 }
                             }
                         } else {
@@ -2081,7 +2083,7 @@ impl Visitor {
                         if !type_name_escaped.chars().all(|c| c.is_alphanumeric() || c == '_') {
                             let err = "this type name is not supported (it must only include A-Za-z0-9<>)";
                             *item = Item::Verbatim(
-                                quote_spanned!(span => const _: () = { compile_error!(#err) };),
+                                quote_spanned!(span => const _: () = { ::core::compile_error!(#err) };),
                             );
                         } else {
                             let lemma_ident =
@@ -2240,7 +2242,7 @@ impl Visitor {
         match sig.inputs.first() {
             Some(FnArg { tracked: _, kind: FnArgKind::Receiver(_) }) => {
                 return Item::Verbatim(
-                    quote_spanned!(span => compile_error!("use a named param instead of 'self' argument");),
+                    quote_spanned!(span => ::core::compile_error!("use a named param instead of 'self' argument");),
                 );
             }
             _ => false,
@@ -2295,7 +2297,7 @@ impl Visitor {
             let ident = match &input.kind {
                 FnArgKind::Receiver(recvr) => {
                     return Item::Verbatim(
-                        quote_spanned!(recvr.self_token.span() => compile_error!("bad argument");),
+                        quote_spanned!(recvr.self_token.span() => ::core::compile_error!("bad argument");),
                     );
                 }
                 FnArgKind::Typed(pat_type) => match &*pat_type.pat {
@@ -2303,7 +2305,7 @@ impl Visitor {
                     Pat::Ident(PatIdent { ident, subpat: None, .. }) => ident,
                     _ => {
                         return Item::Verbatim(
-                            quote_spanned!(pat_type.pat.span() => compile_error!("'assume_specification' expects ident, not complex pattern");),
+                            quote_spanned!(pat_type.pat.span() => ::core::compile_error!("'assume_specification' expects ident, not complex pattern");),
                         );
                     }
                 },
@@ -2345,7 +2347,7 @@ impl Visitor {
         if self.erase_ghost.erase() {
             if !self.erase_ghost.erase_all() || matches!(vis, Visibility::Public(_)) {
                 let mut item_fn: ItemFn = parse_quote_spanned! { span =>
-                    #vis fn #ident() { panic!() }
+                    #vis fn #ident() { ::core::panic!() }
                 };
                 item_fn.attrs.extend(attrs.into_iter().cloned());
                 filter_ghost_stub_attrs(&mut item_fn.attrs);
@@ -2489,7 +2491,7 @@ impl Visitor {
                     ) if erase_ghost => {
                         // replace body with panic!()
                         let expr: Expr = Expr::Verbatim(quote_spanned! {
-                            span => { panic!() }
+                            span => { ::core::panic!() }
                         });
                         let stmt = Stmt::Expr(expr, None);
                         fun.block.stmts = vec![stmt];
@@ -2646,7 +2648,9 @@ impl Visitor {
                             "forall, choose, and exists do not allow parentheses, use `{}|<vars>| expr` instead",
                             path.segments[0].ident
                         );
-                        *expr = Expr::Verbatim(quote_spanned!(expr.span() => compile_error!(#err)));
+                        *expr = Expr::Verbatim(
+                            quote_spanned!(expr.span() => ::core::compile_error!(#err)),
+                        );
                         return true;
                     }
                 }
@@ -2670,7 +2674,7 @@ impl Visitor {
             Expr::Closure(closure) => {
                 if closure.requires.is_some() || closure.ensures.is_some() {
                     let err = "quantifiers cannot have requires/ensures";
-                    *expr = Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
+                    *expr = Expr::Verbatim(quote_spanned!(span => ::core::compile_error!(#err)));
                     return true;
                 }
                 let closure_input_types = closure
@@ -3017,13 +3021,13 @@ impl Visitor {
                 MatchesOpToken::BigAnd => {}
                 MatchesOpToken::Implies(_) => {
                     *expr = Expr::Verbatim(
-                        quote_spanned! { expr.span() => compile_error!("matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)") },
+                        quote_spanned! { expr.span() => ::core::compile_error!("matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)") },
                     );
                     return true;
                 }
                 MatchesOpToken::AndAnd(_) => {
                     *expr = Expr::Verbatim(
-                        quote_spanned! { expr.span() => compile_error!("matches with && is currently not allowed on the right-hand-side of most binary operators (use parentheses)") },
+                        quote_spanned! { expr.span() => ::core::compile_error!("matches with && is currently not allowed on the right-hand-side of most binary operators (use parentheses)") },
                     );
                     return true;
                 }
@@ -3241,7 +3245,7 @@ impl Visitor {
         } else {
             if is_probably_nat_or_int_type(&cast.ty) {
                 *expr = Expr::Verbatim(
-                    quote_spanned!(expr.span() => compile_error!("The Verus types 'nat' and 'int' can only be used in ghost code (e.g., in a 'spec' or 'proof' function, inside a 'proof' block, or when assigning to a 'ghost' or 'tracked' variable)")),
+                    quote_spanned!(expr.span() => ::core::compile_error!("The Verus types 'nat' and 'int' can only be used in ghost code (e.g., in a 'spec' or 'proof' function, inside a 'proof' block, or when assigning to a 'ghost' or 'tracked' variable)")),
                 );
             }
         }
@@ -3367,9 +3371,9 @@ impl Visitor {
             match prover_id.as_str() {
                 "compute" => {
                     if assert.body.is_some() {
-                        *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute' prover does not support a body"));
+                        *expr = quote_verbatim!(span, attrs => ::core::compile_error!("the 'compute' prover does not support a body"));
                     } else if assert.requires.is_some() {
-                        *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute' prover does not support a 'requires' clause"));
+                        *expr = quote_verbatim!(span, attrs => ::core::compile_error!("the 'compute' prover does not support a 'requires' clause"));
                     } else {
                         *expr = Expr::Verbatim(
                             quote_spanned_builtin!(verus_builtin, span => #verus_builtin::assert_by_compute(#arg)),
@@ -3378,9 +3382,9 @@ impl Visitor {
                 }
                 "compute_only" => {
                     if assert.body.is_some() {
-                        *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute_only' prover does not support a body"));
+                        *expr = quote_verbatim!(span, attrs => ::core::compile_error!("the 'compute_only' prover does not support a body"));
                     } else if assert.requires.is_some() {
-                        *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute_only' prover does not support a 'requires' clause"));
+                        *expr = quote_verbatim!(span, attrs => ::core::compile_error!("the 'compute_only' prover does not support a 'requires' clause"));
                     } else {
                         *expr = Expr::Verbatim(
                             quote_spanned_builtin!(verus_builtin, span => #verus_builtin::assert_by_compute_only(#arg)),
@@ -3420,13 +3424,13 @@ impl Visitor {
                     *expr = Expr::Verbatim(quote_spanned!(span => {#assert_x_by}));
                 }
                 _ => {
-                    *expr = quote_verbatim!(span, attrs => compile_error!("unknown prover name for assert-by (supported provers: 'compute_only', 'compute', 'bit_vector', and 'nonlinear_arith')"));
+                    *expr = quote_verbatim!(span, attrs => ::core::compile_error!("unknown prover name for assert-by (supported provers: 'compute_only', 'compute', 'bit_vector', and 'nonlinear_arith')"));
                 }
             }
         } else if let Some(block) = &assert.body {
             // assert-by
             if assert.requires.is_some() {
-                *expr = quote_verbatim!(span, attrs => compile_error!("the 'requires' clause is only used with the 'bit_vector' and 'nonlinear_arith' solvers (use `by(bit_vector)` or `by(nonlinear_arith)"));
+                *expr = quote_verbatim!(span, attrs => ::core::compile_error!("the 'requires' clause is only used with the 'bit_vector' and 'nonlinear_arith' solvers (use `by(bit_vector)` or `by(nonlinear_arith)"));
             } else {
                 *expr = quote_verbatim!(verus_builtin, span, attrs => {#verus_builtin::assert_by(#arg, #block);});
             }
@@ -3532,7 +3536,7 @@ impl Visitor {
             }) == Some("Self".to_owned())
         {
             Expr::Verbatim(
-                quote_spanned!(span => { compile_error!("Self is not supported in reveal/hide, use the type name instead, or <T as X> for functions in trait impls") }),
+                quote_spanned!(span => { ::core::compile_error!("Self is not supported in reveal/hide, use the type name instead, or <T as X> for functions in trait impls") }),
             )
         } else {
             Expr::Verbatim(
@@ -3615,7 +3619,7 @@ impl Visitor {
                 // Tracked(...)
                 let inner = take_expr(&mut call.args[0]);
                 *expr = Expr::Verbatim(if self.erase_ghost.erase() {
-                    quote_spanned!(span => Tracked #turbofish ::assume_new_fallback(|| unreachable!()))
+                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Tracked #turbofish ::assume_new_fallback(|| ::core::unreachable!()))
                 } else if is_inside_ghost {
                     quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Tracked #turbofish ::new(#inner))
                 } else {
@@ -3625,7 +3629,7 @@ impl Visitor {
                 // Ghost(...)
                 let inner = take_expr(&mut call.args[0]);
                 *expr = Expr::Verbatim(if self.erase_ghost.erase() {
-                    quote_spanned!(span => Ghost #turbofish ::assume_new_fallback(|| unreachable!()))
+                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Ghost #turbofish ::assume_new_fallback(|| ::core::unreachable!()))
                 } else if is_inside_ghost {
                     quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Ghost #turbofish ::new(#inner))
                 } else {
@@ -3647,7 +3651,7 @@ impl Visitor {
                 }
                 _ => {
                     *expr = Expr::Verbatim(
-                        quote_spanned!(span => compile_error!("unexpected proof block")),
+                        quote_spanned!(span => ::core::compile_error!("unexpected proof block")),
                     );
                 }
             }
@@ -3675,7 +3679,7 @@ impl Visitor {
             let span = clos.span();
             if clos.requires.is_some() || clos.ensures.is_some() {
                 let err = "ghost closures cannot have requires/ensures";
-                *expr = Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
+                *expr = Expr::Verbatim(quote_spanned!(span => ::core::compile_error!(#err)));
             } else {
                 *expr = Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
                     #verus_builtin::closure_to_fn_spec(#clos)
@@ -3684,7 +3688,7 @@ impl Visitor {
         } else if is_proof_fn && self.inside_ghost == 0 {
             let span = clos.span();
             let err = "proof_fn closures are only allowed in proof mode";
-            *expr = Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
+            *expr = Expr::Verbatim(quote_spanned!(span => ::core::compile_error!(#err)));
         } else {
             assert!(is_proof_fn == (self.inside_ghost > 0));
             let (ret_pat, ret_tracked) = match &mut clos.output {
@@ -3693,7 +3697,7 @@ impl Visitor {
                     self.visit_type_mut(ty);
                     if !is_proof_fn && tracked.is_some() {
                         *expr = Expr::Verbatim(quote_spanned!(tracked.unwrap().span() =>
-                            compile_error!("'tracked' not supported here")
+                            ::core::compile_error!("'tracked' not supported here")
                         ));
                         return true;
                     }
@@ -3711,14 +3715,14 @@ impl Visitor {
                 Ok(opts) => opts,
                 Err(err) => {
                     *expr = Expr::Verbatim(quote_spanned!(clos.span() =>
-                        compile_error!(#err)
+                        ::core::compile_error!(#err)
                     ));
                     return true;
                 }
             };
             if opts.req_ens.is_some() && (requires.is_some() || ensures.is_some()) {
                 *expr = Expr::Verbatim(quote_spanned!(clos.span() =>
-                    compile_error!("ReqEns and requires/ensures cannot be used together")
+                    ::core::compile_error!("ReqEns and requires/ensures cannot be used together")
                 ));
                 return true;
             }
@@ -3763,7 +3767,8 @@ impl Visitor {
             if let Some(Ensures { token, mut exprs, attrs }) = ensures {
                 if attrs.len() > 0 {
                     let err = "outer attributes only allowed on function's ensures";
-                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                    let expr =
+                        Expr::Verbatim(quote_spanned!(token.span => ::core::compile_error!(#err)));
                     stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
                 } else {
                     for expr in exprs.exprs.iter_mut() {
@@ -4017,7 +4022,8 @@ impl Visitor {
         if let Some(Ensures { token, exprs, attrs }) = ensures {
             if attrs.len() > 0 {
                 let err = "outer attributes only allowed on function's ensures";
-                let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                let expr =
+                    Expr::Verbatim(quote_spanned!(token.span => ::core::compile_error!(#err)));
                 stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
             } else if exprs.exprs.len() > 0 {
                 stmts.push(
@@ -4029,7 +4035,8 @@ impl Visitor {
             for expr in exprs.exprs.iter() {
                 if matches!(expr, Expr::Tuple(..)) {
                     let err = "decreases cannot be a tuple; use `decreases x, y` rather than `decreases (x, y)`";
-                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                    let expr =
+                        Expr::Verbatim(quote_spanned!(token.span => ::core::compile_error!(#err)));
                     stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
                 }
             }
@@ -4401,13 +4408,13 @@ impl Visitor {
                     let err = err.to_string();
 
                     return Err(Box::new(Expr::Verbatim(
-                        quote_spanned!(span => compile_error!(#err)),
+                        quote_spanned!(span => ::core::compile_error!(#err)),
                     )));
                 }
                 _ => {
                     let span = attr.span();
                     return Err(Box::new(Expr::Verbatim(
-                        quote_spanned!(span => compile_error!("expected trigger")),
+                        quote_spanned!(span => ::core::compile_error!("expected trigger")),
                     )));
                 }
             }
@@ -5016,7 +5023,7 @@ impl VisitMut for Visitor {
                     let BareFnArg { attrs, name: _, ty: param_ty } = bare_fn_arg;
                     if attrs.len() > 0 {
                         *ty = Type::Verbatim(quote_spanned!(attrs[0].span() =>
-                            compile_error!("'tracked' not supported here")
+                            ::core::compile_error!("'tracked' not supported here")
                         ));
                         return;
                     }
@@ -5028,13 +5035,13 @@ impl VisitMut for Visitor {
                     ReturnType::Type(_, opt_tracked, opt_name, out_type) => {
                         if let Some(tracked) = opt_tracked {
                             *ty = Type::Verbatim(quote_spanned!(tracked.span() =>
-                                compile_error!("'tracked' not supported here")
+                                ::core::compile_error!("'tracked' not supported here")
                             ));
                             return;
                         }
                         if let Some(name) = opt_name {
                             *ty = Type::Verbatim(quote_spanned!(name.1.span() =>
-                                compile_error!("return-value name not expected here")
+                                ::core::compile_error!("return-value name not expected here")
                             ));
                             return;
                         }
@@ -5063,7 +5070,7 @@ impl VisitMut for Visitor {
                     ReturnType::Type(_, tracked, opt_name, out_type) => {
                         if let Some(name) = opt_name {
                             *ty = Type::Verbatim(quote_spanned!(name.1.span() =>
-                                compile_error!("return-value name not expected here")
+                                ::core::compile_error!("return-value name not expected here")
                             ));
                             return;
                         }
@@ -5086,7 +5093,7 @@ impl VisitMut for Visitor {
                         }
                         _ => {
                             *ty = Type::Verbatim(quote_spanned!(generics.span() =>
-                                compile_error!("unexpected generic arguments to proof_fn")
+                                ::core::compile_error!("unexpected generic arguments to proof_fn")
                             ));
                             return;
                         }
@@ -5101,7 +5108,7 @@ impl VisitMut for Visitor {
                         Ok(opts) => opts,
                         Err(err) => {
                             *ty = Type::Verbatim(quote_spanned!(options.span() =>
-                                compile_error!(#err)
+                                ::core::compile_error!(#err)
                             ));
                             return;
                         }
@@ -5607,7 +5614,7 @@ pub(crate) fn rewrite_proof_decl(
     for mut ss in stmts {
         match ss {
             Stmt::Local(Local { tracked: None, ghost: None, .. }) => {
-                return quote_spanned!(ss.span() => compile_error!("Exec local is not allowed in proof_decl")).into();
+                return quote_spanned!(ss.span() => ::core::compile_error!("Exec local is not allowed in proof_decl")).into();
             }
             Stmt::Local(_) => {
                 let (skip, mut new_stmts) = visitor.visit_stmt_extend(&mut ss);
@@ -5792,7 +5799,7 @@ pub(crate) fn verus_inputs_to_tokens(
                 }
                 _ => {
                     args.push(Expr::Verbatim(quote_spanned!(input.span() =>
-                            compile_error!("verus! macro error: input of the function is not an Ident"))));
+                            ::core::compile_error!("verus! macro error: input of the function is not an Ident"))));
                 }
             },
         }
@@ -5818,7 +5825,7 @@ pub(crate) fn inputs_to_tokens(
                 }
                 _ => {
                     args.push(Expr::Verbatim(quote_spanned!(input.span() =>
-                            compile_error!("verus! macro error: input of the function is not an Ident"))));
+                            ::core::compile_error!("verus! macro error: input of the function is not an Ident"))));
                 }
             },
         }
@@ -6481,7 +6488,7 @@ fn check_return_idents(
             if param_ident == ret_ident {
                 return Some(stmt_with_semi!(
                     ret_ident.span() =>
-                    compile_error!("return value name collides with a parameter name")
+                    ::core::compile_error!("return value name collides with a parameter name")
                 ));
             }
         }
@@ -6512,7 +6519,7 @@ fn check_verus_return_idents(
             if param_ident == ret_ident {
                 return Some(stmt_with_semi!(
                     ret_ident.span() =>
-                    compile_error!("return value name collides with a parameter name")
+                    ::core::compile_error!("return value name collides with a parameter name")
                 ));
             }
         }
