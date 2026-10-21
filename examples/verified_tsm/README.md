@@ -11,6 +11,8 @@ tests for bugs of the checked macros (the header names the fixing commit).
 
 All files are registered in `source/rust_verify_test/tests/examples.rs` and run with
 `--no-cheating`; `negative/` files state their expected error with `// EXPECTED-ERROR: <text>`.
+A file that selects its macro by `cfg(verus_verified_tsm)` also runs with the trusted macro
+(without `--no-cheating`, whose generated code it rejects).
 Add a file only if it covers something not covered here or by the dual-run tests, and list it
 below with the reason.
 
@@ -133,6 +135,17 @@ below with the reason.
   `storage_imap` withdrawal or initial value without a finite domain.
 * `negative/generic_tokens_imap_guard_infinite.rs`: diagnostic for a general `storage_imap`
   guard without a finite domain.
+
+## Replacing a stored value
+
+* `storage_replace_in_two_transitions.rs`: the workaround the checked macro's diagnostic for a
+  deposit into a location withdrawn earlier in the same transition points to: the replace as
+  two transitions with the intermediate state explicit, and clients that replace by calling
+  both, for a `storage_option` field and a `storage_map` key (also run with the trusted macro).
+* `negative/storage_replace_same_location.rs`: diagnostic for a syntactically identical
+  location (the `storage_option` cell), at the deposit.
+* `negative/storage_replace_key_written_differently.rs`: the same overlap with keys written
+  differently fails in the storage proof, reported at the deposit with the same hint.
 
 ## Hygiene
 

@@ -3801,8 +3801,9 @@ test_verify_tsm! {
         } // verus!
 
     } => Ok(())
-    ; verified ignore "checked macro: unsupported form (tr1 withdraws and then deposits the same storage location)"
-    ; verified cheating "test source contains `by { assume(false); }` on its special operations"
+    // checked macro: tr1 withdraws from and then deposits into `storage_opt` (a replace), which
+    // the checked macro rejects at the deposit (workaround: two transitions)
+    ; verified => Err(err) => assert_vir_error_msg(err, "verified storage cannot deposit into a location withdrawn earlier in the same transition (one storage exchange cannot replace a stored value: its deposit must be disjoint from the pre-state storage); split the transition in two, with the intermediate state explicit: see examples/verified_tsm/storage_replace_in_two_transitions.rs")
 }
 
 test_verify_tsm! {
@@ -4055,8 +4056,9 @@ test_verify_tsm! {
         } // verus!
 
     } => Ok(())
-    ; verified ignore "checked macro: unsupported form (tr1 withdraws and then deposits the same storage location)"
-    ; verified cheating "test source contains `by { assume(false); }` on its special operations"
+    // checked macro: tr1 withdraws from and then deposits into `storage_opt` (a replace), which
+    // the checked macro rejects at the deposit (workaround: two transitions)
+    ; verified => Err(err) => assert_vir_error_msg(err, "verified storage cannot deposit into a location withdrawn earlier in the same transition (one storage exchange cannot replace a stored value: its deposit must be disjoint from the pre-state storage); split the transition in two, with the intermediate state explicit: see examples/verified_tsm/storage_replace_in_two_transitions.rs")
 }
 
 test_verify_tsm! {
@@ -4327,8 +4329,10 @@ test_verify_tsm! {
 
         } // verus!
     } => Ok(())
-    ; verified ignore "checked macro: unsupported form (tr1 withdraws and then deposits the same storage location, here with general operands, which fails in the generated storage proof); also a gap: a general-operand `remove map` followed by `have map` is not proved ready"
-    ; verified cheating "test source contains `by { assume(false); }` on its special operations"
+    // checked macro: tr1 withdraws from and then deposits into `storage_opt` (a replace, here
+    // with general operands `(Option::Some(..))`), which the checked macro rejects at the
+    // deposit (workaround: two transitions)
+    ; verified => Err(err) => assert_vir_error_msg(err, "verified storage cannot deposit into a location withdrawn earlier in the same transition (one storage exchange cannot replace a stored value: its deposit must be disjoint from the pre-state storage); split the transition in two, with the intermediate state explicit: see examples/verified_tsm/storage_replace_in_two_transitions.rs")
 }
 
 test_verify_tsm! {
@@ -4599,8 +4603,10 @@ test_verify_tsm! {
 
         } // verus!
     } => Ok(())
-    ; verified ignore "checked macro: unsupported form (tr1 withdraws and then deposits the same storage location, here with general operands, which fails in the generated storage proof); also a gap: a general-operand `remove map` followed by `have map` is not proved ready"
-    ; verified cheating "test source contains `by { assume(false); }` on its special operations"
+    // checked macro: tr1 withdraws from and then deposits into `storage_opt` (a replace, here
+    // with general operands `(Option::Some(..))`), which the checked macro rejects at the
+    // deposit (workaround: two transitions)
+    ; verified => Err(err) => assert_vir_error_msg(err, "verified storage cannot deposit into a location withdrawn earlier in the same transition (one storage exchange cannot replace a stored value: its deposit must be disjoint from the pre-state storage); split the transition in two, with the intermediate state explicit: see examples/verified_tsm/storage_replace_in_two_transitions.rs")
 }
 
 test_verify_tsm! {

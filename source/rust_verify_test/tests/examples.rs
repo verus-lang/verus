@@ -128,8 +128,12 @@ fn run_example(file_path: &str, verified_tsm: bool) {
     // line `// no-cheating: off --- <reason>` (its own source contains an assumption).
     let no_cheating_off =
         text.lines().take(20).any(|l| l.trim().starts_with("// no-cheating: off --- "));
+    // A file of `examples/verified_tsm` that selects its macro by `cfg(verus_verified_tsm)` also
+    // has a run with the trusted macro, whose generated code is not checked (`external_body`,
+    // `assume`): that run never uses `--no-cheating`, as for the other examples.
     let checked_dir = relative_path.starts_with("../../examples/verified_tsm");
-    if (checked_dir || verified_tsm) && !no_cheating_off {
+    let trusted_run = !verified_tsm && text.contains("cfg(verus_verified_tsm)");
+    if ((checked_dir && !trusted_run) || verified_tsm) && !no_cheating_off {
         options.push("--no-cheating");
     }
 

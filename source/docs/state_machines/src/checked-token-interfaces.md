@@ -77,6 +77,20 @@ and requires the deposit to be disjoint from `storage(s)` (`frame_exchange` in
 `tsm_storage.rs`). Transitions with `birds_eye` reads or nondeterministic results use
 the nondeterministic variants, in which `s` may determine the output.
 
+All deposits and withdrawals of one transition form one such exchange, so a
+transition cannot deposit into a location it withdrew from earlier: replacing a
+stored value (`withdraw f -= Some(a); deposit f += Some(b);` on a `storage_option`
+field, or the same key of a `storage_map`) needs two values at one location. The
+trusted macro accepts such a transition; the checked macro rejects it (with either
+interface) at the deposit if the location is syntactically the same (a
+`storage_option` field's single location, keys with the same text, the keys of
+general `Map::empty().insert(k, v)` operands), and otherwise the storage proof fails
+at the deposit, with the same hint. The workaround splits the transition in two,
+with the intermediate state explicit in the machine (a withdrawn location is "in
+flight" until the second transition deposits): see
+[`storage_replace_in_two_transitions.rs`](../../../../examples/verified_tsm/storage_replace_in_two_transitions.rs),
+whose clients replace a value by calling both operations.
+
 These obligations are discharged from the user's `#[inductive]` lemmas (which give
 `invariant(s')`) and from the safety conditions of `assert` statements. The update
 is then justified by the `vstd` theorems that turn frame-preserving updates on the
@@ -426,6 +440,11 @@ have several outputs.
   a borrowed token of the operation, or else the instance's own token
   (`Token::empty`), so the signature is unchanged.
 * **`count` tokens** do not implement `CountToken` (see above).
+* **No deposit into a location withdrawn earlier in the same transition** (a
+  replace of a stored value; see "The shared model" above): such a transition is
+  rejected at the deposit; split it in two with the intermediate state explicit,
+  as in
+  [`storage_replace_in_two_transitions.rs`](../../../../examples/verified_tsm/storage_replace_in_two_transitions.rs).
 * **Guards of general operands** return references into the guarded storage
   (`&V`, `Option<&V>`, or `Map<K, &V>`/`IMap<K, &V>`, see "Storage" above)
   instead of `&Option<V>` or `&Map<K, V>`.

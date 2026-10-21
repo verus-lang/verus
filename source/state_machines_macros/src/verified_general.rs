@@ -116,68 +116,173 @@ fn contains_guard(s: &TransitionStmt) -> bool {
     }
 }
 
+/// The hint of the diagnostics for a deposit into a location withdrawn
+/// earlier in the same transition (syntactic, and verification-time).
+pub(crate) const STORAGE_REPLACE_HINT: &str = "split the transition in two, with the intermediate state explicit: see examples/verified_tsm/storage_replace_in_two_transitions.rs";
+
+/// A storage location an operation touches.
+#[derive(Clone, PartialEq)]
+enum Location {
+    /// The single location of a `storage_option` field.
+    Cell,
+    /// A key of a `storage_map`/`storage_imap` field: its text (the value of an integer
+    /// literal), and whether it is a literal (two different literals are different keys).
+    Key(String, bool),
+}
+
+/// The locations of a storage operation: the known ones, and whether there may be others.
+struct Locations {
+    known: Vec<Location>,
+    unknown: bool,
+}
+
+fn strip_parens(e: &verus_syn::Expr) -> &verus_syn::Expr {
+    match e {
+        verus_syn::Expr::Paren(p) => strip_parens(&p.expr),
+        verus_syn::Expr::Group(g) => strip_parens(&g.expr),
+        _ => e,
+    }
+}
+
+fn path_ends_with(e: &verus_syn::Expr, name: &str) -> bool {
+    matches!(strip_parens(e), verus_syn::Expr::Path(p)
+        if p.path.segments.last().is_some_and(|s| s.ident == name))
+}
+
+fn key_location(key: &verus_syn::Expr) -> Location {
+    match strip_parens(key) {
+        // `1` and `1int` are the same key
+        verus_syn::Expr::Lit(verus_syn::ExprLit { lit: verus_syn::Lit::Int(i), .. }) => {
+            Location::Key(i.base10_digits().to_string(), true)
+        }
+        verus_syn::Expr::Lit(l) => Location::Key(l.to_token_stream().to_string(), true),
+        key => Location::Key(key.to_token_stream().to_string(), false),
+    }
+}
+
+/// The keys of a general map operand `Map::empty().insert(k1, v1).insert(k2, v2)..`.
+fn general_map_keys(e: &verus_syn::Expr) -> Option<Vec<Location>> {
+    match strip_parens(e) {
+        verus_syn::Expr::MethodCall(m) if m.method == "insert" && m.args.len() == 2 => {
+            let mut keys = general_map_keys(&m.receiver)?;
+            keys.push(key_location(&m.args[0]));
+            Some(keys)
+        }
+        verus_syn::Expr::Call(c) if c.args.is_empty() && path_ends_with(&c.func, "empty") => {
+            Some(vec![])
+        }
+        _ => None,
+    }
+}
+
+fn storage_locations(stype: &ShardableType, elt: &MonoidElt) -> Locations {
+    let known = |known| Locations { known, unknown: false };
+    match (stype, elt) {
+        (ShardableType::StorageOption(_), MonoidElt::OptionSome(_)) => known(vec![Location::Cell]),
+        (ShardableType::StorageOption(_), MonoidElt::General(e)) => match strip_parens(e) {
+            verus_syn::Expr::Call(c) if path_ends_with(&c.func, "Some") => {
+                known(vec![Location::Cell])
+            }
+            e if path_ends_with(e, "None") => known(vec![]),
+            _ => Locations { known: vec![], unknown: true },
+        },
+        (_, MonoidElt::SingletonKV(key, _)) => known(vec![key_location(key)]),
+        (_, MonoidElt::General(e)) => match general_map_keys(e) {
+            Some(keys) => known(keys),
+            None => Locations { known: vec![], unknown: true },
+        },
+        _ => Locations { known: vec![], unknown: true },
+    }
+}
+
 /// Physical storage operations seen so far on one execution path.
 #[derive(Clone, Default)]
 struct StoragePath {
-    /// Withdrawn locations: field name and, for singleton operands, the key text.
-    /// `None` stands for the single location of a `storage_option` field.
-    withdrawn: Vec<(String, Option<String>)>,
-    deposited: Vec<(String, Option<String>)>,
+    /// Withdrawn locations by field, and the fields withdrawn from at unknown locations.
+    withdrawn: Vec<(String, Location)>,
+    withdrawn_unknown: Vec<String>,
+    deposited: Vec<(String, Location)>,
 }
 
 /// Several deposits, withdrawals and guards may occur on one path; together
 /// they form one storage exchange whose deposit is the union of all deposits
 /// and whose withdrawal is the union of all withdrawals. That exchange requires
 /// the deposit to be disjoint from the pre-state storage, so a deposit into a
-/// location withdrawn earlier on the same path cannot be checked. Syntactically
-/// identical locations are rejected here; other overlaps fail in the generated
-/// storage proof.
+/// location withdrawn earlier on the same path cannot be checked (it would
+/// replace the stored value: two values at one location). A deposit that is
+/// syntactically at a withdrawn location is rejected here (the single location
+/// of a `storage_option` field, keys with the same text, the keys of general
+/// `Map::empty().insert(..)` operands). Otherwise, if a deposit may be at a
+/// location withdrawn earlier on its path (keys written differently, general
+/// operands), the span of the first such deposit is returned in `maybe`: the
+/// storage proof's disjointness assertion is then reported there, with the same
+/// hint.
 fn check_storage_paths(
     s: &TransitionStmt,
     fields: &HashMap<String, Field>,
     path: &mut StoragePath,
+    maybe: &mut Option<proc_macro2::Span>,
 ) -> Result<(), Error> {
     match s {
         TransitionStmt::Block(_, children) => {
             for child in children {
-                check_storage_paths(child, fields, path)?;
+                check_storage_paths(child, fields, path, maybe)?;
             }
         }
         TransitionStmt::Split(span, kind, children) => {
             if let SplitKind::Special(name, op, _, binding) = &**kind {
                 let field = &fields[&name.to_string()];
                 if field.stype.is_storage() {
-                    let location = match (&field.stype, &op.elt) {
-                        (ShardableType::StorageOption(_), MonoidElt::OptionSome(_)) => Some(None),
-                        (_, MonoidElt::SingletonKV(key, _)) => {
-                            Some(Some(key.to_token_stream().to_string()))
-                        }
-                        _ => None,
-                    };
+                    let name = name.to_string();
+                    let locations = storage_locations(&field.stype, &op.elt);
                     // A bound stored value is read from the pre-state. Earlier
                     // withdrawals cannot change a value that is still present;
                     // an earlier deposit at the same location would.
-                    if let (Some(_), Some(location)) = (binding, &location) {
-                        if path.deposited.contains(&(name.to_string(), location.clone())) {
-                            return Err(Error::new(
-                                *span,
-                                "verified stored-resource bindings cannot observe a value deposited earlier in the same transition",
-                            ));
+                    if binding.is_some() {
+                        for location in &locations.known {
+                            if path.deposited.contains(&(name.clone(), location.clone())) {
+                                return Err(Error::new(
+                                    *span,
+                                    "verified stored-resource bindings cannot observe a value deposited earlier in the same transition",
+                                ));
+                            }
                         }
                     }
                     if op.stmt.is_withdraw() {
-                        if let Some(location) = location {
-                            path.withdrawn.push((name.to_string(), location));
+                        for location in locations.known {
+                            path.withdrawn.push((name.clone(), location));
+                        }
+                        if locations.unknown {
+                            path.withdrawn_unknown.push(name);
                         }
                     } else if op.stmt.is_deposit() {
-                        if let Some(location) = location {
-                            path.deposited.push((name.to_string(), location.clone()));
-                            if path.withdrawn.contains(&(name.to_string(), location)) {
+                        for location in &locations.known {
+                            if path.withdrawn.contains(&(name.clone(), location.clone())) {
                                 return Err(Error::new(
                                     *span,
-                                    "verified storage cannot deposit into a location withdrawn earlier in the same transition: the combined storage exchange requires its deposit to be disjoint from the pre-state storage",
+                                    format!(
+                                        "verified storage cannot deposit into a location withdrawn earlier in the same transition (one storage exchange cannot replace a stored value: its deposit must be disjoint from the pre-state storage); {}",
+                                        STORAGE_REPLACE_HINT
+                                    ),
                                 ));
                             }
+                        }
+                        let may_overlap = path.withdrawn_unknown.contains(&name)
+                            || path.withdrawn.iter().any(|(f, w)| {
+                                *f == name
+                                    && (locations.unknown
+                                        || locations.known.iter().any(|d| match (w, d) {
+                                            (Location::Key(_, true), Location::Key(_, true)) => {
+                                                false
+                                            }
+                                            _ => true,
+                                        }))
+                            });
+                        if may_overlap && maybe.is_none() {
+                            *maybe = Some(*span);
+                        }
+                        for location in locations.known {
+                            path.deposited.push((name.clone(), location));
                         }
                     }
                 }
@@ -186,10 +291,15 @@ fn check_storage_paths(
                 let start = path.clone();
                 for child in children {
                     let mut branch = start.clone();
-                    check_storage_paths(child, fields, &mut branch)?;
+                    check_storage_paths(child, fields, &mut branch, maybe)?;
                     for location in branch.withdrawn {
                         if !path.withdrawn.contains(&location) {
                             path.withdrawn.push(location);
+                        }
+                    }
+                    for name in branch.withdrawn_unknown {
+                        if !path.withdrawn_unknown.contains(&name) {
+                            path.withdrawn_unknown.push(name);
                         }
                     }
                     for location in branch.deposited {
@@ -200,7 +310,7 @@ fn check_storage_paths(
                 }
             } else {
                 for child in children {
-                    check_storage_paths(child, fields, path)?;
+                    check_storage_paths(child, fields, path, maybe)?;
                 }
             }
         }
@@ -777,7 +887,8 @@ pub fn output_with_ready(
             &fields,
             matches!(tr.kind, TransitionKind::Property | TransitionKind::ReadonlyTransition),
         )?;
-        check_storage_paths(&tr.body,&fields,&mut StoragePath::default())?;
+        let mut replace_candidate = None;
+        check_storage_paths(&tr.body,&fields,&mut StoragePath::default(),&mut replace_candidate)?;
         // Paired exchange outputs when some path has several storage operations.
         let paired = storage_ops > 1;
         let effects = monoids::transition_effects(tr, &fields)?;
@@ -891,7 +1002,7 @@ pub fn output_with_ready(
                 let post_s = quote! {post.__storage()};
                 let dep = quote! {Self::#deposited(pre,#(#pn),*)};
                 let agrees = p.agrees(pre_s.clone(), post_s.clone());
-                let agrees_proof = p.prove_agrees(&storage_index, pre_s.clone(), post_s.clone());
+                let agrees_proof = p.prove_agrees_at(&storage_index, pre_s.clone(), post_s.clone(), replace_candidate);
                 let grow = p.le(pre_s.clone(), post_s.clone());
                 let grow_proof = if no_withdraw { p.prove_le(&storage_index, pre_s.clone(), post_s.clone()) } else { quote! {} };
                 let grow_ens = if no_withdraw { quote! {,#grow} } else { quote! {} };
@@ -909,7 +1020,7 @@ pub fn output_with_ready(
                     (
                         quote! {,#agrees,#disjoint,#within #grow_ens #covered_ens},
                         {
-                            let disjoint_proof = p.prove_disjoint(&storage_index, pre_s.clone(), quote! {physical_deposit});
+                            let disjoint_proof = p.prove_disjoint_at(&storage_index, pre_s.clone(), quote! {physical_deposit}, replace_candidate);
                             let within_proof = p.prove_le(&storage_index, post_s.clone(), transferred.clone());
                             quote! {
                                 let physical_deposit=#dep;

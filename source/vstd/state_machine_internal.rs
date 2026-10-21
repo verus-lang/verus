@@ -182,6 +182,21 @@ pub fn assert_deposit_option(b: bool) {
     ensures(b);
 }
 
+// The checked macro (`verified_tokenized_state_machine!`): the storage exchange of a transition
+// that may deposit into a location withdrawn earlier in the same transition (the deposit is
+// disjoint from the pre-state storage, and stored values are unchanged), reported at the deposit.
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
+pub fn assert_storage_no_replace(b: bool) {
+    requires(
+        #[verifier::custom_err(
+            "unable to prove that this deposit does not replace a stored value: verified storage cannot deposit into a location withdrawn earlier in the same transition; split the transition in two, with the intermediate state explicit: see examples/verified_tsm/storage_replace_in_two_transitions.rs"
+        )] /* vattr */
+        b,
+    );
+    ensures(b);
+}
+
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
 pub fn assert_guard_option(b: bool) {

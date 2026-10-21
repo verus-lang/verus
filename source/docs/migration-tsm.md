@@ -188,6 +188,15 @@ also come from an invariant). The complete list is in
 [Checked tokens: raw and generic interfaces](state_machines/src/checked-token-interfaces.md).
 Such a machine needs the raw interface (Change 3) or a rewritten transition.
 
+A transition that deposits into a storage location it withdrew from earlier (a
+replace: `withdraw f -= Some(a); deposit f += Some(b);`, or the same key of a
+`storage_map`) is rejected with either interface, at the deposit: the checked
+macro proves a transition's storage update as one exchange whose deposit is
+disjoint from the current storage. Split the transition in two, with the
+intermediate state explicit (a field recording that the location is in flight),
+and call both operations where the client replaced the value; see
+[storage_replace_in_two_transitions.rs](../../examples/verified_tsm/storage_replace_in_two_transitions.rs).
+
 ### Change 3: Select the raw interface explicitly
 
 `#[verified_raw_tokens]` exposes the machine's resource algebra instead of field

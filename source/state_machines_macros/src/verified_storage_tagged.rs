@@ -815,7 +815,24 @@ impl Tagged {
 
     /// `agrees(a, b)`, pointwise.
     pub fn prove_agrees(&self, idx: &Ident, a: TokenStream, b: TokenStream) -> TokenStream {
-        let hint = self.hint(idx, quote! {(#a)[#idx] == (#b)[#idx]});
+        self.prove_agrees_at(idx, a, b, None)
+    }
+
+    /// `prove_agrees`; with `replace`, the pointwise goal is checked at a deposit that may
+    /// replace a stored value, with the hint of `assert_storage_no_replace`.
+    pub fn prove_agrees_at(
+        &self,
+        idx: &Ident,
+        a: TokenStream,
+        b: TokenStream,
+        replace: Option<Span>,
+    ) -> TokenStream {
+        let goal = quote! {(#a)[#idx] == (#b)[#idx]};
+        let mut hint = self.hint(idx, goal.clone());
+        if let Some(span) = replace {
+            let check = no_replace_check(span, goal);
+            hint = quote! {#hint #check};
+        }
         quote! {
             assert((#a).agrees(#b)) by {
                 assert forall|#idx| (#a).contains_key(#idx) && (#b).contains_key(#idx) implies (#a)[#idx] == (#b)[#idx] by {#hint};
@@ -851,10 +868,31 @@ impl Tagged {
 
     /// `disjoint(a, b)`, pointwise.
     pub fn prove_disjoint(&self, idx: &Ident, a: TokenStream, b: TokenStream) -> TokenStream {
+        self.prove_disjoint_at(idx, a, b, None)
+    }
+
+    /// `prove_disjoint`; with `replace`, as in `prove_agrees_at`.
+    pub fn prove_disjoint_at(
+        &self,
+        idx: &Ident,
+        a: TokenStream,
+        b: TokenStream,
+        replace: Option<Span>,
+    ) -> TokenStream {
+        let hint = match replace {
+            Some(span) => no_replace_check(span, quote! {!(#b).contains_key(#idx)}),
+            None => quote! {},
+        };
         quote! {
             assert((#a).dom().disjoint((#b).dom())) by {
-                assert forall|#idx| (#a).contains_key(#idx) implies !(#b).contains_key(#idx) by {};
+                assert forall|#idx| (#a).contains_key(#idx) implies !(#b).contains_key(#idx) by {#hint};
             }
         }
     }
+}
+
+/// The check of `goal` at a deposit (`span`) that may be at a location withdrawn earlier in the
+/// same transition: it fails with the hint to split the transition.
+fn no_replace_check(span: Span, goal: TokenStream) -> TokenStream {
+    quote::quote_spanned! {span=> ::vstd::state_machine_internal::assert_storage_no_replace(#goal);}
 }
