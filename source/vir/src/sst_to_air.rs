@@ -1154,7 +1154,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     IeeeFloatUnaryOp::IsNegative => crate::def::IEEE_FLOAT_IS_NEGATIVE,
                     IeeeFloatUnaryOp::IsPositive => crate::def::IEEE_FLOAT_IS_POSITIVE,
                 };
-                Arc::new(ExprX::Apply(Arc::new(fname.to_string()), Arc::new(vec![expr])))
+                Arc::new(ExprX::Apply(
+                    Arc::new(fname.to_string()),
+                    Arc::new(vec![typ_to_id(ctx, &undecorate_typ(&e.typ)), expr]),
+                ))
             }
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: CoerceMode should have been removed before here")
@@ -1447,7 +1450,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         IeeeFloatBinaryOp::InEq(InequalityOp::Lt) => crate::def::IEEE_FLOAT_LT,
                         IeeeFloatBinaryOp::InEq(InequalityOp::Gt) => crate::def::IEEE_FLOAT_GT,
                     };
-                    ExprX::Apply(Arc::new(fname.to_string()), Arc::new(vec![lh, rh]))
+                    let args = vec![typ_to_id(ctx, &undecorate_typ(&lhs.typ)), lh, rh];
+                    ExprX::Apply(Arc::new(fname.to_string()), Arc::new(args))
                 }
                 _ => {
                     let aop = match op {
