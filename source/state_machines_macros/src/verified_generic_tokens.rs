@@ -3560,8 +3560,14 @@ fn lets_with(s: &TransitionStmt, birds_eye: bool, out: &mut Vec<TokenStream>, sk
         TransitionStmt::Block(_, xs) => xs.iter().for_each(|x| lets_with(x, birds_eye, out, skipped, subst)),
         TransitionStmt::Split(_, k, xs) => {
             if let SplitKind::Let(p, ty, lk, e) = &**k {
+                // A refutable pattern (`Some(let Goo::Qux(x))`) binds its
+                // variables from a `match` on the output parameter: replace
+                // the parameter inside it.
                 let e = match subst.get(&quote! {#e}.to_string()) {
                     Some(v) => v.clone(),
+                    None if mentions(&quote! {#e}, &subst.keys().cloned().collect()) => {
+                        subst_idents(quote! {#e}, subst)
+                    }
                     None => quote! {#e},
                 };
                 let is_be = *lk == LetKind::BirdsEye;
@@ -3579,6 +3585,26 @@ fn lets_with(s: &TransitionStmt, birds_eye: bool, out: &mut Vec<TokenStream>, sk
         }
         _ => {}
     }
+}
+
+/// `ts` with each identifier in `subst` replaced by its (parenthesized) value.
+fn subst_idents(ts: TokenStream, subst: &HashMap<String, TokenStream>) -> TokenStream {
+    use proc_macro2::{Delimiter, Group, TokenTree};
+    ts.into_iter()
+        .map(|t| match t {
+            TokenTree::Ident(id) if subst.contains_key(&id.to_string()) => {
+                let mut g = Group::new(Delimiter::Parenthesis, subst[&id.to_string()].clone());
+                g.set_span(id.span());
+                TokenTree::Group(g)
+            }
+            TokenTree::Group(g) => {
+                let mut ng = Group::new(g.delimiter(), subst_idents(g.stream(), subst));
+                ng.set_span(g.span());
+                TokenTree::Group(ng)
+            }
+            t => t,
+        })
+        .collect()
 }
 
 /// Fields read by a transition (including birds_eye reads).
@@ -4594,7 +4620,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         } else {
             (vec![], req)
         };
-        return guard_method(ctx, tr, &parts, &params, &take_shared, &incl_frames, &shared_frags, &shapes, ret, req, ens, &early_body, &unit_params);
+        return guard_method(ctx, tr, &parts, &params, &take_shared, &incl_frames, &shared_frags, &shapes, ret, req, ens, &early_body, &late_body, &unit_params);
     }
     // Without any owned token, the method takes a unit token (storage
     // machines) or splits one off the instance's shared token.
@@ -5666,6 +5692,7 @@ fn guard_method(
     req: TokenStream,
     ens: TokenStream,
     early: &[TokenStream],
+    late: &[TokenStream],
     unit_params: &[TokenStream],
 ) -> Result<TokenStream, Error> {
     let store = ctx.store;
@@ -5760,12 +5787,49 @@ fn guard_method(
             #(#ref_facts)*
         }}
     };
-    let ens_steps = ensures_steps(parts, &|ts| ts);
-    let ret_vals: Vec<_> = parts.out_params.iter().map(|o| o.0.clone()).collect();
-    let result = if ret_vals.len() == 1 {
-        quote! {#(#ret_vals)*}
+    // Values read with `birds_eye` (ghost outputs `original_field_*`) are
+    // those of a completion state, in which the transition's `assert`s hold
+    // by the safety lemma (as in `read_only_method`).
+    let nondet: Vec<_> = ctx
+        .sm
+        .fields
+        .iter()
+        .filter(|f| parts.out_params.iter().any(|o| o.0.to_string() == format!("original_field_{}", f.name)))
+        .map(|f| {
+            let n = format_ident!("original_field_{}", f.name);
+            let fname = &f.name;
+            quote! {let #n = pre.#fname;}
+        })
+        .collect();
+    let birds_eye_block = if nondet.is_empty() {
+        quote! {}
     } else {
-        quote! {(#(Tracked(#ret_vals)),*)}
+        quote! {
+            let (__tsm_z, pre) = choose|__tsm_z: Fragment, pre: State| pre.invariant()
+                && Fragment::op(__tsm_f, __tsm_z) == <Protocol as ::vstd::resource::tsm::Machine>::embed(pre);
+            assert(State::#owners(pre, __tsm_f, Fragment::unit(), #(#pn),*) && State::#enabled(pre, #(#pn),*));
+            State::#safety(pre, #(#pn),*);
+            #(#nondet)*
+            #(#late)*
+        }
+    };
+    let ens_steps = ensures_steps(parts, &|ts| ts);
+    let ret_vals: Vec<_> = parts
+        .out_params
+        .iter()
+        .map(|o| {
+            let n = &o.0;
+            match o.2 {
+                Mode::Ghost => quote! {Ghost(#n)},
+                Mode::Tracked => quote! {Tracked(#n)},
+            }
+        })
+        .collect();
+    let result = if ret_vals.len() == 1 {
+        let n = &parts.out_params[0].0;
+        quote! {#n}
+    } else {
+        quote! {(#(#ret_vals),*)}
     };
     Ok(quote! {
         pub proof fn #name #gen (#(#in_params),*) #ret #req #ens {
@@ -5793,6 +5857,7 @@ fn guard_method(
             let tracked __tsm_guard = #shared_ident.guard(Protocol::#guarded(__tsm_f, #(#pn),*));
             #ref_block
             #(#guards)*
+            #birds_eye_block
             #(#ens_steps)*
             #result
         }
