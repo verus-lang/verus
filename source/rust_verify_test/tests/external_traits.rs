@@ -4,6 +4,75 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] external_trait_supertrait_associated_type verus_code! {
+        #[verifier::external]
+        trait Build<A>: Sized {
+            fn build(a: A) -> Self;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExBuild<A>: Sized {
+            type ExternalTraitSpecificationFor: Build<A>;
+            fn build(a: A) -> Self;
+        }
+
+        #[verifier::external]
+        trait T<A>: Build<Self::Item> {
+            type Item;
+            fn identity(a: Self::Item) -> Self::Item;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT<A>: Build<Self::Item> {
+            type ExternalTraitSpecificationFor: T<A>;
+            type Item;
+            fn identity(a: Self::Item) -> (ret: Self::Item)
+                ensures ret == a;
+        }
+
+        impl Build<u32> for u32 {
+            fn build(a: u32) -> Self { a }
+        }
+
+        impl T<bool> for u32 {
+            type Item = u32;
+            fn identity(a: u32) -> u32 { a }
+        }
+
+        fn identity<A, I: T<A>>(a: I::Item) -> (ret: I::Item)
+            ensures ret == a,
+        {
+            I::identity(a)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] external_trait_supertrait_associated_type_mismatch verus_code! {
+        #[verifier::external]
+        trait Build<A>: Sized {}
+
+        #[verifier::external_trait_specification]
+        trait ExBuild<A>: Sized {
+            type ExternalTraitSpecificationFor: Build<A>;
+        }
+
+        #[verifier::external]
+        trait T: Build<Self::Item> {
+            type Item;
+            type Other;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT: Build<Self::Other> {
+            type ExternalTraitSpecificationFor: T;
+            type Item;
+            type Other;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "external_trait_specification trait bound mismatch")
+}
+
+test_verify_one_file! {
     #[test] test_trait verus_code! {
         trait Tr {
             fn foo();
