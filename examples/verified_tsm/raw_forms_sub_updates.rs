@@ -1,6 +1,8 @@
+// Regression (c2fa710ed): field sub-updates (`update p.x = e`) panicked in the macros.
+// The generic interface is covered by the dual-run examples/state_machines/sub_updates.rs.
 //! Raw interface: field and index sub-updates (`update p.x = e`,
 //! `update t.1.x = e`, `update m[k].y = e`), several of them on one field,
-//! and in branches. The default interface: `generic_tokens_sub_updates.rs`.
+//! and in branches.
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 use vstd::resource::algebra::ResourceAlgebra;

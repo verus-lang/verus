@@ -29,7 +29,6 @@ examples_in_dir!("../../examples/storage_protocol");
 // Checked state machines (verified_tokenized_state_machine!-specific tests; run with --no-cheating).
 examples_in_dir!("../../examples/verified_tsm");
 examples_in_dir!("../../examples/verified_tsm/negative");
-examples_in_dir!("../../examples/verified_tsm/generic_tokens_port_cuckoo");
 
 #[cfg(feature = "singular")]
 examples_in_dir!("../../examples/integer_ring");

@@ -1,3 +1,6 @@
+// Regression (de92adf43): a read-only operation that reads a constant and whose only
+// borrowed inputs are imap/iset collections was rejected (the collections' observation
+// did not join the constants' fragment).
 //! Read-only operations that read a constant and whose only borrowed inputs
 //! are `imap`/`iset` token collections.
 //!

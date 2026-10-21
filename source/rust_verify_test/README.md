@@ -81,12 +81,15 @@ use verus_state_machines_macros::verified_tokenized_state_machine as tokenized_s
 A header line `// verified-tsm: <mode> [--- reason]` (the modes of the first line, see
 `examples/README.md`) overrides the expectation of the verified run. An example that needs
 an interface change keeps only the trusted macro (for example
-`examples/cuckoo_hash_table/cuckoo.rs`). Its checked version lives in
-`examples/verified_tsm/` (here `generic_tokens_port_cuckoo/`).
+`examples/cuckoo_hash_table/cuckoo.rs`, which names `IMapToken`); the interface difference
+itself is tested in `examples/verified_tsm/` (here `generic_tokens_imap.rs`).
 
 `examples/verified_tsm/` (with `negative/`) holds the tests that only make sense for the
-checked macro: the raw interface, local readiness, checked diagnostics, soundness negatives,
-hygiene regressions and application-scale ports. They run with `--no-cheating`. A file can
+checked macro: the raw interface, local readiness, the generic interface's differences from
+the trusted one, checked diagnostics, soundness negatives the trusted macro does not catch,
+and regression tests for bugs of the checked macro. Its `README.md` lists every file with the
+reason it is kept; add a test there only if it covers something the dual-run tests in
+`tests/state_machines.rs` and the trusted examples do not. They run with `--no-cheating`. A file can
 opt out with a header line `// no-cheating: off --- <reason>`. A negative test states a
 substring of its expected error with `// EXPECTED-ERROR: <text>`, matched against the
 rendered errors and the error codes.

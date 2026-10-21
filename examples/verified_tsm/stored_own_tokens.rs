@@ -1,3 +1,6 @@
+// Regression (5ee61140d): a storage payload containing the machine's own checked tokens
+// was rejected as a cyclic self-reference (trait bound on StorageToken); negatives:
+// negative/stored_own_tokens_negative_*.rs.
 //! Storage payloads that contain the machine's own checked tokens.
 //!
 //! The vstd storage token and carrier types take the key, value and fragment

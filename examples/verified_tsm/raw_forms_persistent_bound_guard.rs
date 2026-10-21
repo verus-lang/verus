@@ -1,3 +1,5 @@
+// Regression (b00705e0d): a guard of a value bound by `have o >= Some(let x)` read the
+// bound value only for exclusive option fields, not persistent_option ones.
 //! A storage guard of a value bound by `have o >= Some(let x)` on a
 //! `persistent_option` field (as for an exclusive `option` field): the raw
 //! backend reads the bound value from the borrowed agreement fragment, so the

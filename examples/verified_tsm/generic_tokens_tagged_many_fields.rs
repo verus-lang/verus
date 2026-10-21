@@ -1,3 +1,6 @@
+// Regression (df5c0980d): storage reasoning did not scale with the number of storage
+// fields (per-instantiation case splits over all fields, deep union chains); this
+// machine has ten storage fields.
 //! A machine with many (ten) storage fields. The storage is one
 //! `IMap<__StorageKey, __StorageValue<T>>` tagged by field (the value enum is
 //! over the type parameter `T`, the only one the payloads mention; `U` occurs

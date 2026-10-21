@@ -1,3 +1,5 @@
+// Regression (22cd41783): guards of general storage_map/storage_imap operands with other
+// storage fields, or with other guards in one property, were rejected at expansion time.
 //! Guards of general operands of `storage_map` and `storage_imap` fields
 //! with other storage fields, or with other guards in one property.
 //!

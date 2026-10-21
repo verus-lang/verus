@@ -1,3 +1,5 @@
+// Regression (df5c0980d): storage reasoning that scales with the number of storage
+// fields, on the raw interface.
 //! Raw backend storage with many (nine) storage fields. The raw protocol's
 //! storage is one `IMap<__StorageKey, __StorageValue>`, tagged by field, as for
 //! any number of storage fields (`raw_forms_storage_option.rs`); with a map

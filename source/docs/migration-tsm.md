@@ -34,9 +34,10 @@ For implementation details, see the
 Replace the macro import and invocation. The machine declaration uses the same
 `fields`, `init!`, `transition!`, `property!`, and sharding syntax.
 
-The example is Counting2:
-[before](../../examples/state_machines/tutorial/counting_to_2.rs) and
-[after](../../examples/verified_tsm/counting_to_2.rs).
+The example is Counting2,
+[counting_to_2.rs](../../examples/state_machines/tutorial/counting_to_2.rs), which
+verifies unchanged with either macro (its import selects the macro by
+`cfg(verus_verified_tsm)`).
 
 **Before — declaration:**
 
@@ -120,7 +121,8 @@ token, e.g. one whose only tokenized state is storage); `Unit::split` makes two
 units of one. Machines without storage are unchanged.
 
 The example is the `Bank` machine of
-[generic_tokens_option.rs](../../examples/verified_tsm/generic_tokens_option.rs),
+[generic_tokens_kinds.rs](../../examples/verified_tsm/generic_tokens_kinds.rs)
+(module `option_storage`),
 whose `store` operation consumes only a token collection:
 
 ```rust

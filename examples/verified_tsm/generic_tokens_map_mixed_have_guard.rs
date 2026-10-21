@@ -1,3 +1,6 @@
+// Regression (4e0ca49ec): a guard observed through a singleton `have` failed to verify
+// when preceded by another `have` of the same map field (an untriggerable quantifier
+// over a pair of conditions and fragment).
 //! A property that borrows a general operand and a singleton of one `map`
 //! field (or two singletons), and also guards storage, on the default
 //! interface. The raw interface: `raw_forms_map_mixed_have_guard.rs`.

@@ -1,3 +1,5 @@
+// Feature and regression (65bf3b660): storage fields of one payload type use the
+// homogeneous carrier for any combination of fields, not only one exact shape.
 //! Storage fields of different kinds (here a `storage_option` and a
 //! `storage_map`) whose stored values have one type: the raw backend stores
 //! them in a homogeneous carrier (keys tagged by field, values untagged). The generic interface supports it: singleton and general

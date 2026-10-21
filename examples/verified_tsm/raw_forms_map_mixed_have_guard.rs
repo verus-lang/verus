@@ -1,3 +1,5 @@
+// Regression (4e0ca49ec): guards after several haves of one map field, on the raw
+// interface (see generic_tokens_map_mixed_have_guard.rs).
 //! A property that borrows a general operand and a singleton of one `map`
 //! field, and also guards storage.
 use verus_state_machines_macros::verified_tokenized_state_machine;

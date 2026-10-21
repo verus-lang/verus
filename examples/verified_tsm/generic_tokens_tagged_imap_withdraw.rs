@@ -1,3 +1,5 @@
+// Regression (fd3d08f2f): general withdrawals from a storage_imap field in the tagged
+// carrier were rejected (compile_error).
 //! General withdrawals from a `storage_imap` field stored in the tagged
 //! carrier (with storage fields of other payload types).
 //!

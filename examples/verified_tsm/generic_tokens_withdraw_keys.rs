@@ -1,3 +1,6 @@
+// Regression (bdef221a1): withdrawal keys that read unowned fields, the stored map or
+// `pre` as a whole (accepted by the trusted macro, which ignores storage keys) were
+// rejected by the checked backend.
 //! Storage withdrawal keys evaluated in the full pre-state: a key may read the
 //! stored map itself, or use `pre` as a whole (as in the trusted macro, which
 //! ignores storage keys). The checked exchange's withdrawal is the difference

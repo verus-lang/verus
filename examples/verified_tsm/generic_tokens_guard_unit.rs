@@ -1,3 +1,6 @@
+// Regression (07152b9dd): token-less guards of generic storage machines guarded from a
+// leaked &'static unit token, which required 'static type parameters; they now borrow
+// a `&Unit`.
 //! Guards that borrow no token, in machines with type parameters and storage.
 //!
 //! A guard needs a storage resource of the instance to guard from. Without a
