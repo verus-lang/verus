@@ -17,6 +17,7 @@ use crate::def::*;
 use crate::poly::MonoTyp;
 use crate::resolve_axioms::{ResolvableType, ResolvedTypeCollection};
 use air::scope_map::ScopeMap;
+use indexmap::IndexSet;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -91,13 +92,13 @@ struct Ctxt {
 
 #[derive(Default)]
 struct State {
-    reached_functions: HashSet<Fun>,
-    reached_types: HashSet<ReachedType>,
-    reached_bound_traits: HashSet<TraitName>,
-    reached_trait_impls: HashSet<ImplName>,
-    reached_assoc_type_decls: HashSet<(Path, Ident)>,
-    reached_assoc_type_impls: HashSet<AssocTypeGroup>,
-    reached_opaque_types: HashSet<OpaqueTyName>,
+    reached_functions: IndexSet<Fun>,
+    reached_types: IndexSet<ReachedType>,
+    reached_bound_traits: IndexSet<TraitName>,
+    reached_trait_impls: IndexSet<ImplName>,
+    reached_assoc_type_decls: IndexSet<(Path, Ident)>,
+    reached_assoc_type_impls: IndexSet<AssocTypeGroup>,
+    reached_opaque_types: IndexSet<OpaqueTyName>,
     worklist_functions: Vec<Fun>,
     worklist_reveal_groups: Vec<Fun>,
     worklist_types: Vec<ReachedType>,
@@ -173,7 +174,7 @@ fn record_datatype(ctxt: &Ctxt, state: &mut State, typ: &Typ, dt: &Dt) {
 }
 
 fn reach<A: std::hash::Hash + std::cmp::Eq + Clone>(
-    reached: &mut HashSet<A>,
+    reached: &mut IndexSet<A>,
     worklist: &mut Vec<A>,
     id: &A,
 ) {

@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use proc_macro::TokenStream;
@@ -984,7 +984,7 @@ struct LocalCtx {
     vars: HashMap<Ident, VarMode>,
     /// A global counter for generating fresh trigger
     /// function names (unique per function).
-    trigger_fns: Rc<RefCell<HashMap<Ident, Type>>>,
+    trigger_fns: Rc<RefCell<Vec<(Ident, Type)>>>,
 }
 
 impl LocalCtx {
@@ -992,7 +992,7 @@ impl LocalCtx {
         LocalCtx {
             cur_fn: cur_fn.clone(),
             vars: HashMap::new(),
-            trigger_fns: Rc::new(RefCell::new(HashMap::new())),
+            trigger_fns: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -1004,7 +1004,7 @@ impl LocalCtx {
     fn gen_fresh_trigger_fn(&self, typ: &Type) -> Ident {
         let idx = self.trigger_fns.borrow().len();
         let name = Ident::new(&format!("trigger_{}_{}", self.cur_fn, idx), Span::call_site());
-        self.trigger_fns.borrow_mut().insert(name.clone(), typ.clone());
+        self.trigger_fns.borrow_mut().push((name.clone(), typ.clone()));
         name
     }
 }
@@ -1227,7 +1227,7 @@ fn compile_expr_path(
 fn compile_pattern(
     ctx: &mut LocalCtx,
     pat: &Pat,
-    new_locals: &mut HashSet<Ident>,
+    new_locals: &mut Vec<Ident>,
 ) -> Result<TokenStream2, Error> {
     match pat {
         Pat::Ident(pat_ident) => {
@@ -1241,7 +1241,9 @@ fn compile_pattern(
             // we will explicitly convert them to borrowed types
             // as opposed to owned types
             ctx.add(pat_ident.ident.clone(), VarMode::Ref);
-            new_locals.insert(pat_ident.ident.clone());
+            if !new_locals.contains(&pat_ident.ident) {
+                new_locals.push(pat_ident.ident.clone());
+            }
             Ok(quote! { #pat })
         }
 
@@ -1324,7 +1326,7 @@ fn compile_pattern(
 /// Compiles a match arm.
 fn compile_match_arm(ctx: &LocalCtx, arm: &Arm, unverified: bool) -> Result<TokenStream2, Error> {
     let mut ctx = ctx.clone();
-    let mut new_locals = HashSet::new();
+    let mut new_locals = Vec::new();
 
     let pat = compile_pattern(&mut ctx, &arm.pat, &mut new_locals)?;
 
@@ -1671,9 +1673,10 @@ fn compile_guarded_quant_verified(
 
     // Since #body and #expr will be used as spec code in exec mode
     // we have to convert all variables in the context to their spec versions via deep_view
-    let local_view: Vec<TokenStream2> = ctx
-        .vars
-        .keys()
+    let mut var_names: Vec<&Ident> = ctx.vars.keys().collect();
+    var_names.sort_by_key(|name| name.to_string());
+    let local_view: Vec<TokenStream2> = var_names
+        .into_iter()
         .map(|name| {
             quote! { let #name = #name.deep_view(); }
         })
@@ -3040,7 +3043,7 @@ fn compile_expr(
         // 3. `lhs matches pat` to `match lhs { pat => true, _ => false }`
         Expr::Matches(ExprMatches { lhs, pat, op_expr, .. }) => {
             let mut ctx = ctx.clone();
-            let mut new_locals = HashSet::new();
+            let mut new_locals = Vec::new();
             let pat = compile_pattern(&mut ctx, pat, &mut new_locals)?;
 
             let lhs = compile_expr(&ctx, lhs, VarMode::Ref, unverified)?;
