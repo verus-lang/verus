@@ -21,3 +21,14 @@ If no tag is specified on the first line, `expect-success` is assumed.
 The "optional comment" field is _required_ if `ignore` is used.
 
 It is recommended to include the optional comment if `expect-failures` is used.
+
+## State-machine examples and the checked macro
+
+An example that selects its state-machine macro with `cfg(verus_verified_tsm)` (see
+`source/rust_verify_test/README.md`) is also verified with
+`verified_tokenized_state_machine!`/`verified_state_machine_model!`. A header line
+`// verified-tsm: <mode> [--- comment]` sets the mode of that run.
+
+The examples in `verified_tsm/` run with `--no-cheating`, unless a header line
+`// no-cheating: off --- <reason>` says otherwise. A header line `// EXPECTED-ERROR: <text>`
+expects verification to fail with an error containing `<text>` (or with that error code).

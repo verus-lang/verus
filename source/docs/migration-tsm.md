@@ -87,8 +87,8 @@ are `Copy`, and their `clone` methods promise `out == *self`, as before.
 
 For a mathematical model with no token or property client, use
 `verified_state_machine_model!`. The ordinary
-[Adder before](../../examples/state_machines/adder.rs) and
-[Adder after](../../examples/verified_tsm/adder.rs) use unannotated fields.
+[Adder](../../examples/state_machines/adder.rs) example uses unannotated fields
+and runs unchanged with either macro.
 Their generated state relation signatures are retained:
 
 ```rust
@@ -246,9 +246,9 @@ They are not additional methods supplied by the TSM system.
 
 ### Change 5: Prove generic equality in Interner
 
-The Interner example is
-[before](../../examples/state_machines/interner.rs) and
-[after](../../examples/verified_tsm/interner.rs).
+The Interner example is [interner.rs](../../examples/state_machines/interner.rs).
+It verifies unchanged with the checked macro (its trusted helper stays
+`external_body`); the change below removes that assumption.
 
 **Before — user helper:**
 
@@ -295,9 +295,7 @@ struct Interner<T> { inst: Tracked<InternSystem::Instance<T>>, /* .. */ }
 
 ### Change 6: Constrain the supplied Disk authority
 
-The Disk example is
-[before](../../examples/state_machines/disk_example.rs) and
-[after](../../examples/verified_tsm/disk_example.rs).
+The Disk example is [disk_example.rs](../../examples/state_machines/disk_example.rs).
 `DiskInterp` is `AuthFrag::auth<nat, Block>` in both examples.
 
 **Before — user function signature and body:**
@@ -342,9 +340,10 @@ create ownership.
 
 #### Add an identity field for the invariant
 
-The checked [Rc](../../examples/verified_tsm/rc.rs) and
-[Arc](../../examples/verified_tsm/arc.rs) add an identity field for the invariant
-predicate. Rc has these fields:
+[Rc](../../examples/state_machines/tutorial/rc.rs) and
+[Arc](../../examples/state_machines/arc.rs) verify unchanged with the checked
+macro. Without their assumed increment bound (`--no-cheating`), the checked
+versions add an identity field for the invariant predicate. Rc has these fields:
 
 **Before — fields in `MyRc`:**
 
@@ -365,9 +364,7 @@ a resource.
 
 #### Handle overflow in the executable clone
 
-The Rc example is
-[before](../../examples/state_machines/tutorial/rc.rs) and
-[after](../../examples/verified_tsm/rc.rs).
+The Rc example is [rc.rs](../../examples/state_machines/tutorial/rc.rs).
 
 **Before — user method on `MyRc<S>`:**
 
@@ -409,6 +406,23 @@ specifications separately in a larger application.
 Counting2, CountingN, RefCell, Rc, Arc, and Interner include executable uses.
 An empty `main` or a tracked history checks proof code but does not run a
 synchronization algorithm.
+
+### Testing a client with both macros
+
+A client that needs none of the changes in Change 2 can select the macro with a
+cfg and be verified with both, as Verus's own state-machine examples are:
+
+```rust
+#[cfg(not(verus_verified_tsm))]
+use verus_state_machines_macros::tokenized_state_machine;
+#[cfg(verus_verified_tsm)]
+use verus_state_machines_macros::verified_tokenized_state_machine as tokenized_state_machine;
+```
+
+Verify it once as usual and once with `--cfg verus_verified_tsm`. A client that
+needs an interface change (for example the `Unit` argument) keeps its trusted
+version and gets a separate checked version. The test conventions are described
+in `source/rust_verify_test/README.md`.
 
 ### API changes at a glance
 
