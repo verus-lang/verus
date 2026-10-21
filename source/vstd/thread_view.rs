@@ -168,6 +168,22 @@ impl ReleaseViewSeen {
         ensures
             out@ == ThreadView::empty(),
     ;
+
+    /// Joins this [`ReleaseViewSeen`] permission with another [`ReleaseViewSeen`] to create a new [`ReleaseViewSeen`],
+    /// representing the join of the two views.
+    pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
+        ensures
+            out@ == self@.join(other@),
+    ;
+
+    /// Creates a new [`ReleaseViewSeen`] representing a view which is contained in the view
+    /// corresponding to the original [`ReleaseViewSeen`].
+    pub axiom fn weaken(tracked self, v: ThreadView) -> (tracked out: Self)
+        requires
+            self@.contains(v),
+        ensures
+            out@ == v,
+    ;
 }
 
 /// Resource representing the ``acquire view" in a thread's subjective view of memory, according to Rust's weak memory model.
@@ -193,6 +209,22 @@ impl AcquireViewSeen {
     pub axiom fn new() -> (tracked out: Self)
         ensures
             out@ == ThreadView::empty(),
+    ;
+
+    /// Joins this [`AcquireViewSeen`] permission with another [`AcquireViewSeen`] to create a new [`AcquireViewSeen`],
+    /// representing the join of the two views.
+    pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
+        ensures
+            out@ == self@.join(other@),
+    ;
+
+    /// Creates a new [`AcquireViewSeen`] representing a view which is contained in the view
+    /// corresponding to the original [`AcquireViewSeen`].
+    pub axiom fn weaken(tracked self, v: ThreadView) -> (tracked out: Self)
+        requires
+            self@.contains(v),
+        ensures
+            out@ == v,
     ;
 }
 
