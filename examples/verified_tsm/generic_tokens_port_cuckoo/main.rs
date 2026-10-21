@@ -1,3 +1,4 @@
+// no-cheating: off --- the original application's assumptions and its trusted rwlock module remain
 #![verifier::loop_isolation(false)]
 
 use vstd::prelude::*;

@@ -12,6 +12,7 @@ enum Mode {
     ExpectErrors,
     ExpectFailures,
     ExpectWarnings,
+    ExpectErrorMsg(String),
 }
 
 examples_in_dir!("../../examples");
@@ -25,6 +26,10 @@ examples_in_dir!("../../examples/std_test");
 examples_in_dir!("../../examples/cuckoo_hash_table");
 examples_in_dir!("../../examples/iterators");
 examples_in_dir!("../../examples/storage_protocol");
+// Checked state machines (verified_tokenized_state_machine!-specific tests; run with --no-cheating).
+examples_in_dir!("../../examples/verified_tsm");
+examples_in_dir!("../../examples/verified_tsm/negative");
+examples_in_dir!("../../examples/verified_tsm/generic_tokens_port_cuckoo");
 
 #[cfg(feature = "singular")]
 examples_in_dir!("../../examples/integer_ring");
@@ -111,6 +116,22 @@ fn run_example(file_path: &str, verified_tsm: bool) {
         }
     }
 
+    // A negative example states a substring of an expected error:
+    // `// EXPECTED-ERROR: <substring>` (matched against the errors' rendered text and code).
+    if let Some(msg) =
+        text.lines().take(20).find_map(|l| l.trim().strip_prefix("// EXPECTED-ERROR: "))
+    {
+        mode = Mode::ExpectErrorMsg(msg.trim().to_string());
+    }
+
+    // The checked state-machine examples contain no assumed proofs, unless they say otherwise
+    // with a header line `// no-cheating: off --- <reason>`.
+    if relative_path.starts_with("../../examples/verified_tsm")
+        && !text.lines().take(20).any(|l| l.trim().starts_with("// no-cheating: off --- "))
+    {
+        options.push("--no-cheating");
+    }
+
     let relative_path = PathBuf::from(relative_path);
 
     // Create a temp directory under target/ for --out-dir output
@@ -120,7 +141,8 @@ fn run_example(file_path: &str, verified_tsm: bool) {
         .join("test_inputs")
         .join(format!(
             "example-{}{}",
-            relative_path.file_stem().unwrap().to_str().unwrap(),
+            // the whole path: examples/verified_tsm repeats file names of other directories
+            relative_path.with_extension("").to_str().unwrap().replace("../", "").replace('/', "-"),
             if verified_tsm { "-verified-tsm" } else { "" }
         ));
     if example_out_dir.exists() {
@@ -171,6 +193,14 @@ fn run_example(file_path: &str, verified_tsm: bool) {
                     Some((_, failures)) if failures > 0 => true,
                     _ => false,
                 }
+        }
+        Mode::ExpectErrorMsg(ref msg) => {
+            !output.status.success()
+                && errors.iter().any(|e| {
+                    e.rendered.contains(msg.as_str())
+                        || e.message.contains(msg.as_str())
+                        || e.code.as_ref().is_some_and(|c| c.code.contains(msg.as_str()))
+                })
         }
     };
 

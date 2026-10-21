@@ -1,3 +1,4 @@
+// rust_verify/tests/example.rs expect-warnings
 use verus_state_machines_macros::verified_state_machine_model;
 use vstd::prelude::*;
 verus! {

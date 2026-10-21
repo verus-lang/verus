@@ -1,3 +1,4 @@
+// rust_verify/tests/example.rs ignore --- checked macro: Z3 warns "'=>' cannot be used in patterns" for a generated trigger (verifies otherwise)
 //! Move a logical map entry to a different key while observing a borrowed entry.
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;

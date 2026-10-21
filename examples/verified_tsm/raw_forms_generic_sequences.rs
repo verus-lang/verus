@@ -1,3 +1,4 @@
+// rust_verify/tests/example.rs expect-warnings
 //! Raw backend statement forms through the generic interface: several
 //! removals and additions of one set or map field, and several deposits into
 //! and withdrawals from one storage map, in a single transition. The generic

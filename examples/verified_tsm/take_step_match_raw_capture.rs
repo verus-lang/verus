@@ -1,3 +1,4 @@
+// no-cheating: off --- keeps the trusted original's `by { assume(false); }` proofs of its asserts
 use verus_state_machines_macros::verified_state_machine_model;
 use vstd::prelude::*;
 verus! {

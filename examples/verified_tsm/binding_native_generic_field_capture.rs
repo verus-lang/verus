@@ -1,3 +1,4 @@
+// rust_verify/tests/example.rs expect-warnings
 //! Complete original binding test: all relations and checked physical clients.
 #![allow(unused_imports)]
 use verus_state_machines_macros::verified_tokenized_state_machine;

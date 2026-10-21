@@ -1,3 +1,4 @@
+// rust_verify/tests/example.rs expect-warnings
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 verified_tokenized_state_machine! {  Z<r#__tsm_nt_before> {

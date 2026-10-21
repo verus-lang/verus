@@ -1,3 +1,4 @@
+// rust_verify/tests/example.rs ignore --- checked macro: Z3 warns "'=>' cannot be used in patterns" for a generated trigger (verifies otherwise)
 //! Complete original X declarations and both checked transition APIs; initialized native history.
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
