@@ -67,6 +67,17 @@ jobs:
             --data-binary @./verus-x86-linux/verus-x86-linux.zip \
             "${UPLOAD_URL%%\{*}?name=verus-${{ env.RELEASE_NAME }}-x86-linux.zip"
 
+      - name: upload release for arm64-linux
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPLOAD_URL: ${{ steps.update_release.outputs.upload_url }}
+        run: |
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/zip" \
+            --data-binary @./verus-arm64-linux/verus-arm64-linux.zip \
+            "${UPLOAD_URL%%\{*}?name=verus-${{ env.RELEASE_NAME }}-arm64-linux.zip"
+
       - name: upload release for arm64-macos
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
