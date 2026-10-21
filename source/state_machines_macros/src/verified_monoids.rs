@@ -206,7 +206,7 @@ pub(crate) fn operand(
 }
 
 /// `value` as an `ISet` (finite sets through `to_iset`).
-fn set_view(s: &ShardableType, value: TokenStream) -> TokenStream {
+pub(crate) fn set_view(s: &ShardableType, value: TokenStream) -> TokenStream {
     match s {
         ShardableType::Set(_) | ShardableType::PersistentSet(_) => quote! {(#value).to_iset()},
         ShardableType::ISet(_) | ShardableType::PersistentISet(_) => value,
@@ -215,7 +215,7 @@ fn set_view(s: &ShardableType, value: TokenStream) -> TokenStream {
 }
 
 /// `value` as an `IMap` (finite maps through `to_imap`).
-fn map_view(s: &ShardableType, value: TokenStream) -> TokenStream {
+pub(crate) fn map_view(s: &ShardableType, value: TokenStream) -> TokenStream {
     match s {
         ShardableType::Map(..) | ShardableType::PersistentMap(..) => quote! {(#value).to_imap()},
         ShardableType::IMap(..) | ShardableType::PersistentIMap(..) => value,

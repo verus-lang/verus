@@ -9795,3 +9795,150 @@ test_verify_tsm! {
         }}
     } => Ok(())
 }
+
+// Checked-macro version of general_operand_after_remove_same_field for the raw interface's
+// `#[verified_local_ready]` operations (the trusted macro has neither); local-ready also needs a
+// storage field. Their readiness proof (`<tr>_local_ready`) failed for a map or set `have` or
+// general `remove`, and for any `remove`/`have` after a `remove` of the same field: the later
+// operand is observed in the fragment the removal leaves, and only the first singleton `remove`
+// of a field had a hint lifting its operand to the completion's state.
+test_verify_one_file_with_options! {
+    #[test] general_operand_after_remove_same_field_local_ready_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        verified_tokenized_state_machine!{
+            #[verified_raw_tokens]
+            #[verified_local_ready(map_constants, map_have, map_remove, map_remove_have,
+                map_remove_remove, map_remove_remove_have_add, map_singleton_remove_have,
+                map_singleton_remove_remove, map_let_remove_have, map_have_bound_remove,
+                imap_remove_have, imap_remove_remove_have, set_remove_have, set_remove_remove_have,
+                set_singleton_remove_have, iset_remove_have, iset_remove_remove, multiset_remove_have,
+                multiset_remove_remove_have, multiset_singleton_remove_have,
+                multiset_singleton_remove_remove, persistent_haves, two_fields)]
+            X {
+            fields {
+                #[sharding(map)] pub m: Map<int, int>,
+                #[sharding(imap)] pub im: IMap<int, int>,
+                #[sharding(set)] pub s: Set<int>,
+                #[sharding(iset)] pub is: ISet<int>,
+                #[sharding(multiset)] pub ms: Multiset<int>,
+                #[sharding(persistent_map)] pub pm: Map<int, int>,
+                #[sharding(persistent_set)] pub ps: Set<int>,
+                #[sharding(storage_option)] pub st: Option<int>,
+            }
+
+            init!{ initialize() {
+                init m = Map::empty(); init im = IMap::empty(); init s = Set::empty();
+                init is = ISet::empty(); init ms = Multiset::empty(); init pm = Map::empty();
+                init ps = Set::empty(); init st = None;
+            } }
+
+            transition!{ map_constants() {
+                remove m -= ( Map::<int, int>::empty().insert(0, 1) );
+                have m >= ( Map::<int, int>::empty().insert(2, 3) );
+            } }
+            transition!{ map_have(a: Map<int, int>) {
+                have m >= (a);
+            } }
+            transition!{ map_remove(a: Map<int, int>) {
+                remove m -= (a);
+            } }
+            transition!{ map_remove_have(a: Map<int, int>, b: Map<int, int>) {
+                remove m -= (a);
+                have m >= (b);
+            } }
+            transition!{ map_remove_remove(a: Map<int, int>, b: Map<int, int>) {
+                remove m -= (a);
+                remove m -= (b);
+            } }
+            transition!{ map_remove_remove_have_add(a: Map<int, int>, b: Map<int, int>, c: Map<int, int>) {
+                remove m -= (a);
+                remove m -= (b);
+                have m >= (c);
+                add m += (a);
+            } }
+            transition!{ map_singleton_remove_have(k: int, v: int, b: Map<int, int>) {
+                remove m -= [k => v];
+                have m >= (b);
+            } }
+            transition!{ map_singleton_remove_remove(k: int, v: int, l: int, w: int) {
+                remove m -= [k => v];
+                remove m -= [l => w];
+            } }
+            transition!{ map_let_remove_have(a: Map<int, int>, b: Map<int, int>) {
+                let x = a;
+                remove m -= (x);
+                require(b.len() > 0);
+                have m >= (b);
+            } }
+            transition!{ map_have_bound_remove(k: int, b: Map<int, int>) {
+                have m >= [k => let v];
+                remove m -= (b);
+                have m >= [k => v];
+            } }
+
+            transition!{ imap_remove_have(a: IMap<int, int>, b: IMap<int, int>) {
+                remove im -= (a);
+                have im >= (b);
+            } }
+            transition!{ imap_remove_remove_have(a: IMap<int, int>, b: IMap<int, int>, c: IMap<int, int>) {
+                remove im -= (a);
+                remove im -= (b);
+                have im >= (c);
+            } }
+
+            transition!{ set_remove_have(a: Set<int>, b: Set<int>) {
+                remove s -= (a);
+                have s >= (b);
+            } }
+            transition!{ set_remove_remove_have(a: Set<int>, b: Set<int>, c: Set<int>) {
+                remove s -= (a);
+                remove s -= (b);
+                have s >= (c);
+            } }
+            transition!{ set_singleton_remove_have(e: int, b: Set<int>) {
+                remove s -= set { e };
+                have s >= (b);
+            } }
+
+            transition!{ iset_remove_have(a: ISet<int>, b: ISet<int>) {
+                remove is -= (a);
+                have is >= (b);
+            } }
+            transition!{ iset_remove_remove(a: ISet<int>, b: ISet<int>) {
+                remove is -= (a);
+                remove is -= (b);
+            } }
+
+            transition!{ multiset_remove_have(a: Multiset<int>, b: Multiset<int>) {
+                remove ms -= (a);
+                have ms >= (b);
+            } }
+            transition!{ multiset_remove_remove_have(a: Multiset<int>, b: Multiset<int>, c: Multiset<int>) {
+                remove ms -= (a);
+                remove ms -= (b);
+                have ms >= (c);
+            } }
+            transition!{ multiset_singleton_remove_have(e: int, f: int) {
+                remove ms -= {e};
+                have ms >= {f};
+            } }
+            transition!{ multiset_singleton_remove_remove(e: int, f: int) {
+                remove ms -= {e};
+                remove ms -= {f};
+            } }
+
+            transition!{ persistent_haves(a: Map<int, int>, k: int, v: int, b: Set<int>, e: int) {
+                have pm >= (a);
+                have pm >= [k => v];
+                have ps >= (b);
+                have ps >= set { e };
+            } }
+
+            transition!{ two_fields(a: Map<int, int>, b: Set<int>, c: Map<int, int>, d: Set<int>) {
+                remove m -= (a);
+                remove s -= (b);
+                have m >= (c);
+                have s >= (d);
+            } }
+        }}
+    } => Ok(())
+}

@@ -353,8 +353,8 @@ fn fresh(sm:&SM,tr:&Transition,stem:&str)->Ident {
 // completion. Explicit key instantiation and pointwise composition avoid relying
 // on solver triggers to lift a Remove ownership requirement through the frame.
 fn singleton_set_remove_hints(tr:&Transition,observation:&Ident,completion:&Ident,
-    completion_frame:&Ident,ft:&TokenStream,se:&TokenStream,owners:&Ident,pn:&[&Ident])
-    ->Vec<TokenStream>
+    completion_frame:&Ident,ft:&TokenStream,se:&TokenStream,owners:&Ident,pn:&[&Ident],
+    skip:&HashSet<String>)->Vec<TokenStream>
 {
     use std::collections::HashSet;
     fn collect(stmt:&TransitionStmt,changed:&mut HashSet<String>,bound:&mut HashSet<String>,
@@ -396,6 +396,7 @@ fn singleton_set_remove_hints(tr:&Transition,observation:&Ident,completion:&Iden
         }
     }
     let mut removals=Vec::new();collect(&tr.body,&mut HashSet::new(),&mut HashSet::new(),&mut removals);
+    removals.retain(|(field,_)|!skip.contains(&field.to_string()));
     removals.into_iter().map(|(field,mut key)| {
         // Replace only the state root; source parameter and binder names retain
         // their spelling. The completion agrees with every ordinary read.
@@ -442,7 +443,8 @@ fn singleton_set_remove_hints(tr:&Transition,observation:&Ident,completion:&Iden
 // Only unconditional first removals are eligible. Every emitted hint is checked
 // from the declared CURRENT local ownership and the actual completion equality.
 fn singleton_map_remove_hints(sm:&SM,tr:&Transition,observation:&Ident,completion:&Ident,
-    completion_frame:&Ident,ft:&TokenStream,se:&TokenStream,owners:&Ident,pn:&[&Ident])->Vec<TokenStream>{
+    completion_frame:&Ident,ft:&TokenStream,se:&TokenStream,owners:&Ident,pn:&[&Ident],
+    skip:&HashSet<String>)->Vec<TokenStream>{
     fn collect(stmt:&TransitionStmt,changed:&mut HashSet<String>,bound:&mut HashSet<String>,result:&mut Vec<(Ident,verus_syn::Expr,verus_syn::Expr)>){
         match stmt{
             TransitionStmt::Block(_,children)=>for child in children{collect(child,changed,bound,result)},
@@ -474,6 +476,7 @@ fn singleton_map_remove_hints(sm:&SM,tr:&Transition,observation:&Ident,completio
         }
     }
     let mut removals=vec![];collect(&tr.body,&mut HashSet::new(),&mut HashSet::new(),&mut removals);
+    removals.retain(|(field,_,_)|!skip.contains(&field.to_string()));
     removals.into_iter().filter_map(|(field,mut key,mut value)|{
         let actual=sm.fields.iter().find(|f|f.name==field)?;
         let finite=match actual.stype{ShardableType::Map(..)=>true,ShardableType::IMap(..)=>false,_=>return None};
@@ -492,6 +495,340 @@ fn singleton_map_remove_hints(sm:&SM,tr:&Transition,observation:&Ident,completio
             ::vstd::resource::tsm_collections::map_owned_frame(owned.#field,#frame,#native,#key,#value);
         })
     }).collect()
+}
+
+/// A step of a transition's unconditional prefix, for `local_sequence_hints`.
+enum LocalStep<'a> {
+    /// A `remove` or `have` of a map, set or multiset field (exclusive or
+    /// persistent), with the pattern it binds.
+    Observe(&'a Field, &'a SpecialOp, Option<&'a verus_syn::Pat>),
+    /// An `add` of such a field: later statements on it are not followed.
+    Add(&'a Field),
+    /// A `let` (pattern, type, value).
+    Let(&'a verus_syn::Pat, Option<&'a verus_syn::Type>, &'a verus_syn::Expr),
+}
+
+/// The steps of `tr`'s body up to its first `if`/`match`, a pattern binding a
+/// field of another kind, or a refutable pattern (after that statement).
+fn local_steps<'a>(sm: &'a SM, tr: &'a Transition) -> Vec<LocalStep<'a>> {
+    fn walk<'a>(sm: &'a SM, stmt: &'a TransitionStmt, out: &mut Vec<LocalStep<'a>>) -> bool {
+        match stmt {
+            TransitionStmt::Block(_, children) => children.iter().all(|child| walk(sm, child, out)),
+            TransitionStmt::Split(_, split, children) => {
+                match &**split {
+                    SplitKind::Special(name, operation, _, pattern) => {
+                        let field = sm.fields.iter().find(|f| f.name == *name).filter(|f| {
+                            matches!(
+                                f.stype,
+                                ShardableType::Map(..)
+                                    | ShardableType::IMap(..)
+                                    | ShardableType::Set(_)
+                                    | ShardableType::ISet(_)
+                                    | ShardableType::Multiset(_)
+                                    | ShardableType::PersistentMap(..)
+                                    | ShardableType::PersistentIMap(..)
+                                    | ShardableType::PersistentSet(_)
+                                    | ShardableType::PersistentISet(_)
+                            )
+                        });
+                        let pattern = pattern.as_deref();
+                        match field {
+                            Some(field) if operation.is_remove() || operation.is_have() => {
+                                out.push(LocalStep::Observe(field, operation, pattern));
+                            }
+                            Some(field) => out.push(LocalStep::Add(field)),
+                            None if pattern.is_some() => return false,
+                            None => {}
+                        }
+                        if pattern.is_some_and(|p| !crate::util::is_definitely_irrefutable(p)) {
+                            return false;
+                        }
+                    }
+                    SplitKind::Let(pattern, ty, _, expression) => {
+                        if !crate::util::is_definitely_irrefutable(pattern) {
+                            return false;
+                        }
+                        out.push(LocalStep::Let(pattern, ty.as_deref(), expression));
+                    }
+                    _ => return false,
+                }
+                children.iter().all(|child| walk(sm, child, out))
+            }
+            _ => true,
+        }
+    }
+    let mut out = vec![];
+    walk(sm, &tr.body, &mut out);
+    out
+}
+
+/// Readiness facts for the `remove`s and `have`s of map, set and multiset
+/// fields, when one of them goes beyond what the singleton hints cover (a
+/// field's first `remove`, of a singleton): a map or set `have` or general
+/// `remove`, or any `remove`/`have` after a `remove` of the same field.
+///
+/// The ownership condition observes each operand in the owned fragment that
+/// the field's earlier statements leave (joined with `h` for a `have`), and
+/// the enabling condition in the state those statements leave. Neither
+/// follows from the inclusion of the operands in `op(owned, h)` alone. The
+/// proof rebuilds both, statement by statement: starting from `owned` and the
+/// completion's field, a statement's frame lemma lifts its operand from the
+/// fragment it observes to the current state (that fragment composes with
+/// `h`, for a `remove`, and the completion frame to the state's embedding),
+/// and a `remove` yields the next fragment (the ownership compiler's) and the
+/// next state (the transition's update). `let`s and pattern bindings are
+/// bound as in the transition. Stated inside the completion quantifier, with
+/// operands read at the completion. Returns the hints and the fields they
+/// cover (all fields of the steps, if any; their singleton hints are omitted).
+fn local_sequence_hints(
+    sm: &SM,
+    tr: &Transition,
+    completion: &Ident,
+    completion_frame: &Ident,
+    ft: &TokenStream,
+) -> Result<(Vec<TokenStream>, HashSet<String>), Error> {
+    use crate::verified_monoids::{
+        component_type, map_view, set_view, updated_component, EffectOp,
+    };
+    let steps = local_steps(sm, tr);
+    // Whether the field's statements need these hints.
+    let needs = |field: &Field| {
+        let mut operations = vec![];
+        for step in &steps {
+            match step {
+                LocalStep::Observe(f, operation, _) if f.name == field.name => {
+                    operations.push(*operation)
+                }
+                LocalStep::Add(f) if f.name == field.name => break,
+                _ => {}
+            }
+        }
+        let after_remove = operations
+            .iter()
+            .position(|o| o.is_remove())
+            .is_some_and(|i| i + 1 < operations.len());
+        let beyond_singleton = !matches!(field.stype, ShardableType::Multiset(_))
+            && operations.iter().any(|o| {
+                o.is_have() || matches!(o.elt, MonoidElt::General(_))
+            });
+        after_remove || beyond_singleton
+    };
+    let observed = || {
+        steps.iter().filter_map(|step| match step {
+            LocalStep::Observe(field, ..) => Some(*field),
+            _ => None,
+        })
+    };
+    if !observed().any(needs) {
+        return Ok((vec![], HashSet::new()));
+    }
+    let covered = observed().map(|field| field.name.to_string()).collect();
+    let c = quote! {::vstd::resource::tsm_collections};
+    let m = quote! {::vstd::resource::tsm_finite_multiset};
+    let z = completion_frame;
+    let span = proc_macro2::Span::mixed_site();
+    let key = format_ident!("__tsm_local_key", span = span);
+    let at_completion = |e: &verus_syn::Expr| -> verus_syn::Expr {
+        struct PreRoot<'a>(&'a Ident);
+        impl verus_syn::visit_mut::VisitMut for PreRoot<'_> {
+            fn visit_expr_path_mut(&mut self, node: &mut verus_syn::ExprPath) {
+                if node.path.is_ident("pre") {
+                    let name = self.0;
+                    node.path = verus_syn::parse_quote! {#name};
+                }
+            }
+        }
+        use verus_syn::visit_mut::VisitMut;
+        let mut e = e.clone();
+        PreRoot(completion).visit_expr_mut(&mut e);
+        e
+    };
+    // Per field: its current owned fragment and state, and the frame of a
+    // `remove` (`op(h, z)`). A field is not followed after an `add`.
+    let mut tracked: Vec<(String, TokenStream, TokenStream, Ident)> = vec![];
+    let mut ended: HashSet<String> = HashSet::new();
+    let mut hints = vec![quote! {<#ft>::associative(owned,h,#z);}];
+    for (index, step) in steps.iter().enumerate() {
+        let (field, operation, pattern) = match step {
+            LocalStep::Let(pattern, ty, expression) => {
+                let ty = ty.map(|ty| quote! {:#ty});
+                let expression = at_completion(expression);
+                hints.push(quote! {let #pattern #ty = #expression;});
+                continue;
+            }
+            LocalStep::Add(field) => {
+                ended.insert(field.name.to_string());
+                continue;
+            }
+            LocalStep::Observe(field, operation, pattern) => (*field, *operation, *pattern),
+        };
+        let n = &field.name;
+        if ended.contains(&n.to_string()) {
+            if pattern.is_some() {
+                break;
+            }
+            continue;
+        }
+        let ct = component_type(&field.stype);
+        let setter = format_ident!("__tsm_set_{}", n);
+        if !tracked.iter().any(|(name, ..)| name == &n.to_string()) {
+            let frame = fresh(sm, tr, &format!("local_frame_{n}"));
+            hints.push(quote! {let #frame=<#ct>::op(h.#n,#z.#n);});
+            tracked.push((n.to_string(), quote! {owned}, quote! {#completion.#n}, frame));
+        }
+        let entry = tracked.iter().position(|(name, ..)| name == &n.to_string()).unwrap();
+        let (_, current, state, frame) = tracked[entry].clone();
+        let elt = match &operation.elt {
+            MonoidElt::SingletonKV(k, v) => MonoidElt::SingletonKV(
+                at_completion(k),
+                v.as_ref().map(|v| Box::new(at_completion(v))),
+            ),
+            MonoidElt::SingletonSet(e) => MonoidElt::SingletonSet(at_completion(e)),
+            MonoidElt::SingletonMultiset(e) => MonoidElt::SingletonMultiset(at_completion(e)),
+            MonoidElt::General(e) => MonoidElt::General(at_completion(e)),
+            other => other.clone(),
+        };
+        let operation = SpecialOp { stmt: operation.stmt, elt };
+        let remove = operation.is_remove();
+        let multiset = matches!(field.stype, ShardableType::Multiset(_));
+        let map = matches!(
+            field.stype,
+            ShardableType::Map(..)
+                | ShardableType::IMap(..)
+                | ShardableType::PersistentMap(..)
+                | ShardableType::PersistentIMap(..)
+        );
+        let finite = matches!(
+            field.stype,
+            ShardableType::Map(..)
+                | ShardableType::Set(_)
+                | ShardableType::PersistentMap(..)
+                | ShardableType::PersistentSet(_)
+        );
+        // A field's state and an operand as the fragments' (infinite) domains.
+        let native = |e: &TokenStream| {
+            if map {
+                map_view(&field.stype, e.clone())
+            } else if multiset {
+                e.clone()
+            } else {
+                set_view(&field.stype, e.clone())
+            }
+        };
+        let observer = if remove { current.clone() } else { quote! {<#ft>::op(#current,h)} };
+        let value = crate::verified_ownership::observed_value(field, &operation, &observer, span)?;
+        let st = native(&state);
+        // The observed fragment and the rest of the state's embedding.
+        let (part, rest) = if remove {
+            (quote! {#current.#n}, quote! {#frame})
+        } else {
+            hints.push(quote! {<#ct>::associative(#current.#n,h.#n,#z.#n);});
+            (quote! {<#ct>::op(#current.#n,h.#n)}, quote! {#z.#n})
+        };
+        let lemma = match (&field.stype, remove) {
+            (ShardableType::Map(..) | ShardableType::IMap(..), true) => {
+                quote! {#c::map_remove_many_frame}
+            }
+            (ShardableType::Map(..) | ShardableType::IMap(..), false) => {
+                quote! {#c::map_have_many_frame}
+            }
+            (ShardableType::PersistentMap(..) | ShardableType::PersistentIMap(..), _) => {
+                quote! {#c::persistent_map_have_many_frame}
+            }
+            (ShardableType::Set(_) | ShardableType::ISet(_), true) => {
+                quote! {#c::set_remove_many_frame}
+            }
+            (ShardableType::Set(_) | ShardableType::ISet(_), false) => {
+                quote! {#c::set_have_many_frame}
+            }
+            (ShardableType::PersistentSet(_) | ShardableType::PersistentISet(_), _) => {
+                quote! {#c::persistent_set_have_many_frame}
+            }
+            (_, true) => quote! {#m::finite_multiset_remove_many_frame},
+            (_, false) => quote! {#m::finite_multiset_owned_subset},
+        };
+        if multiset && !remove {
+            hints.push(quote! {#lemma(#part,#rest,#st); assert((#value).subset_of(#st));});
+        } else {
+            hints.push(quote! {#lemma(#part,#rest,#st,#value);});
+        }
+        // The statement's enabling condition on the current state, from the
+        // operand's inclusion in the state's native view.
+        hints.push(match &operation.elt {
+            MonoidElt::General(e) if finite && map => quote! {
+                assert forall|#key| #![trigger (#e).dom().contains(#key)] #![trigger (#state).dom().contains(#key)]
+                    (#e).dom().contains(#key) implies (#state).dom().contains(#key) && (#state)[#key]==(#e)[#key] by {
+                    assert((#value).dom().contains(#key));
+                    assert((#st).dom().contains(#key));
+                }
+                assert((#e).submap_of(#state));
+            },
+            MonoidElt::General(e) if finite => quote! {
+                assert forall|#key| (#e).contains(#key) implies #[trigger] (#state).contains(#key) by {
+                    assert((#value).contains(#key));
+                }
+                assert((#e).subset_of(#state));
+            },
+            MonoidElt::SingletonKV(k, v) => {
+                let v = v.as_ref().map(|v| quote! {assert((#state)[#k]==#v);});
+                let native_key = finite.then(|| quote! {assert((#st).dom().contains(#k));});
+                quote! {
+                    assert((#value).dom().contains(#k));
+                    #native_key
+                    assert((#state).dom().contains(#k));
+                    #v
+                }
+            }
+            MonoidElt::SingletonSet(e) => {
+                quote! {assert((#value).contains(#e)); assert((#state).contains(#e));}
+            }
+            MonoidElt::SingletonMultiset(e) => {
+                quote! {assert((#value).count(#e)==1); assert((#state).count(#e)>=1);}
+            }
+            _ => quote! {},
+        });
+        if remove {
+            // The fragment and the state the removal leaves.
+            let next = fresh(sm, tr, &format!("local_owned_{n}_{index}"));
+            let next_state = fresh(sm, tr, &format!("local_state_{n}_{index}"));
+            let component =
+                updated_component(&field.stype, EffectOp::Remove, quote! {(#current).#n}, value.clone());
+            let (updated, native_updated) = match &operation.elt {
+                MonoidElt::General(e) if map => {
+                    (quote! {(#state).remove_keys(#e.dom())}, quote! {(#st).remove_keys((#value).dom())})
+                }
+                MonoidElt::SingletonKV(k, _) => {
+                    (quote! {(#state).remove(#k)}, quote! {(#st).remove_keys((#value).dom())})
+                }
+                MonoidElt::General(e) if multiset => {
+                    (quote! {(#state).sub(#e)}, quote! {(#st).sub(#value)})
+                }
+                MonoidElt::SingletonMultiset(e) => {
+                    (quote! {(#state).remove(#e)}, quote! {(#st).sub(#value)})
+                }
+                MonoidElt::General(e) => {
+                    (quote! {(#state).difference(#e)}, quote! {(#st).difference(#value)})
+                }
+                MonoidElt::SingletonSet(e) => {
+                    (quote! {(#state).remove(#e)}, quote! {(#st).difference(#value)})
+                }
+                _ => unreachable!(),
+            };
+            let native_next = native(&quote! {#next_state});
+            hints.push(quote! {
+                let #next=<#ft>::#setter(#current,#component);
+                let #next_state=#updated;
+                assert(::vstd::prelude::ext_equal(#native_next,#native_updated));
+            });
+            tracked[entry].1 = quote! {#next};
+            tracked[entry].2 = quote! {#next_state};
+        }
+        if let Some(pattern) = pattern {
+            let bound = crate::verified_ownership::bound_value(field, &operation, value, span)?;
+            hints.push(quote! {let #pattern = #bound;});
+        }
+    }
+    Ok((hints, covered))
 }
 
 /// The local-ready items of a transition: `_local_requires`, `_local_ready`, `_local`,
@@ -624,8 +961,9 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         quote! {#se::#local_deposited(#full_state,#(#pn),*)},
         quote! {#se::#deposited(#full_state,#(#pn),*)},
     );
-    let set_hints=singleton_set_remove_hints(tr,&observation,&full_state,&completion_frame,ft,se,&owners,pn);
-    let map_hints=singleton_map_remove_hints(sm,tr,&observation,&full_state,&completion_frame,ft,se,&owners,pn);
+    let (sequence_hints,sequenced)=local_sequence_hints(sm,tr,&full_state,&completion_frame,ft)?;
+    let set_hints=singleton_set_remove_hints(tr,&observation,&full_state,&completion_frame,ft,se,&owners,pn,&sequenced);
+    let map_hints=singleton_map_remove_hints(sm,tr,&observation,&full_state,&completion_frame,ft,se,&owners,pn,&sequenced);
     Ok(quote! {
         /// Local observations suffice only because the following theorem checks every completion.
         #[verifier::inline]
@@ -651,6 +989,7 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
                 assert(#se::#owners(#full_state,owned,h,#(#pn),*));
                 #(#set_hints)*
                 #(#map_hints)*
+                #(#sequence_hints)*
                 #deposit_eq
             }
         }

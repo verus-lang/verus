@@ -322,7 +322,6 @@ impl Compiler<'_> {
         if matches!(operation.stmt, MonoidStmtType::Remove) && field.stype.is_persistent() {
             return Err(Error::new(span, "persistent ownership cannot be removed"));
         }
-        let name = &field.name;
         let fragment = self.fragment;
         let shared = &self.shared;
         let observer = match operation.stmt {
@@ -331,32 +330,7 @@ impl Compiler<'_> {
             MonoidStmtType::Add(_) => current.clone(),
             _ => return Err(Error::new(span, "unsupported ownership operation")),
         };
-
-        // An implicit value is observed at this statement, rather than in the
-        // initial fragment or initial full state. Refutable patterns are bound
-        // exactly as in the mathematical executor; its safety predicate still
-        // checks whether the pattern matches.
-        let value = match (&field.stype, &operation.elt) {
-            (ShardableType::Option(_), MonoidElt::OptionSome(None)) => {
-                quote! {Some((#observer).#name->Some_0->Exclusive_0)}
-            }
-            (ShardableType::PersistentOption(_), MonoidElt::OptionSome(None)) => {
-                quote! {Some((#observer).#name->Some_0->Agree_0)}
-            }
-            (
-                ShardableType::Map(..) | ShardableType::IMap(..),
-                MonoidElt::SingletonKV(key, None),
-            ) => {
-                quote! {::vstd::imap::IMap::empty().insert(#key,(#observer).#name.at(#key)->Some_0->Exclusive_0)}
-            }
-            (
-                ShardableType::PersistentMap(..) | ShardableType::PersistentIMap(..),
-                MonoidElt::SingletonKV(key, None),
-            ) => {
-                quote! {::vstd::imap::IMap::empty().insert(#key,(#observer).#name.at(#key)->Some_0->Agree_0)}
-            }
-            _ => operand(field, operation, span)?,
-        };
+        let value = observed_value(field, operation, &observer, span)?;
         Ok((observer, value))
     }
 
@@ -541,8 +515,45 @@ impl Compiler<'_> {
     }
 }
 
+/// The operand of a monoid statement on `field` that observes the fragment
+/// `observer`: an implicit value (`[key => let v]`, `Some(let v)`) is read from
+/// `observer`, any other operand is the canonical one.
+pub(crate) fn observed_value(
+    field: &Field,
+    operation: &SpecialOp,
+    observer: &TokenStream,
+    span: Span,
+) -> Result<TokenStream, Error> {
+    let name = &field.name;
+    // An implicit value is observed at this statement, rather than in the
+    // initial fragment or initial full state. Refutable patterns are bound
+    // exactly as in the mathematical executor; its safety predicate still
+    // checks whether the pattern matches.
+    Ok(match (&field.stype, &operation.elt) {
+        (ShardableType::Option(_), MonoidElt::OptionSome(None)) => {
+            quote! {Some((#observer).#name->Some_0->Exclusive_0)}
+        }
+        (ShardableType::PersistentOption(_), MonoidElt::OptionSome(None)) => {
+            quote! {Some((#observer).#name->Some_0->Agree_0)}
+        }
+        (
+            ShardableType::Map(..) | ShardableType::IMap(..),
+            MonoidElt::SingletonKV(key, None),
+        ) => {
+            quote! {::vstd::imap::IMap::empty().insert(#key,(#observer).#name.at(#key)->Some_0->Exclusive_0)}
+        }
+        (
+            ShardableType::PersistentMap(..) | ShardableType::PersistentIMap(..),
+            MonoidElt::SingletonKV(key, None),
+        ) => {
+            quote! {::vstd::imap::IMap::empty().insert(#key,(#observer).#name.at(#key)->Some_0->Agree_0)}
+        }
+        _ => operand(field, operation, span)?,
+    })
+}
+
 /// The value a pattern of a monoid statement binds, given its bound operand `value`.
-fn bound_value(
+pub(crate) fn bound_value(
     field: &Field,
     operation: &SpecialOp,
     value: TokenStream,
