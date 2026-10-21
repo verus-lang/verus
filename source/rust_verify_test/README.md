@@ -37,8 +37,32 @@ test_verify_tsm! {
   (`cargo test -- --ignored`).
 * `; trusted_only "<reason>"`: no verified test is generated.
 
+#### `--no-cheating` in the verified run
+
+The verified run passes `--no-cheating` (the trusted run does not), so a verified test also
+checks that the checked macro introduces no `assume`, `admit`, `external_body` or
+`assume_specification`. A test whose own source contains such an assumption (for example
+`by { assume(false); }`) opts out:
+
+```rust
+test_verify_tsm! {
+    #[test] name IMPORTS.to_string() + verus_code_str! { .. } => Ok(())
+    ; verified cheating "test source contains assume(false) in a by block"
+}
+```
+
+* `; verified cheating "<reason>"`: the verified run is without `--no-cheating`. A second
+  verified run with `--no-cheating` must be rejected, and each `--no-cheating` error must point
+  at a user-written assumption (its highlighted source, or an attribute line directly above it,
+  contains `assume`, `admit` or `external_body`), not into macro-generated code. Verus reports
+  the first `--no-cheating` error of each function, so a macro-introduced assumption in a
+  function that also contains a user assumption is not caught. The reason says which
+  assumption of the test's source needs it. The clause combines with the others (in any
+  order), for example `; verified cheating "..." ; verified => Err(e) => assert_fails(e, 1)`.
+
 `VERUS_TSM=verified` passes `--cfg verus_verified_tsm` to every verifier run of a test
-process. This runs the plain `test_verify_one_file!` tests with the checked macro too.
+process. This runs the plain `test_verify_one_file!` tests with the checked macro too (without
+`--no-cheating`).
 
 ### Tests that need a source change for the checked macro
 
@@ -46,7 +70,10 @@ If the checked macro needs an interface change, the trusted test stays as it is 
 `test_verify_one_file!`). Examples are the `Unit` argument of a token-less operation in a
 machine with storage, or a body that imports the trusted macro by name. Next to it, add a
 separate `<name>_verified` test that uses the checked macro directly and contains the
-adapted code. Start it with a one-line comment naming the difference:
+adapted code. Unless its source contains an assumption (as the `by { assume(false); }` of the
+example below), make it a `test_verify_one_file_with_options!` with `["--no-cheating"]`, like
+the verified run of `test_verify_tsm!` (for example `step_is_variant_verified`). Start it with
+a one-line comment naming the difference:
 
 ```rust
 // Checked-macro version of test_use_pre_no_field_withdraw_kv_key. API difference: in a machine
@@ -79,7 +106,10 @@ use verus_state_machines_macros::verified_tokenized_state_machine as tokenized_s
 ```
 
 A header line `// verified-tsm: <mode> [--- reason]` (the modes of the first line, see
-`examples/README.md`) overrides the expectation of the verified run. An example that needs
+`examples/README.md`) overrides the expectation of the verified run. The verified run uses
+`--no-cheating`; an example whose own source contains an assumption opts out with a header
+line `// no-cheating: off --- <reason>`, and then a second verified run with `--no-cheating`
+checks that every `--no-cheating` error points at the example's own assumptions. An example that needs
 an interface change keeps only the trusted macro (for example
 `examples/cuckoo_hash_table/cuckoo.rs`, which names `IMapToken`); the interface difference
 itself is tested in `examples/verified_tsm/` (here `generic_tokens_imap.rs`).

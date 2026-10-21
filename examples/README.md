@@ -29,6 +29,7 @@ An example that selects its state-machine macro with `cfg(verus_verified_tsm)` (
 `verified_tokenized_state_machine!`/`verified_state_machine_model!`. A header line
 `// verified-tsm: <mode> [--- comment]` sets the mode of that run.
 
-The examples in `verified_tsm/` run with `--no-cheating`, unless a header line
-`// no-cheating: off --- <reason>` says otherwise. A header line `// EXPECTED-ERROR: <text>`
+The examples in `verified_tsm/` and the checked-macro runs of the other examples run with
+`--no-cheating`, unless a header line `// no-cheating: off --- <reason>` says otherwise (the
+trusted run of an example never uses `--no-cheating`). A header line `// EXPECTED-ERROR: <text>`
 expects verification to fail with an error containing `<text>` (or with that error code).

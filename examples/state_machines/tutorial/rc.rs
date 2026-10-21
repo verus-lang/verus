@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+// no-cheating: off --- the example assumes `count < 100000000` (no refcount overflow) in `clone`
 // ANCHOR: full
 use verus_builtin::*;
 use verus_builtin_macros::*;

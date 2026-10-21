@@ -7,6 +7,7 @@ use vstd::{pervasive::*, *};
 
 use verus_state_machines_macros::case_on_init;
 use verus_state_machines_macros::case_on_next;
+// no-cheating: off --- the example has an `#[verifier::external_body]` spec fn `default`
 #[cfg(not(verus_verified_tsm))]
 use verus_state_machines_macros::state_machine;
 #[cfg(verus_verified_tsm)]

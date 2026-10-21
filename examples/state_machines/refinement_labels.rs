@@ -6,6 +6,7 @@ use vstd::{pervasive::*, *};
 
 use verus_state_machines_macros::case_on_init;
 use verus_state_machines_macros::case_on_next;
+// no-cheating: off --- the example has `assume(false)` (TODO) for the `dummy_to_use_type_params` step
 #[cfg(not(verus_verified_tsm))]
 use verus_state_machines_macros::state_machine;
 #[cfg(verus_verified_tsm)]

@@ -1,5 +1,6 @@
 #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 #![allow(unused_imports)]
+// no-cheating: off --- the example has `assume(false)` and `assume(forall ..)` in the proofs of `dfs`
 #[cfg(not(verus_verified_tsm))]
 use verus_state_machines_macros::tokenized_state_machine;
 #[cfg(verus_verified_tsm)]

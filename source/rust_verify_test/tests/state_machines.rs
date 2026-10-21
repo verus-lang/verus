@@ -3802,6 +3802,7 @@ test_verify_tsm! {
 
     } => Ok(())
     ; verified ignore "checked macro: unsupported form (tr1 withdraws and then deposits the same storage location)"
+    ; verified cheating "test source contains `by { assume(false); }` on its special operations"
 }
 
 test_verify_tsm! {
@@ -4055,6 +4056,7 @@ test_verify_tsm! {
 
     } => Ok(())
     ; verified ignore "checked macro: unsupported form (tr1 withdraws and then deposits the same storage location)"
+    ; verified cheating "test source contains `by { assume(false); }` on its special operations"
 }
 
 test_verify_tsm! {
@@ -4326,6 +4328,7 @@ test_verify_tsm! {
         } // verus!
     } => Ok(())
     ; verified ignore "checked macro: unsupported form (tr1 withdraws and then deposits the same storage location, here with general operands, which fails in the generated storage proof); also a gap: a general-operand `remove map` followed by `have map` is not proved ready"
+    ; verified cheating "test source contains `by { assume(false); }` on its special operations"
 }
 
 test_verify_tsm! {
@@ -4597,6 +4600,7 @@ test_verify_tsm! {
         } // verus!
     } => Ok(())
     ; verified ignore "checked macro: unsupported form (tr1 withdraws and then deposits the same storage location, here with general operands, which fails in the generated storage proof); also a gap: a general-operand `remove map` followed by `have map` is not proved ready"
+    ; verified cheating "test source contains `by { assume(false); }` on its special operations"
 }
 
 test_verify_tsm! {
@@ -6544,6 +6548,7 @@ test_verify_tsm! {
             }
         }}
     } => Err(e) => assert_fails(e, 6)
+    ; verified cheating "test source contains `by { assume(pre.storage_..) }` on its withdrawals"
 }
 
 test_verify_tsm! {
@@ -8945,6 +8950,7 @@ test_verify_tsm! {
             }
         }
     } => Ok(())
+    ; verified cheating "test source contains `assert .. by { assume(false); }`"
 }
 
 test_verify_tsm! {
@@ -9070,6 +9076,7 @@ test_verify_tsm! {
     } => Err(err) => assert_fails(err, 1)
     // The checked take_step states its precondition as two requires clauses.
     ; verified => Err(err) => assert_fails_anywhere(err, 2)
+    ; verified cheating "test source contains `assert .. by { assume(false); }`"
 }
 
 test_verify_tsm! {
@@ -9120,6 +9127,7 @@ test_verify_tsm! {
         }
 
     } => Ok(())
+    ; verified cheating "test source contains `assert(k == x) by { assume(false); }`"
 }
 
 test_verify_one_file! {
@@ -9164,8 +9172,8 @@ test_verify_one_file! {
 
 // Checked-macro version of step_is_variant: the original imports the trusted `state_machine`
 // explicitly, which the prelude's macro switch cannot redirect.
-test_verify_one_file! {
-    #[test] step_is_variant_verified IMPORTS.to_string() + verus_code_str! {
+test_verify_one_file_with_options! {
+    #[test] step_is_variant_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
         use verus_state_machines_macros::verified_state_machine_model;
 
         verified_state_machine_model! { X {

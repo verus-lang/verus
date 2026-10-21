@@ -123,11 +123,13 @@ fn run_example(file_path: &str, verified_tsm: bool) {
         mode = Mode::ExpectErrorMsg(msg.trim().to_string());
     }
 
-    // The checked state-machine examples contain no assumed proofs, unless they say otherwise
-    // with a header line `// no-cheating: off --- <reason>`.
-    if relative_path.starts_with("../../examples/verified_tsm")
-        && !text.lines().take(20).any(|l| l.trim().starts_with("// no-cheating: off --- "))
-    {
+    // The checked state-machine examples (`examples/verified_tsm`) and the runs with the checked
+    // macro (`verified_tsm`) use `--no-cheating`, unless the file says otherwise with a header
+    // line `// no-cheating: off --- <reason>` (its own source contains an assumption).
+    let no_cheating_off =
+        text.lines().take(20).any(|l| l.trim().starts_with("// no-cheating: off --- "));
+    let checked_dir = relative_path.starts_with("../../examples/verified_tsm");
+    if (checked_dir || verified_tsm) && !no_cheating_off {
         options.push("--no-cheating");
     }
 
@@ -150,6 +152,28 @@ fn run_example(file_path: &str, verified_tsm: bool) {
     std::fs::create_dir_all(&example_out_dir).unwrap();
 
     let output = run_verus(&options, &example_out_dir, &relative_path, true, true);
+
+    // An example whose checked-macro run opts out of `--no-cheating`: with `--no-cheating`, it is
+    // rejected only at the example's own assumptions.
+    if verified_tsm && no_cheating_off {
+        let mut nc_options = options.clone();
+        nc_options.push("--no-cheating");
+        let nc_out_dir = example_out_dir.with_extension("no-cheating");
+        if nc_out_dir.exists() {
+            std::fs::remove_dir_all(&nc_out_dir).unwrap();
+        }
+        std::fs::create_dir_all(&nc_out_dir).unwrap();
+        let nc_output = run_verus(&nc_options, &nc_out_dir, &relative_path, true, true);
+        let nc_stderr = std::str::from_utf8(&nc_output.stderr).expect("invalid stderr encoding");
+        let (mut nc_errors, mut nc_notes, mut nc_failure) = (Vec::new(), Vec::new(), false);
+        parse_diags(nc_stderr.trim(), &mut nc_errors, &mut nc_notes, &mut nc_failure);
+        assert!(
+            !nc_output.status.success(),
+            "{}: `no-cheating: off`, but it verifies with --no-cheating: remove the opt-out",
+            path
+        );
+        assert_no_cheating_errors_at_user_sites(&text, &nc_errors);
+    }
 
     use regex::Regex;
     let re = Regex::new(r"verification results:: (\d+) verified, (\d+) errors").unwrap();
