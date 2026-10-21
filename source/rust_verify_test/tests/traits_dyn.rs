@@ -437,6 +437,40 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] dyn_coercion_cycle_proof verus_code! {
+        trait T {
+            proof fn f(tracked &self) ensures false;
+        }
+        impl T for u8 {
+            proof fn f(tracked &self) {
+                let tracked d: &dyn T = self;
+                d.f();
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+test_verify_one_file! {
+    #[test] dyn_coercion_cycle_blanket_impl verus_code! {
+        trait T {
+            spec fn f(&self) -> int;
+        }
+        trait U {
+            spec fn g(&self) -> int;
+        }
+        impl<A: T> U for A {
+            spec fn g(&self) -> int { self.f() }
+        }
+        impl T for u8 {
+            spec fn f(&self) -> int {
+                let d: &dyn U = self;
+                d.g() + 1
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+test_verify_one_file! {
     #[test] dyn_cycle1 verus_code! {
         trait T {
             spec fn f(&self, d: &dyn T) -> int;

@@ -10,14 +10,6 @@ macro_rules! println {
 verus! {
 
 // TODO: remove this
-pub proof fn assume(b: bool)
-    ensures
-        b,
-{
-    admit();
-}
-
-// TODO: remove this
 pub proof fn assert(b: bool)
     requires
         #![verifier::custom_err("assertion failure")]

@@ -705,7 +705,8 @@ pub(crate) fn some_ghost_value_kind_with_args<'tcx>(
     let arg1 = GenericArg::from(tup_ty);
     let arg2 = GenericArg::from(ty);
     let args = cx.tcx.mk_args(&[arg1, arg2]);
-    let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
+    let fn_ty =
+        cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, rustc_middle::ty::Binder::dummy(args)));
 
     let fun_expr_kind = ExprKind::ZstLiteral { user_ty: None };
     let fun_expr = expr_id_from_kind(cx, fun_expr_kind, hir_id, span, fn_ty);
@@ -763,6 +764,23 @@ pub(crate) fn erase_pat<'tcx>(cx: &mut ThirBuildCx<'tcx>, pat: Box<Pat<'tcx>>) -
     };
 
     let mut p = pat;
+    // Only ghost code uses the `__verus_param_N @` the macros add to complex parameter patterns
+    // of functions, so we can strip them.
+    if let PatKind::Binding { var, subpattern: subpattern @ Some(_), .. } = &mut p.kind
+        && is_verus_param_binder(&cx.tcx.hir_ident(var.0))
+        && match cx.tcx.parent_hir_node(var.0) {
+            hir::Node::Param(_) => {
+                matches!(
+                    cx.tcx.def_kind(cx.body_owner),
+                    hir::def::DefKind::Fn | hir::def::DefKind::AssocFn
+                )
+            }
+            hir::Node::LetStmt(local) => matches!(local.source, hir::LocalSource::AsyncFn),
+            _ => false,
+        }
+    {
+        p = subpattern.take().unwrap();
+    }
     erase_pat_rec(&PatBindingEraserMode::EraseGhost(erasure_ctxt), &mut p);
     p
 }
@@ -777,6 +795,14 @@ pub(crate) fn erase_pat_all_binders<'tcx>(pat: Box<Pat<'tcx>>) -> Box<Pat<'tcx>>
 enum PatBindingEraserMode {
     EraseAll,
     EraseGhost(Arc<VerusErasureCtxt>),
+}
+
+/// Prefix used for naming complex parameter patterns
+const VERUS_PARAM: &str = "__verus_param_";
+
+pub fn is_verus_param_binder(ident: &rustc_span::symbol::Ident) -> bool {
+    ident.as_str().starts_with(VERUS_PARAM)
+        && !ident.span.ctxt().normalize_to_macros_2_0().is_root()
 }
 
 fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
@@ -903,7 +929,7 @@ struct VisitTreeForPats<'a, 'tcx> {
 
 impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tcx> {
     // Don't recurse into other items or closure bodies
-    type NestedFilter = rustc_hir::intravisit::nested_filter::None;
+    type NestedFilter = rustc_hir::intravisit::IgnoreNested;
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
         match &expr.kind {

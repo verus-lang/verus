@@ -578,8 +578,8 @@ pub(crate) fn check_item_external<'tcx>(
 
     // Check that the trait bounds match.
 
-    let external_predicates = external_adt_def.predicates(ctxt.tcx);
-    let proxy_predicates = proxy_adt_def.predicates(ctxt.tcx);
+    let external_predicates = external_adt_def.clauses(ctxt.tcx);
+    let proxy_predicates = proxy_adt_def.clauses(ctxt.tcx);
     if !(external_predicates.parent.is_none() && proxy_predicates.parent.is_none()) {
         // I think this error is impossible?
         // 'Parent' nodes should only exist for stuff in an impl
@@ -589,20 +589,20 @@ pub(crate) fn check_item_external<'tcx>(
     let proxy_typing_env = TypingEnv::post_analysis(ctxt.tcx, proxy_adt_def.did());
     let preds1 = external_predicates
         .instantiate(ctxt.tcx, substs_ref)
-        .predicates
+        .clauses
         .into_iter()
         .map(|clause| ctxt.tcx.normalize_erasing_regions(external_typing_env, clause))
         .collect();
     let preds2 = proxy_predicates
         .instantiate(ctxt.tcx, substs_ref)
-        .predicates
+        .clauses
         .into_iter()
         .map(|clause| ctxt.tcx.normalize_erasing_regions(proxy_typing_env, clause))
         .collect();
     let preds_match = crate::rust_to_vir_func::predicates_match(ctxt.tcx, &preds1, &preds2);
     if !preds_match {
-        println!("external_predicates: {:#?}", external_predicates.predicates);
-        println!("proxy_predicates: {:#?}", proxy_predicates.predicates);
+        println!("external_predicates: {:#?}", external_predicates.clauses);
+        println!("proxy_predicates: {:#?}", proxy_predicates.clauses);
         return err_span(span, "external_type_specification: trait bounds should match");
     }
 
