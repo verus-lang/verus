@@ -75,18 +75,6 @@ pub fn main() {
     let program =
         if build_test_mode || via_cargo { internal_program } else { args.next().unwrap() };
 
-    let mut vstd = None;
-    let verus_root = if !(build_test_mode || via_cargo_rebuild_verus_libs) {
-        let verus_root = rust_verify::driver::find_verusroot();
-        if let Some(rust_verify::driver::VerusRoot { path: verusroot, .. }) = &verus_root {
-            let vstd_path = verusroot.join("vstd.vir").to_str().unwrap().to_string();
-            vstd = Some((format!("vstd"), vstd_path));
-        }
-        verus_root
-    } else {
-        None
-    };
-
     let mut args: Vec<String> = args.collect();
 
     if args.iter().any(|arg| arg == "-vV") {
@@ -108,6 +96,18 @@ pub fn main() {
         rust_verify::driver::run_rustc_compiler_directly(&args);
         return;
     }
+
+    let mut vstd = None;
+    let verus_root = if !(build_test_mode || via_cargo_rebuild_verus_libs) {
+        let verus_root = rust_verify::driver::find_verusroot();
+        if let Some(rust_verify::driver::VerusRoot { path: verusroot, .. }) = &verus_root {
+            let vstd_path = verusroot.join("vstd.vir").to_str().unwrap().to_string();
+            vstd = Some((format!("vstd"), vstd_path));
+        }
+        verus_root
+    } else {
+        None
+    };
 
     let via_cargo = via_cargo.then(|| rust_verify::config::parse_cargo_args(&program, &mut args));
 
