@@ -89,7 +89,9 @@ pub trait ExIterator {
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
         requires
-            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] call_requires(f, (x, )),
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
@@ -122,7 +124,9 @@ pub trait ExIterator {
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
         requires
-            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] call_requires(f, (x, )),
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
@@ -169,7 +173,9 @@ pub trait ExIterator {
             // `filter`'s implementation loops over the inner iterator until the predicate accepts an element,
             // so it needs a decreases metric to prove termination.
             self.decrease() is Some,
-            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
+            // without the laws, `remaining()` says nothing about the items `predicate` is called on
+            !self.obeys_prophetic_iter_laws() ==> forall |x: &Self::Item| #![auto] call_requires(predicate, (x, )),
             // Without a complete input sequence, the predicate must accept every possible item
             (self.obeys_prophetic_iter_laws() && self.will_return_none())
                 || (forall |x: Self::Item| #![auto] call_requires(predicate, (&x, ))),
@@ -181,7 +187,9 @@ pub trait ExIterator {
         where Self: Sized,
             P: FnMut(&Self::Item) -> bool
         requires
-            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
+            // without the laws, `remaining()` says nothing about the items `predicate` is called on
+            !self.obeys_prophetic_iter_laws() ==> forall |x: &Self::Item| #![auto] call_requires(predicate, (x, )),
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
@@ -216,7 +224,9 @@ pub trait ExIterator {
         where Self: Sized,
             F: FnMut(Self::Item) -> Option<B>
         requires
-            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] call_requires(f, (x, )),
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
@@ -250,7 +260,9 @@ pub trait ExIterator {
             Self: Sized,
             F: FnMut(Self::Item) -> B,
         requires
-            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] call_requires(f, (x, )),
             // Without a complete input sequence, the predicate must accept every possible item.
             (self.obeys_prophetic_iter_laws() && self.will_return_none())
                 || (forall |x: Self::Item| #![auto] call_requires(f, (x, ))),
@@ -263,6 +275,9 @@ pub trait ExIterator {
             Self: Sized,
             P: FnMut(Self::Item) -> bool,
         requires
+            // without the laws, `remaining()` bounds neither the count std's `position` keeps
+            // (which may overflow) nor the items `predicate` is called on
+            self.obeys_prophetic_iter_laws(),
             self.remaining().len() <= usize::MAX as int,
             forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (self.remaining()[k], )),
         ensures

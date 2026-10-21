@@ -1985,7 +1985,7 @@ pub(crate) fn expr_to_stm_opt(
             }
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ExpX::Unary(*op, exp))))))
         }
-        ExprX::UnaryOpr(UnaryOpr::ToDyn(_), _)
+        ExprX::UnaryOpr(UnaryOpr::ToDyn(..), _)
             if matches!(&*undecorate_typ(&expr.typ), TypX::MutRef(_)) =>
         {
             let (mut stms, e) = expr_to_stm_opt_with_delayed_obligations(ctx, state, expr)?;
@@ -3905,13 +3905,13 @@ fn expr_to_stm_opt_with_delayed_obligations(
             stms.append(&mut stms2);
             Ok((stms, Maybe::Some((exp1, obligations))))
         }
-        ExprX::UnaryOpr(UnaryOpr::ToDyn(self_typ), e1)
+        ExprX::UnaryOpr(op @ UnaryOpr::ToDyn(..), e1)
             if matches!(&*undecorate_typ(&expr.typ), TypX::MutRef(_)) =>
         {
             let (mut stms, exp1) = expr_to_stm_opt_with_delayed_obligations(ctx, state, e1)?;
             let (exp1, obligations) = unwrap_or_return_never!(exp1, stms);
             let exp1 = exp1.to_exp();
-            let out = mut_ref_to_dyn_sst(state, &expr.span, &mut stms, &exp1, self_typ, &expr.typ);
+            let out = mut_ref_to_dyn_sst(state, &expr.span, &mut stms, &exp1, op, &expr.typ);
             Ok((stms, Maybe::Some((Value::Exp(out), obligations))))
         }
         _ => {
@@ -4294,7 +4294,7 @@ fn mut_ref_to_dyn_sst(
     span: &Span,
     stms: &mut Vec<Stm>,
     src: &Exp,
-    self_typ: &Typ,
+    to_dyn_op: &UnaryOpr,
     out_typ: &Typ,
 ) -> Exp {
     let TypX::MutRef(dyn_typ) = &*undecorate_typ(out_typ) else {
@@ -4306,9 +4306,7 @@ fn mut_ref_to_dyn_sst(
         PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::BorrowMut)),
     );
     stms.push(assume_has_typ(&var_ident, out_typ, span));
-    let to_dyn = |e: Exp| {
-        SpannedTyped::new(span, dyn_typ, ExpX::UnaryOpr(UnaryOpr::ToDyn(self_typ.clone()), e))
-    };
+    let to_dyn = |e: Exp| SpannedTyped::new(span, dyn_typ, ExpX::UnaryOpr(to_dyn_op.clone(), e));
     let cur =
         sst_equal(span, &sst_mut_ref_current(span, &out), &to_dyn(sst_mut_ref_current(span, src)));
     let fut =

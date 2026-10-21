@@ -5,8 +5,8 @@ use std::{
 
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{
-    EarlyParamRegion, GenericArg, GenericParamDefKind, InstantiatedPredicates, Ty, TyCtxt, TyKind,
-    TypingEnv,
+    EarlyParamRegion, GenericArg, GenericParamDefKind, InstantiatedClauses, RegionExt, Ty, TyCtxt,
+    TyKind, TypingEnv,
 };
 use rustc_type_ir::{
     Interner, TypeFoldable, TypeFolder, TypeSuperVisitable, TypeVisitable, TypeVisitor,
@@ -46,7 +46,7 @@ pub(crate) fn build_external_type_suggestion<'tcx>(
 
     let generics = ctxt.tcx.generics_of(external_def_id);
 
-    let predicates = ctxt.tcx.predicates_of(external_def_id).instantiate_identity(ctxt.tcx);
+    let predicates = ctxt.tcx.clauses_of(external_def_id).instantiate_identity(ctxt.tcx);
     let mut region_renamer: RegionRenamer<'_> =
         build_region_renamer(ctxt, external_def_id, generics)?;
 
@@ -144,13 +144,13 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
 
     let visibility = mk_visibility(ctxt, external_def_id);
 
-    let predicates = ctxt.tcx.predicates_of(external_def_id);
+    let predicates = ctxt.tcx.clauses_of(external_def_id);
     let inst_predicates = predicates.instantiate_identity(ctxt.tcx);
     let generics = ctxt.tcx.generics_of(external_def_id);
     let mut region_renamer: RegionRenamer<'_> =
         build_region_renamer(ctxt, external_def_id, generics)?;
     let fn_sig = fn_sig.fold_with(&mut region_renamer);
-    // `InstantiatedPredicates` is not `TypeFoldable`, so we cannot fold the whole
+    // `InstantiatedClauses` is not `TypeFoldable`, so we cannot fold the whole
     // list here; `build_where_clauses` folds each `Clause` individually so that
     // anonymous early-bound lifetimes are renamed consistently with `fn_sig`.
     let (param_declarations, type_params) =
@@ -291,12 +291,12 @@ fn build_region_renamer<'tcx>(
 
 fn build_where_clauses<'tcx>(
     ctxt: &crate::context::Context<'tcx>,
-    inst_predicates: InstantiatedPredicates<'tcx>,
+    inst_predicates: InstantiatedClauses<'tcx>,
     mut unsized_type_params: BTreeSet<rustc_span::Symbol>,
     region_renamer: &mut RegionRenamer<'tcx>,
 ) -> Result<Vec<String>, VirErr> {
     let mut where_clauses: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    // `InstantiatedPredicates` is not `TypeFoldable`, but each individual `Clause`
+    // `InstantiatedClauses` is not `TypeFoldable`, but each individual `Clause`
     // is, so we fold them one at a time to rename anonymous early-bound lifetimes
     // consistently with the (already-folded) function signature.
     let folded_clauses: Vec<_> = inst_predicates
@@ -451,7 +451,7 @@ fn build_where_clauses<'tcx>(
 fn build_generics_declarations<'tcx>(
     ctxt: &crate::context::Context<'tcx>,
     generics: &'tcx rustc_middle::ty::Generics,
-    predicates: &InstantiatedPredicates,
+    predicates: &InstantiatedClauses,
     region_renamer: &RegionRenamer<'tcx>,
 ) -> Result<
     (Vec<(&'tcx rustc_middle::ty::GenericParamDef, String)>, BTreeSet<rustc_span::Symbol>),
@@ -539,10 +539,7 @@ impl<'tcx> TypeFolder<TyCtxt<'tcx>> for RegionRenamer<'tcx> {
     fn cx(&self) -> TyCtxt<'tcx> {
         self.tcx
     }
-    fn fold_region(
-        &mut self,
-        r: <TyCtxt<'tcx> as Interner>::Region,
-    ) -> <TyCtxt<'tcx> as Interner>::Region {
+    fn fold_region(&mut self, r: rustc_middle::ty::Region<'tcx>) -> rustc_middle::ty::Region<'tcx> {
         self.rename_if_anon_early(r)
     }
 }

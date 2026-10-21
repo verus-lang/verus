@@ -282,6 +282,170 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+const CUSTOM_STEP: &str = code_str! {
+    #![feature(step_trait)]
+    use vstd::prelude::*;
+
+    verus! {
+        #[derive(Clone, Copy, PartialEq, PartialOrd)]
+        pub struct S(pub u8);
+    }
+
+    // The executable implementation steps normally; its spec model below does not.
+    impl core::iter::Step for S {
+        fn steps_between(a: &S, b: &S) -> (usize, Option<usize>) {
+            if a.0 <= b.0 {
+                let n = (b.0 - a.0) as usize;
+                (n, Some(n))
+            } else {
+                (0, None)
+            }
+        }
+
+        fn forward_checked(a: S, n: usize) -> Option<S> {
+            a.0.checked_add(u8::try_from(n).ok()?).map(S)
+        }
+
+        fn backward_checked(a: S, n: usize) -> Option<S> {
+            a.0.checked_sub(u8::try_from(n).ok()?).map(S)
+        }
+
+        fn forward_overflowing(a: S, n: usize) -> (S, bool) {
+            (S(a.0.wrapping_add(n as u8)), Self::forward_checked(a, n).is_none())
+        }
+
+        fn backward_overflowing(a: S, n: usize) -> (S, bool) {
+            (S(a.0.wrapping_sub(n as u8)), Self::backward_checked(a, n).is_none())
+        }
+    }
+};
+
+test_verify_one_file_with_options! {
+    #[test] range_custom_step_model ["no-auto-import-verus_builtin"] =>
+    FEATURE_PRELUDE.to_string() + CUSTOM_STEP + verus_code_str! {
+        use vstd::std_specs::iter::StepSpecImpl;
+
+        // A StepSpecImpl does not prove anything about the executable Step methods.
+        impl StepSpecImpl for S {
+            open spec fn spec_is_lt(self, other: Self) -> bool { self.0 < other.0 }
+            open spec fn spec_steps_between(self, end: Self) -> Option<usize> { Some(1) }
+            open spec fn spec_steps_between_int(self, end: Self) -> int { 1 }
+            open spec fn spec_forward_checked(self, count: usize) -> Option<Self> { Some(S(7)) }
+            open spec fn spec_forward_checked_int(self, count: int) -> Option<Self> { Some(S(7)) }
+            open spec fn spec_backward_checked(self, count: usize) -> Option<Self> { None }
+            open spec fn spec_backward_checked_int(self, count: int) -> Option<Self> { None }
+        }
+
+        fn exclusive()
+            ensures false, // FAILS
+        {
+            let mut r = S(0)..S(1);
+            let _ = r.next();
+        }
+
+        fn inclusive()
+            ensures false, // FAILS
+        {
+            let mut r = S(0)..=S(1);
+            let _ = r.next();
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] range_custom_step_next_not_deterministic ["no-auto-import-verus_builtin"] =>
+    FEATURE_PRELUDE.to_string() + code_str! {
+        #![feature(step_trait)]
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use vstd::prelude::*;
+
+        static COUNTER: AtomicU64 = AtomicU64::new(100);
+
+        verus! {
+            #[derive(Clone, Copy, PartialEq, PartialOrd)]
+            pub struct S(pub u64);
+
+            // No StepSpecImpl: the uninterpreted spec_range_next must not imply
+            // that equal ranges produce equal results for an arbitrary Step type.
+            fn two() -> (r: (Option<S>, Option<S>))
+                ensures r.0 == r.1, // FAILS
+            {
+                let mut a = S(0)..S(u64::MAX);
+                let mut b = S(0)..S(u64::MAX);
+                let _ = a.next();
+                let _ = b.next();
+                (a.next(), b.next())
+            }
+        }
+
+        impl core::iter::Step for S {
+            fn steps_between(_: &S, _: &S) -> (usize, Option<usize>) { (0, None) }
+            fn forward_checked(_: S, _: usize) -> Option<S> {
+                Some(S(COUNTER.fetch_add(1, Ordering::SeqCst)))
+            }
+            fn backward_checked(_: S, _: usize) -> Option<S> { None }
+            fn forward_overflowing(a: S, n: usize) -> (S, bool) {
+                (Self::forward_checked(a, n).unwrap(), false)
+            }
+            fn backward_overflowing(a: S, _: usize) -> (S, bool) { (a, true) }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] range_primitive_step_specs code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        macro_rules! check_ranges {
+            ($t:ty, $test:ident) => {
+                verus! {
+                    fn $test() {
+                        let mut r = (1 as $t)..(3 as $t);
+                        assert(r.obeys_prophetic_iter_laws());
+                        assert(r.remaining() =~= seq![1 as $t, 2 as $t]);
+                        assert(r.decrease() == Some(2nat));
+                        assert(r.peek(0) == Some(1 as $t));
+                        let x = r.next();
+                        assert(x == Some(1 as $t));
+                        assert(r.start == 2 && r.end == 3);
+                        let x = r.next();
+                        assert(x == Some(2 as $t));
+                        let x = r.next();
+                        assert(x == None::<$t>);
+
+                        let mut r = (1 as $t)..=(2 as $t);
+                        assert(r.obeys_prophetic_iter_laws());
+                        assert(r.remaining() =~= seq![1 as $t, 2 as $t]);
+                        assert(r.decrease() == Some(2nat));
+                        assert(r.peek(0) == Some(1 as $t));
+                        let x = r.next();
+                        assert(x == Some(1 as $t));
+                        let x = r.next();
+                        assert(x == Some(2 as $t));
+                        assert(r.remaining() =~= Seq::<$t>::empty());
+                        let x = r.next();
+                        assert(x == None::<$t>);
+                    }
+                }
+            };
+        }
+
+        check_ranges!(u8, check_u8);
+        check_ranges!(u16, check_u16);
+        check_ranges!(u32, check_u32);
+        check_ranges!(u64, check_u64);
+        check_ranges!(u128, check_u128);
+        check_ranges!(usize, check_usize);
+        check_ranges!(i8, check_i8);
+        check_ranges!(i16, check_i16);
+        check_ranges!(i32, check_i32);
+        check_ranges!(i64, check_i64);
+        check_ranges!(i128, check_i128);
+        check_ranges!(isize, check_isize);
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] skip_works verus_code! {
         use vstd::prelude::*;
@@ -1198,4 +1362,47 @@ test_verify_one_file! {
             assert(!output.will_return_none());
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    // Adaptors over an iterator without the prophetic laws: the closure must accept every
+    // item, since `remaining()` need not describe what `next` yields. An impl that defines
+    // `remaining()` as empty while `next` yields 200 used to let `find` call a
+    // closure requiring `x < 4` on 200.
+    #[test] test_adaptor_requires_without_laws verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpecImpl;
+        pub struct It { n: u8 }
+        impl Iterator for It {
+            type Item = u8;
+            fn next(&mut self) -> Option<u8> {
+                if self.n == 0 { None } else { self.n = self.n - 1; Some(200) }
+            }
+        }
+        impl IteratorSpecImpl for It {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool { false }
+            open spec fn remaining(&self) -> Seq<u8> { Seq::empty() }
+            open spec fn will_return_none(&self) -> bool { true }
+            open spec fn decrease(&self) -> Option<nat> { None }
+            open spec fn peek(&self, index: int) -> Option<u8> { None }
+        }
+        fn ok(it: It) -> Option<u8> {
+            let mut it = it;
+            it.find(|x: &u8| *x > 1)
+        }
+        fn bad(it: It) -> Option<u8> {
+            let arr = [0u8; 4];
+            let mut it = it;
+            it.find(|x: &u8| -> (b: bool) requires *x < 4 { arr[*x as usize] == 0 }) // FAILS
+        }
+        fn bad_find_map(it: It) -> Option<u8> {
+            let arr = [0u8; 4];
+            let mut it = it;
+            it.find_map(|x: u8| -> (r: Option<u8>) requires x < 4 { Some(arr[x as usize]) }) // FAILS
+        }
+        fn bad_position(it: It) -> Option<usize> {
+            let mut it = it;
+            it.position(|x: u8| x > 1) // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
 }

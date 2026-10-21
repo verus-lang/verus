@@ -303,48 +303,133 @@ pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> Result<(bool, VarIdent), VirErr
     }
 }
 
-/// Translates a parameter pattern for an exec-mode closure into a parameter variable.
-fn exec_closure_pat_to_mut_var<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    pat: &Pat<'tcx>,
-    typ: &Typ,
-    pattern_stmts: &mut Vec<vir::ast::Stmt>,
-) -> Result<(bool, VarIdent), VirErr> {
-    // Use a single by-value identifier binding directly as the closure parameter.
-    if matches!(pat.kind, PatKind::Binding(BindingMode(ByRef::No, _), _, _, None)) {
-        return pat_to_mut_var(pat);
+/// Translates a closure or function parameter pattern into a parameter variable.
+/// An identifier such as `x` or `x @ p` is the parameter itself, while more complex patterns get
+/// a hidden name. `param_pat_to_decl` declares the remaining bindings.
+pub(crate) fn param_pat_to_mut_var(pat: &Pat) -> Result<(bool, VarIdent), VirErr> {
+    if matches!(pat.kind, PatKind::Binding(BindingMode(ByRef::No, _), ..)) {
+        pat_to_mut_var(pat)
+    } else {
+        let id = pat.hir_id.local_id.index();
+        let name = format!("%param{id}");
+        Ok((false, str_unique_var(&name, vir::ast::VarIdentDisambiguate::RustcId(id))))
     }
+}
 
-    // Generate a hidden parameter name and append a declaration equivalent to
-    // `let <pattern> = <hidden_parameter>;` to `pattern_stmts`.
-    let name = str_unique_var(
-        "%closure_param",
-        vir::ast::VarIdentDisambiguate::RustcId(pat.hir_id.local_id.index()),
-    );
+/// The part of a parameter pattern that needs a declaration
+pub(crate) fn param_pat_to_destructure<'tcx>(pat: &'tcx Pat<'tcx>) -> Option<&'tcx Pat<'tcx>> {
+    let pat = match pat.kind {
+        PatKind::Binding(BindingMode(ByRef::No, _), _, _, subpat) => subpat?,
+        _ => pat,
+    };
+    if matches!(pat.kind, PatKind::Wild) { None } else { Some(pat) }
+}
+
+/// Builds `let p = <param>;` in `mode` for the body and in spec mode for the contracts
+pub(crate) fn param_pat_to_decl<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    pat: &'tcx Pat<'tcx>,
+    param: &VarIdent,
+    typ: &Typ,
+    mode: Mode,
+) -> Result<Option<(vir::ast::Stmt, vir::ast::Stmt)>, VirErr> {
+    let Some(pat) = param_pat_to_destructure(pat) else {
+        return Ok(None);
+    };
     let pattern = pattern_to_vir(bctx, pat)?;
     if let Some(span) = vir::patterns::pattern_find_mut_binding(&pattern) {
         return Err(vir::messages::error(
             &span,
-            "mutable-reference bindings in closure parameters are not supported",
+            "mutable-reference bindings in parameters are not supported",
         ));
     }
 
-    let init = bctx.spanned_typed_new(pat.span, typ, PlaceX::Local(name.clone()));
+    let init = bctx.spanned_typed_new(pat.span, typ, PlaceX::Local(param.clone()));
     // Generated initializer has no corresponding source HIR node.
     bctx.ctxt.erasure_info.borrow_mut().local_hir_vir_ids.push((None, init.span.id));
 
-    pattern_stmts.push(bctx.spanned_new(
-        pat.span,
-        StmtX::Decl {
-            pattern,
-            mode: Some((Mode::Exec, vir::ast::DeclProph::Default)),
-            init: Some(init),
-            els: None,
-            assert_irrefutable: false,
-        },
-    ));
+    let decl = |mode| {
+        bctx.spanned_new(
+            pat.span,
+            StmtX::Decl {
+                pattern: pattern.clone(),
+                mode: Some((mode, vir::ast::DeclProph::Default)),
+                init: Some(init.clone()),
+                els: None,
+                assert_irrefutable: false,
+            },
+        )
+    };
+    Ok(Some((decl(mode), decl(Mode::Spec))))
+}
 
-    Ok((false, name))
+/// Adds the parameter pattern declarations to the body, and their spec versions to each
+/// contract, so contracts can use the bindings
+pub(crate) fn add_param_decls(
+    ctxt: &Context,
+    span: Span,
+    header: &mut vir::headers::Header,
+    body: &mut vir::ast::Expr,
+    param_decls: Vec<(vir::ast::Stmt, vir::ast::Stmt)>,
+) -> Result<(), VirErr> {
+    use vir::ast::{MaskSpec, UnwindSpec};
+    if param_decls.is_empty() {
+        return Ok(());
+    }
+    let vir::headers::Header {
+        require,
+        recommend,
+        ensure,
+        returns,
+        decrease,
+        decrease_when,
+        invariant_mask,
+        atomic_update,
+        unwind_spec,
+        invariant_except_break: _,
+        invariant: _,
+        atomic_call_loop: _,
+        no_method_body: _,
+        unwrap_parameters: _,
+        hidden: _,
+        ensure_id_typ: _,
+        decrease_by: _,
+        extra_dependencies: _,
+        open_visibility_qualifier: _,
+    } = header;
+    if atomic_update.is_some() {
+        return err_span(span, "atomic specifications are not supported with parameter patterns");
+    }
+    let (body_decls, spec_decls): (Vec<_>, Vec<_>) = param_decls.into_iter().unzip();
+    let wrap = |e: &vir::ast::Expr| {
+        let decls = ctxt.clone_stmts_with_fresh_ids(&spec_decls);
+        ctxt.spanned_typed_new_vir(&e.span, &e.typ, ExprX::Block(decls, Some(e.clone())))
+    };
+    let wrap_all = |es: &vir::ast::Exprs| Arc::new(es.iter().map(wrap).collect::<Vec<_>>());
+    *require = wrap_all(require);
+    *recommend = wrap_all(recommend);
+    *ensure = (wrap_all(&ensure.0), wrap_all(&ensure.1));
+    *returns = returns.as_ref().map(wrap);
+    *decrease = wrap_all(decrease);
+    *decrease_when = decrease_when.as_ref().map(wrap);
+    *invariant_mask = invariant_mask.as_ref().map(|mask| match mask {
+        MaskSpec::InvariantOpens(span, es) => MaskSpec::InvariantOpens(span.clone(), wrap_all(es)),
+        MaskSpec::InvariantOpensExcept(span, es) => {
+            MaskSpec::InvariantOpensExcept(span.clone(), wrap_all(es))
+        }
+        MaskSpec::InvariantOpensSet(e) => MaskSpec::InvariantOpensSet(wrap(e)),
+    });
+    *unwind_spec = unwind_spec.as_ref().map(|spec| match spec {
+        UnwindSpec::NoUnwind => UnwindSpec::NoUnwind,
+        UnwindSpec::NoUnwindWhen(e) => UnwindSpec::NoUnwindWhen(wrap(e)),
+        UnwindSpec::MayUnwind => UnwindSpec::MayUnwind,
+    });
+    *body = ctxt.spanned_typed_new_vir(
+        &body.span,
+        &body.typ,
+        ExprX::Block(Arc::new(body_decls), Some(body.clone())),
+    );
+    Ok(())
 }
 
 pub(crate) fn pat_to_var<'tcx>(pat: &Pat) -> Result<VarIdent, VirErr> {
@@ -1738,9 +1823,32 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 _ => remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2),
             };
             let op = match (tyr1.kind(), tyr2.kind()) {
-                (_, TyKind::Dynamic(_, _)) => {
+                (_, TyKind::Dynamic(preds, _)) => {
                     let vir_ty = bctx.mid_ty_to_vir(expr.span, &tyr1)?;
-                    Some(UnaryOpr::ToDyn(vir_ty))
+                    let clauses = preds
+                        .principal()
+                        .map(|trait_ref| {
+                            let clause = trait_ref
+                                .map_bound(|trait_ref| {
+                                    ClauseKind::Trait(TraitPredicate {
+                                        trait_ref: trait_ref.with_self_ty(bctx.ctxt.tcx, tyr1),
+                                        polarity: rustc_middle::ty::PredicatePolarity::Positive,
+                                    })
+                                })
+                                .upcast(bctx.ctxt.tcx);
+                            (None, clause)
+                        })
+                        .into_iter()
+                        .collect();
+                    let impl_paths = get_impl_paths_for_clauses(
+                        bctx.ctxt.tcx,
+                        &bctx.ctxt.verus_items,
+                        bctx.fun_id,
+                        clauses,
+                        None,
+                        expr.span,
+                    )?;
+                    Some(UnaryOpr::ToDyn(vir_ty, impl_paths))
                 }
                 _ => None,
             };
@@ -4263,7 +4371,7 @@ pub(crate) fn closure_to_vir<'tcx>(
         let typs = closure_param_typs(bctx, closure_expr)?;
         assert!(typs.len() == body.params.len());
 
-        let mut pattern_stmts: Vec<vir::ast::Stmt> = Vec::new();
+        let mut pattern_stmts = Vec::new();
 
         let params: Vec<VarBinder<Typ>> = body
             .params
@@ -4276,8 +4384,9 @@ pub(crate) fn closure_to_vir<'tcx>(
                     return err_span(x.span, "closures only accept exec-mode parameters");
                 }
 
-                let (_is_mut, name) =
-                    exec_closure_pat_to_mut_var(bctx, x.pat, &t, &mut pattern_stmts)?;
+                let (_is_mut, name) = param_pat_to_mut_var(x.pat)?;
+                let decl = param_pat_to_decl(bctx, x.pat, &name, &t, Mode::Exec)?;
+                pattern_stmts.extend(decl);
                 Ok(Arc::new(VarBinderX { name, a: t }))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -4296,51 +4405,11 @@ pub(crate) fn closure_to_vir<'tcx>(
 
         let mut body = expr_to_vir_consume(body_bctx, &body.value)?;
 
-        let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Closure)?;
-        let vir::headers::Header { mut require, mut ensure, ensure_id_typ, .. } = header;
+        let mut header =
+            vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Closure)?;
+        add_param_decls(&bctx.ctxt, closure_expr.span, &mut header, &mut body, pattern_stmts)?;
+        let vir::headers::Header { require, ensure, ensure_id_typ, .. } = header;
         assert!(ensure.1.len() == 0);
-
-        if !pattern_stmts.is_empty() {
-            require = Arc::new(
-                require
-                    .iter()
-                    .map(|expr| {
-                        bctx.ctxt.spanned_typed_new_vir(
-                            &expr.span,
-                            &expr.typ,
-                            ExprX::Block(
-                                bctx.ctxt.clone_stmts_with_fresh_ids(&pattern_stmts),
-                                Some(expr.clone()),
-                            ),
-                        )
-                    })
-                    .collect(),
-            );
-
-            ensure.0 = Arc::new(
-                ensure
-                    .0
-                    .iter()
-                    .map(|expr| {
-                        bctx.ctxt.spanned_typed_new_vir(
-                            &expr.span,
-                            &expr.typ,
-                            ExprX::Block(
-                                bctx.ctxt.clone_stmts_with_fresh_ids(&pattern_stmts),
-                                Some(expr.clone()),
-                            ),
-                        )
-                    })
-                    .collect(),
-            );
-            let body_typ = body.typ.clone();
-
-            body = bctx.spanned_typed_new(
-                closure_expr.span,
-                &body_typ,
-                ExprX::Block(Arc::new(pattern_stmts), Some(body)),
-            );
-        }
 
         let exprx = if is_spec_fn {
             bctx.ctxt.push_body_erasure(*def_id, BodyErasure { erase_body: true, ret_spec: true });

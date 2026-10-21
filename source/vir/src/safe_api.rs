@@ -47,6 +47,21 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
             ));
         }
 
+        if function.x.mode == Mode::Exec
+            && function.x.visibility.is_public()
+            && !function.x.attrs.is_unsafe
+            && matches!(&function.x.kind, FunctionKind::TraitMethodDecl { has_default: true, .. })
+            && function.x.require.len() > 0
+        {
+            return Err(error(
+                &function.span,
+                &format!(
+                    "Safe API violation: 'requires' clause is nontrivial for provided method `{:}`. Unverified, safe client code may be able to call this function without satisfying the precondition.",
+                    fun_as_friendly_rust_name(&function.x.name),
+                ),
+            ));
+        }
+
         if let FunctionKind::TraitMethodImpl { trait_path, method, .. } = &function.x.kind {
             if function.x.mode == Mode::Exec && !function.x.attrs.is_unsafe {
                 let trait_fn = function_map.get(method).unwrap();

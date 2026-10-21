@@ -43,8 +43,8 @@ use crate::rust_to_vir_base::def_id_to_vir_path_option;
 use crate::rustc_hir::intravisit::*;
 use crate::verus_items::get_rust_item;
 use rustc_hir::{
-    ForeignItem, ForeignItemId, HirId, ImplItem, ImplItemId, ImplItemKind, Item, ItemId, ItemKind,
-    OwnerId, TraitItem, TraitItemId, TraitItemKind,
+    ForeignItem, ForeignItemId, ForeignItemKind, HirId, ImplItem, ImplItemId, ImplItemKind, Item,
+    ItemId, ItemKind, OwnerId, TraitItem, TraitItemId, TraitItemKind,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
@@ -612,7 +612,10 @@ impl<'a> GeneralItem<'a> {
                 ItemKind::Const(..) => true,
                 _ => false,
             },
-            GeneralItem::ForeignItem(_) => false,
+            GeneralItem::ForeignItem(f) => match f.kind {
+                ForeignItemKind::Fn(..) => true,
+                _ => false,
+            },
             GeneralItem::ImplItem(i) => match i.kind {
                 ImplItemKind::Fn(..) => true,
                 ImplItemKind::Const(..) => true,

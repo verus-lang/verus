@@ -306,6 +306,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_ensures_malformed_trigger_regression_3188 code! {
+        use vstd::prelude::*;
+        verus! {
+            spec fn double(x: int) -> int { 2 * x }
+            spec fn half(x: int) -> int { x / 2 }
+            fn compute(x: u32) -> (r: u64)
+                requires x < 1000,
+                ensures #![trigger double(x as int) half(r as int)] r == double(x as int),
+            {
+                (x as u64) * 3
+            }
+        }
+        fn main() {
+            let r = compute(5);
+            println!("compute(5) = {} (verified ensures: r == 10)", r);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "unexpected token")
+}
+
+test_verify_one_file! {
     #[test] test_trigger_with_expression_should_be_disallowed_regression_1456 verus_code! {
         spec fn a(x: int) -> bool;
         spec fn b(x: int) -> bool;

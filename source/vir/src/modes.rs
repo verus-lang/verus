@@ -2171,7 +2171,7 @@ fn check_expr(
         ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(_), e1) => {
             check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
         }
-        ExprX::UnaryOpr(UnaryOpr::ToDyn(_), e1) => {
+        ExprX::UnaryOpr(UnaryOpr::ToDyn(..), e1) => {
             let (mode, proph) =
                 check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)?;
             if matches!(&*crate::ast_util::undecorate_typ(&expr.typ), TypX::MutRef(_))

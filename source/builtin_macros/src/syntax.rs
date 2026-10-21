@@ -45,6 +45,7 @@ use verus_syn::{
 };
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
+const VERUS_PARAM: &str = "__verus_param_";
 
 fn take_expr(expr: &mut Expr) -> Expr {
     let dummy: Expr = Expr::Verbatim(TokenStream::new());
@@ -147,6 +148,60 @@ fn path_matches_idents(path: &Path, expected: &[&str]) -> bool {
             .iter()
             .zip(expected.iter())
             .all(|(segment, expected)| segment.ident == *expected)
+}
+
+/// A stub keeps ghost item names in scope (e.g., for imports to be valid). Its body panics if called.
+///
+/// A `cfg` condition may remove a ghost function during verification. We must
+/// keep that condition on the exec stub too, otherwise, the placeholder could
+/// hide an imported function with the same name, and the compiled program could
+/// call a different function (the stub) from the one Verus verified.
+///
+/// `test` is special because it removes an item from ordinary builds, but copying it would make
+/// the test harness run the panicking placeholder so we replace it with `cfg(test)` instead
+/// (though I can't think of use cases where ghost code will be marked as #[test]).
+/// Remove `ignore` and `should_panic` too, since the placeholder is no longer a test.
+/// Preserve all other attributes.
+fn filter_ghost_stub_attrs(attrs: &mut Vec<Attribute>) {
+    /// Rewrite an attribute, returning false if it should be removed.
+    fn rewrite_attribute(meta: &mut Meta) -> bool {
+        match meta {
+            Meta::Path(path) if path_is_ident(path, "test") => {
+                *meta = parse_quote_spanned!(path.span() => cfg(test));
+                true
+            }
+            _ if path_is_ident(meta.path(), "ignore")
+                || path_is_ident(meta.path(), "should_panic") =>
+            {
+                false
+            }
+            Meta::List(list) if path_is_ident(&list.path, "cfg_attr") => {
+                let parsed = list.parse_args_with(|input: ParseStream| {
+                    // Copy the condition unchanged; only the attributes need rewriting.
+                    let mut condition = TokenStream::new();
+                    while !input.peek(Token![,]) {
+                        condition.extend([input.parse::<TokenTree>()?]);
+                    }
+                    input.parse::<Token![,]>()?;
+                    let nested_attrs = Punctuated::<Meta, Token![,]>::parse_terminated(input)?;
+                    Ok((condition, nested_attrs))
+                });
+                // Leave attributes we cannot parse unchanged. An outer cfg_attr may
+                // disable them; otherwise rustc can report the error.
+                let Ok((condition, nested_attrs)) = parsed else { return true };
+                if condition.is_empty() {
+                    return true;
+                }
+                let mut nested_attrs: Vec<_> = nested_attrs.into_iter().collect();
+                nested_attrs.retain_mut(rewrite_attribute);
+                list.tokens = quote! { #condition, #(#nested_attrs),* };
+                !nested_attrs.is_empty()
+            }
+            _ => true,
+        }
+    }
+
+    attrs.retain_mut(|attr| rewrite_attribute(&mut attr.meta));
 }
 
 fn split_off_proof_note_attrs(attrs: Vec<Attribute>) -> (Vec<Attribute>, Vec<Attribute>) {
@@ -496,7 +551,7 @@ fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) 
         if let Pat::TupleStruct(tup) = &*pat {
             let ghost_wrapper = path_is_ident(&tup.path, "Ghost");
             tracked_wrapper = path_is_ident(&tup.path, "Tracked");
-            if ghost_wrapper || tracked_wrapper || tup.elems.len() == 1 {
+            if (ghost_wrapper || tracked_wrapper) && tup.elems.len() == 1 {
                 if let Pat::Ident(id) = &tup.elems[0] {
                     wrapped_pat_id = Some(id.clone());
                 }
@@ -1059,7 +1114,7 @@ impl Visitor {
                         }
                     }
                     Err(err_expr) => {
-                        exprs.exprs[0] = *err_expr;
+                        spec_stmts.push(Stmt::Expr(*err_expr, Some(Semi { spans: [token.span] })));
                         false
                     }
                 };
@@ -1234,6 +1289,12 @@ impl Visitor {
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
 
         let has_body = semi_token.is_none();
+        if self.erase_ghost.erase()
+            && has_body
+            && !matches!(sig.mode, FnMode::Exec(_) | FnMode::Default)
+        {
+            filter_ghost_stub_attrs(attrs);
+        }
         let atomic_perm_clause = self.handle_atomic_spec(sig, vis, &mut stmts);
 
         // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
@@ -1422,6 +1483,14 @@ impl Visitor {
             }
         }
 
+        // Bodiless trait methods can't have patterns
+        if self.erase_ghost.keep()
+            && !self.rustdoc
+            && !(is_trait && !has_body && !sig.ident.to_string().starts_with(VERUS_SPEC))
+        {
+            name_verus_params(&mut sig.inputs);
+        }
+
         let spec_stmts = self.take_sig_specs(
             &mut sig.spec,
             ret_pat.as_ref(),
@@ -1436,7 +1505,12 @@ impl Visitor {
             atomic_perm_clause,
         );
         if !self.erase_ghost.erase() {
-            if !(self.rustdoc && sig.constness.is_some()) {
+            // Rustdoc reads contracts from doc attributes (see rustdoc.rs), so skip them where
+            // they wouldn't compile: in const fns, and with named returns and complex patterns
+            if !(self.rustdoc
+                && (sig.constness.is_some()
+                    || (ret_pat.is_some() && has_unnamed_verus_param(&sig.inputs))))
+            {
                 stmts.extend(spec_stmts);
             }
         }
@@ -1866,7 +1940,7 @@ impl Visitor {
         // Therefore, we leave arbitrary named stubs in the place of the erased ghost items:
         // - For erased pub spec or proof Fn item x, keep decl, replace body with panic!()
         // - For erased pub Const item x, keep as-is (REVIEW: it's not clear what expressions we can support)
-        // - For erased non-pub Fn and Const item x, leave "use bool as x;"
+        // - For erased non-pub Fn and Const item x, leave a stub "fn x()" with the same conditional presence
         // - Leave Struct and Enum as-is (REVIEW: we could leave stubs with PhantomData fields)
         for item in items.iter_mut() {
             let span = item.span();
@@ -1900,7 +1974,7 @@ impl Visitor {
                     | FnMode::ProofAxiom(_)
                         if erase_ghost =>
                     {
-                        Some((fun.sig.ident.clone(), fun.vis.clone()))
+                        Some((fun.sig.ident.clone(), fun.vis.clone(), fun.attrs.clone()))
                     }
                     _ => None,
                 },
@@ -1912,7 +1986,7 @@ impl Visitor {
                         | FnMode::SpecChecked(_)
                         | FnMode::Proof(_)
                         | FnMode::ProofAxiom(_),
-                    ) if erase_ghost => Some((c.ident.clone(), c.vis.clone())),
+                    ) if erase_ghost => Some((c.ident.clone(), c.vis.clone(), c.attrs.clone())),
                     _ => None,
                 },
                 /*
@@ -1931,10 +2005,17 @@ impl Visitor {
                 */
                 _ => None,
             };
-            if let Some((name, vis)) = erase_fn {
-                *item = Item::Verbatim(quote_spanned! {
+            if let Some((name, vis, mut attrs)) = erase_fn {
+                let mut item_fn: ItemFn = parse_quote_spanned! {
                     span => #[allow(unused_imports)] #vis fn #name() { unimplemented!() }
-                });
+                };
+                filter_ghost_stub_attrs(&mut attrs);
+                // Verbatim items bypass the usual attribute visitor.
+                for attr in &mut attrs {
+                    self.visit_attribute_mut(attr);
+                }
+                item_fn.attrs.extend(attrs);
+                *item = Item::Verbatim(item_fn.to_token_stream());
             }
         }
         for item in items.iter_mut() {
@@ -2218,7 +2299,8 @@ impl Visitor {
                     );
                 }
                 FnArgKind::Typed(pat_type) => match &*pat_type.pat {
-                    Pat::Ident(PatIdent { ident, .. }) => ident,
+                    // visit_fn renamed complex patterns to `__verus_param_N @ p`
+                    Pat::Ident(PatIdent { ident, subpat: None, .. }) => ident,
                     _ => {
                         return Item::Verbatim(
                             quote_spanned!(pat_type.pat.span() => compile_error!("'assume_specification' expects ident, not complex pattern");),
@@ -2261,11 +2343,12 @@ impl Visitor {
             paths,
         } = item_broadcast_group;
         if self.erase_ghost.erase() {
-            if matches!(vis, Visibility::Public(_)) {
+            if !self.erase_ghost.erase_all() || matches!(vis, Visibility::Public(_)) {
                 let mut item_fn: ItemFn = parse_quote_spanned! { span =>
                     #vis fn #ident() { panic!() }
                 };
                 item_fn.attrs.extend(attrs.into_iter().cloned());
+                filter_ghost_stub_attrs(&mut item_fn.attrs);
                 item_fn.to_token_stream()
             } else {
                 TokenStream::new()
@@ -4742,6 +4825,10 @@ impl VisitMut for Visitor {
         }
     }
 
+    fn visit_foreign_item_fn_mut(&mut self, fun: &mut verus_syn::ForeignItemFn) {
+        fun.attrs.push(mk_verus_attr(fun.span(), quote! { verus_macro }));
+    }
+
     fn visit_impl_item_fn_mut(&mut self, method: &mut ImplItemFn) {
         if self.rustdoc {
             crate::rustdoc::process_impl_item_method(method);
@@ -5631,6 +5718,63 @@ fn take_sig_with_spec(
     spec_stmts
 }
 
+#[cfg(verus_keep_ghost)]
+fn def_site() -> Span {
+    Span::from(proc_macro::Span::def_site())
+}
+
+// `def_site` is unstable, so it's only enabled with verus_keep_ghost.
+// Without it nothing is verified, and hiding the name from user locals is enough.
+#[cfg(not(verus_keep_ghost))]
+fn def_site() -> Span {
+    Span::mixed_site()
+}
+
+// Named-return contracts call the function to infer the return type, so each
+// parameter needs a name. The def-site span hides the name from user code.
+fn param_ident(index: usize, span: Span) -> Ident {
+    Ident::new(&format!("{VERUS_PARAM}{index}"), def_site().located_at(span))
+}
+
+fn has_unnamed_verus_param(inputs: &Punctuated<FnArg, Token![,]>) -> bool {
+    inputs.iter().any(|arg| {
+        matches!(&arg.kind, FnArgKind::Typed(typed)
+            if !matches!(&*typed.pat, Pat::Ident(PatIdent { by_ref: None, .. })))
+    })
+}
+
+fn has_unnamed_param(inputs: &syn::punctuated::Punctuated<syn::FnArg, Comma>) -> bool {
+    inputs.iter().any(|arg| {
+        matches!(arg, syn::FnArg::Typed(typed)
+            if !matches!(&*typed.pat, syn::Pat::Ident(syn::PatIdent { by_ref: None, .. })))
+    })
+}
+
+// Names each complex parameter pattern `p` (anything but `x` or `x @ q`) `__verus_param_N @ p`
+fn name_verus_params(inputs: &mut Punctuated<FnArg, Token![,]>) {
+    for (index, arg) in inputs.iter_mut().enumerate() {
+        if let FnArgKind::Typed(typed) = &mut arg.kind {
+            if !matches!(&*typed.pat, Pat::Ident(PatIdent { by_ref: None, .. })) {
+                let pat = &typed.pat;
+                let ident = param_ident(index, pat.span());
+                *typed.pat = parse_quote_spanned!(pat.span() => #ident @ #pat);
+            }
+        }
+    }
+}
+
+fn name_params(inputs: &mut syn::punctuated::Punctuated<syn::FnArg, Comma>) {
+    for (index, arg) in inputs.iter_mut().enumerate() {
+        if let syn::FnArg::Typed(typed) = arg {
+            if !matches!(&*typed.pat, syn::Pat::Ident(syn::PatIdent { by_ref: None, .. })) {
+                let pat = &typed.pat;
+                let ident = param_ident(index, pat.span());
+                *typed.pat = syn::parse_quote_spanned!(pat.span() => #ident @ #pat);
+            }
+        }
+    }
+}
+
 pub(crate) fn verus_inputs_to_tokens(
     inputs: &Punctuated<FnArg, Token![,]>,
 ) -> (Option<TokenStream>, TokenStream) {
@@ -5769,6 +5913,15 @@ pub(crate) fn sig_specs_attr(
     if let Some(pat) = &ret_pat {
         if let Some(err_stmt) = check_return_idents(pat, &sig.inputs) {
             spec_stmts.push(err_stmt);
+        }
+    }
+
+    if erase_ghost.keep() && !is_closure {
+        if !env_rustdoc() {
+            name_params(&mut sig.inputs);
+        } else if ret_pat.is_some() && has_unnamed_param(&sig.inputs) {
+            // Without names, the named-return contract can't call the function
+            return spec_stmts;
         }
     }
 
