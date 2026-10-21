@@ -357,7 +357,7 @@ jobs:
         working-directory: ./source
         run: |
           ./tools/get-z3.sh
-          ./tools/docs-cargo.sh --strict # strict will complain if there are warnings
+          ./tools/docs.sh --strict # strict will complain if there are warnings
 
       - name: setup mdbook and lychee
         env:
