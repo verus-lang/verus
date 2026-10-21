@@ -1853,3 +1853,30 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] verus_verify_external_body_with_spec_with_decreases code! {
+        struct X { }
+
+        #[verus_verify]
+        impl X {
+            #[verus_verify(external_body)]
+            #[verus_spec(ret =>
+                requires true,
+                ensures true,
+                decreases 255 - i,
+            )]
+            fn test(i: u8) -> bool {
+                proof!{
+                    let x = 5int;
+                }
+
+                if i < 255 {
+                    Self::test(i + 1)
+                } else {
+                    true
+                }
+            }
+        }
+    } => Ok(())
+}

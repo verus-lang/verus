@@ -70,6 +70,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                         | SpecItem::OpensInvariantMask
                         | SpecItem::NoUnwind
                         | SpecItem::NoUnwindWhen
+                        | SpecItem::Decreases
                 ) | VerusItem::Directive(DirectiveItem::ExtraDependency)
             )
         )
