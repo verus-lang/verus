@@ -6,7 +6,10 @@ use vstd::{pervasive::*, *};
 
 use verus_state_machines_macros::case_on_init;
 use verus_state_machines_macros::case_on_next;
+#[cfg(not(verus_verified_tsm))]
 use verus_state_machines_macros::state_machine;
+#[cfg(verus_verified_tsm)]
+use verus_state_machines_macros::verified_state_machine_model as state_machine;
 
 state_machine! {
     B {

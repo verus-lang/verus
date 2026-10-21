@@ -8,6 +8,10 @@
 //! elements, and the values of `Map`/`IMap`/`Seq`. So `update p.a.b = e`
 //! with `a` a struct field is rejected; update `p.a` as a whole instead.
 use verus_state_machines_macros::*;
+#[cfg(verus_verified_tsm)]
+use verus_state_machines_macros::verified_state_machine_model as state_machine;
+#[cfg(verus_verified_tsm)]
+use verus_state_machines_macros::verified_tokenized_state_machine as tokenized_state_machine;
 use vstd::prelude::*;
 
 verus! {

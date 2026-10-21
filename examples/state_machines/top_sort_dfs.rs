@@ -1,6 +1,9 @@
 #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 #![allow(unused_imports)]
+#[cfg(not(verus_verified_tsm))]
 use verus_state_machines_macros::tokenized_state_machine;
+#[cfg(verus_verified_tsm)]
+use verus_state_machines_macros::verified_tokenized_state_machine as tokenized_state_machine;
 use vstd::imap::*;
 use vstd::iset::*;
 use vstd::modes::*;

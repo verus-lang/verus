@@ -10,7 +10,10 @@ use vstd::prelude::*;
 use vstd::seq::*;
 use vstd::{pervasive::*, prelude::*, *};
 
+#[cfg(not(verus_verified_tsm))]
 use verus_state_machines_macros::tokenized_state_machine;
+#[cfg(verus_verified_tsm)]
+use verus_state_machines_macros::verified_tokenized_state_machine as tokenized_state_machine;
 
 tokenized_state_machine! {InternSystem<T> {
     fields {

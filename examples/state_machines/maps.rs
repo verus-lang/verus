@@ -1,10 +1,14 @@
 // rust_verify/tests/example.rs
+// verified-tsm: ignore --- checked macro: Z3 warns that a generated imap trigger contains '=>'
 #[allow(unused_imports)]
 use verus_builtin::*;
 use vstd::imap::*;
 use vstd::{pervasive::*, *};
 
+#[cfg(not(verus_verified_tsm))]
 use verus_state_machines_macros::tokenized_state_machine;
+#[cfg(verus_verified_tsm)]
+use verus_state_machines_macros::verified_tokenized_state_machine as tokenized_state_machine;
 
 tokenized_state_machine!(
     X {
