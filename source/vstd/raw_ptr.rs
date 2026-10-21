@@ -301,6 +301,27 @@ pub axiom fn encode_decode_inverse<T: ?Sized>(tracked value: &T)
 
 // TODO - how to tie abstract_bytes_decode to TypeRepresentation?
 // note: currently not supported = types whose encoding depends on shadow data. This includes &T
+// PointsTo<&T> 
+// &&T
+// *const &T
+
+// &T -> *const T, &PointsTo<T>
+// &PointsTo<str> -> &PointsToUntyped -> &PointsTo<[u8]>
+// PointsTo<&str> -> PointsToUntyped -> PointsTo<&[u8]>
+
+// PointsTo<&u8> -> PointsTo<&bool>
+// PointsTo<&u8> -> PointsToUntyped + Tracked<&u8>
+// PointsToUntyped + Tracked<&bool> -> PointsTo<&bool>
+
+// &str -> &[u8]
+// - encode ptr (shadow data)
+// - encode the str (pointed-to data)
+
+// &3 -> &bool
+// UB: when trying to deref the &bool
+// &T represented as T
+
+// PointsTo<T> where T: TypeRepresentation
 pub broadcast axiom fn type_representation_implements_encode_decode<T: ?Sized + TypeRepresentation>(value: &T, bytes: Seq<AbstractByte>)
     requires
         !T::encoding_depends_on_shadow_data()
@@ -721,6 +742,12 @@ impl<T> PointsTo<T> {
             final(self).is_init(),
             final(self).value() == val,
     ;
+
+    // Tracked<&T> <--> &PointsTo<T>
+    pub axiom fn as_tracked(tracked &self) -> (out: Tracked<&T>)
+        ensures
+            self.value() == out@,
+            self.ptr() == shared_ref_ptr(shadow_data(out@));
 }
 
 impl<T> PointsToUnaligned<T> {
@@ -1485,66 +1512,7 @@ impl PointsTo<[u8]> {
         PointsTo::<T>::from_untyped(self.inner)
     }
 
-    /* todo - move to rustlib
-    /// Casts an initialized `&PointsTo<[u8]>` to an initialized `&PointsTo<str>`,
-    /// where the resulting permission will take on the given `target` value in memory.
-    /// Requires that it is possible to transmute between the pointed-to value of `self` and the provided value `target`.
-    pub proof fn cast_to_str_shared<'a>(
-        tracked &'a self,
-        value: &[u8],
-        tracked target: &str,
-    ) -> (tracked ret: &'a PointsTo<str>)
-        requires
-            decode_decode::<[u8], str>(value, arbitrary(), target, arbitrary())
-            self.is_init(),
-            //require a separate argument for value since decode_decode expects a &[u8] instead of a Seq<u8>
-            self.value() == value@,
-        ensures
-            ret.is_init(),
-            ret.value() == target,
-            ret.ptr() == self.ptr() as *mut str,
-    {
-        broadcast use group_vstd_default, group_type_representation_axioms, layout_of_slices, layout_of_str;
-
-        use_type_invariant(self);
-        assume(false);
-
-        self.abstract_bytes_decode();
-        assert(value@.len() == self.abstract_bytes().len());
-        assert forall|i: int| 0 <= i < self.mem_contents_seq().len() implies #[trigger] u8::decode(
-            seq![self.abstract_bytes()[i]],
-            value[i],
-            arbitrary()
-        ) by {
-            assert(self.abstract_bytes().subrange(i * size_of::<u8>(), (i + 1) * size_of::<u8>())
-                == seq![self.abstract_bytes()[i]]);
-        }
-        assume(false);
-        //assert(EncodingU8Slice::decode(self.abstract_bytes(), value));
-        assert(abstract_bytes_decode::<[u8]>(self.abstract_bytes(), value));
-        self.cast_to_str_shared_inner(value, target)
-    }
-        */
-
-    /// An initialized `&PointsTo<[u8]>` can always be cast to an initialized `&PointsTo<str>` provided that the resulting
-    /// `str` value in memory can be decoded from the original permission's abstract bytes.
-    /// The abstract bytes remain unchanged in the resulting permission.
-    axiom fn cast_to_str_shared_inner<'a>(
-        tracked &'a self,
-        value: &[u8],
-        tracked target: &str,
-    ) -> (tracked ret: &'a PointsTo<str>)
-        requires
-            abstract_bytes_decode::<str>(self.abstract_bytes(), target),
-            self.is_init(),
-            self.value() == value@,
-            self.ptr()@.addr as int % layout::spec_align_of_val(value) as int == 0,
-        ensures
-            ret.is_init(),
-            ret.value() == target,
-            ret.ptr() == self.ptr() as *mut str,
-            ret.abstract_bytes() == self.abstract_bytes(),
-    ;
+    // `cast_to_str_shared` and `cast_to_str_shared_inner` live in rustlib, since they rely on the `TypeRepresentation` for `str`
 }
 
 // PointsToUnaligned<[T]>: the unaligned slice permission that PointsTo<[T]> delegates to.
@@ -1901,46 +1869,8 @@ impl PointsTo<str> {
             >(self.value()),
     ;
 
-    /*
-    TODO - these lemmas/axioms will need to move to rustlib, since they require the implementation of TypeRepresentation on str
+    // `cast_to_u8_shared` and `cast_to_u8_shared_inner` live in rustlib, since they rely on the `TypeRepresentation` for `str`
 
-    /// Casts an initialized `&PointsTo<str>` to an initialized `&PointsTo<[u8]>`,
-    /// where the resulting permission will take on the given `target` value in memory.
-    /// Requires that it is possible to transmute between the pointed-to value of `self` and the provided value `target`.
-    pub proof fn cast_to_u8_shared<'a>(tracked &'a self, tracked target: &[u8]) -> (tracked ret:
-        &'a PointsTo<[u8]>)
-        requires
-            decode_decode::<str, [u8]>(self.value(), arbitrary(), target, arbitrary()),
-            self.is_init(),
-        ensures
-            ret.is_init(),
-            ret.value() == target@,
-            ret.ptr() == self.ptr() as *mut [u8],
-    {
-        broadcast use group_type_representation_axioms, layout_of_slices, layout_of_str;
-
-        use_type_invariant(self);
-
-        self.abstract_bytes_decode();
-        self.cast_to_u8_shared_inner(target)
-    }
-    */
-
-    /// An initialized `&PointsTo<str>` can always be cast to an initialized `&PointsTo<[u8]>` provided that the resulting
-    /// `[u8]` value in memory can be decoded from the original permission's abstract bytes.
-    /// The abstract bytes remain unchanged in the resulting permission.
-    axiom fn cast_to_u8_shared_inner<'a>(tracked &'a self, tracked target: &[u8]) -> (tracked ret:
-        &'a PointsTo<[u8]>)
-        requires
-            abstract_bytes_decode::<[u8]>(self.abstract_bytes(), target),
-            self.is_init(),
-            self.ptr()@.addr as int % layout::spec_align_of_val::<[u8]>(target) as int == 0,
-        ensures
-            ret.is_init(),
-            ret.value() == target@,
-            ret.ptr() == self.ptr() as *mut [u8],
-            ret.abstract_bytes() == self.abstract_bytes(),
-    ;
 
     /// Creates a reference to a `PointsToUnaligned<[u8]>` from a reference to a `PointsTo<str>` with the same provenance
     /// and a range corresponding to the address of the `PointsTo<str>`, size of the `str`, and length.
