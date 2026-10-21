@@ -1,7 +1,7 @@
 use crate::ast::{
     AssertQueryMode, AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail,
     Datatype, DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, InvAtomicity,
-    ItemKind, Krate, LogicalOp, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName,
+    ItemKind, Krate, Label, LogicalOp, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName,
     OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind,
     SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind,
     UnwindSpec, VarIdent, VirErr,
@@ -524,6 +524,12 @@ enum VarMode {
     Mode(Mode, ProphVar),
 }
 
+#[derive(Clone)]
+struct Loop {
+    /// Is this a ghost (i.e., proof-mode) loop? (Only possible via logatom call)
+    ghost_loop: bool,
+}
+
 // Temporary state pushed and popped during mode checking
 struct State {
     // for each variable: (is_mutable, mode)
@@ -545,6 +551,7 @@ struct State {
     pub(crate) block_ghostness: Ghost,
     pub(crate) ret_mode: Option<Mode>,
     pub(crate) atomic_insts: Option<AtomicInstCollector>,
+    pub(crate) loops: HashMap<Label, Loop>,
 }
 
 mod typing {
@@ -690,6 +697,20 @@ mod typing {
             }
         }
 
+        #[must_use]
+        pub(super) fn push_loop<'a>(&'a mut self, label: Label, new_loop: Loop) -> Typing<'a> {
+            let mut loops = self.loops.clone();
+            let found = loops.insert(label, new_loop);
+            assert!(found.is_none());
+            swap(&mut loops, &mut self.internal_state.loops);
+            Typing {
+                internal_state: self.internal_state,
+                internal_undo: Some(Box::new(move |state| {
+                    state.loops = loops;
+                })),
+            }
+        }
+
         pub(super) fn assert_zero_scopes(&self) {
             assert_eq!(self.internal_state.vars.num_scopes(), 0);
         }
@@ -745,6 +766,10 @@ mod typing {
 
         pub(super) fn update_atomic_insts<'a>(&'a mut self) -> &'a mut Option<AtomicInstCollector> {
             &mut self.internal_state.atomic_insts
+        }
+
+        pub(super) fn get_loop(&self, label: &Label) -> &Loop {
+            &self.internal_state.loops[label]
         }
     }
 
@@ -2817,10 +2842,12 @@ fn check_expr(
             loop_isolation: _,
             allow_complex_invariants: _,
             is_for_loop: _,
-            label: _,
+            label,
             assume_termination: _,
             atomic_call: _,
         } => {
+            let mut typing = typing.push_loop(label.clone(), Loop { ghost_loop: false });
+
             // We could also allow this for proof, if we check it for termination
             if ctxt.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
                 return Err(error(&expr.span, "cannot use while in proof or spec mode"));
@@ -2832,7 +2859,7 @@ fn check_expr(
                 let cond_proph = check_expr_has_mode(
                     ctxt,
                     record,
-                    typing,
+                    &mut typing,
                     outer_mode,
                     cond,
                     Mode::Exec,
@@ -2840,7 +2867,15 @@ fn check_expr(
                 )?;
                 cond_proph.check(&cond.span, NoProphReason::LoopCondition)?;
             }
-            check_expr_has_mode(ctxt, record, typing, outer_mode, body, Mode::Exec, &Proph::No)?;
+            check_expr_has_mode(
+                ctxt,
+                record,
+                &mut typing,
+                outer_mode,
+                body,
+                Mode::Exec,
+                &Proph::No,
+            )?;
             for inv in invs.iter() {
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
                 let mut typing = typing.push_in_pure(true);
@@ -2933,8 +2968,8 @@ fn check_expr(
             }
             Ok((Mode::Exec, Proph::No))
         }
-        ExprX::BreakOrContinue { label: _, is_break: _, value } => {
-            if outer_mode != Mode::Exec {
+        ExprX::BreakOrContinue { label, is_break: _, value } => {
+            if outer_mode != Mode::Exec && !typing.get_loop(label).ghost_loop {
                 return Err(error(
                     &expr.span,
                     "break/continue is not allowed outside executable context",
@@ -3220,7 +3255,8 @@ fn check_expr(
                 _ => (e, false),
             };
 
-            if let ExprX::Loop { body, invs, .. } = &e.x {
+            if let ExprX::Loop { body, invs, label, .. } = &e.x {
+                let mut typing = typing.push_loop(label.clone(), Loop { ghost_loop: true });
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
                 check_expr_has_mode(
                     ctxt,
@@ -4106,6 +4142,7 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> 
             atomic_insts: None,
             in_pure: false,
             in_assert_query: None,
+            loops: HashMap::new(),
         };
         let mut typing = Typing::new(&mut state);
 
