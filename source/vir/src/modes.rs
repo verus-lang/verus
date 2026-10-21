@@ -2934,6 +2934,12 @@ fn check_expr(
             Ok((Mode::Exec, Proph::No))
         }
         ExprX::BreakOrContinue { label: _, is_break: _, value } => {
+            if outer_mode != Mode::Exec {
+                return Err(error(
+                    &expr.span,
+                    "break/continue is not allowed outside executable context",
+                ));
+            }
             if typing.in_assert_by_body {
                 return Err(error(
                     &expr.span,

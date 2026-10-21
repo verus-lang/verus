@@ -1870,3 +1870,84 @@ test_verify_one_file! {
         spec(checked) fn s() -> bool { true }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] break_from_proof_block_issue3171 verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn f() {
+            loop {
+                proof {
+                    break;
+                    ()
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "break/continue is not allowed outside executable context")
+}
+
+test_verify_one_file! {
+    #[test] break_with_value_from_proof_block_issue3171 verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn f() {
+            let x = loop {
+                proof {
+                    break true;
+                    ()
+                }
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "break/continue is not allowed outside executable context")
+}
+
+test_verify_one_file! {
+    #[test] continue_from_proof_block_issue3171 verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn f() {
+            loop {
+                proof {
+                    continue;
+                    ()
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "break/continue is not allowed outside executable context")
+}
+
+test_verify_one_file! {
+    #[test] break_from_tracked_issue3171 verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn f() {
+            loop {
+                let x = Tracked(break);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "break/continue is not allowed outside executable context")
+}
+
+test_verify_one_file! {
+    #[test] break_from_ghost_issue3171 verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn f() {
+            loop {
+                let x = Ghost(break);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "break/continue is not allowed outside executable context")
+}
+
+test_verify_one_file! {
+    #[test] break_from_ghost_local_issue3171 verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn f() {
+            loop {
+                let ghost x = break;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "break/continue is not allowed outside executable context")
+}
