@@ -901,6 +901,7 @@ pub fn output_with_ready(
             &ft,
             quote! {owned},
             quote! {h},
+            local_ready.contains(&n.to_string()),
         )?;
         let extra_ownership = monoids::extra_ownership(&effects, &pn);
         let ownership_inline=if crate::verified_readiness::inline_ownership(sm,tr) {ready_inline.clone()}else{quote!{}};

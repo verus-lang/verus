@@ -10,7 +10,7 @@ use crate::verified_monoids::{
 };
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use verus_syn::{Error, Ident};
 
 /// Compiles a transition body to its ordered `(enabled, owned_fragment)` ownership
@@ -20,6 +20,11 @@ struct Compiler<'a> {
     fragment: &'a TokenStream,
     shared: Ident,
     next_ident: usize,
+    /// Whether a map observation after the join of an `if`/`match` that
+    /// changes the owned fragment triggers on its operand (`joined`).
+    operand_triggers: bool,
+    /// The binders of fragments that the join of an `if`/`match` produces.
+    joined: HashSet<String>,
 }
 
 impl Compiler<'_> {
@@ -28,6 +33,19 @@ impl Compiler<'_> {
         let index = self.next_ident;
         self.next_ident += 1;
         format_ident!("__tsm_ownership_{}_{}", purpose, index, span = Span::mixed_site())
+    }
+
+    /// Whether `fragment` is (or is built from) the join of an `if`/`match`:
+    /// it mentions such a join, or a binder of one. Z3 drops a trigger on it
+    /// ("'if' cannot be used in patterns").
+    fn after_join(&self, fragment: &TokenStream) -> bool {
+        fragment.clone().into_iter().any(|token| match token {
+            proc_macro2::TokenTree::Ident(name) => {
+                name == "if" || name == "match" || self.joined.contains(&name.to_string())
+            }
+            proc_macro2::TokenTree::Group(group) => self.after_join(&group.stream()),
+            _ => false,
+        })
     }
 
     /// Returning the fragment alongside the condition preserves effects across
@@ -201,6 +219,9 @@ impl Compiler<'_> {
                 // conditions, which a trigger must not contain (Z3 drops such
                 // a pattern: "'=>' cannot be used in patterns").
                 let next = self.fresh("owned");
+                if self.operand_triggers && self.after_join(&fragment) {
+                    self.joined.insert(next.to_string());
+                }
                 declarations.push(quote! {let #enabled = (#pair).0; let #next = #fragment;});
                 result = quote! {#next};
             } else if preserves {
@@ -214,6 +235,9 @@ impl Compiler<'_> {
                 declarations.push(quote! {let #enabled = (#pair).0;});
             } else {
                 let next = self.fresh("owned");
+                if self.operand_triggers && self.after_join(&pair) {
+                    self.joined.insert(next.to_string());
+                }
                 declarations.push(quote! {let (#enabled, #next) = #pair;});
                 result = quote! {#next};
             }
@@ -238,6 +262,7 @@ impl Compiler<'_> {
     ) -> Result<TokenStream, Error> {
         let name = &field.name;
         let (observer, value) = self.observed_operand(field, operation, &current, span)?;
+        let operand_trigger = self.operand_triggers && self.after_join(&current);
         // Evaluate the candidate before a pattern can shadow any name in its
         // key/value expression (e.g. `remove map -= [key => let key]`).
         let value_ident = self.fresh("value");
@@ -262,9 +287,18 @@ impl Compiler<'_> {
                 ShardableType::PersistentOption(_) => quote! {
                     ::vstd::resource::tsm_collections::persistent_option_contains_operand((#observer).#name, #value)
                 },
+                ShardableType::Map(ref key_type, _) | ShardableType::IMap(ref key_type, _) if operand_trigger => {
+                    let key = self.fresh("map_key");
+                    quote! {forall|#key:#key_type| ::vstd::prelude::imply(#[trigger] (#value).contains_key(#key),(#observer).#name.at(#key)==Some(::vstd::resource::exclusive::ExclusiveRA::Exclusive((#value)[#key])))}
+                }
                 ShardableType::Map(ref key_type, _) | ShardableType::IMap(ref key_type, _) => {
                     let key = self.fresh("map_key");
                     quote! {forall|#key:#key_type| ::vstd::prelude::imply((#value).contains_key(#key),(#[trigger] (#observer).#name.at(#key))==Some(::vstd::resource::exclusive::ExclusiveRA::Exclusive((#value)[#key])))}
+                }
+                ShardableType::PersistentMap(ref key_type, _)
+                | ShardableType::PersistentIMap(ref key_type, _) if operand_trigger => {
+                    let key = self.fresh("map_key");
+                    quote! {forall|#key:#key_type| ::vstd::prelude::imply(#[trigger] (#value).contains_key(#key),(#observer).#name.at(#key)==Some(::vstd::resource::agree::AgreementRA::Agree((#value)[#key])))}
                 }
                 ShardableType::PersistentMap(ref key_type, _)
                 | ShardableType::PersistentIMap(ref key_type, _) => {
@@ -580,18 +614,29 @@ pub(crate) fn bound_value(
 }
 
 /// The ordered ownership condition of `statement`: each `remove` and `have` finds its
-/// operand in the owned fragment (a `have` also in `shared`).
+/// operand in the owned fragment (a `have` also in `shared`). With
+/// `operand_triggers` (local-ready transitions), a map observation after the
+/// join of an `if`/`match` that changes the owned fragment triggers on its
+/// operand's keys: a trigger on that fragment is dropped (it mentions the
+/// join), which leaves the condition unusable as a hypothesis.
 pub(crate) fn ownership_condition(
     statement: &TransitionStmt,
     fields: &HashMap<String, Field>,
     fragment_type: &TokenStream,
     initial_owned: TokenStream,
     shared: TokenStream,
+    operand_triggers: bool,
 ) -> Result<TokenStream, Error> {
     let shared_ident = format_ident!("__tsm_ownership_shared", span = Span::mixed_site());
     let initial_ident = format_ident!("__tsm_ownership_initial", span = Span::mixed_site());
-    let mut compiler =
-        Compiler { fields, fragment: fragment_type, shared: shared_ident.clone(), next_ident: 0 };
+    let mut compiler = Compiler {
+        fields,
+        fragment: fragment_type,
+        shared: shared_ident.clone(),
+        next_ident: 0,
+        operand_triggers,
+        joined: HashSet::new(),
+    };
     let Some(pair) = compiler.statement(statement, quote! {#initial_ident})? else {
         return Ok(quote! {true});
     };

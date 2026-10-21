@@ -497,7 +497,7 @@ fn singleton_map_remove_hints(sm:&SM,tr:&Transition,observation:&Ident,completio
     }).collect()
 }
 
-/// A step of a transition's unconditional prefix, for `local_sequence_hints`.
+/// A step of a transition's body, for `local_sequence_hints`.
 enum LocalStep<'a> {
     /// A `remove` or `have` of a map, set or multiset field (exclusive or
     /// persistent), with the pattern it binds.
@@ -506,60 +506,175 @@ enum LocalStep<'a> {
     Add(&'a Field),
     /// A `let` (pattern, type, value).
     Let(&'a verus_syn::Pat, Option<&'a verus_syn::Type>, &'a verus_syn::Expr),
+    /// The first branch of an `if`/`match`, see `local_steps`.
+    Branch(LocalBranch<'a>),
+    /// The next branch (`else`, or the next arm).
+    Next,
+    /// The end of the last branch.
+    Join,
 }
 
-/// The steps of `tr`'s body up to its first `if`/`match`, a pattern binding a
-/// field of another kind, or a refutable pattern (after that statement).
+/// The case split of a `LocalStep::Branch`.
+#[derive(Clone, Copy)]
+enum LocalBranch<'a> {
+    If(&'a verus_syn::Expr),
+    Match(&'a verus_syn::Expr, &'a [Arm]),
+}
+
+/// The steps of `tr`'s body. An `if`/`match` ends the statements it follows:
+/// it is `Branch`, each branch's steps (followed by the statements after the
+/// join, which are repeated per branch), separated by `Next`, then `Join`. A
+/// path ends at a pattern binding a field of another kind, or after a
+/// refutable pattern.
 fn local_steps<'a>(sm: &'a SM, tr: &'a Transition) -> Vec<LocalStep<'a>> {
-    fn walk<'a>(sm: &'a SM, stmt: &'a TransitionStmt, out: &mut Vec<LocalStep<'a>>) -> bool {
-        match stmt {
-            TransitionStmt::Block(_, children) => children.iter().all(|child| walk(sm, child, out)),
-            TransitionStmt::Split(_, split, children) => {
-                match &**split {
-                    SplitKind::Special(name, operation, _, pattern) => {
-                        let field = sm.fields.iter().find(|f| f.name == *name).filter(|f| {
-                            matches!(
-                                f.stype,
-                                ShardableType::Map(..)
-                                    | ShardableType::IMap(..)
-                                    | ShardableType::Set(_)
-                                    | ShardableType::ISet(_)
-                                    | ShardableType::Multiset(_)
-                                    | ShardableType::PersistentMap(..)
-                                    | ShardableType::PersistentIMap(..)
-                                    | ShardableType::PersistentSet(_)
-                                    | ShardableType::PersistentISet(_)
-                            )
-                        });
-                        let pattern = pattern.as_deref();
-                        match field {
-                            Some(field) if operation.is_remove() || operation.is_have() => {
-                                out.push(LocalStep::Observe(field, operation, pattern));
-                            }
-                            Some(field) => out.push(LocalStep::Add(field)),
-                            None if pattern.is_some() => return false,
-                            None => {}
-                        }
-                        if pattern.is_some_and(|p| !crate::util::is_definitely_irrefutable(p)) {
-                            return false;
-                        }
-                    }
-                    SplitKind::Let(pattern, ty, _, expression) => {
-                        if !crate::util::is_definitely_irrefutable(pattern) {
-                            return false;
-                        }
-                        out.push(LocalStep::Let(pattern, ty.as_deref(), expression));
-                    }
-                    _ => return false,
+    // `todo`: the statements still to do on this path, the next one last.
+    fn walk<'a>(sm: &'a SM, mut todo: Vec<&'a TransitionStmt>, out: &mut Vec<LocalStep<'a>>) {
+        while let Some(stmt) = todo.pop() {
+            let TransitionStmt::Split(_, split, children) = stmt else {
+                if let TransitionStmt::Block(_, children) = stmt {
+                    todo.extend(children.iter().rev());
                 }
-                children.iter().all(|child| walk(sm, child, out))
+                continue;
+            };
+            match &**split {
+                SplitKind::Special(name, operation, _, pattern) => {
+                    let field = sm.fields.iter().find(|f| f.name == *name).filter(|f| {
+                        matches!(
+                            f.stype,
+                            ShardableType::Map(..)
+                                | ShardableType::IMap(..)
+                                | ShardableType::Set(_)
+                                | ShardableType::ISet(_)
+                                | ShardableType::Multiset(_)
+                                | ShardableType::PersistentMap(..)
+                                | ShardableType::PersistentIMap(..)
+                                | ShardableType::PersistentSet(_)
+                                | ShardableType::PersistentISet(_)
+                        )
+                    });
+                    let pattern = pattern.as_deref();
+                    match field {
+                        Some(field) if operation.is_remove() || operation.is_have() => {
+                            out.push(LocalStep::Observe(field, operation, pattern));
+                        }
+                        Some(field) => out.push(LocalStep::Add(field)),
+                        None if pattern.is_some() => return,
+                        None => {}
+                    }
+                    if pattern.is_some_and(|p| !crate::util::is_definitely_irrefutable(p)) {
+                        return;
+                    }
+                }
+                SplitKind::Let(pattern, ty, _, expression) => {
+                    if !crate::util::is_definitely_irrefutable(pattern) {
+                        return;
+                    }
+                    out.push(LocalStep::Let(pattern, ty.as_deref(), expression));
+                }
+                SplitKind::If(condition) => {
+                    out.push(LocalStep::Branch(LocalBranch::If(condition)));
+                    branches(sm, &todo, children, out);
+                    return;
+                }
+                SplitKind::Match(scrutinee, arms) => {
+                    out.push(LocalStep::Branch(LocalBranch::Match(scrutinee, arms)));
+                    branches(sm, &todo, children, out);
+                    return;
+                }
             }
-            _ => true,
+            todo.extend(children.iter().rev());
         }
     }
+    fn branches<'a>(
+        sm: &'a SM,
+        todo: &[&'a TransitionStmt],
+        children: &'a [TransitionStmt],
+        out: &mut Vec<LocalStep<'a>>,
+    ) {
+        for (index, child) in children.iter().enumerate() {
+            if index > 0 {
+                out.push(LocalStep::Next);
+            }
+            let mut todo = todo.to_vec();
+            todo.push(child);
+            walk(sm, todo, out);
+        }
+        out.push(LocalStep::Join);
+    }
     let mut out = vec![];
-    walk(sm, &tr.body, &mut out);
+    walk(sm, vec![&tr.body], &mut out);
     out
+}
+
+/// A `LocalStep::Branch` being replayed: the hints before it, the tracked
+/// fields' fragments and states and the fields not followed at its start, and
+/// the hints of its branches done so far.
+struct LocalCase<'a> {
+    branch: LocalBranch<'a>,
+    outer: Vec<TokenStream>,
+    tracked: Vec<(String, TokenStream, TokenStream, Ident)>,
+    ended: HashSet<String>,
+    done: Vec<Vec<TokenStream>>,
+}
+
+/// The case split replaying the branches' `hints` (`local_sequence_hints`):
+/// the condition, scrutinee and guards are read at the completion.
+fn local_case_split(
+    branch: LocalBranch<'_>,
+    hints: Vec<Vec<TokenStream>>,
+    at_completion: &dyn Fn(&verus_syn::Expr) -> verus_syn::Expr,
+) -> TokenStream {
+    match branch {
+        LocalBranch::If(condition) => {
+            let condition = at_completion(condition);
+            let (yes, no) = (&hints[0], &hints[1]);
+            quote! {if #condition {#(#yes)*} else {#(#no)*}}
+        }
+        LocalBranch::Match(scrutinee, arms) => {
+            let scrutinee = at_completion(scrutinee);
+            let arms = arms.iter().zip(&hints).map(|(arm, hints)| {
+                let pattern = &arm.pat;
+                let guard = arm.guard.as_ref().map(|(_, guard)| {
+                    let guard = at_completion(guard);
+                    quote! {if #guard}
+                });
+                quote! {#pattern #guard => {#(#hints)*}}
+            });
+            quote! {match #scrutinee {#(#arms),*}}
+        }
+    }
+}
+
+/// The paths through `steps` (`local_steps`), without branch markers.
+fn local_paths<'s, 'a>(steps: &'s [LocalStep<'a>]) -> Vec<Vec<&'s LocalStep<'a>>> {
+    let Some(start) = steps.iter().position(|step| matches!(step, LocalStep::Branch(_))) else {
+        return vec![steps.iter().collect()];
+    };
+    let prefix = &steps[..start];
+    let mut sections = vec![];
+    let (mut depth, mut from) = (0usize, start + 1);
+    for (index, step) in steps.iter().enumerate().skip(start + 1) {
+        match step {
+            LocalStep::Branch(_) => depth += 1,
+            LocalStep::Next if depth == 0 => {
+                sections.push(&steps[from..index]);
+                from = index + 1;
+            }
+            LocalStep::Join if depth == 0 => {
+                sections.push(&steps[from..index]);
+                break;
+            }
+            LocalStep::Join => depth -= 1,
+            _ => {}
+        }
+    }
+    let mut paths = vec![];
+    for section in sections {
+        for path in local_paths(section) {
+            paths.push(prefix.iter().chain(path).collect());
+        }
+    }
+    paths
 }
 
 /// Readiness facts for the `remove`s and `have`s of map, set and multiset
@@ -577,7 +692,10 @@ fn local_steps<'a>(sm: &'a SM, tr: &'a Transition) -> Vec<LocalStep<'a>> {
 /// `h`, for a `remove`, and the completion frame to the state's embedding),
 /// and a `remove` yields the next fragment (the ownership compiler's) and the
 /// next state (the transition's update). `let`s and pattern bindings are
-/// bound as in the transition. Stated inside the completion quantifier, with
+/// bound as in the transition. An `if`/`match` is a case split on its
+/// condition or scrutinee (with the arms' patterns and guards), each branch
+/// replaying its statements and those after the join from the fragments and
+/// states before the split. Stated inside the completion quantifier, with
 /// operands read at the completion. Returns the hints and the fields they
 /// cover (all fields of the steps, if any; their singleton hints are omitted).
 fn local_sequence_hints(
@@ -591,10 +709,11 @@ fn local_sequence_hints(
         component_type, map_view, set_view, updated_component, EffectOp,
     };
     let steps = local_steps(sm, tr);
-    // Whether the field's statements need these hints.
-    let needs = |field: &Field| {
+    let paths = local_paths(&steps);
+    // Whether the field's statements on a path need these hints.
+    let needs = |path: &Vec<&LocalStep>, field: &Field| {
         let mut operations = vec![];
-        for step in &steps {
+        for step in path {
             match step {
                 LocalStep::Observe(f, operation, _) if f.name == field.name => {
                     operations.push(*operation)
@@ -619,7 +738,7 @@ fn local_sequence_hints(
             _ => None,
         })
     };
-    if !observed().any(needs) {
+    if !paths.iter().any(|path| observed().any(|field| needs(path, field))) {
         return Ok((vec![], HashSet::new()));
     }
     let covered = observed().map(|field| field.name.to_string()).collect();
@@ -648,8 +767,49 @@ fn local_sequence_hints(
     let mut tracked: Vec<(String, TokenStream, TokenStream, Ident)> = vec![];
     let mut ended: HashSet<String> = HashSet::new();
     let mut hints = vec![quote! {<#ft>::associative(owned,h,#z);}];
+    // The enclosing branches, innermost last (`LocalCase`), and while a path
+    // is not followed further, 1 + the depth of the branches entered since.
+    let mut cases: Vec<LocalCase> = vec![];
+    let mut skipping = 0usize;
     for (index, step) in steps.iter().enumerate() {
+        if skipping > 0 {
+            match step {
+                LocalStep::Branch(_) => skipping += 1,
+                LocalStep::Next | LocalStep::Join if skipping > 1 => {
+                    if matches!(step, LocalStep::Join) {
+                        skipping -= 1;
+                    }
+                }
+                LocalStep::Next | LocalStep::Join => skipping = 0,
+                _ => {}
+            }
+            if skipping > 0 {
+                continue;
+            }
+        }
         let (field, operation, pattern) = match step {
+            LocalStep::Branch(branch) => {
+                cases.push(LocalCase {
+                    branch: *branch,
+                    outer: std::mem::take(&mut hints),
+                    tracked: tracked.clone(),
+                    ended: ended.clone(),
+                    done: vec![],
+                });
+                continue;
+            }
+            LocalStep::Next | LocalStep::Join => {
+                let case = cases.last_mut().unwrap();
+                case.done.push(std::mem::take(&mut hints));
+                tracked = case.tracked.clone();
+                ended = case.ended.clone();
+                if matches!(step, LocalStep::Join) {
+                    let case = cases.pop().unwrap();
+                    hints = case.outer;
+                    hints.push(local_case_split(case.branch, case.done, &at_completion));
+                }
+                continue;
+            }
             LocalStep::Let(pattern, ty, expression) => {
                 let ty = ty.map(|ty| quote! {:#ty});
                 let expression = at_completion(expression);
@@ -665,7 +825,8 @@ fn local_sequence_hints(
         let n = &field.name;
         if ended.contains(&n.to_string()) {
             if pattern.is_some() {
-                break;
+                // This path is not followed further.
+                skipping = 1;
             }
             continue;
         }

@@ -9942,3 +9942,151 @@ test_verify_one_file_with_options! {
         }}
     } => Ok(())
 }
+
+// Branch version of general_operand_after_remove_same_field_local_ready_verified (checked macro
+// only, as there): `remove`s and `have`s under `if`/`match`, before and after the join. The
+// readiness proof replayed only the statements before the first `if`/`match`; and a map
+// observation after a join that changes the owned fragment had no usable trigger.
+test_verify_one_file_with_options! {
+    #[test] branch_operands_local_ready_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        verified_tokenized_state_machine!{
+            #[verified_raw_tokens]
+            #[verified_local_ready(remove_if_have, if_remove_have, if_else_remove_have,
+                remove_if_else_have, nested, nested_join, if_let, if_tuple, if_require_assert,
+                if_remove_add, match_remove_have, match_guard, if_singleton,
+                imap_if_else_remove_have, set_if_else_remove_have, set_nested,
+                multiset_if_else_remove_have, persistent_match, persistent_if_add, two_fields)]
+            X {
+            fields {
+                #[sharding(map)] pub m: Map<int, int>,
+                #[sharding(imap)] pub im: IMap<int, int>,
+                #[sharding(set)] pub s: Set<int>,
+                #[sharding(multiset)] pub ms: Multiset<int>,
+                #[sharding(persistent_map)] pub pm: Map<int, int>,
+                #[sharding(storage_option)] pub st: Option<int>,
+            }
+
+            init!{ initialize() {
+                init m = Map::empty(); init im = IMap::empty(); init s = Set::empty();
+                init ms = Multiset::empty(); init pm = Map::empty(); init st = None;
+            } }
+
+            transition!{ remove_if_have(a: Map<int, int>, b: Map<int, int>, c: bool) {
+                remove m -= (a);
+                if c { have m >= (b); }
+            } }
+            transition!{ if_remove_have(a: Map<int, int>, b: Map<int, int>, c: bool) {
+                if c { remove m -= (a); have m >= (b); }
+            } }
+            transition!{ if_else_remove_have(a: Map<int, int>, b: Map<int, int>, d: Map<int, int>, c: bool) {
+                if c { remove m -= (a); } else { remove m -= (b); }
+                have m >= (d);
+            } }
+            transition!{ remove_if_else_have(a: Map<int, int>, b: Map<int, int>, d: Map<int, int>, c: bool) {
+                remove m -= (a);
+                if c { remove m -= (b); } else { have m >= (b); }
+                have m >= (d);
+            } }
+            transition!{ nested(a: Map<int, int>, b: Map<int, int>, d: Map<int, int>, c: bool, e: bool) {
+                if c {
+                    if e { remove m -= (a); } else { have m >= (a); }
+                    have m >= (b);
+                } else {
+                    remove m -= (b);
+                }
+                have m >= (d);
+            } }
+            transition!{ nested_join(a: Map<int, int>, b: Map<int, int>, d: Map<int, int>, c: bool, e: bool) {
+                remove m -= (a);
+                if c {
+                    if e { remove m -= (b); }
+                    have m >= (d);
+                }
+                have m >= (d);
+            } }
+            transition!{ if_let(a: Map<int, int>, b: Map<int, int>, c: bool) {
+                if c {
+                    let x = a;
+                    remove m -= (x);
+                    have m >= (b);
+                }
+            } }
+            transition!{ if_tuple(a: Map<int, int>, b: Map<int, int>, d: Map<int, int>, c: bool) {
+                if c {
+                    let (x, y) = (a, b);
+                    remove m -= (x);
+                    remove m -= (y);
+                    have m >= (d);
+                }
+            } }
+            transition!{ if_require_assert(a: Map<int, int>, b: Map<int, int>, c: bool) {
+                if c {
+                    require(b.len() > 0);
+                    remove m -= (a);
+                    assert(c);
+                    have m >= (b);
+                }
+            } }
+            transition!{ if_remove_add(a: Map<int, int>, b: Map<int, int>, c: bool) {
+                if c { remove m -= (a); } else { remove m -= (a); have m >= (b); }
+                add m += (a);
+            } }
+            transition!{ match_remove_have(a: Map<int, int>, b: Map<int, int>, o: Option<int>) {
+                match o {
+                    Some(v) => { remove m -= (a); have m >= (b); }
+                    None => { have m >= (b); }
+                }
+            } }
+            transition!{ match_guard(a: Map<int, int>, b: Map<int, int>, d: Map<int, int>, o: Option<int>) {
+                remove m -= (a);
+                match o {
+                    Some(v) if v > 0 => { have m >= (b); }
+                    _ => { remove m -= (b); }
+                }
+                have m >= (d);
+            } }
+            transition!{ if_singleton(k: int, v: int, l: int, w: int, b: Map<int, int>, c: bool) {
+                if c { remove m -= [k => v]; have m >= (b); } else { remove m -= [k => v]; remove m -= [l => w]; }
+            } }
+
+            transition!{ imap_if_else_remove_have(a: IMap<int, int>, b: IMap<int, int>, d: IMap<int, int>, c: bool) {
+                if c { remove im -= (a); } else { remove im -= (b); }
+                have im >= (d);
+            } }
+            transition!{ set_if_else_remove_have(a: Set<int>, b: Set<int>, d: Set<int>, c: bool) {
+                if c { remove s -= (a); } else { remove s -= (b); }
+                have s >= (d);
+            } }
+            transition!{ set_nested(a: Set<int>, b: Set<int>, d: Set<int>, c: bool, e: bool) {
+                if c {
+                    if e { remove s -= (a); } else { have s >= (a); }
+                    have s >= (b);
+                } else {
+                    remove s -= (b);
+                }
+                have s >= (d);
+            } }
+            transition!{ multiset_if_else_remove_have(a: Multiset<int>, b: Multiset<int>, d: Multiset<int>, c: bool) {
+                require(forall|x: int| d.count(x) <= 1);
+                if c { remove ms -= (a); } else { remove ms -= (b); }
+                have ms >= (d);
+            } }
+            transition!{ persistent_match(a: Map<int, int>, b: Map<int, int>, o: Option<int>) {
+                match o {
+                    Some(v) => { have pm >= (a); add pm (union)= (a); }
+                    None => { have pm >= (b); }
+                }
+            } }
+            transition!{ persistent_if_add(a: Map<int, int>, b: Map<int, int>, d: Map<int, int>, c: bool) {
+                have pm >= (a);
+                if c { have pm >= (b); } else { have pm >= (d); }
+                add pm (union)= (a);
+            } }
+            transition!{ two_fields(a: Map<int, int>, b: Set<int>, d: Map<int, int>, e: Set<int>, c: bool) {
+                if c { remove m -= (a); remove s -= (b); } else { remove s -= (b); }
+                have m >= (d);
+                have s >= (e);
+            } }
+        }}
+    } => Ok(())
+}
