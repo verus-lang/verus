@@ -35,6 +35,34 @@ pub tracked struct StorageResource<K, V, P> {
     _send_sync: super::super::state_machine_internal::SyncSendIfSyncSend<IMap<K, V>>,
 }
 
+#[verifier::external]
+impl<K, V, P> !Copy for StorageResource<K, V, P> {
+
+}
+
+#[verifier::external_body]
+#[verifier::accept_recursive_types(K)]
+#[verifier::accept_recursive_types(P)]
+#[verifier::accept_recursive_types(V)]
+pub tracked struct CopyableStorageResource<K, V, P> {
+    _p: core::marker::PhantomData<(K, V, P)>,
+    _send_sync: super::super::state_machine_internal::SyncSendIfSyncSend<IMap<K, V>>,
+}
+
+impl<K, V, P> Copy for CopyableStorageResource<K, V, P> {
+
+}
+
+impl<K, V, P> Clone for CopyableStorageResource<K, V, P> {
+    #[verifier::external_body]
+    fn clone(&self) -> Self {
+        CopyableStorageResource {
+            _p: core::marker::PhantomData,
+            _send_sync: self._send_sync.clone(),
+        }
+    }
+}
+
 /// See [`StorageResource`] for more information.
 pub trait Protocol<K, V>: Sized {
     spec fn op(self, other: Self) -> Self;
@@ -373,6 +401,33 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
                 let (new_p, new_s) = out;
                 new_p.loc() == p.loc() && new_values.contains((new_p.value(), new_s))
             }),
+    ;
+
+    /// Wrap this resource in a type that implements `Copy`,
+    /// given that the resource is duplicable.
+    pub axiom fn into_copyable(self, p: P) -> (r: CopyableStorageResource<K, V, P>)
+        requires
+            P::op(P::op(self.value(), self.value()), p) == self.value(),
+        ensures
+            r.loc() == self.loc(),
+            r.value() == self.value(),
+    ;
+}
+
+/// A variant of [`Resource`] that implements `Copy`.
+///
+/// Use [`Self::into_resource`] to get the underlying resource.
+impl<K, V, P: Protocol<K, V>> CopyableStorageResource<K, V, P> {
+    /// The underlying value of the resource
+    pub uninterp spec fn value(self) -> P;
+
+    /// The location of the resource
+    pub uninterp spec fn loc(self) -> Loc;
+
+    pub axiom fn into_resource(self) -> (r: StorageResource<K, V, P>)
+        ensures
+            r.loc() == self.loc(),
+            r.value() == self.value(),
     ;
 }
 
