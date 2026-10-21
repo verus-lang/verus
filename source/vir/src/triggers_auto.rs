@@ -7,6 +7,7 @@ use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
 use crate::messages::{Span, error};
 use crate::sst::{BinaryOp, CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
+use indexmap::{IndexMap, IndexSet};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -189,17 +190,17 @@ impl Score {
 
 struct Ctxt {
     // variables the triggers must cover
-    trigger_vars: HashSet<VarIdent>,
+    trigger_vars: IndexSet<VarIdent>,
     // terms with App
     all_terms: HashMap<Term, Span>,
     // terms with App and without Other
     // (note: tuple terms are excluded from pure_terms, but a pure_term may have tuples inside)
     // The usize is used to sort the terms in the triggers for better stability
-    pure_terms: HashMap<Term, (Exp, usize)>,
+    pure_terms: IndexMap<Term, (Exp, usize)>,
     // all_terms, indexed by head App
     all_terms_by_app: HashMap<App, HashMap<Term, Span>>,
     // pure_terms, indexed by trigger_vars
-    pure_terms_by_var: HashMap<VarIdent, HashMap<Term, Span>>,
+    pure_terms_by_var: HashMap<VarIdent, IndexMap<Term, Span>>,
     // best score for this term
     pure_best_scores: HashMap<Term, Score>,
     // used for Other
@@ -234,7 +235,7 @@ fn check_timeout(timer: &mut Timer) -> Result<(), VirErr> {
     }
 }
 
-fn trigger_vars_in_term(ctxt: &Ctxt, vars: &mut HashSet<VarIdent>, term: &Term) {
+fn trigger_vars_in_term(ctxt: &Ctxt, vars: &mut IndexSet<VarIdent>, term: &Term) {
     match &**term {
         TermX::Var(x) if ctxt.trigger_vars.contains(x) => {
             vars.insert(x.clone());
@@ -610,7 +611,7 @@ fn remove_obvious_potential_loops(ctxt: &mut Ctxt, timer: &mut Timer) -> Result<
         }
     }
     for pure in remove {
-        ctxt.pure_terms.remove(&pure);
+        ctxt.pure_terms.shift_remove(&pure);
     }
     Ok(())
 }
@@ -618,8 +619,8 @@ fn remove_obvious_potential_loops(ctxt: &mut Ctxt, timer: &mut Timer) -> Result<
 type Trigger = Vec<(Term, Span)>;
 
 struct State {
-    remaining_vars: HashSet<VarIdent>,
-    accumulated_terms: HashMap<Term, Span>,
+    remaining_vars: IndexSet<VarIdent>,
+    accumulated_terms: IndexMap<Term, Span>,
     // if AutoType::All, chosen_triggers will contain all minimal covers of the variable set
     // if AutoType::Auto, chosen_triggers will contain a single minimal cover chosen by Score heuristic
     chosen_triggers: Vec<Trigger>,
@@ -719,13 +720,13 @@ fn compute_triggers(
     for (term, span) in &ctxt.pure_terms_by_var[&x] {
         if !state.accumulated_terms.contains_key(term) {
             state.accumulated_terms.insert(term.clone(), span.clone());
-            let mut vars: HashSet<VarIdent> = HashSet::new();
+            let mut vars: IndexSet<VarIdent> = IndexSet::new();
             let mut removed: Vec<VarIdent> = Vec::new();
             trigger_vars_in_term(ctxt, &mut vars, &term);
             // remove term's vars
             for y in vars {
                 if state.remaining_vars.contains(&y) {
-                    state.remaining_vars.remove(&y);
+                    state.remaining_vars.shift_remove(&y);
                     removed.push(y.clone());
                 }
             }
@@ -734,7 +735,7 @@ fn compute_triggers(
             for y in removed {
                 state.remaining_vars.insert(y);
             }
-            state.accumulated_terms.remove(term);
+            state.accumulated_terms.shift_remove(term);
         }
     }
     Ok(())
@@ -750,7 +751,7 @@ pub(crate) fn build_triggers(
     let mut ctxt = Ctxt {
         trigger_vars: vars.iter().cloned().collect(),
         all_terms: HashMap::new(),
-        pure_terms: HashMap::new(),
+        pure_terms: IndexMap::new(),
         all_terms_by_app: HashMap::new(),
         pure_terms_by_var: HashMap::new(),
         pure_best_scores: HashMap::new(),
@@ -758,7 +759,7 @@ pub(crate) fn build_triggers(
         gather_for_all_triggers: auto_trigger == AutoType::All,
     };
     for x in vars {
-        ctxt.pure_terms_by_var.insert(x.clone(), HashMap::new());
+        ctxt.pure_terms_by_var.insert(x.clone(), IndexMap::new());
     }
     let mut timer = Timer { span: span.clone(), timeout_countdown: 10000 };
     gather_terms(&mut ctxt, ctx, exp, 0);
@@ -776,7 +777,7 @@ pub(crate) fn build_triggers(
     remove_obvious_potential_loops(&mut ctxt, &mut timer)?;
     // println!("pure after loop removal:");
     for (term, (e, _)) in ctxt.pure_terms.iter() {
-        let mut vars: HashSet<VarIdent> = HashSet::new();
+        let mut vars: IndexSet<VarIdent> = IndexSet::new();
         trigger_vars_in_term(&ctxt, &mut vars, &term);
         for x in &vars {
             ctxt.pure_terms_by_var.get_mut(x).unwrap().insert(term.clone(), e.span.clone());
@@ -791,7 +792,7 @@ pub(crate) fn build_triggers(
     */
     let mut state = State {
         remaining_vars: ctxt.trigger_vars.iter().cloned().collect(),
-        accumulated_terms: HashMap::new(),
+        accumulated_terms: IndexMap::new(),
         chosen_triggers: Vec::new(),
         low_confidence: false,
     };
