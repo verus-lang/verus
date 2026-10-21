@@ -5405,6 +5405,9 @@ pub(crate) fn rewrite_items_inner(
         inside_impl: None,
         additional_items: Vec::new(),
     };
+    if erase_ghost != EraseGhost::EraseAll && crate::node_ids::enabled() {
+        crate::node_ids::stamp_items(items);
+    }
     visitor.visit_items_prefilter(items);
     let mut index = 0;
     while index < items.len() {
@@ -5447,6 +5450,9 @@ pub(crate) fn rewrite_impl_items(
         inside_impl: None,
         additional_items: Vec::new(),
     };
+    if erase_ghost != EraseGhost::EraseAll && crate::node_ids::enabled() {
+        crate::node_ids::stamp_impl_items(&mut items.items);
+    }
     visitor.visit_impl_items_prefilter(&mut items.items, for_trait);
     for mut item in &mut items.items {
         visitor.visit_impl_item_mut(&mut item);

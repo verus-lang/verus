@@ -142,7 +142,7 @@ test_verify_one_file_with_options! {
             }
             i
         }
-    } => Err(err) => assert_erasure_diff(err, "is exec control flow in the verified program, but the compiled program has no such node", "break")
+    } => Err(err) => assert_erasure_diff(err, "in the verified program, but the compiled program has no such node", "break")
 }
 
 test_verify_one_file_with_options! {
@@ -257,14 +257,12 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
-// Known gaps: programs whose compiled code differs from the verified code, but that the check
-// accepts. In each one, `get` is verified to return 0 and the compiled `get` returns 42.
+// In each of the following tests, `get` is verified to return 0 and the compiled `get` returns 42.
+// The check reports them because the nodes written by the user carry a node id (see
+// builtin_macros/src/node_ids.rs): a node with an id must be in both programs.
 
 test_verify_one_file_with_options! {
-    // The two programs have exec nodes at different locations; a node that only one program has
-    // is not compared (except for control flow).
-    #[ignore = "known gap: exec code present only in the verified program is not reported"]
-    #[test] gap_exec_code_only_in_one_program ["-V check-erasure"] => verus_code! {
+    #[test] exec_code_only_in_verified_program ["-V check-erasure"] => verus_code! {
         use vstd::prelude::*;
         fn get() -> (r: u8)
             ensures r == 0,
@@ -278,8 +276,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore = "known gap: exec code present only in the compiled program is not reported"]
-    #[test] gap_exec_code_only_in_compiled_program ["-V check-erasure"] => verus_code! {
+    #[test] exec_code_only_in_compiled_program ["-V check-erasure"] => verus_code! {
         use vstd::prelude::*;
         fn get() -> (r: u8)
             ensures r == 0,
@@ -295,8 +292,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     // Both programs have the same nodes with the same types; only the value of the literal that
     // `cfg!` expands to differs.
-    #[ignore = "known gap: literal values are not compared"]
-    #[test] gap_literal_value ["-V check-erasure"] => verus_code! {
+    #[test] literal_value ["-V check-erasure"] => verus_code! {
         use vstd::prelude::*;
         fn get() -> (r: u8)
             ensures r == 0,
@@ -304,4 +300,17 @@ test_verify_one_file_with_options! {
             if cfg!(verus_keep_ghost_body) { 0 } else { 42 }
         }
     } => Err(err) => assert_erasure_diff(err, "", "cfg!(verus_keep_ghost_body)")
+}
+
+test_verify_one_file_with_options! {
+    // A specification written as a call statement (legacy syntax) is spec code in the verified
+    // program; Erase keeps the call, so the compiled `f` calls `verus_builtin::requires`, whose
+    // body is `unimplemented!()`, and panics.
+    #[test] legacy_requires_call_in_compiled_program ["-V check-erasure"] => verus_code! {
+        use vstd::prelude::*;
+        fn f(a: u64) -> u64 {
+            requires(a < 30);
+            a + 1
+        }
+    } => Err(err) => assert_erasure_diff(err, "verus_builtin::requires", "requires(a < 30)")
 }

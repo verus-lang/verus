@@ -62,8 +62,13 @@ pub fn extend_args_and_check_is_direct_rustc_call(
     // which calls rust_verify directly. If we support building verus with cargo-verus, then
     // this would be "solved"
     if verus_crate {
-        const VERUS_CFGS: [&str; 4] =
-            ["verus_keep_ghost", "verus_keep_ghost_body", "verus_verify_core", "verus_no_vstd"];
+        const VERUS_CFGS: [&str; 5] = [
+            "verus_keep_ghost",
+            "verus_keep_ghost_body",
+            "verus_verify_core",
+            "verus_no_vstd",
+            "verus_check_erasure_ids",
+        ];
         // verus_crate ==> package_name is Some
         let cfgs: Vec<&str> = if get_package_name(dep_tracker).unwrap() == "vstd" {
             VERUS_CFGS.to_vec()

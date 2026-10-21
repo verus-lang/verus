@@ -237,6 +237,8 @@ pub fn enable_default_features_and_verus_attr(
     rustc_args.push("-Zcrate-attr=register_tool(verus)".to_string());
     rustc_args.push("-Zcrate-attr=register_tool(verifier)".to_string());
     rustc_args.push("-Zcrate-attr=register_tool(verusfmt)".to_string());
+    // node ids for -V check-erasure (see builtin_macros/src/node_ids.rs)
+    rustc_args.push("-Zcrate-attr=register_tool(verus_nid)".to_string());
 }
 
 fn error(msg: String) -> ! {

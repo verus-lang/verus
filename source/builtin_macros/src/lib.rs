@@ -8,6 +8,7 @@
 use std::sync::OnceLock;
 use synstructure::{decl_attribute, decl_derive};
 
+mod node_ids;
 #[macro_use]
 mod syntax;
 mod atomic_ghost;

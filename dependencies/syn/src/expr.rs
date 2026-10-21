@@ -3516,7 +3516,11 @@ pub(crate) mod printing {
         let do_print_expr = |tokens: &mut TokenStream| print_expr(expr, tokens, fixup);
 
         if needs_group {
-            token::Paren::default().surround(tokens, do_print_expr);
+            // Verus: the inserted parentheses take the span of the expression they surround, not
+            // the call site, so that the span of the enclosing expression (its first token) is
+            // still the span of the user's tokens
+            let span = crate::spanned::Spanned::span(expr);
+            token::Paren(span).surround(tokens, do_print_expr);
         } else {
             do_print_expr(tokens);
         }

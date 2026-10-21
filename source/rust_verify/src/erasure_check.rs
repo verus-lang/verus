@@ -13,6 +13,11 @@
 //! In the verify run, ghost code (as determined by VIR mode checking) is projected out, except
 //! for control flow that VIR models as exec (break/continue targeting an exec loop).
 //! After the compile run, the two tables are compared and each difference is reported as an error.
+//!
+//! Nodes are keyed by their node id when they have one (see builtin_macros/src/node_ids.rs:
+//! `verus!` numbers the expressions written by the user in source order, the same way in both
+//! runs), and by source location otherwise. A node keyed by its id must be in both tables; a node
+//! keyed by its location is compared only when both tables have it (control flow excepted).
 
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::intravisit::{self, Visitor};
@@ -49,6 +54,8 @@ pub enum FactKind {
     Flow,
     /// (c) the tests a pattern performs (match arms, let-else, if-let)
     Shape,
+    /// value of a literal
+    Value,
 }
 
 impl FactKind {
@@ -60,6 +67,7 @@ impl FactKind {
             FactKind::Res => "resolves to",
             FactKind::Flow => "control flow",
             FactKind::Shape => "pattern tests",
+            FactKind::Value => "literal",
         }
     }
 }
@@ -93,6 +101,8 @@ pub struct BodyTable {
     pub key: (Loc, String),
     /// key: (location, node class)
     pub nodes: BTreeMap<(Loc, &'static str), Vec<Fact>>,
+    /// source location of each node keyed by its node id (for messages)
+    pub display: BTreeMap<Loc, Loc>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -104,6 +114,10 @@ pub struct Table {
 #[derive(Default)]
 pub struct ExecInfo {
     pub hir_exec: HashMap<HirId, bool>,
+    /// is the expression checked in an exec context, whatever its mode (used for nodes with a
+    /// node id: a unit-valued `match` whose arms are all proof code has a non-exec mode, but the
+    /// compiled program still runs it)
+    pub hir_exec_ctx: HashMap<HirId, bool>,
     pub pat_exec: HashMap<HirId, bool>,
     pub erased_trees: HashSet<HirId>,
     /// does the expression have mode exec (used for if conditions and match scrutinees)
@@ -150,6 +164,8 @@ impl ExecInfo {
         for (hir_id, ast_id) in hir_vir {
             if let Some(exec) = ast_exec.get(ast_id) {
                 // exec code: checked in an exec context and has mode exec
+                let e = info.hir_exec_ctx.entry(*hir_id).or_insert(false);
+                *e = *e || *exec;
                 let exec = *exec && *ast_mode.get(ast_id).unwrap_or(&true);
                 let e = info.hir_exec.entry(*hir_id).or_insert(false);
                 *e = *e || exec;
@@ -262,6 +278,64 @@ impl<'a, 'tcx> Walker<'a, 'tcx> {
         loc_of(self.sm, span)
     }
 
+    /// the node id that `verus!` gave this node (`#[verus_nid::n(N)]`)
+    fn nid(&self, hir_id: HirId) -> Option<u64> {
+        for attr in self.tcx.hir_attrs(hir_id) {
+            if let rustc_hir::Attribute::Unparsed(item) = attr {
+                let segs: Vec<&str> = item.path.segments.iter().map(|s| s.as_str()).collect();
+                if segs == ["verus_nid", "n"] {
+                    if let rustc_hir::AttrArgs::Delimited(d) = &item.args {
+                        for tt in d.tokens.iter() {
+                            if let rustc_ast::tokenstream::TokenTree::Token(tok, _) = tt {
+                                if let rustc_ast::token::TokenKind::Literal(lit) = tok.kind {
+                                    return lit.symbol.as_str().parse().ok();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Key of an expression: its node id if it has one, otherwise its user location
+    fn expr_key(&mut self, e: &Expr<'tcx>) -> Option<Loc> {
+        match self.nid(e.hir_id) {
+            Some(n) => {
+                let key = Loc { file: String::new(), lo: 0, hi: 0, via: format!("nid {n}") };
+                if let Some(l) = self.loc(e.span) {
+                    self.table.display.insert(key.clone(), l);
+                }
+                Some(key)
+            }
+            None => self.user_loc(e.span),
+        }
+    }
+
+    /// Identity of a loop (break/continue target): node id if it has one, otherwise location
+    fn target_str(&self, target: HirId) -> String {
+        // The loop of rustc's `for` desugaring has no id; the `for` expression's id is on the
+        // enclosing DropTemps (see `for_loop`).
+        let for_loop_id = || {
+            let Node::Expr(Expr {
+                kind: ExprKind::Loop(_, _, rustc_hir::LoopSource::ForLoop, _),
+                ..
+            }) = self.tcx.hir_node(target)
+            else {
+                return None;
+            };
+            self.tcx.hir_parent_id_iter(target).find_map(|id| self.nid(id))
+        };
+        match self.nid(target).or_else(for_loop_id) {
+            Some(n) => format!("loop nid {n}"),
+            None => match self.loc(self.tcx.hir_span(target)) {
+                Some(t) => format!("loop @{}:{}-{}", t.file, t.lo, t.hi),
+                None => "?".to_string(),
+            },
+        }
+    }
+
     /// Rule 1 of user-token detection: the span must have the root syntax context.
     /// This excludes tokens created by `quote!`/`call_site`/`mixed_site`, `macro_rules!` bodies
     /// and rustc's own desugarings.
@@ -306,7 +380,8 @@ impl<'a, 'tcx> Walker<'a, 'tcx> {
     fn starts_with_keyword(&self, span: Span, kw: &str) -> bool {
         match self.sm.span_to_snippet(span) {
             Ok(s) => {
-                let s = s.trim_start();
+                // allow outer attributes (`#[verifier::loop_isolation(false)] for ..`)
+                let s = skip_outer_attrs(&s);
                 // allow a loop label before `loop`
                 let s = if s.starts_with('\'') {
                     match s.find(':') {
@@ -733,14 +808,10 @@ impl<'a, 'tcx> Walker<'a, 'tcx> {
         if !(self.exec || target_exec) {
             return;
         }
-        let Some(loc) = self.user_loc(e.span) else { return };
+        let Some(loc) = self.expr_key(e) else { return };
         let target_span = self.tcx.hir_span(target);
-        let tloc = self.loc(target_span);
         let label = dest.label.map(|l| format!(" '{}", l.ident.name)).unwrap_or_default();
-        let cmp = match &tloc {
-            Some(t) => format!("{what}{label} -> loop @{}:{}-{}", t.file, t.lo, t.hi),
-            None => format!("{what}{label} -> ?"),
-        };
+        let cmp = format!("{what}{label} -> {}", self.target_str(target));
         let show = format!(
             "`{what}{label}` exiting the loop at {}",
             self.sm.span_to_diagnostic_string(target_span)
@@ -756,7 +827,7 @@ impl<'a, 'tcx> Walker<'a, 'tcx> {
             ExprKind::Ret(_) => {
                 let (bloc, bexec) = self.body_stack.last().cloned().unwrap_or((None, true));
                 if self.exec || bexec {
-                    if let Some(loc) = self.user_loc(e.span) {
+                    if let Some(loc) = self.expr_key(e) {
                         let cmp = match &bloc {
                             Some(b) => format!("return -> body @{}:{}-{}", b.file, b.lo, b.hi),
                             None => "return -> ?".to_string(),
@@ -772,9 +843,16 @@ impl<'a, 'tcx> Walker<'a, 'tcx> {
         if !self.exec {
             return;
         }
-        let Some(loc) = self.user_loc(e.span) else { return };
+        let Some(loc) = self.expr_key(e) else { return };
+        if self.for_loop(e, &loc) {
+            return;
+        }
         let class = expr_class(e);
         let typeck = self.typeck();
+        if let ExprKind::Lit(lit) = &e.kind {
+            let s = format!("{:?}", lit.node);
+            self.push(loc.clone(), class, FactKind::Value, (s.clone(), s));
+        }
         // (a)
         if let Some(ty) = typeck.expr_ty_opt(e) {
             let t = self.ty_fact(ty);
@@ -853,6 +931,37 @@ impl<'a, 'tcx> Walker<'a, 'tcx> {
         }
     }
 
+    /// A `for` loop with a node id. Verus expands it to a `loop` that calls
+    /// `VerusForLoopWrapper::new` and `next` in the verified program (Keep), and to a Rust `for`
+    /// in the compiled program (Erase), which rustc desugars to calls of `IntoIterator::into_iter`
+    /// and `Iterator::next` under a DropTemps. The check records that both programs have a `for`
+    /// loop at this id, and compares the iterated expression, the pattern bindings and the body
+    /// as ordinary nodes. That the wrapper's `next` calls the iterator's `next` is trusted (vstd),
+    /// not checked.
+    fn for_loop(&mut self, e: &'tcx Expr<'tcx>, loc: &Loc) -> bool {
+        if !loc.via.starts_with("nid ")
+            || !matches!(e.kind, ExprKind::Loop(..) | ExprKind::DropTemps(..))
+        {
+            return false;
+        }
+        if !self.starts_with_keyword(e.span, "for") {
+            return false;
+        }
+        let label = match self.tcx.sess.source_map().span_to_snippet(e.span) {
+            Ok(s) if skip_outer_attrs(&s).starts_with('\'') => {
+                skip_outer_attrs(&s).split(':').next().map(|l| format!(" {l}")).unwrap_or_default()
+            }
+            _ => String::new(),
+        };
+        let s = format!("for{label}");
+        self.push(loc.clone(), "for", FactKind::Flow, (s.clone(), s));
+        if let Some(ty) = self.typeck().expr_ty_opt(e) {
+            let t = self.ty_fact(ty);
+            self.push_val(loc.clone(), "for", FactKind::Type, t);
+        }
+        true
+    }
+
     fn record_pat(&mut self, p: &'tcx Pat<'tcx>) {
         if !self.exec {
             return;
@@ -872,6 +981,35 @@ impl<'a, 'tcx> Walker<'a, 'tcx> {
                 let v = FactVal { cmp, show, alt: None };
                 self.push_val(loc, "pat-binding", FactKind::Binding, v);
             }
+        }
+    }
+}
+
+/// The source text after any outer attributes (`#[...]`) at its start
+fn skip_outer_attrs(mut s: &str) -> &str {
+    loop {
+        s = s.trim_start();
+        if !s.starts_with("#[") {
+            return s;
+        }
+        let mut depth = 0;
+        let mut end = None;
+        for (i, c) in s.char_indices() {
+            match c {
+                '[' => depth += 1,
+                ']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        match end {
+            Some(i) => s = &s[i + 1..],
+            None => return s,
         }
     }
 }
@@ -935,7 +1073,23 @@ impl<'a, 'tcx> Visitor<'tcx> for Walker<'a, 'tcx> {
     fn visit_expr(&mut self, e: &'tcx Expr<'tcx>) {
         let saved = self.exec;
         if let Some(info) = self.exec_info {
-            if let Some(x) = info.hir_exec.get(&e.hir_id) {
+            // A node with an id runs in the compiled program if it is in an exec context, unless
+            // `verus!` marked it as a ghost block (which Erase removes).
+            let ghost_block = matches!(
+                crate::attributes::get_ghost_block_opt(self.tcx.hir_attrs(e.hir_id)),
+                Some(
+                    crate::attributes::GhostBlockAttr::Proof
+                        | crate::attributes::GhostBlockAttr::GhostWrapped
+                        | crate::attributes::GhostBlockAttr::TrackedWrapped
+                        | crate::attributes::GhostBlockAttr::Tracked
+                )
+            );
+            let map = if self.nid(e.hir_id).is_some() && !ghost_block {
+                &info.hir_exec_ctx
+            } else {
+                &info.hir_exec
+            };
+            if let Some(x) = map.get(&e.hir_id) {
                 self.exec = *x;
             }
             if info.erased_trees.contains(&e.hir_id) {
@@ -1015,6 +1169,7 @@ fn build_body_table<'tcx>(
             body: Some(body_loc),
             key,
             nodes: BTreeMap::new(),
+            display: BTreeMap::new(),
         },
     };
     w.visit_body(body);
@@ -1169,6 +1324,11 @@ pub fn diff_tables(verified: &Table, compiled: &Table) -> Vec<Difference> {
                 vnodes.entry(k).or_default().extend(v.iter().cloned());
             }
         }
+        let mut display: BTreeMap<Loc, Loc> = BTreeMap::new();
+        for b in verified.bodies.iter().filter(|b| &b.key == bkey).chain(cbs.iter().copied()) {
+            display.extend(b.display.iter().map(|(k, v)| (k.clone(), v.clone())));
+        }
+        let shown = |k: &Loc| display.get(k).cloned().unwrap_or_else(|| k.clone());
         let mut cnodes: BTreeMap<&(Loc, &'static str), Vec<Fact>> = BTreeMap::new();
         for b in cbs {
             for (k, v) in &b.nodes {
@@ -1183,6 +1343,8 @@ pub fn diff_tables(verified: &Table, compiled: &Table) -> Vec<Difference> {
             let vg = group(vf);
             let cg = group(cf);
             let kinds: BTreeSet<&FactKind> = vg.keys().chain(cg.keys()).collect();
+            // a node identified by its node id must be in both programs
+            let strict = key.0.via.starts_with("nid ");
             for kind in kinds {
                 let vs = vg.get(kind);
                 let cs = cg.get(kind);
@@ -1220,7 +1382,7 @@ pub fn diff_tables(verified: &Table, compiled: &Table) -> Vec<Difference> {
                             continue;
                         }
                         diffs.push(Difference {
-                            loc: key.0.clone(),
+                            loc: shown(&key.0),
                             msg: format!(
                                 "{} {} (compiled) vs {} (verified)",
                                 kind.describe(),
@@ -1229,11 +1391,36 @@ pub fn diff_tables(verified: &Table, compiled: &Table) -> Vec<Difference> {
                             ),
                         });
                     }
+                    // S4 again: the closure-call receiver is auto-referenced in one program only
+                    (Some(fs), None) | (None, Some(fs))
+                        if strict
+                            && matches!(kind, FactKind::AdjType)
+                            && fs.iter().all(|f| f.cmp.starts_with("closure call receiver")) => {}
+                    (Some(vs), None) if strict => {
+                        diffs.push(Difference {
+                            loc: shown(&key.0),
+                            msg: format!(
+                                "{} {} is exec code in the verified program, but the compiled program has no such node",
+                                kind.describe(),
+                                show_list(vs),
+                            ),
+                        });
+                    }
+                    (None, Some(cs)) if strict => {
+                        diffs.push(Difference {
+                            loc: shown(&key.0),
+                            msg: format!(
+                                "{} {} is in the compiled program, but the verified program has no such exec node",
+                                kind.describe(),
+                                show_list(cs),
+                            ),
+                        });
+                    }
                     (Some(vs), None) => {
                         let rep: Vec<&Fact> = vs.iter().copied().filter(|f| f.one_sided).collect();
                         if rep.len() > 0 {
                             diffs.push(Difference {
-                                loc: key.0.clone(),
+                                loc: shown(&key.0),
                                 msg: format!(
                                     "{} {} is exec control flow in the verified program, but the compiled program has no such node",
                                     kind.describe(),
@@ -1262,7 +1449,7 @@ pub fn check_compile_run<'tcx>(tcx: TyCtxt<'tcx>, verified: &Table) -> usize {
         dump_table(sm, "compiled", &compiled);
     }
     for d in &diffs {
-        let via = if d.loc.via.is_empty() {
+        let via = if d.loc.via.is_empty() || d.loc.via.starts_with("nid ") {
             String::new()
         } else {
             format!(" [in the macro expansion {}]", d.loc.via)
@@ -1289,10 +1476,11 @@ fn dump_table(sm: &SourceMap, which: &str, t: &Table) {
         for ((loc, class), facts) in &b.nodes {
             for f in facts {
                 eprintln!(
-                    "   {} [{}-{}] {class} {:?}: {}{}",
+                    "   {} [{}-{}{}] {class} {:?}: {}{}",
                     loc_to_string(sm, loc),
                     loc.lo,
                     loc.hi,
+                    if loc.via.is_empty() { String::new() } else { format!(" {}", loc.via) },
                     f.kind,
                     f.cmp,
                     if f.one_sided { " (one-sided)" } else { "" }

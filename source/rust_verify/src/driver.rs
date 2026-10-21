@@ -182,6 +182,10 @@ pub(crate) fn run_with_erase_macro_compile(
         erasure_check_table,
     };
     rustc_args.extend(["--cfg", "verus_only", "--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
+    if callbacks.erasure_check_table.is_some() {
+        // node ids for -V check-erasure (see builtin_macros/src/node_ids.rs)
+        rustc_args.extend(["--cfg", "verus_check_erasure_ids"].map(|s| s.to_string()));
+    }
     if matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore) {
         rustc_args.extend(["--cfg", "verus_verify_core"].map(|s| s.to_string()));
     } else if vstd == Vstd::NoVstd {
@@ -296,6 +300,10 @@ pub fn run(
     rustc_args_verify.extend(["--cfg", "verus_only"].map(|s| s.to_string()));
     rustc_args_verify.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     rustc_args_verify.extend(["--cfg", "verus_keep_ghost_body"].map(|s| s.to_string()));
+    if verifier.args.check_erasure {
+        // node ids for -V check-erasure (see builtin_macros/src/node_ids.rs)
+        rustc_args_verify.extend(["--cfg", "verus_check_erasure_ids"].map(|s| s.to_string()));
+    }
     if matches!(verifier.args.vstd, Vstd::IsCore | Vstd::ImportedViaCore) {
         rustc_args_verify.extend(["--cfg", "verus_verify_core"].map(|s| s.to_string()));
     }
