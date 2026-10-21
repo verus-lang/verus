@@ -3140,14 +3140,14 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         if self.verifier.has_second_compile_pass()
             && tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo)
         {
-            // Change the extension of dep-info file from `.d` to `.verus.d`
+            // Change the extension of the dep-info file from `.d` to `.verus.d`
             //   so that the second compiler pass does not overwrite it.
             let dep_info_name = tcx.output_filenames(()).path(OutputType::DepInfo);
             let dep_info_path_d = dep_info_name.as_path();
             let dep_info_path_verus_d = dep_info_path_d.with_extension("verus.d");
             std::fs::rename(dep_info_path_d, &dep_info_path_verus_d).unwrap_or_else(|err| {
                 panic!(
-                    "error: failed to change the extension of {} to `verus.d` due to {err}",
+                    "error: failed to change the extension of {} to `.verus.d` due to {err}",
                     dep_info_path_d.display(),
                 )
             });
