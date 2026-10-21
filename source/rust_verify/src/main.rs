@@ -79,7 +79,10 @@ pub fn main() {
 
     if args.iter().any(|arg| arg == "-vV") {
         // Intercept invocations with `-vV`, used for e.g. Cargo fingerprinting.
-        // TODO: Include Verus details in the output, to ensure that fingerprints are accurate.
+        // Include Verus details in the output, to ensure that fingerprints are accurate.
+        let verus_version = build_info.version;
+        let verus_sha = build_info.sha;
+        println!("verus {verus_version} ({verus_sha})");
         args.insert(0, program.clone());
         rust_verify::driver::run_rustc_compiler_directly(&args);
         return;
