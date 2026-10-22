@@ -63,4 +63,14 @@ pub assume_specification<T>[ MaybeUninit::<T>::write ](m: &mut MaybeUninit<T>, v
     opens_invariants none
     no_unwind;
 
+pub assume_specification<T, const N: usize>[ MaybeUninit::<T>::array_assume_init ](
+    array: [MaybeUninit<T>; N],
+) -> (ret: [T; N])
+    requires
+        forall|i: int| #![auto] 0 <= i < N ==> array@[i].mem_contents().is_init(),
+    ensures
+        forall|i: int| #![auto] 0 <= i < N ==> ret@[i] == array@[i].mem_contents().value(),
+    opens_invariants none
+    no_unwind;
+
 }
