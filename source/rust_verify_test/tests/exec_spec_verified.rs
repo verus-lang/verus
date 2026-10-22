@@ -718,21 +718,52 @@ test_verify_one_file! {
             }
 
             spec fn update_eq(s1: Seq<u8>, i: usize, x: u8, s2: Seq<u8>) -> bool
+                recommends
+                    0 <= i < s1.len()
             {
                 s1.update(i as int, x) == s2
             }
 
             spec fn update_nested(s1: Seq<Seq<u8>>, i: usize, x: Seq<u8>, s2: Seq<Seq<u8>>) -> bool
+                recommends
+                    0 <= i < s1.len()
             {
                 s1.update(i as int, x) == s2
             }
 
             spec fn update_struct(s1: Seq<Data>, i: usize, x: Data, s2: Seq<Data>) -> bool
+                recommends
+                    0 <= i < s1.len()
             {
                 s1.update(i as int, x) == s2
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_seq_update IMPORTS.to_string() + verus_code_str! {
+        fn test_update() {
+            let v = vec![1u8];
+            let updated = v.as_slice().exec_update(0, 2);
+            assert(updated.deep_view() =~= seq![2u8]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_seq_update_requires IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            spec fn update_at(s: Seq<u8>, i: usize, x: u8) -> Seq<u8> {
+                s.update(i as int, x) // FAILS
+            }
+        }
+
+        fn test_update() {
+            let v = vec![1u8];
+            let _ = v.as_slice().exec_update(1, 2); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {
