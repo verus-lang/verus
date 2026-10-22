@@ -916,6 +916,73 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_copy_within_user_range_bounds_3176 verus_code! {
+        use vstd::prelude::*;
+        use core::ops::{Bound, RangeBounds};
+        use vstd::std_specs::range::RangeBoundsSpecImpl;
+
+        pub struct R;
+
+        impl RangeBounds<usize> for R {
+            fn start_bound(&self) -> Bound<&usize> { Bound::Included(&1) } // FAILS
+            fn end_bound(&self) -> Bound<&usize> { Bound::Excluded(&2) } // FAILS
+        }
+
+        impl RangeBoundsSpecImpl<usize> for R {
+            open spec fn spec_start_bound(&self) -> Bound<&usize> { Bound::Included(&0) }
+            open spec fn spec_end_bound(&self) -> Bound<&usize> { Bound::Excluded(&1) }
+        }
+
+        fn test() -> (r: u8)
+            ensures r == 10
+        {
+            let mut a: [u8; 3] = [10, 20, 30];
+            let s: &mut [u8] = &mut a;
+            s.copy_within(R, 2);
+            s[2]
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(err.errors.iter().all(|e| e.message == "postcondition not satisfied"));
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_copy_within_user_range_bounds_ok_3176 verus_code! {
+        use vstd::prelude::*;
+        use core::ops::{Bound, RangeBounds};
+        use vstd::std_specs::range::{RangeBoundsSpec, RangeBoundsSpecImpl};
+
+        pub struct R;
+
+        impl RangeBounds<usize> for R {
+            fn start_bound(&self) -> Bound<&usize> { Bound::Included(&1) }
+            fn end_bound(&self) -> Bound<&usize> { Bound::Excluded(&2) }
+        }
+
+        impl RangeBoundsSpecImpl<usize> for R {
+            open spec fn spec_start_bound(&self) -> Bound<&usize> { Bound::Included(&1) }
+            open spec fn spec_end_bound(&self) -> Bound<&usize> { Bound::Excluded(&2) }
+        }
+
+        fn test() -> (r: u8)
+            ensures r == 20
+        {
+            let mut a: [u8; 3] = [10, 20, 30];
+            let s: &mut [u8] = &mut a;
+            s.copy_within(R, 2);
+            s[2]
+        }
+
+        fn start<B: RangeBounds<usize>>(b: &B) -> (r: Bound<&usize>)
+            ensures r == b.spec_start_bound()
+        {
+            b.start_bound()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_range_start_end_bound verus_code! {
         use vstd::prelude::*;
         use std::ops::{Bound, RangeBounds};
