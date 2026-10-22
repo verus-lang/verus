@@ -1063,3 +1063,71 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "overflow evaluating the requirement")
 }
+
+test_verify_one_file! {
+    #[test] test_trait_spec_lifetime_gat verus_code! {
+        #[verifier::external]
+        trait T {
+            type G<'a>;
+            fn f<'a>(&self, x: &'a u8) -> Self::G<'a>;
+        }
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            type G<'a>;
+            fn f<'a>(&self, x: &'a u8) -> Self::G<'a>;
+        }
+        fn test<A: T>(a: &A, x: &u8) {
+            let _g = a.f(x);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_spec_lifetime_gat_with_bound verus_code! {
+        #[verifier::external]
+        trait U<'a> {
+            fn get(&self) -> &'a u8;
+        }
+        #[verifier::external]
+        trait T {
+            type G<'a>: U<'a>;
+            fn f<'a>(&self, x: &'a u8) -> Self::G<'a>;
+        }
+        #[verifier::external_trait_specification]
+        trait ExU<'a> {
+            type ExternalTraitSpecificationFor: U<'a>;
+            fn get(&self) -> &'a u8;
+        }
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            type G<'a>: U<'a>;
+            fn f<'a>(&self, x: &'a u8) -> Self::G<'a>;
+        }
+        fn test<A: T>(a: &A, x: &u8) {
+            let g = a.f(x);
+            let _y = g.get();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_spec_lifetime_gat_bound_mismatch verus_code! {
+        #[verifier::external]
+        trait U<'a> {}
+        #[verifier::external]
+        trait T {
+            type G<'a>;
+        }
+        #[verifier::external_trait_specification]
+        trait ExU<'a> {
+            type ExternalTraitSpecificationFor: U<'a>;
+        }
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            type G<'a>: U<'a>;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Mismatched bounds on associated type")
+}
