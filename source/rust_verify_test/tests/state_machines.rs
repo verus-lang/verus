@@ -11145,6 +11145,43 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
+// The readiness chain names the fragments hygienically: a transition's pattern or `let` may bind
+// `owned` or `h` (the names of `local_ready::t::ready`'s parameters).
+test_verify_one_file_with_options! {
+    #[test] local_ready_chain_binder_names_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::tsm::Machine;
+        verified_tokenized_state_machine! {
+            #[verified_raw_tokens]
+            H {
+                fields {
+                    #[sharding(map)] pub m: Map<int, int>,
+                    #[sharding(set)] pub s: Set<int>,
+                }
+                init! { initialize() { init m = Map::empty(); init s = Set::empty(); } }
+                transition! { binder_owned(k: int) {
+                    have m >= [k => let owned];
+                    have s >= set {owned};
+                } }
+                transition! { binder_h(k: int) {
+                    let h = k + 1;
+                    remove m -= [h => 0];
+                    add m += [h => 1];
+                    have s >= set {h};
+                } }
+                #[inductive(initialize)] fn initialize_inductive(post: Self) {}
+                #[inductive(binder_owned)] fn binder_owned_inductive(pre: Self, post: Self, k: int) {}
+                #[inductive(binder_h)] fn binder_h_inductive(pre: Self, post: Self, k: int) {}
+            }
+        }
+
+        proof fn client(tracked t: H::Token)
+            requires t.fragment() == H::Fragment::field_m(Map::empty().insert(2, 0)).with_s(Set::empty().insert(2)),
+        {
+            let tracked t = H::local_ready::binder_h::run(t, 1);
+        }
+    } => Ok(())
+}
+
 // Local readiness is generated for every raw transition, readonly transition and property except
 // the forms `verified_readiness::local_ready_supported` skips, whose readiness lemma is not proved;
 // here a closure in an `if` condition. Such a transition keeps its other raw operations

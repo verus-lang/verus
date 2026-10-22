@@ -883,13 +883,12 @@ pub mod chains2 {
         );
     }
 
-    // A variable update from a constant: the reads agree with the fragments.
+    // A variable update from a constant.
     pub proof fn bump(o: Fragment, h: Fragment, z: Fragment, pre: State)
         requires
             Fragment::op(Fragment::op(o, h), z) == <Protocol as Machine>::embed(pre),
             o.v is Some && o.v->Some_0 is Exclusive,
-            Fragment::op(o, h).k is Some && Fragment::op(o, h).k->Some_0 is Agree,
-            Fragment::op(o, h).k->Some_0->Agree_0 > 0,
+            pre.k > 0,
         ensures
             State::bump_enabled(pre),
             ({
@@ -901,8 +900,6 @@ pub mod chains2 {
             }),
     {
         cfg_split(o, h, z, pre);
-        const_read(o.k, h.k, z.k, pre.k);
-        var_read(o.v, h.v, z.v, pre.v);
         var_update(o.v, h.v, z.v, pre.v, pre.v + pre.k);
         cfg_join(Fragment { v: Some(ExclusiveRA::Exclusive(pre.v + pre.k)), ..o }, h, z, State { v: pre.v + pre.k, ..pre });
     }

@@ -232,7 +232,8 @@ The readiness of a transition that observes a collection field (a `remove` or
 `have` of a map, set or multiset, exclusive or persistent) is proved by a chain of
 the statement calculus (`vstd::resource::tsm_calculus`: one lemma call per
 `remove`, `have` and `add` of any kind; storage operations bind their patterns),
-which covers any order of the statements. The readiness of any other transition
+which covers any order of the statements that the checked frontend accepts. The
+readiness of any other transition
 needs no statement facts: its observations are of single components.
 
 The rule is in `verified_readiness::local_ready_supported`.

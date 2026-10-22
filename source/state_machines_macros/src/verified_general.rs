@@ -874,6 +874,13 @@ pub fn output_with_ready(
     let mut local_ready_items = vec![];
     let mut lemmas = vec![];
     let fields: HashMap<_, _> = sm.fields.iter().map(|f| (f.name.to_string(), f.clone())).collect();
+    // The local-ready transitions whose readiness the statement calculus's chains prove.
+    let chained: HashSet<String> = sm
+        .transitions
+        .iter()
+        .filter(|tr| local_ready.contains(&tr.name.to_string()) && crate::verified_chain::uses_chain(sm, tr))
+        .map(|tr| tr.name.to_string())
+        .collect();
     for tr in &sm.transitions {
         let guard_property = matches!(tr.kind, TransitionKind::Property | TransitionKind::ReadonlyTransition) && contains_guard(&tr.body);
         let n = &tr.name;
@@ -1298,6 +1305,7 @@ pub fn output_with_ready(
                         pn: &pn,
                         observed: &observed_req,
                         reads: &reads,
+                        chain: chained.contains(&n.to_string()),
                     },
                 )?;
                 local_ready_items.push((n.clone(), quote! {#declared_requires #api}));
@@ -1410,7 +1418,7 @@ pub fn output_with_ready(
                             deposits: has_deposit(&tr.body),
                             withdraws: withdraw,
                             paired,
-                            chain: crate::verified_chain::uses_chain(sm, tr),
+                            chain: chained.contains(&n.to_string()),
                         },
                     )?;
                     local_ready_items.push((n.clone(), quote! {#declared_requires #local_deposited #api}));
@@ -1511,7 +1519,7 @@ pub fn output_with_ready(
                             deposits: false,
                             withdraws: false,
                             paired: false,
-                            chain: crate::verified_chain::uses_chain(sm, tr),
+                            chain: chained.contains(&n.to_string()),
                         },
                     )?;
                     local_ready_items.push((n.clone(), quote! {#declared_requires #api}));
@@ -1606,13 +1614,19 @@ pub fn output_with_ready(
     }
     // The configuration split of the statement calculus (`verified_chain`), for the
     // transitions whose proofs use chains.
-    let calculus = if sm.transitions.iter().any(|tr| local_ready.contains(&tr.name.to_string()) && crate::verified_chain::uses_chain(sm, tr)) {
+    let calculus = if !chained.is_empty() {
+        // The monoid fields' configurations (the chains have no steps of the others).
         let c = quote! {::vstd::resource::tsm_calculus};
+        let (split_names, split_values): (Vec<&&Ident>, Vec<&TokenStream>) = names
+            .iter()
+            .zip(&embed_values)
+            .filter(|(n, _)| monoids::is_monoid_type(&fields[&n.to_string()].stype))
+            .unzip();
         quote! {
             pub proof fn __tsm_cfg_split(o:#ft,h:#ft,z:#ft,s:#st)
                 requires <#ft>::op(<#ft>::op(o,h),z)==Self::embed(s)
-                ensures #(#c::cfg(o.#names,h.#names,z.#names,#embed_values)),*
-            {#(#c::cfg_iff(o.#names,h.#names,z.#names,#embed_values);)*}
+                ensures #(#c::cfg(o.#split_names,h.#split_names,z.#split_names,#split_values)),*
+            {#(#c::cfg_iff(o.#split_names,h.#split_names,z.#split_names,#split_values);)*}
         }
     } else {
         quote! {}

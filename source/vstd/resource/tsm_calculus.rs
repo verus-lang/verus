@@ -1435,7 +1435,7 @@ pub proof fn pbool_add_true(o: PersistentCountRA, h: PersistentCountRA, z: Persi
 }
 
 // ---------------------------------------------------------------------------
-// `variable` and `constant`
+// `variable`
 /// `update f = e`: {cfg(o, h, z, Some(Exclusive(v))), o owns f} ⟹
 /// {cfg(Some(Exclusive(e)), h, z, Some(Exclusive(e)))}.
 pub proof fn var_update<V>(
@@ -1450,36 +1450,6 @@ pub proof fn var_update<V>(
         o is Some && o->Some_0 is Exclusive,
     ensures
         cfg(Some(ExclusiveRA::Exclusive(e)), h, z, Some(ExclusiveRA::Exclusive(e))),
-{
-}
-
-/// A read of `f`: {cfg(o, h, z, Some(Exclusive(v))), o·h holds f} ⟹ {v == the held value}.
-pub proof fn var_read<V>(
-    o: Option<ExclusiveRA<V>>,
-    h: Option<ExclusiveRA<V>>,
-    z: Option<ExclusiveRA<V>>,
-    v: V,
-)
-    requires
-        cfg(o, h, z, Some(ExclusiveRA::Exclusive(v))),
-        Option::<ExclusiveRA<V>>::op(o, h) is Some && Option::<ExclusiveRA<V>>::op(o, h)->Some_0 is Exclusive,
-    ensures
-        v == Option::<ExclusiveRA<V>>::op(o, h)->Some_0->Exclusive_0,
-{
-}
-
-/// A read of a constant `f`: {cfg(o, h, z, Some(Agree(v))), o·h holds f} ⟹ {v == the held value}.
-pub proof fn const_read<V>(
-    o: Option<AgreementRA<V>>,
-    h: Option<AgreementRA<V>>,
-    z: Option<AgreementRA<V>>,
-    v: V,
-)
-    requires
-        cfg(o, h, z, Some(AgreementRA::Agree(v))),
-        Option::<AgreementRA<V>>::op(o, h) is Some && Option::<AgreementRA<V>>::op(o, h)->Some_0 is Agree,
-    ensures
-        v == Option::<AgreementRA<V>>::op(o, h)->Some_0->Agree_0,
 {
 }
 

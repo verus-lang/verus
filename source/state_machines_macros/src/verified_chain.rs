@@ -1,92 +1,113 @@
 //! The chain emitter of the statement calculus (`vstd::resource::tsm_calculus`).
 //!
-//! For a transition whose statements the calculus covers (`supported`), `Chain` walks the
-//! statement tree that the ownership compiler (`verified_ownership`) walks and emits one
-//! step-lemma call per `remove`, `have` and `add`, on ground terms: the component of the
-//! owned fragment the statement observes (the ownership compiler's `next_fragment` and
-//! `observed_value` terms, so that each lemma's ownership precondition is literally one
-//! conjunct of `<t>_owners_enabled`), the borrowed fragment, the completion frame, and
-//! the field's intermediate value (the frontend's `expr_remove`/`expr_add` terms, so that
-//! each lemma's enabling postcondition is literally one conjunct of `<t>_enabled`). The
-//! configuration of every field starts from the machine's `__tsm_cfg_split`. An `add`'s
-//! safety condition (and a user `assert`) guards the rest of the chain, as `tmp_assert`
-//! guards the rest of the enabling condition; an `if`/`match` joins its arms' (fragment,
-//! values, safety) tuples, and its continuation follows once. The generated proof has no
-//! quantifier: all of them are inside the vstd lemmas.
+//! `Chain` walks the statement tree that the ownership compiler (`verified_ownership`)
+//! walks and emits one step-lemma call per `remove`, `have` and `add`, on ground terms:
+//! the component of the owned fragment the statement observes (the ownership compiler's
+//! `next_fragment` and `observed_value` terms, so that each lemma's ownership
+//! precondition is literally one conjunct of `<t>_owners_enabled`), the borrowed
+//! fragment, the completion frame, and the field's intermediate value (the frontend's
+//! `expr_remove`/`expr_add` terms, so that each lemma's enabling postcondition is
+//! literally one conjunct of `<t>_enabled`). The configuration of every field starts
+//! from the machine's `__tsm_cfg_split`. An `add`'s safety condition guards the later
+//! steps of its field (the enabling condition guards its later conditions by all
+//! safety conditions, `tmp_assert`); an `if`/`match` joins its arms' (fragment,
+//! values, safety) tuples, and its continuation follows once. The generated proof has
+//! no quantifier: all of them are inside the vstd lemmas.
 use crate::ast::*;
 use crate::verified_monoids::{bind_pattern, operand_type};
 use crate::verified_ownership::{bound_value, next_fragment, observed_value};
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use verus_syn::{Error, Expr, Ident};
 
-/// The field kinds the calculus covers: every monoid kind.
-fn covered(stype: &ShardableType) -> bool {
-    crate::verified_monoids::is_monoid_type(stype)
+/// Whether `stype` is a collection kind: a map, set or multiset, exclusive or persistent.
+fn collection(stype: &ShardableType) -> bool {
+    matches!(
+        stype,
+        ShardableType::Map(..)
+            | ShardableType::IMap(..)
+            | ShardableType::Set(_)
+            | ShardableType::ISet(_)
+            | ShardableType::Multiset(_)
+            | ShardableType::PersistentMap(..)
+            | ShardableType::PersistentIMap(..)
+            | ShardableType::PersistentSet(_)
+            | ShardableType::PersistentISet(_)
+    )
 }
 
-/// Whether the calculus covers every `remove`, `have` and `add` of `stmt` (a storage
-/// operation needs no step: see `Chain::storage`).
-pub(crate) fn supported(stmt: &TransitionStmt, fields: &HashMap<String, Field>) -> bool {
-    match stmt {
-        TransitionStmt::Block(_, children) => children.iter().all(|c| supported(c, fields)),
-        TransitionStmt::Split(_, kind, children) => {
-            let here = match &**kind {
-                SplitKind::Special(name, operation, _, _) => {
-                    operation.stmt.is_for_storage()
-                        || fields.get(&name.to_string()).is_some_and(|f| covered(&f.stype))
-                            && matches!(
-                                operation.stmt,
-                                MonoidStmtType::Remove | MonoidStmtType::Have | MonoidStmtType::Add(_)
-                            )
-                }
-                _ => true,
-            };
-            here && children.iter().all(|c| supported(c, fields))
-        }
-        _ => true,
-    }
-}
-
-/// Whether `tr`'s readiness proof uses the chain: the calculus covers its statements
-/// (`supported`; every monoid kind and the storage operations) and it has a `remove` or `have` of a collection field (a map, set or
-/// multiset, exclusive or persistent). The enabling condition of a transition without one
-/// follows from its ownership condition without any hint (an `option`, `count` or `bool`
-/// observation is a fact about one component), and a chain would only add cost.
+/// Whether `tr`'s readiness proof uses the chain: it has a `remove` or `have` of a
+/// collection field. (The calculus covers every statement form: every monoid kind, and
+/// the storage operations need no step, see `Chain::storage`.) The enabling condition
+/// of a transition without one follows from its ownership condition without any hint
+/// (an `option`, `count` or `bool` observation is a fact about one component), and a
+/// chain would only add cost. (In a chain, too, the `count` and `bool` steps cost more
+/// than such a proof does, 1.2 to 1.8 times in the corpus: their configurations carry the
+/// ownership compiler's `(o.count - x) as nat` terms.)
 pub(crate) fn uses_chain(sm: &SM, tr: &Transition) -> bool {
-    let fields: HashMap<_, _> = sm.fields.iter().map(|f| (f.name.to_string(), f.clone())).collect();
-    tr.kind != TransitionKind::Init && supported(&tr.body, &fields) && observes_collection(&tr.body, &fields)
+    fn observes(stmt: &TransitionStmt, sm: &SM) -> bool {
+        match stmt {
+            TransitionStmt::Block(_, children) => children.iter().any(|c| observes(c, sm)),
+            TransitionStmt::Split(_, kind, children) => {
+                let here = match &**kind {
+                    SplitKind::Special(name, operation, _, _)
+                        if operation.is_remove() || operation.is_have() =>
+                    {
+                        sm.fields.iter().any(|f| f.name == *name && collection(&f.stype))
+                    }
+                    _ => false,
+                };
+                here || children.iter().any(|c| observes(c, sm))
+            }
+            _ => false,
+        }
+    }
+    tr.kind != TransitionKind::Init && observes(&tr.body, sm)
 }
 
-/// Whether `stmt` has a `remove` or `have` of a collection field.
-fn observes_collection(stmt: &TransitionStmt, fields: &HashMap<String, Field>) -> bool {
-    match stmt {
-        TransitionStmt::Block(_, children) => children.iter().any(|c| observes_collection(c, fields)),
-        TransitionStmt::Split(_, kind, children) => {
-            let here = match &**kind {
-                SplitKind::Special(name, operation, _, _) if operation.is_remove() || operation.is_have() => {
-                    fields.get(&name.to_string()).is_some_and(|f| {
-                        matches!(
-                            f.stype,
-                            ShardableType::Map(..)
-                                | ShardableType::IMap(..)
-                                | ShardableType::Set(_)
-                                | ShardableType::ISet(_)
-                                | ShardableType::Multiset(_)
-                                | ShardableType::PersistentMap(..)
-                                | ShardableType::PersistentIMap(..)
-                                | ShardableType::PersistentSet(_)
-                                | ShardableType::PersistentISet(_)
-                        )
-                    })
+/// The `add`s of `statements` whose field a later `remove` or `have` observes (on some
+/// path), given the fields observed after `statements` (`after`); returns the fields
+/// observed in `statements` or after them. Only these `add`s need their step in a
+/// readiness chain: the configuration an `add` leaves is used by its field's later steps
+/// only.
+fn observed_later(
+    statements: &[TransitionStmt],
+    after: HashSet<String>,
+    needed: &mut HashSet<*const TransitionStmt>,
+) -> HashSet<String> {
+    let mut later = after;
+    for statement in statements.iter().rev() {
+        later = match statement {
+            TransitionStmt::Block(_, children) => observed_later(children, later, needed),
+            TransitionStmt::Split(_, kind, children) => match &**kind {
+                SplitKind::If(_) | SplitKind::Match(..) => {
+                    let mut joined = later.clone();
+                    for child in children {
+                        joined.extend(observed_later(
+                            std::slice::from_ref(child),
+                            later.clone(),
+                            needed,
+                        ));
+                    }
+                    joined
                 }
-                _ => false,
-            };
-            here || children.iter().any(|c| observes_collection(c, fields))
-        }
-        _ => false,
+                SplitKind::Let(..) => observed_later(children, later, needed),
+                SplitKind::Special(name, operation, _, _) => {
+                    let mut inner = observed_later(children, later, needed);
+                    if operation.is_add() && inner.contains(&name.to_string()) {
+                        needed.insert(statement as *const TransitionStmt);
+                    }
+                    if operation.is_remove() || operation.is_have() {
+                        inner.insert(name.to_string());
+                    }
+                    inner
+                }
+            },
+            _ => later,
+        };
     }
+    later
 }
 
 /// The monoid fields that `stmt` modifies (`remove`, `add`), in field order.
@@ -110,13 +131,14 @@ fn modified<'a>(stmt: &TransitionStmt, sm: &'a SM) -> Vec<&'a Field> {
     sm.fields.iter().filter(|f| names.contains(&f.name.to_string())).collect()
 }
 
-/// The chain's state between statements: the owned fragment, the values of the modified
-/// fields (`Chain::tracked`), and the safety condition so far (`None`: `true`).
+/// The chain's state between statements: the owned fragment, and the values of the
+/// modified fields (`Chain::tracked`) with the safety condition of each one's steps so
+/// far (`None`: `true`).
 #[derive(Clone)]
 struct Point {
     fragment: TokenStream,
     values: Vec<TokenStream>,
-    ok: Option<TokenStream>,
+    oks: Vec<Option<TokenStream>>,
 }
 
 struct Chain<'a> {
@@ -126,6 +148,8 @@ struct Chain<'a> {
     frame: TokenStream,
     tracked: Vec<&'a Field>,
     next: usize,
+    /// The `add`s whose step is needed (see `observed_later`); `None`: all of them.
+    needed: Option<HashSet<*const TransitionStmt>>,
 }
 
 impl Chain<'_> {
@@ -134,18 +158,14 @@ impl Chain<'_> {
         format_ident!("__tsm_chain_{}_{}", purpose, self.next, span = Span::mixed_site())
     }
 
-    /// The current value of `field` at `point`.
-    fn value(&self, point: &Point, field: &Field) -> TokenStream {
-        let n = &field.name;
-        match self.tracked.iter().position(|f| f.name == field.name) {
-            Some(i) => point.values[i].clone(),
-            None => quote! {pre.#n},
-        }
+    /// The position of `field` in `tracked`.
+    fn index(&self, field: &Field) -> Option<usize> {
+        self.tracked.iter().position(|f| f.name == field.name)
     }
 
-    /// `body` guarded by the safety condition of `point`.
-    fn guarded(point: &Point, body: TokenStream) -> TokenStream {
-        match &point.ok {
+    /// `body` guarded by the safety condition `ok`.
+    fn guarded(ok: &Option<TokenStream>, body: TokenStream) -> TokenStream {
+        match ok {
             Some(ok) => quote! {if #ok {#body}},
             None => body,
         }
@@ -156,21 +176,25 @@ impl Chain<'_> {
     fn export(&mut self, point: &Point) -> (TokenStream, TokenStream, Point) {
         let fragment = &point.fragment;
         let values = &point.values;
-        let ok = point.ok.clone().unwrap_or(quote! {true});
-        let tuple = quote! {(#fragment, #(#values,)* #ok)};
+        let oks: Vec<_> = point.oks.iter().map(|ok| ok.clone().unwrap_or(quote! {true})).collect();
+        let tuple = quote! {(#fragment, #(#values,)* #(#oks,)*)};
         let new_fragment = self.fresh("owned");
         let new_values: Vec<_> = (0..values.len()).map(|_| self.fresh("value")).collect();
-        let new_ok = self.fresh("ok");
-        let pattern = quote! {(#new_fragment, #(#new_values,)* #new_ok)};
+        let new_oks: Vec<_> = (0..values.len()).map(|_| self.fresh("ok")).collect();
+        let pattern = quote! {(#new_fragment, #(#new_values,)* #(#new_oks,)*)};
         let point = Point {
             fragment: quote! {#new_fragment},
             values: new_values.iter().map(|v| quote! {#v}).collect(),
-            ok: Some(quote! {#new_ok}),
+            oks: new_oks.iter().map(|ok| Some(quote! {#ok})).collect(),
         };
         (tuple, pattern, point)
     }
 
-    fn sequence(&mut self, statements: &[TransitionStmt], point: Point) -> Result<(TokenStream, Point), Error> {
+    fn sequence(
+        &mut self,
+        statements: &[TransitionStmt],
+        point: Point,
+    ) -> Result<(TokenStream, Point), Error> {
         let mut code = vec![];
         let mut point = point;
         for statement in statements {
@@ -182,9 +206,12 @@ impl Chain<'_> {
     }
 
     /// A scope (`let`, a pattern) over `children`: `prefix` binds its names.
-    fn scope(&mut self, prefix: TokenStream, children: &[TransitionStmt], point: Point)
-        -> Result<(TokenStream, Point), Error>
-    {
+    fn scope(
+        &mut self,
+        prefix: TokenStream,
+        children: &[TransitionStmt],
+        point: Point,
+    ) -> Result<(TokenStream, Point), Error> {
         let (body, end) = self.sequence(children, point)?;
         if body.is_empty() {
             return Ok((quote! {}, end));
@@ -193,15 +220,13 @@ impl Chain<'_> {
         Ok((quote! {let #pattern = {#prefix #body #tuple};}, after))
     }
 
-    fn statement(&mut self, stmt: &TransitionStmt, point: Point) -> Result<(TokenStream, Point), Error> {
+    fn statement(
+        &mut self,
+        stmt: &TransitionStmt,
+        point: Point,
+    ) -> Result<(TokenStream, Point), Error> {
         match stmt {
             TransitionStmt::Block(_, children) => self.sequence(children, point),
-            TransitionStmt::Assert(_, condition, _) => {
-                let ok = self.fresh("ok");
-                let previous = point.ok.clone().unwrap_or(quote! {true});
-                let code = quote! {let #ok = #previous && (#condition);};
-                Ok((code, Point { ok: Some(quote! {#ok}), ..point }))
-            }
             TransitionStmt::Split(span, kind, children) => match &**kind {
                 SplitKind::Let(pattern, ty, _, expression) => {
                     let ty = ty.as_ref().map(|ty| quote! {:#ty});
@@ -218,10 +243,11 @@ impl Chain<'_> {
                     }
                     let (then_tuple, pattern, after) = self.export(&then_end);
                     let (else_tuple, _, _) = self.export(&else_end);
-                    Ok((
-                        quote! {let #pattern = if #condition {#then_code #then_tuple} else {#else_code #else_tuple};},
-                        after,
-                    ))
+                    let join = quote! {
+                        let #pattern = if #condition {#then_code #then_tuple}
+                            else {#else_code #else_tuple};
+                    };
+                    Ok((join, after))
                 }
                 SplitKind::Match(expression, arms) => {
                     if arms.len() != children.len() {
@@ -254,9 +280,16 @@ impl Chain<'_> {
                         Error::new(*span, "chain operation refers to an unknown field")
                     })?;
                     if operation.stmt.is_for_storage() {
-                        return self.storage(field, operation, pattern.as_deref(), children, point, *span);
+                        return self.storage(
+                            field,
+                            operation,
+                            pattern.as_deref(),
+                            children,
+                            point,
+                            *span,
+                        );
                     }
-                    self.special(field, operation, pattern.as_deref(), children, point, *span)
+                    self.special(stmt, field, operation, pattern.as_deref(), children, point, *span)
                 }
             },
             _ => Ok((quote! {}, point)),
@@ -296,6 +329,7 @@ impl Chain<'_> {
     /// The lemma call of a `remove`, `have` or `add` on `field`, then `children`.
     fn special(
         &mut self,
+        stmt: &TransitionStmt,
         field: &Field,
         operation: &SpecialOp,
         pattern: Option<&verus_syn::Pat>,
@@ -316,90 +350,136 @@ impl Chain<'_> {
         let value_ident = self.fresh("operand");
         let value = quote! {#value_ident};
         let value_type = operand_type(&field.stype);
-        let state = self.value(&point, field);
+        let index = self.index(field);
+        let state = match index {
+            Some(i) => point.values[i].clone(),
+            None => quote! {pre.#n},
+        };
         let cur = Expr::Verbatim(state.clone());
         let c = quote! {::vstd::resource::tsm_calculus};
         // The lemma's operand arguments, after (o, h, z, v).
         use ShardableType as T;
-        let finite = matches!(field.stype, T::Map(..) | T::Set(_) | T::PersistentMap(..) | T::PersistentSet(_));
+        let finite = matches!(
+            field.stype,
+            T::Map(..) | T::Set(_) | T::PersistentMap(..) | T::PersistentSet(_)
+        );
         // The lemma family, whether the operand is a singleton (`_one`, `_some`) or `true`
         // (`_true`), and the lemma's operand arguments after (o, h, z, v).
-        let (lemma_kind, single, arguments): (&str, Option<&str>, TokenStream) = match (&field.stype, &operation.elt) {
-            (T::Map(..) | T::IMap(..), MonoidElt::SingletonKV(key, explicit)) => {
-                let x = match explicit {
-                    Some(x) => quote! {#x},
-                    None => quote! {(#observer).#n.at(#key)->Some_0->Exclusive_0},
-                };
-                (if finite { "map" } else { "imap" }, Some("_one"), quote! {#key, #x})
-            }
-            (T::PersistentMap(..) | T::PersistentIMap(..), MonoidElt::SingletonKV(key, explicit)) => {
-                let x = match explicit {
-                    Some(x) => quote! {#x},
-                    None => quote! {(#observer).#n.at(#key)->Some_0->Agree_0},
-                };
-                (if finite { "pmap" } else { "pimap" }, Some("_one"), quote! {#key, #x})
-            }
-            (T::Map(..) | T::IMap(..), MonoidElt::General(e)) => {
-                (if finite { "map" } else { "imap" }, None, quote! {#e})
-            }
-            (T::PersistentMap(..) | T::PersistentIMap(..), MonoidElt::General(e)) => {
-                (if finite { "pmap" } else { "pimap" }, None, quote! {#e})
-            }
-            (T::Set(_) | T::ISet(_), MonoidElt::SingletonSet(e)) => {
-                (if finite { "set" } else { "iset" }, Some("_one"), quote! {#e})
-            }
-            (T::PersistentSet(_) | T::PersistentISet(_), MonoidElt::SingletonSet(e)) => {
-                (if finite { "pset" } else { "piset" }, Some("_one"), quote! {#e})
-            }
-            (T::Set(_) | T::ISet(_), MonoidElt::General(e)) => {
-                (if finite { "set" } else { "iset" }, None, quote! {#e})
-            }
-            (T::PersistentSet(_) | T::PersistentISet(_), MonoidElt::General(e)) => {
-                (if finite { "pset" } else { "piset" }, None, quote! {#e})
-            }
-            (T::Option(_), MonoidElt::OptionSome(Some(e))) => ("opt", Some("_some"), quote! {#e}),
-            (T::Option(_), MonoidElt::OptionSome(None)) => {
-                ("opt", Some("_some"), quote! {(#observer).#n->Some_0->Exclusive_0})
-            }
-            (T::Option(_), MonoidElt::General(e)) => ("opt", None, quote! {#e}),
-            (T::PersistentOption(_), MonoidElt::OptionSome(Some(e))) => ("popt", Some("_some"), quote! {#e}),
-            (T::PersistentOption(_), MonoidElt::OptionSome(None)) => {
-                ("popt", Some("_some"), quote! {(#observer).#n->Some_0->Agree_0})
-            }
-            (T::PersistentOption(_), MonoidElt::General(e)) => ("popt", None, quote! {#e}),
-            (T::Multiset(_), MonoidElt::SingletonMultiset(e)) => ("mset", Some("_one"), quote! {#e}),
-            (T::Multiset(_), MonoidElt::General(e)) => ("mset", None, quote! {#e}),
-            (T::Count, MonoidElt::General(e)) => ("count", None, quote! {#e}),
-            (T::PersistentCount, MonoidElt::General(e)) => ("pcount", None, quote! {#e}),
-            (T::Bool, MonoidElt::True) => ("bool", Some("_true"), quote! {}),
-            (T::Bool, MonoidElt::General(e)) => ("bool", None, quote! {#e}),
-            (T::PersistentBool, MonoidElt::True) => ("pbool", Some("_true"), quote! {}),
-            (T::PersistentBool, MonoidElt::General(e)) => ("pbool", None, quote! {#e}),
-            _ => return Err(Error::new(span, "the statement calculus does not cover this operation")),
-        };
+        let (lemma_kind, single, arguments): (&str, Option<&str>, TokenStream) =
+            match (&field.stype, &operation.elt) {
+                (T::Map(..) | T::IMap(..), MonoidElt::SingletonKV(key, explicit)) => {
+                    let x = match explicit {
+                        Some(x) => quote! {#x},
+                        None => quote! {(#observer).#n.at(#key)->Some_0->Exclusive_0},
+                    };
+                    (if finite { "map" } else { "imap" }, Some("_one"), quote! {#key, #x})
+                }
+                (
+                    T::PersistentMap(..) | T::PersistentIMap(..),
+                    MonoidElt::SingletonKV(key, explicit),
+                ) => {
+                    let x = match explicit {
+                        Some(x) => quote! {#x},
+                        None => quote! {(#observer).#n.at(#key)->Some_0->Agree_0},
+                    };
+                    (if finite { "pmap" } else { "pimap" }, Some("_one"), quote! {#key, #x})
+                }
+                (T::Map(..) | T::IMap(..), MonoidElt::General(e)) => {
+                    (if finite { "map" } else { "imap" }, None, quote! {#e})
+                }
+                (T::PersistentMap(..) | T::PersistentIMap(..), MonoidElt::General(e)) => {
+                    (if finite { "pmap" } else { "pimap" }, None, quote! {#e})
+                }
+                (T::Set(_) | T::ISet(_), MonoidElt::SingletonSet(e)) => {
+                    (if finite { "set" } else { "iset" }, Some("_one"), quote! {#e})
+                }
+                (T::PersistentSet(_) | T::PersistentISet(_), MonoidElt::SingletonSet(e)) => {
+                    (if finite { "pset" } else { "piset" }, Some("_one"), quote! {#e})
+                }
+                (T::Set(_) | T::ISet(_), MonoidElt::General(e)) => {
+                    (if finite { "set" } else { "iset" }, None, quote! {#e})
+                }
+                (T::PersistentSet(_) | T::PersistentISet(_), MonoidElt::General(e)) => {
+                    (if finite { "pset" } else { "piset" }, None, quote! {#e})
+                }
+                (T::Option(_), MonoidElt::OptionSome(Some(e))) => {
+                    ("opt", Some("_some"), quote! {#e})
+                }
+                (T::Option(_), MonoidElt::OptionSome(None)) => {
+                    ("opt", Some("_some"), quote! {(#observer).#n->Some_0->Exclusive_0})
+                }
+                (T::Option(_), MonoidElt::General(e)) => ("opt", None, quote! {#e}),
+                (T::PersistentOption(_), MonoidElt::OptionSome(Some(e))) => {
+                    ("popt", Some("_some"), quote! {#e})
+                }
+                (T::PersistentOption(_), MonoidElt::OptionSome(None)) => {
+                    ("popt", Some("_some"), quote! {(#observer).#n->Some_0->Agree_0})
+                }
+                (T::PersistentOption(_), MonoidElt::General(e)) => ("popt", None, quote! {#e}),
+                (T::Multiset(_), MonoidElt::SingletonMultiset(e)) => {
+                    ("mset", Some("_one"), quote! {#e})
+                }
+                (T::Multiset(_), MonoidElt::General(e)) => ("mset", None, quote! {#e}),
+                (T::Count, MonoidElt::General(e)) => ("count", None, quote! {#e}),
+                (T::PersistentCount, MonoidElt::General(e)) => ("pcount", None, quote! {#e}),
+                (T::Bool, MonoidElt::True) => ("bool", Some("_true"), quote! {}),
+                (T::Bool, MonoidElt::General(e)) => ("bool", None, quote! {#e}),
+                (T::PersistentBool, MonoidElt::True) => ("pbool", Some("_true"), quote! {}),
+                (T::PersistentBool, MonoidElt::General(e)) => ("pbool", None, quote! {#e}),
+                _ => {
+                    return Err(Error::new(
+                        span,
+                        "the statement calculus does not cover this operation",
+                    ));
+                }
+            };
         let op_name = match operation.stmt {
             MonoidStmtType::Remove => "remove",
             MonoidStmtType::Have => "have",
             MonoidStmtType::Add(_) => "add",
-            _ => return Err(Error::new(span, "the statement calculus does not cover this operation")),
+            _ => {
+                return Err(Error::new(
+                    span,
+                    "the statement calculus does not cover this operation",
+                ));
+            }
         };
         let lemma = format_ident!("{}_{}{}", lemma_kind, op_name, single.unwrap_or(""));
-        let arguments = if arguments.is_empty() { quote! {} } else { quote! {, #arguments} };
+        let arguments = if arguments.is_empty() {
+            quote! {}
+        } else {
+            quote! {, #arguments}
+        };
         let mut code = vec![quote! {let #value_ident: #value_type = #observed;}];
         let mut point = point;
-        // An `add`'s safety condition guards it and the rest of the chain.
-        if operation.is_add() {
-            if let Some(safety) = crate::simplification::expr_can_add(&field.stype, &cur, &operation.elt) {
-                let ok = self.fresh("ok");
-                let previous = point.ok.clone().unwrap_or(quote! {true});
-                code.push(quote! {let #ok = #previous && (#safety);});
-                point.ok = Some(quote! {#ok});
+        // An `add` needs its step only if a later step of its field uses its
+        // configuration; its safety condition guards it and its field's later steps.
+        let step = !operation.is_add()
+            || self
+                .needed
+                .as_ref()
+                .is_none_or(|needed| needed.contains(&(stmt as *const TransitionStmt)));
+        if step {
+            if operation.is_add() {
+                if let Some(safety) =
+                    crate::simplification::expr_can_add(&field.stype, &cur, &operation.elt)
+                {
+                    let i = index.unwrap();
+                    let ok = self.fresh("ok");
+                    let condition = match &point.oks[i] {
+                        Some(previous) => quote! {#previous && (#safety)},
+                        None => quote! {#safety},
+                    };
+                    code.push(quote! {let #ok = #condition;});
+                    point.oks[i] = Some(quote! {#ok});
+                }
             }
+            let ok = index.and_then(|i| point.oks[i].clone());
+            code.push(Self::guarded(
+                &ok,
+                quote! {#c::#lemma((#current).#n, (#shared).#n, (#frame).#n, #state #arguments);},
+            ));
         }
-        code.push(Self::guarded(
-            &point,
-            quote! {#c::#lemma((#current).#n, (#shared).#n, (#frame).#n, #state #arguments);},
-        ));
         // The fragment and the value the statement leaves.
         if !operation.is_have() {
             point.fragment = next_fragment(ft, field, operation, current, &value);
@@ -408,7 +488,7 @@ impl Chain<'_> {
             } else {
                 crate::simplification::expr_add(&field.stype, &cur, &operation.elt)
             };
-            let i = self.tracked.iter().position(|f| f.name == field.name).unwrap();
+            let i = index.unwrap();
             point.values[i] = quote! {#updated};
             // Name both, so that later terms stay small.
             let (o, v) = (self.fresh("owned"), self.fresh("value"));
@@ -451,27 +531,41 @@ pub(crate) fn chain(
 ) -> Result<TokenStream, Error> {
     let fields: HashMap<_, _> = sm.fields.iter().map(|f| (f.name.to_string(), f.clone())).collect();
     let tracked = modified(&tr.body, sm);
+    let mut needed = HashSet::new();
+    observed_later(std::slice::from_ref(&tr.body), HashSet::new(), &mut needed);
+    // The fragments under hygienic names: a pattern of the transition may bind `owned`
+    // or `h`.
+    let (owned_name, shared_name) = (
+        format_ident!("__tsm_chain_owned", span = Span::mixed_site()),
+        format_ident!("__tsm_chain_shared", span = Span::mixed_site()),
+    );
     let mut chain = Chain {
         fields: &fields,
         fragment_type,
-        shared: shared.clone(),
+        shared: quote! {#shared_name},
         frame: quote! {#frame},
         tracked: tracked.clone(),
         next: 0,
+        needed: Some(needed),
     };
     let start = Point {
-        fragment: owned.clone(),
-        values: tracked.iter().map(|f| {
-            let n = &f.name;
-            quote! {pre.#n}
-        }).collect(),
-        ok: None,
+        fragment: quote! {#owned_name},
+        values: tracked
+            .iter()
+            .map(|f| {
+                let n = &f.name;
+                quote! {pre.#n}
+            })
+            .collect(),
+        oks: tracked.iter().map(|_| None).collect(),
     };
     let (body, _) = chain.sequence(std::slice::from_ref(&tr.body), start)?;
     let pre = format_ident!("pre");
     Ok(quote! {
         let #pre = #state;
-        #split(#owned, #shared, #frame, #pre);
+        let #owned_name = #owned;
+        let #shared_name = #shared;
+        #split(#owned_name, #shared_name, #frame, #pre);
         #body
     })
 }

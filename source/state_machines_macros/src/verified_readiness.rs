@@ -1101,6 +1101,8 @@ pub struct GuardContext<'a> {
     pub pn: &'a [&'a Ident],
     pub observed: &'a [TokenStream],
     pub reads: &'a [&'a Ident],
+    /// Whether `ready` is proved by the statement calculus's chain (`verified_chain`).
+    pub chain: bool,
 }
 
 /// The local-ready items (of the type `local_ready::t`) of a transition with a
@@ -1114,7 +1116,7 @@ pub struct GuardContext<'a> {
 /// of a mutating transition (the token is passed and returned, with a unit
 /// deposit), and gets `local_ready_api`'s items.
 pub fn local_ready_guard_api(c: GuardContext<'_>) -> Result<TokenStream, Error> {
-    let GuardContext { sm, tr, st, se, pe, ft, tt, sty, params, pn, observed, reads } = c;
+    let GuardContext { sm, tr, st, se, pe, ft, tt, sty, params, pn, observed, reads, chain } = c;
     let n = &tr.name;
     let req = format_ident!("{}_requires", n);
     let enabled = format_ident!("{}_enabled", n);
@@ -1126,7 +1128,7 @@ pub fn local_ready_guard_api(c: GuardContext<'_>) -> Result<TokenStream, Error> 
     let full_state = fresh(sm, tr, "completion_state");
     // The readiness facts of the statements (as in `local_ready_api`), over `owned` and
     // `h`: here the borrowed fragment and the unit.
-    let hints = if crate::verified_chain::uses_chain(sm, tr) {
+    let hints = if chain {
         let split = quote! {#pe::__tsm_cfg_split};
         vec![crate::verified_chain::chain(sm, tr, ft, &split, quote! {owned}, quote! {h}, &completion_frame, &full_state)?]
     } else {
