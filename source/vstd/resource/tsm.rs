@@ -164,9 +164,14 @@ impl<M: Machine> PCM for Inved<M> {
 
 /// The deterministic frame obligation produced by a machine transition.
 ///
-/// The frame obligations (here and in `tsm_storage`) are opaque: a proof establishes
-/// and uses them through the `*_intro`, `*_by_points` and `*_sound` lemmas, so that
-/// their quantifiers stay out of the generated proofs.
+/// The frame obligations (here and in `tsm_storage`) are opaque, so that their
+/// quantifiers stay out of the generated proofs. The token operations use them
+/// through the `*_sound` lemmas. The nondeterministic ones (and `update_point`,
+/// `exchange_point`) are established through `update_point_intro`,
+/// `exchange_point_intro*` and `frame_{update,exchange}_by_points`; the deterministic
+/// `frame_update`, `frame_exchange` and `frame_guard` have no introduction lemma: a
+/// proof of one (the raw fallback operations, the guard frames, `frame_exchange_with_extra`)
+/// reveals it.
 #[verifier::opaque]
 pub open spec fn frame_update<M: Machine>(old: M::Fragment, new: M::Fragment) -> bool {
     forall|frame: M::Fragment, state: M::State|

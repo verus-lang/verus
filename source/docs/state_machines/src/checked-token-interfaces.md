@@ -69,7 +69,10 @@ Each transition `t(x)` becomes a frame-preserving update. If the operation consu
     ⇒ ∃ s'.  invariant(s') ∧ a' · c = embed(s')
 ```
 
-`vstd::resource::tsm::frame_update` is this statement. For storage, the conclusion
+`vstd::resource::tsm::frame_update` is this statement (opaque in vstd, like the other
+frame obligations below: the generated proofs establish them through the `*_by_points`
+lemmas and the token operations use them through the `*_sound` lemmas, so that their
+quantifiers stay out of the generated proofs). For storage, the conclusion
 additionally fixes the storage update:
 
 ```text
@@ -77,8 +80,8 @@ storage(s') = (storage(s) ∪ deposit) \ dom(withdraw)
 ```
 
 and requires the deposit to be disjoint from `storage(s)` (`frame_exchange` in
-`tsm_storage.rs`). Transitions with `birds_eye` reads or nondeterministic results use
-the nondeterministic variants, in which `s` may determine the output.
+`tsm_storage.rs`, also opaque). Transitions with `birds_eye` reads or nondeterministic
+results use the nondeterministic variants, in which `s` may determine the output.
 
 All deposits and withdrawals of one transition form one such exchange, so a
 transition cannot deposit into a location it withdrew from earlier: replacing a
@@ -169,6 +172,10 @@ fn embed(s: State) -> Fragment {
     }
 }
 ```
+
+(The constructors `set_frag`, `map_frag`, `persistent_set_frag`, ... are closed in vstd:
+outside `tsm_collections`, the entries shown in the comments are given by the
+`*_frag_at` lemmas, `group_tsm_fragment_lemmas`, rather than by the lambdas.)
 
 Field by field:
 
@@ -296,7 +303,8 @@ dom(storage(s)) ∩ dom(d) = ∅
 
 (The generated proof states the nondeterministic form,
 `frame_exchange_nondeterministic`, with the outputs `Protocol::fill_outputs`; here
-they are `(a', ∅)`.) The witness is `s' = State::fill_execute(s, k, v)`. The proof
+they are `(a', ∅)`. The form is opaque in vstd: the proof establishes it for each
+frame by `exchange_point_intro*` and then `frame_exchange_by_points`.) The witness is `s' = State::fill_execute(s, k, v)`. The proof
 goes as follows:
 
 * `a.free.at(k) = Some(Exclusive(()))` is included in `embed(s)`, so `k ∈ s.free`

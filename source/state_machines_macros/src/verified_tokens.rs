@@ -756,6 +756,8 @@ fn update_operation(ctx: &Ctx, n: &Names) -> TokenStream {
             requires Self::#req(token.fragment(), #(#pnames),*)
             ensures out.loc() == token.loc(), out.fragment() == Self::#local(token.fragment(), #(#pnames),*), Self::#facts(token.fragment(), #(#pnames),*)
         {
+            // `frame_update` is opaque; this is its proof.
+            reveal(::vstd::resource::tsm::frame_update);
             let f = token.fragment();
             assert forall|z:#fragment_ty, s:#state_ty| s.invariant() && #fragment_expr::op(f,z) == Self::embed(s)
                 implies exists|post:#state_ty| post.invariant() && #fragment_expr::op(Self::#local(f, #(#pnames),*),z) == Self::embed(post) by {
@@ -818,6 +820,8 @@ fn shared_update_operation(ctx: &Ctx, n: &Names) -> TokenStream {
             ensures out.loc()==token.loc(), out.fragment()==Self::#owned_next(token.fragment(),shared.fragment(), #(#pnames),*),
                 Self::#facts(#fragment_expr::op(token.fragment(),shared.fragment()), #(#pnames),*)
         {
+            // `frame_update` is opaque; this is its proof.
+            reveal(::vstd::resource::tsm::frame_update);
             let owned=token.fragment(); let h=shared.fragment(); let f=#fragment_expr::op(owned,h);
             assert forall|z:#fragment_ty,s:#state_ty| s.invariant() && #fragment_expr::op(f,z)==Self::embed(s)
                 implies exists|post:#state_ty| post.invariant()

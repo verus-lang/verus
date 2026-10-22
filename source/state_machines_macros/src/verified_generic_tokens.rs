@@ -3359,6 +3359,10 @@ fn shared_joins(take_shared: &[(Ident, TokenStream, Option<TokenStream>)], share
                     __tsm_j
                 } else {
                     #t::fragment_included_reflexive::<Protocol>(#shared.fragment());
+                    // The absent observation's fragment `#sf` is the unit
+                    // (`fragment_included_unit`). The unit-law hints are not needed
+                    // for the inclusion, but removing them costs the generic-token
+                    // examples about 0.7% rlimit.
                     Fragment::unit().op_unit();
                     Fragment::commutative(Fragment::unit(), #shared.fragment());
                     #shared.fragment().op_unit();
