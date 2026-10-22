@@ -158,6 +158,11 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
                     "error: missing dep-info file from first pass {}",
                     dep_info_path_verus_d.display(),
                 );
+                assert!(
+                    dep_info_path_d.is_file(),
+                    "error: missing dep-info file from second pass {}",
+                    dep_info_path_d.display(),
+                );
             }
         }
         rustc_driver::Compilation::Continue
