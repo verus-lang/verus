@@ -22,6 +22,7 @@ use crate::verus_items::{self, VerusItem};
 use crate::{unsupported_err, unsupported_err_vec, unsupported_err_vec_unless};
 use std::collections::HashSet;
 use std::rc::Rc;
+use rustc_hir::def_id::DefId;
 
 use rustc_ast::IsAuto;
 use rustc_hir::def::DefKind;
@@ -45,7 +46,7 @@ impl State {
         &mut self,
         ctxt: &Context<'tcx>,
         name: &Fun,
-        id: rustc_span::def_id::DefId,
+        id: DefId,
     ) {
         self.fun_warn_configs
             .insert(name.clone(), crate::attributes::warning_config_walk_parents(ctxt.tcx, id));
@@ -729,11 +730,27 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
             fun_name_to_info.insert(stub.x.name.clone(), info.clone());
         }
     }
+
+    // Map DefId to the Fun that has the relave ErasureInfo and ErasureModes
+    let mut def_id_to_fun_name_for_erasure = HashMap::<DefId, Fun>::new();
+    for info in infos.iter() {
+        match &**info {
+            FunctionOrConstInfo::Function(info) => {
+                def_id_to_fun_name_for_erasure.insert(info.def_id, info.function.x.name.clone());
+            }
+            FunctionOrConstInfo::Const(info) => {
+                def_id_to_fun_name_for_erasure.insert(info.def_id, info.function.x.name.clone());
+            }
+            FunctionOrConstInfo::ForeignFunction(_) => { }
+        }
+    }
+
     Ok(PreCrate {
         ctxt,
         warning_ctx: Arc::new(warning_ctx),
         krate_without_funs: Arc::new(vir),
         infos: infos,
         fun_name_to_info,
+        def_id_to_fun_name_for_erasure,
     })
 }
