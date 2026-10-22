@@ -414,7 +414,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     ;
 }
 
-/// A variant of [`Resource`] that implements `Copy`.
+/// A variant of [`StorageResource`] that implements `Copy`.
 ///
 /// Use [`Self::into_resource`] to get the underlying resource.
 impl<K, V, P: Protocol<K, V>> CopyableStorageResource<K, V, P> {
