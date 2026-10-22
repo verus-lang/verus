@@ -51,9 +51,9 @@ broadcast use super::super::iset::group_iset_lemmas;
 #[verifier::accept_recursive_types(P)]
 pub tracked struct Resource<P: PCM> {
     p: core::marker::PhantomData<P>,
-    no_copy: verus_builtin::NoCopy,
 }
 
+#[cfg(verus_keep_ghost)]
 #[verifier::external]
 impl<P: PCM> !Copy for Resource<P> {
 

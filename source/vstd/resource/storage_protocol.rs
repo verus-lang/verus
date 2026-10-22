@@ -35,6 +35,7 @@ pub tracked struct StorageResource<K, V, P> {
     _send_sync: super::super::state_machine_internal::SyncSendIfSyncSend<IMap<K, V>>,
 }
 
+#[cfg(verus_keep_ghost)]
 #[verifier::external]
 impl<K, V, P> !Copy for StorageResource<K, V, P> {
 
