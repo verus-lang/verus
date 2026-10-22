@@ -774,8 +774,13 @@ pub(crate) fn owned_post_fragment(
     fragment_type: &TokenStream,
 ) -> Result<TokenStream, Error> {
     let fields: HashMap<_, _> = sm.fields.iter().map(|f| (f.name.to_string(), f.clone())).collect();
-    Ok(post_fragment(&tr.body, &fields, fragment_type, quote! {owned}, &mut 0)?
-        .unwrap_or(quote! {owned}))
+    // The walk starts from a hygienic name: a `let` or a pattern of the transition may
+    // bind `owned`.
+    let start = format_ident!("__tsm_post_owned_0", span = Span::mixed_site());
+    Ok(match post_fragment(&tr.body, &fields, fragment_type, quote! {#start}, &mut 0)? {
+        Some(walk) => quote! {{let #start = owned; #walk}},
+        None => quote! {owned},
+    })
 }
 
 /// The proof of a raw frame's output configuration inside its completion quantifier

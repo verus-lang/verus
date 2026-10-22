@@ -1,7 +1,7 @@
 // EXPECTED-ERROR: cannot name a transition parameter of the checked macro
-//! Transition parameters may not use the names of the generated raw operations' parameters
-//! and binders (`owned`, `h`, `z`, `new`, `shared`, `out`, `result`, `outputs`), which they
-//! would duplicate or shadow.
+//! Transition parameters may not use the names of parameters and binders of every generated
+//! raw operation (`owned`, `h`, `out`, and `z` outside `init!`), which they would duplicate
+//! or shadow.
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 verus! {

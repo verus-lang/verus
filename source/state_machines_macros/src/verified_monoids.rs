@@ -1,4 +1,5 @@
-//! Checked ownership effects with canonical collection operands.
+//! The monoid fields' components, canonical operands and fragment updates, and the
+//! frontend restrictions of the checked backend on monoid statements (`transition_effects`).
 use crate::ast::*;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -20,8 +21,7 @@ pub struct Effect {
     pub replacement: bool,
 }
 
-/// Whether fields of this kind are monoid fields, whose ownership effects this module
-/// analyzes.
+/// Whether fields of this kind are monoid fields (with a resource component).
 pub fn is_monoid_type(s: &ShardableType) -> bool {
     matches!(
         s,
@@ -585,7 +585,9 @@ fn check_binding_order(
     Ok(())
 }
 
-/// The effects of `tr` on its monoid fields, sorted by field name.
+/// The effects of `tr` on its monoid fields, sorted by field name. It also rejects the
+/// statement forms the checked backend restricts: unsupported operands and bindings, a
+/// removal from a field after an addition to it, a binding after an addition to its field.
 pub fn transition_effects(
     tr: &Transition,
     fields: &HashMap<String, Field>,
@@ -729,7 +731,11 @@ pub(crate) fn updated_component(
 
 /// The effect spec fns (`<t>_<f>_effect(pre, ..)`: the composed operand of the effect)
 /// of `effects`.
-pub fn effect_functions(effects: &[&Effect], state: &TokenStream, params: &[TokenStream]) -> TokenStream {
+pub fn effect_functions(
+    effects: &[&Effect],
+    state: &TokenStream,
+    params: &[TokenStream],
+) -> TokenStream {
     let definitions = effects.iter().map(|effect| {
         let function = &effect.function;
         let expression = &effect.expression;

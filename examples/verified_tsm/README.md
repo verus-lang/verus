@@ -153,7 +153,11 @@ forms and the skipped ones.
 * `hygiene_name_capture.rs`: user identifiers named like generated `__tsm_*` helpers, in the
   model, the generic interface and nondeterministic tokenizing (one representative each).
 * `negative/reserved_parameter_names.rs`: a transition parameter named like a parameter or
-  binder of the generated raw operations (`z`) gets a diagnostic.
+  binder of every generated raw operation (`owned`, `h`, `out`; `z` outside `init!`) gets a
+  diagnostic.
+* `hygiene_binder_names.rs`: generated binder names the macro accepts in user code: `let`s
+  and patterns binding `owned`, `h`, `z`, `shared`, `outputs` or `result`, a generic
+  parameter `result`, and `init!` parameters `new`, `z`, `shared` (regressions of e94a6a9ce).
 
 ## The statement calculus (`vstd::resource::tsm_calculus`)
 

@@ -59,10 +59,18 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
     for tr in &bundle.sm.transitions {
         for param in &tr.params {
             let name = param.name.to_string();
-            if ["owned", "h", "z", "new", "shared", "out", "result", "outputs"].contains(&name.as_str()) {
+            // Only the names that fail to compile in every position (`z`: in every
+            // non-init transition); `new`, `shared`, `outputs` and `result` are accepted, as
+            // they compile where no generated binder takes them (e.g. `init!`, guard-only
+            // properties, generic `result`), and fail with the compiler's error elsewhere.
+            let reserved = ["owned", "h", "out"].contains(&name.as_str())
+                || (name == "z" && tr.kind != TransitionKind::Init);
+            if reserved {
                 return Err(Error::new(
                     param.name.span(),
-                    format!("`{name}` cannot name a transition parameter of the checked macro: the generated raw operations use it"),
+                    format!(
+                        "`{name}` cannot name a transition parameter of the checked macro: the generated raw operations use it"
+                    ),
                 ));
             }
         }
@@ -603,9 +611,10 @@ fn implicit_local_state(sm: &SM, tr: &Transition, se: &TokenStream, pe: &TokenSt
 /// machine with variable or constant fields (`Protocol::__observed`, which then has
 /// conditionals): a `require` with a quantifier that reads `pre`, a `remove`/`have`/`add`
 /// operand that reads `pre` (its ownership condition quantifies over the operand), or a
-/// singleton `remove` from a map field (whose ownership condition was once also stated at the
-/// local state; the local state stays named for it). The local state is then a named
-/// function, as the observation's conditionals cannot occur in a trigger.
+/// singleton `remove` from a map field. The local state is then a named function, as the
+/// observation's conditionals cannot occur in a trigger. (The last case needs no named
+/// state since the composed effects were retired; it is kept so that the local-ready API,
+/// which has `local_state` for these transitions, stays unchanged.)
 fn quantified_state(sm: &SM, tr: &Transition) -> bool {
     fn mentions(tokens: TokenStream, names: &[&str]) -> bool {
         tokens.into_iter().any(|token| match token {

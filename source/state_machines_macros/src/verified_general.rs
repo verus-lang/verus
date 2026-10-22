@@ -965,6 +965,9 @@ pub fn output_with_ready(
         check_storage_paths(&tr.body,&fields,&mut StoragePath::default(),&mut replace_candidate)?;
         // Paired exchange outputs when some path has several storage operations.
         let paired = storage_ops > 1;
+        // The checked backend's restrictions on monoid statements (operand forms, bindings,
+        // the remove-have-add order of one field, bindings before additions), and the
+        // composed operands that the multiset cardinality hints below use.
         let effects = monoids::transition_effects(tr, &fields)?;
         for e in &effects {
             changed.insert(e.field.name.to_string());
@@ -981,12 +984,19 @@ pub fn output_with_ready(
         relations.push(quote!{#ownership_inline pub open spec fn #owners(pre:#st,owned:#ft,h:#ft,#(#params),*)->bool{#owner_expression}});
         // The composed removals of multiset fields, for the cardinality hints of the
         // inductiveness lemma below.
-        let cardinality_effects: Vec<_> = if storage.is_some_and(|p| p.fields.len() > 1) && tr.kind != TransitionKind::Init {
-            effects.iter().filter(|effect| matches!(effect.field.stype, ShardableType::Multiset(_))
-                && effect.op == monoids::EffectOp::Remove && !effect.replacement).collect()
-        } else {
-            vec![]
-        };
+        let cardinality_effects: Vec<_> =
+            if storage.is_some_and(|p| p.fields.len() > 1) && tr.kind != TransitionKind::Init {
+                effects
+                    .iter()
+                    .filter(|effect| {
+                        matches!(effect.field.stype, ShardableType::Multiset(_))
+                            && effect.op == monoids::EffectOp::Remove
+                            && !effect.replacement
+                    })
+                    .collect()
+            } else {
+                vec![]
+            };
         relations.push(monoids::effect_functions(&cardinality_effects, &st, &params));
         let mut access_errors = vec![];
         let mut token_footprint=tr.body.clone();
@@ -1334,7 +1344,8 @@ pub fn output_with_ready(
             // The owned fragment after the transition: the chain's fragment (with the
             // patterns' values from `pre`) for the monoid fields, and the post-state's
             // values of the updated variables.
-            let post_fragment = format_ident!("__tsm_post_fragment", span = proc_macro2::Span::mixed_site());
+            let post_fragment =
+                format_ident!("__tsm_post_fragment", span = proc_macro2::Span::mixed_site());
             let post_walk = crate::verified_chain::owned_post_fragment(sm, tr, &ft)?;
             let newfields: Vec<_> = names
                 .iter()
@@ -1348,11 +1359,16 @@ pub fn output_with_ready(
                     }
                 })
                 .collect();
-            let newfields = vec![quote! {{let #post_fragment = #post_walk; #fe{#marker_value #(#newfields),*}}}];
+            let newfields = vec![
+                quote! {{let #post_fragment = #post_walk; #fe{#marker_value #(#newfields),*}}},
+            ];
             let updated_variables: Vec<_> = names
                 .iter()
                 .copied()
-                .filter(|n| changed.contains(&n.to_string()) && matches!(fields[&n.to_string()].stype, ShardableType::Variable(_)))
+                .filter(|n| {
+                    changed.contains(&n.to_string())
+                        && matches!(fields[&n.to_string()].stype, ShardableType::Variable(_))
+                })
                 .collect();
             let effect_calls = vec![crate::verified_chain::frame_chain(
                 sm,
@@ -1628,7 +1644,9 @@ pub fn output_with_ready(
             names.iter().zip(&embed_values).filter(|(n, _)| monoid(n)).unzip();
         // The join takes the configurations of the components the frames' chains step
         // (not the counting kinds'), and the others' plain equalities.
-        let stepped = |n: &&Ident| monoid(n) && !crate::verified_chain::counting(&fields[&n.to_string()].stype);
+        let stepped = |n: &&Ident| {
+            monoid(n) && !crate::verified_chain::counting(&fields[&n.to_string()].stype)
+        };
         let (join_names, join_values): (Vec<&&Ident>, Vec<&TokenStream>) =
             names.iter().zip(&embed_values).filter(|(n, _)| stepped(n)).unzip();
         let (other_names, other_values): (Vec<&&Ident>, Vec<&TokenStream>) =

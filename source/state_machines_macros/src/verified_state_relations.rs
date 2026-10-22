@@ -54,7 +54,6 @@ pub fn output(bundle: &SMBundle, state: &TokenStream) -> Result<Vec<TokenStream>
         }
         for field in &sm.fields {
             methods.insert(format!("{}_{}_effect", transition.name, field.name));
-            methods.insert(format!("{}_{}_effect_owned", transition.name, field.name));
         }
     }
     let mut definitions = Vec::new();
