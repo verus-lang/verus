@@ -54,6 +54,19 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
     parsed.attrs = remaining;
     let mut bundle = parse_result_to_smir(parsed, true)?;
     crate::lemmas::check_lemmas(&bundle)?;
+    // Parameter and binder names of the generated raw operations, which transition
+    // parameters must not shadow or duplicate.
+    for tr in &bundle.sm.transitions {
+        for param in &tr.params {
+            let name = param.name.to_string();
+            if ["owned", "h", "z", "new", "shared", "out", "result", "outputs"].contains(&name.as_str()) {
+                return Err(Error::new(
+                    param.name.span(),
+                    format!("`{name}` cannot name a transition parameter of the checked macro: the generated raw operations use it"),
+                ));
+            }
+        }
+    }
     if !raw {
         // The generic interface has no local-ready API: every generic operation
         // already has a token-level precondition, and its generated readiness
@@ -262,8 +275,8 @@ fn declared_requires(s: &TransitionStmt) -> Result<TokenStream, Error> {
                     Ok(quote! {match #expr {#(#arms),*}})
                 }
                 SplitKind::Special(_, _, _, None) => Ok(quote! {true #(&& (#bodies))*}),
-                // An implicit value, bound from `pre` as in the deposit and
-                // the effects (the local state supplies the owner's value).
+                // An implicit value, bound from `pre` as in the deposit (the
+                // local state supplies the owner's value).
                 SplitKind::Special(name, operation, _, Some(pattern)) => {
                     let observed = match &operation.elt {
                         MonoidElt::OptionSome(None) => quote! {pre.#name->Some_0},
@@ -590,9 +603,9 @@ fn implicit_local_state(sm: &SM, tr: &Transition, se: &TokenStream, pe: &TokenSt
 /// machine with variable or constant fields (`Protocol::__observed`, which then has
 /// conditionals): a `require` with a quantifier that reads `pre`, a `remove`/`have`/`add`
 /// operand that reads `pre` (its ownership condition quantifies over the operand), or a
-/// singleton `remove` from a map field (the ownership of the removed entries is triggered by the effect at the local
-/// state, see `verified_monoids::extra_ownership`). The local state is then a named function,
-/// as the observation's conditionals cannot occur in a trigger.
+/// singleton `remove` from a map field (whose ownership condition was once also stated at the
+/// local state; the local state stays named for it). The local state is then a named
+/// function, as the observation's conditionals cannot occur in a trigger.
 fn quantified_state(sm: &SM, tr: &Transition) -> bool {
     fn mentions(tokens: TokenStream, names: &[&str]) -> bool {
         tokens.into_iter().any(|token| match token {
@@ -995,11 +1008,10 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     };
     // With implicit bindings the local state takes their values from the
     // fragments, and every completion agrees with it on them.
-    // It is a named function: terms of the requirement (e.g. the effects'
-    // triggers) mention it, and the observation's conditionals cannot occur
-    // in a trigger.
+    // It is a named function: terms of the requirement mention it, and the
+    // observation's conditionals cannot occur in a trigger.
     // So is the plain observation when an operand key is bound (a `let` may
-    // read a variable from it, and the effects' triggers then mention it).
+    // read a variable from it).
     let implicit_state = match implicit_local_state(sm, tr, se, pe, ft)? {
         None if !agreement_fields(sm, tr).is_empty() || quantified_state(sm, tr) => {
             Some(quote! {#pe::__observed(<#ft>::op(owned,h))})

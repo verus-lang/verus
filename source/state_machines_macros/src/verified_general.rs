@@ -977,12 +977,17 @@ pub fn output_with_ready(
             quote! {h},
             local_ready.contains(&n.to_string()),
         )?;
-        let extra_ownership = monoids::extra_ownership(&effects, &pn);
         let ownership_inline=if crate::verified_readiness::inline_ownership(sm,tr) {ready_inline.clone()}else{quote!{}};
-        relations.push(quote!{#ownership_inline pub open spec fn #owners(pre:#st,owned:#ft,h:#ft,#(#params),*)->bool{(#owner_expression)&&(#extra_ownership)}});
-        let (effect_declarations, effect_calls) =
-            monoids::effect_declarations(&effects, &st, &ft, &pt, &strong, &owners, &pn, &params);
-        relations.push(effect_declarations);
+        relations.push(quote!{#ownership_inline pub open spec fn #owners(pre:#st,owned:#ft,h:#ft,#(#params),*)->bool{#owner_expression}});
+        // The composed removals of multiset fields, for the cardinality hints of the
+        // inductiveness lemma below.
+        let cardinality_effects: Vec<_> = if storage.is_some_and(|p| p.fields.len() > 1) && tr.kind != TransitionKind::Init {
+            effects.iter().filter(|effect| matches!(effect.field.stype, ShardableType::Multiset(_))
+                && effect.op == monoids::EffectOp::Remove && !effect.replacement).collect()
+        } else {
+            vec![]
+        };
+        relations.push(monoids::effect_functions(&cardinality_effects, &st, &params));
         let mut access_errors = vec![];
         let mut token_footprint=tr.body.clone();
         if updates_unowned(sm) {
@@ -1045,9 +1050,8 @@ pub fn output_with_ready(
                 quote! {pre.invariant() && Self::#strong(pre,post,#(#pn),*)}
             };
             let b = &f.block;
-            let cardinality_hints: Vec<_> = if storage.is_some_and(|p| p.fields.len() > 1) && !init {
-                effects.iter().filter(|effect| matches!(effect.field.stype, ShardableType::Multiset(_))
-                    && effect.op == monoids::EffectOp::Remove && !effect.replacement)
+            let cardinality_hints: Vec<_> = if !init {
+                cardinality_effects.iter()
                     .map(|effect| {
                         let field = &effect.field.name;
                         let operand = &effect.function;
@@ -1189,41 +1193,26 @@ pub fn output_with_ready(
                 })).collect();
                 quote! {#se{#(#updates,)* ..Self::__observed(f)}}
             };
-            // A `have` under an `if` or a `match` owns its operand on its
-            // paths only: its link is conditional on the fragment holding it.
-            let mut observed_links: Vec<_> = map_haves.iter().map(|(field, key, conditional)| {
-                let imap = match fields[&field.to_string()].stype {
-                    ShardableType::IMap(..) => quote! {pre.#field},
-                    _ => quote! {pre.#field.to_imap()},
-                };
-                let link = quote! {
-                    ::vstd::resource::tsm_collections::map_owned_frame(f.#field, z.#field, #imap, #key,
-                        f.#field.at(#key)->Some_0->Exclusive_0);
-                };
-                if *conditional {
-                    quote! {if f.#field.at(#key) is Some && f.#field.at(#key)->Some_0 is Exclusive {#link}}
-                } else {
-                    link
+            // The values the `have`s observe in `f` are the state's: the statement
+            // calculus's chain (with the unit as the borrowed fragment) states them.
+            let guard_links = if map_haves.is_empty() && option_haves.is_empty() {
+                quote! {}
+            } else {
+                let chain = crate::verified_chain::chain(
+                    sm,
+                    tr,
+                    &ft,
+                    &quote! {Self::__tsm_cfg_split},
+                    quote! {f},
+                    quote! {<#ft>::unit()},
+                    &format_ident!("z"),
+                    &format_ident!("pre"),
+                )?;
+                quote! {
+                    assert(#se::#owners(pre,f,<#ft>::unit(),#(#pn),*));
+                    #chain
                 }
-            }).collect();
-            for (field, persistent, conditional) in &option_haves {
-                let (link, variant) = if *persistent {
-                    (quote! {
-                        ::vstd::resource::tsm_collections::persistent_option_owned_frame(f.#field, z.#field, pre.#field,
-                            f.#field->Some_0->Agree_0);
-                    }, quote! {Agree})
-                } else {
-                    (quote! {
-                        ::vstd::resource::tsm_collections::option_owned_frame(f.#field, z.#field, pre.#field,
-                            f.#field->Some_0->Exclusive_0);
-                    }, quote! {Exclusive})
-                };
-                observed_links.push(if *conditional {
-                    quote! {if f.#field is Some && f.#field->Some_0 is #variant {#link}}
-                } else {
-                    link
-                });
-            }
+            };
             // The guard's storage fact, by a case split on each key's field.
             let guard_cases = p.prove_le_by_cases(
                 &format_ident!("__tsm_guard_key", span = proc_macro2::Span::mixed_site()),
@@ -1274,7 +1263,7 @@ pub fn output_with_ready(
                         assert(#se::#enabled(pre,#(#pn),*));
                         let post=#se::#run(pre,#(#pn),*);
                         assert(true #(&& #observe_equal)*);
-                        #(#observed_links)*
+                        #guard_links
                         assert(#se::#guarded(pre,#(#pn),*)==Self::#guarded(f,#(#pn),*));
                         // The guard's storage fact (with its user proof) comes from safety.
                         #se::#safety(pre,#(#pn),*);
@@ -1342,20 +1331,38 @@ pub fn output_with_ready(
                 ShardableType::Constant(_)=>quote!{<#ft>::op(owned,h).#n is Some &&<#ft>::op(owned,h).#n->Some_0 is Agree},
                 _=>unreachable!(),
             }).collect();
+            // The owned fragment after the transition: the chain's fragment (with the
+            // patterns' values from `pre`) for the monoid fields, and the post-state's
+            // values of the updated variables.
+            let post_fragment = format_ident!("__tsm_post_fragment", span = proc_macro2::Span::mixed_site());
+            let post_walk = crate::verified_chain::owned_post_fragment(sm, tr, &ft)?;
             let newfields: Vec<_> = names
                 .iter()
                 .map(|n| {
-                    if changed.contains(&n.to_string()) {
-                        if let Some(value) = monoids::owned_expression(&effects, n, &se, &pn) {
-                            quote! {#n:#value}
-                        } else {
-                            quote! {#n:Some(ExclusiveRA::Exclusive(post.#n))}
-                        }
+                    if monoids::is_monoid_type(&fields[&n.to_string()].stype) {
+                        quote! {#n:#post_fragment.#n}
+                    } else if changed.contains(&n.to_string()) {
+                        quote! {#n:Some(ExclusiveRA::Exclusive(post.#n))}
                     } else {
                         quote! {#n:owned.#n}
                     }
                 })
                 .collect();
+            let newfields = vec![quote! {{let #post_fragment = #post_walk; #fe{#marker_value #(#newfields),*}}}];
+            let updated_variables: Vec<_> = names
+                .iter()
+                .copied()
+                .filter(|n| changed.contains(&n.to_string()) && matches!(fields[&n.to_string()].stype, ShardableType::Variable(_)))
+                .collect();
+            let effect_calls = vec![crate::verified_chain::frame_chain(
+                sm,
+                tr,
+                &ft,
+                &quote! {Self::__tsm_cfg_split},
+                &quote! {Self::__tsm_cfg_join},
+                quote! {Self::#owned_post(owned,pre,post,#(#pn),*)},
+                &updated_variables,
+            )?];
             if let Some(layout) = storage {
                 ops.push(storage_operations(
                     &n,
@@ -1372,10 +1379,8 @@ pub fn output_with_ready(
                     &st,
                     &se,
                     &ft,
-                    &fe,
                     &pt,
                     &tt,
-                    &marker_value,
                     &pn,
                     &params,
                     &owned_req,
@@ -1425,7 +1430,7 @@ pub fn output_with_ready(
                 }
             } else {
                 ops.push(quote!{
-                pub open spec fn #owned_post(owned:#ft,pre:#st,post:#st,#(#params),*)->#ft {#fe{#marker_value #(#newfields),*}}
+                pub open spec fn #owned_post(owned:#ft,pre:#st,post:#st,#(#params),*)->#ft {#(#newfields)*}
                 pub open spec fn #req(owned:#ft,h:#ft,#(#params),*)->bool {
                     true #(&& #owned_req)* #(&& #observed_req)* && forall|z:#ft,pre:#st|::vstd::prelude::imply(#[trigger] ::vstd::resource::tsm::completes_with::<#pt>(<#ft>::op(owned,h),z,pre),
                         #se::#enabled(pre,#(#pn),*)&&#se::#owners(pre,owned,h,#(#pn),*))
@@ -1614,19 +1619,32 @@ pub fn output_with_ready(
     }
     // The configuration split of the statement calculus (`verified_chain`), for the
     // transitions whose proofs use chains.
-    let calculus = if !chained.is_empty() {
-        // The monoid fields' configurations (the chains have no steps of the others).
+    // The statement calculus's configuration split (of the monoid fields: the chains have
+    // no steps of the others) and join, for the readiness chains and the frames.
+    let calculus = if sm.transitions.iter().any(|tr| tr.kind != TransitionKind::Init) {
         let c = quote! {::vstd::resource::tsm_calculus};
-        let (split_names, split_values): (Vec<&&Ident>, Vec<&TokenStream>) = names
-            .iter()
-            .zip(&embed_values)
-            .filter(|(n, _)| monoids::is_monoid_type(&fields[&n.to_string()].stype))
-            .unzip();
+        let monoid = |n: &&Ident| monoids::is_monoid_type(&fields[&n.to_string()].stype);
+        let (split_names, split_values): (Vec<&&Ident>, Vec<&TokenStream>) =
+            names.iter().zip(&embed_values).filter(|(n, _)| monoid(n)).unzip();
+        // The join takes the configurations of the components the frames' chains step
+        // (not the counting kinds'), and the others' plain equalities.
+        let stepped = |n: &&Ident| monoid(n) && !crate::verified_chain::counting(&fields[&n.to_string()].stype);
+        let (join_names, join_values): (Vec<&&Ident>, Vec<&TokenStream>) =
+            names.iter().zip(&embed_values).filter(|(n, _)| stepped(n)).unzip();
+        let (other_names, other_values): (Vec<&&Ident>, Vec<&TokenStream>) =
+            names.iter().zip(&embed_values).filter(|(n, _)| !stepped(n)).unzip();
+        let other_types: Vec<_> =
+            names.iter().zip(&ftypes).filter(|(n, _)| !stepped(n)).map(|(_, t)| t).collect();
         quote! {
             pub proof fn __tsm_cfg_split(o:#ft,h:#ft,z:#ft,s:#st)
                 requires <#ft>::op(<#ft>::op(o,h),z)==Self::embed(s)
-                ensures #(#c::cfg(o.#split_names,h.#split_names,z.#split_names,#split_values)),*
+                ensures true #(&& #c::cfg(o.#split_names,h.#split_names,z.#split_names,#split_values))*
             {#(#c::cfg_iff(o.#split_names,h.#split_names,z.#split_names,#split_values);)*}
+            pub proof fn __tsm_cfg_join(o:#ft,h:#ft,z:#ft,s:#st)
+                requires true #(&& #c::cfg(o.#join_names,h.#join_names,z.#join_names,#join_values))*
+                    #(&& <#other_types>::op(<#other_types>::op(o.#other_names,h.#other_names),z.#other_names)==(#other_values))*
+                ensures <#ft>::op(<#ft>::op(o,h),z)==Self::embed(s)
+            {#(#c::cfg_iff(o.#join_names,h.#join_names,z.#join_names,#join_values);)*}
         }
     } else {
         quote! {}
@@ -1759,10 +1777,8 @@ fn storage_operations(
     st: &TokenStream,
     se: &TokenStream,
     ft: &TokenStream,
-    fe: &TokenStream,
     pt: &TokenStream,
     tt: &TokenStream,
-    marker_value: &Option<TokenStream>,
     pn: &Vec<&Ident>,
     params: &Vec<TokenStream>,
     owned_req: &Vec<TokenStream>,
@@ -1905,7 +1921,7 @@ fn storage_operations(
         quote! {::vstd::resource::tsm_storage::exchange_point_intro_delta::<#pt>(owned,h,z,pre,deposit,outputs,new,post);}
     };
     quote! {
-            pub open spec fn #owned_post(owned:#ft,pre:#st,post:#st,#(#params),*)->#ft {#fe{#marker_value #(#newfields),*}}
+            pub open spec fn #owned_post(owned:#ft,pre:#st,post:#st,#(#params),*)->#ft {#(#newfields)*}
             pub open spec fn #req(owned:#ft,h:#ft,deposit:#map,#(#params),*)->bool {
                 true #(&& #owned_req)* #(&& #observed_req)* &&
                 forall|z:#ft,pre:#st|::vstd::prelude::imply(

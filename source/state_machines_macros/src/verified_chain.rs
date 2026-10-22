@@ -37,6 +37,19 @@ fn collection(stype: &ShardableType) -> bool {
     )
 }
 
+/// Whether `stype` is a counting kind (`count`, `bool` and their persistent versions),
+/// whose component is a number: a frame proves its output component by arithmetic, as
+/// cheaply as a chain step would (`__tsm_cfg_join` takes its plain equality).
+pub(crate) fn counting(stype: &ShardableType) -> bool {
+    matches!(
+        stype,
+        ShardableType::Count
+            | ShardableType::Bool
+            | ShardableType::PersistentCount
+            | ShardableType::PersistentBool
+    )
+}
+
 /// Whether `tr`'s readiness proof uses the chain: it has a `remove` or `have` of a
 /// collection field. (The calculus covers every statement form: every monoid kind, and
 /// the storage operations need no step, see `Chain::storage`.) The enabling condition
@@ -150,6 +163,9 @@ struct Chain<'a> {
     next: usize,
     /// The `add`s whose step is needed (see `observed_later`); `None`: all of them.
     needed: Option<HashSet<*const TransitionStmt>>,
+    /// A frame's chain: a `have` changes no configuration, and the strong relation holds,
+    /// so it needs no step.
+    frame_mode: bool,
 }
 
 impl Chain<'_> {
@@ -454,11 +470,19 @@ impl Chain<'_> {
         let mut point = point;
         // An `add` needs its step only if a later step of its field uses its
         // configuration; its safety condition guards it and its field's later steps.
-        let step = !operation.is_add()
-            || self
-                .needed
-                .as_ref()
-                .is_none_or(|needed| needed.contains(&(stmt as *const TransitionStmt)));
+        let step = if self.frame_mode && counting(&field.stype) {
+            false
+        } else if operation.is_have() {
+            // In a frame, a `have` needs its step only for the agreement of the value its
+            // pattern binds (`owned_post` reads it from the state).
+            !self.frame_mode || pattern.is_some()
+        } else {
+            !operation.is_add()
+                || self
+                    .needed
+                    .as_ref()
+                    .is_none_or(|needed| needed.contains(&(stmt as *const TransitionStmt)))
+        };
         if step {
             if operation.is_add() {
                 if let Some(safety) =
@@ -529,24 +553,41 @@ pub(crate) fn chain(
     frame: &Ident,
     state: &Ident,
 ) -> Result<TokenStream, Error> {
+    chain_of(sm, tr, fragment_type, split, owned, shared, frame, state, false)
+}
+
+/// `chain`; in `frame_mode` (`frame_chain`), with every `add`'s step and no `have`'s.
+fn chain_of(
+    sm: &SM,
+    tr: &Transition,
+    fragment_type: &TokenStream,
+    split: &TokenStream,
+    owned: TokenStream,
+    shared: TokenStream,
+    frame: &Ident,
+    state: &Ident,
+    frame_mode: bool,
+) -> Result<TokenStream, Error> {
     let fields: HashMap<_, _> = sm.fields.iter().map(|f| (f.name.to_string(), f.clone())).collect();
     let tracked = modified(&tr.body, sm);
     let mut needed = HashSet::new();
     observed_later(std::slice::from_ref(&tr.body), HashSet::new(), &mut needed);
-    // The fragments under hygienic names: a pattern of the transition may bind `owned`
-    // or `h`.
-    let (owned_name, shared_name) = (
+    // The fragments under hygienic names: a pattern of the transition may bind `owned`,
+    // `h` or `z`.
+    let (owned_name, shared_name, frame_name) = (
         format_ident!("__tsm_chain_owned", span = Span::mixed_site()),
         format_ident!("__tsm_chain_shared", span = Span::mixed_site()),
+        format_ident!("__tsm_chain_frame", span = Span::mixed_site()),
     );
     let mut chain = Chain {
         fields: &fields,
         fragment_type,
         shared: quote! {#shared_name},
-        frame: quote! {#frame},
+        frame: quote! {#frame_name},
         tracked: tracked.clone(),
         next: 0,
-        needed: Some(needed),
+        needed: if frame_mode { None } else { Some(needed) },
+        frame_mode,
     };
     let start = Point {
         fragment: quote! {#owned_name},
@@ -565,7 +606,221 @@ pub(crate) fn chain(
         let #pre = #state;
         let #owned_name = #owned;
         let #shared_name = #shared;
-        #split(#owned_name, #shared_name, #frame, #pre);
+        let #frame_name = #frame;
+        #split(#owned_name, #shared_name, #frame_name, #pre);
         #body
+    })
+}
+
+/// The owned fragment after `statements` from the fragment named `current` (`None`:
+/// `current`), as the chain's fragments: the fragment component of `<t>_owned_post`. The
+/// implicit value a `have`'s pattern binds is read from the state `pre` (as the frontend
+/// binds it), as `owned_post` does not see the borrowed fragment. Each intermediate
+/// fragment is named, so that no term is repeated.
+fn post_sequence(
+    statements: &[TransitionStmt],
+    fields: &HashMap<String, Field>,
+    fragment_type: &TokenStream,
+    current: TokenStream,
+    next: &mut usize,
+) -> Result<Option<TokenStream>, Error> {
+    for (index, statement) in statements.iter().enumerate() {
+        if let Some(after) = post_fragment(statement, fields, fragment_type, current.clone(), next)?
+        {
+            *next += 1;
+            let name = format_ident!("__tsm_post_owned_{}", *next, span = Span::mixed_site());
+            let rest = post_sequence(
+                &statements[index + 1..],
+                fields,
+                fragment_type,
+                quote! {#name},
+                next,
+            )?
+            .unwrap_or(quote! {#name});
+            return Ok(Some(quote! {{let #name = #after; #rest}}));
+        }
+    }
+    Ok(None)
+}
+
+/// The fragment after `stmt` from the fragment named `current` (`None`: `current`).
+fn post_fragment(
+    stmt: &TransitionStmt,
+    fields: &HashMap<String, Field>,
+    fragment_type: &TokenStream,
+    current: TokenStream,
+    next: &mut usize,
+) -> Result<Option<TokenStream>, Error> {
+    match stmt {
+        TransitionStmt::Block(_, children) => {
+            post_sequence(children, fields, fragment_type, current, next)
+        }
+        TransitionStmt::Split(span, kind, children) => match &**kind {
+            SplitKind::Let(pattern, ty, _, expression) => {
+                let ty = ty.as_ref().map(|ty| quote! {:#ty});
+                Ok(post_sequence(children, fields, fragment_type, current, next)?
+                    .map(|body| quote! {{let #pattern #ty = #expression; #body}}))
+            }
+            SplitKind::If(condition) => {
+                let then_branch =
+                    post_fragment(&children[0], fields, fragment_type, current.clone(), next)?;
+                let else_branch = match children.get(1) {
+                    Some(child) => {
+                        post_fragment(child, fields, fragment_type, current.clone(), next)?
+                    }
+                    None => None,
+                };
+                if then_branch.is_none() && else_branch.is_none() {
+                    return Ok(None);
+                }
+                let then_branch = then_branch.unwrap_or(current.clone());
+                let else_branch = else_branch.unwrap_or(current);
+                Ok(Some(quote! {if #condition {#then_branch} else {#else_branch}}))
+            }
+            SplitKind::Match(expression, arms) => {
+                let mut bodies = vec![];
+                for child in children {
+                    bodies.push(post_fragment(
+                        child,
+                        fields,
+                        fragment_type,
+                        current.clone(),
+                        next,
+                    )?);
+                }
+                if bodies.iter().all(|b| b.is_none()) {
+                    return Ok(None);
+                }
+                let cases = arms.iter().zip(bodies).map(|(arm, body)| {
+                    let pattern = &arm.pat;
+                    let guard = arm.guard.as_ref().map(|(keyword, e)| quote! {#keyword #e});
+                    let body = body.unwrap_or(current.clone());
+                    quote! {#pattern #guard => {#body}}
+                });
+                Ok(Some(quote! {match #expression {#(#cases),*}}))
+            }
+            SplitKind::Special(name, operation, _, pattern) => {
+                let field = fields.get(&name.to_string()).ok_or_else(|| {
+                    Error::new(*span, "chain operation refers to an unknown field")
+                })?;
+                if operation.stmt.is_for_storage() {
+                    let body = post_sequence(children, fields, fragment_type, current, next)?;
+                    return Ok(match (body, pattern) {
+                        (Some(body), Some(pattern)) => {
+                            let observed = match &operation.elt {
+                                MonoidElt::OptionSome(None) => quote! {pre.#name->Some_0},
+                                MonoidElt::SingletonKV(key, None) => quote! {pre.#name[#key]},
+                                _ => return Err(Error::new(*span, "unsupported storage binding")),
+                            };
+                            Some(bind_pattern(pattern, observed, body))
+                        }
+                        (body, _) => body,
+                    });
+                }
+                // A `remove`'s implicit value is the owned fragment's (as in the chain and
+                // the ownership condition); a `have`'s may be the borrowed fragment's, which
+                // `owned_post` does not see: it is the state's.
+                let value = if operation.is_have() {
+                    crate::verified_monoids::operand(field, operation, *span)?
+                } else {
+                    observed_value(field, operation, &current, *span)?
+                };
+                *next += 1;
+                let value_ident =
+                    format_ident!("__tsm_post_operand_{}", *next, span = Span::mixed_site());
+                let value_type = operand_type(&field.stype);
+                let bind = |body: TokenStream| -> Result<TokenStream, Error> {
+                    Ok(match pattern {
+                        Some(pattern) => bind_pattern(
+                            pattern,
+                            bound_value(field, operation, quote! {#value_ident}, *span)?,
+                            body,
+                        ),
+                        None => body,
+                    })
+                };
+                if operation.is_have() {
+                    let Some(body) = post_sequence(children, fields, fragment_type, current, next)?
+                    else {
+                        return Ok(None);
+                    };
+                    let body = bind(body)?;
+                    return Ok(Some(quote! {{let #value_ident: #value_type = #value; #body}}));
+                }
+                let after =
+                    next_fragment(fragment_type, field, operation, current, &quote! {#value_ident});
+                *next += 1;
+                let after_name =
+                    format_ident!("__tsm_post_owned_{}", *next, span = Span::mixed_site());
+                let body =
+                    post_sequence(children, fields, fragment_type, quote! {#after_name}, next)?
+                        .unwrap_or(quote! {#after_name});
+                let body = bind(body)?;
+                Ok(Some(quote! {{
+                    let #value_ident: #value_type = #value;
+                    let #after_name = #after;
+                    #body
+                }}))
+            }
+        },
+        _ => Ok(None),
+    }
+}
+
+/// The fragment component of `<t>_owned_post` (over `owned` and `pre`).
+pub(crate) fn owned_post_fragment(
+    sm: &SM,
+    tr: &Transition,
+    fragment_type: &TokenStream,
+) -> Result<TokenStream, Error> {
+    let fields: HashMap<_, _> = sm.fields.iter().map(|f| (f.name.to_string(), f.clone())).collect();
+    Ok(post_fragment(&tr.body, &fields, fragment_type, quote! {owned}, &mut 0)?
+        .unwrap_or(quote! {owned}))
+}
+
+/// The proof of a raw frame's output configuration inside its completion quantifier
+/// (over `owned`, `h`, `z`, `pre` and `post`, the executed state, whose strong relation
+/// holds): the chain of `tr` without its `have`s, the variables' updates, and the join
+/// (`join`, the machine's `__tsm_cfg_join`) of the configurations at `new_fragment`
+/// (`<t>_owned_post(owned, pre, post, ..)`) into `op(op(new, h), z) == embed(post)`.
+pub(crate) fn frame_chain(
+    sm: &SM,
+    tr: &Transition,
+    fragment_type: &TokenStream,
+    split: &TokenStream,
+    join: &TokenStream,
+    new_fragment: TokenStream,
+    updated_variables: &[&Ident],
+) -> Result<TokenStream, Error> {
+    // Without a modified monoid field (other than a counting one), `owned_post` is `owned`
+    // with the updated variables and counts, and the output configuration follows from
+    // the completion's directly.
+    if modified(&tr.body, sm).iter().all(|f| counting(&f.stype)) {
+        return Ok(quote! {});
+    }
+    let frame = format_ident!("z");
+    let state = format_ident!("pre");
+    let chain =
+        chain_of(sm, tr, fragment_type, split, quote! {owned}, quote! {h}, &frame, &state, true)?;
+    let c = quote! {::vstd::resource::tsm_calculus};
+    let new = format_ident!("__tsm_frame_new", span = Span::mixed_site());
+    let exclusive = |e: TokenStream| {
+        let exclusive = quote! {::vstd::resource::exclusive::ExclusiveRA::Exclusive};
+        quote! {::core::option::Option::Some(#exclusive(#e))}
+    };
+    let updates = updated_variables.iter().map(|n| {
+        let after = exclusive(quote! {post.#n});
+        let before = exclusive(quote! {pre.#n});
+        quote! {
+            #c::cfg_iff(owned.#n, h.#n, z.#n, #before);
+            #c::var_update(owned.#n, h.#n, z.#n, pre.#n, post.#n);
+            #c::cfg_iff(#after, h.#n, z.#n, #after);
+        }
+    });
+    Ok(quote! {
+        #chain
+        #(#updates)*
+        let #new = #new_fragment;
+        #join(#new, h, z, post);
     })
 }

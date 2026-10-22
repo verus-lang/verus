@@ -136,6 +136,13 @@ invariant(pre) && op(op(owned, shared), frame) == embed(pre)
 
 Generated readiness conditions quantify over these completions. Generated
 update proofs establish an invariant-satisfying successor with the same frame.
+Both are chains of the statement calculus
+([tsm_calculus.rs](../vstd/resource/tsm_calculus.rs), emitted by
+[verified_chain.rs](../state_machines_macros/src/verified_chain.rs)): one proved
+lemma per `remove`, `have` and `add`, a Hoare triple over the field's component
+configuration `op(op(owned_i, shared), frame) == embed(value_i)` after each
+statement. A frame's chain ends at the owned output fragment
+`<t>_owned_post(owned, pre, post)`, the fragments the statements leave in turn.
 Storage exchange proofs additionally account for the exact deposit and
 withdrawal. Their implementation uses checked frame-update and frame-exchange
 theorems in [tsm.rs](../vstd/resource/tsm.rs) and
@@ -152,8 +159,7 @@ or use a source assertion proof override to obtain resource authority.
 [verified_monoids.rs](../state_machines_macros/src/verified_monoids.rs) maps
 logical field strategies to resource components. Variables use exclusive
 values; constants use agreement. Counts, Boolean fields, collections, and
-persistent fields use their corresponding checked algebras and ownership
-effects. The supporting implementations include
+persistent fields use their corresponding checked algebras. The supporting implementations include
 [count and machine resources](../vstd/resource/tsm.rs),
 [collections](../vstd/resource/tsm_collections.rs), and
 [persistent resources](../vstd/resource/tsm_persistent.rs).

@@ -152,6 +152,8 @@ forms and the skipped ones.
 
 * `hygiene_name_capture.rs`: user identifiers named like generated `__tsm_*` helpers, in the
   model, the generic interface and nondeterministic tokenizing (one representative each).
+* `negative/reserved_parameter_names.rs`: a transition parameter named like a parameter or
+  binder of the generated raw operations (`z`) gets a diagnostic.
 
 ## The statement calculus (`vstd::resource::tsm_calculus`)
 
