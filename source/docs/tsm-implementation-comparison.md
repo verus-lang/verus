@@ -217,10 +217,13 @@ With `#[verified_raw_tokens]`, every transition, readonly transition and propert
 gets raw operations in the namespace of a generated type, such as
 `local_ready::change::ready`, `local_ready::change::run`, and
 `local_ready::change::observed`, except the transitions of the forms that
-`local_ready_supported` skips (closures in operands, a map or set `have` after an
-`add` to the same field), whose readiness proof the generator cannot produce.
+`local_ready_supported` skips (closures in operands; outside the statement
+calculus's kinds, a map or set `have` after an `add` to the same field), whose
+readiness proof the generator cannot produce.
 The implementation is in
-[verified_readiness.rs](../state_machines_macros/src/verified_readiness.rs).
+[verified_readiness.rs](../state_machines_macros/src/verified_readiness.rs), and
+the chains of the statement calculus that prove most of them in
+[verified_chain.rs](../state_machines_macros/src/verified_chain.rs).
 The generic interface needs no such selection: its preconditions are already
 stated over the supplied tokens, and its generated proofs derive the raw
 precondition for every completion.

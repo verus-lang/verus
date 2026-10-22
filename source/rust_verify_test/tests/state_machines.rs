@@ -11147,9 +11147,10 @@ test_verify_one_file_with_options! {
 
 // Local readiness is generated for every raw transition, readonly transition and property except
 // the forms `verified_readiness::local_ready_supported` skips, whose readiness lemma is not proved;
-// here a `have` of a map or persistent set field after an `add` to the same field. Such a
-// transition keeps its other raw operations (`Protocol::swap_check`, ...), the machine's other
-// transitions get their local-ready API, and clients see no `local_ready::swap_check`.
+// here a `have` of a persistent set field after an `add` to the same field (outside the statement
+// calculus's kinds). Such a transition keeps its other raw operations (`Protocol::grow`, ...), the
+// machine's other transitions get their local-ready API, and clients see no `local_ready::grow`. A `have` of a map field after an `add` to it (`swap_check`) is proved
+// by the calculus's chain.
 test_verify_one_file_with_options! {
     #[test] local_ready_default_skipped_forms_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
         use vstd::resource::tsm::Machine;
@@ -11165,7 +11166,7 @@ test_verify_one_file_with_options! {
                     remove m -= [k => 0];
                     add m += [k => 1];
                 } }
-                // Skipped: a `have` after an `add` to the same map field.
+                // Proved by the chain: a `have` after an `add` to the same map field.
                 transition! { swap_check(k: int, j: int) {
                     remove m -= [k => 0];
                     add m += [k => 1];
@@ -11185,9 +11186,9 @@ test_verify_one_file_with_options! {
         }
 
         proof fn client(tracked t: S::Token)
-            requires t.fragment() == S::Fragment::field_m(Map::empty().insert(1, 0)),
+            requires t.fragment() == S::Fragment::field_m(Map::empty().insert(1, 0).insert(2, 1)),
         {
-            let tracked t = S::local_ready::swap::run(t, 1);
+            let tracked t = S::local_ready::swap_check::run(t, 1, 2);
         }
     } => Ok(())
 }
@@ -11207,7 +11208,7 @@ test_verify_one_file_with_options! {
                     remove m -= [k => 0];
                     add m += [k => 1];
                 } }
-                // Skipped: a `have` after an `add` to the same map field.
+                // Proved by the chain: a `have` after an `add` to the same map field.
                 transition! { swap_check(k: int, j: int) {
                     remove m -= [k => 0];
                     add m += [k => 1];
@@ -11229,7 +11230,8 @@ test_verify_one_file_with_options! {
         proof fn client(tracked t: S::Token)
             requires t.fragment() == S::Fragment::field_m(Map::empty().insert(1, 0)),
         {
-            let tracked t = S::local_ready::swap_check::run(t, 1, 1);
+            let tracked t = S::local_ready::grow::run(t, Set::empty(), Set::empty());
         }
-    } => Err(e) => assert_rust_error_msg(e, "cannot find `swap_check` in `local_ready`")
+    } => Err(e) => assert_rust_error_msg(e, "cannot find `grow` in `local_ready`")
 }
+

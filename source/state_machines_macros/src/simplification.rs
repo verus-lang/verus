@@ -691,7 +691,7 @@ fn get_opt_type(stype: &ShardableType) -> Type {
     }
 }
 
-fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Expr> {
+pub(crate) fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Expr> {
     if stype.is_persistent() {
         match elt {
             MonoidElt::SingletonKV(key, val) => Some(Expr::Verbatim(quote_vstd! { vstd =>
@@ -776,7 +776,7 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
 /// Add the elements, assuming they are addable. Build the expression assuming
 /// to "prefer" the content from the right-hand side, even though it shouldn't really matter.
 /// That's often easier, anyway.
-fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
+pub(crate) fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
     if stype.is_persistent() {
         match elt {
             MonoidElt::SingletonKV(key, val) => {
@@ -989,7 +989,7 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
     }
 }
 
-fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
+pub(crate) fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
     assert!(!stype.is_persistent());
     match elt {
         MonoidElt::OptionSome(_e) => {

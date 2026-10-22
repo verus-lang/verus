@@ -97,12 +97,15 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
 /// * a closure (`|x| ..`, not a quantifier) in an operand of a `remove`,
 ///   `have`, `add`, `deposit`, `withdraw` or `guard`, in the value of a `let`,
 ///   in an `if` condition, or in a `match` scrutinee or arm guard (anywhere
-///   but in a `require`, `assert` or `update`);
-/// * a `have` of a map or set field (`map`, `imap`, `set`, `iset` or their
-///   `persistent_` versions) after an `add` to the same field on some path;
+///   but in a `require`, `assert` or `update`): the readiness proof restates
+///   the closure, and distinct copies of a closure are distinct terms;
 /// * a `require` that the local requirement cannot state (under a binding
 ///   other than a `let`, `if`, `match`, `remove` or `have`; TSM itself
-///   rejects these forms).
+///   rejects these forms);
+/// * for a transition whose readiness the statement calculus does not prove
+///   (`verified_chain::uses_chain`), a `have` of a map or set field (`map`,
+///   `imap`, `set`, `iset` or their `persistent_` versions) after an `add` to
+///   the same field on some path.
 pub(crate) fn local_ready_supported(sm: &SM, tr: &Transition) -> Result<(), String> {
     if let Err(e) = declared_requires(&tr.body) {
         return Err(e.to_string());
@@ -110,7 +113,7 @@ pub(crate) fn local_ready_supported(sm: &SM, tr: &Transition) -> Result<(), Stri
     if closure_outside_conditions(&tr.body) {
         return Err("a closure in an operand, `let`, condition or scrutinee".to_string());
     }
-    if have_after_add(sm, &tr.body, &mut HashSet::new()) {
+    if have_after_add(sm, &tr.body, &mut HashSet::new()) && !crate::verified_chain::uses_chain(sm, tr) {
         return Err("a `have` of a map or set field after an `add` to the same field".to_string());
     }
     Ok(())
@@ -387,6 +390,8 @@ pub struct Context<'a> {
     pub deposits: bool,
     pub withdraws: bool,
     pub paired: bool,
+    /// Whether `ready` is proved by the statement calculus's chain (`verified_chain`).
+    pub chain: bool,
 }
 
 /// A `__tsm_<stem>_<n>` name that no parameter, field, generic or body identifier of `tr`
@@ -1614,6 +1619,7 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         deposits,
         withdraws,
         paired,
+        chain,
     } = c;
     let n = &tr.name;
     let local_req = format_ident!("precondition");
@@ -1754,9 +1760,17 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
             storage.prove_eq(&deposit_index, local_deposit, full_deposit)
         };
     }
-    let (sequence_hints,sequenced)=local_sequence_hints(sm,tr,&full_state,&completion_frame,ft)?;
-    let set_hints=singleton_set_remove_hints(tr,&observation,&full_state,&completion_frame,ft,se,pe,&owners,pn,&sequenced);
-    let map_hints=singleton_map_remove_hints(sm,tr,&observation,&full_state,&completion_frame,ft,se,&owners,pn,&sequenced);
+    // The readiness facts of the statements: the chain, or the hints.
+    let hints = if chain {
+        let split = quote! {#pe::__tsm_cfg_split};
+        let chain = crate::verified_chain::chain(sm, tr, ft, &split, quote! {owned}, quote! {h}, &completion_frame, &full_state)?;
+        vec![chain]
+    } else {
+        let (sequence_hints,sequenced)=local_sequence_hints(sm,tr,&full_state,&completion_frame,ft)?;
+        let set_hints=singleton_set_remove_hints(tr,&observation,&full_state,&completion_frame,ft,se,pe,&owners,pn,&sequenced);
+        let map_hints=singleton_map_remove_hints(sm,tr,&observation,&full_state,&completion_frame,ft,se,&owners,pn,&sequenced);
+        set_hints.into_iter().chain(map_hints).chain(sequence_hints).collect()
+    };
     // With implicit bindings the local state takes their values from the
     // fragments, and every completion agrees with it on them.
     // It is a named function: terms of the requirement (e.g. the effects'
@@ -1809,9 +1823,7 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
                 #(#agreement)*
                 assert(Self::#declared(#full_state,#(#pn),*));
                 assert(#se::#owners(#full_state,owned,h,#(#pn),*));
-                #(#set_hints)*
-                #(#map_hints)*
-                #(#sequence_hints)*
+                #(#hints)*
                 #deposit_eq
             }
         }

@@ -376,27 +376,7 @@ impl Compiler<'_> {
         current: TokenStream,
         value: &TokenStream,
     ) -> TokenStream {
-        let name = &field.name;
-        let fragment = self.fragment;
-        match operation.stmt {
-            MonoidStmtType::Have => current,
-            MonoidStmtType::Remove | MonoidStmtType::Add(_) => {
-                let effect = if matches!(operation.stmt, MonoidStmtType::Remove) {
-                    EffectOp::Remove
-                } else {
-                    EffectOp::Add
-                };
-                let component = updated_component(
-                    &field.stype,
-                    effect,
-                    quote! {(#current).#name},
-                    value.clone(),
-                );
-                let setter = format_ident!("__tsm_set_{}", name);
-                quote! {<#fragment>::#setter(#current, #component)}
-            }
-            _ => unreachable!(),
-        }
+        next_fragment(self.fragment, field, operation, current, value)
     }
 
     /// Whether `statements` contain a `remove` or `have` of a field whose type
@@ -546,6 +526,38 @@ impl Compiler<'_> {
             }
         }
         Ok(result)
+    }
+}
+
+
+/// The owned fragment after a monoid statement on `field` (operand `value`, bound to a
+/// name) of the fragment `current` of type `fragment`.
+pub(crate) fn next_fragment(
+    fragment: &TokenStream,
+    field: &Field,
+    operation: &SpecialOp,
+    current: TokenStream,
+    value: &TokenStream,
+) -> TokenStream {
+    let name = &field.name;
+    match operation.stmt {
+        MonoidStmtType::Have => current,
+        MonoidStmtType::Remove | MonoidStmtType::Add(_) => {
+            let effect = if matches!(operation.stmt, MonoidStmtType::Remove) {
+                EffectOp::Remove
+            } else {
+                EffectOp::Add
+            };
+            let component = updated_component(
+                &field.stype,
+                effect,
+                quote! {(#current).#name},
+                value.clone(),
+            );
+            let setter = format_ident!("__tsm_set_{}", name);
+            quote! {<#fragment>::#setter(#current, #component)}
+        }
+        _ => unreachable!(),
     }
 }
 

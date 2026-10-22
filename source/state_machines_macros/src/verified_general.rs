@@ -800,6 +800,7 @@ pub fn output_with_ready(
     let mut names = vec![];
     let mut ftypes = vec![];
     let mut embeds = vec![];
+    let mut embed_values = vec![];
     let mut temps = vec![];
     let mut posts = vec![];
     let mut observations = vec![];
@@ -848,6 +849,7 @@ pub fn output_with_ready(
         names.push(n);
         ftypes.push(ty.clone());
         ff.push(quote! {pub #n:#ty});
+        embed_values.push(v.clone());
         embeds.push(quote! {#n:#v});
     }
     let (field_specs, field_takes) =
@@ -1408,6 +1410,7 @@ pub fn output_with_ready(
                             deposits: has_deposit(&tr.body),
                             withdraws: withdraw,
                             paired,
+                            chain: crate::verified_chain::uses_chain(sm, tr),
                         },
                     )?;
                     local_ready_items.push((n.clone(), quote! {#declared_requires #local_deposited #api}));
@@ -1508,6 +1511,7 @@ pub fn output_with_ready(
                             deposits: false,
                             withdraws: false,
                             paired: false,
+                            chain: crate::verified_chain::uses_chain(sm, tr),
                         },
                     )?;
                     local_ready_items.push((n.clone(), quote! {#declared_requires #api}));
@@ -1600,6 +1604,19 @@ pub fn output_with_ready(
         }
         broadcast = quote! {broadcast use {#(#groups),*};};
     }
+    // The configuration split of the statement calculus (`verified_chain`), for the
+    // transitions whose proofs use chains.
+    let calculus = if sm.transitions.iter().any(|tr| local_ready.contains(&tr.name.to_string()) && crate::verified_chain::uses_chain(sm, tr)) {
+        let c = quote! {::vstd::resource::tsm_calculus};
+        quote! {
+            pub proof fn __tsm_cfg_split(o:#ft,h:#ft,z:#ft,s:#st)
+                requires <#ft>::op(<#ft>::op(o,h),z)==Self::embed(s)
+                ensures #(#c::cfg(o.#names,h.#names,z.#names,#embed_values)),*
+            {#(#c::cfg_iff(o.#names,h.#names,z.#names,#embed_values);)*}
+        }
+    } else {
+        quote! {}
+    };
     let observation_inline = if local_ready.is_empty() {
         quote! {}
     } else {
@@ -1703,7 +1720,7 @@ pub fn output_with_ready(
             impl #decl #pt #where_clause {
                 #observation_inline
                 pub open spec fn __observed(f:#ft)->#st {#se{#marker_value #(#observations),*}}
-                #field_takes #(#ops)*
+                #field_takes #(#ops)* #calculus
             }
             #local_ready_api
         }}

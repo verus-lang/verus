@@ -27,6 +27,7 @@ mod token_transition_checks;
 mod transitions;
 mod util;
 mod verified_ergonomics;
+mod verified_chain;
 mod verified_general;
 mod verified_generic_tokens;
 mod verified_model;

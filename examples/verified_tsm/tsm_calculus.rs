@@ -3,7 +3,9 @@
 //! chains of step lemmas that establish the frontend's enabling condition and strong
 //! relation of transitions with every statement form the lemmas cover (map, imap, set,
 //! iset and option fields; singleton, pattern-bound and general operands; remove, have and
-//! add; have after add), with no quantifier in the proofs.
+//! add; have after add; a branch before a have), with no quantifier in the proofs. The
+//! machine's generated local readiness (`C1::local_ready::t::ready`) is proved by the same
+//! chains, emitted by the macro.
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 use vstd::resource::algebra::ResourceAlgebra;
@@ -40,6 +42,16 @@ verified_tokenized_state_machine! {
             have m >= [b => 2];
             add o += Some(x);
         } }
+        transition! { branch_have(c: bool, a: int, b: int) {
+            if c {
+                remove m -= [a => 1];
+                add m += [a => 0];
+            } else {
+                remove s -= set {a};
+                add s += set {a};
+            }
+            have m >= [b => 2];
+        } }
         transition! { general(x: Map<int, int>, y: Map<int, int>, p: Set<int>, q: Option<int>) {
             remove m -= (x);
             have m >= (y);
@@ -59,6 +71,7 @@ verified_tokenized_state_machine! {
         #[inductive(initialize)] fn initialize_inductive(post: Self) {}
         #[inductive(rm_have)] fn rm_have_inductive(pre: Self, post: Self, a: int, b: int) {}
         #[inductive(add_have)] fn add_have_inductive(pre: Self, post: Self, a: int, b: int) {}
+        #[inductive(branch_have)] fn branch_have_inductive(pre: Self, post: Self, c: bool, a: int, b: int) {}
         #[inductive(general)] fn general_inductive(pre: Self, post: Self, x: Map<int, int>, y: Map<int, int>, p: Set<int>, q: Option<int>) {}
         #[inductive(infinite)] fn infinite_inductive(pre: Self, post: Self, k: int, v: int, w: IMap<int, int>, e: ISet<int>) {}
     }
@@ -176,6 +189,54 @@ pub mod chains {
             map_add_one(om, h.m, z.m, vm, a, x + 1);
             let om = MapFragment::op(om, map_frag(IMap::empty().insert(a, x + 1)));
             map_have_one(om, h.m, z.m, vm.insert(a, x + 1), b, 2);
+        }
+    }
+
+    // ---- a branch before a have: the arms' (fragment, value, safety) triples are joined
+    pub proof fn branch_have(o: Fragment, h: Fragment, z: Fragment, pre: State, c: bool, a: int, b: int)
+        requires
+            Fragment::op(Fragment::op(o, h), z) == <Protocol as Machine>::embed(pre),
+            c ==> map_owns(o.m, IMap::empty().insert(a, 1int)),
+            !c ==> set_owns(o.s, ISet::empty().insert(a)),
+            map_owns(
+                MapFragment::op(
+                    if c {
+                        MapFragment::op(
+                            map_remove_many(o.m, IMap::empty().insert(a, 1int).dom()),
+                            map_frag(IMap::empty().insert(a, 0int)),
+                        )
+                    } else {
+                        o.m
+                    },
+                    h.m,
+                ),
+                IMap::empty().insert(b, 2int),
+            ),
+        ensures
+            State::branch_have_enabled(pre, c, a, b),
+    {
+        cfg_split(o, h, z, pre);
+        let (om, vm, ok) = if c {
+            map_remove_one(o.m, h.m, z.m, pre.m, a, 1);
+            let om = map_remove_many(o.m, IMap::empty().insert(a, 1int).dom());
+            let vm = pre.m.remove(a);
+            let ok = !vm.dom().contains(a);
+            if ok {
+                map_add_one(om, h.m, z.m, vm, a, 0);
+            }
+            (MapFragment::op(om, map_frag(IMap::empty().insert(a, 0int))), vm.insert(a, 0), ok)
+        } else {
+            set_remove_one(o.s, h.s, z.s, pre.s, a);
+            let os = set_remove_many(o.s, ISet::empty().insert(a));
+            let vs = pre.s.remove(a);
+            let ok = !vs.contains(a);
+            if ok {
+                set_add_one(os, h.s, z.s, vs, a);
+            }
+            (o.m, pre.m, ok)
+        };
+        if ok {
+            map_have_one(om, h.m, z.m, vm, b, 2);
         }
     }
 
