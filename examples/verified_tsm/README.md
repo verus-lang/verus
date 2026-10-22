@@ -44,6 +44,12 @@ below with the reason.
 * `negative/stored_own_tokens_negative_raw.rs`: the same for the raw protocol token.
 * `negative/stored_own_tokens_negative_imap_key.rs`: a raw token as an `IMap` key.
 
+## Guide examples
+
+* `guide_algebras.rs`: the machine whose fragment and storage algebras
+  `checked-token-interfaces.md` ("What gets constructed: an example") describes; the guide
+  includes its fields, invariant, `fill` transition and a client call by mdbook anchors.
+
 ## The raw interface (`#[verified_raw_tokens]`)
 
 * `raw_forms_statements.rs`: remove/have/add sequences on every monoid kind, labels, routing

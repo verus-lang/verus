@@ -101,6 +101,247 @@ model into updates of the underlying resource. The trusted base is therefore the
 `vstd` `Resource` and storage-protocol primitives, as for any other use of those
 libraries.
 
+### What gets constructed: an example
+
+The machine of
+[`guide_algebras.rs`](../../../../examples/verified_tsm/guide_algebras.rs) hands out
+slots `k < capacity`. A slot is filled by depositing a value into `slots`, which
+also records `k` in the persistent set `used`; one spare value can be deposited into
+`spare`. It has one field of each main sharding kind:
+
+```rust
+{{#include ../../../../examples/verified_tsm/guide_algebras.rs:fields}}
+```
+
+```rust
+{{#include ../../../../examples/verified_tsm/guide_algebras.rs:inv}}
+```
+
+```rust
+{{#include ../../../../examples/verified_tsm/guide_algebras.rs:fill}}
+```
+
+`take(k)` removes `[k => let v]` from `owner`, withdraws `[k => v]` from `slots` and
+adds `k` to `free` and one to `permits`; `stash(v)` requires `!pre.spare_full`, sets
+it, and deposits `Some(v)` into `spare`.
+
+#### The fragment algebra
+
+The components are built from a few `vstd` algebras (`vstd::resource`):
+
+* `ExclusiveRA<V>` has elements `Exclusive(v)` and `Invalid`; any two elements
+  compose to `Invalid`.
+* `AgreementRA<V>` has elements `Agree(v)` and `Invalid`; `Agree(v) · Agree(v) =
+  Agree(v)`, and every other composition is `Invalid`.
+* `Option<P>` adjoins a unit `None` to `P`; `Some(x) · Some(y) = Some(x · y)`.
+* `Pointwise<K, P>` (`tsm_collections`) is the function space `K → P`, composed
+  pointwise, with unit `λk. ε`. Its element at `k` is `f.at(k)`.
+* `CountRA` is `nat` under addition, `PersistentCountRA` is `nat` under `max`,
+  both with unit `0`.
+
+The generated `Fragment` has one component per field that is neither storage nor
+`not_tokenized`, named like the field (paths shortened):
+
+```rust
+pub struct Fragment {
+    pub capacity:   Option<AgreementRA<nat>>,     // constant
+    pub spare_full: Option<ExclusiveRA<bool>>,    // variable
+    pub free:       SetFragment<nat>,             // Pointwise<nat, Option<ExclusiveRA<()>>>
+    pub owner:      MapFragment<nat, int>,        // Pointwise<nat, Option<ExclusiveRA<int>>>
+    pub permits:    CountRA,
+    pub used:       PersistentSetFragment<nat>,   // Pointwise<nat, Option<AgreementRA<()>>>
+}
+```
+
+`Fragment::op` and `Fragment::unit()` are componentwise, and the generated
+associativity, commutativity and unit proofs call the components' lemmas.
+`Protocol::embed` is
+
+```rust
+fn embed(s: State) -> Fragment {
+    Fragment {
+        capacity:   Some(AgreementRA::Agree(s.capacity)),
+        spare_full: Some(ExclusiveRA::Exclusive(s.spare_full)),
+        free:       set_frag(s.free.to_iset()),             // λk. k ∈ s.free ? Some(Exclusive(())) : None
+        owner:      map_frag(s.owner.to_imap()),            // λk. k ∈ dom(s.owner) ? Some(Exclusive(s.owner[k])) : None
+        permits:    CountRA { count: s.permits },
+        used:       persistent_set_frag(s.used.to_iset()),  // λk. k ∈ s.used ? Some(Agree(())) : None
+    }
+}
+```
+
+Field by field:
+
+* **`capacity` (`constant`).** The carrier is `Option<AgreementRA<nat>>` with unit
+  `None`. If `Some(Agree(c))` is included in `embed(s)`, then `c = s.capacity`, and
+  `κ = ι_capacity(Some(Agree(c)))` satisfies `κ · κ = κ`. A constant is read by
+  transitions but never updated, so every operation that reads it can carry its own
+  copy of `κ` without consuming anything. This is why `fill_requires` (below)
+  begins with `op(owned, h).capacity is Some` and `... ->Some_0 is Agree`.
+* **`spare_full` (`variable`).** The carrier is `Option<ExclusiveRA<bool>>` with
+  unit `None`. If `a · c = embed(s)` and `a.spare_full = Some(Exclusive(b))`, then
+  `c.spare_full = None` (otherwise the composition is `Some(Invalid)`) and
+  `b = s.spare_full`. The owner of the component therefore knows the field's value
+  and may replace it; the field is owned as a whole and is not split.
+* **`free` (`set`).** `SetFragment<nat>`, one exclusive entry per element: owning
+  `k` is `set_frag({k})`, and two owners of `k` compose to `Some(Invalid)` at `k`.
+* **`owner` (`map`).** `MapFragment<nat, int>`, one exclusive entry per key:
+  owning `k ↦ v` is `map_frag({k ↦ v})`.
+* **`permits` (`count`).** `CountRA`, addition with unit `0`. A fragment with
+  count `n` is completed by `c` with `n + c.permits.count = s.permits`, so
+  `n ≤ s.permits`.
+* **`used` (`persistent_set`).** `PersistentSetFragment<nat>`, one agreement entry
+  per element. Every fragment of it is idempotent, so a known element can be
+  shared freely, and adding an element that is already present changes nothing.
+
+The components' `valid` is not used. `Machine` only needs the total monoid laws,
+and validity of a fragment is `completes` (see above). Since `embed(s)` contains no
+`Invalid`, `completes` implies the exclusivity and agreement constraints, and it is
+stronger than them: it also bounds counts by the state, and it includes the
+invariant.
+
+`spare` and `slots` have no component. Their contents are not owned by fragments
+but held by the storage protocol, and are connected to the fragments only through
+the invariant.
+
+#### The storage algebra
+
+The two storage fields share one map. The generated enums have one variant per
+storage field (one each here, although both payloads are `int`):
+
+```rust
+pub enum __StorageKey   { spare, slots(nat) }
+pub enum __StorageValue { spare(int), slots(int) }
+```
+
+The tagged parts are
+
+```text
+__tag_spare(None)    = ∅                       __tag_spare(Some(v)) = { spare ↦ spare(v) }
+__tag_slots(m)       = { slots(k) ↦ slots(m[k]) | k ∈ dom(m) }
+storage(s)           = __tag_spare(s.spare) ⊎ __tag_slots(s.slots.to_imap())
+```
+
+where the generated `State::__storage` defines `storage(s)` per key
+(`State::__storage_dom`, `State::__storage_val`) rather than as a union.
+`__untag_spare` and `__untag_slots` read a field's value back from a tagged map. The
+generated lemmas `__untag_tag_spare` and `__tag_shape_slots` (for finite maps) show
+that they invert tagging.
+
+The protocol monoid is not `Protocol` itself. `Protocol` is the machine: it
+implements `Machine` and `StorageMachine` (with `Key = __StorageKey`,
+`Value = __StorageValue`, `storage(s) = s.__storage()`). The generated `Token` is
+`StorageToken<Protocol>`, a wrapper of
+
+```text
+StorageResource<__StorageKey, __StorageValue, StorageCarrier<Protocol, Fragment>>
+```
+
+whose protocol monoid `StorageCarrier` (`tsm_storage.rs`) holds one `Fragment`.
+Its `vstd::resource::storage_protocol::Protocol` implementation takes `op` and
+`unit` from `Fragment`, and its relation to the stored map is
+
+```text
+rel(p, t)  :=  ∃ s.  invariant(s) ∧ p.fragment = embed(s) ∧ t = storage(s)
+```
+
+`rel` holds only for complete fragments; it is not closed under inclusion. An
+owned `p` therefore satisfies `rel(p · q, t)` for some `q`, `t`, which is again
+`completes(p.fragment)` (`StorageToken::validate`). `initialize` allocates the
+resource with `p = embed(s0)` and the stored map `storage(s0)`.
+
+The second monoid of a storage protocol, the monoid of stored resources, is fixed by
+`vstd` to `IMap<K, V>` under union of disjoint maps (a composition of overlapping
+maps is undefined). The values in such a map are owned separately, so `⊎` is the
+separating conjunction of the stored resources: a deposit `d` takes `t` to `t ⊎ d`
+and a withdrawal `w` takes `t` to `t \ dom(w)`. A `StorageResource` has a single `K`
+and `V`, so all storage fields of a machine share one map, keyed by a sum over the
+fields. Distinct variants have disjoint domains, so on well-tagged maps (each
+value's variant is its key's, as in every `storage(s)` and every generated
+deposit) `(IMap<__StorageKey, __StorageValue>, ⊎)` is isomorphic, by
+`(__untag_spare, __untag_slots)`, to the product of the per-field storage monoids:
+`Option<int>` (at most one value) times `IMap<nat, int>` under `⊎`. A single
+resource for all storage fields means that one exchange can relate a transition's
+fragment update to all of its deposits and withdrawals.
+
+#### One transition: `fill(k, v)`
+
+In the generic interface, `inst.fill(k, v, f, p, v)` consumes the `free` token
+`f` for `k` and a `permits` token `p` of count 1, and takes the deposited value `v`:
+
+```rust
+{{#include ../../../../examples/verified_tsm/guide_algebras.rs:client_fill}}
+```
+
+At the level of fragments:
+
+```text
+consumed   a  = ι_free(set_frag({k})) · ι_permits(CountRA{count: 1})
+shared     h  ∋ κ = ι_capacity(Some(Agree(c)))           -- copy carried by the tokens
+deposit    d  = { slots(k) ↦ slots(v) }                  -- State::fill_deposited
+produced   a' = ι_owner(map_frag({k ↦ v})) · ι_used(persistent_set_frag({k}))
+withdrawn     ∅
+```
+
+`a'` is `Protocol::fill_owned_post(a, ..)`: `a` with `k` removed from its `free`
+component, one subtracted from `permits`, `{k ↦ v}` composed into `owner` and
+`{k}` into `used`. The obligation, proved by the generated `Protocol::fill_frame`,
+is the exchange for every completion. For all `z` and `s` with `invariant(s)` and
+`a · h · z = embed(s)`:
+
+```text
+dom(storage(s)) ∩ dom(d) = ∅
+∧ ∃ s'.  invariant(s') ∧ a' · h · z = embed(s') ∧ storage(s') = storage(s) ⊎ d
+```
+
+(The generated proof states the nondeterministic form,
+`frame_exchange_nondeterministic`, with the outputs `Protocol::fill_outputs`; here
+they are `(a', ∅)`.) The witness is `s' = State::fill_execute(s, k, v)`. The proof
+goes as follows:
+
+* `a.free.at(k) = Some(Exclusive(()))` is included in `embed(s)`, so `k ∈ s.free`
+  and `(h · z).free.at(k) = None`. By the invariant, `k ∉ dom(s.owner)` and
+  `k ∉ dom(s.slots)`. This gives the disjointness of `d`, and also `z.owner.at(k) =
+  None`, so composing `{k ↦ v}` into `owner` is defined.
+* `κ ∈ h` gives `c = s.capacity`, so the `require k < pre.capacity` holds.
+* `permits`: `1 + (h · z).permits.count = s.permits`, so `0 + (h · z).permits.count
+  = s.permits - 1`.
+* `used`: `(h · z).used.at(k)` is `None` or `Some(Agree(()))`, and both compose
+  with `Some(Agree(()))`.
+* `invariant(s')` is `fill_inductive`.
+
+`StorageToken::exchange_nondeterministic_with_shared` (`tsm_storage.rs`) turns this
+into the precondition of the `vstd` primitive
+`StorageResource::exchange_nondeterministic_with_shared`, with `p = carrier_of(a)`
+and the shared `carrier_of(h)`. The quantification over `z` there becomes the
+quantification over protocol frames `q` in `exchanges_nondeterministic`
+(`storage_protocol.rs`), whose deterministic form `exchanges` reads, for this
+transition, `rel(p · h · q, t) ⇒ rel(p' · h · q, t ⊎ d)`.
+
+#### Summary by sharding kind
+
+`ε` is the component's unit; `x · y` of exclusive entries is `Invalid`, and of
+agreement entries is `Agree(x)` if `x = y`, else `Invalid`. The `valid` column is
+the component's own `valid`, which the construction does not use (see above).
+
+| Kind | Carrier (`Fragment` field type) | `op` | `ε` | `valid` | `embed(s)` component |
+| --- | --- | --- | --- | --- | --- |
+| `variable` | `Option<ExclusiveRA<V>>` | exclusive | `None` | `≠ Some(Invalid)` | `Some(Exclusive(s.f))` |
+| `constant` | `Option<AgreementRA<V>>` | agreement | `None` | `≠ Some(Invalid)` | `Some(Agree(s.f))` |
+| `option` | `OptionFragment<V>` = `Option<ExclusiveRA<V>>` | exclusive | `None` | `≠ Some(Invalid)` | `option_frag(s.f)` |
+| `persistent_option` | `PersistentOptionFragment<V>` = `Option<AgreementRA<V>>` | agreement | `None` | `≠ Some(Invalid)` | `persistent_option_frag(s.f)` |
+| `map`, `imap` | `MapFragment<K, V>` = `Pointwise<K, Option<ExclusiveRA<V>>>` | pointwise exclusive | `λk. None` | at every key | `map_frag(s.f)` |
+| `persistent_map`, `persistent_imap` | `PersistentMapFragment<K, V>` = `Pointwise<K, Option<AgreementRA<V>>>` | pointwise agreement | `λk. None` | at every key | `persistent_map_frag(s.f)` |
+| `set`, `iset` | `SetFragment<K>` = `Pointwise<K, Option<ExclusiveRA<()>>>` | pointwise exclusive | `λk. None` | at every key | `set_frag(s.f)` |
+| `persistent_set`, `persistent_iset` | `PersistentSetFragment<K>` = `Pointwise<K, Option<AgreementRA<()>>>` | pointwise agreement | `λk. None` | at every key | `persistent_set_frag(s.f)` |
+| `multiset` | `FiniteMultisetRA<V>` (a `Multiset<V>`) | multiset sum | empty | `true` | `s.f` |
+| `count` | `CountRA` | `+` | `0` | `true` | `s.f` |
+| `bool` | `CountRA` | `+` | `0` | `true` | `1` if `s.f`, else `0` |
+| `persistent_count` | `PersistentCountRA` | `max` | `0` | `true` | `s.f` |
+| `persistent_bool` | `PersistentCountRA` | `max` | `0` | `true` | `1` if `s.f`, else `0` |
+| `not_tokenized` | none | | | | |
+| `storage_option`, `storage_map`, `storage_imap` | none; `__tag_f(s.f)` is part of `storage(s)` | `⊎` in the stored map | `∅` | | |
+
 ## The raw interface
 
 With `#[verified_raw_tokens]`, the client works with values of type `M::Token`,
