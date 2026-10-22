@@ -71,7 +71,9 @@ pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -
                 ));
             }
             DefPathData::AnonConst => {
-                segments.push(Arc::new(format!("anon_const%{}", d.disambiguator)));
+                segments.push(Arc::new(
+                    vir::def::RUST_DEF_ANON_CONST.to_string() + &d.disambiguator.to_string(),
+                ));
             }
             _ => return None,
         }

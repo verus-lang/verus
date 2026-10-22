@@ -773,3 +773,18 @@ test_verify_one_file! {
         };
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
+
+// Rust's const evaluator checks arithmetic in anonymous constants; Verus does not verify it.
+test_verify_one_file! {
+    #[test] array_length_arithmetic_not_verified code! {
+        use vstd::prelude::*;
+        const K: usize = 3;
+        verus! {
+            assume_specification[K] -> usize;
+
+            fn f() {
+                let a = [0u8; (1 << K) - 1];
+            }
+        }
+    } => Ok(())
+}
