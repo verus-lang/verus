@@ -1026,6 +1026,68 @@ impl Expr {
             Expr::BigOr(_) => Vec::new(),
         }
     }
+
+    /// Verus: the outer attributes of the expression (read-only counterpart of `replace_attrs`)
+    #[cfg(feature = "full")]
+    pub fn attrs_ref(&self) -> &[Attribute] {
+        match self {
+            Expr::Array(ExprArray { attrs, .. })
+            | Expr::Assign(ExprAssign { attrs, .. })
+            | Expr::Async(ExprAsync { attrs, .. })
+            | Expr::Await(ExprAwait { attrs, .. })
+            | Expr::Binary(ExprBinary { attrs, .. })
+            | Expr::Block(ExprBlock { attrs, .. })
+            | Expr::Break(ExprBreak { attrs, .. })
+            | Expr::Call(ExprCall { attrs, .. })
+            | Expr::Cast(ExprCast { attrs, .. })
+            | Expr::Closure(ExprClosure { attrs, .. })
+            | Expr::Const(ExprConst { attrs, .. })
+            | Expr::Continue(ExprContinue { attrs, .. })
+            | Expr::Field(ExprField { attrs, .. })
+            | Expr::ForLoop(ExprForLoop { attrs, .. })
+            | Expr::Group(ExprGroup { attrs, .. })
+            | Expr::If(ExprIf { attrs, .. })
+            | Expr::Index(ExprIndex { attrs, .. })
+            | Expr::Infer(ExprInfer { attrs, .. })
+            | Expr::Let(ExprLet { attrs, .. })
+            | Expr::Lit(ExprLit { attrs, .. })
+            | Expr::Loop(ExprLoop { attrs, .. })
+            | Expr::Macro(ExprMacro { attrs, .. })
+            | Expr::Match(ExprMatch { attrs, .. })
+            | Expr::MethodCall(ExprMethodCall { attrs, .. })
+            | Expr::Paren(ExprParen { attrs, .. })
+            | Expr::Path(ExprPath { attrs, .. })
+            | Expr::Range(ExprRange { attrs, .. })
+            | Expr::RawAddr(ExprRawAddr { attrs, .. })
+            | Expr::Reference(ExprReference { attrs, .. })
+            | Expr::Repeat(ExprRepeat { attrs, .. })
+            | Expr::Return(ExprReturn { attrs, .. })
+            | Expr::Struct(ExprStruct { attrs, .. })
+            | Expr::Try(ExprTry { attrs, .. })
+            | Expr::TryBlock(ExprTryBlock { attrs, .. })
+            | Expr::Tuple(ExprTuple { attrs, .. })
+            | Expr::Unary(ExprUnary { attrs, .. })
+            | Expr::Unsafe(ExprUnsafe { attrs, .. })
+            | Expr::While(ExprWhile { attrs, .. })
+            | Expr::Yield(ExprYield { attrs, .. })
+            // verus
+            | Expr::Assume(Assume { attrs, .. })
+            | Expr::Assert(Assert { attrs, .. })
+            | Expr::AssertForall(AssertForall { attrs, .. })
+            | Expr::RevealHide(RevealHide { attrs, .. })
+            | Expr::View(View { attrs, .. })
+            | Expr::Is(ExprIs { attrs, .. })
+            | Expr::IsNot(ExprIsNot { attrs, .. })
+            | Expr::Has(ExprHas { attrs, .. })
+            | Expr::HasNot(ExprHasNot { attrs, .. })
+            | Expr::GetField(ExprGetField { attrs, .. })
+            | Expr::Final(ExprFinal { attrs, .. })
+            | Expr::Matches(ExprMatches { attrs, .. }) => attrs,
+            Expr::Verbatim(_) => &[],
+            Expr::BigAnd(_) => &[],
+            Expr::BigOr(_) => &[],
+        }
+    }
 }
 
 ast_enum! {
@@ -3516,11 +3578,16 @@ pub(crate) mod printing {
         let do_print_expr = |tokens: &mut TokenStream| print_expr(expr, tokens, fixup);
 
         if needs_group {
-            // Verus: the inserted parentheses take the span of the expression they surround, not
-            // the call site, so that the span of the enclosing expression (its first token) is
-            // still the span of the user's tokens
-            let span = crate::spanned::Spanned::span(expr);
-            token::Paren(span).surround(tokens, do_print_expr);
+            // Verus: when the expression starts with an attribute (the node ids of
+            // -V check-erasure), the inserted parentheses take the span of that attribute, not the
+            // call site, so that the span of the enclosing expression (its first token) is still
+            // the span of the user's tokens. Computing the span of the whole expression instead
+            // would print it, which is quadratic in the depth of nested groups.
+            let paren = match expr.attrs_ref().first() {
+                Some(attr) => token::Paren(attr.pound_token.span),
+                None => token::Paren::default(),
+            };
+            paren.surround(tokens, do_print_expr);
         } else {
             do_print_expr(tokens);
         }

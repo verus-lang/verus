@@ -7,7 +7,8 @@
 //!
 //! Expressions that keep no id, and are keyed by source location instead:
 //! - `if` and `let` expressions, the blocks of `if` branches and of `let ... else`, and
-//!   expressions inside patterns, types and generic arguments: rustc rejects attributes there;
+//!   expressions inside patterns, types, generic arguments and attributes (`#[doc = ".."]`):
+//!   rustc rejects attributes there;
 //! - parentheses: they are not in HIR, and rustc moves their attributes to the inner expression,
 //!   which would then carry two ids;
 //! - the callee path of a call: `(#[a] Tracked)(x)` no longer resolves as a constructor call
@@ -46,14 +47,76 @@ fn nid_attr(span: Span, n: u64) -> Attribute {
     parse_quote_spanned!(span => #[verus_nid::n(#n)])
 }
 
+/// The span of the first token of `expr`. `Spanned::span` would print the expression, and calling
+/// it at every node is quadratic in the size of the invocation: on large crates (anvil,
+/// vest-generated) it overflows the proc_macro handle counter.
+fn first_token_span(expr: &Expr) -> Span {
+    use verus_syn::spanned::Spanned;
+    use verus_syn::*;
+    if let Some(attr) = expr.attrs_ref().first() {
+        return attr.pound_token.span;
+    }
+    match expr {
+        Expr::Binary(e) => first_token_span(&e.left),
+        Expr::MethodCall(e) => first_token_span(&e.receiver),
+        Expr::Field(e) => first_token_span(&e.base),
+        Expr::Index(e) => first_token_span(&e.expr),
+        Expr::Call(e) => first_token_span(&e.func),
+        Expr::Cast(e) => first_token_span(&e.expr),
+        Expr::Try(e) => first_token_span(&e.expr),
+        Expr::Await(e) => first_token_span(&e.base),
+        Expr::Assign(e) => first_token_span(&e.left),
+        Expr::Range(ExprRange { start: Some(start), .. }) => first_token_span(start),
+        Expr::Lit(e) => e.lit.span(),
+        Expr::Path(ExprPath { qself: Some(q), .. }) => q.lt_token.span,
+        Expr::Path(ExprPath { path, .. }) => match &path.leading_colon {
+            Some(c) => c.spans[0],
+            None => path.segments[0].ident.span(),
+        },
+        Expr::Block(ExprBlock { label: Some(l), .. })
+        | Expr::Loop(ExprLoop { label: Some(l), .. })
+        | Expr::While(ExprWhile { label: Some(l), .. })
+        | Expr::ForLoop(ExprForLoop { label: Some(l), .. }) => l.name.span(),
+        Expr::Block(e) => e.block.brace_token.span.open(),
+        Expr::Loop(e) => e.loop_token.span,
+        Expr::While(e) => e.while_token.span,
+        Expr::ForLoop(e) => e.for_token.span,
+        Expr::If(e) => e.if_token.span,
+        Expr::Match(e) => e.match_token.span,
+        Expr::Unsafe(e) => e.unsafe_token.span,
+        Expr::Return(e) => e.return_token.span,
+        Expr::Break(e) => e.break_token.span,
+        Expr::Continue(e) => e.continue_token.span,
+        Expr::Reference(e) => e.and_token.span,
+        Expr::Tuple(e) => e.paren_token.span.open(),
+        Expr::Paren(e) => e.paren_token.span.open(),
+        Expr::Array(e) => e.bracket_token.span.open(),
+        Expr::Repeat(e) => e.bracket_token.span.open(),
+        Expr::Struct(ExprStruct { qself: Some(q), .. }) => q.lt_token.span,
+        Expr::Struct(e) => match &e.path.leading_colon {
+            Some(c) => c.spans[0],
+            None => e.path.segments[0].ident.span(),
+        },
+        Expr::Macro(e) => match &e.mac.path.leading_colon {
+            Some(c) => c.spans[0],
+            None => e.mac.path.segments[0].ident.span(),
+        },
+        // rare or small: computing the span from the tokens is cheap enough
+        _ => expr.span(),
+    }
+}
+
 fn stamp(expr: &mut Expr, n: u64) {
-    let span = verus_syn::spanned::Spanned::span(expr);
+    let span = first_token_span(expr);
     let mut attrs = expr.replace_attrs(vec![]);
     attrs.push(nid_attr(span, n));
     expr.replace_attrs(attrs);
 }
 
 impl VisitMut for Stamper {
+    // the value of `#[doc = "..."]` and other attribute arguments are expressions too
+    fn visit_attribute_mut(&mut self, _: &mut Attribute) {}
+
     fn visit_pat_mut(&mut self, _: &mut verus_syn::Pat) {}
 
     fn visit_type_mut(&mut self, _: &mut verus_syn::Type) {}
@@ -143,7 +206,7 @@ impl VisitMut for Stamper {
                 return;
             }
         }
-        let span = verus_syn::spanned::Spanned::span(expr);
+        let span = first_token_span(expr);
         match expr {
             // parentheses are not in HIR: rustc moves their attributes to the inner expression,
             // which would then carry two ids

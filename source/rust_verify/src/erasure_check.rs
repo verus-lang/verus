@@ -262,6 +262,12 @@ struct Walker<'a, 'tcx> {
     exec_info: Option<&'a ExecInfo>,
     /// is the current node exec code (always true in the compile run)
     exec: bool,
+    /// is the current node inside a block that `verus!` marked as ghost (Erase removes it)
+    in_ghost_block: bool,
+    /// verify run: is the current node compared as exec code whatever VIR mode checking says
+    /// (the initializer of a ghost field in an exec struct expression, or the body of a const or
+    /// static, which rustc evaluates in both runs while VIR checks it as spec code)
+    force_exec: bool,
     /// enclosing bodies (fn or closure): location and exec-ness, for `return` targets
     body_stack: Vec<(Option<Loc>, bool)>,
     /// exec-ness computed for each loop node (target of break/continue)
@@ -962,6 +968,45 @@ impl<'a, 'tcx> Walker<'a, 'tcx> {
         true
     }
 
+    /// Is `f` (a field of the struct expression `e`) a field declared ghost or tracked in the
+    /// local crate? Fields of other crates have no HIR here and count as exec.
+    fn is_ghost_field(&self, e: &'tcx Expr<'tcx>, f: &rustc_hir::ExprField<'tcx>) -> bool {
+        if self.exec_info.is_none() {
+            return false;
+        }
+        let typeck = self.typeck();
+        let Some(ty) = typeck.expr_ty_opt(e) else { return false };
+        let ty::Adt(adt, _) = ty.kind() else { return false };
+        let ExprKind::Struct(qpath, _, _) = &e.kind else { return false };
+        let res = typeck.qpath_res(qpath, e.hir_id);
+        let variant = adt.variant_of_res(res);
+        let Some(idx) = typeck.opt_field_index(f.hir_id) else { return false };
+        self.is_ghost_field_def(Some(variant.fields[idx].did))
+    }
+
+    /// Is the field with this definition declared ghost or tracked in the local crate?
+    fn is_ghost_field_def(&self, did: Option<DefId>) -> bool {
+        if self.exec_info.is_none() {
+            return false;
+        }
+        let Some(local) = did.and_then(|d| d.as_local()) else { return false };
+        let attrs = self.tcx.hir_attrs(self.tcx.local_def_id_to_hir_id(local));
+        crate::attributes::get_mode(vir::ast::Mode::Exec, attrs) != vir::ast::Mode::Exec
+    }
+
+    /// The variant built by `e` if `e` is a call of a tuple struct or tuple variant constructor
+    fn ctor_variant(&self, e: &'tcx Expr<'tcx>) -> Option<&'tcx ty::VariantDef> {
+        if self.exec_info.is_none() {
+            return None;
+        }
+        let ExprKind::Call(callee, _) = &e.kind else { return None };
+        let ExprKind::Path(qpath) = &callee.kind else { return None };
+        let res = self.typeck().qpath_res(qpath, callee.hir_id);
+        let Res::Def(DefKind::Ctor(..), ctor_id) = res else { return None };
+        let ty::Adt(adt, _) = self.typeck().expr_ty_opt(e)?.kind() else { return None };
+        Some(adt.variant_with_ctor_id(ctor_id))
+    }
+
     fn record_pat(&mut self, p: &'tcx Pat<'tcx>) {
         if !self.exec {
             return;
@@ -1072,19 +1117,25 @@ impl<'a, 'tcx> Visitor<'tcx> for Walker<'a, 'tcx> {
 
     fn visit_expr(&mut self, e: &'tcx Expr<'tcx>) {
         let saved = self.exec;
+        let saved_ghost_block = self.in_ghost_block;
         if let Some(info) = self.exec_info {
             // A node with an id runs in the compiled program if it is in an exec context, unless
-            // `verus!` marked it as a ghost block (which Erase removes).
-            let ghost_block = matches!(
-                crate::attributes::get_ghost_block_opt(self.tcx.hir_attrs(e.hir_id)),
-                Some(
-                    crate::attributes::GhostBlockAttr::Proof
-                        | crate::attributes::GhostBlockAttr::GhostWrapped
-                        | crate::attributes::GhostBlockAttr::TrackedWrapped
-                        | crate::attributes::GhostBlockAttr::Tracked
-                )
-            );
-            let map = if self.nid(e.hir_id).is_some() && !ghost_block {
+            // it is inside a block that `verus!` marked as ghost or inside a call that erasure
+            // removes as a whole tree (requires, ensures, invariants). VIR can check a node in
+            // more than one context (the contexts are merged), so the mark is inherited rather
+            // than read on the node alone.
+            let ghost_block = info.erased_trees.contains(&e.hir_id)
+                || matches!(
+                    crate::attributes::get_ghost_block_opt(self.tcx.hir_attrs(e.hir_id)),
+                    Some(
+                        crate::attributes::GhostBlockAttr::Proof
+                            | crate::attributes::GhostBlockAttr::GhostWrapped
+                            | crate::attributes::GhostBlockAttr::TrackedWrapped
+                            | crate::attributes::GhostBlockAttr::Tracked
+                    )
+                );
+            self.in_ghost_block = self.in_ghost_block || ghost_block;
+            let map = if self.nid(e.hir_id).is_some() && !self.in_ghost_block {
                 &info.hir_exec_ctx
             } else {
                 &info.hir_exec
@@ -1092,8 +1143,10 @@ impl<'a, 'tcx> Visitor<'tcx> for Walker<'a, 'tcx> {
             if let Some(x) = map.get(&e.hir_id) {
                 self.exec = *x;
             }
-            if info.erased_trees.contains(&e.hir_id) {
+            if self.in_ghost_block {
                 self.exec = false;
+            } else if self.force_exec {
+                self.exec = true;
             }
         }
         if let ExprKind::Loop(..) = &e.kind {
@@ -1105,10 +1158,41 @@ impl<'a, 'tcx> Visitor<'tcx> for Walker<'a, 'tcx> {
             self.body_stack.push((loc, self.exec));
             intravisit::walk_expr(self, e);
             self.body_stack.pop();
+        } else if let (ExprKind::Struct(_, fields, base), true) = (&e.kind, self.exec) {
+            // Erase keeps ghost fields and their initializers, so the compiled program evaluates
+            // the initializer of a ghost field. VIR checks it as spec code, but only allows
+            // expressions that call no function and checks their arithmetic for overflow; the
+            // initializer is compared as exec code.
+            for f in fields.iter() {
+                let saved_field = self.force_exec;
+                if self.is_ghost_field(e, f) {
+                    self.force_exec = true;
+                }
+                self.visit_expr(f.expr);
+                self.force_exec = saved_field;
+            }
+            if let rustc_hir::StructTailExpr::Base(b) = base {
+                self.visit_expr(b);
+            }
+        } else if let (ExprKind::Call(callee, args), Some(variant)) =
+            (&e.kind, self.ctor_variant(e))
+        {
+            // the same for a tuple struct or tuple variant constructor: `S(e1, e2)`
+            self.visit_expr(callee);
+            for (i, arg) in args.iter().enumerate() {
+                let saved_field = self.force_exec;
+                if self.exec && self.is_ghost_field_def(variant.fields.iter().nth(i).map(|f| f.did))
+                {
+                    self.force_exec = true;
+                }
+                self.visit_expr(arg);
+                self.force_exec = saved_field;
+            }
         } else {
             intravisit::walk_expr(self, e);
         }
         self.exec = saved;
+        self.in_ghost_block = saved_ghost_block;
     }
 
     fn visit_pat(&mut self, p: &'tcx Pat<'tcx>) {
@@ -1162,6 +1246,8 @@ fn build_body_table<'tcx>(
         typing_env: ty::TypingEnv::non_body_analysis(tcx, def_id),
         exec_info,
         exec: true,
+        in_ghost_block: false,
+        force_exec: exec_info.is_some() && is_const_body(tcx, def_id),
         body_stack: vec![(Some(body_loc.clone()), true)],
         loop_exec: HashMap::new(),
         table: BodyTable {
@@ -1174,6 +1260,23 @@ fn build_body_table<'tcx>(
     };
     w.visit_body(body);
     Some(w.table)
+}
+
+/// Is the body evaluated by rustc as a constant: a const or static item, or the unerased proxy
+/// of one (`verus!` moves the body of a const or static, ghost code included, to a function
+/// `VERUS_UNERASED_PROXY__x` marked `encoded_const` or `encoded_static`; see
+/// builtin_macros/src/unerased_proxies.rs). VIR checks such a body as spec code.
+fn is_const_body<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> bool {
+    if matches!(
+        tcx.def_kind(def_id),
+        DefKind::Const { .. } | DefKind::AssocConst { .. } | DefKind::Static { .. }
+    ) {
+        return true;
+    }
+    let attrs = tcx.hir_attrs(tcx.local_def_id_to_hir_id(def_id));
+    crate::attributes::parse_attrs_opt(attrs, None).iter().any(|a| {
+        matches!(a, crate::attributes::Attr::EncodedConst | crate::attributes::Attr::EncodedStatic)
+    })
 }
 
 /// Verify run: build the table for every exec body owner whose body Verus verifies.

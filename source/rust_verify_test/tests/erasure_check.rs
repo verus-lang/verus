@@ -314,3 +314,31 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_erasure_diff(err, "verus_builtin::requires", "requires(a < 30)")
 }
+
+test_verify_one_file_with_options! {
+    // A proof block written as an attribute is proof code in the verified program; Erase keeps
+    // the block, so the compiled `f` calls `lemma`, whose body is `panic!()` in the compiled
+    // program.
+    #[test] proof_block_attribute_in_compiled_program ["-V check-erasure"] => verus_code! {
+        use vstd::prelude::*;
+        pub proof fn lemma(x: u64) ensures x == x {}
+        fn f() -> (r: u64) ensures r == 1 {
+            let r: u64 = 1;
+            #[verifier(proof_block)] { lemma(r) };
+            r
+        }
+    } => Err(err) => assert_erasure_diff(err, "is in the compiled program", "lemma(r)")
+}
+
+test_verify_one_file_with_options! {
+    // Erase keeps ghost fields and their initializers; the initializer is compared as exec code.
+    #[test] no_difference_ghost_field_initializer ["-V check-erasure"] => verus_code! {
+        use vstd::prelude::*;
+        pub struct S { pub x: u64, pub ghost g: Option<u64> }
+        pub struct T(pub u64, pub ghost Option<u64>);
+        fn f() -> (r: (S, T)) {
+            (S { x: 1, g: None }, T(2, None))
+        }
+        pub const C: usize = { 512 / 8 };
+    } => Ok(())
+}
