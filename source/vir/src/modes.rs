@@ -3887,7 +3887,12 @@ fn check_function(
 
     if let Some(body) = &function.x.body {
         let mut body_typing = fun_typing.push_ret_mode(ret_mode);
-        let mut body_typing = body_typing.push_block_ghostness(Ghost::of_mode(function.x.mode));
+        let body_ghostness = if dual_mode_fn && ctxt.check_ghost_blocks {
+            Ghost::Exec
+        } else {
+            Ghost::of_mode(function.x.mode)
+        };
+        let mut body_typing = body_typing.push_block_ghostness(body_ghostness);
         let mut body_typing = body_typing.push_in_pure(pure_spec_fn);
         let mut body_typing = if function.x.attrs.atomic {
             body_typing.push_atomic_insts(Some(AtomicInstCollector::new()))
