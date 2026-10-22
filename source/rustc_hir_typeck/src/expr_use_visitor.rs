@@ -538,7 +538,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
             }
 
             hir::ExprKind::Closure(closure) => {
-                if !crate::verus::erase_closure_body_for_closure_captures(closure.def_id) {
+                if !crate::verus::erase_closure_body_for_closure_captures(self.cx.tcx(), closure.def_id) {
                     self.cx.recursive_analyze_closure(expr, closure);
                     self.walk_captures(closure)?;
                 }
@@ -1403,7 +1403,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
 
             Res::Local(var_id) => {
                 if self.upvars.is_some_and(|upvars| upvars.contains_key(&var_id)) {
-                    if crate::verus::erase_var_for_closure_captures(hir_id) {
+                    if crate::verus::erase_var_for_closure_captures(self.cx.tcx(), hir_id) {
                         return Ok(PlaceWithHirId::new(
                             hir_id,
                             expr_ty,
