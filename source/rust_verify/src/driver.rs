@@ -145,7 +145,10 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
         _compiler: &rustc_interface::interface::Compiler,
         tcx: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
+        // Need to merge the dep-info files from the first (previous) and second (current) passes.
+        rustc_interface::passes::write_dep_info(tcx);
         if tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo) {
+            // Load and merge the dep-info file from the first pass with the output of this pass.
             if let OutFileName::Real(dep_info_path_d) =
                 tcx.output_filenames(()).path(OutputType::DepInfo)
             {
