@@ -518,28 +518,28 @@ mod sc_atomic_types {
         };
     }
 
-macro_rules! ptr_atomic_methods {
-    ($at_ty: ty, $rust_ty: ty, $value_ty: ty, $width: literal) => {
-        // `from_ptr` requires alignment to `$rust_ty`; the caller holds a
-        // `PointsTo<$value_ty>`, which guarantees only `align_of::<$value_ty>()`
-        // (`PointsTo::is_aligned`). `target_has_atomic_primitive_alignment` is
-        // rustc's name for those two being equal at a given width, so define
-        // these only where it holds.
-        #[cfg(target_has_atomic_primitive_alignment = $width)]
-        const _: () = assert!(
-            core::mem::align_of::<$value_ty>() == core::mem::align_of::<$rust_ty>(),
-            concat!(
-                stringify!($at_ty),
-                ": align_of::<",
-                stringify!($value_ty),
-                ">() differs from align_of::<",
-                stringify!($rust_ty),
-                ">() on this target",
-            )
-        );
+    macro_rules! ptr_atomic_methods {
+        ($at_ty: ty, $rust_ty: ty, $value_ty: ty, $width: literal) => {
+            // `from_ptr` requires alignment to `$rust_ty`; the caller holds a
+            // `PointsTo<$value_ty>`, which guarantees only `align_of::<$value_ty>()`
+            // (`PointsTo::is_aligned`). `target_has_atomic_primitive_alignment` is
+            // rustc's name for those two being equal at a given width, so define
+            // these only where it holds.
+            #[cfg(target_has_atomic_primitive_alignment = $width)]
+            const _: () = assert!(
+                core::mem::align_of::<$value_ty>() == core::mem::align_of::<$rust_ty>(),
+                concat!(
+                    stringify!($at_ty),
+                    ": align_of::<",
+                    stringify!($value_ty),
+                    ">() differs from align_of::<",
+                    stringify!($rust_ty),
+                    ">() on this target",
+                )
+            );
 
-        #[cfg(target_has_atomic_primitive_alignment = $width)]
-        verus!{
+            #[cfg(target_has_atomic_primitive_alignment = $width)]
+            verus!{
     impl $at_ty {
         /// Store a value via a raw pointer using atomic store.
         ///
@@ -606,26 +606,26 @@ macro_rules! ptr_atomic_methods {
         }
     }
 }
-    };
-}
+        };
+    }
 
-#[cfg(target_has_atomic = "64")]
-ptr_atomic_methods!(PAtomicU64, AtomicU64, u64, "64");
+    #[cfg(target_has_atomic = "64")]
+    ptr_atomic_methods!(PAtomicU64, AtomicU64, u64, "64");
 
-ptr_atomic_methods!(PAtomicU32, AtomicU32, u32, "32");
-ptr_atomic_methods!(PAtomicU16, AtomicU16, u16, "16");
-ptr_atomic_methods!(PAtomicU8, AtomicU8, u8, "8");
-ptr_atomic_methods!(PAtomicUsize, AtomicUsize, usize, "ptr");
+    ptr_atomic_methods!(PAtomicU32, AtomicU32, u32, "32");
+    ptr_atomic_methods!(PAtomicU16, AtomicU16, u16, "16");
+    ptr_atomic_methods!(PAtomicU8, AtomicU8, u8, "8");
+    ptr_atomic_methods!(PAtomicUsize, AtomicUsize, usize, "ptr");
 
-#[cfg(target_has_atomic = "64")]
-ptr_atomic_methods!(PAtomicI64, AtomicI64, i64, "64");
+    #[cfg(target_has_atomic = "64")]
+    ptr_atomic_methods!(PAtomicI64, AtomicI64, i64, "64");
 
-ptr_atomic_methods!(PAtomicI32, AtomicI32, i32, "32");
-ptr_atomic_methods!(PAtomicI16, AtomicI16, i16, "16");
-ptr_atomic_methods!(PAtomicI8, AtomicI8, i8, "8");
-ptr_atomic_methods!(PAtomicIsize, AtomicIsize, isize, "ptr");
+    ptr_atomic_methods!(PAtomicI32, AtomicI32, i32, "32");
+    ptr_atomic_methods!(PAtomicI16, AtomicI16, i16, "16");
+    ptr_atomic_methods!(PAtomicI8, AtomicI8, i8, "8");
+    ptr_atomic_methods!(PAtomicIsize, AtomicIsize, isize, "ptr");
 
-make_bool_atomic!(PAtomicBool, PermissionBool, PermissionDataBool, AtomicBool, bool);
+    make_bool_atomic!(PAtomicBool, PermissionBool, PermissionDataBool, AtomicBool, bool);
 
     make_unsigned_integer_atomic!(
         PAtomicU8,
