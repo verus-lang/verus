@@ -75,19 +75,19 @@ pub fn main() {
     let program =
         if build_test_mode || via_cargo { internal_program } else { args.next().unwrap() };
 
-    let mut vstd = None;
-    let verus_root = if !(build_test_mode || via_cargo_rebuild_verus_libs) {
-        let verus_root = rust_verify::driver::find_verusroot();
-        if let Some(rust_verify::driver::VerusRoot { path: verusroot, .. }) = &verus_root {
-            let vstd_path = verusroot.join("vstd.vir").to_str().unwrap().to_string();
-            vstd = Some((format!("vstd"), vstd_path));
-        }
-        verus_root
-    } else {
-        None
-    };
-
     let mut args: Vec<String> = args.collect();
+
+    if args.iter().any(|arg| arg == "-vV") {
+        // Intercept invocations with `-vV`, used for e.g. Cargo fingerprinting.
+        // Include Verus details in the output to ensure that fingerprints are accurate.
+        let verus_version = build_info.version;
+        let verus_sha = build_info.sha;
+        println!("verus {verus_version} ({verus_sha})");
+        args.insert(0, program.clone());
+        rust_verify::driver::run_rustc_compiler_directly(&args);
+        return;
+    }
+
     let is_direct_rustc_call = via_cargo
         && rust_verify::cargo_verus::extend_args_and_check_is_direct_rustc_call(
             &mut args,
@@ -99,6 +99,18 @@ pub fn main() {
         rust_verify::driver::run_rustc_compiler_directly(&args);
         return;
     }
+
+    let mut vstd = None;
+    let verus_root = if !(build_test_mode || via_cargo_rebuild_verus_libs) {
+        let verus_root = rust_verify::driver::find_verusroot();
+        if let Some(rust_verify::driver::VerusRoot { path: verusroot, .. }) = &verus_root {
+            let vstd_path = verusroot.join("vstd.vir").to_str().unwrap().to_string();
+            vstd = Some((format!("vstd"), vstd_path));
+        }
+        verus_root
+    } else {
+        None
+    };
 
     let via_cargo = via_cargo.then(|| rust_verify::config::parse_cargo_args(&program, &mut args));
 
