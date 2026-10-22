@@ -73,190 +73,10 @@ To be decided later.
 
 #### `SeqPointsTo` and `PointsToUntyped`: proofs (phase 1b)
 
-`SeqPointsTo`'s `PTProperties` impl and the structural `impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P>`
-are approved
-([`points_to_ops.rs`: `SeqPointsTo`](TYPED_POINTS_TO_APPROVED.md#points_to_opsrs-seqpointstos-ptproperties-and-structural-operations-phase-1b)).
-
-```rust
-impl PointsToUntyped {
-    /// If `old` is well-formed
-    /// and `new` has the same pointers and length (`ptrs_len_same`),
-    /// then `new` is well-formed.
-    pub proof fn stays_wf(old: Self, new: Self)
-        requires
-            old.wf(),
-            Self::ptrs_len_same(old, new),
-        ensures
-            new.wf(),
-    ;
-
-    /// If `old` and `new` are both well-formed with the same pointer,
-    /// then `new` keeps `old`'s pointers and length.
-    pub broadcast proof fn lemma_ptrs_len_same_untyped(old: Self, new: Self)
-        requires
-            old.wf(),
-            new.wf(),
-            new.ptr() == old.ptr(),
-        ensures
-            #[trigger] Self::ptrs_len_same(old, new),
-    ;
-
-    /// If `T` is zero sized,
-    /// then we can construct a `PointsToUntyped` from any non-null `*mut T`
-    /// whose address is within bounds of its provenance.
-    /// The range of memory pointed to by this permission will be empty.
-    pub proof fn zero_sized<T>(ptr: *mut T) -> (tracked perm: Self)
-        requires
-            ptr@.addr != 0,
-            size_of::<T>() == 0,
-            ptr_addr_in_bounds(ptr),
-        ensures
-            perm.ptr()@.addr == ptr@.addr,
-            perm.ptr()@.provenance == ptr@.provenance,
-            perm.bytes().len() == size_of::<T>(),
-            perm.wf(),
-    ;
-
-    /// Specializes `is_disjoint` to the case when the other permission is a `PointsToUntyped`.
-    pub proof fn is_disjoint_untyped(tracked &mut self, tracked other: &PointsToUntyped)
-        requires
-            self.len() != 0,
-            other.len() != 0,
-            self.wf(),
-            other.wf(),
-        ensures
-            *old(self) == *final(self),
-            final(self).ptr()@.addr + final(self).len() <= other.ptr()@.addr
-                || other.ptr()@.addr + other.len() <= final(self).ptr()@.addr,
-    ;
-
-    /// Splits the `PointsToUntyped` into two permissions at the index boundary `mid`.
-    /// The first covers bytes `[0, mid)` and the second covers bytes `[mid, len)`.
-    pub proof fn split(tracked self, mid: nat) -> (tracked (first, second): (Self, Self))
-        requires
-            0 <= mid <= self.len(),
-            self.wf(),
-        ensures
-            first.seq_pt() == self.seq_pt().take(mid as int),
-            second.seq_pt() == self.seq_pt().skip(mid as int),
-            first.bytes() == self.bytes().take(mid as int),
-            second.bytes() == self.bytes().skip(mid as int),
-            first.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData {
-                    addr: self.ptr()@.addr,
-                    provenance: self.ptr()@.provenance,
-                    metadata: mid as usize,
-                },
-            ),
-            second.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData {
-                    addr: (self.ptr()@.addr + mid) as usize,
-                    provenance: self.ptr()@.provenance,
-                    metadata: (self.len() - mid) as usize,
-                },
-            ),
-            first.wf(),
-            second.wf(),
-    ;
-
-    /// Splits a shared borrow of a `PointsToUntyped`
-    /// into shared borrows of bytes `[0, mid)` and `[mid, len)`.
-    /// This is the shared-borrow analogue of `split`.
-    pub proof fn split_ref(tracked &self, mid: nat) -> (tracked (first, second): (&Self, &Self))
-        requires
-            0 <= mid <= self.len(),
-            self.wf(),
-        ensures
-            first.seq_pt() == self.seq_pt().take(mid as int),
-            second.seq_pt() == self.seq_pt().skip(mid as int),
-            first.bytes() == self.bytes().take(mid as int),
-            second.bytes() == self.bytes().skip(mid as int),
-            first.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData {
-                    addr: self.ptr()@.addr,
-                    provenance: self.ptr()@.provenance,
-                    metadata: mid as usize,
-                },
-            ),
-            second.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData {
-                    addr: (self.ptr()@.addr + mid) as usize,
-                    provenance: self.ptr()@.provenance,
-                    metadata: (self.len() - mid) as usize,
-                },
-            ),
-            first.wf(),
-            second.wf(),
-    ;
-
-    /// Splits a mutable borrow of a `PointsToUntyped`
-    /// into mutable borrows of bytes `[0, mid)` and `[mid, len)`.
-    /// This is the mutable-borrow analogue of `split`.
-    ///
-    /// The final pointer stays the same, 
-    /// and `self`'s final bytes and `seq_pt` are the concatenation 
-    /// of `first` and `second`'s final bytes and `seq_pt`.
-    /// If both halves keep their pointers and lengths (`ptrs_len_same`),
-    /// then `final(self)` is also still well-formed.
-    pub proof fn split_mut(tracked &mut self, mid: nat) -> (tracked (first, second): (
-        &mut Self,
-        &mut Self,
-    ))
-        requires
-            0 <= mid <= self.len(),
-            self.wf(),
-        ensures
-            first.seq_pt() == old(self).seq_pt().take(mid as int),
-            second.seq_pt() == old(self).seq_pt().skip(mid as int),
-            first.bytes() == old(self).bytes().take(mid as int),
-            second.bytes() == old(self).bytes().skip(mid as int),
-            first.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData {
-                    addr: old(self).ptr()@.addr,
-                    provenance: old(self).ptr()@.provenance,
-                    metadata: mid as usize,
-                },
-            ),
-            second.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData {
-                    addr: (old(self).ptr()@.addr + mid) as usize,
-                    provenance: old(self).ptr()@.provenance,
-                    metadata: (old(self).len() - mid) as usize,
-                },
-            ),
-            first.wf(),
-            second.wf(),
-            final(self).ptr() == old(self).ptr(),
-            final(self).seq_pt() == final(first).seq_pt() + final(second).seq_pt(),
-            final(self).bytes() == final(first).bytes() + final(second).bytes(),
-            // Criteria necessary for re-establishing invariants
-            Self::ptrs_len_same(*first, *final(first)) && Self::ptrs_len_same(*second, *final(second))
-                ==> final(self).wf(),
-    ;
-
-    /// Concatenates `PointsToUntyped` permissions `self` and `other`,
-    /// provided their pointers have the same provenance
-    /// and `other`'s pointer starts at the end of `self`'s range.
-    pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
-        requires
-            self.wf(),
-            other.wf(),
-            self.ptr()@.provenance == other.ptr()@.provenance,
-            other.ptr()@.addr == self.ptr()@.addr + self.len(),
-        ensures
-            joined.seq_pt() == self.seq_pt() + other.seq_pt(),
-            joined.bytes() == self.bytes() + other.bytes(),
-            joined.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData {
-                    addr: self.ptr()@.addr,
-                    provenance: self.ptr()@.provenance,
-                    metadata: (self.len() + other.len()) as usize,
-                },
-            ),
-            joined.wf(),
-    ;
-}
-```
+`SeqPointsTo`'s `PTProperties` impl, the structural `impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P>`,
+and the `impl PointsToUntyped` proofs are approved
+([`points_to_ops.rs`: `SeqPointsTo`](TYPED_POINTS_TO_APPROVED.md#points_to_opsrs-seqpointstos-ptproperties-and-structural-operations-phase-1b),
+[`points_to_ops.rs`: `PointsToUntyped`](TYPED_POINTS_TO_APPROVED.md#points_to_opsrs-pointstountypeds-proofs-phase-1b)).
 
 #### `PointsToUnaligned`: proofs
 
@@ -1599,8 +1419,13 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     ;
 
     /// As for `as_slice_pt`, a sequence with any empty element gives an empty slice permission.
-    /// If the slice is still empty when the borrow ends, every element ends empty
+    /// When the borrow ends,
+    /// a valid slice value of the same length is distributed back to the elements;
+    /// otherwise every element ends empty
     /// (the values of any valid elements are dropped).
+    /// If the slice permission keeps its pointers and length,
+    /// with its value still satisfying decode validity (`ptrs_len_same_valid`),
+    /// the sequence holds its bytes and is well-formed.
     pub proof fn as_slice_pt_mut(tracked &mut self) -> (tracked out: &mut PointsTo<[T]>)
         requires
             self.wf(),
@@ -1612,14 +1437,18 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 && out.typed_value().value_ref()@ == old(self).seq_value(),
             !old(self).is_valid() ==> out.typed_value().is_empty(),
             out.wf(),
-            // Finally: if the slice permission keeps its pointer, the sequence holds its contents.
-            final(out).wf() && final(out).ptr() == out.ptr() ==> {
-                &&& final(self).wf()
-                &&& final(self).ptr() == old(self).ptr()
+            // Finally: the pointer, length and typed values, unconditionally.
+            final(self).ptr() == old(self).ptr(),
+            final(self).len() == old(self).len(),
+            final(out).typed_value().is_valid() && final(out).typed_value().value_ref()@.len() == old(self).len()
+                ==> final(self).is_valid() && final(self).seq_value() == final(out).typed_value().value_ref()@,
+            !(final(out).typed_value().is_valid() && final(out).typed_value().value_ref()@.len() == old(self).len())
+                ==> final(self).is_fully_empty(),
+            // Criteria necessary for re-establishing invariants
+            // (the bytes too, since `join_mut` ties them back only under `ptrs_len_same`).
+            <PointsTo<[T]> as PTValueOps>::ptrs_len_same_valid(*out, *final(out)) ==> {
                 &&& final(self).bytes() == final(out).bytes()
-                &&& final(out).typed_value().is_valid() ==> final(self).is_valid()
-                    && final(self).seq_value() == final(out).typed_value().value_ref()@
-                &&& final(out).typed_value().is_empty() ==> final(self).is_fully_empty()
+                &&& final(self).wf()
             },
     ;
 }
