@@ -1021,6 +1021,19 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "not a private non-local bound")
 }
 
+// https://github.com/verus-lang/verus/issues/783
+// External traits shouldn't get the VERUS_SPEC__ split, since it's only needed for
+// verification; doing it anyway can break trait shapes the split doesn't handle
+// (e.g. a `Self`-returning method with no receiver, exercised below).
+test_verify_one_file! {
+    #[test] issue_783_no_verus_spec_split_for_external_trait verus_code! {
+        #[verifier::external]
+        trait T {
+            fn f() -> Self;
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     // Regression test: an associated type fixed only by a where-clause bound
     // normalizes to a bare inference variable, which used to trip an
