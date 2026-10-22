@@ -179,7 +179,7 @@ fn check_local_ready_names(bundle: &SMBundle, selected: &HashSet<String>) -> Res
                 ));
             }
         }
-        if !implicit_fields(sm, tr).is_empty() && !protocol.insert(format!("{}_local_state", tr.name)) {
+        if !agreement_fields(sm, tr).is_empty() && !protocol.insert(format!("{}_local_state", tr.name)) {
             return Err(Error::new(
                 tr.name.span(),
                 "local-ready API name conflicts with an existing generated method",
@@ -556,6 +556,9 @@ enum LocalStep<'a> {
     Add(&'a Field),
     /// A `let` (pattern, type, value).
     Let(&'a verus_syn::Pat, Option<&'a verus_syn::Type>, &'a verus_syn::Expr),
+    /// A pattern binding the implicit value of a statement on a field of
+    /// another kind (an option, or a storage field): field, operand, pattern.
+    Bind(&'a Ident, &'a MonoidElt, &'a verus_syn::Pat),
     /// The first branch of an `if`/`match`, see `local_steps`.
     Branch(LocalBranch<'a>),
     /// The next branch (`else`, or the next arm).
@@ -574,8 +577,8 @@ enum LocalBranch<'a> {
 /// The steps of `tr`'s body. An `if`/`match` ends the statements it follows:
 /// it is `Branch`, each branch's steps (followed by the statements after the
 /// join, which are repeated per branch), separated by `Next`, then `Join`. A
-/// path ends at a pattern binding a field of another kind, or after a
-/// refutable pattern.
+/// pattern binds as in the transition (a refutable one to `arbitrary()` if it
+/// does not match); a path ends at a refutable `let`.
 fn local_steps<'a>(sm: &'a SM, tr: &'a Transition) -> Vec<LocalStep<'a>> {
     // `todo`: the statements still to do on this path, the next one last.
     fn walk<'a>(sm: &'a SM, mut todo: Vec<&'a TransitionStmt>, out: &mut Vec<LocalStep<'a>>) {
@@ -608,11 +611,13 @@ fn local_steps<'a>(sm: &'a SM, tr: &'a Transition) -> Vec<LocalStep<'a>> {
                             out.push(LocalStep::Observe(field, operation, pattern));
                         }
                         Some(field) => out.push(LocalStep::Add(field)),
-                        None if pattern.is_some() => return,
-                        None => {}
-                    }
-                    if pattern.is_some_and(|p| !crate::util::is_definitely_irrefutable(p)) {
-                        return;
+                        None => match (pattern, &operation.elt) {
+                            (Some(p), elt @ (MonoidElt::OptionSome(None) | MonoidElt::SingletonKV(_, None))) => {
+                                out.push(LocalStep::Bind(name, elt, p))
+                            }
+                            (Some(_), _) => return,
+                            (None, _) => {}
+                        },
                     }
                 }
                 SplitKind::Let(pattern, ty, _, expression) => {
@@ -763,12 +768,30 @@ fn local_sequence_hints(
     // Whether the field's statements on a path need these hints.
     let needs = |path: &Vec<&LocalStep>, field: &Field| {
         let mut operations = vec![];
+        // Names bound before a statement by a `let` or a pattern: the
+        // singleton hints do not follow an operand that mentions one.
+        let mut bound: Vec<Ident> = vec![];
+        let mut uses_bound = false;
         for step in path {
             match step {
-                LocalStep::Observe(f, operation, _) if f.name == field.name => {
-                    operations.push(*operation)
+                LocalStep::Observe(f, operation, pattern) => {
+                    if f.name == field.name {
+                        let operand = match &operation.elt {
+                            MonoidElt::SingletonKV(key, value) => quote! {#key #value},
+                            MonoidElt::SingletonSet(e) | MonoidElt::SingletonMultiset(e) => quote! {#e},
+                            _ => quote! {},
+                        };
+                        uses_bound |= mentions(operand, &bound);
+                        operations.push(*operation)
+                    }
+                    if let Some(pattern) = pattern {
+                        bound.extend(crate::ident_visitor::pattern_get_bound_idents(pattern));
+                    }
                 }
                 LocalStep::Add(f) if f.name == field.name => break,
+                LocalStep::Let(pattern, ..) | LocalStep::Bind(_, _, pattern) => {
+                    bound.extend(crate::ident_visitor::pattern_get_bound_idents(pattern))
+                }
                 _ => {}
             }
         }
@@ -780,8 +803,15 @@ fn local_sequence_hints(
             && operations.iter().any(|o| {
                 o.is_have() || matches!(o.elt, MonoidElt::General(_))
             });
-        after_remove || beyond_singleton
+        after_remove || beyond_singleton || uses_bound
     };
+    fn mentions(tokens: TokenStream, names: &[Ident]) -> bool {
+        tokens.into_iter().any(|token| match token {
+            proc_macro2::TokenTree::Ident(name) => names.contains(&name),
+            proc_macro2::TokenTree::Group(group) => mentions(group.stream(), names),
+            _ => false,
+        })
+    }
     let observed = || {
         steps.iter().filter_map(|step| match step {
             LocalStep::Observe(field, ..) => Some(*field),
@@ -866,6 +896,22 @@ fn local_sequence_hints(
                 hints.push(quote! {let #pattern #ty = #expression;});
                 continue;
             }
+            LocalStep::Bind(name, elt, pattern) => {
+                // As in the transition, from the state (the local state's
+                // value, by the agreement facts of `agreement`).
+                let value = match elt {
+                    MonoidElt::SingletonKV(key, _) => {
+                        let key = at_completion(key);
+                        quote! {#completion.#name[#key]}
+                    }
+                    _ => quote! {#completion.#name->Some_0},
+                };
+                let value = verus_syn::Expr::Verbatim(value);
+                if let Some((pattern, value)) = crate::concurrency_tokens::assign_pat_or_arbitrary(pattern, &value) {
+                    hints.push(quote! {let #pattern = #value;});
+                }
+                continue;
+            }
             LocalStep::Add(field) => {
                 ended.insert(field.name.to_string());
                 continue;
@@ -928,6 +974,23 @@ fn local_sequence_hints(
         };
         let observer = if remove { current.clone() } else { quote! {<#ft>::op(#current,h)} };
         let value = crate::verified_ownership::observed_value(field, &operation, &observer, span)?;
+        // Typed as in the ownership condition: a literal in an operand (e.g.
+        // `[k => 0]`) needs the field's types.
+        fn literal(tokens: TokenStream) -> bool {
+            tokens.into_iter().any(|token| match token {
+                proc_macro2::TokenTree::Literal(_) => true,
+                proc_macro2::TokenTree::Group(group) => literal(group.stream()),
+                _ => false,
+            })
+        }
+        let value = if matches!(operation.elt, MonoidElt::SingletonKV(..)) && literal(value.clone()) {
+            let name = fresh(sm, tr, &format!("local_operand_{n}_{index}"));
+            let ty = crate::verified_monoids::operand_type(&field.stype);
+            hints.push(quote! {let #name: #ty = #value;});
+            quote! {#name}
+        } else {
+            value
+        };
         let st = native(&state);
         // The observed fragment and the rest of the state's embedding.
         let (part, rest) = if remove {
@@ -1280,11 +1343,81 @@ fn implicit_fields<'a>(sm: &'a SM, tr: &Transition) -> Vec<&'a Field> {
     out
 }
 
-/// Readiness facts for implicit bindings: every value the owned or the
-/// shared fragment holds for such a field is the completion's.
-fn implicit_agreement(sm: &SM, tr: &Transition, completion: &Ident, z: &Ident) -> Vec<TokenStream> {
+/// The fields that `agreement` covers: with implicit bindings, or with a
+/// singleton `remove`/`have` whose operand mentions a name a `let` or a
+/// pattern binds (the singleton hints skip those, and the sequence hints stop
+/// at a refutable pattern), every map, set and option field that a singleton
+/// `remove` or `have` observes; otherwise none.
+fn agreement_fields<'a>(sm: &'a SM, tr: &Transition) -> Vec<&'a Field> {
+    fn names(tokens: TokenStream, out: &mut HashSet<String>) {
+        for token in tokens {
+            match token {
+                proc_macro2::TokenTree::Ident(n) => {
+                    out.insert(n.to_string());
+                }
+                proc_macro2::TokenTree::Group(g) => names(g.stream(), out),
+                _ => {}
+            }
+        }
+    }
+    fn walk<'a>(sm: &'a SM, statement: &TransitionStmt, bound: &mut HashSet<String>,
+        out: &mut Vec<&'a Field>, uses_bound: &mut bool) {
+        match statement {
+            TransitionStmt::Block(_, children) => children.iter().for_each(|c| walk(sm, c, bound, out, uses_bound)),
+            TransitionStmt::Split(_, split, children) => {
+                match &**split {
+                    SplitKind::Let(pattern, ..) => {
+                        bound.extend(crate::ident_visitor::pattern_get_bound_idents(pattern).iter().map(|n| n.to_string()))
+                    }
+                    SplitKind::Match(_, arms) => {
+                        for arm in arms {
+                            bound.extend(crate::ident_visitor::pattern_get_bound_idents(&arm.pat).iter().map(|n| n.to_string()))
+                        }
+                    }
+                    SplitKind::Special(name, operation, _, pattern) => {
+                        let operand = match &operation.elt {
+                            MonoidElt::SingletonKV(key, value) => Some(quote! {#key #value}),
+                            MonoidElt::OptionSome(value) => Some(quote! {#value}),
+                            MonoidElt::SingletonSet(key) => Some(quote! {#key}),
+                            _ => None,
+                        };
+                        let field = sm.fields.iter().find(|f| f.name == *name).filter(|f| matches!(f.stype,
+                            ShardableType::Map(..) | ShardableType::IMap(..) | ShardableType::PersistentMap(..)
+                            | ShardableType::PersistentIMap(..) | ShardableType::Option(_) | ShardableType::PersistentOption(_)
+                            | ShardableType::Set(_) | ShardableType::ISet(_) | ShardableType::PersistentSet(_)
+                            | ShardableType::PersistentISet(_)));
+                        if let (Some(field), Some(operand), true) = (field, operand, operation.is_remove() || operation.is_have()) {
+                            let mut mentioned = HashSet::new();
+                            names(operand, &mut mentioned);
+                            *uses_bound |= !mentioned.is_disjoint(bound);
+                            if !out.iter().any(|f| f.name == field.name) {
+                                out.push(field);
+                            }
+                        }
+                        if let Some(pattern) = pattern {
+                            bound.extend(crate::ident_visitor::pattern_get_bound_idents(pattern).iter().map(|n| n.to_string()))
+                        }
+                    }
+                    SplitKind::If(_) => {}
+                }
+                children.iter().for_each(|c| walk(sm, c, bound, out, uses_bound))
+            }
+            _ => {}
+        }
+    }
+    let (mut out, mut uses_bound) = (vec![], false);
+    walk(sm, &tr.body, &mut HashSet::new(), &mut out, &mut uses_bound);
+    if uses_bound || !implicit_fields(sm, tr).is_empty() { out } else { vec![] }
+}
+
+/// Readiness facts for the fields of `agreement_fields`: every entry the
+/// owned or the shared fragment holds for such a field is the completion's.
+/// A map or set fact is also triggered by the completion's entry: an operand
+/// key bound in the transition (by a `let` or a pattern) has no ground term on
+/// the fragments until such a fact is instantiated.
+fn agreement(sm: &SM, tr: &Transition, completion: &Ident, z: &Ident) -> Vec<TokenStream> {
     let c = quote! {::vstd::resource::tsm_collections};
-    implicit_fields(sm, tr)
+    agreement_fields(sm, tr)
         .into_iter()
         .map(|field| {
             let n = &field.name;
@@ -1329,9 +1462,30 @@ fn implicit_agreement(sm: &SM, tr: &Transition, completion: &Ident, z: &Ident) -
                                 quote! {#c::map_owned_frame}
                             };
                             quote! {
-                                assert forall|#key:#key_type| (#[trigger] #this.#n.at(#key)) is Some && #this.#n.at(#key)->Some_0 is #variant
+                                assert forall|#key:#key_type|
+                                    #![trigger #this.#n.at(#key)] #![trigger #completion.#n.dom().contains(#key)] #![trigger #completion.#n[#key]]
+                                    #this.#n.at(#key) is Some && #this.#n.at(#key)->Some_0 is #variant
                                     implies #completion.#n.dom().contains(#key) && #completion.#n[#key]==#this.#n.at(#key)->Some_0->#tag by {
                                     #lemma(#this.#n,#frame,#native,#key,#this.#n.at(#key)->Some_0->#tag);
+                                }
+                            }
+                        }
+                        ShardableType::Set(key_type)
+                        | ShardableType::ISet(key_type)
+                        | ShardableType::PersistentSet(key_type)
+                        | ShardableType::PersistentISet(key_type) => {
+                            let key = format_ident!("__tsm_local_key", span = proc_macro2::Span::mixed_site());
+                            let native = crate::verified_monoids::set_view(&field.stype, quote! {#completion.#n});
+                            let (lemma, unit) = if persistent {
+                                (quote! {#c::persistent_set_owned_frame}, quote! {::vstd::resource::agree::AgreementRA::Agree(())})
+                            } else {
+                                (quote! {#c::set_owned_frame}, quote! {::vstd::resource::exclusive::ExclusiveRA::Exclusive(())})
+                            };
+                            quote! {
+                                assert forall|#key:#key_type| #![trigger #this.#n.at(#key)] #![trigger #completion.#n.contains(#key)]
+                                    #this.#n.at(#key) == Some(#unit)
+                                    implies #completion.#n.contains(#key) by {
+                                    #lemma(#this.#n,#frame,#native,#key);
                                 }
                             }
                         }
@@ -1491,7 +1645,13 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     // It is a named function: terms of the requirement (e.g. the effects'
     // triggers) mention it, and the observation's conditionals cannot occur
     // in a trigger.
-    let (local_value, local_state_fn, agreement) = match implicit_local_state(sm, tr, se, ft)? {
+    // So is the plain observation when an operand key is bound (a `let` may
+    // read a variable from it, and the effects' triggers then mention it).
+    let implicit_state = match implicit_local_state(sm, tr, se, ft)? {
+        None if !agreement_fields(sm, tr).is_empty() => Some(quote! {Self::__observed(<#ft>::op(owned,h))}),
+        state => state,
+    };
+    let (local_value, local_state_fn, agreement) = match implicit_state {
         Some(state) => {
             let name = format_ident!("{}_local_state", n);
             (
@@ -1500,14 +1660,14 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
                     /// The local state of `_local_requires`: values bound by patterns are the fragments'.
                     pub open spec fn #name(owned:#ft,h:#ft,#(#params),*)->#st {#state}
                 },
-                implicit_agreement(sm, tr, &full_state, &completion_frame),
+                agreement(sm, tr, &full_state, &completion_frame),
             )
         }
         None => (quote! {Self::__observed(<#ft>::op(owned,h))}, quote! {}, vec![]),
     };
     // Both deposits are the same inlined expression. A pattern's `let` in it
     // admits no trigger for the pointwise proof, so it is compared directly.
-    let deposit_eq = if agreement.is_empty() {
+    let deposit_eq = if implicit_fields(sm, tr).is_empty() {
         deposit_eq
     } else {
         quote! {assert(#se::#local_deposited(#full_state,#(#pn),*)==#se::#deposited(#full_state,#(#pn),*));}

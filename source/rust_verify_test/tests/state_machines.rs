@@ -10151,8 +10151,8 @@ test_verify_one_file_with_options! {
 // Checked-macro test of `#[verified_local_ready]` for values bound by patterns (the trusted
 // macro has no local-ready operations): `remove`/`have` of a map entry `[k => let v]` (map, imap,
 // persistent map), of `Some(let x)` (option, persistent option), refutable patterns, bound
-// values in requirements, updates, conditions, later keys and deposits, and a `let`-bound
-// withdrawal. The local requirement used to read such a value from `__observed(..)`, which is
+// values in requirements, updates, conditions, later keys and deposits, keys bound by a `let`
+// or a pattern, a path after a refutable pattern, and a `let`-bound withdrawal. The local requirement used to read such a value from `__observed(..)`, which is
 // arbitrary, so no client could establish it; the local state now takes it from the supplied
 // fragments. The clients establish each local requirement from their tokens, some with the
 // observed entry in the shared fragment.
@@ -10164,7 +10164,8 @@ test_verify_one_file_with_options! {
             #[verified_raw_tokens]
             #[verified_local_ready(map_remove_bound, map_have_bound, imap_remove_readd,
                 pmap_have_bound, option_remove_readd, poption_have_bound, refutable_option,
-                refutable_map, bound_condition, bound_key, put, take)]
+                refutable_map, bound_condition, bound_key, let_key, refutable_then_have, bound_set,
+                literal_after_remove, put, take)]
             X {
             fields {
                 #[sharding(map)] pub m: Map<int, int>,
@@ -10174,6 +10175,7 @@ test_verify_one_file_with_options! {
                 #[sharding(persistent_option)] pub po: Option<int>,
                 #[sharding(option)] pub ro: Option<Tag>,
                 #[sharding(map)] pub rm: Map<int, Tag>,
+                #[sharding(set)] pub s: Set<int>,
                 #[sharding(variable)] pub cnt: int,
                 #[sharding(option)] pub held: Option<int>,
                 #[sharding(variable)] pub full: bool,
@@ -10186,11 +10188,12 @@ test_verify_one_file_with_options! {
                 init m = Map::empty().insert(1, 5).insert(12, 13); init im = IMap::empty().insert(2, 6);
                 init pm = Map::empty().insert(3, 7); init o = Some(8); init po = Some(9);
                 init ro = Some(Tag::A(10)); init rm = Map::empty().insert(4, Tag::A(11));
+                init s = Set::empty().insert(8);
                 init cnt = 0; init held = None; init full = false; init st = None;
             } }
             init!{ initialize_held(v: int) {
                 init m = Map::empty(); init im = IMap::empty(); init pm = Map::empty(); init o = None;
-                init po = None; init ro = None; init rm = Map::empty(); init cnt = 0;
+                init po = None; init ro = None; init rm = Map::empty(); init s = Set::empty(); init cnt = 0;
                 init held = Some(v); init full = true; init st = Some(v);
             } }
             transition!{ map_remove_bound(k: int) {
@@ -10214,6 +10217,16 @@ test_verify_one_file_with_options! {
                 if v > 0 { remove m -= [j => let w]; require(w > v); } else { update cnt = 0; }
             } }
             transition!{ bound_key() { remove o -= Some(let x); have m >= [x + 4 => let v]; require(v == 13); } }
+            // Keys bound by a `let` or a pattern (no ground fragment term until the
+            // completion's entry is read), a path after a refutable pattern, a literal value.
+            transition!{ let_key(cur: int) {
+                let j = pre.cnt + 1; remove m -= [j => cur]; add m += [j => 0];
+            } }
+            transition!{ refutable_then_have() {
+                remove rm -= [4 => let Tag::A(x)]; add rm += [4 => Tag::B]; have pm >= [3 => 7];
+            } }
+            transition!{ bound_set() { have o >= Some(let x); remove s -= set { x }; } }
+            transition!{ literal_after_remove(a: Map<int, int>) { remove m -= (a); have m >= [12 => 13]; } }
             transition!{ put() {
                 remove o -= Some(let x); require(!pre.full);
                 add held += Some(x); deposit st += Some(x); update full = true;
@@ -10231,6 +10244,10 @@ test_verify_one_file_with_options! {
             #[inductive(refutable_map)] fn refutable_map_inductive(pre: Self, post: Self, k: int) { }
             #[inductive(bound_condition)] fn bound_condition_inductive(pre: Self, post: Self, k: int, j: int) { }
             #[inductive(bound_key)] fn bound_key_inductive(pre: Self, post: Self) { }
+            #[inductive(let_key)] fn let_key_inductive(pre: Self, post: Self, cur: int) { }
+            #[inductive(refutable_then_have)] fn refutable_then_have_inductive(pre: Self, post: Self) { }
+            #[inductive(bound_set)] fn bound_set_inductive(pre: Self, post: Self) { }
+            #[inductive(literal_after_remove)] fn literal_after_remove_inductive(pre: Self, post: Self, a: Map<int, int>) { }
             #[inductive(put)] fn put_inductive(pre: Self, post: Self) { }
             #[inductive(take)] fn take_inductive(pre: Self, post: Self) { }
         }}
@@ -10239,11 +10256,13 @@ test_verify_one_file_with_options! {
             ensures t.fragment() == X::Protocol::embed(X::State {
                 m: Map::empty().insert(1, 5).insert(12, 13), im: IMap::empty().insert(2, 6),
                 pm: Map::empty().insert(3, 7), o: Some(8), po: Some(9), ro: Some(Tag::A(10)),
-                rm: Map::empty().insert(4, Tag::A(11)), cnt: 0, held: None, full: false, st: None })
+                rm: Map::empty().insert(4, Tag::A(11)), s: Set::empty().insert(8), cnt: 0, held: None,
+                full: false, st: None })
         {
             let tracked t = X::Protocol::initialize(IMap::tracked_empty());
             let s = choose|s: X::State| X::State::initialize(s) && s.invariant() && t.fragment() == X::Protocol::embed(s);
             assert(s.m =~= Map::empty().insert(1, 5).insert(12, 13));
+            assert(s.s =~= Set::empty().insert(8));
             t
         }
 
@@ -10258,6 +10277,10 @@ test_verify_one_file_with_options! {
             let tracked t = X::Protocol::refutable_map_local(start(), 4);
             let tracked t = X::Protocol::bound_condition_local(start(), 1, 12);
             let tracked t = X::Protocol::bound_key_local(start());
+            let tracked t = X::Protocol::let_key_local(start(), 5);
+            let tracked t = X::Protocol::refutable_then_have_local(start());
+            let tracked t = X::Protocol::bound_set_local(start());
+            let tracked t = X::Protocol::literal_after_remove_local(start(), Map::empty().insert(1, 5));
         }
 
         // The observed entry is in the shared fragment.

@@ -169,7 +169,8 @@ completions. A value that a `remove` or `have` binds by a pattern (`[k => let v]
 a map, `Some(let x)` of an option, exclusive or persistent, also refutable) is the
 supplied fragments' (`owned`'s entry if it has one, else `shared`'s): such a
 transition's local state is `Protocol::t_local_state(owned, shared, x)`, the
-observation with these entries. The generated lemma `t_local_ready` proves that it implies
+observation with these entries (a transition whose operand keys a `let` or a
+pattern binds also names its local state so). The generated lemma `t_local_ready` proves that it implies
 `t_requires`, for every completion; `t_local` and `t_local_with_shared` are `t`
 with the local precondition, and `t_observed` also returns ghost `before`, `after`
 and `frame` values of one compatible completion together with the withdrawn map.
