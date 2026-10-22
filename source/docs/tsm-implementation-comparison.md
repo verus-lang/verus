@@ -215,7 +215,9 @@ permissions are not `Copy` and have no clone method.
 ## Local readiness and state observations
 
 `#[verified_local_ready(...)]`, with `#[verified_raw_tokens]`, adds raw
-operations such as `change_local_ready`, `change_local`, and `change_observed`.
+operations in the namespace of a generated type per transition, such as
+`local_ready::change::ready`, `local_ready::change::run`, and
+`local_ready::change::observed`.
 The implementation is in
 [verified_readiness.rs](../state_machines_macros/src/verified_readiness.rs).
 The generic interface needs no such selection: its preconditions are already

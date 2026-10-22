@@ -3,7 +3,7 @@
 //! existing all-completion API remains available when a transition is not
 //! opted in.
 use crate::ast::*;
-use crate::parse_token_stream::{parse_result_to_smir, ParseResult, SMBundle};
+use crate::parse_token_stream::{parse_result_to_smir, ParseResult};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
@@ -93,108 +93,7 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
     if selected.is_empty() {
         return crate::verified_tokens::output_raw(bundle);
     }
-    check_local_ready_names(&bundle, &selected)?;
     crate::verified_general::output_with_ready(bundle, &selected)
-}
-
-/// Rejects local-ready item names that collide with other generated items.
-fn check_local_ready_names(bundle: &SMBundle, selected: &HashSet<String>) -> Result<(), Error> {
-    let sm = &bundle.sm;
-    let mut state = HashSet::from(["invariant".to_string(), "__storage".to_string()]);
-    let mut protocol = HashSet::from(["__observed".to_string()]);
-    for f in &bundle.normal_fns {
-        state.insert(f.sig.ident.to_string());
-    }
-    for inv in &bundle.extras.invariants {
-        state.insert(inv.func.sig.ident.to_string());
-    }
-    for lemma in &bundle.extras.lemmas {
-        state.insert(lemma.func.sig.ident.to_string());
-    }
-    let constants = sm
-        .fields
-        .iter()
-        .any(|f| matches!(f.stype, ShardableType::Constant(_)));
-    for field in &sm.fields {
-        if field.stype.is_storage() || matches!(field.stype, ShardableType::NotTokenized(_)) {
-            continue;
-        }
-        protocol.insert(format!("take_{}", field.name));
-        if constants && !matches!(field.stype, ShardableType::Constant(_)) {
-            protocol.insert(format!("take_{}_with_constants", field.name));
-        }
-        if matches!(field.stype, ShardableType::Count) {
-            protocol.insert(format!("split_{}", field.name));
-        }
-    }
-    for tr in &sm.transitions {
-        protocol.insert(tr.name.to_string());
-        if tr.kind != TransitionKind::Init {
-            for suffix in [
-                "_owned_post",
-                "_requires",
-                "_outputs",
-                "_witness",
-                "_frame",
-                "_with_shared",
-            ] {
-                protocol.insert(format!("{}{suffix}", tr.name));
-            }
-        } else {
-            state.insert(tr.name.to_string());
-        }
-        for suffix in [
-            "_strong",
-            "_enabled",
-            "_safety",
-            "_execute",
-            "_owners_enabled",
-            "_deposited",
-            "_guarded",
-        ] {
-            state.insert(format!("{}{suffix}", tr.name));
-        }
-        for field in &sm.fields {
-            state.insert(format!("{}_{}_effect", tr.name, field.name));
-            state.insert(format!("{}_{}_effect_owned", tr.name, field.name));
-            protocol.insert(format!("{}_{}_effect_frame", tr.name, field.name));
-        }
-    }
-    for tr in sm
-        .transitions
-        .iter()
-        .filter(|tr| selected.contains(&tr.name.to_string()))
-    {
-        for suffix in [
-            "_local_requires",
-            "_local_ready",
-            "_local",
-            "_local_with_shared",
-            "_observed",
-        ] {
-            if !protocol.insert(format!("{}{suffix}", tr.name)) {
-                return Err(Error::new(
-                    tr.name.span(),
-                    "local-ready API name conflicts with an existing generated method",
-                ));
-            }
-        }
-        if !agreement_fields(sm, tr).is_empty() && !protocol.insert(format!("{}_local_state", tr.name)) {
-            return Err(Error::new(
-                tr.name.span(),
-                "local-ready API name conflicts with an existing generated method",
-            ));
-        }
-        for suffix in ["_declared_requires", "_local_deposited"] {
-            if !state.insert(format!("{}{suffix}", tr.name)) {
-                return Err(Error::new(
-                    tr.name.span(),
-                    "local-ready State predicate conflicts with an existing method",
-                ));
-            }
-        }
-    }
-    Ok(())
 }
 
 // General collection operands create a substantial sequential ownership term.
@@ -328,26 +227,27 @@ fn declared_requires(s: &TransitionStmt) -> Result<TokenStream, Error> {
     }
 }
 
-/// The `<tr>_declared_requires` spec fn: the transition's own requirements on `pre`.
+/// The `local_ready::<tr>::declared_requires` spec fn: the transition's own requirements on
+/// `pre`.
 pub fn declared_requires_spec(
     tr: &Transition,
     st: &TokenStream,
     params: &[TokenStream],
 ) -> Result<TokenStream, Error> {
-    let declared = format_ident!("{}_declared_requires", tr.name);
     let expression = declared_requires(&tr.body)?;
     Ok(
-        quote! {#[verifier::inline] pub open spec fn #declared(pre:#st,#(#params),*)->bool {#expression}},
+        quote! {#[verifier::inline] pub open spec fn declared_requires(pre:#st,#(#params),*)->bool {#expression}},
     )
 }
 
 /// What `local_ready_api` uses of the machine and of one local-ready transition (`st`/`se`:
-/// state type/expression, `ft`: fragment type, `tt`: token type, `pn`: parameter names).
+/// state type/expression, `pe`: protocol expression, `ft`: fragment type, `tt`: token type, `pn`: parameter names).
 pub struct Context<'a> {
     pub sm: &'a SM,
     pub tr: &'a Transition,
     pub st: &'a TokenStream,
     pub se: &'a TokenStream,
+    pub pe: &'a TokenStream,
     pub ft: &'a TokenStream,
     pub tt: &'a TokenStream,
     pub result: &'a TokenStream,
@@ -403,7 +303,7 @@ fn fresh(sm:&SM,tr:&Transition,stem:&str)->Ident {
 // completion. Explicit key instantiation and pointwise composition avoid relying
 // on solver triggers to lift a Remove ownership requirement through the frame.
 fn singleton_set_remove_hints(tr:&Transition,observation:&Ident,completion:&Ident,
-    completion_frame:&Ident,ft:&TokenStream,se:&TokenStream,owners:&Ident,pn:&[&Ident],
+    completion_frame:&Ident,ft:&TokenStream,se:&TokenStream,pe:&TokenStream,owners:&Ident,pn:&[&Ident],
     skip:&HashSet<String>)->Vec<TokenStream>
 {
     use std::collections::HashSet;
@@ -483,8 +383,8 @@ fn singleton_set_remove_hints(tr:&Transition,observation:&Ident,completion:&Iden
             assert(owned.#field.at(#key)==Some(ExclusiveRA::Exclusive(())));
             <#ft>::associative(owned,h,#completion_frame);
             let #frame=::vstd::resource::tsm_collections::SetFragment::op(h.#field,#completion_frame.#field);
-            assert(Option::<ExclusiveRA<()>>::op(owned.#field.at(#key),#frame.at(#key))==Self::embed(#completion).#field.at(#key));
-            assert(Self::embed(#completion).#field.at(#key)==if #completion.#field.contains(#key){Some(ExclusiveRA::Exclusive(()))}else{None});
+            assert(Option::<ExclusiveRA<()>>::op(owned.#field.at(#key),#frame.at(#key))==#pe::embed(#completion).#field.at(#key));
+            assert(#pe::embed(#completion).#field.at(#key)==if #completion.#field.contains(#key){Some(ExclusiveRA::Exclusive(()))}else{None});
             assert(#frame.at(#key) is None);
             assert(#completion.#field.contains(#key));
         }
@@ -1111,7 +1011,7 @@ fn local_sequence_hints(
 }
 
 /// Whether `stmt` has a storage operation under a `let`, `if` or `match`
-/// (which `<tr>_deposited` and `<tr>_local_deposited` then keep).
+/// (which `<tr>_deposited` and `local_ready::<tr>::deposited` then keep).
 fn scoped_deposits(stmt: &TransitionStmt) -> bool {
     fn storage(stmt: &TransitionStmt) -> bool {
         match stmt {
@@ -1298,10 +1198,10 @@ impl LocalState<'_> {
     }
 }
 
-/// The local state of `_local_requires` for a transition with implicit
+/// The local state of `local_ready::<tr>::precondition` for a transition with implicit
 /// bindings (`implicit_binding`), over `owned`/`h`; `None` if it has none (the
 /// local state is then the observation itself).
-fn implicit_local_state(sm: &SM, tr: &Transition, se: &TokenStream, ft: &TokenStream) -> Result<Option<TokenStream>, Error> {
+fn implicit_local_state(sm: &SM, tr: &Transition, se: &TokenStream, pe: &TokenStream, ft: &TokenStream) -> Result<Option<TokenStream>, Error> {
     let mut builder = LocalState {
         sm,
         se,
@@ -1315,7 +1215,7 @@ fn implicit_local_state(sm: &SM, tr: &Transition, se: &TokenStream, ft: &TokenSt
     let (o, s) = (&builder.owned, &builder.shared);
     Ok(Some(quote! {{
         let #o = owned; let #s = h;
-        let pre = Self::__observed(<#ft>::op(owned,h));
+        let pre = #pe::__observed(<#ft>::op(owned,h));
         #state
     }}))
 }
@@ -1498,14 +1398,18 @@ fn agreement(sm: &SM, tr: &Transition, completion: &Ident, z: &Ident) -> Vec<Tok
         .collect()
 }
 
-/// The local-ready items of a transition: `_local_requires`, `_local_ready`, `_local`,
-/// `_local_with_shared` and `_observed`.
+/// The local-ready items of a transition `t`, associated items of the type `local_ready::t`
+/// (next to `declared_requires` and `deposited`): `precondition`, `ready`, `run`,
+/// `run_with_shared` and `observed`, and `local_state` if the local state is named. (Before,
+/// these were `Protocol::t_local_requires`, `t_local_ready`, `t_local`, `t_local_with_shared`,
+/// `t_observed` and `t_local_state`.)
 pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     let Context {
         sm,
         tr,
         st,
         se,
+        pe,
         ft,
         tt,
         result,
@@ -1521,17 +1425,17 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         paired,
     } = c;
     let n = &tr.name;
-    let local_req = format_ident!("{}_local_requires", n);
-    let ready = format_ident!("{}_local_ready", n);
-    let local = format_ident!("{}_local", n);
-    let local_shared = format_ident!("{}_local_with_shared", n);
-    let observed_op = format_ident!("{}_observed", n);
+    let local_req = format_ident!("precondition");
+    let ready = format_ident!("ready");
+    let local = format_ident!("run");
+    let local_shared = format_ident!("run_with_shared");
+    let observed_op = format_ident!("observed");
     let req = format_ident!("{}_requires", n);
     let enabled = format_ident!("{}_enabled", n);
     let owners = format_ident!("{}_owners_enabled", n);
-    let declared = format_ident!("{}_declared_requires", n);
+    let declared = format_ident!("declared_requires");
     let deposited = format_ident!("{}_deposited", n);
-    let local_deposited = format_ident!("{}_local_deposited", n);
+    let local_deposited = format_ident!("deposited");
     let output = format_ident!("{}_outputs", n);
     let witness = format_ident!("{}_witness", n);
     let strong = format_ident!("{}_strong", n);
@@ -1625,7 +1529,7 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     };
     let deposit_index = format_ident!("__tsm_deposit_index", span = proc_macro2::Span::mixed_site());
     let (local_deposit, full_deposit) = (
-        quote! {#se::#local_deposited(#full_state,#(#pn),*)},
+        quote! {Self::#local_deposited(#full_state,#(#pn),*)},
         quote! {#se::#deposited(#full_state,#(#pn),*)},
     );
     let deposit_eq = if scoped_deposits(&tr.body) {
@@ -1638,7 +1542,7 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         storage.prove_eq(&deposit_index, local_deposit, full_deposit)
     };
     let (sequence_hints,sequenced)=local_sequence_hints(sm,tr,&full_state,&completion_frame,ft)?;
-    let set_hints=singleton_set_remove_hints(tr,&observation,&full_state,&completion_frame,ft,se,&owners,pn,&sequenced);
+    let set_hints=singleton_set_remove_hints(tr,&observation,&full_state,&completion_frame,ft,se,pe,&owners,pn,&sequenced);
     let map_hints=singleton_map_remove_hints(sm,tr,&observation,&full_state,&completion_frame,ft,se,&owners,pn,&sequenced);
     // With implicit bindings the local state takes their values from the
     // fragments, and every completion agrees with it on them.
@@ -1647,30 +1551,30 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     // in a trigger.
     // So is the plain observation when an operand key is bound (a `let` may
     // read a variable from it, and the effects' triggers then mention it).
-    let implicit_state = match implicit_local_state(sm, tr, se, ft)? {
-        None if !agreement_fields(sm, tr).is_empty() => Some(quote! {Self::__observed(<#ft>::op(owned,h))}),
+    let implicit_state = match implicit_local_state(sm, tr, se, pe, ft)? {
+        None if !agreement_fields(sm, tr).is_empty() => Some(quote! {#pe::__observed(<#ft>::op(owned,h))}),
         state => state,
     };
     let (local_value, local_state_fn, agreement) = match implicit_state {
         Some(state) => {
-            let name = format_ident!("{}_local_state", n);
+            let name = format_ident!("local_state");
             (
                 quote! {Self::#name(owned,h,#(#pn),*)},
                 quote! {
-                    /// The local state of `_local_requires`: values bound by patterns are the fragments'.
+                    /// The local state of `precondition`: values bound by patterns are the fragments'.
                     pub open spec fn #name(owned:#ft,h:#ft,#(#params),*)->#st {#state}
                 },
                 agreement(sm, tr, &full_state, &completion_frame),
             )
         }
-        None => (quote! {Self::__observed(<#ft>::op(owned,h))}, quote! {}, vec![]),
+        None => (quote! {#pe::__observed(<#ft>::op(owned,h))}, quote! {}, vec![]),
     };
     // Both deposits are the same inlined expression. A pattern's `let` in it
     // admits no trigger for the pointwise proof, so it is compared directly.
     let deposit_eq = if implicit_fields(sm, tr).is_empty() {
         deposit_eq
     } else {
-        quote! {assert(#se::#local_deposited(#full_state,#(#pn),*)==#se::#deposited(#full_state,#(#pn),*));}
+        quote! {assert(Self::#local_deposited(#full_state,#(#pn),*)==#se::#deposited(#full_state,#(#pn),*));}
     };
     Ok(quote! {
         #local_state_fn
@@ -1679,23 +1583,23 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         pub open spec fn #local_req(owned:#ft,h:#ft,deposit:#map,#(#params),*)->bool {
             true #(&& #owned)* #(&& #observed)* && {
                 let #local_state=#local_value;
-                #se::#declared(#local_state,#(#pn),*) && #se::#owners(#local_state,owned,h,#(#pn),*)
-                    && deposit==#se::#local_deposited(#local_state,#(#pn),*)
+                Self::#declared(#local_state,#(#pn),*) && #se::#owners(#local_state,owned,h,#(#pn),*)
+                    && deposit==Self::#local_deposited(#local_state,#(#pn),*)
             }
         }
         pub proof fn #ready(owned:#ft,h:#ft,deposit:#map,#(#params),*)
             requires Self::#local_req(owned,h,deposit,#(#pn),*)
-            ensures Self::#req(owned,h,deposit,#(#pn),*)
+            ensures #pe::#req(owned,h,deposit,#(#pn),*)
         {
             let #observation=#local_value;
             assert forall|#completion_frame:#ft,#full_state:#st|#full_state.invariant()
-                &&<#ft>::op(<#ft>::op(owned,h),#completion_frame)==Self::embed(#full_state)
+                &&<#ft>::op(<#ft>::op(owned,h),#completion_frame)==#pe::embed(#full_state)
                 implies #se::#enabled(#full_state,#(#pn),*)
                     &&#se::#deposited(#full_state,#(#pn),*)==deposit
                     &&#se::#owners(#full_state,owned,h,#(#pn),*) by {
                 #(assert(#full_state.#reads==#observation.#reads);)*
                 #(#agreement)*
-                assert(#se::#declared(#full_state,#(#pn),*));
+                assert(Self::#declared(#full_state,#(#pn),*));
                 assert(#se::#owners(#full_state,owned,h,#(#pn),*));
                 #(#set_hints)*
                 #(#map_hints)*
@@ -1705,35 +1609,35 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         }
         pub proof fn #local_shared(tracked owned:#tt,tracked shared:&#tt,#dep_param #(#params),*)->(#ret)
             requires owned.loc()==shared.loc(),Self::#local_req(owned.fragment(),shared.fragment(),#dep_value,#(#pn),*)
-            ensures #out.loc()==owned.loc(),Self::#output(owned.fragment(),shared.fragment(),#out.fragment(),#dep_value,#wd,#(#pn),*)
+            ensures #out.loc()==owned.loc(),#pe::#output(owned.fragment(),shared.fragment(),#out.fragment(),#dep_value,#wd,#(#pn),*)
         {
             Self::#ready(owned.fragment(),shared.fragment(),#dep_value,#(#pn),*);
-            Self::#shared_op(owned,shared,#dep_arg #(#pn),*)
+            #pe::#shared_op(owned,shared,#dep_arg #(#pn),*)
         }
         pub proof fn #local(tracked owned:#tt,#dep_param #(#params),*)->(#ret)
             requires Self::#local_req(owned.fragment(),<#ft>::unit(),#dep_value,#(#pn),*)
-            ensures #out.loc()==owned.loc(),Self::#output(owned.fragment(),<#ft>::unit(),#out.fragment(),#dep_value,#wd,#(#pn),*)
+            ensures #out.loc()==owned.loc(),#pe::#output(owned.fragment(),<#ft>::unit(),#out.fragment(),#dep_value,#wd,#(#pn),*)
         {
             Self::#ready(owned.fragment(),<#ft>::unit(),#dep_value,#(#pn),*);
-            Self::#n(owned,#dep_arg #(#pn),*)
+            #pe::#n(owned,#dep_arg #(#pn),*)
         }
         /// Returned states describe a compatible completion, not a distinguished hidden history.
         pub proof fn #observed_op(tracked owned:#tt,#dep_param #(#params),*)->(tracked #certificate:#result)
             requires Self::#local_req(owned.fragment(),<#ft>::unit(),#dep_value,#(#pn),*)
             ensures #certificate.token.loc()==owned.loc(),#certificate.before.invariant(),#certificate.after.invariant(),
-                <#ft>::op(<#ft>::op(owned.fragment(),<#ft>::unit()),#certificate.frame)==Self::embed(#certificate.before),
+                <#ft>::op(<#ft>::op(owned.fragment(),<#ft>::unit()),#certificate.frame)==#pe::embed(#certificate.before),
                 #se::#strong(#certificate.before,#certificate.after,#(#pn),*),
-                #certificate.token.fragment()==Self::#owned_post(owned.fragment(),#certificate.before,#certificate.after,#(#pn),*),
-                <#ft>::op(<#ft>::op(#certificate.token.fragment(),<#ft>::unit()),#certificate.frame)==Self::embed(#certificate.after),
+                #certificate.token.fragment()==#pe::#owned_post(owned.fragment(),#certificate.before,#certificate.after,#(#pn),*),
+                <#ft>::op(<#ft>::op(#certificate.token.fragment(),<#ft>::unit()),#certificate.frame)==#pe::embed(#certificate.after),
                 #physical
                 #certificate.withdrawn==#withdrawn_value,
-                Self::#output(owned.fragment(),<#ft>::unit(),#certificate.token.fragment(),#dep_value,#certificate.withdrawn,#(#pn),*)
+                #pe::#output(owned.fragment(),<#ft>::unit(),#certificate.token.fragment(),#dep_value,#certificate.withdrawn,#(#pn),*)
                 #wd_shape
         {
             let ghost #initial=owned.fragment();
             let ghost #physical_deposit=#dep_value;
             #call
-            let (#before,#after,#witness_frame)=Self::#witness(#initial,<#ft>::unit(),#next.fragment(),#physical_deposit,#returned_map,#(#pn),*);
+            let (#before,#after,#witness_frame)=#pe::#witness(#initial,<#ft>::unit(),#next.fragment(),#physical_deposit,#returned_map,#(#pn),*);
             #monotone_withdrawn
             #result_expr{token:#next,withdrawn:#returned_map,before:#before,after:#after,frame:#witness_frame}
         }

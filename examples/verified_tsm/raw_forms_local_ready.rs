@@ -57,11 +57,11 @@ proof fn client(tracked a: Tok, tracked b: Tok, tracked c: Tok) {
     d.tracked_insert(SubUp::__StorageKey::stored(2nat), SubUp::__StorageValue::stored(b));
     assert(d =~= IMap::empty().insert(SubUp::__StorageKey::stored(1nat), SubUp::__StorageValue::stored(a))
         .union_prefer_right(IMap::empty().insert(SubUp::__StorageKey::stored(2nat), SubUp::__StorageValue::stored(b))));
-    let tracked token = SubUp::Protocol::put_two_local(token, d, a, b);
+    let tracked token = SubUp::local_ready::put_two::run(token, d, a, b);
     let tracked mut d = IMap::tracked_empty();
     d.tracked_insert(SubUp::__StorageKey::stored(3nat), SubUp::__StorageValue::stored(c));
     assert(d =~= IMap::empty().insert(SubUp::__StorageKey::stored(3nat), SubUp::__StorageValue::stored(c)));
-    let tracked (token, mut w) = SubUp::Protocol::swap_local(token, d, a, c);
+    let tracked (token, mut w) = SubUp::local_ready::swap::run(token, d, a, c);
     let tracked a2 = SubUp::__unwrap_stored(w.tracked_remove(SubUp::__StorageKey::stored(1nat)));
     assert(a2 == a);
 }

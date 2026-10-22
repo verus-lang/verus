@@ -9798,7 +9798,7 @@ test_verify_tsm! {
 
 // Checked-macro version of general_operand_after_remove_same_field for the raw interface's
 // `#[verified_local_ready]` operations (the trusted macro has neither); local-ready also needs a
-// storage field. Their readiness proof (`<tr>_local_ready`) failed for a map or set `have` or
+// storage field. Their readiness proof (`local_ready::<tr>::ready`) failed for a map or set `have` or
 // general `remove`, and for any `remove`/`have` after a `remove` of the same field: the later
 // operand is observed in the fragment the removal leaves, and only the first singleton `remove`
 // of a field had a hint lifting its operand to the completion's state.
@@ -10093,7 +10093,7 @@ test_verify_one_file_with_options! {
 
 // Storage operations under a branch (and after a `let`) in a `#[verified_local_ready]`
 // transition (checked macro only): the readiness proof's deposit equality quantified over the
-// inline `<tr>_local_deposited`/`<tr>_deposited`, whose `let`/`match` bodies Verus cannot
+// inline `local_ready::<tr>::deposited`/`<tr>_deposited`, whose `let`/`match` bodies Verus cannot
 // choose a trigger in ("Could not automatically infer triggers").
 test_verify_one_file_with_options! {
     #[test] branch_storage_local_ready_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
@@ -10267,28 +10267,28 @@ test_verify_one_file_with_options! {
         }
 
         proof fn owned_clients() {
-            let tracked t = X::Protocol::map_remove_bound_local(start(), 1);
-            let tracked t = X::Protocol::map_have_bound_local(start(), 1);
-            let tracked t = X::Protocol::imap_remove_readd_local(start(), 2);
-            let tracked t = X::Protocol::pmap_have_bound_local(start(), 3);
-            let tracked t = X::Protocol::option_remove_readd_local(start());
-            let tracked t = X::Protocol::poption_have_bound_local(start());
-            let tracked t = X::Protocol::refutable_option_local(start());
-            let tracked t = X::Protocol::refutable_map_local(start(), 4);
-            let tracked t = X::Protocol::bound_condition_local(start(), 1, 12);
-            let tracked t = X::Protocol::bound_key_local(start());
-            let tracked t = X::Protocol::let_key_local(start(), 5);
-            let tracked t = X::Protocol::refutable_then_have_local(start());
-            let tracked t = X::Protocol::bound_set_local(start());
-            let tracked t = X::Protocol::literal_after_remove_local(start(), Map::empty().insert(1, 5));
+            let tracked t = X::local_ready::map_remove_bound::run(start(), 1);
+            let tracked t = X::local_ready::map_have_bound::run(start(), 1);
+            let tracked t = X::local_ready::imap_remove_readd::run(start(), 2);
+            let tracked t = X::local_ready::pmap_have_bound::run(start(), 3);
+            let tracked t = X::local_ready::option_remove_readd::run(start());
+            let tracked t = X::local_ready::poption_have_bound::run(start());
+            let tracked t = X::local_ready::refutable_option::run(start());
+            let tracked t = X::local_ready::refutable_map::run(start(), 4);
+            let tracked t = X::local_ready::bound_condition::run(start(), 1, 12);
+            let tracked t = X::local_ready::bound_key::run(start());
+            let tracked t = X::local_ready::let_key::run(start(), 5);
+            let tracked t = X::local_ready::refutable_then_have::run(start());
+            let tracked t = X::local_ready::bound_set::run(start());
+            let tracked t = X::local_ready::literal_after_remove::run(start(), Map::empty().insert(1, 5));
         }
 
         // The observed entry is in the shared fragment.
         proof fn shared_clients() {
             let tracked (m, rest) = X::Protocol::take_m(start());
-            let tracked rest = X::Protocol::map_have_bound_local_with_shared(rest, &m, 1);
+            let tracked rest = X::local_ready::map_have_bound::run_with_shared(rest, &m, 1);
             let tracked (po, rest) = X::Protocol::take_po(start());
-            let tracked rest = X::Protocol::poption_have_bound_local_with_shared(rest, &po);
+            let tracked rest = X::local_ready::poption_have_bound::run_with_shared(rest, &po);
         }
 
         // The deposit is the removed option's value.
@@ -10296,7 +10296,7 @@ test_verify_one_file_with_options! {
             let tracked mut d = IMap::tracked_empty();
             d.tracked_insert(X::__StorageKey::st, X::__StorageValue::st(v));
             assert(d =~= IMap::empty().insert(X::__StorageKey::st, X::__StorageValue::st(8)));
-            let tracked t = X::Protocol::put_local(start(), d);
+            let tracked t = X::local_ready::put::run(start(), d);
         }
 
         // The withdrawn value is bound by a pattern; the invariant links it to `held`.
@@ -10305,7 +10305,135 @@ test_verify_one_file_with_options! {
             b.tracked_insert(X::__StorageKey::st, X::__StorageValue::st(v));
             let tracked t = X::Protocol::initialize_held(b, v);
             let s = choose|s: X::State| X::State::initialize_held(s, v) && s.invariant() && t.fragment() == X::Protocol::embed(s);
-            let tracked (t, w) = X::Protocol::take_local(t);
+            let tracked (t, w) = X::local_ready::take::run(t);
+        }
+    } => Ok(())
+}
+
+// The local-ready API of a transition `t` is the associated items of the generated type
+// `local_ready::t` (`run`, `run_with_shared`, `observed`, `precondition`, `ready`, ...). Its
+// names used to be suffixes of `t` on `Protocol` and `State` (`Protocol::t_local`, ...), and the
+// macro rejected machines where they collided: here transitions `a`, `a_local` and `a_observed`
+// (whose raw operations were `a`'s local-ready ones) and State functions named like the former
+// `a_declared_requires` and `b_local_deposited` (with `b`'s pattern-bound value: a named local state).
+test_verify_one_file_with_options! {
+    #[test] local_ready_namespace_former_conflicts_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::tsm::Machine;
+        pub struct Tok { pub v: int }
+        verified_tokenized_state_machine! {
+            #[verified_raw_tokens]
+            #[verified_local_ready(a, a_local, a_observed, b)]
+            N {
+                fields {
+                    #[sharding(variable)] pub auth: Map<nat, Tok>,
+                    #[sharding(storage_map)] pub stored: Map<nat, Tok>,
+                    #[sharding(option)] pub o: Option<nat>,
+                    #[sharding(variable)] pub n: nat,
+                }
+                #[invariant] pub fn same(&self) -> bool { self.auth == self.stored }
+                // Former names of the local-ready State predicates of `a` and `b`.
+                pub open spec fn a_declared_requires(&self) -> bool { self.n == 0 }
+                pub open spec fn b_local_deposited(&self) -> nat { self.n }
+                init! { initialize() { init auth = Map::empty(); init stored = Map::empty(); init o = Some(1); init n = 0; } }
+                transition! { a(t: Tok) {
+                    require(!pre.auth.contains_key(1nat));
+                    deposit stored += [1nat => t];
+                    update auth = pre.auth.insert(1nat, t);
+                } }
+                transition! { a_local(t: Tok) {
+                    require(!pre.auth.contains_key(2nat));
+                    deposit stored += [2nat => t];
+                    update auth = pre.auth.insert(2nat, t);
+                } }
+                transition! { a_observed(t: Tok) {
+                    require(pre.auth.contains_key(1nat) && pre.auth[1nat] == t);
+                    withdraw stored -= [1nat => t];
+                    update auth = pre.auth.remove(1nat);
+                } }
+                transition! { b() {
+                    remove o -= Some(let x);
+                    update n = x;
+                } }
+                #[inductive(initialize)] fn initialize_inductive(post: Self) {}
+                #[inductive(a)] fn a_inductive(pre: Self, post: Self, t: Tok) {}
+                #[inductive(a_local)] fn a_local_inductive(pre: Self, post: Self, t: Tok) {}
+                #[inductive(a_observed)] fn a_observed_inductive(pre: Self, post: Self, t: Tok) {}
+                #[inductive(b)] fn b_inductive(pre: Self, post: Self) {}
+            }
+        }
+
+        proof fn client(tracked x: Tok, tracked y: Tok) {
+            assert(IMap::<nat, Tok>::empty() =~= Map::<nat, Tok>::empty().to_imap());
+            assert(N::__tag_stored(IMap::empty()) =~= IMap::empty());
+            let tracked token = N::Protocol::initialize(IMap::tracked_empty());
+            let tracked mut d = IMap::tracked_empty();
+            d.tracked_insert(N::__StorageKey::stored(1nat), N::__StorageValue::stored(x));
+            assert(d =~= IMap::empty().insert(N::__StorageKey::stored(1nat), N::__StorageValue::stored(x)));
+            let tracked token = N::local_ready::a::run(token, d, x);
+            let tracked mut d = IMap::tracked_empty();
+            d.tracked_insert(N::__StorageKey::stored(2nat), N::__StorageValue::stored(y));
+            assert(d =~= IMap::empty().insert(N::__StorageKey::stored(2nat), N::__StorageValue::stored(y)));
+            let tracked obs = N::local_ready::a_local::observed(token, d, y);
+            assert(obs.before.auth.contains_key(1nat));
+            let tracked (token, mut w) = N::local_ready::a_observed::run(obs.token, x);
+            let tracked x2 = N::__unwrap_stored(w.tracked_remove(N::__StorageKey::stored(1nat)));
+            assert(x2 == x);
+            let tracked token = N::local_ready::b::run(token);
+        }
+
+        proof fn ready_lemma(owned: N::Fragment, h: N::Fragment, deposit: IMap<N::__StorageKey, N::__StorageValue>, t: Tok)
+            requires N::local_ready::a_local::precondition(owned, h, deposit, t)
+            ensures N::Protocol::a_local_requires(owned, h, deposit, t)
+        {
+            N::local_ready::a_local::ready(owned, h, deposit, t);
+        }
+    } => Ok(())
+}
+
+// The local-ready namespace of a machine with type parameters: `M::local_ready::t::<T>::run(..)`.
+test_verify_one_file_with_options! {
+    #[test] local_ready_namespace_generic_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::tsm::Machine;
+        verified_tokenized_state_machine! {
+            #[verified_raw_tokens]
+            #[verified_local_ready(put, put_local)]
+            G<T> {
+                fields {
+                    #[sharding(variable)] pub auth: Map<nat, T>,
+                    #[sharding(storage_map)] pub stored: Map<nat, T>,
+                }
+                #[invariant] pub fn same(&self) -> bool { self.auth == self.stored }
+                pub open spec fn put_declared_requires(&self) -> bool { true }
+                init! { initialize() { init auth = Map::empty(); init stored = Map::empty(); } }
+                transition! { put(t: T) {
+                    require(!pre.auth.contains_key(1nat));
+                    deposit stored += [1nat => t];
+                    update auth = pre.auth.insert(1nat, t);
+                } }
+                transition! { put_local(t: T) {
+                    require(!pre.auth.contains_key(2nat));
+                    deposit stored += [2nat => t];
+                    update auth = pre.auth.insert(2nat, t);
+                } }
+                #[inductive(initialize)] fn initialize_inductive(post: Self) {}
+                #[inductive(put)] fn put_inductive(pre: Self, post: Self, t: T) {}
+                #[inductive(put_local)] fn put_local_inductive(pre: Self, post: Self, t: T) {}
+            }
+        }
+
+        proof fn client<T>(tracked x: T, tracked y: T) {
+            assert(IMap::<nat, T>::empty() =~= Map::<nat, T>::empty().to_imap());
+            assert(G::__tag_stored::<T>(IMap::empty()) =~= IMap::empty());
+            let tracked token = G::Protocol::<T>::initialize(IMap::tracked_empty());
+            let tracked mut d = IMap::tracked_empty();
+            d.tracked_insert(G::__StorageKey::stored(1nat), G::__StorageValue::<T>::stored(x));
+            assert(d =~= IMap::empty().insert(G::__StorageKey::stored(1nat), G::__StorageValue::<T>::stored(x)));
+            let tracked token = G::local_ready::put::<T>::run(token, d, x);
+            let tracked mut d = IMap::tracked_empty();
+            d.tracked_insert(G::__StorageKey::stored(2nat), G::__StorageValue::<T>::stored(y));
+            assert(d =~= IMap::empty().insert(G::__StorageKey::stored(2nat), G::__StorageValue::<T>::stored(y)));
+            let tracked obs = G::local_ready::put_local::<T>::observed(token, d, y);
+            assert(obs.after.auth.contains_key(2nat));
         }
     } => Ok(())
 }

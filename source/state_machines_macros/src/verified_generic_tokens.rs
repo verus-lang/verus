@@ -6690,7 +6690,7 @@ pub fn normalize_initial_requirements(bundle:&mut crate::parse_token_stream::SMB
         .collect();
     unavailable.extend(["invariant".to_string(),"__storage".to_string()]);
     for tr in &bundle.sm.transitions {
-        for suffix in ["","_strong","_enabled","_safety","_execute","_owners_enabled","_deposited","_guarded","_declared_requires","_local_deposited"] {
+        for suffix in ["","_strong","_enabled","_safety","_execute","_owners_enabled","_deposited","_guarded"] {
             unavailable.insert(format!("{}{suffix}",tr.name));
         }
     }

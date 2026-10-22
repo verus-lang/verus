@@ -805,6 +805,9 @@ pub fn output_with_ready(
         bundle.normal_fns.iter().map(|f| quote! {::vstd::prelude::verus_impl!{#f}}).collect();
     let mut relations = crate::verified_state_relations::output(&bundle, &st)?;
     let mut ops = vec![];
+    // The local-ready API of each selected transition `t`: the associated items of
+    // the type `local_ready::t` (see `verified_readiness::local_ready_api`).
+    let mut local_ready_items = vec![];
     let mut lemmas = vec![];
     let fields: HashMap<_, _> = sm.fields.iter().map(|f| (f.name.to_string(), f.clone())).collect();
     for tr in &sm.transitions {
@@ -1278,23 +1281,23 @@ pub fn output_with_ready(
                     paired,
                 ));
                 if local_ready.contains(&n.to_string()) {
-                    relations
-                        .push(crate::verified_readiness::declared_requires_spec(tr, &st, &params)?);
-                    let local_deposited = format_ident!("{}_local_deposited", n);
+                    let declared_requires =
+                        crate::verified_readiness::declared_requires_spec(tr, &st, &params)?;
                     let local_expression = storage_deposit(&tr.body, &fields, layout)?;
                     let sty = layout.ty();
-                    relations.push(quote! {#[verifier::inline] pub open spec fn #local_deposited(pre:#st,#(#params),*)->#sty{#local_expression}});
+                    let local_deposited = quote! {#[verifier::inline] pub open spec fn deposited(pre:#st,#(#params),*)->#sty{#local_expression}};
                     let reads: Vec<_> = names
                         .iter()
                         .copied()
                         .filter(|n| read.contains(&n.to_string()))
                         .collect();
-                    ops.push(crate::verified_readiness::local_ready_api(
+                    let api = crate::verified_readiness::local_ready_api(
                         crate::verified_readiness::Context {
                             sm,
                             tr,
                             st: &st,
                             se: &se,
+                            pe: &quote! {Protocol #expr},
                             ft: &ft,
                             tt: &tt,
                             result: &result_ty,
@@ -1309,7 +1312,8 @@ pub fn output_with_ready(
                             withdraws: withdraw,
                             paired,
                         },
-                    )?);
+                    )?;
+                    local_ready_items.push((n.clone(), quote! {#declared_requires #local_deposited #api}));
                 }
             } else {
                 ops.push(quote!{
@@ -1472,6 +1476,34 @@ pub fn output_with_ready(
             }
         }
     };
+    // Each local-ready transition `t` gets a type `local_ready::t` whose associated
+    // items are its local-ready API (`local_ready::t::run(..)`, ...): its own
+    // namespace, so these names cannot collide with other transitions' or user
+    // items. The impls are in the machine module, where the transition's
+    // expressions resolve as in `State`'s impl.
+    let local_ready_api = if local_ready_items.is_empty() {
+        quote! {}
+    } else {
+        let structs = local_ready_items.iter().map(|(n, _)| {
+            quote! {
+                #(#datatype_attrs)*
+                #[allow(non_camel_case_types)]
+                pub struct #n #decl #where_clause {#marker}
+            }
+        });
+        let impls = local_ready_items.iter().map(|(n, items)| {
+            quote! {impl #decl local_ready::#n #types #where_clause {#items}}
+        });
+        quote! {
+            /// The local-ready API of the `#[verified_local_ready(..)]` transitions.
+            pub mod local_ready {
+                #[allow(unused_imports)]
+                use super::*;
+                #(#structs)*
+            }
+            #(#impls)*
+        }
+    };
     Ok(quote! {
         pub mod #name {use super::*;::vstd::prelude::verus!{
             use ::vstd::iset::ISet;
@@ -1518,6 +1550,7 @@ pub fn output_with_ready(
                 pub open spec fn __observed(f:#ft)->#st {#se{#marker_value #(#observations),*}}
                 #field_takes #(#ops)*
             }
+            #local_ready_api
         }}
     })
 }

@@ -49,8 +49,6 @@ pub fn output(bundle: &SMBundle, state: &TokenStream) -> Result<Vec<TokenStream>
             "_owners_enabled",
             "_deposited",
             "_guarded",
-            "_declared_requires",
-            "_local_deposited",
         ] {
             methods.insert(format!("{}{suffix}", transition.name));
         }

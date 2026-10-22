@@ -162,18 +162,34 @@ reference into the guarded storage value.
 operations for the named mutating transitions whose precondition is local. (On the
 generic interface the attribute is accepted, its names must be mutating
 transitions, and it has no other effect: every generic operation already has a
-token-level precondition and a generated readiness proof.) `Protocol::t_local_requires(owned, shared, deposit, x)` states
-`t`'s `require`s, its ownership condition and its deposit over the state observed in
+token-level precondition and a generated readiness proof.)
+
+The local-ready API of `t` is in its own namespace: the associated items of the
+generated type `local_ready::t` in the machine module (`M::local_ready::t::<T>` for a
+machine with type parameters `T`), so its names cannot collide with other
+transitions' generated items or with the machine's own functions.
+`local_ready::t::precondition(owned, shared, deposit, x)` states
+`t`'s `require`s (`local_ready::t::declared_requires`), its ownership condition and
+its deposit (`local_ready::t::deposited`) over the state observed in
 `owned · shared` alone (`Protocol::__observed`), without quantifying over
 completions. A value that a `remove` or `have` binds by a pattern (`[k => let v]` of
 a map, `Some(let x)` of an option, exclusive or persistent, also refutable) is the
 supplied fragments' (`owned`'s entry if it has one, else `shared`'s): such a
-transition's local state is `Protocol::t_local_state(owned, shared, x)`, the
+transition's local state is `local_ready::t::local_state(owned, shared, x)`, the
 observation with these entries (a transition whose operand keys a `let` or a
-pattern binds also names its local state so). The generated lemma `t_local_ready` proves that it implies
-`t_requires`, for every completion; `t_local` and `t_local_with_shared` are `t`
-with the local precondition, and `t_observed` also returns ghost `before`, `after`
-and `frame` values of one compatible completion together with the withdrawn map.
+pattern binds also names its local state so). The generated lemma
+`local_ready::t::ready` proves that the precondition implies
+`Protocol::t_requires`, for every completion; `local_ready::t::run` and
+`local_ready::t::run_with_shared` are `Protocol::t` and `Protocol::t_with_shared`
+with the local precondition, and `local_ready::t::observed` also returns ghost
+`before`, `after` and `frame` values of one compatible completion together with the
+withdrawn map (a `TransitionObservation`).
+
+```rust
+// Before: let tracked token = M::Protocol::put_two_local(token, deposit, a, b);
+let tracked token = M::local_ready::put_two::run(token, deposit, a, b);
+```
+
 These states describe some completion, not a distinguished global history. A
 transition qualifies only if its `require`s can be read from the supplied
 components; otherwise the macro rejects it or the generated lemma fails to verify.

@@ -204,7 +204,12 @@ tokens. A client owns fragments of the product algebra and proves preconditions
 quantified over all completions. With `#[verified_raw_tokens]`,
 `#[verified_local_ready(t, ..)]` adds raw operations for the named transitions
 whose precondition is stated over the supplied fragments; the macro proves that it
-implies readiness for every completion. On the default interface the attribute is
+implies readiness for every completion. They are the associated items of the type
+`M::local_ready::t`: `local_ready::t::run(..)` is `Protocol::t(..)` with the local
+precondition `local_ready::t::precondition(..)` (earlier checked versions named
+these `Protocol::t_local(..)` and `Protocol::t_local_requires(..)`; likewise
+`t_local_ready`, `t_local_with_shared`, `t_observed` and `t_local_state` are now
+`ready`, `run_with_shared`, `observed` and `local_state`). On the default interface the attribute is
 accepted and only its names are checked: the generic operations already have
 token-level preconditions.
 
