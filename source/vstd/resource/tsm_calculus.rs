@@ -29,7 +29,13 @@ use super::super::state_machine_internal as smi;
 use super::algebra::ResourceAlgebra;
 use super::exclusive::ExclusiveRA;
 use super::pcm::PCM;
+use super::tsm::CountRA;
+use super::tsm_bool::*;
 use super::tsm_collections::*;
+use super::tsm_finite_multiset::*;
+use super::tsm_persistent::*;
+use super::agree::AgreementRA;
+use super::super::multiset::Multiset;
 
 verus! {
 
@@ -38,6 +44,7 @@ broadcast use {
     super::super::iset::group_iset_lemmas,
     super::super::map::group_map_lemmas,
     super::super::set::group_set_lemmas,
+    super::super::multiset::group_multiset_axioms,
 };
 
 // ---------------------------------------------------------------------------
@@ -65,6 +72,21 @@ pub open spec fn map_owns<K, V>(o: MapFragment<K, V>, x: IMap<K, V>) -> bool {
 /// `o` owns every member of `x`.
 pub open spec fn set_owns<K>(o: SetFragment<K>, x: ISet<K>) -> bool {
     forall|k: K| x.contains(k) ==> #[trigger] o.at(k) == Some(ExclusiveRA::Exclusive(()))
+}
+
+/// `o` holds every entry of `x` (persistent maps).
+pub open spec fn pmap_owns<K, V>(o: PersistentMapFragment<K, V>, x: IMap<K, V>) -> bool {
+    forall|k: K| x.contains_key(k) ==> #[trigger] o.at(k) == Some(AgreementRA::Agree(x[k]))
+}
+
+/// `o` holds every member of `x` (persistent sets).
+pub open spec fn pset_owns<K>(o: PersistentSetFragment<K>, x: ISet<K>) -> bool {
+    forall|k: K| x.contains(k) ==> #[trigger] o.at(k) == Some(AgreementRA::Agree(()))
+}
+
+/// The count a `bool` operand stands for.
+pub open spec fn bool_count(x: bool) -> nat {
+    if x { 1nat } else { 0nat }
 }
 
 // ---------------------------------------------------------------------------
@@ -722,6 +744,743 @@ pub proof fn opt_add_some<V>(
         cfg(OptionFragment::op(o, option_frag(Some(x))), h, z, option_frag(Some(x))),
 {
     opt_add(o, h, z, v, Some(x));
+}
+
+// ---------------------------------------------------------------------------
+// `persistent_map` / `persistent_imap` (`IMap` state)
+/// `have f >= (x)`: {cfg(o, h, z, v), o·h holds x} ⟹ {x ⊆ v}.
+pub proof fn pimap_have<K, V>(
+    o: PersistentMapFragment<K, V>,
+    h: PersistentMapFragment<K, V>,
+    z: PersistentMapFragment<K, V>,
+    v: IMap<K, V>,
+    x: IMap<K, V>,
+)
+    requires
+        cfg(o, h, z, persistent_map_frag(v)),
+        pmap_owns(PersistentMapFragment::op(o, h), x),
+    ensures
+        x.submap_of(v),
+{
+    persistent_map_have_many_frame(PersistentMapFragment::op(o, h), z, v, x);
+}
+
+/// `add f (union)= (x)`: {cfg(o, h, z, v), v agrees with x} ⟹ {cfg(o·x, h, z, v ∪ x)}.
+pub proof fn pimap_add<K, V>(
+    o: PersistentMapFragment<K, V>,
+    h: PersistentMapFragment<K, V>,
+    z: PersistentMapFragment<K, V>,
+    v: IMap<K, V>,
+    x: IMap<K, V>,
+)
+    requires
+        cfg(o, h, z, persistent_map_frag(v)),
+        v.agrees(x),
+    ensures
+        cfg(PersistentMapFragment::op(o, persistent_map_frag(x)), h, z, persistent_map_frag(v.union_prefer_right(x))),
+{
+    PersistentMapFragment::associative(o, h, z);
+    persistent_map_union_frame(o, PersistentMapFragment::op(h, z), v, x);
+    PersistentMapFragment::associative(PersistentMapFragment::op(o, persistent_map_frag(x)), h, z);
+}
+
+/// `have f >= [k => x]`: {cfg(o, h, z, v), o·h holds [k => x]} ⟹ {v ∋ (k, x)}.
+pub proof fn pimap_have_one<K, V>(
+    o: PersistentMapFragment<K, V>,
+    h: PersistentMapFragment<K, V>,
+    z: PersistentMapFragment<K, V>,
+    v: IMap<K, V>,
+    k: K,
+    x: V,
+)
+    requires
+        cfg(o, h, z, persistent_map_frag(v)),
+        pmap_owns(PersistentMapFragment::op(o, h), IMap::empty().insert(k, x)),
+    ensures
+        v.contains_pair(k, x),
+{
+    let r = IMap::<K, V>::empty().insert(k, x);
+    pimap_have(o, h, z, v, r);
+    assert(r.contains_key(k));
+}
+
+/// `add f (union)= [k => x]`: {cfg(o, h, z, v), k ∈ dom v ⟹ v[k] == x} ⟹
+/// {cfg(o·[k => x], h, z, v.insert(k, x))}.
+pub proof fn pimap_add_one<K, V>(
+    o: PersistentMapFragment<K, V>,
+    h: PersistentMapFragment<K, V>,
+    z: PersistentMapFragment<K, V>,
+    v: IMap<K, V>,
+    k: K,
+    x: V,
+)
+    requires
+        cfg(o, h, z, persistent_map_frag(v)),
+        v.dom().contains(k) ==> v[k] == x,
+    ensures
+        cfg(
+            PersistentMapFragment::op(o, persistent_map_frag(IMap::empty().insert(k, x))),
+            h,
+            z,
+            persistent_map_frag(v.insert(k, x)),
+        ),
+{
+    let r = IMap::<K, V>::empty().insert(k, x);
+    assert(v.agrees(r));
+    pimap_add(o, h, z, v, r);
+    assert(v.union_prefer_right(r) =~= v.insert(k, x));
+}
+
+// `persistent_map` (finite `Map` state and operands)
+/// `have f >= (x)` (finite): {cfg(o, h, z, v), o·h holds x} ⟹ {x ⊆ v}.
+pub proof fn pmap_have<K, V>(
+    o: PersistentMapFragment<K, V>,
+    h: PersistentMapFragment<K, V>,
+    z: PersistentMapFragment<K, V>,
+    v: Map<K, V>,
+    x: Map<K, V>,
+)
+    requires
+        cfg(o, h, z, persistent_map_frag(v.to_imap())),
+        pmap_owns(PersistentMapFragment::op(o, h), x.to_imap()),
+    ensures
+        x.submap_of(v),
+{
+    pimap_have(o, h, z, v.to_imap(), x.to_imap());
+    assert forall|k: K| #[trigger] x.dom().contains(k) implies v.dom().contains(k) && v[k]
+        == x[k] by {
+        assert(x.to_imap().contains_key(k));
+        assert(v.to_imap().contains_key(k));
+    };
+}
+
+/// `add f (union)= (x)` (finite): {cfg(o, h, z, v), v agrees with x} ⟹ {cfg(o·x, h, z, v ∪ x)}.
+pub proof fn pmap_add<K, V>(
+    o: PersistentMapFragment<K, V>,
+    h: PersistentMapFragment<K, V>,
+    z: PersistentMapFragment<K, V>,
+    v: Map<K, V>,
+    x: Map<K, V>,
+)
+    requires
+        cfg(o, h, z, persistent_map_frag(v.to_imap())),
+        v.agrees(x),
+    ensures
+        cfg(
+            PersistentMapFragment::op(o, persistent_map_frag(x.to_imap())),
+            h,
+            z,
+            persistent_map_frag(v.union_prefer_right(x).to_imap()),
+        ),
+{
+    assert(v.to_imap().agrees(x.to_imap())) by {
+        assert forall|k: K| v.to_imap().dom().contains(k) && x.to_imap().dom().contains(k)
+            implies #[trigger] v.to_imap()[k] == x.to_imap()[k] by {
+            assert(v.dom().contains(k) && x.dom().contains(k));
+        };
+    };
+    pimap_add(o, h, z, v.to_imap(), x.to_imap());
+    assert(v.to_imap().union_prefer_right(x.to_imap()) =~= v.union_prefer_right(x).to_imap());
+}
+
+/// `have f >= [k => x]` (finite): {cfg(o, h, z, v), o·h holds [k => x]} ⟹ {v ∋ (k, x)}.
+pub proof fn pmap_have_one<K, V>(
+    o: PersistentMapFragment<K, V>,
+    h: PersistentMapFragment<K, V>,
+    z: PersistentMapFragment<K, V>,
+    v: Map<K, V>,
+    k: K,
+    x: V,
+)
+    requires
+        cfg(o, h, z, persistent_map_frag(v.to_imap())),
+        pmap_owns(PersistentMapFragment::op(o, h), IMap::empty().insert(k, x)),
+    ensures
+        v.contains_pair(k, x),
+{
+    pimap_have_one(o, h, z, v.to_imap(), k, x);
+    assert(v.to_imap().dom().contains(k));
+}
+
+/// `add f (union)= [k => x]` (finite): {cfg(o, h, z, v), k ∈ dom v ⟹ v[k] == x} ⟹
+/// {cfg(o·[k => x], h, z, v.insert(k, x))}.
+pub proof fn pmap_add_one<K, V>(
+    o: PersistentMapFragment<K, V>,
+    h: PersistentMapFragment<K, V>,
+    z: PersistentMapFragment<K, V>,
+    v: Map<K, V>,
+    k: K,
+    x: V,
+)
+    requires
+        cfg(o, h, z, persistent_map_frag(v.to_imap())),
+        v.dom().contains(k) ==> v[k] == x,
+    ensures
+        cfg(
+            PersistentMapFragment::op(o, persistent_map_frag(IMap::empty().insert(k, x))),
+            h,
+            z,
+            persistent_map_frag(v.insert(k, x).to_imap()),
+        ),
+{
+    pimap_add_one(o, h, z, v.to_imap(), k, x);
+    assert(v.to_imap().insert(k, x) =~= v.insert(k, x).to_imap());
+}
+
+// ---------------------------------------------------------------------------
+// `persistent_set` / `persistent_iset` (`ISet` state)
+/// `have f >= (x)`: {cfg(o, h, z, v), o·h holds x} ⟹ {x ⊆ v}.
+pub proof fn piset_have<K>(
+    o: PersistentSetFragment<K>,
+    h: PersistentSetFragment<K>,
+    z: PersistentSetFragment<K>,
+    v: ISet<K>,
+    x: ISet<K>,
+)
+    requires
+        cfg(o, h, z, persistent_set_frag(v)),
+        pset_owns(PersistentSetFragment::op(o, h), x),
+    ensures
+        x.subset_of(v),
+{
+    persistent_set_have_many_frame(PersistentSetFragment::op(o, h), z, v, x);
+}
+
+/// `add f (union)= (x)`: {cfg(o, h, z, v)} ⟹ {cfg(o·x, h, z, v ∪ x)}.
+pub proof fn piset_add<K>(
+    o: PersistentSetFragment<K>,
+    h: PersistentSetFragment<K>,
+    z: PersistentSetFragment<K>,
+    v: ISet<K>,
+    x: ISet<K>,
+)
+    requires
+        cfg(o, h, z, persistent_set_frag(v)),
+    ensures
+        cfg(PersistentSetFragment::op(o, persistent_set_frag(x)), h, z, persistent_set_frag(v.union(x))),
+{
+    PersistentSetFragment::associative(o, h, z);
+    persistent_set_union_frame(o, PersistentSetFragment::op(h, z), v, x);
+    PersistentSetFragment::associative(PersistentSetFragment::op(o, persistent_set_frag(x)), h, z);
+}
+
+/// `have f >= set {k}`: {cfg(o, h, z, v), o·h holds {k}} ⟹ {k ∈ v}.
+pub proof fn piset_have_one<K>(
+    o: PersistentSetFragment<K>,
+    h: PersistentSetFragment<K>,
+    z: PersistentSetFragment<K>,
+    v: ISet<K>,
+    k: K,
+)
+    requires
+        cfg(o, h, z, persistent_set_frag(v)),
+        pset_owns(PersistentSetFragment::op(o, h), ISet::empty().insert(k)),
+    ensures
+        v.contains(k),
+{
+    let r = ISet::<K>::empty().insert(k);
+    piset_have(o, h, z, v, r);
+    assert(r.contains(k));
+}
+
+/// `add f (union)= set {k}`: {cfg(o, h, z, v)} ⟹ {cfg(o·{k}, h, z, v.insert(k))}.
+pub proof fn piset_add_one<K>(
+    o: PersistentSetFragment<K>,
+    h: PersistentSetFragment<K>,
+    z: PersistentSetFragment<K>,
+    v: ISet<K>,
+    k: K,
+)
+    requires
+        cfg(o, h, z, persistent_set_frag(v)),
+    ensures
+        cfg(
+            PersistentSetFragment::op(o, persistent_set_frag(ISet::empty().insert(k))),
+            h,
+            z,
+            persistent_set_frag(v.insert(k)),
+        ),
+{
+    let r = ISet::<K>::empty().insert(k);
+    piset_add(o, h, z, v, r);
+    assert(v.union(r) =~= v.insert(k));
+}
+
+// `persistent_set` (finite `Set` state and operands)
+/// `have f >= (x)` (finite): {cfg(o, h, z, v), o·h holds x} ⟹ {x ⊆ v}.
+pub proof fn pset_have<K>(
+    o: PersistentSetFragment<K>,
+    h: PersistentSetFragment<K>,
+    z: PersistentSetFragment<K>,
+    v: Set<K>,
+    x: Set<K>,
+)
+    requires
+        cfg(o, h, z, persistent_set_frag(v.to_iset())),
+        pset_owns(PersistentSetFragment::op(o, h), x.to_iset()),
+    ensures
+        x.subset_of(v),
+{
+    piset_have(o, h, z, v.to_iset(), x.to_iset());
+    assert forall|k: K| #[trigger] x.contains(k) implies v.contains(k) by {
+        assert(x.to_iset().contains(k));
+    };
+}
+
+/// `add f (union)= (x)` (finite): {cfg(o, h, z, v)} ⟹ {cfg(o·x, h, z, v ∪ x)}.
+pub proof fn pset_add<K>(
+    o: PersistentSetFragment<K>,
+    h: PersistentSetFragment<K>,
+    z: PersistentSetFragment<K>,
+    v: Set<K>,
+    x: Set<K>,
+)
+    requires
+        cfg(o, h, z, persistent_set_frag(v.to_iset())),
+    ensures
+        cfg(
+            PersistentSetFragment::op(o, persistent_set_frag(x.to_iset())),
+            h,
+            z,
+            persistent_set_frag(v.union(x).to_iset()),
+        ),
+{
+    piset_add(o, h, z, v.to_iset(), x.to_iset());
+    assert(v.to_iset().union(x.to_iset()) =~= v.union(x).to_iset());
+}
+
+/// `have f >= set {k}` (finite): {cfg(o, h, z, v), o·h holds {k}} ⟹ {k ∈ v}.
+pub proof fn pset_have_one<K>(
+    o: PersistentSetFragment<K>,
+    h: PersistentSetFragment<K>,
+    z: PersistentSetFragment<K>,
+    v: Set<K>,
+    k: K,
+)
+    requires
+        cfg(o, h, z, persistent_set_frag(v.to_iset())),
+        pset_owns(PersistentSetFragment::op(o, h), ISet::empty().insert(k)),
+    ensures
+        v.contains(k),
+{
+    piset_have_one(o, h, z, v.to_iset(), k);
+}
+
+/// `add f (union)= set {k}` (finite): {cfg(o, h, z, v)} ⟹ {cfg(o·{k}, h, z, v.insert(k))}.
+pub proof fn pset_add_one<K>(
+    o: PersistentSetFragment<K>,
+    h: PersistentSetFragment<K>,
+    z: PersistentSetFragment<K>,
+    v: Set<K>,
+    k: K,
+)
+    requires
+        cfg(o, h, z, persistent_set_frag(v.to_iset())),
+    ensures
+        cfg(
+            PersistentSetFragment::op(o, persistent_set_frag(ISet::empty().insert(k))),
+            h,
+            z,
+            persistent_set_frag(v.insert(k).to_iset()),
+        ),
+{
+    piset_add_one(o, h, z, v.to_iset(), k);
+    assert(v.to_iset().insert(k) =~= v.insert(k).to_iset());
+}
+
+// ---------------------------------------------------------------------------
+// `persistent_option`
+/// `have f >= (x)`: {cfg(o, h, z, v), o·h holds x} ⟹ {x is Some ⟹ v == x}.
+pub proof fn popt_have<V>(
+    o: PersistentOptionFragment<V>,
+    h: PersistentOptionFragment<V>,
+    z: PersistentOptionFragment<V>,
+    v: Option<V>,
+    x: Option<V>,
+)
+    requires
+        cfg(o, h, z, persistent_option_frag(v)),
+        persistent_option_contains_operand(PersistentOptionFragment::op(o, h), x),
+    ensures
+        smi::opt_ge(v, x),
+{
+    persistent_option_have_general_frame(PersistentOptionFragment::op(o, h), z, v, x);
+}
+
+/// `add f (union)= (x)`: {cfg(o, h, z, v), v and x agree} ⟹ {cfg(o·x, h, z, opt_add(v, x))}.
+pub proof fn popt_add<V>(
+    o: PersistentOptionFragment<V>,
+    h: PersistentOptionFragment<V>,
+    z: PersistentOptionFragment<V>,
+    v: Option<V>,
+    x: Option<V>,
+)
+    requires
+        cfg(o, h, z, persistent_option_frag(v)),
+        smi::opt_agree(v, x),
+    ensures
+        cfg(PersistentOptionFragment::op(o, persistent_option_frag(x)), h, z, persistent_option_frag(smi::opt_add(v, x))),
+{
+    PersistentOptionFragment::associative(o, h, z);
+    persistent_option_union_general_frame(o, PersistentOptionFragment::op(h, z), v, x);
+    PersistentOptionFragment::associative(PersistentOptionFragment::op(o, persistent_option_frag(x)), h, z);
+}
+
+/// `have f >= Some(x)` (and `Some(let p)`, `x` the observed value):
+/// {cfg(o, h, z, v), o·h holds Some(x)} ⟹ {v == Some(x)}.
+pub proof fn popt_have_some<V>(
+    o: PersistentOptionFragment<V>,
+    h: PersistentOptionFragment<V>,
+    z: PersistentOptionFragment<V>,
+    v: Option<V>,
+    x: V,
+)
+    requires
+        cfg(o, h, z, persistent_option_frag(v)),
+        persistent_option_contains_operand(PersistentOptionFragment::op(o, h), Some(x)),
+    ensures
+        v == Some(x),
+{
+    popt_have(o, h, z, v, Some(x));
+}
+
+/// `add f (union)= Some(x)`: {cfg(o, h, z, v), v is Some ⟹ v == Some(x)} ⟹
+/// {cfg(o·Some(x), h, z, Some(x))}.
+pub proof fn popt_add_some<V>(
+    o: PersistentOptionFragment<V>,
+    h: PersistentOptionFragment<V>,
+    z: PersistentOptionFragment<V>,
+    v: Option<V>,
+    x: V,
+)
+    requires
+        cfg(o, h, z, persistent_option_frag(v)),
+        v is Some ==> v->0 == x,
+    ensures
+        cfg(PersistentOptionFragment::op(o, persistent_option_frag(Some(x))), h, z, persistent_option_frag(Some(x))),
+{
+    popt_add(o, h, z, v, Some(x));
+}
+
+// ---------------------------------------------------------------------------
+// `multiset`
+/// `remove f -= (x)`: {cfg(o, h, z, v), x ⊆ o} ⟹ {x ⊆ v, cfg(o − x, h, z, v − x)}.
+pub proof fn mset_remove<V>(
+    o: FiniteMultisetRA<V>,
+    h: FiniteMultisetRA<V>,
+    z: FiniteMultisetRA<V>,
+    v: Multiset<V>,
+    x: Multiset<V>,
+)
+    requires
+        cfg(o, h, z, finite_multiset_frag(v)),
+        x.subset_of(o.values),
+    ensures
+        x.subset_of(v),
+        cfg(finite_multiset_frag(o.values.sub(x)), h, z, finite_multiset_frag(v.sub(x))),
+{
+    FiniteMultisetRA::associative(o, h, z);
+    finite_multiset_remove_many_frame(o, FiniteMultisetRA::op(h, z), v, x);
+    FiniteMultisetRA::associative(finite_multiset_frag(o.values.sub(x)), h, z);
+}
+
+/// `have f >= (x)`: {cfg(o, h, z, v), x ⊆ o·h} ⟹ {x ⊆ v}.
+pub proof fn mset_have<V>(
+    o: FiniteMultisetRA<V>,
+    h: FiniteMultisetRA<V>,
+    z: FiniteMultisetRA<V>,
+    v: Multiset<V>,
+    x: Multiset<V>,
+)
+    requires
+        cfg(o, h, z, finite_multiset_frag(v)),
+        x.subset_of(FiniteMultisetRA::op(o, h).values),
+    ensures
+        x.subset_of(v),
+{
+    finite_multiset_owned_subset(FiniteMultisetRA::op(o, h), z, v);
+}
+
+/// `add f += (x)`: {cfg(o, h, z, v)} ⟹ {cfg(o + x, h, z, v + x)}.
+pub proof fn mset_add<V>(
+    o: FiniteMultisetRA<V>,
+    h: FiniteMultisetRA<V>,
+    z: FiniteMultisetRA<V>,
+    v: Multiset<V>,
+    x: Multiset<V>,
+)
+    requires
+        cfg(o, h, z, finite_multiset_frag(v)),
+    ensures
+        cfg(finite_multiset_frag(o.values.add(x)), h, z, finite_multiset_frag(v.add(x))),
+{
+    FiniteMultisetRA::associative(o, h, z);
+    finite_multiset_add_many_frame(o, FiniteMultisetRA::op(h, z), v, x);
+    FiniteMultisetRA::associative(finite_multiset_frag(o.values.add(x)), h, z);
+}
+
+/// `remove f -= {e}`: {cfg(o, h, z, v), {e} ⊆ o} ⟹ {v.count(e) ≥ 1, cfg(o − {e}, h, z, v.remove(e))}.
+pub proof fn mset_remove_one<V>(
+    o: FiniteMultisetRA<V>,
+    h: FiniteMultisetRA<V>,
+    z: FiniteMultisetRA<V>,
+    v: Multiset<V>,
+    e: V,
+)
+    requires
+        cfg(o, h, z, finite_multiset_frag(v)),
+        Multiset::empty().insert(e).subset_of(o.values),
+    ensures
+        v.count(e) >= 1,
+        cfg(finite_multiset_frag(o.values.sub(Multiset::empty().insert(e))), h, z, finite_multiset_frag(v.remove(e))),
+{
+    let r = Multiset::<V>::empty().insert(e);
+    mset_remove(o, h, z, v, r);
+    assert(r.count(e) == 1);
+    assert(v.sub(r) =~= v.remove(e));
+}
+
+/// `have f >= {e}`: {cfg(o, h, z, v), {e} ⊆ o·h} ⟹ {v.count(e) ≥ 1}.
+pub proof fn mset_have_one<V>(
+    o: FiniteMultisetRA<V>,
+    h: FiniteMultisetRA<V>,
+    z: FiniteMultisetRA<V>,
+    v: Multiset<V>,
+    e: V,
+)
+    requires
+        cfg(o, h, z, finite_multiset_frag(v)),
+        Multiset::empty().insert(e).subset_of(FiniteMultisetRA::op(o, h).values),
+    ensures
+        v.count(e) >= 1,
+{
+    let r = Multiset::<V>::empty().insert(e);
+    mset_have(o, h, z, v, r);
+    assert(r.count(e) == 1);
+}
+
+/// `add f += {e}`: {cfg(o, h, z, v)} ⟹ {cfg(o + {e}, h, z, v.insert(e))}.
+pub proof fn mset_add_one<V>(
+    o: FiniteMultisetRA<V>,
+    h: FiniteMultisetRA<V>,
+    z: FiniteMultisetRA<V>,
+    v: Multiset<V>,
+    e: V,
+)
+    requires
+        cfg(o, h, z, finite_multiset_frag(v)),
+    ensures
+        cfg(finite_multiset_frag(o.values.add(Multiset::empty().insert(e))), h, z, finite_multiset_frag(v.insert(e))),
+{
+    let r = Multiset::<V>::empty().insert(e);
+    mset_add(o, h, z, v, r);
+    assert(v.add(r) =~= v.insert(e));
+}
+
+// ---------------------------------------------------------------------------
+// `count`
+/// `remove f -= (x)`: {cfg(o, h, z, v), o ≥ x} ⟹ {v ≥ x, cfg(o − x, h, z, v − x)}.
+pub proof fn count_remove(o: CountRA, h: CountRA, z: CountRA, v: nat, x: nat)
+    requires
+        cfg(o, h, z, CountRA { count: v }),
+        o.count >= x,
+    ensures
+        v >= x,
+        cfg(CountRA { count: (o.count - x) as nat }, h, z, CountRA { count: (v - x) as nat }),
+{
+}
+
+/// `have f >= (x)`: {cfg(o, h, z, v), o·h ≥ x} ⟹ {v ≥ x}.
+pub proof fn count_have(o: CountRA, h: CountRA, z: CountRA, v: nat, x: nat)
+    requires
+        cfg(o, h, z, CountRA { count: v }),
+        CountRA::op(o, h).count >= x,
+    ensures
+        v >= x,
+{
+}
+
+/// `add f += (x)`: {cfg(o, h, z, v)} ⟹ {cfg(o + x, h, z, v + x)}.
+pub proof fn count_add(o: CountRA, h: CountRA, z: CountRA, v: nat, x: nat)
+    requires
+        cfg(o, h, z, CountRA { count: v }),
+    ensures
+        cfg(CountRA { count: o.count + x }, h, z, CountRA { count: v + x }),
+{
+}
+
+// ---------------------------------------------------------------------------
+// `bool`
+/// `remove f -= (x)`: {cfg(o, h, z, v), o ≥ [x]} ⟹ {x ⟹ v, cfg(o − [x], h, z, v ∧ ¬x)}.
+pub proof fn bool_remove(o: CountRA, h: CountRA, z: CountRA, v: bool, x: bool)
+    requires
+        cfg(o, h, z, bool_frag(v)),
+        o.count >= bool_count(x),
+    ensures
+        x ==> v,
+        cfg(CountRA { count: (o.count - bool_count(x)) as nat }, h, z, bool_frag(v && !x)),
+{
+}
+
+/// `have f >= (x)`: {cfg(o, h, z, v), o·h ≥ [x]} ⟹ {x ⟹ v}.
+pub proof fn bool_have(o: CountRA, h: CountRA, z: CountRA, v: bool, x: bool)
+    requires
+        cfg(o, h, z, bool_frag(v)),
+        CountRA::op(o, h).count >= bool_count(x),
+    ensures
+        x ==> v,
+{
+}
+
+/// `add f += (x)`: {cfg(o, h, z, v), ¬v ∨ ¬x} ⟹ {cfg(o + [x], h, z, v ∨ x)}.
+pub proof fn bool_add(o: CountRA, h: CountRA, z: CountRA, v: bool, x: bool)
+    requires
+        cfg(o, h, z, bool_frag(v)),
+        !v || !x,
+    ensures
+        cfg(CountRA { count: o.count + bool_count(x) }, h, z, bool_frag(v || x)),
+{
+}
+
+/// `remove f -= true`: {cfg(o, h, z, v), o ≥ 1} ⟹ {v, cfg(o − 1, h, z, false)}.
+pub proof fn bool_remove_true(o: CountRA, h: CountRA, z: CountRA, v: bool)
+    requires
+        cfg(o, h, z, bool_frag(v)),
+        o.count >= bool_count(true),
+    ensures
+        v,
+        cfg(CountRA { count: (o.count - bool_count(true)) as nat }, h, z, bool_frag(false)),
+{
+}
+
+/// `have f >= true`: {cfg(o, h, z, v), o·h ≥ 1} ⟹ {v}.
+pub proof fn bool_have_true(o: CountRA, h: CountRA, z: CountRA, v: bool)
+    requires
+        cfg(o, h, z, bool_frag(v)),
+        CountRA::op(o, h).count >= bool_count(true),
+    ensures
+        v,
+{
+}
+
+/// `add f += true`: {cfg(o, h, z, v), ¬v} ⟹ {cfg(o + 1, h, z, true)}.
+pub proof fn bool_add_true(o: CountRA, h: CountRA, z: CountRA, v: bool)
+    requires
+        cfg(o, h, z, bool_frag(v)),
+        !v,
+    ensures
+        cfg(CountRA { count: o.count + bool_count(true) }, h, z, bool_frag(true)),
+{
+}
+
+// ---------------------------------------------------------------------------
+// `persistent_count`
+/// `have f >= (x)`: {cfg(o, h, z, v), o·h ≥ x} ⟹ {v ≥ x}.
+pub proof fn pcount_have(o: PersistentCountRA, h: PersistentCountRA, z: PersistentCountRA, v: nat, x: nat)
+    requires
+        cfg(o, h, z, PersistentCountRA { count: v }),
+        PersistentCountRA::op(o, h).count >= x,
+    ensures
+        v >= x,
+{
+}
+
+/// `add f (union)= (x)`: {cfg(o, h, z, v)} ⟹ {cfg(o·x, h, z, max(v, x))}.
+pub proof fn pcount_add(o: PersistentCountRA, h: PersistentCountRA, z: PersistentCountRA, v: nat, x: nat)
+    requires
+        cfg(o, h, z, PersistentCountRA { count: v }),
+    ensures
+        cfg(PersistentCountRA::op(o, PersistentCountRA { count: x }), h, z, PersistentCountRA { count: smi::nat_max(v, x) }),
+{
+}
+
+// ---------------------------------------------------------------------------
+// `persistent_bool`
+/// `have f >= (x)`: {cfg(o, h, z, v), o·h ≥ [x]} ⟹ {x ⟹ v}.
+pub proof fn pbool_have(o: PersistentCountRA, h: PersistentCountRA, z: PersistentCountRA, v: bool, x: bool)
+    requires
+        cfg(o, h, z, persistent_bool_frag(v)),
+        PersistentCountRA::op(o, h).count >= bool_count(x),
+    ensures
+        x ==> v,
+{
+}
+
+/// `add f (union)= (x)`: {cfg(o, h, z, v)} ⟹ {cfg(o·[x], h, z, v ∨ x)}.
+pub proof fn pbool_add(o: PersistentCountRA, h: PersistentCountRA, z: PersistentCountRA, v: bool, x: bool)
+    requires
+        cfg(o, h, z, persistent_bool_frag(v)),
+    ensures
+        cfg(PersistentCountRA::op(o, persistent_bool_frag(x)), h, z, persistent_bool_frag(v || x)),
+{
+}
+
+/// `have f >= true`: {cfg(o, h, z, v), o·h ≥ 1} ⟹ {v}.
+pub proof fn pbool_have_true(o: PersistentCountRA, h: PersistentCountRA, z: PersistentCountRA, v: bool)
+    requires
+        cfg(o, h, z, persistent_bool_frag(v)),
+        PersistentCountRA::op(o, h).count >= bool_count(true),
+    ensures
+        v,
+{
+}
+
+/// `add f (union)= true`: {cfg(o, h, z, v)} ⟹ {cfg(o·1, h, z, true)}.
+pub proof fn pbool_add_true(o: PersistentCountRA, h: PersistentCountRA, z: PersistentCountRA, v: bool)
+    requires
+        cfg(o, h, z, persistent_bool_frag(v)),
+    ensures
+        cfg(PersistentCountRA::op(o, persistent_bool_frag(true)), h, z, persistent_bool_frag(true)),
+{
+}
+
+// ---------------------------------------------------------------------------
+// `variable` and `constant`
+/// `update f = e`: {cfg(o, h, z, Some(Exclusive(v))), o owns f} ⟹
+/// {cfg(Some(Exclusive(e)), h, z, Some(Exclusive(e)))}.
+pub proof fn var_update<V>(
+    o: Option<ExclusiveRA<V>>,
+    h: Option<ExclusiveRA<V>>,
+    z: Option<ExclusiveRA<V>>,
+    v: V,
+    e: V,
+)
+    requires
+        cfg(o, h, z, Some(ExclusiveRA::Exclusive(v))),
+        o is Some && o->Some_0 is Exclusive,
+    ensures
+        cfg(Some(ExclusiveRA::Exclusive(e)), h, z, Some(ExclusiveRA::Exclusive(e))),
+{
+}
+
+/// A read of `f`: {cfg(o, h, z, Some(Exclusive(v))), o·h holds f} ⟹ {v == the held value}.
+pub proof fn var_read<V>(
+    o: Option<ExclusiveRA<V>>,
+    h: Option<ExclusiveRA<V>>,
+    z: Option<ExclusiveRA<V>>,
+    v: V,
+)
+    requires
+        cfg(o, h, z, Some(ExclusiveRA::Exclusive(v))),
+        Option::<ExclusiveRA<V>>::op(o, h) is Some && Option::<ExclusiveRA<V>>::op(o, h)->Some_0 is Exclusive,
+    ensures
+        v == Option::<ExclusiveRA<V>>::op(o, h)->Some_0->Exclusive_0,
+{
+}
+
+/// A read of a constant `f`: {cfg(o, h, z, Some(Agree(v))), o·h holds f} ⟹ {v == the held value}.
+pub proof fn const_read<V>(
+    o: Option<AgreementRA<V>>,
+    h: Option<AgreementRA<V>>,
+    z: Option<AgreementRA<V>>,
+    v: V,
+)
+    requires
+        cfg(o, h, z, Some(AgreementRA::Agree(v))),
+        Option::<AgreementRA<V>>::op(o, h) is Some && Option::<AgreementRA<V>>::op(o, h)->Some_0 is Agree,
+    ensures
+        v == Option::<AgreementRA<V>>::op(o, h)->Some_0->Agree_0,
+{
 }
 
 } // verus!

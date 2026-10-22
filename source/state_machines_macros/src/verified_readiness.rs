@@ -103,7 +103,7 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
 ///   other than a `let`, `if`, `match`, `remove` or `have`; TSM itself
 ///   rejects these forms);
 /// * for a transition whose readiness the statement calculus does not prove
-///   (`verified_chain::uses_chain`), a `have` of a map or set field (`map`,
+///   (`verified_chain::uses_chain`; one with a storage operation), a `have` of a map or set field (`map`,
 ///   `imap`, `set`, `iset` or their `persistent_` versions) after an `add` to
 ///   the same field on some path.
 pub(crate) fn local_ready_supported(sm: &SM, tr: &Transition) -> Result<(), String> {

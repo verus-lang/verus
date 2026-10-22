@@ -217,8 +217,8 @@ With `#[verified_raw_tokens]`, every transition, readonly transition and propert
 gets raw operations in the namespace of a generated type, such as
 `local_ready::change::ready`, `local_ready::change::run`, and
 `local_ready::change::observed`, except the transitions of the forms that
-`local_ready_supported` skips (closures in operands; outside the statement
-calculus's kinds, a map or set `have` after an `add` to the same field), whose
+`local_ready_supported` skips (closures in operands; in a transition with a
+storage operation, a map or set `have` after an `add` to the same field), whose
 readiness proof the generator cannot produce.
 The implementation is in
 [verified_readiness.rs](../state_machines_macros/src/verified_readiness.rs), and

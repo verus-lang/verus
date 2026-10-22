@@ -21,16 +21,9 @@ use quote::{format_ident, quote};
 use std::collections::HashMap;
 use verus_syn::{Error, Expr, Ident};
 
-/// The field kinds the calculus covers.
+/// The field kinds the calculus covers: every monoid kind.
 fn covered(stype: &ShardableType) -> bool {
-    matches!(
-        stype,
-        ShardableType::Map(..)
-            | ShardableType::IMap(..)
-            | ShardableType::Set(_)
-            | ShardableType::ISet(_)
-            | ShardableType::Option(_)
-    )
+    crate::verified_monoids::is_monoid_type(stype)
 }
 
 /// Whether the calculus covers every `remove`, `have` and `add` of `stmt` (and it has no
@@ -55,20 +48,41 @@ pub(crate) fn supported(stmt: &TransitionStmt, fields: &HashMap<String, Field>) 
     }
 }
 
-/// Whether `tr`'s operation proofs use the chain (`supported`).
+/// Whether `tr`'s readiness proof uses the chain: the calculus covers its statements
+/// (`supported`) and it has a `remove` or `have` of a collection field (a map, set or
+/// multiset, exclusive or persistent). The enabling condition of a transition without one
+/// follows from its ownership condition without any hint (an `option`, `count` or `bool`
+/// observation is a fact about one component), and a chain would only add cost.
 pub(crate) fn uses_chain(sm: &SM, tr: &Transition) -> bool {
     let fields: HashMap<_, _> = sm.fields.iter().map(|f| (f.name.to_string(), f.clone())).collect();
-    tr.kind != TransitionKind::Init && supported(&tr.body, &fields) && observes(&tr.body)
+    tr.kind != TransitionKind::Init && supported(&tr.body, &fields) && observes_collection(&tr.body, &fields)
 }
 
-/// Whether `stmt` has a `remove` or `have` (without one, the enabling condition has no
-/// condition of a statement, and readiness needs no chain).
-fn observes(stmt: &TransitionStmt) -> bool {
+/// Whether `stmt` has a `remove` or `have` of a collection field.
+fn observes_collection(stmt: &TransitionStmt, fields: &HashMap<String, Field>) -> bool {
     match stmt {
-        TransitionStmt::Block(_, children) => children.iter().any(observes),
+        TransitionStmt::Block(_, children) => children.iter().any(|c| observes_collection(c, fields)),
         TransitionStmt::Split(_, kind, children) => {
-            matches!(&**kind, SplitKind::Special(_, operation, _, _) if operation.is_remove() || operation.is_have())
-                || children.iter().any(observes)
+            let here = match &**kind {
+                SplitKind::Special(name, operation, _, _) if operation.is_remove() || operation.is_have() => {
+                    fields.get(&name.to_string()).is_some_and(|f| {
+                        matches!(
+                            f.stype,
+                            ShardableType::Map(..)
+                                | ShardableType::IMap(..)
+                                | ShardableType::Set(_)
+                                | ShardableType::ISet(_)
+                                | ShardableType::Multiset(_)
+                                | ShardableType::PersistentMap(..)
+                                | ShardableType::PersistentIMap(..)
+                                | ShardableType::PersistentSet(_)
+                                | ShardableType::PersistentISet(_)
+                        )
+                    })
+                }
+                _ => false,
+            };
+            here || children.iter().any(|c| observes_collection(c, fields))
         }
         _ => false,
     }
@@ -272,30 +286,61 @@ impl Chain<'_> {
         let cur = Expr::Verbatim(state.clone());
         let c = quote! {::vstd::resource::tsm_calculus};
         // The lemma's operand arguments, after (o, h, z, v).
-        let finite_map = matches!(field.stype, ShardableType::Map(..));
-        let finite_set = matches!(field.stype, ShardableType::Set(_));
-        let (lemma_kind, single, arguments) = match (&field.stype, &operation.elt) {
-            (ShardableType::Map(..) | ShardableType::IMap(..), MonoidElt::SingletonKV(key, explicit)) => {
+        use ShardableType as T;
+        let finite = matches!(field.stype, T::Map(..) | T::Set(_) | T::PersistentMap(..) | T::PersistentSet(_));
+        // The lemma family, whether the operand is a singleton (`_one`, `_some`) or `true`
+        // (`_true`), and the lemma's operand arguments after (o, h, z, v).
+        let (lemma_kind, single, arguments): (&str, Option<&str>, TokenStream) = match (&field.stype, &operation.elt) {
+            (T::Map(..) | T::IMap(..), MonoidElt::SingletonKV(key, explicit)) => {
                 let x = match explicit {
                     Some(x) => quote! {#x},
                     None => quote! {(#observer).#n.at(#key)->Some_0->Exclusive_0},
                 };
-                (if finite_map { "map" } else { "imap" }, true, quote! {#key, #x})
+                (if finite { "map" } else { "imap" }, Some("_one"), quote! {#key, #x})
             }
-            (ShardableType::Map(..) | ShardableType::IMap(..), MonoidElt::General(e)) => {
-                (if finite_map { "map" } else { "imap" }, false, quote! {#e})
+            (T::PersistentMap(..) | T::PersistentIMap(..), MonoidElt::SingletonKV(key, explicit)) => {
+                let x = match explicit {
+                    Some(x) => quote! {#x},
+                    None => quote! {(#observer).#n.at(#key)->Some_0->Agree_0},
+                };
+                (if finite { "pmap" } else { "pimap" }, Some("_one"), quote! {#key, #x})
             }
-            (ShardableType::Set(_) | ShardableType::ISet(_), MonoidElt::SingletonSet(e)) => {
-                (if finite_set { "set" } else { "iset" }, true, quote! {#e})
+            (T::Map(..) | T::IMap(..), MonoidElt::General(e)) => {
+                (if finite { "map" } else { "imap" }, None, quote! {#e})
             }
-            (ShardableType::Set(_) | ShardableType::ISet(_), MonoidElt::General(e)) => {
-                (if finite_set { "set" } else { "iset" }, false, quote! {#e})
+            (T::PersistentMap(..) | T::PersistentIMap(..), MonoidElt::General(e)) => {
+                (if finite { "pmap" } else { "pimap" }, None, quote! {#e})
             }
-            (ShardableType::Option(_), MonoidElt::OptionSome(Some(e))) => ("opt", true, quote! {#e}),
-            (ShardableType::Option(_), MonoidElt::OptionSome(None)) => {
-                ("opt", true, quote! {(#observer).#n->Some_0->Exclusive_0})
+            (T::Set(_) | T::ISet(_), MonoidElt::SingletonSet(e)) => {
+                (if finite { "set" } else { "iset" }, Some("_one"), quote! {#e})
             }
-            (ShardableType::Option(_), MonoidElt::General(e)) => ("opt", false, quote! {#e}),
+            (T::PersistentSet(_) | T::PersistentISet(_), MonoidElt::SingletonSet(e)) => {
+                (if finite { "pset" } else { "piset" }, Some("_one"), quote! {#e})
+            }
+            (T::Set(_) | T::ISet(_), MonoidElt::General(e)) => {
+                (if finite { "set" } else { "iset" }, None, quote! {#e})
+            }
+            (T::PersistentSet(_) | T::PersistentISet(_), MonoidElt::General(e)) => {
+                (if finite { "pset" } else { "piset" }, None, quote! {#e})
+            }
+            (T::Option(_), MonoidElt::OptionSome(Some(e))) => ("opt", Some("_some"), quote! {#e}),
+            (T::Option(_), MonoidElt::OptionSome(None)) => {
+                ("opt", Some("_some"), quote! {(#observer).#n->Some_0->Exclusive_0})
+            }
+            (T::Option(_), MonoidElt::General(e)) => ("opt", None, quote! {#e}),
+            (T::PersistentOption(_), MonoidElt::OptionSome(Some(e))) => ("popt", Some("_some"), quote! {#e}),
+            (T::PersistentOption(_), MonoidElt::OptionSome(None)) => {
+                ("popt", Some("_some"), quote! {(#observer).#n->Some_0->Agree_0})
+            }
+            (T::PersistentOption(_), MonoidElt::General(e)) => ("popt", None, quote! {#e}),
+            (T::Multiset(_), MonoidElt::SingletonMultiset(e)) => ("mset", Some("_one"), quote! {#e}),
+            (T::Multiset(_), MonoidElt::General(e)) => ("mset", None, quote! {#e}),
+            (T::Count, MonoidElt::General(e)) => ("count", None, quote! {#e}),
+            (T::PersistentCount, MonoidElt::General(e)) => ("pcount", None, quote! {#e}),
+            (T::Bool, MonoidElt::True) => ("bool", Some("_true"), quote! {}),
+            (T::Bool, MonoidElt::General(e)) => ("bool", None, quote! {#e}),
+            (T::PersistentBool, MonoidElt::True) => ("pbool", Some("_true"), quote! {}),
+            (T::PersistentBool, MonoidElt::General(e)) => ("pbool", None, quote! {#e}),
             _ => return Err(Error::new(span, "the statement calculus does not cover this operation")),
         };
         let op_name = match operation.stmt {
@@ -304,12 +349,8 @@ impl Chain<'_> {
             MonoidStmtType::Add(_) => "add",
             _ => return Err(Error::new(span, "the statement calculus does not cover this operation")),
         };
-        let suffix = match (single, lemma_kind) {
-            (false, _) => "",
-            (true, "opt") => "_some",
-            (true, _) => "_one",
-        };
-        let lemma = format_ident!("{}_{}{}", lemma_kind, op_name, suffix);
+        let lemma = format_ident!("{}_{}{}", lemma_kind, op_name, single.unwrap_or(""));
+        let arguments = if arguments.is_empty() { quote! {} } else { quote! {, #arguments} };
         let mut code = vec![quote! {let #value_ident: #value_type = #observed;}];
         let mut point = point;
         // An `add`'s safety condition guards it and the rest of the chain.
@@ -323,7 +364,7 @@ impl Chain<'_> {
         }
         code.push(Self::guarded(
             &point,
-            quote! {#c::#lemma((#current).#n, (#shared).#n, (#frame).#n, #state, #arguments);},
+            quote! {#c::#lemma((#current).#n, (#shared).#n, (#frame).#n, #state #arguments);},
         ));
         // The fragment and the value the statement leaves.
         if !operation.is_have() {

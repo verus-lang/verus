@@ -1,18 +1,20 @@
-//! The statement calculus of `vstd::resource::tsm_calculus`, used by hand on a raw machine
-//! with map, imap, set, iset and option fields: the machine's configuration split into and
-//! joined from its fields' (`cfg_split`, `cfg_join`), and, per transition, a chain of step
-//! lemmas from the generated ownership condition (`State::t_owners_enabled`) and a completion
-//! to the frontend's enabling condition (`State::t_enabled`), its strong relation
-//! (`State::t_strong`) for the chain's post-state, and the output configuration. Each
-//! remove/have/add lemma of the calculus occurs in one chain (singleton, pattern-bound and
-//! general operands; have after add; a branch before a have); the proofs have no
-//! quantifier. The machine's generated `C1::local_ready::t::ready` is proved by the same
-//! chains, emitted by the macro.
+//! The statement calculus of `vstd::resource::tsm_calculus`, used by hand on two raw
+//! machines: `C1` (map, imap, set, iset and option fields) and `C2` (the persistent
+//! collections and option, multiset, count, bool, persistent count and bool, a variable and
+//! a constant). Per machine, the configuration is split into and joined from the fields'
+//! (`cfg_split`, `cfg_join`); per transition, a chain of step lemmas goes from the generated
+//! ownership condition (`State::t_owners_enabled`) and a completion to the frontend's
+//! enabling condition (`State::t_enabled`), its strong relation (`State::t_strong`) for the
+//! chain's post-state, and the output configuration. Each step lemma of the calculus
+//! occurs in one chain (singleton, pattern-bound and general operands; have after add; a
+//! branch before a have); the proofs have no quantifier. The machines' generated
+//! `local_ready::t::ready` lemmas are proved by the same chains, emitted by the macro.
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 use vstd::resource::algebra::ResourceAlgebra;
 use vstd::resource::pcm::PCM;
 use vstd::resource::tsm::Machine;
+use vstd::multiset::Multiset;
 
 verus! {
 
@@ -104,6 +106,89 @@ verified_tokenized_state_machine! {
         #[inductive(infinite)] fn infinite_inductive(pre: Self, post: Self, k: int, v: int, w: IMap<int, int>, e: ISet<int>) {}
         #[inductive(peek)] fn peek_inductive(pre: Self, post: Self, k: int, p: Set<int>) {}
         #[inductive(general_infinite)] fn general_infinite_inductive(pre: Self, post: Self, w: IMap<int, int>, e: ISet<int>, q: Option<int>, a: int, b: int) {}
+    }
+}
+
+verified_tokenized_state_machine! {
+    #[verified_raw_tokens]
+    C2 {
+        fields {
+            #[sharding(persistent_map)] pub pm: Map<int, int>,
+            #[sharding(persistent_imap)] pub pim: IMap<int, int>,
+            #[sharding(persistent_set)] pub ps: Set<int>,
+            #[sharding(persistent_iset)] pub pis: ISet<int>,
+            #[sharding(persistent_option)] pub po: Option<int>,
+            #[sharding(multiset)] pub ms: Multiset<int>,
+            #[sharding(count)] pub c: nat,
+            #[sharding(bool)] pub b: bool,
+            #[sharding(bool)] pub b2: bool,
+            #[sharding(persistent_count)] pub pc: nat,
+            #[sharding(persistent_bool)] pub pb: bool,
+            #[sharding(variable)] pub v: int,
+            #[sharding(constant)] pub k: int,
+        }
+        #[invariant] pub fn inv(&self) -> bool { true }
+        init! { initialize() {
+            init pm = Map::empty(); init pim = IMap::empty(); init ps = Set::empty();
+            init pis = ISet::empty(); init po = None; init ms = Multiset::empty(); init c = 0;
+            init b = false; init b2 = false; init pc = 0; init pb = false; init v = 0; init k = 1;
+        } }
+        // persistent maps, sets and options: singleton, pattern-bound and general haves and adds
+        transition! { persist(j: int, x: int, a: Map<int, int>, w: IMap<int, int>, sa: Set<int>, e: ISet<int>, q: Option<int>) {
+            have pm >= [j => x];
+            add pm (union)= [j => x];
+            have pm >= (a);
+            add pm (union)= (a);
+            have pim >= [j => let y];
+            add pim (union)= [j => y];
+            have pim >= (w);
+            add pim (union)= (w);
+            have ps >= set {j};
+            add ps (union)= set {j};
+            have ps >= (sa);
+            add ps (union)= (sa);
+            have pis >= set {j};
+            add pis (union)= set {j};
+            have pis >= (e);
+            add pis (union)= (e);
+            have po >= Some(let u);
+            add po (union)= Some(u);
+            have po >= (q);
+            add po (union)= (q);
+        } }
+        // multiset, count, bool, persistent count and persistent bool
+        transition! { counted(n: nat, x: Multiset<int>, el: int, f: bool) {
+            remove ms -= {el};
+            remove ms -= (x);
+            have ms >= {el};
+            have ms >= (x);
+            add ms += {el};
+            add ms += (x);
+            remove c -= (n);
+            have c >= (n);
+            add c += (n);
+            have b >= true;
+            remove b -= true;
+            add b += true;
+            have b2 >= (f);
+            remove b2 -= (f);
+            add b2 += (f);
+            have pc >= (n);
+            add pc (union)= (n);
+            have pb >= true;
+            add pb (union)= true;
+            have pb >= (f);
+            add pb (union)= (f);
+        } }
+        // a variable updated from a constant
+        transition! { bump() {
+            require(pre.k > 0);
+            update v = pre.v + pre.k;
+        } }
+        #[inductive(initialize)] fn initialize_inductive(post: Self) {}
+        #[inductive(persist)] fn persist_inductive(pre: Self, post: Self, j: int, x: int, a: Map<int, int>, w: IMap<int, int>, sa: Set<int>, e: ISet<int>, q: Option<int>) {}
+        #[inductive(counted)] fn counted_inductive(pre: Self, post: Self, n: nat, x: Multiset<int>, el: int, f: bool) {}
+        #[inductive(bump)] fn bump_inductive(pre: Self, post: Self) {}
     }
 }
 
@@ -493,6 +578,333 @@ pub mod chains {
         map_token_observed(o, h, z, v, c, IMap::empty().insert(a, 1int).dom(), b, 2);
         imap_remove_one(o, h, z, v, a, 1);
         imap_have_one(map_remove_many(o, IMap::empty().insert(a, 1int).dom()), h, z, v.remove(a), b, 2);
+    }
+}
+
+pub mod chains2 {
+    use vstd::prelude::*;
+    use vstd::multiset::Multiset;
+    use vstd::resource::algebra::ResourceAlgebra;
+    use vstd::resource::pcm::PCM;
+    use vstd::resource::tsm::{CountRA, Machine};
+    use vstd::resource::tsm_bool::*;
+    use vstd::resource::tsm_calculus::*;
+    use vstd::resource::tsm_collections::*;
+    use vstd::resource::tsm_finite_multiset::*;
+    use vstd::resource::tsm_persistent::*;
+    use vstd::resource::exclusive::ExclusiveRA;
+    use vstd::resource::agree::AgreementRA;
+    use vstd::state_machine_internal as smi;
+    use super::C2::{Fragment, Protocol, State};
+
+    pub proof fn cfg_split(o: Fragment, h: Fragment, z: Fragment, s: State)
+        requires
+            Fragment::op(Fragment::op(o, h), z) == <Protocol as Machine>::embed(s),
+        ensures
+            cfg(o.pm, h.pm, z.pm, persistent_map_frag(s.pm.to_imap())),
+            cfg(o.pim, h.pim, z.pim, persistent_map_frag(s.pim)),
+            cfg(o.ps, h.ps, z.ps, persistent_set_frag(s.ps.to_iset())),
+            cfg(o.pis, h.pis, z.pis, persistent_set_frag(s.pis)),
+            cfg(o.po, h.po, z.po, persistent_option_frag(s.po)),
+            cfg(o.ms, h.ms, z.ms, finite_multiset_frag(s.ms)),
+            cfg(o.c, h.c, z.c, CountRA { count: s.c }),
+            cfg(o.b, h.b, z.b, bool_frag(s.b)),
+            cfg(o.b2, h.b2, z.b2, bool_frag(s.b2)),
+            cfg(o.pc, h.pc, z.pc, PersistentCountRA { count: s.pc }),
+            cfg(o.pb, h.pb, z.pb, persistent_bool_frag(s.pb)),
+            cfg(o.v, h.v, z.v, Some(ExclusiveRA::Exclusive(s.v))),
+            cfg(o.k, h.k, z.k, Some(AgreementRA::Agree(s.k))),
+    {
+        cfg_iff(o.pm, h.pm, z.pm, persistent_map_frag(s.pm.to_imap()));
+        cfg_iff(o.pim, h.pim, z.pim, persistent_map_frag(s.pim));
+        cfg_iff(o.ps, h.ps, z.ps, persistent_set_frag(s.ps.to_iset()));
+        cfg_iff(o.pis, h.pis, z.pis, persistent_set_frag(s.pis));
+        cfg_iff(o.po, h.po, z.po, persistent_option_frag(s.po));
+        cfg_iff(o.ms, h.ms, z.ms, finite_multiset_frag(s.ms));
+        cfg_iff(o.c, h.c, z.c, CountRA { count: s.c });
+        cfg_iff(o.b, h.b, z.b, bool_frag(s.b));
+        cfg_iff(o.b2, h.b2, z.b2, bool_frag(s.b2));
+        cfg_iff(o.pc, h.pc, z.pc, PersistentCountRA { count: s.pc });
+        cfg_iff(o.pb, h.pb, z.pb, persistent_bool_frag(s.pb));
+        cfg_iff(o.v, h.v, z.v, Some(ExclusiveRA::Exclusive(s.v)));
+        cfg_iff(o.k, h.k, z.k, Some(AgreementRA::Agree(s.k)));
+    }
+
+    pub proof fn cfg_join(o: Fragment, h: Fragment, z: Fragment, s: State)
+        requires
+            cfg(o.pm, h.pm, z.pm, persistent_map_frag(s.pm.to_imap())),
+            cfg(o.pim, h.pim, z.pim, persistent_map_frag(s.pim)),
+            cfg(o.ps, h.ps, z.ps, persistent_set_frag(s.ps.to_iset())),
+            cfg(o.pis, h.pis, z.pis, persistent_set_frag(s.pis)),
+            cfg(o.po, h.po, z.po, persistent_option_frag(s.po)),
+            cfg(o.ms, h.ms, z.ms, finite_multiset_frag(s.ms)),
+            cfg(o.c, h.c, z.c, CountRA { count: s.c }),
+            cfg(o.b, h.b, z.b, bool_frag(s.b)),
+            cfg(o.b2, h.b2, z.b2, bool_frag(s.b2)),
+            cfg(o.pc, h.pc, z.pc, PersistentCountRA { count: s.pc }),
+            cfg(o.pb, h.pb, z.pb, persistent_bool_frag(s.pb)),
+            cfg(o.v, h.v, z.v, Some(ExclusiveRA::Exclusive(s.v))),
+            cfg(o.k, h.k, z.k, Some(AgreementRA::Agree(s.k))),
+        ensures
+            Fragment::op(Fragment::op(o, h), z) == <Protocol as Machine>::embed(s),
+    {
+        cfg_iff(o.pm, h.pm, z.pm, persistent_map_frag(s.pm.to_imap()));
+        cfg_iff(o.pim, h.pim, z.pim, persistent_map_frag(s.pim));
+        cfg_iff(o.ps, h.ps, z.ps, persistent_set_frag(s.ps.to_iset()));
+        cfg_iff(o.pis, h.pis, z.pis, persistent_set_frag(s.pis));
+        cfg_iff(o.po, h.po, z.po, persistent_option_frag(s.po));
+        cfg_iff(o.ms, h.ms, z.ms, finite_multiset_frag(s.ms));
+        cfg_iff(o.c, h.c, z.c, CountRA { count: s.c });
+        cfg_iff(o.b, h.b, z.b, bool_frag(s.b));
+        cfg_iff(o.b2, h.b2, z.b2, bool_frag(s.b2));
+        cfg_iff(o.pc, h.pc, z.pc, PersistentCountRA { count: s.pc });
+        cfg_iff(o.pb, h.pb, z.pb, persistent_bool_frag(s.pb));
+        cfg_iff(o.v, h.v, z.v, Some(ExclusiveRA::Exclusive(s.v)));
+        cfg_iff(o.k, h.k, z.k, Some(AgreementRA::Agree(s.k)));
+    }
+
+    pub open spec fn persist_new(
+        o: Fragment,
+        h: Fragment,
+        j: int,
+        x: int,
+        a: Map<int, int>,
+        w: IMap<int, int>,
+        sa: Set<int>,
+        e: ISet<int>,
+        q: Option<int>,
+    ) -> Fragment {
+        let oh = Fragment::op(o, h);
+        let y = oh.pim.at(j)->Some_0->Agree_0;
+        let u = oh.po->Some_0->Agree_0;
+        Fragment {
+            pm: PersistentMapFragment::op(
+                PersistentMapFragment::op(o.pm, persistent_map_frag(IMap::empty().insert(j, x))),
+                persistent_map_frag(a.to_imap()),
+            ),
+            pim: PersistentMapFragment::op(
+                PersistentMapFragment::op(o.pim, persistent_map_frag(IMap::empty().insert(j, y))),
+                persistent_map_frag(w),
+            ),
+            ps: PersistentSetFragment::op(
+                PersistentSetFragment::op(o.ps, persistent_set_frag(ISet::empty().insert(j))),
+                persistent_set_frag(sa.to_iset()),
+            ),
+            pis: PersistentSetFragment::op(
+                PersistentSetFragment::op(o.pis, persistent_set_frag(ISet::empty().insert(j))),
+                persistent_set_frag(e),
+            ),
+            po: PersistentOptionFragment::op(
+                PersistentOptionFragment::op(o.po, persistent_option_frag(Some(u))),
+                persistent_option_frag(q),
+            ),
+            ..o
+        }
+    }
+
+    // Persistent haves before adds (the haves make the adds safe).
+    pub proof fn persist(
+        o: Fragment,
+        h: Fragment,
+        z: Fragment,
+        pre: State,
+        j: int,
+        x: int,
+        a: Map<int, int>,
+        w: IMap<int, int>,
+        sa: Set<int>,
+        e: ISet<int>,
+        q: Option<int>,
+    )
+        requires
+            Fragment::op(Fragment::op(o, h), z) == <Protocol as Machine>::embed(pre),
+            State::persist_owners_enabled(pre, o, h, j, x, a, w, sa, e, q),
+        ensures
+            State::persist_enabled(pre, j, x, a, w, sa, e, q),
+            ({
+                let oh = Fragment::op(o, h);
+                let y = oh.pim.at(j)->Some_0->Agree_0;
+                let u = oh.po->Some_0->Agree_0;
+                let post = State {
+                    pm: pre.pm.insert(j, x).union_prefer_right(a),
+                    pim: pre.pim.insert(j, y).union_prefer_right(w),
+                    ps: pre.ps.insert(j).union(sa),
+                    pis: pre.pis.insert(j).union(e),
+                    po: smi::opt_add(Some(u), q),
+                    ..pre
+                };
+                State::persist_strong(pre, post, j, x, a, w, sa, e, q) && Fragment::op(
+                    Fragment::op(persist_new(o, h, j, x, a, w, sa, e, q), h),
+                    z,
+                ) == <Protocol as Machine>::embed(post)
+            }),
+    {
+        cfg_split(o, h, z, pre);
+        let oh = Fragment::op(o, h);
+        // persistent_map: the haves (in the fragments `o` only grows by the adds; the
+        // haves observe `op(o, h)` before them)
+        pmap_have_one(o.pm, h.pm, z.pm, pre.pm, j, x);
+        pmap_add_one(o.pm, h.pm, z.pm, pre.pm, j, x);
+        let opm = PersistentMapFragment::op(o.pm, persistent_map_frag(IMap::empty().insert(j, x)));
+        let vpm = pre.pm.insert(j, x);
+        assert(PersistentMapFragment::op(opm, h.pm) == PersistentMapFragment::op(oh.pm, persistent_map_frag(IMap::empty().insert(j, x)))) by {
+            PersistentMapFragment::associative(o.pm, persistent_map_frag(IMap::empty().insert(j, x)), h.pm);
+            PersistentMapFragment::commutative(persistent_map_frag(IMap::empty().insert(j, x)), h.pm);
+            PersistentMapFragment::associative(o.pm, h.pm, persistent_map_frag(IMap::empty().insert(j, x)));
+        };
+        pmap_have(opm, h.pm, z.pm, vpm, a);
+        pmap_add(opm, h.pm, z.pm, vpm, a);
+        // persistent_imap: pattern-bound
+        let y = oh.pim.at(j)->Some_0->Agree_0;
+        pimap_have_one(o.pim, h.pim, z.pim, pre.pim, j, y);
+        pimap_add_one(o.pim, h.pim, z.pim, pre.pim, j, y);
+        let opim = PersistentMapFragment::op(o.pim, persistent_map_frag(IMap::empty().insert(j, y)));
+        pimap_have(opim, h.pim, z.pim, pre.pim.insert(j, y), w);
+        pimap_add(opim, h.pim, z.pim, pre.pim.insert(j, y), w);
+        // persistent sets
+        pset_have_one(o.ps, h.ps, z.ps, pre.ps, j);
+        pset_add_one(o.ps, h.ps, z.ps, pre.ps, j);
+        let ops = PersistentSetFragment::op(o.ps, persistent_set_frag(ISet::empty().insert(j)));
+        pset_have(ops, h.ps, z.ps, pre.ps.insert(j), sa);
+        pset_add(ops, h.ps, z.ps, pre.ps.insert(j), sa);
+        piset_have_one(o.pis, h.pis, z.pis, pre.pis, j);
+        piset_add_one(o.pis, h.pis, z.pis, pre.pis, j);
+        let opis = PersistentSetFragment::op(o.pis, persistent_set_frag(ISet::empty().insert(j)));
+        piset_have(opis, h.pis, z.pis, pre.pis.insert(j), e);
+        piset_add(opis, h.pis, z.pis, pre.pis.insert(j), e);
+        // persistent_option: pattern-bound
+        let u = oh.po->Some_0->Agree_0;
+        popt_have_some(o.po, h.po, z.po, pre.po, u);
+        popt_add_some(o.po, h.po, z.po, pre.po, u);
+        let opo = PersistentOptionFragment::op(o.po, persistent_option_frag(Some(u)));
+        popt_have(opo, h.po, z.po, Some(u), q);
+        popt_add(opo, h.po, z.po, Some(u), q);
+        cfg_join(
+            persist_new(o, h, j, x, a, w, sa, e, q),
+            h,
+            z,
+            State {
+                pm: vpm.union_prefer_right(a),
+                pim: pre.pim.insert(j, y).union_prefer_right(w),
+                ps: pre.ps.insert(j).union(sa),
+                pis: pre.pis.insert(j).union(e),
+                po: smi::opt_add(Some(u), q),
+                ..pre
+            },
+        );
+    }
+
+    pub open spec fn counted_new(o: Fragment, n: nat, x: Multiset<int>, el: int, f: bool) -> Fragment {
+        let one = Multiset::empty().insert(el);
+        Fragment {
+            ms: finite_multiset_frag(finite_multiset_frag(finite_multiset_frag(finite_multiset_frag(
+                o.ms.values.sub(one)).values.sub(x)).values.add(one)).values.add(x)),
+            c: CountRA { count: CountRA { count: (o.c.count - n) as nat }.count + n },
+            b: CountRA { count: CountRA { count: (o.b.count - bool_count(true)) as nat }.count + bool_count(true) },
+            b2: CountRA { count: CountRA { count: (o.b2.count - bool_count(f)) as nat }.count + bool_count(f) },
+            pc: PersistentCountRA::op(o.pc, PersistentCountRA { count: n }),
+            pb: PersistentCountRA::op(PersistentCountRA::op(o.pb, persistent_bool_frag(true)), persistent_bool_frag(f)),
+            ..o
+        }
+    }
+
+    // Multiset, count, bool, persistent count and persistent bool.
+    pub proof fn counted(o: Fragment, h: Fragment, z: Fragment, pre: State, n: nat, x: Multiset<int>, el: int, f: bool)
+        requires
+            Fragment::op(Fragment::op(o, h), z) == <Protocol as Machine>::embed(pre),
+            State::counted_owners_enabled(pre, o, h, n, x, el, f),
+        ensures
+            State::counted_enabled(pre, n, x, el, f),
+            ({
+                let post = State {
+                    ms: pre.ms.remove(el).sub(x).insert(el).add(x),
+                    c: (((pre.c - n) as nat) + n) as nat,
+                    b: true,
+                    b2: (pre.b2 && !f) || f,
+                    pc: smi::nat_max(pre.pc, n),
+                    pb: true || f,
+                    ..pre
+                };
+                State::counted_strong(pre, post, n, x, el, f) && Fragment::op(
+                    Fragment::op(counted_new(o, n, x, el, f), h),
+                    z,
+                ) == <Protocol as Machine>::embed(post)
+            }),
+    {
+        cfg_split(o, h, z, pre);
+        // multiset
+        mset_remove_one(o.ms, h.ms, z.ms, pre.ms, el);
+        let o1 = finite_multiset_frag(o.ms.values.sub(Multiset::empty().insert(el)));
+        let v1 = pre.ms.remove(el);
+        mset_remove(o1, h.ms, z.ms, v1, x);
+        let o2 = finite_multiset_frag(o1.values.sub(x));
+        let v2 = v1.sub(x);
+        mset_have_one(o2, h.ms, z.ms, v2, el);
+        mset_have(o2, h.ms, z.ms, v2, x);
+        mset_add_one(o2, h.ms, z.ms, v2, el);
+        let o3 = finite_multiset_frag(o2.values.add(Multiset::empty().insert(el)));
+        mset_add(o3, h.ms, z.ms, v2.insert(el), x);
+        // count
+        count_remove(o.c, h.c, z.c, pre.c, n);
+        let oc = CountRA { count: (o.c.count - n) as nat };
+        count_have(oc, h.c, z.c, (pre.c - n) as nat, n);
+        count_add(oc, h.c, z.c, (pre.c - n) as nat, n);
+        // bool: `true` operands
+        bool_have_true(o.b, h.b, z.b, pre.b);
+        bool_remove_true(o.b, h.b, z.b, pre.b);
+        let ob = CountRA { count: (o.b.count - bool_count(true)) as nat };
+        bool_add_true(ob, h.b, z.b, false);
+        // bool: general operands
+        bool_have(o.b2, h.b2, z.b2, pre.b2, f);
+        bool_remove(o.b2, h.b2, z.b2, pre.b2, f);
+        let ob2 = CountRA { count: (o.b2.count - bool_count(f)) as nat };
+        bool_add(ob2, h.b2, z.b2, pre.b2 && !f, f);
+        // persistent count and bool
+        pcount_have(o.pc, h.pc, z.pc, pre.pc, n);
+        pcount_add(o.pc, h.pc, z.pc, pre.pc, n);
+        pbool_have_true(o.pb, h.pb, z.pb, pre.pb);
+        pbool_add_true(o.pb, h.pb, z.pb, pre.pb);
+        let opb = PersistentCountRA::op(o.pb, persistent_bool_frag(true));
+        pbool_have(opb, h.pb, z.pb, true, f);
+        pbool_add(opb, h.pb, z.pb, true, f);
+        cfg_join(
+            counted_new(o, n, x, el, f),
+            h,
+            z,
+            State {
+                ms: v2.insert(el).add(x),
+                c: (((pre.c - n) as nat) + n) as nat,
+                b: true,
+                b2: (pre.b2 && !f) || f,
+                pc: smi::nat_max(pre.pc, n),
+                pb: true || f,
+                ..pre
+            },
+        );
+    }
+
+    // A variable update from a constant: the reads agree with the fragments.
+    pub proof fn bump(o: Fragment, h: Fragment, z: Fragment, pre: State)
+        requires
+            Fragment::op(Fragment::op(o, h), z) == <Protocol as Machine>::embed(pre),
+            o.v is Some && o.v->Some_0 is Exclusive,
+            Fragment::op(o, h).k is Some && Fragment::op(o, h).k->Some_0 is Agree,
+            Fragment::op(o, h).k->Some_0->Agree_0 > 0,
+        ensures
+            State::bump_enabled(pre),
+            ({
+                let post = State { v: pre.v + pre.k, ..pre };
+                State::bump_strong(pre, post) && Fragment::op(
+                    Fragment::op(Fragment { v: Some(ExclusiveRA::Exclusive(pre.v + pre.k)), ..o }, h),
+                    z,
+                ) == <Protocol as Machine>::embed(post)
+            }),
+    {
+        cfg_split(o, h, z, pre);
+        const_read(o.k, h.k, z.k, pre.k);
+        var_read(o.v, h.v, z.v, pre.v);
+        var_update(o.v, h.v, z.v, pre.v, pre.v + pre.k);
+        cfg_join(Fragment { v: Some(ExclusiveRA::Exclusive(pre.v + pre.k)), ..o }, h, z, State { v: pre.v + pre.k, ..pre });
     }
 }
 

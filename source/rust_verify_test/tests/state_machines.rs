@@ -11147,10 +11147,10 @@ test_verify_one_file_with_options! {
 
 // Local readiness is generated for every raw transition, readonly transition and property except
 // the forms `verified_readiness::local_ready_supported` skips, whose readiness lemma is not proved;
-// here a `have` of a persistent set field after an `add` to the same field (outside the statement
-// calculus's kinds). Such a transition keeps its other raw operations (`Protocol::grow`, ...), the
-// machine's other transitions get their local-ready API, and clients see no `local_ready::grow`. A `have` of a map field after an `add` to it (`swap_check`) is proved
-// by the calculus's chain.
+// here a closure in an `if` condition. Such a transition keeps its other raw operations
+// (`Protocol::pick`, ...), the machine's other transitions get their local-ready API, and clients
+// see no `local_ready::pick`. A `have` of a map or persistent set field after an `add` to it
+// (`swap_check`, `grow`) is proved by the statement calculus's chain.
 test_verify_one_file_with_options! {
     #[test] local_ready_default_skipped_forms_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
         use vstd::resource::tsm::Machine;
@@ -11172,16 +11172,24 @@ test_verify_one_file_with_options! {
                     add m += [k => 1];
                     have m >= [j => 1];
                 } }
-                // Skipped: the same for a persistent set.
+                // Proved by the chain: the same for a persistent set.
                 transition! { grow(a: Set<int>, b: Set<int>) {
                     have ps >= (a);
                     add ps (union)= (a);
                     have ps >= (b);
                 } }
+                // Skipped: a closure in an `if` condition.
+                transition! { pick(k: int) {
+                    if (|i: int| i > 0)(k) {
+                        remove m -= [k => 0];
+                        add m += [k => 1];
+                    }
+                } }
                 #[inductive(initialize)] fn initialize_inductive(post: Self) {}
                 #[inductive(swap)] fn swap_inductive(pre: Self, post: Self, k: int) {}
                 #[inductive(swap_check)] fn swap_check_inductive(pre: Self, post: Self, k: int, j: int) {}
                 #[inductive(grow)] fn grow_inductive(pre: Self, post: Self, a: Set<int>, b: Set<int>) {}
+                #[inductive(pick)] fn pick_inductive(pre: Self, post: Self, k: int) {}
             }
         }
 
@@ -11214,24 +11222,32 @@ test_verify_one_file_with_options! {
                     add m += [k => 1];
                     have m >= [j => 1];
                 } }
-                // Skipped: the same for a persistent set.
+                // Proved by the chain: the same for a persistent set.
                 transition! { grow(a: Set<int>, b: Set<int>) {
                     have ps >= (a);
                     add ps (union)= (a);
                     have ps >= (b);
                 } }
+                // Skipped: a closure in an `if` condition.
+                transition! { pick(k: int) {
+                    if (|i: int| i > 0)(k) {
+                        remove m -= [k => 0];
+                        add m += [k => 1];
+                    }
+                } }
                 #[inductive(initialize)] fn initialize_inductive(post: Self) {}
                 #[inductive(swap)] fn swap_inductive(pre: Self, post: Self, k: int) {}
                 #[inductive(swap_check)] fn swap_check_inductive(pre: Self, post: Self, k: int, j: int) {}
                 #[inductive(grow)] fn grow_inductive(pre: Self, post: Self, a: Set<int>, b: Set<int>) {}
+                #[inductive(pick)] fn pick_inductive(pre: Self, post: Self, k: int) {}
             }
         }
 
         proof fn client(tracked t: S::Token)
             requires t.fragment() == S::Fragment::field_m(Map::empty().insert(1, 0)),
         {
-            let tracked t = S::local_ready::grow::run(t, Set::empty(), Set::empty());
+            let tracked t = S::local_ready::pick::run(t, 1);
         }
-    } => Err(e) => assert_rust_error_msg(e, "cannot find `grow` in `local_ready`")
+    } => Err(e) => assert_rust_error_msg(e, "cannot find `pick` in `local_ready`")
 }
 
