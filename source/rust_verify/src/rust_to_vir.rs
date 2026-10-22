@@ -434,9 +434,21 @@ fn check_anon_consts<'tcx>(
             if let Some(local) = owner_id.as_local() {
                 if let Some(verif) = crate_items.map.get(&rustc_hir::OwnerId { def_id: local }) {
                     break match verif {
-                        VerifOrExternal::VerusAware {
-                            module_path, external_body: false, ..
-                        } => Some(module_path.clone()),
+                        VerifOrExternal::VerusAware { module_path, external_body, .. } => {
+                            // external_body trusts only the body of a function or const;
+                            // its signature is still checked.
+                            let in_body = || {
+                                tcx.hir_maybe_body_owned_by(local).is_none_or(|b| {
+                                    tcx.hir_parent_id_iter(tcx.local_def_id_to_hir_id(id))
+                                        .any(|p| p == b.value.hir_id)
+                                })
+                            };
+                            if *external_body && in_body() {
+                                None
+                            } else {
+                                Some(module_path.clone())
+                            }
+                        }
                         _ => None,
                     };
                 }

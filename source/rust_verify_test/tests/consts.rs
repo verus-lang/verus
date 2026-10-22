@@ -788,3 +788,14 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] array_length_external_body_signature verus_code! {
+        use vstd::prelude::*;
+        spec const N: usize = 5;
+        #[verifier::external_body]
+        fn make() -> [u8; core::mem::size_of_val(&N)] {
+            Default::default()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+}
