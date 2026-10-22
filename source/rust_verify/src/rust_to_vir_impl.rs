@@ -371,12 +371,7 @@ pub(crate) fn translate_impl<'tcx>(
                 match assoc_item.kind {
                     AssocKind::Fn { has_self, .. } if has_self => {
                         let impl_item = ctxt.tcx.hir_impl_item(*impl_item_id);
-                        if let ImplItemKind::Fn(sig, _) = &impl_item.kind {
-                            ctxt.erasure_info
-                                .borrow_mut()
-                                .ignored_functions
-                                .push((impl_item.owner_id.to_def_id(), sig.span.data()));
-                        } else {
+                        if !matches!(&impl_item.kind, ImplItemKind::Fn(_, _)) {
                             panic!("Fn impl item expected");
                         }
                     }

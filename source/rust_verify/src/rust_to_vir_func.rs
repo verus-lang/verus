@@ -362,6 +362,7 @@ fn mk_bctx<'tcx>(
         header_setting: HeaderSetting::Fn,
         external_opaque_type_map,
         label_map: std::rc::Rc::new(std::cell::RefCell::new((HashMap::new(), 0))),
+        erasure_info: std::rc::Rc::new(std::cell::RefCell::new(crate::context::ErasureInfo::new())),
     }
 }
 
@@ -371,13 +372,14 @@ fn body_to_vir<'tcx>(
     id: &BodyId,
     body: &Body<'tcx>,
     mode: Mode,
+    ret_mode: Mode,
     external_body: bool,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     params: &[vir::ast::Param],
     external_opaque_type_map: Option<HashMap<Path, Path>>,
     is_async: bool,
-) -> Result<(vir::ast::Expr, Vec<(vir::ast::Stmt, vir::ast::Stmt)>), VirErr> {
+) -> Result<(vir::ast::Expr, Vec<(vir::ast::Stmt, vir::ast::Stmt)>, BodyCtxt<'tcx>), VirErr> {
     let param_names = params.iter().map(|p| p.x.name.clone()).collect();
     let bctx = mk_bctx(
         ctxt,
@@ -393,6 +395,11 @@ fn body_to_vir<'tcx>(
     let body_expr =
         if is_async { extract_desugared_async_body(&bctx.ctxt, body)? } else { &body.value };
     let e = expr_to_vir_consume(&bctx, body_expr)?;
+
+    bctx.push_body_erasure(
+        fun_id.expect_local(),
+        BodyErasure { erase_body: mode == Mode::Spec, ret_spec: ret_mode == Mode::Spec },
+    );
 
     // Declarations for the bindings of parameter patterns
     let mut param_decls = Vec::new();
@@ -412,11 +419,11 @@ fn body_to_vir<'tcx>(
 
     if external_body {
         match &e.x {
-            vir::ast::ExprX::NeverToAny(e) => Ok((e.clone(), param_decls)),
-            _ => Ok((e, param_decls)),
+            vir::ast::ExprX::NeverToAny(e) => Ok((e.clone(), param_decls, bctx)),
+            _ => Ok((e, param_decls, bctx)),
         }
     } else {
-        Ok((e, param_decls))
+        Ok((e, param_decls, bctx))
     }
 }
 
@@ -1967,11 +1974,12 @@ pub(crate) fn check_item_fn<'tcx>(
             return err_span(sig.span, "`reveal_group` must have body");
         };
         let body = find_body(ctxt, body_id);
-        let (vir_body, _) = body_to_vir(
+        let (vir_body, _, _) = body_to_vir(
             ctxt,
             id,
             body_id,
             body,
+            mode,
             mode,
             false,
             &external_trait_from_to,
@@ -2233,11 +2241,6 @@ pub(crate) fn check_item_fn<'tcx>(
     let body_visibility =
         sig.override_body_visibility(publish, visibility.clone(), body_visibility);
 
-    ctxt.push_body_erasure(
-        id.expect_local(),
-        BodyErasure { erase_body: mode == Mode::Spec, ret_spec: ret_mode == Mode::Spec },
-    );
-
     let mut func = FunctionStubX {
         name: name.clone(),
         proxy,
@@ -2358,7 +2361,7 @@ pub(crate) fn finish_function<'tcx>(
     } = function.x.clone();
     let is_async = attrs.is_async;
 
-    let (vir_body, header, body_hir_id) = match &body_id {
+    let (vir_body, header, body_hir_id, bctx) = match &body_id {
         CheckItemFnEither::BodyId(body_id) => {
             let is_async = match sig.asyncness() {
                 rustc_hir::IsAsync::NotAsync => false,
@@ -2367,11 +2370,12 @@ pub(crate) fn finish_function<'tcx>(
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
 
-            let (mut vir_body, param_decls) = body_to_vir(
+            let (mut vir_body, param_decls, bctx) = body_to_vir(
                 ctxt,
                 def_id,
                 body_id,
                 body,
+                mode,
                 mode,
                 external_body,
                 &external_trait_from_to,
@@ -2382,13 +2386,13 @@ pub(crate) fn finish_function<'tcx>(
             )?;
             let mut header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
-            add_param_decls(ctxt, sig.span, &mut header, &mut vir_body, param_decls)?;
-            (Some(vir_body), header, Some(body.value.hir_id))
+            add_param_decls(&bctx, sig.span, &mut header, &mut vir_body, param_decls)?;
+            (Some(vir_body), header, Some(body.value.hir_id), Some(bctx))
         }
         CheckItemFnEither::ParamNames(_params) => {
             let header =
                 vir::headers::read_header_block(&mut vec![], &vir::headers::HeaderAllows::All)?;
-            (None, header, None)
+            (None, header, None, None)
         }
     };
 
@@ -2428,8 +2432,8 @@ pub(crate) fn finish_function<'tcx>(
         crate::internal_err!(sig.span, "return type does not match binder in ensures")
     }
 
-    let ensure0 = clean_ensures_for_unit_return(ctxt, &inner_ret, &header.ensure.0);
-    let ensure1 = clean_ensures_for_unit_return(ctxt, &inner_ret, &header.ensure.1);
+    let ensure0 = clean_ensures_for_unit_return(bctx.as_ref(), &inner_ret, &header.ensure.0);
+    let ensure1 = clean_ensures_for_unit_return(bctx.as_ref(), &inner_ret, &header.ensure.1);
 
     if mode == Mode::Spec
         && (header.require.len() + header.ensure.0.len() + header.ensure.1.len()) > 0
@@ -2546,8 +2550,9 @@ pub(crate) fn finish_function<'tcx>(
                 FnOrConstSigEnum::ConstVar(..) => vec![],
             };
 
+            let bctx = bctx.unwrap();
             crate::automatic_derive::modify_derived_item(
-                ctxt,
+                &bctx,
                 def_id,
                 &inputs,
                 sig.span,
@@ -3368,11 +3373,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         !vattrs.external_body,
     )?;
 
-    ctxt.push_body_erasure(
-        id.expect_local(),
-        BodyErasure { erase_body: body_mode == Mode::Spec, ret_spec: ret_mode == Mode::Spec },
-    );
-
     // An associated const declared in an `impl<T> ...` block may refer to the impl's
     // type parameters in its type or body, so include them here.
     let (typ_params, typ_bounds) = if let Some((cg, impl_def_id)) = self_generics {
@@ -3474,12 +3474,13 @@ pub(crate) fn finish_const_or_static<'tcx>(
     } = function.x.clone();
 
     let body = find_body(ctxt, &body_id);
-    let (mut vir_body, _) = body_to_vir(
+    let (mut vir_body, _, bctx) = body_to_vir(
         ctxt,
         id,
         &body_id,
         body,
         body_mode,
+        ret_mode,
         vattrs.external_body,
         &None,
         None,
@@ -3506,7 +3507,7 @@ pub(crate) fn finish_const_or_static<'tcx>(
 
     let inner_ret = outer_ret.clone();
     let ensure = clean_ensures_for_unit_return(
-        ctxt,
+        Some(&bctx),
         &inner_ret,
         &header.const_static_ensures(&name, is_static),
     );
@@ -3775,10 +3776,14 @@ fn get_body_visibility_and_fuel(
 /// ```
 /// Therefore, we substitute out the name here so it be safely elided.
 pub fn clean_ensures_for_unit_return<'tcx>(
-    ctxt: &Context<'tcx>,
+    bctx: Option<&BodyCtxt<'tcx>>,
     inner_ret: &vir::ast::Param,
     ensure: &vir::ast::Exprs,
 ) -> vir::ast::Exprs {
+    let Some(bctx) = bctx else {
+        assert!(ensure.len() == 0);
+        return ensure.clone();
+    };
     match &*vir::ast_util::undecorate_typ(&inner_ret.x.typ) {
         TypX::Datatype(vir::ast::Dt::Tuple(0), ..) => {
             if inner_ret.x.name == air_unique_var(vir::def::RETURN_VALUE) {
@@ -3793,7 +3798,7 @@ pub fn clean_ensures_for_unit_return<'tcx>(
                                 assert!(vir::ast_util::is_unit(&vir::ast_util::undecorate_typ(
                                     &expr.typ
                                 )));
-                                ctxt.erasure_info
+                                bctx.erasure_info
                                     .borrow_mut()
                                     .extra_erase_ast_ids
                                     .push(expr.span.clone());
@@ -3806,12 +3811,12 @@ pub fn clean_ensures_for_unit_return<'tcx>(
                                 assert!(vir::ast_util::is_unit(&vir::ast_util::undecorate_typ(
                                     &place.typ
                                 )));
-                                ctxt.erasure_info
+                                bctx.erasure_info
                                     .borrow_mut()
                                     .extra_erase_ast_ids
                                     .push(place.span.clone());
                                 let e = vir::ast_util::mk_tuple(&place.span, &Arc::new(vec![]));
-                                Ok(ctxt.spanned_typed_new_vir(
+                                Ok(bctx.ctxt.spanned_typed_new_vir(
                                     &place.span,
                                     &place.typ,
                                     vir::ast::PlaceX::Temporary(e),

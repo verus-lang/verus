@@ -1,6 +1,6 @@
 use crate::commands::{OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, CargoVerusArgs, ShowTriggers};
-use crate::context::{ContextX, ErasureInfo};
+use crate::context::ContextX;
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
 use crate::query::{Query, QueryError};
@@ -2653,25 +2653,9 @@ impl Verifier {
             return Err((vec![err], vec![], None));
         }
 
-        let erasure_info = ErasureInfo {
-            local_hir_vir_ids: vec![],
-            binder_hir_vir_ids: vec![],
-            ctor_hir_vir_ids: vec![],
-            resolved_calls: vec![],
-            resolved_pats: vec![],
-            direct_var_modes: vec![],
-            ignored_functions: vec![],
-            bodies: vec![],
-            shadow_check: vec![],
-            extra_erase_ast_ids: vec![],
-            local_invariant_bodies: vec![],
-        };
-        let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
-
         let ctxtx = ContextX::new(
             self.args.clone(),
             tcx,
-            erasure_info,
             spans.clone(),
             verus_items,
             self.args.vstd == crate::config::Vstd::NoVstd,

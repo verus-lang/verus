@@ -440,27 +440,27 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
 /// Set all IDs in this tree to VarErasure::Erase. Useful if a VIR node gets dropped
 /// before it reaches mode-checking.
 pub(crate) fn mark_tree_for_erasure<'tcx>(
-    context: &crate::context::Context<'tcx>,
+    bctx: &crate::context::BodyCtxt<'tcx>,
     expr: &vir::ast::Expr,
 ) {
     vir::ast_visitor::ast_visitor_check::<(), _, _, _, _, _, _>(
         expr,
         &mut (),
         &mut |_, _scope_map, expr: &vir::ast::Expr| {
-            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(expr.span.clone());
+            bctx.erasure_info.borrow_mut().extra_erase_ast_ids.push(expr.span.clone());
             Ok(())
         },
         &mut |_, _scope_map, stmt| {
-            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(stmt.span.clone());
+            bctx.erasure_info.borrow_mut().extra_erase_ast_ids.push(stmt.span.clone());
             Ok(())
         },
         &mut |_, _scope_map, pattern: &vir::ast::Pattern| {
-            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(pattern.span.clone());
+            bctx.erasure_info.borrow_mut().extra_erase_ast_ids.push(pattern.span.clone());
             Ok(())
         },
         &mut |_, _scope_map, _typ, _span| Ok(()),
         &mut |_, _scope_map, place| {
-            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(place.span.clone());
+            bctx.erasure_info.borrow_mut().extra_erase_ast_ids.push(place.span.clone());
             Ok(())
         },
     )

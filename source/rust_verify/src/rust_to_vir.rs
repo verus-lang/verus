@@ -177,10 +177,6 @@ fn check_item<'tcx>(
             return Ok(());
         }
         if vattrs.structural_const_wrapper {
-            ctxt.erasure_info
-                .borrow_mut()
-                .ignored_functions
-                .push((item.owner_id.to_def_id(), item.span.data()));
             return Ok(());
         }
 
