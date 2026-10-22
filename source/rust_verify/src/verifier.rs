@@ -72,6 +72,14 @@ impl<'tcx> Reporter<'tcx> {
             source_map: compiler.sess.source_map(),
         }
     }
+
+    pub(crate) fn new_from_tcx(spans: &SpanContext, tcx: TyCtxt<'tcx>) -> Self {
+        Reporter {
+            spans: spans.clone(),
+            compiler_diagnostics: &tcx.sess.dcx(),
+            source_map: tcx.sess.source_map(),
+        }
+    }
 }
 
 /// N.B.: The compiler performs deduplication on diagnostic messages, so reporting an error twice,
@@ -2704,7 +2712,7 @@ impl Verifier {
 
         let mut query = Query::new(
             self.args.clone(),
-            diagnostics,
+            Box::new(Reporter::new_from_tcx(spans, tcx)),
             self.func_details.clone(),
             self.deferred_errors.clone(),
             other_vir_crates,
@@ -2744,7 +2752,7 @@ impl Verifier {
         self.vir_crate = Some(merged_crate.clone());
         self.warning_ctx = Some(query.get_updated_warning_ctx().map_err(map_query_err)?);
 
-        if !self.args.no_lifetime {
+        /*if !self.args.no_lifetime {
             let functions = query.get_all_function_stubs().map_err(map_query_err)?;
             let datatypes = query.get_datatypes_map().map_err(map_query_err)?;
             let erasure_modes = query.get_erasure_modes().map_err(map_query_err)?;
@@ -2757,7 +2765,7 @@ impl Verifier {
                 &erasure_modes,
             )
             .map_err(map_err_diagnostics)?;
-        }
+        }*/
 
         // These can invoke mir_borrowck when opaque types are involved.
         // Thus, we can only run these after calling `setup_verus_ctxt_for_thir_erasure`
