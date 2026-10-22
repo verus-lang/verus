@@ -2115,6 +2115,32 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] assert_eq_ok verus_code! {
+        use vstd::*;
+        fn test(x: u64, v: Vec<u8>) requires x < 10, v.len() == 2 {
+            assert_eq!(x + 0, x);
+            assert_ne!(x, x + 1);
+            assert_eq!(v.len(), 2, "len is {}", v.len());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assert_eq_fails verus_code! {
+        use vstd::*;
+        fn test1(x: u64) {
+            assert_eq!(x, 3); // FAILS
+        }
+        fn test2(x: u64) {
+            assert_ne!(x, 3, "x is {}", x); // FAILS
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(err.errors.iter().all(|e| e.rendered.contains("precondition not satisfied")));
+    }
+}
+
+test_verify_one_file! {
     #[test] maybe_uninit_write verus_code! {
         use core::mem::MaybeUninit;
         use vstd::prelude::*;
