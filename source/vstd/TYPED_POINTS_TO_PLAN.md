@@ -79,8 +79,9 @@ are approved
 
 ```rust
 impl PointsToUntyped {
-    /// If `old` is well-formed and `new` has the same pointers and length
-    /// (`ptrs_len_same`), then `new` is well-formed.
+    /// If `old` is well-formed
+    /// and `new` has the same pointers and length (`ptrs_len_same`),
+    /// then `new` is well-formed.
     pub proof fn stays_wf(old: Self, new: Self)
         requires
             old.wf(),
@@ -89,8 +90,8 @@ impl PointsToUntyped {
             new.wf(),
     ;
 
-    /// If `old` and `new` are both well-formed with the same pointer, then `new` keeps `old`'s
-    /// pointers and length.
+    /// If `old` and `new` are both well-formed with the same pointer,
+    /// then `new` keeps `old`'s pointers and length.
     pub broadcast proof fn lemma_ptrs_len_same_untyped(old: Self, new: Self)
         requires
             old.wf(),
@@ -100,8 +101,8 @@ impl PointsToUntyped {
             #[trigger] Self::ptrs_len_same(old, new),
     ;
 
-    /// If `T` is zero sized, then we can construct a `PointsToUntyped` from any non-null pointer.
-    /// The range of memory pointed to by this permission will be empty.
+    /// If `T` is zero sized,
+    /// then we can construct a `PointsToUntyped` from any non-null pointer.
     pub proof fn zero_sized<T>(ptr: *mut T) -> (tracked perm: Self)
         requires
             ptr@.addr != 0,
@@ -156,8 +157,9 @@ impl PointsToUntyped {
             second.wf(),
     ;
 
-    /// Splits a shared borrow of a `PointsToUntyped` into shared borrows of bytes `[0, mid)` and
-    /// `[mid, len)`. This is the shared-borrow analogue of `split`.
+    /// Splits a shared borrow of a `PointsToUntyped`
+    /// into shared borrows of bytes `[0, mid)` and `[mid, len)`.
+    /// This is the shared-borrow analogue of `split`.
     pub proof fn split_ref(tracked &self, mid: nat) -> (tracked (first, second): (&Self, &Self))
         requires
             0 <= mid <= self.len(),
@@ -185,11 +187,13 @@ impl PointsToUntyped {
             second.wf(),
     ;
 
-    /// Splits a mutable borrow of a `PointsToUntyped` into mutable borrows of bytes `[0, mid)` and
-    /// `[mid, len)`. This is the mutable-borrow analogue of `split`.
+    /// Splits a mutable borrow of a `PointsToUntyped`
+    /// into mutable borrows of bytes `[0, mid)` and `[mid, len)`.
+    /// This is the mutable-borrow analogue of `split`.
     ///
-    /// If both halves stay well-formed with the same pointers, then `self` is also still
-    /// well-formed with the same pointer, holding the halves' final permissions concatenated.
+    /// If both halves stay well-formed with the same pointers,
+    /// then `self` is also still well-formed with the same pointer,
+    /// holding the halves' final permissions concatenated.
     /// (Phase 3b; today's commented-out contract.)
     pub proof fn split_mut(tracked &mut self, mid: nat) -> (tracked (first, second): (
         &mut Self,
@@ -285,8 +289,8 @@ impl<T> PTProperties for PointsToUnaligned<T> {
         tracked other: &OtherPointsToPerm,
     );
 
-    /// `new` has the same pointer and the same underlying `PointsToUntyped` pointers and length as
-    /// `old`.
+    /// `new` has the same pointer
+    /// and the same underlying `PointsToUntyped` pointers and length as `old`.
     open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
         &&& new.ptr() == old.ptr()
         &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
@@ -429,7 +433,8 @@ Generic over `T: ?Sized`, so it covers `T`, `[T]` and rustlib's `str` without ru
 ```rust
 impl<T: ?Sized> PointsToUnaligned<T> {
     /// Mutably borrows the untyped bytes and the typed value separately
-    /// (the inverse of `from_raw_parts_mut`). The metadata is unchanged.
+    /// (the inverse of `from_raw_parts_mut`).
+    /// The metadata is unchanged.
     pub proof fn as_raw_parts_mut(tracked &mut self)
         -> (tracked (pt_untyped, typed_value): (&mut PointsToUntyped, &mut TypedValue<T>))
         ensures
@@ -466,7 +471,8 @@ impl<T: ?Sized> PTProperties for PointsTo<T> where PointsToUnaligned<T>: PTValue
         tracked other: &OtherPointsToPerm,
     );
 
-    /// `new` has the same pointer as `old`, and they satisfy the `PointsToUnaligned` requirements
+    /// `new` has the same pointer as `old`,
+    /// and they satisfy the `PointsToUnaligned` requirements
     /// for preserving pointer-level well-formed-ness.
     open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
         &&& new.ptr() == old.ptr()
@@ -480,7 +486,8 @@ impl<T: ?Sized> PTProperties for PointsTo<T> where PointsToUnaligned<T>: PTValue
 impl<T: ?Sized> PTValueOps for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     // borrow, into_untyped, from_untyped, zero_sized: the trait's default bodies.
 
-    /// `new` has the same pointer as `old`, and they satisfy the `PointsToUnaligned` requirements
+    /// `new` has the same pointer as `old`,
+    /// and they satisfy the `PointsToUnaligned` requirements
     /// for preserving well-formed-ness.
     /// Overridden for the same reason as `wf`:
     /// the default body doesn't unfold at `PointsToUnaligned<T>` for a generic `T`.
@@ -614,7 +621,7 @@ impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
 
     /// Mutably borrows the underlying `PointsToUnaligned<T>`.
     /// `final(self)` holds the final `PointsToUnaligned<T>`.
-    /// If the final unaligned permission satisfies `ptrs_len_same_valid` 
+    /// If the final unaligned permission satisfies `ptrs_len_same_valid`
     /// with the initial unaligned permission (so it keeps the same aligned address),
     /// `self` is well-formed afterwards.
     pub proof fn as_unaligned_mut(tracked &mut self) -> (tracked out: &mut PointsToUnaligned<T>)
@@ -677,7 +684,8 @@ impl<T> PointsToUnaligned<[T]> {
             out.wf(),
     ;
 
-    /// A valid slice permission holding `value`, borrowed from untyped bytes that decode to it.
+    /// A valid slice permission holding `value`,
+    /// borrowed from untyped bytes that decode to it.
     pub proof fn from_untyped_with_value_ref<'a>(tracked pt_untyped: &'a PointsToUntyped, tracked value: &'a [T])
         -> (tracked out: &'a Self)
         requires
@@ -727,7 +735,8 @@ impl<T> PointsTo<[T]> {
             out.wf(),
     ;
 
-    /// A valid slice permission holding `value`, borrowed from aligned untyped bytes that decode to it.
+    /// A valid slice permission holding `value`,
+    /// borrowed from aligned untyped bytes that decode to it.
     pub proof fn from_untyped_with_value_ref<'a>(tracked pt_untyped: &'a PointsToUntyped, tracked value: &'a [T])
         -> (tracked out: &'a Self)
         requires
@@ -1098,8 +1107,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             ),
     ;
 
-    /// If `sub` holds the permissions in `[start, end)` of `self`, then its abstract bytes are
-    /// the subrange `[start * size_of::<T>(), end * size_of::<T>())` of `self`'s abstract bytes.
+    /// If `sub` holds the permissions in `[start, end)` of `self`,
+    /// then its abstract bytes are the subrange `[start * size_of::<T>(), end * size_of::<T>())`
+    /// of `self`'s abstract bytes.
     pub proof fn bytes_subrange_equiv(&self, sub: Self, start: int, end: int)
         requires
             self.wf(),
@@ -1109,7 +1119,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             sub.bytes() == self.bytes().subrange(start * size_of::<T>(), end * size_of::<T>()),
     ;
 
-    /// For all positions in this sequence, the abstract bytes for that position can be decoded into the value in memory at that position.
+    /// For all positions in this sequence,
+    /// the abstract bytes for that position can be decoded into the value in memory at that position.
     pub proof fn bytes_decode(&self)
         requires
             self.wf(),
@@ -1128,8 +1139,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     /// together with the `TypedValue<T>` of each element.
     /// (Use `into_untyped` instead if you don't need the typed values.)
     ///
-    /// The resulting `PointsToUntyped` has the same address and provenance and a length of
-    /// `self.len() * size_of::<T>()`, and preserves the abstract bytes.
+    /// The resulting `PointsToUntyped` has the same address and provenance
+    /// and a length of `self.len() * size_of::<T>()`,
+    /// and preserves the abstract bytes.
     /// The returned `tracked typed_value` holds the typed contents from this memory,
     /// which can later be used to convert the `pt_untyped` permission back to a typed permission
     /// (see `SeqPointsTo::from_untyped_with_typed_value`).
@@ -1152,8 +1164,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             pt_untyped.wf(),
     ;
 
-    /// Creates a `PointsToUntyped` from a `SeqPointsTo<T, PointsTo<T>>` with the same address and
-    /// provenance and a length of `self.len() * size_of::<T>()`.
+    /// Creates a `PointsToUntyped` from a `SeqPointsTo<T, PointsTo<T>>`
+    /// with the same address and provenance
+    /// and a length of `self.len() * size_of::<T>()`.
     /// If there are any typed values stored in memory, they are dropped here.
     /// (Use `into_untyped_with_typed_value` instead if you want to keep them.)
     pub proof fn into_untyped(tracked self) -> (tracked pt_untyped: PointsToUntyped)
@@ -1217,8 +1230,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             joined.wf(),
     ;
 
-    /// Given that the subrange is within bounds, it is always possible to borrow a permission
-    /// to just that subrange.
+    /// Given that the subrange is within bounds,
+    /// it is always possible to borrow a permission to just that subrange.
     /// Built on `subrange_basic`, adding the alignment and `wf` facts.
     pub proof fn subrange(tracked &self, start_index: nat, len: nat) -> (tracked sub: &Self)
         requires
@@ -1235,11 +1248,12 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     ;
 
     /// Returns a mutable reference to the sub-permission covering indices `[i, j)`.
-    /// The sub-permission has the same provenance, and its pointer is offset from `self.ptr()`
-    /// by `i * size_of::<T>()`.
+    /// The sub-permission has the same provenance,
+    /// and its pointer is offset from `self.ptr()` by `i * size_of::<T>()`.
     ///
-    /// Provided that the mutable reference is not used to change the pointer of the
-    /// sub-permission, and that it is still well-formed, `self` is also still well-formed,
+    /// Provided that the mutable reference is not used to change the pointer of the sub-permission,
+    /// and that it is still well-formed,
+    /// `self` is also still well-formed,
     /// with the sub-sequence of permissions replaced by the final sub-permission's.
     ///
     /// Proved from M5 (`from_seq_mut`) in phase 3b;
@@ -1264,8 +1278,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             },
     ;
 
-    /// Creates a `SeqPointsTo<T, PointsTo<T>>` of length `len` from a `PointsToUntyped` with the
-    /// same address and provenance.
+    /// Creates a `SeqPointsTo<T, PointsTo<T>>` of length `len`
+    /// from a `PointsToUntyped` with the same address and provenance.
     /// The resulting permission will be empty (uninitialized).
     /// (Use `from_untyped_with_typed_value` instead if you want to supply typed values.)
     pub proof fn from_untyped(tracked pt_untyped: PointsToUntyped, len: usize) -> (tracked out: Self)
@@ -1290,13 +1304,15 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     ///
     /// (2) The length is exactly `capacity * size_of::<T>()`.
     ///
-    /// (3) For each valid element in `typed_value`, the corresponding abstract bytes for the
-    ///     `PointsToUntyped` can be decoded into its value. `typed_value` may contain empty
-    ///     elements (these are ignored for purposes of decoding) and can be a prefix of the total
-    ///     `capacity` (in which case, the remaining memory is all logically uninitialized).
+    /// (3) For each valid element in `typed_value`,
+    ///     the corresponding abstract bytes for the `PointsToUntyped` can be decoded into its value.
+    ///     `typed_value` may contain empty elements (these are ignored for purposes of decoding)
+    ///     and can be a prefix of the total `capacity`
+    ///     (in which case, the remaining memory is all logically uninitialized).
     ///
-    /// The abstract bytes remain the same. This preserves the typed contents in memory on a
-    /// roundtrip (see `SeqPointsTo::into_untyped_with_typed_value`).
+    /// The abstract bytes remain the same.
+    /// This preserves the typed contents in memory on a roundtrip
+    /// (see `SeqPointsTo::into_untyped_with_typed_value`).
     pub proof fn from_untyped_with_typed_value(
         tracked pt_untyped: PointsToUntyped,
         capacity: usize,
@@ -1320,7 +1336,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             out.wf(),
     ;
 
-    /// Creates a reference to a `PointsToUntyped` from a reference to a `SeqPointsTo<T, PointsTo<T>>`,
+    /// Creates a reference to a `PointsToUntyped`
+    /// from a reference to a `SeqPointsTo<T, PointsTo<T>>`,
     /// with the same address and provenance, a length of `self.len() * size_of::<T>()`,
     /// and the same abstract bytes.
     pub proof fn as_untyped(tracked &self) -> (tracked raw: &PointsToUntyped)
@@ -1338,9 +1355,10 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             raw.wf(),
     ;
 
-    /// Creates a mutable reference to a `PointsToUntyped` from a mutable reference to a
-    /// `SeqPointsTo<T, PointsTo<T>>`, with the same address and provenance and a length of
-    /// `self.len() * size_of::<T>()`. If this permission carries any typed values, they are dropped here.
+    /// Creates a mutable reference to a `PointsToUntyped`
+    /// from a mutable reference to a `SeqPointsTo<T, PointsTo<T>>`,
+    /// with the same address and provenance and a length of `self.len() * size_of::<T>()`.
+    /// If this permission carries any typed values, they are dropped here.
     pub proof fn as_untyped_mut(tracked &mut self) -> (tracked raw: &mut PointsToUntyped)
         requires
             self.wf(),
@@ -1403,7 +1421,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).wf(),
     ;
 
-    /// This moves a subrange of the `TypedValue<T>`s out from `self`, leaving that subrange empty.
+    /// This moves a subrange of the `TypedValue<T>`s out from `self`,
+    /// leaving that subrange empty.
     pub proof fn take_typed_value_subrange(tracked &mut self, start: int, end: int) -> (tracked val:
         Seq<TypedValue<T>>)
         requires
@@ -1420,7 +1439,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).wf(),
     ;
 
-    /// Consumes the `Seq<T>` and puts it in the specified subrange of the `TypedValue<T>`s for `self`.
+    /// Consumes the `Seq<T>`
+    /// and puts it in the specified subrange of the `TypedValue<T>`s for `self`.
     pub proof fn put_subrange(tracked &mut self, start: int, tracked val: Seq<T>)
         requires
             self.wf(),
@@ -1447,8 +1467,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).wf(),
     ;
 
-    /// Consumes the `Seq<TypedValue<T>>` and puts it in the specified subrange of the
-    /// `TypedValue<T>`s for `self`.
+    /// Consumes the `Seq<TypedValue<T>>`
+    /// and puts it in the specified subrange of the `TypedValue<T>`s for `self`.
     pub proof fn put_typed_value_subrange(
         tracked &mut self,
         start: int,
@@ -1501,7 +1521,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).wf(),
     ;
 
-    /// This moves a subrange of the values out from `self`, leaving that subrange empty.
+    /// This moves a subrange of the values out from `self`,
+    /// leaving that subrange empty.
     pub proof fn take_subrange(tracked &mut self, start: int, end: int) -> (tracked val: Seq<T>)
         requires
             self.wf(),
@@ -1530,7 +1551,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             val.map_values(|r: &T| *r) == self.value_subrange(start, (end - start) as nat),
     ;
 
-    /// Specializes `is_disjoint` to the case when the other permission is a `SeqPointsTo<S, PointsTo<S>>`.
+    /// Specializes `is_disjoint` to the case
+    /// when the other permission is a `SeqPointsTo<S, PointsTo<S>>`.
     pub proof fn is_disjoint_seqpt<S>(
         tracked &mut self,
         tracked other: &SeqPointsTo<S, PointsTo<S>>,
@@ -1656,7 +1678,8 @@ impl PointsToUnaligned<str> {
             out.wf(),
     ;
 
-    /// Borrows a byte-slice permission as a `str` permission to the same bytes, with the same metadata.
+    /// Borrows a byte-slice permission as a `str` permission to the same bytes,
+    /// with the same metadata.
     /// Valid only if the value is valid UTF-8; otherwise empty.
     pub proof fn from_bytes_ref(tracked p: &PointsToUnaligned<[u8]>) -> (tracked out: &PointsToUnaligned<str>)
         requires
