@@ -344,6 +344,8 @@ pub fn run_verus(
         } else if *option == "--is-core" {
             verus_args.push("--is-core".to_string());
             is_core = true;
+        } else if *option == "--is-vstd" {
+            verus_args.push("--is-vstd".to_string());
         } else if *option == "--disable-internal-test-mode" {
             use_internal_test_mode = false;
         } else if *option == "no-bv-simplify" {

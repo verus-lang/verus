@@ -116,3 +116,14 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_vir_error_msg(err, "the crate name `vstd` is reserved")
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_no_cheating_is_vstd ["--crate-name=vstd", "--is-vstd", "--no-cheating"] => verus_code! {
+        #[verifier::external_body]
+        fn no_good() -> (r: u8)
+            ensures r == 7 && r == 8,
+        {
+            0
+        }
+    } => Err(err) => assert_vir_error_msg(err, "--no-cheating cannot be used with --is-vstd")
+}

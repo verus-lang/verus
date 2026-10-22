@@ -2648,6 +2648,15 @@ impl Verifier {
             );
             return Err((vec![err], vec![]));
         }
+        // --no-cheating exempts vstd's functions, so it cannot check the crate that is vstd
+        if self.args.no_cheating && self.args.vstd == Vstd::IsVstd {
+            let err = vir::messages::error(
+                &self.air_no_span.as_ref().unwrap(),
+                "--no-cheating cannot be used with --is-vstd \
+                (with cargo verus, use --fwd-verus-args-to roots to pass --no-cheating only to your own crates)",
+            );
+            return Err((vec![err], vec![]));
+        }
 
         let mut crate_ids: HashSet<CrateId> = HashSet::new();
         for c in tcx.crates(()) {
