@@ -250,7 +250,7 @@ fn reject_tracked_data_mode(mode: &verus_syn::DataMode) -> Result<(), Error> {
 }
 
 /// Rejects explicit `tracked`/`ghost` markers on individual fields, which
-/// `compile_struct`/`compile_enum` would otherwise silently mirror into 
+/// `compile_struct`/`compile_enum` would otherwise silently mirror into
 /// the `Exec*` type.
 fn reject_field_mode_markers<'a>(
     fields: impl IntoIterator<Item = &'a verus_syn::Field>,
@@ -1485,7 +1485,8 @@ fn compile_match_arm(ctx: &LocalCtx, arm: &Arm, unverified: bool) -> Result<Toke
             quote! {
                 let #ident = #ident.get_ref();
             }
-        }).collect::<Vec<_>>();
+        })
+        .collect::<Vec<_>>();
 
     let guard = match &arm.guard {
         Some((_, guard)) => {
@@ -2626,7 +2627,7 @@ fn compile_expr(
 
             // Handling verus's `is_variant(<x>, "Variant")` builtin.
             // It has no exec companion, so the default rename to
-            // `exec_is_variant` produces an unresolved-fn error. 
+            // `exec_is_variant` produces an unresolved-fn error.
             // Hence, we lower itt he same way as `x is Variant`
             if fn_path.path.segments.len() == 1
                 && fn_path.path.segments[0].ident == "is_variant"
