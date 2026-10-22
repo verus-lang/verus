@@ -2,7 +2,7 @@
 
 use crate::boundary_suggestions::build_boundary_suggestion;
 use crate::config::Args;
-use crate::context::Context;
+use crate::context::{Context, ErasureInfo};
 use crate::rust_to_vir_func::FunctionOrConstInfo;
 use crate::rust_to_vir_func::finish_item;
 use crate::verifier::FuncDetails;
@@ -54,7 +54,7 @@ pub(crate) struct Query<'r, 'tcx> {
     /// All function stubs, across this crate and imported crates
     cache_all_function_stubs: Option<Res<Arc<HashMap<Fun, FunctionStub>>>>,
     /// Pre-check functions, immediately after translation from HIR
-    cache_unchecked_functions: HashMap<Fun, Res<Function>>,
+    cache_unchecked_functions: HashMap<Fun, Res<(Function, Arc<ErasureInfo>)>>,
     /// Completed functions
     cache_checked_functions: HashMap<
         Fun,
@@ -345,6 +345,14 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
     //// Translating an individual function from HIR -> VIR
 
     pub fn get_unchecked_function(&mut self, fun: &Fun) -> Res<Function> {
+        Ok(self.get_unchecked_function_pair(fun)?.0.clone())
+    }
+
+    pub fn get_erasure_info(&mut self, fun: &Fun) -> Res<Arc<ErasureInfo>> {
+        Ok(self.get_unchecked_function_pair(fun)?.1.clone())
+    }
+
+    pub fn get_unchecked_function_pair(&mut self, fun: &Fun) -> Res<(Function, Arc<ErasureInfo>)> {
         if let Some(f) = self.cache_unchecked_functions.get(fun) {
             return f.clone();
         }
@@ -357,10 +365,10 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         ctxt.flush_diagnostics(self.reporter);
         match result {
             Ok(()) => {
-                for new_function in new_functions.into_iter() {
+                for (new_function, erasure_info) in new_functions.into_iter() {
                     let found = self
                         .cache_unchecked_functions
-                        .insert(new_function.x.name.clone(), Ok(new_function));
+                        .insert(new_function.x.name.clone(), Ok((new_function, Arc::new(erasure_info))));
                     assert!(found.is_none());
                 }
                 // Sanity check we got all the functions we expected

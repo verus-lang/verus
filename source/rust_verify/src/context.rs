@@ -17,6 +17,7 @@ use std::sync::mpsc::Sender;
 use vir::ast::{CrateId, Mode, Path, Pattern, VirErr};
 use vir::messages::{AstId, ToAny, WarningAllow};
 
+#[derive(Clone)]
 pub struct ErasureInfo {
     /// Connect every PlaceX::Local, ExprX::Var, and ExprX::VarAt node to its
     /// HirId (an ExprKind::Path node that resolves to Local).
