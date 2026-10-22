@@ -17,6 +17,7 @@ pub mod tsm_bool;
 pub mod tsm_helpers;
 pub mod tsm_context;
 pub mod tsm_generic;
+pub mod tsm_calculus;
 
 pub use combinators::agree;
 pub use combinators::auth;

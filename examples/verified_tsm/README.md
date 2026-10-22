@@ -152,3 +152,9 @@ forms and the skipped ones.
 
 * `hygiene_name_capture.rs`: user identifiers named like generated `__tsm_*` helpers, in the
   model, the generic interface and nondeterministic tokenizing (one representative each).
+
+## The statement calculus (`vstd::resource::tsm_calculus`)
+
+* `tsm_calculus.rs`: the calculus's step lemmas used by hand on a raw machine: the per-machine
+  configuration split and join, and chains to the frontend's enabling condition and strong
+  relation for every statement form the lemmas cover.
