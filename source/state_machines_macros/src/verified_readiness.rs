@@ -254,7 +254,9 @@ pub struct Context<'a> {
     pub owned: &'a [TokenStream],
     pub observed: &'a [TokenStream],
     pub reads: &'a [&'a Ident],
-    pub storage: &'a crate::verified_storage_tagged::Tagged,
+    /// The machine's storage, if it has one (otherwise the operations are over the plain
+    /// token, without deposits and withdrawals).
+    pub storage: Option<&'a crate::verified_storage_tagged::Tagged>,
     pub deposits: bool,
     pub withdraws: bool,
     pub paired: bool,
@@ -1451,93 +1453,115 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     let before = fresh(sm,tr, "before_state");
     let after = fresh(sm,tr, "after_state");
     let witness_frame = fresh(sm,tr, "witness_frame");
-    let map = storage.ty();
-    let unit = storage.unit();
-    let tracked_unit = storage.tracked_unit();
-    let dep_param = if deposits {
-        quote! {tracked deposit:#map,}
-    } else {
-        quote! {}
-    };
-    let dep_arg = if deposits {
-        quote! {deposit,}
-    } else {
-        quote! {}
-    };
-    let dep_value = if deposits {
-        quote! {deposit}
-    } else {
-        unit.clone()
-    };
-    let ret = if withdraws {
-        quote! {tracked out:(#tt,#map)}
-    } else {
-        quote! {tracked out:#tt}
-    };
-    let call = if withdraws {
-        quote! {let tracked (#next,#returned_map)=Self::#local(owned,#dep_arg #(#pn),*);}
-    } else {
-        quote! {let tracked #next=Self::#local(owned,#dep_arg #(#pn),*);let tracked #returned_map:#map=#tracked_unit;}
-    };
-    let out = if withdraws {
-        quote! {out.0}
-    } else {
-        quote! {out}
-    };
-    let wd = if withdraws {
-        quote! {out.1}
-    } else {
-        unit.clone()
-    };
-    let wd_shape = if withdraws {
-        quote! {}
-    } else {
-        quote! {,#certificate.withdrawn==#unit}
-    };
-    let before_s = quote! {#certificate.before.__storage()};
-    let after_s = quote! {#certificate.after.__storage()};
-    let physical = if paired {
-        let disjoint = storage.disjoint(before_s.clone(), dep_value.clone());
-        let within = storage.le(after_s.clone(), storage.op(before_s.clone(), dep_value.clone()));
-        quote! {#dep_value==#se::#deposited(#certificate.before,#(#pn),*),
-        #disjoint,
-        #within,}
-    } else {
-        let delta = storage.minus(after_s.clone(), before_s.clone());
-        quote! {#dep_value==#delta,}
-    };
-    let withdrawn_value = storage.minus(storage.op(before_s.clone(), dep_value.clone()), after_s.clone());
-    // A step that withdraws nothing and has one storage operation per path:
-    // its outputs do not state the withdrawn storage (only that it is the
-    // unit), so the certificate derives it from the storage growing.
-    let monotone_withdrawn = if !withdraws && !paired {
-        let (b, a) = (quote! {#before.__storage()}, quote! {#after.__storage()});
-        let grow = storage.prove_le(
-            &format_ident!("__tsm_storage_index", span = proc_macro2::Span::mixed_site()),
-            b.clone(),
-            a.clone(),
-        );
-        quote! {
-            #grow
-            ::vstd::resource::tsm_storage::storage_withdrawn_none(#b,#a,#physical_deposit);
+    // The storage parts of the API, empty without storage: `deposit` parameters
+    // and arguments (`dep_decl`, `dep_args`: of the predicates; `dep_param`,
+    // `dep_arg`: of the operations), the outputs' storage arguments, and the
+    // storage facts of the requirement, readiness proof and certificate.
+    let mut dep_param = quote! {};
+    let mut dep_arg = quote! {};
+    let mut dep_decl = quote! {};
+    let mut dep_spec = quote! {};
+    let mut dep_args = quote! {};
+    let mut wd_args = quote! {};
+    let mut cert_wd_args = quote! {};
+    let mut local_deposit_req = quote! {};
+    let mut deposit_ens = quote! {};
+    let mut deposit_eq = quote! {};
+    let mut ret = quote! {tracked out:#tt};
+    let mut call = quote! {let tracked #next=Self::#local(owned,#(#pn),*);};
+    let mut out = quote! {out};
+    let mut witness_args = quote! {};
+    let mut cert_storage_ens = quote! {};
+    let mut cert_wd_shape = quote! {};
+    let mut physical_let = quote! {};
+    let mut monotone_withdrawn = quote! {};
+    let mut withdrawn_field = quote! {};
+    if let Some(storage) = storage {
+        let map = storage.ty();
+        let unit = storage.unit();
+        let tracked_unit = storage.tracked_unit();
+        if deposits {
+            dep_param = quote! {tracked deposit:#map,};
+            dep_arg = quote! {deposit,};
         }
-    } else {
-        quote! {}
-    };
-    let deposit_index = format_ident!("__tsm_deposit_index", span = proc_macro2::Span::mixed_site());
-    let (local_deposit, full_deposit) = (
-        quote! {Self::#local_deposited(#full_state,#(#pn),*)},
-        quote! {#se::#deposited(#full_state,#(#pn),*)},
-    );
-    let deposit_eq = if scoped_deposits(&tr.body) {
-        // Both deposit functions are inline: name them, as Verus cannot
-        // choose a trigger in their `let`/`if`/`match` bodies.
-        let (local_name, full_name) = (fresh(sm, tr, "local_deposit"), fresh(sm, tr, "deposit"));
-        let eq = storage.prove_eq(&deposit_index, quote! {#local_name}, quote! {#full_name});
-        quote! {let #local_name = #local_deposit; let #full_name = #full_deposit; #eq}
-    } else {
-        storage.prove_eq(&deposit_index, local_deposit, full_deposit)
-    };
+        let dep_value = if deposits {
+            quote! {deposit}
+        } else {
+            unit.clone()
+        };
+        dep_decl = quote! {deposit:#map,};
+        dep_spec = quote! {deposit,};
+        dep_args = quote! {#dep_value,};
+        if withdraws {
+            ret = quote! {tracked out:(#tt,#map)};
+            call = quote! {let tracked (#next,#returned_map)=Self::#local(owned,#dep_arg #(#pn),*);};
+            out = quote! {out.0};
+        } else {
+            call = quote! {let tracked #next=Self::#local(owned,#dep_arg #(#pn),*);let tracked #returned_map:#map=#tracked_unit;};
+        }
+        let wd = if withdraws {
+            quote! {out.1}
+        } else {
+            unit.clone()
+        };
+        wd_args = quote! {#dep_value,#wd,};
+        cert_wd_args = quote! {#dep_value,#certificate.withdrawn,};
+        if !withdraws {
+            cert_wd_shape = quote! {,#certificate.withdrawn==#unit};
+        }
+        let before_s = quote! {#certificate.before.__storage()};
+        let after_s = quote! {#certificate.after.__storage()};
+        let physical = if paired {
+            let disjoint = storage.disjoint(before_s.clone(), dep_value.clone());
+            let within = storage.le(after_s.clone(), storage.op(before_s.clone(), dep_value.clone()));
+            quote! {#dep_value==#se::#deposited(#certificate.before,#(#pn),*),
+            #disjoint,
+            #within,}
+        } else {
+            let delta = storage.minus(after_s.clone(), before_s.clone());
+            quote! {#dep_value==#delta,}
+        };
+        let withdrawn_value = storage.minus(storage.op(before_s.clone(), dep_value.clone()), after_s.clone());
+        cert_storage_ens = quote! {#physical #certificate.withdrawn==#withdrawn_value,};
+        physical_let = quote! {let ghost #physical_deposit=#dep_value;};
+        // A step that withdraws nothing and has one storage operation per path:
+        // its outputs do not state the withdrawn storage (only that it is the
+        // unit), so the certificate derives it from the storage growing.
+        if !withdraws && !paired {
+            let (b, a) = (quote! {#before.__storage()}, quote! {#after.__storage()});
+            let grow = storage.prove_le(
+                &format_ident!("__tsm_storage_index", span = proc_macro2::Span::mixed_site()),
+                b.clone(),
+                a.clone(),
+            );
+            monotone_withdrawn = quote! {
+                #grow
+                ::vstd::resource::tsm_storage::storage_withdrawn_none(#b,#a,#physical_deposit);
+            };
+        }
+        witness_args = quote! {#physical_deposit,#returned_map,};
+        withdrawn_field = quote! {withdrawn:#returned_map,};
+        local_deposit_req = quote! {&& deposit==Self::#local_deposited(#local_state,#(#pn),*)};
+        deposit_ens = quote! {&&#se::#deposited(#full_state,#(#pn),*)==deposit};
+        let deposit_index = format_ident!("__tsm_deposit_index", span = proc_macro2::Span::mixed_site());
+        let (local_deposit, full_deposit) = (
+            quote! {Self::#local_deposited(#full_state,#(#pn),*)},
+            quote! {#se::#deposited(#full_state,#(#pn),*)},
+        );
+        deposit_eq = if !implicit_fields(sm, tr).is_empty() {
+            // Both deposits are the same inlined expression. A pattern's `let` in it
+            // admits no trigger for the pointwise proof, so it is compared directly.
+            quote! {assert(#local_deposit==#full_deposit);}
+        } else if scoped_deposits(&tr.body) {
+            // Both deposit functions are inline: name them, as Verus cannot
+            // choose a trigger in their `let`/`if`/`match` bodies.
+            let (local_name, full_name) = (fresh(sm, tr, "local_deposit"), fresh(sm, tr, "deposit"));
+            let eq = storage.prove_eq(&deposit_index, quote! {#local_name}, quote! {#full_name});
+            quote! {let #local_name = #local_deposit; let #full_name = #full_deposit; #eq}
+        } else {
+            storage.prove_eq(&deposit_index, local_deposit, full_deposit)
+        };
+    }
     let (sequence_hints,sequenced)=local_sequence_hints(sm,tr,&full_state,&completion_frame,ft)?;
     let set_hints=singleton_set_remove_hints(tr,&observation,&full_state,&completion_frame,ft,se,pe,&owners,pn,&sequenced);
     let map_hints=singleton_map_remove_hints(sm,tr,&observation,&full_state,&completion_frame,ft,se,&owners,pn,&sequenced);
@@ -1566,33 +1590,26 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         }
         None => (quote! {#pe::__observed(<#ft>::op(owned,h))}, quote! {}, vec![]),
     };
-    // Both deposits are the same inlined expression. A pattern's `let` in it
-    // admits no trigger for the pointwise proof, so it is compared directly.
-    let deposit_eq = if implicit_fields(sm, tr).is_empty() {
-        deposit_eq
-    } else {
-        quote! {assert(Self::#local_deposited(#full_state,#(#pn),*)==#se::#deposited(#full_state,#(#pn),*));}
-    };
     Ok(quote! {
         #local_state_fn
         /// Local observations suffice only because the following theorem checks every completion.
         #[verifier::inline]
-        pub open spec fn #local_req(owned:#ft,h:#ft,deposit:#map,#(#params),*)->bool {
+        pub open spec fn #local_req(owned:#ft,h:#ft,#dep_decl #(#params),*)->bool {
             true #(&& #owned)* #(&& #observed)* && {
                 let #local_state=#local_value;
                 Self::#declared(#local_state,#(#pn),*) && #se::#owners(#local_state,owned,h,#(#pn),*)
-                    && deposit==Self::#local_deposited(#local_state,#(#pn),*)
+                    #local_deposit_req
             }
         }
-        pub proof fn #ready(owned:#ft,h:#ft,deposit:#map,#(#params),*)
-            requires Self::#local_req(owned,h,deposit,#(#pn),*)
-            ensures #pe::#req(owned,h,deposit,#(#pn),*)
+        pub proof fn #ready(owned:#ft,h:#ft,#dep_decl #(#params),*)
+            requires Self::#local_req(owned,h,#dep_spec #(#pn),*)
+            ensures #pe::#req(owned,h,#dep_spec #(#pn),*)
         {
             let #observation=#local_value;
             assert forall|#completion_frame:#ft,#full_state:#st|#full_state.invariant()
                 &&<#ft>::op(<#ft>::op(owned,h),#completion_frame)==#pe::embed(#full_state)
                 implies #se::#enabled(#full_state,#(#pn),*)
-                    &&#se::#deposited(#full_state,#(#pn),*)==deposit
+                    #deposit_ens
                     &&#se::#owners(#full_state,owned,h,#(#pn),*) by {
                 #(assert(#full_state.#reads==#observation.#reads);)*
                 #(#agreement)*
@@ -1605,38 +1622,37 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
             }
         }
         pub proof fn #local_shared(tracked owned:#tt,tracked shared:&#tt,#dep_param #(#params),*)->(#ret)
-            requires owned.loc()==shared.loc(),Self::#local_req(owned.fragment(),shared.fragment(),#dep_value,#(#pn),*)
-            ensures #out.loc()==owned.loc(),#pe::#output(owned.fragment(),shared.fragment(),#out.fragment(),#dep_value,#wd,#(#pn),*)
+            requires owned.loc()==shared.loc(),Self::#local_req(owned.fragment(),shared.fragment(),#dep_args #(#pn),*)
+            ensures #out.loc()==owned.loc(),#pe::#output(owned.fragment(),shared.fragment(),#out.fragment(),#wd_args #(#pn),*)
         {
-            Self::#ready(owned.fragment(),shared.fragment(),#dep_value,#(#pn),*);
+            Self::#ready(owned.fragment(),shared.fragment(),#dep_args #(#pn),*);
             #pe::#shared_op(owned,shared,#dep_arg #(#pn),*)
         }
         pub proof fn #local(tracked owned:#tt,#dep_param #(#params),*)->(#ret)
-            requires Self::#local_req(owned.fragment(),<#ft>::unit(),#dep_value,#(#pn),*)
-            ensures #out.loc()==owned.loc(),#pe::#output(owned.fragment(),<#ft>::unit(),#out.fragment(),#dep_value,#wd,#(#pn),*)
+            requires Self::#local_req(owned.fragment(),<#ft>::unit(),#dep_args #(#pn),*)
+            ensures #out.loc()==owned.loc(),#pe::#output(owned.fragment(),<#ft>::unit(),#out.fragment(),#wd_args #(#pn),*)
         {
-            Self::#ready(owned.fragment(),<#ft>::unit(),#dep_value,#(#pn),*);
+            Self::#ready(owned.fragment(),<#ft>::unit(),#dep_args #(#pn),*);
             #pe::#n(owned,#dep_arg #(#pn),*)
         }
         /// Returned states describe a compatible completion, not a distinguished hidden history.
         pub proof fn #observed_op(tracked owned:#tt,#dep_param #(#params),*)->(tracked #certificate:#result)
-            requires Self::#local_req(owned.fragment(),<#ft>::unit(),#dep_value,#(#pn),*)
+            requires Self::#local_req(owned.fragment(),<#ft>::unit(),#dep_args #(#pn),*)
             ensures #certificate.token.loc()==owned.loc(),#certificate.before.invariant(),#certificate.after.invariant(),
                 <#ft>::op(<#ft>::op(owned.fragment(),<#ft>::unit()),#certificate.frame)==#pe::embed(#certificate.before),
                 #se::#strong(#certificate.before,#certificate.after,#(#pn),*),
                 #certificate.token.fragment()==#pe::#owned_post(owned.fragment(),#certificate.before,#certificate.after,#(#pn),*),
                 <#ft>::op(<#ft>::op(#certificate.token.fragment(),<#ft>::unit()),#certificate.frame)==#pe::embed(#certificate.after),
-                #physical
-                #certificate.withdrawn==#withdrawn_value,
-                #pe::#output(owned.fragment(),<#ft>::unit(),#certificate.token.fragment(),#dep_value,#certificate.withdrawn,#(#pn),*)
-                #wd_shape
+                #cert_storage_ens
+                #pe::#output(owned.fragment(),<#ft>::unit(),#certificate.token.fragment(),#cert_wd_args #(#pn),*)
+                #cert_wd_shape
         {
             let ghost #initial=owned.fragment();
-            let ghost #physical_deposit=#dep_value;
+            #physical_let
             #call
-            let (#before,#after,#witness_frame)=#pe::#witness(#initial,<#ft>::unit(),#next.fragment(),#physical_deposit,#returned_map,#(#pn),*);
+            let (#before,#after,#witness_frame)=#pe::#witness(#initial,<#ft>::unit(),#next.fragment(),#witness_args #(#pn),*);
             #monotone_withdrawn
-            #result_expr{token:#next,withdrawn:#returned_map,before:#before,after:#after,frame:#witness_frame}
+            #result_expr{token:#next,#withdrawn_field before:#before,after:#after,frame:#witness_frame}
         }
     })
 }

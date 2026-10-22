@@ -184,7 +184,10 @@ pattern binds also names its local state so). The generated lemma
 `local_ready::t::run_with_shared` are `Protocol::t` and `Protocol::t_with_shared`
 with the local precondition, and `local_ready::t::observed` also returns ghost
 `before`, `after` and `frame` values of one compatible completion together with the
-withdrawn map (a `TransitionObservation`).
+withdrawn map (a `TransitionObservation`). On a machine without storage fields the
+operations are over the plain `Token` and have no deposit or withdrawal:
+`local_ready::t::precondition(owned, shared, x)`, `local_ready::t::run(owned, x)`
+returns the token, and the `TransitionObservation` has no `withdrawn` field.
 
 ```rust
 // Before: let tracked token = M::Protocol::put_two_local(token, deposit, a, b);

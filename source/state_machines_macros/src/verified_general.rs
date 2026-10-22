@@ -1404,7 +1404,7 @@ pub fn output_with_ready(
                             owned: &owned_req,
                             observed: &observed_req,
                             reads: &reads,
-                            storage: layout,
+                            storage: Some(layout),
                             deposits: has_deposit(&tr.body),
                             withdraws: withdraw,
                             paired,
@@ -1459,6 +1459,59 @@ pub fn output_with_ready(
                     Self::#shared(owned,&empty,#(#pn),*)
                 }
             });
+                if local_ready.contains(&n.to_string()) {
+                    // Local readiness over the plain token: the same API without
+                    // deposits and withdrawals, and a witness for `observed`.
+                    let declared_requires =
+                        crate::verified_readiness::declared_requires_spec(tr, &st, &params)?;
+                    let witness = format_ident!("{}_witness", n);
+                    let output_at = |z: TokenStream, pre: TokenStream, post: TokenStream| {
+                        quote! {
+                            #pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),#z)==Self::embed(#pre)
+                            && #se::#strong(#pre,#post,#(#pn),*)&&#post.invariant()&&new==Self::#owned_post(owned,#pre,#post,#(#pn),*)
+                            &&<#ft>::op(<#ft>::op(new,h),#z)==Self::embed(#post)
+                        }
+                    };
+                    let chosen = output_at(quote! {z}, quote! {pre}, quote! {post});
+                    let result = output_at(quote! {result.2}, quote! {result.0}, quote! {result.1});
+                    ops.push(quote! {
+                        pub proof fn #witness(owned:#ft,h:#ft,new:#ft,#(#params),*)->(result:(#st,#st,#ft))
+                            requires Self::#output(owned,h,new,#(#pn),*)
+                            ensures #result
+                        {
+                            let (z,pre,post)=choose|z:#ft,pre:#st,post:#st| #chosen;
+                            (pre,post,z)
+                        }
+                    });
+                    let reads: Vec<_> = names
+                        .iter()
+                        .copied()
+                        .filter(|n| read.contains(&n.to_string()))
+                        .collect();
+                    let api = crate::verified_readiness::local_ready_api(
+                        crate::verified_readiness::Context {
+                            sm,
+                            tr,
+                            st: &st,
+                            se: &se,
+                            pe: &quote! {Protocol #expr},
+                            ft: &ft,
+                            tt: &tt,
+                            result: &result_ty,
+                            result_expr: &result_expr,
+                            params: &params,
+                            pn: &pn,
+                            owned: &owned_req,
+                            observed: &observed_req,
+                            reads: &reads,
+                            storage: None,
+                            deposits: false,
+                            withdraws: false,
+                            paired: false,
+                        },
+                    )?;
+                    local_ready_items.push((n.clone(), quote! {#declared_requires #api}));
+                }
             }
         }
     }
@@ -1554,19 +1607,24 @@ pub fn output_with_ready(
     };
     let observation_result = if local_ready.is_empty() {
         quote! {}
-    } else {
-        let Some(p) = storage else {
-            return Err(Error::new(
-                name.span(),
-                "local-ready currently requires a physical storage protocol",
-            ));
-        };
+    } else if let Some(p) = storage {
         let sty = p.ty();
         quote! {
             #(#datatype_attrs)*
             pub tracked struct TransitionObservation #decl #where_clause {
                 pub tracked token:#tt,
                 pub tracked withdrawn:#sty,
+                pub ghost before:#st,
+                pub ghost after:#st,
+                pub ghost frame:#ft,
+            }
+        }
+    } else {
+        // Without storage, nothing is withdrawn.
+        quote! {
+            #(#datatype_attrs)*
+            pub tracked struct TransitionObservation #decl #where_clause {
+                pub tracked token:#tt,
                 pub ghost before:#st,
                 pub ghost after:#st,
                 pub ghost frame:#ft,
