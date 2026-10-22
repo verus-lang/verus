@@ -23,6 +23,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use rustc_ast::IsAuto;
+use rustc_hir::def::DefKind;
 use rustc_hir::{
     ConstItemRhs, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId,
     ItemKind, Mutability,
@@ -399,6 +400,86 @@ fn check_foreign_item<'tcx>(
     Ok(())
 }
 
+/// Translate anonymous constants through executable VIR bodies for mode checking.
+fn check_anon_consts<'tcx>(
+    ctxt: &Context<'tcx>,
+    state: &mut State,
+    infos: &mut Vec<FunctionOrConstInfo<'tcx>>,
+    crate_items: &CrateItems,
+) -> Result<(), Vec<VirErr>> {
+    let tcx = ctxt.tcx;
+    for id in tcx.hir_body_owners() {
+        if !matches!(tcx.def_kind(id), DefKind::AnonConst) {
+            continue;
+        }
+        // Integer-literal discriminants cannot refer to ghost code,
+        // and may intentionally wrap (e.g., `A = 255` under `#[repr(i8)]`).
+        let body = tcx.hir_body_owned_by(id);
+        if tcx.opt_parent(id.to_def_id()).is_some_and(|p| tcx.def_kind(p) == DefKind::Variant) {
+            let mut value = body.value;
+            if let rustc_hir::ExprKind::Unary(rustc_hir::UnOp::Neg, e) = value.kind {
+                value = e;
+            }
+            if matches!(value.kind, rustc_hir::ExprKind::Lit(_)) {
+                continue;
+            }
+        }
+        // Only check anonymous constants owned by verified items.
+        // External code is trusted and is not mode-checked.
+        // The erased copy that verus! generates for each const and const fn is external,
+        // but its anonymous constants also appear in the unerased proxy, which is checked here.
+        let mut owner = tcx.opt_parent(id.to_def_id());
+        let module_path = loop {
+            let Some(owner_id) = owner else { break None };
+            if let Some(local) = owner_id.as_local() {
+                if let Some(verif) = crate_items.map.get(&rustc_hir::OwnerId { def_id: local }) {
+                    break match verif {
+                        VerifOrExternal::VerusAware { module_path, external_body, .. } => {
+                            // external_body trusts only the body of a function or const;
+                            // its signature is still checked.
+                            let in_body = || {
+                                tcx.hir_maybe_body_owned_by(local).is_none_or(|b| {
+                                    tcx.hir_parent_id_iter(tcx.local_def_id_to_hir_id(id))
+                                        .any(|p| p == b.value.hir_id)
+                                })
+                            };
+                            if *external_body && in_body() {
+                                None
+                            } else {
+                                Some(module_path.clone())
+                            }
+                        }
+                        _ => None,
+                    };
+                }
+            }
+            owner = tcx.opt_parent(owner_id);
+        };
+        let Some(module_path) = module_path else {
+            continue;
+        };
+        let span = body.value.span;
+        let mid_typ = tcx.type_of(id).skip_binder();
+        let typ = ctxt.mid_ty_to_vir(id.to_def_id(), span, &mid_typ, None).map_err(|e| vec![e])?;
+        crate::rust_to_vir_func::check_item_const_or_static(
+            ctxt,
+            state,
+            infos,
+            span,
+            id.to_def_id(),
+            vir::ast::Visibility { restricted_to: Some(module_path.clone()) },
+            &module_path,
+            &[],
+            &typ,
+            &body.id(),
+            false,
+            None,
+        )
+        .map_err(|e| vec![e])?;
+    }
+    Ok(())
+}
+
 pub(crate) fn get_root_module_path<'tcx>(ctxt: &ContextX<'tcx>) -> Path {
     ctxt.def_id_to_vir_path(rustc_hir::CRATE_OWNER_ID.to_def_id())
 }
@@ -617,6 +698,8 @@ pub fn crate_to_vir<'a, 'tcx>(
     }
 
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&CrateId::Vstd);
+
+    check_anon_consts(&ctxt, &mut state, &mut infos, crate_items)?;
 
     for info in infos.into_iter() {
         if let Err(e) = crate::rust_to_vir_func::finish_item(&ctxt, info, &mut vir.functions) {

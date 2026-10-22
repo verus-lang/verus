@@ -325,7 +325,7 @@ pub(crate) fn body_id_to_types<'tcx>(
     tcx: TyCtxt<'tcx>,
     id: &BodyId,
 ) -> &'tcx rustc_middle::ty::TypeckResults<'tcx> {
-    tcx.typeck(id.hir_id.owner.def_id)
+    tcx.typeck(tcx.hir_body_owner_def_id(*id))
 }
 
 fn mk_bctx<'tcx>(
@@ -3232,7 +3232,11 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         (Mode::Exec, Mode::Exec, Mode::Exec)
     } else {
         match mode_opt {
-            // By default, a const is dual-use as spec and exec,
+            // Anonymous constants are evaluated in executable Rust contexts.
+            None if matches!(ctxt.tcx.def_kind(id), rustc_hir::def::DefKind::AnonConst) => {
+                (Mode::Exec, Mode::Exec, Mode::Exec)
+            }
+            // By default, a named const is dual-use as spec and exec,
             // where the function is considered spec but the return value and body are exec:
             None => (Mode::Spec, Mode::Exec, Mode::Exec),
             // Otherwise, a const is a single-mode function:
