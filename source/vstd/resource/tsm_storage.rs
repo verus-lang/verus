@@ -129,6 +129,7 @@ pub proof fn storage_withdrawn_none<K, V>(old: IMap<K, V>, new: IMap<K, V>, depo
 /// `op(op(owned, h), z)`, some output `new` (withdrawing what the step from
 /// `pre` to `post` leaves out of the old base and the deposit) completes to the
 /// invariant state `post` with the same borrowed fragment `h` and frame `z`.
+#[verifier::opaque]
 pub open spec fn exchange_point<M: StorageMachine>(
     owned: M::Fragment,
     h: M::Fragment,
@@ -171,6 +172,7 @@ pub proof fn exchange_point_intro<M: StorageMachine>(
     ensures
         exchange_point::<M>(owned, h, z, pre, deposit, outputs),
 {
+    reveal(exchange_point);
 }
 
 /// Introduces [`exchange_point`] for a step between agreeing storage maps whose
@@ -249,6 +251,8 @@ pub proof fn frame_exchange_by_points<M: StorageMachine>(
             ),
         ),
 {
+    reveal(exchange_point);
+    reveal(frame_exchange_nondeterministic);
     let lifted = outputs.map(
         |pair: (M::Fragment, IMap<M::Key, M::Value>)| (M::Fragment::op(pair.0, h), pair.1),
     );
@@ -340,6 +344,7 @@ impl<M: StorageMachine> Protocol<M::Key, M::Value> for StorageCarrier<M, M::Frag
 }
 
 /// Deposit and withdrawal preserve every untouched token fragment.
+#[verifier::opaque]
 pub open spec fn frame_exchange<M: StorageMachine>(
     old: M::Fragment,
     deposit: IMap<M::Key, M::Value>,
@@ -358,6 +363,7 @@ pub open spec fn frame_exchange<M: StorageMachine>(
 }
 
 /// Nondeterministic exchanges can choose an output using the full state.
+#[verifier::opaque]
 pub open spec fn frame_exchange_nondeterministic<M: StorageMachine>(
     old: M::Fragment,
     deposit: IMap<M::Key, M::Value>,
@@ -405,6 +411,7 @@ pub proof fn frame_exchange_with_extra<M: StorageMachine>(
             withdraw,
         ),
 {
+    reveal(frame_exchange);
     assert forall|frame: M::Fragment, state: M::State|
         M::invariant(state)
             && M::Fragment::op(M::Fragment::op(old, extra), frame) == M::embed(state)
@@ -443,6 +450,7 @@ pub proof fn frame_exchange_sound<M: StorageMachine>(
             withdraw,
         ),
 {
+    reveal(frame_exchange);
     assert forall|frame: Carrier<M>, base: IMap<M::Key, M::Value>|
         #[trigger] Carrier::<M>::op(carrier_of::<M>(old), frame).rel(base) implies {
             &&& Carrier::<M>::op(carrier_of::<M>(new), frame).rel(
@@ -483,6 +491,7 @@ pub proof fn frame_exchange_nondeterministic_sound<M: StorageMachine>(
             ),
         ),
 {
+    reveal(frame_exchange_nondeterministic);
     let wrapped = ISet::new(
         |pair: (Carrier<M>, IMap<M::Key, M::Value>)|
             outputs.contains((pair.0.fragment, pair.1)),

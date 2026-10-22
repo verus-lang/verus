@@ -163,6 +163,11 @@ impl<M: Machine> PCM for Inved<M> {
 }
 
 /// The deterministic frame obligation produced by a machine transition.
+///
+/// The frame obligations (here and in `tsm_storage`) are opaque: a proof establishes
+/// and uses them through the `*_intro`, `*_by_points` and `*_sound` lemmas, so that
+/// their quantifiers stay out of the generated proofs.
+#[verifier::opaque]
 pub open spec fn frame_update<M: Machine>(old: M::Fragment, new: M::Fragment) -> bool {
     forall|frame: M::Fragment, state: M::State|
         M::invariant(state) && M::Fragment::op(old, frame) == M::embed(state)
@@ -171,6 +176,7 @@ pub open spec fn frame_update<M: Machine>(old: M::Fragment, new: M::Fragment) ->
 }
 
 /// Nondeterministic transitions may choose their output using the full state.
+#[verifier::opaque]
 pub open spec fn frame_update_nondeterministic<M: Machine>(
     old: M::Fragment,
     outputs: ISet<M::Fragment>,
@@ -195,6 +201,7 @@ pub open spec fn completes_with<M: Machine>(
 /// One frame of a generated update: for the complete state around
 /// `op(op(owned, h), z)`, some output `new` completes to an invariant state with
 /// the same borrowed fragment `h` and frame `z`.
+#[verifier::opaque]
 pub open spec fn update_point<M: Machine>(
     owned: M::Fragment,
     h: M::Fragment,
@@ -227,6 +234,7 @@ pub proof fn update_point_intro<M: Machine>(
     ensures
         update_point::<M>(owned, h, z, pre, outputs),
 {
+    reveal(update_point);
 }
 
 /// The frame obligation of a generated update, from its proof for each frame:
@@ -246,6 +254,8 @@ pub proof fn frame_update_by_points<M: Machine>(
             outputs.map(|new: M::Fragment| M::Fragment::op(new, h)),
         ),
 {
+    reveal(update_point);
+    reveal(frame_update_nondeterministic);
     let lifted = outputs.map(|new: M::Fragment| M::Fragment::op(new, h));
     assert forall|z: M::Fragment, pre: M::State|
         M::invariant(pre) && M::Fragment::op(M::Fragment::op(owned, h), z) == M::embed(
@@ -272,6 +282,7 @@ pub proof fn frame_update_sound<M: Machine>(old: M::Fragment, new: M::Fragment)
     ensures
         frame_preserving_update(Inved::<M>::Value(old), Inved::<M>::Value(new)),
 {
+    reveal(frame_update);
     assert forall|outer: Inved<M>|
         #[trigger] Inved::<M>::op(Inved::Value(old), outer).valid()
             implies Inved::<M>::op(Inved::Value(new), outer).valid() by {
@@ -308,6 +319,7 @@ pub proof fn frame_update_nondeterministic_sound<M: Machine>(
             ISet::new(|value: Inved<M>| value is Value && outputs.contains(value->Value_0)),
         ),
 {
+    reveal(frame_update_nondeterministic);
     let wrapped = ISet::new(
         |value: Inved<M>| value is Value && outputs.contains(value->Value_0),
     );
