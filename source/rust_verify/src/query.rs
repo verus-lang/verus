@@ -17,6 +17,7 @@ use vir::modes::ErasureModes;
 use vir::resolution_inference::{ResolutionInfo, krate_infer_resolution};
 use vir::traits::{DemoteTraitLookup, MergedTraits};
 use vir::well_formed::{DynCompatabilityChecks, InitialWfResults};
+use rustc_hir::def_id::DefId;
 
 /// Krate without the full functions (i.e., empty function list in the krate)
 /// Instead we have FunctionOrConstInfos which contains FunctionStubs.
@@ -26,6 +27,7 @@ pub(crate) struct PreCrate<'tcx> {
     pub krate_without_funs: Krate,
     pub infos: Vec<Arc<FunctionOrConstInfo<'tcx>>>,
     pub fun_name_to_info: HashMap<Fun, Arc<FunctionOrConstInfo<'tcx>>>,
+    pub def_id_to_fun_name_for_erasure: HashMap<DefId, Fun>,
 }
 
 /// Used to guarantee that we emitted an error
@@ -621,5 +623,19 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
             merge_erasure_modes(&mut e, erasure_modes);
         }
         Ok(Arc::new(e))
+    }
+
+    pub fn get_erasure_modes_for_def_id(&mut self, def_id: DefId)
+        -> Res<(Arc<ErasureInfo>, Arc<ErasureModes>)>
+    {
+        let pre_crate = self.get_pre_crate()?;
+        let fun = pre_crate.def_id_to_fun_name_for_erasure.get(&def_id);
+        let Some(fun) = fun else {
+            panic!("get_erasure_modes_for_def_id: missing DefId {:?}", def_id);
+        };
+
+        let (_, erasure_modes, _, _) = self.get_checked_function(fun)?;
+        let erasure_info = self.get_erasure_info(fun)?;
+        Ok((erasure_info.clone(), erasure_modes.clone()))
     }
 }

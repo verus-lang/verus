@@ -1551,11 +1551,11 @@ pub(crate) struct FunctionInfo<'tcx> {
 }
 
 pub(crate) struct ConstInfo {
-    function: vir::ast::FunctionStub,
+    pub function: vir::ast::FunctionStub,
     function_for_autospec: Option<vir::ast::FunctionStub>,
 
     pre_header: PreHeader,
-    def_id: DefId,
+    pub def_id: DefId,
     body_id: BodyId,
     vattrs: VerifierAttrs,
     span: Span,
