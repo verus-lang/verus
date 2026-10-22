@@ -454,7 +454,7 @@ pub fn parse_args_with_imports(
         OPT_VERSION,
         "Print version information (add `--output-json` to print as json) ",
     );
-    opts.optopt("", OPT_EXPORT, "Export Verus metadata for library crate", "CRATENAME=PATH");
+    opts.optopt("", OPT_EXPORT, "Export Verus metadata for library crate", "PATH");
     opts.optmulti("", OPT_IMPORT, "Import Verus metadata from library crate", "CRATENAME=PATH");
     opts.optflag("", OPT_VERIFY_ROOT, "Verify just the root module of crate");
     opts.optmulti(
