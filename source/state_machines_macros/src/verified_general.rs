@@ -1267,6 +1267,8 @@ pub fn output_with_ready(
                     requires Self::#req(f,#(#pn),*)
                     ensures ::vstd::resource::tsm_storage::frame_guard::<#pt>(f,Self::#guarded(f,#(#pn),*))
                 {
+                    // `frame_guard` is opaque; this is its proof (its users take it as an atom).
+                    reveal(::vstd::resource::tsm_storage::frame_guard);
                     assert forall|z:#ft,pre:#st|Self::invariant(pre)&&<#ft>::op(f,z)==Self::embed(pre)
                         implies #guard_le by {
                         <#ft>::op_unit(f);

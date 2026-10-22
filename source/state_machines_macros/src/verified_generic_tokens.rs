@@ -2638,6 +2638,8 @@ fn reservation_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> Toke
                 #kappa_ens
         {
             broadcast use {::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas};
+            // `fragment_included` is opaque; an observation introduces it by its remainders.
+            reveal(#t::fragment_included);
             ::vstd::prelude::use_type_invariant(self);
             let ghost bm = self.bm;
             let ghost whole = #whole_self;
@@ -2806,6 +2808,8 @@ fn finite_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenStre
                     requires #le, #link_req
                     #ens
                 {
+                    // `fragment_included` is opaque; see `__observe`.
+                    reveal(#t::fragment_included);
                     if #is_some {
                         let tracked tk = c.tracked_borrow();
                         assert(tk.__id() == #id_t);
@@ -3029,6 +3033,8 @@ fn finite_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenStre
                 requires #sub, c.instance_id() == #id, #multi_req #link_req
                 #ens
             {
+                // `fragment_included` is opaque; see `__observe`.
+                reveal(#t::fragment_included);
                 #lemmas
                 #dom_facts
                 let keys = #edom;
@@ -3357,6 +3363,7 @@ fn shared_joins(take_shared: &[(Ident, TokenStream, Option<TokenStream>)], share
                     Fragment::commutative(Fragment::unit(), #shared.fragment());
                     #shared.fragment().op_unit();
                     assert(Fragment::op(#sf, #shared.fragment()) == #shared.fragment());
+                    #t::fragment_included_unit::<Protocol>(#shared.fragment());
                     #shared
                 };
             }),
