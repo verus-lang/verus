@@ -2710,7 +2710,7 @@ impl Verifier {
 
         ctxt.flush_diagnostics(diagnostics);
 
-        let mut query = Query::new(
+        let query = Query::new(
             self.args.clone(),
             Box::new(Reporter::new_from_tcx(spans, tcx)),
             self.func_details.clone(),

@@ -18,6 +18,7 @@ use vir::resolution_inference::{ResolutionInfo, krate_infer_resolution};
 use vir::traits::{DemoteTraitLookup, MergedTraits};
 use vir::well_formed::{DynCompatabilityChecks, InitialWfResults};
 use rustc_hir::def_id::DefId;
+use std::cell::RefCell;
 
 /// Krate without the full functions (i.e., empty function list in the krate)
 /// Instead we have FunctionOrConstInfos which contains FunctionStubs.
@@ -38,11 +39,7 @@ pub(crate) struct QueryError {
 
 pub(crate) type Res<T> = Result<T, QueryError>;
 
-pub(crate) struct Query<'tcx> {
-    args: Args,
-    reporter: Box<dyn Diagnostics + 'tcx>,
-    crate_id: CrateId,
-
+pub(crate) struct State<'tcx> {
     /// Imported crates
     cache_other_vir_crates: Option<Res<Arc<Vec<Krate>>>>,
     /// Pre-crate before functions are lowered to VIR and checked in full
@@ -71,8 +68,32 @@ pub(crate) struct Query<'tcx> {
 
     /// Errors found along the way
     pub encountered_blocking_vir_error: bool,
-    pub func_details: Arc<Mutex<HashMap<Fun, FuncDetails>>>,
+}
+
+pub(crate) struct Query<'tcx> {
+    args: Args,
+    reporter: Box<dyn Diagnostics + 'tcx>,
+    crate_id: CrateId,
+    state: RefCell<State<'tcx>>,
     pub deferred_errors: Arc<Mutex<Vec<VirErr>>>,
+    pub func_details: Arc<Mutex<HashMap<Fun, FuncDetails>>>,
+}
+
+macro_rules! cache_or_compute {
+    ( $self:ident, $name:ident, $fun_name:ident ( $( $args:expr ),* )  ) => {
+        {
+            let state = $self.state.borrow();
+            if let Some($name) = &state.$name {
+                $name.clone()
+            } else {
+                std::mem::drop(state);
+                let s = $self.$fun_name();
+                let mut state = $self.state.borrow_mut();
+                state.$name = Some(s);
+                state.$name.clone().unwrap()
+            }
+        }
+    };
 }
 
 impl<'tcx> Query<'tcx> {
@@ -89,40 +110,42 @@ impl<'tcx> Query<'tcx> {
             args,
             reporter,
             crate_id,
+            state: RefCell::new(State {
+                cache_other_vir_crates: Some(Ok(Arc::new(other_vir_crates))),
+                cache_pre_crate: Some(Ok(Arc::new(pre_crate))),
+                cache_demote_trait_lookup: None,
+                cache_merged_traits: None,
+                cache_initial_wf_results: None,
+                cache_all_function_stubs: None,
+                cache_unchecked_functions: HashMap::new(),
+                cache_checked_functions: HashMap::new(),
+                cache_exportable_crate: None,
+                cache_merged_crate: None,
+                cache_erasure_modes: None,
 
-            cache_other_vir_crates: Some(Ok(Arc::new(other_vir_crates))),
-            cache_pre_crate: Some(Ok(Arc::new(pre_crate))),
-            cache_demote_trait_lookup: None,
-            cache_merged_traits: None,
-            cache_initial_wf_results: None,
-            cache_all_function_stubs: None,
-            cache_unchecked_functions: HashMap::new(),
-            cache_checked_functions: HashMap::new(),
-            cache_exportable_crate: None,
-            cache_merged_crate: None,
-            cache_erasure_modes: None,
-
-            encountered_blocking_vir_error: false,
+                encountered_blocking_vir_error: false,
+            }),
             deferred_errors,
             func_details,
         }
     }
 
-    fn emit_errors(&mut self, errs: Vec<VirErr>) -> QueryError {
+    fn emit_errors(&self, errs: Vec<VirErr>) -> QueryError {
+        let mut state = self.state.borrow_mut();
         assert!(errs.len() > 0);
-        self.encountered_blocking_vir_error = true;
+        state.encountered_blocking_vir_error = true;
         for err in errs {
             self.reporter.report_now(&err.to_any());
         }
         QueryError { _i_just_emitted_an_error: () }
     }
 
-    fn emit_error(&mut self, err: VirErr) -> QueryError {
+    fn emit_error(&self, err: VirErr) -> QueryError {
         self.emit_errors(vec![err])
     }
 
     fn handle_wf_error(
-        &mut self,
+        &self,
         ctxt: &Context<'tcx>,
         fun: Option<Fun>,
         wf_err: vir::well_formed::WFErr,
@@ -151,7 +174,7 @@ impl<'tcx> Query<'tcx> {
         QueryError { _i_just_emitted_an_error: () }
     }
 
-    fn record_func_failed_proof_notes(&mut self, func: &Fun, failed_proof_notes: HashSet<String>) {
+    fn record_func_failed_proof_notes(&self, func: &Fun, failed_proof_notes: HashSet<String>) {
         use std::collections::hash_map::Entry;
         let mut func_details = self.func_details.lock().unwrap();
         match func_details.entry(func.clone()) {
@@ -167,11 +190,11 @@ impl<'tcx> Query<'tcx> {
         }
     }
 
-    fn emit_non_blocking_errors(&mut self, errs: Vec<VirErr>) {
+    fn emit_non_blocking_errors(&self, errs: Vec<VirErr>) {
         self.deferred_errors.lock().unwrap().extend(errs);
     }
 
-    fn emit_diags(&mut self, diags: Vec<VirErrAs>) {
+    fn emit_diags(&self, diags: Vec<VirErrAs>) {
         for diag in diags.into_iter() {
             match diag {
                 vir::ast::VirErrAs::Warning(err) => {
@@ -186,30 +209,19 @@ impl<'tcx> Query<'tcx> {
 
     //// Import crate
 
-    pub fn get_other_vir_crates(&mut self) -> Res<Arc<Vec<Krate>>> {
-        if let Some(imported) = &self.cache_other_vir_crates {
+    pub fn get_other_vir_crates(&self) -> Res<Arc<Vec<Krate>>> {
+        let state = self.state.borrow();
+        if let Some(imported) = &state.cache_other_vir_crates {
             return imported.clone();
         }
         unreachable!();
     }
 
-    /*fn _compute_imported(&mut self) -> Res<Arc<ImportOutput>> {
-        match crate::import_export::import_crates(&self.args, self.import_virs_via_cargo.clone()) {
-            Ok(imported) => Ok(Arc::new(imported)),
-            Err(err) => {
-                assert!(err.spans.len() == 0);
-                assert!(err.level == vir::messages::MessageLevel::Error);
-                self.compiler.sess.dcx().err(err.note.clone());
-                self.encountered_vir_error = true;
-                return Err(QueryError {});
-            }
-        }
-    }*/
-
     //// Pre-crate
 
-    pub fn get_pre_crate(&mut self) -> Res<Arc<PreCrate<'tcx>>> {
-        if let Some(pre_crate) = &self.cache_pre_crate {
+    pub fn get_pre_crate(&self) -> Res<Arc<PreCrate<'tcx>>> {
+        let state = self.state.borrow();
+        if let Some(pre_crate) = &state.cache_pre_crate {
             return pre_crate.clone();
         }
         unreachable!();
@@ -217,32 +229,13 @@ impl<'tcx> Query<'tcx> {
         //self.cache_pre_crate.clone().unwrap()
     }
 
-    /*fn _compute_pre_crate(&mut self) -> Res<Arc<PreCrate<'tcx>>> {
-        let imported = self.get_imported()?;
-        let mut ctxtx = None;
-        std::mem::swap(&mut self.ctxtx, &mut ctxtx);
-        let res = crate::rust_to_vir::crate_to_vir(ctxtx.unwrap(), &imported.vir_crates, &self.crate_items);
-        match res {
-            Ok(pre_crate) => {
-                Ok(Arc::new(pre_crate))
-            }
-            Err(errs) => {
-                self.emit_errors(errs)
-            }
-        }
-    }*/
-
     //// Get all function stubs
 
-    pub fn get_all_function_stubs(&mut self) -> Res<Arc<HashMap<Fun, FunctionStub>>> {
-        if let Some(all_function_stubs) = &self.cache_all_function_stubs {
-            return all_function_stubs.clone();
-        }
-        self.cache_all_function_stubs = Some(self._compute_all_function_stubs());
-        self.cache_all_function_stubs.clone().unwrap()
+    pub fn get_all_function_stubs(&self) -> Res<Arc<HashMap<Fun, FunctionStub>>> {
+        cache_or_compute!(self, cache_all_function_stubs, _compute_all_function_stubs())
     }
 
-    fn _compute_all_function_stubs(&mut self) -> Res<Arc<HashMap<Fun, FunctionStub>>> {
+    fn _compute_all_function_stubs(&self) -> Res<Arc<HashMap<Fun, FunctionStub>>> {
         // combine all the function stubs from our crate and the external crates
         let other_vir_crates = self.get_other_vir_crates()?;
         let pre_crate = self.get_pre_crate()?;
@@ -270,18 +263,11 @@ impl<'tcx> Query<'tcx> {
 
     //// DemoteTraitsLookup
 
-    pub fn get_demote_trait_lookup(&mut self) -> Res<Arc<DemoteTraitLookup>> {
-        if let Some(demote_trait_lookup) = &self.cache_demote_trait_lookup {
-            return demote_trait_lookup.clone();
-        }
-        self.cache_demote_trait_lookup = Some(self._compute_demote_trait_lookup());
-        self.cache_demote_trait_lookup.clone().unwrap()
+    pub fn get_demote_trait_lookup(&self) -> Res<Arc<DemoteTraitLookup>> {
+        cache_or_compute!(self, cache_demote_trait_lookup, _compute_demote_trait_lookup())
     }
 
-    pub fn _compute_demote_trait_lookup(&mut self) -> Res<Arc<DemoteTraitLookup>> {
-        if let Some(demote_trait_lookup) = &self.cache_demote_trait_lookup {
-            return demote_trait_lookup.clone();
-        }
+    pub fn _compute_demote_trait_lookup(&self) -> Res<Arc<DemoteTraitLookup>> {
         let other_vir_crates = self.get_other_vir_crates()?;
         let pre_crate = self.get_pre_crate()?;
         let function_stubs = self.get_all_function_stubs()?;
@@ -294,15 +280,11 @@ impl<'tcx> Query<'tcx> {
 
     //// Merged traits
 
-    pub fn get_merged_traits(&mut self) -> Res<MergedTraits> {
-        if let Some(merged_traits) = &self.cache_merged_traits {
-            return merged_traits.clone();
-        }
-        self.cache_merged_traits = Some(self._compute_merged_traits());
-        self.cache_merged_traits.clone().unwrap()
+    pub fn get_merged_traits(&self) -> Res<MergedTraits> {
+        cache_or_compute!(self, cache_merged_traits, _compute_merged_traits())
     }
 
-    pub fn _compute_merged_traits(&mut self) -> Res<MergedTraits> {
+    pub fn _compute_merged_traits(&self) -> Res<MergedTraits> {
         let other_vir_crates = self.get_other_vir_crates()?;
         let pre_crate = self.get_pre_crate()?;
         vir::traits::merge_external_traits(&pre_crate.krate_without_funs, &other_vir_crates)
@@ -311,15 +293,11 @@ impl<'tcx> Query<'tcx> {
 
     //// check_crate_initial
 
-    pub fn get_initial_wf_results(&mut self) -> Res<InitialWfResults> {
-        if let Some(initial_wf_results) = &self.cache_initial_wf_results {
-            return initial_wf_results.clone();
-        }
-        self.cache_initial_wf_results = Some(self._compute_initial_wf_results());
-        self.cache_initial_wf_results.clone().unwrap()
+    pub fn get_initial_wf_results(&self) -> Res<InitialWfResults> {
+        cache_or_compute!(self, cache_initial_wf_results, _compute_initial_wf_results())
     }
 
-    fn _compute_initial_wf_results(&mut self) -> Res<InitialWfResults> {
+    fn _compute_initial_wf_results(&self) -> Res<InitialWfResults> {
         let pre_crate = self.get_pre_crate()?;
         let ctxt = &pre_crate.ctxt;
         let other_vir_crates = self.get_other_vir_crates()?;
@@ -340,24 +318,26 @@ impl<'tcx> Query<'tcx> {
 
     //// datatypes map
 
-    pub fn get_datatypes_map(&mut self) -> Res<Arc<HashMap<Path, Datatype>>> {
+    pub fn get_datatypes_map(&self) -> Res<Arc<HashMap<Path, Datatype>>> {
         Ok(self.get_initial_wf_results()?.lookup.dts.clone())
     }
 
     //// Translating an individual function from HIR -> VIR
 
-    pub fn get_unchecked_function(&mut self, fun: &Fun) -> Res<Function> {
+    pub fn get_unchecked_function(&self, fun: &Fun) -> Res<Function> {
         Ok(self.get_unchecked_function_pair(fun)?.0.clone())
     }
 
-    pub fn get_erasure_info(&mut self, fun: &Fun) -> Res<Arc<ErasureInfo>> {
+    pub fn get_erasure_info(&self, fun: &Fun) -> Res<Arc<ErasureInfo>> {
         Ok(self.get_unchecked_function_pair(fun)?.1.clone())
     }
 
-    pub fn get_unchecked_function_pair(&mut self, fun: &Fun) -> Res<(Function, Arc<ErasureInfo>)> {
-        if let Some(f) = self.cache_unchecked_functions.get(fun) {
+    pub fn get_unchecked_function_pair(&self, fun: &Fun) -> Res<(Function, Arc<ErasureInfo>)> {
+        let state = self.state.borrow();
+        if let Some(f) = state.cache_unchecked_functions.get(fun) {
             return f.clone();
         }
+        std::mem::drop(state);
 
         let pre_crate = self.get_pre_crate()?;
         let ctxt = &pre_crate.ctxt;
@@ -365,25 +345,28 @@ impl<'tcx> Query<'tcx> {
         let mut new_functions = vec![];
         let result = finish_item(ctxt, &info, &mut new_functions);
         ctxt.flush_diagnostics(&*self.reporter);
+
         match result {
             Ok(()) => {
+                let mut state = self.state.borrow_mut();
                 for (new_function, erasure_info) in new_functions.into_iter() {
-                    let found = self
+                    let found = state
                         .cache_unchecked_functions
                         .insert(new_function.x.name.clone(), Ok((new_function, Arc::new(erasure_info))));
                     assert!(found.is_none());
                 }
                 // Sanity check we got all the functions we expected
                 for stub in info.iter_stubs() {
-                    assert!(self.cache_unchecked_functions.contains_key(&stub.x.name));
+                    assert!(state.cache_unchecked_functions.contains_key(&stub.x.name));
                 }
-                self.cache_unchecked_functions.get(fun).unwrap().clone()
+                state.cache_unchecked_functions.get(fun).unwrap().clone()
             }
             Err(err) => {
                 let err = self.emit_error(err);
+                let mut state = self.state.borrow_mut();
                 for stub in info.iter_stubs() {
                     let found =
-                        self.cache_unchecked_functions.insert(stub.x.name.clone(), Err(err));
+                        state.cache_unchecked_functions.insert(stub.x.name.clone(), Err(err));
                     assert!(found.is_none());
                 }
                 Err(err)
@@ -394,20 +377,23 @@ impl<'tcx> Query<'tcx> {
     //// Checking an individual function
 
     pub fn get_checked_function(
-        &mut self,
+        &self,
         fun: &Fun,
     ) -> Res<(Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>, DynCompatabilityChecks)>
     {
-        if let Some(f) = self.cache_checked_functions.get(fun) {
+        let state = self.state.borrow();
+        if let Some(f) = state.cache_checked_functions.get(fun) {
             return f.clone();
         }
+        std::mem::drop(state);
         let res = self._compute_checked_function(fun);
-        self.cache_checked_functions.insert(fun.clone(), res.clone());
+        let mut state = self.state.borrow_mut();
+        state.cache_checked_functions.insert(fun.clone(), res.clone());
         res
     }
 
     fn _compute_checked_function(
-        &mut self,
+        &self,
         fun: &Fun,
     ) -> Result<
         (Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>, DynCompatabilityChecks),
@@ -468,15 +454,11 @@ impl<'tcx> Query<'tcx> {
 
     //// Getting the completed krate
 
-    pub fn get_exportable_crate(&mut self) -> Res<Krate> {
-        if let Some(exportable_crate) = &self.cache_exportable_crate {
-            return exportable_crate.clone();
-        }
-        self.cache_exportable_crate = Some(self._compute_exportable_crate());
-        self.cache_exportable_crate.clone().unwrap()
+    pub fn get_exportable_crate(&self) -> Res<Krate> {
+        cache_or_compute!(self, cache_exportable_crate, _compute_exportable_crate())
     }
 
-    pub fn _compute_exportable_crate(&mut self) -> Res<Krate> {
+    pub fn _compute_exportable_crate(&self) -> Res<Krate> {
         let initial_wf_results = self.get_initial_wf_results()?;
         let _ = self.get_initial_wf_results()?;
         let pre_crate = self.get_pre_crate()?;
@@ -521,23 +503,15 @@ impl<'tcx> Query<'tcx> {
 
     //// Getting the merged krate
 
-    pub fn get_merged_crate(&mut self) -> Res<Krate> {
-        if let Some(merged_crate) = &self.cache_merged_crate {
-            return Ok(merged_crate.clone()?.0);
-        }
-        self.cache_merged_crate = Some(self._compute_merged_crate());
-        Ok(self.cache_merged_crate.clone().unwrap()?.0)
+    pub fn get_merged_crate(&self) -> Res<Krate> {
+        Ok(cache_or_compute!(self, cache_merged_crate, _compute_merged_crate())?.0)
     }
 
-    pub fn get_updated_warning_ctx(&mut self) -> Res<Arc<WarningCtx>> {
-        if let Some(merged_crate) = &self.cache_merged_crate {
-            return Ok(merged_crate.clone()?.1);
-        }
-        self.cache_merged_crate = Some(self._compute_merged_crate());
-        Ok(self.cache_merged_crate.clone().unwrap()?.1)
+    pub fn get_updated_warning_ctx(&self) -> Res<Arc<WarningCtx>> {
+        Ok(cache_or_compute!(self, cache_merged_crate, _compute_merged_crate())?.1)
     }
 
-    pub fn _compute_merged_crate(&mut self) -> Res<(Krate, Arc<WarningCtx>)> {
+    pub fn _compute_merged_crate(&self) -> Res<(Krate, Arc<WarningCtx>)> {
         let krate = self.get_exportable_crate()?;
         let pre_crate = self.get_pre_crate()?;
         let demote_trait_lookup = self.get_demote_trait_lookup()?;
@@ -600,15 +574,11 @@ impl<'tcx> Query<'tcx> {
     //// TODO: Ultimately, we will want to use these individually rather than
     //// merging them all together.
 
-    pub fn get_erasure_modes(&mut self) -> Res<Arc<ErasureModes>> {
-        if let Some(erasure_modes) = &self.cache_erasure_modes {
-            return erasure_modes.clone();
-        }
-        self.cache_erasure_modes = Some(self._compute_erasure_modes());
-        self.cache_erasure_modes.clone().unwrap()
+    pub fn get_erasure_modes(&self) -> Res<Arc<ErasureModes>> {
+        cache_or_compute!(self, cache_erasure_modes, _compute_erasure_modes())
     }
 
-    pub fn _compute_erasure_modes(&mut self) -> Res<Arc<ErasureModes>> {
+    pub fn _compute_erasure_modes(&self) -> Res<Arc<ErasureModes>> {
         fn merge_erasure_modes(a: &mut ErasureModes, b: Arc<ErasureModes>) {
             let ErasureModes { local_modes, binder_modes, ctor_modes } = a;
             local_modes.extend(b.local_modes.clone());
@@ -625,7 +595,7 @@ impl<'tcx> Query<'tcx> {
         Ok(Arc::new(e))
     }
 
-    pub fn get_erasure_modes_for_def_id(&mut self, def_id: DefId)
+    pub fn get_erasure_modes_for_def_id(&self, def_id: DefId)
         -> Res<(Arc<ErasureInfo>, Arc<ErasureModes>)>
     {
         let pre_crate = self.get_pre_crate()?;
