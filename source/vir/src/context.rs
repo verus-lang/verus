@@ -133,8 +133,6 @@ pub struct Ctx {
     // is overkill, perhaps this should be revisited.
     pub(crate) string_hashes: RefCell<HashMap<BigUint, Arc<String>>>,
     pub(crate) byte_string_hashes: RefCell<HashMap<BigUint, Arc<Vec<u8>>>>,
-    // proof debug purposes
-    pub debug: bool,
     /// Observer for the verification pipeline.
     pub observer: Option<std::rc::Rc<std::cell::RefCell<dyn crate::vir_observer::VirObserver>>>,
     /// AIR-level handles to the same shared observer object, included here so the
@@ -839,7 +837,6 @@ impl Ctx {
         used_builtins: crate::prune::UsedBuiltins,
         fndef_types: Vec<Fun>,
         resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
-        debug: bool,
         observers: crate::vir_observer::Observers,
     ) -> Result<Self, VirErr> {
         let name_ctxt = NameCtxt::new();
@@ -929,7 +926,6 @@ impl Ctx {
             global,
             string_hashes,
             byte_string_hashes,
-            debug,
             observer,
             air_observer,
             query_result_observer,

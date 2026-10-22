@@ -14,7 +14,7 @@ fn lib_with_example_imports_own_lib() {
     let project_dir =
         MockPackage::new(package_name).lib().example("foo").verify(true).materialize();
 
-    let args = [BIN_NAME, "build"];
+    let args = [BIN_NAME, "build", "--override-verus-version", "VerusVersion"];
     let plan = plan_execution(project_dir.path(), args).expect("plan");
 
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
@@ -36,7 +36,7 @@ fn bin_only_no_own_lib_import() {
 
     let project_dir = MockPackage::new(package_name).bin("main").verify(true).materialize();
 
-    let args = [BIN_NAME, "build"];
+    let args = [BIN_NAME, "build", "--override-verus-version", "VerusVersion"];
     let plan = plan_execution(project_dir.path(), args).expect("plan");
 
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
@@ -72,7 +72,16 @@ fn workspace_workdir() {
     let verify_unset_prefix = format!("{VERUS_DRIVER_VERIFY}{unset}-0.1.0-");
     let verify_hasdeps_prefix = format!("{VERUS_DRIVER_VERIFY}{hasdeps}-0.1.0-");
 
-    let args = [BIN_NAME, "build", "--release", "--", "--expand-errors", "--rlimit=100"];
+    let args = [
+        BIN_NAME,
+        "build",
+        "--override-verus-version",
+        "VerusVersion",
+        "--release",
+        "--",
+        "--expand-errors",
+        "--rlimit=100",
+    ];
     let plan = plan_execution(workspace_dir.path(), args).expect("plan");
 
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
@@ -102,7 +111,7 @@ fn workspace_workdir() {
     assert!(hasdeps_driver_args.contains(&"--rlimit=100"));
 
     cargo_plan.assert_env_has(RUSTC_WRAPPER);
-    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus-VerusVersion");
     cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
     cargo_plan.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
     cargo_plan.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");

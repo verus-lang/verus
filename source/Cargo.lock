@@ -3239,7 +3239,6 @@ dependencies = [
  "is-terminal",
  "rand 0.10.2",
  "regex",
- "rust_verify",
  "serde_json",
  "toml",
  "win32job",
@@ -3253,7 +3252,7 @@ version = "0.0.0-2026-10-11-0230"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-09-20-0158"
+version = "0.0.0-2026-10-18-0147"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -3274,7 +3273,7 @@ dependencies = [
 
 [[package]]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-10-11-0230"
+version = "0.0.0-2026-10-18-0147"
 dependencies = [
  "indexmap 2.14.0",
  "proc-macro2",

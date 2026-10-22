@@ -1946,8 +1946,44 @@ test_verify_one_file! {
             let x = format!("ok {:04}!", &(2 + 2));
             let u = 5usize + 5usize;
             let x = format!("ok {} then {} then {} and {}", &(2 + 2), true, x, u);
+
+            let w: usize = 65535;
+            let x = 5u8;
+            let _ = format!("{:1$}", x, w);
+            let _ = format!("{:width$}", x, width = w);
+            let _ = format!("{x:w$}");
+            let _ = format!("{:.1$}", x, w);
+            let _ = format!("{:.*}", w, x);
+            let _ = format!("{:.prec$}", x, prec = w);
+            let _ = format_args!("{:1$}", x, w);
+            let _ = format!("{:5}", x);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] format_count_out_of_range verus_code! {
+        use vstd::*;
+
+        fn width() {
+            let w: usize = 65536;
+            let _ = format!("{:1$}", 5u8, w); // FAILS
+        }
+
+        fn precision() {
+            let p: usize = 65536;
+            let _ = format!("{:.*}", p, 5u8); // FAILS
+        }
+
+        fn format_args_width() {
+            let w: usize = 65536;
+            let _ = format_args!("{:1$}", 5u8, w); // FAILS
+        }
+    } => Err(err) => {
+        assert_vir_error_msgs(err.clone(), &["precondition not satisfied"; 3]);
+        assert_help_error_msg(err.clone(), "*x <= u16::MAX");
+        assert_fails(err, 3);
+    }
 }
 
 test_verify_one_file! {
@@ -1973,6 +2009,55 @@ test_verify_one_file! {
             let x = format!("{}", s); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] formatting_callers_require_fmt_req verus_code! {
+        use core::fmt::{Debug, Display, Error, Formatter};
+        use vstd::prelude::*;
+        use vstd::std_specs::fmt::{DebugSpecImpl, DisplaySpecImpl};
+
+        pub struct K {
+            pub a: u8,
+        }
+
+        impl DisplaySpecImpl for K {
+            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
+                false
+            }
+        }
+
+        impl DebugSpecImpl for K {
+            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
+                false
+            }
+        }
+
+        impl Display for K {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+                assert(false);
+                let v: Vec<u8> = Vec::new();
+                let _ = v[0];
+                Ok(())
+            }
+        }
+
+        impl Debug for K {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+                Display::fmt(self, f)
+            }
+        }
+
+        fn main() {
+            let k = K { a: 1 };
+            let _ = k.to_string(); // FAILS
+        }
+
+        fn test_new_argument() {
+            let k = K { a: 1 };
+            let _ = vstd::pervasive::__new_argument(&k); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {
@@ -2022,4 +2107,23 @@ test_verify_one_file! {
         assert_eq!(err.errors.len(), 3);
         assert!(err.errors.iter().all(|e| e.rendered.contains("precondition not satisfied")));
     }
+}
+
+test_verify_one_file! {
+    #[test] maybe_uninit_write verus_code! {
+        use core::mem::MaybeUninit;
+        use vstd::prelude::*;
+        use vstd::std_specs::maybe_uninit::MaybeUninitAdditionalSpecFns;
+
+        fn test() {
+            let mut m: MaybeUninit<u8> = MaybeUninit::uninit();
+            let r = m.write(5);
+            assert(*r == 5);
+            *r = 7;
+            assert(m.mem_contents().is_init());
+            assert(m.mem_contents().value() == 7);
+            let v = unsafe { m.assume_init() };
+            assert(v == 7);
+        }
+    } => Ok(())
 }

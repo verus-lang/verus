@@ -270,6 +270,27 @@ fn f64_typ() -> BvTyp {
     BvTyp::Float { exp_bits: 11, sig_bits: 53 }
 }
 
+/// `BvTyp::Float` expressions are bitvectors of width `exp_bits + sig_bits`.
+/// SMT floating-point operators need a `FloatingPoint` term, so convert at that boundary.
+fn float_from_ieee_bits(bv_typ: BvTyp, expr: Expr) -> Expr {
+    match bv_typ {
+        BvTyp::Float { exp_bits, sig_bits } => {
+            let op = air::ast::UnaryOp::FloatFromIeeeBits { exp_bits, sig_bits };
+            Arc::new(ExprX::Unary(op, expr))
+        }
+        _ => expr,
+    }
+}
+
+/// Convert an SMT `FloatingPoint` result back to the bit-pattern representation
+/// when the Verus type is still a float.
+fn float_to_ieee_bits(bv_typ: BvTyp, expr: Expr) -> Expr {
+    match bv_typ {
+        BvTyp::Float { .. } => Arc::new(ExprX::Unary(air::ast::UnaryOp::FloatToIeeeBits, expr)),
+        _ => expr,
+    }
+}
+
 fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, VirErr> {
     match &exp.x {
         ExpX::Const(crate::ast::Constant::Int(i)) => {
@@ -283,16 +304,14 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
         ExpX::Const(crate::ast::Constant::Bool(b)) => {
             Ok(BvExpr { expr: Arc::new(ExprX::Const(Constant::Bool(*b))), bv_typ: BvTyp::Bool })
         }
-        ExpX::Const(crate::ast::Constant::Float32(i)) => {
-            let e_i = Arc::new(ExprX::Const(Constant::BitVec(Arc::new(i.to_string()), 32)));
-            let op = air::ast::UnaryOp::FloatFromIeeeBits { exp_bits: 8, sig_bits: 24 };
-            Ok(BvExpr { expr: Arc::new(ExprX::Unary(op, e_i)), bv_typ: f32_typ() })
-        }
-        ExpX::Const(crate::ast::Constant::Float64(i)) => {
-            let e_i = Arc::new(ExprX::Const(Constant::BitVec(Arc::new(i.to_string()), 64)));
-            let op = air::ast::UnaryOp::FloatFromIeeeBits { exp_bits: 11, sig_bits: 53 };
-            Ok(BvExpr { expr: Arc::new(ExprX::Unary(op, e_i)), bv_typ: f64_typ() })
-        }
+        ExpX::Const(crate::ast::Constant::Float32(i)) => Ok(BvExpr {
+            expr: Arc::new(ExprX::Const(Constant::BitVec(Arc::new(i.to_string()), 32))),
+            bv_typ: f32_typ(),
+        }),
+        ExpX::Const(crate::ast::Constant::Float64(i)) => Ok(BvExpr {
+            expr: Arc::new(ExprX::Const(Constant::BitVec(Arc::new(i.to_string()), 64))),
+            bv_typ: f64_typ(),
+        }),
         ExpX::Const(crate::ast::Constant::Real(r)) => {
             Ok(BvExpr { expr: air::ast_util::mk_real(r), bv_typ: BvTyp::Real })
         }
@@ -392,6 +411,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 use air::ast::RoundingMode;
                 let BvExpr { expr: e_from, bv_typ: t_from } = bv_exp_to_expr(ctx, state, arg)?;
                 let t_to = bv_typ_for_vir_typ(state, &exp.span, &exp.typ)?;
+                let e_from = float_from_ieee_bits(t_from, e_from);
                 let op = match (t_from, t_to) {
                     (_, BvTyp::Float { exp_bits, sig_bits }) => {
                         let signed = !matches!(t_from, BvTyp::Bv(_, Extend::Zero));
@@ -414,13 +434,15 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                         panic!("internal error: unexpected cast from {:?} to {:?}", t_from, t_to)
                     }
                 };
-                Ok(BvExpr { expr: Arc::new(ExprX::Unary(op, e_from)), bv_typ: t_to })
+                let expr = float_to_ieee_bits(t_to, Arc::new(ExprX::Unary(op, e_from)));
+                Ok(BvExpr { expr, bv_typ: t_to })
             }
             UnaryOp::IeeeFloat(fop) => {
                 use crate::ast::IeeeFloatUnaryOp;
                 use air::ast::RoundingMode;
                 let BvExpr { expr, bv_typ } = bv_exp_to_expr(ctx, state, arg)?;
                 assert!(matches!(bv_typ, BvTyp::Float { .. }));
+                let expr = float_from_ieee_bits(bv_typ, expr);
                 let round = |r: RoundingMode| (false, air::ast::UnaryOp::FloatRoundToInt(r));
                 let (is_bool, op) = match fop {
                     IeeeFloatUnaryOp::Cast => unreachable!(),
@@ -440,7 +462,8 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 };
 
                 let bv_typ = if is_bool { BvTyp::Bool } else { bv_typ };
-                Ok(BvExpr { expr: Arc::new(ExprX::Unary(op, expr)), bv_typ })
+                let expr = float_to_ieee_bits(bv_typ, Arc::new(ExprX::Unary(op, expr)));
+                Ok(BvExpr { expr, bv_typ })
             }
             UnaryOp::IntToReal => {
                 return Err(error(
@@ -664,6 +687,8 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             let lhs = bv_exp_to_expr(ctx, state, lhs)?;
             let rhs = bv_exp_to_expr(ctx, state, rhs)?;
             assert!(matches!((lhs.bv_typ, rhs.bv_typ), (BvTyp::Float { .. }, BvTyp::Float { .. })));
+            let lhs_expr = float_from_ieee_bits(lhs.bv_typ, lhs.expr);
+            let rhs_expr = float_from_ieee_bits(rhs.bv_typ, rhs.expr);
 
             let round = RoundingMode::RNE;
             let (is_bool, op) = match fop {
@@ -679,7 +704,8 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             };
 
             let bv_typ = if is_bool { BvTyp::Bool } else { lhs.bv_typ };
-            Ok(BvExpr { expr: Arc::new(ExprX::Binary(op, lhs.expr, rhs.expr)), bv_typ })
+            let expr = float_to_ieee_bits(bv_typ, Arc::new(ExprX::Binary(op, lhs_expr, rhs_expr)));
+            Ok(BvExpr { expr, bv_typ })
         }
         ExpX::Binary(BinaryOp::Arith(arith_op), lhs, rhs) => {
             return do_arith_then_clip(ctx, state, &exp.span, arith_op, lhs, rhs, None);
@@ -971,9 +997,9 @@ impl BvTyp {
         match *self {
             BvTyp::Bv(w, _) => air::ast_util::bv_typ(w),
             BvTyp::Bool => bool_typ(),
-            BvTyp::Float { exp_bits, sig_bits } => {
-                Arc::new(air::ast::TypX::Float { exp_bits, sig_bits })
-            }
+            // Same domain as sst_to_air: the integer value of the IEEE bit pattern.
+            // Width is exp_bits + sig_bits (32 for f32, 64 for f64).
+            BvTyp::Float { exp_bits, sig_bits } => air::ast_util::bv_typ(exp_bits + sig_bits),
             BvTyp::Real => Arc::new(air::ast::TypX::Real),
         }
     }

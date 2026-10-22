@@ -212,7 +212,7 @@ test_verify_one_file_with_options! {
             };
         }
     } => Err(err) => assert_vir_error_msg(err,
-        "mutable-reference bindings in closure parameters are not supported")
+        "mutable-reference bindings in parameters are not supported")
 }
 
 test_verify_one_file_with_options! {
@@ -221,7 +221,7 @@ test_verify_one_file_with_options! {
             let f = |ref mut x: u64| {};
         }
     } => Err(err) => assert_vir_error_msg(err,
-        "mutable-reference bindings in closure parameters are not supported")
+        "mutable-reference bindings in parameters are not supported")
 }
 
 test_verify_one_file_with_options! {
@@ -232,7 +232,7 @@ test_verify_one_file_with_options! {
             let f = |Pair { values: (x, ref mut y) }: Pair| {};
         }
     } => Err(err) => assert_vir_error_msg(err,
-        "mutable-reference bindings in closure parameters are not supported")
+        "mutable-reference bindings in parameters are not supported")
 }
 
 test_verify_one_file_with_options! {

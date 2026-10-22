@@ -4887,3 +4887,119 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "Call to non-static function fails to satisfy `callee.requires(args)`")
 }
+
+test_verify_one_file! {
+    // `-> impl Trait` in a trait: rustc's synthesized associated type has no name, which used
+    // to panic in the projection conversion; now it is reported as unsupported
+    // a trait outside verus! with `-> Option<impl Iterator>`, used from verified code: an
+    // ordinary error (undeclared trait), no panic
+    #[test] test_rpitit_unsupported_no_panic code! {
+        use vstd::prelude::*;
+        pub trait T {
+            fn it(&self) -> Option<impl Iterator<Item = u8>>;
+        }
+        fn take<A>(a: A) {}
+        verus! {
+            #[verifier::external_body]
+            fn take_v<A>(a: A) {}
+            fn g<X: T>(x: &X) {
+                take_v(x.it());
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "return-position `impl Trait` in a trait")
+}
+
+test_verify_one_file! {
+    #[test] renamed_method_typ_param_issue3117 verus_code! {
+        trait Tag {
+            spec fn tag() -> int;
+        }
+
+        trait One: Tag {
+            proof fn one()
+                ensures Self::tag() == 1;
+        }
+
+        impl Tag for u8 {
+            spec fn tag() -> int { 1 }
+        }
+
+        impl One for u8 {
+            proof fn one() {}
+        }
+
+        impl Tag for u16 {
+            spec fn tag() -> int { 2 }
+        }
+
+        trait T {
+            proof fn f<A: Tag>()
+                ensures A::tag() == 1; // FAILS
+        }
+
+        struct S<A>(A);
+
+        impl<A: One> T for S<A> {
+            proof fn f<B: Tag>() {
+                A::one();
+            }
+        }
+
+        proof fn contradiction()
+            ensures false,
+        {
+            <S<u8> as T>::f::<u16>();
+            assert(<u16 as Tag>::tag() == 2);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] renamed_method_typ_param_ok_issue3117 verus_code! {
+        trait One {
+            spec fn tag() -> int;
+
+            proof fn one()
+                ensures Self::tag() == 1;
+        }
+
+        trait T {
+            proof fn f<A: One>(x: int)
+                requires x == A::tag(),
+                ensures x == 1;
+        }
+
+        struct S<A>(A);
+
+        impl<A> T for S<A> {
+            proof fn f<B: One>(x: int) {
+                B::one();
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] swapped_method_typ_params_issue3117 verus_code! {
+        trait Tag {
+            spec fn tag() -> int;
+        }
+
+        trait Swap {
+            proof fn f<A: Tag, B: Tag>(x: int, y: int)
+                requires x == A::tag(), y == B::tag();
+        }
+
+        impl Swap for u8 {
+            proof fn f<B: Tag, A: Tag>(x: int, y: int) {
+                assert(x == B::tag() && y == A::tag());
+            }
+        }
+
+        impl Swap for u16 {
+            proof fn f<B: Tag, A: Tag>(x: int, y: int) {
+                assert(x == A::tag()); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}

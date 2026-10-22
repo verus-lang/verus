@@ -120,7 +120,7 @@ fn expand_extension_trait<'tcx>(
                     vis: Visibility::Inherited,
                     defaultness: None,
                     sig: f.sig.clone(),
-                    block: parse_quote_spanned!(span => { panic!() }),
+                    block: parse_quote_spanned!(span => { ::core::panic!() }),
                     semi_token: f.semi_token,
                 };
                 // TODO: when we support defaults, we might want to copy/move f's default body:
@@ -183,7 +183,7 @@ fn expand_extension_trait<'tcx>(
             let span = tr.generics.span();
             // eventually TODO? MetaSized currently breaks stable rust when compiling to executable code
             // parse_quote_spanned!(span => core::marker::MetaSized)
-            parse_quote_spanned!(span => ?Sized)
+            parse_quote_spanned!(span => ?::core::marker::Sized)
         })
     };
     blanket_impl.generics.params.push(parse_quote_spanned!(span => #self_x: #t + #blanket_bound));
@@ -300,7 +300,7 @@ pub(crate) fn split_trait_method(
             FnArgKind::Receiver(r) => Some(r),
             _ => None,
         });
-        let pred = parse_quote_spanned!(fun.sig.ident.span() => Self: core::marker::Sized);
+        let pred = parse_quote_spanned!(fun.sig.ident.span() => Self: ::core::marker::Sized);
         do_split_trait_method!(verus_syn, fun, spec_fun, mk_rust_attr, recv, pred);
         spec_items.push(TraitItem::Fn(spec_fun));
         fun.sig.erase_spec_fields();
@@ -313,7 +313,7 @@ pub(crate) fn split_trait_method(
                 // replace body with panic!()
                 let span = default.span();
                 let expr: Expr = Expr::Verbatim(quote_spanned! {
-                    span => { panic!() }
+                    span => { ::core::panic!() }
                 });
                 let stmt = Stmt::Expr(expr, None);
                 default.stmts = vec![stmt];
@@ -336,7 +336,7 @@ pub(crate) fn split_trait_method_syn(
             FnArg::Receiver(r) => Some(r),
             _ => None,
         });
-        let pred = syn::parse_quote_spanned!(fun.sig.ident.span() => Self: core::marker::Sized);
+        let pred = syn::parse_quote_spanned!(fun.sig.ident.span() => Self: ::core::marker::Sized);
         do_split_trait_method!(syn, fun, spec_fun, mk_rust_attr_syn, recv, pred);
         // We won't run visit_trait_item_fn_mut, so we need to add no_method_body here:
         let span = fun.sig.fn_token.span;

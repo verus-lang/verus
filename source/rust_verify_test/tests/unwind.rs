@@ -619,6 +619,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] vstd_len_and_view_accessors_no_unwind verus_code! {
+        use vstd::prelude::*;
+
+        fn slice_operations<T>(s: &[T], a: &[T; 4])
+            opens_invariants none
+            no_unwind
+        {
+            let _ = s.len();
+            let _ = s.is_empty();
+            let _ = a.as_slice();
+        }
+
+        fn str_operations(s: &str, t: &String)
+            opens_invariants none
+            no_unwind
+        {
+            let _ = s.len();
+            let _ = s.is_empty();
+            let _ = s.as_bytes();
+            let _ = t.as_str();
+            let _ = t.is_empty();
+        }
+
+        fn vec_operations<T>(v: &mut Vec<T>)
+            opens_invariants none
+            no_unwind
+        {
+            let _ = v.is_empty();
+            let _ = v.as_slice();
+            let _ = v.as_mut_slice();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] no_unwind_box_rc_arc_new verus_code! {
         use vstd::prelude::*;
         use std::rc::Rc;

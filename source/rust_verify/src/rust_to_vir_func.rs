@@ -9,18 +9,21 @@ use crate::rust_to_vir_base::{
     no_body_param_to_var,
 };
 use crate::rust_to_vir_base::{mk_visibility, qpath_to_ident};
-use crate::rust_to_vir_expr::{expr_to_vir_consume, pat_to_mut_var};
+use crate::rust_to_vir_expr::{
+    add_param_decls, expr_to_vir_consume, param_pat_to_decl, param_pat_to_destructure,
+    param_pat_to_mut_var,
+};
 use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_hir::{
     Attribute, Body, BodyId, Expr, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety,
-    HirId, Param, Safety,
+    HirId, Param, Pat, PatKind, Safety,
 };
 use rustc_middle::ty::{
     AdtDef, AliasTermKind, AliasTyKind, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind,
-    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind, TyCtxt,
-    TyKind, TypingEnv, ValTreeKind, Value,
+    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionExt, RegionKind,
+    TyCtxt, TyKind, TypingEnv, ValTreeKind, Value,
 };
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
@@ -366,10 +369,11 @@ fn body_to_vir<'tcx>(
     external_body: bool,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
-    param_names: Vec<VarIdent>,
+    params: &[vir::ast::Param],
     external_opaque_type_map: Option<HashMap<Path, Path>>,
     is_async: bool,
-) -> Result<vir::ast::Expr, VirErr> {
+) -> Result<(vir::ast::Expr, Vec<(vir::ast::Stmt, vir::ast::Stmt)>), VirErr> {
+    let param_names = params.iter().map(|p| p.x.name.clone()).collect();
     let bctx = mk_bctx(
         ctxt,
         fun_id,
@@ -385,13 +389,29 @@ fn body_to_vir<'tcx>(
         if is_async { extract_desugared_async_body(&bctx.ctxt, body)? } else { &body.value };
     let e = expr_to_vir_consume(&bctx, body_expr)?;
 
+    // Declarations for the bindings of parameter patterns
+    let mut param_decls = Vec::new();
+    for (param, vir_param) in body.params.iter().zip(params) {
+        let ParamX { name, typ, mode: param_mode, .. } = &vir_param.x;
+        let pat = peel_verus_param(param.pat);
+        let decl = param_pat_to_decl(&bctx, pat, name, typ, *param_mode)?;
+        // exec code can only initialize ghost and tracked variables in proof blocks
+        if decl.is_some() && mode == Mode::Exec && *param_mode != Mode::Exec {
+            return err_span(
+                param.pat.span,
+                "patterns in ghost or tracked parameters of exec functions are not supported",
+            );
+        }
+        param_decls.extend(decl);
+    }
+
     if external_body {
         match &e.x {
-            vir::ast::ExprX::NeverToAny(e) => Ok(e.clone()),
-            _ => Ok(e),
+            vir::ast::ExprX::NeverToAny(e) => Ok((e.clone(), param_decls)),
+            _ => Ok((e, param_decls)),
         }
     } else {
-        Ok(e)
+        Ok((e, param_decls))
     }
 }
 
@@ -809,8 +829,14 @@ fn compare_external_ty<'tcx>(
             (
                 rustc_middle::ty::TyKind::FnDef(def_id1, generic_args1),
                 rustc_middle::ty::TyKind::FnDef(def_id2, generic_args2),
-            )
-            | (
+            ) => match (generic_args1.no_bound_vars(), generic_args2.no_bound_vars()) {
+                (Some(generic_args1), Some(generic_args2)) => {
+                    (*def_id1 == *def_id2) && compare_generic_args(generic_args1, generic_args2)
+                }
+                // see fn_def_args
+                _ => false,
+            },
+            (
                 rustc_middle::ty::TyKind::Closure(def_id1, generic_args1),
                 rustc_middle::ty::TyKind::Closure(def_id2, generic_args2),
             )
@@ -1152,7 +1178,8 @@ pub(crate) fn get_substs_early<'tcx>(
     match ty.kind() {
         // The following TyKind Variants have a I::GenericArgs of early-bound generic arguments:
         // Adt, FnDef, Coroutine, Closure, CoroutineClosure, CoroutineWitness
-        rustc_middle::ty::Adt(_, substs) | rustc_middle::ty::FnDef(_, substs) => Ok(substs),
+        rustc_middle::ty::Adt(_, substs) => Ok(substs),
+        rustc_middle::ty::FnDef(_, substs) => crate::rust_to_vir_base::fn_def_args(*substs, span),
         _ => {
             crate::internal_err!(span, "expected Adt or FnDef")
         }
@@ -1547,6 +1574,19 @@ fn get_pre_header<'tcx>(
     }
 }
 
+/// Strips the `__verus_param_N @` the macros add to complex parameter patterns,
+/// since only ghost code uses the name
+fn peel_verus_param<'tcx>(pat: &'tcx Pat<'tcx>) -> &'tcx Pat<'tcx> {
+    match pat.kind {
+        PatKind::Binding(_, _, ident, Some(sub))
+            if rustc_mir_build_verus::verus::is_verus_param_binder(&ident) =>
+        {
+            sub
+        }
+        _ => pat,
+    }
+}
+
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
@@ -1793,25 +1833,18 @@ pub(crate) fn check_item_fn<'tcx>(
             let Body { params, value: _ } = body;
             let mut ps = Vec::new();
             for Param { hir_id, pat, ty_span: _, span } in params.iter() {
-                // Check the parameter's pattern is a plain identifier (e.g., `x: T`).
-                // VIR expects each param to be associated with exactly one identifier so complex params
-                // (e.g., `(x, y): T` or `_: T` or `a @ b: T`) are unsupported
-                if !matches!(pat.kind, rustc_hir::PatKind::Binding(_, _, _, None)) {
-                    return err_span(
-                        *span,
-                        "function parameters must be a plain identifier pattern (e.g. `x: T` or `mut x: T`)",
-                    );
-                }
-                let (is_mut_var, name) = pat_to_mut_var(pat)?;
+                let (is_mut_var, name) = param_pat_to_mut_var(peel_verus_param(pat))?;
                 // is_mut_var: means a parameter is like `mut x: X`
                 // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
                 ps.push((name, *span, Some(*hir_id), is_mut_var));
             }
             ps
         }
-        CheckItemFnEither::ParamNames(params) => {
-            params.iter().map(|p| (no_body_param_to_var(p), p.span, None, false)).collect()
-        }
+        CheckItemFnEither::ParamNames(params) => params
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (no_body_param_to_var(p, i), p.span, None, false))
+            .collect(),
     };
 
     let mut migrate_postcondition_vars: HashSet<VarIdent> = HashSet::new();
@@ -1883,8 +1916,7 @@ pub(crate) fn check_item_fn<'tcx>(
             return err_span(sig.span, "reveal_group must have body");
         };
         let body = find_body(ctxt, body_id);
-        let param_names = vir_params.iter().map(|p| p.x.name.clone()).collect::<Vec<_>>();
-        let vir_body = body_to_vir(
+        let (vir_body, _) = body_to_vir(
             ctxt,
             id,
             body_id,
@@ -1893,7 +1925,7 @@ pub(crate) fn check_item_fn<'tcx>(
             false,
             &external_trait_from_to,
             None,
-            param_names,
+            &vir_params,
             assume_specification_opaque_type_map.clone(),
             false,
         )?;
@@ -2273,9 +2305,8 @@ pub(crate) fn finish_function<'tcx>(
             };
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
-            let param_names = params.iter().map(|p| p.x.name.clone()).collect::<Vec<_>>();
 
-            let mut vir_body = body_to_vir(
+            let (mut vir_body, param_decls) = body_to_vir(
                 ctxt,
                 def_id,
                 body_id,
@@ -2284,12 +2315,13 @@ pub(crate) fn finish_function<'tcx>(
                 external_body,
                 &external_trait_from_to,
                 migrate_postcondition_vars.clone(),
-                param_names,
+                &params,
                 assume_specification_opaque_type_map.clone(),
                 is_async,
             )?;
-            let header =
+            let mut header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
+            add_param_decls(ctxt, sig.span, &mut header, &mut vir_body, param_decls)?;
             (Some(vir_body), header, Some(body.value.hir_id))
         }
         CheckItemFnEither::ParamNames(_params) => {
@@ -2640,6 +2672,16 @@ fn param_names_for_async_func<'tcx>(
     for stmt in async_body_bindings.iter() {
         match stmt.kind {
             rustc_hir::StmtKind::Let(rustc_hir::LetStmt {
+                pat,
+                source: rustc_hir::LocalSource::AsyncFn,
+                ..
+            }) if param_pat_to_destructure(peel_verus_param(pat)).is_some() => {
+                return err_span(
+                    pat.span,
+                    "patterns in async function parameters are not supported",
+                );
+            }
+            rustc_hir::StmtKind::Let(rustc_hir::LetStmt {
                 pat: rustc_hir::Pat { kind: rustc_hir::PatKind::Binding(_, id, ident, _), .. },
                 init: Some(rustc_hir::Expr { kind: rustc_hir::ExprKind::Path(qpath), .. }),
                 ..
@@ -2709,12 +2751,12 @@ fn check_generics_for_invariant_fn<'tcx>(
                 span,
             )?;
 
-            let datatype_predicates = adt_def.predicates(tcx);
-            let func_predicates = tcx.predicates_of(id);
+            let datatype_predicates = adt_def.clauses(tcx);
+            let func_predicates = tcx.clauses_of(id);
             let datatype_typing_env = TypingEnv::post_analysis(tcx, adt_def.did());
             let func_typing_env = TypingEnv::post_analysis(tcx, id);
-            let preds1 = datatype_predicates.instantiate(tcx, substs).predicates;
-            let preds2 = func_predicates.instantiate(tcx, substs).predicates;
+            let preds1 = datatype_predicates.instantiate(tcx, substs).clauses;
+            let preds2 = func_predicates.instantiate(tcx, substs).clauses;
             // The 'outlives' predicates don't always line up; I don't know why.
             // But they don't matter for the purpose of this check, so filter them out here.
             let preds1 = preds1
@@ -2923,7 +2965,7 @@ fn all_predicates<'tcx>(
     preliminarily_try_to_process_and_eliminate_trait_aliases: bool,
 ) -> Vec<Clause<'tcx>> {
     let mut trait_alias_clauses: Vec<Clause<'tcx>> = Vec::new();
-    let preds = tcx.predicates_of(id);
+    let preds = tcx.clauses_of(id);
     if preliminarily_try_to_process_and_eliminate_trait_aliases {
         // raw_ptr.rs uses external_fn_specification for functions with core::ptr::Thin bounds,
         // where core::ptr::Thin is a trait alias (an experimental Rust feature)
@@ -2932,11 +2974,11 @@ fn all_predicates<'tcx>(
         // However, to get this case to work, we attempt to expand away trait aliases unto
         // their underlying traits here.
         // This is not fully general and probably doesn't yet work for parameterized trait aliases.
-        for (p, _) in preds.predicates {
+        for (p, _) in preds.clauses {
             match p.kind().skip_binder() {
                 rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
                     if tcx.trait_is_alias(tp.trait_ref.def_id) {
-                        let preds = tcx.predicates_of(tp.trait_ref.def_id);
+                        let preds = tcx.clauses_of(tp.trait_ref.def_id);
                         let alias_typing_env = TypingEnv::post_analysis(tcx, tp.trait_ref.def_id);
                         trait_alias_clauses.extend(
                             preds
@@ -2953,7 +2995,7 @@ fn all_predicates<'tcx>(
     let typing_env = TypingEnv::post_analysis(tcx, id);
     let preds = preds.instantiate(tcx, substs);
     let mut clauses: Vec<Clause<'tcx>> = preds
-        .predicates
+        .clauses
         .into_iter()
         .map(|clause| tcx.normalize_erasing_regions(typing_env, clause))
         .collect();
@@ -3343,7 +3385,7 @@ pub(crate) fn finish_const_or_static<'tcx>(
     } = function.x.clone();
 
     let body = find_body(ctxt, &body_id);
-    let mut vir_body = body_to_vir(
+    let (mut vir_body, _) = body_to_vir(
         ctxt,
         id,
         &body_id,
@@ -3352,7 +3394,7 @@ pub(crate) fn finish_const_or_static<'tcx>(
         vattrs.external_body,
         &None,
         None,
-        vec![],
+        &[],
         None,
         false,
     )?;
@@ -3461,8 +3503,8 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
 
     assert!(idents.len() == inputs.len());
-    for (param, input) in idents.iter().zip(inputs.iter()) {
-        let name = no_body_param_to_var(param);
+    for (i, (param, input)) in idents.iter().zip(inputs.iter()).enumerate() {
+        let name = no_body_param_to_var(param, i);
         let typ = ctxt.mid_ty_to_vir(id, param.span, input, None)?;
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
@@ -3488,6 +3530,11 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     // No body, so these don't matter
     let body_visibility = vir::ast::BodyVisibility::Visibility(visibility.clone());
     let opaqueness = Opaqueness::Opaque;
+
+    if !vattrs.external_body {
+        return Err(err_span_bare(span, "extern function cannot be checked")
+            .help("to tell Verus to trust this function, either mark this function `#[verifier::external_body]` and use an empty specification; or mark it `#[verifier::external]` and use `assume_specification` to provide a spec"));
+    }
 
     let func = FunctionX {
         name,

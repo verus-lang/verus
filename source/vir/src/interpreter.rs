@@ -1485,7 +1485,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         _ => ok,
                     }
                 }
-                ToDyn(_) => ok,
+                ToDyn(..) => ok,
                 HasResolved(_) => ok,
                 CustomErr(_) => Ok(e),
                 AutoDecreases => Ok(e),
@@ -1790,7 +1790,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             None => {
                                 let typ_params = &func.x.typ_params;
                                 let pars = &func.x.pars;
-                                let body = &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
+                                let spec_axioms = func.x.axioms.spec_axioms.as_ref().unwrap();
                                 state.cache_misses += 1;
                                 let mut env = Env::new();
                                 let mut type_env = TypeEnv::new();
@@ -1807,9 +1807,29 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 // We don't do this for the variable environment, since
                                 // the body might locally shadow some of the parameter names.
                                 let empty_substs = HashMap::new();
-                                let body = subst_exp(type_env.map(), &empty_substs, body);
                                 let prev_env = std::mem::replace(&mut state.env, env);
-                                let result = eval_expr_internal(ctx, state, &body);
+                                // The function's definition only holds when its `when` condition
+                                // holds, so only unfold the body if the condition simplifies to true
+                                let when_holds = match &spec_axioms.decrease_when {
+                                    None => true,
+                                    Some(when) => {
+                                        let when = subst_exp(type_env.map(), &empty_substs, when);
+                                        let when = eval_expr_internal(ctx, state, &when)?;
+                                        matches!(when.x, Const(Constant::Bool(true)))
+                                    }
+                                };
+                                let result = if when_holds {
+                                    let body = &spec_axioms.body_exp;
+                                    let body = subst_exp(type_env.map(), &empty_substs, body);
+                                    eval_expr_internal(ctx, state, &body)
+                                } else {
+                                    // return unevaluated call
+                                    exp_new(Call(
+                                        CallFun::Fun(fun.clone(), resolved_method.clone()),
+                                        typs.clone(),
+                                        new_args.clone(),
+                                    ))
+                                };
                                 state.env = prev_env;
                                 state.insert_call(fun, &typs, &new_args, &result.clone()?, memoize);
                                 result
