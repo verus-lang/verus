@@ -25,7 +25,7 @@ jobs:
 
     strategy:
       matrix:
-        build: [macos, macos-x86_64, linux, windows]
+        build: [macos, macos-x86_64, linux, linux-arm64, windows, windows-arm64]
         include:
           - build: macos
             os: macos-14
@@ -36,9 +36,15 @@ jobs:
           - build: linux
             os: ubuntu-24.04
             release_name: verus-x86-linux
+          - build: linux-arm64
+            os: ubuntu-24.04-arm
+            release_name: verus-arm64-linux
           - build: windows
             os: windows-2022
             release_name: verus-x86-win
+          - build: windows-arm64
+            os: windows-11-arm
+            release_name: verus-arm64-win
 
     runs-on: ${{ matrix.os }}
 
@@ -97,7 +103,7 @@ jobs:
           ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
           cp -R ./target-verus/release "../${{ matrix.release_name }}"
           cd ..
-          if [ "${{ matrix.os }}" == "windows-2022" ]; then
+          if [ "${{ runner.os }}" == "Windows" ]; then
             7z a "${{ matrix.release_name }}.zip" "./${{ matrix.release_name }}"
           else
             zip -r "${{ matrix.release_name }}.zip" "./${{ matrix.release_name }}"

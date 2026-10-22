@@ -146,7 +146,7 @@ withdraw field -= Some(let $pat);
 In this case, the inherent safety condition is that the `field` value is `Some` and that
 the inner value matches `$pat`. In this case, note that the value matched on `$pat` is
 _not_ deterministic in the input arguments of the token operation. Therefore,
-VerusSync considers any variables bound in `$pat` to implicitly be [`birds_eye`](./birds_eye.md)
+VerusSync considers any variables bound in `$pat` to implicitly be [`birds_eye`](./birds-eye.md)
 binders. Specifically, the pattern-matching variant is equivalent to:
 
 ```

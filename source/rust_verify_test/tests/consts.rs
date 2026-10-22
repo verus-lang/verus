@@ -685,3 +685,117 @@ test_verify_one_file! {
         const C: u64 = 5;
     } => Err(err) => assert_vir_error_msg(err, "conflicting mode attributes: `exec` and `spec`")
 }
+
+// Rust's const evaluator must not observe items changed by ghost erasure.
+test_verify_one_file! {
+    #[test] array_length_ghost_const verus_code! {
+        use vstd::prelude::*;
+        spec const N: usize = 5;
+        fn f() -> (r: usize) ensures r == 8 {
+            let a = [0u8; core::mem::size_of_val(&N)];
+            a.len()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+}
+
+test_verify_one_file! {
+    #[test] const_generic_ghost_const verus_code! {
+        use vstd::prelude::*;
+        spec const N: usize = 5;
+        struct S<const K: usize> { a: [u8; K] }
+        fn f() { let s = S::<{ core::mem::size_of_val(&N) }> { a: [0; 8] }; }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+}
+
+test_verify_one_file! {
+    #[test] const_default_ghost_const verus_code! {
+        use vstd::prelude::*;
+        spec const N: usize = 5;
+        struct S<const K: usize = { core::mem::size_of_val(&N) }> { a: [u8; K] }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+}
+
+test_verify_one_file! {
+    #[test] discriminant_ghost_const verus_code! {
+        use vstd::prelude::*;
+        spec const N: usize = 5;
+        #[repr(usize)]
+        enum E { A = core::mem::size_of_val(&N) }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+}
+
+test_verify_one_file! {
+    #[test] array_length_ghost_proof verus_code! {
+        use vstd::prelude::*;
+        const proof fn p() {}
+        fn f() { let a = [0u8; { p(); 8 }]; }
+    } => Err(err) => assert_rust_error_msg(err, "cannot call non-const function")
+}
+
+test_verify_one_file! {
+    #[test] array_length_ghost_associated_const verus_code! {
+        use vstd::prelude::*;
+        struct S;
+        trait T { const N: usize; }
+        impl T for S { const N: usize = 7; }
+        impl S { spec const N: usize = 0; }
+        fn f() -> (r: usize) ensures r == 0 {
+            let a = [0u8; S::N];
+            a.len()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+}
+
+test_verify_one_file! {
+    #[test] array_length_external_exec_const code! {
+        use vstd::prelude::*;
+        const C: usize = 5;
+        const fn c() -> usize { C }
+        verus! {
+            assume_specification[C] -> usize returns 5usize;
+            assume_specification[c]() -> usize returns 5usize;
+
+            fn f() -> (r: usize) ensures r == 5 {
+                let a: [u8; C] = [0u8; c()];
+                a.len()
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] array_length_ghost_const_in_exec_const verus_code! {
+        use vstd::prelude::*;
+        spec const N: usize = 5;
+        exec const C: usize = {
+            let a = [0u8; core::mem::size_of_val(&N)];
+            a.len()
+        };
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+}
+
+// Rust's const evaluator checks arithmetic in anonymous constants; Verus does not verify it.
+test_verify_one_file! {
+    #[test] array_length_arithmetic_not_verified code! {
+        use vstd::prelude::*;
+        const K: usize = 3;
+        verus! {
+            assume_specification[K] -> usize;
+
+            fn f() {
+                let a = [0u8; (1 << K) - 1];
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] array_length_external_body_signature verus_code! {
+        use vstd::prelude::*;
+        spec const N: usize = 5;
+        #[verifier::external_body]
+        fn make() -> [u8; core::mem::size_of_val(&N)] {
+            Default::default()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+}

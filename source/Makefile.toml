@@ -1,0 +1,96 @@
+# This file contains task definitions for the `cargo-make` tool.
+#
+# Each task is meant to be executed from the `source` workspace as `cargo make $TASK`.
+#
+# If you used Vargo before, refer to the "Cheat Sheet: Vargo to Cargo" section in `CONTRIBUTING.md`.
+
+[config]
+default_to_workspace = false
+skip_core_tasks = true
+
+[tasks.default]
+alias = "build"
+
+[tasks.clean]
+command = "cargo"
+args = ["clean"]
+
+[tasks.fmt]
+dependencies = ["fmt-exclude-vstd", "fmt-vstd"]
+
+[tasks.fmt-exclude-vstd]
+command = "cargo-verus"
+install_crate = false
+args = ["fmt", "${@}"]
+dependencies = [
+    "fmt-verus-prettyplease",
+    "fmt-verus-syn",
+    "install-cargo-verus",
+]
+
+[tasks.fmt-verus-prettyplease]
+command = "cargo"
+args = [
+    "fmt",
+    "--manifest-path",
+    "../dependencies/prettyplease/Cargo.toml",
+    "${@}",
+]
+
+[tasks.fmt-verus-syn]
+command = "cargo"
+args = ["fmt", "--manifest-path", "../dependencies/syn/Cargo.toml", "${@}"]
+
+[tasks.fmt-vstd]
+command = "cargo-verus"
+install_crate = false
+args = ["fmt", "--manifest-path", "vstd/Cargo.toml", "${@}"]
+dependencies = ["install-cargo-verus"]
+
+[tasks.install]
+dependencies = ["install-cargo-verus", "install-verus"]
+
+# There's no need to list `build-cargo-verus` as a dependency,
+# because `cargo install --path` does an incremental `build`.
+[tasks.install-cargo-verus]
+command = "cargo"
+args = ["install", "--path", "cargo-verus"]
+
+# There's no need to list `build-verus` as a dependency,
+# because `cargo install --path` does an incremental `build`.
+[tasks.install-verus]
+command = "cargo"
+args = ["install", "--path", "verus"]
+dependencies = ["install-rust-verify"]
+
+# There's no need to list `build-rust-verify` as a dependency,
+# because `cargo install --path` does an incremental `build`.
+[tasks.install-rust-verify]
+command = "cargo"
+args = ["install", "--path", "rust_verify"]
+
+[tasks.build]
+dependencies = ["build-exclude-vstd", "build-vstd"]
+
+[tasks.build-exclude-vstd]
+dependencies = ["build-cargo-verus"]
+
+[tasks.build-vstd]
+command = "cargo-verus"
+install_crate = false
+args = ["build", "--manifest-path", "vstd/Cargo.toml", "${@}"]
+dependencies = ["install-cargo-verus"]
+
+[tasks.build-cargo-verus]
+command = "cargo"
+args = ["build", "--release", "-p", "cargo-verus", "${@}"]
+dependencies = ["build-verus"]
+
+[tasks.build-verus]
+command = "cargo"
+args = ["build", "--release", "-p", "verus", "${@}"]
+dependencies = ["build-rust-verify"]
+
+[tasks.build-rust-verify]
+command = "cargo"
+args = ["build", "--release", "-p", "rust_verify", "${@}"]
