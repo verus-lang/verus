@@ -10437,3 +10437,367 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+// Local readiness (`#[verified_local_ready]`, raw interface; the trusted macro has neither) of
+// readonly transitions and properties. One without a `guard` has the raw operation of a mutating
+// transition (`local_ready::t::{run, run_with_shared, observed}`); one with a `guard` borrows
+// the token (`local_ready::t::run(&token, ..)` returns the guarded storage). Also the raw guard frames of a `have` under
+// an `if`/`match` (its owned-frame link was unconditional) and of a key a `let` binds (it did not
+// compile).
+test_verify_one_file_with_options! {
+    #[test] readonly_property_local_ready_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        pub struct Tok { pub v: int }
+        pub enum Cmd { A(int), B, C }
+        verified_tokenized_state_machine!{
+            #[verified_raw_tokens]
+            #[verified_local_ready(ro_map, ro_map_general, ro_set, ro_multiset, ro_option, ro_persistent,
+                ro_let, ro_if, ro_match, ro_birds_eye, pr_assert, pr_option_bound, pr_map_bound,
+                gd_map, gd_map_general, gd_option, gd_persistent_option, gd_if, gd_match, gd_birds_eye, gd_let_tuple, ro_guard)]
+            X {
+            fields {
+                #[sharding(variable)] pub n: int,
+                #[sharding(constant)] pub c: int,
+                #[sharding(map)] pub m: Map<int, int>,
+                #[sharding(set)] pub s: Set<int>,
+                #[sharding(multiset)] pub ms: Multiset<int>,
+                #[sharding(option)] pub o: Option<int>,
+                #[sharding(persistent_map)] pub pm: Map<int, int>,
+                #[sharding(persistent_set)] pub ps: Set<int>,
+                #[sharding(persistent_option)] pub po: Option<int>,
+                #[sharding(storage_map)] pub stored: Map<int, Tok>,
+                #[sharding(storage_option)] pub cell: Option<Tok>,
+            }
+            init!{ initialize(c: int) {
+                init n = 0; init c = c; init m = Map::empty(); init s = Set::empty(); init ms = Multiset::empty();
+                init o = None; init pm = Map::empty(); init ps = Set::empty(); init po = None;
+                init stored = Map::empty(); init cell = None;
+            } }
+            #[invariant] pub fn inv_m(&self) -> bool {
+                forall|k| #[trigger] self.m.contains_key(k) ==> self.stored.contains_key(k) && self.stored[k] == Tok { v: self.m[k] }
+            }
+            #[invariant] pub fn inv_o(&self) -> bool {
+                (self.o is Some ==> self.cell == Some(Tok { v: self.o->Some_0 }))
+                && (self.po is Some ==> self.cell == Some(Tok { v: self.po->Some_0 }))
+            }
+            #[inductive(initialize)] fn initialize_inductive(post: Self, c: int) {}
+
+            readonly!{ ro_map(k: int, v: int) {
+                have m >= [k => v];
+                require(pre.n == v);
+            } }
+            readonly!{ ro_map_general(a: Map<int, int>, k: int, v: int) {
+                have m >= (a);
+                have m >= [k => v];
+                assert(a.contains_key(k) ==> a[k] == v);
+            } }
+            readonly!{ ro_set(e: int, b: Set<int>) {
+                have s >= set { e };
+                have s >= (b);
+            } }
+            readonly!{ ro_multiset(e: int, b: Multiset<int>) {
+                require(forall|x: int| b.count(x) <= 1);
+                have ms >= {e};
+                have ms >= (b);
+            } }
+            readonly!{ ro_option(v: int) {
+                have o >= Some(v);
+                require(pre.c > v);
+            } }
+            readonly!{ ro_persistent(a: Map<int, int>, k: int, v: int, b: Set<int>, e: int, w: int) {
+                have pm >= (a);
+                have pm >= [k => v];
+                have ps >= (b);
+                have ps >= set { e };
+                have po >= Some(w);
+            } }
+            readonly!{ ro_let(a: Map<int, int>, b: Map<int, int>) {
+                let x = a;
+                have m >= (x);
+                let (y, z) = (b, pre.c);
+                require(z > 0);
+                have m >= (y);
+            } }
+            readonly!{ ro_if(a: Map<int, int>, b: Map<int, int>, c: bool) {
+                if c { have m >= (a); require(pre.n > 0); } else { have m >= (b); }
+                have m >= (b);
+            } }
+            readonly!{ ro_match(cmd: Cmd, a: Map<int, int>, e: int) {
+                match cmd {
+                    Cmd::A(k) if k > 0 => { have m >= [k => 0]; have m >= (a); }
+                    Cmd::B => { have s >= set { e }; }
+                    _ => { require(pre.n == e); }
+                }
+            } }
+            readonly!{ ro_birds_eye(k: int, v: int) {
+                have m >= [k => v];
+                birds_eye let st = pre.stored;
+                assert(st.contains_key(k) && st[k] == Tok { v });
+            } }
+            property!{ pr_assert(k: int, v: int) {
+                have m >= [k => v];
+                require(pre.n == v);
+                birds_eye let st = pre.stored;
+                assert(st.contains_key(k));
+            } }
+            property!{ pr_option_bound() {
+                have o >= Some(let v);
+                birds_eye let cl = pre.cell;
+                assert(cl == Some(Tok { v }));
+            } }
+            property!{ pr_map_bound(k: int) {
+                have m >= [k => let v];
+                have pm >= [k => v];
+                birds_eye let st = pre.stored;
+                assert(st[k] == Tok { v });
+            } }
+            readonly!{ ro_guard(v: int) {
+                have o >= Some(v);
+                guard cell >= Some(Tok { v });
+            } }
+            property!{ gd_map(k: int) {
+                have m >= [k => let v];
+                guard stored >= [k => Tok { v }];
+            } }
+            property!{ gd_map_general(a: Map<int, int>, k: int) {
+                have m >= (a);
+                require(a.contains_key(k));
+                guard stored >= [k => Tok { v: a[k] }] by { assert(a.dom().contains(k)); assert(pre.m.dom().contains(k)); };
+            } }
+            property!{ gd_option(v: int) {
+                have o >= Some(v);
+                guard cell >= Some(Tok { v });
+            } }
+            property!{ gd_persistent_option() {
+                have po >= Some(let v);
+                guard cell >= Some(Tok { v });
+            } }
+            property!{ gd_if(k: int, v: int, b: bool) {
+                if b {
+                    have m >= [k => v];
+                    guard stored >= [k => Tok { v }];
+                } else {
+                    have o >= Some(v);
+                    guard cell >= Some(Tok { v });
+                }
+            } }
+            property!{ gd_match(x: Option<int>, k: int) {
+                match x {
+                    Some(v) => { have m >= [k => v]; guard stored >= [k => Tok { v }]; }
+                    None => { have o >= Some(k); guard cell >= Some(Tok { v: k }); }
+                }
+            } }
+            property!{ gd_birds_eye(k: int, v: int) {
+                have m >= [k => v];
+                guard stored >= [k => Tok { v }];
+                birds_eye let st = pre.stored;
+                assert(st[k] == Tok { v });
+            } }
+            property!{ gd_let_tuple(k: int, v: int) {
+                let (kk, vv) = (k, v);
+                have m >= [kk => vv];
+                require(pre.n == vv);
+                guard stored >= [kk => Tok { v: vv }];
+            } }
+        }}
+
+        proof fn client_ro_guard(tracked t: &X::Token, v: int)
+            requires t.fragment() == X::Fragment::field_o(Some(v)),
+        {
+            let tracked g = X::local_ready::ro_guard::run(t, v);
+            assert(g[X::__StorageKey::cell] == X::__StorageValue::cell(Tok { v }));
+        }
+        proof fn client_ro_set(tracked t: X::Token, e: int)
+            requires t.fragment() == X::Fragment::field_s(Set::empty().insert(e)),
+        {
+            let tracked t = X::local_ready::ro_set::run(t, e, Set::empty().insert(e));
+        }
+        proof fn client_ro_multiset(tracked t: X::Token, e: int)
+            requires t.fragment() == X::Fragment::field_ms(Multiset::singleton(e)),
+        {
+            let tracked t = X::local_ready::ro_multiset::run(t, e, Multiset::singleton(e));
+        }
+        proof fn client_ro_persistent(tracked t: X::Token, k: int, v: int, e: int, w: int)
+            requires t.fragment() == X::Fragment::field_pm(Map::empty().insert(k, v)).with_ps(Set::empty().insert(e)).with_po(Some(w)),
+        {
+            let tracked t = X::local_ready::ro_persistent::run(t, Map::empty().insert(k, v), k, v, Set::empty().insert(e), e, w);
+        }
+        proof fn client_ro_map(tracked t: X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_n(v),
+        {
+            let tracked t = X::local_ready::ro_map::run(t, k, v);
+        }
+        proof fn client_ro_map_general(tracked t: X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v).insert(k + 1, v)),
+        {
+            let a = Map::empty().insert(k + 1, v);
+            let tracked t = X::local_ready::ro_map_general::run(t, a, k, v);
+            let tracked c = X::local_ready::ro_map_general::observed(t, a, k, v);
+            assert(X::State::ro_map_general_strong(c.before, c.after, a, k, v));
+        }
+        proof fn client_ro_option(tracked t: X::Token, v: int)
+            requires t.fragment() == X::Fragment::field_o(Some(v)).with_c(v + 1),
+        {
+            let tracked t = X::local_ready::ro_option::run(t, v);
+        }
+        proof fn client_ro_let(tracked t: X::Token, a: Map<int, int>)
+            requires t.fragment() == X::Fragment::field_m(a).with_c(1),
+        {
+            let tracked t = X::local_ready::ro_let::run(t, a, a);
+        }
+        proof fn client_ro_if(tracked t: X::Token, a: Map<int, int>, b: Map<int, int>)
+            requires t.fragment() == X::Fragment::field_m(b).with_n(0),
+        {
+            // `pre.n` is read on one path only, but the token must hold it.
+            let tracked t = X::local_ready::ro_if::run(t, a, b, false);
+        }
+        proof fn client_ro_match(tracked t: X::Token, k: int, e: int)
+            requires k > 0, t.fragment() == X::Fragment::field_m(Map::empty().insert(k, 0)).with_s(Set::empty().insert(e)).with_n(e),
+        {
+            let a = Map::empty().insert(k, 0);
+            let tracked t = X::local_ready::ro_match::run(t, Cmd::A(k), a, e);
+            let tracked t = X::local_ready::ro_match::run(t, Cmd::B, a, e);
+            let tracked t = X::local_ready::ro_match::run(t, Cmd::C, a, e);
+        }
+        proof fn client_ro_birds_eye(tracked t: X::Token, tracked s: &X::Token, k: int, v: int)
+            requires t.loc() == s.loc(), t.fragment() == X::Fragment::field_n(0), s.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)),
+        {
+            // The `have` observes the shared token.
+            let tracked t = X::local_ready::ro_birds_eye::run_with_shared(t, s, k, v);
+        }
+        proof fn client_pr_assert(tracked t: X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_n(v),
+        {
+            let tracked t = X::local_ready::pr_assert::run(t, k, v);
+        }
+        proof fn client_pr_option_bound(tracked t: X::Token, v: int)
+            requires t.fragment() == X::Fragment::field_o(Some(v)),
+        {
+            let tracked c = X::local_ready::pr_option_bound::observed(t);
+            assert(c.before.o == Some(v));
+        }
+        proof fn client_pr_map_bound(tracked t: X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_pm(Map::empty().insert(k, v)),
+        {
+            let tracked t = X::local_ready::pr_map_bound::run(t, k);
+        }
+        proof fn client_gd_map(tracked t: &X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)),
+        {
+            let tracked g = X::local_ready::gd_map::run(t, k);
+            assert(g.contains_key(X::__StorageKey::stored(k)));
+            assert(g[X::__StorageKey::stored(k)] == X::__StorageValue::stored(Tok { v }));
+        }
+        proof fn client_gd_map_general(tracked t: &X::Token, a: Map<int, int>, k: int)
+            requires t.fragment() == X::Fragment::field_m(a), a.contains_key(k),
+        {
+            let tracked g = X::local_ready::gd_map_general::run(t, a, k);
+            assert(g[X::__StorageKey::stored(k)] == X::__StorageValue::stored(Tok { v: a[k] }));
+        }
+        proof fn client_gd_option(tracked t: &X::Token, v: int)
+            requires t.fragment() == X::Fragment::field_o(Some(v)),
+        {
+            let tracked g = X::local_ready::gd_option::run(t, v);
+            assert(g[X::__StorageKey::cell] == X::__StorageValue::cell(Tok { v }));
+        }
+        proof fn client_gd_persistent_option(tracked t: &X::Token, v: int)
+            requires t.fragment() == X::Fragment::field_po(Some(v)),
+        {
+            let tracked g = X::local_ready::gd_persistent_option::run(t);
+            assert(g[X::__StorageKey::cell] == X::__StorageValue::cell(Tok { v }));
+        }
+        proof fn client_gd_if(tracked t: &X::Token, tracked u: &X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)), u.fragment() == X::Fragment::field_o(Some(v)),
+        {
+            let tracked g = X::local_ready::gd_if::run(t, k, v, true);
+            assert(g[X::__StorageKey::stored(k)] == X::__StorageValue::stored(Tok { v }));
+            let tracked g = X::local_ready::gd_if::run(u, k, v, false);
+            assert(g[X::__StorageKey::cell] == X::__StorageValue::cell(Tok { v }));
+        }
+        proof fn client_gd_match(tracked t: &X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_o(Some(k)),
+        {
+            let tracked g = X::local_ready::gd_match::run(t, Some(v), k);
+            assert(g[X::__StorageKey::stored(k)] == X::__StorageValue::stored(Tok { v }));
+            let tracked g = X::local_ready::gd_match::run(t, None, k);
+            assert(g[X::__StorageKey::cell] == X::__StorageValue::cell(Tok { v: k }));
+        }
+        proof fn client_gd_birds_eye(tracked t: &X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)),
+        {
+            let tracked g = X::local_ready::gd_birds_eye::run(t, k, v);
+        }
+        proof fn client_gd_let_tuple(tracked t: &X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_n(v),
+        {
+            let tracked g = X::local_ready::gd_let_tuple::run(t, k, v);
+            assert(g[X::__StorageKey::stored(k)] == X::__StorageValue::stored(Tok { v }));
+        }
+    } => Ok(())
+}
+
+// Negative of readonly_property_local_ready_verified: the local requirement of a readonly
+// transition or property is not met when the token lacks an observed component, when a
+// `require` fails on the token's values, or when only the shared token holds the components.
+test_verify_one_file_with_options! {
+    #[test] readonly_property_local_ready_insufficient_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        pub struct Tok { pub v: int }
+        verified_tokenized_state_machine!{
+            #[verified_raw_tokens]
+            #[verified_local_ready(ro_map, pr_assert, gd_option)]
+            X {
+            fields {
+                #[sharding(variable)] pub n: int,
+                #[sharding(map)] pub m: Map<int, int>,
+                #[sharding(option)] pub o: Option<int>,
+                #[sharding(storage_map)] pub stored: Map<int, Tok>,
+                #[sharding(storage_option)] pub cell: Option<Tok>,
+            }
+            init!{ initialize() {
+                init n = 0; init m = Map::empty(); init o = None; init stored = Map::empty(); init cell = None;
+            } }
+            #[invariant] pub fn inv_m(&self) -> bool {
+                forall|k| #[trigger] self.m.contains_key(k) ==> self.stored.contains_key(k) && self.stored[k] == Tok { v: self.m[k] }
+            }
+            #[invariant] pub fn inv_o(&self) -> bool { self.o is Some ==> self.cell == Some(Tok { v: self.o->Some_0 }) }
+            #[inductive(initialize)] fn initialize_inductive(post: Self) {}
+
+            readonly!{ ro_map(k: int, v: int) {
+                have m >= [k => v];
+                require(pre.n == v);
+            } }
+            property!{ pr_assert(k: int, v: int) {
+                have m >= [k => v];
+                require(pre.n == v);
+                birds_eye let st = pre.stored;
+                assert(st.contains_key(k));
+            } }
+            property!{ gd_option(v: int) {
+                have o >= Some(v);
+                guard cell >= Some(Tok { v });
+            } }
+        }}
+        proof fn bad_guard(tracked t: &X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)),
+        {
+            // The token does not hold `o`.
+            let tracked g = X::local_ready::gd_option::run(t, v); // FAILS
+        }
+        proof fn bad_require(tracked t: X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_n(v + 1),
+        {
+            // `require(pre.n == v)` does not hold of the token's `n`.
+            let tracked t = X::local_ready::ro_map::run(t, k, v); // FAILS
+        }
+        proof fn bad_shared(tracked t: X::Token, tracked s: &X::Token, k: int, v: int)
+            requires t.loc() == s.loc(), t.fragment() == X::Fragment::empty(), s.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_n(v),
+        {
+            // `run` does not observe the shared token (`run_with_shared` does).
+            let tracked t = X::local_ready::pr_assert::run(t, k, v); // FAILS
+        }
+        proof fn good_shared(tracked t: X::Token, tracked s: &X::Token, k: int, v: int)
+            requires t.loc() == s.loc(), t.fragment() == X::Fragment::empty(), s.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_n(v),
+        {
+            let tracked t = X::local_ready::pr_assert::run_with_shared(t, s, k, v);
+        }
+    } => Err(e) => assert_fails(e, 3)
+}

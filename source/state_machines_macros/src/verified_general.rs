@@ -529,38 +529,95 @@ fn storage_deposit(
     })
 }
 
-/// `have` operations on exclusive map fields with a key, in a guard property.
-fn guard_map_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<(Ident, verus_syn::Expr)> {
+/// Where a `have` of a guard property is (`guard_map_haves`, `guard_option_haves`):
+/// the names that the enclosing `let`s, `match` arms and patterns bind, and
+/// whether it is under an `if` or a `match`.
+#[derive(Clone, Default)]
+struct GuardScope {
+    bound: HashSet<String>,
+    conditional: bool,
+}
+
+impl GuardScope {
+    /// The scope of `split`'s children.
+    fn enter(&self, split: &SplitKind) -> Vec<GuardScope> {
+        let bind = |scope: &mut GuardScope, pattern: &verus_syn::Pat| {
+            scope.bound.extend(
+                crate::ident_visitor::pattern_get_bound_idents(pattern).iter().map(|n| n.to_string()),
+            )
+        };
+        let mut inner = self.clone();
+        match split {
+            SplitKind::Let(pattern, ..) => bind(&mut inner, pattern),
+            SplitKind::Special(_, _, _, Some(pattern)) => bind(&mut inner, pattern),
+            SplitKind::Special(..) => {}
+            SplitKind::If(_) => inner.conditional = true,
+            SplitKind::Match(_, arms) => {
+                inner.conditional = true;
+                return arms
+                    .iter()
+                    .map(|arm| {
+                        let mut scope = inner.clone();
+                        bind(&mut scope, &arm.pat);
+                        scope
+                    })
+                    .collect();
+            }
+        }
+        vec![inner]
+    }
+
+    /// Whether `tokens` mention a name bound in this scope.
+    fn mentions_bound(&self, tokens: TokenStream) -> bool {
+        tokens.into_iter().any(|token| match token {
+            proc_macro2::TokenTree::Ident(n) => self.bound.contains(&n.to_string()),
+            proc_macro2::TokenTree::Group(g) => self.mentions_bound(g.stream()),
+            _ => false,
+        })
+    }
+}
+
+/// `have` operations on exclusive map fields with a key, in a guard property,
+/// with whether the `have` is under an `if` or a `match`. A key that mentions a
+/// name bound in the transition is not observed (the spec fns reading the
+/// observation are outside its scope).
+fn guard_map_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<(Ident, verus_syn::Expr, bool)> {
     let mut out = vec![];
-    fn walk(s: &TransitionStmt, fields: &HashMap<String, Field>, out: &mut Vec<(Ident, verus_syn::Expr)>) {
+    fn walk(s: &TransitionStmt, fields: &HashMap<String, Field>, scope: &GuardScope, out: &mut Vec<(Ident, verus_syn::Expr, bool)>) {
         match s {
-            TransitionStmt::Block(_, xs) => xs.iter().for_each(|x| walk(x, fields, out)),
+            TransitionStmt::Block(_, xs) => xs.iter().for_each(|x| walk(x, fields, scope, out)),
             TransitionStmt::Split(_, k, xs) => {
                 if let SplitKind::Special(n, op, _, _) = &**k {
                     if matches!(op.stmt, MonoidStmtType::Have)
                         && matches!(fields[&n.to_string()].stype, ShardableType::Map(..) | ShardableType::IMap(..))
                     {
                         if let MonoidElt::SingletonKV(key, _) = &op.elt {
-                            out.push((n.clone(), key.clone()));
+                            if !scope.mentions_bound(quote! {#key}) {
+                                out.push((n.clone(), key.clone(), scope.conditional));
+                            }
                         }
                     }
                 }
-                xs.iter().for_each(|x| walk(x, fields, out));
+                let scopes = scope.enter(k);
+                for (index, x) in xs.iter().enumerate() {
+                    walk(x, fields, &scopes[index.min(scopes.len() - 1)], out);
+                }
             }
             _ => {}
         }
     }
-    walk(s, fields, &mut out);
+    walk(s, fields, &GuardScope::default(), &mut out);
     out
 }
 
 /// The `option` and `persistent_option` fields of `have o >= Some(..)`
-/// statements, each with whether it is persistent.
-fn guard_option_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<(Ident, bool)> {
-    let mut out: Vec<(Ident, bool)> = vec![];
-    fn walk(s: &TransitionStmt, fields: &HashMap<String, Field>, out: &mut Vec<(Ident, bool)>) {
+/// statements, each with whether it is persistent and whether every such
+/// `have` of it is under an `if` or a `match`.
+fn guard_option_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<(Ident, bool, bool)> {
+    let mut out: Vec<(Ident, bool, bool)> = vec![];
+    fn walk(s: &TransitionStmt, fields: &HashMap<String, Field>, scope: &GuardScope, out: &mut Vec<(Ident, bool, bool)>) {
         match s {
-            TransitionStmt::Block(_, xs) => xs.iter().for_each(|x| walk(x, fields, out)),
+            TransitionStmt::Block(_, xs) => xs.iter().for_each(|x| walk(x, fields, scope, out)),
             TransitionStmt::Split(_, k, xs) => {
                 if let SplitKind::Special(n, op, _, _) = &**k {
                     let persistent = match fields[&n.to_string()].stype {
@@ -571,18 +628,23 @@ fn guard_option_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Ve
                     if let Some(persistent) = persistent {
                         if matches!(op.stmt, MonoidStmtType::Have)
                             && matches!(op.elt, MonoidElt::OptionSome(_))
-                            && !out.iter().any(|(m, _)| m == n)
                         {
-                            out.push((n.clone(), persistent));
+                            match out.iter_mut().find(|(m, _, _)| m == n) {
+                                Some(entry) => entry.2 &= scope.conditional,
+                                None => out.push((n.clone(), persistent, scope.conditional)),
+                            }
                         }
                     }
                 }
-                xs.iter().for_each(|x| walk(x, fields, out));
+                let scopes = scope.enter(k);
+                for (index, x) in xs.iter().enumerate() {
+                    walk(x, fields, &scopes[index.min(scopes.len() - 1)], out);
+                }
             }
             _ => {}
         }
     }
-    walk(s, fields, &mut out);
+    walk(s, fields, &GuardScope::default(), &mut out);
     out
 }
 
@@ -1088,7 +1150,7 @@ pub fn output_with_ready(
             // a function of the fragment and is linked to `pre` by map_owned_frame.
             let map_haves = guard_map_haves(&tr.body, &fields);
             let mut observed_fields: Vec<(Ident, Vec<verus_syn::Expr>)> = vec![];
-            for (field, key) in &map_haves {
+            for (field, key, _) in &map_haves {
                 match observed_fields.iter_mut().find(|(n, _)| n == field) {
                     Some((_, keys)) => keys.push(key.clone()),
                     None => observed_fields.push((field.clone(), vec![key.clone()])),
@@ -1098,7 +1160,7 @@ pub fn output_with_ready(
             // fields (linked to `pre` by option_owned_frame) and persistent
             // option fields (by persistent_option_owned_frame).
             let option_haves = guard_option_haves(&tr.body, &fields);
-            let option_updates: Vec<_> = option_haves.iter().map(|(field, persistent)| {
+            let option_updates: Vec<_> = option_haves.iter().map(|(field, persistent, _)| {
                 if *persistent {
                     quote! {#field: Some(f.#field->Some_0->Agree_0)}
                 } else {
@@ -1118,27 +1180,39 @@ pub fn output_with_ready(
                 })).collect();
                 quote! {#se{#(#updates,)* ..Self::__observed(f)}}
             };
-            let mut observed_links: Vec<_> = map_haves.iter().map(|(field, key)| {
+            // A `have` under an `if` or a `match` owns its operand on its
+            // paths only: its link is conditional on the fragment holding it.
+            let mut observed_links: Vec<_> = map_haves.iter().map(|(field, key, conditional)| {
                 let imap = match fields[&field.to_string()].stype {
                     ShardableType::IMap(..) => quote! {pre.#field},
                     _ => quote! {pre.#field.to_imap()},
                 };
-                quote! {
+                let link = quote! {
                     ::vstd::resource::tsm_collections::map_owned_frame(f.#field, z.#field, #imap, #key,
                         f.#field.at(#key)->Some_0->Exclusive_0);
+                };
+                if *conditional {
+                    quote! {if f.#field.at(#key) is Some && f.#field.at(#key)->Some_0 is Exclusive {#link}}
+                } else {
+                    link
                 }
             }).collect();
-            for (field, persistent) in &option_haves {
-                observed_links.push(if *persistent {
-                    quote! {
+            for (field, persistent, conditional) in &option_haves {
+                let (link, variant) = if *persistent {
+                    (quote! {
                         ::vstd::resource::tsm_collections::persistent_option_owned_frame(f.#field, z.#field, pre.#field,
                             f.#field->Some_0->Agree_0);
-                    }
+                    }, quote! {Agree})
                 } else {
-                    quote! {
+                    (quote! {
                         ::vstd::resource::tsm_collections::option_owned_frame(f.#field, z.#field, pre.#field,
                             f.#field->Some_0->Exclusive_0);
-                    }
+                    }, quote! {Exclusive})
+                };
+                observed_links.push(if *conditional {
+                    quote! {if f.#field is Some && f.#field->Some_0 is #variant {#link}}
+                } else {
+                    link
                 });
             }
             // The guard's storage fact, by a case split on each key's field.
@@ -1158,7 +1232,7 @@ pub fn output_with_ready(
                     _ => unreachable!(),
                 })
                 .collect();
-            for (field, persistent) in &option_haves {
+            for (field, persistent, _) in option_haves.iter().filter(|(_, _, conditional)| !conditional) {
                 observed_req.push(if *persistent {
                     quote! {f.#field is Some && f.#field->Some_0 is Agree}
                 } else {
@@ -1203,6 +1277,29 @@ pub fn output_with_ready(
                     ensures *out==Self::#guarded(token.fragment(),#(#pn),*)
                 {Self::#frame(token.fragment(),#(#pn),*);token.guard(Self::#guarded(token.fragment(),#(#pn),*))}
             });
+            if local_ready.contains(&n.to_string()) {
+                let declared_requires =
+                    crate::verified_readiness::declared_requires_spec(tr, &st, &params)?;
+                let reads: Vec<_> =
+                    names.iter().copied().filter(|n| read.contains(&n.to_string())).collect();
+                let api = crate::verified_readiness::local_ready_guard_api(
+                    crate::verified_readiness::GuardContext {
+                        sm,
+                        tr,
+                        st: &st,
+                        se: &se,
+                        pe: &quote! {Protocol #expr},
+                        ft: &ft,
+                        tt: &tt,
+                        sty: &sty,
+                        params: &params,
+                        pn: &pn,
+                        observed: &observed_req,
+                        reads: &reads,
+                    },
+                )?;
+                local_ready_items.push((n.clone(), quote! {#declared_requires #api}));
+            }
         } else if init {
             let base_req = quote! {#se::#enabled(#(#pn),*)};
             if let Some(p) = storage {

@@ -63,11 +63,8 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
         let Some(tr) = bundle.sm.transitions.iter().find(|tr| tr.name == *name) else {
             return Err(Error::new(name.span(), "unknown local-ready transition"));
         };
-        if tr.kind != TransitionKind::Transition {
-            return Err(Error::new(
-                name.span(),
-                "local-ready requires a mutating transition",
-            ));
+        if tr.kind == TransitionKind::Init {
+            return Err(Error::new(name.span(), "local-ready does not apply to an initializer"));
         }
     }
     if !raw {
@@ -1640,6 +1637,114 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
             let (#before,#after,#witness_frame)=#pe::#witness(#initial,<#ft>::unit(),#next.fragment(),#physical_deposit,#returned_map,#(#pn),*);
             #monotone_withdrawn
             #result_expr{token:#next,withdrawn:#returned_map,before:#before,after:#after,frame:#witness_frame}
+        }
+    })
+}
+
+/// What `local_ready_guard_api` uses of a local-ready `property!`/`readonly!`
+/// transition with a `guard` (see `Context`; `sty`: the storage type,
+/// `observed`: the raw requirement's conditions on the borrowed fragment `f`).
+pub struct GuardContext<'a> {
+    pub sm: &'a SM,
+    pub tr: &'a Transition,
+    pub st: &'a TokenStream,
+    pub se: &'a TokenStream,
+    pub pe: &'a TokenStream,
+    pub ft: &'a TokenStream,
+    pub tt: &'a TokenStream,
+    pub sty: &'a TokenStream,
+    pub params: &'a [TokenStream],
+    pub pn: &'a [&'a Ident],
+    pub observed: &'a [TokenStream],
+    pub reads: &'a [&'a Ident],
+}
+
+/// The local-ready items (of the type `local_ready::t`) of a transition with a
+/// `guard`: a `property!` or `readonly!` whose raw operation `Protocol::t`
+/// borrows the token and returns a shared reference into the storage.
+/// `precondition(f, ..)` is over the borrowed fragment, `ready` proves that it
+/// implies `Protocol::t_requires` (by `local_ready_api`'s replay, with the
+/// unit as the shared fragment), and `run(&token, ..)` is `Protocol::t` with
+/// the local precondition; `local_state(f, ..)` if the local state is named.
+/// A readonly transition or property without a `guard` has the raw operation
+/// of a mutating transition (the token is passed and returned, with a unit
+/// deposit), and gets `local_ready_api`'s items.
+pub fn local_ready_guard_api(c: GuardContext<'_>) -> Result<TokenStream, Error> {
+    let GuardContext { sm, tr, st, se, pe, ft, tt, sty, params, pn, observed, reads } = c;
+    let n = &tr.name;
+    let req = format_ident!("{}_requires", n);
+    let enabled = format_ident!("{}_enabled", n);
+    let owners = format_ident!("{}_owners_enabled", n);
+    let guarded = format_ident!("{}_guarded", n);
+    let local_state = fresh(sm, tr, "local_state");
+    let observation = fresh(sm, tr, "observed_state");
+    let completion_frame = fresh(sm, tr, "completion_frame");
+    let full_state = fresh(sm, tr, "completion_state");
+    // The replay hints are stated over `owned` and `h` (`local_ready_api`):
+    // here the borrowed fragment and the unit.
+    let (sequence_hints, sequenced) =
+        local_sequence_hints(sm, tr, &full_state, &completion_frame, ft)?;
+    let set_hints = singleton_set_remove_hints(
+        tr, &observation, &full_state, &completion_frame, ft, se, pe, &owners, pn, &sequenced,
+    );
+    let map_hints = singleton_map_remove_hints(
+        sm, tr, &observation, &full_state, &completion_frame, ft, se, &owners, pn, &sequenced,
+    );
+    // The local state, as `local_ready_api`'s.
+    let implicit_state = match implicit_local_state(sm, tr, se, pe, ft)? {
+        None if !agreement_fields(sm, tr).is_empty() => Some(quote! {#pe::__observed(f)}),
+        state => state,
+    };
+    let (local_value, local_state_fn, agreement) = match implicit_state {
+        Some(state) => (
+            quote! {Self::local_state(f,#(#pn),*)},
+            quote! {
+                /// The local state of `precondition`: values bound by patterns are the fragment's.
+                pub open spec fn local_state(f:#ft,#(#params),*)->#st {let owned=f; let h=<#ft>::unit(); #state}
+            },
+            agreement(sm, tr, &full_state, &completion_frame),
+        ),
+        None => (quote! {#pe::__observed(f)}, quote! {}, vec![]),
+    };
+    Ok(quote! {
+        #local_state_fn
+        /// Local observations suffice only because the following theorem checks every completion.
+        #[verifier::inline]
+        pub open spec fn precondition(f:#ft,#(#params),*)->bool {
+            true #(&& #observed)* && {
+                let #local_state=#local_value;
+                Self::declared_requires(#local_state,#(#pn),*) && #se::#owners(#local_state,f,<#ft>::unit(),#(#pn),*)
+            }
+        }
+        #[allow(unused_variables)]
+        pub proof fn ready(f:#ft,#(#params),*)
+            requires Self::precondition(f,#(#pn),*)
+            ensures #pe::#req(f,#(#pn),*)
+        {
+            let owned=f;
+            let h=<#ft>::unit();
+            <#ft>::op_unit(f);
+            let #observation=#local_value;
+            assert forall|#completion_frame:#ft,#full_state:#st|#full_state.invariant()
+                &&<#ft>::op(f,#completion_frame)==#pe::embed(#full_state)
+                implies #se::#owners(#full_state,f,<#ft>::unit(),#(#pn),*)
+                    &&#se::#enabled(#full_state,#(#pn),*) by {
+                assert(<#ft>::op(<#ft>::op(owned,h),#completion_frame)==#pe::embed(#full_state));
+                #(assert(#full_state.#reads==#observation.#reads);)*
+                #(#agreement)*
+                assert(Self::declared_requires(#full_state,#(#pn),*));
+                assert(#se::#owners(#full_state,owned,h,#(#pn),*));
+                #(#set_hints)*
+                #(#map_hints)*
+                #(#sequence_hints)*
+            }
+        }
+        pub proof fn run(tracked token:&#tt,#(#params),*)->(tracked out:&#sty)
+            requires Self::precondition(token.fragment(),#(#pn),*)
+            ensures *out==#pe::#guarded(token.fragment(),#(#pn),*)
+        {
+            Self::ready(token.fragment(),#(#pn),*);
+            #pe::#n(token,#(#pn),*)
         }
     })
 }

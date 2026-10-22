@@ -159,10 +159,11 @@ reference into the guarded storage value.
 ### Local readiness
 
 `#[verified_local_ready(t, ..)]`, written next to `#[verified_raw_tokens]`, adds
-operations for the named mutating transitions whose precondition is local. (On the
-generic interface the attribute is accepted, its names must be mutating
-transitions, and it has no other effect: every generic operation already has a
-token-level precondition and a generated readiness proof.)
+operations whose precondition is local for the named transitions, readonly
+transitions and properties (not initializers). (On the generic interface the
+attribute is accepted, its names must not be initializers, and it has no other
+effect: every generic operation already has a token-level precondition and a
+generated readiness proof.)
 
 The local-ready API of `t` is in its own namespace: the associated items of the
 generated type `local_ready::t` in the machine module (`M::local_ready::t::<T>` for a
@@ -190,8 +191,23 @@ withdrawn map (a `TransitionObservation`).
 let tracked token = M::local_ready::put_two::run(token, deposit, a, b);
 ```
 
-These states describe some completion, not a distinguished global history. A
-transition qualifies only if its `require`s can be read from the supplied
+These states describe some completion, not a distinguished global history.
+
+A readonly transition or property without a `guard` has the raw operation of a
+mutating transition (the token is passed and returned; nothing is deposited or
+withdrawn), and the same local-ready API. One with a `guard` borrows the token:
+`local_ready::t::precondition(f, x)` is stated over the borrowed fragment `f` (its
+local state, if named, is `local_ready::t::local_state(f, x)`),
+`local_ready::t::ready(f, x)` proves `Protocol::t_requires(f, x)`, and
+`local_ready::t::run(&token, x)` returns the same shared reference into the storage
+as `Protocol::t`, with `*out == Protocol::t_guarded(token.fragment(), x)`.
+
+```rust
+// `property! { peek(k: int) { have m >= [k => let v]; guard stored >= [k => Tok { v }]; } }`
+let tracked g = M::local_ready::peek::run(&token, k);
+```
+
+A transition qualifies only if its `require`s can be read from the supplied
 components; otherwise the macro rejects it or the generated lemma fails to verify.
 
 So the raw interface puts the separation-logic reasoning in the client: the client
