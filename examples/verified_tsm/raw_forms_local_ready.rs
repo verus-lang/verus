@@ -1,6 +1,6 @@
-//! Raw backend statement forms with local readiness: two deposits, and a
-//! withdrawal followed by a deposit at another key, in `#[verified_local_ready]`
-//! transitions; and an index update of a variable field.
+//! Raw backend statement forms with local readiness (generated for every raw
+//! transition): two deposits, and a withdrawal followed by a deposit at another
+//! key; and an index update of a variable field.
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 use vstd::resource::algebra::ResourceAlgebra;
@@ -13,7 +13,6 @@ pub struct Tok { pub v: int }
 pub struct Pair { pub a: int, pub b: int }
 verified_tokenized_state_machine! {
     #[verified_raw_tokens]
-    #[verified_local_ready(put_two, swap)]
     SubUp {
         fields {
             #[sharding(variable)] pub pair: Pair,

@@ -93,7 +93,8 @@ pub fn tokenized_state_machine(input: TokenStream) -> TokenStream {
 /// methods), each method proved by a call to the raw operation
 /// (`#[verified_generic_tokens]` may be written explicitly). Use
 /// `#[verified_raw_tokens]` inside the machine to request the raw resource
-/// interface instead, optionally with `#[verified_local_ready(..)]`.
+/// interface instead, with a local-ready API (`M::local_ready::t`) for each
+/// transition, readonly transition and property whose form supports it.
 #[proc_macro]
 pub fn verified_tokenized_state_machine(input: TokenStream) -> TokenStream {
     crate::vstd_path::set_is_vstd(false);

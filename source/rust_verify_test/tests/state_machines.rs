@@ -9797,7 +9797,7 @@ test_verify_tsm! {
 }
 
 // Checked-macro version of general_operand_after_remove_same_field for the raw interface's
-// `#[verified_local_ready]` operations (the trusted macro has neither); its `storage_option`
+// local-ready operations (the trusted macro has neither); its `storage_option`
 // field is unused. Their readiness proof (`local_ready::<tr>::ready`) failed for a map or set `have` or
 // general `remove`, and for any `remove`/`have` after a `remove` of the same field: the later
 // operand is observed in the fragment the removal leaves, and only the first singleton `remove`
@@ -9806,13 +9806,6 @@ test_verify_one_file_with_options! {
     #[test] general_operand_after_remove_same_field_local_ready_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
         verified_tokenized_state_machine!{
             #[verified_raw_tokens]
-            #[verified_local_ready(map_constants, map_have, map_remove, map_remove_have,
-                map_remove_remove, map_remove_remove_have_add, map_singleton_remove_have,
-                map_singleton_remove_remove, map_let_remove_have, map_have_bound_remove,
-                imap_remove_have, imap_remove_remove_have, set_remove_have, set_remove_remove_have,
-                set_singleton_remove_have, iset_remove_have, iset_remove_remove, multiset_remove_have,
-                multiset_remove_remove_have, multiset_singleton_remove_have,
-                multiset_singleton_remove_remove, persistent_haves, two_fields)]
             X {
             fields {
                 #[sharding(map)] pub m: Map<int, int>,
@@ -9951,11 +9944,6 @@ test_verify_one_file_with_options! {
     #[test] branch_operands_local_ready_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
         verified_tokenized_state_machine!{
             #[verified_raw_tokens]
-            #[verified_local_ready(remove_if_have, if_remove_have, if_else_remove_have,
-                remove_if_else_have, nested, nested_join, if_let, if_tuple, if_require_assert,
-                if_remove_add, match_remove_have, match_guard, if_singleton,
-                imap_if_else_remove_have, set_if_else_remove_have, set_nested,
-                multiset_if_else_remove_have, persistent_match, persistent_if_add, two_fields)]
             X {
             fields {
                 #[sharding(map)] pub m: Map<int, int>,
@@ -10091,7 +10079,7 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
-// Storage operations under a branch (and after a `let`) in a `#[verified_local_ready]`
+// Storage operations under a branch (and after a `let`) in a local-ready raw
 // transition (checked macro only): the readiness proof's deposit equality quantified over the
 // inline `local_ready::<tr>::deposited`/`<tr>_deposited`, whose `let`/`match` bodies Verus cannot
 // choose a trigger in ("Could not automatically infer triggers").
@@ -10102,7 +10090,6 @@ test_verify_one_file_with_options! {
 
         verified_tokenized_state_machine!{
             #[verified_raw_tokens]
-            #[verified_local_ready(branchy, keyed)]
             X {
             fields {
                 #[sharding(variable)] pub auth: Map<int, Tok>,
@@ -10148,7 +10135,7 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
-// Checked-macro test of `#[verified_local_ready]` for values bound by patterns (the trusted
+// Checked-macro test of local readiness (raw interface) for values bound by patterns (the trusted
 // macro has no local-ready operations): `remove`/`have` of a map entry `[k => let v]` (map, imap,
 // persistent map), of `Some(let x)` (option, persistent option), refutable patterns, bound
 // values in requirements, updates, conditions, later keys and deposits, keys bound by a `let`
@@ -10162,10 +10149,6 @@ test_verify_one_file_with_options! {
         pub enum Tag { A(int), B }
         verified_tokenized_state_machine!{
             #[verified_raw_tokens]
-            #[verified_local_ready(map_remove_bound, map_have_bound, imap_remove_readd,
-                pmap_have_bound, option_remove_readd, poption_have_bound, refutable_option,
-                refutable_map, bound_condition, bound_key, let_key, refutable_then_have, bound_set,
-                literal_after_remove, put, take)]
             X {
             fields {
                 #[sharding(map)] pub m: Map<int, int>,
@@ -10322,7 +10305,6 @@ test_verify_one_file_with_options! {
         pub struct Tok { pub v: int }
         verified_tokenized_state_machine! {
             #[verified_raw_tokens]
-            #[verified_local_ready(a, a_local, a_observed, b)]
             N {
                 fields {
                     #[sharding(variable)] pub auth: Map<nat, Tok>,
@@ -10396,7 +10378,6 @@ test_verify_one_file_with_options! {
         use vstd::resource::tsm::Machine;
         verified_tokenized_state_machine! {
             #[verified_raw_tokens]
-            #[verified_local_ready(put, put_local)]
             G<T> {
                 fields {
                     #[sharding(variable)] pub auth: Map<nat, T>,
@@ -10438,7 +10419,7 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
-// Local readiness (`#[verified_local_ready]`, raw interface; the trusted macro has neither) of
+// Local readiness (raw interface; the trusted macro has neither) of
 // readonly transitions and properties. One without a `guard` has the raw operation of a mutating
 // transition (`local_ready::t::{run, run_with_shared, observed}`); one with a `guard` borrows
 // the token (`local_ready::t::run(&token, ..)` returns the guarded storage). Also the raw guard frames of a `have` under
@@ -10450,9 +10431,6 @@ test_verify_one_file_with_options! {
         pub enum Cmd { A(int), B, C }
         verified_tokenized_state_machine!{
             #[verified_raw_tokens]
-            #[verified_local_ready(ro_map, ro_map_general, ro_set, ro_multiset, ro_option, ro_persistent,
-                ro_let, ro_if, ro_match, ro_birds_eye, pr_assert, pr_option_bound, pr_map_bound,
-                gd_map, gd_map_general, gd_option, gd_persistent_option, gd_if, gd_match, gd_birds_eye, gd_let_tuple, ro_guard)]
             X {
             fields {
                 #[sharding(variable)] pub n: int,
@@ -10743,7 +10721,6 @@ test_verify_one_file_with_options! {
         pub struct Tok { pub v: int }
         verified_tokenized_state_machine!{
             #[verified_raw_tokens]
-            #[verified_local_ready(ro_map, pr_assert, gd_option)]
             X {
             fields {
                 #[sharding(variable)] pub n: int,
@@ -10802,7 +10779,7 @@ test_verify_one_file_with_options! {
     } => Err(e) => assert_fails(e, 3)
 }
 
-// `#[verified_local_ready]` on raw machines without storage (checked macro only): the
+// Local readiness of raw machines without storage (checked macro only): the
 // operations are over the plain `Token`, without deposit and withdrawal, for variable, constant,
 // map, set, multiset, count, option and persistent fields, `remove`/`have`/`add`, `if`/`match`,
 // `let` and a pattern binding. Also: a singleton `remove` under a branch, a `require` with a
@@ -10815,8 +10792,6 @@ test_verify_one_file_with_options! {
         use vstd::resource::tsm::Machine;
         verified_tokenized_state_machine! {
             #[verified_raw_tokens]
-            #[verified_local_ready(var_update, map_replace, map_have, set_ops, multiset_ops, count_ops,
-                option_ops, option_bind, persistent_ops, branchy, matchy, letty)]
             X {
                 fields {
                     #[sharding(variable)] pub v: int,
@@ -10945,7 +10920,6 @@ test_verify_one_file_with_options! {
 
         verified_tokenized_state_machine! {
             #[verified_raw_tokens]
-            #[verified_local_ready(insert, visit)]
             Q<T> {
                 fields {
                     #[sharding(variable)] pub auth: Seq<T>,
@@ -10999,8 +10973,6 @@ test_verify_one_file_with_options! {
                 pub enum Cmd { A(int), B, C }
         verified_tokenized_state_machine!{
             #[verified_raw_tokens]
-            #[verified_local_ready(ro_map, ro_map_general, ro_set, ro_multiset, ro_option, ro_persistent,
-                ro_let, ro_if, ro_match, ro_birds_eye, pr_assert, pr_option_bound, pr_map_bound)]
             X {
             fields {
                 #[sharding(variable)] pub n: int,
@@ -11171,4 +11143,93 @@ test_verify_one_file_with_options! {
             let tracked t = X::local_ready::pr_map_bound::run(t, k);
         }
     } => Ok(())
+}
+
+// Local readiness is generated for every raw transition, readonly transition and property except
+// the forms `verified_readiness::local_ready_supported` skips, whose readiness lemma is not proved;
+// here a `have` of a map or persistent set field after an `add` to the same field. Such a
+// transition keeps its other raw operations (`Protocol::swap_check`, ...), the machine's other
+// transitions get their local-ready API, and clients see no `local_ready::swap_check`.
+test_verify_one_file_with_options! {
+    #[test] local_ready_default_skipped_forms_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::tsm::Machine;
+        verified_tokenized_state_machine! {
+            #[verified_raw_tokens]
+            S {
+                fields {
+                    #[sharding(map)] pub m: Map<int, int>,
+                    #[sharding(persistent_set)] pub ps: Set<int>,
+                }
+                init! { initialize() { init m = Map::empty().insert(1, 0); init ps = Set::empty(); } }
+                transition! { swap(k: int) {
+                    remove m -= [k => 0];
+                    add m += [k => 1];
+                } }
+                // Skipped: a `have` after an `add` to the same map field.
+                transition! { swap_check(k: int, j: int) {
+                    remove m -= [k => 0];
+                    add m += [k => 1];
+                    have m >= [j => 1];
+                } }
+                // Skipped: the same for a persistent set.
+                transition! { grow(a: Set<int>, b: Set<int>) {
+                    have ps >= (a);
+                    add ps (union)= (a);
+                    have ps >= (b);
+                } }
+                #[inductive(initialize)] fn initialize_inductive(post: Self) {}
+                #[inductive(swap)] fn swap_inductive(pre: Self, post: Self, k: int) {}
+                #[inductive(swap_check)] fn swap_check_inductive(pre: Self, post: Self, k: int, j: int) {}
+                #[inductive(grow)] fn grow_inductive(pre: Self, post: Self, a: Set<int>, b: Set<int>) {}
+            }
+        }
+
+        proof fn client(tracked t: S::Token)
+            requires t.fragment() == S::Fragment::field_m(Map::empty().insert(1, 0)),
+        {
+            let tracked t = S::local_ready::swap::run(t, 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] local_ready_default_skipped_forms_no_api ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::tsm::Machine;
+        verified_tokenized_state_machine! {
+            #[verified_raw_tokens]
+            S {
+                fields {
+                    #[sharding(map)] pub m: Map<int, int>,
+                    #[sharding(persistent_set)] pub ps: Set<int>,
+                }
+                init! { initialize() { init m = Map::empty().insert(1, 0); init ps = Set::empty(); } }
+                transition! { swap(k: int) {
+                    remove m -= [k => 0];
+                    add m += [k => 1];
+                } }
+                // Skipped: a `have` after an `add` to the same map field.
+                transition! { swap_check(k: int, j: int) {
+                    remove m -= [k => 0];
+                    add m += [k => 1];
+                    have m >= [j => 1];
+                } }
+                // Skipped: the same for a persistent set.
+                transition! { grow(a: Set<int>, b: Set<int>) {
+                    have ps >= (a);
+                    add ps (union)= (a);
+                    have ps >= (b);
+                } }
+                #[inductive(initialize)] fn initialize_inductive(post: Self) {}
+                #[inductive(swap)] fn swap_inductive(pre: Self, post: Self, k: int) {}
+                #[inductive(swap_check)] fn swap_check_inductive(pre: Self, post: Self, k: int, j: int) {}
+                #[inductive(grow)] fn grow_inductive(pre: Self, post: Self, a: Set<int>, b: Set<int>) {}
+            }
+        }
+
+        proof fn client(tracked t: S::Token)
+            requires t.fragment() == S::Fragment::field_m(Map::empty().insert(1, 0)),
+        {
+            let tracked t = S::local_ready::swap_check::run(t, 1, 1);
+        }
+    } => Err(e) => assert_rust_error_msg(e, "cannot find `swap_check` in `local_ready`")
 }

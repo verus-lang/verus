@@ -1,27 +1,25 @@
-//! Interface selection for `verified_tokenized_state_machine!`, and optional
-//! checked readiness over locally observed inputs for the raw interface. The
-//! existing all-completion API remains available when a transition is not
-//! opted in.
+//! Interface selection for `verified_tokenized_state_machine!`, and checked
+//! readiness over locally observed inputs for the raw interface (generated for
+//! every transition `local_ready_supported` accepts, next to the
+//! all-completion API).
 use crate::ast::*;
 use crate::parse_token_stream::{parse_result_to_smir, ParseResult};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
-use verus_syn::{punctuated::Punctuated, Error, Ident, Token};
+use verus_syn::{Error, Ident};
 
 /// Selects the client interface. The default is the generic field-token
 /// interface (`verified_generic_tokens`, which may also be written explicitly):
 /// the trusted macro's token types and `Instance` methods, each proved by a
 /// call to the raw operation. `#[verified_raw_tokens]` selects the raw
-/// resource interface, optionally with `#[verified_local_ready(..)]` raw
-/// operations whose preconditions are stated over the owned fragments. On the
-/// generic interface `#[verified_local_ready(..)]` is accepted (its names are
-/// checked) and has no further effect.
+/// resource interface, with raw operations whose preconditions are stated over
+/// the owned fragments (`local_ready::t`) for every non-init transition that
+/// `local_ready_supported` accepts. The removed `#[verified_field_tokens]` and
+/// `#[verified_local_ready(..)]` are rejected.
 pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
-    let mut selected = HashSet::new();
     let mut raw = false;
     let mut generic = false;
-    let mut names = vec![];
     let mut remaining = vec![];
     for attr in parsed.attrs {
         let attribute_name = if attr.path().leading_colon.is_none() && attr.path().segments.len() == 1 {
@@ -34,6 +32,11 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
                 attr.path().segments[0].ident.span(),
                 "`#[verified_field_tokens]` was removed: per-field tokens (the generic interface) are the default; delete the attribute",
             ));
+        } else if attribute_name == "verified_local_ready" {
+            return Err(Error::new(
+                attr.path().segments[0].ident.span(),
+                "`#[verified_local_ready(..)]` was removed: local readiness is generated for every raw transition (`M::local_ready::t`); delete the attribute",
+            ));
         } else if attribute_name == "verified_generic_tokens" {
             if generic {return Err(Error::new(attr.path().segments[0].ident.span(),"duplicate generic field tokens attribute"));}
             if raw {return Err(Error::new(attr.path().segments[0].ident.span(),"generic field tokens and raw token attributes cannot be combined"));}
@@ -44,14 +47,6 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
             if generic {return Err(Error::new(attr.path().segments[0].ident.span(),"generic field tokens and raw token attributes cannot be combined"));}
             if !matches!(attr.meta,verus_syn::Meta::Path(_)){return Err(Error::new(attr.path().segments[0].ident.span(),"raw token attribute takes no arguments"));}
             raw=true;
-        } else if attr.path().is_ident("verified_local_ready") {
-            let list = attr.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)?;
-            for name in list {
-                if !selected.insert(name.to_string()) {
-                    return Err(Error::new(name.span(), "duplicate local-ready transition"));
-                }
-                names.push(name);
-            }
         } else {
             remaining.push(attr);
         }
@@ -59,19 +54,10 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
     parsed.attrs = remaining;
     let mut bundle = parse_result_to_smir(parsed, true)?;
     crate::lemmas::check_lemmas(&bundle)?;
-    for name in &names {
-        let Some(tr) = bundle.sm.transitions.iter().find(|tr| tr.name == *name) else {
-            return Err(Error::new(name.span(), "unknown local-ready transition"));
-        };
-        if tr.kind == TransitionKind::Init {
-            return Err(Error::new(name.span(), "local-ready does not apply to an initializer"));
-        }
-    }
     if !raw {
-        // `#[verified_local_ready(..)]` has no effect here beyond the check
-        // above: every generic operation already has a token-level
-        // precondition, and its generated readiness lemma covers every
-        // completion.
+        // The generic interface has no local-ready API: every generic operation
+        // already has a token-level precondition, and its generated readiness
+        // lemma covers every completion.
         // Initial requirements over a storage map become named open spec
         // functions, which keeps the raw initializer's execution proof
         // stable; clients see equal terms.
@@ -87,10 +73,151 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
         let output=crate::verified_general::output(bundle)?;
         return crate::verified_generic_tokens::append_tokens(output,api);
     }
+    // The raw interface: every transition, readonly transition and property
+    // that `local_ready_supported` accepts gets the local-ready API.
+    let selected: HashSet<String> = bundle
+        .sm
+        .transitions
+        .iter()
+        .filter(|tr| tr.kind != TransitionKind::Init && local_ready_supported(&bundle.sm, tr).is_ok())
+        .map(|tr| tr.name.to_string())
+        .collect();
     if selected.is_empty() {
         return crate::verified_tokens::output_raw(bundle);
     }
     crate::verified_general::output_with_ready(bundle, &selected)
+}
+
+/// Whether the raw interface generates the local-ready API (`local_ready::t`)
+/// for the non-init transition `tr`; otherwise the reason it is skipped (the
+/// transition keeps its other raw operations). The rule is syntactic; it
+/// excludes the forms for which the generated `local_ready::t::ready` is not
+/// proved:
+///
+/// * a closure (`|x| ..`, not a quantifier) in an operand of a `remove`,
+///   `have`, `add`, `deposit`, `withdraw` or `guard`, in the value of a `let`,
+///   in an `if` condition, or in a `match` scrutinee or arm guard (anywhere
+///   but in a `require`, `assert` or `update`);
+/// * a `have` of a map or set field (`map`, `imap`, `set`, `iset` or their
+///   `persistent_` versions) after an `add` to the same field on some path;
+/// * a `require` that the local requirement cannot state (under a binding
+///   other than a `let`, `if`, `match`, `remove` or `have`; TSM itself
+///   rejects these forms).
+pub(crate) fn local_ready_supported(sm: &SM, tr: &Transition) -> Result<(), String> {
+    if let Err(e) = declared_requires(&tr.body) {
+        return Err(e.to_string());
+    }
+    if closure_outside_conditions(&tr.body) {
+        return Err("a closure in an operand, `let`, condition or scrutinee".to_string());
+    }
+    if have_after_add(sm, &tr.body, &mut HashSet::new()) {
+        return Err("a `have` of a map or set field after an `add` to the same field".to_string());
+    }
+    Ok(())
+}
+
+/// Whether `expr` contains a closure that is not a quantifier's binder.
+fn has_closure(expr: &verus_syn::Expr) -> bool {
+    use verus_syn::visit::Visit;
+    struct Finder(bool);
+    impl<'ast> Visit<'ast> for Finder {
+        fn visit_expr_unary(&mut self, e: &'ast verus_syn::ExprUnary) {
+            use verus_syn::UnOp;
+            if let (UnOp::Forall(_) | UnOp::Exists(_) | UnOp::Choose(_), verus_syn::Expr::Closure(c)) =
+                (&e.op, &*e.expr)
+            {
+                self.visit_expr(&c.body);
+            } else {
+                verus_syn::visit::visit_expr_unary(self, e);
+            }
+        }
+        fn visit_expr_closure(&mut self, _: &'ast verus_syn::ExprClosure) {
+            self.0 = true;
+        }
+    }
+    let mut finder = Finder(false);
+    finder.visit_expr(expr);
+    finder.0
+}
+
+/// Whether a closure occurs in `stmt` outside a `require`, `assert` or
+/// `update` (see `local_ready_supported`).
+fn closure_outside_conditions(stmt: &TransitionStmt) -> bool {
+    match stmt {
+        TransitionStmt::Block(_, children) => children.iter().any(closure_outside_conditions),
+        TransitionStmt::Split(_, kind, children) => {
+            let here = match &**kind {
+                SplitKind::If(condition) => has_closure(condition),
+                SplitKind::Match(scrutinee, arms) => {
+                    has_closure(scrutinee)
+                        || arms.iter().any(|arm| arm.guard.as_ref().is_some_and(|(_, g)| has_closure(g)))
+                }
+                SplitKind::Let(_, _, _, value) => has_closure(value),
+                SplitKind::Special(_, operation, _, _) => match &operation.elt {
+                    MonoidElt::True | MonoidElt::OptionSome(None) => false,
+                    MonoidElt::OptionSome(Some(e))
+                    | MonoidElt::SingletonMultiset(e)
+                    | MonoidElt::SingletonSet(e)
+                    | MonoidElt::General(e) => has_closure(e),
+                    MonoidElt::SingletonKV(key, value) => {
+                        has_closure(key) || value.as_ref().is_some_and(|v| has_closure(v))
+                    }
+                },
+            };
+            here || children.iter().any(closure_outside_conditions)
+        }
+        _ => false,
+    }
+}
+
+/// Whether some path of `stmt` has a `have` of a map or set field after an
+/// `add` to it (`added`: the fields added to before `stmt` on the current
+/// path; on return, those added on some path through `stmt`).
+fn have_after_add(sm: &SM, stmt: &TransitionStmt, added: &mut HashSet<String>) -> bool {
+    match stmt {
+        TransitionStmt::Block(_, children) => children.iter().any(|child| have_after_add(sm, child, added)),
+        TransitionStmt::Split(_, kind, children) => {
+            if matches!(&**kind, SplitKind::If(_) | SplitKind::Match(..)) {
+                let mut joined = added.clone();
+                for child in children {
+                    let mut branch = added.clone();
+                    if have_after_add(sm, child, &mut branch) {
+                        return true;
+                    }
+                    joined.extend(branch);
+                }
+                *added = joined;
+                return false;
+            }
+            if let SplitKind::Special(name, operation, _, _) = &**kind {
+                let field = name.to_string();
+                if operation.stmt.is_have() && added.contains(&field) {
+                    let collection = sm.fields.iter().any(|f| {
+                        f.name == *name
+                            && matches!(
+                                f.stype,
+                                ShardableType::Map(..)
+                                    | ShardableType::IMap(..)
+                                    | ShardableType::Set(_)
+                                    | ShardableType::ISet(_)
+                                    | ShardableType::PersistentMap(..)
+                                    | ShardableType::PersistentIMap(..)
+                                    | ShardableType::PersistentSet(_)
+                                    | ShardableType::PersistentISet(_)
+                            )
+                    });
+                    if collection {
+                        return true;
+                    }
+                }
+                if operation.stmt.is_add() {
+                    added.insert(field);
+                }
+            }
+            children.iter().any(|child| have_after_add(sm, child, added))
+        }
+        _ => false,
+    }
 }
 
 // General collection operands create a substantial sequential ownership term.

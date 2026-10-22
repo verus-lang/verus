@@ -5,7 +5,7 @@ every test of `source/rust_verify_test/tests/state_machines.rs` and every truste
 that selects its macro by `cfg(verus_verified_tsm)` (see `source/rust_verify_test/README.md`).
 This directory only holds what those dual-run tests cannot cover: soundness negatives that the
 trusted macro does not catch, features and limitations that exist only in the checked macros
-(the raw interface, `#[verified_local_ready]`, the generic interface's differences from the
+(the raw interface and its local-ready API, the generic interface's differences from the
 trusted one, see `source/docs/state_machines/src/checked-token-interfaces.md`), and regression
 tests for bugs of the checked macros (the header names the fixing commit).
 
@@ -74,21 +74,23 @@ below with the reason.
 * `negative/storage_birds_guard.rs`: diagnostic: a guard value must be a deterministic
   function of the local inputs.
 
-## Local readiness (`#[verified_local_ready]`)
+## Local readiness
+
+Every raw transition, readonly transition and property gets its local-ready API
+(`M::local_ready::t`) unless its form is one the macro skips (see
+`checked-token-interfaces.md`); the tests of `state_machines.rs` named `*local_ready*` cover the
+forms and the skipped ones.
 
 * `raw_forms_local_ready.rs`: local-ready transitions with two deposits, a withdrawal followed
   by a deposit, and an index update.
-* `generic_tokens_local_ready_accepted.rs`: the attribute is accepted (and has no effect) on
-  the generic interface.
-* `negative/local_ready_hidden_state.rs`: a withdrawal whose stored value the supplied
-  fragments do not show fails the generated readiness lemma.
-* `negative/default_tokens_local_ready_unknown.rs`: names are checked on the generic interface.
 
 ## Interface selection
 
 * `negative/default_tokens_conflict_raw_then_generic.rs`: the raw and generic attributes
   cannot be combined.
 * `negative/default_tokens_removed_field_tokens.rs`: the removed `#[verified_field_tokens]`
+  gets a diagnostic.
+* `negative/default_tokens_removed_local_ready.rs`: the removed `#[verified_local_ready(..)]`
   gets a diagnostic.
 
 ## The generic (default) interface

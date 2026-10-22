@@ -1650,7 +1650,7 @@ pub fn output_with_ready(
             quote! {impl #decl local_ready::#n #types #where_clause {#items}}
         });
         quote! {
-            /// The local-ready API of the `#[verified_local_ready(..)]` transitions.
+            /// The local-ready API of the machine's transitions (`local_ready::t`).
             pub mod local_ready {
                 #[allow(unused_imports)]
                 use super::*;

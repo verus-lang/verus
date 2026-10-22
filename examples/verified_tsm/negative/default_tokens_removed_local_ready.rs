@@ -1,13 +1,14 @@
-// EXPECTED-ERROR: unknown local-ready transition
-//! Complete ordinary adder.rs model, including its local initialization let.
-//! On the default interface `#[verified_local_ready(..)]` has no effect, but
-//! its names are still checked.
+// EXPECTED-ERROR: `#[verified_local_ready(..)]` was removed
+//! Complete ordinary adder.rs model on the raw interface: the removed
+//! `#[verified_local_ready(..)]` gets a diagnostic (every raw transition gets
+//! its local-ready API by default).
 use verus_state_machines_macros::verified_tokenized_state_machine;
 use vstd::prelude::*;
 verus! {
 
 verified_tokenized_state_machine!(
-    #[verified_local_ready(missing)]
+    #[verified_raw_tokens]
+    #[verified_local_ready(add)]
     X {
         fields {
             #[sharding(variable)]
