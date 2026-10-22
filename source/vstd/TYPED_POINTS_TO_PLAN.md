@@ -102,7 +102,9 @@ impl PointsToUntyped {
     ;
 
     /// If `T` is zero sized,
-    /// then we can construct a `PointsToUntyped` from any non-null pointer.
+    /// then we can construct a `PointsToUntyped` from any non-null `*mut T`
+    /// whose address is within bounds of its provenance.
+    /// The range of memory pointed to by this permission will be empty.
     pub proof fn zero_sized<T>(ptr: *mut T) -> (tracked perm: Self)
         requires
             ptr@.addr != 0,
@@ -191,10 +193,11 @@ impl PointsToUntyped {
     /// into mutable borrows of bytes `[0, mid)` and `[mid, len)`.
     /// This is the mutable-borrow analogue of `split`.
     ///
-    /// If both halves stay well-formed with the same pointers,
-    /// then `self` is also still well-formed with the same pointer,
-    /// holding the halves' final permissions concatenated.
-    /// (Phase 3b; today's commented-out contract.)
+    /// The final pointer stays the same, 
+    /// and `self`'s final bytes and `seq_pt` are the concatenation 
+    /// of `first` and `second`'s final bytes and `seq_pt`.
+    /// If both halves keep their pointers and lengths (`ptrs_len_same`),
+    /// then `final(self)` is also still well-formed.
     pub proof fn split_mut(tracked &mut self, mid: nat) -> (tracked (first, second): (
         &mut Self,
         &mut Self,
@@ -223,18 +226,12 @@ impl PointsToUntyped {
             ),
             first.wf(),
             second.wf(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).seq_pt() == final(first).seq_pt() + final(second).seq_pt(),
+            final(self).bytes() == final(first).bytes() + final(second).bytes(),
             // Criteria necessary for re-establishing invariants
-            ({
-                &&& final(first).wf()
-                &&& final(first).ptr() == first.ptr()
-                &&& final(second).wf()
-                &&& final(second).ptr() == second.ptr()
-            }) ==> {
-                &&& final(self).wf()
-                &&& final(self).ptr() == old(self).ptr()
-                &&& final(self).seq_pt() == final(first).seq_pt() + final(second).seq_pt()
-                &&& final(self).bytes() == final(first).bytes() + final(second).bytes()
-            },
+            Self::ptrs_len_same(*first, *final(first)) && Self::ptrs_len_same(*second, *final(second))
+                ==> final(self).wf(),
     ;
 
     /// Concatenates `PointsToUntyped` permissions `self` and `other`,
@@ -1251,10 +1248,11 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     /// The sub-permission has the same provenance,
     /// and its pointer is offset from `self.ptr()` by `i * size_of::<T>()`.
     ///
-    /// Provided that the mutable reference is not used to change the pointer of the sub-permission,
-    /// and that it is still well-formed,
-    /// `self` is also still well-formed,
+    /// `self` keeps its pointer,
     /// with the sub-sequence of permissions replaced by the final sub-permission's.
+    /// Provided that the sub-permission keeps its pointers and length,
+    /// with each element still satisfying decode validity (`ptrs_len_same_valid`),
+    /// `self` is also still well-formed.
     ///
     /// Proved from M5 (`from_seq_mut`) in phase 3b;
     /// until then, an axiom on `SeqPointsTo<T, PointsTo<T>>` only.
@@ -1270,12 +1268,11 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 metadata: (j - i) as usize,
             }),
             r.seq_pt() == old(self).seq_pt().subrange(i as int, j as int),
-            final(r).wf() && final(r).ptr() == r.ptr() ==> {   // same ptr: same address and length
-                &&& final(self).wf()
-                &&& final(self).ptr() == old(self).ptr()
-                &&& final(self).seq_pt() == old(self).seq_pt().subrange(0, i as int) + final(r).seq_pt()
-                    + old(self).seq_pt().subrange(j as int, old(self).len() as int)
-            },
+            final(self).ptr() == old(self).ptr(),
+            final(self).seq_pt() == old(self).seq_pt().subrange(0, i as int) + final(r).seq_pt()
+                + old(self).seq_pt().subrange(j as int, old(self).len() as int),
+            // Criteria necessary for re-establishing invariants
+            Self::ptrs_len_same_valid(*r, *final(r)) ==> final(self).wf(),
     ;
 
     /// Creates a `SeqPointsTo<T, PointsTo<T>>` of length `len`
