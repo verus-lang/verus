@@ -19,6 +19,8 @@ use vir::traits::{DemoteTraitLookup, MergedTraits};
 use vir::well_formed::{DynCompatabilityChecks, InitialWfResults};
 use rustc_hir::def_id::DefId;
 use std::cell::RefCell;
+use std::rc::Rc;
+use rustc_middle::ty::TyCtxt;
 
 /// Krate without the full functions (i.e., empty function list in the krate)
 /// Instead we have FunctionOrConstInfos which contains FunctionStubs.
@@ -608,4 +610,28 @@ impl<'tcx> Query<'tcx> {
         let erasure_info = self.get_erasure_info(fun)?;
         Ok((erasure_info.clone(), erasure_modes.clone()))
     }
+}
+
+std::thread_local! {
+    static QUERY: RefCell<Option<Rc<Query<'static>>>> = RefCell::new(None);
+}
+
+pub fn set_global_query<'tcx>(query: Rc<Query<'tcx>>) {
+    // SAFETY: We coerce 'tcx to 'static here, and we immediately coerce
+    // back to 'tcx when retrieving the Query<'_> from the global
+    let query: Rc<Query<'static>> = unsafe { std::mem::transmute(query) };
+    QUERY.with_borrow_mut(|q| {
+        assert!(q.is_none());
+        *q = Some(query);
+    })
+}
+
+pub fn get_global_query<'tcx>(_tcx: TyCtxt<'tcx>) -> Rc<Query<'tcx>> {
+    // SAFETY: We coerce 'static back to 'tcx here.
+    // The _tcx argument ensures 'tcx is instantiated with the correct lifetime variable.
+    QUERY.with_borrow(|q| {
+        let query: Rc<Query<'static>> = q.as_ref().unwrap().clone();
+        let query: Rc<Query<'tcx>> = unsafe { std::mem::transmute(query) };
+        query
+    })
 }

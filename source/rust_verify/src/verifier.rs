@@ -3,7 +3,7 @@ use crate::config::{Args, CargoVerusArgs, ShowTriggers};
 use crate::context::ContextX;
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
-use crate::query::{Query, QueryError};
+use crate::query::{Query, QueryError, set_global_query};
 use crate::rust_to_vir_base::mk_crate_id;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
@@ -45,6 +45,7 @@ use vir::ast::{CrateId, Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX};
 use vir::prelude::PreludeConfig;
+use std::rc::Rc;
 
 const RLIMIT_PER_SECOND_Z3: f32 = 3000000f32;
 const RLIMIT_PER_SECOND_CVC5: f32 = 333333f32; // ~= 5s
@@ -2710,7 +2711,7 @@ impl Verifier {
 
         ctxt.flush_diagnostics(diagnostics);
 
-        let query = Query::new(
+        let query = Rc::new(Query::new(
             self.args.clone(),
             Box::new(Reporter::new_from_tcx(spans, tcx)),
             self.func_details.clone(),
@@ -2718,7 +2719,8 @@ impl Verifier {
             other_vir_crates,
             pre_crate,
             self.crate_id.clone().unwrap(),
-        );
+        ));
+        set_global_query(query.clone());
 
         // Export crate if requested.
         let local_crate = query.get_exportable_crate().map_err(map_query_err)?;
