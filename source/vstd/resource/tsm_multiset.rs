@@ -7,7 +7,10 @@ use super::tsm_collections::*;
 
 verus! {
 
-broadcast use super::super::multiset::group_multiset_axioms;
+broadcast use {
+    super::super::multiset::group_multiset_axioms,
+    super::tsm_collections::group_tsm_fragment_lemmas,
+};
 
 pub proof fn multiset_join<V>(left: Multiset<V>, right: Multiset<V>)
     ensures

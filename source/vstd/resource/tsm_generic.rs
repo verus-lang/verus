@@ -23,6 +23,7 @@ broadcast use {
     super::super::map::group_map_lemmas,
     super::super::set::group_set_lemmas,
     super::super::multiset::group_multiset_axioms,
+    super::tsm_collections::group_tsm_fragment_lemmas,
 };
 
 /// A `variable` token's exclusive value is the state's value.

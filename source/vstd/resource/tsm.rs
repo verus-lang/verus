@@ -776,6 +776,9 @@ pub tracked struct Observation<'a, M: Machine> {
     resource: &'a Resource<Inved<M>>,
 }
 
+/// Opaque: the generated proofs use it through the lemmas below (and introduce it
+/// in the generic-token observations).
+#[verifier::opaque]
 pub open spec fn fragment_included<M: Machine>(source: M::Fragment, upper: M::Fragment) -> bool {
     exists|frame: M::Fragment| M::Fragment::op(source, frame) == upper
 }
@@ -785,6 +788,7 @@ pub proof fn fragment_included_reflexive<M: Machine>(source: M::Fragment)
     ensures
         fragment_included::<M>(source, source),
 {
+    reveal(fragment_included);
     M::Fragment::op_unit(source);
     assert(M::Fragment::op(source, M::Fragment::unit()) == source);
 }
@@ -794,6 +798,7 @@ pub proof fn fragment_included_unit<M: Machine>(upper: M::Fragment)
     ensures
         fragment_included::<M>(M::Fragment::unit(), upper),
 {
+    reveal(fragment_included);
     M::Fragment::commutative(M::Fragment::unit(), upper);
     M::Fragment::op_unit(upper);
     assert(M::Fragment::op(M::Fragment::unit(), upper) == upper);
@@ -811,6 +816,7 @@ pub proof fn fragment_included_transitive<M: Machine>(
     ensures
         fragment_included::<M>(source, upper),
 {
+    reveal(fragment_included);
     let left = choose|left: M::Fragment| M::Fragment::op(source, left) == middle;
     let right = choose|right: M::Fragment| M::Fragment::op(middle, right) == upper;
     M::Fragment::associative(source, left, right);
@@ -823,6 +829,7 @@ pub proof fn fragment_included_op_left<M: Machine>(a: M::Fragment, b: M::Fragmen
     ensures
         fragment_included::<M>(a, M::Fragment::op(a, b)),
 {
+    reveal(fragment_included);
     assert(M::Fragment::op(a, b) == M::Fragment::op(a, b));
 }
 
@@ -830,6 +837,7 @@ pub proof fn fragment_included_op_right<M: Machine>(a: M::Fragment, b: M::Fragme
     ensures
         fragment_included::<M>(b, M::Fragment::op(a, b)),
 {
+    reveal(fragment_included);
     M::Fragment::commutative(a, b);
     assert(M::Fragment::op(b, a) == M::Fragment::op(a, b));
 }
@@ -846,6 +854,7 @@ pub proof fn fragment_included_frame<M: Machine>(source: M::Fragment, upper: M::
     ensures
         M::Fragment::op(source, fragment_frame::<M>(source, upper)) == upper,
 {
+    reveal(fragment_included);
 }
 
 pub proof fn fragment_included_completion<M: Machine>(
@@ -860,6 +869,7 @@ pub proof fn fragment_included_completion<M: Machine>(
     ensures
         M::Fragment::op(source, out) == M::embed(state),
 {
+    reveal(fragment_included);
     let remainder = choose|remainder: M::Fragment| M::Fragment::op(source, remainder) == upper;
     M::Fragment::associative(source, remainder, frame);
     M::Fragment::op(remainder, frame)
@@ -889,6 +899,7 @@ impl<'a, M: Machine> Observation<'a, M> {
             fragment_included::<M>(self.fragment(), out.fragment()),
             fragment_included::<M>(other.fragment(), out.fragment()),
     {
+        reveal(fragment_included);
         use_type_invariant(self);
         use_type_invariant(other);
         let tracked upper = self.resource.join_shared(other.resource);
@@ -1008,6 +1019,7 @@ impl<'a, M: Machine> Observation<'a, M> {
         requires fragment_included::<M>(target, self.fragment()),
         ensures out.loc() == self.loc(), out.fragment() == target,
     {
+        reveal(fragment_included);
         use_type_invariant(self);
         let frame = choose|frame: M::Fragment| M::Fragment::op(target, frame) == self.fragment();
         assert(Inved::<M>::op(Inved::Value(target), Inved::Value(frame)) == self.resource.value());

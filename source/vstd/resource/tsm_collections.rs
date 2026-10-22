@@ -329,7 +329,10 @@ pub proof fn persistent_option_union_general_frame<V>(owned: PersistentOptionFra
 }
 
 
-pub open spec fn map_frag<K, V>(map: IMap<K, V>) -> MapFragment<K, V> {
+// The fragment constructors are closed: outside this module, a fragment is known by
+// its entries (`group_tsm_fragment_lemmas`), not by its closure, so that a proof does
+// not unfold every constructor term into a lambda (and its boxing axioms).
+pub closed spec fn map_frag<K, V>(map: IMap<K, V>) -> MapFragment<K, V> {
     Pointwise {
         values: |key: K| if map.dom().contains(key) {
             Some(ExclusiveRA::Exclusive(map[key]))
@@ -339,7 +342,7 @@ pub open spec fn map_frag<K, V>(map: IMap<K, V>) -> MapFragment<K, V> {
     }
 }
 
-pub open spec fn persistent_map_frag<K, V>(map: IMap<K, V>) -> PersistentMapFragment<K, V> {
+pub closed spec fn persistent_map_frag<K, V>(map: IMap<K, V>) -> PersistentMapFragment<K, V> {
     Pointwise {
         values: |key: K| if map.dom().contains(key) {
             Some(AgreementRA::Agree(map[key]))
@@ -349,20 +352,83 @@ pub open spec fn persistent_map_frag<K, V>(map: IMap<K, V>) -> PersistentMapFrag
     }
 }
 
-pub open spec fn set_frag<K>(set: ISet<K>) -> SetFragment<K> {
+pub closed spec fn set_frag<K>(set: ISet<K>) -> SetFragment<K> {
     Pointwise {
         values: |key: K| if set.contains(key) { Some(ExclusiveRA::Exclusive(())) } else { None },
     }
 }
 
-pub open spec fn persistent_set_frag<K>(set: ISet<K>) -> PersistentSetFragment<K> {
+pub closed spec fn persistent_set_frag<K>(set: ISet<K>) -> PersistentSetFragment<K> {
     Pointwise {
         values: |key: K| if set.contains(key) { Some(AgreementRA::Agree(())) } else { None },
     }
 }
 
-pub open spec fn multiset_frag<V>(multiset: Multiset<V>) -> MultisetFragment<V> {
+pub closed spec fn multiset_frag<V>(multiset: Multiset<V>) -> MultisetFragment<V> {
     Pointwise { values: |value: V| CountRA { count: multiset.count(value) } }
+}
+
+/// The entry of `map_frag(map)` at `key`.
+pub broadcast proof fn map_frag_at<K, V>(map: IMap<K, V>, key: K)
+    ensures
+        #[trigger] map_frag(map).at(key) == if map.dom().contains(key) {
+            Some(ExclusiveRA::Exclusive(map[key]))
+        } else {
+            None
+        },
+{
+}
+
+/// The entry of `persistent_map_frag(map)` at `key`.
+pub broadcast proof fn persistent_map_frag_at<K, V>(map: IMap<K, V>, key: K)
+    ensures
+        #[trigger] persistent_map_frag(map).at(key) == if map.dom().contains(key) {
+            Some(AgreementRA::Agree(map[key]))
+        } else {
+            None
+        },
+{
+}
+
+/// The entry of `set_frag(set)` at `key`.
+pub broadcast proof fn set_frag_at<K>(set: ISet<K>, key: K)
+    ensures
+        #[trigger] set_frag(set).at(key) == if set.contains(key) {
+            Some(ExclusiveRA::Exclusive(()))
+        } else {
+            None
+        },
+{
+}
+
+/// The entry of `persistent_set_frag(set)` at `key`.
+pub broadcast proof fn persistent_set_frag_at<K>(set: ISet<K>, key: K)
+    ensures
+        #[trigger] persistent_set_frag(set).at(key) == if set.contains(key) {
+            Some(AgreementRA::Agree(()))
+        } else {
+            None
+        },
+{
+}
+
+/// The entry of `multiset_frag(multiset)` at `value`.
+pub broadcast proof fn multiset_frag_at<V>(multiset: Multiset<V>, value: V)
+    ensures
+        #[trigger] multiset_frag(multiset).at(value) == (CountRA { count: multiset.count(value) }),
+{
+}
+
+/// The entries of the closed fragment constructors (and of `map_remove_many` and
+/// `set_remove_many`). Each lemma is also in `group_vstd_default`.
+pub broadcast group group_tsm_fragment_lemmas {
+    map_frag_at,
+    persistent_map_frag_at,
+    set_frag_at,
+    persistent_set_frag_at,
+    multiset_frag_at,
+    map_remove_many_at,
+    set_remove_many_at,
 }
 
 pub open spec fn replace_at<K, P: PCM>(fragment: Pointwise<K, P>, key: K, value: P)
@@ -565,10 +631,21 @@ pub proof fn persistent_map_insert_frame<K, V>(
     Pointwise::extensionality(combined, whole);
 }
 
-pub open spec fn map_remove_many<K, V>(owned: MapFragment<K, V>, keys: ISet<K>)
+pub closed spec fn map_remove_many<K, V>(owned: MapFragment<K, V>, keys: ISet<K>)
     -> MapFragment<K, V>
 {
     Pointwise { values: |key: K| if keys.contains(key) { None } else { owned.at(key) } }
+}
+
+/// The entry of `map_remove_many(owned, keys)` at `key`.
+pub broadcast proof fn map_remove_many_at<K, V>(owned: MapFragment<K, V>, keys: ISet<K>, key: K)
+    ensures
+        #[trigger] map_remove_many(owned, keys).at(key) == if keys.contains(key) {
+            None
+        } else {
+            owned.at(key)
+        },
+{
 }
 
 pub proof fn map_remove_many_frame<K, V>(
@@ -931,10 +1008,21 @@ pub proof fn set_add_frame<K>(
     Pointwise::extensionality(combined, whole);
 }
 
-pub open spec fn set_remove_many<K>(owned: SetFragment<K>, removed: ISet<K>)
+pub closed spec fn set_remove_many<K>(owned: SetFragment<K>, removed: ISet<K>)
     -> SetFragment<K>
 {
     Pointwise { values: |key: K| if removed.contains(key) { None } else { owned.at(key) } }
+}
+
+/// The entry of `set_remove_many(owned, removed)` at `key`.
+pub broadcast proof fn set_remove_many_at<K>(owned: SetFragment<K>, removed: ISet<K>, key: K)
+    ensures
+        #[trigger] set_remove_many(owned, removed).at(key) == if removed.contains(key) {
+            None
+        } else {
+            owned.at(key)
+        },
+{
 }
 
 /// Bulk removal consumes local ownership of every removed member.

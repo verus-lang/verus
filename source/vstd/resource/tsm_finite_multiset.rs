@@ -9,7 +9,10 @@ use super::pcm::PCM;
 use super::tsm::CountRA;
 
 verus! {
-broadcast use super::super::multiset::group_multiset_axioms;
+broadcast use {
+    super::super::multiset::group_multiset_axioms,
+    super::tsm_collections::group_tsm_fragment_lemmas,
+};
 
 #[verifier::accept_recursive_types(V)]
 pub struct FiniteMultisetRA<V> {

@@ -132,6 +132,20 @@ pub broadcast group group_vstd_default {
     layout::group_layout_axioms,
     mut_ref::group_mut_ref_axioms,
     //
+    // verified tokenized state machines: the entries of the closed fragment
+    // constructors (`resource::tsm_collections::group_tsm_fragment_lemmas`). Listed
+    // one by one, not as the group: a group in this list adds its fuel constant to
+    // every query, which perturbs unrelated proofs; a lemma is pruned from a query
+    // that does not mention its trigger.
+    //
+    resource::tsm_collections::map_frag_at,
+    resource::tsm_collections::persistent_map_frag_at,
+    resource::tsm_collections::set_frag_at,
+    resource::tsm_collections::persistent_set_frag_at,
+    resource::tsm_collections::multiset_frag_at,
+    resource::tsm_collections::map_remove_many_at,
+    resource::tsm_collections::set_remove_many_at,
+    //
     // core std_specs
     //
     std_specs::range::group_range_axioms,

@@ -383,6 +383,8 @@ pub open spec fn frame_exchange_nondeterministic<M: StorageMachine>(
 }
 
 /// A borrowed fragment guarantees that a specified resource stays stored.
+/// (Opaque: a guard frame proves it, `frame_guard_sound` uses it.)
+#[verifier::opaque]
 pub open spec fn frame_guard<M: StorageMachine>(
     fragment: M::Fragment,
     guarded: IMap<M::Key, M::Value>,
@@ -602,6 +604,7 @@ pub proof fn frame_guard_sound<M: StorageMachine>(
     ensures
         storage_protocol::guards(carrier_of::<M>(fragment), guarded),
 {
+    reveal(frame_guard);
     assert forall|frame: Carrier<M>, base: IMap<M::Key, M::Value>|
         #[trigger] Carrier::<M>::op(carrier_of::<M>(fragment), frame).rel(base)
             implies guarded.submap_of(base) by {
@@ -1022,6 +1025,7 @@ impl<'a, M: StorageMachine> StorageObservation<'a, M> {
             fragment_included::<M>(self.fragment(), out.fragment()),
             fragment_included::<M>(other.fragment(), out.fragment()),
     {
+        reveal(fragment_included);
         let tracked upper = self.resource.join_shared(other.resource);
         let left = choose|frame: Carrier<M>|
             Carrier::<M>::op(self.resource.value(), frame) == upper.value();
@@ -1051,6 +1055,7 @@ impl<'a, M: StorageMachine> StorageObservation<'a, M> {
             out.loc() == self.loc(),
             out.fragment() == target,
     {
+        reveal(fragment_included);
         let frame = choose|frame: M::Fragment| M::Fragment::op(target, frame) == self.fragment();
         assert(Carrier::<M>::op(carrier_of::<M>(target), carrier_of::<M>(frame))
             == self.resource.value());
