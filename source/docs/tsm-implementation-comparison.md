@@ -40,12 +40,11 @@ The checked dispatcher selects one of two interfaces. By default (or with
 emitter and appends the generic field-token interface of
 [verified_generic_tokens.rs](../state_machines_macros/src/verified_generic_tokens.rs):
 the trusted macro's token types and `Instance` methods, with proofs. With
-`#[verified_raw_tokens]` it generates only the raw protocol, using the
-straight-line emitter where it applies and the general emitter otherwise, plus
-the operations selected by `#[verified_local_ready(..)]` (on the default
-interface that attribute is accepted and only its names are checked). Duplicate,
-conflicting, or argument-bearing markers produce diagnostics, as does the removed
-`#[verified_field_tokens]`. A
+`#[verified_raw_tokens]` it generates only the raw protocol with the general
+emitter (the straight-line emitter where it applies, if no transition has
+local-ready operations), plus the local-ready operations of every transition the readiness generator supports.
+Duplicate, conflicting, or argument-bearing markers produce diagnostics, as do the
+removed `#[verified_field_tokens]` and `#[verified_local_ready(..)]`. A
 declaration that the generic interface does not support is rejected; the macro
 does not silently select raw tokens. (Earlier versions selected one of several
 field-shape-specific interfaces by default; those were removed.)
@@ -214,16 +213,17 @@ permissions are not `Copy` and have no clone method.
 
 ## Local readiness and state observations
 
-`#[verified_local_ready(...)]`, with `#[verified_raw_tokens]`, adds raw
-operations in the namespace of a generated type per transition, such as
+With `#[verified_raw_tokens]`, every transition, readonly transition and property
+gets raw operations in the namespace of a generated type, such as
 `local_ready::change::ready`, `local_ready::change::run`, and
-`local_ready::change::observed`.
+`local_ready::change::observed`, except the transitions of the forms that
+`local_ready_supported` skips (closures in operands, a map or set `have` after an
+`add` to the same field), whose readiness proof the generator cannot produce.
 The implementation is in
 [verified_readiness.rs](../state_machines_macros/src/verified_readiness.rs).
 The generic interface needs no such selection: its preconditions are already
 stated over the supplied tokens, and its generated proofs derive the raw
-precondition for every completion. There the attribute is accepted, its names
-are checked, and it has no further effect.
+precondition for every completion.
 A local requirement can use facts visible in supplied fragments. Its generated
 proof must establish readiness for **every** compatible invariant-satisfying
 completion, including the ownership and deposit conditions.

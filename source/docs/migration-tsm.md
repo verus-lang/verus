@@ -201,24 +201,27 @@ and call both operations where the client replaced the value; see
 
 `#[verified_raw_tokens]` exposes the machine's resource algebra instead of field
 tokens. A client owns fragments of the product algebra and proves preconditions
-quantified over all completions. With `#[verified_raw_tokens]`,
-`#[verified_local_ready(t, ..)]` adds raw operations for the named transitions
-whose precondition is stated over the supplied fragments; the macro proves that it
-implies readiness for every completion. They are the associated items of the type
-`M::local_ready::t`: `local_ready::t::run(..)` is `Protocol::t(..)` with the local
+quantified over all completions. For every transition, readonly transition and
+property (except a few forms it skips, listed in
+[Checked tokens: raw and generic interfaces](state_machines/src/checked-token-interfaces.md)),
+the raw interface also has operations whose precondition is stated over the supplied
+fragments; the macro proves that it implies readiness for every completion. They are
+the associated items of the type `M::local_ready::t`: `local_ready::t::run(..)` is `Protocol::t(..)` with the local
 precondition `local_ready::t::precondition(..)` (earlier checked versions named
 these `Protocol::t_local(..)` and `Protocol::t_local_requires(..)`; likewise
 `t_local_ready`, `t_local_with_shared`, `t_observed` and `t_local_state` are now
-`ready`, `run_with_shared`, `observed` and `local_state`). On the default interface the attribute is
-accepted and only its names are checked: the generic operations already have
-token-level preconditions.
+`ready`, `run_with_shared`, `observed` and `local_state`). Earlier checked versions
+generated them only for the transitions named by `#[verified_local_ready(t, ..)]`; that
+attribute was removed and is rejected with a diagnostic: delete it (the named
+transitions keep their API, unless their form is one that is skipped). The generic
+interface has no local-ready operations: its operations already have token-level
+preconditions.
 
 ```rust
 verified_tokenized_state_machine!{
     #[verified_raw_tokens]
-    #[verified_local_ready(add_one)]
     MapOperands {
-        // The machine.
+        // The machine; `MapOperands::local_ready::add_one::run(token, ..)`.
     }
 }
 ```
@@ -243,7 +246,7 @@ client-built maps with the machine's deposited values are extensional (`=~=`).
 Earlier checked versions generated one of several field-shape-specific interfaces
 by default, marked by `#[verified_field_tokens]`, with `#[verified_local_ready]`
 selecting physical readiness on that route. Those interfaces were removed, and
-`#[verified_field_tokens]` is rejected with a diagnostic. Clients written for
+`#[verified_field_tokens]` (like `#[verified_local_ready(..)]`) is rejected with a diagnostic. Clients written for
 them (`InstanceInfo`, generated `*_collection` owners, empty-token bases) port to
 the trusted macro's interface, i.e. back to their original form.
 
@@ -454,7 +457,7 @@ Contracts and resource proofs can still change.
 | System | Operations without input tokens, storage machines | Take only `&self`. | Take an extra `Unit` (`Instance::unit_from_<field>`). |
 | System | `imap`/`iset` token collections | `IMapToken`/`ISetToken`. | Generated `<field>_map`/`<field>_set` types with the same methods. |
 | System | Type parameters | Unconstrained. | Unconstrained; a guard borrowing no token takes a `&Unit` in a machine with storage; persistent tokens (and an instance owning resources) are not `Copy`. |
-| System | Raw resources and local readiness | Not available. | `#[verified_raw_tokens]`, optionally with `#[verified_local_ready(..)]`; storage values are maps `IMap<M::__StorageKey, M::__StorageValue>` tagged by storage field. |
+| System | Raw resources and local readiness | Not available. | `#[verified_raw_tokens]`, with a local-ready API (`M::local_ready::t`) per transition; storage values are maps `IMap<M::__StorageKey, M::__StorageValue>` tagged by storage field. |
 | Example | Interner equality | An unrestricted generic helper has a trusted, unimplemented body. | The helper requires `T: VerifiedEq` and calls a checked provider. |
 | Example | Disk interpretation | A two-argument spec function returns a described authority token. | A three-argument spec predicate returns `bool` and constrains a supplied authority token. |
 | Example | Rc/Arc invariant identity | The invariant uses the original instance value. | An added `Ghost<Loc>` field supplies an identity parameter. |

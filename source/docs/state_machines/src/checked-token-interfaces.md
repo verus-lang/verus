@@ -22,7 +22,10 @@ The attributes are written before the machine name, e.g.
 two, repeating one, or giving one arguments is an error. The former
 `#[verified_field_tokens]` attribute marked the earlier default, a set of
 field-shape-specific interfaces; it was removed together with them and is now
-rejected with a diagnostic.
+rejected with a diagnostic. The former `#[verified_local_ready(..)]` attribute,
+which selected the transitions with a local-ready API, is rejected likewise: the
+raw interface now generates that API for every transition it supports (see
+"Local readiness" below).
 
 ## The shared model
 
@@ -158,12 +161,10 @@ reference into the guarded storage value.
 
 ### Local readiness
 
-`#[verified_local_ready(t, ..)]`, written next to `#[verified_raw_tokens]`, adds
-operations whose precondition is local for the named transitions, readonly
-transitions and properties (not initializers). (On the generic interface the
-attribute is accepted, its names must not be initializers, and it has no other
-effect: every generic operation already has a token-level precondition and a
-generated readiness proof.)
+The raw interface adds, for every transition, readonly transition and property
+(not initializers), operations whose precondition is local, except for the forms
+listed at the end of this section. (The generic interface has none: every generic
+operation already has a token-level precondition and a generated readiness proof.)
 
 The local-ready API of `t` is in its own namespace: the associated items of the
 generated type `local_ready::t` in the machine module (`M::local_ready::t::<T>` for a
@@ -212,8 +213,26 @@ as `Protocol::t`, with `*out == Protocol::t_guarded(token.fragment(), x)`.
 let tracked g = M::local_ready::peek::run(&token, k);
 ```
 
-A transition qualifies only if its `require`s can be read from the supplied
-components; otherwise the macro rejects it or the generated lemma fails to verify.
+The local precondition is stated over the supplied components; a client
+establishes it from what its tokens show (a `require` over a component the client
+does not hold cannot be established). The generated `ready` lemma is proved for
+every transition that gets the API. The macro skips (without an error) the
+transitions of the following syntactic forms, whose readiness proof the macro
+cannot generate; they keep their other raw operations (`Protocol::t`,
+`Protocol::t_requires`, ...), and `local_ready::t` does not exist:
+
+* a closure (`|x| ..`, not a quantifier's binder) in an operand of a `remove`,
+  `have`, `add`, `deposit`, `withdraw` or `guard`, in the value of a `let`, in an
+  `if` condition, or in a `match` scrutinee or arm guard (a closure in a `require`,
+  `assert` or `update` is fine);
+* a `have` of a `map`, `imap`, `set` or `iset` field, or of their `persistent_`
+  versions, after an `add` to the same field on some path (e.g. `remove m -= [k => 0];
+  add m += [k => 1]; have m >= [j => 1];`); `option`, `multiset`, `count` and `bool`
+  fields are not affected;
+* a `require` that the local requirement cannot state (one under a binding other
+  than a `let`, `if`, `match`, `remove` or `have`; TSM itself rejects these).
+
+The rule is in `verified_readiness::local_ready_supported`.
 
 So the raw interface puts the separation-logic reasoning in the client: the client
 chooses fragments and proves the quantified preconditions. It is the more
@@ -539,7 +558,7 @@ have several outputs.
 | --- | --- | --- |
 | Client-held resource | `Token`: an arbitrary fragment of the product algebra | One type per field; each owns `ι_i(e)` for a singleton `e` |
 | Splitting and combining | Explicit, by fragment arithmetic (`split`, `join`) | By the operations' signatures and token collections |
-| Operation preconditions | Quantified over all completions of the input fragments; proved by the client (or local, with `#[verified_local_ready]`) | Stated over tokens' ghost data, as in the trusted macro; the completion argument is generated |
+| Operation preconditions | Quantified over all completions of the input fragments; proved by the client (or local, with the generated `local_ready::t` operations) | Stated over tokens' ghost data, as in the trusted macro; the completion argument is generated |
 | Operation postconditions | Output fragment, or an existential over a completion and successor state | Values of the output tokens, as in the trusted macro |
 | `Instance` | None; the location is that of the token | `Copy` value carrying the location (and shared resources); with type parameters, possibly an owned copy (`clone`) |
 | Operations without input tokens | Take a token of the instance (it may own the unit fragment) | Take a `Unit` in machines with storage; unchanged otherwise |
@@ -564,3 +583,5 @@ Without an attribute the macro generates the generic interface. Earlier versions
 instead selected one of several field-specific interfaces from the exact shape of the
 machine's fields (with `#[verified_field_tokens]` as an explicit marker, and
 `#[verified_local_ready]` on that route); those interfaces have been removed.
+`#[verified_local_ready(..)]` then selected the raw transitions with a local-ready
+API; it was removed when that API became the raw interface's default.
