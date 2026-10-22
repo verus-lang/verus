@@ -2675,7 +2675,7 @@ fn loop_to_stmts(
 ) -> Result<Vec<Stmt>, VirErr> {
     let expr_ctxt = &ExprCtxt::new();
     let StmX::Loop {
-        pre_stms: _,
+        pre_stms,
         loop_isolation,
         is_for_loop,
         id,
@@ -2856,6 +2856,26 @@ fn loop_to_stmts(
             pre_modified_params_excl.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
 
             // Execute the code between the isolation boundary and the actual loop start
+            // The copied setup is not lowered again, so replay its assignment callbacks.
+            ctx.notify(|obs| {
+                use crate::sst_visitor::VisitorControlFlow::{Recurse, Return};
+                for pre_stm in pre_stms.iter() {
+                    crate::sst_visitor::stm_visitor_dfs::<(), _>(pre_stm, &mut |s| {
+                        match &s.x {
+                            StmX::Assign { lhs: Dest { dest, is_init: false }, .. } => {
+                                obs.on_assign(s, &get_loc_var(dest));
+                            }
+                            // These bodies do not occur in the assert-free setup copy.
+                            StmX::DeadEnd(_)
+                            | StmX::ClosureInner { .. }
+                            | StmX::AssertQuery { .. }
+                            | StmX::Loop { loop_isolation: true, .. } => return Return,
+                            _ => {}
+                        }
+                        Recurse
+                    });
+                }
+            });
             air_body.extend(assert_free_pre_stmts);
 
             // Havoc all vars that might be modified during the loop
