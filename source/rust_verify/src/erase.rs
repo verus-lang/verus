@@ -242,6 +242,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
     functions: &HashMap<Fun, FunctionStub>,
     erasure_hints: &ErasureInfo,
     erasure_modes: &ErasureModes,
+    local_def_id: LocalDefId,
 ) -> Result<(), VirErr> {
     let mut local_id_to_hir: HashMap<AstId, Vec<HirId>> = HashMap::new();
     for (hir_id, vir_id) in &erasure_hints.local_hir_vir_ids {
@@ -432,7 +433,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             .unwrap(),
         get_first_fn_def_id: *verus_items.name_to_id.get(&VerusItem::GetFirst).unwrap(),
     };
-    set_verus_erasure_ctxt(Arc::new(verus_erasure_ctxt));
+    set_verus_erasure_ctxt(local_def_id, Arc::new(verus_erasure_ctxt));
 
     Ok(())
 }

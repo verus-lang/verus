@@ -38,9 +38,9 @@ pub(crate) struct QueryError {
 
 pub(crate) type Res<T> = Result<T, QueryError>;
 
-pub(crate) struct Query<'r, 'tcx> {
+pub(crate) struct Query<'tcx> {
     args: Args,
-    reporter: &'r dyn Diagnostics,
+    reporter: Box<dyn Diagnostics + 'tcx>,
     crate_id: CrateId,
 
     /// Imported crates
@@ -75,10 +75,10 @@ pub(crate) struct Query<'r, 'tcx> {
     pub deferred_errors: Arc<Mutex<Vec<VirErr>>>,
 }
 
-impl<'r, 'tcx> Query<'r, 'tcx> {
+impl<'tcx> Query<'tcx> {
     pub fn new(
         args: Args,
-        reporter: &'r dyn Diagnostics,
+        reporter: Box<dyn Diagnostics + 'tcx>,
         func_details: Arc<Mutex<HashMap<Fun, FuncDetails>>>,
         deferred_errors: Arc<Mutex<Vec<VirErr>>>,
         other_vir_crates: Vec<Krate>,
@@ -364,7 +364,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let info = &pre_crate.fun_name_to_info[fun];
         let mut new_functions = vec![];
         let result = finish_item(ctxt, &info, &mut new_functions);
-        ctxt.flush_diagnostics(self.reporter);
+        ctxt.flush_diagnostics(&*self.reporter);
         match result {
             Ok(()) => {
                 for (new_function, erasure_info) in new_functions.into_iter() {
@@ -562,7 +562,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
 
         // Demote external traits
         let krate = vir::traits::demote_external_traits(
-            self.reporter,
+            &*self.reporter,
             &pre_crate.warning_ctx,
             &krate,
             &demote_trait_lookup,
@@ -591,7 +591,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
 
         vir::well_formed::check_crate_merged(&krate).map_err(|e| self.emit_error(e))?;
 
-        pre_crate.ctxt.flush_diagnostics(self.reporter);
+        pre_crate.ctxt.flush_diagnostics(&*self.reporter);
 
         Ok((krate, Arc::new(new_warning_ctx)))
     }

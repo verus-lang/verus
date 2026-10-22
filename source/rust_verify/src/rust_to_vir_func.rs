@@ -3738,7 +3738,7 @@ fn get_body_visibility_and_fuel(
 ///     ensures ret == (),
 /// ```
 /// Therefore, we substitute out the name here so it be safely elided.
-pub fn clean_ensures_for_unit_return<'tcx>(
+pub(crate) fn clean_ensures_for_unit_return<'tcx>(
     bctx: Option<&BodyCtxt<'tcx>>,
     inner_ret: &vir::ast::Param,
     ensure: &vir::ast::Exprs,
