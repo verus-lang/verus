@@ -155,6 +155,8 @@ forms and the skipped ones.
 
 ## The statement calculus (`vstd::resource::tsm_calculus`)
 
-* `tsm_calculus.rs`: the calculus's step lemmas used by hand on a raw machine: the per-machine
-  configuration split and join, and chains to the frontend's enabling condition and strong
-  relation for every statement form the lemmas cover.
+* `tsm_calculus.rs`: the calculus's step lemmas used by hand on a raw machine with map, imap,
+  set, iset and option fields: the per-machine configuration split and join, and, from the
+  generated ownership condition, chains to the frontend's enabling condition, its strong
+  relation and the output configuration; each remove/have/add lemma occurs in one chain. The
+  machine's generated local readiness uses the same chains.

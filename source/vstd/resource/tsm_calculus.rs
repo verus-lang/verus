@@ -69,6 +69,7 @@ pub open spec fn set_owns<K>(o: SetFragment<K>, x: ISet<K>) -> bool {
 
 // ---------------------------------------------------------------------------
 // `map` / `imap`: general operands (`IMap` state)
+/// `remove f -= (x)`: {cfg(o, h, z, v), o owns x} ⟹ {x ⊆ v, cfg(o \ dom x, h, z, v \ dom x)}.
 pub proof fn imap_remove<K, V>(
     o: MapFragment<K, V>,
     h: MapFragment<K, V>,
@@ -88,6 +89,7 @@ pub proof fn imap_remove<K, V>(
     MapFragment::associative(map_remove_many(o, x.dom()), h, z);
 }
 
+/// `have f >= (x)`: {cfg(o, h, z, v), o·h owns x} ⟹ {x ⊆ v}.
 pub proof fn imap_have<K, V>(
     o: MapFragment<K, V>,
     h: MapFragment<K, V>,
@@ -104,6 +106,7 @@ pub proof fn imap_have<K, V>(
     map_have_many_frame(MapFragment::op(o, h), z, v, x);
 }
 
+/// `add f += (x)`: {cfg(o, h, z, v), dom v ⊥ dom x} ⟹ {cfg(o·x, h, z, v ∪ x)}.
 pub proof fn imap_add<K, V>(
     o: MapFragment<K, V>,
     h: MapFragment<K, V>,
@@ -123,6 +126,7 @@ pub proof fn imap_add<K, V>(
 }
 
 // `imap`: singleton operands `[k => x]` (and `[k => let p]`, with `x` the owned value)
+/// `remove f -= [k => x]`: {cfg(o, h, z, v), o owns [k => x]} ⟹ {v ∋ (k, x), cfg(o \ {k}, h, z, v.remove(k))}.
 pub proof fn imap_remove_one<K, V>(
     o: MapFragment<K, V>,
     h: MapFragment<K, V>,
@@ -144,6 +148,7 @@ pub proof fn imap_remove_one<K, V>(
     assert(v.remove_keys(r.dom()) =~= v.remove(k));
 }
 
+/// `have f >= [k => x]`: {cfg(o, h, z, v), o·h owns [k => x]} ⟹ {v ∋ (k, x)}.
 pub proof fn imap_have_one<K, V>(
     o: MapFragment<K, V>,
     h: MapFragment<K, V>,
@@ -163,6 +168,7 @@ pub proof fn imap_have_one<K, V>(
     assert(r.contains_key(k));
 }
 
+/// `add f += [k => x]`: {cfg(o, h, z, v), k ∉ dom v} ⟹ {cfg(o·[k => x], h, z, v.insert(k, x))}.
 pub proof fn imap_add_one<K, V>(
     o: MapFragment<K, V>,
     h: MapFragment<K, V>,
@@ -188,6 +194,7 @@ pub proof fn imap_add_one<K, V>(
 }
 
 // `map`: general operands (finite `Map` state and operand)
+/// `remove f -= (x)` (finite): {cfg(o, h, z, v), o owns x} ⟹ {x ⊆ v, cfg(o \ dom x, h, z, v \ dom x)}.
 pub proof fn map_remove<K, V>(
     o: MapFragment<K, V>,
     h: MapFragment<K, V>,
@@ -216,6 +223,7 @@ pub proof fn map_remove<K, V>(
     assert(v.to_imap().remove_keys(x.to_imap().dom()) =~= v.remove_keys(x.dom()).to_imap());
 }
 
+/// `have f >= (x)` (finite): {cfg(o, h, z, v), o·h owns x} ⟹ {x ⊆ v}.
 pub proof fn map_have<K, V>(
     o: MapFragment<K, V>,
     h: MapFragment<K, V>,
@@ -237,6 +245,7 @@ pub proof fn map_have<K, V>(
     };
 }
 
+/// `add f += (x)` (finite): {cfg(o, h, z, v), dom v ⊥ dom x} ⟹ {cfg(o·x, h, z, v ∪ x)}.
 pub proof fn map_add<K, V>(
     o: MapFragment<K, V>,
     h: MapFragment<K, V>,
@@ -265,6 +274,7 @@ pub proof fn map_add<K, V>(
 }
 
 // `map`: singleton operands (finite `Map` state)
+/// `remove f -= [k => x]` (finite): {cfg(o, h, z, v), o owns [k => x]} ⟹ {v ∋ (k, x), cfg(o \ {k}, h, z, v.remove(k))}.
 pub proof fn map_remove_one<K, V>(
     o: MapFragment<K, V>,
     h: MapFragment<K, V>,
@@ -290,6 +300,7 @@ pub proof fn map_remove_one<K, V>(
     assert(v.to_imap().remove(k) =~= v.remove(k).to_imap());
 }
 
+/// `have f >= [k => x]` (finite): {cfg(o, h, z, v), o·h owns [k => x]} ⟹ {v ∋ (k, x)}.
 pub proof fn map_have_one<K, V>(
     o: MapFragment<K, V>,
     h: MapFragment<K, V>,
@@ -308,6 +319,7 @@ pub proof fn map_have_one<K, V>(
     assert(v.to_imap().dom().contains(k));
 }
 
+/// `add f += [k => x]` (finite): {cfg(o, h, z, v), k ∉ dom v} ⟹ {cfg(o·[k => x], h, z, v.insert(k, x))}.
 pub proof fn map_add_one<K, V>(
     o: MapFragment<K, V>,
     h: MapFragment<K, V>,
@@ -331,27 +343,28 @@ pub proof fn map_add_one<K, V>(
     assert(v.to_imap().insert(k, x) =~= v.insert(k, x).to_imap());
 }
 
-/// A borrowed singleton map token's entry is observed in the owned fragment joined
-/// with `h` after any removal from the owned part (generic interface).
+/// A borrowed singleton map token's entry `[k => x]` (`h` holds it with any rest `c`) is
+/// observed in the owned fragment joined with `h` after any removal from the owned part
+/// (generic interface): {cfg(o, h, z, v), h == [k => x]·c} ⟹ {(o \ removed)·h owns [k => x]}.
 pub proof fn map_token_observed<K, V>(
     o: MapFragment<K, V>,
     h: MapFragment<K, V>,
     z: MapFragment<K, V>,
-    e: MapFragment<K, V>,
+    v: IMap<K, V>,
     c: MapFragment<K, V>,
     removed: ISet<K>,
     k: K,
     x: V,
 )
     requires
-        cfg(o, h, z, e),
-        e.valid(),
+        cfg(o, h, z, map_frag(v)),
         h == MapFragment::op(map_frag(IMap::empty().insert(k, x)), c),
     ensures
         map_owns(MapFragment::op(map_remove_many(o, removed), h), IMap::empty().insert(k, x)),
 {
     let r = IMap::<K, V>::empty().insert(k, x);
     assert(r.contains_key(k));
+    map_frag_valid(v);
     assert(MapFragment::op(MapFragment::op(o, h), z).at(k).valid());
     assert forall|j: K| r.contains_key(j) implies #[trigger] MapFragment::op(
         map_remove_many(o, removed),
@@ -363,7 +376,14 @@ pub proof fn map_token_observed<K, V>(
 
 // ---------------------------------------------------------------------------
 // `set` / `iset`: general operands (`ISet` state)
-pub proof fn iset_remove<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>, v: ISet<K>, x: ISet<K>)
+/// `remove f -= (x)`: {cfg(o, h, z, v), o owns x} ⟹ {x ⊆ v, cfg(o \ x, h, z, v \ x)}.
+pub proof fn iset_remove<K>(
+    o: SetFragment<K>,
+    h: SetFragment<K>,
+    z: SetFragment<K>,
+    v: ISet<K>,
+    x: ISet<K>,
+)
     requires
         cfg(o, h, z, set_frag(v)),
         set_owns(o, x),
@@ -376,7 +396,14 @@ pub proof fn iset_remove<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment
     SetFragment::associative(set_remove_many(o, x), h, z);
 }
 
-pub proof fn iset_have<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>, v: ISet<K>, x: ISet<K>)
+/// `have f >= (x)`: {cfg(o, h, z, v), o·h owns x} ⟹ {x ⊆ v}.
+pub proof fn iset_have<K>(
+    o: SetFragment<K>,
+    h: SetFragment<K>,
+    z: SetFragment<K>,
+    v: ISet<K>,
+    x: ISet<K>,
+)
     requires
         cfg(o, h, z, set_frag(v)),
         set_owns(SetFragment::op(o, h), x),
@@ -386,7 +413,14 @@ pub proof fn iset_have<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K
     set_have_many_frame(SetFragment::op(o, h), z, v, x);
 }
 
-pub proof fn iset_add<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>, v: ISet<K>, x: ISet<K>)
+/// `add f += (x)`: {cfg(o, h, z, v), v ⊥ x} ⟹ {cfg(o·x, h, z, v ∪ x)}.
+pub proof fn iset_add<K>(
+    o: SetFragment<K>,
+    h: SetFragment<K>,
+    z: SetFragment<K>,
+    v: ISet<K>,
+    x: ISet<K>,
+)
     requires
         cfg(o, h, z, set_frag(v)),
         v.disjoint(x),
@@ -399,7 +433,14 @@ pub proof fn iset_add<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>
 }
 
 // `iset`: singleton operands `set {k}`
-pub proof fn iset_remove_one<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>, v: ISet<K>, k: K)
+/// `remove f -= set {k}`: {cfg(o, h, z, v), o owns {k}} ⟹ {k ∈ v, cfg(o \ {k}, h, z, v.remove(k))}.
+pub proof fn iset_remove_one<K>(
+    o: SetFragment<K>,
+    h: SetFragment<K>,
+    z: SetFragment<K>,
+    v: ISet<K>,
+    k: K,
+)
     requires
         cfg(o, h, z, set_frag(v)),
         set_owns(o, ISet::empty().insert(k)),
@@ -413,7 +454,14 @@ pub proof fn iset_remove_one<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFrag
     assert(v.difference(r) =~= v.remove(k));
 }
 
-pub proof fn iset_have_one<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>, v: ISet<K>, k: K)
+/// `have f >= set {k}`: {cfg(o, h, z, v), o·h owns {k}} ⟹ {k ∈ v}.
+pub proof fn iset_have_one<K>(
+    o: SetFragment<K>,
+    h: SetFragment<K>,
+    z: SetFragment<K>,
+    v: ISet<K>,
+    k: K,
+)
     requires
         cfg(o, h, z, set_frag(v)),
         set_owns(SetFragment::op(o, h), ISet::empty().insert(k)),
@@ -425,7 +473,14 @@ pub proof fn iset_have_one<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragme
     assert(r.contains(k));
 }
 
-pub proof fn iset_add_one<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>, v: ISet<K>, k: K)
+/// `add f += set {k}`: {cfg(o, h, z, v), k ∉ v} ⟹ {cfg(o·{k}, h, z, v.insert(k))}.
+pub proof fn iset_add_one<K>(
+    o: SetFragment<K>,
+    h: SetFragment<K>,
+    z: SetFragment<K>,
+    v: ISet<K>,
+    k: K,
+)
     requires
         cfg(o, h, z, set_frag(v)),
         !v.contains(k),
@@ -438,7 +493,14 @@ pub proof fn iset_add_one<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragmen
 }
 
 // `set`: general operands (finite `Set` state and operand)
-pub proof fn set_remove<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>, v: Set<K>, x: Set<K>)
+/// `remove f -= (x)` (finite): {cfg(o, h, z, v), o owns x} ⟹ {x ⊆ v, cfg(o \ x, h, z, v \ x)}.
+pub proof fn set_remove<K>(
+    o: SetFragment<K>,
+    h: SetFragment<K>,
+    z: SetFragment<K>,
+    v: Set<K>,
+    x: Set<K>,
+)
     requires
         cfg(o, h, z, set_frag(v.to_iset())),
         set_owns(o, x.to_iset()),
@@ -453,7 +515,14 @@ pub proof fn set_remove<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<
     assert(v.to_iset().difference(x.to_iset()) =~= v.difference(x).to_iset());
 }
 
-pub proof fn set_have<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>, v: Set<K>, x: Set<K>)
+/// `have f >= (x)` (finite): {cfg(o, h, z, v), o·h owns x} ⟹ {x ⊆ v}.
+pub proof fn set_have<K>(
+    o: SetFragment<K>,
+    h: SetFragment<K>,
+    z: SetFragment<K>,
+    v: Set<K>,
+    x: Set<K>,
+)
     requires
         cfg(o, h, z, set_frag(v.to_iset())),
         set_owns(SetFragment::op(o, h), x.to_iset()),
@@ -466,7 +535,14 @@ pub proof fn set_have<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>
     };
 }
 
-pub proof fn set_add<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>, v: Set<K>, x: Set<K>)
+/// `add f += (x)` (finite): {cfg(o, h, z, v), v ⊥ x} ⟹ {cfg(o·x, h, z, v ∪ x)}.
+pub proof fn set_add<K>(
+    o: SetFragment<K>,
+    h: SetFragment<K>,
+    z: SetFragment<K>,
+    v: Set<K>,
+    x: Set<K>,
+)
     requires
         cfg(o, h, z, set_frag(v.to_iset())),
         v.disjoint(x),
@@ -483,7 +559,14 @@ pub proof fn set_add<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>,
 }
 
 // `set`: singleton operands (finite `Set` state)
-pub proof fn set_remove_one<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>, v: Set<K>, k: K)
+/// `remove f -= set {k}` (finite): {cfg(o, h, z, v), o owns {k}} ⟹ {k ∈ v, cfg(o \ {k}, h, z, v.remove(k))}.
+pub proof fn set_remove_one<K>(
+    o: SetFragment<K>,
+    h: SetFragment<K>,
+    z: SetFragment<K>,
+    v: Set<K>,
+    k: K,
+)
     requires
         cfg(o, h, z, set_frag(v.to_iset())),
         set_owns(o, ISet::empty().insert(k)),
@@ -495,7 +578,14 @@ pub proof fn set_remove_one<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragm
     assert(v.to_iset().remove(k) =~= v.remove(k).to_iset());
 }
 
-pub proof fn set_have_one<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>, v: Set<K>, k: K)
+/// `have f >= set {k}` (finite): {cfg(o, h, z, v), o·h owns {k}} ⟹ {k ∈ v}.
+pub proof fn set_have_one<K>(
+    o: SetFragment<K>,
+    h: SetFragment<K>,
+    z: SetFragment<K>,
+    v: Set<K>,
+    k: K,
+)
     requires
         cfg(o, h, z, set_frag(v.to_iset())),
         set_owns(SetFragment::op(o, h), ISet::empty().insert(k)),
@@ -505,7 +595,14 @@ pub proof fn set_have_one<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragmen
     iset_have_one(o, h, z, v.to_iset(), k);
 }
 
-pub proof fn set_add_one<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment<K>, v: Set<K>, k: K)
+/// `add f += set {k}` (finite): {cfg(o, h, z, v), k ∉ v} ⟹ {cfg(o·{k}, h, z, v.insert(k))}.
+pub proof fn set_add_one<K>(
+    o: SetFragment<K>,
+    h: SetFragment<K>,
+    z: SetFragment<K>,
+    v: Set<K>,
+    k: K,
+)
     requires
         cfg(o, h, z, set_frag(v.to_iset())),
         !v.contains(k),
@@ -518,6 +615,7 @@ pub proof fn set_add_one<K>(o: SetFragment<K>, h: SetFragment<K>, z: SetFragment
 
 // ---------------------------------------------------------------------------
 // `option`: general operands
+/// `remove f -= (x)`: {cfg(o, h, z, v), o holds x} ⟹ {x is Some ⟹ v == x, cfg(o − x, h, z, opt_sub(v, x))}.
 pub proof fn opt_remove<V>(
     o: OptionFragment<V>,
     h: OptionFragment<V>,
@@ -537,6 +635,7 @@ pub proof fn opt_remove<V>(
     OptionFragment::associative(option_remove_operand(o, x), h, z);
 }
 
+/// `have f >= (x)`: {cfg(o, h, z, v), o·h holds x} ⟹ {x is Some ⟹ v == x}.
 pub proof fn opt_have<V>(
     o: OptionFragment<V>,
     h: OptionFragment<V>,
@@ -553,6 +652,7 @@ pub proof fn opt_have<V>(
     option_have_general_frame(OptionFragment::op(o, h), z, v, x);
 }
 
+/// `add f += (x)`: {cfg(o, h, z, v), x is None or v is None} ⟹ {cfg(o·x, h, z, opt_add(v, x))}.
 pub proof fn opt_add<V>(
     o: OptionFragment<V>,
     h: OptionFragment<V>,
@@ -572,6 +672,7 @@ pub proof fn opt_add<V>(
 }
 
 // `option`: `Some(x)` operands (and `Some(let p)`, with `x` the owned value)
+/// `remove f -= Some(x)` (and `Some(let p)`, `x` the owned value): {cfg(o, h, z, v), o holds Some(x)} ⟹ {v == Some(x), cfg(None, h, z, None)}.
 pub proof fn opt_remove_some<V>(
     o: OptionFragment<V>,
     h: OptionFragment<V>,
@@ -589,6 +690,7 @@ pub proof fn opt_remove_some<V>(
     opt_remove(o, h, z, v, Some(x));
 }
 
+/// `have f >= Some(x)` (and `Some(let p)`, `x` the observed value): {cfg(o, h, z, v), o·h holds Some(x)} ⟹ {v == Some(x)}.
 pub proof fn opt_have_some<V>(
     o: OptionFragment<V>,
     h: OptionFragment<V>,
@@ -605,6 +707,7 @@ pub proof fn opt_have_some<V>(
     opt_have(o, h, z, v, Some(x));
 }
 
+/// `add f += Some(x)`: {cfg(o, h, z, v), v is None} ⟹ {cfg(o·Some(x), h, z, Some(x))}.
 pub proof fn opt_add_some<V>(
     o: OptionFragment<V>,
     h: OptionFragment<V>,
