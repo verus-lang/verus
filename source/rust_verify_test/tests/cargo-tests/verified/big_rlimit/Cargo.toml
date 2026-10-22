@@ -8,6 +8,7 @@ vstd = { path = "../../../../../vstd" }
 
 [package.metadata.verus]
 verify = true
+trusted_crates = ["vstd"]
 test_args = "--rlimit 15"
 
 [workspace]

@@ -74,7 +74,7 @@ pub(crate) fn native_quant_vars(bs: &VarBinders<Typ>, triggers: &Trigs) -> HashS
                 ExpX::UnaryOpr(UnaryOpr::IntegerTypeBound(..), arg) => check_arg(arg, true),
                 ExpX::UnaryOpr(_, arg) => check_arg(arg, false),
                 ExpX::Binary(op, arg1, arg2) => match op {
-                    BinaryOp::Inequality(_) | BinaryOp::Arith(..) => {
+                    BinaryOp::Inequality(_) | BinaryOp::Arith(..) | BinaryOp::StrGetChar => {
                         check_arg(arg1, true);
                         check_arg(arg2, true);
                     }
@@ -138,7 +138,7 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-            UnaryOpr::ProofNote(_) | UnaryOpr::CustomErr(_) | UnaryOpr::ToDyn(_) => {
+            UnaryOpr::ProofNote(_) | UnaryOpr::CustomErr(_) | UnaryOpr::ToDyn(..) => {
                 // recurse inside coercions
                 check_trigger_expr_arg(state, arg)
             }
@@ -202,7 +202,7 @@ fn check_trigger_expr(
         | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
         | ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, _)
         | ExpX::Unary(UnaryOp::Trigger(_) | UnaryOp::HeightTrigger, _) => {}
-        ExpX::Binary(BinaryOp::Bitwise(_) | BinaryOp::Index(_), _, _) => {}
+        ExpX::Binary(BinaryOp::Bitwise(_) | BinaryOp::Index(_) | BinaryOp::StrGetChar, _, _) => {}
         ExpX::Unary(UnaryOp::BitNot(_), _) => {}
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
         ExpX::Unary(UnaryOp::Clip { .. }, _) | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
@@ -296,7 +296,7 @@ fn check_trigger_expr(
             | UnaryOpr::AutoDecreases
             | UnaryOpr::AutoLoopEnsures
             | UnaryOpr::ProofNote(_)
-            | UnaryOpr::ToDyn(_) => Ok(()),
+            | UnaryOpr::ToDyn(..) => Ok(()),
             UnaryOpr::IsVariant { .. } | UnaryOpr::Field { .. } => {
                 check_trigger_expr_arg(state, arg);
                 Ok(())

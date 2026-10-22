@@ -632,3 +632,76 @@ test_verify_one_file! {
         assert!(err.errors[0].message.contains("Could not automatically infer triggers for this quantifier"));
     }
 }
+
+test_verify_one_file! {
+    #[test] test_strslice_get_char_trigger_instantiation verus_code! {
+        use vstd::prelude::*;
+
+        broadcast proof fn literal_index(s: &str, i: int)
+            ensures #[trigger] strslice_get_char(s, i) == s@[i],
+        {
+            vstd::string::axiom_str_literal_get_char(s, i);
+        }
+
+        // No sequence-index assertion seeds the witness at either position.
+        proof fn test(s: &str)
+            requires
+                strslice_len(s) == 12,
+                strslice_get_char(s, 5) == '/',
+                strslice_get_char(s, 8) == '\u{1F980}',
+            ensures
+                s@.contains('/'),
+                s@.contains('\u{1F980}'),
+        {
+            broadcast use literal_index;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_strslice_get_char_trigger_nested verus_code! {
+        use vstd::prelude::*;
+
+        broadcast proof fn literal_contains(s: &str, i: int)
+            requires 0 <= i < s@.len(),
+            ensures #[trigger] s@.contains(strslice_get_char(s, i)),
+        {
+            vstd::string::axiom_str_literal_get_char(s, i);
+        }
+
+        proof fn test(s: &str)
+            requires
+                strslice_len(s) == 12,
+                strslice_get_char(s, 5) == '/',
+            ensures s@.contains('/'),
+        {
+            broadcast use literal_contains;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_strslice_get_char_trigger_membership_bounds verus_code! {
+        use vstd::prelude::*;
+
+        broadcast proof fn literal_index(s: &str, i: int)
+            ensures #[trigger] strslice_get_char(s, i) == s@[i],
+        {
+            vstd::string::axiom_str_literal_get_char(s, i);
+        }
+
+        proof fn wrong_character(s: &str)
+            requires strslice_len(s) == 1, strslice_get_char(s, 0) == '/',
+        {
+            broadcast use literal_index;
+            assert(s@.contains('x')); // FAILS
+        }
+
+        proof fn out_of_bounds(s: &str)
+            requires strslice_len(s) == 0, strslice_get_char(s, 0) == '/',
+        {
+            broadcast use literal_index;
+            assert(s@.contains('/')); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

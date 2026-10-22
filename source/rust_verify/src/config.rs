@@ -1,4 +1,4 @@
-use air::context::SmtSolver;
+use air::context::{SmtEncoding, SmtSolver};
 use getopts::Options;
 use std::{collections::HashSet, sync::Arc};
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
@@ -103,7 +103,6 @@ pub struct ArgsX {
     pub show_triggers: ShowTriggers,
     pub ignore_unexpected_smt: bool,
     pub allow_inline_air: bool,
-    pub debugger: bool,
     pub profile: bool,
     pub profile_all: bool,
     pub capture_profiles: bool,
@@ -117,6 +116,7 @@ pub struct ArgsX {
     pub report_long_running: bool,
     pub use_crate_name: bool,
     pub solver: SmtSolver,
+    pub smt_encoding: SmtEncoding,
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
     pub no_bv_simplify: bool,
@@ -153,7 +153,6 @@ impl ArgsX {
             show_triggers: Default::default(),
             ignore_unexpected_smt: Default::default(),
             allow_inline_air: Default::default(),
-            debugger: Default::default(),
             profile: Default::default(),
             profile_all: Default::default(),
             capture_profiles: Default::default(),
@@ -167,6 +166,7 @@ impl ArgsX {
             report_long_running: Default::default(),
             use_crate_name: Default::default(),
             solver: Default::default(),
+            smt_encoding: Default::default(),
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
             no_bv_simplify: Default::default(),
@@ -407,11 +407,11 @@ pub fn parse_args_with_imports(
 
     const OPT_EXTENDED_MULTI: &str = "V";
     const EXTENDED_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
-    const EXTENDED_DEBUG: &str = "debug";
     const EXTENDED_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
     const EXTENDED_CVC5: &str = "cvc5";
+    const EXTENDED_CVC5_SMTLIB: &str = "cvc5-smtlib";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
@@ -420,7 +420,6 @@ pub fn parse_args_with_imports(
     const EXTENDED_OBSERVERS: &str = "observers";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
-        (EXTENDED_DEBUG, "Enable debugging of proof failures"),
         (
             EXTENDED_NO_SOLVER_VERSION_CHECK,
             "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)",
@@ -431,6 +430,7 @@ pub fn parse_args_with_imports(
             "Always collect prover performance data, but don't generate output reports",
         ),
         (EXTENDED_CVC5, "Use the cvc5 SMT solver, rather than the default (Z3)"),
+        (EXTENDED_CVC5_SMTLIB, "Use cvc5-compatible SMT-LIB with the default Z3 solver"),
         (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
         (
             EXTENDED_USE_CRATE_NAME,
@@ -458,7 +458,7 @@ pub fn parse_args_with_imports(
         OPT_VERSION,
         "Print version information (add `--output-json` to print as json) ",
     );
-    opts.optopt("", OPT_EXPORT, "Export Verus metadata for library crate", "CRATENAME=PATH");
+    opts.optopt("", OPT_EXPORT, "Export Verus metadata for library crate", "PATH");
     opts.optmulti("", OPT_IMPORT, "Import Verus metadata from library crate", "CRATENAME=PATH");
     opts.optflag("", OPT_VERIFY_ROOT, "Verify just the root module of crate");
     opts.optmulti(
@@ -665,6 +665,15 @@ pub fn parse_args_with_imports(
             }
         }
     }
+    if extended.contains_key(EXTENDED_CVC5) && extended.contains_key(EXTENDED_CVC5_SMTLIB) {
+        error("-V cvc5 and -V cvc5-smtlib are mutually exclusive".to_string());
+    }
+    let solver = if extended.contains_key(EXTENDED_CVC5) { SmtSolver::Cvc5 } else { SmtSolver::Z3 };
+    let smt_encoding = if extended.contains_key(EXTENDED_CVC5_SMTLIB) {
+        SmtEncoding::Cvc5
+    } else {
+        solver.default_encoding()
+    };
 
     let args = ArgsX {
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
@@ -788,7 +797,6 @@ pub fn parse_args_with_imports(
         },
         ignore_unexpected_smt: extended.contains_key(EXTENDED_IGNORE_UNEXPECTED_SMT),
         allow_inline_air: extended.contains_key(EXTENDED_ALLOW_INLINE_AIR),
-        debugger: extended.contains_key(EXTENDED_DEBUG),
         profile: {
             if matches.opt_present(OPT_PROFILE) {
                 if matches.opt_present(OPT_PROFILE_ALL) {
@@ -839,7 +847,8 @@ pub fn parse_args_with_imports(
         trace: matches.opt_present(OPT_TRACE),
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
         use_crate_name: extended.contains_key(EXTENDED_USE_CRATE_NAME),
-        solver: if extended.contains_key(EXTENDED_CVC5) { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
+        solver,
+        smt_encoding,
         axiom_usage_info: extended.contains_key(EXTENDED_AXIOM_USAGE_INFO),
         check_api_safety: extended.contains_key(EXTENDED_CHECK_API_SAFETY),
         no_bv_simplify: extended.contains_key(EXTENDED_NO_BV_SIMPLIFY),

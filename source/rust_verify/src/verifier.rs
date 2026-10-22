@@ -2,7 +2,6 @@ use crate::boundary_suggestions::build_boundary_suggestion;
 use crate::commands::{OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, CargoVerusArgs, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
-use crate::debugger::Debugger;
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
 use crate::rust_to_vir_base::mk_crate_id;
@@ -93,7 +92,6 @@ fn emit_observer_summaries(any: &dyn std::any::Any, reporter: &impl air::message
 }
 
 use rustc_span::def_id::LOCAL_CRATE;
-use rustc_span::source_map::SourceMap;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::Write;
@@ -105,7 +103,7 @@ use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
 use vir::ast::{CrateId, Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
-use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos};
+use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX};
 use vir::prelude::PreludeConfig;
 
 const RLIMIT_PER_SECOND_Z3: f32 = 3000000f32;
@@ -802,12 +800,9 @@ impl Verifier {
         &mut self,
         bucket_id: &BucketId,
         reporter: &impl Diagnostics,
-        source_map: Option<&SourceMap>,
         diagnostics_to_report: &std::cell::RefCell<Option<PanicOnDropVec<(Message, MessageLevel)>>>,
         level: Option<MessageLevel>,
         air_context: &mut air::context::Context,
-        assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<std::string::String>>>,
-        snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         command: &Command,
         context: &CommandContext,
         prover_choice: vir::def::ProverChoice,
@@ -958,7 +953,7 @@ impl Verifier {
                     }
                     break;
                 }
-                ValidityResult::Invalid(Some(air_model), Some(error), assert_id_opt) => {
+                ValidityResult::Invalid(Some(_air_model), Some(error), assert_id_opt) => {
                     if let Some(assert_id) = assert_id_opt {
                         if prover_choice == vir::def::ProverChoice::DefaultProver {
                             default_prover_failed_assert_ids.push(assert_id.clone());
@@ -999,20 +994,6 @@ impl Verifier {
                     if level == Some(MessageLevel::Error) {
                         if self.args.expand_errors {
                             assert!(!self.expand_flag);
-                        }
-
-                        if self.args.debugger {
-                            if let Some(source_map) = source_map {
-                                let mut debugger =
-                                    Debugger::new(air_model, assign_map, snap_map, source_map);
-                                debugger.start_shell(air_context);
-                            } else {
-                                reporter.report(&message(
-                                    MessageLevel::Warning,
-                                    "no source map available for debugger. Try running single threaded.",
-                                    &context.span,
-                                ).to_any());
-                            }
                         }
                     }
 
@@ -1111,13 +1092,10 @@ impl Verifier {
     fn run_commands_queries(
         &mut self,
         reporter: &impl Diagnostics,
-        source_map: Option<&SourceMap>,
         level: Option<MessageLevel>,
         diagnostics_to_report: &std::cell::RefCell<Option<PanicOnDropVec<(Message, MessageLevel)>>>,
         air_context: &mut air::context::Context,
         commands_with_context: CommandsWithContext,
-        assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<String>>>,
-        snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         bucket_id: &BucketId,
         function_name: &Fun,
         comment: &str,
@@ -1154,12 +1132,9 @@ impl Verifier {
                 + self.check_result_validity(
                     bucket_id,
                     reporter,
-                    source_map,
                     diagnostics_to_report,
                     level,
                     air_context,
-                    assign_map,
-                    snap_map,
                     &command,
                     &context,
                     *prover_choice,
@@ -1214,10 +1189,12 @@ impl Verifier {
         profile_file_name: Option<&std::path::PathBuf>,
         prover_choice: vir::def::ProverChoice,
     ) -> Result<air::context::Context, VirErr> {
-        let mut air_context =
-            air::context::Context::new(message_interface.clone(), self.args.solver);
+        let mut air_context = air::context::Context::new_with_encoding(
+            message_interface.clone(),
+            self.args.solver,
+            self.args.smt_encoding,
+        );
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
-        air_context.set_debug(self.args.debugger);
         if let Some(profile_file_name) = profile_file_name {
             air_context.set_profile_with_logfile_name(
                 profile_file_name.to_str().expect("invalid prover log path").to_owned(),
@@ -1354,7 +1331,10 @@ impl Verifier {
             bucket_id,
             query_function_path_counter,
             is_rerun,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
+            PreludeConfig {
+                arch_word_bits: ctx.arch_word_bits,
+                smt_encoding: self.args.smt_encoding,
+            },
             profile_file_name,
             prover_choice,
         )?;
@@ -1380,7 +1360,6 @@ impl Verifier {
         &mut self,
         reporter: &impl Diagnostics,
         krate: &vir::sst::KrateSst,
-        source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
     ) -> Result<VerifyBucketOut, VirErr> {
@@ -1414,7 +1393,10 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
+            PreludeConfig {
+                arch_word_bits: ctx.arch_word_bits,
+                smt_encoding: self.args.smt_encoding,
+            },
             profile_all_file_name.as_ref(),
             vir::def::ProverChoice::DefaultProver,
         )?;
@@ -1561,7 +1543,6 @@ impl Verifier {
                     OpKind::Query {
                         query_op,
                         commands_with_context_list,
-                        snap_map,
                         profile_rerun,
                         func_check_sst,
                     } => {
@@ -1691,13 +1672,10 @@ impl Verifier {
                                 used_axioms: command_used_axioms,
                             } = self.run_commands_queries(
                                 reporter,
-                                source_map,
                                 (!profile_rerun).then(|| level),
                                 &diagnostics_to_report,
                                 query_air_context,
                                 cmds.clone(),
-                                &HashMap::new(),
-                                &snap_map,
                                 bucket_id,
                                 &function.x.name,
                                 &op.to_air_comment(),
@@ -1826,7 +1804,6 @@ impl Verifier {
                                     function_opgen.retry_with_profile(
                                         query_op.clone(),
                                         commands_with_context_list.clone(),
-                                        snap_map.clone(),
                                         function,
                                         func_check_sst.clone(),
                                     );
@@ -1989,7 +1966,6 @@ impl Verifier {
         &mut self,
         reporter: &impl Diagnostics,
         krate: &Krate,
-        source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         mut global_ctx: vir::context::GlobalCtx,
     ) -> Result<vir::context::GlobalCtx, VirErr> {
@@ -2039,7 +2015,6 @@ impl Verifier {
             used_builtins,
             fndef_types,
             resolved_typs.unwrap(),
-            self.args.debugger,
             create_observer_from_args(&self.args.observers),
         )?;
         if self.args.log_all || self.args.log_args.log_vir_poly {
@@ -2069,7 +2044,7 @@ impl Verifier {
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
-            self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx)?;
+            self.verify_bucket(reporter, &krate_sst, bucket_id, &mut ctx)?;
 
         global_ctx = ctx.free();
 
@@ -2188,7 +2163,10 @@ impl Verifier {
         let source_map = compiler.sess.source_map();
 
         self.num_threads = if self.args.no_verify {
-            1
+            // (at most one per bucket: with no buckets, the worker pool's reporter loop below
+            // would wait for a message no worker sends; --no-verify --build-sst on a crate
+            // without verified functions hung)
+            std::cmp::min(1, bucket_ids.len())
         } else {
             std::cmp::min(self.args.num_threads, bucket_ids.len())
         };
@@ -2252,7 +2230,6 @@ impl Verifier {
                                 let res = thread_verifier.verify_bucket_outer(
                                     &reporter,
                                     &thread_krate,
-                                    None,
                                     &bucket_id,
                                     task,
                                 );
@@ -2604,13 +2581,7 @@ impl Verifier {
             )));
 
             for bucket_id in &bucket_ids {
-                global_ctx = self.verify_bucket_outer(
-                    &reporter,
-                    &krate,
-                    Some(source_map),
-                    bucket_id,
-                    global_ctx,
-                )?;
+                global_ctx = self.verify_bucket_outer(&reporter, &krate, bucket_id, global_ctx)?;
             }
         }
 

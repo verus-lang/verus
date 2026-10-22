@@ -9,5 +9,6 @@ basic_verified_lib = { path = "../basic_verified_lib" }
 
 [package.metadata.verus]
 verify = true
+trusted_crates = ["vstd"]
 
 [workspace]

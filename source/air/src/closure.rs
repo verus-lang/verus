@@ -619,6 +619,12 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                     Arc::new(TypX::Float { exp_bits: *exp_bits, sig_bits: *sig_bits })
                 }
                 UnaryOp::FloatToBitVec { bits, .. } => Arc::new(TypX::BitVec(*bits)),
+                UnaryOp::FloatToIeeeBits => match &*ts[0].0 {
+                    TypX::Float { exp_bits, sig_bits } => {
+                        Arc::new(TypX::BitVec(exp_bits + sig_bits))
+                    }
+                    _ => panic!("internal error during processing float to ieee bits"),
+                },
                 UnaryOp::FloatToReal => Arc::new(TypX::Real),
                 UnaryOp::ToReal => Arc::new(TypX::Real),
                 UnaryOp::RealToInt => Arc::new(TypX::Int),
