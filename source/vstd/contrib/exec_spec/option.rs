@@ -72,4 +72,47 @@ impl<'a, T> ExecSpecOptionUnwrap<'a> for &'a Option<T> where T: DeepView + DeepV
     }
 }
 
+pub trait ExecSpecOptionArrow<T>: Sized {
+    spec fn is_some_variant_spec(&self) -> bool;
+
+    #[allow(non_snake_case)]
+    fn exec_arrow_Some_0(&self) -> &T
+        requires
+            self.is_some_variant_spec(),
+    ;
+
+    fn exec_arrow_0(&self) -> &T
+        requires
+            self.is_some_variant_spec(),
+    ;
+}
+
+impl<T: DeepView> ExecSpecOptionArrow<T> for Option<T> {
+    open spec fn is_some_variant_spec(&self) -> bool {
+        *self is Some
+    }
+
+    #[inline(always)]
+    fn exec_arrow_Some_0(&self) -> (res: &T)
+        ensures
+            res.deep_view() == self.deep_view()->Some_0,
+    {
+        match self {
+            Some(t) => t,
+            None => crate::pervasive::unreached(),
+        }
+    }
+
+    #[inline(always)]
+    fn exec_arrow_0(&self) -> (res: &T)
+        ensures
+            res.deep_view() == self.deep_view()->0,
+    {
+        match self {
+            Some(t) => t,
+            None => crate::pervasive::unreached(),
+        }
+    }
+}
+
 } // verus!

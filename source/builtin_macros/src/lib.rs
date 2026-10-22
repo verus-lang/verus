@@ -658,4 +658,9 @@ pub fn self_view(
     contrib::spec_derive::self_view(attr, input)
 }
 
+#[proc_macro]
+pub fn exec_spec_type(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    contrib::exec_spec::exec_spec_type(input)
+}
+
 /*** End of contrib macros ***/

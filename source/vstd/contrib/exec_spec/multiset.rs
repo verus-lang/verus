@@ -79,10 +79,7 @@ impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecE
 
     #[verifier::external_body]
     #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        if this.m.len() != other.m.len() {
-            return false;
-        }
+        fn exec_eq(this: Self, other: Self::Other) -> bool {
         for (k, v) in this.m.iter() {
             match other.m.get(k) {
                 Some(ov) => {
@@ -90,11 +87,19 @@ impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecE
                         return false;
                     }
                 },
-                None => return false,
+                None => if *v != 0 {
+                    return false;
+                },
+            }
+        }
+        for (k, v) in other.m.iter() {
+            if !this.m.contains_key(k) && *v != 0 {
+                return false;
             }
         }
         true
     }
+
 }
 
 impl<

@@ -2041,3 +2041,532 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_exec_spec_match_guard IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            spec fn guarded(x: Option<u32>) -> u32 {
+                match x {
+                    Some(v) if v > 3 => v,
+                    Some(_) => 0,
+                    None => 1,
+                }
+            }
+
+            enum E {
+                A(u32),
+                B { y: u32 },
+            }
+
+            spec fn guarded_enum(e: E, k: u32) -> bool {
+                match e {
+                    E::A(v) if v == k => true,
+                    E::B { y } if y < k => true,
+                    _ => false,
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_impl_self_paths IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            struct P(u32);
+
+            impl P {
+                spec fn get(&self) -> u32 {
+                    self.0
+                }
+
+                spec fn copy(&self) -> P {
+                    Self(self.0)
+                }
+
+                spec fn get_via_self(&self) -> u32 {
+                    Self::get(self)
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_ext_eq_forms IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            spec fn ext_eq(a: Seq<u8>, b: Seq<u8>) -> bool {
+                a =~= b
+            }
+
+            spec fn ext_ne(a: Seq<u8>, b: Seq<u8>) -> bool {
+                (a) !~= b
+            }
+
+            spec fn big_eq(a: Seq<u8>, b: Seq<u8>) -> bool {
+                a === b
+            }
+
+            spec fn big_ne(a: Seq<u8>, b: Seq<u8>) -> bool {
+                (a) !== b
+            }
+
+            spec fn deep_eq(a: Seq<Seq<u8>>, b: Seq<Seq<u8>>) -> bool {
+                a =~~= b
+            }
+
+            spec fn deep_ne(a: Seq<Seq<u8>>, b: Seq<Seq<u8>>) -> bool {
+                (a) !~~= b
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_is_variant_builtin IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            enum E {
+                A(u32),
+                B,
+            }
+
+            spec fn opt_is_some(o: Option<u32>) -> bool {
+                is_variant(o, "Some")
+            }
+
+            spec fn opt_is_none(o: Option<u32>) -> bool {
+                is_variant(o, "None")
+            }
+
+            spec fn enum_is_a(e: E) -> bool {
+                is_variant(e, "A")
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_arrow IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            struct Q {
+                x: u32,
+            }
+
+            enum E {
+                A(u32, Seq<u8>),
+                B { x: u32, q: Q },
+                C { x: u32, z: u32 },
+                D,
+            }
+
+            spec fn opt_some_0(o: Option<u32>) -> u32
+                recommends o is Some,
+            {
+                o->Some_0
+            }
+
+            spec fn opt_0(o: Option<u32>) -> u32
+                recommends o is Some,
+            {
+                o->0
+            }
+
+            spec fn opt_struct(o: Option<Q>) -> Q
+                recommends o is Some,
+            {
+                o->Some_0
+            }
+
+            spec fn tuple_field(e: E) -> Seq<u8>
+                recommends e is A,
+            {
+                e->A_1
+            }
+
+            spec fn named_field(e: E) -> Q
+                recommends e is B,
+            {
+                e->B_q
+            }
+
+            spec fn direct_field(e: E) -> u32
+                recommends e is C,
+            {
+                e->z
+            }
+
+            spec fn direct_tuple_field(e: E) -> u32
+                recommends e is A,
+            {
+                e->0
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_arrow_requires_variant IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            spec fn opt_0(o: Option<u32>) -> u32 {
+                o->0
+            }
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "precondition not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_fixed_width_arith IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            spec fn add_u8(a: u8, b: u8) -> u8 {
+                add(a, b)
+            }
+
+            spec fn sub_u8(a: u8, b: u8) -> u8 {
+                sub(a, b)
+            }
+
+            spec fn mul_u64(a: u64, b: u64) -> u64 {
+                mul(a, b)
+            }
+
+            spec fn add_i32(a: i32, b: i32) -> i32 {
+                add(a, b)
+            }
+
+            spec fn sub_i8(a: i8, b: i8) -> i8 {
+                sub(a, b)
+            }
+
+            spec fn mul_isize(a: isize, b: isize) -> isize {
+                mul(a, b)
+            }
+
+            spec fn sub_literal(t: u8) -> u8 {
+                sub(8, t)
+            }
+        }
+
+        fn test() {
+            let a = exec_add_u8(2, 3);
+            assert(a == 5);
+            let s = exec_sub_literal(3);
+            assert(s == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_fixed_width_arith_user_fn IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            spec fn add(a: u8, b: u8) -> bool {
+                a < b
+            }
+
+            spec fn uses_add(a: u8, b: u8) -> bool {
+                add(a, b)
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_rejects_tracked_param IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            spec fn f(tracked x: u64) -> bool {
+                x > 0
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`tracked` parameters are not supported")
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_rejects_let_tracked IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            spec fn f(x: u64) -> u64 {
+                let tracked y = x;
+                y
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`let tracked` is not supported")
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_rejects_let_ghost IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            spec fn f(x: u64) -> u64 {
+                let ghost y = x;
+                y
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`let ghost` is not supported")
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_rejects_tracked_struct IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            tracked struct Perm {
+                x: u64,
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`tracked` datatypes are not supported")
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_rejects_tracked_enum IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            tracked enum Perm {
+                A,
+                B(u64),
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`tracked` datatypes are not supported")
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_rejects_tracked_field IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            enum E {
+                A { tracked x: u64 },
+                B,
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`tracked` fields are not supported")
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_rejects_ghost_field IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            struct S {
+                x: u64,
+                ghost g: u64,
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "explicit `ghost` field markers are not supported")
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_accepts_ghost_datatypes IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            ghost struct V {
+                x: u64,
+                y: bool,
+            }
+
+            ghost enum W {
+                Uninit,
+                Init(u64),
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_rejects_real IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            spec fn f(x: real) -> bool {
+                true
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Type cannot be compiled from spec code to exec code")
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_mem_contents IMPORTS.to_string() + verus_code_str! {
+        use vstd::raw_ptr::MemContents;
+
+        exec_spec_verified! {
+            struct Cell {
+                m: MemContents<u32>,
+            }
+
+            spec fn init_above(m: MemContents<u32>, k: u32) -> bool {
+                m.is_init() && m.value() > k
+            }
+
+            spec fn uninit(m: MemContents<u32>) -> bool {
+                m.is_uninit()
+            }
+
+            spec fn is_init(m: MemContents<u32>) -> bool {
+                m is Init
+            }
+
+            spec fn isnt_init(m: MemContents<u32>) -> bool {
+                m isnt Init
+            }
+
+            spec fn is_variant_init(m: MemContents<u32>) -> bool {
+                is_variant(m, "Init")
+            }
+
+            spec fn value_via_arrow(m: MemContents<u32>) -> u32
+                recommends m is Init,
+            {
+                m->0
+            }
+
+            spec fn rebuild(m: MemContents<u32>) -> MemContents<u32> {
+                match m {
+                    MemContents::Init(v) => MemContents::Init(v),
+                    MemContents::Uninit => MemContents::Uninit,
+                }
+            }
+
+            spec fn same(a: MemContents<u32>, b: MemContents<u32>) -> bool {
+                a == b
+            }
+
+            spec fn cell_init(c: Cell) -> bool {
+                c.m.is_init()
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_result IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            struct R {
+                r: Result<u32, bool>,
+            }
+
+            spec fn id(r: Result<u32, bool>) -> Result<u32, bool> {
+                r
+            }
+
+            spec fn is_ok(r: Result<u32, bool>) -> bool {
+                r is Ok
+            }
+
+            spec fn same(a: Result<u32, bool>, b: Result<u32, bool>) -> bool {
+                a == b
+            }
+
+            spec fn ok_val(r: Result<u32, bool>) -> u32
+                recommends r is Ok,
+            {
+                r->Ok_0
+            }
+
+            spec fn err_val(r: Result<u32, bool>) -> bool
+                recommends r is Err,
+            {
+                r->Err_0
+            }
+
+            spec fn to_u32(r: Result<u32, bool>) -> u32 {
+                match r {
+                    Ok(v) => v,
+                    Err(b) => if b { 1 } else { 0 },
+                }
+            }
+
+            spec fn mk(v: u32) -> Result<u32, bool> {
+                if v > 3 { Ok(v) } else { Err(false) }
+            }
+
+            spec fn field_ok(x: R) -> bool {
+                x.r is Ok
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_type_macro IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            struct P {
+                x: u32,
+            }
+
+            spec fn total(s: Seq<u32>, p: P, o: Option<u32>) -> (Seq<u32>, u32) {
+                (s, p.x)
+            }
+        }
+
+        fn call(
+            s: exec_spec_type!(ref Seq<u32>),
+            p: exec_spec_type!(ref P),
+            o: exec_spec_type!(ref Option<u32>),
+        ) -> (res: exec_spec_type!((Seq<u32>, u32)))
+            ensures
+                res.deep_view() == total(s.deep_view(), p.deep_view(), o.deep_view()),
+        {
+            exec_total(s, p, o)
+        }
+
+        fn owned(v: exec_spec_type!(Seq<u32>), m: exec_spec_type!(Map<u32, bool>)) -> (res: usize)
+            ensures
+                res == v.len(),
+        {
+            v.len()
+        }
+    } => Ok(())
+}
+
+//  Verifies `PointsTo` permission contracts via their
+// `MemContents` view alongside runtime evaluation of the `ExecMemContents` mirror
+test_verify_one_file! {
+    #[test] test_exec_spec_pptr_permissions IMPORTS.to_string() + verus_code_str! {
+        use vstd::raw_ptr::MemContents;
+        use vstd::simple_pptr::{PPtr, PointsTo};
+
+        exec_spec_verified! {
+            struct TwoSlotPermView {
+                slot_a: MemContents<u32>,
+                slot_b: MemContents<u32>,
+            }
+
+            spec fn both_uninit(v: TwoSlotPermView) -> bool {
+                v.slot_a is Uninit && v.slot_b.is_uninit()
+            }
+
+            spec fn sum_if_bounded(v: TwoSlotPermView, bound: u32) -> Result<u32, bool> {
+                match v.slot_a {
+                    MemContents::Init(a) if a <= bound => {
+                        if v.slot_b is Init && v.slot_b->0 <= bound {
+                            Ok(add(a, v.slot_b.value()))
+                        } else {
+                            Err(false)
+                        }
+                    }
+                    MemContents::Init(_) => Err(true),
+                    MemContents::Uninit => Err(false),
+                }
+            }
+        }
+
+        fn init_and_sum_slots(
+            ptr_a: PPtr<u32>,
+            ptr_b: PPtr<u32>,
+            Tracked(pa): Tracked<&mut PointsTo<u32>>,
+            Tracked(pb): Tracked<&mut PointsTo<u32>>,
+        )
+            requires
+                old(pa).pptr() == ptr_a,
+                old(pb).pptr() == ptr_b,
+                both_uninit(TwoSlotPermView {
+                    slot_a: old(pa).mem_contents(),
+                    slot_b: old(pb).mem_contents(),
+                }),
+            ensures
+                final(pa).pptr() == ptr_a,
+                final(pb).pptr() == ptr_b,
+                sum_if_bounded(TwoSlotPermView {
+                    slot_a: final(pa).mem_contents(),
+                    slot_b: final(pb).mem_contents(),
+                }, 100) === Ok(30),
+        {
+            ptr_a.put(Tracked(pa), 10);
+            ptr_b.put(Tracked(pb), 20);
+        }
+
+        fn test_exec_mirror() {
+            let init_view: exec_spec_type!(TwoSlotPermView) = ExecTwoSlotPermView {
+                slot_a: ExecMemContents::Init(10),
+                slot_b: ExecMemContents::Init(20),
+            };
+            let res: exec_spec_type!(Result<u32, bool>) = exec_sum_if_bounded(&init_view, 100);
+            assert(res.deep_view() === Ok(30u32));
+        }
+    } => Ok(())
+}
