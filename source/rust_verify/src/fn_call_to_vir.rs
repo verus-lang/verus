@@ -2079,6 +2079,9 @@ fn verus_item_to_vir<'tcx, 'a>(
             use vir::ast::IeeeFloatUnaryOp;
             record_spec_fn(bctx, expr);
             let varg = mk_one_vir_arg(bctx, expr.span, &args)?;
+            if !matches!(fop, IeeeFloatUnaryItem::Cast) {
+                check_ieee_float_operands(expr.span, &[&varg])?;
+            }
             let vop = match fop {
                 IeeeFloatUnaryItem::Cast => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::Cast),
                 IeeeFloatUnaryItem::Neg => UnaryOp::IeeeFloat(IeeeFloatUnaryOp::Neg),
@@ -2106,6 +2109,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             use vir::ast::IeeeFloatBinaryOp;
             record_spec_fn(bctx, expr);
             let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
+            check_ieee_float_operands(expr.span, &[&lhs, &rhs])?;
             let vop = match fop {
                 IeeeFloatBinaryItem::Add => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Add),
                 IeeeFloatBinaryItem::Sub => BinaryOp::IeeeFloat(IeeeFloatBinaryOp::Sub),
@@ -3007,6 +3011,22 @@ fn mk_two_vir_args<'tcx>(
     let e0 = expr_to_vir_consume(bctx, &args[0])?;
     let e1 = expr_to_vir_consume(bctx, &args[1])?;
     Ok((e0, e1))
+}
+
+/// IEEE float operations are encoded per float format, so each operand needs a concrete float type.
+fn check_ieee_float_operands(span: Span, operands: &[&vir::ast::Expr]) -> Result<(), VirErr> {
+    for operand in operands {
+        if !matches!(&*undecorate_typ(&operand.typ), TypX::Float(_)) {
+            return err_span(
+                span,
+                format!(
+                    "IEEE floating point operations require f32 or f64 operands (got `{}`)",
+                    typ_to_diagnostic_str(&operand.typ)
+                ),
+            );
+        }
+    }
+    Ok(())
 }
 
 fn get_string_lit_arg<'tcx>(
