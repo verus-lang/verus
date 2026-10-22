@@ -1,6 +1,6 @@
 use crate::attributes::{AttrPublish, VerifierAttrs, get_mode, get_ret_mode, get_var_mode};
 use crate::automatic_derive::AutomaticDeriveAction;
-use crate::context::{BodyCtxt, Context, ContextX, HeaderSetting};
+use crate::context::{BodyCtxt, Context, ContextX, HeaderSetting, ErasureInfo};
 use crate::pre_header::PreHeader;
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir::State;
@@ -362,7 +362,7 @@ fn mk_bctx<'tcx>(
         header_setting: HeaderSetting::Fn,
         external_opaque_type_map,
         label_map: std::rc::Rc::new(std::cell::RefCell::new((HashMap::new(), 0))),
-        erasure_info: std::rc::Rc::new(std::cell::RefCell::new(crate::context::ErasureInfo::new())),
+        erasure_info: std::rc::Rc::new(std::cell::RefCell::new(ErasureInfo::new())),
     }
 }
 
@@ -2304,7 +2304,7 @@ pub(crate) fn check_item_fn<'tcx>(
 pub(crate) fn finish_item<'tcx>(
     ctxt: &Context<'tcx>,
     info: &FunctionOrConstInfo,
-    functions: &mut Vec<vir::ast::Function>,
+    functions: &mut Vec<(vir::ast::Function, ErasureInfo)>,
 ) -> Result<(), VirErr> {
     match info {
         FunctionOrConstInfo::Function(function_info) => {
@@ -2314,7 +2314,7 @@ pub(crate) fn finish_item<'tcx>(
             finish_const_or_static(ctxt, const_info, functions)
         }
         FunctionOrConstInfo::ForeignFunction(foreign_function_info) => {
-            functions.push(foreign_function_info.function_full.clone());
+            functions.push((foreign_function_info.function_full.clone(), ErasureInfo::new()));
             Ok(())
         }
     }
@@ -2323,7 +2323,7 @@ pub(crate) fn finish_item<'tcx>(
 pub(crate) fn finish_function<'tcx>(
     ctxt: &Context<'tcx>,
     function_info: &FunctionInfo,
-    functions: &mut Vec<vir::ast::Function>,
+    functions: &mut Vec<(vir::ast::Function, ErasureInfo)>,
 ) -> Result<(), VirErr> {
     let FunctionInfo {
         ref function,
@@ -2550,9 +2550,9 @@ pub(crate) fn finish_function<'tcx>(
                 FnOrConstSigEnum::ConstVar(..) => vec![],
             };
 
-            let bctx = bctx.unwrap();
+            let bctx = bctx.as_ref().unwrap();
             crate::automatic_derive::modify_derived_item(
-                &bctx,
+                bctx,
                 def_id,
                 &inputs,
                 sig.span,
@@ -2569,10 +2569,17 @@ pub(crate) fn finish_function<'tcx>(
         function
     };
 
-    functions.push(function.clone());
+    let erasure_info = match bctx {
+        Some(bctx) => {
+            let BodyCtxt { erasure_info, .. } = bctx;
+            std::rc::Rc::unwrap_or_clone(erasure_info).into_inner()
+        }
+        _ => ErasureInfo::new(),
+    };
+    functions.push((function.clone(), erasure_info));
 
     if let Some(f) = &function_for_autospec {
-        functions.push(finish_autospec(sig.span, &function, f)?);
+        functions.push((finish_autospec(sig.span, &function, f)?, ErasureInfo::new()));
     }
 
     Ok(())
@@ -3439,7 +3446,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
 pub(crate) fn finish_const_or_static<'tcx>(
     ctxt: &Context<'tcx>,
     const_info: &ConstInfo,
-    functions: &mut Vec<vir::ast::Function>,
+    functions: &mut Vec<(vir::ast::Function, ErasureInfo)>,
 ) -> Result<(), VirErr> {
     let ConstInfo {
         ref function,
@@ -3549,9 +3556,12 @@ pub(crate) fn finish_const_or_static<'tcx>(
 
     let function = ctxt.spanned_new(span, functionx);
 
-    functions.push(function.clone());
+    let BodyCtxt { erasure_info, .. } = bctx;
+    let erasure_info = std::rc::Rc::unwrap_or_clone(erasure_info).into_inner();
+
+    functions.push((function.clone(), erasure_info));
     if let Some(f) = &function_for_autospec {
-        functions.push(finish_autospec(span, &function, f)?);
+        functions.push((finish_autospec(span, &function, f)?, ErasureInfo::new()));
     }
 
     Ok(())
