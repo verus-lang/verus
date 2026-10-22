@@ -346,6 +346,28 @@ pub assume_specification<T, I: SliceIndex<[T]>>[ <[T] as IndexMut<I>>::index_mut
         call_ensures(<I as SliceIndex<[T]>>::index_mut, (index, slice), output),
 ;
 
+// `get_unchecked(i)`/`get_unchecked_mut(i)` share the contract of `index`/`index_mut`, with
+// the in-bounds check as a safety precondition (UB if violated) rather than a panic.
+pub assume_specification<T, I>[ <[T]>::get_unchecked::<I> ](
+    slice: &[T],
+    index: I,
+) -> (output: &<I as SliceIndex<[T]>>::Output) where I: SliceIndex<[T]>
+    requires
+        index.in_bounds(slice),
+    ensures
+        index.index_postcondition(slice, output),
+;
+
+pub assume_specification<T, I>[ <[T]>::get_unchecked_mut::<I> ](
+    slice: &mut [T],
+    index: I,
+) -> (output: &mut <I as SliceIndex<[T]>>::Output) where I: SliceIndex<[T]>
+    requires
+        index.in_bounds(&*old(slice)),
+    ensures
+        index.index_mut_postcondition(&*old(slice), &*final(slice), output, &*final(output)),
+;
+
 impl<T, I, const N: usize> super::core::IndexSpecImpl<I> for [T; N]
 where
     [T]: Index<I>,
@@ -564,6 +586,26 @@ pub assume_specification<T> [ <[T]>::split_at_checked ](slice: &[T], mid: usize)
             && a@ == slice@[..mid]
             && b@ == slice@[mid..]),
         mid > slice.len() ==> ret is None,
+    no_unwind
+;
+
+pub assume_specification<T> [ <[T]>::split_at_unchecked ](slice: &[T], mid: usize) -> (ret: (&[T], &[T]))
+    requires
+        0 <= mid <= slice.len(),
+    ensures
+        ret.0@ == slice@[..mid],
+        ret.1@ == slice@[mid..],
+    no_unwind
+;
+
+#[doc(hidden)]
+pub assume_specification<T> [ <[T]>::split_at_mut_unchecked ](slice: &mut [T], mid: usize) -> (ret: (&mut [T], &mut [T]))
+    requires
+        0 <= mid <= slice.len(),
+    ensures
+        ret.0@ == old(slice)@[..mid],
+        ret.1@ == old(slice)@[mid..],
+        final(slice)@ == final(ret.0)@ + final(ret.1)@,
     no_unwind
 ;
 
