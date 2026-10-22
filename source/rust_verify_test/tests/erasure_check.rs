@@ -342,3 +342,44 @@ test_verify_one_file_with_options! {
         pub const C: usize = { 512 / 8 };
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    // As legacy_requires_call_in_compiled_program, for `ensures`
+    #[test] legacy_ensures_call_in_compiled_program ["-V check-erasure"] => verus_code! {
+        use vstd::prelude::*;
+        fn g() -> u32 {
+            ensures(|r: u32| r < 3);
+            1
+        }
+    } => Err(err) => assert_erasure_diff(err, "verus_builtin::ensures", "ensures(|r: u32| r < 3)")
+}
+
+test_verify_one_file_with_options! {
+    // As legacy_requires_call_in_compiled_program, for `decreases`
+    #[test] legacy_decreases_call_in_compiled_program ["-V check-erasure"] => verus_code! {
+        use vstd::prelude::*;
+        fn h(n: u64) {
+            verus_builtin::decreases(n);
+            if n > 0 {
+                h(n - 1);
+            }
+        }
+    } => Err(err) => assert_erasure_diff(err, "verus_builtin::decreases", "verus_builtin::decreases(n)")
+}
+
+test_verify_one_file_with_options! {
+    // The ghost `x == x` passes `x` by value, so in the verified program the closure captures `x`
+    // by value; the compiled closure captures `x.a` by reference. The compiled program drops `x`
+    // at the end of `test`, the verified program when it drops `c`.
+    #[test] closure_capture_changed_by_ghost_code ["-V check-erasure"] => verus_code! {
+        use vstd::prelude::*;
+        pub struct X { pub a: u64, pub d: Vec<u64> }
+        fn test(x: X) {
+            let c = || {
+                assert(x == x);
+                let y = x.a;
+            };
+            c();
+        }
+    } => Err(err) => assert_erasure_diff(err, "captures by value x: X in the verified program only", "|| {")
+}

@@ -56,6 +56,9 @@ pub enum FactKind {
     Shape,
     /// value of a literal
     Value,
+    /// (c) a captured place that a closure moves and whose type has drop glue: the place is
+    /// dropped with the closure, not at the end of its scope
+    Capture,
 }
 
 impl FactKind {
@@ -68,6 +71,7 @@ impl FactKind {
             FactKind::Flow => "control flow",
             FactKind::Shape => "pattern tests",
             FactKind::Value => "literal",
+            FactKind::Capture => "captures by value",
         }
     }
 }
@@ -928,6 +932,21 @@ impl<'a, 'tcx> Walker<'a, 'tcx> {
                 let s = format!("match ({source}){decider} {{ {} }}", v.join("; "));
                 self.push(loc.clone(), class, FactKind::Shape, (s.clone(), s));
             }
+            ExprKind::Closure(c) => {
+                // Ghost code in the verified body can make rustc capture a place by value that the
+                // compiled body captures by reference (or not at all), which changes when the
+                // place is dropped. Only places whose type has drop glue are recorded.
+                for cap in self.typeck().closure_min_captures_flattened(c.def_id) {
+                    if !matches!(cap.info.capture_kind, ty::UpvarCapture::ByValue) {
+                        continue;
+                    }
+                    if !cap.place.ty().needs_drop(self.tcx, self.typing_env) {
+                        continue;
+                    }
+                    let s = format!("{}: {}", cap.to_string(self.tcx), self.ty_str(cap.place.ty()));
+                    self.push(loc.clone(), class, FactKind::Capture, (s.clone(), s));
+                }
+            }
             ExprKind::Let(let_expr) => {
                 let (s, _) = self.shape(let_expr.pat, true);
                 let s = format!("let {s}");
@@ -1500,23 +1519,25 @@ pub fn diff_tables(verified: &Table, compiled: &Table) -> Vec<Difference> {
                             && matches!(kind, FactKind::AdjType)
                             && fs.iter().all(|f| f.cmp.starts_with("closure call receiver")) => {}
                     (Some(vs), None) if strict => {
+                        let msg = if cf.is_empty() {
+                            "is exec code in the verified program, but the compiled program has no such node"
+                        } else {
+                            "in the verified program only"
+                        };
                         diffs.push(Difference {
                             loc: shown(&key.0),
-                            msg: format!(
-                                "{} {} is exec code in the verified program, but the compiled program has no such node",
-                                kind.describe(),
-                                show_list(vs),
-                            ),
+                            msg: format!("{} {} {msg}", kind.describe(), show_list(vs)),
                         });
                     }
                     (None, Some(cs)) if strict => {
+                        let msg = if vf.is_empty() {
+                            "is in the compiled program, but the verified program has no such exec node"
+                        } else {
+                            "in the compiled program only"
+                        };
                         diffs.push(Difference {
                             loc: shown(&key.0),
-                            msg: format!(
-                                "{} {} is in the compiled program, but the verified program has no such exec node",
-                                kind.describe(),
-                                show_list(cs),
-                            ),
+                            msg: format!("{} {} {msg}", kind.describe(), show_list(cs)),
                         });
                     }
                     (Some(vs), None) => {
