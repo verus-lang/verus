@@ -97,10 +97,14 @@ pub trait ExecSpecSeqPush<'a, Out: Sized + DeepView>: Sized + DeepView + ToOwned
 }
 
 /// Spec for executable version of [`Seq::update`].
-pub trait ExecSpecSeqUpdate<'a, Out: Sized + DeepView>: Sized + DeepView + ToOwned<Out> {
+pub trait ExecSpecSeqUpdate<'a, Out: Sized + DeepView<V = Seq<<Self::Elem as DeepView>::V>>>:
+    Sized + DeepView + ToOwned<Out> {
     type Elem: DeepView + DeepViewClone;
 
-    fn exec_update(self, i: usize, a: Self::Elem) -> Out;
+    fn exec_update(self, i: usize, a: Self::Elem) -> Out
+        requires
+            0 <= i < self.deep_view().len(),
+    ;
 }
 
 /// Spec for executable version of [`Seq::subrange`].
