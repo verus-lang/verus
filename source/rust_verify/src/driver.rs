@@ -5,6 +5,7 @@ use rustc_hir::attrs::AttributeKind;
 use rustc_hir::{Attribute, AttributeMap};
 use rustc_hir::{HirId, ItemKind, OwnerId, OwnerNode};
 use rustc_middle::ty::TyCtxt;
+use rustc_session::config::{OutFileName, OutputType};
 use rustc_span::{Span, sym};
 use std::time::{Duration, Instant};
 
@@ -137,6 +138,26 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
                 };
             });
         }
+    }
+
+    fn after_expansion<'tcx>(
+        &mut self,
+        _compiler: &rustc_interface::interface::Compiler,
+        tcx: TyCtxt<'tcx>,
+    ) -> rustc_driver::Compilation {
+        if tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo) {
+            if let OutFileName::Real(dep_info_path_d) =
+                tcx.output_filenames(()).path(OutputType::DepInfo)
+            {
+                let dep_info_path_verus_d = dep_info_path_d.with_extension("verus.d");
+                assert!(
+                    dep_info_path_verus_d.is_file(),
+                    "error: missing dep-info file from first pass {}",
+                    dep_info_path_verus_d.display(),
+                );
+            }
+        }
+        rustc_driver::Compilation::Continue
     }
 
     fn after_analysis<'tcx>(
