@@ -133,7 +133,7 @@ pub struct VerusErasureCtxt {
 static VERUS_AWARE_DEF_IDS: RwLock<Option<Arc<HashSet<LocalDefId>>>> = RwLock::new(None);
 
 /// Used to communicate the VerusErasureCtxt
-static VERUS_ERASURE_CTXT: RwLock<Option<Arc<VerusErasureCtxt>>> = RwLock::new(None);
+static VERUS_ERASURE_CTXT: RwLock<Option<HashMap<LocalDefId, Arc<VerusErasureCtxt>>>> = RwLock::new(None);
 
 /// Used to store the ExtraThir so MIR lowering can pick it up
 static EXTRA_THIR: RwLock<Option<HashMap<LocalDefId, Arc<ExtraThir>>>> = RwLock::new(None);
@@ -146,25 +146,35 @@ pub fn set_verus_aware_def_ids(ids: Arc<HashSet<LocalDefId>>) {
     *v = Some(ids);
 }
 
-pub fn set_verus_erasure_ctxt(erasure_ctxt: Arc<VerusErasureCtxt>) {
-    let v: &mut Option<Arc<VerusErasureCtxt>> = &mut VERUS_ERASURE_CTXT.write().unwrap();
-    if v.is_some() {
-        panic!("VERUS_ERASURE_CTXT has already been set");
+pub fn set_verus_erasure_ctxt(local_def_id: LocalDefId, erasure_ctxt: Arc<VerusErasureCtxt>) {
+    let v: &mut Option<_> = &mut VERUS_ERASURE_CTXT.write().unwrap();
+    let map = v.get_or_insert_with(|| HashMap::new());
+    match map.entry(local_def_id) {
+        std::collections::hash_map::Entry::Occupied(_) => {
+            panic!("VERUS_ERASURE_CTXT has already been set");
+        }
+        std::collections::hash_map::Entry::Vacant(entry) => {
+            entry.insert(erasure_ctxt);
+        }
     }
-    *v = Some(erasure_ctxt);
 }
 
-fn get_verus_erasure_ctxt() -> Arc<VerusErasureCtxt> {
+fn get_verus_erasure_ctxt(local_def_id: LocalDefId) -> Arc<VerusErasureCtxt> {
     VERUS_ERASURE_CTXT
         .read()
         .unwrap()
         .as_ref()
         .expect("Expected VerusErasureCtxt for THIR modification pass")
+        .get(&local_def_id)
+        .expect("Expected VerusErasureCtxt for THIR modification pass")
         .clone()
 }
 
-pub(crate) fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
-    VERUS_ERASURE_CTXT.read().unwrap().clone()
+pub(crate) fn get_verus_erasure_ctxt_option(local_def_id: LocalDefId) -> Option<Arc<VerusErasureCtxt>> {
+    match &*VERUS_ERASURE_CTXT.read().unwrap() {
+        Some(m) => m.get(&local_def_id).cloned(),
+        None => None,
+    }
 }
 
 pub(crate) fn get_extra_thir(local_def_id: LocalDefId) -> Option<Arc<ExtraThir>> {
@@ -189,21 +199,22 @@ pub(crate) fn get_extra_thir(local_def_id: LocalDefId) -> Option<Arc<ExtraThir>>
 /// As a result, thir_body is able to sanity check we're in a consistent state.
 /// If the VERUS_ERASURE_CTXT hasn't been initialized yet, we check that the given
 /// item is one that doesn't need it.
-pub(crate) fn check_this_query_isnt_running_early(local_def_id: LocalDefId) {
-    if get_verus_erasure_ctxt_option().is_none() {
+pub(crate) fn check_this_query_isnt_running_early<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) {
+    let fn_local_def_id = enclosing_fn_local_def_id(tcx, local_def_id);
+    if get_verus_erasure_ctxt_option(fn_local_def_id).is_none() {
         match VERUS_AWARE_DEF_IDS.read().unwrap().clone() {
             Some(m) => {
-                if m.contains(&local_def_id) {
+                if m.contains(&fn_local_def_id) {
                     panic!(
                         "Internal Verus Error: The thir_body query is running for item {:?} which may require erasure, but the VerusErasureCtxt has not been initialized. Please file a github issue for this error and consider using `--no-lifetime` as a temperary measure to work around the issue.",
-                        local_def_id
+                        fn_local_def_id
                     );
                 }
             }
             None => {
                 panic!(
                     "Internal Verus Error: The thir_body query is running for item {:?}, but the VerusAwareDefIds map has not been initialized. Please file a github issue for this error and consider using `--no-lifetime` as a temporary measure to work around the issue.",
-                    local_def_id
+                    fn_local_def_id
                 );
             }
         }
@@ -234,12 +245,12 @@ impl VerusThirBuildCtxt {
         let fn_local_def_id = enclosing_fn_local_def_id(tcx, local_def_id);
         let verus_aware =
             VERUS_AWARE_DEF_IDS.read().unwrap().clone().unwrap().contains(&fn_local_def_id);
-        let ctxt = get_verus_erasure_ctxt_option();
+        let ctxt = get_verus_erasure_ctxt_option(fn_local_def_id);
 
         let do_time_travel_prevention = verus_aware && ctxt.is_some();
 
         VerusThirBuildCtxt {
-            ctxt: get_verus_erasure_ctxt_option(),
+            ctxt: ctxt,
             closure_overrides: HashMap::new(),
             do_time_travel_prevention,
             guard_pattern_vars: vec![],
@@ -730,15 +741,19 @@ pub(crate) fn erase_body<'tcx>(cx: &mut ThirBuildCx<'tcx>, local_def_id: LocalDe
     matches!(erasure_ctxt.bodies.get(&local_def_id), Some(BodyErasure { erase_body: true, .. }))
 }
 
-pub(crate) fn erase_closure_body_for_closure_captures<'tcx>(local_def_id: LocalDefId) -> bool {
-    let erasure_ctxt = get_verus_erasure_ctxt();
+pub(crate) fn erase_closure_body_for_closure_captures<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> bool {
+    let fn_def_id = enclosing_fn_local_def_id(tcx, local_def_id);
+    let erasure_ctxt = get_verus_erasure_ctxt(fn_def_id);
     matches!(erasure_ctxt.bodies.get(&local_def_id), Some(BodyErasure { erase_body: true, .. }))
 }
 
 pub(crate) static ATOMIC_CLOSURE_CAPTURE_SHADOW: AtomicBool = AtomicBool::new(false);
 
-pub(crate) fn erase_var_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
-    let erasure_ctxt = get_verus_erasure_ctxt();
+pub(crate) fn erase_var_for_closure_captures<'tcx>(tcx: TyCtxt<'tcx>, hir_id: HirId) -> bool {
+    let parent_owner_id = tcx.hir_get_parent_item(hir_id);
+    let fn_def_id = parent_owner_id.def_id;
+
+    let erasure_ctxt = get_verus_erasure_ctxt(fn_def_id);
     let capture_shadow = ATOMIC_CLOSURE_CAPTURE_SHADOW.load(Ordering::SeqCst);
     if capture_shadow {
         matches!(erasure_ctxt.locals.get(&hir_id), Some(VarErasure::Erase))
@@ -747,8 +762,11 @@ pub(crate) fn erase_var_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
     }
 }
 
-pub(crate) fn erase_binder_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
-    let erasure_ctxt = get_verus_erasure_ctxt();
+pub(crate) fn erase_binder_for_closure_captures<'tcx>(tcx: TyCtxt<'tcx>, hir_id: HirId) -> bool {
+    let parent_owner_id = tcx.hir_get_parent_item(hir_id);
+    let fn_def_id = parent_owner_id.def_id;
+
+    let erasure_ctxt = get_verus_erasure_ctxt(fn_def_id);
     let capture_shadow = ATOMIC_CLOSURE_CAPTURE_SHADOW.load(Ordering::SeqCst);
     if capture_shadow {
         matches!(erasure_ctxt.binders.get(&hir_id), Some(VarErasure::Erase))

@@ -500,7 +500,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     .map(|arg| {
                         if let Some((fun, arg0, arg1, ty)) =
                             crate::verus_time_travel_prevention::is_two_phase_mutable_reference_tie(
-                                &this.thir, arg,
+                                this.tcx, this.def_id, &this.thir, arg,
                             )
                         {
                             let fun = unpack!(block = this.as_local_operand(block, fun));
@@ -694,7 +694,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     .map(|f| {
                         (
                             f.name,
-                            if let Some((fun, arg0, arg1, ty)) = crate::verus_time_travel_prevention::is_two_phase_mutable_reference_tie(&this.thir, f.expr) {
+                            if let Some((fun, arg0, arg1, ty)) = crate::verus_time_travel_prevention::is_two_phase_mutable_reference_tie(this.tcx, this.def_id, &this.thir, f.expr) {
                                 let fun = unpack!(block = this.as_local_operand(block, fun));
                                 let a0 = unpack!(block = this.as_operand(
                                         block,
