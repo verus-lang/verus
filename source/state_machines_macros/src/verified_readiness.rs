@@ -665,6 +665,16 @@ fn local_sequence_hints(
     let steps = local_steps(sm, tr);
     let paths = local_paths(&steps);
     // Whether the field's statements on a path need these hints.
+    // The fields observed after an `if`/`match`: the singleton hints stop at
+    // the first branch.
+    let branched: HashSet<String> = steps
+        .iter()
+        .skip_while(|step| !matches!(step, LocalStep::Branch(_)))
+        .filter_map(|step| match step {
+            LocalStep::Observe(field, ..) => Some(field.name.to_string()),
+            _ => None,
+        })
+        .collect();
     let needs = |path: &Vec<&LocalStep>, field: &Field| {
         let mut operations = vec![];
         // Names bound before a statement by a `let` or a pattern: the
@@ -702,7 +712,8 @@ fn local_sequence_hints(
             && operations.iter().any(|o| {
                 o.is_have() || matches!(o.elt, MonoidElt::General(_))
             });
-        after_remove || beyond_singleton || uses_bound
+        let after_branch = !operations.is_empty() && branched.contains(&field.name.to_string());
+        after_remove || beyond_singleton || uses_bound || after_branch
     };
     fn mentions(tokens: TokenStream, names: &[Ident]) -> bool {
         tokens.into_iter().any(|token| match token {
@@ -1219,6 +1230,60 @@ fn implicit_local_state(sm: &SM, tr: &Transition, se: &TokenStream, pe: &TokenSt
     }}))
 }
 
+/// Whether a quantifier of the local requirement may have a trigger in the observation of a
+/// machine with variable or constant fields (`Protocol::__observed`, which then has
+/// conditionals): a `require` with a quantifier that reads `pre`, a `remove`/`have`/`add`
+/// operand that reads `pre` (its ownership condition quantifies over the operand), or a
+/// singleton `remove` from a map field (the ownership of the removed entries is triggered by the effect at the local
+/// state, see `verified_monoids::extra_ownership`). The local state is then a named function,
+/// as the observation's conditionals cannot occur in a trigger.
+fn quantified_state(sm: &SM, tr: &Transition) -> bool {
+    fn mentions(tokens: TokenStream, names: &[&str]) -> bool {
+        tokens.into_iter().any(|token| match token {
+            proc_macro2::TokenTree::Ident(n) => names.iter().any(|name| n == name),
+            proc_macro2::TokenTree::Group(g) => mentions(g.stream(), names),
+            _ => false,
+        })
+    }
+    fn walk(sm: &SM, statement: &TransitionStmt) -> bool {
+        match statement {
+            TransitionStmt::Block(_, children) => children.iter().any(|c| walk(sm, c)),
+            TransitionStmt::Require(_, e) => {
+                mentions(quote! {#e}, &["forall", "exists", "choose"]) && mentions(quote! {#e}, &["pre"])
+            }
+            TransitionStmt::Split(_, split, children) => {
+                let here = match &**split {
+                    SplitKind::Special(name, operation, ..) => {
+                        let map_removal = operation.is_remove()
+                            && matches!(operation.elt, MonoidElt::SingletonKV(..))
+                            && sm.fields.iter().any(|f| {
+                                f.name == *name
+                                    && matches!(f.stype, ShardableType::Map(..) | ShardableType::IMap(..))
+                            });
+                        let operand = match &operation.elt {
+                            MonoidElt::SingletonKV(key, value) => quote! {#key #value},
+                            MonoidElt::OptionSome(value) => quote! {#value},
+                            MonoidElt::SingletonSet(e)
+                            | MonoidElt::SingletonMultiset(e)
+                            | MonoidElt::General(e) => quote! {#e},
+                            _ => quote! {},
+                        };
+                        map_removal || mentions(operand, &["pre"])
+                    }
+                    _ => false,
+                };
+                here || children.iter().any(|c| walk(sm, c))
+            }
+            _ => false,
+        }
+    }
+    let observed = sm
+        .fields
+        .iter()
+        .any(|f| matches!(f.stype, ShardableType::Variable(_) | ShardableType::Constant(_)));
+    observed && walk(sm, &tr.body)
+}
+
 /// The fields with implicit bindings in `tr`.
 fn implicit_fields<'a>(sm: &'a SM, tr: &Transition) -> Vec<&'a Field> {
     fn walk<'a>(sm: &'a SM, statement: &TransitionStmt, out: &mut Vec<&'a Field>) {
@@ -1573,7 +1638,9 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     // So is the plain observation when an operand key is bound (a `let` may
     // read a variable from it, and the effects' triggers then mention it).
     let implicit_state = match implicit_local_state(sm, tr, se, pe, ft)? {
-        None if !agreement_fields(sm, tr).is_empty() => Some(quote! {#pe::__observed(<#ft>::op(owned,h))}),
+        None if !agreement_fields(sm, tr).is_empty() || quantified_state(sm, tr) => {
+            Some(quote! {#pe::__observed(<#ft>::op(owned,h))})
+        }
         state => state,
     };
     let (local_value, local_state_fn, agreement) = match implicit_state {

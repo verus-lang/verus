@@ -178,7 +178,9 @@ a map, `Some(let x)` of an option, exclusive or persistent, also refutable) is t
 supplied fragments' (`owned`'s entry if it has one, else `shared`'s): such a
 transition's local state is `local_ready::t::local_state(owned, shared, x)`, the
 observation with these entries (a transition whose operand keys a `let` or a
-pattern binds also names its local state so). The generated lemma
+pattern binds also names its local state so, as does one whose `require` has a
+quantifier or whose operand reads `pre`: a quantifier's trigger cannot be in the
+observation's conditionals). The generated lemma
 `local_ready::t::ready` proves that the precondition implies
 `Protocol::t_requires`, for every completion; `local_ready::t::run` and
 `local_ready::t::run_with_shared` are `Protocol::t` and `Protocol::t_with_shared`

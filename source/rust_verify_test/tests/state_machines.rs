@@ -10802,6 +10802,191 @@ test_verify_one_file_with_options! {
     } => Err(e) => assert_fails(e, 3)
 }
 
+// `#[verified_local_ready]` on raw machines without storage (checked macro only): the
+// operations are over the plain `Token`, without deposit and withdrawal, for variable, constant,
+// map, set, multiset, count, option and persistent fields, `remove`/`have`/`add`, `if`/`match`,
+// `let` and a pattern binding. Also: a singleton `remove` under a branch, a `require` with a
+// quantifier over a variable, and a general `have` whose operand reads a constant (their local
+// state is a named function, see `local_ready::t::local_state`).
+test_verify_one_file_with_options! {
+    #[test] local_ready_without_storage_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::algebra::ResourceAlgebra;
+        use vstd::resource::pcm::PCM;
+        use vstd::resource::tsm::Machine;
+        verified_tokenized_state_machine! {
+            #[verified_raw_tokens]
+            #[verified_local_ready(var_update, map_replace, map_have, set_ops, multiset_ops, count_ops,
+                option_ops, option_bind, persistent_ops, branchy, matchy, letty)]
+            X {
+                fields {
+                    #[sharding(variable)] pub v: int,
+                    #[sharding(constant)] pub k: int,
+                    #[sharding(map)] pub m: Map<int, int>,
+                    #[sharding(set)] pub s: Set<int>,
+                    #[sharding(multiset)] pub ms: Multiset<int>,
+                    #[sharding(count)] pub c: nat,
+                    #[sharding(option)] pub o: Option<int>,
+                    #[sharding(persistent_map)] pub pm: Map<int, int>,
+                    #[sharding(persistent_set)] pub ps: Set<int>,
+                    #[sharding(persistent_option)] pub po: Option<int>,
+                }
+                init! { initialize(k0: int) {
+                    init v = 0; init k = k0; init m = Map::empty(); init s = Set::empty();
+                    init ms = Multiset::empty(); init c = 0; init o = None; init pm = Map::empty();
+                    init ps = Set::empty(); init po = None;
+                } }
+                transition! { var_update(x: int) {
+                    require(pre.v < x && pre.k <= x);
+                    update v = x;
+                } }
+                transition! { map_replace(a: int, b: int, w: int) {
+                    remove m -= [a => b];
+                    add m += [a => w];
+                } }
+                transition! { map_have(a: int, b: int) {
+                    have m >= [a => b];
+                    update v = b;
+                } }
+                transition! { set_ops(e: int, f: int) {
+                    have s >= set { e };
+                    remove s -= set { f };
+                    add s += set { f };
+                } }
+                transition! { multiset_ops(e: int) {
+                    remove ms -= {e};
+                    add ms += {e};
+                    add ms += {e};
+                } }
+                transition! { count_ops() {
+                    remove c -= (2);
+                    add c += (1);
+                } }
+                transition! { option_ops(x: int) {
+                    remove o -= Some(x);
+                    add o += Some(x + 1);
+                } }
+                transition! { option_bind() {
+                    remove o -= Some(let x);
+                    add o += Some(x + 1);
+                } }
+                transition! { persistent_ops(a: int, b: int, e: int, x: int) {
+                    have pm >= [a => b];
+                    have ps >= set { e };
+                    have po >= Some(x);
+                    add ps (union)= set { e + 1 };
+                } }
+                transition! { branchy(a: int, b: int, x: int) {
+                    if x > 0 {
+                        remove m -= [a => b];
+                        add m += [a => x];
+                    } else {
+                        require(pre.v < x);
+                        update v = x;
+                    }
+                } }
+                transition! { matchy(y: Option<int>, a: int, b: int) {
+                    match y {
+                        Some(z) => {
+                            remove m -= [a => b];
+                            add m += [a => z];
+                        }
+                        None => {
+                            remove c -= (1);
+                        }
+                    }
+                } }
+                transition! { letty(a: int, b: int) {
+                    let w = b + 1;
+                    remove m -= [a => b];
+                    require(w > pre.k);
+                    add m += [a => w];
+                } }
+                #[inductive(initialize)] fn initialize_inductive(post: Self, k0: int) {}
+                #[inductive(var_update)] fn var_update_inductive(pre: Self, post: Self, x: int) {}
+                #[inductive(map_replace)] fn map_replace_inductive(pre: Self, post: Self, a: int, b: int, w: int) {}
+                #[inductive(map_have)] fn map_have_inductive(pre: Self, post: Self, a: int, b: int) {}
+                #[inductive(set_ops)] fn set_ops_inductive(pre: Self, post: Self, e: int, f: int) {}
+                #[inductive(multiset_ops)] fn multiset_ops_inductive(pre: Self, post: Self, e: int) {}
+                #[inductive(count_ops)] fn count_ops_inductive(pre: Self, post: Self) {}
+                #[inductive(option_ops)] fn option_ops_inductive(pre: Self, post: Self, x: int) {}
+                #[inductive(option_bind)] fn option_bind_inductive(pre: Self, post: Self) {}
+                #[inductive(persistent_ops)] fn persistent_ops_inductive(pre: Self, post: Self, a: int, b: int, e: int, x: int) {}
+                #[inductive(branchy)] fn branchy_inductive(pre: Self, post: Self, a: int, b: int, x: int) {}
+                #[inductive(matchy)] fn matchy_inductive(pre: Self, post: Self, y: Option<int>, a: int, b: int) {}
+                #[inductive(letty)] fn letty_inductive(pre: Self, post: Self, a: int, b: int) {}
+            }
+        }
+
+        proof fn clients_x(tracked t: X::Token, tracked shared: &X::Token)
+            requires
+                t.loc() == shared.loc(),
+                t.fragment() == X::Fragment::field_v(3).with_m(Map::empty().insert(1, 2)).with_c(3nat)
+                    .with_s(Set::empty().insert(5)).with_ms(Multiset::singleton(7)).with_o(Some(4)),
+                shared.fragment() == X::Fragment::field_k(2).with_pm(Map::empty().insert(8, 9))
+                    .with_ps(Set::empty().insert(6)).with_po(Some(10)),
+        {
+            let tracked t = X::local_ready::var_update::run_with_shared(t, shared, 4);
+            assert(t.fragment().v == Some(vstd::resource::exclusive::ExclusiveRA::Exclusive(4int)));
+            let tracked t = X::local_ready::map_replace::run(t, 1, 2, 11);
+            let tracked t = X::local_ready::map_have::run(t, 1, 11);
+            let tracked t = X::local_ready::multiset_ops::run(t, 7);
+            let tracked t = X::local_ready::set_ops::run(t, 5, 5);
+            let tracked t = X::local_ready::count_ops::run(t);
+            let tracked t = X::local_ready::option_ops::run(t, 4);
+            let tracked t = X::local_ready::option_bind::run(t);
+            assert(t.fragment().o == Some(vstd::resource::exclusive::ExclusiveRA::Exclusive(6int)));
+            let tracked t = X::local_ready::persistent_ops::run_with_shared(t, shared, 8, 9, 6, 10);
+            let tracked t = X::local_ready::branchy::run(t, 1, 11, 20);
+            let tracked t = X::local_ready::letty::run_with_shared(t, shared, 1, 20);
+            let tracked cert = X::local_ready::matchy::observed(t, Some(20), 1, 21);
+            assert(cert.after.m[1] == 20);
+            let tracked t = cert.token;
+        }
+
+        verified_tokenized_state_machine! {
+            #[verified_raw_tokens]
+            #[verified_local_ready(insert, visit)]
+            Q<T> {
+                fields {
+                    #[sharding(variable)] pub auth: Seq<T>,
+                    #[sharding(constant)] pub dests: Set<int>,
+                    #[sharding(persistent_set)] pub visited: Set<int>,
+                    #[sharding(set)] pub unvisited: Set<int>,
+                }
+                init! { initialize(d: Set<int>) {
+                    init auth = Seq::empty(); init dests = d; init visited = Set::empty();
+                    init unvisited = Set::empty();
+                } }
+                transition! { insert(val: T) {
+                    require(forall |i: int| 0 <= i < pre.auth.len() ==> pre.auth[i] != val);
+                    update auth = pre.auth.push(val);
+                } }
+                transition! { visit(v: int) {
+                    have visited >= (pre.dests);
+                    remove unvisited -= set { v };
+                    add visited (union)= set { v };
+                } }
+                #[inductive(initialize)] fn initialize_inductive(post: Self, d: Set<int>) {}
+                #[inductive(insert)] fn insert_inductive(pre: Self, post: Self, val: T) {}
+                #[inductive(visit)] fn visit_inductive(pre: Self, post: Self, v: int) {}
+            }
+        }
+
+        proof fn clients_q<T>(tracked t: Q::Token<T>, tracked shared: &Q::Token<T>, x: T, y: T)
+            requires
+                t.loc() == shared.loc(), x != y,
+                t.fragment() == Q::Fragment::<T>::field_auth(Seq::empty()).with_unvisited(Set::empty().insert(3)),
+                shared.fragment() == Q::Fragment::<T>::field_dests(Set::empty().insert(1))
+                    .with_visited(Set::empty().insert(1).insert(2)),
+        {
+            let tracked t = Q::local_ready::insert::<T>::run(t, x);
+            let tracked t = Q::local_ready::insert::<T>::run(t, y);
+            let tracked t = Q::local_ready::visit::<T>::run_with_shared(t, shared, 3);
+            assert(t.fragment().visited.at(3) == Some(vstd::resource::agree::AgreementRA::Agree(())));
+        }
+    } => Ok(())
+}
+
 // Storage-free version of readonly_property_local_ready_verified (checked macro only): the
 // readonly transitions and properties without a `guard` (a guard needs storage), over the plain
 // `Token`; the `birds_eye` assertions read non-storage fields.
