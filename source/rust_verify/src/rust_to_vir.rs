@@ -412,6 +412,18 @@ fn check_anon_consts<'tcx>(
         if !matches!(tcx.def_kind(id), DefKind::AnonConst) {
             continue;
         }
+        // Integer-literal discriminants cannot refer to ghost code,
+        // and may intentionally wrap (e.g., `A = 255` under `#[repr(i8)]`).
+        let body = tcx.hir_body_owned_by(id);
+        if tcx.opt_parent(id.to_def_id()).is_some_and(|p| tcx.def_kind(p) == DefKind::Variant) {
+            let mut value = body.value;
+            if let rustc_hir::ExprKind::Unary(rustc_hir::UnOp::Neg, e) = value.kind {
+                value = e;
+            }
+            if matches!(value.kind, rustc_hir::ExprKind::Lit(_)) {
+                continue;
+            }
+        }
         // Only check anonymous constants owned by verified items.
         // External code is trusted and is not mode-checked.
         // The erased copy that verus! generates for each const and const fn is external,
@@ -434,7 +446,6 @@ fn check_anon_consts<'tcx>(
         let Some(module_path) = module_path else {
             continue;
         };
-        let body = tcx.hir_body_owned_by(id);
         let span = body.value.span;
         let mid_typ = tcx.type_of(id).skip_binder();
         let typ = ctxt.mid_ty_to_vir(id.to_def_id(), span, &mid_typ, None).map_err(|e| vec![e])?;
