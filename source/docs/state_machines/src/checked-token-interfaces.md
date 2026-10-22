@@ -226,18 +226,14 @@ cannot generate; they keep their other raw operations (`Protocol::t`,
   `if` condition, or in a `match` scrutinee or arm guard (a closure in a `require`,
   `assert` or `update` is fine);
 * a `require` that the local requirement cannot state (one under a binding other
-  than a `let`, `if`, `match`, `remove` or `have`; TSM itself rejects these);
-* for a transition with a storage operation (`deposit`, `withdraw`, `guard`), a
-  `have` of a `map`, `imap`, `set` or `iset` field, or of their `persistent_`
-  versions, after an `add` to the same field on some path (e.g. `remove m -= [k =>
-  0]; add m += [k => 1]; have m >= [j => 1];` in a transition that also deposits).
+  than a `let`, `if`, `match`, `remove` or `have`; TSM itself rejects these).
 
-The readiness of a transition without storage operations that observes a
-collection field (a `remove` or `have` of a map, set or multiset, exclusive or
-persistent) is proved by a chain of the statement calculus
-(`vstd::resource::tsm_calculus`, one lemma call per `remove`, `have` and `add` of
-any kind), which covers any order of the statements; the readiness of the other
-transitions by generated hints.
+The readiness of a transition that observes a collection field (a `remove` or
+`have` of a map, set or multiset, exclusive or persistent) is proved by a chain of
+the statement calculus (`vstd::resource::tsm_calculus`: one lemma call per
+`remove`, `have` and `add` of any kind; storage operations bind their patterns),
+which covers any order of the statements. The readiness of any other transition
+needs no statement facts: its observations are of single components.
 
 The rule is in `verified_readiness::local_ready_supported`.
 

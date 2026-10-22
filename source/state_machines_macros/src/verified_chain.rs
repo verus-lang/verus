@@ -26,19 +26,20 @@ fn covered(stype: &ShardableType) -> bool {
     crate::verified_monoids::is_monoid_type(stype)
 }
 
-/// Whether the calculus covers every `remove`, `have` and `add` of `stmt` (and it has no
-/// storage operation).
+/// Whether the calculus covers every `remove`, `have` and `add` of `stmt` (a storage
+/// operation needs no step: see `Chain::storage`).
 pub(crate) fn supported(stmt: &TransitionStmt, fields: &HashMap<String, Field>) -> bool {
     match stmt {
         TransitionStmt::Block(_, children) => children.iter().all(|c| supported(c, fields)),
         TransitionStmt::Split(_, kind, children) => {
             let here = match &**kind {
                 SplitKind::Special(name, operation, _, _) => {
-                    fields.get(&name.to_string()).is_some_and(|f| covered(&f.stype))
-                        && matches!(
-                            operation.stmt,
-                            MonoidStmtType::Remove | MonoidStmtType::Have | MonoidStmtType::Add(_)
-                        )
+                    operation.stmt.is_for_storage()
+                        || fields.get(&name.to_string()).is_some_and(|f| covered(&f.stype))
+                            && matches!(
+                                operation.stmt,
+                                MonoidStmtType::Remove | MonoidStmtType::Have | MonoidStmtType::Add(_)
+                            )
                 }
                 _ => true,
             };
@@ -49,7 +50,7 @@ pub(crate) fn supported(stmt: &TransitionStmt, fields: &HashMap<String, Field>) 
 }
 
 /// Whether `tr`'s readiness proof uses the chain: the calculus covers its statements
-/// (`supported`) and it has a `remove` or `have` of a collection field (a map, set or
+/// (`supported`; every monoid kind and the storage operations) and it has a `remove` or `have` of a collection field (a map, set or
 /// multiset, exclusive or persistent). The enabling condition of a transition without one
 /// follows from its ownership condition without any hint (an `option`, `count` or `bool`
 /// observation is a fact about one component), and a chain would only add cost.
@@ -252,10 +253,43 @@ impl Chain<'_> {
                     let field = self.fields.get(&name.to_string()).ok_or_else(|| {
                         Error::new(*span, "chain operation refers to an unknown field")
                     })?;
+                    if operation.stmt.is_for_storage() {
+                        return self.storage(field, operation, pattern.as_deref(), children, point, *span);
+                    }
                     self.special(field, operation, pattern.as_deref(), children, point, *span)
                 }
             },
             _ => Ok((quote! {}, point)),
+        }
+    }
+
+    /// A `deposit`, `withdraw` or `guard`, then `children`. Its condition is an
+    /// `assert` of the transition (a safety condition, which the enabling condition does
+    /// not require), and it changes no monoid component: it contributes only the binding
+    /// of its pattern, from the state as in the ownership condition.
+    fn storage(
+        &mut self,
+        field: &Field,
+        operation: &SpecialOp,
+        pattern: Option<&verus_syn::Pat>,
+        children: &[TransitionStmt],
+        point: Point,
+        span: Span,
+    ) -> Result<(TokenStream, Point), Error> {
+        let name = &field.name;
+        let (body, end) = self.sequence(children, point)?;
+        match pattern {
+            Some(pattern) if !body.is_empty() => {
+                let observed = match &operation.elt {
+                    MonoidElt::OptionSome(None) => quote! {pre.#name->Some_0},
+                    MonoidElt::SingletonKV(key, None) => quote! {pre.#name[#key]},
+                    _ => return Err(Error::new(span, "unsupported storage binding")),
+                };
+                let (tuple, tuple_pattern, after) = self.export(&end);
+                let bound_body = bind_pattern(pattern, observed, quote! {{#body #tuple}});
+                Ok((quote! {let #tuple_pattern = #bound_body;}, after))
+            }
+            _ => Ok((body, end)),
         }
     }
 
