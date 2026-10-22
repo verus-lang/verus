@@ -2582,7 +2582,7 @@ fn extract_ensures<'tcx>(
     };
     match &expr.kind {
         ExprKind::Closure(closure) => {
-            bctx.ctxt.push_body_erasure(
+            bctx.push_body_erasure(
                 closure.def_id,
                 BodyErasure { erase_body: true, ret_spec: true },
             );
@@ -2625,7 +2625,7 @@ fn extract_quant<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
-            bctx.ctxt.push_body_erasure(
+            bctx.push_body_erasure(
                 closure.def_id,
                 BodyErasure { erase_body: true, ret_spec: true },
             );
@@ -2696,7 +2696,7 @@ fn extract_assert_forall_by<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
-            bctx.ctxt.push_body_erasure(
+            bctx.push_body_erasure(
                 closure.def_id,
                 BodyErasure { erase_body: true, ret_spec: true },
             );
@@ -2756,7 +2756,7 @@ fn extract_choose<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
-            bctx.ctxt.push_body_erasure(
+            bctx.push_body_erasure(
                 closure.def_id,
                 BodyErasure { erase_body: true, ret_spec: true },
             );
@@ -2769,7 +2769,7 @@ fn extract_choose<'tcx>(
             for (x, typ) in closure_body.params.iter().zip(typs) {
                 let name = pat_to_var(x.pat)?;
                 let vir_expr = bctx.spanned_typed_new(x.span, &typ, ExprX::Var(name.clone()));
-                let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                let mut erasure_info = bctx.erasure_info.borrow_mut();
                 erasure_info.local_hir_vir_ids.push((None, vir_expr.span.id));
                 vars.push(vir_expr);
                 params.push(Arc::new(VarBinderX { name, a: typ }));
@@ -3216,7 +3216,7 @@ pub(crate) fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_cal
         }
         (resolved_call, _) => resolved_call,
     };
-    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+    let mut erasure_info = bctx.erasure_info.borrow_mut();
     erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call, bctx.in_ghost));
 }
 

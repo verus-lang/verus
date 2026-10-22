@@ -346,7 +346,7 @@ pub(crate) fn param_pat_to_decl<'tcx>(
 
     let init = bctx.spanned_typed_new(pat.span, typ, PlaceX::Local(param.clone()));
     // Generated initializer has no corresponding source HIR node.
-    bctx.ctxt.erasure_info.borrow_mut().local_hir_vir_ids.push((None, init.span.id));
+    bctx.erasure_info.borrow_mut().local_hir_vir_ids.push((None, init.span.id));
 
     let decl = |mode| {
         bctx.spanned_new(
@@ -365,8 +365,8 @@ pub(crate) fn param_pat_to_decl<'tcx>(
 
 /// Adds the parameter pattern declarations to the body, and their spec versions to each
 /// contract, so contracts can use the bindings
-pub(crate) fn add_param_decls(
-    ctxt: &Context,
+pub(crate) fn add_param_decls<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     span: Span,
     header: &mut vir::headers::Header,
     body: &mut vir::ast::Expr,
@@ -402,8 +402,8 @@ pub(crate) fn add_param_decls(
     }
     let (body_decls, spec_decls): (Vec<_>, Vec<_>) = param_decls.into_iter().unzip();
     let wrap = |e: &vir::ast::Expr| {
-        let decls = ctxt.clone_stmts_with_fresh_ids(&spec_decls);
-        ctxt.spanned_typed_new_vir(&e.span, &e.typ, ExprX::Block(decls, Some(e.clone())))
+        let decls = bctx.clone_stmts_with_fresh_ids(&spec_decls);
+        bctx.ctxt.spanned_typed_new_vir(&e.span, &e.typ, ExprX::Block(decls, Some(e.clone())))
     };
     let wrap_all = |es: &vir::ast::Exprs| Arc::new(es.iter().map(wrap).collect::<Vec<_>>());
     *require = wrap_all(require);
@@ -424,7 +424,7 @@ pub(crate) fn add_param_decls(
         UnwindSpec::NoUnwindWhen(e) => UnwindSpec::NoUnwindWhen(wrap(e)),
         UnwindSpec::MayUnwind => UnwindSpec::MayUnwind,
     });
-    *body = ctxt.spanned_typed_new_vir(
+    *body = bctx.ctxt.spanned_typed_new_vir(
         &body.span,
         &body.typ,
         ExprX::Block(Arc::new(body_decls), Some(body.clone())),
@@ -725,7 +725,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
             })
             .collect::<Result<Vec<_>, _>>()?,
     );
-    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+    let mut erasure_info = bctx.erasure_info.borrow_mut();
     let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
     erasure_info.resolved_calls.push((expr.hir_id, fun_span.data(), resolved_call, bctx.in_ghost));
     let exprx = ExprX::Ctor(Dt::Path(vir_path), variant_name, vir_fields, None);
@@ -759,7 +759,7 @@ pub(crate) fn pattern_to_vir<'tcx>(
 ) -> Result<vir::ast::Pattern, VirErr> {
     let unadjusted_pat = pattern_to_vir_unadjusted(bctx, pat)?;
     if matches!(pat.kind, PatKind::Binding(..)) {
-        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+        let mut erasure_info = bctx.erasure_info.borrow_mut();
         erasure_info.binder_hir_vir_ids.push((Some(pat.hir_id), unadjusted_pat.span.id));
     }
 
@@ -1030,7 +1030,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
         PatKind::Missing => unsupported_err!(pat.span, "missing patterns", pat),
     };
     let pattern = bctx.spanned_typed_new(pat.span, &pat_typ, pattern);
-    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+    let mut erasure_info = bctx.erasure_info.borrow_mut();
     erasure_info.resolved_pats.push((pat.span.data(), pattern.clone()));
     Ok(pattern)
 }
@@ -1322,7 +1322,7 @@ fn invariant_block_to_vir<'tcx>(
     };
 
     if matches!(atomicity, InvAtomicity::NonAtomic) {
-        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+        let mut erasure_info = bctx.erasure_info.borrow_mut();
         erasure_info.local_invariant_bodies.push(
             rustc_mir_build_verus::verus::LocalInvariantBody {
                 inner_block_hir_id: block_hir_id,
@@ -2426,7 +2426,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     };
 
                     {
-                        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                        let mut erasure_info = bctx.erasure_info.borrow_mut();
                         erasure_info.resolved_calls.push((
                             expr.hir_id,
                             fun.span.data(),
@@ -2951,13 +2951,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         // (See verus_time_travel_prevention.rs)
                         let shadow_check = !(bctx.in_old || bctx.in_explicit_prophecy_node);
                         if shadow_check {
-                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                            let mut erasure_info = bctx.erasure_info.borrow_mut();
                             erasure_info.shadow_check.push(expr.hir_id);
                         }
 
                         if bctx.in_postcondition && !bctx.in_old && bctx.is_param_migrated(&name) {
                             {
-                                let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                                let mut erasure_info = bctx.erasure_info.borrow_mut();
                                 erasure_info
                                     .local_hir_vir_ids
                                     .push((Some(expr.hir_id), place.span.id));
@@ -2975,7 +2975,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 if bctx.in_fn_sig
                                     && bctx.is_param_for_innermost_fn_or_non_spec_closure(&name)
                                 {
-                                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                                    let mut erasure_info = bctx.erasure_info.borrow_mut();
                                     erasure_info
                                         .local_hir_vir_ids
                                         .push((Some(expr.hir_id), place.span.id));
@@ -2983,7 +2983,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 } else {
                                     let x = ExprX::VarAt(name, vir::ast::VarAt::Pre);
                                     let e = bctx.spanned_typed_new(expr.span, typ, x);
-                                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                                    let mut erasure_info = bctx.erasure_info.borrow_mut();
                                     erasure_info
                                         .local_hir_vir_ids
                                         .push((Some(expr.hir_id), e.span.id));
@@ -2996,7 +2996,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 )
                             }
                         } else {
-                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                            let mut erasure_info = bctx.erasure_info.borrow_mut();
                             erasure_info.local_hir_vir_ids.push((Some(expr.hir_id), place.span.id));
                             Ok(ExprOrPlace::Place(place))
                         }
@@ -3022,7 +3022,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     if let Some(vir_expr) =
                         int_intrinsic_constant_to_vir(&bctx.ctxt, expr.span, &expr_typ()?, id)
                     {
-                        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                        let mut erasure_info = bctx.erasure_info.borrow_mut();
                         erasure_info.resolved_calls.push((
                             expr.hir_id,
                             expr.span.data(),
@@ -3040,11 +3040,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             &expr.hir_id,
                             expr.span,
                         )?;
-                        bctx.ctxt
-                            .erasure_info
-                            .borrow_mut()
-                            .local_hir_vir_ids
-                            .push((None, e.span.id));
+                        bctx.erasure_info.borrow_mut().local_hir_vir_ids.push((None, e.span.id));
                         Ok(ExprOrPlace::Expr(e))
                     }
                 }
@@ -3058,7 +3054,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         &expr.hir_id,
                         expr.span,
                     )?;
-                    bctx.ctxt.erasure_info.borrow_mut().local_hir_vir_ids.push((None, e.span.id));
+                    bctx.erasure_info.borrow_mut().local_hir_vir_ids.push((None, e.span.id));
                     Ok(ExprOrPlace::Expr(e))
                 }
                 (
@@ -3075,7 +3071,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         &expr_typ()?,
                         ExprX::StaticVar(Arc::new(fun)),
                     );
-                    bctx.ctxt.erasure_info.borrow_mut().local_hir_vir_ids.push((None, e.span.id));
+                    bctx.erasure_info.borrow_mut().local_hir_vir_ids.push((None, e.span.id));
                     Ok(ExprOrPlace::Expr(e))
                 }
                 (Res::Def(DefKind::Fn, id) | Res::Def(DefKind::AssocFn, id), _) => {
@@ -3239,7 +3235,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 );
             let decrease = if expr_vattrs.auto_decreases && allow_no_decreases {
                 for dec in header.decrease.iter() {
-                    crate::erase::mark_tree_for_erasure(&bctx.ctxt, dec);
+                    crate::erase::mark_tree_for_erasure(bctx, dec);
                 }
                 Arc::new(vec![])
             } else {
@@ -3250,7 +3246,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 // (at present, we only add them to invariant_except_break)
                 Arc::make_mut(&mut header.invariant_except_break).retain(|e| {
                     if matches!(&e.x, ExprX::UnaryOpr(UnaryOpr::AutoDecreases, _)) {
-                        crate::erase::mark_tree_for_erasure(&bctx.ctxt, e);
+                        crate::erase::mark_tree_for_erasure(bctx, e);
                         false
                     } else {
                         true
@@ -3419,7 +3415,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     .collect::<Result<Vec<_>, _>>()?,
             );
 
-            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+            let mut erasure_info = bctx.erasure_info.borrow_mut();
             let resolved_call = ResolvedCall::BracesCtor(
                 path.clone(),
                 variant_name.clone(),
@@ -4178,7 +4174,7 @@ fn unwrap_parameter_to_vir<'tcx>(
             Some(GhostBlockAttr::Proof),
             Some((hir_id2, hir_id_y, hir_id_get, Some(x2), Some(y), Some((mode, resolved_call)))),
         ) if x1 == x2 => {
-            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+            let mut erasure_info = bctx.erasure_info.borrow_mut();
             erasure_info.direct_var_modes.push((hir_id1, mode));
             erasure_info.direct_var_modes.push((hir_id2, mode));
             erasure_info.direct_var_modes.push((hir_id_y, Mode::Exec));
@@ -4407,12 +4403,12 @@ pub(crate) fn closure_to_vir<'tcx>(
 
         let mut header =
             vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Closure)?;
-        add_param_decls(&bctx.ctxt, closure_expr.span, &mut header, &mut body, pattern_stmts)?;
+        add_param_decls(bctx, closure_expr.span, &mut header, &mut body, pattern_stmts)?;
         let vir::headers::Header { require, ensure, ensure_id_typ, .. } = header;
         assert!(ensure.1.len() == 0);
 
         let exprx = if is_spec_fn {
-            bctx.ctxt.push_body_erasure(*def_id, BodyErasure { erase_body: true, ret_spec: true });
+            bctx.push_body_erasure(*def_id, BodyErasure { erase_body: true, ret_spec: true });
 
             if require.len() > 0 || ensure.0.len() > 0 {
                 return err_span(
@@ -4422,7 +4418,7 @@ pub(crate) fn closure_to_vir<'tcx>(
             }
             ExprX::Closure(Arc::new(params), body)
         } else {
-            bctx.ctxt.push_body_erasure(
+            bctx.push_body_erasure(
                 *def_id,
                 BodyErasure {
                     erase_body: false,
