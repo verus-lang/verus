@@ -1719,7 +1719,7 @@ test_verify_one_file! {
 
         use vstd::prelude::*;
         use vstd::std_specs::nonzero::*;
-        use std::num::{NonZeroU64, NonZeroI32};
+        use std::num::{NonZeroU64, NonZeroI32, NonZeroU128, NonZeroI128};
 
         fn test() {
             let x = NonZeroI32::new(-20).unwrap();
@@ -1751,6 +1751,11 @@ test_verify_one_file! {
             assert(0x1011 == 0x1011 | 0x1000) by (compute_only);
             assert(z1@ == x@);
             assert(z1 == x);
+        }
+
+        fn test_128(x: u128, n: NonZeroU128, m: NonZeroI128) -> u128 {
+            assert(m.get() != 0);
+            x / n.get()
         }
 
     } => Ok(())
