@@ -8,8 +8,10 @@ use crate::messages::{ToAny, WarningAllow, error_with_label};
 use crate::sst::{BndX, CallFun, Exp, ExpX, FuncCheckSst, FunctionSst, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{NoScoper, Rewrite, Visitor};
 use crate::triggers::build_triggers;
+use crate::triggers_let::check_let_bound_if_triggers;
 use crate::util::vec_map_result;
 use crate::visitor::Returner;
+use air::context::SmtSolver;
 use air::messages::Diagnostics;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -274,6 +276,10 @@ pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
         }
         let triggers = build_triggers(ctx, &span, &vars, exp, false)?;
         axioms.proof_exec_axioms = Some((params.clone(), exp.clone(), triggers));
+    }
+
+    if matches!(ctx.global.solver, SmtSolver::Z3) {
+        check_let_bound_if_triggers(function)?;
     }
 
     Ok(())
