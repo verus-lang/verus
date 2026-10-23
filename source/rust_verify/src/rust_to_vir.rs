@@ -725,7 +725,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
 
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&CrateId::Vstd);
 
-    check_anon_consts(&ctxt, &mut state, &mut infos, crate_items)?;
+    check_anon_consts(&ctxt, &mut state, &mut infos, crate_items).map_err(|e| (e, None))?;
 
     let function_stubs = infos.iter().flat_map(|info| info.iter_stubs()).cloned().collect();
     crate::rust_to_vir_impl::collect_external_trait_impls(

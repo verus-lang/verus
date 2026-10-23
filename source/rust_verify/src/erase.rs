@@ -503,7 +503,7 @@ pub(crate) fn setup_verus_aware_ids(
     verus_aware_ids
 }
 
-/// Check that every "verus-aware" definition is recorded in the 
+/// Check that every "verus-aware" definition is recorded in the
 /// `def_id_to_fun_name_for_erasure` map, either:
 ///  - By the `Fun` whose mode-checking results are used as input to erasure
 ///  - As `None`, indicating the item doesn't need erasure
