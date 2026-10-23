@@ -486,11 +486,11 @@ pub(crate) fn setup_verus_aware_ids(
         match item.verif {
             crate::external::VerifOrExternal::VerusAware {
                 const_directive,
-                external_body,
-                external_fn_specification,
+                external_body: _,
+                external_fn_specification: _,
                 ..
             } => {
-                if !const_directive && !external_body && !external_fn_specification {
+                if !const_directive {
                     s.insert(item.id.owner_id().def_id);
                 }
             }
@@ -509,6 +509,8 @@ pub(crate) fn check_verus_aware_ids<'tcx>(
     verus_aware_ids: Arc<HashSet<LocalDefId>>,
     def_id_to_fun_name_for_erasure: &HashMap<DefId, Option<Fun>>,
 ) -> Result<(), VirErr> {
+    // REVIEW: Should we just compute `verus_aware_ids` from the
+    // `def_id_to_fun_name_for_erasure` map in the first place?
     for id in verus_aware_ids.iter() {
         let has_body = tcx.hir_node_by_def_id(*id).associated_body().is_some();
         if has_body && !def_id_to_fun_name_for_erasure.contains_key(&(*id).into()) {
