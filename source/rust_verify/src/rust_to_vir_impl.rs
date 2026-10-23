@@ -440,13 +440,16 @@ pub(crate) fn translate_impl<'tcx>(
         None
     };
 
-    let mut errors = vec![];
-    for impl_item_id in impll.items {
-        if vattrs.external_trait_blanket {
+    if vattrs.external_trait_blanket {
+        for impl_item_id in impll.items {
             let def_id = impl_item_id.hir_id().owner.to_def_id();
             no_erasure_needed.push(def_id);
-            continue;
         }
+        return Ok(());
+    }
+
+    let mut errors = vec![];
+    for impl_item_id in impll.items {
         let r = translate_impl_item(
             ctxt,
             state,
