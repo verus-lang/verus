@@ -1660,3 +1660,26 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_crate_named_alloc ["--crate-name=alloc", "vstd"] => code! {
+        // With the crate name `alloc`, the second impl's `len` has the same VIR path as
+        // std's Vec::len, so it would receive vstd's specification for Vec::len
+        pub mod vec {
+            pub trait Tr { fn len(&self) -> usize; }
+            impl Tr for u8 { fn len(&self) -> usize { 0 } }
+            impl<T, A: std::alloc::Allocator> Tr for std::vec::Vec<T, A> {
+                fn len(&self) -> usize { 0 }
+            }
+        }
+        use vec::Tr;
+
+        verus! {
+            fn two(v: &std::vec::Vec<u8>) -> (r: (usize, usize))
+                ensures r.0 == r.1,
+            {
+                (Tr::len(v), Tr::len(v))
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "the crate name `alloc` is reserved")
+}
