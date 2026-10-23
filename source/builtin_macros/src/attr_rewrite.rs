@@ -705,6 +705,11 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
 ) -> proc_macro::TokenStream {
     match f {
         AnyFnOrLoop::Fn(mut fun) => {
+            match check_misuse_verus_spec(&fun.attrs, true) {
+                Ok(_verus_applied) => {}
+                Err(error_tokens) => return error_tokens,
+            };
+
             // Note: trait default methods appear in this case,
             // since they look syntactically like non-trait functions
             let spec_attr =
