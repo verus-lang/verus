@@ -13,18 +13,29 @@ pub fn str_to_node(s: &str) -> Node {
     Node::Atom(s.to_string())
 }
 
+fn escape(s: &str) -> String {
+    let mut res = "".to_string();
+    for c in s.chars() {
+        if c == '\\' {
+            res += "\\\\";
+        } else if c.is_ascii_graphic() && c != '"' {
+            res.push(c);
+        } else if c == ' ' {
+            res.push(c);
+        } else if c == '\n' {
+            res += "\\n";
+        } else {
+            res += "\\u{";
+            res += &format!("{:x}", c as u32);
+            res += "}";
+        }
+    }
+    res
+}
+
 /// A string atom; characters that sise cannot print in a string are replaced
 fn quoted_atom(s: &str) -> Node {
-    let s: String = s
-        .chars()
-        .map(|c| match c {
-            '"' => '\'',
-            '\\' => '/',
-            ' '..='~' => c,
-            _ => '?',
-        })
-        .collect();
-    Node::Atom(format!("\"{}\"", s))
+    Node::Atom(format!("\"{}\"", escape(s)))
 }
 
 pub fn macro_push_node(nodes: &mut Vec<Node>, node: Node) {
