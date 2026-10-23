@@ -1951,3 +1951,39 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "break/continue is not allowed outside executable context")
 }
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3171
+    #[test] exec_match_on_ghost1 verus_code! {
+        pub struct S {
+            pub ghost g: u64,
+        }
+
+        fn test() -> (r: u64)
+            ensures r == 1,
+        {
+            let mut s = S { g: 7 };
+            proof { s.g = 5; }
+            match s {
+                S { g: 5 } => 1,
+                _ => 0,
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot match on ghost value in exec context")
+}
+
+test_verify_one_file! {
+    #[test] exec_match_on_ghost2 verus_code! {
+        enum E { A, B }
+        struct S {
+            pub ghost g: E,
+        }
+
+        fn test(s: S) {
+            match s {
+                S { g: E::A } => {}
+                _ => {}
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot match on ghost value in exec context")
+}
