@@ -490,10 +490,6 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
         return;
     }
 
-    if eattrs.uses_unerased_proxy {
-        return;
-    }
-
     // If an item is external, of if it's in a module that is marked external, then
     // it will be ignored. Therefore, if there's any other verus-relevant attribute,
     // it's probably a mistake.

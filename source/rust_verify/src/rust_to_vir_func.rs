@@ -1521,20 +1521,6 @@ fn make_attributes<'tcx>(
     Ok(Arc::new(fattrs))
 }
 
-pub(crate) fn fixup_unerased_proxy_path(
-    path: &vir::ast::Path,
-    span: Span,
-) -> Result<vir::ast::Path, VirErr> {
-    let id = path.last_segment();
-    let prefix = "VERUS_UNERASED_PROXY__";
-    if id.starts_with(&prefix) {
-        let p = path.pop_segment().push_segment(Arc::new(id[prefix.len()..].to_string()));
-        Ok(p)
-    } else {
-        crate::internal_err!(span, "bad use of `unerased_proxy` attribute")
-    }
-}
-
 pub(crate) struct FunctionInfo<'tcx> {
     pub function: vir::ast::FunctionStub,
     pub function_for_autospec: Option<vir::ast::FunctionStub>,
@@ -1641,7 +1627,7 @@ pub(crate) fn check_item_fn<'tcx>(
     opaque_types: &mut OpaqueTypes,
     no_erasure_needed: &mut Vec<DefId>,
 ) -> Result<Option<Fun>, VirErr> {
-    let mut this_path = ctxt.def_id_to_vir_path(id);
+    let this_path = ctxt.def_id_to_vir_path(id);
 
     let is_verus_spec = this_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
 
@@ -1690,10 +1676,6 @@ pub(crate) fn check_item_fn<'tcx>(
             self_generics,
         )?;
         return Ok(Some(fun));
-    }
-
-    if vattrs.unerased_proxy {
-        this_path = fixup_unerased_proxy_path(&this_path, sig.span)?;
     }
 
     let external_trait_from_to = if let Some((to_trait_id, to_spec_name)) = external_trait {
@@ -3301,12 +3283,9 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     is_static: bool,
     self_generics: Option<(&'tcx Generics, DefId)>,
 ) -> Result<Fun, VirErr> {
-    let mut path = ctxt.def_id_to_vir_path(id);
+    let path = ctxt.def_id_to_vir_path(id);
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
-    if vattrs.unerased_proxy {
-        path = fixup_unerased_proxy_path(&path, span)?;
-    }
 
     let name = Arc::new(FunX { path: path.clone() });
 

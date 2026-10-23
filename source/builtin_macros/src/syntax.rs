@@ -2422,7 +2422,6 @@ impl Visitor {
 
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
         crate::contrib::contrib_preprocess_impl_items(items);
-        self.visit_impl_items_make_unerased_proxies(items, for_trait);
 
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
@@ -6234,24 +6233,6 @@ pub(crate) fn is_encoded_const(attrs: &Vec<Attribute>) -> bool {
                 && tokens.to_string() == "encoded_const"
         }
         _ => false,
-    })
-}
-
-pub(crate) fn is_external(attrs: &Vec<Attribute>) -> bool {
-    attrs.iter().any(|attr| {
-        // verifier::external
-        attr.path().segments.len() == 2
-            && attr.path().segments[0].ident == "verifier"
-            && attr.path().segments[1].ident == "external"
-        // verifier(external)
-        || attr.path().segments.len() == 1
-            && attr.path().segments[0].ident == "verifier"
-            && match &attr.meta {
-                verus_syn::Meta::List(list) => {
-                    matches!(list.tokens.to_string().as_str(), "external")
-                }
-                _ => false,
-            }
     })
 }
 
