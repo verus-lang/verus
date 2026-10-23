@@ -170,9 +170,11 @@ impl Parser {
                     let (Node::Atom(note), Node::Atom(span)) = (&pair[0], &pair[1]) else {
                         unreachable!()
                     };
-                    let note = &note[1..note.len() - 1];
-                    let span = &span[1..span.len() - 1];
-                    labels.push(self.message_interface.message_label_from_air_span(span, note));
+                    let note = crate::printer::unescape(&note[1..note.len() - 1])
+                        .ok_or("bad string literal")?;
+                    let span = crate::printer::unescape(&span[1..span.len() - 1])
+                        .ok_or("bad string literal")?;
+                    labels.push(self.message_interface.message_label_from_air_span(&span, &note));
                 }
                 _ => {
                     return Err(format!("expected quoted string, found: {}", node_to_string(node)));

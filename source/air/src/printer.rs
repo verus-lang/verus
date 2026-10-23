@@ -13,7 +13,7 @@ pub fn str_to_node(s: &str) -> Node {
     Node::Atom(s.to_string())
 }
 
-fn escape(s: &str) -> String {
+pub fn escape(s: &str) -> String {
     let mut res = "".to_string();
     for c in s.chars() {
         if c == '\\' {
@@ -31,6 +31,38 @@ fn escape(s: &str) -> String {
         }
     }
     res
+}
+
+/// The inverse of `escape`. Returns `None` if `s` contains an escape sequence
+/// that `escape` never produces.
+pub fn unescape(s: &str) -> Option<String> {
+    let mut res = "".to_string();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            res.push(c);
+            continue;
+        }
+        match chars.next()? {
+            '\\' => res.push('\\'),
+            'n' => res.push('\n'),
+            'u' => {
+                if chars.next()? != '{' {
+                    return None;
+                }
+                let mut hex = "".to_string();
+                loop {
+                    match chars.next()? {
+                        '}' => break,
+                        d => hex.push(d),
+                    }
+                }
+                res.push(char::from_u32(u32::from_str_radix(&hex, 16).ok()?)?);
+            }
+            _ => return None,
+        }
+    }
+    Some(res)
 }
 
 /// A string atom; characters that sise cannot print in a string are replaced
