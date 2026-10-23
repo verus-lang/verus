@@ -4,6 +4,34 @@ use super::super::seq::{
 };
 use core::iter::{Filter, FromIterator, Iterator, Rev, Skip, Take, Zip};
 
+// Reduce the boilerplate in the definitions below.  We have to use a macro,
+// since inside of ExIterator, we don't yet know that `self` is an Iterator.
+// We use two macros so that we can convert arguments to Rust-friendly terms 
+// (e.g., by translating `final(.)` in to `verus_builtin::final_(.)` in `iter_state_preserved`
+// before doing the real work in `iter_state_preserved_internal`
+#[doc(hidden)]
+#[macro_export]
+macro_rules! iter_state_preserved_internal {
+    ($before:expr, $after:expr $(,)?) => {
+        // Dereference explicitly so method resolution uses the underlying
+        // iterator, and `final` is consumed through a dereference.
+        $crate::prelude::verus_proof_expr! {{
+            &&& (*($after)).obeys_prophetic_iter_laws() == (*($before)).obeys_prophetic_iter_laws()
+            &&& (*($before)).obeys_prophetic_iter_laws() ==>
+                (*($after)).will_return_none() == (*($before)).will_return_none()
+            &&& (*($before)).obeys_prophetic_iter_laws() ==>
+                ((*($after)).decrease() is Some <==> (*($before)).decrease() is Some)
+        }}
+    };
+}
+
+#[macro_export]
+macro_rules! iter_state_preserved {
+    ($($args:tt)*) => {
+        $crate::prelude::verus_proof_macro_exprs!($crate::iter_state_preserved_internal!($($args)*))
+    };
+}
+
 use verus as verus_skip_verusfmt;
 verus_skip_verusfmt! {
 
@@ -16,8 +44,9 @@ pub trait ExIterator {
 
     /// This iterator obeys the specifications below on `next`,
     /// expressed in terms of prophetic spec functions.
-    /// Only iterators that terminate (i.e., eventually return None
-    /// and then continue to return None) should use this interface.
+    /// Only finite iterators (i.e., those that eventually return None
+    /// and then continue to return None) or infinite iterators that
+    /// never return None should use this interface. 
     spec fn obeys_prophetic_iter_laws(&self) -> bool;
 
     /// Sequence of items that will (eventually) be returned
@@ -34,10 +63,7 @@ pub trait ExIterator {
     /// Advances the iterator and returns the next value.
     fn next(&mut self) -> (ret: Option<Self::Item>)
         ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
-            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
-            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            iter_state_preserved!(old(self), final(self)),
             // `next` pops the head of the prophesized remaining(), or returns None
             final(self).obeys_prophetic_iter_laws() ==>
             ({
@@ -86,10 +112,7 @@ pub trait ExIterator {
             // without the laws, `remaining()` says nothing about the items `f` is called on
             !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] call_requires(f, (x, )),
         ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
-            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
-            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
                 final(self).remaining().is_suffix_of(old(self).remaining())
             },
@@ -121,10 +144,7 @@ pub trait ExIterator {
             // without the laws, `remaining()` says nothing about the items `f` is called on
             !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] call_requires(f, (x, )),
         ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
-            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
-            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
                 final(self).remaining().is_suffix_of(old(self).remaining())
             },
@@ -180,10 +200,7 @@ pub trait ExIterator {
             // without the laws, `remaining()` says nothing about the items `predicate` is called on
             !self.obeys_prophetic_iter_laws() ==> forall |x: &Self::Item| #![auto] call_requires(predicate, (x, )),
         ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
-            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
-            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
                 final(self).remaining().is_suffix_of(old(self).remaining())
             },
@@ -217,10 +234,7 @@ pub trait ExIterator {
             // without the laws, `remaining()` says nothing about the items `f` is called on
             !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] call_requires(f, (x, )),
         ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
-            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
-            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
                 final(self).remaining().is_suffix_of(old(self).remaining())
             },
@@ -267,10 +281,7 @@ pub trait ExIterator {
             self.remaining().len() <= usize::MAX as int,
             forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (self.remaining()[k], )),
         ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
-            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
-            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
                 final(self).remaining().is_suffix_of(old(self).remaining())
             },
@@ -340,10 +351,7 @@ pub trait ExDoubleEndedIterator : Iterator {
     // ```
     fn next_back(&mut self) -> (ret: Option<<Self as core::iter::Iterator>::Item>)
         ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) == <Self as IteratorSpec>::obeys_prophetic_iter_laws(old(self)),
-            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==> <Self as IteratorSpec>::will_return_none(final(self)) == <Self as IteratorSpec>::will_return_none(old(self)),
-            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==> (<Self as IteratorSpec>::decrease(old(self)) is Some <==> <Self as IteratorSpec>::decrease(final(self)) is Some),
+            iter_state_preserved!(old(self), final(self)),
             // `next` pops the tail of the prophesized remaining(), or returns None
             <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==>
             ({
