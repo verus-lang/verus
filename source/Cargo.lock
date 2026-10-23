@@ -48,6 +48,7 @@ dependencies = [
  "indexmap 2.14.0",
  "petgraph 0.6.5",
  "serde",
+ "serde_json",
  "sise",
  "smt-scope",
  "win32job",

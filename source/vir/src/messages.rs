@@ -175,6 +175,15 @@ impl air::messages::MessageInterface for VirMessageInterface {
             .collect()
     }
 
+    fn all_msgs_with_spans(&self, message: &ArcDynMessage) -> Vec<(String, Option<String>)> {
+        let message: &MessageX =
+            message.downcast_ref().expect("unexpected value in Any -> Message conversion");
+        Some((message.note.clone(), message.spans.first().map(|s| s.as_string.clone())))
+            .into_iter()
+            .chain(message.labels.iter().map(|l| (l.note.clone(), Some(l.span.as_string.clone()))))
+            .collect()
+    }
+
     fn bare(&self, level: MessageLevel, note: &str) -> ArcDynMessage {
         Arc::new(MessageX {
             level,

@@ -13,6 +13,20 @@ pub fn str_to_node(s: &str) -> Node {
     Node::Atom(s.to_string())
 }
 
+/// A string atom; characters that sise cannot print in a string are replaced
+fn quoted_atom(s: &str) -> Node {
+    let s: String = s
+        .chars()
+        .map(|c| match c {
+            '"' => '\'',
+            '\\' => '/',
+            ' '..='~' => c,
+            _ => '?',
+        })
+        .collect();
+    Node::Atom(format!("\"{}\"", s))
+}
+
 pub fn macro_push_node(nodes: &mut Vec<Node>, node: Node) {
     // turn a - b into a-b
     let len = nodes.len();
@@ -437,7 +451,7 @@ impl Printer {
             }
             ExprX::LabeledAxiom(labels, filter, expr) => {
                 let spans = vec_map(labels, |s| {
-                    Node::Atom(format!("\"{}\"", self.message_interface.get_message_label_note(s)))
+                    quoted_atom(self.message_interface.get_message_label_note(s))
                 });
                 if spans.len() == 0 && filter.is_none() {
                     self.expr_to_node(expr)
@@ -447,9 +461,7 @@ impl Printer {
                 }
             }
             ExprX::LabeledAssertion(_, error, filter, expr) => {
-                let spans = vec_map(&self.message_interface.all_msgs(error), |s| {
-                    Node::Atom(format!("\"{}\"", s))
-                });
+                let spans = self.msgs_to_nodes(error);
                 if spans.len() == 0 && filter.is_none() {
                     self.expr_to_node(expr)
                 } else {
@@ -458,6 +470,14 @@ impl Printer {
                 }
             }
         }
+    }
+
+    /// Each note is printed as "note", or as ("note" "span") when the note has a span
+    fn msgs_to_nodes(&self, error: &crate::messages::ArcDynMessage) -> Vec<Node> {
+        vec_map(&self.message_interface.all_msgs_with_spans(error), |(note, span)| match span {
+            Some(span) if span.len() > 0 => Node::List(vec![quoted_atom(note), quoted_atom(span)]),
+            _ => quoted_atom(note),
+        })
     }
 
     pub fn exprs_to_node(&self, exprs: &Exprs) -> Node {
@@ -550,9 +570,7 @@ impl Printer {
         match &**stmt {
             StmtX::Assume(expr) => nodes!(assume {self.expr_to_node(expr)}),
             StmtX::Assert(_, labels, filter, expr) => {
-                let spans = vec_map(&self.message_interface.all_msgs(labels), |s| {
-                    Node::Atom(format!("\"{}\"", s))
-                });
+                let spans = self.msgs_to_nodes(labels);
                 if spans.len() == 0 && filter.is_none() {
                     nodes!(assert {self.expr_to_node(expr)})
                 } else {
