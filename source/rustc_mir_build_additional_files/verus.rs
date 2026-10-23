@@ -3,6 +3,7 @@ use crate::thir::cx::ThirBuildCx;
 // use crate::thir::pattern::pat_from_hir;
 use hir::HirId;
 use itertools::Itertools;
+use rustc_errors::ErrorGuaranteed;
 use rustc_hir as hir;
 use rustc_hir::QPath;
 use rustc_hir::def::Res;
@@ -25,7 +26,6 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
-use rustc_errors::ErrorGuaranteed;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum VarErasure {
@@ -140,7 +140,8 @@ static SETUP_CALLBACK: RwLock<Option<SetupCallbackFn>> = RwLock::new(None);
 static VERUS_AWARE_DEF_IDS: RwLock<Option<Arc<HashSet<LocalDefId>>>> = RwLock::new(None);
 
 /// Used to communicate the VerusErasureCtxt
-static VERUS_ERASURE_CTXT: RwLock<Option<HashMap<LocalDefId, Arc<VerusErasureCtxt>>>> = RwLock::new(None);
+static VERUS_ERASURE_CTXT: RwLock<Option<HashMap<LocalDefId, Arc<VerusErasureCtxt>>>> =
+    RwLock::new(None);
 
 /// Used to store the ExtraThir so MIR lowering can pick it up
 static EXTRA_THIR: RwLock<Option<HashMap<LocalDefId, Arc<ExtraThir>>>> = RwLock::new(None);
@@ -153,7 +154,10 @@ pub fn set_callback_fn(f: SetupCallbackFn) {
     *v = Some(f);
 }
 
-pub fn invoke_callback_fn<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> Result<(), ErrorGuaranteed> {
+pub fn invoke_callback_fn<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    local_def_id: LocalDefId,
+) -> Result<(), ErrorGuaranteed> {
     let v: &Option<SetupCallbackFn> = &SETUP_CALLBACK.write().unwrap();
     if let Some(f) = v {
         f(tcx, local_def_id)
@@ -194,7 +198,9 @@ fn get_verus_erasure_ctxt(local_def_id: LocalDefId) -> Arc<VerusErasureCtxt> {
         .clone()
 }
 
-pub(crate) fn get_verus_erasure_ctxt_option(local_def_id: LocalDefId) -> Option<Arc<VerusErasureCtxt>> {
+pub(crate) fn get_verus_erasure_ctxt_option(
+    local_def_id: LocalDefId,
+) -> Option<Arc<VerusErasureCtxt>> {
     match &*VERUS_ERASURE_CTXT.read().unwrap() {
         Some(m) => m.get(&local_def_id).cloned(),
         None => None,
@@ -223,7 +229,10 @@ pub(crate) fn get_extra_thir(local_def_id: LocalDefId) -> Option<Arc<ExtraThir>>
 /// As a result, thir_body is able to sanity check we're in a consistent state.
 /// If the VERUS_ERASURE_CTXT hasn't been initialized yet, we check that the given
 /// item is one that doesn't need it.
-pub(crate) fn ensure_verus_ctxt_available<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> Result<(), ErrorGuaranteed> {
+pub(crate) fn ensure_verus_ctxt_available<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    local_def_id: LocalDefId,
+) -> Result<(), ErrorGuaranteed> {
     let fn_local_def_id = enclosing_fn_local_def_id(tcx, local_def_id);
     if get_verus_erasure_ctxt_option(fn_local_def_id).is_none() {
         match VERUS_AWARE_DEF_IDS.read().unwrap().clone() {
@@ -767,7 +776,10 @@ pub(crate) fn erase_body<'tcx>(cx: &mut ThirBuildCx<'tcx>, local_def_id: LocalDe
     matches!(erasure_ctxt.bodies.get(&local_def_id), Some(BodyErasure { erase_body: true, .. }))
 }
 
-pub(crate) fn erase_closure_body_for_closure_captures<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> bool {
+pub(crate) fn erase_closure_body_for_closure_captures<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    local_def_id: LocalDefId,
+) -> bool {
     let fn_def_id = enclosing_fn_local_def_id(tcx, local_def_id);
     let erasure_ctxt = get_verus_erasure_ctxt(fn_def_id);
     matches!(erasure_ctxt.bodies.get(&local_def_id), Some(BodyErasure { erase_body: true, .. }))

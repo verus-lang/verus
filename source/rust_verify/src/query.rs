@@ -7,7 +7,11 @@ use crate::rust_to_vir_func::FunctionOrConstInfo;
 use crate::rust_to_vir_func::finish_item;
 use crate::verifier::FuncDetails;
 use air::messages::Diagnostics;
+use rustc_hir::def_id::DefId;
+use rustc_middle::ty::TyCtxt;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use vir::ast::{CrateId, Datatype, Fun, Function, FunctionStub, Krate, Path, VirErr, VirErrAs};
@@ -17,10 +21,6 @@ use vir::modes::ErasureModes;
 use vir::resolution_inference::{ResolutionInfo, krate_infer_resolution};
 use vir::traits::{DemoteTraitLookup, MergedTraits};
 use vir::well_formed::{DynCompatabilityChecks, InitialWfResults};
-use rustc_hir::def_id::DefId;
-use std::cell::RefCell;
-use std::rc::Rc;
-use rustc_middle::ty::TyCtxt;
 
 /// Krate without the full functions (i.e., empty function list in the krate)
 /// Instead we have FunctionOrConstInfos which contains FunctionStubs.
@@ -80,20 +80,18 @@ pub(crate) struct Query<'tcx> {
 }
 
 macro_rules! cache_or_compute {
-    ( $self:ident, $name:ident, $fun_name:ident ( $( $args:expr ),* )  ) => {
-        {
-            let state = $self.state.borrow();
-            if let Some($name) = &state.$name {
-                $name.clone()
-            } else {
-                std::mem::drop(state);
-                let s = $self.$fun_name();
-                let mut state = $self.state.borrow_mut();
-                state.$name = Some(s);
-                state.$name.clone().unwrap()
-            }
+    ( $self:ident, $name:ident, $fun_name:ident ( $( $args:expr ),* )  ) => {{
+        let state = $self.state.borrow();
+        if let Some($name) = &state.$name {
+            $name.clone()
+        } else {
+            std::mem::drop(state);
+            let s = $self.$fun_name();
+            let mut state = $self.state.borrow_mut();
+            state.$name = Some(s);
+            state.$name.clone().unwrap()
         }
-    };
+    }};
 }
 
 impl<'tcx> Query<'tcx> {
@@ -349,9 +347,10 @@ impl<'tcx> Query<'tcx> {
             Ok(()) => {
                 let mut state = self.state.borrow_mut();
                 for (new_function, erasure_info) in new_functions.into_iter() {
-                    let found = state
-                        .cache_unchecked_functions
-                        .insert(new_function.x.name.clone(), Ok((new_function, Arc::new(erasure_info))));
+                    let found = state.cache_unchecked_functions.insert(
+                        new_function.x.name.clone(),
+                        Ok((new_function, Arc::new(erasure_info))),
+                    );
                     assert!(found.is_none());
                 }
                 // Sanity check we got all the functions we expected
@@ -571,9 +570,10 @@ impl<'tcx> Query<'tcx> {
 
     //// Erasure modes
 
-    pub fn get_erasure_modes_for_def_id(&self, def_id: DefId)
-        -> Res<(Arc<ErasureInfo>, Arc<ErasureModes>)>
-    {
+    pub fn get_erasure_modes_for_def_id(
+        &self,
+        def_id: DefId,
+    ) -> Res<(Arc<ErasureInfo>, Arc<ErasureModes>)> {
         let pre_crate = self.get_pre_crate()?;
         let fun = pre_crate.def_id_to_fun_name_for_erasure.get(&def_id);
         let Some(fun) = fun else {

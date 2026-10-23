@@ -1,6 +1,6 @@
 use crate::attributes::{AttrPublish, VerifierAttrs, get_mode, get_ret_mode, get_var_mode};
 use crate::automatic_derive::AutomaticDeriveAction;
-use crate::context::{BodyCtxt, Context, ContextX, HeaderSetting, ErasureInfo};
+use crate::context::{BodyCtxt, Context, ContextX, ErasureInfo, HeaderSetting};
 use crate::pre_header::PreHeader;
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir::State;

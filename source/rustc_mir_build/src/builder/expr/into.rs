@@ -494,11 +494,11 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 // 4. two_phase_mutable_reference_tie(_, _)
                 // 5. foo(_, _, _)
                 let fun = unpack!(block = this.as_local_operand(block, fun));
-                let args: Box<[_]> = args
-                    .into_iter()
-                    .copied()
-                    .map(|arg| {
-                        if let Some((fun, arg0, arg1, ty)) =
+                let args: Box<[_]> =
+                    args.into_iter()
+                        .copied()
+                        .map(|arg| {
+                            if let Some((fun, arg0, arg1, ty)) =
                             crate::verus_time_travel_prevention::is_two_phase_mutable_reference_tie(
                                 this.tcx, this.def_id, &this.thir, arg,
                             )
@@ -521,8 +521,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                             };
                             (a, None)
                         }
-                    })
-                    .collect();
+                        })
+                        .collect();
 
                 let args: Box<[_]> = args
                     .into_iter()

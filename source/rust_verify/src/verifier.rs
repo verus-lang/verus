@@ -41,11 +41,11 @@ use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
 
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
+use std::rc::Rc;
 use vir::ast::{CrateId, Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX};
 use vir::prelude::PreludeConfig;
-use std::rc::Rc;
 
 const RLIMIT_PER_SECOND_Z3: f32 = 3000000f32;
 const RLIMIT_PER_SECOND_CVC5: f32 = 333333f32; // ~= 5s
@@ -2690,11 +2690,6 @@ impl Verifier {
 
         let time_hir0 = Instant::now();
 
-        rustc_hir_analysis_verus::check_crate(tcx);
-        if tcx.dcx().err_count() != 0 {
-            return Ok(false);
-        }
-
         let time_hir1 = Instant::now();
         self.time_hir = time_hir1 - time_hir0;
 
@@ -2721,6 +2716,11 @@ impl Verifier {
             self.crate_id.clone().unwrap(),
         ));
         set_global_query(query.clone());
+
+        rustc_hir_analysis_verus::check_crate(tcx);
+        if tcx.dcx().err_count() != 0 {
+            return Ok(false);
+        }
 
         // Export crate if requested.
         let local_crate = query.get_exportable_crate().map_err(map_query_err)?;
