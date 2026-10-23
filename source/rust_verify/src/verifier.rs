@@ -2684,9 +2684,11 @@ impl Verifier {
 
         check_no_opaque_types_in_trait(ctxtx.tcx, &crate_items).map_err(map_err_diagnostics)?;
 
-        if !self.args.no_lifetime {
-            crate::erase::setup_verus_aware_ids(&crate_items);
-        }
+        let verus_aware_ids = if !self.args.no_lifetime {
+            Some(crate::erase::setup_verus_aware_ids(&crate_items))
+        } else {
+            None
+        };
 
         let time_hir0 = Instant::now();
 
@@ -2697,6 +2699,14 @@ impl Verifier {
 
         let pre_crate = crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
             .map_err(map_errs_diagnostics)?;
+        if !self.args.no_lifetime {
+            crate::erase::check_verus_aware_ids(
+                self.air_no_span.as_ref().unwrap(),
+                verus_aware_ids.unwrap(),
+                &pre_crate.def_id_to_fun_name_for_erasure,
+            )
+            .map_err(map_err_diagnostics)?;
+        }
 
         let time1 = Instant::now();
 
