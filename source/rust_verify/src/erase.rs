@@ -7,7 +7,7 @@ use vir::ast::{Datatype, Fun, FunctionStub, Mode, Path};
 use vir::modes::ErasureModes;
 
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
-use rustc_hir::def_id::LocalDefId;
+use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::ty::TyCtxt;
 use rustc_mir_build_verus::verus::{
     BodyErasure, CallErasure, LoopErasure, LoopSpecEvaluationLocation, NodeErase, TreeErase,
@@ -469,7 +469,9 @@ pub(crate) fn mark_tree_for_erasure<'tcx>(
     .unwrap();
 }
 
-pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
+pub(crate) fn setup_verus_aware_ids(
+    crate_items: &crate::external::CrateItems,
+) -> Arc<HashSet<LocalDefId>> {
     // Requirements:
     //  - If a function requires Verus-erasure, then it MUST be in the set
     //  - If a function has special properties (e.g., being const), that may cause Rust
@@ -495,8 +497,27 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
             crate::external::VerifOrExternal::External { .. } => {}
         }
     }
-    set_verus_aware_def_ids(Arc::new(s));
+    let verus_aware_ids = Arc::new(s);
+    set_verus_aware_def_ids(verus_aware_ids.clone());
     set_callback_fn(prepare_local_def_id);
+    verus_aware_ids
+}
+
+pub(crate) fn check_verus_aware_ids(
+    span: &vir::messages::Span,
+    verus_aware_ids: Arc<HashSet<LocalDefId>>,
+    def_id_to_fun_name_for_erasure: &HashMap<DefId, Fun>,
+) -> Result<(), VirErr> {
+    for id in verus_aware_ids.iter() {
+        let id: DefId = (*id).into();
+        if !def_id_to_fun_name_for_erasure.contains_key(&id) {
+            vir::internal_err!(
+                span.clone(),
+                format!("erasure setup not properly handled for {:?}", id)
+            )
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn prepare_local_def_id<'tcx>(
