@@ -4631,7 +4631,7 @@ test_verify_one_file! {
             // when we support general assoc consts, should be a mode violation:
             const C: u8 = f();
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support const items in traits, except for")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::f` with mode exec")
 }
 
 test_verify_one_file! {

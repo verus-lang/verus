@@ -179,7 +179,7 @@ test_verify_one_file! {
             #[verifier::exec]
             const C: u64 = {
                 proof {
-                    let s = produce();
+                    let tracked s = produce();
                     consume(s);
                     consume(s);
                 }
@@ -204,10 +204,13 @@ test_verify_one_file! {
             proof fn consume(tracked s: S) {
             }
 
+            #[verifier::exec]
             const C: u64 = {
-                let s = produce();
-                consume(s);
-                consume(s);
+                proof {
+                    let tracked s = produce();
+                    consume(s);
+                    consume(s);
+                }
                 4 + 5
             };
 
