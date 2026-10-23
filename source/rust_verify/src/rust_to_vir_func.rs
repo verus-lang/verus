@@ -1638,6 +1638,7 @@ pub(crate) fn check_item_fn<'tcx>(
     external_fn_specification_via_external_trait: Option<DefId>,
     autoderive_action: Option<AutomaticDeriveAction>,
     opaque_types: &mut OpaqueTypes,
+    no_erasure_needed: &mut Vec<DefId>,
 ) -> Result<Option<Fun>, VirErr> {
     let mut this_path = ctxt.def_id_to_vir_path(id);
 
@@ -1998,6 +1999,7 @@ pub(crate) fn check_item_fn<'tcx>(
             &vir_body,
             sig.span,
         )?;
+        no_erasure_needed.push(id);
         return Ok(None);
     }
 
