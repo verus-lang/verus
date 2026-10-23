@@ -1328,7 +1328,7 @@ test_verify_one_file! {
         #[verifier(decreases_by)]
         proof fn check_e(s: &mut u64, i: usize) {
         }
-    } => Err(err) => assert_vir_error_msg(err, "decreases_by/recommends_by function should have the same parameters")
+    } => Err(err) => assert_vir_error_msg(err, "only spec functions can use decreases_by/recommends_by")
 }
 
 test_verify_one_file! {

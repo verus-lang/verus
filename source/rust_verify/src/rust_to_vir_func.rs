@@ -34,7 +34,7 @@ use std::sync::Arc;
 use std::vec;
 use vir::ast::{
     BodyVisibility, CrateId, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionStubX, FunctionX,
-    ItemKind, KrateX, Mode, OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypDecoration, TypX,
+    ItemKind, Mode, OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypDecoration, TypX,
     UnwrapParameter, VarIdent, VirErr, Visibility,
 };
 use vir::ast_util::{air_unique_var, unit_typ};
@@ -251,6 +251,8 @@ fn handle_autospec<'tcx>(
                     is_async: false,
                     is_drop: false,
                 }),
+                decreases_len: 0,
+                returns: false,
             },
         );
 
@@ -286,6 +288,8 @@ fn finish_autospec<'tcx>(
         outer_ret,
         item_kind,
         attrs,
+        returns: _,
+        decreases_len: _,
     } = function_autospec.x.clone();
     let function_autospec_x = FunctionX {
         name,
@@ -1554,9 +1558,26 @@ pub(crate) struct ConstInfo {
     is_static: bool,
 }
 
+pub(crate) struct ForeignFunctionInfo {
+    pub function_stub: vir::ast::FunctionStub,
+    pub function_full: vir::ast::Function,
+}
+
 pub(crate) enum FunctionOrConstInfo<'tcx> {
     Function(FunctionInfo<'tcx>),
+    ForeignFunction(ForeignFunctionInfo),
     Const(ConstInfo),
+}
+
+impl<'tcx> FunctionOrConstInfo<'tcx> {
+    pub(crate) fn iter_stubs<'a>(&'a self) -> impl Iterator<Item = &'a vir::ast::FunctionStub> {
+        let (f, opt_f) = match self {
+            FunctionOrConstInfo::Function(f) => (&f.function, f.function_for_autospec.as_ref()),
+            FunctionOrConstInfo::Const(f) => (&f.function, f.function_for_autospec.as_ref()),
+            FunctionOrConstInfo::ForeignFunction(f) => (&f.function_stub, None),
+        };
+        std::iter::once(f).chain(opt_f.into_iter())
+    }
 }
 
 fn get_pre_header<'tcx>(
@@ -2202,6 +2223,8 @@ pub(crate) fn check_item_fn<'tcx>(
         outer_ret: ret,
         item_kind,
         attrs: fattrs,
+        decreases_len: pre_header.decreases_len,
+        returns: pre_header.returns && !is_external_const,
     };
 
     if vattrs.external_fn_specification {
@@ -2246,7 +2269,7 @@ pub(crate) fn check_item_fn<'tcx>(
 
 pub(crate) fn finish_item<'tcx>(
     ctxt: &Context<'tcx>,
-    info: FunctionOrConstInfo,
+    info: &FunctionOrConstInfo,
     functions: &mut Vec<vir::ast::Function>,
 ) -> Result<(), VirErr> {
     match info {
@@ -2256,29 +2279,33 @@ pub(crate) fn finish_item<'tcx>(
         FunctionOrConstInfo::Const(const_info) => {
             finish_const_or_static(ctxt, const_info, functions)
         }
+        FunctionOrConstInfo::ForeignFunction(foreign_function_info) => {
+            functions.push(foreign_function_info.function_full.clone());
+            Ok(())
+        }
     }
 }
 
 pub(crate) fn finish_function<'tcx>(
     ctxt: &Context<'tcx>,
-    function_info: FunctionInfo,
+    function_info: &FunctionInfo,
     functions: &mut Vec<vir::ast::Function>,
 ) -> Result<(), VirErr> {
     let FunctionInfo {
-        function,
-        function_for_autospec,
-        pre_header,
-        body_id,
-        sig,
-        vattrs,
+        ref function,
+        ref function_for_autospec,
+        ref pre_header,
+        ref body_id,
+        ref sig,
+        ref vattrs,
         def_id,
-        external_trait_from_to,
-        migrate_postcondition_vars,
-        assume_specification_opaque_type_map,
-        ret_typ_mode,
+        ref external_trait_from_to,
+        ref migrate_postcondition_vars,
+        ref assume_specification_opaque_type_map,
+        ref ret_typ_mode,
         autoderive_action,
-        is_external_const,
-    } = function_info;
+        ref is_external_const,
+    } = *function_info;
     let vir::ast::FunctionStubX {
         name,
         proxy,
@@ -2294,6 +2321,8 @@ pub(crate) fn finish_function<'tcx>(
         outer_ret,
         item_kind,
         attrs,
+        returns: has_returns,
+        decreases_len,
     } = function.x.clone();
     let is_async = attrs.is_async;
 
@@ -2462,6 +2491,9 @@ pub(crate) fn finish_function<'tcx>(
         hidden: Arc::new(header.hidden.clone()),
     };
 
+    assert!(functionx.returns.is_some() == has_returns);
+    assert!(functionx.decrease.len() == decreases_len);
+
     if vattrs.external_fn_specification {
         check_external_fn_specification_trait_method_decl_typs(sig.span, &functionx)?;
     }
@@ -2535,6 +2567,8 @@ fn fix_external_fn_specification_trait_method_decl_typs_stub(
             mut outer_ret,
             item_kind,
             attrs,
+            decreases_len,
+            returns,
         } = func;
 
         unsupported_err_unless!(typ_params.len() == 1, span, "type params");
@@ -2576,6 +2610,8 @@ fn fix_external_fn_specification_trait_method_decl_typs_stub(
             outer_ret,
             item_kind,
             attrs,
+            decreases_len,
+            returns,
         })
     } else {
         Ok(func)
@@ -3322,6 +3358,8 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         outer_ret,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         attrs: fattrs,
+        decreases_len: pre_header.decreases_len,
+        returns: pre_header.returns,
     };
 
     let autospec = handle_autospec(ctxt, span, id, &vattrs, &functionx)?;
@@ -3355,22 +3393,22 @@ pub(crate) fn check_item_const_or_static<'tcx>(
 
 pub(crate) fn finish_const_or_static<'tcx>(
     ctxt: &Context<'tcx>,
-    const_info: ConstInfo,
+    const_info: &ConstInfo,
     functions: &mut Vec<vir::ast::Function>,
 ) -> Result<(), VirErr> {
     let ConstInfo {
-        function,
-        function_for_autospec,
-        pre_header,
+        ref function,
+        ref function_for_autospec,
+        ref pre_header,
         body_id,
         def_id: id,
-        vattrs,
+        ref vattrs,
         span,
         body_mode,
         ret_mode,
         func_mode,
         is_static,
-    } = const_info;
+    } = *const_info;
     let vir::ast::FunctionStubX {
         name,
         proxy,
@@ -3386,6 +3424,8 @@ pub(crate) fn finish_const_or_static<'tcx>(
         outer_ret,
         item_kind,
         attrs,
+        decreases_len,
+        returns: has_returns,
     } = function.x.clone();
 
     let body = find_body(ctxt, &body_id);
@@ -3456,6 +3496,10 @@ pub(crate) fn finish_const_or_static<'tcx>(
         extra_dependencies: vec![],
         hidden: Arc::new(header.hidden.clone()),
     };
+
+    assert!(functionx.returns.is_some() == has_returns);
+    assert!(functionx.decrease.len() == decreases_len);
+
     let function = ctxt.spanned_new(span, functionx);
 
     functions.push(function.clone());
@@ -3469,7 +3513,7 @@ pub(crate) fn finish_const_or_static<'tcx>(
 pub(crate) fn check_foreign_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
-    vir: &mut KrateX,
+    infos: &mut Vec<FunctionOrConstInfo<'tcx>>,
     id: DefId,
     span: Span,
     visibility: vir::ast::Visibility,
@@ -3572,7 +3616,12 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     };
     let function = ctxt.spanned_new(span, func);
     state.insert_fun_warn_config(ctxt, &function.x.name, id);
-    vir.functions.push(function);
+
+    infos.push(FunctionOrConstInfo::ForeignFunction(ForeignFunctionInfo {
+        function_full: function.clone(),
+        function_stub: vir::ast_util::function_to_stub(&function),
+    }));
+
     Ok(())
 }
 

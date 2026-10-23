@@ -16,18 +16,47 @@ use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+pub struct DemoteTraitLookup {
+    traits: HashSet<Path>,
+    internal_traits: HashSet<Path>,
+    extension_traits: HashSet<Path>,
+    impl_to_spec_traits: HashMap<Path, Path>,
+    funs: HashSet<Fun>,
+}
+
+impl DemoteTraitLookup {
+    pub fn new(
+        krate: &Krate,
+        other_krates: &[Krate],
+        all_functions: &HashMap<Fun, crate::ast::FunctionStub>,
+    ) -> Self {
+        let traits_iter =
+            || krate.traits.iter().chain(other_krates.iter().flat_map(|k| k.traits.iter()));
+        let funs_iter = || all_functions.keys().map(|name| name.clone());
+
+        let traits: HashSet<Path> = traits_iter().map(|t| t.x.name.clone()).collect();
+        let internal_traits: HashSet<Path> =
+            traits_iter().filter(|t| t.x.proxy.is_none()).map(|t| t.x.name.clone()).collect();
+        let funs: HashSet<Fun> = funs_iter().collect();
+        let mut extension_traits: HashSet<Path> = HashSet::new();
+        let mut impl_to_spec_traits: HashMap<Path, Path> = HashMap::new();
+        for t in traits_iter() {
+            if let Some((extension, imp)) = &t.x.external_trait_extension {
+                extension_traits.insert(extension.clone());
+                impl_to_spec_traits.insert(imp.clone(), extension.clone());
+            }
+        }
+        DemoteTraitLookup { traits, internal_traits, extension_traits, impl_to_spec_traits, funs }
+    }
+}
+
 fn get_trait(fun: &Fun) -> Path {
     fun.path.pop_segment()
 }
 
-fn demote_one_expr(
-    traits: &HashSet<Path>,
-    internal_traits: &HashSet<Path>,
-    extension_traits: &HashSet<Path>,
-    impl_to_spec_traits: &HashMap<Path, Path>,
-    funs: &HashSet<Fun>,
-    expr: &Expr,
-) -> Result<Expr, VirErr> {
+fn demote_one_expr(lookup: &DemoteTraitLookup, expr: &Expr) -> Result<Expr, VirErr> {
+    let DemoteTraitLookup { traits, internal_traits, extension_traits, impl_to_spec_traits, funs } =
+        lookup;
     match &expr.x {
         ExprX::Call {
             target:
@@ -189,26 +218,27 @@ fn demote_one_expr(
     }
 }
 
+/// Get the method name if this is a trait method that doesn't get demoted.
+pub fn method_if_not_demoted(lookup: &DemoteTraitLookup, function: &Function) -> Option<Fun> {
+    let DemoteTraitLookup { traits, funs, .. } = &lookup;
+    match &function.x.kind {
+        FunctionKind::TraitMethodImpl { method, trait_path, .. }
+        | FunctionKind::ForeignTraitMethodImpl { method, trait_path, .. } => {
+            let our_trait_method = traits.contains(trait_path) && funs.contains(method);
+            if our_trait_method { Some(method.clone()) } else { None }
+        }
+        _ => None,
+    }
+}
+
 // We consider methods for external traits to be static.
 pub fn demote_external_traits(
-    diagnostics: &impl air::messages::Diagnostics,
+    diagnostics: &(impl air::messages::Diagnostics + ?Sized),
     warning_ctx: &crate::context::WarningCtx,
     krate: &Krate,
+    lookup: &DemoteTraitLookup,
 ) -> Result<Krate, VirErr> {
-    check_no_dupe_impls(krate)?;
-
-    let traits: HashSet<Path> = krate.traits.iter().map(|t| t.x.name.clone()).collect();
-    let internal_traits: HashSet<Path> =
-        krate.traits.iter().filter(|t| t.x.proxy.is_none()).map(|t| t.x.name.clone()).collect();
-    let funs: HashSet<Fun> = krate.functions.iter().map(|f| f.x.name.clone()).collect();
-    let mut extension_traits: HashSet<Path> = HashSet::new();
-    let mut impl_to_spec_traits: HashMap<Path, Path> = HashMap::new();
-    for t in krate.traits.iter() {
-        if let Some((extension, imp)) = &t.x.external_trait_extension {
-            extension_traits.insert(extension.clone());
-            impl_to_spec_traits.insert(imp.clone(), extension.clone());
-        }
-    }
+    let DemoteTraitLookup { traits, funs, .. } = &lookup;
 
     let mut kratex = (**krate).clone();
     for function in &mut kratex.functions {
@@ -276,30 +306,26 @@ pub fn demote_external_traits(
             }
             *function = Spanned::new(function.span.clone(), functionx);
         }
-
-        let mut map: VisitorScopeMap = ScopeMap::new();
-        *function = crate::ast_visitor::map_function_visitor_env(
-            &function,
-            &mut map,
-            &mut (),
-            &|_state, _, expr| {
-                demote_one_expr(
-                    &traits,
-                    &internal_traits,
-                    &extension_traits,
-                    &impl_to_spec_traits,
-                    &funs,
-                    expr,
-                )
-            },
-            &|_state, _, stmt| Ok(vec![stmt.clone()]),
-            &|_state, typ| Ok(typ.clone()),
-            &|_state, _, place| Ok(place.clone()),
-            &|_state, _, pattern| Ok(pattern.clone()),
-        )?;
     }
-
     Ok(Arc::new(kratex))
+}
+
+/// Walk all expressions in the function and demote all Calls to foreign trait functions
+pub fn demote_external_traits_function_calls(
+    lookup: &DemoteTraitLookup,
+    function: &Function,
+) -> Result<Function, VirErr> {
+    let mut map: VisitorScopeMap = ScopeMap::new();
+    crate::ast_visitor::map_function_visitor_env(
+        &function,
+        &mut map,
+        &mut (),
+        &|_state, _, expr| demote_one_expr(&lookup, expr),
+        &|_state, _, stmt| Ok(vec![stmt.clone()]),
+        &|_state, typ| Ok(typ.clone()),
+        &|_state, _, place| Ok(place.clone()),
+        &|_state, _, pattern| Ok(pattern.clone()),
+    )
 }
 
 fn rewrite_path(from_path: &Path, to_path: &Path, path: &Path) -> Path {
@@ -1354,36 +1380,26 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     Arc::new(vec![Arc::new(CommandX::Global(axiom))])
 }
 
-pub fn check_no_dupe_impls(krate: &Krate) -> Result<(), VirErr> {
-    let mut paths = HashMap::<Path, TraitImpl>::new();
-    for trait_impl in krate.trait_impls.iter() {
-        match paths.get(&trait_impl.x.impl_path) {
-            Some(prev_trait_impl) => {
-                let e = error(
-                    &prev_trait_impl.span,
-                    "duplicate specification for this trait implementation",
-                )
-                .primary_span(&trait_impl.span);
-                return Err(e);
-            }
-            None => {
-                paths.insert(trait_impl.x.impl_path.clone(), trait_impl.clone());
-            }
-        }
-    }
-    Ok(())
+pub type MergedTraits = Arc<MergedTraitsX>;
+pub struct MergedTraitsX {
+    pub traits: Vec<Trait>,
+    pub trait_impls: Vec<TraitImpl>,
+
+    pub trait_map: HashMap<Path, Trait>,
 }
 
 // Allow multiple external_trait_specification to specify different members of the same trait,
 // so that we don't have to specify all of the default members of a trait at once (e.g. Iterator).
 // We merge partial specifications together here.
-pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
+pub fn merge_external_traits(
+    krate: &Krate,
+    other_crates: &[Krate],
+) -> Result<MergedTraits, VirErr> {
     use crate::ast_util::generic_bounds_equal;
     use crate::well_formed::trait_conflict_error;
-    let mut kratex = (*krate).clone();
     let mut traits: Vec<Trait> = Vec::new();
     let mut prev_trait_index: HashMap<Path, usize> = HashMap::new();
-    for t in &kratex.traits {
+    for t in krate.traits.iter().chain(other_crates.iter().flat_map(|k| k.traits.iter())) {
         if t.x.proxy.is_some() {
             if let Some(index) = prev_trait_index.get(&t.x.name) {
                 let prev = &traits[*index];
@@ -1468,7 +1484,8 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
     // Also remove any duplicate auto-imported trait impls:
     let mut trait_impls: Vec<TraitImpl> = Vec::new();
     let mut trait_impl_set: HashSet<Path> = HashSet::new();
-    for ti in &kratex.trait_impls {
+    for ti in krate.trait_impls.iter().chain(other_crates.iter().flat_map(|k| k.trait_impls.iter()))
+    {
         if ti.x.auto_imported && trait_impl_set.contains(&ti.x.impl_path) {
             continue;
         }
@@ -1476,9 +1493,12 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
         trait_impl_set.insert(ti.x.impl_path.clone());
     }
 
-    kratex.traits = traits;
-    kratex.trait_impls = trait_impls;
-    Ok(Arc::new(kratex))
+    let mt = Arc::new(MergedTraitsX {
+        trait_map: traits.iter().map(|t| (t.x.name.clone(), t.clone())).collect(),
+        traits: traits,
+        trait_impls: trait_impls,
+    });
+    Ok(mt)
 }
 
 pub(crate) fn find_trait_impl_from_extension(

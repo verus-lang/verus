@@ -472,6 +472,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
                 reach_function(ctxt, state, method);
             }
+            if let FunctionKind::ForeignTraitMethodImpl { method, .. } = &function.x.kind {
+                reach_function(ctxt, state, method);
+            }
             if let Some(f_trigs) = ctxt.fun_to_trigger_broadcasts.get(&f) {
                 for f_trig in f_trigs {
                     reach_function_via_reveal(ctxt, state, f_trig);

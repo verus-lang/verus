@@ -243,6 +243,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] dyn_compatability_error_when_dyn_only_appears_in_struct verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            proof fn bogus(&self)
+                ensures
+                    false;
+        }
+        struct X<'a> {
+            x: &'a dyn T,
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not Verus dyn-compatible")
+}
+
+test_verify_one_file! {
     #[test] dyn_proof_must_be_inhabited1b verus_code! {
         trait T {
             spec fn f(&self) -> nat;
