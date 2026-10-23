@@ -497,6 +497,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                 "an item in a trait impl cannot be marked external - you can either use external_body, or mark the entire trait impl as external",
             );
         }
+        no_erasure_needed.push(impl_item.owner_id.to_def_id());
         return Ok(());
     }
     let assoc_item = ctxt.tcx.associated_item(impl_item_id.hir_id().owner.to_def_id());

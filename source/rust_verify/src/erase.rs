@@ -503,14 +503,19 @@ pub(crate) fn setup_verus_aware_ids(
     verus_aware_ids
 }
 
+/// Check that every "verus-aware" definition is recorded in the 
+/// `def_id_to_fun_name_for_erasure` map, either:
+///  - By the `Fun` whose mode-checking results are used as input to erasure
+///  - As `None`, indicating the item doesn't need erasure
+///    (e.g., because it's some special synthetic item)
+/// This makes sure we properly categorize every item and prevents panicking
+/// in `prepare_local_def_id`.
 pub(crate) fn check_verus_aware_ids<'tcx>(
     tcx: TyCtxt<'tcx>,
     span: &vir::messages::Span,
     verus_aware_ids: Arc<HashSet<LocalDefId>>,
     def_id_to_fun_name_for_erasure: &HashMap<DefId, Option<Fun>>,
 ) -> Result<(), VirErr> {
-    // REVIEW: Should we just compute `verus_aware_ids` from the
-    // `def_id_to_fun_name_for_erasure` map in the first place?
     for id in verus_aware_ids.iter() {
         let has_body = tcx.hir_node_by_def_id(*id).associated_body().is_some();
         if has_body && !def_id_to_fun_name_for_erasure.contains_key(&(*id).into()) {
@@ -523,6 +528,12 @@ pub(crate) fn check_verus_aware_ids<'tcx>(
     Ok(())
 }
 
+/// This is called when thir_body is called on the given item or some closure within it.
+/// (The given `LocalDefId` should be the top-level function.)
+///
+/// This function queries for the mode-checking results and sets up the VerusErasureCtxt
+/// for the item. If the mode-checking results are unavailable, we return an error so that
+/// `thir_body` will return an error, which in turn prevents all downstream checks.
 pub(crate) fn prepare_local_def_id<'tcx>(
     tcx: TyCtxt<'tcx>,
     local_def_id: LocalDefId,
