@@ -25,6 +25,7 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
+use rustc_errors::ErrorGuaranteed;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum VarErasure {
@@ -129,6 +130,12 @@ pub struct VerusErasureCtxt {
     pub get_first_fn_def_id: DefId,
 }
 
+// TODO: we can simplify some of this; e.g., return the VerusErasureCtxt through
+// the SetupCallbackFn rather than having it go through another global
+
+pub type SetupCallbackFn = for<'tcx> fn(TyCtxt<'tcx>, LocalDefId) -> Result<(), ErrorGuaranteed>;
+static SETUP_CALLBACK: RwLock<Option<SetupCallbackFn>> = RwLock::new(None);
+
 /// Used to communicate the set of LocalDefIds that may require erasure.
 static VERUS_AWARE_DEF_IDS: RwLock<Option<Arc<HashSet<LocalDefId>>>> = RwLock::new(None);
 
@@ -137,6 +144,23 @@ static VERUS_ERASURE_CTXT: RwLock<Option<HashMap<LocalDefId, Arc<VerusErasureCtx
 
 /// Used to store the ExtraThir so MIR lowering can pick it up
 static EXTRA_THIR: RwLock<Option<HashMap<LocalDefId, Arc<ExtraThir>>>> = RwLock::new(None);
+
+pub fn set_callback_fn(f: SetupCallbackFn) {
+    let v: &mut Option<SetupCallbackFn> = &mut SETUP_CALLBACK.write().unwrap();
+    if v.is_some() {
+        panic!("SETUP_CALLBACK has already been set");
+    }
+    *v = Some(f);
+}
+
+pub fn invoke_callback_fn<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> Result<(), ErrorGuaranteed> {
+    let v: &Option<SetupCallbackFn> = &SETUP_CALLBACK.write().unwrap();
+    if let Some(f) = v {
+        f(tcx, local_def_id)
+    } else {
+        panic!("invoke_callback_fn: SetupCallbackFn has not been set");
+    }
+}
 
 pub fn set_verus_aware_def_ids(ids: Arc<HashSet<LocalDefId>>) {
     let v: &mut Option<Arc<HashSet<LocalDefId>>> = &mut VERUS_AWARE_DEF_IDS.write().unwrap();
@@ -199,16 +223,17 @@ pub(crate) fn get_extra_thir(local_def_id: LocalDefId) -> Option<Arc<ExtraThir>>
 /// As a result, thir_body is able to sanity check we're in a consistent state.
 /// If the VERUS_ERASURE_CTXT hasn't been initialized yet, we check that the given
 /// item is one that doesn't need it.
-pub(crate) fn check_this_query_isnt_running_early<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) {
+pub(crate) fn ensure_verus_ctxt_available<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> Result<(), ErrorGuaranteed> {
     let fn_local_def_id = enclosing_fn_local_def_id(tcx, local_def_id);
     if get_verus_erasure_ctxt_option(fn_local_def_id).is_none() {
         match VERUS_AWARE_DEF_IDS.read().unwrap().clone() {
             Some(m) => {
                 if m.contains(&fn_local_def_id) {
-                    panic!(
+                    invoke_callback_fn(tcx, fn_local_def_id)?;
+                    /*panic!(
                         "Internal Verus Error: The thir_body query is running for item {:?} which may require erasure, but the VerusErasureCtxt has not been initialized. Please file a github issue for this error and consider using `--no-lifetime` as a temperary measure to work around the issue.",
                         fn_local_def_id
-                    );
+                    );*/
                 }
             }
             None => {
@@ -219,6 +244,7 @@ pub(crate) fn check_this_query_isnt_running_early<'tcx>(tcx: TyCtxt<'tcx>, local
             }
         }
     }
+    Ok(())
 }
 
 /// Extra information we'd like to add to THIR so that the MIR builder also has access to it
