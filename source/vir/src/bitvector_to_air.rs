@@ -600,6 +600,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
         ExpX::Binary(BinaryOp::Bitwise(BitwiseOp::Shr), lhs, rhs) => {
             let lhs = bv_exp_to_expr(ctx, state, lhs)?;
             let rhs = bv_exp_to_expr(ctx, state, rhs)?;
+            let (rhs, signed_amount) = shift_amount(state, &exp.span, rhs)?;
 
             let (lhs_w, lhs_extend) = lhs.bv_typ.expect_bv(&exp.span)?;
             let (rhs_w, rhs_extend) = rhs.bv_typ.expect_bv(&exp.span)?;
@@ -617,16 +618,6 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 rhs_expr = extend_bv_expr(&rhs_expr, rhs_extend, rhs_w, lhs_w);
             }
 
-            // Not clear what it would mean to shift by a negative amount.
-            if rhs_extend != Extend::Zero {
-                return Err(error(
-                    &exp.span,
-                    format!(
-                        "not supported: bit-shift with possibly negative shift (If you believe this value is always nonnegative, try casting the RHS to an unsigned type)"
-                    ),
-                ));
-            }
-
             let op = match lhs_extend {
                 Extend::Zero => air::ast::BinaryOp::LShr,
                 Extend::Sign => air::ast::BinaryOp::AShr,
@@ -635,28 +626,18 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
 
             let expr = if lhs_w < rhs_w { truncate(&expr, lhs_w) } else { expr };
 
-            Ok(BvExpr { expr, bv_typ: lhs.bv_typ })
+            let shifted = BvExpr { expr, bv_typ: lhs.bv_typ };
+            guard_negative_shift(state, &exp.span, signed_amount, shifted)
         }
         ExpX::Binary(BinaryOp::Bitwise(BitwiseOp::Shl(w, signed)), lhs, rhs) => {
             let w = bitwidth_exact(state, *w);
 
             let lhs = bv_exp_to_expr(ctx, state, lhs)?;
             let rhs = bv_exp_to_expr(ctx, state, rhs)?;
+            let (rhs, signed_amount) = shift_amount(state, &exp.span, rhs)?;
 
             let (lhs_w, lhs_extend) = lhs.bv_typ.expect_bv(&exp.span)?;
             let (rhs_w, rhs_extend) = rhs.bv_typ.expect_bv(&exp.span)?;
-
-            if rhs_extend != Extend::Zero {
-                // There isn't an obvious way to choose a definition of
-                // shifting by a negative amount that we could implement
-                // consistently.
-                return Err(error(
-                    &exp.span,
-                    format!(
-                        "not supported: bit-shift with possibly negative shift (If you believe this value is always nonnegative, try casting the RHS to an unsigned type)"
-                    ),
-                ));
-            }
 
             let shift_w = std::cmp::max(w, rhs_w);
 
@@ -679,7 +660,8 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
 
             let expr = if w < shift_w { truncate(&expr, w) } else { expr };
 
-            Ok(BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, extend) })
+            let shifted = BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, extend) };
+            guard_negative_shift(state, &exp.span, signed_amount, shifted)
         }
         ExpX::Binary(BinaryOp::IeeeFloat(fop), lhs, rhs) => {
             use crate::ast::IeeeFloatBinaryOp;
@@ -1388,6 +1370,56 @@ fn if_then_arbitrary(
     state.decls.push((id.clone(), air::ast_util::bv_typ(width)));
     let arb = Arc::new(ExprX::Var(id));
     Ok(BvExpr { expr: mk_ite(bool_condition, &arb, &exp.expr), bv_typ: exp.bv_typ })
+}
+
+/// A shift amount of signed type, bound to a temporary by `shift_amount`
+struct SignedShiftAmount {
+    tmp: Ident,
+    rhs: Expr,
+    width: u32,
+}
+
+/// Shifting by a negative amount is unspecified (see `bit_shr` and `bit_shl` in the prelude).
+/// So a shift amount of signed type is bound to a temporary,
+/// which the shift uses reinterpreted as unsigned (exact when it is nonnegative),
+/// and `guard_negative_shift` makes the result arbitrary when it is negative.
+fn shift_amount(
+    state: &mut State,
+    span: &Span,
+    rhs: BvExpr,
+) -> Result<(BvExpr, Option<SignedShiftAmount>), VirErr> {
+    let (width, extend) = rhs.bv_typ.expect_bv(span)?;
+    match extend {
+        Extend::Zero => Ok((rhs, None)),
+        Extend::Sign => {
+            let tmp = state.fresh_id();
+            let unsigned = BvExpr {
+                expr: Arc::new(ExprX::Var(tmp.clone())),
+                bv_typ: BvTyp::Bv(width, Extend::Zero),
+            };
+            Ok((unsigned, Some(SignedShiftAmount { tmp, rhs: rhs.expr, width })))
+        }
+    }
+}
+
+/// let tmp = rhs in (if tmp < 0 { arbitrary } else { shifted }),
+/// with a fresh "arbitrary" variable for every instance, as for division by zero
+fn guard_negative_shift(
+    state: &mut State,
+    span: &Span,
+    signed_amount: Option<SignedShiftAmount>,
+    shifted: BvExpr,
+) -> Result<BvExpr, VirErr> {
+    let Some(SignedShiftAmount { tmp, rhs, width }) = signed_amount else {
+        return Ok(shifted);
+    };
+    let tmp_expr = Arc::new(ExprX::Var(tmp.clone()));
+    let negative =
+        Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSLt, tmp_expr, mk_bit_vec_zero(width)));
+    let guarded = if_then_arbitrary(state, span, &negative, &shifted)?;
+    let binders = Arc::new(vec![Arc::new(BinderX { name: tmp, a: rhs })]);
+    let e = Arc::new(ExprX::Bind(Arc::new(air::ast::BindX::Let(binders)), guarded.expr));
+    Ok(BvExpr { expr: e, bv_typ: guarded.bv_typ })
 }
 
 impl State {
