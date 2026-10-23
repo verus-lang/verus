@@ -1993,9 +1993,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     let var = suffix_local_unique_id(&get_loc_var(dest));
                     ens_args.push(exp_to_expr(ctx, &dest, expr_ctxt)?);
                     if !*is_init {
-                        let havoc = Arc::new(StmtX::Havoc(var));
-                        ctx.notify(|obs| obs.on_havoc(stm, &get_loc_var(dest), &havoc));
-                        stmts.push(havoc);
+                        let havoc = StmtX::Havoc(var);
+                        stmts.push(Arc::new(havoc));
+                        ctx.notify(|obs| {
+                            obs.on_havoc(stm, &get_loc_var(dest), stmts.last().expect("havoc"))
+                        });
                     }
                 } else {
                     crate::messages::internal_error(&stm.span, "ens_has_return but no Dest");
@@ -2546,6 +2548,25 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
     Ok(result)
 }
 
+/// Notify the observer of each loop havoc that `emit_havocs` appended to `emitted`.
+fn notify_emitted_havocs(
+    ctx: &Ctx,
+    stm: &Stm,
+    havocs: &crate::sst_vars::HavocSet,
+    emitted: &[Stmt],
+) {
+    if ctx.observer.is_none() {
+        return;
+    }
+    for s in emitted {
+        if let StmtX::Havoc(uid) = &**s
+            && let Some(var) = havocs.vars.keys().find(|v| &suffix_local_unique_id(v) == uid)
+        {
+            ctx.notify(|obs| obs.on_havoc(stm, var, s));
+        }
+    }
+}
+
 fn loop_to_stmts(
     ctx: &Ctx,
     state: &mut State,
@@ -2677,9 +2698,9 @@ fn loop_to_stmts(
     let mut air_body: Vec<Stmt> = state.static_prelude.clone();
     if !loop_isolation {
         air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
-        modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut air_body, &mut |var, havoc| {
-            ctx.notify(|obs| obs.on_havoc(stm, var, havoc))
-        });
+        let start = air_body.len();
+        modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut air_body);
+        notify_emitted_havocs(ctx, stm, modified_vars, &air_body[start..]);
     }
 
     let mut local = state.local_shared.clone();
@@ -2709,33 +2730,27 @@ fn loop_to_stmts(
             // we need to havoc it, in order to create a difference between
             // the "current" value and the "pre-state" value.
             let pre_modified_params_incl = pre_modified_params_incl.as_ref().unwrap();
-            pre_modified_params_incl.emit_havocs(
-                ctx,
-                SNAPSHOT_PRE,
-                &mut air_body,
-                &mut |var, havoc| ctx.notify(|obs| obs.on_havoc(stm, var, havoc)),
-            );
+            let start = air_body.len();
+            pre_modified_params_incl.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
+            notify_emitted_havocs(ctx, stm, pre_modified_params_incl, &air_body[start..]);
         } else {
             // Similar, but this time accounting for isolation boundary
 
             // Havoc vars between beginning of the function and the start of
             // the isolation_boundary
             let pre_modified_params_excl = pre_modified_params_excl.as_ref().unwrap();
-            pre_modified_params_excl.emit_havocs(
-                ctx,
-                SNAPSHOT_PRE,
-                &mut air_body,
-                &mut |var, havoc| ctx.notify(|obs| obs.on_havoc(stm, var, havoc)),
-            );
+            let start = air_body.len();
+            pre_modified_params_excl.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
+            notify_emitted_havocs(ctx, stm, pre_modified_params_excl, &air_body[start..]);
 
             // Execute the code between the isolation boundary and the actual loop start
             air_body.extend(assert_free_pre_stmts);
 
             // Havoc all vars that might be modified during the loop
             air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_BOUNDARY))));
-            modified_vars.emit_havocs(ctx, SNAPSHOT_BOUNDARY, &mut air_body, &mut |var, havoc| {
-                ctx.notify(|obs| obs.on_havoc(stm, var, havoc))
-            });
+            let start = air_body.len();
+            modified_vars.emit_havocs(ctx, SNAPSHOT_BOUNDARY, &mut air_body);
+            notify_emitted_havocs(ctx, stm, modified_vars, &air_body[start..]);
         }
     }
 
@@ -2871,9 +2886,9 @@ fn loop_to_stmts(
     }
     if loop_isolation {
         stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
-        modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut stmts, &mut |var, havoc| {
-            ctx.notify(|obs| obs.on_havoc(stm, var, havoc))
-        });
+        let start = stmts.len();
+        modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut stmts);
+        notify_emitted_havocs(ctx, stm, modified_vars, &stmts[start..]);
         for (_, inv, _, _) in invs_exit.iter() {
             let inv_stmt = StmtX::Assume(inv.clone());
             stmts.push(Arc::new(inv_stmt));

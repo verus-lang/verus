@@ -735,18 +735,14 @@ impl HavocSet {
         result
     }
 
-    /// Emit a havoc for each modified local; `emitted` is called with each local and the AIR
-    /// `Havoc` statement created for it.
     pub(crate) fn emit_havocs(
         &self,
         ctx: &crate::context::Ctx,
         snapshot_name: &str,
         stmts: &mut Vec<air::ast::Stmt>,
-        emitted: &mut dyn FnMut(&VarIdent, &air::ast::Stmt),
     ) {
-        for (var, tree) in self.vars.iter() {
-            let havoc = tree.emit_havoc(ctx, snapshot_name, stmts);
-            emitted(var, &havoc);
+        for (_var, tree) in self.vars.iter() {
+            tree.emit_havoc(ctx, snapshot_name, stmts);
         }
     }
 }
@@ -898,10 +894,9 @@ impl SublocationTree {
         ctx: &crate::context::Ctx,
         snapshot_name: &str,
         stmts: &mut Vec<air::ast::Stmt>,
-    ) -> air::ast::Stmt {
+    ) {
         let uid = crate::def::suffix_local_unique_id(&self.local);
-        let havoc = Arc::new(StmtX::Havoc(uid.clone()));
-        stmts.push(havoc.clone());
+        stmts.push(Arc::new(StmtX::Havoc(uid.clone())));
 
         let typ = &self.root.typ;
         let typ_inv = crate::sst_to_air::typ_invariant(ctx, typ, &air::ast_util::ident_var(&uid));
@@ -917,7 +912,6 @@ impl SublocationTree {
             let eq = Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, e1, e2));
             stmts.push(Arc::new(StmtX::Assume(eq)));
         }
-        havoc
     }
 
     fn gather_preserved_locations(
