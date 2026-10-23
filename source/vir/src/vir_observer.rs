@@ -41,8 +41,12 @@ pub trait VirObserver: Any {
         _current_crate: &crate::ast::CrateId,
     ) {
     }
-    fn on_havoc(&mut self, _stm: &Stm, _var: &VarIdent) {}
-    fn on_assign(&mut self, _stm: &Stm, _var: &VarIdent) {}
+    // Havoc and Assign are the only lowerings that create a new version of a variable.
+    // `air_stmt` is the AIR statement `stm` lowers to, so an observer can pair each version
+    // with its source statement in every query where that AIR statement appears
+    // (see `VersionCorrelator`).
+    fn on_havoc(&mut self, _stm: &Stm, _var: &VarIdent, _air_stmt: &air::ast::Stmt) {}
+    fn on_assign(&mut self, _stm: &Stm, _var: &VarIdent, _air_stmt: &air::ast::Stmt) {}
     fn on_variable_def(&mut self, _stm: &Stm, _var: &VarIdent) {}
     fn on_for_loop(&mut self, _stm: &Stm) {}
     fn on_quantifier_binder(&mut self, _binder: &crate::ast::VarBinder<Typ>, _exp: &Exp) {}
@@ -101,54 +105,81 @@ fn strip_version_suffix(name: &str) -> &str {
     if let Some(pos) = name.rfind('@') { &name[..=pos] } else { name }
 }
 
-/// Pairs `VirObserver::on_havoc`/`on_assign` callbacks with the versioned
-/// constants that `lower_query` later creates for the same statements.
+/// Pairs each AIR versioned constant with the SST statement that created it.
 ///
-/// # Ordering invariant
+/// One function's lowering is checked as several queries, and a statement can appear in more
+/// than one of them (statements before a loop are copied into the loop's own query). The
+/// pairing is therefore made per query, by statement identity: `record` remembers which SST
+/// statement each AIR `Havoc`/`Assign` came from, `begin_query` lists the version-creating
+/// statements of the query about to be checked in the order `lower_query` visits them, and each
+/// `resolve` takes the next one.
 ///
-/// For each variable `x`, the Nth `record_havoc_or_assign` call
-/// corresponds to the Nth `resolve` call with a `Havoc` or `Assign`
-/// origin. This holds because `sst_to_air` emits the AIR for SST
-/// Havoc/Assign statements in the order `lower_query` walks them, and
-/// no AIR pass in between reorders statements.
-///
-/// Enforced via `debug_assert!` in `resolve`.
+/// A lowering's statements are all recorded before any of its queries is checked, and the next
+/// lowering begins only after they have been. So the first `record` after a `begin_query` starts
+/// a new lowering, and the previous lowering's records are released then.
 pub struct VersionCorrelator {
-    /// Per-base-variable queue of SST statements (Havoc/Assign).
-    queues: HashMap<Arc<String>, VecDeque<Stm>>,
+    /// AIR statement (by address; the `Arc` is kept so the address stays valid) → SST origin.
+    sources: HashMap<usize, (air::ast::Stmt, Stm)>,
+    /// The current query's version-creating statements, in visiting order.
+    current: VecDeque<(air::ast::Ident, VersionOrigin, Option<Stm>)>,
+    /// Whether a query has been begun since the last `record`.
+    checking: bool,
 }
 
 impl VersionCorrelator {
     pub fn new() -> Self {
-        Self { queues: HashMap::new() }
+        Self { sources: HashMap::new(), current: VecDeque::new(), checking: false }
     }
 
-    /// Record an SST Havoc or Assign for a variable.
-    /// `base` is the AIR base name (e.g., `"x@"` from `suffix_local_unique_id`).
-    pub fn record_havoc_or_assign(&mut self, base: &air::ast::Ident, stm: &Stm) {
-        self.queues.entry(base.clone()).or_default().push_back(stm.clone());
+    /// Record that `air_stmt` (an AIR `Havoc` or `Assign`) was lowered from `stm`.
+    pub fn record(&mut self, air_stmt: &air::ast::Stmt, stm: &Stm) {
+        if self.checking {
+            self.sources.clear();
+            self.checking = false;
+        }
+        self.sources.insert(Arc::as_ptr(air_stmt) as usize, (air_stmt.clone(), stm.clone()));
     }
 
-    /// Resolve an AIR versioned constant to the SST statement that created it.
-    pub fn resolve(&mut self, versioned: &air::ast::Ident, kind: VersionOrigin) -> Option<Stm> {
-        match kind {
-            VersionOrigin::Havoc | VersionOrigin::Assign => {
-                let base = strip_version_suffix(versioned);
-                let base_key = Arc::new(base.to_string());
-                let queue = self.queues.get_mut(&base_key)?;
-                debug_assert!(
-                    !queue.is_empty(),
-                    "SST/AIR ordering invariant violated for {}: \
-                     no SST record available (queue empty)",
-                    versioned
-                );
-                queue.pop_front()
+    /// Prepare to resolve the versions created while lowering `query`.
+    pub fn begin_query(&mut self, query: &air::ast::Query) {
+        self.checking = true;
+        self.current.clear();
+        self.collect(&query.assertion);
+    }
+
+    fn collect(&mut self, stmt: &air::ast::Stmt) {
+        use air::ast::StmtX;
+        match &**stmt {
+            StmtX::Havoc(x) | StmtX::Assign(x, _) => {
+                let kind = if matches!(&**stmt, StmtX::Havoc(_)) {
+                    VersionOrigin::Havoc
+                } else {
+                    VersionOrigin::Assign
+                };
+                let src = self.sources.get(&(Arc::as_ptr(stmt) as usize)).map(|(_, s)| s.clone());
+                self.current.push_back((x.clone(), kind, src));
             }
+            StmtX::Block(ss) | StmtX::Switch(ss) => ss.iter().for_each(|s| self.collect(s)),
+            StmtX::DeadEnd(s) | StmtX::Breakable(_, s) => self.collect(s),
+            StmtX::Assume(_) | StmtX::Assert(..) | StmtX::Snapshot(_) | StmtX::Break(_) => {}
         }
     }
 
-    /// Reset between functions.
-    pub fn reset(&mut self) {
-        self.queues.clear();
+    /// The SST statement that created the AIR versioned constant `versioned`, or `None` if its
+    /// AIR statement was not produced by the SST lowering.
+    pub fn resolve(&mut self, versioned: &air::ast::Ident, kind: VersionOrigin) -> Option<Stm> {
+        let (var, expected_kind, src) = self.current.pop_front()?;
+        debug_assert!(
+            // `x@` versions as `x@1`, a parameter `p!` as `p!@1` (see `var_to_const::rename_var`).
+            strip_version_suffix(versioned).trim_end_matches('@') == var.trim_end_matches('@')
+                && kind == expected_kind,
+            "versions are created in the order lower_query visits the statements: \
+             got {} ({:?}), expected {} ({:?})",
+            versioned,
+            kind,
+            var,
+            expected_kind
+        );
+        src
     }
 }

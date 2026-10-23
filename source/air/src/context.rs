@@ -543,6 +543,9 @@ impl Context {
         query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
         self.ensure_started();
+        if let Some(o) = &self.air_observer {
+            o.borrow_mut().on_query_start(query);
+        }
 
         self.air_initial_log.log_query(query);
         let query = match crate::typecheck::check_query(self, query) {

@@ -159,6 +159,9 @@ fn dt_name(d: &vir::ast::Datatype) -> String {
 }
 
 impl air::air_observer::AirObserver for TestObserver {
+    fn on_query_start(&mut self, query: &air::ast::Query) {
+        self.correlator.begin_query(query);
+    }
     fn on_query_lowered(
         &mut self,
         query: &air::ast::Query,
@@ -284,17 +287,27 @@ impl vir::vir_observer::VirObserver for TestObserver {
         self.krate_datatype_names = krate.datatypes.iter().map(dt_name).collect();
         self.events.push("krate".to_string());
     }
-    fn on_havoc(&mut self, stm: &vir::sst::Stm, var: &vir::ast::VarIdent) {
+    fn on_havoc(
+        &mut self,
+        stm: &vir::sst::Stm,
+        var: &vir::ast::VarIdent,
+        air_stmt: &air::ast::Stmt,
+    ) {
         let base = vir::def::suffix_local_unique_id(var);
         self.havocs.push(base.to_string());
         self.events.push(format!("havoc:{}", base));
-        self.correlator.record_havoc_or_assign(&base, stm);
+        self.correlator.record(air_stmt, stm);
     }
-    fn on_assign(&mut self, stm: &vir::sst::Stm, var: &vir::ast::VarIdent) {
+    fn on_assign(
+        &mut self,
+        stm: &vir::sst::Stm,
+        var: &vir::ast::VarIdent,
+        air_stmt: &air::ast::Stmt,
+    ) {
         let base = vir::def::suffix_local_unique_id(var);
         self.assigns.push(base.to_string());
         self.events.push(format!("assign:{}", base));
-        self.correlator.record_havoc_or_assign(&base, stm);
+        self.correlator.record(air_stmt, stm);
     }
     fn on_variable_def(&mut self, _stm: &vir::sst::Stm, var: &vir::ast::VarIdent) {
         self.variable_defs.push(vir::def::suffix_local_unique_id(var).to_string());
@@ -523,12 +536,12 @@ impl vir::vir_observer::VirObserver for VirOnlyObserver {
         self.function_names = krate.functions.iter().map(fun_name).collect();
         self.events.push("krate".to_string());
     }
-    fn on_havoc(&mut self, _stm: &vir::sst::Stm, var: &vir::ast::VarIdent) {
+    fn on_havoc(&mut self, _stm: &vir::sst::Stm, var: &vir::ast::VarIdent, _: &air::ast::Stmt) {
         let base = vir::def::suffix_local_unique_id(var);
         self.havocs.push(base.to_string());
         self.events.push(format!("havoc:{}", base));
     }
-    fn on_assign(&mut self, _stm: &vir::sst::Stm, var: &vir::ast::VarIdent) {
+    fn on_assign(&mut self, _stm: &vir::sst::Stm, var: &vir::ast::VarIdent, _: &air::ast::Stmt) {
         let base = vir::def::suffix_local_unique_id(var);
         self.assigns.push(base.to_string());
         self.events.push(format!("assign:{}", base));

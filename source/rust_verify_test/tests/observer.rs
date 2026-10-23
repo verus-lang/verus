@@ -1103,3 +1103,160 @@ test_verify_one_file_with_options! {
         assert!(d.assert_id_kinds.is_empty(), "got {:?}", d.assert_id_kinds);
     }
 }
+
+// ---- Version provenance --------------------------------------------------------------------
+//
+// One function lowers to several queries, and statements before a loop are copied into the
+// loop's own query, which is checked first. Each versioned constant must be paired with the
+// statement that created it *in that query*. The rows assert the exact pairing of the first
+// verification pass (later passes, e.g. the recommends re-check, repeat it). Line numbers are
+// positions in the generated test file (the harness prepends a fixed prelude).
+
+fn first_pass(d: &D, var: &str, n: usize) -> Vec<(String, u32, String)> {
+    d.version_correlations.iter().filter(|(v, _, _)| v.starts_with(var)).take(n).cloned().collect()
+}
+fn vc(v: &str, line: u32, k: &str) -> (String, u32, String) {
+    (v.to_string(), line, k.to_string())
+}
+
+test_verify_one_file_with_options! {
+    // A loop, with `x` assigned before it and twice in its body. The loop query is checked first.
+    #[test]
+    test_observer_version_provenance_loop ["observers=test"] => verus_code! {
+        fn f() {
+            let mut x: u64 = 1;
+            x = 2;
+            let mut i: u64 = 0;
+            while i < 3
+                invariant x == 2, i <= 3
+                decreases 3 - i
+            {
+                x = 3;
+                x = x + 1;
+                i = i + 1;
+            }
+        }
+    } => Err(err) => {
+        let d = parse(&err);
+        assert_eq!(first_pass(&d, "x@", 4), vec![
+            // loop query: the two body assignments
+            vc("x@1", 33, "Assign"), vc("x@2", 34, "Assign"),
+            // function query: the assignment before the loop, then the loop-entry havoc
+            vc("x@1", 27, "Assign"), vc("x@2", 29, "Havoc"),
+        ]);
+    }
+}
+
+test_verify_one_file_with_options! {
+    // A `for` loop: its desugaring assigns ghost variables before the loop, and those
+    // statements appear in both the loop query and the function query.
+    #[test]
+    test_observer_version_provenance_for_loop ["observers=test"] => verus_code! {
+        use vstd::prelude::*;
+        fn f() {
+            let mut x: u64 = 2;
+            x = 3;
+            for i in 0..3
+                invariant x == 3
+            {
+                x = 4;
+            }
+        }
+    } => Err(err) => {
+        let d = parse(&err);
+        assert_eq!(first_pass(&d, "x@", 4), vec![
+            vc("x@1", 29, "Havoc"), vc("x@2", 32, "Assign"),
+            vc("x@1", 28, "Assign"), vc("x@2", 29, "Havoc"),
+        ]);
+    }
+}
+
+test_verify_one_file_with_options! {
+    // The two arms of an `if` both create the same version number of `x`; the pairing must
+    // follow the arms in order.
+    #[test]
+    test_observer_version_provenance_branches ["observers=test"] => verus_code! {
+        fn f(b: bool) {
+            let mut x: u64 = 0;
+            if b {
+                x = 1;
+            } else {
+                x = 2;
+            }
+            assert(x == 7);
+        }
+    } => Err(err) => {
+        let d = parse(&err);
+        assert_eq!(first_pass(&d, "x@", 2), vec![vc("x@1", 28, "Assign"), vc("x@1", 30, "Assign")]);
+    }
+}
+
+// ---- VersionCorrelator, directly ----------------------------------------------------------
+
+mod correlator {
+    use air::ast::{QueryX, StmtX};
+    use std::sync::Arc;
+    use vir::vir_observer::{VersionCorrelator, VersionOrigin, line_from_span};
+
+    fn stm(line: u32) -> vir::sst::Stm {
+        let span = vir::messages::Span {
+            raw_span: Arc::new(()),
+            id: 0,
+            data: vec![],
+            as_string: format!("f.rs:{}:5: {}:9", line, line),
+        };
+        vir::def::Spanned::new(span, vir::sst::StmX::Air(Arc::new(String::new())))
+    }
+    fn assign(x: &str) -> air::ast::Stmt {
+        Arc::new(StmtX::Assign(Arc::new(x.to_string()), air::ast_util::mk_true()))
+    }
+    fn query(stmts: Vec<air::ast::Stmt>) -> air::ast::Query {
+        Arc::new(QueryX {
+            local: Arc::new(vec![]),
+            assertion: Arc::new(StmtX::Block(Arc::new(stmts))),
+        })
+    }
+    fn line(c: &mut VersionCorrelator, v: &str) -> Option<u32> {
+        c.resolve(&Arc::new(v.to_string()), VersionOrigin::Assign)
+            .and_then(|s| line_from_span(&s.span))
+    }
+
+    #[test]
+    fn pairs_versions_within_a_query_in_visiting_order() {
+        let mut c = VersionCorrelator::new();
+        let (a1, a2) = (assign("x@"), assign("x@"));
+        c.record(&a1, &stm(5));
+        c.record(&a2, &stm(6));
+        c.begin_query(&query(vec![a1, a2]));
+        assert_eq!(line(&mut c, "x@1"), Some(5));
+        assert_eq!(line(&mut c, "x@2"), Some(6));
+    }
+
+    #[test]
+    fn a_statement_copied_into_two_queries_resolves_in_both() {
+        let mut c = VersionCorrelator::new();
+        let (pre, body) = (assign("x@"), assign("x@"));
+        c.record(&pre, &stm(5));
+        c.record(&body, &stm(11));
+        // The loop's query, checked first, holds the pre-loop statement and then the body.
+        c.begin_query(&query(vec![pre.clone(), body]));
+        assert_eq!(line(&mut c, "x@1"), Some(5));
+        assert_eq!(line(&mut c, "x@2"), Some(11));
+        // The function's query holds the same pre-loop statement again.
+        c.begin_query(&query(vec![pre]));
+        assert_eq!(line(&mut c, "x@1"), Some(5));
+    }
+
+    #[test]
+    fn records_are_released_when_the_next_lowering_records() {
+        let mut c = VersionCorrelator::new();
+        let old = assign("x@");
+        c.record(&old, &stm(5));
+        c.begin_query(&query(vec![old.clone()]));
+        assert_eq!(line(&mut c, "x@1"), Some(5));
+        // The next lowering starts recording: the previous lowering's statements are gone.
+        c.record(&assign("y@"), &stm(20));
+        c.begin_query(&query(vec![old]));
+        assert_eq!(line(&mut c, "x@1"), None);
+    }
+}
