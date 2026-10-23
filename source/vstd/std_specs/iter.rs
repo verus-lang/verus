@@ -108,9 +108,9 @@ pub trait ExIterator {
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
         requires
-            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> f.requires((self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| 0 <= k < self.remaining().len() ==> f.requires((#[trigger] self.remaining()[k], )),
             // without the laws, `remaining()` says nothing about the items `f` is called on
-            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] f.requires((x, )),
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #[trigger] f.requires((x, )),
         ensures
             iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
@@ -140,9 +140,9 @@ pub trait ExIterator {
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
         requires
-            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> f.requires((self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| 0 <= k < self.remaining().len() ==> f.requires((#[trigger] self.remaining()[k], )),
             // without the laws, `remaining()` says nothing about the items `f` is called on
-            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] f.requires((x, )),
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #[trigger] f.requires((x, )),
         ensures
             iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
@@ -185,9 +185,9 @@ pub trait ExIterator {
             // `filter`'s implementation loops over the inner iterator until the predicate accepts an element,
             // so it needs a decreases metric to prove termination.
             self.decrease() is Some,
-            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> predicate.requires((&self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| 0 <= k < self.remaining().len() ==> predicate.requires((#[trigger] &self.remaining()[k], )),
             // without the laws, `remaining()` says nothing about the items `predicate` is called on
-            !self.obeys_prophetic_iter_laws() ==> forall |x: &Self::Item| #![auto] predicate.requires((x, )),
+            !self.obeys_prophetic_iter_laws() ==> forall |x: &Self::Item| #[trigger] predicate.requires((x, )),
         ensures
             self.obeys_prophetic_iter_laws() ==> filter_post(self, predicate, r),
     ;
@@ -196,9 +196,9 @@ pub trait ExIterator {
         where Self: Sized,
             P: FnMut(&Self::Item) -> bool
         requires
-            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> predicate.requires((&self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| 0 <= k < self.remaining().len() ==> predicate.requires((#[trigger] &self.remaining()[k], )),
             // without the laws, `remaining()` says nothing about the items `predicate` is called on
-            !self.obeys_prophetic_iter_laws() ==> forall |x: &Self::Item| #![auto] predicate.requires((x, )),
+            !self.obeys_prophetic_iter_laws() ==> forall |x: &Self::Item| #[trigger] predicate.requires((x, )),
         ensures
             iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
@@ -230,9 +230,9 @@ pub trait ExIterator {
         where Self: Sized,
             F: FnMut(Self::Item) -> Option<B>
         requires
-            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> f.requires((self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| 0 <= k < self.remaining().len() ==> f.requires((#[trigger] self.remaining()[k], )),
             // without the laws, `remaining()` says nothing about the items `f` is called on
-            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] f.requires((x, )),
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #[trigger] f.requires((x, )),
         ensures
             iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
@@ -263,9 +263,9 @@ pub trait ExIterator {
             Self: Sized,
             F: FnMut(Self::Item) -> B,
         requires
-            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> f.requires((self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| 0 <= k < self.remaining().len() ==> f.requires((#[trigger] self.remaining()[k], )),
             // without the laws, `remaining()` says nothing about the items `f` is called on
-            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] f.requires((x, )),
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #[trigger] f.requires((x, )),
         ensures
             self.obeys_prophetic_iter_laws() ==> map_post(self, f, r),
     ;
@@ -279,7 +279,7 @@ pub trait ExIterator {
             // (which may overflow) nor the items `predicate` is called on
             self.obeys_prophetic_iter_laws(),
             self.remaining().len() <= usize::MAX as int,
-            forall |k| #![auto] 0 <= k < self.remaining().len() ==> predicate.requires((self.remaining()[k], )),
+            forall |k| 0 <= k < self.remaining().len() ==> predicate.requires((#[trigger] self.remaining()[k], )),
         ensures
             iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
@@ -492,7 +492,7 @@ pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F, r: core::iter::Fil
     requires
         i.obeys_prophetic_iter_laws(),
         i.decrease() is Some,
-        forall |k| #![auto] 0 <= k < i.remaining().len() ==> f.requires((&i.remaining()[k], )),
+        forall |k| 0 <= k < i.remaining().len() ==> f.requires((#[trigger] &i.remaining()[k], )),
         #[trigger] filter_post(i, f, r),
     ensures
         {
@@ -570,7 +570,7 @@ pub broadcast axiom fn map_postcondition<I, F>(i: I, f: F, r: core::iter::Map<I,
         #[trigger] map_post(i, f, r),
     ensures
         IteratorSpec::remaining(&r).len() <= i.remaining().len(),
-        forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> f.ensures((i.remaining()[k],), IteratorSpec::remaining(&r)[k]),
+        forall |k| 0 <= k < IteratorSpec::remaining(&r).len() ==> f.ensures((i.remaining()[k],), #[trigger] IteratorSpec::remaining(&r)[k]),
         IteratorSpec::will_return_none(&r) ==> i.will_return_none() && IteratorSpec::remaining(&r).len() == i.remaining().len(),
         IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
         map_iter(r) == i,
