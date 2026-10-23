@@ -250,6 +250,15 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, 
     no_unwind
 ;
 
+pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::convert::AsRef<[T]>>::as_ref ](
+    vec: &Vec<T, A>,
+) -> (slice: &[T])
+    ensures
+        slice@ == vec@,
+    opens_invariants none
+    no_unwind
+;
+
 #[doc(hidden)]
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_slice ](vec: &mut Vec<T, A>) -> (slice: &mut [T])
     ensures

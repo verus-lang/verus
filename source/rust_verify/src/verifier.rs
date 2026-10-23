@@ -2859,8 +2859,18 @@ impl Verifier {
 
         let vir_crate =
             vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
-        let (vir_crate, erasure_modes) =
+        let (mut vir_crate, erasure_modes) =
             vir::modes::check_crate(&vir_crate).map_err(|es| (es, Vec::new()))?;
+
+        // Anonymous constants are translated only for mode checking.
+        // Rust's const evaluator already checks them, so don't verify them.
+        Arc::make_mut(&mut vir_crate).functions.retain(|f| {
+            !f.x.name
+                .path
+                .segments
+                .last()
+                .is_some_and(|s| s.starts_with(vir::def::RUST_DEF_ANON_CONST))
+        });
 
         self.vir_crate = Some(vir_crate.clone());
         self.warning_ctx = Some(Arc::new(warning_ctx));
