@@ -5,6 +5,7 @@ use rustc_hir::attrs::AttributeKind;
 use rustc_hir::{Attribute, AttributeMap};
 use rustc_hir::{HirId, ItemKind, OwnerId, OwnerNode};
 use rustc_middle::ty::TyCtxt;
+use rustc_session::config::{OutFileName, OutputType};
 use rustc_span::{Span, sym};
 use std::time::{Duration, Instant};
 
@@ -137,6 +138,34 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
                 };
             });
         }
+    }
+
+    fn after_expansion<'tcx>(
+        &mut self,
+        _compiler: &rustc_interface::interface::Compiler,
+        tcx: TyCtxt<'tcx>,
+    ) -> rustc_driver::Compilation {
+        // Need to merge the dep-info files from the first (previous) and second (current) passes.
+        rustc_interface::passes::write_dep_info(tcx);
+        if tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo) {
+            // Load and merge the dep-info file from the first pass with the output of this pass.
+            if let OutFileName::Real(dep_info_path_d) =
+                tcx.output_filenames(()).path(OutputType::DepInfo)
+            {
+                let dep_info_path_verus_d = dep_info_path_d.with_extension("verus.d");
+                assert!(
+                    dep_info_path_verus_d.is_file(),
+                    "error: missing dep-info file from first pass {}",
+                    dep_info_path_verus_d.display(),
+                );
+                assert!(
+                    dep_info_path_d.is_file(),
+                    "error: missing dep-info file from second pass {}",
+                    dep_info_path_d.display(),
+                );
+            }
+        }
+        rustc_driver::Compilation::Continue
     }
 
     fn after_analysis<'tcx>(
@@ -336,13 +365,12 @@ pub fn run(
         );
     }
 
-    let compile_status =
-        if !verifier.compile && (verifier.args.no_erasure_check || verifier.args.no_lifetime) {
-            Ok(())
-        } else {
-            let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
-            run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
-        };
+    let compile_status = if !verifier.has_second_compile_pass() {
+        Ok(())
+    } else {
+        let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
+        run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
+    };
 
     let time2 = Instant::now();
 

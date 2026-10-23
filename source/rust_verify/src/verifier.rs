@@ -17,7 +17,7 @@ use air::profiler::Profiler;
 use rustc_errors::{Diag, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
-use rustc_session::config::ErrorOutputType;
+use rustc_session::config::{ErrorOutputType, OutFileName, OutputType};
 use std::sync::Mutex;
 
 use vir::messages::{
@@ -485,6 +485,11 @@ impl CommandBatch {
 }
 
 impl Verifier {
+    /// Whether a second invocation of `rustc_driver::run_compiler` is necessary to generate code.
+    pub fn has_second_compile_pass(&self) -> bool {
+        self.compile || (!self.args.no_erasure_check && !self.args.no_lifetime)
+    }
+
     pub fn new(
         args: Args,
         via_cargo_args: Option<CargoVerusArgs>,
@@ -3066,6 +3071,23 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         }
 
         rustc_interface::passes::write_dep_info(tcx);
+        if self.verifier.has_second_compile_pass()
+            && tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo)
+        {
+            // Change the extension of the dep-info file from `.d` to `.verus.d`
+            //   so that the second compiler pass does not overwrite it.
+            if let OutFileName::Real(dep_info_path_d) =
+                tcx.output_filenames(()).path(OutputType::DepInfo)
+            {
+                let dep_info_path_verus_d = dep_info_path_d.with_extension("verus.d");
+                std::fs::rename(&dep_info_path_d, &dep_info_path_verus_d).unwrap_or_else(|err| {
+                    panic!(
+                        "error: failed to change the extension of {} to `.verus.d` due to {err}",
+                        dep_info_path_d.display(),
+                    )
+                });
+            }
+        }
         self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
 
         let time_import0 = Instant::now();
