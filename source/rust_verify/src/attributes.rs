@@ -501,7 +501,6 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
                 AttrTree::Fun(_, arg, None) if arg == "external_body" => v.push(Attr::ExternalBody),
                 AttrTree::Fun(_, arg, None) if arg == "external" => v.push(Attr::External),
-                AttrTree::Fun(_, arg, None) if arg == "verify" => v.push(Attr::Verify),
                 AttrTree::Fun(_, arg, None) if arg == "opaque" => v.push(Attr::Opaque),
                 AttrTree::Fun(_, arg, None) if arg == "opaque_outside_module" => {
                     v.push(Attr::OpaqueOutsideModule)
@@ -821,6 +820,7 @@ pub(crate) fn parse_attrs(
                         v.push(Attr::AllTriggers)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
+                    AttrTree::Fun(_, arg, None) if arg == "verify" => v.push(Attr::Verify),
                     AttrTree::Fun(_, arg, None) if arg == "proof_block" => {
                         v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
                     }

@@ -337,7 +337,7 @@ pub fn calc_proc_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 
 // If no #[verus_verify] on the item, it is verifier::external by default.
 // When compiling code with verus:
-// #[verus_verify] annotates the item with verifier::verify
+// #[verus_verify] annotates the item with verus::internal(verify)
 // #[verus_verify(external_body)] annotates the item with verifier::external_body
 // When compiling code with standard rust tool, the item has no verifier annotation.
 #[proc_macro_attribute]

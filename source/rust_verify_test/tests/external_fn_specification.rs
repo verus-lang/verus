@@ -1461,14 +1461,14 @@ test_verify_one_file! {
     #[test] module_external code! {
         #[verifier::external]
         mod moo {
-            #[verifier::verify]
+            #[verus::internal(verify)]
             fn stuff() {
                 verus_builtin::assert_(false);
             }
         }
     } => Ok(err) => {
         assert!(err.warnings.len() == 2);
-        assert!(err.warnings[0].message.contains("#[verifier::verify] has no effect because item is already marked external"));
+        assert!(err.warnings[0].message.contains("#[verus::internal(verify)] has no effect because item is already marked external"));
     }
 }
 
