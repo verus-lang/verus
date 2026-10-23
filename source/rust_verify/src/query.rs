@@ -476,8 +476,12 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         for stub in pre_crate.infos.iter().flat_map(|info| info.iter_stubs()) {
             match self.get_checked_function(&stub.x.name) {
                 Ok((function, _, _, dyn_compatability_checks)) => {
-                    cratex.functions.push(function);
-                    all_dyn_compatability_checks.push(dyn_compatability_checks);
+                    // Anonymous constants are translated only for mode checking.
+                    // Rust's const evaluator already checks them, so don't verify them.
+                    if !vir::def::is_anon_const(&function.x.name) {
+                        cratex.functions.push(function);
+                        all_dyn_compatability_checks.push(dyn_compatability_checks);
+                    }
                 }
                 Err(err) => found_err = Some(err),
             }
