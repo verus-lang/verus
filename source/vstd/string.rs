@@ -21,7 +21,7 @@ use super::std_specs::iter::IteratorSpec;
 #[cfg(verus_keep_ghost)]
 use super::std_specs::range::{
     ExRange, RangeBoundsSpec, slice_range_end, slice_range_start, slice_range_valid,
-    spec_range_inclusive_slice_bounds,
+    spec_range_inclusive_is_empty,
 };
 use super::utf8::*;
 use super::view::*;
@@ -800,18 +800,30 @@ pub assume_specification[ <RangeFull as SliceIndex<str>>::index_mut ](
 ) -> (r: &mut <RangeFull as SliceIndex<str>>::Output)
 ;
 
+// Indexing with an empty range doesn't verify, since std doesn't say whether it
+// panics. `get` still verifies and returns `None` or an empty string.
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+pub uninterp spec fn spec_range_inclusive_unspecified_str_in_bounds(
+    range: &RangeInclusive<usize>,
+    s: &str,
+) -> bool;
+
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for RangeInclusive<usize> {
     open spec fn in_bounds(&self, s: &str) -> bool {
-        str_slice_in_bounds(&spec_range_inclusive_slice_bounds(self), s)
+        if spec_range_inclusive_is_empty(self) {
+            spec_range_inclusive_unspecified_str_in_bounds(self, s)
+        } else {
+            str_slice_in_bounds(self, s)
+        }
     }
 
     open spec fn index_postcondition(&self, s: &str, r: &str) -> bool {
-        str_slice_index_postcondition(
-            &spec_range_inclusive_slice_bounds(self),
-            s.spec_bytes(),
-            r.spec_bytes(),
-        )
+        if spec_range_inclusive_is_empty(self) {
+            r.spec_bytes().len() == 0
+        } else {
+            str_slice_index_postcondition(self, s.spec_bytes(), r.spec_bytes())
+        }
     }
 
     open spec fn index_mut_postcondition(
@@ -821,13 +833,18 @@ impl super::slice::SliceIndexSpecImpl<str> for RangeInclusive<usize> {
         immediate_output: &str,
         final_output: &str,
     ) -> bool {
-        str_slice_index_mut_postcondition(
-            &spec_range_inclusive_slice_bounds(self),
-            old_slice.spec_bytes(),
-            final_slice.spec_bytes(),
-            immediate_output.spec_bytes(),
-            final_output.spec_bytes(),
-        )
+        if spec_range_inclusive_is_empty(self) {
+            &&& immediate_output.spec_bytes().len() == 0
+            &&& final_slice.spec_bytes() == old_slice.spec_bytes()
+        } else {
+            str_slice_index_mut_postcondition(
+                self,
+                old_slice.spec_bytes(),
+                final_slice.spec_bytes(),
+                immediate_output.spec_bytes(),
+                final_output.spec_bytes(),
+            )
+        }
     }
 }
 

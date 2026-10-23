@@ -1,3 +1,4 @@
+use super::super::laws_cmp::obeys_cmp;
 use super::super::prelude::*;
 use super::super::view::View;
 use super::cmp::{PartialOrdIs, PartialOrdSpec};
@@ -20,12 +21,40 @@ pub struct ExRangeInclusive<Idx>(RangeInclusive<Idx>);
 pub struct RangeInclusiveView<Idx> {
     pub start: Idx,
     pub end: Idx,
-    /// Rust's internal empty-range flag. Iteration sets it when an endpoint
-    /// overflows or underflows; folds also set it when exhausting the range.
-    /// Stored endpoints may be wrapped when this flag is set. A range can also
-    /// be empty with the flag clear if its endpoints are reversed or incomparable.
+    /// Whether iteration has marked the range as finished.
     pub exhausted: bool,
 }
+
+pub open spec fn spec_range_inclusive_is_empty<Idx>(r: &RangeInclusive<Idx>) -> bool {
+    r@.exhausted || spec_range_inclusive_out_of_order(r)
+}
+
+/// Uninterpreted because `RangeBounds` methods have no
+/// `PartialOrd` bound. Defined by [`axiom_range_inclusive_out_of_order`].
+pub uninterp spec fn spec_range_inclusive_out_of_order<Idx>(r: &RangeInclusive<Idx>) -> bool;
+
+pub broadcast axiom fn axiom_range_inclusive_out_of_order<Idx: PartialOrd<Idx>>(
+    r: &RangeInclusive<Idx>,
+)
+    ensures
+        Idx::obeys_partial_cmp_spec() ==> (#[trigger] spec_range_inclusive_out_of_order(r)
+            <==> !r@.start.is_le(&r@.end)),
+;
+
+// Results std leaves unspecified for empty ranges.
+pub uninterp spec fn spec_range_inclusive_unspecified_contains<Idx, U: ?Sized>(
+    r: &RangeInclusive<Idx>,
+    item: &U,
+) -> bool;
+
+pub uninterp spec fn spec_range_inclusive_unspecified_bounds<T>(r: &RangeInclusive<T>) -> (
+    Bound<&T>,
+    Bound<&T>,
+);
+
+pub uninterp spec fn spec_range_inclusive_unspecified_ref_bounds<'a, T>(
+    r: &RangeInclusive<&'a T>,
+) -> (Bound<&'a T>, Bound<&'a T>);
 
 pub trait ContainsSpec<Idx, U> where Idx: PartialOrd<U>, U: ?Sized + PartialOrd<Idx> {
     spec fn obeys_contains() -> bool;
@@ -42,13 +71,25 @@ impl<Idx, U> ContainsSpec<Idx, U> for RangeInclusive<Idx> where
     }
 
     open spec fn contains_spec(&self, i: &U) -> bool {
-        self@.start.is_le(&i) && if self@.exhausted {
-            i.is_lt(&self@.start)
+        if spec_range_inclusive_is_empty(self) {
+            spec_range_inclusive_unspecified_contains(self, i)
         } else {
-            i.is_le(&self@.end)
+            self@.start.is_le(&i) && i.is_le(&self@.end)
         }
     }
 }
+
+/// An empty range contains nothing when `Idx` is totally ordered.
+pub broadcast axiom fn axiom_range_inclusive_empty_contains<Idx: Ord>(
+    r: &RangeInclusive<Idx>,
+    item: &Idx,
+)
+    requires
+        obeys_cmp::<Idx>(),
+        spec_range_inclusive_is_empty(r),
+    ensures
+        !#[trigger] r.contains_spec(item),
+;
 
 impl<Idx, U> ContainsSpec<Idx, U> for Range<Idx> where
     Idx: PartialOrd<U>,
@@ -96,13 +137,6 @@ pub assume_specification<Idx: PartialOrd<Idx>, U>[ RangeInclusive::<Idx>::contai
         <RangeInclusive::<Idx> as ContainsSpec<Idx, U>>::obeys_contains() ==> ret
             == r.contains_spec(i),
 ;
-
-// A range is empty when the flag is set or its endpoints are reversed or incomparable.
-pub open spec fn spec_range_inclusive_is_empty<Idx: PartialOrd<Idx>>(
-    r: &RangeInclusive<Idx>,
-) -> bool {
-    !r@.start.is_le(&r@.end) || r@.exhausted
-}
 
 pub assume_specification<Idx: PartialOrd<Idx>>[ RangeInclusive::<Idx>::is_empty ](
     r: &RangeInclusive<Idx>,
@@ -278,23 +312,29 @@ pub assume_specification<'s, T>[ <RangeTo<T> as RangeBounds<T>>::end_bound ](
         result == Bound::Excluded(&range.end),
 ;
 
-pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::start_bound ](
-    range: &'s RangeInclusive<T>,
-) -> (result: Bound<&'s T>)
-    ensures
-        result == Bound::Included(&range@.start),
-;
+// Shared by `start_bound()`/`end_bound()` and their `RangeBoundsSpec` models.
+pub open spec fn spec_range_inclusive_start_bound<T>(r: &RangeInclusive<T>) -> Bound<&T> {
+    if spec_range_inclusive_is_empty(r) {
+        spec_range_inclusive_unspecified_bounds(r).0
+    } else {
+        Bound::Included(&r@.start)
+    }
+}
 
-// Shared with the exec specification and `RangeBoundsSpecImpl::spec_end_bound`.
-// With the flag set, the bounds describe an empty range at start, independently
-// of a possibly wrapped end.
 pub open spec fn spec_range_inclusive_end_bound<T>(r: &RangeInclusive<T>) -> Bound<&T> {
-    if r@.exhausted {
-        Bound::Excluded(&r@.start)
+    if spec_range_inclusive_is_empty(r) {
+        spec_range_inclusive_unspecified_bounds(r).1
     } else {
         Bound::Included(&r@.end)
     }
 }
+
+pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::start_bound ](
+    range: &'s RangeInclusive<T>,
+) -> (result: Bound<&'s T>)
+    ensures
+        result == spec_range_inclusive_start_bound(range),
+;
 
 pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::end_bound ](
     range: &'s RangeInclusive<T>,
@@ -401,7 +441,7 @@ impl<T> RangeBoundsSpecImpl<T> for RangeTo<T> {
 
 impl<T> RangeBoundsSpecImpl<T> for RangeInclusive<T> {
     open spec fn spec_start_bound(&self) -> Bound<&T> {
-        Bound::Included(&self@.start)
+        spec_range_inclusive_start_bound(self)
     }
 
     open spec fn spec_end_bound(&self) -> Bound<&T> {
@@ -471,14 +511,19 @@ impl<T> RangeBoundsSpecImpl<T> for Range<&T> {
 
 impl<T> RangeBoundsSpecImpl<T> for RangeInclusive<&T> {
     open spec fn spec_start_bound(&self) -> Bound<&T> {
-        Bound::Included(self@.start)
+        if spec_range_inclusive_is_empty(self) {
+            spec_range_inclusive_unspecified_ref_bounds(self).0
+        } else {
+            Bound::Included(self@.start)
+        }
     }
 
     open spec fn spec_end_bound(&self) -> Bound<&T> {
-        // In contrast to RangeBounds<T> for RangeInclusive<T>,
-        // Rust's RangeBounds<T> for RangeInclusive<&T> always returns Included,
-        // regardless of exhausted.
-        Bound::Included(self@.end)
+        if spec_range_inclusive_is_empty(self) {
+            spec_range_inclusive_unspecified_ref_bounds(self).1
+        } else {
+            Bound::Included(self@.end)
+        }
     }
 }
 
@@ -512,24 +557,6 @@ pub open spec fn slice_range_end<R: RangeBoundsSpec<usize>>(range: &R, len: nat)
         Bound::Excluded(i) => *i as int,
         Bound::Unbounded => len as int,
     }
-}
-
-/// The bounds with which std's `SliceIndex` impls for `RangeInclusive<usize>` index:
-/// `start..end + 1`, or the empty range `end + 1..end + 1` if the flag is set.
-/// The stored end is still subject to bounds checks, even though `end_bound()`
-/// reports `Excluded(start)` when the flag is set.
-pub open spec fn spec_range_inclusive_slice_bounds(r: &RangeInclusive<usize>) -> (
-    Bound<usize>,
-    Bound<usize>,
-) {
-    (
-        if r@.exhausted {
-            Bound::Excluded(r@.end)
-        } else {
-            Bound::Included(r@.start)
-        },
-        Bound::Included(r@.end),
-    )
 }
 
 /// Whether a range normalizes to `start <= end <= len`, i.e. the condition
@@ -621,6 +648,8 @@ step_specs!(isize, axiom_spec_range_next_isize, axiom_isize_obeys_range_step_spe
 verus! {
 
 pub broadcast group group_range_axioms {
+    axiom_range_inclusive_out_of_order,
+    axiom_range_inclusive_empty_contains,
     axiom_u8_obeys_range_step_spec,
     axiom_u16_obeys_range_step_spec,
     axiom_u32_obeys_range_step_spec,
