@@ -3263,7 +3263,7 @@ fn opaque_ty_additional_stmts(
             let ret_exp_opaque_typ = &ctx.opaque_type_map[ret_exp_def_path];
             let ret_typ_opaque_typ = &ctx.opaque_type_map[ret_typ_def_path];
 
-            let mut ret_exp_projection_map = HashMap::new();
+            let mut ret_exp_projection_map = indexmap::IndexMap::new();
             let mut ret_typ_projection_map = HashMap::new();
 
             for (ret_exp_bound, ret_typ_bound) in
