@@ -18,26 +18,18 @@ impl<I: IteratorSpec> MySkip<I> {
         self.init_n
     }
 
-    //#[verifier::type_invariant] // fake this (via assert/assume below) due to limitations:
-    //  With this as a type invariantVerus won't let us call self.iter.next() unless it's marked no_unwind
-    #[verifier::prophetic]
-    pub closed spec fn skip_inv(self) -> bool {
-        self.iter.obeys_prophetic_iter_laws()
-    }
-
     fn new(iter: I, n: usize) -> (s: MySkip<I>)
-        requires
-            iter.obeys_prophetic_iter_laws(),
         ensures
             s.init_n() == n,
             s.iter() == iter,
-            s.remaining() == (if iter.remaining().len() < n { seq![] } else { iter.remaining()[n..] }),
-            s.will_return_none() <==> iter.will_return_none(),
-            s.obeys_prophetic_iter_laws(),
+            iter.obeys_prophetic_iter_laws() ==> s.remaining()
+                == (if iter.remaining().len() < n { seq![] } else { iter.remaining()[n..] }),
+            iter.obeys_prophetic_iter_laws() ==> s.produces()
+                == (if iter.remaining().len() < n { seq![] } else { iter.produces()[n..] }),
+            s.obeys_prophetic_iter_laws() == iter.obeys_prophetic_iter_laws(),
             s.decrease() is Some == iter.decrease() is Some,
     {
         let s = MySkip { iter, n, init_n: n };
-        assert(s.skip_inv());
         s
     }
 }
@@ -47,8 +39,6 @@ impl<I: Iterator> Iterator for MySkip<I> {
     type Item = <I as Iterator>::Item;
 
     fn next(&mut self) -> Option<<I as Iterator>::Item> {
-        assume(self.skip_inv());
-
         let ghost snap = self.iter;
         let ghost old_n = self.n as int;
 
@@ -58,13 +48,17 @@ impl<I: Iterator> Iterator for MySkip<I> {
                 invariant
                     0 <= i <= self.n,
                     self.n == old_n,
-                    self.iter.obeys_prophetic_iter_laws(),
-                    self.iter.will_return_none() == snap.will_return_none(),
-                    self.iter.decrease() is Some == snap.decrease() is Some,
-                    snap.decrease() is Some && snap.remaining().len() >= i
+                    self.iter.obeys_prophetic_iter_laws() == snap.obeys_prophetic_iter_laws(),
+                    snap.obeys_prophetic_iter_laws() && snap.remaining().len() >= i ==>
+                        self.iter.produces() == snap.produces()[i..],
+                    snap.obeys_prophetic_iter_laws() && snap.remaining().len() < i ==>
+                        self.iter.produces().len() == 0,
+                    snap.obeys_prophetic_iter_laws() && i > 0 ==> snap.produces().len() == snap.remaining().len(),
+                    snap.obeys_prophetic_iter_laws() ==> self.iter.decrease() is Some == snap.decrease() is Some,
+                    snap.obeys_prophetic_iter_laws() && snap.decrease() is Some && snap.remaining().len() >= i
                         ==> snap.decrease()->0 >= self.iter.decrease()->0,
-                    snap.remaining().len() >= i ==> self.iter.remaining() == snap.remaining()[i..],
-                    snap.remaining().len() < i ==> self.iter.remaining().len() == 0,
+                    snap.obeys_prophetic_iter_laws() && snap.remaining().len() >= i ==> self.iter.remaining() == snap.remaining()[i..],
+                    snap.obeys_prophetic_iter_laws() && snap.remaining().len() < i ==> self.iter.remaining().len() == 0,
                 decreases self.n - i,
             {
                 self.iter.next();
@@ -74,14 +68,13 @@ impl<I: Iterator> Iterator for MySkip<I> {
         }
 
         let r = self.iter.next();
-        assert(self.skip_inv());
         r
     }
 }
 
 impl<I: Iterator> vstd::std_specs::iter::IteratorSpecImpl for MySkip<I> {
-    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        true
+    closed spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        self.iter.obeys_prophetic_iter_laws()
     }
 
     #[verifier::prophetic]
@@ -90,8 +83,8 @@ impl<I: Iterator> vstd::std_specs::iter::IteratorSpecImpl for MySkip<I> {
     }
 
     #[verifier::prophetic]
-    closed spec fn will_return_none(&self) -> bool {
-        self.iter.will_return_none()
+    closed spec fn produces(&self) -> Seq<bool> {
+        if self.iter.remaining().len() < self.n { seq![] } else { self.iter.produces()[self.n..] }
     }
 
     closed spec fn decrease(&self) -> Option<nat> {

@@ -197,7 +197,10 @@ impl<'a, T> SliceIterMut<'a, T> {
         ensures
             old(s).len() == final(s).len(),
             out.remaining().len() == old(s).len(),
-            out.will_return_none(),
+            out.obeys_prophetic_iter_laws(),
+            out.produces().all(|p: bool| p),
+            out.produces().len() == out.remaining().len(),
+            out.decrease() is Some,
             forall |i| #![all_triggers] 0 <= i < old(s).len() ==>
                 *out.remaining()[i] == old(s)[i] && *final(out.remaining()[i]) == final(s)[i],
     {
@@ -299,8 +302,8 @@ impl<'a, T> vstd::std_specs::iter::IteratorSpecImpl for SliceIterMut<'a, T> {
     }
 
     #[verifier::prophetic]
-    closed spec fn will_return_none(&self) -> bool {
-        true
+    closed spec fn produces(&self) -> Seq<bool> {
+        Seq::new(self.remaining_inner().len(), |i: int| true)
     }
 
     closed spec fn decrease(&self) -> Option<nat> {
