@@ -4,7 +4,7 @@ use vstd::prelude::*;
 use vstd::proph::*;
 use vstd::predicate::*;
 use vstd::modes::*;
-use vstd::std_specs::iter::IteratorSpec;
+use vstd::std_specs::iter::{IteratorSpec, DoubleEndedIteratorSpec, ExactSizeIteratorSpec};
 
 verus! {
 
@@ -76,6 +76,7 @@ pub open spec fn exists_witness<V, Pred: IndexPredicate<V>>(p: Pred, i: nat) -> 
 tracked struct ProphecyGhostConstrainedSeq<T, Pred: IndexPredicate<T>> {
     ghost pred: Pred,
     ghost history: Seq<T>,
+    ghost resolved_back: Map<nat, T>,
     tracked inner: ProphecyGhost<spec_fn(nat) -> T>,
 }
 
@@ -88,6 +89,8 @@ impl<T, Pred: IndexPredicate<T>> ProphecyGhostConstrainedSeq<T, Pred> {
     pub closed spec fn value(&self, i: nat) -> T {
         if i < self.history.len() {
             self.history[i as int]
+        } else if self.resolved_back.dom().contains(i) {
+            self.resolved_back[i]
         } else if self.pred.predicate(self.inner.value()(i), i) {
             self.inner.value()(i)
         } else {
@@ -99,38 +102,69 @@ impl<T, Pred: IndexPredicate<T>> ProphecyGhostConstrainedSeq<T, Pred> {
         self.history.len()
     }
 
+    pub closed spec fn has_resolved_back(self, i: nat) -> bool {
+        self.resolved_back.dom().contains(i)
+    }
+
     #[verifier::prophetic]
     pub closed spec fn wf(self) -> bool {
         &&& forall |i: nat| exists_witness(self.pred, i)
         &&& forall |i: nat| #![all_triggers] 0 <= i < self.history.len() ==> self.pred.predicate(self.history[i as int], i)
+        &&& forall |i: nat| #[trigger] self.resolved_back.dom().contains(i) ==>
+            self.pred.predicate(self.resolved_back[i], i)
     }
 
     pub proof fn new(pred: Pred) -> (tracked proph_var: Self)
         requires forall |i| exists_witness(pred, i)
         ensures proph_var.wf(), proph_var.pred() == pred, proph_var.index() == 0,
+            forall |i| !proph_var.has_resolved_back(i),
     {
         ProphecyGhostConstrainedSeq {
             pred: pred,
             history: seq![],
+            resolved_back: Map::empty(),
             inner: ProphecyGhost::<spec_fn(nat) -> T>::new(),
         }
     }
 
     pub proof fn resolve_cons(tracked &mut self, value: T)
         requires self.wf(),
-            self.pred().predicate(value, self.index())
+            self.pred().predicate(value, self.index()),
+            !self.has_resolved_back(self.index()),
         ensures
             final(self).value(old(self).index()) == value,
             final(self).wf(),
             final(self).pred() == old(self).pred(),
             forall |i| #![all_triggers] final(self).value(i) == old(self).value(i),
             final(self).index() == old(self).index() + 1,
+            forall |i| final(self).has_resolved_back(i) == old(self).has_resolved_back(i),
     {
         let tracked mut var = ProphecyGhost::new();
         tracked_swap(&mut var, &mut self.inner);
         var.resolve_dependent(&self.inner, |w| fn_set(w, self.history.len(), value));
 
         self.history = self.history + seq![value];
+    }
+
+    pub proof fn resolve_back(tracked &mut self, i: nat, value: T)
+        requires
+            old(self).wf(),
+            i >= old(self).index(),
+            !old(self).has_resolved_back(i),
+            old(self).pred().predicate(value, i),
+        ensures
+            final(self).value(i) == value,
+            final(self).wf(),
+            final(self).pred() == old(self).pred(),
+            forall |j| #![all_triggers] final(self).value(j) == old(self).value(j),
+            final(self).index() == old(self).index(),
+            forall |j| final(self).has_resolved_back(j) ==
+                (j == i || old(self).has_resolved_back(j)),
+    {
+        let tracked mut var = ProphecyGhost::new();
+        tracked_swap(&mut var, &mut self.inner);
+        var.resolve_dependent(&self.inner, |w| fn_set(w, i, value));
+        self.resolved_back = self.resolved_back.insert(i, value);
     }
 }
 
@@ -232,11 +266,13 @@ impl<'a, T> SliceIterMut<'a, T> {
     #[verifier::prophetic]
     spec fn slice_iter_mut_wf(self) -> bool {
         self.proph.wf()
-            && self.proph.pred().slice.len() == self.slice.len() + self.index@
+            && self.proph.pred().slice.len() == final(self.proph.pred().slice).len()
+            && self.proph.pred().slice.len() >= self.slice.len() + self.index@
             && self.proph.index() == self.index@
             && (forall |i| #![all_triggers] 0 <= i < self.slice.len() ==>
                     self.slice[i] == self.proph.pred().slice[i + self.index@]
                     && final(self.slice)[i] == final(self.proph.pred().slice)[i + self.index@]
+                    && !self.proph.has_resolved_back((i + self.index@) as nat)
             )
     }
 }
@@ -244,13 +280,97 @@ impl<'a, T> SliceIterMut<'a, T> {
 impl<'a, T> Iterator for SliceIterMut<'a, T> {
     type Item = &'a mut T;
 
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.slice.len();
+        (len, Some(len))
+    }
+
     fn next(&mut self) -> Option<Self::Item> {
         proof { use_type_invariant(&*self); }
         Self::next_inner(&mut self.slice, Tracked(&mut self.proph), Tracked(&mut self.index))
     }
 }
 
+impl<'a, T> DoubleEndedIterator for SliceIterMut<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        proof { use_type_invariant(&*self); }
+        Self::next_back_inner(&mut self.slice, Tracked(&mut self.proph), Tracked(&mut self.index))
+    }
+}
+
+impl<'a, T> vstd::std_specs::iter::DoubleEndedIteratorSpecImpl for SliceIterMut<'a, T> {
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        None
+    }
+}
+
+impl<'a, T> ExactSizeIterator for SliceIterMut<'a, T> {
+    fn len(&self) -> usize {
+        self.slice.len()
+    }
+}
+
+impl<'a, T> vstd::std_specs::iter::ExactSizeIteratorSpecImpl for SliceIterMut<'a, T> {
+    closed spec fn exact_len(&self) -> usize {
+        self.slice.len()
+    }
+}
+
 impl<'a, T> SliceIterMut<'a, T> {
+    fn next_back_inner(
+        slice: &mut &'a mut [T],
+        Tracked(proph): Tracked<&mut Tracked<ProphecyGhostConstrainedSeq<&'a mut T, SliceIterMutPred<'a, T>>>>,
+        Tracked(index): Tracked<&mut Ghost<int>>,
+    ) -> (out: Option<&'a mut T>)
+        requires SliceIterMut::slice_iter_mut_wf(SliceIterMut { slice: *slice, proph: *proph, index: *index })
+        ensures SliceIterMut::slice_iter_mut_wf(SliceIterMut { slice: *final(slice), proph: *final(proph), index: *final(index) }),
+            old(*old(slice)).len() == 0 ==> old(*final(slice)).len() == 0 && out.is_none(),
+            old(*old(slice)).len() > 0 ==> old(*final(slice)).len() + 1 == old(*old(slice)).len(),
+            old(*old(slice)).len() > 0 ==>
+                Self::remaining_inner(&SliceIterMut { slice: *final(slice), proph: *final(proph), index: *final(index) }) =~=
+                Self::remaining_inner(&SliceIterMut { slice: *old(slice), proph: *old(proph), index: *old(index) }).drop_last(),
+            old(*old(slice)).len() > 0 ==>
+                out == Some(Self::remaining_inner(&SliceIterMut { slice: *old(slice), proph: *old(proph), index: *old(index) }).last())
+        no_unwind
+    {
+        let ghost initial = SliceIterMut { slice: *slice, proph: *proph, index: *index };
+        let mut s: &mut [T] = &mut [];
+        std::mem::swap(slice, &mut s);
+        let len = s.len();
+        if len == 0 {
+            None
+        } else {
+            let (rest, tail) = s.split_at_mut(len - 1);
+            proof { vstd::slice::mut_ref_slice_len_eq(&rest); }
+            match tail.split_first_mut() {
+                None => {
+                    assert(false);
+                    None
+                },
+                Some((last, empty)) => {
+                    *slice = rest;
+                    let out = Some(last);
+                    proof {
+                        assert(final(empty)@ =~= seq![]);
+                        assert(*out->Some_0 == initial.slice[len - 1]);
+                        assert(*final(out->Some_0) == final(initial.slice)[len - 1]);
+                        proph.resolve_back((**index + len - 1) as nat, out->Some_0);
+                        assert(initial.remaining_inner().last() == out->Some_0);
+                        assert forall |i| #![all_triggers] 0 <= i < (*slice).len() implies
+                            (*slice)[i] == proph.pred().slice[i + **index]
+                            && final(*slice)[i] == final(proph.pred().slice)[i + **index]
+                            && !proph.has_resolved_back((i + **index) as nat) by {
+                            assert(final(initial.slice)[i] == final(*slice)[i]);
+                        }
+                        assert(SliceIterMut::slice_iter_mut_wf(
+                            SliceIterMut { slice: *slice, proph: *proph, index: *index }));
+                    }
+                    out
+                },
+            }
+        }
+    }
+
     fn next_inner(
         slice: &mut &'a mut [T],
         Tracked(proph): Tracked<&mut Tracked<ProphecyGhostConstrainedSeq<&'a mut T, SliceIterMutPred<'a, T>>>>,
@@ -313,6 +433,34 @@ impl<'a, T> vstd::std_specs::iter::IteratorSpecImpl for SliceIterMut<'a, T> {
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         None
     }
+}
+
+fn slice_iter_mut_from_both_ends() {
+    let mut values = vec![1u32, 2, 3, 4];
+    {
+        let mut iter = SliceIterMut::new(values.as_mut_slice());
+        let len = iter.len();
+        assert(len == 4);
+        let last = iter.next_back().unwrap();
+        *last = 40;
+        let len = iter.len();
+        assert(len == 3);
+        let first = iter.next().unwrap();
+        *first = 10;
+        let len = iter.len();
+        assert(len == 2);
+        let last = iter.next_back().unwrap();
+        *last = 30;
+        let first = iter.next().unwrap();
+        *first = 20;
+        let len = iter.len();
+        assert(len == 0);
+        let back = iter.next_back();
+        assert(back is None);
+        let front = iter.next();
+        assert(front is None);
+    }
+    assert(values@ == seq![10u32, 20, 30, 40]);
 }
 
 } // verus!

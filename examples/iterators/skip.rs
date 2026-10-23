@@ -1,5 +1,5 @@
 use vstd::prelude::*;
-use vstd::std_specs::iter::IteratorSpec;
+use vstd::std_specs::iter::{IteratorSpec, DoubleEndedIteratorSpec, ExactSizeIteratorSpec};
 
 verus! {
 
@@ -37,6 +37,15 @@ impl<I: IteratorSpec> MySkip<I> {
 
 impl<I: Iterator> Iterator for MySkip<I> {
     type Item = <I as Iterator>::Item;
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (lower, upper) = self.iter.size_hint();
+        let upper = match upper {
+            Some(n) => Some(n.saturating_sub(self.n)),
+            None => None,
+        };
+        (lower.saturating_sub(self.n), upper)
+    }
 
     fn next(&mut self) -> Option<<I as Iterator>::Item> {
         let ghost snap = self.iter;
@@ -96,6 +105,40 @@ impl<I: Iterator> vstd::std_specs::iter::IteratorSpecImpl for MySkip<I> {
     }
 }
 
+impl<I: DoubleEndedIterator + ExactSizeIterator> DoubleEndedIterator for MySkip<I> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.iter.len() > self.n {
+            self.iter.next_back()
+        } else {
+            None
+        }
+    }
+}
+
+impl<I: DoubleEndedIterator + ExactSizeIterator>
+    vstd::std_specs::iter::DoubleEndedIteratorSpecImpl for MySkip<I>
+{
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        self.iter().peek_back(index)
+    }
+}
+
+impl<I: ExactSizeIterator> ExactSizeIterator for MySkip<I> {
+    fn len(&self) -> usize {
+        self.iter.len().saturating_sub(self.n)
+    }
+}
+
+impl<I: ExactSizeIterator> vstd::std_specs::iter::ExactSizeIteratorSpecImpl for MySkip<I> {
+    closed spec fn exact_len(&self) -> usize {
+        if self.iter.exact_len() > self.n {
+            (self.iter.exact_len() - self.n) as usize
+        } else {
+            0
+        }
+    }
+}
+
 fn skip_works() {
     let v: Vec<u32> = vec![1, 2, 3, 4];
     let w: Vec<u32> = MySkip::new(v.into_iter(), 2).collect();
@@ -122,6 +165,45 @@ fn skip_works() {
     {
         assert(x == it.index() + 2);
     }
+}
+
+fn skip_from_both_ends() {
+    let input = vec![1u32, 2, 3, 4, 5];
+    let mut iter = MySkip::new(input.into_iter(), 2);
+    let len = iter.len();
+    assert(len == 3);
+    let back = iter.next_back();
+    assert(back == Some(5));
+    let len = iter.len();
+    assert(len == 2);
+    let front = iter.next();
+    assert(front == Some(3));
+    let len = iter.len();
+    assert(len == 1);
+    let back = iter.next_back();
+    assert(back == Some(4));
+    let len = iter.len();
+    assert(len == 0);
+    let back = iter.next_back();
+    assert(back == None);
+    let front = iter.next();
+    assert(front == None);
+
+    let mut all_skipped = MySkip::new(vec![1u32, 2].into_iter(), 2);
+    let len = all_skipped.len();
+    assert(len == 0);
+    let back = all_skipped.next_back();
+    assert(back == None);
+    let front = all_skipped.next();
+    assert(front == None);
+
+    let mut short = MySkip::new(vec![1u32, 2].into_iter(), 5);
+    let len = short.len();
+    assert(len == 0);
+    let back = short.next_back();
+    assert(back == None);
+    let front = short.next();
+    assert(front == None);
 }
 
 }

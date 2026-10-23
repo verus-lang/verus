@@ -335,6 +335,14 @@ pub trait ExIterator {
         ensures
             self.obeys_prophetic_iter_laws() ==> rev_post(self, r),
     ;
+    
+    fn size_hint(&self) -> ((lower, upper): (usize, Option<usize>))
+        ensures
+            self.obeys_prophetic_iter_laws() ==>
+                lower <= self.remaining().len() && (upper matches Some(b) ==> self.remaining().len() <= b),
+        default_ensures
+            (lower, upper) == (0usize, None),
+    ;
 
     fn skip(self, n: usize) -> (s: Skip<Self>)
         where Self: Sized,
@@ -415,7 +423,8 @@ pub trait ExExactSizeIterator: Iterator {
 
     fn len(&self) -> (len: usize)
         ensures
-            self.obeys_prophetic_iter_laws() ==> len == self.exact_len() == self.remaining().len();
+            self.obeys_prophetic_iter_laws() ==> len == self.exact_len() == self.remaining().len() == self.produces().len(),
+    ; 
 }
 
 /********************************************************************************

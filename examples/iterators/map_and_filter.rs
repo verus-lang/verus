@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use vstd::prelude::*;
-use vstd::std_specs::iter::IteratorSpec;
+use vstd::std_specs::iter::{IteratorSpec, DoubleEndedIteratorSpec, ExactSizeIteratorSpec};
 use vstd::proph::ProphecyGhost;
 
 verus! {
@@ -12,14 +12,19 @@ verus! {
 pub trait Predicate<T> {
     #[verifier::prophetic]
     spec fn pred(&self, i: int, t: T) -> bool;
+
+    #[verifier::prophetic]
+    spec fn len(&self) -> nat;
 }
 
 #[verifier::accept_recursive_types(T)]
 pub tracked struct ProphSeq<T, Pred> {
-    // A single prophecy for the prophesied value at every index.
-    tracked var: ProphecyGhost<spec_fn(int) -> T>,
+    // Prophesy each coordinate for every possible original length. This lets
+    // rear resolutions use a nonprophetic distance from the back.
+    tracked var: ProphecyGhost<spec_fn(nat, int) -> T>,
     // The values of indices that have already been resolved.
     ghost resolved: Map<int, T>,
+    ghost resolved_back: Map<int, T>,
     // The predicate this sequence is constrained by.
     ghost p: Pred,
 }
@@ -35,8 +40,10 @@ impl<T, Pred> ProphSeq<T, Pred>
     pub closed spec fn proph_elem(&self, i: int) -> Option<T> {
         let v = if self.resolved.dom().contains(i) {
             self.resolved[i]
+        } else if self.resolved_back.dom().contains(self.p.len() - 1 - i) {
+            self.resolved_back[self.p.len() - 1 - i]
         } else {
-            self.var.value()(i)
+            self.var.value()(self.p.len(), i)
         };
         if self.p.pred(i, v) {
             Some(v)
@@ -45,8 +52,10 @@ impl<T, Pred> ProphSeq<T, Pred>
         }
     }
 
+    #[verifier::prophetic]
     pub closed spec fn has_resolved(&self, i: int) -> bool {
         self.resolved.dom().contains(i)
+            || self.resolved_back.dom().contains(self.p.len() - 1 - i)
     }
 
     pub proof fn new(pred: Pred) -> (tracked s: Self)
@@ -55,7 +64,7 @@ impl<T, Pred> ProphSeq<T, Pred>
             forall |i| !s.has_resolved(i),
     {
         let tracked var = ProphecyGhost::new();
-        ProphSeq { var, resolved: Map::empty(), p: pred }
+        ProphSeq { var, resolved: Map::empty(), resolved_back: Map::empty(), p: pred }
     }
 
     pub proof fn proph_elem_meets_pred(tracked &self)
@@ -84,16 +93,40 @@ impl<T, Pred> ProphSeq<T, Pred>
         vstd::modes::tracked_swap(&mut var, &mut self.var);
         var.resolve_dependent(
             &self.var,
-            |g: spec_fn(int) -> T| (|j: int| if j == i { t } else { g(j) }),
+            |g: spec_fn(nat, int) -> T|
+                (|n: nat, j: int| if j == i { t } else { g(n, j) }),
         );
         self.resolved = self.resolved.insert(i, t);
 
         assert forall |j| #[trigger] final(self).proph_elem(j) == old(self).proph_elem(j) by {
             if j != i && !old(self).resolved.dom().contains(j) {
                 // Unresolved (other) coordinate: old and fresh prophecy agree.
-                assert(old(self).var.value()(j) == final(self).var.value()(j));
+                assert(old(self).var.value()(old(self).p.len(), j)
+                    == final(self).var.value()(final(self).p.len(), j));
             }
         }
+    }
+
+    pub proof fn resolve_back(tracked &mut self, back: int, t: T)
+        requires
+            !old(self).has_resolved(old(self).pred().len() - 1 - back),
+            old(self).pred().pred(old(self).pred().len() - 1 - back, t),
+        ensures
+            final(self).pred() == old(self).pred(),
+            forall |j| final(self).proph_elem(j) == old(self).proph_elem(j),
+            forall |j| j != old(self).pred().len() - 1 - back ==>
+                final(self).has_resolved(j) == old(self).has_resolved(j),
+            final(self).has_resolved(old(self).pred().len() - 1 - back),
+            final(self).proph_elem(old(self).pred().len() - 1 - back) == Some(t),
+    {
+        let tracked mut var = ProphecyGhost::new();
+        vstd::modes::tracked_swap(&mut var, &mut self.var);
+        var.resolve_dependent(
+            &self.var,
+            |g: spec_fn(nat, int) -> T|
+                (|n: nat, j: int| if j == n - 1 - back { t } else { g(n, j) }),
+        );
+        self.resolved_back = self.resolved_back.insert(back, t);
     }
 }
 
@@ -114,6 +147,11 @@ impl<Item, Iter: Iterator, F: FnMut(Iter::Item) -> Item> Predicate<Item> for Map
     closed spec fn pred(&self, i: int, t: Item) -> bool {
         self.iter.produces()[i] && call_ensures(self.f, (self.iter.remaining()[i],), t)
     }
+
+    #[verifier::prophetic]
+    closed spec fn len(&self) -> nat {
+        self.iter.remaining().len()
+    }
 }
 
 #[verifier::reject_recursive_types(Item)]
@@ -122,6 +160,7 @@ struct MapIteratorState<Item, Iter: Iterator, F: FnMut(Iter::Item) -> Item> {
     iter: Iter,
     prophs: Tracked<ProphSeq<Item, MapIteratorPred<Iter, F>>>,
     idx: Ghost<int>,
+    back: Ghost<int>,
 }
 
 impl<Item, Iter: Iterator, F: FnMut(Iter::Item) -> Item> MapIteratorState<Item, Iter, F> {
@@ -132,8 +171,9 @@ impl<Item, Iter: Iterator, F: FnMut(Iter::Item) -> Item> MapIteratorState<Item, 
         &&& self.prophs@.pred().f == self.f
         &&& if self.iter.obeys_prophetic_iter_laws() {
             &&& 0 <= self.idx@
-            &&& self.idx@ + self.iter.remaining().len()
-                <= self.prophs@.pred().iter.remaining().len()
+            &&& 0 <= self.back@
+            &&& self.idx@ + self.iter.remaining().len() + self.back@
+                == self.prophs@.pred().iter.remaining().len()
             &&& self.iter.remaining() == self.prophs@.pred().iter.remaining()[self.idx@..self.idx@
                 + self.iter.remaining().len()]
             &&& forall|i: int|
@@ -225,6 +265,55 @@ impl<Item, Iter: Iterator, F: FnMut(Iter::Item) -> Item> MapIteratorState<Item, 
     }
 }
 
+impl<Item, Iter: DoubleEndedIterator, F: FnMut(Iter::Item) -> Item>
+    MapIteratorState<Item, Iter, F>
+{
+    fn next_back(mut self) -> (out: (Self, Option<Item>))
+        requires
+            self.wf(),
+        ensures
+            out.0.wf(),
+            out.0.iter.obeys_prophetic_iter_laws() == self.iter.obeys_prophetic_iter_laws(),
+            self.iter.obeys_prophetic_iter_laws() ==> out.0.iter.decrease() is Some
+                == self.iter.decrease() is Some,
+            self.iter.obeys_prophetic_iter_laws() && self.remaining().len() > 0 ==> {
+                &&& out.0.remaining() == self.remaining().drop_last()
+                &&& out.0.produces() == self.produces().drop_last()
+                &&& out.1 == Some(self.remaining().last())
+                &&& self.produces().last()
+                &&& out.0.iter.decrease() is Some
+                    ==> self.iter.decrease()->0 > out.0.iter.decrease()->0
+            },
+            self.iter.obeys_prophetic_iter_laws() && self.remaining().len() == 0 ==> {
+                &&& out.0.remaining() == self.remaining()
+                &&& out.0.produces() == self.produces()
+                &&& out.1 == None
+            },
+    {
+        let ghost initial = self;
+        match self.iter.next_back() {
+            None => (self, None),
+            Some(elem) => {
+                let output = (self.f)(elem);
+                proof {
+                    if initial.iter.obeys_prophetic_iter_laws() {
+                        self.prophs.borrow_mut().resolve_back(self.back@, output);
+                        self.back@ = self.back@ + 1;
+                        assert(self.options() =~= initial.options().drop_last());
+                        assert(self.remaining() =~= initial.remaining().drop_last());
+                        assert(self.produces() =~= initial.produces().drop_last());
+                        assert(self.iter.remaining()
+                            =~= self.prophs@.pred().iter.remaining()[self.idx@..self.idx@
+                            + self.iter.remaining().len()]);
+                        assert(self.wf());
+                    }
+                }
+                (self, Some(output))
+            },
+        }
+    }
+}
+
 // Take the state out before calling the iterator or closure: either may unwind.
 // The empty wrapper satisfies its invariant while the local state is being changed.
 #[verifier::reject_recursive_types(Item)]
@@ -284,6 +373,7 @@ impl<Item, Iter: Iterator, F: FnMut(Iter::Item) -> Item> MapIterator<Item, Iter,
             iter,
             prophs: Tracked(ProphSeq::new(MapIteratorPred { iter, f })),
             idx: Ghost(0),
+            back: Ghost(0),
         };
         proof {
             assert(iter.remaining()[0..iter.remaining().len()] =~= iter.remaining());
@@ -295,6 +385,13 @@ impl<Item, Iter: Iterator, F: FnMut(Iter::Item) -> Item> MapIterator<Item, Iter,
 
 impl<Item, Iter: Iterator, F: FnMut(Iter::Item) -> Item> Iterator for MapIterator<Item, Iter, F> {
     type Item = Item;
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match &self.state {
+            None => (0, Some(0)),
+            Some(state) => state.iter.size_hint(),
+        }
+    }
 
     fn next(&mut self) -> (ret: Option<Item>) {
         proof {
@@ -350,6 +447,55 @@ impl<
         match self.inner().peek(index) {
             Some(v) => Some(choose|x| self.func().ensures((v,), x)),
             None => None,
+        }
+    }
+}
+
+impl<Item, Iter: DoubleEndedIterator, F: FnMut(Iter::Item) -> Item> DoubleEndedIterator
+    for MapIterator<Item, Iter, F>
+{
+    fn next_back(&mut self) -> Option<Item> {
+        proof { use_type_invariant(&*self); }
+        match self.state.take() {
+            None => None,
+            Some(state) => {
+                let (state, ret) = state.next_back();
+                self.state = Some(state);
+                ret
+            },
+        }
+    }
+}
+
+impl<Item, Iter: DoubleEndedIterator, F: FnMut(Iter::Item) -> Item>
+    vstd::std_specs::iter::DoubleEndedIteratorSpecImpl for MapIterator<Item, Iter, F>
+{
+    open spec fn peek_back(&self, index: int) -> Option<Item> {
+        match self.inner().peek_back(index) {
+            Some(v) => Some(choose|x| self.func().ensures((v,), x)),
+            None => None,
+        }
+    }
+}
+
+impl<Item, Iter: ExactSizeIterator, F: FnMut(Iter::Item) -> Item> ExactSizeIterator
+    for MapIterator<Item, Iter, F>
+{
+    fn len(&self) -> usize {
+        match &self.state {
+            None => 0,
+            Some(state) => state.iter.len(),
+        }
+    }
+}
+
+impl<Item, Iter: ExactSizeIterator, F: FnMut(Iter::Item) -> Item>
+    vstd::std_specs::iter::ExactSizeIteratorSpecImpl for MapIterator<Item, Iter, F>
+{
+    closed spec fn exact_len(&self) -> usize {
+        match self.state {
+            None => 0,
+            Some(state) => state.iter.exact_len(),
         }
     }
 }
@@ -446,6 +592,11 @@ impl<Iter: Iterator, F: FnMut(&Iter::Item) -> bool> Predicate<bool> for FilterIt
     closed spec fn pred(&self, i: int, b: bool) -> bool {
         self.iter.produces()[i] && call_ensures(self.f, (&self.iter.remaining()[i],), b)
     }
+
+    #[verifier::prophetic]
+    closed spec fn len(&self) -> nat {
+        self.iter.remaining().len()
+    }
 }
 
 struct FilterIteratorState<Iter: Iterator, F: FnMut(&Iter::Item) -> bool> {
@@ -453,6 +604,7 @@ struct FilterIteratorState<Iter: Iterator, F: FnMut(&Iter::Item) -> bool> {
     iter: Iter,
     prophs: Tracked<ProphSeq<bool, FilterIteratorPred<Iter, F>>>,
     idx: Ghost<int>,
+    back: Ghost<int>,
 }
 
 impl<Iter: Iterator, F: FnMut(&Iter::Item) -> bool> FilterIteratorState<Iter, F> {
@@ -463,8 +615,9 @@ impl<Iter: Iterator, F: FnMut(&Iter::Item) -> bool> FilterIteratorState<Iter, F>
         &&& self.prophs@.pred().f == self.f
         &&& if self.iter.obeys_prophetic_iter_laws() {
             &&& 0 <= self.idx@
-            &&& self.idx@ + self.iter.remaining().len()
-                <= self.prophs@.pred().iter.remaining().len()
+            &&& 0 <= self.back@
+            &&& self.idx@ + self.iter.remaining().len() + self.back@
+                == self.prophs@.pred().iter.remaining().len()
             &&& self.iter.remaining() == self.prophs@.pred().iter.remaining()[self.idx@..self.idx@
                 + self.iter.remaining().len()]
             &&& forall|i: int|
@@ -602,6 +755,109 @@ impl<Iter: Iterator, F: FnMut(&Iter::Item) -> bool> FilterIteratorState<Iter, F>
             }
         }
     }
+}
+
+impl<Iter: DoubleEndedIterator, F: FnMut(&Iter::Item) -> bool> FilterIteratorState<Iter, F> {
+    #[verifier::exec_allows_no_decreases_clause]
+    fn next_back(self) -> (out: (Self, Option<Iter::Item>))
+        requires
+            self.wf(),
+        ensures
+            out.0.wf(),
+            self.produces().len() == self.remaining().len(),
+            out.0.iter.obeys_prophetic_iter_laws() == self.iter.obeys_prophetic_iter_laws(),
+            self.iter.obeys_prophetic_iter_laws() ==> out.0.iter.decrease() is Some,
+            self.iter.obeys_prophetic_iter_laws() && self.remaining().len() > 0 ==> {
+                &&& out.0.remaining() == self.remaining().drop_last()
+                &&& out.0.produces() == self.produces().drop_last()
+                &&& out.1 == Some(self.remaining().last())
+                &&& self.produces().last()
+                &&& self.iter.decrease()->0 > out.0.iter.decrease()->0
+            },
+            self.iter.obeys_prophetic_iter_laws() && self.remaining().len() == 0 ==> {
+                &&& out.0.remaining() == self.remaining()
+                &&& out.0.produces() == self.produces()
+                &&& out.1 == None
+            },
+    {
+        let mut state = self;
+        let ghost initial = self;
+        proof {
+            lemma_filter_index_length(
+                state.iter.remaining(),
+                state.inner_produces(),
+                state.keep_pred(),
+            );
+        }
+        loop
+            invariant
+                state.wf(),
+                initial.wf(),
+                initial == self,
+                state.iter.obeys_prophetic_iter_laws() == initial.iter.obeys_prophetic_iter_laws(),
+                initial.iter.obeys_prophetic_iter_laws() ==> state.iter.decrease()->0
+                    <= initial.iter.decrease()->0,
+                initial.iter.obeys_prophetic_iter_laws() ==> state.remaining()
+                    == initial.remaining(),
+                initial.iter.obeys_prophetic_iter_laws() ==> state.produces() == initial.produces(),
+                initial.produces().len() == initial.remaining().len(),
+        {
+            let ghost head = state;
+            match state.iter.next_back() {
+                None => {
+                    proof { reveal(Seq::filter_index); }
+                    return (state, None);
+                },
+                Some(item) => {
+                    let keep = (state.f)(&item);
+                    proof {
+                        if initial.iter.obeys_prophetic_iter_laws() {
+                            state.prophs.borrow_mut().resolve_back(state.back@, keep);
+                            state.back@ = state.back@ + 1;
+                            assert(state.options() =~= head.options().drop_last());
+                            assert(state.keep() =~= head.keep().drop_last());
+                            assert(state.inner_produces() =~= head.inner_produces().drop_last());
+                            assert(state.iter.remaining()
+                                =~= state.prophs@.pred().iter.remaining()[state.idx@..state.idx@
+                                + state.iter.remaining().len()]);
+                            lemma_filter_back_step(head, state, keep);
+                        }
+                    }
+                    if keep {
+                        assert(initial.iter.obeys_prophetic_iter_laws() ==> state.remaining()
+                            =~= initial.remaining().drop_last());
+                        assert(initial.iter.obeys_prophetic_iter_laws() ==> state.produces()
+                            =~= initial.produces().drop_last());
+                        return (state, Some(item));
+                    }
+                },
+            }
+        }
+    }
+}
+
+proof fn lemma_filter_back_step<Iter: Iterator, F: FnMut(&Iter::Item) -> bool>(
+    head: FilterIteratorState<Iter, F>,
+    tail: FilterIteratorState<Iter, F>,
+    b: bool,
+)
+    requires
+        head.iter.remaining().len() > 0,
+        head.iter.produces().len() == head.iter.remaining().len(),
+        head.options().last() == Some(b),
+        head.iter.produces().last(),
+        tail.iter.remaining() == head.iter.remaining().drop_last(),
+        tail.keep() == head.keep().drop_last(),
+        tail.inner_produces() == head.inner_produces().drop_last(),
+    ensures
+        b ==> head.remaining() == tail.remaining() + seq![head.iter.remaining().last()],
+        !b ==> head.remaining() == tail.remaining(),
+        b ==> head.produces() == tail.produces() + seq![true],
+        !b ==> head.produces() == tail.produces(),
+{
+    reveal(Seq::filter_index);
+    head.iter.remaining().drop_last().filter_index_ext(head.keep_pred(), tail.keep_pred());
+    head.inner_produces().drop_last().filter_index_ext(head.keep_pred(), tail.keep_pred());
 }
 
 proof fn lemma_filter_step<Iter: Iterator, F: FnMut(&Iter::Item) -> bool>(
@@ -849,6 +1105,7 @@ impl<Iter: Iterator, F: FnMut(&Iter::Item) -> bool> FilterIterator<Iter, F> {
             iter,
             prophs: Tracked(ProphSeq::new(FilterIteratorPred { iter, f })),
             idx: Ghost(0),
+            back: Ghost(0),
         };
         proof {
             assert(iter.remaining()[0..iter.remaining().len()] =~= iter.remaining());
@@ -929,6 +1186,93 @@ impl<
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         None
     }
+}
+
+impl<Iter: DoubleEndedIterator, F: FnMut(&Iter::Item) -> bool> DoubleEndedIterator
+    for FilterIterator<Iter, F>
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        proof { use_type_invariant(&*self); }
+        match self.state.take() {
+            None => None,
+            Some(state) => {
+                let (state, ret) = state.next_back();
+                self.state = Some(state);
+                ret
+            },
+        }
+    }
+}
+
+impl<Iter: DoubleEndedIterator, F: FnMut(&Iter::Item) -> bool>
+    vstd::std_specs::iter::DoubleEndedIteratorSpecImpl for FilterIterator<Iter, F>
+{
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        None
+    }
+}
+
+fn map_from_both_ends() {
+    let input = vec![1u32, 2, 3, 4];
+    let mut iter = MapIterator::new(
+        input.into_iter(),
+        |x: u32| -> (out: u32)
+            requires x < 10,
+            ensures out == x + 10,
+        { x + 10 },
+    );
+    let len = iter.len();
+    assert(len == 4);
+    let back = iter.next_back();
+    assert(back == Some(14));
+    let len = iter.len();
+    assert(len == 3);
+    let front = iter.next();
+    assert(front == Some(11));
+    let len = iter.len();
+    assert(len == 2);
+    let back = iter.next_back();
+    assert(back == Some(13));
+    let front = iter.next();
+    assert(front == Some(12));
+    let len = iter.len();
+    assert(len == 0);
+    let back = iter.next_back();
+    assert(back == None);
+    let front = iter.next();
+    assert(front == None);
+}
+
+fn filter_from_both_ends() {
+    let input = vec![1u32, 2];
+    let mut iter = FilterIterator::new(
+        input.into_iter(),
+        |x: &u32| -> (keep: bool)
+            ensures keep == (*x % 2 == 0),
+        { *x % 2 == 0 },
+    );
+    let back = iter.next_back();
+    assert(back == Some(2)) by { reveal_with_fuel(Seq::filter_index, 3); }
+    let front = iter.next();
+    assert(front == None) by { reveal_with_fuel(Seq::filter_index, 3); }
+    let back = iter.next_back();
+    assert(back == None);
+}
+
+fn filter_rejects_from_back() {
+    let input = vec![2u32, 3];
+    let mut iter = FilterIterator::new(
+        input.into_iter(),
+        |x: &u32| -> (keep: bool)
+            ensures keep == (*x % 2 == 0),
+        { *x % 2 == 0 },
+    );
+    let front = iter.next();
+    assert(front == Some(2)) by { reveal_with_fuel(Seq::filter_index, 3); }
+    let back = iter.next_back();
+    assert(back == None) by { reveal_with_fuel(Seq::filter_index, 3); }
+    let front = iter.next();
+    assert(front == None);
 }
 
 } // verus!
