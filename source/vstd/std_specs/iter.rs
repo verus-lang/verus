@@ -124,7 +124,7 @@ pub trait ExIterator {
             final(self).obeys_prophetic_iter_laws() ==> {
                 let num_consumed = old(self).remaining().len() - final(self).remaining().len();
                 &&& final(self).remaining().is_suffix_of(old(self).remaining())
-                &&& final(self).produces() == old(self).produces().skip(num_consumed),
+                &&& final(self).produces() == old(self).produces().skip(num_consumed)
                 &&& old(self).produces().take(num_consumed).all(|p: bool| p)
             },
             // If all returns true, then the iterator has no remaining elements,
@@ -159,7 +159,7 @@ pub trait ExIterator {
             final(self).obeys_prophetic_iter_laws() ==> {
                 let num_consumed = old(self).remaining().len() - final(self).remaining().len();
                 &&& final(self).remaining().is_suffix_of(old(self).remaining())
-                &&& final(self).produces() == old(self).produces().skip(num_consumed),
+                &&& final(self).produces() == old(self).produces().skip(num_consumed)
                 &&& old(self).produces().take(num_consumed).all(|p: bool| p)
             },
             // If any returns false, then the iterator has no remaining elements,
@@ -256,7 +256,7 @@ pub trait ExIterator {
             final(self).obeys_prophetic_iter_laws() ==> {
                 let num_consumed = old(self).remaining().len() - final(self).remaining().len();
                 &&& final(self).remaining().is_suffix_of(old(self).remaining())
-                &&& final(self).produces() == old(self).produces().skip(num_consumed),
+                &&& final(self).produces() == old(self).produces().skip(num_consumed)
                 &&& old(self).produces().take(num_consumed).all(|p: bool| p)
             },
             // If find_map returns None, then the iterator has no remaining
@@ -306,7 +306,7 @@ pub trait ExIterator {
             final(self).obeys_prophetic_iter_laws() ==> {
                 let num_consumed = old(self).remaining().len() - final(self).remaining().len();
                 &&& final(self).remaining().is_suffix_of(old(self).remaining())
-                &&& final(self).produces() == old(self).produces().skip(num_consumed),
+                &&& final(self).produces() == old(self).produces().skip(num_consumed)
                 &&& old(self).produces().take(num_consumed).all(|p: bool| p)
             },
             // If position returns None, then the iterator has no remaining
