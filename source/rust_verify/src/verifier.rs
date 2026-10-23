@@ -2701,6 +2701,7 @@ impl Verifier {
             .map_err(map_errs_diagnostics)?;
         if !self.args.no_lifetime {
             crate::erase::check_verus_aware_ids(
+                tcx,
                 self.air_no_span.as_ref().unwrap(),
                 verus_aware_ids.unwrap(),
                 &pre_crate.def_id_to_fun_name_for_erasure,

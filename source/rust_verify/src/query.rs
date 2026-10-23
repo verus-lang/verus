@@ -30,7 +30,7 @@ pub(crate) struct PreCrate<'tcx> {
     pub krate_without_funs: Krate,
     pub infos: Vec<Arc<FunctionOrConstInfo<'tcx>>>,
     pub fun_name_to_info: HashMap<Fun, Arc<FunctionOrConstInfo<'tcx>>>,
-    pub def_id_to_fun_name_for_erasure: HashMap<DefId, Fun>,
+    pub def_id_to_fun_name_for_erasure: HashMap<DefId, Option<Fun>>,
 }
 
 /// Used to guarantee that we emitted an error
@@ -573,16 +573,21 @@ impl<'tcx> Query<'tcx> {
     pub fn get_erasure_modes_for_def_id(
         &self,
         def_id: DefId,
-    ) -> Res<(Arc<ErasureInfo>, Arc<ErasureModes>)> {
+    ) -> Res<Option<(Arc<ErasureInfo>, Arc<ErasureModes>)>> {
         let pre_crate = self.get_pre_crate()?;
         let fun = pre_crate.def_id_to_fun_name_for_erasure.get(&def_id);
         let Some(fun) = fun else {
             panic!("get_erasure_modes_for_def_id: missing DefId {:?}", def_id);
         };
 
-        let (_, erasure_modes, _, _) = self.get_checked_function(fun)?;
-        let erasure_info = self.get_erasure_info(fun)?;
-        Ok((erasure_info.clone(), erasure_modes.clone()))
+        match fun {
+            Some(fun) => {
+                let (_, erasure_modes, _, _) = self.get_checked_function(fun)?;
+                let erasure_info = self.get_erasure_info(fun)?;
+                Ok(Some((erasure_info.clone(), erasure_modes.clone())))
+            }
+            None => Ok(None),
+        }
     }
 }
 
