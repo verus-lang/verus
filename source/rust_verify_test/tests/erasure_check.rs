@@ -383,3 +383,69 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_erasure_diff(err, "captures by value x: X in the verified program only", "|| {")
 }
+
+test_verify_one_file_with_options! {
+    // The expansion of `m!()` differs between the two runs. Each literal is at a location that the
+    // other program has no node at; keyed by the macro call and their position in the expansion,
+    // the two literals are compared.
+    #[test] macro_expansion_differs ["-V check-erasure"] => code! {
+        use vstd::prelude::*;
+        macro_rules! m {
+            () => {{
+                #[cfg(verus_keep_ghost_body)]
+                { 0 }
+                #[cfg(not(verus_keep_ghost_body))]
+                { 42 }
+            }};
+        }
+        verus! {
+        fn get() -> (r: u8)
+            ensures r == 0,
+        {
+            m!()
+        }
+        }
+    } => Err(err) => assert_erasure_diff(err, "literal Int(Pu128(42), Unsuffixed) (compiled) vs Int(Pu128(0), Unsuffixed) (verified)", "42")
+}
+
+test_verify_one_file_with_options! {
+    #[test] no_difference_macros ["-V check-erasure"] => code! {
+        use vstd::prelude::*;
+        macro_rules! two { ($e:expr) => { ($e + $e) } }
+        macro_rules! inc { ($x:ident) => { $x = $x + 1; } }
+        verus! {
+        fn f(a: u64) -> u64
+            requires a < 100,
+        {
+            let mut b = a;
+            inc!(b);
+            let v = vec![b, two!(b)];
+            proof { assert(b == a + 1); }
+            v[1]
+        }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    // Expansions that the two runs produce differently by design keep location keys: a macro
+    // that wraps a function in `verus!` (Keep and Erase expand the function differently), and the
+    // message arguments of `panic!`, which VIR does not model.
+    #[test] no_difference_macro_wrapping_verus ["-V check-erasure"] => code! {
+        use vstd::prelude::*;
+        macro_rules! wrap {
+            ($($tt:tt)*) => { verus! { $($tt)* } };
+        }
+        wrap! {
+            fn f(a: u64) -> u64
+                requires a <= 100,
+            {
+                proof { assert(a == a); }
+                if a > 100 {
+                    panic!("too large: {}", a);
+                }
+                a
+            }
+        }
+    } => Ok(())
+}

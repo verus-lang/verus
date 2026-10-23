@@ -268,6 +268,13 @@ struct Walker<'a, 'tcx> {
     exec: bool,
     /// is the current node inside a block that `verus!` marked as ghost (Erase removes it)
     in_ghost_block: bool,
+    /// the macro expansion that the current node is in: the location of the outermost macro
+    /// call, and the number of expressions of the expansion visited so far
+    anchor: Option<(String, u32)>,
+    /// derived key of the current expression (see `macro_anchor`)
+    derived_key: Option<Loc>,
+    /// macro calls whose expansion contains Verus code (see `VerusCodeScan`)
+    rejected_anchors: HashSet<String>,
     /// verify run: is the current node compared as exec code whatever VIR mode checking says
     /// (the initializer of a ghost field in an exec struct expression, or the body of a const or
     /// static, which rustc evaluates in both runs while VIR checks it as spec code)
@@ -319,8 +326,105 @@ impl<'a, 'tcx> Walker<'a, 'tcx> {
                 }
                 Some(key)
             }
-            None => self.user_loc(e.span),
+            None => match self.derived_key.clone() {
+                Some(key) => {
+                    if let Some(l) = self.loc(e.span) {
+                        self.table.display.insert(key.clone(), l);
+                    }
+                    Some(key)
+                }
+                None => self.user_loc(e.span),
+            },
         }
+    }
+
+    /// Is the macro defined by Verus or vstd? With --is-core, vstd is a module of `core`, so
+    /// vstd's macros are also recognized by the file they are defined in.
+    fn is_verus_macro(&self, def: DefId) -> bool {
+        let krate = self.tcx.crate_name(def.krate);
+        if krate.as_str().starts_with("verus_") || krate.as_str() == "vstd" {
+            return true;
+        }
+        let file = self
+            .sm
+            .lookup_char_pos(self.tcx.def_span(def).lo())
+            .file
+            .name
+            .prefer_local_unconditionally()
+            .to_string();
+        file.contains("/vstd/") || file.starts_with("vstd/")
+    }
+
+    /// Does `span` come from an expansion of a Verus or vstd macro (at any depth)?
+    fn from_verus_expansion(&self, span: Span) -> bool {
+        let mut cur = span;
+        while cur.from_expansion() {
+            let data = cur.ctxt().outer_expn_data();
+            if let Some(def) = data.macro_def_id {
+                if self.is_verus_macro(def) {
+                    return true;
+                }
+            }
+            cur = data.call_site;
+        }
+        false
+    }
+
+    /// The outermost call of the macro expansion that `span` comes from, if every macro of the
+    /// expansion is a bang macro outside Verus. Both runs expand the same call with the same
+    /// tokens, so they produce the same expressions in the same order: an expression of the
+    /// expansion is keyed by the call's location and its position in a pre-order traversal of
+    /// the expansion. The macros of Verus and vstd (`open_local_invariant!`, `proof_with!`, ..)
+    /// expand differently in the two runs by design, and keep location keys.
+    fn macro_anchor(&self, span: Span) -> Option<String> {
+        let mut cur = span;
+        let mut outermost = None;
+        while cur.from_expansion() {
+            let data = cur.ctxt().outer_expn_data();
+            match data.kind {
+                rustc_span::hygiene::ExpnKind::Macro(
+                    rustc_span::hygiene::MacroKind::Bang,
+                    name,
+                ) => {
+                    let def = data.macro_def_id?;
+                    if self.is_verus_macro(def) {
+                        return None;
+                    }
+                    let call = self.loc(data.call_site)?;
+                    outermost = Some((
+                        name,
+                        data.call_site,
+                        format!("{name}!@{}:{}-{}", call.file, call.lo, call.hi),
+                    ));
+                    cur = data.call_site;
+                }
+                _ => return None,
+            }
+        }
+        // The outermost call must be written by the user: its source text is `name!(..)`, possibly
+        // with a path. A call that `verus!` emits (Erase's `|| unreachable!()`) has the span of
+        // the user's tokens it replaces, and its text is theirs.
+        let (name, call_site, key) = outermost?;
+        // The call must be inside the body: a macro called at item level that produces the whole
+        // function (`my_macro! { fn f() { .. } }`) usually wraps it in `verus!`, which expands
+        // it differently in the two runs.
+        let body = self.table.body.as_ref()?;
+        let call_loc = self.loc(call_site)?;
+        if call_loc.file != body.file || call_loc.lo < body.lo || call_loc.hi > body.hi {
+            return None;
+        }
+        // The panic family: VIR does not model the message arguments, which the compiled program
+        // evaluates on the panicking path (trusted). These calls keep location keys.
+        if PANIC_FAMILY.contains(&name.as_str()) {
+            return None;
+        }
+        let text = self.sm.span_to_snippet(call_site).ok()?;
+        let before_bang = text.trim_start().split('!').next()?;
+        let last_segment = before_bang.rsplit("::").next()?.trim();
+        if last_segment != name.as_str() {
+            return None;
+        }
+        Some(key)
     }
 
     /// Identity of a loop (break/continue target): node id if it has one, otherwise location
@@ -1078,6 +1182,46 @@ fn skip_outer_attrs(mut s: &str) -> &str {
     }
 }
 
+/// Macros whose message arguments VIR does not model (see `macro_anchor`)
+const PANIC_FAMILY: &[&str] = &[
+    "panic",
+    "unreachable",
+    "todo",
+    "unimplemented",
+    "assert",
+    "assert_eq",
+    "assert_ne",
+    "debug_assert",
+    "debug_assert_eq",
+    "debug_assert_ne",
+];
+
+/// Does a macro expansion contain Verus code: a node with a node id (stamped by a `verus!`
+/// invocation inside the expansion) or a node from an expansion of a Verus or vstd macro?
+struct VerusCodeScan<'w, 'a, 'tcx> {
+    walker: &'w Walker<'a, 'tcx>,
+    found: bool,
+}
+
+impl<'w, 'a, 'tcx> Visitor<'tcx> for VerusCodeScan<'w, 'a, 'tcx> {
+    type NestedFilter = rustc_middle::hir::nested_filter::OnlyBodies;
+
+    fn maybe_tcx(&mut self) -> TyCtxt<'tcx> {
+        self.walker.tcx
+    }
+
+    fn visit_expr(&mut self, e: &'tcx Expr<'tcx>) {
+        if self.found {
+            return;
+        }
+        if self.walker.nid(e.hir_id).is_some() || self.walker.from_verus_expansion(e.span) {
+            self.found = true;
+            return;
+        }
+        intravisit::walk_expr(self, e);
+    }
+}
+
 fn expr_class(e: &Expr<'_>) -> &'static str {
     match &e.kind {
         ExprKind::ConstBlock(..) => "ConstBlock",
@@ -1171,7 +1315,36 @@ impl<'a, 'tcx> Visitor<'tcx> for Walker<'a, 'tcx> {
         if let ExprKind::Loop(..) = &e.kind {
             self.loop_exec.insert(e.hir_id, self.exec);
         }
+        let started_anchor = self.anchor.is_none() && {
+            self.anchor = self
+                .macro_anchor(e.span)
+                .filter(|call| !self.rejected_anchors.contains(call))
+                .filter(|call| {
+                    // A macro that expands to `verus!` code (or calls Verus or vstd macros) is
+                    // expanded differently by Keep and Erase: positions in the expansion do not
+                    // correspond. Its nodes keep location keys.
+                    let mut scan = VerusCodeScan { walker: self, found: false };
+                    scan.visit_expr(e);
+                    let found = scan.found;
+                    if found {
+                        self.rejected_anchors.insert(call.clone());
+                    }
+                    !found
+                })
+                .map(|call| (call, 0));
+            self.anchor.is_some()
+        };
+        self.derived_key = match &mut self.anchor {
+            Some((call, k)) => {
+                let key =
+                    Loc { file: String::new(), lo: 0, hi: 0, via: format!("mac {call} #{k}") };
+                *k += 1;
+                Some(key)
+            }
+            None => None,
+        };
         self.record_expr(e);
+        self.derived_key = None;
         if let ExprKind::Closure(_) = &e.kind {
             let loc = self.loc(e.span);
             self.body_stack.push((loc, self.exec));
@@ -1212,6 +1385,9 @@ impl<'a, 'tcx> Visitor<'tcx> for Walker<'a, 'tcx> {
         }
         self.exec = saved;
         self.in_ghost_block = saved_ghost_block;
+        if started_anchor {
+            self.anchor = None;
+        }
     }
 
     fn visit_pat(&mut self, p: &'tcx Pat<'tcx>) {
@@ -1266,6 +1442,9 @@ fn build_body_table<'tcx>(
         exec_info,
         exec: true,
         in_ghost_block: false,
+        anchor: None,
+        derived_key: None,
+        rejected_anchors: HashSet::new(),
         force_exec: exec_info.is_some() && is_const_body(tcx, def_id),
         body_stack: vec![(Some(body_loc.clone()), true)],
         loop_exec: HashMap::new(),
@@ -1466,7 +1645,7 @@ pub fn diff_tables(verified: &Table, compiled: &Table) -> Vec<Difference> {
             let cg = group(cf);
             let kinds: BTreeSet<&FactKind> = vg.keys().chain(cg.keys()).collect();
             // a node identified by its node id must be in both programs
-            let strict = key.0.via.starts_with("nid ");
+            let strict = key.0.via.starts_with("nid ") || key.0.via.starts_with("mac ");
             for kind in kinds {
                 let vs = vg.get(kind);
                 let cs = cg.get(kind);
@@ -1573,7 +1752,10 @@ pub fn check_compile_run<'tcx>(tcx: TyCtxt<'tcx>, verified: &Table) -> usize {
         dump_table(sm, "compiled", &compiled);
     }
     for d in &diffs {
-        let via = if d.loc.via.is_empty() || d.loc.via.starts_with("nid ") {
+        let via = if d.loc.via.is_empty()
+            || d.loc.via.starts_with("nid ")
+            || d.loc.via.starts_with("mac ")
+        {
             String::new()
         } else {
             format!(" [in the macro expansion {}]", d.loc.via)
