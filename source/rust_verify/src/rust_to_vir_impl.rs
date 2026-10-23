@@ -443,6 +443,8 @@ pub(crate) fn translate_impl<'tcx>(
     let mut errors = vec![];
     for impl_item_id in impll.items {
         if vattrs.external_trait_blanket {
+            let def_id = impl_item_id.hir_id().owner.to_def_id();
+            no_erasure_needed.push(def_id);
             return Ok(());
         }
         let r = translate_impl_item(
