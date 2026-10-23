@@ -8,7 +8,7 @@ For soundness's sake, be as defensive as possible:
 
 use crate::context::{Context, ContextX};
 use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
-use crate::query::PreCrate;
+use crate::query::{PreCrate, QueryError};
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{def_id_to_vir_path_option, mk_visibility};
@@ -516,7 +516,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
     mut ctxtx: ContextX<'tcx>,
     imported: &Vec<Krate>,
     crate_items: &CrateItems,
-) -> Result<PreCrate<'tcx>, Vec<VirErr>> {
+) -> Result<PreCrate<'tcx>, (Vec<VirErr>, Option<QueryError>)> {
     let mut vir: KrateX = KrateX {
         functions: Vec::new(),
         reveal_groups: Vec::new(),
@@ -563,7 +563,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
     }
 
     if errors.len() > 0 {
-        return Err(errors);
+        return Err((errors, None));
     }
 
     let arch_word_bits = ctxtx.arch_word_bits.unwrap_or(vir::ast::ArchWordBits::Either32Or64);
@@ -616,7 +616,9 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
         imported,
         &crate_items,
     )
-    .map_err(|e| vec![e])?;
+    .map_err(|e| (vec![e], None))?;
+
+    let mut rust_error = None;
 
     let mut no_erasure_needed = vec![];
 
@@ -631,6 +633,18 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
                 match crate_item.id {
                     GeneralItemId::ItemId(item_id) => {
                         let item = ctxt.tcx.hir_item(item_id);
+
+                        if matches!(
+                            &item.kind,
+                            ItemKind::Struct(..) | ItemKind::Union(..) | ItemKind::Enum(..)
+                        ) {
+                            if tcx.check_well_formed(item.owner_id.def_id).is_err() {
+                                rust_error =
+                                    Some(crate::query::QueryError { _i_just_emitted_an_error: () });
+                                continue;
+                            }
+                        }
+
                         if let Err(errs) = check_item(
                             &ctxt,
                             &mut state,
@@ -705,8 +719,8 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
         }
     }
 
-    if errors.len() > 0 {
-        return Err(errors);
+    if errors.len() > 0 || rust_error.is_some() {
+        return Err((errors, rust_error));
     }
 
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&CrateId::Vstd);
@@ -721,10 +735,10 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
         &mut state.external_info,
         &function_stubs,
     )
-    .map_err(|e| vec![e])?;
+    .map_err(|e| (vec![e], None))?;
 
     crate::rust_to_vir_adts::setup_type_invariants(&mut vir, &function_stubs)
-        .map_err(|e| vec![e])?;
+        .map_err(|e| (vec![e], None))?;
 
     let mut fun_warn_configs: HashMap<Fun, Option<WarningConfig>> = HashMap::new();
     for krate in imported {

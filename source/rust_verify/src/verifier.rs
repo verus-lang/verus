@@ -2679,6 +2679,8 @@ impl Verifier {
         let map_query_err = |err: QueryError| {
             (vec![], ctxt_diagnostics.borrow_mut().drain(..).collect(), Some(err))
         };
+        let map_errors_query_diagnostics =
+            |(es, err)| (es, ctxt_diagnostics.borrow_mut().drain(..).collect(), err);
 
         let crate_items = crate::external::get_crate_items(&ctxtx).map_err(map_errs_diagnostics)?;
 
@@ -2698,7 +2700,7 @@ impl Verifier {
         let time0 = Instant::now();
 
         let pre_crate = crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
-            .map_err(map_errs_diagnostics)?;
+            .map_err(map_errors_query_diagnostics)?;
         if !self.args.no_lifetime {
             crate::erase::check_verus_aware_ids(
                 tcx,

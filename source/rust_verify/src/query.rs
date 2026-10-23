@@ -36,7 +36,7 @@ pub(crate) struct PreCrate<'tcx> {
 /// Used to guarantee that we emitted an error
 #[derive(Clone, Copy)]
 pub(crate) struct QueryError {
-    _i_just_emitted_an_error: (),
+    pub _i_just_emitted_an_error: (),
 }
 
 pub(crate) type Res<T> = Result<T, QueryError>;
