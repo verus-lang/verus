@@ -20,9 +20,9 @@ use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::{err_span, err_span_vec};
 use crate::verus_items::{self, VerusItem};
 use crate::{unsupported_err, unsupported_err_vec, unsupported_err_vec_unless};
+use rustc_hir::def_id::DefId;
 use std::collections::HashSet;
 use std::rc::Rc;
-use rustc_hir::def_id::DefId;
 
 use rustc_ast::IsAuto;
 use rustc_hir::def::DefKind;
@@ -741,7 +741,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
             FunctionOrConstInfo::Const(info) => {
                 def_id_to_fun_name_for_erasure.insert(info.def_id, info.function.x.name.clone());
             }
-            FunctionOrConstInfo::ForeignFunction(_) => { }
+            FunctionOrConstInfo::ForeignFunction(_) => {}
         }
     }
 

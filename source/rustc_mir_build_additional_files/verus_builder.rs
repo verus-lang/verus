@@ -31,10 +31,10 @@ body so that some constraint is always reachable.
 */
 
 use crate::builder::{BasicBlock, BorrowKind, Builder, PlaceBuilder, Rvalue, TerminatorKind, Ty};
-use rustc_middle::thir::ExprId;
-use rustc_middle::ty::{TyKind, TyCtxt};
-use std::collections::{HashMap, HashSet};
 use rustc_hir::def_id::LocalDefId;
+use rustc_middle::thir::ExprId;
+use rustc_middle::ty::{TyCtxt, TyKind};
+use std::collections::{HashMap, HashSet};
 
 pub(crate) struct VerusMirBuilderCtxt {
     force_treat_inhabited: HashSet<rustc_middle::mir::BasicBlock>,
@@ -81,7 +81,11 @@ pub(crate) fn skip_edge_deletion_for_uninhabited_ty<'a, 'tcx>(
 /// `erased_ghost_value::<!>()`.
 /// To prevent such calls from influencing the CFG, we check if any call is to
 /// `erased_ghost_value`, and if so, skip the CFG trimming logic.
-pub fn func_ty_skip_edge_deletion_for_uninhabited_ty<'a, 'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, ty: Ty<'tcx>) -> bool {
+pub fn func_ty_skip_edge_deletion_for_uninhabited_ty<'a, 'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: LocalDefId,
+    ty: Ty<'tcx>,
+) -> bool {
     match ty.kind() {
         TyKind::FnDef(fn_def_id, _) => {
             let def_id = crate::verus::enclosing_fn_local_def_id(tcx, def_id);

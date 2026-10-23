@@ -8,17 +8,16 @@ use vir::modes::ErasureModes;
 
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
 use rustc_hir::def_id::LocalDefId;
+use rustc_middle::ty::TyCtxt;
 use rustc_mir_build_verus::verus::{
     BodyErasure, CallErasure, LoopErasure, LoopSpecEvaluationLocation, NodeErase, TreeErase,
-    VarErasure, VerusErasureCtxt, set_verus_aware_def_ids, set_verus_erasure_ctxt,
-    set_callback_fn,
+    VarErasure, VerusErasureCtxt, set_callback_fn, set_verus_aware_def_ids, set_verus_erasure_ctxt,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 use vir::ast::VirErr;
-use rustc_middle::ty::TyCtxt;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MiscCall {
@@ -500,19 +499,22 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
     set_callback_fn(prepare_local_def_id);
 }
 
-pub(crate) fn prepare_local_def_id<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId)
-    -> Result<(), rustc_errors::ErrorGuaranteed>
-{
+pub(crate) fn prepare_local_def_id<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    local_def_id: LocalDefId,
+) -> Result<(), rustc_errors::ErrorGuaranteed> {
     let query = crate::query::get_global_query(tcx);
 
     #[allow(deprecated)]
-    let map_query_err = |_err: crate::query::QueryError| rustc_errors::ErrorGuaranteed::unchecked_error_guaranteed();
+    let map_query_err = |_err: crate::query::QueryError| {
+        rustc_errors::ErrorGuaranteed::unchecked_error_guaranteed()
+    };
 
     let pre_crate = query.get_pre_crate().map_err(map_query_err)?;
     let datatypes = query.get_datatypes_map().map_err(map_query_err)?;
     let functions = query.get_all_function_stubs().map_err(map_query_err)?;
-    let (erasure_info, erasure_modes) = query.get_erasure_modes_for_def_id(local_def_id.into())
-        .map_err(map_query_err)?;
+    let (erasure_info, erasure_modes) =
+        query.get_erasure_modes_for_def_id(local_def_id.into()).map_err(map_query_err)?;
 
     let ctxt = &pre_crate.ctxt;
 
@@ -523,11 +525,10 @@ pub(crate) fn prepare_local_def_id<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalD
         &functions,
         &erasure_info,
         &erasure_modes,
-        local_def_id);
+        local_def_id,
+    );
     match e {
         Ok(()) => Ok(()),
-        Err(vir_err) => {
-            Err(map_query_err(query.emit_error(vir_err)))
-        }
+        Err(vir_err) => Err(map_query_err(query.emit_error(vir_err))),
     }
 }
