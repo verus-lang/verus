@@ -121,7 +121,8 @@ pub type SpanResolver = Arc<
 /// pairing is therefore made per query, by statement identity: `record` remembers which SST
 /// statement each AIR `Havoc`/`Assign` came from, `begin_query` lists the version-creating
 /// statements of the query about to be checked in the order `lower_query` visits them, and each
-/// `resolve` takes the next one.
+/// `resolve` takes the next one. A version created in several arms of a branch is resolved once
+/// per creating statement, so a version's origin is a set.
 ///
 /// A lowering's statements are all recorded before any of its queries is checked, and the next
 /// lowering begins only after they have been. So the first `record` after a `begin_query` starts

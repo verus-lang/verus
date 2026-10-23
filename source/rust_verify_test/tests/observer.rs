@@ -1108,11 +1108,10 @@ test_verify_one_file_with_options! {
 
 // ---- Version provenance --------------------------------------------------------------------
 //
-// One function lowers to several queries, and statements before a loop are copied into the
-// loop's own query, which is checked first. Each versioned constant must be paired with the
-// statement that created it *in that query*. The rows assert the exact pairing of the first
-// verification pass (later passes, e.g. the recommends re-check, repeat it). Line numbers are
-// positions in the generated test file (the harness prepends a fixed prelude).
+// One function lowers to several queries, checked in turn (each isolated loop, then the body).
+// Versions are numbered per query, so each versioned constant must be paired with the statement
+// that created it *in that query*. Line numbers are positions in the generated test file (the
+// harness prepends a fixed prelude).
 
 fn first_pass(d: &D, var: &str, n: usize) -> Vec<(String, u32, String)> {
     d.version_correlations.iter().filter(|(v, _, _)| v.starts_with(var)).take(n).cloned().collect()
@@ -1122,7 +1121,9 @@ fn vc(v: &str, line: u32, k: &str) -> (String, u32, String) {
 }
 
 test_verify_one_file_with_options! {
-    // A loop, with `x` assigned before it and twice in its body. The loop query is checked first.
+    // Pins: callback order is not version-creation order. `x` is assigned before a `while` loop
+    // and twice inside it. The loop's query is checked first and versions only the body
+    // assignments; pairing in callback order gave its `x@1` the pre-loop line.
     #[test]
     test_observer_version_provenance_loop ["observers=test"] => verus_code! {
         fn f() {
@@ -1150,8 +1151,9 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // A `for` loop: its desugaring assigns ghost variables before the loop, and those
-    // statements appear in both the loop query and the function query.
+    // Pins: one AIR statement in two queries. A `for` loop's desugaring assigns ghost variables
+    // before the loop, and those statements are copied into the loop's query as well as the
+    // function's; each query must pair them again.
     #[test]
     test_observer_version_provenance_for_loop ["observers=test"] => verus_code! {
         use vstd::prelude::*;
@@ -1174,22 +1176,29 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // The two arms of an `if` both create the same version number of `x`; the pairing must
-    // follow the arms in order.
+    // Pins: the correlator walks a query in the order versions are created. Each arm of a branch
+    // is versioned from the same state, so a version can be created in more than one arm (here
+    // `x@1`); the merge creates none. The pairing is a set, one entry per creating statement: a
+    // walk in the wrong order would give the then-arm's `x@2` the else-arm's line.
     #[test]
     test_observer_version_provenance_branches ["observers=test"] => verus_code! {
         fn f(b: bool) {
             let mut x: u64 = 0;
             if b {
                 x = 1;
-            } else {
                 x = 2;
+            } else {
+                x = 3;
             }
             assert(x == 7);
         }
     } => Err(err) => {
         let d = parse(&err);
-        assert_eq!(first_pass(&d, "x@", 2), vec![vc("x@1", 28, "Assign"), vc("x@1", 30, "Assign")]);
+        let got: std::collections::BTreeSet<_> =
+            d.version_correlations.iter().filter(|(v, _, _)| v.starts_with("x@")).cloned().collect();
+        let want: std::collections::BTreeSet<_> =
+            [vc("x@1", 28, "Assign"), vc("x@2", 29, "Assign"), vc("x@1", 31, "Assign")].into();
+        assert_eq!(got, want);
     }
 }
 
