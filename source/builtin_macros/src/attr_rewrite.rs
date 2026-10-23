@@ -1231,7 +1231,7 @@ fn rewrite_unverified_func(
         // and so it may cause errors due to undefined vars.
         // Since the body is erased only in keep mode, we still
         // see correct body in generated executable in erase mode.
-        if erase.keep() {
+        if erase.keep() && fun.sig.constness.is_none() {
             block.stmts.clear();
             block.stmts.push(precondition_false);
             block.stmts.push(unimplemented.clone());
