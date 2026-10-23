@@ -1660,3 +1660,22 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3171 shape 3
+    #[test] test_no_verifier_verify_attribute1 code! {
+        verus! {
+        pub spec const C: bool = (-7i8 % 2i8) == 1i8;
+        fn g(y: u8) -> (r: u8) requires y == 1 ensures r == 1 { y }
+        }
+        #[verifier::verify]
+        fn f() -> u8 {
+            let y: u8 = if C { 1 } else { 2 };
+            g(y)
+        }
+    } => Ok(err) => {
+        assert_eq!(err.errors.len(), 0);
+        assert_eq!(err.warnings.len(), 2);
+        assert!(err.warnings[0].message.contains("#[verifier(verifier::verify)] is deprecated"));
+    }
+}
