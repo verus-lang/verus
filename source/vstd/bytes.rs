@@ -181,6 +181,21 @@ pub exec fn u32_from_le_bytes(s: &[u8]) -> (x: u32)
     u32::from_le_bytes(s.try_into().unwrap())
 }
 
+// In its own module, as `allow_in_spec` would make the u32 and u64 specs' names collide
+mod u32_from_le_bytes_spec {
+    use super::*;
+
+    #[cfg(not(verus_verify_core))]
+    #[verifier::allow_in_spec]
+    pub assume_specification[ <u32>::from_le_bytes ](bytes: [u8; 4]) -> u32
+        returns
+            spec_u32_from_le_bytes(bytes@),
+        opens_invariants none
+        no_unwind
+    ;
+
+}
+
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
 pub exec fn u32_to_le_bytes(x: u32) -> (s: alloc::vec::Vec<u8>)
@@ -336,6 +351,21 @@ pub exec fn u64_from_le_bytes(s: &[u8]) -> (x: u64)
 {
     use core::convert::TryInto;
     u64::from_le_bytes(s.try_into().unwrap())
+}
+
+// In its own module, as `allow_in_spec` would make the u32 and u64 specs' names collide
+mod u64_from_le_bytes_spec {
+    use super::*;
+
+    #[cfg(not(verus_verify_core))]
+    #[verifier::allow_in_spec]
+    pub assume_specification[ <u64>::from_le_bytes ](bytes: [u8; 8]) -> u64
+        returns
+            spec_u64_from_le_bytes(bytes@),
+        opens_invariants none
+        no_unwind
+    ;
+
 }
 
 #[cfg(feature = "alloc")]
