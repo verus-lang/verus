@@ -1997,7 +1997,7 @@ impl<'a> Builder<'a> {
 
     fn scope_insert_pattern(&mut self, pattern: &Pattern) {
         match &pattern.x {
-            PatternX::Wildcard | PatternX::Expr(_) | PatternX::Range(_, _) => {
+            PatternX::Wildcard | PatternX::Expr(..) | PatternX::Range(_, _) => {
                 // nothing to do
             }
             PatternX::Var(binding) => {
@@ -2134,7 +2134,7 @@ pub fn pattern_all_bound_vars_with_ownership(
             PatternX::Or(pat1, _) | PatternX::ImmutRef(pat1) | PatternX::MutRef(pat1) => {
                 pattern_all_bound_vars_rec(&pat1, out, modes);
             }
-            PatternX::Expr(_) => {}
+            PatternX::Expr(..) => {}
             PatternX::Range(_, _) => {}
             PatternX::Slice(patterns) => {
                 for p in patterns.iter() {
@@ -2284,7 +2284,7 @@ fn check_illegal_muts(
             check_illegal_muts(pat1, datatypes, errors);
             check_illegal_muts(pat2, datatypes, errors);
         }
-        PatternX::Expr(_e) => {}
+        PatternX::Expr(..) => {}
         PatternX::Range(_lower, _upper) => {}
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => check_illegal_muts(p, datatypes, errors),
         PatternX::Slice(pats) => {

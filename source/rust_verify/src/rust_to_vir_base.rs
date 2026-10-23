@@ -21,7 +21,7 @@ use rustc_span::def_id::{CrateNum, DefId};
 use rustc_span::symbol::{Ident, kw};
 use rustc_trait_selection::infer::InferCtxtExt;
 use rustc_trait_selection::solve::BuiltinImplSource;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::DerefMut;
 use std::sync::Arc;
 use vir::ast::{
@@ -1669,14 +1669,6 @@ pub(crate) fn is_smt_equality<'tcx>(
     ty_pair_has_smt_equality(bctx, span, ty1, ty2)
 }
 
-pub(crate) fn ty_has_smt_equality<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    span: Span,
-    ty: rustc_middle::ty::Ty<'tcx>,
-) -> Result<bool, VirErr> {
-    ty_pair_has_smt_equality(bctx, span, ty, ty)
-}
-
 pub(crate) fn ty_pair_has_smt_equality<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
@@ -1695,6 +1687,89 @@ pub(crate) fn ty_pair_has_smt_equality<'tcx>(
             Ok(implements_structural(&bctx, ty2))
         }
         _ => Ok(false),
+    }
+}
+
+/// Does matching a literal or constant pattern of this type agree with SMT ==?
+/// rustc compares such constants field by field, so yes unless a field is a float, a pointer,
+/// or ghost/tracked.
+/// On success, returns the ADTs whose fields were checked; these must not be opaque,
+/// since spec == on an opaque type need not compare fields (checked in well_formed).
+pub(crate) fn ty_has_pattern_smt_equality<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> Option<Vec<vir::ast::Path>> {
+    let mut adts = Vec::new();
+    pattern_smt_equality_rec(bctx, ty, &mut HashSet::new(), &mut adts, &mut 0).then_some(adts)
+}
+
+// Bounds the total number of calls (polymorphically recursive types never repeat a type)
+const PATTERN_SMT_EQUALITY_MAX_CALLS: usize = 1000;
+
+fn pattern_smt_equality_rec<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
+    seen: &mut HashSet<rustc_middle::ty::Ty<'tcx>>,
+    adts: &mut Vec<vir::ast::Path>,
+    calls: &mut usize,
+) -> bool {
+    use rustc_middle::ty::TyKind;
+    let tcx = bctx.ctxt.tcx;
+    *calls += 1;
+    if *calls > PATTERN_SMT_EQUALITY_MAX_CALLS {
+        return false;
+    }
+    // A type seen before is either being checked or passed (any failure ends the whole check)
+    if !seen.insert(ty) {
+        return true;
+    }
+    let mut rec = |t, seen: &mut HashSet<_>, adts: &mut Vec<_>| {
+        pattern_smt_equality_rec(bctx, t, seen, adts, calls)
+    };
+    match ty.kind() {
+        TyKind::Bool | TyKind::Char | TyKind::Int(_) | TyKind::Uint(_) | TyKind::Str => true,
+        TyKind::Ref(_, t, _) | TyKind::Array(t, _) | TyKind::Slice(t) => rec(*t, seen, adts),
+        TyKind::Tuple(ts) => ts.iter().all(|t| rec(t, seen, adts)),
+        TyKind::Param(_) => implements_structural(bctx, ty),
+        TyKind::Adt(adt_def, args) => {
+            if implements_structural(bctx, ty) {
+                return true;
+            }
+            // Box's == compares the contents (ignoring the allocator), and so does spec ==
+            if Some(adt_def.did()) == tcx.lang_items().owned_box() {
+                return rec(args.type_at(0), seen, adts);
+            }
+            let Some(structural_peq) = tcx.lang_items().structural_peq_trait() else {
+                return false;
+            };
+            let infcx = tcx.infer_ctxt().build(TypingMode::PostAnalysis);
+            let erased = tcx.erase_and_anonymize_regions(ty);
+            if adt_def.is_union()
+                || erased.has_escaping_bound_vars()
+                || !infcx
+                    .type_implements_trait(
+                        structural_peq,
+                        vec![erased].into_iter(),
+                        tcx.param_env(bctx.fun_id),
+                    )
+                    .must_apply_modulo_regions()
+            {
+                return false;
+            }
+            adts.push(bctx.ctxt.def_id_to_vir_path(adt_def.did()));
+            let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
+            adt_def.all_fields().all(|f| {
+                // Spec == compares ghost and tracked fields, which can differ from their runtime value
+                #[allow(deprecated)]
+                let attrs = tcx.get_all_attrs(f.did);
+                if crate::attributes::get_mode(Mode::Exec, attrs) != Mode::Exec {
+                    return false;
+                }
+                let fty = tcx.normalize_erasing_regions(typing_env, f.ty(tcx, args));
+                rec(fty, seen, adts)
+            })
+        }
+        _ => false,
     }
 }
 

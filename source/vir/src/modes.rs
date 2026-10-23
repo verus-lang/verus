@@ -1013,7 +1013,7 @@ fn add_pattern_rec(
 
             Ok(())
         }
-        PatternX::Expr(expr) => {
+        PatternX::Expr(expr, _) => {
             check_expr_in_pattern(expr)?;
             check_expr_has_mode(ctxt, record, typing, mode, expr, mode, &Proph::No)?;
             Ok(())
