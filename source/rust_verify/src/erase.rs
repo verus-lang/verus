@@ -11,12 +11,14 @@ use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
     BodyErasure, CallErasure, LoopErasure, LoopSpecEvaluationLocation, NodeErase, TreeErase,
     VarErasure, VerusErasureCtxt, set_verus_aware_def_ids, set_verus_erasure_ctxt,
+    set_callback_fn,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 use vir::ast::VirErr;
+use rustc_middle::ty::TyCtxt;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MiscCall {
@@ -217,7 +219,7 @@ fn resolved_call_to_call_erase(
 }
 
 fn get_binder_hir_id<'tcx>(
-    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    tcx: TyCtxt<'tcx>,
     hir_id: HirId,
 ) -> Option<(Span, rustc_span::Ident, HirId)> {
     let rustc_hir::Node::Expr(expr) = tcx.hir_node(hir_id) else {
@@ -236,7 +238,7 @@ fn get_binder_hir_id<'tcx>(
 }
 
 pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
-    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    tcx: TyCtxt<'tcx>,
     verus_items: &VerusItems,
     datatypes: &HashMap<Path, Datatype>,
     functions: &HashMap<Fun, FunctionStub>,
@@ -495,4 +497,37 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
         }
     }
     set_verus_aware_def_ids(Arc::new(s));
+    set_callback_fn(prepare_local_def_id);
+}
+
+pub(crate) fn prepare_local_def_id<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId)
+    -> Result<(), rustc_errors::ErrorGuaranteed>
+{
+    let query = crate::query::get_global_query(tcx);
+
+    #[allow(deprecated)]
+    let map_query_err = |_err: crate::query::QueryError| rustc_errors::ErrorGuaranteed::unchecked_error_guaranteed();
+
+    let pre_crate = query.get_pre_crate().map_err(map_query_err)?;
+    let datatypes = query.get_datatypes_map().map_err(map_query_err)?;
+    let functions = query.get_all_function_stubs().map_err(map_query_err)?;
+    let (erasure_info, erasure_modes) = query.get_erasure_modes_for_def_id(local_def_id.into())
+        .map_err(map_query_err)?;
+
+    let ctxt = &pre_crate.ctxt;
+
+    let e = setup_verus_ctxt_for_thir_erasure(
+        tcx,
+        &ctxt.verus_items,
+        &datatypes,
+        &functions,
+        &erasure_info,
+        &erasure_modes,
+        local_def_id);
+    match e {
+        Ok(()) => Ok(()),
+        Err(vir_err) => {
+            Err(map_query_err(query.emit_error(vir_err)))
+        }
+    }
 }

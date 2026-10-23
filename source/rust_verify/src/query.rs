@@ -65,8 +65,6 @@ pub(crate) struct State<'tcx> {
     cache_exportable_crate: Option<Res<Krate>>,
     /// Crate with trait demotion, resolution inference, merged with imported crates and pruned
     cache_merged_crate: Option<Res<(Krate, Arc<WarningCtx>)>>,
-    /// Merged erasure modes
-    cache_erasure_modes: Option<Res<Arc<ErasureModes>>>,
 
     /// Errors found along the way
     pub encountered_blocking_vir_error: bool,
@@ -123,7 +121,6 @@ impl<'tcx> Query<'tcx> {
                 cache_checked_functions: HashMap::new(),
                 cache_exportable_crate: None,
                 cache_merged_crate: None,
-                cache_erasure_modes: None,
 
                 encountered_blocking_vir_error: false,
             }),
@@ -142,7 +139,7 @@ impl<'tcx> Query<'tcx> {
         QueryError { _i_just_emitted_an_error: () }
     }
 
-    fn emit_error(&self, err: VirErr) -> QueryError {
+    pub(crate) fn emit_error(&self, err: VirErr) -> QueryError {
         self.emit_errors(vec![err])
     }
 
@@ -573,29 +570,6 @@ impl<'tcx> Query<'tcx> {
     }
 
     //// Erasure modes
-    //// TODO: Ultimately, we will want to use these individually rather than
-    //// merging them all together.
-
-    pub fn get_erasure_modes(&self) -> Res<Arc<ErasureModes>> {
-        cache_or_compute!(self, cache_erasure_modes, _compute_erasure_modes())
-    }
-
-    pub fn _compute_erasure_modes(&self) -> Res<Arc<ErasureModes>> {
-        fn merge_erasure_modes(a: &mut ErasureModes, b: Arc<ErasureModes>) {
-            let ErasureModes { local_modes, binder_modes, ctor_modes } = a;
-            local_modes.extend(b.local_modes.clone());
-            binder_modes.extend(b.binder_modes.clone());
-            ctor_modes.extend(b.ctor_modes.clone());
-        }
-
-        let pre_crate = self.get_pre_crate()?;
-        let mut e = ErasureModes { local_modes: vec![], binder_modes: vec![], ctor_modes: vec![] };
-        for stub in pre_crate.infos.iter().flat_map(|info| info.iter_stubs()) {
-            let (_, erasure_modes, _, _) = self.get_checked_function(&stub.x.name)?;
-            merge_erasure_modes(&mut e, erasure_modes);
-        }
-        Ok(Arc::new(e))
-    }
 
     pub fn get_erasure_modes_for_def_id(&self, def_id: DefId)
         -> Res<(Arc<ErasureInfo>, Arc<ErasureModes>)>
