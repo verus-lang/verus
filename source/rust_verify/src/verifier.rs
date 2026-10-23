@@ -2025,7 +2025,6 @@ impl Verifier {
                 ..create_observer_from_args(&self.args.observers)
             },
         )?;
-
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
                 self.create_log_file(Some(&bucket_id), crate::config::VIR_POLY_FILE_SUFFIX)?;
