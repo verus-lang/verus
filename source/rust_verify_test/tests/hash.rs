@@ -1038,3 +1038,30 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3139: an impl of `Hash::hash` cannot add a
+    // precondition that std's callers (`HashMap::insert`) do not establish
+    #[test] hash_impl_requires_rejected_issue3139 verus_code! {
+        use vstd::prelude::*;
+        use core::hash::{Hash, Hasher};
+        #[derive(PartialEq, Eq)]
+        pub struct K { pub a: u8 }
+        impl Hash for K {
+            fn hash<H: Hasher>(&self, state: &mut H)
+                requires false,
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires clauses")
+}
+
+test_verify_one_file! {
+    #[test] hash_callable_on_generic_key verus_code! {
+        use vstd::prelude::*;
+        use core::hash::{Hash, Hasher};
+        fn h<K: Hash, H: Hasher>(k: &K, state: &mut H) {
+            k.hash(state);
+        }
+    } => Ok(())
+}

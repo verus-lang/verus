@@ -91,8 +91,19 @@ pub trait ExFreeze: PointeeSized {
 }
 
 #[verifier::external_trait_specification]
+pub trait ExHasher {
+    type ExternalTraitSpecificationFor: core::hash::Hasher;
+}
+
+#[verifier::external_trait_specification]
 pub trait ExHash: PointeeSized {
     type ExternalTraitSpecificationFor: core::hash::Hash;
+
+    /// Feeds `self` into the hasher. No precondition: the impls of `std` and derived impls
+    /// call the `Hasher`'s `write*` methods on the fields, which do not panic for `std`'s
+    /// hashers. Nothing is said about the hasher's resulting state (see `hash.rs` for the
+    /// model of `DefaultHasher`).
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H);
 }
 
 #[verifier::external_trait_specification]
