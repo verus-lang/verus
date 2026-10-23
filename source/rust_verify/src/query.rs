@@ -109,6 +109,10 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
     fn emit_errors(&mut self, errs: Vec<VirErr>) -> QueryError {
         assert!(errs.len() > 0);
         self.encountered_blocking_vir_error = true;
+        // Report pending warnings before the errors
+        if let Some(Ok(pre_crate)) = &self.cache_pre_crate {
+            pre_crate.ctxt.flush_diagnostics(self.reporter);
+        }
         for err in errs {
             self.reporter.report_now(&err.to_any());
         }
@@ -528,8 +532,9 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
     }
 
     pub fn _compute_merged_crate(&mut self) -> Res<(Krate, Arc<WarningCtx>)> {
-        let krate = self.get_exportable_crate()?;
         let pre_crate = self.get_pre_crate()?;
+        let _flush = pre_crate.ctxt.flush_diagnostics_on_drop(self.reporter);
+        let krate = self.get_exportable_crate()?;
         let demote_trait_lookup = self.get_demote_trait_lookup()?;
         let other_vir_crates = self.get_other_vir_crates()?;
         let merged_traits = self.get_merged_traits()?;
@@ -580,8 +585,6 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let krate = krate_infer_resolution(&krate, &res_infos).map_err(|e| self.emit_errors(e))?;
 
         vir::well_formed::check_crate_merged(&krate).map_err(|e| self.emit_error(e))?;
-
-        pre_crate.ctxt.flush_diagnostics(self.reporter);
 
         Ok((krate, Arc::new(new_warning_ctx)))
     }
