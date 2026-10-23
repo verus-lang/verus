@@ -503,14 +503,15 @@ pub(crate) fn setup_verus_aware_ids(
     verus_aware_ids
 }
 
-pub(crate) fn check_verus_aware_ids(
+pub(crate) fn check_verus_aware_ids<'tcx>(
+    tcx: TyCtxt<'tcx>,
     span: &vir::messages::Span,
     verus_aware_ids: Arc<HashSet<LocalDefId>>,
-    def_id_to_fun_name_for_erasure: &HashMap<DefId, Fun>,
+    def_id_to_fun_name_for_erasure: &HashMap<DefId, Option<Fun>>,
 ) -> Result<(), VirErr> {
     for id in verus_aware_ids.iter() {
-        let id: DefId = (*id).into();
-        if !def_id_to_fun_name_for_erasure.contains_key(&id) {
+        let has_body = tcx.hir_node_by_def_id(*id).associated_body().is_some();
+        if has_body && !def_id_to_fun_name_for_erasure.contains_key(&(*id).into()) {
             vir::internal_err!(
                 span.clone(),
                 format!("erasure setup not properly handled for {:?}", id)
@@ -534,8 +535,11 @@ pub(crate) fn prepare_local_def_id<'tcx>(
     let pre_crate = query.get_pre_crate().map_err(map_query_err)?;
     let datatypes = query.get_datatypes_map().map_err(map_query_err)?;
     let functions = query.get_all_function_stubs().map_err(map_query_err)?;
-    let (erasure_info, erasure_modes) =
-        query.get_erasure_modes_for_def_id(local_def_id.into()).map_err(map_query_err)?;
+    let Some((erasure_info, erasure_modes)) =
+        query.get_erasure_modes_for_def_id(local_def_id.into()).map_err(map_query_err)?
+    else {
+        return Ok(());
+    };
 
     let ctxt = &pre_crate.ctxt;
 
