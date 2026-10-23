@@ -3299,7 +3299,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         ctxt,
         id,
         &vattrs,
-        false,
+        vattrs.verus_macro,
         false,
         false,
         Safety::Safe,
