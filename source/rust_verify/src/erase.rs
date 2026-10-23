@@ -485,10 +485,10 @@ pub(crate) fn setup_verus_aware_ids(
     for item in crate_items.items.iter() {
         match item.verif {
             crate::external::VerifOrExternal::VerusAware {
+                module_path: _,
                 const_directive,
                 external_body: _,
                 external_fn_specification: _,
-                ..
             } => {
                 if !const_directive {
                     s.insert(item.id.owner_id().def_id);

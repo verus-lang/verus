@@ -592,7 +592,7 @@ impl<'tcx> Query<'tcx> {
 }
 
 std::thread_local! {
-    static QUERY: RefCell<Option<Rc<Query<'static>>>> = RefCell::new(None);
+    static QUERY: RefCell<Option<Rc<Query<'static>>>> = const { RefCell::new(None) };
 }
 
 pub fn set_global_query<'tcx>(query: Rc<Query<'tcx>>) {
