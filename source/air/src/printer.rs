@@ -470,7 +470,7 @@ impl Printer {
                 }
             }
             ExprX::LabeledAssertion(_, error, filter, expr) => {
-                let spans = vec_map(&self.message_interface.all_msgs(error), |s| quoted_atom(s));
+                let spans = self.msgs_to_nodes(error);
                 if spans.len() == 0 && filter.is_none() {
                     self.expr_to_node(expr)
                 } else {
@@ -479,6 +479,14 @@ impl Printer {
                 }
             }
         }
+    }
+
+    /// Each note is printed as "note", or as ("note" "span") when the note has a span
+    fn msgs_to_nodes(&self, error: &crate::messages::ArcDynMessage) -> Vec<Node> {
+        vec_map(&self.message_interface.all_msgs_with_spans(error), |(note, span)| match span {
+            Some(span) if span.len() > 0 => Node::List(vec![quoted_atom(note), quoted_atom(span)]),
+            _ => quoted_atom(note),
+        })
     }
 
     pub fn exprs_to_node(&self, exprs: &Exprs) -> Node {
@@ -571,7 +579,7 @@ impl Printer {
         match &**stmt {
             StmtX::Assume(expr) => nodes!(assume {self.expr_to_node(expr)}),
             StmtX::Assert(_, labels, filter, expr) => {
-                let spans = vec_map(&self.message_interface.all_msgs(labels), |s| quoted_atom(s));
+                let spans = self.msgs_to_nodes(labels);
                 if spans.len() == 0 && filter.is_none() {
                     nodes!(assert {self.expr_to_node(expr)})
                 } else {

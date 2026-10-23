@@ -165,6 +165,15 @@ impl Parser {
                         self.message_interface.message_label_from_air_span(&as_string, &as_string);
                     labels.push(label);
                 }
+                // ("note" "span"), as printed for notes that carry a span
+                Node::List(pair) if is_quoted_pair(pair) => {
+                    let (Node::Atom(note), Node::Atom(span)) = (&pair[0], &pair[1]) else {
+                        unreachable!()
+                    };
+                    let note = &note[1..note.len() - 1];
+                    let span = &span[1..span.len() - 1];
+                    labels.push(self.message_interface.message_label_from_air_span(span, note));
+                }
                 _ => {
                     return Err(format!("expected quoted string, found: {}", node_to_string(node)));
                 }
@@ -915,4 +924,9 @@ pub(crate) fn parse_sexpression(lines: &Vec<String>) -> Node {
     let mut parser = sise::Parser::new(expr.as_str());
     let node = sise::parse_tree(&mut parser).unwrap();
     node
+}
+
+fn is_quoted_pair(nodes: &[Node]) -> bool {
+    let is_quoted = |s: &str| s.len() >= 2 && s.starts_with("\"") && s.ends_with("\"");
+    matches!(nodes, [Node::Atom(n), Node::Atom(s)] if is_quoted(n) && is_quoted(s))
 }
