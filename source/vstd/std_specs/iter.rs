@@ -108,9 +108,9 @@ pub trait ExIterator {
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
         requires
-            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> f.requires((self.remaining()[k], )),
             // without the laws, `remaining()` says nothing about the items `f` is called on
-            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] call_requires(f, (x, )),
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] f.requires((x, )),
         ensures
             iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
@@ -140,9 +140,9 @@ pub trait ExIterator {
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
         requires
-            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> f.requires((self.remaining()[k], )),
             // without the laws, `remaining()` says nothing about the items `f` is called on
-            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] call_requires(f, (x, )),
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] f.requires((x, )),
         ensures
             iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
@@ -185,9 +185,9 @@ pub trait ExIterator {
             // `filter`'s implementation loops over the inner iterator until the predicate accepts an element,
             // so it needs a decreases metric to prove termination.
             self.decrease() is Some,
-            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> predicate.requires((&self.remaining()[k], )),
             // without the laws, `remaining()` says nothing about the items `predicate` is called on
-            !self.obeys_prophetic_iter_laws() ==> forall |x: &Self::Item| #![auto] call_requires(predicate, (x, )),
+            !self.obeys_prophetic_iter_laws() ==> forall |x: &Self::Item| #![auto] predicate.requires((x, )),
         ensures
             self.obeys_prophetic_iter_laws() ==> filter_post(self, predicate, r),
     ;
@@ -196,9 +196,9 @@ pub trait ExIterator {
         where Self: Sized,
             P: FnMut(&Self::Item) -> bool
         requires
-            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> predicate.requires((&self.remaining()[k], )),
             // without the laws, `remaining()` says nothing about the items `predicate` is called on
-            !self.obeys_prophetic_iter_laws() ==> forall |x: &Self::Item| #![auto] call_requires(predicate, (x, )),
+            !self.obeys_prophetic_iter_laws() ==> forall |x: &Self::Item| #![auto] predicate.requires((x, )),
         ensures
             iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
@@ -230,9 +230,9 @@ pub trait ExIterator {
         where Self: Sized,
             F: FnMut(Self::Item) -> Option<B>
         requires
-            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> f.requires((self.remaining()[k], )),
             // without the laws, `remaining()` says nothing about the items `f` is called on
-            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] call_requires(f, (x, )),
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] f.requires((x, )),
         ensures
             iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
@@ -263,9 +263,9 @@ pub trait ExIterator {
             Self: Sized,
             F: FnMut(Self::Item) -> B,
         requires
-            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+            self.obeys_prophetic_iter_laws() ==> forall |k| #![auto] 0 <= k < self.remaining().len() ==> f.requires((self.remaining()[k], )),
             // without the laws, `remaining()` says nothing about the items `f` is called on
-            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] call_requires(f, (x, )),
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #![auto] f.requires((x, )),
         ensures
             self.obeys_prophetic_iter_laws() ==> map_post(self, f, r),
     ;
@@ -279,7 +279,7 @@ pub trait ExIterator {
             // (which may overflow) nor the items `predicate` is called on
             self.obeys_prophetic_iter_laws(),
             self.remaining().len() <= usize::MAX as int,
-            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (self.remaining()[k], )),
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> predicate.requires((self.remaining()[k], )),
         ensures
             iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
@@ -424,7 +424,7 @@ pub trait ExFromIterator<A>: Sized {
        where T: IntoIterator<Item = A>
         ensures
             exists |initial: T::IntoIter|
-                #[trigger] call_ensures(T::into_iter, (iter,), initial)
+                #[trigger] (T::into_iter).ensures((iter,), initial)
                 && (initial.obeys_prophetic_iter_laws() ==>
                     Self::from_iter_ensures(initial.remaining(), initial.will_return_none(), s)),
     ;
@@ -492,7 +492,7 @@ pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F, r: core::iter::Fil
     requires
         i.obeys_prophetic_iter_laws(),
         i.decrease() is Some,
-        forall |k| #![auto] 0 <= k < i.remaining().len() ==> call_requires(f, (&i.remaining()[k], )),
+        forall |k| #![auto] 0 <= k < i.remaining().len() ==> f.requires((&i.remaining()[k], )),
         #[trigger] filter_post(i, f, r),
     ensures
         {
@@ -500,7 +500,7 @@ pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F, r: core::iter::Fil
             {
             // `keep` records, for each inspected inner element, the predicate's decision
             &&& keep.len() <= i.remaining().len()
-            &&& forall |j| 0 <= j < keep.len() ==> call_ensures(f, (&i.remaining()[j],), #[trigger] keep[j])
+            &&& forall |j| 0 <= j < keep.len() ==> f.ensures((&i.remaining()[j],), #[trigger] keep[j])
             // Completeness: Every inner element the predicate keeps is retained and in order.
             &&& IteratorSpec::remaining(&r) == i.remaining()[..keep.len()].filter_index(|j: int| keep[j])
             // The two facts below follow from the `filter_index` above; we expose them directly for convenience.
@@ -508,7 +508,7 @@ pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F, r: core::iter::Fil
             &&& forall |k| #![trigger IteratorSpec::remaining(&r)[k]] 0 <= k < IteratorSpec::remaining(&r).len() ==>
                     exists |j| 0 <= j < i.remaining().len()
                         && IteratorSpec::remaining(&r)[k] == #[trigger] i.remaining()[j]
-                        && call_ensures(f, (&i.remaining()[j],), true)
+                        && f.ensures((&i.remaining()[j],), true)
             &&& IteratorSpec::will_return_none(&r) ==> i.will_return_none() && keep.len() == i.remaining().len()
             &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
             &&& filter_iter(r) == i
@@ -570,7 +570,7 @@ pub broadcast axiom fn map_postcondition<I, F>(i: I, f: F, r: core::iter::Map<I,
         #[trigger] map_post(i, f, r),
     ensures
         IteratorSpec::remaining(&r).len() <= i.remaining().len(),
-        forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (i.remaining()[k],), IteratorSpec::remaining(&r)[k]),
+        forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> f.ensures((i.remaining()[k],), IteratorSpec::remaining(&r)[k]),
         IteratorSpec::will_return_none(&r) ==> i.will_return_none() && IteratorSpec::remaining(&r).len() == i.remaining().len(),
         IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
         map_iter(r) == i,
@@ -867,7 +867,7 @@ pub broadcast axiom fn zip_postcondition<I, U>(i: I, other: U, r: Zip<I, <U as I
         i.obeys_prophetic_iter_laws(),
         #[trigger] zip_post(i, other, r),
     ensures
-        call_ensures(U::into_iter, (other,), zip_iter_snd(r)),
+        (U::into_iter).ensures((other,), zip_iter_snd(r)),
         zip_iter_fst(r) == i,
         IteratorSpec::remaining(&r) == i.remaining().zip_truncate(zip_iter_snd(r).remaining()),
         IteratorSpec::will_return_none(&r) ==> i.will_return_none() || zip_iter_snd(r).will_return_none(),
@@ -957,7 +957,7 @@ impl <I: Iterator> VerusForLoopWrapper<I> {
             ret matches Some(i) ==> final(self).history@ == old(self).history@.push(i),
             ret is None ==> final(self).history@ == old(self).history@,
             // All of the standard Iterator::next guarantees still hold
-            exists |m: &mut I| #![auto] call_ensures(I::next, (m,), ret) && *m == old(self).iter && *final(m) == final(self).iter,
+            exists |m: &mut I| #![auto] (I::next).ensures((m,), ret) && *m == old(self).iter && *final(m) == final(self).iter,
     {
         let ghost old_history = self.history@;
         let ret = self.iter.next();
