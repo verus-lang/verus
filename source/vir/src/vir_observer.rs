@@ -51,6 +51,9 @@ pub trait VirObserver: Any {
     fn on_for_loop(&mut self, _stm: &Stm) {}
     fn on_quantifier_binder(&mut self, _binder: &crate::ast::VarBinder<Typ>, _exp: &Exp) {}
     fn on_reveal_string(&mut self, _lit: &std::sync::Arc<String>) {}
+    /// The resolver for source locations of spans in this crate; delivered once, before any
+    /// lowering callback.
+    fn on_span_resolver(&mut self, _resolver: &SpanResolver) {}
     /// Return the id the lowering should attach to this assertion, or keep `parent`
     /// (the lowering's own choice) by returning it unchanged, as the default does.
     fn make_assert_id(
@@ -94,10 +97,22 @@ pub struct Observers {
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
-/// Extract the line number from a span's string representation ("file:line:col:...").
-pub fn line_from_span(span: &crate::messages::Span) -> Option<u32> {
-    span.as_string.split(':').nth(1)?.trim().parse().ok()
+/// The file and 1-based line where a span starts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceLocation {
+    pub file: Arc<String>,
+    pub line: u32,
 }
+
+/// Resolves a span to the location where it starts, using the compiler's source map. `None`
+/// for a span with no source position, or in a file the source map had not loaded when
+/// verification began.
+pub type SpanResolver = Arc<
+    dyn Fn(&crate::messages::Span) -> Option<SourceLocation>
+        + Send
+        + Sync
+        + std::panic::RefUnwindSafe,
+>;
 
 /// Pairs each AIR versioned constant with the SST statement that created it.
 ///

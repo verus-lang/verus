@@ -64,6 +64,7 @@ struct D {
     query_snapshot_counts: Vec<usize>,
     version_correlations: Vec<(String, u32, String)>,
     version_bases: Vec<(String, String, u32)>,
+    assign_files: std::collections::BTreeSet<String>,
     lambda_decls: Vec<String>,
     choose_decls: Vec<String>,
     check_valid_invalid: usize,
@@ -1220,19 +1221,38 @@ test_verify_one_file_with_options! {
     }
 }
 
+test_verify_one_file_with_options! {
+    // Source locations come from the compiler's source map, delivered to the observer as a
+    // resolver; the provenance rows above check its lines, this one its file.
+    #[test]
+    test_observer_span_resolver_file ["observers=test"] => verus_code! {
+        fn f() {
+            let mut x: u64 = 0;
+            x = 1;
+            assert(x == 7);
+        }
+    } => Err(err) => {
+        let d = parse(&err);
+        assert!(d.assign_files.iter().any(|f| f.ends_with("test.rs")),
+            "the assignment resolves to the test's source file; got {:?}", d.assign_files);
+    }
+}
+
 // ---- VersionCorrelator, directly ----------------------------------------------------------
 
 mod correlator {
     use air::ast::{QueryX, StmtX};
     use std::sync::Arc;
-    use vir::vir_observer::{VersionCorrelator, VersionOrigin, line_from_span};
+    use vir::vir_observer::{VersionCorrelator, VersionOrigin};
 
-    fn stm(line: u32) -> vir::sst::Stm {
+    /// A statement marked by `id` (carried as the span id), so a test can tell which one the
+    /// correlator returned.
+    fn stm(id: u32) -> vir::sst::Stm {
         let span = vir::messages::Span {
             raw_span: Arc::new(()),
-            id: 0,
+            id: id as u64,
             data: vec![],
-            as_string: format!("f.rs:{}:5: {}:9", line, line),
+            as_string: String::new(),
         };
         vir::def::Spanned::new(span, vir::sst::StmX::Air(Arc::new(String::new())))
     }
@@ -1245,10 +1265,10 @@ mod correlator {
             assertion: Arc::new(StmtX::Block(Arc::new(stmts))),
         })
     }
-    /// Resolve the next version of `x@` (the base every statement in these tests assigns).
+    /// Resolve the next version of `x@` (the base every statement in these tests assigns) and
+    /// return the id of the statement paired with it.
     fn line(c: &mut VersionCorrelator, _versioned: &str) -> Option<u32> {
-        c.resolve(&Arc::new("x@".to_string()), VersionOrigin::Assign)
-            .and_then(|s| line_from_span(&s.span))
+        c.resolve(&Arc::new("x@".to_string()), VersionOrigin::Assign).map(|s| s.span.id as u32)
     }
 
     #[test]

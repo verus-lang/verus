@@ -397,6 +397,8 @@ pub struct Verifier {
     vir_crate: Option<Krate>,
     crate_id: Option<CrateId>,
     air_no_span: Option<vir::messages::Span>,
+    /// Source locations of spans, delivered to a registered observer (`-V observers=`).
+    span_resolver: Option<vir::vir_observer::SpanResolver>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
     crate_items: Option<Arc<crate::external::CrateItems>>,
     warning_ctx: Option<Arc<vir::context::WarningCtx>>,
@@ -587,6 +589,7 @@ impl Verifier {
             vir_crate: None,
             crate_id: None,
             air_no_span: None,
+            span_resolver: None,
             current_crate_modules: None,
             crate_items: None,
             warning_ctx: None,
@@ -635,6 +638,7 @@ impl Verifier {
             vir_crate: self.vir_crate.clone(),
             crate_id: self.crate_id.clone(),
             air_no_span: self.air_no_span.clone(),
+            span_resolver: self.span_resolver.clone(),
             current_crate_modules: self.current_crate_modules.clone(),
             crate_items: self.crate_items.clone(),
             warning_ctx: self.warning_ctx.clone(),
@@ -2017,6 +2021,9 @@ impl Verifier {
             resolved_typs.unwrap(),
             create_observer_from_args(&self.args.observers),
         )?;
+        if let (Some(resolver), Some(obs)) = (&self.span_resolver, &ctx.observer) {
+            obs.borrow_mut().on_span_resolver(resolver);
+        }
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
                 self.create_log_file(Some(&bucket_id), crate::config::VIR_POLY_FILE_SUFFIX)?;
@@ -2074,6 +2081,10 @@ impl Verifier {
         let time_verify_sequential_start = Instant::now();
 
         let reporter = Reporter::new(spans, compiler);
+        if !self.args.observers.is_empty() {
+            self.span_resolver =
+                Some(crate::spans::span_resolver(spans, compiler.sess.source_map()));
+        }
         let krate = self.vir_crate.clone().expect("vir_crate should be initialized");
         let air_no_span = self.air_no_span.clone().expect("air_no_span should be initialized");
 

@@ -55,6 +55,10 @@ pub struct TestObserver {
     pub version_bases: Vec<(String, String, u32)>,
     #[serde(skip)]
     pub correlator: vir::vir_observer::VersionCorrelator,
+    #[serde(skip)]
+    pub span_resolver: Option<vir::vir_observer::SpanResolver>,
+    /// Files the resolver returned for assignment statements.
+    pub assign_files: std::collections::BTreeSet<String>,
     pub lambda_decls: Vec<String>,
     pub choose_decls: Vec<String>,
     #[serde(rename = "check_valid_invalid")]
@@ -118,6 +122,8 @@ impl TestObserver {
             version_correlations: vec![],
             version_bases: vec![],
             correlator: vir::vir_observer::VersionCorrelator::new(),
+            span_resolver: None,
+            assign_files: Default::default(),
             lambda_decls: vec![],
             choose_decls: vec![],
             check_valid_invalid_count: 0,
@@ -191,7 +197,9 @@ impl air::air_observer::AirObserver for TestObserver {
         self.events.push(format!("wp_version:{:?}", kind));
         self.version_bases.push((versioned.to_string(), base.to_string(), version));
         if let Some(stm) = self.correlator.resolve(base, kind) {
-            if let Some(line) = vir::vir_observer::line_from_span(&stm.span) {
+            if let Some(line) =
+                self.span_resolver.as_ref().and_then(|r| r(&stm.span)).map(|l| l.line)
+            {
                 let kind_str = format!("{:?}", kind);
                 self.version_correlations.push((versioned.to_string(), line, kind_str));
             }
@@ -313,6 +321,9 @@ impl vir::vir_observer::VirObserver for TestObserver {
         let base = vir::def::suffix_local_unique_id(var);
         self.assigns.push(base.to_string());
         self.events.push(format!("assign:{}", base));
+        if let Some(loc) = self.span_resolver.as_ref().and_then(|r| r(&stm.span)) {
+            self.assign_files.insert(loc.file.to_string());
+        }
         self.correlator.record(air_stmt, stm);
     }
     fn on_variable_def(&mut self, _stm: &vir::sst::Stm, var: &vir::ast::VarIdent) {
@@ -322,6 +333,9 @@ impl vir::vir_observer::VirObserver for TestObserver {
     fn on_for_loop(&mut self, _stm: &vir::sst::Stm) {
         self.for_loop_vars.push(("for_loop".to_string(), "detected".to_string()));
         self.events.push("for_loop".to_string());
+    }
+    fn on_span_resolver(&mut self, resolver: &vir::vir_observer::SpanResolver) {
+        self.span_resolver = Some(resolver.clone());
     }
     fn on_reveal_string(&mut self, lit: &std::sync::Arc<String>) {
         self.reveal_strings.push((**lit).clone());
