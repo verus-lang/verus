@@ -99,12 +99,6 @@ pub fn line_from_span(span: &crate::messages::Span) -> Option<u32> {
     span.as_string.split(':').nth(1)?.trim().parse().ok()
 }
 
-/// Strip the version suffix from a versioned WP constant name.
-/// `"x@2"` → `"x@"`, `"foo!@3"` → `"foo!@"`
-fn strip_version_suffix(name: &str) -> &str {
-    if let Some(pos) = name.rfind('@') { &name[..=pos] } else { name }
-}
-
 /// Pairs each AIR versioned constant with the SST statement that created it.
 ///
 /// One function's lowering is checked as several queries, and a statement can appear in more
@@ -165,17 +159,16 @@ impl VersionCorrelator {
         }
     }
 
-    /// The SST statement that created the AIR versioned constant `versioned`, or `None` if its
-    /// AIR statement was not produced by the SST lowering.
-    pub fn resolve(&mut self, versioned: &air::ast::Ident, kind: VersionOrigin) -> Option<Stm> {
+    /// The SST statement that created the version of `base` being reported, or `None` if its
+    /// AIR statement was not produced by the SST lowering. Call once per
+    /// `AirObserver::on_wp_version_created`, with its `base` and `kind`.
+    pub fn resolve(&mut self, base: &air::ast::Ident, kind: VersionOrigin) -> Option<Stm> {
         let (var, expected_kind, src) = self.current.pop_front()?;
         debug_assert!(
-            // `x@` versions as `x@1`, a parameter `p!` as `p!@1` (see `var_to_const::rename_var`).
-            strip_version_suffix(versioned).trim_end_matches('@') == var.trim_end_matches('@')
-                && kind == expected_kind,
+            base == &var && kind == expected_kind,
             "versions are created in the order lower_query visits the statements: \
              got {} ({:?}), expected {} ({:?})",
-            versioned,
+            base,
             kind,
             var,
             expected_kind

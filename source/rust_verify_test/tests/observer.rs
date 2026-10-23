@@ -63,6 +63,7 @@ struct D {
     query_lowered: usize,
     query_snapshot_counts: Vec<usize>,
     version_correlations: Vec<(String, u32, String)>,
+    version_bases: Vec<(String, String, u32)>,
     lambda_decls: Vec<String>,
     choose_decls: Vec<String>,
     check_valid_invalid: usize,
@@ -1191,6 +1192,34 @@ test_verify_one_file_with_options! {
     }
 }
 
+test_verify_one_file_with_options! {
+    // Each created version is reported with its variable's AIR name and its number, so a
+    // consumer need not parse the versioned name: a local is `x@`, a parameter `p!` (versioned as
+    // `p!@1`), and a shadowing local carries its renumbering (`x$1@`).
+    #[test]
+    test_observer_version_base_and_number ["observers=test"] => verus_code! {
+        fn g(a: &mut u64) ensures *final(a) == 1 { *a = 1; }
+        fn f(p: &mut u64) {
+            g(p);
+            let mut x: u64 = 0;
+            x = 1;
+            let mut x: u64 = 5;
+            x = 6;
+            assert(x == 7);
+        }
+    } => Err(err) => {
+        let d = parse(&err);
+        let has = |v: &str, b: &str, n: u32| {
+            d.version_bases.iter().any(|(vv, bb, nn)| vv == v && bb == b && *nn == n)
+        };
+        assert!(has("x@1", "x@", 1), "local; got {:?}", d.version_bases);
+        assert!(has("p!@1", "p!", 1), "mutable-reference parameter; got {:?}", d.version_bases);
+        assert!(has("x$1@1", "x$1@", 1), "shadowing local; got {:?}", d.version_bases);
+        assert!(d.version_bases.iter().all(|(v, b, n)| v == &format!("{}{}", b, n)
+            || v == &format!("{}@{}", b, n)), "versioned name is base + number; got {:?}", d.version_bases);
+    }
+}
+
 // ---- VersionCorrelator, directly ----------------------------------------------------------
 
 mod correlator {
@@ -1216,8 +1245,9 @@ mod correlator {
             assertion: Arc::new(StmtX::Block(Arc::new(stmts))),
         })
     }
-    fn line(c: &mut VersionCorrelator, v: &str) -> Option<u32> {
-        c.resolve(&Arc::new(v.to_string()), VersionOrigin::Assign)
+    /// Resolve the next version of `x@` (the base every statement in these tests assigns).
+    fn line(c: &mut VersionCorrelator, _versioned: &str) -> Option<u32> {
+        c.resolve(&Arc::new("x@".to_string()), VersionOrigin::Assign)
             .and_then(|s| line_from_span(&s.span))
     }
 

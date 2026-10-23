@@ -51,6 +51,8 @@ pub struct TestObserver {
     pub query_lowered_count: usize,
     pub query_snapshot_counts: Vec<usize>,
     pub version_correlations: Vec<(String, u32, String)>,
+    /// Per created version: (versioned name, base, version number).
+    pub version_bases: Vec<(String, String, u32)>,
     #[serde(skip)]
     pub correlator: vir::vir_observer::VersionCorrelator,
     pub lambda_decls: Vec<String>,
@@ -114,6 +116,7 @@ impl TestObserver {
             query_lowered_count: 0,
             query_snapshot_counts: vec![],
             version_correlations: vec![],
+            version_bases: vec![],
             correlator: vir::vir_observer::VersionCorrelator::new(),
             lambda_decls: vec![],
             choose_decls: vec![],
@@ -181,10 +184,13 @@ impl air::air_observer::AirObserver for TestObserver {
     fn on_wp_version_created(
         &mut self,
         versioned: &air::ast::Ident,
+        base: &air::ast::Ident,
+        version: u32,
         kind: air::air_observer::VersionOrigin,
     ) {
         self.events.push(format!("wp_version:{:?}", kind));
-        if let Some(stm) = self.correlator.resolve(versioned, kind) {
+        self.version_bases.push((versioned.to_string(), base.to_string(), version));
+        if let Some(stm) = self.correlator.resolve(base, kind) {
             if let Some(line) = vir::vir_observer::line_from_span(&stm.span) {
                 let kind_str = format!("{:?}", kind);
                 self.version_correlations.push((versioned.to_string(), line, kind_str));
@@ -421,6 +427,8 @@ impl air::air_observer::AirObserver for AirOnlyObserver {
     fn on_wp_version_created(
         &mut self,
         _: &air::ast::Ident,
+        _: &air::ast::Ident,
+        _: u32,
         kind: air::air_observer::VersionOrigin,
     ) {
         self.events.push(format!("wp_version:{:?}", kind));

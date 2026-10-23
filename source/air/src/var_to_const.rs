@@ -130,10 +130,12 @@ impl LowerStmtState<'_> {
     fn notify_version_created(
         &mut self,
         versioned: &Ident,
+        base: &Ident,
+        version: u32,
         kind: crate::air_observer::VersionOrigin,
     ) {
         if let Some(obs) = &mut self.observer {
-            obs.on_wp_version_created(versioned, kind);
+            obs.on_wp_version_created(versioned, base, version, kind);
         }
     }
 }
@@ -155,6 +157,7 @@ fn lower_stmt(
             let n = find_version(&versions, x);
             let typ = types[x].clone();
             versions.insert(x.clone(), n + 1);
+            let base = x.clone();
             let x = Arc::new(rename_var(x, n + 1));
             if !state.version_decls.contains(&x) {
                 let decl = Arc::new(DeclX::Const(x.clone(), typ));
@@ -166,7 +169,7 @@ fn lower_stmt(
             } else {
                 crate::air_observer::VersionOrigin::Assign
             };
-            state.notify_version_created(&x, kind);
+            state.notify_version_created(&x, &base, n + 1, kind);
             match &*stmt {
                 StmtX::Assign(_, e) => {
                     let expr1 = Arc::new(ExprX::Var(x));

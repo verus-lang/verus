@@ -32,16 +32,24 @@ pub trait AirObserver: Any {
     /// query's own pre-existing locals are in `query.local`).
     fn on_query_lowered(&mut self, _query: &Query, _snapshots: &Snapshots, _local_vars: &[Decl]) {}
 
-    /// Called from `lower_query` at the moment a new WP version is created.
+    /// `lower_query` created version `version` of the variable `base` (its AIR name, as in the
+    /// `Havoc` or `Assign` statement, e.g. `x@` or `p!`); `versioned` is the constant's name.
     ///
-    /// The Nth call for base variable `x` corresponds to the Nth `VirObserver::on_havoc`
-    /// or `on_assign` callback for `x`. Version merging at branch and break joins takes
-    /// the maximum of the branch versions, so every version originates in a `Havoc` or
-    /// an `Assign`.
+    /// Versions are numbered per query. Every version originates in a `Havoc` or an `Assign`:
+    /// merging at branch and break joins takes the maximum of the branch versions. Each arm of
+    /// a branch is versioned from the same state, so a version can be created once in each arm
+    /// that assigns the variable; it is reported once per creating statement.
     ///
-    /// See `VersionCorrelator` in `vir/src/vir_observer.rs` for a helper that pairs
-    /// these callbacks with the SST statements that produced them.
-    fn on_wp_version_created(&mut self, _versioned: &Ident, _kind: VersionOrigin) {}
+    /// See `VersionCorrelator` in `vir/src/vir_observer.rs` for a helper that pairs these
+    /// callbacks with the SST statements that produced them.
+    fn on_wp_version_created(
+        &mut self,
+        _versioned: &Ident,
+        _base: &Ident,
+        _version: u32,
+        _kind: VersionOrigin,
+    ) {
+    }
 
     /// A lambda was lowered to the uninterpreted function `name`. `binders` are the lambda's
     /// parameters with their types and `body` is its body.
