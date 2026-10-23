@@ -1,7 +1,7 @@
 use crate::ast::{
     AssertQueryMode, AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail,
-    Datatype, DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, InvAtomicity,
-    ItemKind, Krate, Label, LogicalOp, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName,
+    DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, FunctionStub, InvAtomicity,
+    ItemKind, Label, LogicalOp, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName,
     OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind,
     SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind,
     UnwindSpec, VarIdent, VirErr,
@@ -10,8 +10,10 @@ use crate::ast_util::{get_field, is_unit, path_as_vstd_name, typ_to_diagnostic_s
 use crate::def::{Spanned, user_local_name};
 use crate::messages::{Span, error, internal_error};
 use crate::messages::{error_bare, error_with_label};
-use crate::resolution_types::ResolutionTypes;
+use crate::resolution_inference::ResolutionInfo;
+use crate::traits::{DemoteTraitLookup, method_if_not_demoted};
 use crate::util::vec_map_result;
+use crate::well_formed::WfLookup;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::mem::swap;
@@ -359,7 +361,9 @@ impl ProphReason {
     }
 }
 
-fn function_allows_proph(function: &Function) -> (Option<NoProphReason>, Option<OuterProphReason>) {
+fn function_allows_proph(
+    function: &FunctionStub,
+) -> (Option<NoProphReason>, Option<OuterProphReason>) {
     match function.x.mode {
         Mode::Spec => (None, None),
         Mode::Exec => (Some(NoProphReason::ExecFnCall), Some(OuterProphReason::ExecFnCall)),
@@ -486,9 +490,8 @@ impl SpecialPaths {
 }
 
 struct Ctxt {
-    pub(crate) funs: HashMap<Fun, Function>,
-    pub(crate) datatypes: HashMap<Path, Datatype>,
-    pub(crate) traits: HashSet<Path>,
+    pub(crate) funs: Arc<HashMap<Fun, FunctionStub>>,
+    pub(crate) lookup: Arc<WfLookup>,
     pub(crate) check_ghost_blocks: bool,
     pub(crate) fun_mode: Mode,
     pub(crate) special_paths: SpecialPaths,
@@ -949,7 +952,7 @@ fn add_pattern_rec(
         PatternX::Constructor(dt, variant, patterns) => {
             let variant = match dt {
                 Dt::Path(path) => {
-                    let datatype = &ctxt.datatypes[path];
+                    let datatype = &ctxt.lookup.dts[path];
                     Some(
                         datatype
                             .x
@@ -1339,7 +1342,7 @@ fn check_place_rec_inner(
 
             let field_mode = match datatype {
                 Dt::Path(path) => {
-                    let datatype = &ctxt.datatypes[path];
+                    let datatype = &ctxt.lookup.dts[path];
                     let field = get_field(&datatype.x.get_variant(variant).fields, field);
                     field.a.1
                 }
@@ -1651,7 +1654,7 @@ fn type_is_non_exec(ctxt: &Ctxt, typ: &Typ) -> bool {
                 false
             }
             Dt::Path(path) => {
-                let datatype = &ctxt.datatypes[path];
+                let datatype = &ctxt.lookup.dts[path];
                 datatype.x.mode != Mode::Exec
             }
         },
@@ -2024,7 +2027,7 @@ fn check_expr(
         ExprX::Ctor(dt, variant, binders, update) => {
             let (variant_opt, mut mode) = match dt {
                 Dt::Path(path) => {
-                    let datatype = &ctxt.datatypes[path];
+                    let datatype = &ctxt.lookup.dts[path];
                     let variant = datatype.x.get_variant(variant);
                     let mode = datatype.x.mode;
                     (Some(variant), mode)
@@ -3588,7 +3591,7 @@ fn check_stmt(
         && !typing.in_pure
         && let StmtX::Decl { pattern, mode: _, init: Some(_), els: None, assert_irrefutable: _ } =
             &stmt.x
-        && !crate::patterns::definitely_irrefutable(pattern, &ctxt.datatypes)
+        && !crate::patterns::definitely_irrefutable(pattern, &ctxt.lookup.dts)
     {
         record.assert_irrefutable.insert(stmt.span.id);
     }
@@ -3702,13 +3705,13 @@ fn check_stmt(
     }
 }
 
-fn check_function(
+fn check_function_inner(
     ctxt: &Ctxt,
     record: &mut Record,
     typing: &mut Typing,
     function: &mut Function,
-    rtypes: &ResolutionTypes,
-) -> Result<(), VirErr> {
+    demote_trait_lookup: &DemoteTraitLookup,
+) -> Result<bool, VirErr> {
     let Record {
         // Global fields
         erasure_modes: _,
@@ -3741,11 +3744,16 @@ fn check_function(
         }
     }
 
-    if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
-        let our_trait = ctxt.traits.contains(trait_path);
+    if let Some(method) = method_if_not_demoted(demote_trait_lookup, function) {
+        let trait_path = match &function.x.kind {
+            FunctionKind::TraitMethodImpl { trait_path, .. }
+            | FunctionKind::ForeignTraitMethodImpl { trait_path, .. } => trait_path,
+            _ => unreachable!(),
+        };
+        let our_trait = ctxt.lookup.merged_traits.trait_map.contains_key(trait_path);
         let (expected_params, expected_ret_mode, expected_proph): (Vec<Mode>, Mode, bool) =
             if our_trait {
-                let trait_method = &ctxt.funs[method];
+                let trait_method = &ctxt.funs[&method];
                 let expect_mode = trait_method.x.mode;
                 let expect_proph = trait_method.x.attrs.prophecy_dependent;
                 if function.x.mode != expect_mode {
@@ -4057,59 +4065,26 @@ fn check_function(
             *function = function.new_x(functionx);
         }
         record.infer_spec_for_implicit_reborrows = None;
-
-        if function.x.mode != Mode::Spec || function.x.outer_ret.x.mode != Mode::Spec {
-            let functionx = &mut Arc::make_mut(&mut *function).x;
-            // For dual mode we _could_ probably skip entirely, but
-            // resolution_inference does some extra (soundness-related) checks
-            // besides resolution inference that would not be good to skip
-            if let Some(body) = &mut functionx.body {
-                *body = crate::resolution_inference::infer_resolution(
-                    &functionx.params,
-                    &body,
-                    &record.read_kind_finals,
-                    &ctxt.datatypes,
-                    &ctxt.funs,
-                    &record.type_inv_info,
-                    functionx.owning_module.as_ref().unwrap(),
-                    &record.var_modes,
-                    &record.temporary_modes,
-                    &rtypes,
-                    dual_mode_fn,
-                )?;
-            }
-        }
     }
     drop(fun_typing);
     typing.assert_zero_scopes();
-    Ok(())
+    Ok(dual_mode_fn)
 }
 
-pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> {
-    let mut funs: HashMap<Fun, Function> = HashMap::new();
-    let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
-    for function in krate.functions.iter() {
-        funs.insert(function.x.name.clone(), function.clone());
-    }
-    for datatype in krate.datatypes.iter() {
-        match &datatype.x.name {
-            Dt::Path(path) => {
-                datatypes.insert(path.clone(), datatype.clone());
-            }
-            Dt::Tuple(_) => {
-                panic!("Verus internal error: modes.rs does not expect Tuples in Krate");
-            }
-        }
-    }
+pub fn check_function(
+    funs: Arc<HashMap<Fun, FunctionStub>>,
+    lookup: Arc<WfLookup>,
+    function: &Function,
+    demote_trait_lookup: &DemoteTraitLookup,
+) -> Result<(Function, ErasureModes, Option<ResolutionInfo>), Vec<VirErr>> {
     let erasure_modes =
         ErasureModes { local_modes: vec![], binder_modes: vec![], ctor_modes: vec![] };
     let special_paths = SpecialPaths::new();
-    let mut ctxt = Ctxt {
+    let ctxt = Ctxt {
         funs,
-        datatypes,
-        traits: krate.traits.iter().map(|t| t.x.name.clone()).collect(),
-        check_ghost_blocks: false,
-        fun_mode: Mode::Exec,
+        lookup,
+        check_ghost_blocks: function.x.attrs.uses_ghost_blocks,
+        fun_mode: function.x.mode,
         special_paths,
     };
     let type_inv_info = TypeInvInfo { ctor_needs_check: HashMap::new() };
@@ -4123,30 +4098,38 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> 
         mut_bor_place_modes: HashMap::new(),
         assert_irrefutable: HashSet::new(),
     };
+    let mut state = State {
+        vars: ScopeMap::new(),
+        in_assert_by_body: false,
+        in_proof_in_spec: false,
+        block_ghostness: Ghost::Exec,
+        ret_mode: None,
+        atomic_insts: None,
+        in_pure: false,
+        in_assert_query: None,
+        loops: HashMap::new(),
+    };
+    let mut typing = Typing::new(&mut state);
+    let mut function = function.clone();
+    let dual_mode =
+        check_function_inner(&ctxt, &mut record, &mut typing, &mut function, demote_trait_lookup)
+            .map_err(|e| vec![e])?;
 
-    let mut kratex = (**krate).clone();
-    let rtypes = ResolutionTypes::new(&ctxt.datatypes);
-    let mut errors = vec![];
-    for function in kratex.functions.iter_mut() {
-        ctxt.check_ghost_blocks = function.x.attrs.uses_ghost_blocks;
-        ctxt.fun_mode = function.x.mode;
-
-        let mut state = State {
-            vars: ScopeMap::new(),
-            in_assert_by_body: false,
-            in_proof_in_spec: false,
-            block_ghostness: Ghost::Exec,
-            ret_mode: None,
-            atomic_insts: None,
-            in_pure: false,
-            in_assert_query: None,
-            loops: HashMap::new(),
-        };
-        let mut typing = Typing::new(&mut state);
-
-        if let Err(err) = check_function(&ctxt, &mut record, &mut typing, function, &rtypes) {
-            errors.push(err);
+    let mut resolution_info = None;
+    if function.x.mode != Mode::Spec || function.x.outer_ret.x.mode != Mode::Spec {
+        // For dual mode we _could_ probably skip entirely, but
+        // resolution_inference does some extra (soundness-related) checks
+        // besides resolution inference that would not be good to skip
+        if function.x.body.is_some() {
+            resolution_info = Some(crate::resolution_inference::ResolutionInfo {
+                read_kind_finals: record.read_kind_finals,
+                var_modes: record.var_modes,
+                temporary_modes: record.temporary_modes,
+                typ_inv_info: record.type_inv_info,
+                dual_mode,
+            });
         }
     }
-    if errors.len() > 0 { Err(errors) } else { Ok((Arc::new(kratex), record.erasure_modes)) }
+
+    Ok((function, record.erasure_modes, resolution_info))
 }

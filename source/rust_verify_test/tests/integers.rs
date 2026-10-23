@@ -587,6 +587,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enum_to_int_non_empty_fields1 verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)]
         enum E {
             A(bool),
@@ -601,6 +603,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enum_to_int_non_empty_fields2 verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)]
         enum E {
             A(bool),

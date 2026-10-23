@@ -3,7 +3,7 @@ use vir::messages::AstId;
 use rustc_hir::HirId;
 
 use crate::context::ErasureInfo;
-use vir::ast::{Datatype, Dt, Fun, Function, Krate, Mode, Path};
+use vir::ast::{Datatype, Fun, FunctionStub, Mode, Path};
 use vir::modes::ErasureModes;
 
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
@@ -132,7 +132,7 @@ fn mode_to_var_erase(var_mode: Mode, mode: Mode, shadow_check: bool) -> VarErasu
 /// traversal generate CallErasure values.
 fn resolved_call_to_call_erase(
     _span: Span,
-    functions: &HashMap<Fun, Function>,
+    functions: &HashMap<Fun, FunctionStub>,
     _datatypes: &HashMap<Path, Datatype>,
     resolved_call: &ResolvedCall,
     ctor_mode: Option<Mode>,
@@ -238,7 +238,8 @@ fn get_binder_hir_id<'tcx>(
 pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     verus_items: &VerusItems,
-    vir_crate: &Krate,
+    datatypes: &HashMap<Path, Datatype>,
+    functions: &HashMap<Fun, FunctionStub>,
     erasure_hints: &ErasureInfo,
     erasure_modes: &ErasureModes,
 ) -> Result<(), VirErr> {
@@ -365,18 +366,6 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         }
     }
 
-    let mut functions = HashMap::<Fun, Function>::new();
-    for f in &vir_crate.functions {
-        functions.insert(f.x.name.clone(), f.clone()).map(|_| panic!("{:?}", f.x.name));
-    }
-
-    let mut datatypes = HashMap::<Path, Datatype>::new();
-    for d in &vir_crate.datatypes {
-        if let Dt::Path(path) = &d.x.name {
-            datatypes.insert(path.clone(), d.clone()).map(|_| panic!("{:?}", path));
-        }
-    }
-
     let mut calls = HashMap::<HirId, (CallErasure, bool)>::new();
     let mut loop_erasure = HashMap::<HirId, LoopErasure>::new();
     for (hir_id, span_data, resolved_call, in_ghost) in &erasure_hints.resolved_calls {
@@ -385,7 +374,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         let (call_erasure, force_treat_as_inhabited) = resolved_call_to_call_erase(
             span,
             &functions,
-            &datatypes,
+            datatypes,
             resolved_call,
             ctor_mode,
             *in_ghost,

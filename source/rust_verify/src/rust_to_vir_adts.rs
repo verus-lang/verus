@@ -13,8 +13,8 @@ use rustc_span::Span;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    CrateId, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Fun, Function, Ident,
-    KrateX, Mode, Path, TypX, Variant, VirErr,
+    CrateId, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Fun, FunctionStub,
+    Ident, KrateX, Mode, Path, TypX, Variant, VirErr,
 };
 use vir::ast_util::ident_binder;
 use vir::def::field_ident_from_rust;
@@ -777,7 +777,10 @@ pub(crate) fn check_item_external<'tcx>(
     Ok(())
 }
 
-pub(crate) fn setup_type_invariants(krate: &mut KrateX) -> Result<(), VirErr> {
+pub(crate) fn setup_type_invariants(
+    krate: &mut KrateX,
+    functions: &[FunctionStub],
+) -> Result<(), VirErr> {
     let mut dt_to_idx_opt = None;
     let mut get_datatype_idx = |dts: &Vec<Datatype>, dt: &Dt| {
         if dt_to_idx_opt.is_none() {
@@ -789,7 +792,7 @@ pub(crate) fn setup_type_invariants(krate: &mut KrateX) -> Result<(), VirErr> {
         }
         dt_to_idx_opt.as_ref().unwrap().get(dt).cloned()
     };
-    let get_fun_span = |fs: &Vec<Function>, fun: &Fun| {
+    let get_fun_span = |fs: &[FunctionStub], fun: &Fun| {
         for f in fs.iter() {
             if &f.x.name == fun {
                 return f.span.clone();
@@ -798,7 +801,7 @@ pub(crate) fn setup_type_invariants(krate: &mut KrateX) -> Result<(), VirErr> {
         panic!("get_fun_span failed");
     };
 
-    for f in krate.functions.iter() {
+    for f in functions.iter() {
         if f.x.attrs.is_type_invariant_fn {
             if f.x.params.len() != 1 {
                 return Err(vir::messages::error(
@@ -816,7 +819,7 @@ pub(crate) fn setup_type_invariants(krate: &mut KrateX) -> Result<(), VirErr> {
                             &f.span,
                             "type_invariant: multiple type invariants defined for the same type",
                         )
-                        .primary_span(&get_fun_span(&krate.functions, &f2.fun)));
+                        .primary_span(&get_fun_span(functions, &f2.fun)));
                     }
                     dt.x.user_defined_invariant_fn = Some(vir::ast::FunWithVis {
                         fun: f.x.name.clone(),

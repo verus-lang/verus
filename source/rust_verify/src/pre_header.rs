@@ -18,6 +18,7 @@ use vir::ast::*;
 pub struct PreHeader {
     pub no_method_body: bool,
     pub returns: bool,
+    pub decreases_len: usize,
     pub default_ensures: bool,
     pub open_visibility_qualifier: Option<Visibility>,
     pub unwrap_parameters: Vec<UnwrapParameter>,
@@ -28,6 +29,7 @@ pub(crate) fn empty_preheader<'tcx>() -> PreHeader {
     PreHeader {
         no_method_body: false,
         returns: false,
+        decreases_len: 0,
         open_visibility_qualifier: None,
         unwrap_parameters: vec![],
         ensure_id: None,
@@ -244,6 +246,12 @@ fn check_expr_for_header<'tcx>(
         VerusItem::Spec(SpecItem::Returns) => {
             pre_header.returns = true;
         }
+        VerusItem::Spec(SpecItem::Decreases) => {
+            if args.len() == 1 {
+                let len = crate::rust_to_vir_expr::extract_tuple(&args[0]).len();
+                pre_header.decreases_len = len;
+            }
+        }
         VerusItem::Spec(SpecItem::Ensures) => {
             let possible_closure_arg = match args[0].kind {
                 ExprKind::Block(block, _) if block.expr.is_some() => block.expr.unwrap(),
@@ -330,6 +338,7 @@ pub(crate) fn sanity_check_preheader(
     let PreHeader {
         no_method_body,
         returns,
+        decreases_len,
         default_ensures,
         open_visibility_qualifier,
         unwrap_parameters,
@@ -341,6 +350,9 @@ pub(crate) fn sanity_check_preheader(
     }
     if *returns != header.returns.is_some() {
         internal_err!(span, "sanity_check_preheader failed: returns");
+    }
+    if *decreases_len != header.decrease.len() {
+        internal_err!(span, "sanity_check_preheader failed: decreases");
     }
     if *default_ensures != (header.ensure.1.len() > 0) {
         internal_err!(span, "sanity_check_preheader failed: default_ensures");

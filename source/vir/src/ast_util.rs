@@ -1165,6 +1165,15 @@ impl FunctionKind {
             }
         }
     }
+
+    pub(crate) fn has_default(&self) -> bool {
+        match self {
+            FunctionKind::Static
+            | FunctionKind::TraitMethodImpl { .. }
+            | FunctionKind::ForeignTraitMethodImpl { .. } => false,
+            FunctionKind::TraitMethodDecl { has_default, .. } => *has_default,
+        }
+    }
 }
 
 // Return a non-TraitMethodImpl for f
@@ -1540,4 +1549,29 @@ pub(crate) fn const_usize_of_expr(e: &Expr) -> Option<usize> {
         ExprX::Const(Constant::Int(bignum)) => bignum.try_into().ok(),
         _ => None,
     }
+}
+
+pub fn function_to_stub(f: &Function) -> crate::ast::FunctionStub {
+    crate::def::Spanned::new(
+        f.span.clone(),
+        FunctionStubX {
+            name: f.x.name.clone(),
+            proxy: f.x.proxy.clone(),
+            kind: f.x.kind.clone(),
+            visibility: f.x.visibility.clone(),
+            body_visibility: f.x.body_visibility.clone(),
+            opaqueness: f.x.opaqueness.clone(),
+            owning_module: f.x.owning_module.clone(),
+            mode: f.x.mode.clone(),
+            typ_params: f.x.typ_params.clone(),
+            typ_bounds: f.x.typ_bounds.clone(),
+            params: f.x.params.clone(),
+            outer_ret: f.x.outer_ret.clone(),
+            item_kind: f.x.item_kind.clone(),
+            attrs: f.x.attrs.clone(),
+
+            returns: f.x.returns.is_some(),
+            decreases_len: f.x.decrease.len(),
+        },
+    )
 }

@@ -8,6 +8,7 @@ For soundness's sake, be as defensive as possible:
 
 use crate::context::{Context, ContextX};
 use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
+use crate::query::PreCrate;
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{def_id_to_vir_path_option, mk_visibility};
@@ -373,7 +374,7 @@ fn check_item<'tcx>(
 fn check_foreign_item<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
-    vir: &mut KrateX,
+    infos: &mut Vec<FunctionOrConstInfo<'tcx>>,
     _id: &ForeignItemId,
     item: &'tcx ForeignItem<'tcx>,
 ) -> Result<(), VirErr> {
@@ -383,7 +384,7 @@ fn check_foreign_item<'tcx>(
             check_foreign_item_fn(
                 ctxt,
                 state,
-                vir,
+                infos,
                 item.owner_id.to_def_id(),
                 item.span,
                 mk_visibility(ctxt, item.owner_id.to_def_id()),
@@ -503,11 +504,11 @@ fn check_extern_crate_alias<'tcx>(item: &'tcx Item<'tcx>) -> Result<(), VirErr> 
     Ok(())
 }
 
-pub fn crate_to_vir<'a, 'tcx>(
+pub(crate) fn crate_to_vir<'a, 'tcx>(
     mut ctxtx: ContextX<'tcx>,
     imported: &Vec<Krate>,
     crate_items: &CrateItems,
-) -> Result<(Context<'tcx>, WarningCtx, Krate), Vec<VirErr>> {
+) -> Result<PreCrate<'tcx>, Vec<VirErr>> {
     let mut vir: KrateX = KrateX {
         functions: Vec::new(),
         reveal_groups: Vec::new(),
@@ -638,7 +639,7 @@ pub fn crate_to_vir<'a, 'tcx>(
                         if let Err(err) = check_foreign_item(
                             &ctxt,
                             &mut state,
-                            &mut vir,
+                            &mut infos,
                             &foreign_item_id,
                             foreign_item,
                         ) {
@@ -701,25 +702,18 @@ pub fn crate_to_vir<'a, 'tcx>(
 
     check_anon_consts(&ctxt, &mut state, &mut infos, crate_items)?;
 
-    for info in infos.into_iter() {
-        if let Err(e) = crate::rust_to_vir_func::finish_item(&ctxt, info, &mut vir.functions) {
-            errors.push(e);
-        }
-    }
-    if errors.len() > 0 {
-        return Err(errors);
-    }
-
+    let function_stubs = infos.iter().flat_map(|info| info.iter_stubs()).cloned().collect();
     crate::rust_to_vir_impl::collect_external_trait_impls(
         &ctxt,
         imported,
         &mut vir,
         &mut state.external_info,
+        &function_stubs,
     )
     .map_err(|e| vec![e])?;
 
-    crate::rust_to_vir_adts::setup_type_invariants(&mut vir).map_err(|e| vec![e])?;
-    vir::traits::set_krate_dyn_compatibility(imported, &mut vir);
+    crate::rust_to_vir_adts::setup_type_invariants(&mut vir, &function_stubs)
+        .map_err(|e| vec![e])?;
 
     let mut fun_warn_configs: HashMap<Fun, Option<WarningConfig>> = HashMap::new();
     for krate in imported {
@@ -732,5 +726,18 @@ pub fn crate_to_vir<'a, 'tcx>(
     }
     let warning_ctx = WarningCtx { fun_warn_configs };
 
-    Ok((ctxt, warning_ctx, Arc::new(vir)))
+    let infos = infos.into_iter().map(|info| Arc::new(info)).collect::<Vec<_>>();
+    let mut fun_name_to_info = HashMap::<Fun, Arc<FunctionOrConstInfo>>::new();
+    for info in infos.iter() {
+        for stub in info.iter_stubs() {
+            fun_name_to_info.insert(stub.x.name.clone(), info.clone());
+        }
+    }
+    Ok(PreCrate {
+        ctxt,
+        warning_ctx: Arc::new(warning_ctx),
+        krate_without_funs: Arc::new(vir),
+        infos: infos,
+        fun_name_to_info,
+    })
 }

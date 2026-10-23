@@ -18,8 +18,8 @@ use rustc_span::{ExpnKind, Span, sym};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    AssocTypeImpl, AssocTypeImplX, Dt, Fun, FunX, Function, FunctionKind, Ident, Krate, KrateX,
-    Mode, Path, Trait, TraitImpl, Typ, Typs, VirErr,
+    AssocTypeImpl, AssocTypeImplX, Dt, Fun, FunX, FunctionKind, Ident, Krate, KrateX, Mode, Path,
+    Trait, TraitImpl, Typ, Typs, VirErr,
 };
 
 // Used to collect all needed external trait implementations
@@ -633,6 +633,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     imported: &Vec<Krate>,
     krate: &mut KrateX,
     external_info: &mut ExternalInfo,
+    function_stubs: &Vec<vir::ast::FunctionStub>,
 ) -> Result<(), VirErr> {
     let tcx = ctxt.tcx;
     let mut considered_impls: HashSet<DefId> = HashSet::new();
@@ -809,8 +810,8 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
         }
     }
 
-    let mut func_map = HashMap::<Fun, Function>::new();
-    for function in krate.functions.iter() {
+    let mut func_map = HashMap::<Fun, vir::ast::FunctionStub>::new();
+    for function in function_stubs.iter() {
         func_map.insert(function.x.name.clone(), function.clone());
     }
     let mut trait_map = HashMap::<Path, Trait>::new();
