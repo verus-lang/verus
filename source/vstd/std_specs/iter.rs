@@ -618,8 +618,9 @@ pub broadcast axiom fn map_postcondition<I, F>(i: I, f: F, r: core::iter::Map<I,
     ensures
         IteratorSpec::remaining(&r).len() == i.remaining().len(),
         IteratorSpec::produces(&r).len() == IteratorSpec::remaining(&r).len(),
-        forall |k| 0 <= k < IteratorSpec::remaining(&r).len() && IteratorSpec::produces(&r)[k] ==>
-            i.produces()[k] && f.ensures((i.remaining()[k],), #[trigger] IteratorSpec::remaining(&r)[k]),
+        forall |k| #![trigger IteratorSpec::remaining(&r)[k]] #![trigger IteratorSpec::produces(&r)[k]]
+            0 <= k < IteratorSpec::remaining(&r).len() && IteratorSpec::produces(&r)[k] ==>
+            i.produces()[k] && f.ensures((i.remaining()[k],), IteratorSpec::remaining(&r)[k]),
         IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
         map_iter(r) == i,
         map_fun(r) == f,

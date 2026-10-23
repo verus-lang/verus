@@ -1813,7 +1813,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] map_iter verus_code! {
         use vstd::prelude::*;
-        use vstd::std_specs::iter::IteratorSpec;
 
         #[verifier::loop_isolation(false)]
         fn test() {
@@ -1833,7 +1832,6 @@ test_verify_one_file! {
                     w.len() == it.index(),
                     forall |i| 0 <= i < w.len() ==> #[trigger] w[i] == v[i] + 1,
             {
-                assert(vstd::std_specs::iter::map_iter(it.snapshot@).produces()[it.index()]);
                 w.push(x);
             }
 

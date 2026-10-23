@@ -332,20 +332,14 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] collect_adaptors_are_complete verus_code! {
         use vstd::prelude::*;
-        use vstd::std_specs::iter::IteratorSpec;
 
         fn mapped_collect() {
             let v: Vec<u64> = vec![1, 2, 3];
             let it = v.into_iter().map(|x: u64| -> (r: u64)
                 ensures r == x,
             { x });
-            let ghost initial = it;
             let w: Vec<u64> = it.collect();
             assert(w.len() == 3);
-            assert forall |i| 0 <= i < w.len() implies w[i] == v[i] by {
-                assert((|p: bool| p)(initial.produces()[i]));
-                assert(vstd::std_specs::iter::map_iter(initial).produces()[i]);
-            }
             assert(w@ == seq![1u64, 2, 3]);
         }
 
@@ -364,13 +358,8 @@ test_verify_one_file! {
             let it = v.into_iter().map(|x: u64| -> (r: u64)
                 ensures r == x,
             { x });
-            let ghost initial = it;
             let w: Vec<u64> = Vec::from_iter(it);
             assert(w.len() == 3);
-            assert forall |i| 0 <= i < w.len() implies w[i] == v[i] by {
-                assert((|p: bool| p)(initial.produces()[i]));
-                assert(vstd::std_specs::iter::map_iter(initial).produces()[i]);
-            }
             assert(w@ == seq![1u64, 2, 3]);
         }
 
@@ -572,10 +561,8 @@ test_verify_one_file! {
 
             let v: Vec<u32> = vec![1, 2, 3, 4];
             let mut w: Vec<u32> = Vec::new();
-            let filtered = v.into_iter().filter(p);
-            let ghost initial = filtered;
 
-            for x in it: filtered
+            for x in it: v.into_iter().filter(p)
                 invariant
                     w.len() == it.index(),
                     forall |i| 0 <= i < w.len() ==> w[i] == it.seq()[i],
@@ -583,9 +570,7 @@ test_verify_one_file! {
                 w.push(x);
             }
             assert(w.len() <= 4);
-            assert forall |i| 0 <= i < w.len() implies w[i] % 2 == 0 by {
-                assert((|p: bool| p)(initial.produces()[i]));
-            }
+            assert(forall |i| 0 <= i < w.len() ==> w[i] % 2 == 0);
             assert(forall |i| #![auto] 0 <= i < w.len() ==> v@.contains(w[i]));
         }
     } => Ok(())
@@ -653,7 +638,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] map_works verus_code! {
         use vstd::prelude::*;
-        use vstd::std_specs::iter::IteratorSpec;
 
         fn double_it() {
             let v = vec![1u32, 2, 3, 4];
@@ -663,7 +647,6 @@ test_verify_one_file! {
                     w.len() == iter.index(),
                     forall |i| 0 <= i < w.len() ==> w[i] == v[i] * 2,
             {
-                assert(vstd::std_specs::iter::map_iter(iter.snapshot@).produces()[iter.index()]);
                 w.push(x);
             }
             assert(w@ == seq![2u32, 4, 6, 8]);
