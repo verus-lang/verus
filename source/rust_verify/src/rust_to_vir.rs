@@ -62,18 +62,18 @@ fn check_item<'tcx>(
     id: &ItemId,
     item: &'tcx Item<'tcx>,
     crate_items: &CrateItems,
-    skipped: &mut Vec<DefId>,
+    no_erasure_needed: &mut Vec<DefId>,
 ) -> Result<(), Vec<VirErr>> {
     let def_id = item.owner_id.to_def_id();
 
     let attrs = ctxt.tcx.hir_attrs(item.hir_id());
     let vattrs = ctxt.get_verifier_attrs(attrs).map_err(|e| vec![e])?;
     if vattrs.internal_reveal_fn {
-        skipped.push(def_id);
+        no_erasure_needed.push(def_id);
         return Ok(());
     }
     if vattrs.internal_const_body {
-        skipped.push(def_id);
+        no_erasure_needed.push(def_id);
         return Ok(());
     }
     if vattrs.external_fn_specification && !matches!(&item.kind, ItemKind::Fn { .. }) {
@@ -98,7 +98,7 @@ fn check_item<'tcx>(
     let mut handle_const_or_static = |body_id: &rustc_hir::BodyId| {
         let def_id = body_id.hir_id.owner.to_def_id();
         if vattrs.size_of_global {
-            skipped.push(def_id);
+            no_erasure_needed.push(def_id);
             return Ok(()); // handled earlier
         }
         if vattrs.item_broadcast_use {
@@ -181,11 +181,11 @@ fn check_item<'tcx>(
             }
             *reveals = Some(ctxt.spanned_new(item.span, funs));
 
-            skipped.push(def_id);
+            no_erasure_needed.push(def_id);
             return Ok(());
         }
         if vattrs.structural_const_wrapper {
-            skipped.push(def_id);
+            no_erasure_needed.push(def_id);
             return Ok(());
         }
 
@@ -233,6 +233,7 @@ fn check_item<'tcx>(
                 None,
                 None,
                 &mut vir.opaque_types,
+                no_erasure_needed,
             )
             .map_err(|e| vec![e])?;
         }
@@ -315,6 +316,7 @@ fn check_item<'tcx>(
                 module_path.clone(),
                 crate_items,
                 attrs,
+                no_erasure_needed,
             )?;
         }
         ItemKind::Const(_ident, generics, _ty, ConstItemRhs::Body(body_id)) => {
@@ -357,6 +359,7 @@ fn check_item<'tcx>(
                 &vattrs,
                 crate_items,
                 *safety,
+                no_erasure_needed,
             )
             .map_err(|e| vec![e])?;
         }
@@ -615,7 +618,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
     )
     .map_err(|e| vec![e])?;
 
-    let mut skipped = vec![];
+    let mut no_erasure_needed = vec![];
 
     for crate_item in crate_items.items.iter() {
         match &crate_item.verif {
@@ -637,7 +640,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
                             &item_id,
                             item,
                             &crate_items,
-                            &mut skipped,
+                            &mut no_erasure_needed,
                         ) {
                             errors.extend(errs);
                         }
@@ -759,7 +762,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
             FunctionOrConstInfo::ForeignFunction(_) => {}
         }
     }
-    for def_id in skipped.iter() {
+    for def_id in no_erasure_needed.iter() {
         let f = def_id_to_fun_name_for_erasure.insert(*def_id, None);
         assert!(f.is_none());
     }

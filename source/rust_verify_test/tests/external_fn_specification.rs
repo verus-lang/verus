@@ -357,7 +357,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] const_wrong_type verus_code! {
         assume_specification[char::REPLACEMENT_CHARACTER] -> u8;
-    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
+    } => Err(err) => assert_error_msgs(err, &[
+        "mismatched types",
+        "assume_specification requires function type signature to match `core::char::methods::impl&%0::REPLACEMENT_CHARACTER` exactly"
+    ])
 }
 
 test_verify_one_file! {
