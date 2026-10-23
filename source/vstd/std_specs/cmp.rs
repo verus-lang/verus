@@ -270,12 +270,10 @@ pub assume_specification<T, F: FnOnce(&T, &T) -> Ordering>[ core::cmp::min_by ](
     requires
         compare.requires((&v1, &v2)),
     ensures
-        exists|o: Ordering|
-            {
-                &&& #[trigger] compare.ensures((&v1, &v2), o)
-                &&& o == Ordering::Greater ==> r == v2
-                &&& o != Ordering::Greater ==> r == v1
-            },
+        exists|o: Ordering| {
+            &&& #[trigger] compare.ensures((&v1, &v2), o)
+            &&& r == (if o == Ordering::Greater { v2 } else { v1 })
+        },
 ;
 
 pub assume_specification<T, F: FnOnce(&T, &T) -> Ordering>[ core::cmp::max_by ](
@@ -286,12 +284,10 @@ pub assume_specification<T, F: FnOnce(&T, &T) -> Ordering>[ core::cmp::max_by ](
     requires
         compare.requires((&v1, &v2)),
     ensures
-        exists|o: Ordering|
-            {
-                &&& #[trigger] compare.ensures((&v1, &v2), o)
-                &&& o == Ordering::Greater ==> r == v1
-                &&& o != Ordering::Greater ==> r == v2
-            },
+        exists|o: Ordering| {
+            &&& #[trigger] compare.ensures((&v1, &v2), o)
+            &&& r == (if o == Ordering::Greater { v1 } else { v2 })
+        },
 ;
 
 // `min_by_key` and `max_by_key` compute the keys `f(&v1)` and `f(&v2)` and
@@ -306,14 +302,12 @@ pub assume_specification<T, F: FnMut(&T) -> K, K: Ord>[ core::cmp::min_by_key ](
         f.requires((&v1,)),
         f.requires((&v2,)),
     ensures
-        exists|k1: K, k2: K, lt: bool|
-            {
-                &&& f.ensures((&v1,), k1)
-                &&& f.ensures((&v2,), k2)
-                &&& #[trigger] call_ensures(K::lt, (&k2, &k1), lt)
-                &&& lt ==> r == v2
-                &&& !lt ==> r == v1
-            },
+        exists|k1: K, k2: K, lt: bool| {
+            &&& f.ensures((&v1,), k1)
+            &&& f.ensures((&v2,), k2)
+            &&& #[trigger] call_ensures(K::lt, (&k2, &k1), lt)
+            &&& r == (if lt { v2 } else { v1 })
+        },
 ;
 
 pub assume_specification<T, F: FnMut(&T) -> K, K: Ord>[ core::cmp::max_by_key ](
@@ -325,14 +319,12 @@ pub assume_specification<T, F: FnMut(&T) -> K, K: Ord>[ core::cmp::max_by_key ](
         f.requires((&v1,)),
         f.requires((&v2,)),
     ensures
-        exists|k1: K, k2: K, lt: bool|
-            {
-                &&& f.ensures((&v1,), k1)
-                &&& f.ensures((&v2,), k2)
-                &&& #[trigger] call_ensures(K::lt, (&k2, &k1), lt)
-                &&& lt ==> r == v1
-                &&& !lt ==> r == v2
-            },
+        exists|k1: K, k2: K, lt: bool| {
+            &&& f.ensures((&v1,), k1)
+            &&& f.ensures((&v2,), k2)
+            &&& #[trigger] call_ensures(K::lt, (&k2, &k1), lt)
+            &&& r == (if lt { v1 } else { v2 })
+        },
 ;
 
 /* bool */
