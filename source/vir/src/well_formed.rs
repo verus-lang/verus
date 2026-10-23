@@ -1082,6 +1082,15 @@ fn check_function_inner(
     };
 
     if let Some(method) = method_if_not_demoted(demote_trait_lookup, function) {
+        if let FunctionKind::TraitMethodImpl { trait_path, trait_typ_args, .. }
+        | FunctionKind::ForeignTraitMethodImpl { trait_path, trait_typ_args, .. } =
+            &function.x.kind
+        {
+            // trait_method_impl_typ_args relies on trait_typ_args being Self plus the trait generics
+            if let Some(tr) = ctxt.lookup.merged_traits.trait_map.get(trait_path) {
+                assert!(trait_typ_args.len() == tr.x.typ_params.len() + 1);
+            }
+        }
         if function.x.require.len() > 0 {
             return Err(error(
                 &function.span,

@@ -1100,17 +1100,17 @@ pub(crate) fn dyn_spec_fn_axiom(
     function: &crate::sst::FunctionSst,
 ) {
     // For spec functions, connect dyn T blanket impl to a specific impl of T:
-    //   trait T<A1..Am> { spec fn f(self, x1..xk) }
+    //   trait T<A1..Am> { spec fn f<C1..Cj>(self, x1..xk) }
     //   impl<B1..Bn> T<t1..tm> for t0
     // ==>
-    //   (axiom (forall (B1..Bn (self! Poly) x1..xk) (!
+    //   (axiom (forall (B1..Bn C1..Cj (self! Poly) x1..xk) (!
     //      (=
-    //       (T.f.? $dyn (DYN%T. t1..tm) t1..tm (to_dyn%T t0 t1..tm self!) x1..xk)
-    //       (T.f.? $          t0        t1..tm                     self!  x1..xk)
+    //       (T.f.? $dyn (DYN%T. t1..tm) t1..tm C1..Cj (to_dyn%T t0 t1..tm self!) x1..xk)
+    //       (T.f.? $          t0        t1..tm C1..Cj                     self!  x1..xk)
     //      )
     //   )))
     // function.x.pars = self, x1...xk
-    // function.x.typ_params = B1..Bn
+    // function.x.typ_params = B1..Bn C1..Cj
     // trait_typ_args = t0 t1..tm
     // Note: we don't need anything for exec/proof functions,
     // because dyn T just uses T's requires/ensures.
@@ -1118,12 +1118,14 @@ pub(crate) fn dyn_spec_fn_axiom(
     let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &function.x.kind else {
         panic!("dyn_spec_fn_axiom expects TraitMethodImpl");
     };
-    let mut typ_ids: Vec<air::ast::Expr> = Vec::new();
+    let typ_args =
+        trait_method_impl_typ_args(&ctx.func_map[method], trait_typ_args, &function.x.typ_params);
+    let typ_ids: Vec<air::ast::Expr> =
+        trait_typ_args.iter().flat_map(|targ| typ_to_ids(ctx, targ)).collect();
     let mut lhs_args: Vec<air::ast::Expr> = Vec::new();
     let mut rhs_args: Vec<air::ast::Expr> = Vec::new();
-    for (n, targ) in trait_typ_args.iter().enumerate() {
+    for (n, targ) in typ_args.iter().enumerate() {
         rhs_args.extend(typ_to_ids(ctx, targ));
-        typ_ids.extend(typ_to_ids(ctx, targ));
         if n == 0 {
             let typ_args_no_self = Arc::new(trait_typ_args.iter().skip(1).cloned().collect());
             let dyn_typ =
@@ -1162,6 +1164,29 @@ pub(crate) fn dyn_spec_fn_axiom(
     );
     let def_axiom = mk_unnamed_axiom(e_forall);
     decl_commands.push(Arc::new(CommandX::Global(def_axiom)));
+}
+
+// For a trait method impl, return the type arguments that instantiate the trait method:
+// trait_typ_args (Self and the trait generics) followed by the impl method's own generics.
+// The trait method declares [Self, trait generics..., method generics...],
+// while the impl method declares [impl generics..., method generics...].
+// We use the impl's names for the method generics, since inherited defaults rename them.
+pub(crate) fn trait_method_impl_typ_args(
+    trait_method: &Function,
+    trait_typ_args: &Typs,
+    impl_typ_params: &Idents,
+) -> Typs {
+    // Count the method's own generics.
+    let trait_method_own_generic_param_count =
+        trait_method.x.typ_params.len() - trait_typ_args.len();
+    // The index where the method's own generics begin, after the impl generics.
+    let impl_method_generic_params_start =
+        impl_typ_params.len() - trait_method_own_generic_param_count;
+    let mut typ_args = (**trait_typ_args).clone();
+    for x in &impl_typ_params[impl_method_generic_params_start..] {
+        typ_args.push(Arc::new(TypX::TypParam(x.clone())));
+    }
+    Arc::new(typ_args)
 }
 
 // Consider a trait impl like:
