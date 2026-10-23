@@ -1630,39 +1630,6 @@ pub(crate) fn check_item_fn<'tcx>(
         migration_attr == Some(true)
     };
 
-    if vattrs.encoded_const || vattrs.encoded_static {
-        let fn_sig = ctxt.tcx.fn_sig(id).skip_binder();
-        if fn_sig.inputs().skip_binder().len() != 0 {
-            return err_span(sig.span, "encoded_const must have 0 arguments");
-        }
-
-        let body_id = match body_id {
-            CheckItemFnEither::BodyId(body_id) => body_id,
-            CheckItemFnEither::ParamNames(_) => {
-                crate::internal_err!(sig.span, "encoded_const expected CheckItemFnEither::BodyId");
-            }
-        };
-
-        let ty = fn_sig.output().skip_binder();
-        let typ = ctxt.mid_ty_to_vir(id, sig.span, &ty, None)?;
-
-        let fun = check_item_const_or_static(
-            ctxt,
-            state,
-            infos,
-            sig.span,
-            id,
-            visibility,
-            module_path,
-            attrs,
-            &typ,
-            body_id,
-            vattrs.encoded_static,
-            self_generics,
-        )?;
-        return Ok(Some(fun));
-    }
-
     let external_trait_from_to = if let Some((to_trait_id, to_spec_name)) = external_trait {
         let from_trait_id = ctxt.tcx.parent(id);
         let from_path = ctxt.def_id_to_vir_path(from_trait_id);
@@ -3228,6 +3195,13 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     assert!(!is_async);
 
     let mode_opt = crate::attributes::get_mode_opt(attrs);
+    if vattrs.publish == Some(AttrPublish::Open) && mode_opt == Some(Mode::Exec) {
+        return err_span(
+            span,
+            "const is marked 'exec' mode but also has an internal 'open' attribute (note: this can happen if `#[verus_spec(...)]` is used inside the `verus!` macro)",
+        );
+    }
+
     let (func_mode, body_mode, ret_mode) = if is_static {
         // All statics are exec
         // For consistency with const, require the user to mark it 'exec' explicitly
