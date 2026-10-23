@@ -415,7 +415,7 @@ fn check_anon_consts<'tcx>(
     state: &mut State,
     infos: &mut Vec<FunctionOrConstInfo<'tcx>>,
     crate_items: &CrateItems,
-) -> Result<(), Vec<VirErr>> {
+) -> Result<(), (Vec<VirErr>, Option<QueryError>)> {
     let tcx = ctxt.tcx;
     for id in tcx.hir_body_owners() {
         if !matches!(tcx.def_kind(id), DefKind::AnonConst) {
@@ -467,9 +467,27 @@ fn check_anon_consts<'tcx>(
         let Some(module_path) = module_path else {
             continue;
         };
+
+        // TODO: FIXME: This is too early to do type-checking.
+        // However, rustc ICEs if we don't type-check the body containing an anon const
+        // before calling `type_of`. We need to move the anon const machinery later.
+        // Until then, the https://github.com/verus-lang/verus/issues/2323 issue will
+        // persist in the presence of anon consts.
+        let local_def_id = owner.unwrap().as_local().unwrap();
+        if tcx.hir_node_by_def_id(local_def_id).associated_body().is_some() {
+            tcx.typeck(local_def_id);
+        } else {
+            if tcx.check_well_formed(local_def_id).is_err() {
+                let rust_error = Some(crate::query::QueryError { _i_just_emitted_an_error: () });
+                return Err((vec![], rust_error));
+            }
+        }
+
         let span = body.value.span;
         let mid_typ = tcx.type_of(id).skip_binder();
-        let typ = ctxt.mid_ty_to_vir(id.to_def_id(), span, &mid_typ, None).map_err(|e| vec![e])?;
+        let typ = ctxt
+            .mid_ty_to_vir(id.to_def_id(), span, &mid_typ, None)
+            .map_err(|e| (vec![e], None))?;
         crate::rust_to_vir_func::check_item_const_or_static(
             ctxt,
             state,
@@ -484,7 +502,7 @@ fn check_anon_consts<'tcx>(
             false,
             None,
         )
-        .map_err(|e| vec![e])?;
+        .map_err(|e| (vec![e], None))?;
     }
     Ok(())
 }
@@ -725,7 +743,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
 
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&CrateId::Vstd);
 
-    check_anon_consts(&ctxt, &mut state, &mut infos, crate_items).map_err(|e| (e, None))?;
+    check_anon_consts(&ctxt, &mut state, &mut infos, crate_items)?;
 
     let function_stubs = infos.iter().flat_map(|info| info.iter_stubs()).cloned().collect();
     crate::rust_to_vir_impl::collect_external_trait_impls(
