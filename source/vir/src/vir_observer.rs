@@ -92,6 +92,8 @@ pub struct Observers {
     pub query_result: Option<
         std::rc::Rc<std::cell::RefCell<dyn air::query_result_observer::QueryResultObserver>>,
     >,
+    /// Delivered to the `VirObserver` (`on_span_resolver`) before any other callback.
+    pub span_resolver: Option<SpanResolver>,
 }
 
 use std::collections::{HashMap, VecDeque};

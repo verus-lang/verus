@@ -336,6 +336,7 @@ impl vir::vir_observer::VirObserver for TestObserver {
     }
     fn on_span_resolver(&mut self, resolver: &vir::vir_observer::SpanResolver) {
         self.span_resolver = Some(resolver.clone());
+        self.events.push("span_resolver".to_string());
     }
     fn on_reveal_string(&mut self, lit: &std::sync::Arc<String>) {
         self.reveal_strings.push((**lit).clone());

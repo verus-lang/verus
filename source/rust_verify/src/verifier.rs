@@ -49,6 +49,7 @@ fn create_observer(name: &str) -> vir::vir_observer::Observers {
                 vir: Some(vir),
                 air: Some(air),
                 query_result: Some(query_result),
+                span_resolver: None,
             }
         }
         // Dedicated single-trait observers: each populates only its own slot,
@@ -2019,11 +2020,12 @@ impl Verifier {
             used_builtins,
             fndef_types,
             resolved_typs.unwrap(),
-            create_observer_from_args(&self.args.observers),
+            vir::vir_observer::Observers {
+                span_resolver: self.span_resolver.clone(),
+                ..create_observer_from_args(&self.args.observers)
+            },
         )?;
-        if let (Some(resolver), Some(obs)) = (&self.span_resolver, &ctx.observer) {
-            obs.borrow_mut().on_span_resolver(resolver);
-        }
+
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
                 self.create_log_file(Some(&bucket_id), crate::config::VIR_POLY_FILE_SUFFIX)?;

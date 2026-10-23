@@ -551,9 +551,12 @@ test_verify_one_file_with_options! {
     } => Ok(err) => {
         let d = parse(&err);
         let e = &d.events;
-        // L1: on_krate fires exactly once, before everything.
-        assert_eq!(e.first().map(|s| s.as_str()), Some("krate"),
-            "L1: krate must be first; events={:?}", e);
+        // L1: the span resolver is delivered first; then on_krate, exactly once, before
+        // everything else.
+        assert_eq!(e.first().map(|s| s.as_str()), Some("span_resolver"),
+            "L1: span_resolver must be first; events={:?}", e);
+        assert_eq!(e.get(1).map(|s| s.as_str()), Some("krate"),
+            "L1: krate must follow it; events={:?}", e);
         assert_eq!(count(e, "krate"), 1, "L1: krate exactly once; events={:?}", e);
         // L2: on_body_lowering_start precedes on_function_lowered.
         let body = idx(e, "body_start").expect("body_start present");
@@ -1244,6 +1247,7 @@ test_verify_one_file_with_options! {
         let d = parse(&err);
         assert!(d.assign_files.iter().any(|f| f.ends_with("test.rs")),
             "the assignment resolves to the test's source file; got {:?}", d.assign_files);
+
     }
 }
 

@@ -894,8 +894,12 @@ impl Ctx {
             vir: observer,
             air: air_observer,
             query_result: query_result_observer,
+            span_resolver,
         } = observers;
         if let Some(obs) = &observer {
+            if let Some(resolver) = &span_resolver {
+                obs.borrow_mut().on_span_resolver(resolver);
+            }
             obs.borrow_mut().on_krate(&krate, &name_ctxt, &module.x.path.krate);
         }
 
