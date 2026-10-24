@@ -132,6 +132,190 @@ pub fn spawn<F, Ret>(f: F) -> (handle: JoinHandle<Ret>) where
     }
 }
 
+/// A scope to spawn scoped threads in, created by [`scope()`](scope).
+/// (Wrapper around [`std::thread::Scope`](https://doc.rust-lang.org/std/thread/struct.Scope.html).)
+///
+/// See the documentation of [`scope()`](scope) for more details.
+#[verifier::external_body]
+#[repr(transparent)]
+pub struct Scope<'scope, 'env: 'scope> {
+    inner: std::thread::Scope<'scope, 'env>,
+}
+
+/// Object returned by [`Scope::spawn()`](Scope::spawn) to allow joining a scoped thread.
+/// (Wrapper around [`std::thread::ScopedJoinHandle`](https://doc.rust-lang.org/std/thread/struct.ScopedJoinHandle.html).)
+///
+/// See the documentation of [`scope()`](scope) for more details.
+#[verifier::external_body]
+#[verifier::reject_recursive_types(Ret)]
+pub struct ScopedJoinHandle<'scope, Ret> {
+    handle: std::thread::ScopedJoinHandle<'scope, Ret>,
+}
+
+impl<'scope, Ret> ScopedJoinHandle<'scope, Ret> {
+    /// Predicate restricting the possible return values. This is determined by the
+    /// postcondition of the closure provided when calling `Scope::spawn()`.
+    pub uninterp spec fn predicate(&self, ret: Ret) -> bool;
+
+    /// Wait for a scoped thread to complete.
+    #[verifier::external_body]
+    pub fn join(self) -> (r_result: Result<Ret, ()>)
+        ensures
+            match r_result {
+                Result::Ok(r) => self.predicate(r),
+                Result::Err(_) => true,
+            },
+    {
+        let res = std::panic::catch_unwind(
+            std::panic::AssertUnwindSafe(
+                ||
+                    {
+                        match self.handle.join() {
+                            Ok(v) => Ok(v),
+                            Err(_) => Err(()),
+                        }
+                    },
+            ),
+        );
+        match res {
+            Ok(res) => res,
+            Err(_) => {
+                println!("panic on join");
+                std::process::abort();
+            },
+        }
+    }
+}
+
+impl<'scope, 'env> Scope<'scope, 'env> {
+    /// Spawns a scoped thread. (Wrapper around
+    /// [`std::thread::Scope::spawn`](https://doc.rust-lang.org/std/thread/struct.Scope.html#method.spawn).)
+    ///
+    /// Unlike [`spawn()`](spawn), the closure may borrow non-`'static` data from
+    /// outside the scope. The precondition and postcondition behave as for
+    /// [`spawn()`](spawn): the closure must be callable, and its postcondition is
+    /// passed through the [`ScopedJoinHandle`] via
+    /// [`ScopedJoinHandle::predicate()`](ScopedJoinHandle::predicate).
+    #[verifier::external_body]
+    pub fn spawn<F, Ret>(&'scope self, f: F) -> (handle: ScopedJoinHandle<'scope, Ret>) where
+        F: FnOnce() -> Ret,
+        F: Send + 'scope,
+        Ret: Send + 'scope,
+
+        requires
+            f.requires(()),
+        ensures
+            forall|ret: Ret| #[trigger] handle.predicate(ret) ==> f.ensures((), ret),
+    {
+        let res = std::panic::catch_unwind(
+            std::panic::AssertUnwindSafe(
+                ||
+                    {
+                        let handle = self.inner.spawn(move || f());
+                        ScopedJoinHandle { handle }
+                    },
+            ),
+        );
+        match res {
+            Ok(res) => res,
+            Err(_) => {
+                println!("panic on spawn");
+                std::process::abort();
+            },
+        }
+    }
+}
+
+/// Creates a scope for spawning scoped threads.
+/// (Wrapper around [`std::thread::scope`](https://doc.rust-lang.org/std/thread/fn.scope.html).)
+///
+/// This takes as input a `FnOnce` closure that receives a [`Scope`].
+/// Inside the closure, [`Scope::spawn()`](Scope::spawn) spawns threads that, unlike
+/// threads created by [`spawn()`](spawn), may borrow non-`'static` data from the
+/// enclosing function. All threads spawned in the scope are automatically joined
+/// before `scope` returns. The return value of the closure is returned by `scope`.
+///
+/// The closure must be callable (i.e., its precondition must be satisfied) for any
+/// `Scope`, and the return value satisfies the closure's postcondition.
+/// Since `Scope` has no specification-level information, closure specifications normally
+/// do not mention the `Scope` argument.
+///
+/// The postcondition of a scoped thread is only available if the thread is explicitly
+/// joined with [`ScopedJoinHandle::join()`](ScopedJoinHandle::join).
+///
+/// ### Example
+///
+/// ```rust,ignore
+/// fn main() {
+///     let mut v: Vec<u64> = Vec::new();
+///     v.push(10);
+///     v.push(20);
+///     assert(v@ =~= seq![10u64, 20u64]);
+///
+///     let sum = scope(|s| -> (r: u64)
+///         requires v@ == seq![10u64, 20u64],
+///         ensures r == 30,
+///     {
+///         // Borrow the non-'static `v` from a scoped thread.
+///         let handle = s.spawn(|| -> (r: u64)
+///             requires v@ == seq![10u64, 20u64],
+///             ensures r == 30,
+///         {
+///             v[0] + v[1]
+///         });
+///
+///         // The thread's postcondition is available through `join()`.
+///         match handle.join() {
+///             Result::Ok(r) => r,
+///             Result::Err(_) => 30,
+///         }
+///     });
+///
+///     assert(sum == 30);
+///
+///     // `v` can be mutated again once the scope ends.
+///     v.push(30);
+/// }
+/// ```
+#[verifier::external_body]
+pub fn scope<'env, F, T>(f: F) -> (r: T) where
+    F: for <'scope>FnOnce(&'scope Scope<'scope, 'env>) -> T,
+
+    requires
+        forall|s: &Scope<'_, 'env>| f.requires((s,)),
+    ensures
+        exists|s: &Scope<'_, 'env>| f.ensures((s,), r),
+{
+    let res = std::panic::catch_unwind(
+        std::panic::AssertUnwindSafe(
+            ||
+                {
+                    std::thread::scope(
+                        |s|
+                            {
+                                // SAFETY: `Scope` is a `repr(transparent)` wrapper around
+                                // `std::thread::Scope` with the same lifetime parameters.
+                                let s: &Scope<'_, 'env> = unsafe {
+                                    &*(s as *const std::thread::Scope<'_, 'env> as *const Scope<
+                                        '_,
+                                        'env,
+                                    >)
+                                };
+                                f(s)
+                            },
+                    )
+                },
+        ),
+    );
+    match res {
+        Ok(res) => res,
+        Err(_) => {
+            println!("panic on scope");
+            std::process::abort();
+        },
+    }
+}
+
 /// Wrapper around Rust's
 /// [`ThreadId`](https://doc.rust-lang.org/std/thread/struct.ThreadId.html)
 /// object. This is an opaque type.
