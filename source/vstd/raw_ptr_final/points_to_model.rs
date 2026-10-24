@@ -24,6 +24,9 @@ pub(crate) trait PTPhysSealed {}
 
 /// Defines the physical memory region that a `PointsTo` permission covers,
 /// by specifying the pointer to memory and the size of the pointed-to region.
+/// Additionally defines pointer-level well-formedness which is required
+/// for proving properties that hold for any `PointsTo` permission,
+/// along with the conditions that preserve well-formedness.
 #[allow(private_bounds)]
 pub trait PTPhys: Sized + PTPhysSealed {
     type A: ?Sized;
@@ -41,6 +44,22 @@ pub trait PTPhys: Sized + PTPhysSealed {
     /// `PTTypedValue::wf` builds on this to add conditions on the bytes and typed value,
     /// as well as adding pointer conditions specific to a given permission type.
     spec fn wf_basic(self) -> bool;
+
+    /// Specifies necessary conditions for ensuring that `new` and `old` are permissions
+    /// to the same region of memory and that `wf_basic` carries over from `old`:
+    /// `new` must keep `old`'s pointers and length.
+    /// Each implementation defines what this means for its permission type.
+    spec fn ptrs_len_same(old: Self, new: Self) -> bool;
+
+    /// If `old` satisfies `wf_basic` and `new` satisfies `ptrs_len_same` with respect to it,
+    /// then `new` satisfies `wf_basic`.
+    proof fn stays_wf_basic(old: Self, new: Self)
+        requires
+            old.wf_basic(),
+            Self::ptrs_len_same(old, new),
+        ensures
+            new.wf_basic(),
+    ;
 }
 
 /// Defines properties which should hold of any `PointsTo` permission.
@@ -103,27 +122,11 @@ pub trait PTProperties: PTPhys {
             final(self).ptr()@.addr + Self::size(final(self).ptr()@.metadata) <= other.ptr()@.addr
                 || other.ptr()@.addr + OtherPointsToPerm::size(other.ptr()@.metadata) <= final(self).ptr()@.addr,
     ;
-
-    /// Specifies necessary conditions for ensuring that `new` and `old` are permissions
-    /// to the same region of memory and that `wf_basic` carries over from `old`:
-    /// `new` must keep `old`'s pointers and length.
-    /// Each implementation defines what this means for its permission type.
-    spec fn ptrs_len_same(old: Self, new: Self) -> bool;
-
-    /// If `old` satisfies `wf_basic` and `new` satisfies `ptrs_len_same` with respect to it,
-    /// then `new` satisfies `wf_basic`.
-    proof fn stays_wf_basic(old: Self, new: Self)
-        requires
-            old.wf_basic(),
-            Self::ptrs_len_same(old, new),
-        ensures
-            new.wf_basic(),
-    ;
 }
 
 /// Defines the typed data tracked by a `PointsTo` permission
 /// to a single, possibly-valid value of type `Self::A`,
-/// along with well-formedness conditions.
+/// along with well-formedness conditions and the conditions that preserve them.
 pub trait PTTypedValue: PTPhys {
     /// The (possibly-valid) typed value that this permission tracks.
     spec fn typed_value(self) -> TypedValue<Self::A>;
@@ -180,11 +183,7 @@ pub trait PTTypedValue: PTPhys {
         ensures
             self.wf_basic(),
     ;
-}
 
-/// Defines constructors and conversions
-/// for a `PointsTo` permission to a single, possibly-valid value of type `Self::A`.
-pub trait PTValueOps: PTTypedValue + PTProperties {
     /// Invariants which must hold between `old` and `new` to preserve well-formedness (see `stays_wf`).
     open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
         &&& Self::ptrs_len_same(old, new)
@@ -213,7 +212,11 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
         ensures
             new.wf(),
     ;
+}
 
+/// Defines constructors and conversions
+/// for a `PointsTo` permission to a single, possibly-valid value of type `Self::A`.
+pub trait PTValueOps: PTTypedValue + PTProperties {
     /// Creates an empty permission to a zero-sized region,
     /// at any non-null, in-bounds pointer that satisfies the alignment requirement.
     proof fn zero_sized(ptr: *mut Self::A) -> (tracked out: Self)
@@ -228,8 +231,6 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
             out.typed_value().is_empty(),
             out.wf(),
     {
-        broadcast use axiom_ptr_mut_from_data, ptrs_mut_eq, layout_of_unit_tuple;
-
         // PointsToUntyped::zero_sized needs a pointer to a zero-sized type.
         let tracked pt_untyped = PointsToUntyped::zero_sized(ptr_mut_from_data::<()>(
             PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: () },
@@ -544,6 +545,15 @@ impl PTPhys for PointsToByte {
     open spec fn wf_basic(self) -> bool {
         true
     }
+
+    /// If the pointer stays the same, `old` and `new` are permissions to the same memory.
+    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
+        new.ptr() == old.ptr()
+    }
+
+    /// Trivial, since a `PointsToByte` is always well-formed.
+    proof fn stays_wf_basic(old: Self, new: Self) {
+    }
 }
 
 impl PTProperties for PointsToByte {
@@ -568,15 +578,6 @@ impl PTProperties for PointsToByte {
         tracked &mut self,
         tracked other: &OtherPointsToPerm,
     );
-
-    /// If the pointer stays the same, `old` and `new` are permissions to the same memory.
-    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
-        new.ptr() == old.ptr()
-    }
-
-    /// Trivial, since a `PointsToByte` is always well-formed.
-    proof fn stays_wf_basic(old: Self, new: Self) {
-    }
 }
 
 impl PointsToByte {
@@ -593,8 +594,6 @@ impl PointsToByte {
             final(self).ptr()@.addr + size_of::<u8>() <= other.ptr()@.addr
                 || other.ptr()@.addr + size_of::<u8>() <= final(self).ptr()@.addr,
     {
-        broadcast use group_vstd_default;
-
         self.is_disjoint(other);
     }
 }
@@ -670,6 +669,22 @@ impl<T, P: PTProperties<A = T>> PTPhys for SeqPointsTo<T, P> {
             &&& self.ptr()@.provenance.unwrap().start_addr() <= self.ptr()@.addr
             &&& self.ptr()@.addr <= self.ptr()@.provenance.unwrap().start_addr()
                 + self.ptr()@.provenance.unwrap().alloc_len()
+        }
+    }
+
+    /// `new` has the same pointer and length as `old`, and each element of `new` keeps the
+    /// corresponding element of `old`'s pointer and satisfies its `ptrs_len_same`.
+    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& new.len() == old.len()
+        &&& forall|i: int|
+            #![trigger new[i]]
+            0 <= i < new.len() ==> P::ptrs_len_same(old[i], new[i]) && new[i].ptr() == old[i].ptr()
+    }
+
+    proof fn stays_wf_basic(old: Self, new: Self) {
+        assert forall|i: int| 0 <= i < new.len() implies #[trigger] new[i].wf_basic() by {
+            P::stays_wf_basic(old[i], new[i]);
         }
     }
 }
@@ -915,6 +930,20 @@ impl<T> TypedValue<[T]> {
         &*self->0
     }
 
+    /// A sequence of borrows of typed values acts as one borrow of a slice typed value.
+    /// If any element is empty, the slice is empty.
+    pub axiom fn from_elems_ref<'a>(tracked elems: Seq<&'a TypedValue<T>>)
+        -> (tracked out: &'a TypedValue<[T]>)
+        ensures
+            // Valid with the elements' values if every element is valid
+            // (a zero-length Seq counts as valid); otherwise empty.
+            (forall|i: int| #![trigger elems[i]] 0 <= i < elems.len() ==> elems[i].is_valid()) ==> {
+                &&& out.is_valid()
+                &&& out.value()@ == Seq::new(elems.len(), |i: int| elems[i].value())
+            },
+            !(forall|i: int| #![trigger elems[i]] 0 <= i < elems.len() ==> elems[i].is_valid()) ==> out.is_empty(),
+    ;
+
     /// A sequence of mutable borrows of typed values acts as one mutable borrow of a slice typed value.
     /// If any element is empty, the slice starts empty.
     pub axiom fn from_elems_mut<'a>(tracked elems: Seq<&'a mut TypedValue<T>>)
@@ -938,20 +967,6 @@ impl<T> TypedValue<[T]> {
             !(final(out).is_valid() && final(out).value()@.len() == elems.len()) ==> forall|i: int|
                 #![trigger elems[i]]
                 0 <= i < elems.len() ==> final(elems[i]).is_empty(),
-    ;
-
-    /// A sequence of borrows of typed values acts as one borrow of a slice typed value.
-    /// If any element is empty, the slice is empty.
-    pub axiom fn from_elems_ref<'a>(tracked elems: Seq<&'a TypedValue<T>>)
-        -> (tracked out: &'a TypedValue<[T]>)
-        ensures
-            // Valid with the elements' values if every element is valid
-            // (a zero-length Seq counts as valid); otherwise empty.
-            (forall|i: int| #![trigger elems[i]] 0 <= i < elems.len() ==> elems[i].is_valid()) ==> {
-                &&& out.is_valid()
-                &&& out.value()@ == Seq::new(elems.len(), |i: int| elems[i].value())
-            },
-            !(forall|i: int| #![trigger elems[i]] 0 <= i < elems.len() ==> elems[i].is_valid()) ==> out.is_empty(),
     ;
 }
 
@@ -987,14 +1002,16 @@ pub ghost struct PointsToData<T: ?Sized> {
     pub bytes: Seq<AbstractByte>,
 }
 
-// Interim: per type, until `PointsToUnaligned` implements `PTTypedValue`
-// (then one generic impl).
 #[cfg(verus_keep_ghost)]
-impl<T> View for PointsToUnaligned<T> {
+impl<T: ?Sized> View for PointsToUnaligned<T> where PointsToUnaligned<T>: PTTypedValue<A = T> {
     type V = PointsToData<T>;
 
     open spec fn view(&self) -> Self::V {
-        PointsToData { ptr: self.ptr(), value: self.typed_value(), bytes: self.bytes() }
+        PointsToData {
+            ptr: self.ptr(),
+            value: <Self as PTTypedValue>::typed_value(*self),
+            bytes: <Self as PTTypedValue>::bytes(*self),
+        }
     }
 }
 
@@ -1038,13 +1055,62 @@ impl<T: ?Sized> PointsToUnaligned<T> {
     /// which gives flexibility for getting the underlying `PointsToUntyped`
     /// when the permission is not well-formed.
     /// However, the `wf()` conditions on `self` should imply that `pt_untyped` is `wf()`.
-    // This is implemented by making `PTTypedValue::wf` on `self` include `wf_basic_unaligned`,
+    // This is implemented by making `PTTypedValue::wf` on `self` include `wf_basic`,
     // which includes `self.pt_untyped().wf()`.
     pub proof fn tracked_pt_untyped(tracked &self) -> tracked &PointsToUntyped
         returns
             self.pt_untyped(),
     {
         &self.pt_untyped
+    }
+
+    /// Returns a tracked reference to the typed value.
+    pub proof fn tracked_typed_value(tracked &self) -> tracked &TypedValue<T>
+        returns
+            self.typed_value(),
+    {
+        &self.val
+    }
+
+    /// Splits the permission into an untyped permission to the same bytes and the typed value.
+    /// It says nothing about `wf()`.
+    pub proof fn into_raw_parts(tracked self) -> (tracked (pt_untyped, typed_value): (PointsToUntyped, TypedValue<T>))
+        ensures
+            pt_untyped == self.pt_untyped(),
+            typed_value == self.typed_value(),
+    {
+        (self.pt_untyped, self.val)
+    }
+
+    /// Creates a permission from an untyped permission, a typed value and pointer metadata.
+    /// The inverse of `into_raw_parts`.
+    /// It says nothing about `wf()`: callers prove it from the parts.
+    pub proof fn from_raw_parts(
+        tracked pt_untyped: PointsToUntyped,
+        tracked typed_value: TypedValue<T>,
+        metadata: Metadata<T>,
+    ) -> (tracked out: Self)
+        ensures
+            out.pt_untyped() == pt_untyped,
+            out.typed_value() == typed_value,
+            out.metadata() == metadata,
+    {
+        PointsToUnaligned { val: typed_value, pt_untyped, metadata: Ghost(metadata) }
+    }
+
+    /// Mutably borrows the untyped bytes and the typed value separately
+    /// (the inverse of `from_raw_parts_mut`).
+    /// The metadata is unchanged.
+    pub proof fn as_raw_parts_mut(tracked &mut self)
+        -> (tracked (pt_untyped, typed_value): (&mut PointsToUntyped, &mut TypedValue<T>))
+        ensures
+            *pt_untyped == old(self).pt_untyped(),
+            *typed_value == old(self).typed_value(),
+            final(self).pt_untyped() == *final(pt_untyped),
+            final(self).typed_value() == *final(typed_value),
+            final(self).metadata() == old(self).metadata(),
+    {
+        (&mut self.pt_untyped, &mut self.val)
     }
 
     /// Converts a borrowed untyped permission and a borrowed typed value, with the given pointer metadata,
@@ -1080,37 +1146,6 @@ impl<T: ?Sized> PointsToUnaligned<T> {
     ;
 }
 
-impl<T: ?Sized> PTPhysSealed for PointsToUnaligned<T> {}
-
-// Interim: `ptr` and `wf_basic` are today's.
-// The final `ptr` builds the pointer from the stored metadata,
-// and the final `wf_basic` is `wf_basic_unaligned`
-// (the decode clause moves to `PTTypedValue::wf`).
-impl<T> PTPhys for PointsToUnaligned<T> {
-    type A = T;
-
-    /// Builds the `*mut T` from the underlying untyped pointer's address and provenance
-    /// and the stored metadata.
-    closed spec fn ptr(self) -> *mut T {
-        self.pt_untyped().ptr() as *mut T
-    }
-
-    /// The size of the pointed-to region is the size of `T`.
-    open spec fn size(metadata: ()) -> nat {
-        size_of::<T>()
-    }
-
-    /// A `PointsToUnaligned` is well-formed at the pointer level
-    /// if its memory region is `size_of::<T>()` bytes,
-    /// and the underlying `PointsToUntyped` is well-formed.
-    open spec fn wf_basic(self) -> bool {
-        &&& self.bytes().len() == size_of::<T>()
-        &&& self.is_valid() ==> #[trigger] abs_decode::<T>(self.bytes(), &self.value())
-        &&& self.pt_untyped().wf()
-        &&& self.metadata() == self.ptr()@.metadata
-    }
-}
-
 impl<T> PointsToUnaligned<T> {
     /// If the permission's associated memory is valid,
     /// returns the value that the pointer points to.
@@ -1122,28 +1157,49 @@ impl<T> PointsToUnaligned<T> {
     {
         self.typed_value().value()
     }
+}
 
-    // Interim: replaced by `PTTypedValue::wf`.
-    /// Well-formedness is defined in the `PTProperties` trait function `wf_basic`.
-    pub open spec fn wf(&self) -> bool {
-        self.wf_basic()
+impl<T: ?Sized> PTPhysSealed for PointsToUnaligned<T> {}
+
+impl<T> PTPhys for PointsToUnaligned<T> {
+    type A = T;
+
+    /// Builds the `*mut T` from the underlying untyped pointer's address and provenance
+    /// and the stored metadata.
+    closed spec fn ptr(self) -> *mut T {
+        ptr_mut_from_data::<T>(
+            PtrData {
+                addr: self.pt_untyped().ptr()@.addr,
+                provenance: self.pt_untyped().ptr()@.provenance,
+                metadata: self.metadata(),
+            },
+        )
+    }
+
+    /// The size of the pointed-to region is the size of `T`.
+    open spec fn size(metadata: ()) -> nat {
+        size_of::<T>()
+    }
+
+    /// A `PointsToUnaligned` is well-formed at the pointer level
+    /// if its memory region is `size_of::<T>()` bytes,
+    /// and the underlying `PointsToUntyped` is well-formed.
+    open spec fn wf_basic(self) -> bool {
+        &&& self.pt_untyped().wf()
+        &&& self.pt_untyped().len() == Self::size(self.ptr()@.metadata)
+    }
+
+    /// `new` has the same pointer
+    /// and the same underlying `PointsToUntyped` pointers and length as `old`.
+    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
+    }
+
+    proof fn stays_wf_basic(old: Self, new: Self) {
     }
 }
 
-// Interim: per type, until `PointsToUnaligned` implements `PTTypedValue`
-// (then one generic impl).
-#[cfg(verus_keep_ghost)]
-impl<T> View for PointsToUnaligned<[T]> {
-    type V = PointsToData<[T]>;
-
-    open spec fn view(&self) -> Self::V {
-        PointsToData { ptr: self.ptr(), value: self.typed_value(), bytes: self.bytes() }
-    }
-}
-
-// Interim: `wf_basic` is today's.
-// The final `wf_basic` is `wf_basic_unaligned`
-// (the decode and length clauses move to `PTTypedValue::wf`).
 impl<T> PTPhys for PointsToUnaligned<[T]> {
     type A = [T];
 
@@ -1168,21 +1224,109 @@ impl<T> PTPhys for PointsToUnaligned<[T]> {
     /// if its memory region is `Self::size(self.ptr()@.metadata)` bytes,
     /// and the underlying `PointsToUntyped` is well-formed.
     open spec fn wf_basic(self) -> bool {
-        &&& self.bytes().len() == Self::size(self.ptr()@.metadata)
-        &&& self.is_valid() ==> {
-            &&& self.typed_value().value()@.len() == self.metadata()
-            &&& abs_decode::<[T]>(self.bytes(), self.typed_value().value())
-        }
         &&& self.pt_untyped().wf()
-        &&& self.metadata() == self.ptr()@.metadata
+        &&& self.pt_untyped().len() == Self::size(self.ptr()@.metadata)
+    }
+
+    /// `new` has the same pointer
+    /// and the same underlying `PointsToUntyped` pointers and length as `old`.
+    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
+    }
+
+    proof fn stays_wf_basic(old: Self, new: Self) {
     }
 }
 
-impl<T> PointsToUnaligned<[T]> {
-    // Interim: replaced by `PTTypedValue::wf`.
-    /// Well-formedness is defined in the `PTProperties` trait function `wf_basic`.
-    pub open spec fn wf(&self) -> bool {
-        self.wf_basic()
+impl<T> PTTypedValue for PointsToUnaligned<T> {
+    /// The inherent `typed_value` accessor.
+    open spec fn typed_value(self) -> TypedValue<T> {
+        PointsToUnaligned::<T>::typed_value(self)
+    }
+
+    /// The underlying untyped permission's bytes.
+    open spec fn bytes(self) -> Seq<AbstractByte> {
+        self.pt_untyped().bytes()
+    }
+
+    /// Always `true`: a `Sized` value has no pointer metadata.
+    open spec fn metadata_matches(value: &T, metadata: ()) -> bool {
+        true
+    }
+
+    /// Always `true`: a `PointsToUnaligned` has no alignment requirement.
+    open spec fn satisfies_alignment(addr: usize) -> bool {
+        true
+    }
+
+    proof fn bytes_decode(&self) {
+        // This assert is only there so Verus unfolds the inherited default `wf` here,
+        // which it otherwise doesn't do at `PointsToUnaligned<T>`.
+        assert(self.wf());
+    }
+
+    proof fn satisfies_alignment_of_wf(&self) {
+    }
+
+    proof fn lemma_wf_basic(&self) {
+    }
+
+    // ptrs_len_same_valid: the trait's default body.
+
+    /// From `PointsToUntyped::lemma_ptrs_len_same_untyped` on the underlying permissions.
+    broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self) {
+        PointsToUntyped::lemma_ptrs_len_same_untyped(old.pt_untyped(), new.pt_untyped());
+        // As in `bytes_decode`, this assert unfolds the default `ptrs_len_same_valid`.
+        assert(Self::ptrs_len_same_valid(old, new));
+    }
+
+    /// From `PointsToUntyped::stays_wf` on the underlying permissions.
+    proof fn stays_wf(old: Self, new: Self) {
+        PointsToUntyped::stays_wf(old.pt_untyped(), new.pt_untyped());
+    }
+}
+
+impl<T> PTTypedValue for PointsToUnaligned<[T]> {
+    /// The inherent `typed_value` accessor.
+    open spec fn typed_value(self) -> TypedValue<[T]> {
+        PointsToUnaligned::<[T]>::typed_value(self)
+    }
+
+    /// The underlying untyped permission's bytes.
+    open spec fn bytes(self) -> Seq<AbstractByte> {
+        self.pt_untyped().bytes()
+    }
+
+    /// The slice has `metadata` elements.
+    open spec fn metadata_matches(value: &[T], metadata: usize) -> bool {
+        value@.len() == metadata
+    }
+
+    /// Always `true`: a `PointsToUnaligned` has no alignment requirement.
+    open spec fn satisfies_alignment(addr: usize) -> bool {
+        true
+    }
+
+    proof fn bytes_decode(&self) {
+    }
+
+    proof fn satisfies_alignment_of_wf(&self) {
+    }
+
+    proof fn lemma_wf_basic(&self) {
+    }
+
+    // ptrs_len_same_valid: the trait's default body.
+
+    /// From `PointsToUntyped::lemma_ptrs_len_same_untyped` on the underlying permissions.
+    broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self) {
+        PointsToUntyped::lemma_ptrs_len_same_untyped(old.pt_untyped(), new.pt_untyped());
+    }
+
+    /// From `PointsToUntyped::stays_wf` on the underlying permissions.
+    proof fn stays_wf(old: Self, new: Self) {
+        PointsToUntyped::stays_wf(old.pt_untyped(), new.pt_untyped());
     }
 }
 
@@ -1227,14 +1371,16 @@ pub tracked struct PointsTo<T: ?Sized> {
     pt_unaligned: PointsToUnaligned<T>,
 }
 
-// Interim: per type, until `PointsToUnaligned` implements `PTValueOps`
-// (then one generic impl).
 #[cfg(verus_keep_ghost)]
-impl<T> View for PointsTo<T> {
+impl<T: ?Sized> View for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     type V = PointsToData<T>;
 
     open spec fn view(&self) -> Self::V {
-        PointsToData { ptr: self.ptr(), value: self.typed_value(), bytes: self.bytes() }
+        PointsToData {
+            ptr: self.ptr(),
+            value: <Self as PTTypedValue>::typed_value(*self),
+            bytes: <Self as PTTypedValue>::bytes(*self),
+        }
     }
 }
 
@@ -1296,77 +1442,6 @@ impl<T: ?Sized> PointsTo<T> {
     ;
 }
 
-impl<T: ?Sized> PTPhysSealed for PointsTo<T> {}
-
-// Interim: per type, with alignment in `wf_basic`,
-// until `PointsToUnaligned` implements `PTValueOps`
-// (then one generic impl, with alignment in `PTTypedValue::wf`).
-impl<T> PTPhys for PointsTo<T> {
-    type A = T;
-
-    /// Delegates to the underlying `PointsToUnaligned`'s pointer.
-    open spec fn ptr(self) -> *mut T {
-        self.pt_unaligned().ptr()
-    }
-
-    /// Delegates to the underlying `PointsToUnaligned`'s size.
-    open spec fn size(metadata: ()) -> nat {
-        <PointsToUnaligned<T> as PTPhys>::size(metadata)
-    }
-
-    /// Delegates to the underlying `PointsToUnaligned`'s `wf_basic`.
-    /// This does not capture all well-formedness conditions:
-    /// pointer alignment is specified in `PTTypedValue::wf`.
-    open spec fn wf_basic(self) -> bool {
-        &&& self.ptr()@.addr as nat % align_of::<T>() == 0
-        &&& self.pt_unaligned().wf()
-    }
-}
-
-// Interim: per type, until `PointsToUnaligned` implements `PTValueOps`
-// (then one generic impl).
-#[cfg(verus_keep_ghost)]
-impl<T> View for PointsTo<[T]> {
-    type V = PointsToData<[T]>;
-
-    open spec fn view(&self) -> Self::V {
-        PointsToData { ptr: self.ptr(), value: self.typed_value(), bytes: self.bytes() }
-    }
-}
-
-// Interim: per type, with alignment in `wf_basic`,
-// until `PointsToUnaligned` implements `PTValueOps`
-// (then one generic impl, with alignment in `PTTypedValue::wf`).
-impl<T> PTPhys for PointsTo<[T]> {
-    type A = [T];
-
-    /// Delegates to the underlying `PointsToUnaligned`'s pointer.
-    open spec fn ptr(self) -> *mut [T] {
-        self.pt_unaligned().ptr()
-    }
-
-    /// Delegates to the underlying `PointsToUnaligned`'s size.
-    open spec fn size(metadata: usize) -> nat {
-        <PointsToUnaligned<[T]> as PTPhys>::size(metadata)
-    }
-
-    /// Delegates to the underlying `PointsToUnaligned`'s `wf_basic`.
-    /// This does not capture all well-formedness conditions:
-    /// pointer alignment is specified in `PTTypedValue::wf`.
-    open spec fn wf_basic(self) -> bool {
-        &&& self.ptr()@.addr as nat % align_of::<T>() == 0
-        &&& self.pt_unaligned().wf()
-    }
-}
-
-impl<T> PointsTo<[T]> {
-    // Interim: replaced by `PTTypedValue::wf`.
-    /// Well-formedness is defined in the `PTProperties` trait function `wf_basic`.
-    pub open spec fn wf(&self) -> bool {
-        self.wf_basic()
-    }
-}
-
 impl<T> PointsTo<T> {
     /// If the permission's associated memory is valid,
     /// returns the value that the pointer points to.
@@ -1379,19 +1454,13 @@ impl<T> PointsTo<T> {
         self.typed_value().value()
     }
 
-    // Interim: replaced by `PTTypedValue::wf`.
-    /// Well-formedness is defined in the `PTProperties` trait function `wf_basic`.
-    pub open spec fn wf(&self) -> bool {
-        self.wf_basic()
-    }
-
     /// This takes a mutable borrow of the `T` from a mutable borrow of a `PointsTo<T>`.
     /// The pointer of this borrow matches the permission's pointer.
     ///
     /// Writing through the reference updates both the value and the underlying bytes,
     /// so `final(self)` is well-formed with bytes that decode to the final value.
-    /// This is an axiom because the bytes live in separate ghost state from the `TypedValue<T>`,
-    /// so they can't be updated through a borrow of the value alone.
+    // This is an axiom because the bytes live in separate ghost state from the `TypedValue<T>`,
+    // so they can't be updated through a borrow of the value alone.
     pub axiom fn borrow_mut(tracked &mut self) -> (tracked val: &mut T)
         requires
             self.wf(),
@@ -1404,6 +1473,103 @@ impl<T> PointsTo<T> {
             final(self).value() == *final(val),
             final(self).wf(),
     ;
+}
+
+impl<T: ?Sized> PTPhysSealed for PointsTo<T> {}
+
+impl<T: ?Sized> PTPhys for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
+    type A = T;
+
+    /// Delegates to the underlying `PointsToUnaligned`'s pointer.
+    open spec fn ptr(self) -> *mut T {
+        self.pt_unaligned().ptr()
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`'s size.
+    open spec fn size(metadata: Metadata<T>) -> nat {
+        <PointsToUnaligned<T> as PTPhys>::size(metadata)
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`'s `wf_basic`.
+    /// This does not capture all well-formedness conditions:
+    /// pointer alignment is specified in `PTTypedValue::wf`.
+    open spec fn wf_basic(self) -> bool {
+        self.pt_unaligned().wf_basic()
+    }
+
+    /// `new` has the same pointer as `old`,
+    /// and they satisfy the `PointsToUnaligned` requirements
+    /// for preserving pointer-level well-formed-ness.
+    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& <PointsToUnaligned<T> as PTPhys>::ptrs_len_same(old.pt_unaligned(), new.pt_unaligned())
+    }
+
+    /// Delegates to `PointsToUnaligned`'s `stays_wf_basic`.
+    proof fn stays_wf_basic(old: Self, new: Self) {
+        <PointsToUnaligned<T> as PTPhys>::stays_wf_basic(old.pt_unaligned(), new.pt_unaligned());
+    }
+}
+
+impl<T: ?Sized> PTTypedValue for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
+    /// Delegates to the underlying `PointsToUnaligned`'s typed value.
+    open spec fn typed_value(self) -> TypedValue<T> {
+        <PointsToUnaligned<T> as PTTypedValue>::typed_value(self.pt_unaligned())
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`'s bytes.
+    open spec fn bytes(self) -> Seq<AbstractByte> {
+        <PointsToUnaligned<T> as PTTypedValue>::bytes(self.pt_unaligned())
+    }
+
+    /// A `PointsTo` is well-formed if its pointer is aligned to `T`,
+    /// and the underlying `PointsToUnaligned` is well-formed.
+    open spec fn wf(self) -> bool {
+        &&& self.pt_unaligned().wf()
+        &&& Self::satisfies_alignment(self.ptr()@.addr)
+    }
+
+    /// Delegates to `PointsToUnaligned::metadata_matches`.
+    open spec fn metadata_matches(value: &T, metadata: Metadata<T>) -> bool {
+        <PointsToUnaligned<T> as PTTypedValue>::metadata_matches(value, metadata)
+    }
+
+    /// The pointer's address is aligned to `T`.
+    /// Includes the (trivial) `PointsToUnaligned` requirement
+    /// to satisfy generic preconditions defined over the trait `PTValueOps`.
+    open spec fn satisfies_alignment(addr: usize) -> bool {
+        &&& <PointsToUnaligned<T> as PTTypedValue>::satisfies_alignment(addr)
+        &&& addr as nat % spec_align_of_val::<T>(arbitrary()) == 0
+    }
+
+    proof fn bytes_decode(&self) {
+        self.pt_unaligned().bytes_decode();
+    }
+
+    proof fn satisfies_alignment_of_wf(&self) {
+    }
+
+    proof fn lemma_wf_basic(&self) {
+        self.pt_unaligned().lemma_wf_basic();
+    }
+
+    /// `new` has the same pointer as `old`,
+    /// and they satisfy the `PointsToUnaligned` requirements
+    /// for preserving well-formed-ness.
+    open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& <PointsToUnaligned<T> as PTTypedValue>::ptrs_len_same_valid(old.pt_unaligned(), new.pt_unaligned())
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`.
+    broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self) {
+        <PointsToUnaligned<T> as PTTypedValue>::lemma_ptrs_len_same_valid(old.pt_unaligned(), new.pt_unaligned());
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`.
+    proof fn stays_wf(old: Self, new: Self) {
+        <PointsToUnaligned<T> as PTTypedValue>::stays_wf(old.pt_unaligned(), new.pt_unaligned());
+    }
 }
 
 } // verus!
