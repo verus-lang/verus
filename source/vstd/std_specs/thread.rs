@@ -8,8 +8,9 @@ verus! {
 #[verifier::external_body]
 pub struct ExScope<'scope, 'env>(std::thread::Scope<'scope, 'env>);
 
-pub assume_specification<'env, F, T> [ std::thread::scope::<'env, F, T> ](f: F) -> (r: T) where
-    F: for<'scope> FnOnce(&'scope std::thread::Scope<'scope, 'env>) -> T,
+pub assume_specification<'env, F, T>[ std::thread::scope::<'env, F, T> ](f: F) -> (r: T) where
+    F: for <'scope>FnOnce(&'scope std::thread::Scope<'scope, 'env>) -> T,
+
     requires
         forall|s: &std::thread::Scope<'_, 'env>| #[trigger] f.requires((s,)),
     ensures

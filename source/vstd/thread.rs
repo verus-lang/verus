@@ -191,10 +191,7 @@ impl<'scope, Ret> ScopedJoinHandle<'scope, Ret> {
 pub fn spawn_scoped<'scope, 'env, F, T>(
     s: &'scope std::thread::Scope<'scope, 'env>,
     f: F,
-) -> (handle: ScopedJoinHandle<'scope, T>) where
-    F: FnOnce() -> T + Send + 'scope,
-    T: Send + 'scope,
-
+) -> (handle: ScopedJoinHandle<'scope, T>) where F: FnOnce() -> T + Send + 'scope, T: Send + 'scope
     requires
         f.requires(()),
     ensures
