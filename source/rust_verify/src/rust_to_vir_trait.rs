@@ -10,7 +10,10 @@ use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
 use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemId, TraitItemKind};
-use rustc_middle::ty::{ClauseKind, TraitPredicate, TraitRef, TyCtxt, TypingEnv};
+use rustc_middle::ty::{
+    AliasTyKind, ClauseKind, TraitPredicate, TraitRef, Ty, TyCtxt, TyKind, TypeFoldable,
+    TypeFolder, TypeSuperFoldable, TypingEnv,
+};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use std::collections::HashMap;
@@ -19,6 +22,51 @@ use vir::ast::{Fun, FunctionKind, GenericBound, Ident, KrateX, TraitX, VirErr, V
 use vir::ast_util::params_equal_opt;
 use vir::def::VERUS_SPEC;
 use vir::messages::error;
+
+// The proxy and the target declare distinct associated types in Rust. Rewrite
+// only projections from this proxy to the matching target member so that their
+// trait bounds can be compared using the same associated-type identities.
+// The marker stands in for Self in both predicate lists and must not be mapped,
+// even when the target declares an associated type with the same name.
+struct ExternalTraitProjectionRewriter<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    proxy_trait_id: DefId,
+    target_trait_id: DefId,
+    marker_type_id: DefId,
+}
+
+impl<'tcx> TypeFolder<TyCtxt<'tcx>> for ExternalTraitProjectionRewriter<'tcx> {
+    fn cx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+
+    fn fold_ty(&mut self, ty: Ty<'tcx>) -> Ty<'tcx> {
+        let ty = ty.super_fold_with(self);
+        if let TyKind::Alias(rigid, alias_ty) = *ty.kind()
+            && let AliasTyKind::Projection { def_id } = alias_ty.kind
+            && self.tcx.parent(def_id) == self.proxy_trait_id
+            && def_id != self.marker_type_id
+        {
+            let proxy_item = self.tcx.associated_item(def_id);
+            let target_item =
+                self.tcx.associated_items(self.target_trait_id).find_by_ident_and_kind(
+                    self.tcx,
+                    proxy_item.ident(self.tcx),
+                    proxy_item.tag(),
+                    self.target_trait_id,
+                );
+            if let Some(target_item) = target_item {
+                let alias_ty = rustc_middle::ty::AliasTy::new(
+                    self.tcx,
+                    AliasTyKind::Projection { def_id: target_item.def_id },
+                    alias_ty.args,
+                );
+                return self.tcx.mk_ty_from_kind(TyKind::Alias(rigid, alias_ty));
+            }
+        }
+        ty
+    }
+}
 
 pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
     ctxt: &Context<'tcx>,
@@ -186,11 +234,25 @@ pub(crate) fn translate_trait<'tcx>(
                     .unwrap_or_else(|_| clause.skip_norm_wip())
             })
             .collect();
+        let marker_type_id = if let TyKind::Alias(_, marker_ty) = *ex_trait_ref_for.self_ty().kind()
+            && let AliasTyKind::Projection { def_id } = marker_ty.kind
+        {
+            def_id
+        } else {
+            unreachable!("external trait specification Self must be the marker projection")
+        };
+        let mut projection_rewriter = ExternalTraitProjectionRewriter {
+            tcx,
+            proxy_trait_id: trait_def_id,
+            target_trait_id: ex_trait_ref_for.def_id,
+            marker_type_id,
+        };
         let mut preds2 = proxy_predicates
             .instantiate(tcx, ex_trait_ref_for.args)
             .clauses
             .into_iter()
             .map(|clause| {
+                let clause = clause.fold_with(&mut projection_rewriter);
                 tcx.try_normalize_erasing_regions(typing_env, clause)
                     .unwrap_or_else(|_| clause.skip_norm_wip())
             })
