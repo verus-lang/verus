@@ -398,7 +398,7 @@ pub struct Ghost<A> {
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Tracked")]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types_in_ground_variants(A))]
-pub struct Tracked<A> {
+pub struct Tracked<A: ?Sized> {
     phantom: PhantomData<A>,
 }
 

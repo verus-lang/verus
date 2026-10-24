@@ -742,12 +742,6 @@ impl<T> PointsTo<T> {
             final(self).is_init(),
             final(self).value() == val,
     ;
-
-    // Tracked<&T> <--> &PointsTo<T>
-    pub axiom fn as_tracked(tracked &self) -> (out: Tracked<&T>)
-        ensures
-            self.value() == out@,
-            self.ptr() == shared_ref_ptr(shadow_data(out@));
 }
 
 impl<T> PointsToUnaligned<T> {
