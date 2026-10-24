@@ -469,31 +469,6 @@ pub(crate) fn translate_impl<'tcx>(
     if errors.len() > 0 { Err(errors) } else { Ok(()) }
 }
 
-fn reject_non_external_future_poll_impl<'tcx>(
-    ctxt: &Context<'tcx>,
-    crate_items: &CrateItems,
-    impl_item_id: &rustc_hir::ImplItemId,
-) -> Result<(), VirErr> {
-    let impl_item = ctxt.tcx.hir_impl_item(*impl_item_id);
-    let fn_attrs = ctxt.tcx.hir_attrs(impl_item.hir_id());
-    let assoc_item = ctxt.tcx.associated_item(impl_item_id.hir_id().owner.to_def_id());
-
-    if let Some(future_trait_id) = ctxt.tcx.lang_items().future_trait()
-        && let Some(trait_item_id) = assoc_item.trait_item_def_id()
-        && ctxt.tcx.parent(trait_item_id) == future_trait_id
-        && ctxt.tcx.associated_item(trait_item_id).name() == rustc_span::sym::poll
-        && !ctxt.get_verifier_attrs(fn_attrs)?.external_body
-        && !crate_items.is_impl_item_external(*impl_item_id)
-    {
-        return err_span(
-            impl_item.span,
-            "an implementation of `Future::poll` must be marked `#[verifier::external_body]`",
-        );
-    }
-
-    Ok(())
-}
-
 pub(crate) fn translate_impl_item<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
@@ -511,9 +486,6 @@ pub(crate) fn translate_impl_item<'tcx>(
 ) -> Result<(), VirErr> {
     let impl_item = ctxt.tcx.hir_impl_item(*impl_item_id);
     let fn_attrs = ctxt.tcx.hir_attrs(impl_item.hir_id());
-    let assoc_item = ctxt.tcx.associated_item(impl_item_id.hir_id().owner.to_def_id());
-
-    reject_non_external_future_poll_impl(ctxt, crate_items, impl_item_id)?;
 
     if crate_items.is_impl_item_external(*impl_item_id) {
         if trait_path_typ_args.is_some() {
@@ -525,6 +497,7 @@ pub(crate) fn translate_impl_item<'tcx>(
         }
         return Ok(());
     }
+    let assoc_item = ctxt.tcx.associated_item(impl_item_id.hir_id().owner.to_def_id());
     let mk_trait_function_kind = || -> FunctionKind {
         if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone() {
             let ident = impl_item.ident.to_string();

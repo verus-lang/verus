@@ -273,26 +273,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] custom_future_poll_requires_external_body verus_code! {
-        use vstd::prelude::*;
-        use core::future::Future;
-        use std::pin::Pin;
-        use std::task::{Context, Poll};
-
-        struct CustomFuture;
-
-        impl Future for CustomFuture {
-            type Output = u64;
-
-            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
-                Poll::Ready(0)
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, "an implementation of `Future::poll` must be marked `#[verifier::external_body]`")
-}
-
-test_verify_one_file! {
-    #[test] custom_future_without_deterministic_laws verus_code! {
+    #[test] custom_future_without_future_laws verus_code! {
         use vstd::prelude::*;
         use vstd::future::*;
         use core::future::Future;
@@ -316,7 +297,6 @@ test_verify_one_file! {
         impl Future for CustomFuture {
             type Output = u64;
 
-            #[verifier::external_body]
             fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
                 Poll::Ready(0)
             }
