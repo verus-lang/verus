@@ -18,7 +18,6 @@ the API changes not visible in the specs, the existing (unchanged) trusted specs
 the module layout, and all of `points_to_model.rs`'s impl blocks are approved
 and are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md).
 
-
 ## Specifications
 
 Every module is written out item by item, with its documentation and contract.
@@ -1036,6 +1035,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             other.wf(),
             self.ptr()@.provenance == other.ptr()@.provenance,
             other.ptr()@.addr == self.ptr()@.addr + self.len() * size_of::<T>(),
+            size_of::<T>() == 0 ==> self.len() + other.len() <= usize::MAX,    // new: needed by `join_basic`
         ensures
             joined.ptr() == ptr_mut_from_data::<[T]>(PtrData {
                 addr: self.ptr()@.addr,

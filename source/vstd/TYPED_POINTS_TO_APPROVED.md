@@ -577,11 +577,11 @@ impl<T> TypedValue<[T]> {
         ensures
             // Valid with the elements' values if every element is valid
             // (a zero-length Seq counts as valid); otherwise empty.
-            (forall|i: int| 0 <= i < elems.len() ==> (#[trigger] *elems[i]).is_valid()) ==> {
+            (forall|i: int| #![trigger elems[i]] 0 <= i < elems.len() ==> elems[i].is_valid()) ==> {
                 &&& out.is_valid()
-                &&& out.value()@ == Seq::new(elems.len(), |i: int| (*elems[i]).value())
+                &&& out.value()@ == Seq::new(elems.len(), |i: int| elems[i].value())
             },
-            !(forall|i: int| 0 <= i < elems.len() ==> (#[trigger] *elems[i]).is_valid()) ==> out.is_empty(),
+            !(forall|i: int| #![trigger elems[i]] 0 <= i < elems.len() ==> elems[i].is_valid()) ==> out.is_empty(),
     ;
 }
 ```
@@ -602,20 +602,22 @@ impl<T> TypedValue<[T]> {
         ensures
             // Initially: valid with the elements' values if every element is valid
             // (a zero-length Seq counts as valid); otherwise empty.
-            (forall|i: int| 0 <= i < elems.len() ==> (#[trigger] *elems[i]).is_valid()) ==> {
+            (forall|i: int| #![trigger elems[i]] 0 <= i < elems.len() ==> elems[i].is_valid()) ==> {
                 &&& out.is_valid()
-                &&& out.value()@ == Seq::new(elems.len(), |i: int| (*elems[i]).value())
+                &&& out.value()@ == Seq::new(elems.len(), |i: int| elems[i].value())
             },
-            !(forall|i: int| 0 <= i < elems.len() ==> (#[trigger] *elems[i]).is_valid()) ==> out.is_empty(),
+            !(forall|i: int| #![trigger elems[i]] 0 <= i < elems.len() ==> elems[i].is_valid()) ==> out.is_empty(),
             // Finally: a valid slice of the same length is distributed back to the elements;
             // anything else leaves every element empty.
             final(out).is_valid() && final(out).value()@.len() == elems.len() ==> forall|i: int|
+                #![trigger elems[i]]
                 0 <= i < elems.len() ==> {
-                    &&& (#[trigger] *final(elems[i])).is_valid()
-                    &&& (*final(elems[i])).value() == final(out).value()@[i]
+                    &&& final(elems[i]).is_valid()
+                    &&& final(elems[i]).value() == final(out).value()@[i]
                 },
             !(final(out).is_valid() && final(out).value()@.len() == elems.len()) ==> forall|i: int|
-                0 <= i < elems.len() ==> (#[trigger] *final(elems[i])).is_empty(),
+                #![trigger elems[i]]
+                0 <= i < elems.len() ==> final(elems[i]).is_empty(),
     ;
 }
 ```
@@ -2269,6 +2271,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             other.wf_basic(),
             self.ptr()@.provenance == other.ptr()@.provenance,
             other.ptr()@.addr == self.ptr()@.addr + self.len() * P::size(()),
+            P::size(()) == 0 ==> self.len() + other.len() <= usize::MAX,
         ensures
             joined.seq_pt() == self.seq_pt() + other.seq_pt(),
             joined.ptr() == ptr_mut_from_data::<[T]>(PtrData {
