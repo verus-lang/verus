@@ -48,9 +48,9 @@ Single-value permissions:
 | `PTPhys for PointsToUnaligned<_>` | per type | `ptr` (same shape each time), the `size` formula, and `wf_basic` (one call to the generic `wf_basic_unaligned`) |
 | `PTProperties for PointsToUnaligned<_>` | per type (same body each time) | `ptrs_len_same`, and the pointer-level lemmas, all delegating to the untyped bytes |
 | `PTTypedValue for PointsToUnaligned<_>` | per type | `typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment` (`true`); the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic` (empty proofs) |
-| `PTValueOps for PointsToUnaligned<_>` | per type | the remaining lemmas (`lemma_ptrs_len_same_valid`, `stays_wf`); the operations that touch the fields (`borrow_typed_value`, `take_typed_value`, `put_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_untyped`, `as_untyped_mut`) |
+| `PTValueOps for PointsToUnaligned<_>` | per type | the remaining lemmas (`lemma_ptrs_len_same_valid`, `stays_wf`); the operations that touch the fields (`borrow_typed_value`, `take_typed_value`, `put_typed_value`, `into_untyped_with_typed_value`, `from_untyped_with_typed_value`, `as_untyped`, `as_untyped_mut`) |
 | `PTSizedValue for PointsToUnaligned<T>` | once (Sized `T` only) | the two lemmas |
-| `PTPhys`, `PTProperties`, `View`, `PTTypedValue`, `PTValueOps` for `PointsTo<T: ?Sized>` | once (generic) | delegation to `self.pt_unaligned`, except `satisfies_alignment` (adds alignment) and `from_raw_parts` (wraps the result) |
+| `PTPhys`, `PTProperties`, `View`, `PTTypedValue`, `PTValueOps` for `PointsTo<T: ?Sized>` | once (generic) | delegation to `self.pt_unaligned`, except `satisfies_alignment` (adds alignment) and `from_untyped_with_typed_value` (wraps the result) |
 | `PTSizedValue for PointsTo<T>` | once (Sized `T` only) | the two lemmas (`lemma_satisfies_alignment_offset` has the real alignment proof) |
 | trait default bodies | once (in the traits) | `PTTypedValue::wf`; `PTValueOps::ptrs_len_same_valid`, `borrow`, `into_untyped`, `from_untyped`, `zero_sized`; `PTSizedValue::take`, `put`, `copy`, `copy_typed_value`, `from_untyped_with_value` |
 | `impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | once (generic) | `into_aligned`, `as_aligned`, `as_aligned_mut` |
@@ -83,7 +83,6 @@ Sequences:
 ## API changes not visible in the specs
 
 Renames: `PointsToSingleton` → `PointsToByte`, `borrow_value` → `borrow`,
-`into_untyped_with_typed_value` → `into_raw_parts` (single permissions only),
 `borrow_value_subrange` → `borrow_subrange`,
 `PTProperties::ptrs_len_same_valid` → `ptrs_len_same`.
 Removed: `FixedSize`, `Dealloc`, and the inherent `PointsTo<T>` versions of the trait methods
@@ -1138,7 +1137,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
     }
 
     /// Splits the permission into an untyped permission to the same bytes and the typed value.
-    proof fn into_raw_parts(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<Self::A>))
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<Self::A>))
         requires
             self.wf(),
         ensures
@@ -1153,9 +1152,9 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
     ;
 
     /// Creates a permission from an untyped permission, a typed value and pointer metadata.
-    /// The inverse of `into_raw_parts`.
+    /// The inverse of `into_untyped_with_typed_value`.
     /// If `typed_value` is valid, the bytes must decode to its value and the metadata must match it.
-    proof fn from_raw_parts(
+    proof fn from_untyped_with_typed_value(
         tracked pt_untyped: PointsToUntyped,
         tracked typed_value: TypedValue<Self::A>,
         metadata: Metadata<Self::A>,
@@ -1193,7 +1192,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
             pt_untyped.bytes() == self.bytes(),
             pt_untyped.wf(),
     {
-        let tracked (pt_untyped, _) = self.into_raw_parts();
+        let tracked (pt_untyped, _) = self.into_untyped_with_typed_value();
         pt_untyped
     }
 
@@ -1257,7 +1256,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
             out.typed_value().is_empty(),
             out.wf(),
     {
-        Self::from_raw_parts(pt_untyped, TypedValue::Empty, metadata)
+        Self::from_untyped_with_typed_value(pt_untyped, TypedValue::Empty, metadata)
     }
 }
 
@@ -1367,7 +1366,7 @@ pub trait PTSizedValue: PTValueOps<A: Sized> {
             out.wf(),
     {
         Self::lemma_metadata_matches(&value);
-        Self::from_raw_parts(pt_untyped, TypedValue::Valid(Tracked(value)), ())
+        Self::from_untyped_with_typed_value(pt_untyped, TypedValue::Valid(Tracked(value)), ())
     }
 }
 ```

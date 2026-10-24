@@ -288,7 +288,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
     }
 
     /// Splits the permission into an untyped permission to the same bytes and the typed value.
-    proof fn into_raw_parts(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<Self::A>))
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<Self::A>))
         requires
             self.wf(),
         ensures
@@ -303,9 +303,9 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
     ;
 
     /// Creates a permission from an untyped permission, a typed value and pointer metadata.
-    /// The inverse of `into_raw_parts`.
+    /// The inverse of `into_untyped_with_typed_value`.
     /// If `typed_value` is valid, the bytes must decode to its value and the metadata must match it.
-    proof fn from_raw_parts(
+    proof fn from_untyped_with_typed_value(
         tracked pt_untyped: PointsToUntyped,
         tracked typed_value: TypedValue<Self::A>,
         metadata: Metadata<Self::A>,
@@ -343,7 +343,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
             pt_untyped.bytes() == self.bytes(),
             pt_untyped.wf(),
     {
-        let tracked (pt_untyped, _) = self.into_raw_parts();
+        let tracked (pt_untyped, _) = self.into_untyped_with_typed_value();
         pt_untyped
     }
 
@@ -407,7 +407,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
             out.typed_value().is_empty(),
             out.wf(),
     {
-        Self::from_raw_parts(pt_untyped, TypedValue::Empty, metadata)
+        Self::from_untyped_with_typed_value(pt_untyped, TypedValue::Empty, metadata)
     }
 }
 
@@ -517,7 +517,7 @@ pub trait PTSizedValue: PTValueOps<A: Sized> {
             out.wf(),
     {
         Self::lemma_metadata_matches(&value);
-        Self::from_raw_parts(pt_untyped, TypedValue::Valid(Tracked(value)), ())
+        Self::from_untyped_with_typed_value(pt_untyped, TypedValue::Valid(Tracked(value)), ())
     }
 }
 

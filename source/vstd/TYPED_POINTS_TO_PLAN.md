@@ -167,10 +167,10 @@ impl<T> PTValueOps for PointsToUnaligned<T> {
     proof fn put_typed_value(tracked &mut self, tracked v: TypedValue<T>);
 
     /// Moves out the `pt_untyped` and `val` fields.
-    proof fn into_raw_parts(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<T>));
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<T>));
 
     /// Builds the struct from its fields.
-    proof fn from_raw_parts(
+    proof fn from_untyped_with_typed_value(
         tracked pt_untyped: PointsToUntyped,
         tracked typed_value: TypedValue<T>,
         metadata: (),
@@ -202,10 +202,10 @@ impl<T> PTValueOps for PointsToUnaligned<[T]> {
     proof fn put_typed_value(tracked &mut self, tracked v: TypedValue<[T]>);
 
     /// Moves out the `pt_untyped` and `val` fields.
-    proof fn into_raw_parts(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<[T]>));
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<[T]>));
 
     /// Builds the struct from its fields.
-    proof fn from_raw_parts(
+    proof fn from_untyped_with_typed_value(
         tracked pt_untyped: PointsToUntyped,
         tracked typed_value: TypedValue<[T]>,
         metadata: usize,
@@ -267,11 +267,13 @@ impl<T: ?Sized> PointsToUnaligned<T> {
 }
 ```
 
-**Proposed: `tracked_typed_value`, `into_fields`, `from_fields`** (proved; inherent, so no change to the approved traits).
+**Proposed: `tracked_typed_value`, `into_raw_parts`, `from_raw_parts`** (proved; inherent, so no change to the approved traits).
 rustlib's `PTValueOps for PointsToUnaligned<str>` needs the shared borrow of the typed value,
 and the owned split and build, without touching the fields;
 `as_raw_parts_mut` and `tracked_pt_untyped` cover the rest.
 Like `from_raw_parts_ref`, these say nothing about `wf()`.
+(`raw_parts` in a name means the function neither requires nor establishes `wf()`;
+the trait's versions, which do, are `into_untyped_with_typed_value` / `from_untyped_with_typed_value`.)
 
 ```rust
 impl<T: ?Sized> PointsToUnaligned<T> {
@@ -285,7 +287,7 @@ impl<T: ?Sized> PointsToUnaligned<T> {
 
     /// Moves out the untyped bytes and the typed value,
     /// dropping the (ghost) metadata.
-    pub proof fn into_fields(tracked self) -> (tracked (pt_untyped, typed_value): (PointsToUntyped, TypedValue<T>))
+    pub proof fn into_raw_parts(tracked self) -> (tracked (pt_untyped, typed_value): (PointsToUntyped, TypedValue<T>))
         ensures
             pt_untyped == self.pt_untyped(),
             typed_value == self.typed_value(),
@@ -295,7 +297,7 @@ impl<T: ?Sized> PointsToUnaligned<T> {
 
     /// Builds the permission from untyped bytes, a typed value and pointer metadata.
     /// It says nothing about `wf()`: callers prove it from the parts.
-    pub proof fn from_fields(
+    pub proof fn from_raw_parts(
         tracked pt_untyped: PointsToUntyped,
         tracked typed_value: TypedValue<T>,
         metadata: Metadata<T>,
@@ -373,11 +375,11 @@ impl<T: ?Sized> PTValueOps for PointsTo<T> where PointsToUnaligned<T>: PTValueOp
     proof fn put_typed_value(tracked &mut self, tracked v: TypedValue<T>);
 
     /// Delegates to the underlying `PointsToUnaligned`.
-    proof fn into_raw_parts(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<T>));
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<T>));
 
     /// Wraps the `PointsToUnaligned` built from the same parts.
-    /// (`satisfies_alignment` includes `PointsToUnaligned`'s, which its `from_raw_parts` requires.)
-    proof fn from_raw_parts(
+    /// (`satisfies_alignment` includes `PointsToUnaligned`'s, which its `from_untyped_with_typed_value` requires.)
+    proof fn from_untyped_with_typed_value(
         tracked pt_untyped: PointsToUntyped,
         tracked typed_value: TypedValue<T>,
         metadata: Metadata<T>,
@@ -1591,7 +1593,7 @@ impl PTTypedValue for PointsToUnaligned<str> {
 
 `PTProperties` and `PTValueOps` are the same as for `T` and `[T]`,
 except that `PTValueOps` goes through the generic field helpers
-(`tracked_typed_value`, `into_fields`, `from_fields`, `as_raw_parts_mut`, `tracked_pt_untyped`),
+(`tracked_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_raw_parts_mut`, `tracked_pt_untyped`),
 since rustlib can't touch the fields.
 
 ```rust
@@ -1646,11 +1648,11 @@ impl PTValueOps for PointsToUnaligned<str> {
     /// through `as_raw_parts_mut`.
     proof fn put_typed_value(tracked &mut self, tracked v: TypedValue<str>);
 
-    /// Delegates to `into_fields`.
-    proof fn into_raw_parts(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<str>));
+    /// Delegates to `into_raw_parts`.
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<str>));
 
-    /// Delegates to `from_fields`.
-    proof fn from_raw_parts(
+    /// Delegates to `from_raw_parts`.
+    proof fn from_untyped_with_typed_value(
         tracked pt_untyped: PointsToUntyped,
         tracked typed_value: TypedValue<str>,
         metadata: usize,
@@ -1769,7 +1771,7 @@ everything else exists today.
 | `impl<T: ?Sized> TypedValue<T>` | `is_valid`, `is_empty`; `value_ref` (new); `valid_ref` (new, phase 3b) | |
 | `impl<T> TypedValue<T>` | `value`, `tracked_copy` | Sized: by-value access |
 | `impl<T> TypedValue<[T]>` | `value` (-> `&[T]`); `from_elems_ref` (new axiom, phase 3b); `from_elems_mut` (new axiom M1, phase 3b) | |
-| `impl<T: ?Sized> PointsToUnaligned<T>` | closed accessors `typed_value`, `pt_untyped`, `metadata`; `bytes`, `is_valid`, `is_empty` (inline); `tracked_pt_untyped`; `as_raw_parts_mut` (new, proposed, phase 4); `tracked_typed_value`, `into_fields`, `from_fields` (new, proposed; for rustlib's `str`); `from_raw_parts_ref` (new axiom, phase 3b), `from_raw_parts_mut` (new axiom M3, phase 3b) | The inherent `typed_value`/`bytes` coexist with the trait's (phase 0, item 5). |
+| `impl<T: ?Sized> PointsToUnaligned<T>` | closed accessors `typed_value`, `pt_untyped`, `metadata`; `bytes`, `is_valid`, `is_empty` (inline); `tracked_pt_untyped`; `as_raw_parts_mut` (new, proposed, phase 4); `tracked_typed_value`, `into_raw_parts`, `from_raw_parts` (new, proposed; for rustlib's `str`); `from_raw_parts_ref` (new axiom, phase 3b), `from_raw_parts_mut` (new axiom M3, phase 3b) | The inherent `typed_value`/`bytes` coexist with the trait's (phase 0, item 5). |
 | `impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | `into_aligned`, `as_aligned` (new, generic); `as_aligned_mut` (new, generic, phase 3b: needs M4) | Contracts in [`PointsTo`: proofs and aligned/unaligned conversions](#pointsto-proofs-and-alignedunaligned-conversions). |
 | `impl<T> PointsToUnaligned<T>` | `value`; `is_disjoint_unaligned<S>`. (removed: `wf`, `stays_wf`, `zero_sized`) | |
 | `impl<T> PointsToUnaligned<[T]>` | `from_untyped_ref`, `from_untyped_with_value_ref`, `borrow_index` (new, phase 4; the primary implementations). (removed in 2b: inherent `wf`) | |
