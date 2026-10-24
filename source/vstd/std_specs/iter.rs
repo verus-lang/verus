@@ -33,8 +33,9 @@ macro_rules! iter_state_preserved {
 }
 
 #[doc(hidden)]
-pub use iter_state_preserved_internal;
 pub use iter_state_preserved;
+#[doc(hidden)]
+pub use iter_state_preserved_internal;
 
 use verus as verus_skip_verusfmt;
 verus_skip_verusfmt! {
