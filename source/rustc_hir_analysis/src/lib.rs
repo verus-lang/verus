@@ -102,6 +102,7 @@ mod variance;
 use rustc_abi::{CVariadicStatus, ExternAbi};
 use rustc_hir as hir;
 use rustc_hir::def::DefKind;
+use rustc_hir::def_id::LocalDefId;
 use rustc_middle::mir::interpret::GlobalId;
 use rustc_middle::query::Providers;
 use rustc_middle::ty::{Const, Ty, TyCtxt};
@@ -183,26 +184,6 @@ pub fn check_crate(tcx: TyCtxt<'_>) {
 
     tcx.par_hir_body_owners(|item_def_id| {
         let def_kind = tcx.def_kind(item_def_id);
-        // Make sure we evaluate all static and (non-associated) const items, even if unused.
-        // If any of these fail to evaluate, we do not want this crate to pass compilation.
-        match def_kind {
-            DefKind::Static { .. } => {
-                tcx.ensure_ok().eval_static_initializer(item_def_id);
-                check::maybe_check_static_with_link_section(tcx, item_def_id);
-            }
-            DefKind::Const { .. }
-                if !tcx.generics_of(item_def_id).own_requires_monomorphization()
-                    && !tcx.is_type_const(item_def_id) =>
-            {
-                // FIXME(generic_const_items): Passing empty instead of identity args is fishy but
-                //                             seems to be fine for now. Revisit this!
-                let instance = ty::Instance::new_raw(item_def_id.into(), ty::GenericArgs::empty());
-                let cid = GlobalId { instance, promoted: None };
-                let typing_env = ty::TypingEnv::fully_monomorphized();
-                tcx.ensure_ok().eval_to_const_value_raw(typing_env.as_query_input(cid));
-            }
-            _ => (),
-        }
         // Skip `AnonConst`s and type system `InlineConst`s because we feed their `type_of` in
         // `feed_anon_const_type`.
         // Also skip items for which typeck forwards to parent typeck.
@@ -232,6 +213,35 @@ pub fn check_crate(tcx: TyCtxt<'_>) {
     }
 
     tcx.ensure_ok().check_unused_traits(());
+}
+
+/// Evaluate unused const/static initializers after Verus has initialized THIR erasure.
+pub fn check_crate_const_and_static_initializers(
+    tcx: TyCtxt<'_>,
+    should_evaluate: impl Fn(LocalDefId) -> bool,
+) {
+    for item_def_id in tcx.hir_body_owners() {
+        // Keep Rust's eager diagnostics for unused executable initializers.
+        match tcx.def_kind(item_def_id) {
+            DefKind::Static { .. } if should_evaluate(item_def_id) => {
+                tcx.ensure_ok().eval_static_initializer(item_def_id);
+                check::maybe_check_static_with_link_section(tcx, item_def_id);
+            }
+            DefKind::Const { .. }
+                if !tcx.generics_of(item_def_id).own_requires_monomorphization()
+                    && !tcx.is_type_const(item_def_id)
+                    && should_evaluate(item_def_id) =>
+            {
+                // FIXME(generic_const_items): Passing empty instead of identity args is fishy but
+                //                             seems to be fine for now. Revisit this!
+                let instance = ty::Instance::new_raw(item_def_id.into(), ty::GenericArgs::empty());
+                let cid = GlobalId { instance, promoted: None };
+                let typing_env = ty::TypingEnv::fully_monomorphized();
+                tcx.ensure_ok().eval_to_const_value_raw(typing_env.as_query_input(cid));
+            }
+            _ => (),
+        }
+    }
 }
 
 /// Lower a [`hir::Ty`] to a [`Ty`].

@@ -467,7 +467,10 @@ pub(crate) fn mark_tree_for_erasure<'tcx>(
     .unwrap();
 }
 
-pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
+pub(crate) fn setup_verus_aware_ids(
+    tcx: rustc_middle::ty::TyCtxt<'_>,
+    crate_items: &crate::external::CrateItems,
+) {
     // Requirements:
     //  - If a function requires Verus-erasure, then it MUST be in the set
     //  - If a function has special properties (e.g., being const), that may cause Rust
@@ -475,7 +478,7 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
     // For anything else: it doesn't matter.
     //
     // Since most consts are marked external, we can just use the VerusAware set for this.
-    // We carve out exceptions for some special directives.
+    // We carve out exceptions for some special directives and literal exec constants.
 
     let mut s = HashSet::<LocalDefId>::new();
     for item in crate_items.items.iter() {
@@ -486,8 +489,25 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
                 external_fn_specification,
                 ..
             } => {
-                if !const_directive && !external_body && !external_fn_specification {
-                    s.insert(item.id.owner_id().def_id);
+                let def_id = item.id.owner_id().def_id;
+                let attrs = tcx.hir_attrs(tcx.local_def_id_to_hir_id(def_id));
+                // Type checking may need these values early; literal bodies have nothing to erase.
+                let literal_exec_const = matches!(
+                    tcx.def_kind(def_id),
+                    rustc_hir::def::DefKind::Const { .. }
+                        | rustc_hir::def::DefKind::AssocConst { .. }
+                ) && crate::attributes::get_mode(Mode::Exec, attrs)
+                    == Mode::Exec
+                    && crate::attributes::get_ret_mode(Mode::Exec, attrs) == Mode::Exec
+                    && tcx
+                        .hir_maybe_body_owned_by(def_id)
+                        .is_some_and(|body| matches!(body.value.kind, rustc_hir::ExprKind::Lit(_)));
+                if !const_directive
+                    && !external_body
+                    && !external_fn_specification
+                    && !literal_exec_const
+                {
+                    s.insert(def_id);
                 }
             }
             crate::external::VerifOrExternal::External { .. } => {}
