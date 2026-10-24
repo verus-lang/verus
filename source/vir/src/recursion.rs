@@ -419,9 +419,13 @@ fn check_termination<'a>(
                 check_decrease_call(&ctxt, diagnostics, &s.span, fun, resolved_method, args)?;
             let mut error = error(&s.span, "could not prove termination");
             if closure_call_spans.iter().any(|c| c.id == s.span.id) {
-                error = error.help(
-                    "this call is inside a closure, so it must decrease for every closure argument, not just the ones the closure is applied to; if needed, guard it, e.g. `if 0 <= i < len { ... } else { arbitrary() }`",
-                );
+                error = error
+                    .help(
+                        "this call is inside a closure, and Verus checks the decreases measure for all possible values of the closure inputs, even if it is only applied to a subset of those inputs",
+                    )
+                    .help(
+                        "if needed, guard the call with a conditional, e.g., `if 0 <= i < len { call(...) } else { arbitrary() }`",
+                    );
             }
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(None, Some(error), check));
 
