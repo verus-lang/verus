@@ -124,8 +124,6 @@ impl<T: ?Sized> PTValueOps for PointsTo<T> where PointsToUnaligned<T>: PTValueOp
     /// `new` has the same pointer as `old`,
     /// and they satisfy the `PointsToUnaligned` requirements
     /// for preserving well-formed-ness.
-    /// Overridden for the same reason as `wf`:
-    /// the default body doesn't unfold at `PointsToUnaligned<T>` for a generic `T`.
     open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
         &&& new.ptr() == old.ptr()
         &&& <PointsToUnaligned<T> as PTValueOps>::ptrs_len_same_valid(old.pt_unaligned(), new.pt_unaligned())
@@ -167,7 +165,7 @@ impl<T: ?Sized> PTValueOps for PointsTo<T> where PointsToUnaligned<T>: PTValueOp
 impl<T> PTSizedValue for PointsTo<T> {
     // take, put, copy, copy_typed_value, from_untyped_with_value: the trait's default bodies.
 
-    /// Offsets by multiples of `size_of::<T>()` keep alignment to `T`,
+    /// Offsetting a pointer by multiples of `size_of::<T>()` preserves its alignment to `T`,
     /// since `size_of::<T>()` is a multiple of `align_of::<T>()`.
     proof fn lemma_satisfies_alignment_offset(addr: usize, i: nat);
 
