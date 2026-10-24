@@ -2269,6 +2269,7 @@ impl Visitor {
             );
         }
 
+        let outer_inside_ghost = self.inside_ghost;
         let mut stmts = self.visit_fn(
             &mut item_fn.attrs,
             Some(&item_fn.vis),
@@ -2277,6 +2278,7 @@ impl Visitor {
             false,
             false,
         );
+        self.inside_ghost = outer_inside_ghost;
 
         if self.rustdoc && matches!(vstd_kind(), VstdKind::IsVstd) {
             let mut block = (*item_fn.block).clone();
@@ -4812,6 +4814,7 @@ impl VisitMut for Visitor {
         if self.rustdoc {
             crate::rustdoc::process_item_fn(fun);
         }
+        let outer_inside_ghost = self.inside_ghost;
         let stmts = self.visit_fn(
             &mut fun.attrs,
             Some(&fun.vis),
@@ -4830,6 +4833,7 @@ impl VisitMut for Visitor {
         if is_external_code {
             self.inside_external_code -= 1;
         }
+        self.inside_ghost = outer_inside_ghost;
     }
 
     fn visit_foreign_item_fn_mut(&mut self, fun: &mut verus_syn::ForeignItemFn) {
@@ -4841,6 +4845,7 @@ impl VisitMut for Visitor {
             crate::rustdoc::process_impl_item_method(method);
         }
 
+        let outer_inside_ghost = self.inside_ghost;
         let stmts = self.visit_fn(
             &mut method.attrs,
             Some(&method.vis),
@@ -4859,10 +4864,12 @@ impl VisitMut for Visitor {
         if is_external_code {
             self.inside_external_code -= 1;
         }
+        self.inside_ghost = outer_inside_ghost;
     }
 
     fn visit_trait_item_fn_mut(&mut self, method: &mut TraitItemFn) {
         let is_spec_method = method.sig.ident.to_string().starts_with(VERUS_SPEC);
+        let outer_inside_ghost = self.inside_ghost;
         let mut stmts =
             self.visit_fn(&mut method.attrs, None, &mut method.sig, method.semi_token, true, true);
         if let Some(block) = &mut method.default {
@@ -4889,9 +4896,12 @@ impl VisitMut for Visitor {
         if is_external_code {
             self.inside_external_code -= 1;
         }
+        self.inside_ghost = outer_inside_ghost;
     }
 
     fn visit_item_const_mut(&mut self, con: &mut ItemConst) {
+        let outer_inside_ghost = self.inside_ghost;
+        let outer_inside_const = self.inside_const;
         let mode = self.visit_const_or_static(
             con.const_token.span,
             &mut con.attrs,
@@ -4910,9 +4920,13 @@ impl VisitMut for Visitor {
             con.const_token.span,
         );
         visit_item_const_mut(self, con);
+        self.inside_ghost = outer_inside_ghost;
+        self.inside_const = outer_inside_const;
     }
 
     fn visit_item_static_mut(&mut self, sta: &mut ItemStatic) {
+        let outer_inside_ghost = self.inside_ghost;
+        let outer_inside_const = self.inside_const;
         let mode = self.visit_const_or_static(
             sta.static_token.span,
             &mut sta.attrs,
@@ -4931,9 +4945,13 @@ impl VisitMut for Visitor {
             sta.static_token.span,
         );
         visit_item_static_mut(self, sta);
+        self.inside_ghost = outer_inside_ghost;
+        self.inside_const = outer_inside_const;
     }
 
     fn visit_impl_item_const_mut(&mut self, con: &mut verus_syn::ImplItemConst) {
+        let outer_inside_ghost = self.inside_ghost;
+        let outer_inside_const = self.inside_const;
         let mode = self.visit_const_or_static(
             con.const_token.span,
             &mut con.attrs,
@@ -4952,6 +4970,8 @@ impl VisitMut for Visitor {
             con.const_token.span,
         );
         visit_impl_item_const_mut(self, con);
+        self.inside_ghost = outer_inside_ghost;
+        self.inside_const = outer_inside_const;
     }
 
     fn visit_field_mut(&mut self, field: &mut Field) {
