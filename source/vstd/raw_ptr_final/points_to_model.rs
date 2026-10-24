@@ -695,6 +695,41 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
         self.seq_pt()[index]
     }
 
+    /// Borrows the sequence of permissions.
+    pub proof fn tracked_seq_pt(tracked &self) -> tracked &Seq<P>
+        returns
+            self.seq_pt(),
+    {
+        &self.seq_pt
+    }
+
+    /// Mutably borrows the sequence of permissions, leaving the pointer unchanged.
+    /// If the final permissions keep their original pointers and lengths,
+    /// `self` satisfies `wf_basic` afterwards.
+    pub proof fn tracked_seq_pt_mut(tracked &mut self) -> (tracked ret: &mut Seq<P>)
+        ensures
+            *ret == old(self).seq_pt(),
+            final(self).seq_pt() == *final(ret),
+            final(self).ptr() == old(self).ptr(),
+            old(self).wf_basic() && Self::ptrs_len_same(*old(self), *final(self)) ==> final(self).wf_basic(),
+    {
+        let old_self = *self;
+        let self_ref = self;
+        let tracked ret = &mut self.seq_pt;
+        if old_self.wf_basic() && Self::ptrs_len_same(old_self, *final(self_ref)) {
+            Self::stays_wf_basic(old_self, *final(self_ref));
+        }
+        ret
+    }
+
+    /// Consumes this `SeqPointsTo`, returning the underlying `Seq<P>`.
+    pub proof fn into_seq(tracked self) -> (tracked perms: Seq<P>)
+        returns
+            self.seq_pt(),
+    {
+        self.seq_pt
+    }
+
     /// A mutably borrowed `Seq<P>` acts as a mutably borrowed `SeqPointsTo<T, P>` with the given pointer.
     pub axiom fn from_seq_mut<'a>(tracked s: &'a mut Seq<P>, ptr: *mut [T]) -> (tracked out: &'a mut Self)
         ensures

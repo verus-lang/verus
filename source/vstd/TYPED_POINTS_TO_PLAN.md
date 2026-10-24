@@ -201,10 +201,10 @@ impl<T> PTValueOps for PointsToUnaligned<[T]> {
     /// Replaces the `val` field.
     proof fn put_typed_value(tracked &mut self, tracked v: TypedValue<[T]>);
 
-    /// Moves out the `pt_untyped` and `val` fields.
+    /// Splits into well-formed `pt_untyped` and `val` fields.
     proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<[T]>));
 
-    /// Builds the struct from its fields.
+    /// Builds the struct from its well-formed fields.
     proof fn from_untyped_with_typed_value(
         tracked pt_untyped: PointsToUntyped,
         tracked typed_value: TypedValue<[T]>,
@@ -214,7 +214,7 @@ impl<T> PTValueOps for PointsToUnaligned<[T]> {
     /// Borrows the `pt_untyped` field.
     proof fn as_untyped(tracked &self) -> (tracked pt_untyped: &PointsToUntyped);
 
-    /// Empties the `val` field, then mutably borrows the `pt_untyped` field.
+    /// Mutably borrows the `pt_untyped` field, setting the `val` field to `Empty.
     proof fn as_untyped_mut(tracked &mut self) -> (tracked pt_untyped: &mut PointsToUntyped);
 }
 
@@ -247,6 +247,8 @@ impl<T> PointsToUnaligned<T> {
 **Proposed: `as_raw_parts_mut`** (proved; inherent, so no change to the approved traits).
 It borrows the two fields separately: the inverse of M3.
 Generic over `T: ?Sized`, so it covers `T`, `[T]` and rustlib's `str` without rustlib touching the fields.
+In `points_to_model.rs`, with the other field primitives
+([Module layout](TYPED_POINTS_TO_APPROVED.md#module-layout)), next to its inverse M3.
 
 ```rust
 impl<T: ?Sized> PointsToUnaligned<T> {
@@ -274,6 +276,9 @@ and the owned split and build, without touching the fields;
 Like `from_raw_parts_ref`, these say nothing about `wf()`.
 (`raw_parts` in a name means the function neither requires nor establishes `wf()`;
 the trait's versions, which do, are `into_untyped_with_typed_value` / `from_untyped_with_typed_value`.)
+In `points_to_model.rs`, with the other field primitives:
+`tracked_typed_value` next to `tracked_pt_untyped`,
+and `into_raw_parts` / `from_raw_parts` next to `from_raw_parts_ref`.
 
 ```rust
 impl<T: ?Sized> PointsToUnaligned<T> {
@@ -285,8 +290,8 @@ impl<T: ?Sized> PointsToUnaligned<T> {
         &self.val
     }
 
-    /// Moves out the untyped bytes and the typed value,
-    /// dropping the (ghost) metadata.
+    /// Splits the permission into an untyped permission to the same bytes and the typed value.
+    /// It says nothing about `wf()`.
     pub proof fn into_raw_parts(tracked self) -> (tracked (pt_untyped, typed_value): (PointsToUntyped, TypedValue<T>))
         ensures
             pt_untyped == self.pt_untyped(),
@@ -295,7 +300,8 @@ impl<T: ?Sized> PointsToUnaligned<T> {
         (self.pt_untyped, self.val)
     }
 
-    /// Builds the permission from untyped bytes, a typed value and pointer metadata.
+    /// Creates a permission from an untyped permission, a typed value and pointer metadata.
+    /// The inverse of `into_raw_parts`.
     /// It says nothing about `wf()`: callers prove it from the parts.
     pub proof fn from_raw_parts(
         tracked pt_untyped: PointsToUntyped,
@@ -1507,7 +1513,7 @@ How they're built (without field access):
   the typed value from `from_elems_ref` on the elements' typed values
   (empty when any element is empty),
   then `from_raw_parts_ref` gives a `&PointsToUnaligned<[T]>` and `as_aligned` the `&PointsTo<[T]>`.
-- `as_slice_pt_mut`: each element through `as_unaligned_mut`, then `as_raw_parts_mut` (in `points_to_ops.rs`)
+- `as_slice_pt_mut`: each element through `as_unaligned_mut`, then `as_raw_parts_mut` (in `points_to_model.rs`)
   for its bytes and typed value; the bytes merged with `join_mut`, the typed values with M1,
   the permission assembled with M3, and `as_aligned_mut` (M4) for the `&mut PointsTo<[T]>`.
 

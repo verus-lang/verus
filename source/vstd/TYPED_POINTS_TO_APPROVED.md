@@ -62,7 +62,7 @@ Sequences:
 
 | Impl | Applies to | What it contains |
 |---|---|---|
-| structural `impl<T, P: PTProperties<A = T>>` (`points_to_model.rs` for the specs and M5, `points_to_ops.rs` for the rest) | every sequence, untyped or typed | the only code touching the fields: accessors, constructors, borrows, `split_basic`, `join_basic`, `subrange_basic` |
+| structural `impl<T, P: PTProperties<A = T>>` (`points_to_model.rs` for the specs, the field primitives and M5, `points_to_ops.rs` for the rest) | every sequence, untyped or typed | the only code touching the fields: accessors, constructors, borrows, `split_basic`, `join_basic`, `subrange_basic` |
 | `PointsToUntyped` (`points_to_model.rs` for `View`, `bytes`, `wf` and the axioms; `points_to_ops.rs` for the proofs) | `SeqPointsTo<u8, PointsToByte>` | its `View`, `bytes`, `wf`, `split` / `join` / `split_ref` wrappers, and its axioms |
 | typed `impl<T> SeqPointsTo<T, PointsTo<T>>` (`points_to_collections.rs`) | sequences of `PointsTo<T>` (the only typed sequences) | `View`, `thin_ptr` (`self.ptr() as *mut T`), `wf`, bytes and values, the typed `split` / `join` / `subrange` wrappers, `subrange_mut`, untyped conversions, value operations, `is_aligned`, `is_disjoint_seqpt`, and the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`) |
 
@@ -103,9 +103,9 @@ and `points_to_ops` is a child module of `points_to_model`;
 |---|---|---|
 | the five trait definitions, with their default bodies | the `PTProperties` impls of `SeqPointsTo`, `PointsToUnaligned` and `PointsTo` | `PointsToRaw` (all of it) |
 | the struct definitions: `PointsToByte`, `TypedValue`, `SeqPointsTo`, `PointsToUntyped`, `PointsToUnaligned`, `PointsTo`; their closed accessors and the inherent spec fns (`typed_value`, `bytes`, `metadata`, `is_valid`, `value`, `value_ref`, `len`, …); their `View` impls | the `PTValueOps` impls (per type for `PointsToUnaligned`, generic for `PointsTo`) and the `PTSizedValue` impls | the typed `SeqPointsTo` impl (`impl<T> SeqPointsTo<T, PointsTo<T>>`), including its `wf`, and its `View` |
-| well-formedness: every `PTPhys` impl (`ptr`, `size`, `wf_basic`), every `PTTypedValue` impl (`typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment`, and the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic`), `wf_basic_unaligned`, `PointsToUntyped::wf` and `bytes` | the structural `SeqPointsTo` impl (except M5) and `PointsToUntyped`'s proofs | |
+| well-formedness: every `PTPhys` impl (`ptr`, `size`, `wf_basic`), every `PTTypedValue` impl (`typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment`, and the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic`), `wf_basic_unaligned`, `PointsToUntyped::wf` and `bytes` | the structural `SeqPointsTo` impl (except the field primitives and M5) and `PointsToUntyped`'s proofs | |
 | the axioms: `PointsToByte`'s `PTProperties` impl, `PointsToUntyped::join_ref` / `join_mut`, `from_raw_parts_ref`, `TypedValue::from_elems_ref`, M1, M3–M5, `PointsTo::borrow_mut` | the aligned/unaligned conversions | the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`) |
-| the tracked getters and byte disjointness: `TypedValue::tracked_copy`, `valid_ref`; `PointsToByte::is_disjoint_byte` | the slice permissions' borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`); `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`; `group_points_to_lemmas` | `group_points_to_collections_lemmas` |
+| the tracked getters and byte disjointness: `TypedValue::tracked_copy`, `valid_ref`; `PointsToByte::is_disjoint_byte`; the field primitives, which say nothing about `wf`: `SeqPointsTo::tracked_seq_pt`, `tracked_seq_pt_mut`, `into_seq`, `PointsToUnaligned::tracked_pt_untyped`, `PointsTo::tracked_pt_unaligned` | the slice permissions' borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`); `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`; `group_points_to_lemmas` | `group_points_to_collections_lemmas` |
 
 `raw_ptr_new.rs` becomes two files:
 
@@ -1560,6 +1560,29 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
         self.seq_pt()[index]
     }
 
+    /// Borrows the sequence of permissions.
+    pub proof fn tracked_seq_pt(tracked &self) -> tracked &Seq<P>
+        returns
+            self.seq_pt(),
+    ;
+
+    /// Mutably borrows the sequence of permissions, leaving the pointer unchanged.
+    /// If the final permissions keep their original pointers and lengths,
+    /// `self` satisfies `wf_basic` afterwards.
+    pub proof fn tracked_seq_pt_mut(tracked &mut self) -> (tracked ret: &mut Seq<P>)
+        ensures
+            *ret == old(self).seq_pt(),
+            final(self).seq_pt() == *final(ret),
+            final(self).ptr() == old(self).ptr(),
+            old(self).wf_basic() && Self::ptrs_len_same(*old(self), *final(self)) ==> final(self).wf_basic(),
+    ;
+
+    /// Consumes this `SeqPointsTo`, returning the underlying `Seq<P>`.
+    pub proof fn into_seq(tracked self) -> (tracked perms: Seq<P>)
+        returns
+            self.seq_pt(),
+    ;
+
     // Axiom: from_seq_mut (M5).
 }
 
@@ -2178,23 +2201,6 @@ impl<T, P: PTProperties<A = T>> PTProperties for SeqPointsTo<T, P> {
 }
 
 impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
-    /// Borrows the sequence of permissions.
-    pub proof fn tracked_seq_pt(tracked &self) -> tracked &Seq<P>
-        returns
-            self.seq_pt(),
-    ;
-
-    /// Mutably borrows the sequence of permissions, leaving the pointer unchanged.
-    /// If the final permissions keep their original pointers and lengths,
-    /// `self` satisfies `wf_basic` afterwards.
-    pub proof fn tracked_seq_pt_mut(tracked &mut self) -> (tracked ret: &mut Seq<P>)
-        ensures
-            *ret == old(self).seq_pt(),
-            final(self).seq_pt() == *final(ret),
-            final(self).ptr() == old(self).ptr(),
-            old(self).wf_basic() && Self::ptrs_len_same(*old(self), *final(self)) ==> final(self).wf_basic(),
-    ;
-
     /// Mutably borrows the permission at index `i`, leaving the pointer unchanged.
     pub proof fn index_mut(tracked &mut self, i: int) -> (tracked ret: &mut P)
         requires
@@ -2232,12 +2238,6 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             out.seq_pt() == Seq::<P>::empty(),
             out.ptr() as *mut T == ptr,
             out.wf_basic(),
-    ;
-
-    /// Consumes this `SeqPointsTo`, returning the underlying `Seq<P>`.
-    pub proof fn into_seq(tracked self) -> (tracked perms: Seq<P>)
-        returns
-            self.seq_pt(),
     ;
 
     /// Splits into the first `mid` permissions and the rest.
