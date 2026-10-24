@@ -1536,7 +1536,7 @@ impl Visitor {
 
     pub fn desugar_const_or_static(
         &mut self,
-        con_mode: &FnMode,
+        _con_mode: &FnMode,
         con_ensures: &mut Option<Ensures>,
         con_block: &mut Option<Box<Block>>,
         con_expr: &mut Option<Box<Expr>>,
@@ -1545,26 +1545,30 @@ impl Visitor {
         _con_ty: &Type,
         con_span: Span,
     ) {
-        if matches!(con_mode, FnMode::Spec(_) | FnMode::SpecChecked(_)) {
-            if let Some(expr) = con_expr.take() {
-                let mut stmts = Vec::new();
-                stmts.push(Stmt::Expr(
-                    Expr::Verbatim(quote_spanned!(con_span => unsafe { ::core::mem::zeroed() })),
-                    None,
-                ));
-                *con_expr = Some(Box::new(Expr::Block(verus_syn::ExprBlock {
-                    attrs: vec![],
-                    label: None,
-                    block: Block { brace_token: token::Brace(expr.span()), stmts },
-                })));
+        let ensures = self.take_ghost(con_ensures);
+        if let Some(Ensures { token, mut exprs, attrs }) = ensures {
+            self.inside_ghost += 1;
+            let mut stmts: Vec<Stmt> = Vec::new();
+            if attrs.len() > 0 {
+                let err = "outer attributes only allowed on function's ensures";
+                let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
+            } else if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                stmts.push(stmt_with_semi!(builtin, token.span => #builtin::ensures(|| [#exprs]) ));
             }
-        } else {
-            if let Some(block) = std::mem::take(con_block) {
-                let expr_block = verus_syn::ExprBlock { attrs: vec![], label: None, block: *block };
-                *con_expr = Some(Box::new(Expr::Block(expr_block)));
-                *con_eq_token = Some(verus_syn::token::Eq { spans: [con_span] });
-                *con_semi_token = Some(Semi { spans: [con_span] });
-            }
+            let mut block = std::mem::take(con_block).expect("const-with-ensures block");
+            block.stmts.splice(0..0, stmts);
+            *con_block = Some(block);
+            self.inside_ghost -= 1;
+        }
+        if let Some(block) = std::mem::take(con_block) {
+            let expr_block = verus_syn::ExprBlock { attrs: vec![], label: None, block: *block };
+            *con_expr = Some(Box::new(Expr::Block(expr_block)));
+            *con_eq_token = Some(verus_syn::token::Eq { spans: [con_span] });
+            *con_semi_token = Some(Semi { spans: [con_span] });
         }
         *con_ensures = None;
     }
@@ -1909,7 +1913,6 @@ impl Visitor {
 
     fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
         crate::contrib::contrib_preprocess_items(items);
-        self.visit_items_make_unerased_proxies(items);
         crate::syntax_trait::expand_extension_traits(self.erase_ghost.erase_all(), items);
 
         if self.erase_ghost.erase_all() {
@@ -2009,7 +2012,7 @@ impl Visitor {
             };
             if let Some((name, vis, mut attrs)) = erase_fn {
                 let mut item_fn: ItemFn = parse_quote_spanned! {
-                    span => #[allow(unused_imports)] #vis fn #name() { ::core::unimplemented!() }
+                    span => #[allow(non_snake_case)] #[allow(unused_imports)] #vis fn #name() { ::core::unimplemented!() }
                 };
                 filter_ghost_stub_attrs(&mut attrs);
                 // Verbatim items bypass the usual attribute visitor.
@@ -2423,7 +2426,6 @@ impl Visitor {
 
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
         crate::contrib::contrib_preprocess_impl_items(items);
-        self.visit_impl_items_make_unerased_proxies(items, for_trait);
 
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
@@ -6213,24 +6215,6 @@ pub(crate) fn is_encoded_const(attrs: &Vec<Attribute>) -> bool {
                 && tokens.to_string() == "encoded_const"
         }
         _ => false,
-    })
-}
-
-pub(crate) fn is_external(attrs: &Vec<Attribute>) -> bool {
-    attrs.iter().any(|attr| {
-        // verifier::external
-        attr.path().segments.len() == 2
-            && attr.path().segments[0].ident == "verifier"
-            && attr.path().segments[1].ident == "external"
-        // verifier(external)
-        || attr.path().segments.len() == 1
-            && attr.path().segments[0].ident == "verifier"
-            && match &attr.meta {
-                verus_syn::Meta::List(list) => {
-                    matches!(list.tokens.to_string().as_str(), "external")
-                }
-                _ => false,
-            }
     })
 }
 

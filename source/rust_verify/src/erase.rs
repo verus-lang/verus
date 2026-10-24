@@ -495,3 +495,121 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
     }
     set_verus_aware_def_ids(Arc::new(s));
 }
+
+/// Should a call to the given verus item be erased in full-erasure mode?
+/// (See `FullErasureCtxt` in rustc_mir_build/verus.rs)
+fn full_erasure_erases_call(verus_item: &VerusItem) -> bool {
+    use crate::verus_items::CompilableOprItem;
+    match verus_item {
+        VerusItem::Spec(_)
+        | VerusItem::Quant(_)
+        | VerusItem::Directive(_)
+        | VerusItem::Expr(_)
+        | VerusItem::BinaryOp(_)
+        | VerusItem::UnaryOp(_)
+        | VerusItem::Chained(_)
+        | VerusItem::Assert(_)
+        | VerusItem::UseTypeInvariant
+        | VerusItem::WithTriggers
+        | VerusItem::BuiltinFunction(_)
+        | VerusItem::BuiltinDeref(_)
+        | VerusItem::HasResolved
+        | VerusItem::HasResolvedUnsized
+        | VerusItem::MutRefCurrent
+        | VerusItem::MutRefFuture
+        | VerusItem::Final
+        | VerusItem::AfterBorrow
+        | VerusItem::MutRefTracked => true,
+
+        // These get replaced by `Ghost::assume_new()` or `Tracked::assume_new()`
+        VerusItem::CompilableOpr(
+            CompilableOprItem::GhostExec
+            | CompilableOprItem::GhostNew
+            | CompilableOprItem::TrackedNew
+            | CompilableOprItem::TrackedExec,
+        ) => true,
+        // These only appear in ghost code anyway
+        VerusItem::CompilableOpr(
+            CompilableOprItem::TrackedGet
+            | CompilableOprItem::TrackedBorrow
+            | CompilableOprItem::TrackedBorrowMut,
+        ) => true,
+        VerusItem::CompilableOpr(
+            CompilableOprItem::Implies | CompilableOprItem::TrackedExecBorrow,
+        ) => false,
+
+        // These contain exec code
+        VerusItem::OpenInvariantBlock(_) | VerusItem::OpenAtomicUpdate(_) => false,
+
+        // These are only introduced by (normal) erasure or by closure encoding
+        VerusItem::ErasedGhostValue
+        | VerusItem::ShadowGhostValue
+        | VerusItem::MutableReferenceTie
+        | VerusItem::TwoPhaseMutableReferenceTie
+        | VerusItem::GetFirst
+        | VerusItem::DummyCapture(_) => false,
+
+        VerusItem::Vstd(_, _)
+        | VerusItem::RustPrivate(_)
+        | VerusItem::Marker(_)
+        | VerusItem::BuiltinType(_)
+        | VerusItem::BuiltinTrait(_)
+        | VerusItem::Global(_)
+        | VerusItem::External(_) => false,
+    }
+}
+
+/// Do the given attributes (on an expression, let statement, or item) mark ghost code?
+/// (This is used for full erasure.)
+fn full_erasure_is_ghost_attrs(attrs: &[rustc_hir::Attribute]) -> bool {
+    use crate::attributes::{Attr, GhostBlockAttr};
+    crate::attributes::parse_attrs_opt(attrs, None).iter().any(|attr| match attr {
+        Attr::GhostBlock(GhostBlockAttr::Proof | GhostBlockAttr::Tracked) => true,
+        Attr::Mode(Mode::Spec | Mode::Proof) => true,
+        Attr::InferMode => true,
+        Attr::UnwrapParameter => true,
+        _ => false,
+    })
+}
+
+/// Set up the information needed for full erasure, which is used for const evaluation.
+/// This needs to happen before rustc type-checking.
+pub(crate) fn setup_full_erasure_ctxt<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    verus_items: &VerusItems,
+) {
+    use crate::verus_items::BuiltinTypeItem;
+
+    let ghost = verus_items.name_to_id.get(&VerusItem::BuiltinType(BuiltinTypeItem::Ghost));
+    let tracked = verus_items.name_to_id.get(&VerusItem::BuiltinType(BuiltinTypeItem::Tracked));
+    let (Some(ghost), Some(tracked)) = (ghost, tracked) else {
+        // No verus_builtin crate, so there's no ghost code to erase
+        return;
+    };
+    let find_assume_new = |adt_def_id: rustc_span::def_id::DefId| {
+        tcx.inherent_impls(adt_def_id)
+            .iter()
+            .flat_map(|impl_def_id| tcx.associated_item_def_ids(*impl_def_id).iter())
+            .find(|def_id| tcx.item_name(**def_id).as_str() == "assume_new")
+            .copied()
+            .expect("assume_new function for Ghost/Tracked")
+    };
+
+    let erase_call_fns = verus_items
+        .id_to_name
+        .iter()
+        .filter(|(_, verus_item)| full_erasure_erases_call(verus_item))
+        .map(|(def_id, _)| *def_id)
+        .collect();
+
+    rustc_mir_build_verus::verus::set_full_erasure_ctxt(Arc::new(
+        rustc_mir_build_verus::verus::FullErasureCtxt {
+            erase_call_fns,
+            ghost_struct_def_id: *ghost,
+            tracked_struct_def_id: *tracked,
+            ghost_assume_new_fn_def_id: find_assume_new(*ghost),
+            tracked_assume_new_fn_def_id: find_assume_new(*tracked),
+            is_ghost_attrs: full_erasure_is_ghost_attrs,
+        },
+    ));
+}
