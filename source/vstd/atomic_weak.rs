@@ -264,7 +264,9 @@ pub open spec fn load_acquire<T>(
 ) -> bool {
     &&& load_timestamp_in_view(pt, old_view, new_view, timestamp)
     &&& load_reads_from_history(pt.hist(), val, timestamp, message_view)
-    &&& new_view.contains(old_view)
+    &&& new_view.contains(
+        old_view,
+    )
     // because this is an acquire load, the message view is joined to the thread's current view
     &&& new_view.contains(message_view)
 }
@@ -280,7 +282,9 @@ pub open spec fn load_relaxed<T>(
 ) -> bool {
     &&& load_timestamp_in_view(pt, old_view, new_view, timestamp)
     &&& load_reads_from_history(pt.hist(), val, timestamp, message_view)
-    &&& new_view.contains(old_view)
+    &&& new_view.contains(
+        old_view,
+    )
     // because this is a relaxed load, the message view is joined to the thread's acquire view
     &&& acquire_view.contains(message_view)
 }
@@ -328,14 +332,10 @@ pub open spec fn store_release<T>(
     message_view: ThreadView,
 ) -> bool {
     &&& store_timestamp_in_view(old_pt, new_pt, old_view, new_view, message_view, timestamp)
-    &&& store_insert_history(
-        old_pt,
-        new_pt,
-        val,
-        timestamp,
-        message_view,
+    &&& store_insert_history(old_pt, new_pt, val, timestamp, message_view)
+    &&& new_view.contains_strict(
+        old_view,
     )
-    &&& new_view.contains_strict(old_view)
     // because this is a release store, the message view is the thread's current view
     &&& message_view == new_view
 }
@@ -351,14 +351,10 @@ pub open spec fn store_relaxed<T>(
     message_view: ThreadView,
 ) -> bool {
     &&& store_timestamp_in_view(old_pt, new_pt, old_view, new_view, message_view, timestamp)
-    &&& store_insert_history(
-        old_pt,
-        new_pt,
-        val,
-        timestamp,
-        message_view,
+    &&& store_insert_history(old_pt, new_pt, val, timestamp, message_view)
+    &&& new_view.contains_strict(
+        old_view,
     )
-    &&& new_view.contains_strict(old_view)
     // because this is a relaxed store, the message view contains the release view
     &&& message_view.contains(
         release_view,
@@ -391,14 +387,10 @@ pub open spec fn store_mut_release<T>(
     message_view: ThreadView,
 ) -> bool {
     &&& store_timestamp_in_view(old_pt, new_pt, old_view, new_view, message_view, timestamp)
-    &&& store_mut_truncate_history(
-        old_pt,
-        new_pt,
-        val,
-        timestamp,
-        message_view,
+    &&& store_mut_truncate_history(old_pt, new_pt, val, timestamp, message_view)
+    &&& new_view.contains_strict(
+        old_view,
     )
-    &&& new_view.contains_strict(old_view)
     // because this is a release store, the message view is the thread's current view
     &&& message_view == new_view
 }
@@ -414,14 +406,10 @@ pub open spec fn store_mut_relaxed<T>(
     message_view: ThreadView,
 ) -> bool {
     &&& store_timestamp_in_view(old_pt, new_pt, old_view, new_view, message_view, timestamp)
-    &&& store_mut_truncate_history(
-        old_pt,
-        new_pt,
-        val,
-        timestamp,
-        message_view,
+    &&& store_mut_truncate_history(old_pt, new_pt, val, timestamp, message_view)
+    &&& new_view.contains_strict(
+        old_view,
     )
-    &&& new_view.contains_strict(old_view)
     // because this is a relaxed store, the message view contains the release view
     &&& message_view.contains(
         release_view,
@@ -525,7 +513,7 @@ pub open spec fn update_success<T>(
                 up.store_message_view,
             )
         },
-        _ => false, // SeqCst ordering not allowed
+        _ => false,  // SeqCst ordering not allowed
     }
 }
 
@@ -559,7 +547,7 @@ pub open spec fn update_fail<T>(
             up.load_timestamp,
             up.load_message_view,
         ),
-        _ => false, // SeqCst ordering not allowed
+        _ => false,  // SeqCst ordering not allowed
     }
 }
 
