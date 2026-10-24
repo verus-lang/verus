@@ -132,6 +132,87 @@ pub fn spawn<F, Ret>(f: F) -> (handle: JoinHandle<Ret>) where
     }
 }
 
+/// Object returned by [`spawn_scoped()`](spawn_scoped) to allow joining a
+/// scoped thread.
+/// (Wrapper around [`std::thread::ScopedJoinHandle`](https://doc.rust-lang.org/std/thread/struct.ScopedJoinHandle.html).)
+///
+/// We wrap rather than specify `std::thread::ScopedJoinHandle` directly because
+/// its `join` returns `Result<T, Box<dyn Any + Send>>`, and Verus does not
+/// support `dyn` with more than one trait. This mirrors [`JoinHandle`].
+#[verifier::external_body]
+#[verifier::reject_recursive_types(Ret)]
+pub struct ScopedJoinHandle<'scope, Ret> {
+    handle: std::thread::ScopedJoinHandle<'scope, Ret>,
+}
+
+impl<'scope, Ret> ScopedJoinHandle<'scope, Ret> {
+    /// Predicate restricting the possible return values. This is determined by
+    /// the postcondition of the closure provided when calling
+    /// [`spawn_scoped()`](spawn_scoped).
+    pub uninterp spec fn predicate(&self, ret: Ret) -> bool;
+
+    /// Wait for the thread to complete.
+    #[verifier::external_body]
+    pub fn join(self) -> (r_result: Result<Ret, ()>)
+        ensures
+            match r_result {
+                Result::Ok(r) => self.predicate(r),
+                Result::Err(_) => true,
+            },
+    {
+        let res = std::panic::catch_unwind(
+            std::panic::AssertUnwindSafe(
+                ||
+                    {
+                        match self.handle.join() {
+                            Ok(v) => Ok(v),
+                            Err(_) => Err(()),
+                        }
+                    },
+            ),
+        );
+        match res {
+            Ok(res) => res,
+            Err(_) => {
+                println!("panic on join");
+                std::process::abort();
+            },
+        }
+    }
+}
+
+/// Spawns a thread on a scope. (Wrapper around
+/// [`std::thread::Scope::spawn`](https://doc.rust-lang.org/std/thread/struct.Scope.html#method.spawn).)
+///
+/// Unlike [`spawn()`](spawn) this requires only `Send + 'scope`, not
+/// `Send + 'static`: [`std::thread::scope`] guarantees the thread is joined
+/// before the scope ends, so the closure may borrow from the enclosing frame.
+#[verifier::external_body]
+pub fn spawn_scoped<'scope, 'env, F, Ret>(
+    s: &'scope std::thread::Scope<'scope, 'env>,
+    f: F,
+) -> (handle: ScopedJoinHandle<'scope, Ret>) where
+    F: FnOnce() -> Ret,
+    F: Send + 'scope,
+    Ret: Send + 'scope,
+
+    requires
+        f.requires(()),
+    ensures
+        forall|ret: Ret| #[trigger] handle.predicate(ret) ==> f.ensures((), ret),
+{
+    let res = std::panic::catch_unwind(
+        std::panic::AssertUnwindSafe(|| { ScopedJoinHandle { handle: s.spawn(move || f()) } }),
+    );
+    match res {
+        Ok(res) => res,
+        Err(_) => {
+            println!("panic on spawn_scoped");
+            std::process::abort();
+        },
+    }
+}
+
 /// Wrapper around Rust's
 /// [`ThreadId`](https://doc.rust-lang.org/std/thread/struct.ThreadId.html)
 /// object. This is an opaque type.
