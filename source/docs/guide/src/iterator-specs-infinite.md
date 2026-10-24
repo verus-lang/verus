@@ -52,7 +52,8 @@ Here's how we define them for our custom iterator.
 - **`remaining`** — Our prophetic sequence has some (unknown) length predicted
   by `self.len`.  The contents are simply the current value of the counter,
   incremented by 1 at each step and wrapping after `u64::MAX`.
-- **`will_return_none`** — This is an infinite iterator, so we can return `false` here.
+- **`produces`** — We will always return a value when next is call, so we set all 
+  of the indices to true.
 - **`decrease`** — This is an infinite iterator, so we don't have a valid decreases metric
   available, so we return `None`.
 - **`peek`** — It's simple to predict what this value will be, and it helps improve 
