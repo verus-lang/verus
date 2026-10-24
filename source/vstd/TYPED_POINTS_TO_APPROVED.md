@@ -112,6 +112,15 @@ Other open spec fns, such as `len`, may live with the proofs that use them.
 | the axioms: `PointsToByte`'s `PTProperties` impl, `PointsToUntyped::join_ref` / `join_mut`, `from_raw_parts_ref`, `TypedValue::from_elems_ref`, M1, M3–M5, `PointsTo::borrow_mut` | the aligned/unaligned conversions | the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`) |
 | the tracked getters and byte disjointness: `TypedValue::tracked_copy`, `valid_ref`; `PointsToByte::is_disjoint_byte`; the field primitives, which say nothing about `wf`: `SeqPointsTo::tracked_seq_pt`, `tracked_seq_pt_mut`, `into_seq`, `PointsToUnaligned::tracked_pt_untyped`, `tracked_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_raw_parts_mut`, `PointsTo::tracked_pt_unaligned` | the slice permissions' `len`, `borrow_index` and borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`); `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`; `group_points_to_lemmas` | `group_points_to_collections_lemmas` |
 
+`group_points_to_lemmas` (in `group_vstd_default`) holds the broadcast lemmas of `points_to_model.rs` and `points_to_ops.rs`:
+
+```rust
+pub broadcast group group_points_to_lemmas {
+    SeqPointsTo::lemma_ptrs_len_same_untyped,
+    PTTypedValue::lemma_ptrs_len_same_valid,
+}
+```
+
 `raw_ptr_new.rs` becomes two files:
 
 | `ptr_model.rs` | `ptr_specs.rs` |
@@ -1093,8 +1102,6 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
             out.typed_value().is_empty(),
             out.wf(),
     {
-        broadcast use axiom_ptr_mut_from_data, ptrs_mut_eq, layout_of_unit_tuple;
-
         // PointsToUntyped::zero_sized needs a pointer to a zero-sized type.
         let tracked pt_untyped = PointsToUntyped::zero_sized(ptr_mut_from_data::<()>(
             PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: () },
@@ -1470,8 +1477,6 @@ impl PointsToByte {
             final(self).ptr()@.addr + size_of::<u8>() <= other.ptr()@.addr
                 || other.ptr()@.addr + size_of::<u8>() <= final(self).ptr()@.addr,
     {
-        broadcast use group_vstd_default;
-
         self.is_disjoint(other);
     }
 }
@@ -1947,8 +1952,8 @@ impl<T> PTPhys for PointsToUnaligned<T> {
         &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
     }
 
-    /// Delegates to `PointsToUntyped::stays_wf`.
-    proof fn stays_wf_basic(old: Self, new: Self);
+    proof fn stays_wf_basic(old: Self, new: Self) {
+    }
 }
 
 impl<T> PTPhys for PointsToUnaligned<[T]> {
@@ -1986,8 +1991,8 @@ impl<T> PTPhys for PointsToUnaligned<[T]> {
         &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
     }
 
-    /// Delegates to `PointsToUntyped::stays_wf`.
-    proof fn stays_wf_basic(old: Self, new: Self);
+    proof fn stays_wf_basic(old: Self, new: Self) {
+    }
 }
 
 impl<T> PTTypedValue for PointsToUnaligned<T> {
@@ -2021,8 +2026,6 @@ impl<T> PTTypedValue for PointsToUnaligned<T> {
     }
 
     proof fn lemma_wf_basic(&self) {
-        // As in `bytes_decode`, the assert unfolds the default `wf`.
-        assert(self.wf());
     }
 
     // ptrs_len_same_valid: the trait's default body.

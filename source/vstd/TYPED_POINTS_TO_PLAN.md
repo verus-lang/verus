@@ -1028,8 +1028,8 @@ impl PTPhys for PointsToUnaligned<str> {
         &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
     }
 
-    /// Delegates to `PointsToUntyped::stays_wf`.
-    proof fn stays_wf_basic(old: Self, new: Self);
+    proof fn stays_wf_basic(old: Self, new: Self) {
+    }
 }
 
 impl PTTypedValue for PointsToUnaligned<str> {
