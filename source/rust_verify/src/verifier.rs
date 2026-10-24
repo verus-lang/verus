@@ -402,10 +402,6 @@ pub fn module_name(module: &vir::ast::Path) -> String {
 mod util {
     pub(crate) struct PanicOnDropVec<T>(Option<Vec<T>>);
 
-    // For https://github.com/verus-lang/verus/issues/1044 :
-    pub(crate) static PANIC_ON_DROP_VEC: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(true);
-
     impl<T> PanicOnDropVec<T> {
         pub fn new(v: Vec<T>) -> Self {
             PanicOnDropVec(Some(v))
@@ -422,7 +418,9 @@ mod util {
 
     impl<T> Drop for PanicOnDropVec<T> {
         fn drop(&mut self) {
-            if self.0.is_some() && PANIC_ON_DROP_VEC.load(std::sync::atomic::Ordering::SeqCst) {
+            // Don't panic while unwinding from another panic: that would abort and hide the
+            // original error (https://github.com/verus-lang/verus/issues/1044)
+            if self.0.is_some() && !std::thread::panicking() {
                 panic!("dropped, expected call to `into_inner` instead");
             }
         }
@@ -679,7 +677,6 @@ impl Verifier {
         match result {
             ValidityResult::Valid(air::context::UsageInfo::None) => {}
             ValidityResult::TypeError(err) => {
-                util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                 panic!("internal error: ill-typed AIR code: {}", err)
             }
             _ => panic!("internal error: decls should not generate queries ({:?})", result),
@@ -855,7 +852,6 @@ impl Verifier {
                     break;
                 }
                 ValidityResult::TypeError(err) => {
-                    util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
                 ValidityResult::Canceled => {
@@ -967,7 +963,6 @@ impl Verifier {
                     bucket_time.time_air += time1 - time0;
                 }
                 ValidityResult::UnexpectedOutput(err) => {
-                    util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                     panic!("unexpected output from solver: {} {}", context.span.as_string, err);
                 }
             }
