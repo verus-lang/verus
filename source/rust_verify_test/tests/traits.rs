@@ -5039,3 +5039,31 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_inherited_ensures_spec_fn_context_order_issue3298 verus_code! {
+        pub trait Key {
+            fn key_eq(&self, other: &Self) -> bool;
+        }
+
+        pub open spec fn uses_key<K: Key>() -> bool { true }
+
+        pub open spec fn early() -> bool { uses_key::<Item>() }
+
+        pub struct Item { pub value: u32 }
+
+        impl Key for Item {
+            fn key_eq(&self, other: &Self) -> bool { self.f(other) }
+        }
+
+        pub trait T {
+            spec fn s(&self, other: &Self) -> bool;
+            fn f(&self, other: &Self) -> (r: bool) ensures r == self.s(other);
+        }
+
+        impl T for Item {
+            fn f(&self, other: &Self) -> bool { self.value == other.value }
+            open spec fn s(&self, other: &Self) -> bool { self.value == other.value }
+        }
+    } => Ok(())
+}
