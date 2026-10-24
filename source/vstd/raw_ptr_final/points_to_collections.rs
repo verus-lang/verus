@@ -32,11 +32,19 @@ impl<T> View for SeqPointsTo<T, PointsTo<T>> {
     type V = SeqPointsToData<T>;
 
     open spec fn view(&self) -> Self::V {
-        SeqPointsToData { ptr: self.ptr(), seq_pt: self.seq_pt() }
+        SeqPointsToData { ptr: self.thin_ptr(), seq_pt: self.seq_pt() }
     }
 }
 
+// Interim: today's typed impl, adapted to the `*mut [T]` pointer,
+// with `split`, `join` and `subrange` as wrappers over the structural functions.
+// Its contracts are replaced by the approved ones when this impl is approved.
 impl<T> SeqPointsTo<T, PointsTo<T>> {
+    /// The pointer to the first element, without the length.
+    pub open spec fn thin_ptr(self) -> *mut T {
+        self.ptr() as *mut T
+    }
+
     /// In addition to the well-formed-ness properties which must hold of every `SeqPointsTo`,
     /// the `*mut T` pointer must be aligned to `T`.
     pub open spec fn wf(self) -> bool {
@@ -105,11 +113,11 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     }
 
     /// If `old` is well-formed and `new` has the same pointers and length, with each element
-    /// still satisfying decode validity (`ptrs_len_same_valid`), then `new` is well-formed.
+    /// still satisfying decode validity (`ptrs_len_same`), then `new` is well-formed.
     pub proof fn stays_wf(old: Self, new: Self)
         requires
             old.wf(),
-            Self::ptrs_len_same_valid(old, new),
+            Self::ptrs_len_same(old, new),
         ensures
             new.wf(),
     {
@@ -126,9 +134,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             new.ptr() == old.ptr(),
             new.len() == old.len(),
         ensures
-            #[trigger] Self::ptrs_len_same_valid(old, new),
+            #[trigger] Self::ptrs_len_same(old, new),
     {
-        assert forall|i: int| 0 <= i < new.len() implies PointsTo::<T>::ptrs_len_same_valid(
+        assert forall|i: int| 0 <= i < new.len() implies PointsTo::<T>::ptrs_len_same(
             old[i],
             #[trigger] new[i],
         ) by {
@@ -166,9 +174,10 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             ptr@.addr as nat % align_of::<T>() == 0,
             ptr_addr_in_bounds(ptr),
             size_of::<T>() == 0,
+            length <= usize::MAX,
         ensures
             forall|i| #![auto] 0 <= i < spt.len() ==> spt[i].is_empty(),
-            spt.ptr() == ptr,
+            spt.thin_ptr() == ptr,
             spt.len() == length,
             spt.wf(),
     {
@@ -181,6 +190,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             self.ptr()@.addr as nat % align_of::<T>() == 0,
             size_of::<T>() == 0,
             self.len() + remaining == total,
+            total <= usize::MAX,
             forall|i| #![auto] 0 <= i < self.len() ==> self[i].is_empty(),
             self.wf(),
             self.ptr()@.provenance.is_some() ==> {
@@ -189,7 +199,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     + self.ptr()@.provenance.unwrap().alloc_len()
             },
         ensures
-            spt.ptr() == self.ptr(),
+            spt.thin_ptr() == self.thin_ptr(),
             spt.len() == total,
             forall|i| #![auto] 0 <= i < spt.len() ==> spt[i].is_empty(),
             spt.wf(),
@@ -201,7 +211,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             self
         } else {
             let ghost_self = self;
-            let ptr = self.ptr();
+            let ptr = self.thin_ptr();
             let tracked zs_pt = PointsTo::zero_sized(ptr);
             let tracked mut perms = self.into_seq();
             perms.tracked_push(zs_pt);
@@ -487,7 +497,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             } by {
                 assert(seq_pt[i] == ghost_self[i]);
             }
-            let tracked head = Self::from_seq(seq_pt, ghost_self.ptr());
+            let tracked head = Self::from_seq(seq_pt, ghost_self.thin_ptr());
             let ghost_head = head;
             let ghost_last = last;
             let tracked (head_u8, mut head_typed_value) = head.into_untyped_with_typed_value();
@@ -543,7 +553,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             pt_untyped.ptr()@.addr as nat % align_of::<T>() == 0,
             pt_untyped.len() == len * size_of::<T>(),
         ensures
-            out.ptr() == pt_untyped.ptr() as *mut T,
+            out.ptr()@.addr == pt_untyped.ptr()@.addr,
+            out.ptr()@.provenance == pt_untyped.ptr()@.provenance,
             out.len() == len,
             out.bytes() == pt_untyped.bytes(),
             out.is_fully_empty(),
@@ -602,7 +613,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     &typed_value[i].value(),
                 ),
         ensures
-            out.ptr() == pt_untyped.ptr() as *mut T,
+            out.ptr()@.addr == pt_untyped.ptr()@.addr,
+            out.ptr()@.provenance == pt_untyped.ptr()@.provenance,
             out.len() == capacity,
             out.bytes() == pt_untyped.bytes(),
             forall|i: int| 0 <= i < typed_value.len() ==> (#[trigger] out[i]).typed_value() == typed_value[i],
@@ -832,7 +844,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             raw.wf(),
             final(perms).len() == old(perms).len(),
             forall|i: int| 0 <= i < final(perms).len() ==> #[trigger] final(perms)[i].is_empty(),
-            PointsToUntyped::ptrs_len_same_valid(*raw, *final(raw)) ==> {
+            PointsToUntyped::ptrs_len_same(*raw, *final(raw)) ==> {
                 &&& forall|i: int|
                     #![trigger final(perms)[i]]
                     0 <= i < final(perms).len() ==> {
@@ -882,7 +894,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             let raw_ref = raw;
 
             // Final values
-            if PointsToUntyped::ptrs_len_same_valid(*raw_ref, *final(raw_ref)) {
+            if PointsToUntyped::ptrs_len_same(*raw_ref, *final(raw_ref)) {
                 assert((*final(perms_ref)).drop_last() =~= *final(init_ref));            }
             raw
         }
@@ -908,14 +920,14 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).len() == old(self).len(),
             final(self).is_fully_empty(),
             // Criteria necessary for re-establishing invariants
-            PointsToUntyped::ptrs_len_same_valid(*raw, *final(raw)) ==> ({
+            PointsToUntyped::ptrs_len_same(*raw, *final(raw)) ==> ({
                 &&& final(self).bytes() == final(raw).bytes()
                 &&& final(self).wf()
             }),
     {
         broadcast use group_vstd_default;
 
-        let base = self.ptr();
+        let base = self.thin_ptr();
         let old_self = *self;
         let self_ref = self;
         let tracked perms = self.tracked_seq_pt_mut();
@@ -923,11 +935,11 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         let raw_ref = raw;
 
         // Final values
-        if PointsToUntyped::ptrs_len_same_valid(*raw_ref, *final(raw_ref)) {
+        if PointsToUntyped::ptrs_len_same(*raw_ref, *final(raw_ref)) {
             let new_self = *final(self_ref);
             assert forall|i: int| 0 <= i < new_self.len() implies PointsTo::<
                 T,
-            >::ptrs_len_same_valid(old_self[i], #[trigger] new_self[i]) by {
+            >::ptrs_len_same(old_self[i], #[trigger] new_self[i]) by {
                 PointsTo::<T>::lemma_ptrs_len_same_valid(old_self[i], new_self[i]);
             }
         }
@@ -1457,14 +1469,16 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             second.seq_pt() == self.seq_pt().skip(mid as int),
             first.bytes() == self.bytes().take(mid as int * size_of::<T>()),
             second.bytes() == self.bytes().skip(mid as int * size_of::<T>()),
-            first.ptr() == self.ptr(),
-            second.ptr() == ptr_mut_from_data(
-                PtrData::<T> {
-                    addr: (self.ptr()@.addr + mid * size_of::<T>()) as usize,
-                    provenance: self.ptr()@.provenance,
-                    metadata: self.ptr()@.metadata,
-                },
-            ),
+            first.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: mid as usize,
+            }),
+            second.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: (self.ptr()@.addr + mid * size_of::<T>()) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: (self.len() - mid) as usize,
+            }),
             first.wf(),
             second.wf(),
     {
@@ -1480,16 +1494,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             self.ptr_bounds();
         }
         let ghost_self = self;
-        let second_ptr = ptr_mut_from_data(
-            PtrData::<T> {
-                addr: (self.ptr()@.addr + mid * size_of::<T>()) as usize,
-                provenance: self.ptr()@.provenance,
-                metadata: self.ptr()@.metadata,
-            },
-        );
 
-        let tracked mut seq_pt = self.into_seq();
-        let tracked other = seq_pt.tracked_skip(mid as int);
+        let tracked (first, second) = self.split_basic(mid);
 
         Self::bytes_subrange(ghost_self.seq_pt(), mid as int);
 
@@ -1513,22 +1519,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 
             }
         }
-        assert forall|i: int| 0 <= i < seq_pt.len() implies {
-            &&& #[trigger] seq_pt[i].ptr()@.addr == ghost_self.ptr()@.addr + i * size_of::<T>()
-            &&& seq_pt[i].ptr()@.provenance == ghost_self.ptr()@.provenance
-        } by {
-            assert(seq_pt[i] == ghost_self[i]);
-        }
-        assert forall|i: int| 0 <= i < other.len() implies {
-            &&& #[trigger] other[i].ptr()@.addr == second_ptr@.addr + i * size_of::<T>()
-            &&& other[i].ptr()@.provenance == second_ptr@.provenance
-        } by {
-            assert(other[i] == ghost_self[i + mid]);
-            assert(ghost_self.ptr()@.addr + (i + mid) * size_of::<T>() == ghost_self.ptr()@.addr
-                + mid * size_of::<T>() + i * size_of::<T>()) by (nonlinear_arith);
-        }
-        let tracked first = Self::from_seq(seq_pt, ghost_self.ptr());
-        let tracked second = Self::from_seq(other, second_ptr);
         (first, second)
     }
 
@@ -1541,8 +1531,13 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             other.wf(),
             self.ptr()@.provenance == other.ptr()@.provenance,
             other.ptr()@.addr == self.ptr()@.addr + self.len() * size_of::<T>(),
+            size_of::<T>() == 0 ==> self.len() + other.len() <= usize::MAX,
         ensures
-            joined.ptr() == self.ptr(),
+            joined.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: (self.len() + other.len()) as usize,
+            }),
             joined.seq_pt() == self.seq_pt() + other.seq_pt(),
             joined.bytes() == self.bytes() + other.bytes(),
             joined.wf(),
@@ -1552,29 +1547,62 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         let ghost_self = self;
         let ghost_other = other;
 
-        let tracked mut seq_pt = self.into_seq();
-        seq_pt.tracked_add(other.into_seq());
-
-        assert forall|i: int| 0 <= i < seq_pt.len() implies {
-            &&& #[trigger] seq_pt[i].ptr()@.addr == ghost_self.ptr()@.addr + i * size_of::<T>()
-            &&& seq_pt[i].ptr()@.provenance == ghost_self.ptr()@.provenance
-        } by {
-            if i < ghost_self.len() {
-                assert(seq_pt[i] == ghost_self[i]);
-            } else {
-                assert(seq_pt[i] == ghost_other[i - ghost_self.len()]);
-                assert(ghost_self.ptr()@.addr + ghost_self.len() * size_of::<T>() + (i
-                    - ghost_self.len()) * size_of::<T>() == ghost_self.ptr()@.addr + i
-                    * size_of::<T>()) by (nonlinear_arith);
-            }
-        }
-        let tracked joined = Self::from_seq(seq_pt, ghost_self.ptr());
+        let tracked joined = self.join_basic(other);
 
         Self::bytes_subrange(joined.seq_pt(), ghost_self.len() as int);
         assert(joined.seq_pt().subrange(0, ghost_self.len() as int) =~= ghost_self.seq_pt());
         assert(joined.seq_pt().subrange(ghost_self.len() as int, joined.len() as int)
             =~= ghost_other.seq_pt());
         joined
+    }
+
+    /// Given that the subrange is within bounds, it is always possible to borrow a permission
+    /// to just that subrange.
+    pub proof fn subrange(tracked &self, start_index: nat, len: nat) -> (tracked sub: &Self)
+        requires
+            self.wf(),
+            start_index + len <= self.len(),
+        ensures
+            sub.wf(),
+            sub.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: len as usize,
+            }),
+            sub.seq_pt() == self.seq_pt().subrange(start_index as int, (start_index + len) as int),
+    {
+        broadcast use group_vstd_default;
+
+        // The subrange's address is aligned (same reasoning as in `split`)
+        if self.len() != 0 && size_of::<T>() != 0 {
+            assert(self.len() * size_of::<T>() != 0) by (nonlinear_arith)
+                requires
+                    self.len() != 0,
+                    size_of::<T>() != 0,
+            ;
+            self.provenance_not_none();
+            self.ptr_bounds();
+            assert(start_index * size_of::<T>() <= self.len() * size_of::<T>())
+                by (nonlinear_arith)
+                requires
+                    start_index <= self.len(),
+            ;
+            assert((self.ptr()@.addr + start_index * size_of::<T>()) as nat % align_of::<T>() == 0)
+                by {
+                broadcast use
+                    crate::vstd::arithmetic::div_mod::lemma_mul_mod_noop_right,
+                    crate::vstd::arithmetic::div_mod::lemma_add_mod_noop,
+                ;
+
+            }
+        } else {
+            assert(start_index * size_of::<T>() == 0) by (nonlinear_arith)
+                requires
+                    self.len() == 0 || size_of::<T>() == 0,
+                    start_index <= self.len(),
+            ;
+        }
+        self.subrange_basic(start_index, len)
     }
 
     /// Specializes `is_disjoint` to the case when the other permission is a `SeqPointsTo<S, PointsTo<S>>`.
@@ -1591,13 +1619,11 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             other.wf(),
         ensures
             *old(self) == *final(self),
-            final(self).ptr() as int + final(self).len() * size_of::<T>() <= other.ptr() as int
-                || other.ptr() as int + other.len() * size_of::<S>() <= final(self).ptr() as int,
+            final(self).ptr()@.addr + final(self).len() * size_of::<T>() <= other.ptr()@.addr
+                || other.ptr()@.addr + other.len() * size_of::<S>() <= final(self).ptr()@.addr,
     {
         broadcast use crate::vstd::arithmetic::mul::lemma_mul_nonzero;
 
-        assert(self.size() == self.len() * size_of::<T>());
-        assert(other.size() == other.len() * size_of::<S>());
         self.is_disjoint(other);
     }
 }
