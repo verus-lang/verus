@@ -105,7 +105,7 @@ and `points_to_ops` is a child module of `points_to_model`;
 | the struct definitions: `PointsToByte`, `TypedValue`, `SeqPointsTo`, `PointsToUntyped`, `PointsToUnaligned`, `PointsTo`; their closed accessors and the inherent spec fns (`typed_value`, `bytes`, `metadata`, `is_valid`, `value`, `value_ref`, `len`, …); their `View` impls | the `PTValueOps` impls (per type for `PointsToUnaligned`, generic for `PointsTo`) and the `PTSizedValue` impls | the typed `SeqPointsTo` impl (`impl<T> SeqPointsTo<T, PointsTo<T>>`), including its `wf`, and its `View` |
 | well-formedness: every `PTPhys` impl (`ptr`, `size`, `wf_basic`), every `PTTypedValue` impl (`typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment`, and the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic`), `wf_basic_unaligned`, `PointsToUntyped::wf` and `bytes` | the structural `SeqPointsTo` impl (except the field primitives and M5) and `PointsToUntyped`'s proofs | |
 | the axioms: `PointsToByte`'s `PTProperties` impl, `PointsToUntyped::join_ref` / `join_mut`, `from_raw_parts_ref`, `TypedValue::from_elems_ref`, M1, M3–M5, `PointsTo::borrow_mut` | the aligned/unaligned conversions | the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`) |
-| the tracked getters and byte disjointness: `TypedValue::tracked_copy`, `valid_ref`; `PointsToByte::is_disjoint_byte`; the field primitives, which say nothing about `wf`: `SeqPointsTo::tracked_seq_pt`, `tracked_seq_pt_mut`, `into_seq`, `PointsToUnaligned::tracked_pt_untyped`, `PointsTo::tracked_pt_unaligned` | the slice permissions' borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`); `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`; `group_points_to_lemmas` | `group_points_to_collections_lemmas` |
+| the tracked getters and byte disjointness: `TypedValue::tracked_copy`, `valid_ref`; `PointsToByte::is_disjoint_byte`; the field primitives, which say nothing about `wf`: `SeqPointsTo::tracked_seq_pt`, `tracked_seq_pt_mut`, `into_seq`, `PointsToUnaligned::tracked_pt_untyped`, `tracked_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_raw_parts_mut`, `PointsTo::tracked_pt_unaligned` | the slice permissions' borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`); `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`; `group_points_to_lemmas` | `group_points_to_collections_lemmas` |
 
 `raw_ptr_new.rs` becomes two files:
 
@@ -1817,6 +1817,55 @@ impl<T: ?Sized> PointsToUnaligned<T> {
         &self.pt_untyped
     }
 
+    /// Returns a tracked reference to the typed value.
+    pub proof fn tracked_typed_value(tracked &self) -> tracked &TypedValue<T>
+        returns
+            self.typed_value(),
+    {
+        &self.val
+    }
+
+    /// Splits the permission into an untyped permission to the same bytes and the typed value.
+    /// It says nothing about `wf()`.
+    pub proof fn into_raw_parts(tracked self) -> (tracked (pt_untyped, typed_value): (PointsToUntyped, TypedValue<T>))
+        ensures
+            pt_untyped == self.pt_untyped(),
+            typed_value == self.typed_value(),
+    {
+        (self.pt_untyped, self.val)
+    }
+
+    /// Creates a permission from an untyped permission, a typed value and pointer metadata.
+    /// The inverse of `into_raw_parts`.
+    /// It says nothing about `wf()`: callers prove it from the parts.
+    pub proof fn from_raw_parts(
+        tracked pt_untyped: PointsToUntyped,
+        tracked typed_value: TypedValue<T>,
+        metadata: Metadata<T>,
+    ) -> (tracked out: Self)
+        ensures
+            out.pt_untyped() == pt_untyped,
+            out.typed_value() == typed_value,
+            out.metadata() == metadata,
+    {
+        PointsToUnaligned { val: typed_value, pt_untyped, metadata: Ghost(metadata) }
+    }
+
+    /// Mutably borrows the untyped bytes and the typed value separately
+    /// (the inverse of `from_raw_parts_mut`).
+    /// The metadata is unchanged.
+    pub proof fn as_raw_parts_mut(tracked &mut self)
+        -> (tracked (pt_untyped, typed_value): (&mut PointsToUntyped, &mut TypedValue<T>))
+        ensures
+            *pt_untyped == old(self).pt_untyped(),
+            *typed_value == old(self).typed_value(),
+            final(self).pt_untyped() == *final(pt_untyped),
+            final(self).typed_value() == *final(typed_value),
+            final(self).metadata() == old(self).metadata(),
+    {
+        (&mut self.pt_untyped, &mut self.val)
+    }
+
     // Axioms: from_raw_parts_ref, from_raw_parts_mut (M3).
 }
 
@@ -2477,6 +2526,172 @@ impl PointsToUntyped {
                 },
             ),
             joined.wf(),
+    ;
+}
+```
+
+### `points_to_ops.rs`: `PointsToUnaligned`'s proofs
+
+`PTProperties` and `PTValueOps` are one impl per type (`T` and `[T]`; rustlib writes the `str` ones),
+with the same bodies each time.
+They aren't generic: the delegations need `wf_basic` and `ptr` to unfold,
+and the per-type `PTPhys` bodies don't unfold in generic code.
+
+```rust
+impl<T> PTProperties for PointsToUnaligned<T> {
+    /// Non-nullness follows from the underlying `PointsToUntyped`'s invariant,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
+    proof fn is_nonnull(tracked &self);
+
+    /// Delegates to the underlying `PointsToUntyped`'s `ptr_bounds`,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
+    proof fn ptr_bounds(tracked &self);
+
+    /// Delegates to the underlying `PointsToUntyped`'s `provenance_not_none`,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
+    proof fn provenance_not_none(tracked &self);
+
+    /// Delegates to the underlying `PointsToUntyped`'s `is_disjoint`,
+    /// since the two permissions track the same memory range.
+    proof fn is_disjoint<OtherPointsToPerm: PTPhys>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    );
+
+    /// `new` has the same pointer
+    /// and the same underlying `PointsToUntyped` pointers and length as `old`.
+    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
+    }
+
+    /// Delegates to `PointsToUntyped::stays_wf`.
+    proof fn stays_wf_basic(old: Self, new: Self);
+}
+
+impl<T> PTProperties for PointsToUnaligned<[T]> {
+    /// Non-nullness follows from the underlying `PointsToUntyped`'s invariant,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
+    proof fn is_nonnull(tracked &self);
+
+    /// Delegates to the underlying `PointsToUntyped`'s `ptr_bounds`,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
+    proof fn ptr_bounds(tracked &self);
+
+    /// Delegates to the underlying `PointsToUntyped`'s `provenance_not_none`,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
+    proof fn provenance_not_none(tracked &self);
+
+    /// Delegates to the underlying `PointsToUntyped`'s `is_disjoint`,
+    /// since the two permissions track the same memory range.
+    proof fn is_disjoint<OtherPointsToPerm: PTPhys>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    );
+
+    /// `new` has the same pointer
+    /// and the same underlying `PointsToUntyped` pointers and length as `old`.
+    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
+    }
+
+    /// Delegates to `PointsToUntyped::stays_wf`.
+    proof fn stays_wf_basic(old: Self, new: Self);
+}
+
+impl<T> PTValueOps for PointsToUnaligned<T> {
+    // ptrs_len_same_valid, zero_sized, borrow, into_untyped, from_untyped: the trait's default bodies.
+
+    /// From `PointsToUntyped::lemma_ptrs_len_same_untyped` on the underlying permissions.
+    broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self);
+
+    /// From `PointsToUntyped::stays_wf` on the underlying permissions.
+    proof fn stays_wf(old: Self, new: Self);
+
+    /// Borrows the `val` field.
+    proof fn borrow_typed_value(tracked &self) -> tracked &TypedValue<T>;
+
+    /// Swaps `Empty` into the `val` field.
+    proof fn take_typed_value(tracked &mut self) -> (tracked v: TypedValue<T>);
+
+    /// Replaces the `val` field.
+    proof fn put_typed_value(tracked &mut self, tracked v: TypedValue<T>);
+
+    /// Splits into well-formed `pt_untyped` and `val` fields.
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<T>));
+
+    /// Builds the struct from its well-formed fields.
+    proof fn from_untyped_with_typed_value(
+        tracked pt_untyped: PointsToUntyped,
+        tracked typed_value: TypedValue<T>,
+        metadata: (),
+    ) -> (tracked out: Self);
+
+    /// Borrows the `pt_untyped` field.
+    proof fn as_untyped(tracked &self) -> (tracked pt_untyped: &PointsToUntyped);
+
+    /// Mutably borrows the `pt_untyped` field, setting the `val` field to `Empty`.
+    proof fn as_untyped_mut(tracked &mut self) -> (tracked pt_untyped: &mut PointsToUntyped);
+}
+
+impl<T> PTValueOps for PointsToUnaligned<[T]> {
+    // ptrs_len_same_valid, zero_sized, borrow, into_untyped, from_untyped: the trait's default bodies.
+
+    /// From `PointsToUntyped::lemma_ptrs_len_same_untyped` on the underlying permissions.
+    broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self);
+
+    /// From `PointsToUntyped::stays_wf` on the underlying permissions.
+    proof fn stays_wf(old: Self, new: Self);
+
+    /// Borrows the `val` field.
+    proof fn borrow_typed_value(tracked &self) -> tracked &TypedValue<[T]>;
+
+    /// Swaps `Empty` into the `val` field.
+    proof fn take_typed_value(tracked &mut self) -> (tracked v: TypedValue<[T]>);
+
+    /// Replaces the `val` field.
+    proof fn put_typed_value(tracked &mut self, tracked v: TypedValue<[T]>);
+
+    /// Splits into well-formed `pt_untyped` and `val` fields.
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<[T]>));
+
+    /// Builds the struct from its well-formed fields.
+    proof fn from_untyped_with_typed_value(
+        tracked pt_untyped: PointsToUntyped,
+        tracked typed_value: TypedValue<[T]>,
+        metadata: usize,
+    ) -> (tracked out: Self);
+
+    /// Borrows the `pt_untyped` field.
+    proof fn as_untyped(tracked &self) -> (tracked pt_untyped: &PointsToUntyped);
+
+    /// Mutably borrows the `pt_untyped` field, setting the `val` field to `Empty`.
+    proof fn as_untyped_mut(tracked &mut self) -> (tracked pt_untyped: &mut PointsToUntyped);
+}
+
+impl<T> PTSizedValue for PointsToUnaligned<T> {
+    // take, put, copy, copy_typed_value, from_untyped_with_value: the trait's default bodies.
+
+    /// Trivial, since a `PointsToUnaligned` has no alignment requirement.
+    proof fn lemma_satisfies_alignment_offset(addr: usize, i: nat);
+
+    /// Trivial, since `metadata_matches` is always `true` for a `Sized` value.
+    proof fn lemma_metadata_matches(value: &T);
+}
+
+impl<T> PointsToUnaligned<T> {
+    /// Specializes `is_disjoint` to the case when the other permission is a `PointsToUnaligned<S>`.
+    pub proof fn is_disjoint_unaligned<S>(tracked &mut self, tracked other: &PointsToUnaligned<S>)
+        requires
+            size_of::<T>() != 0,
+            size_of::<S>() != 0,
+            self.wf(),
+            other.wf(),
+        ensures
+            *old(self) == *final(self),
+            final(self).ptr()@.addr + size_of::<T>() <= other.ptr()@.addr
+                || other.ptr()@.addr + size_of::<S>() <= final(self).ptr()@.addr,
     ;
 }
 ```
