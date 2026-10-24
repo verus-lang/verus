@@ -44,97 +44,6 @@ use verus as verus_skip_verusfmt;
 verus_skip_verusfmt! {
 
 /********************************************************************************
- * Helper functions for defining common specs
- ********************************************************************************/
-
-pub open spec fn fold_prefix<A, B, F: FnMut(B, A) -> B>(
-    items: Seq<A>, produces: Seq<bool>, init: B, f: F, bs: Seq<B>,
-) -> bool {
-    &&& 1 <= bs.len() <= items.len() + 1
-    &&& bs[0] == init
-    &&& produces.take(bs.len() - 1).all(|p: bool| p)
-    &&& forall |j: int| 0 <= j < bs.len() - 1 ==>
-        f.requires((bs[j], #[trigger] items[j]))
-        && f.ensures((bs[j], items[j]), bs[j + 1])
-}
-
-pub open spec fn fold_requires<A, B, F: FnMut(B, A) -> B>(
-    items: Seq<A>, produces: Seq<bool>, init: B, f: F,
-) -> bool {
-    forall |bs: Seq<B>| (
-        // If all of the intermediate computations succeed,
-        #[trigger] fold_prefix(items, produces, init, f, bs)
-            // and we produce the next item
-            && bs.len() - 1 < items.len()
-            && produces[bs.len() - 1]) ==>
-            // then we can call f on the last set of inputs
-            f.requires((bs.last(), items[bs.len() - 1]))
-}
-
-pub open spec fn fold_post<A, B, F: FnMut(B, A) -> B>(
-    items: Seq<A>, produces: Seq<bool>, init: B, f: F, result: B,
-) -> bool {
-    &&& produces.len() == items.len()
-    &&& produces.all(|p: bool| p)
-    &&& exists |bs: Seq<B>| #![trigger bs.len()] #![trigger bs.last()] fold_prefix(items, produces, init, f, bs)
-        && bs.len() == items.len() + 1 && result == bs.last()
-}
-
-pub open spec fn try_fold_prefix<A, B, R: Try<Output = B>, F: FnMut(B, A) -> R>(
-    items: Seq<A>, produces: Seq<bool>, init: B, f: F, bs: Seq<B>, results: Seq<R>,
-) -> bool {
-    &&& bs.len() == results.len() + 1
-    &&& results.len() <= items.len()
-    &&& bs[0] == init
-    &&& produces.take(results.len() as int).all(|p: bool| p)
-    &&& forall |j: int| #![trigger results[j]] #![trigger items[j]] 0 <= j < results.len() ==>
-        f.requires((bs[j], items[j]))
-        && f.ensures((bs[j], items[j]), results[j])
-        && results[j].branch_model() == ControlFlow::Continue(bs[j + 1])
-}
-
-pub open spec fn try_fold_requires<A, B, R: Try<Output = B>, F: FnMut(B, A) -> R>(
-    items: Seq<A>, produces: Seq<bool>, init: B, f: F,
-) -> bool {
-    forall |bs: Seq<B>, results: Seq<R>| (
-        // If all of the intermediate computations succeed,
-        #[trigger] try_fold_prefix(items, produces, init, f, bs, results)
-            // and we produce the next item
-            && results.len() < items.len()
-            && produces[results.len() as int]) ==>
-            // then we can call f on the last set of inputs
-            f.requires((bs.last(), items[results.len() as int]))
-}
-
-/// `consumed` counts items up to and including the failing item
-pub open spec fn try_fold_post<A, B, R: Try<Output = B>, F: FnMut(B, A) -> R>(
-    items: Seq<A>, produces: Seq<bool>, init: B, f: F, result: R, consumed: int,
-    remaining_produces: Seq<bool>,
-) -> bool {
-    &&& remaining_produces == produces.skip(consumed)
-    &&& produces.take(consumed).all(|p: bool| p)
-    &&& try_laws::<R>() ==> match result.branch_model() {
-        ControlFlow::Continue(output) =>
-            consumed == items.len()
-            && exists |bs: Seq<B>, results: Seq<R>|
-                #[trigger] try_fold_prefix(items, produces, init, f, bs, results)
-                && results.len() == items.len() && output == bs.last(),
-        ControlFlow::Break(residual) =>
-            1 <= consumed <= items.len()
-            && exists |bs: Seq<B>, results: Seq<R>, failed: R|
-                try_fold_prefix(items, produces, init, f, bs, results)
-                && results.len() == consumed - 1
-                && results.len() < items.len()
-                && {
-                    produces[results.len() as int]
-                    && f.requires((bs.last(), items[results.len() as int]))
-                    && #[trigger] f.ensures((bs.last(), items[results.len() as int]), failed)
-                    && failed.branch_model() == ControlFlow::Break(residual)
-                },
-    }
-}
-
-/********************************************************************************
  * The main Iterator specification
  ********************************************************************************/
 
@@ -857,6 +766,97 @@ impl <I, P> IteratorSpecImpl for core::iter::Filter<I, P>
     // since that depends on prophetic evaluations of the predicate.
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         None
+    }
+}
+
+/********************************************************************************
+ * Definitions for fold and try_fold
+ ********************************************************************************/
+
+pub open spec fn fold_prefix<A, B, F: FnMut(B, A) -> B>(
+    items: Seq<A>, produces: Seq<bool>, init: B, f: F, bs: Seq<B>,
+) -> bool {
+    &&& 1 <= bs.len() <= items.len() + 1
+    &&& bs[0] == init
+    &&& produces.take(bs.len() - 1).all(|p: bool| p)
+    &&& forall |j: int| 0 <= j < bs.len() - 1 ==>
+        f.requires((bs[j], #[trigger] items[j]))
+        && f.ensures((bs[j], items[j]), bs[j + 1])
+}
+
+pub open spec fn fold_requires<A, B, F: FnMut(B, A) -> B>(
+    items: Seq<A>, produces: Seq<bool>, init: B, f: F,
+) -> bool {
+    forall |bs: Seq<B>| (
+        // If all of the intermediate computations succeed,
+        #[trigger] fold_prefix(items, produces, init, f, bs)
+            // and we produce the next item
+            && bs.len() - 1 < items.len()
+            && produces[bs.len() - 1]) ==>
+            // then we can call f on the last set of inputs
+            f.requires((bs.last(), items[bs.len() - 1]))
+}
+
+pub open spec fn fold_post<A, B, F: FnMut(B, A) -> B>(
+    items: Seq<A>, produces: Seq<bool>, init: B, f: F, result: B,
+) -> bool {
+    &&& produces.len() == items.len()
+    &&& produces.all(|p: bool| p)
+    &&& exists |bs: Seq<B>| #![trigger bs.len()] #![trigger bs.last()] fold_prefix(items, produces, init, f, bs)
+        && bs.len() == items.len() + 1 && result == bs.last()
+}
+
+pub open spec fn try_fold_prefix<A, B, R: Try<Output = B>, F: FnMut(B, A) -> R>(
+    items: Seq<A>, produces: Seq<bool>, init: B, f: F, bs: Seq<B>, results: Seq<R>,
+) -> bool {
+    &&& bs.len() == results.len() + 1
+    &&& results.len() <= items.len()
+    &&& bs[0] == init
+    &&& produces.take(results.len() as int).all(|p: bool| p)
+    &&& forall |j: int| #![trigger results[j]] #![trigger items[j]] 0 <= j < results.len() ==>
+        f.requires((bs[j], items[j]))
+        && f.ensures((bs[j], items[j]), results[j])
+        && results[j].branch_model() == ControlFlow::Continue(bs[j + 1])
+}
+
+pub open spec fn try_fold_requires<A, B, R: Try<Output = B>, F: FnMut(B, A) -> R>(
+    items: Seq<A>, produces: Seq<bool>, init: B, f: F,
+) -> bool {
+    forall |bs: Seq<B>, results: Seq<R>| (
+        // If all of the intermediate computations succeed,
+        #[trigger] try_fold_prefix(items, produces, init, f, bs, results)
+            // and we produce the next item
+            && results.len() < items.len()
+            && produces[results.len() as int]) ==>
+            // then we can call f on the last set of inputs
+            f.requires((bs.last(), items[results.len() as int]))
+}
+
+/// `consumed` counts items up to and including the failing item
+pub open spec fn try_fold_post<A, B, R: Try<Output = B>, F: FnMut(B, A) -> R>(
+    items: Seq<A>, produces: Seq<bool>, init: B, f: F, result: R, consumed: int,
+    remaining_produces: Seq<bool>,
+) -> bool {
+    &&& remaining_produces == produces.skip(consumed)
+    &&& produces.take(consumed).all(|p: bool| p)
+    &&& try_laws::<R>() ==> match result.branch_model() {
+        ControlFlow::Continue(output) =>
+            consumed == items.len()
+            && exists |bs: Seq<B>, results: Seq<R>|
+                #[trigger] try_fold_prefix(items, produces, init, f, bs, results)
+                && results.len() == items.len() && output == bs.last(),
+        ControlFlow::Break(residual) =>
+            1 <= consumed <= items.len()
+            && exists |bs: Seq<B>, results: Seq<R>, failed: R|
+                try_fold_prefix(items, produces, init, f, bs, results)
+                && results.len() == consumed - 1
+                && results.len() < items.len()
+                && {
+                    produces[results.len() as int]
+                    && f.requires((bs.last(), items[results.len() as int]))
+                    && #[trigger] f.ensures((bs.last(), items[results.len() as int]), failed)
+                    && failed.branch_model() == ControlFlow::Break(residual)
+                },
     }
 }
 
