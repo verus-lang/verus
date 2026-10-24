@@ -32,6 +32,7 @@ mod verified_general;
 mod verified_generic_tokens;
 mod verified_model;
 mod verified_monoids;
+mod verified_operations;
 mod verified_ownership;
 mod verified_readiness;
 mod verified_state_relations;
