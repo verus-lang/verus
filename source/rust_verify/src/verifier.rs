@@ -3188,6 +3188,35 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             return rustc_driver::Compilation::Stop;
         }
 
+        if self.verifier.args.check_drops && !self.verifier.args.no_lifetime {
+            // after borrowck, which drop elaboration needs
+            let crate_items = self.verifier.crate_items.as_ref().unwrap().clone();
+            let verus_items = self.verifier.verus_items.clone().expect("verus_items");
+            let findings = crate::mir_drops::check_drops(
+                tcx,
+                self.verifier.vir_crate.as_ref().expect("vir_crate should be initialized"),
+                &crate_items,
+                |d| {
+                    crate::rust_to_vir_base::def_id_to_vir_path(
+                        tcx,
+                        &verus_items,
+                        d,
+                        None::<&mut HashMap<vir::ast::Path, rustc_span::def_id::DefId>>,
+                    )
+                },
+                std::env::var("VERUS_CHECK_DROPS_VERBOSE").is_ok(),
+            );
+            if !findings.is_empty() {
+                let reporter = Reporter::new(&spans, compiler);
+                for f in findings {
+                    let msg = vir::messages::error(&spans.to_air_span(f.span), f.msg);
+                    reporter.report_as(&msg.to_any(), MessageLevel::Error);
+                }
+                self.verifier.encountered_vir_error = true;
+                return rustc_driver::Compilation::Stop;
+            }
+        }
+
         self.spans = Some(spans);
         self.finish_verus(compiler);
 
