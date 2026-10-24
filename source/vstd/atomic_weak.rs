@@ -240,7 +240,8 @@ pub open spec fn load_timestamp_in_view<T>(
     timestamp: nat,
 ) -> bool {
     &&& pt.get_timestamp(old_view).is_none() || pt.get_timestamp(old_view).unwrap() <= timestamp
-    &&& pt.get_timestamp(new_view) == Some(timestamp)
+    &&& pt.get_timestamp(new_view).is_some()
+    &&& timestamp <= pt.get_timestamp(new_view).unwrap()
 }
 
 /// On a load, the location's AtomicHistory must have included [timestamp -> (val, message_view)].
@@ -297,14 +298,10 @@ pub open spec fn store_timestamp_in_view<T>(
 ) -> bool {
     &&& old_pt.get_timestamp(old_view).is_none() || old_pt.get_timestamp(old_view).unwrap()
         < timestamp
-    &&& new_pt.get_timestamp(new_view) == Some(timestamp)
-    &&& new_pt.get_timestamp(message_view) == Some(timestamp)
-}
-
-/// After a store, the thread's new view will strictly contain its old view.
-/// This is a strict containment because the new view will contain the timestamp of the store.
-pub open spec fn store_view_increasing(old_view: ThreadView, new_view: ThreadView) -> bool {
-    &&& new_view.contains_strict(old_view)
+    &&& new_pt.get_timestamp(new_view).is_some()
+    &&& timestamp <= new_pt.get_timestamp(new_view).unwrap()
+    &&& new_pt.get_timestamp(message_view).is_some()
+    &&& timestamp <= new_pt.get_timestamp(message_view).unwrap()
 }
 
 /// After a store, the locations's AtomicHistory is updated to contain the store.
@@ -394,7 +391,6 @@ pub open spec fn store_mut_release<T>(
     message_view: ThreadView,
 ) -> bool {
     &&& store_timestamp_in_view(old_pt, new_pt, old_view, new_view, message_view, timestamp)
-    &&& store_view_increasing(old_view, new_view)
     &&& store_mut_truncate_history(
         old_pt,
         new_pt,
@@ -402,6 +398,7 @@ pub open spec fn store_mut_release<T>(
         timestamp,
         message_view,
     )
+    &&& new_view.contains_strict(old_view)
     // because this is a release store, the message view is the thread's current view
     &&& message_view == new_view
 }
@@ -417,7 +414,6 @@ pub open spec fn store_mut_relaxed<T>(
     message_view: ThreadView,
 ) -> bool {
     &&& store_timestamp_in_view(old_pt, new_pt, old_view, new_view, message_view, timestamp)
-    &&& store_view_increasing(old_view, new_view)
     &&& store_mut_truncate_history(
         old_pt,
         new_pt,
@@ -425,6 +421,7 @@ pub open spec fn store_mut_relaxed<T>(
         timestamp,
         message_view,
     )
+    &&& new_view.contains_strict(old_view)
     // because this is a relaxed store, the message view contains the release view
     &&& message_view.contains(
         release_view,
