@@ -6,7 +6,7 @@ use core::iter::{Filter, FromIterator, Iterator, Rev, Skip, Take, Zip};
 
 // Reduce the boilerplate in the definitions below.  We have to use a macro,
 // since inside of ExIterator, we don't yet know that `self` is an Iterator.
-// We use two macros so that we can convert arguments to Rust-friendly terms 
+// We use two macros so that we can convert arguments to Rust-friendly terms
 // (e.g., by translating `final(.)` in to `verus_builtin::final_(.)` in `iter_state_preserved`
 // before doing the real work in `iter_state_preserved_internal`
 #[doc(hidden)]
@@ -46,7 +46,7 @@ pub trait ExIterator {
     /// expressed in terms of prophetic spec functions.
     /// Only finite iterators (i.e., those that eventually return None
     /// and then continue to return None) or infinite iterators that
-    /// never return None should use this interface. 
+    /// never return None should use this interface.
     spec fn obeys_prophetic_iter_laws(&self) -> bool;
 
     /// Sequence of items that will (eventually) be returned
