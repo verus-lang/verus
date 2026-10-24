@@ -166,6 +166,14 @@ pub broadcast axiom fn axiom_slice_has_resolved<T>(slice: &[T], i: int)
             ==> has_resolved(#[trigger] slice@[i]),
 ;
 
+/// Borrows the element at index `i` of a borrowed slice.
+pub axiom fn tracked_slice_index<'a, T>(tracked s: &'a [T], i: int) -> (tracked e: &'a T)
+    requires
+        0 <= i < s@.len(),
+    ensures
+        *e == s@[i],
+;
+
 #[cfg(not(verus_verify_core))]
 pub broadcast group group_slice_axioms {
     axiom_spec_len,
