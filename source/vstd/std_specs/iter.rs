@@ -204,6 +204,23 @@ pub trait ExIterator {
     // Hence, we introduce a layer of indirection via an uninterp spec function that
     // describes the postconditions.
 
+    fn advance_by(&mut self, n: usize) -> (ret: Result<(), NonZero<usize>>)
+        ensures
+            iter_state_preserved!(old(self), final(self)),
+            ret matches Err(e) ==> 1 <= e@ <= n,
+            ret is Ok ==> ret == Ok(()),
+            // Discarded items need not have been produced by an optimized implementation.
+            old(self).obeys_prophetic_iter_laws() ==> final(self).produces() ==
+                old(self).produces().skip(old(self).remaining().len() - final(self).remaining().len()),
+            old(self).obeys_prophetic_iter_laws() ==> match ret {
+                Ok(()) => n <= old(self).remaining().len()
+                    && final(self).remaining() == old(self).remaining()[n..],
+                Err(e) => old(self).remaining().len() < n
+                    && e@ == n - old(self).remaining().len()
+                    && final(self).remaining() == Seq::empty(),
+            },
+    ;
+
     fn all<F>(&mut self, f: F) -> (r: bool)
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
@@ -371,23 +388,6 @@ pub trait ExIterator {
                 }
             };
 
-    fn advance_by(&mut self, n: usize) -> (ret: Result<(), NonZero<usize>>)
-        ensures
-            iter_state_preserved!(old(self), final(self)),
-            ret matches Err(e) ==> 1 <= e@ <= n,
-            ret is Ok ==> ret == Ok(()),
-            // Discarded items need not have been produced by an optimized implementation.
-            old(self).obeys_prophetic_iter_laws() ==> final(self).produces() ==
-                old(self).produces().skip(old(self).remaining().len() - final(self).remaining().len()),
-            old(self).obeys_prophetic_iter_laws() ==> match ret {
-                Ok(()) => n <= old(self).remaining().len()
-                    && final(self).remaining() == old(self).remaining()[n..],
-                Err(e) => old(self).remaining().len() < n
-                    && e@ == n - old(self).remaining().len()
-                    && final(self).remaining() == Seq::empty(),
-            },
-    ;
-
     fn fold<B, F>(self, init: B, f: F) -> (ret: B)
         where Self: Sized, F: FnMut(B, Self::Item) -> B,
         requires
@@ -412,6 +412,18 @@ pub trait ExIterator {
             },
     ;
 
+    fn map<B, F>(self, f: F) -> (r: core::iter::Map<Self, F>)
+        where
+            Self: Sized,
+            F: FnMut(Self::Item) -> B,
+        requires
+            self.obeys_prophetic_iter_laws() ==> forall |k| 0 <= k < self.remaining().len() && self.produces()[k] ==> f.requires((#[trigger] self.remaining()[k], )),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #[trigger] f.requires((x, )),
+        ensures
+            self.obeys_prophetic_iter_laws() ==> map_post(self, f, r),
+    ;
+
     fn nth(&mut self, n: usize) -> (ret: Option<Self::Item>)
         ensures
             iter_state_preserved!(old(self), final(self)),
@@ -425,37 +437,6 @@ pub trait ExIterator {
                 } else {
                     ret == None && final(self).remaining() == Seq::empty()
                 }),
-    ;
-
-    fn try_fold<B, F, R>(&mut self, init: B, f: F) -> (ret: R)
-        where Self: Sized, F: FnMut(B, Self::Item) -> R, R: Try<Output = B>,
-        requires
-            self.obeys_prophetic_iter_laws() && try_laws::<R>() ==>
-                try_fold_requires(self.remaining(), self.produces(), init, f),
-            // without the laws, `remaining()` says nothing about the items `f` is called on
-            !(self.obeys_prophetic_iter_laws() && try_laws::<R>()) ==>
-                forall |b: B, x: Self::Item| #[trigger] f.requires((b, x)),
-        ensures
-            iter_state_preserved!(old(self), final(self)),
-            old(self).obeys_prophetic_iter_laws() ==> {
-                let num_consumed = old(self).remaining().len() - final(self).remaining().len();
-                &&& final(self).remaining().is_suffix_of(old(self).remaining())
-                &&& try_fold_post(old(self).remaining(), old(self).produces(), init, f, ret,
-                    num_consumed, final(self).produces())
-            },
-    ;
-
-
-    fn map<B, F>(self, f: F) -> (r: core::iter::Map<Self, F>)
-        where
-            Self: Sized,
-            F: FnMut(Self::Item) -> B,
-        requires
-            self.obeys_prophetic_iter_laws() ==> forall |k| 0 <= k < self.remaining().len() && self.produces()[k] ==> f.requires((#[trigger] self.remaining()[k], )),
-            // without the laws, `remaining()` says nothing about the items `f` is called on
-            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #[trigger] f.requires((x, )),
-        ensures
-            self.obeys_prophetic_iter_laws() ==> map_post(self, f, r),
     ;
 
     fn position<P>(&mut self, predicate: P) -> (r: Option<usize>)
@@ -521,6 +502,24 @@ pub trait ExIterator {
         where Self: Sized,
         ensures
             self.obeys_prophetic_iter_laws() ==> take_post(self, n, t),
+    ;
+
+    fn try_fold<B, F, R>(&mut self, init: B, f: F) -> (ret: R)
+        where Self: Sized, F: FnMut(B, Self::Item) -> R, R: Try<Output = B>,
+        requires
+            self.obeys_prophetic_iter_laws() && try_laws::<R>() ==>
+                try_fold_requires(self.remaining(), self.produces(), init, f),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !(self.obeys_prophetic_iter_laws() && try_laws::<R>()) ==>
+                forall |b: B, x: Self::Item| #[trigger] f.requires((b, x)),
+        ensures
+            iter_state_preserved!(old(self), final(self)),
+            old(self).obeys_prophetic_iter_laws() ==> {
+                let num_consumed = old(self).remaining().len() - final(self).remaining().len();
+                &&& final(self).remaining().is_suffix_of(old(self).remaining())
+                &&& try_fold_post(old(self).remaining(), old(self).produces(), init, f, ret,
+                    num_consumed, final(self).produces())
+            },
     ;
 
     #[verifier::impls_cannot_extend_spec]
