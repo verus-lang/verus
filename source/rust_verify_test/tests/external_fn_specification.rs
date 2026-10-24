@@ -557,6 +557,38 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] array_len_const_expr verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier(external)]
+        fn x(a: [u8; core::mem::size_of::<u32>()]) -> u8 {
+            a[0]
+        }
+
+        // The array length is compared by value
+        assume_specification[ x ](a: [u8; 4]) -> (r: u8)
+            ensures r == a[0];
+
+        fn test(a: [u8; 4]) {
+            let r = x(a);
+            assert(r == a[0]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] mismatch_array_len_const_expr verus_code! {
+        #[verifier(external)]
+        fn x(a: [u8; core::mem::size_of::<u32>()]) -> u8 {
+            a[0]
+        }
+
+        // A different length is still rejected (by rustc, through the call to `x`)
+        assume_specification[ x ](a: [u8; 3]) -> u8;
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
+}
+
+test_verify_one_file! {
     #[test] mismatch_extra_trait_bound verus_code! {
         #[verifier(external_fn_specification)]
         pub fn swap_requires_ensures<T: Copy>(a: &mut T, b: &mut T)

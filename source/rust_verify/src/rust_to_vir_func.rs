@@ -693,6 +693,37 @@ fn compare_clause_kind<'tcx>(
         _ => false,
     }
 }
+
+/// Array lengths in std signatures can be constant expressions
+/// (e.g. `[u8; size_of::<Self>()]` in `u32::from_le_bytes`), so compare them by value
+fn array_len_eq<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    len1: rustc_middle::ty::Const<'tcx>,
+    len2: rustc_middle::ty::Const<'tcx>,
+) -> bool {
+    if len1 == len2 {
+        return true;
+    }
+    let eval = |len: rustc_middle::ty::Const<'tcx>| -> Option<u64> {
+        let len = match len.kind() {
+            ConstKind::Alias(IsRigid::No, alias) => {
+                let typing_env = TypingEnv::post_analysis(tcx, alias.kind.opt_def_id()?);
+                tcx.try_normalize_erasing_regions(
+                    typing_env,
+                    rustc_middle::ty::Unnormalized::new_wip(len),
+                )
+                .ok()?
+            }
+            _ => len,
+        };
+        len.try_to_target_usize(tcx)
+    };
+    match (eval(len1), eval(len2)) {
+        (Some(n1), Some(n2)) => n1 == n2,
+        _ => false,
+    }
+}
+
 fn compare_external_ty<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
@@ -798,7 +829,7 @@ fn compare_external_ty<'tcx>(
                 rustc_middle::ty::TyKind::Array(ty1, const1),
                 rustc_middle::ty::TyKind::Array(ty2, const2),
             ) => {
-                const1 == const2
+                array_len_eq(tcx, *const1, *const2)
                     && compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to)
             }
             (
