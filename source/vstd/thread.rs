@@ -188,18 +188,17 @@ impl<'scope, Ret> ScopedJoinHandle<'scope, Ret> {
 /// `Send + 'static`: [`std::thread::scope`] guarantees the thread is joined
 /// before the scope ends, so the closure may borrow from the enclosing frame.
 #[verifier::external_body]
-pub fn spawn_scoped<'scope, 'env, F, Ret>(
+pub fn spawn_scoped<'scope, 'env, F, T>(
     s: &'scope std::thread::Scope<'scope, 'env>,
     f: F,
-) -> (handle: ScopedJoinHandle<'scope, Ret>) where
-    F: FnOnce() -> Ret,
-    F: Send + 'scope,
-    Ret: Send + 'scope,
+) -> (handle: ScopedJoinHandle<'scope, T>) where
+    F: FnOnce() -> T + Send + 'scope,
+    T: Send + 'scope,
 
     requires
         f.requires(()),
     ensures
-        forall|ret: Ret| #[trigger] handle.predicate(ret) ==> f.ensures((), ret),
+        forall|ret: T| #[trigger] handle.predicate(ret) ==> f.ensures((), ret),
 {
     let res = std::panic::catch_unwind(
         std::panic::AssertUnwindSafe(|| { ScopedJoinHandle { handle: s.spawn(move || f()) } }),
