@@ -511,7 +511,7 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
             diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                 span,
                 format!(
-                    "#[verifier::verify] has no effect because item is already marked external"
+                    "#[verus::internal(verify)] has no effect because item is already marked external"
                 ),
             )));
         } else if eattrs.external_fn_specification {
@@ -575,7 +575,7 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
         if eattrs.any_other_verus_specific_attribute && !general_item.is_module() {
             diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                 span,
-                format!("verus-related attribute has no effect because Verus is already ignoring this item. You may need to mark it as `#[verifier::verify]`."),
+                format!("verus-related attribute has no effect because Verus is already ignoring this item."),
             )));
         }
     }
