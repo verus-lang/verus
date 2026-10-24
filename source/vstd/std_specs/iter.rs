@@ -15,7 +15,7 @@ macro_rules! iter_state_preserved_internal {
     ($before:expr, $after:expr $(,)?) => {
         // Dereference explicitly so method resolution uses the underlying
         // iterator, and `final` is consumed through a dereference.
-        $crate::prelude::verus_proof_expr! {{
+        $crate::vstd::prelude::verus_proof_expr! {{
             &&& (*($after)).obeys_prophetic_iter_laws() == (*($before)).obeys_prophetic_iter_laws()
             &&& (*($before)).obeys_prophetic_iter_laws() ==>
                 (*($after)).will_return_none() == (*($before)).will_return_none()
@@ -28,9 +28,13 @@ macro_rules! iter_state_preserved_internal {
 #[macro_export]
 macro_rules! iter_state_preserved {
     ($($args:tt)*) => {
-        $crate::prelude::verus_proof_macro_exprs!($crate::iter_state_preserved_internal!($($args)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::std_specs::iter::iter_state_preserved_internal!($($args)*))
     };
 }
+
+#[doc(hidden)]
+pub use iter_state_preserved_internal;
+pub use iter_state_preserved;
 
 use verus as verus_skip_verusfmt;
 verus_skip_verusfmt! {
