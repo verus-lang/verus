@@ -647,3 +647,494 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "impl trait in return position is not supported together with `when_used_as_spec`")
 }
+
+test_verify_one_file! {
+    // g's nested opaque type must be instantiated with g's type args (u8), not with f's T
+    #[test] test_nested_opaque_type_args_fail verus_code! {
+        use vstd::prelude::*;
+
+        pub trait K { spec fn k() -> int; }
+        impl K for u8 { open spec fn k() -> int { 0 } }
+        impl K for u16 { open spec fn k() -> int { 1 } }
+
+        pub trait Tr { type X; }
+        pub trait Tr2 { type Y; }
+        pub struct W<A>(pub A);
+        impl<A> Tr for W<A> { type X = W<A>; }
+        impl<A> Tr2 for W<A> { type Y = A; }
+
+        fn g<T>(t: T) -> impl Tr<X = impl Tr2<Y = T>> { W(t) }
+
+        fn f<T: K>(x: u8) -> impl Tr<X = impl Tr2<Y = u8>>
+            ensures T::k() == u8::k() // FAILS
+        {
+            g::<u8>(x)
+        }
+
+        fn test() {
+            f::<u16>(0);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_nested_opaque_type_args_renamed_fail verus_code! {
+        use vstd::prelude::*;
+
+        pub trait K { spec fn k() -> int; }
+        impl K for u8 { open spec fn k() -> int { 0 } }
+        impl K for u16 { open spec fn k() -> int { 1 } }
+
+        pub trait Tr { type X; }
+        pub trait Tr2 { type Y; }
+        pub struct W<A>(pub A);
+        impl<A> Tr for W<A> { type X = W<A>; }
+        impl<A> Tr2 for W<A> { type Y = A; }
+
+        fn g<Q>(t: Q) -> impl Tr<X = impl Tr2<Y = Q>> { W(t) }
+
+        fn f<T: K>(x: u8) -> impl Tr<X = impl Tr2<Y = u8>>
+            ensures T::k() == u8::k() // FAILS
+        {
+            g::<u8>(x)
+        }
+
+        fn test() {
+            f::<u16>(0);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_nested_opaque_type_args_ok verus_code! {
+        use vstd::prelude::*;
+
+        pub trait Tr { type X; spec fn sx(&self) -> Self::X; }
+        pub trait Tr2 { type Y; spec fn sy(&self) -> Self::Y; spec fn good(&self) -> bool; }
+        pub struct W<A>(pub A);
+        impl<A> Tr for W<A> { type X = W<A>; open spec fn sx(&self) -> W<A> { W(self.0) } }
+        impl<A> Tr2 for W<A> {
+            type Y = A;
+            open spec fn sy(&self) -> A { self.0 }
+            open spec fn good(&self) -> bool { true }
+        }
+
+        fn g<Q>(t: Q) -> (r: impl Tr<X = impl Tr2<Y = Q>>)
+            ensures r.sx().good()
+        {
+            W(t)
+        }
+
+        fn f<T>(x: T) -> (r: impl Tr<X = impl Tr2<Y = T>>)
+            ensures r.sx().good()
+        {
+            g::<T>(x)
+        }
+
+        fn h(x: u8) -> (r: impl Tr<X = impl Tr2<Y = u8>>)
+            ensures r.sx().good()
+        {
+            g::<u8>(x)
+        }
+
+        fn test() {
+            let r = h(0);
+            assert(r.sx().good());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // the same trait appears twice with different trait args, in opposite order in f and g
+    #[test] test_nested_opaque_type_trait_args_fail verus_code! {
+        use vstd::prelude::*;
+
+        pub trait K { spec fn k() -> int; }
+        impl K for u8 { open spec fn k() -> int { 0 } }
+        impl K for u16 { open spec fn k() -> int { 1 } }
+
+        pub trait Tr<P> { type X; }
+        pub trait Tr2 { type Y; }
+        pub struct W<A>(pub A);
+        pub struct V<A, B>(pub A, pub B);
+        impl<A> Tr2 for W<A> { type Y = A; }
+        impl<A, B> Tr<u8> for V<A, B> { type X = W<A>; }
+        impl<A, B> Tr<u16> for V<A, B> { type X = W<B>; }
+
+        fn g<T>(t: T) -> impl Tr<u8, X = impl Tr2<Y = u8>> + Tr<u16, X = impl Tr2<Y = T>> {
+            V(0u8, t)
+        }
+
+        fn f<T: K>(t: T) -> impl Tr<u16, X = impl Tr2<Y = T>> + Tr<u8, X = impl Tr2<Y = u8>>
+            ensures T::k() == u8::k() // FAILS
+        {
+            g::<T>(t)
+        }
+
+        fn test() {
+            f::<u16>(0);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_nested_opaque_type_trait_args_ok verus_code! {
+        use vstd::prelude::*;
+
+        pub trait Tr<P> { type X; spec fn sx(&self) -> Self::X; }
+        pub trait Tr2 { type Y; spec fn good(&self) -> bool; }
+        pub struct W<A>(pub A);
+        pub struct V<A, B>(pub A, pub B);
+        impl<A> Tr2 for W<A> { type Y = A; open spec fn good(&self) -> bool { true } }
+        impl<A, B> Tr<u8> for V<A, B> { type X = W<A>; open spec fn sx(&self) -> W<A> { W(self.0) } }
+        impl<A, B> Tr<u16> for V<A, B> { type X = W<B>; open spec fn sx(&self) -> W<B> { W(self.1) } }
+
+        fn g<T>(t: T) -> (r: impl Tr<u8, X = impl Tr2<Y = u8>> + Tr<u16, X = impl Tr2<Y = T>>)
+            ensures
+                <_ as Tr<u8>>::sx(&r).good(),
+                <_ as Tr<u16>>::sx(&r).good(),
+        {
+            V(0u8, t)
+        }
+
+        fn f<T>(t: T) -> (r: impl Tr<u16, X = impl Tr2<Y = T>> + Tr<u8, X = impl Tr2<Y = u8>>)
+            ensures
+                <_ as Tr<u8>>::sx(&r).good(),
+                <_ as Tr<u16>>::sx(&r).good(),
+        {
+            g::<T>(t)
+        }
+
+        fn test() {
+            let r = f::<u32>(0);
+            assert(<_ as Tr<u8>>::sx(&r).good());
+            assert(<_ as Tr<u16>>::sx(&r).good());
+        }
+    } => Ok(())
+}
+
+// https://github.com/verus-lang/verus/issues/3014
+
+test_verify_one_file! {
+    #[test] test_issue3014_const_ptr_cast_fail verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn is_mut(&self) -> bool; }
+        impl Tr for *mut u64 { spec fn is_mut(&self) -> bool { true } }
+        impl Tr for *const u64 { spec fn is_mut(&self) -> bool { false } }
+
+        fn to_const_ptr(c: *mut u64) -> (ret: impl Tr)
+            ensures ret.is_mut() // FAILS
+        {
+            c as *const u64
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_issue3014_const_ptr_cast_ok verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn is_mut(&self) -> bool; }
+        impl Tr for *mut u64 { spec fn is_mut(&self) -> bool { true } }
+        impl Tr for *const u64 { spec fn is_mut(&self) -> bool { false } }
+
+        fn to_const_ptr(c: *mut u64) -> (ret: impl Tr)
+            ensures !ret.is_mut()
+        {
+            c as *const u64
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_issue3014_const_ptr_coercion_fail verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn is_mut(&self) -> bool; }
+        impl Tr for *mut u64 { spec fn is_mut(&self) -> bool { true } }
+        impl Tr for *const u64 { spec fn is_mut(&self) -> bool { false } }
+
+        fn to_const_ptr(c: *mut u64) -> (ret: impl Tr)
+            ensures ret.is_mut() // FAILS
+        {
+            let p: *const u64 = c;
+            p
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_issue3014_const_ptr_coercion_ok verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn is_mut(&self) -> bool; }
+        impl Tr for *mut u64 { spec fn is_mut(&self) -> bool { true } }
+        impl Tr for *const u64 { spec fn is_mut(&self) -> bool { false } }
+
+        fn to_const_ptr(c: *mut u64) -> (ret: impl Tr)
+            ensures !ret.is_mut()
+        {
+            let p: *const u64 = c;
+            p
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_issue3014_field_fail verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn is_x(&self) -> bool; }
+        struct X { i: i64 }
+        impl Tr for X { spec fn is_x(&self) -> bool { true } }
+        impl Tr for i64 { spec fn is_x(&self) -> bool { false } }
+
+        fn to_field(x: X) -> (ret: impl Tr)
+            ensures ret.is_x() // FAILS
+        {
+            x.i
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_issue3014_field_ok verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn is_x(&self) -> bool; }
+        struct X { i: i64 }
+        impl Tr for X { spec fn is_x(&self) -> bool { true } }
+        impl Tr for i64 { spec fn is_x(&self) -> bool { false } }
+
+        fn to_field(x: X) -> (ret: impl Tr)
+            ensures !ret.is_x()
+        {
+            x.i
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_issue3014_array_ok verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn valid(&self) -> bool; }
+        impl Tr for u64 { spec fn valid(&self) -> bool { true } }
+
+        fn make() -> (ret: [impl Tr; 1])
+            ensures ret[0].valid()
+        {
+            [0u64]
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_issue3014_array_fail verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn valid(&self) -> bool; }
+        impl Tr for u64 { spec fn valid(&self) -> bool { true } }
+
+        fn make() -> (ret: [impl Tr; 1])
+            ensures !ret[0].valid() // FAILS
+        {
+            [0u64]
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_early_return_ok verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn good(&self) -> bool; }
+        struct X { i: u64 }
+        impl Tr for X { spec fn good(&self) -> bool { true } }
+
+        fn f(b: bool, x: X, y: X) -> (r: impl Tr)
+            ensures r.good()
+        {
+            if b {
+                return x;
+            }
+            y
+        }
+
+        fn g(x: X) -> (r: impl Tr)
+            ensures r.good()
+        {
+            let mut i: u64 = 0;
+            while i < 10
+                invariant i <= 10,
+                decreases 10 - i,
+            {
+                if i == 5 {
+                    return x;
+                }
+                i = i + 1;
+            }
+            x
+        }
+
+        fn h(x: X) -> (r: impl Tr)
+            ensures r.good()
+        {
+            let mut i: u64 = 0;
+            loop
+                invariant i <= 10,
+                decreases 10 - i,
+            {
+                if i >= 5 {
+                    return x;
+                }
+                i = i + 1;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // the return inside the loop body is checked in a separate query
+    #[test] test_opaque_type_early_return_fail verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn is_mut(&self) -> bool; }
+        impl Tr for *mut u64 { spec fn is_mut(&self) -> bool { true } }
+        impl Tr for *const u64 { spec fn is_mut(&self) -> bool { false } }
+
+        fn g(c: *mut u64) -> (r: impl Tr)
+            ensures r.is_mut() // FAILS
+        {
+            let p: *const u64 = c;
+            let mut i: u64 = 0;
+            while i < 10
+                invariant i <= 10,
+                decreases 10 - i,
+            {
+                if i == 5 {
+                    return p; // FAILS
+                }
+                i = i + 1;
+            }
+            p
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_async_early_return_ok verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn is_mut(&self) -> bool; }
+        impl Tr for *mut u64 { spec fn is_mut(&self) -> bool { true } }
+        impl Tr for *const u64 { spec fn is_mut(&self) -> bool { false } }
+
+        async fn f(b: bool, c: *mut u64) -> (ret: impl Tr)
+            ensures !ret.is_mut()
+        {
+            if b {
+                return c as *const u64;
+            }
+            return c as *const u64;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_async_early_return_fail verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn is_mut(&self) -> bool; }
+        impl Tr for *mut u64 { spec fn is_mut(&self) -> bool { true } }
+        impl Tr for *const u64 { spec fn is_mut(&self) -> bool { false } }
+
+        async fn f(b: bool, c: *mut u64) -> (ret: impl Tr)
+            ensures ret.is_mut()
+        {
+            if b {
+                return c as *const u64; // FAILS
+            }
+            return c as *const u64; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_generic_hidden_type_ok verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn good(&self) -> bool; }
+        struct W<T>(T);
+        impl<T> Tr for W<T> { spec fn good(&self) -> bool { true } }
+
+        fn f<T>(t: T) -> (r: impl Tr)
+            ensures r.good()
+        {
+            W(t)
+        }
+
+        fn test() {
+            let r = f::<u8>(0);
+            assert(r.good());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_tuple_const_ptr_ok verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn is_mut(&self) -> bool; }
+        impl Tr for *mut u64 { spec fn is_mut(&self) -> bool { true } }
+        impl Tr for *const u64 { spec fn is_mut(&self) -> bool { false } }
+
+        fn f(c: *mut u64) -> (r: (impl Tr, u8))
+            ensures !r.0.is_mut()
+        {
+            (c as *const u64, 0u8)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_tuple_const_ptr_fail verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn is_mut(&self) -> bool; }
+        impl Tr for *mut u64 { spec fn is_mut(&self) -> bool { true } }
+        impl Tr for *const u64 { spec fn is_mut(&self) -> bool { false } }
+
+        fn f(c: *mut u64) -> (r: (impl Tr, u8))
+            ensures r.0.is_mut() // FAILS
+        {
+            (c as *const u64, 0u8)
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_ref_in_tuple_ok verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn good(&self) -> bool; }
+        struct X { i: u64 }
+        impl Tr for X { spec fn good(&self) -> bool { true } }
+
+        fn f<'a>(x: &'a X) -> (r: (&'a impl Tr, u8))
+            ensures r.0.good()
+        {
+            (x, 0u8)
+        }
+
+        trait TrP { spec fn is_mut(&self) -> bool; }
+        impl TrP for *mut u64 { spec fn is_mut(&self) -> bool { true } }
+        impl TrP for *const u64 { spec fn is_mut(&self) -> bool { false } }
+
+        fn g<'a>(c: &'a *mut u64) -> (r: (&'a impl TrP, u8))
+            ensures r.0.is_mut()
+        {
+            (c, 0u8)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_ref_in_tuple_fail verus_code! {
+        use vstd::prelude::*;
+        trait TrP { spec fn is_mut(&self) -> bool; }
+        impl TrP for *mut u64 { spec fn is_mut(&self) -> bool { true } }
+        impl TrP for *const u64 { spec fn is_mut(&self) -> bool { false } }
+
+        fn g<'a>(c: &'a *mut u64) -> (r: (&'a impl TrP, u8))
+            ensures !r.0.is_mut() // FAILS
+        {
+            (c, 0u8)
+        }
+    } => Err(err) => assert_one_fails(err)
+}
