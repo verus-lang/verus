@@ -22,6 +22,8 @@
 #![cfg_attr(verus_keep_ghost, feature(slice_index_methods))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
 #![cfg_attr(verus_keep_ghost, feature(nonzero_internals))]
+#![cfg_attr(verus_keep_ghost, feature(iter_advance_by))]
+#![cfg_attr(verus_keep_ghost, feature(try_trait_v2_residual))]
 #![cfg_attr(verus_keep_ghost, feature(hint_must_use))]
 #![cfg_attr(verus_keep_ghost, feature(fmt_internals))]
 #![cfg_attr(verus_keep_ghost, feature(fmt_arguments_from_str))]

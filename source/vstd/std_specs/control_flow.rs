@@ -33,9 +33,13 @@ pub trait ExTry: FromResidual<Self::Residual> {
     /// The result of `branch` matches its functional spec
     spec fn branch_model_is_valid() -> bool;
 
-    spec fn branch_model(self) -> ControlFlow<Self::Residual, Self::Output> where Self: Sized;
+    spec fn branch_model(self) -> ControlFlow<Self::Residual, Self::Output> where
+        Self: Sized,
+    ;
 
-    fn branch(self) -> (ret: ControlFlow<Self::Residual, Self::Output>) where Self: Sized
+    fn branch(self) -> (ret: ControlFlow<Self::Residual, Self::Output>) where
+        Self: Sized,
+
         ensures
             Self::branch_model_is_valid() ==> ret == Self::branch_model(self),
     ;
@@ -53,12 +57,10 @@ pub trait ExFromResidual<R> {
 /// We can provide stronger guarantees for types that obey these laws
 pub open spec fn try_laws<R: Try>() -> bool {
     &&& R::branch_model_is_valid()
-    &&& forall|output: R::Output, result: R|
-        #![auto]
+    &&& forall|output: R::Output, result: R| #[trigger]
         R::from_output.ensures((output,), result) ==> R::branch_model(result)
             == ControlFlow::Continue(output)
-    &&& forall|residual: R::Residual, result: R|
-        #![auto]
+    &&& forall|residual: R::Residual, result: R| #[trigger]
         <R as FromResidual<R::Residual>>::from_residual.ensures((residual,), result)
             ==> R::branch_model(result) == ControlFlow::Break(residual)
 }
@@ -112,6 +114,8 @@ pub broadcast proof fn lemma_result_try_laws<T, E>()
     ensures
         #[trigger] try_laws::<Result<T, E>>(),
 {
+    broadcast use spec_from_blanket_identity;
+
 }
 
 pub broadcast proof fn lemma_control_flow_try_laws<B, C>()
