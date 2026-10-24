@@ -1084,7 +1084,11 @@ pub fn assert_fails(err: TestErr, count: usize) {
 pub fn assert_fails_anywhere(err: TestErr, count: usize) {
     assert_eq!(err.errors.len(), count, "errors: {:?}", err.errors);
     for e in &err.errors {
-        assert!(e.code.is_none(), "expected a verification failure, got rustc error: {}", e.message);
+        assert!(
+            e.code.is_none(),
+            "expected a verification failure, got rustc error: {}",
+            e.message
+        );
     }
 }
 

@@ -23,8 +23,11 @@ pub fn field_api(
         .zip(types)
         .map(|(n, ty)| quote! {<#ty>::op(<#ty>::unit(),self.#n)==self.#n,<#ty>::op(self.#n,<#ty>::unit())==self.#n})
         .collect();
-    let unit_calls: Vec<_> =
-        names.iter().zip(types).map(|(n, ty)| quote! {::vstd::resource::tsm::pcm_units::<#ty>(self.#n);}).collect();
+    let unit_calls: Vec<_> = names
+        .iter()
+        .zip(types)
+        .map(|(n, ty)| quote! {::vstd::resource::tsm::pcm_units::<#ty>(self.#n);})
+        .collect();
     let mut specs = vec![quote! {
         pub open spec fn empty()->Self {Self::unit()}
         pub open spec fn combine(self, other:Self)->Self {Self::op(self,other)}
@@ -111,10 +114,7 @@ pub fn field_api(
 fn check_helper_names(sm: &SM, names: &[&Ident]) -> Result<(), Error> {
     let mut fragment = HashSet::from(["empty".to_string(), "combine".to_string()]);
     let mut protocol = HashSet::new();
-    let constants = sm
-        .fields
-        .iter()
-        .any(|f| matches!(f.stype, ShardableType::Constant(_)));
+    let constants = sm.fields.iter().any(|f| matches!(f.stype, ShardableType::Constant(_)));
     for name in names {
         let field = sm.fields.iter().find(|f| f.name == **name).unwrap();
         let mut methods = vec![format!("field_{name}"), format!("with_{name}")];
@@ -317,10 +317,7 @@ fn accessors(field: &Field) -> TokenStream {
             let (tag, read) = if field.stype.is_persistent() {
                 (quote! {Agree}, quote! {self.#name.at(key)->Some_0->Agree_0})
             } else {
-                (
-                    quote! {Exclusive},
-                    quote! {self.#name.at(key)->Some_0->Exclusive_0},
-                )
+                (quote! {Exclusive}, quote! {self.#name.at(key)->Some_0->Exclusive_0})
             };
             quote! {
                 pub open spec fn #owns_at(self,key:#k)->bool {

@@ -13,9 +13,11 @@
 //! ids live in a disjoint id space (`tsm_instance_id`), so they never match
 //! an instance and the token traits stay provable.
 use crate::ast::*;
-use crate::concurrency_tokens::{exchange_parts_with, signature_tokens, ExchangeParts, InoutType, Mode, TokenParam};
+use crate::concurrency_tokens::{
+    ExchangeParts, InoutType, Mode, TokenParam, exchange_parts_with, signature_tokens,
+};
 use crate::parse_token_stream::SMBundle;
-use crate::token_trees::{from_trees, to_trees, Tree};
+use crate::token_trees::{Tree, from_trees, to_trees};
 use proc_macro2::{Span, TokenStream, TokenTree};
 use quote::{format_ident, quote};
 use std::collections::{HashMap, HashSet};
@@ -60,7 +62,16 @@ impl Kind {
         )
     }
     fn unique(self) -> bool {
-        matches!(self, Kind::Variable | Kind::Option | Kind::Map | Kind::IMap | Kind::Set | Kind::ISet | Kind::Bool)
+        matches!(
+            self,
+            Kind::Variable
+                | Kind::Option
+                | Kind::Map
+                | Kind::IMap
+                | Kind::Set
+                | Kind::ISet
+                | Kind::Bool
+        )
     }
     fn map_like(self) -> bool {
         matches!(self, Kind::Map | Kind::PersistentMap | Kind::IMap | Kind::PersistentIMap)
@@ -114,7 +125,7 @@ fn check_fields(sm: &SM) -> Result<(), Error> {
                 return err(
                     f.name.span(),
                     "generic field tokens do not yet support imap, iset, persistent_imap and persistent_iset fields",
-                )
+                );
             }
         }
         if ["Instance", "Protocol", "State", "Fragment", "Token", "Unit"]
@@ -264,7 +275,9 @@ impl Store {
     fn withdraw_general_fact(&self, f: &Field, e: &TokenStream) -> TokenStream {
         let tagged = self.tagged(f, e);
         match &f.stype {
-            ShardableType::StorageMap(..) => quote! {#tagged.submap_of(__tsm_withdrawn) && (#e).dom().finite()},
+            ShardableType::StorageMap(..) => {
+                quote! {#tagged.submap_of(__tsm_withdrawn) && (#e).dom().finite()}
+            }
             _ => quote! {#tagged.submap_of(__tsm_withdrawn)},
         }
     }
@@ -291,7 +304,12 @@ struct Constants {
 
 impl Constants {
     fn new(sm: &SM) -> Option<Constants> {
-        let consts: Vec<Field> = sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::Constant(_))).cloned().collect();
+        let consts: Vec<Field> = sm
+            .fields
+            .iter()
+            .filter(|f| matches!(f.stype, ShardableType::Constant(_)))
+            .cloned()
+            .collect();
         if consts.is_empty() {
             return None;
         }
@@ -306,7 +324,8 @@ impl Constants {
         let owned = match &sm.generics {
             Some(g) => {
                 let args = crate::to_token_stream::get_generic_args(&g.params);
-                let params: HashSet<String> = args.iter().map(|a| quote! {#a}.to_string()).collect();
+                let params: HashSet<String> =
+                    args.iter().map(|a| quote! {#a}.to_string()).collect();
                 mentions(&desc_ty, &params)
             }
             None => false,
@@ -316,24 +335,44 @@ impl Constants {
     /// The type of a descriptor held by a token, unit or instance.
     fn held(&self) -> TokenStream {
         let d = &self.desc_ty;
-        if self.owned { quote! {#d} } else { quote! {&'static #d} }
+        if self.owned {
+            quote! {#d}
+        } else {
+            quote! {&'static #d}
+        }
     }
     /// A descriptor to hold, from a reference `r` to one.
     fn share(&self, r: TokenStream) -> TokenStream {
-        if self.owned { quote! {::vstd::resource::tsm_generic::agreement_duplicate(#r)} } else { r }
+        if self.owned {
+            quote! {::vstd::resource::tsm_generic::agreement_duplicate(#r)}
+        } else {
+            r
+        }
     }
     /// A reference to a held descriptor (a place expression).
     fn by_ref(&self, e: TokenStream) -> TokenStream {
-        if self.owned { quote! {&#e} } else { e }
+        if self.owned {
+            quote! {&#e}
+        } else {
+            e
+        }
     }
     /// The type of a descriptor parameter from which held copies are made.
     fn src_ty(&self) -> TokenStream {
         let d = &self.desc_ty;
-        if self.owned { quote! {&#d} } else { quote! {&'static #d} }
+        if self.owned {
+            quote! {&#d}
+        } else {
+            quote! {&'static #d}
+        }
     }
     /// A reference to the descriptor in an `Option<held>` place.
     fn opt_ref(&self, e: TokenStream) -> TokenStream {
-        if self.owned { quote! {#e.tracked_borrow()} } else { quote! {#e.tracked_unwrap()} }
+        if self.owned {
+            quote! {#e.tracked_borrow()}
+        } else {
+            quote! {#e.tracked_unwrap()}
+        }
     }
     /// Whether descriptor `d` holds an agreement value.
     fn is_valid(&self, d: TokenStream) -> TokenStream {
@@ -444,15 +483,22 @@ fn token_data(f: &Field) -> Vec<(Ident, Type)> {
     let mk = |n: &str| Ident::new(n, Span::mixed_site());
     let nat: Type = verus_syn::parse_quote! {::vstd::prelude::nat};
     match &f.stype {
-        ShardableType::Variable(t) | ShardableType::Option(t) | ShardableType::PersistentOption(t) => {
+        ShardableType::Variable(t)
+        | ShardableType::Option(t)
+        | ShardableType::PersistentOption(t) => {
             vec![(mk("__v"), t.clone())]
         }
-        ShardableType::Map(k, v) | ShardableType::PersistentMap(k, v)
-        | ShardableType::IMap(k, v) | ShardableType::PersistentIMap(k, v) => {
+        ShardableType::Map(k, v)
+        | ShardableType::PersistentMap(k, v)
+        | ShardableType::IMap(k, v)
+        | ShardableType::PersistentIMap(k, v) => {
             vec![(mk("__k"), k.clone()), (mk("__v"), v.clone())]
         }
-        ShardableType::Set(e) | ShardableType::PersistentSet(e) | ShardableType::Multiset(e)
-        | ShardableType::ISet(e) | ShardableType::PersistentISet(e) => {
+        ShardableType::Set(e)
+        | ShardableType::PersistentSet(e)
+        | ShardableType::Multiset(e)
+        | ShardableType::ISet(e)
+        | ShardableType::PersistentISet(e) => {
             vec![(mk("__e"), e.clone())]
         }
         ShardableType::Bool | ShardableType::PersistentBool => vec![],
@@ -521,7 +567,10 @@ fn fake_parts(f: &Field) -> (TokenStream, TokenStream, TokenStream) {
         let (tys, vals): (Vec<_>, Vec<_>) = if k == Kind::PersistentCount {
             (vec![], vec![])
         } else {
-            (data.iter().map(|(_, t)| quote! {#t}).collect(), data.iter().map(|(n, _)| quote! {self.#n}).collect())
+            (
+                data.iter().map(|(_, t)| quote! {#t}).collect(),
+                data.iter().map(|(n, _)| quote! {self.#n}).collect(),
+            )
         };
         return (
             quote! {#pcm<Option<::vstd::resource::agree::AgreementRA<(#(#tys,)*)>>>},
@@ -548,13 +597,20 @@ fn tyname(f: &Field) -> Ident {
 /// The trait path implemented by a token type (for its observers).
 fn trait_path(f: &Field) -> TokenStream {
     match &f.stype {
-        ShardableType::Map(k, v) | ShardableType::PersistentMap(k, v)
-        | ShardableType::IMap(k, v) | ShardableType::PersistentIMap(k, v) => quote! {::vstd::tokens::KeyValueToken<#k, #v>},
-        ShardableType::Set(e) | ShardableType::PersistentSet(e) | ShardableType::Multiset(e)
-        | ShardableType::ISet(e) | ShardableType::PersistentISet(e) => {
+        ShardableType::Map(k, v)
+        | ShardableType::PersistentMap(k, v)
+        | ShardableType::IMap(k, v)
+        | ShardableType::PersistentIMap(k, v) => quote! {::vstd::tokens::KeyValueToken<#k, #v>},
+        ShardableType::Set(e)
+        | ShardableType::PersistentSet(e)
+        | ShardableType::Multiset(e)
+        | ShardableType::ISet(e)
+        | ShardableType::PersistentISet(e) => {
             quote! {::vstd::tokens::ElementToken<#e>}
         }
-        ShardableType::Variable(v) | ShardableType::Option(v) | ShardableType::PersistentOption(v) => {
+        ShardableType::Variable(v)
+        | ShardableType::Option(v)
+        | ShardableType::PersistentOption(v) => {
             quote! {::vstd::tokens::ValueToken<#v>}
         }
         ShardableType::Bool | ShardableType::PersistentBool => quote! {::vstd::tokens::SimpleToken},
@@ -623,12 +679,24 @@ fn token_type(f: &Field, store: &Store, generic: bool, cm: &Option<Constants>) -
     } else {
         quote! {}
     };
-    let raw_ty = if leak { quote! {&'static Token} } else { quote! {Token} };
-    let fake_field = if leak { quote! {&'static #fake} } else { quote! {#fake} };
+    let raw_ty = if leak {
+        quote! {&'static Token}
+    } else {
+        quote! {Token}
+    };
+    let fake_field = if leak {
+        quote! {&'static #fake}
+    } else {
+        quote! {#fake}
+    };
     let fake_loc = quote! {self.fake->Some_0.loc()};
     // The location in a real token's instance id: the raw token's, or (with
     // constants) the instance descriptor's.
-    let real_idloc = if cm.is_some() { quote! {self.desc->Some_0.loc()} } else { quote! {self.raw->Some_0.loc()} };
+    let real_idloc = if cm.is_some() {
+        quote! {self.desc->Some_0.loc()}
+    } else {
+        quote! {self.raw->Some_0.loc()}
+    };
     let instance_id = quote! {
         if self.raw is Some { ::vstd::resource::tsm_instance_id(#real_idloc, false) }
         else { ::vstd::resource::tsm_instance_id(#fake_loc, true) }
@@ -642,16 +710,33 @@ fn token_type(f: &Field, store: &Store, generic: bool, cm: &Option<Constants>) -
     } else if persistent {
         let data = token_data(f);
         let ghosts: Vec<_> = data.iter().map(|(n, t)| quote! {let #n: #t = arbitrary();}).collect();
-        let vals: Vec<_> = if k == Kind::PersistentCount { vec![] } else { names.iter().map(|n| quote! {#n}).collect() };
+        let vals: Vec<_> = if k == Kind::PersistentCount {
+            vec![]
+        } else {
+            names.iter().map(|n| quote! {#n}).collect()
+        };
         let alloc = quote! {::vstd::resource::pcm::Resource::alloc(
-            Some(::vstd::resource::agree::AgreementRA::Agree((#(#vals,)*))))};
-        let fake_alloc = if leak { quote! {::vstd::modes::tracked_static_ref(#alloc)} } else { alloc };
+        Some(::vstd::resource::agree::AgreementRA::Agree((#(#vals,)*))))};
+        let fake_alloc = if leak {
+            quote! {::vstd::modes::tracked_static_ref(#alloc)}
+        } else {
+            alloc
+        };
         (
             quote! {
                 #(#ghosts)*
                 let tracked fake = #fake_alloc;
             },
-            names.iter().map(|n| if k == Kind::PersistentCount { quote! {#n: 0} } else { quote! {#n: #n} }).collect(),
+            names
+                .iter()
+                .map(|n| {
+                    if k == Kind::PersistentCount {
+                        quote! {#n: 0}
+                    } else {
+                        quote! {#n: #n}
+                    }
+                })
+                .collect(),
         )
     } else {
         (
@@ -661,9 +746,21 @@ fn token_type(f: &Field, store: &Store, generic: bool, cm: &Option<Constants>) -
             names.iter().map(|n| quote! {#n: arbitrary()}).collect(),
         )
     };
-    let wrap = |x: TokenStream| if leak { quote! {::vstd::modes::tracked_static_ref(#x)} } else { x };
+    let wrap = |x: TokenStream| {
+        if leak {
+            quote! {::vstd::modes::tracked_static_ref(#x)}
+        } else {
+            x
+        }
+    };
     let wrap_raw = wrap(quote! {raw});
-    let unwrap_field = |fld: TokenStream| if leak { quote! {self.#fld.tracked_unwrap()} } else { quote! {self.#fld.tracked_borrow()} };
+    let unwrap_field = |fld: TokenStream| {
+        if leak {
+            quote! {self.#fld.tracked_unwrap()}
+        } else {
+            quote! {self.#fld.tracked_borrow()}
+        }
+    };
     let borrow_raw = unwrap_field(quote! {raw});
     let borrow_fake = unwrap_field(quote! {fake});
     let (derive, copy_impls) = copy_impls(&quote! {#nt}, leak, generic);
@@ -681,131 +778,154 @@ fn token_type(f: &Field, store: &Store, generic: bool, cm: &Option<Constants>) -
     // Mode-dependent parts: without constants a token's link to its instance
     // is the location; with constants, the instance descriptor `d`, and the
     // token also holds its own copy of the constants' fragment (`base`).
-    let (link_param, link_req, link_loc, extra_fields, real_extra, fake_extra, from_params, from_reqs, from_id, from_fields, lemma_ens, lemma_body, into_raw, borrow_base, link_body) =
-        match cm {
-            None => (
-                quote! {loc: ::vstd::resource::Loc},
-                quote! {self.__id() == ::vstd::resource::tsm_instance_id(loc, false)},
-                quote! {loc},
-                quote! {},
-                quote! {},
-                quote! {},
-                quote! {},
-                quote! {},
-                quote! {raw.loc()},
-                quote! {},
-                quote! {},
+    let (
+        link_param,
+        link_req,
+        link_loc,
+        extra_fields,
+        real_extra,
+        fake_extra,
+        from_params,
+        from_reqs,
+        from_id,
+        from_fields,
+        lemma_ens,
+        lemma_body,
+        into_raw,
+        borrow_base,
+        link_body,
+    ) = match cm {
+        None => (
+            quote! {loc: ::vstd::resource::Loc},
+            quote! {self.__id() == ::vstd::resource::tsm_instance_id(loc, false)},
+            quote! {loc},
+            quote! {},
+            quote! {},
+            quote! {},
+            quote! {},
+            quote! {},
+            quote! {raw.loc()},
+            quote! {},
+            quote! {},
+            quote! {
+                if self.fake is Some {
+                    ::vstd::resource::tsm_instance_id_injective(#fake_loc, true, loc, false);
+                } else {
+                    ::vstd::resource::tsm_instance_id_injective(self.raw->Some_0.loc(), false, loc, false);
+                }
+            },
+            if persistent {
+                quote! {}
+            } else {
+                quote! {
+                    proof fn __into_raw(tracked self, loc: ::vstd::resource::Loc) -> (tracked out: Token)
+                        requires self.__id() == ::vstd::resource::tsm_instance_id(loc, false),
+                        ensures out.loc() == loc, out.fragment() == #frag,
+                    {
+                        self.__lemma_id(loc);
+                        let tracked Self {raw, ..} = self;
+                        raw.tracked_unwrap()
+                    }
+                }
+            },
+            quote! {},
+            quote! {
+                let a = if self.raw is Some { self.raw->Some_0.loc() } else { self.fake->Some_0.loc() };
+                let b = if other.raw is Some { other.raw->Some_0.loc() } else { other.fake->Some_0.loc() };
+                ::vstd::resource::tsm_instance_id_injective(a, self.fake is Some, b, other.fake is Some);
+            },
+        ),
+        Some(cm) => {
+            let dty = &cm.desc_ty;
+            let d_ok = cm.is_valid(quote! {d});
+            let d_ploc = cm.protocol_loc(quote! {d});
+            let d_kappa = cm.kappa(quote! {d});
+            let s_ok = cm.is_valid(quote! {self.desc->Some_0});
+            let s_ploc = cm.protocol_loc(quote! {self.desc->Some_0});
+            let s_kappa = cm.kappa(quote! {self.desc->Some_0});
+            let desc_ok = cm.is_valid(quote! {desc});
+            let desc_ploc = cm.protocol_loc(quote! {desc});
+            let desc_kappa = cm.kappa(quote! {desc});
+            let wrap_base = wrap(quote! {base});
+            let borrow_base_body = unwrap_field(quote! {base});
+            let desc_ref = cm.opt_ref(quote! {self.desc});
+            (
+                quote! {tracked d: &#dty},
+                quote! {self.__id() == ::vstd::resource::tsm_instance_id(d.loc(), false), #d_ok},
+                d_ploc.clone(),
+                {
+                    let held = cm.held();
+                    quote! {tracked base: Option<#raw_ty>, tracked desc: Option<#held>,}
+                },
+                quote! {&& self.base is Some && self.desc is Some && #s_ok
+                && self.raw->Some_0.loc() == #s_ploc && self.base->Some_0.loc() == #s_ploc
+                && self.base->Some_0.fragment() == #s_kappa},
+                quote! {&& self.base is None && self.desc is None},
+                {
+                    let held = cm.held();
+                    quote! {tracked base: Token, tracked desc: #held,}
+                },
+                quote! {#desc_ok, raw.loc() == #desc_ploc, base.loc() == #desc_ploc, base.fragment() == #desc_kappa,},
+                quote! {desc.loc()},
+                quote! {base: Some(#wrap_base), desc: Some(desc),},
+                quote! {, self.base is Some, self.base->Some_0.loc() == #d_ploc, self.base->Some_0.fragment() == #d_kappa},
                 quote! {
                     if self.fake is Some {
-                        ::vstd::resource::tsm_instance_id_injective(#fake_loc, true, loc, false);
+                        ::vstd::resource::tsm_instance_id_injective(#fake_loc, true, d.loc(), false);
                     } else {
-                        ::vstd::resource::tsm_instance_id_injective(self.raw->Some_0.loc(), false, loc, false);
+                        ::vstd::resource::tsm_instance_id_injective(self.desc->Some_0.loc(), false, d.loc(), false);
+                        ::vstd::resource::tsm_generic::agreement_resources_agree(self.__desc(), d);
                     }
                 },
                 if persistent {
                     quote! {}
                 } else {
                     quote! {
-                        proof fn __into_raw(tracked self, loc: ::vstd::resource::Loc) -> (tracked out: Token)
-                            requires self.__id() == ::vstd::resource::tsm_instance_id(loc, false),
-                            ensures out.loc() == loc, out.fragment() == #frag,
+                        proof fn __into_raw(tracked self, tracked d: &#dty) -> (tracked out: (Token, Token))
+                            requires self.__id() == ::vstd::resource::tsm_instance_id(d.loc(), false), #d_ok,
+                            ensures out.0.loc() == #d_ploc, out.0.fragment() == #frag,
+                                out.1.loc() == #d_ploc, out.1.fragment() == #d_kappa,
                         {
-                            self.__lemma_id(loc);
-                            let tracked Self {raw, ..} = self;
-                            raw.tracked_unwrap()
+                            self.__lemma_id(d);
+                            let tracked Self {raw, base, ..} = self;
+                            (raw.tracked_unwrap(), base.tracked_unwrap())
                         }
                     }
                 },
-                quote! {},
                 quote! {
-                    let a = if self.raw is Some { self.raw->Some_0.loc() } else { self.fake->Some_0.loc() };
-                    let b = if other.raw is Some { other.raw->Some_0.loc() } else { other.fake->Some_0.loc() };
-                    ::vstd::resource::tsm_instance_id_injective(a, self.fake is Some, b, other.fake is Some);
+                    proof fn __desc<'a>(tracked &'a self) -> (tracked out: &'a #dty)
+                        requires self.desc is Some,
+                        ensures *out == self.desc->Some_0,
+                    {#desc_ref}
+                    proof fn __borrow_base<'a>(tracked &'a self, tracked d: &#dty) -> (tracked out: &'a Token)
+                        requires self.__id() == ::vstd::resource::tsm_instance_id(d.loc(), false), #d_ok,
+                        ensures out.loc() == #d_ploc, out.fragment() == #d_kappa,
+                    {
+                        self.__lemma_id(d);
+                        #borrow_base_body
+                    }
                 },
-            ),
-            Some(cm) => {
-                let dty = &cm.desc_ty;
-                let d_ok = cm.is_valid(quote! {d});
-                let d_ploc = cm.protocol_loc(quote! {d});
-                let d_kappa = cm.kappa(quote! {d});
-                let s_ok = cm.is_valid(quote! {self.desc->Some_0});
-                let s_ploc = cm.protocol_loc(quote! {self.desc->Some_0});
-                let s_kappa = cm.kappa(quote! {self.desc->Some_0});
-                let desc_ok = cm.is_valid(quote! {desc});
-                let desc_ploc = cm.protocol_loc(quote! {desc});
-                let desc_kappa = cm.kappa(quote! {desc});
-                let wrap_base = wrap(quote! {base});
-                let borrow_base_body = unwrap_field(quote! {base});
-                let desc_ref = cm.opt_ref(quote! {self.desc});
-                (
-                    quote! {tracked d: &#dty},
-                    quote! {self.__id() == ::vstd::resource::tsm_instance_id(d.loc(), false), #d_ok},
-                    d_ploc.clone(),
-                    {
-                        let held = cm.held();
-                        quote! {tracked base: Option<#raw_ty>, tracked desc: Option<#held>,}
-                    },
-                    quote! {&& self.base is Some && self.desc is Some && #s_ok
-                        && self.raw->Some_0.loc() == #s_ploc && self.base->Some_0.loc() == #s_ploc
-                        && self.base->Some_0.fragment() == #s_kappa},
-                    quote! {&& self.base is None && self.desc is None},
-                    {
-                        let held = cm.held();
-                        quote! {tracked base: Token, tracked desc: #held,}
-                    },
-                    quote! {#desc_ok, raw.loc() == #desc_ploc, base.loc() == #desc_ploc, base.fragment() == #desc_kappa,},
-                    quote! {desc.loc()},
-                    quote! {base: Some(#wrap_base), desc: Some(desc),},
-                    quote! {, self.base is Some, self.base->Some_0.loc() == #d_ploc, self.base->Some_0.fragment() == #d_kappa},
-                    quote! {
-                        if self.fake is Some {
-                            ::vstd::resource::tsm_instance_id_injective(#fake_loc, true, d.loc(), false);
-                        } else {
-                            ::vstd::resource::tsm_instance_id_injective(self.desc->Some_0.loc(), false, d.loc(), false);
-                            ::vstd::resource::tsm_generic::agreement_resources_agree(self.__desc(), d);
-                        }
-                    },
-                    if persistent {
-                        quote! {}
-                    } else {
-                        quote! {
-                            proof fn __into_raw(tracked self, tracked d: &#dty) -> (tracked out: (Token, Token))
-                                requires self.__id() == ::vstd::resource::tsm_instance_id(d.loc(), false), #d_ok,
-                                ensures out.0.loc() == #d_ploc, out.0.fragment() == #frag,
-                                    out.1.loc() == #d_ploc, out.1.fragment() == #d_kappa,
-                            {
-                                self.__lemma_id(d);
-                                let tracked Self {raw, base, ..} = self;
-                                (raw.tracked_unwrap(), base.tracked_unwrap())
-                            }
-                        }
-                    },
-                    quote! {
-                        proof fn __desc<'a>(tracked &'a self) -> (tracked out: &'a #dty)
-                            requires self.desc is Some,
-                            ensures *out == self.desc->Some_0,
-                        {#desc_ref}
-                        proof fn __borrow_base<'a>(tracked &'a self, tracked d: &#dty) -> (tracked out: &'a Token)
-                            requires self.__id() == ::vstd::resource::tsm_instance_id(d.loc(), false), #d_ok,
-                            ensures out.loc() == #d_ploc, out.fragment() == #d_kappa,
-                        {
-                            self.__lemma_id(d);
-                            #borrow_base_body
-                        }
-                    },
-                    quote! {
-                        let a = if self.raw is Some { self.desc->Some_0.loc() } else { self.fake->Some_0.loc() };
-                        let b = if other.raw is Some { other.desc->Some_0.loc() } else { other.fake->Some_0.loc() };
-                        ::vstd::resource::tsm_instance_id_injective(a, self.fake is Some, b, other.fake is Some);
-                        if self.__id() == other.__id() && self.raw is Some {
-                            ::vstd::resource::tsm_generic::agreement_resources_agree(self.__desc(), other.__desc());
-                        }
-                    },
-                )
-            }
-        };
-    let link_arg_self = if cm.is_some() { quote! {d} } else { quote! {loc} };
-    let fake_extra_fields = if cm.is_some() { quote! {base: None, desc: None,} } else { quote! {} };
+                quote! {
+                    let a = if self.raw is Some { self.desc->Some_0.loc() } else { self.fake->Some_0.loc() };
+                    let b = if other.raw is Some { other.desc->Some_0.loc() } else { other.fake->Some_0.loc() };
+                    ::vstd::resource::tsm_instance_id_injective(a, self.fake is Some, b, other.fake is Some);
+                    if self.__id() == other.__id() && self.raw is Some {
+                        ::vstd::resource::tsm_generic::agreement_resources_agree(self.__desc(), other.__desc());
+                    }
+                },
+            )
+        }
+    };
+    let link_arg_self = if cm.is_some() {
+        quote! {d}
+    } else {
+        quote! {loc}
+    };
+    let fake_extra_fields = if cm.is_some() {
+        quote! {base: None, desc: None,}
+    } else {
+        quote! {}
+    };
     quote! {
         #[allow(non_camel_case_types)]
         #derive
@@ -893,7 +1013,8 @@ fn persistent_clone(
     frag: &TokenStream,
 ) -> TokenStream {
     let n = &f.name;
-    let saved_data: Vec<TokenStream> = token_data(f).iter().map(|(d, _)| quote! {saved.#d}).collect();
+    let saved_data: Vec<TokenStream> =
+        token_data(f).iter().map(|(d, _)| quote! {saved.#d}).collect();
     let frag_saved = single_fragment(f, &saved_data);
     let idem_saved = {
         let pw = if kind(f).unwrap().map_like() || kind(f).unwrap().set_like() {
@@ -930,14 +1051,19 @@ fn persistent_clone(
         #kappa
     };
     let observers: Vec<Ident> = match k {
-        Kind::PersistentMap | Kind::PersistentIMap => vec![format_ident!("key"), format_ident!("value")],
+        Kind::PersistentMap | Kind::PersistentIMap => {
+            vec![format_ident!("key"), format_ident!("value")]
+        }
         Kind::PersistentSet | Kind::PersistentISet => vec![format_ident!("element")],
         Kind::PersistentOption => vec![format_ident!("value")],
         Kind::PersistentCount => vec![format_ident!("count")],
         _ => vec![],
     };
     if !store.has_storage() {
-        let same: Vec<_> = observers.iter().map(|o| quote! {<#nt as #tr>::#o(&s) == <#nt as #tr>::#o(self)}).collect();
+        let same: Vec<_> = observers
+            .iter()
+            .map(|o| quote! {<#nt as #tr>::#o(&s) == <#nt as #tr>::#o(self)})
+            .collect();
         let base_dup = match cm {
             Some(cm) => {
                 let d = cm.share(cm.opt_ref(quote! {self.desc}));
@@ -945,7 +1071,11 @@ fn persistent_clone(
             }
             None => quote! {},
         };
-        let fake_none = if cm.is_some() { quote! {base: None, desc: None,} } else { quote! {} };
+        let fake_none = if cm.is_some() {
+            quote! {base: None, desc: None,}
+        } else {
+            quote! {}
+        };
         quote! {
             /// A copy of the token (it owns its raw token, so it is not `Copy`).
             pub proof fn clone(tracked &self) -> (tracked s: Self)
@@ -966,12 +1096,22 @@ fn persistent_clone(
             }
         }
     } else {
-        let same: Vec<_> = observers.iter().map(|o| {
-            let (a, b, c) = (observer_call(f, o, quote! {s}), observer_call(f, o, quote! {*old(self)}),
-                observer_call(f, o, quote! {*final(self)}));
-            quote! {#a == #b, #c == #b}
-        }).collect();
-        let pat_extra = if cm.is_some() { quote! {base, desc,} } else { quote! {} };
+        let same: Vec<_> = observers
+            .iter()
+            .map(|o| {
+                let (a, b, c) = (
+                    observer_call(f, o, quote! {s}),
+                    observer_call(f, o, quote! {*old(self)}),
+                    observer_call(f, o, quote! {*final(self)}),
+                );
+                quote! {#a == #b, #c == #b}
+            })
+            .collect();
+        let pat_extra = if cm.is_some() {
+            quote! {base, desc,}
+        } else {
+            quote! {}
+        };
         let (split_base, base_a, base_b) = match cm {
             None => (quote! {}, quote! {}, quote! {}),
             Some(cm) => {
@@ -989,8 +1129,16 @@ fn persistent_clone(
                 )
             }
         };
-        let fake_none = if cm.is_some() { quote! {base: None, desc: None,} } else { quote! {} };
-        let (id_s, id_old, id_final) = (id_call(f, quote! {s}), id_call(f, quote! {*old(self)}), id_call(f, quote! {*final(self)}));
+        let fake_none = if cm.is_some() {
+            quote! {base: None, desc: None,}
+        } else {
+            quote! {}
+        };
+        let (id_s, id_old, id_final) = (
+            id_call(f, quote! {s}),
+            id_call(f, quote! {*old(self)}),
+            id_call(f, quote! {*final(self)}),
+        );
         quote! {
             /// A copy of the token: its raw token (a storage-protocol resource) is
             /// split in two, so `clone` takes `&mut self` (it owns its raw token,
@@ -1056,12 +1204,22 @@ fn field_component(f: &Field, x: TokenStream, slot: &Option<TokenStream>) -> Tok
 }
 
 /// The vstd token trait implementations of one field token type.
-fn token_traits(f: &Field, instance_id: &TokenStream, store: &Store, cm: &Option<Constants>, generic: bool) -> TokenStream {
+fn token_traits(
+    f: &Field,
+    instance_id: &TokenStream,
+    store: &Store,
+    cm: &Option<Constants>,
+    generic: bool,
+) -> TokenStream {
     let n = &f.name;
     let nt = tyname(f);
     let k = kind(f).unwrap();
     // The tracked fields besides `raw` and `fake` (with constants).
-    let pat_extra = if cm.is_some() { quote! {base, desc,} } else { quote! {} };
+    let pat_extra = if cm.is_some() {
+        quote! {base, desc,}
+    } else {
+        quote! {}
+    };
     let embed = |s: TokenStream| quote! {<Protocol as ::vstd::resource::tsm::Machine>::embed(#s)};
     let slot_of = |who: &str| -> Option<TokenStream> {
         let w = format_ident!("{}", who);
@@ -1145,10 +1303,13 @@ fn token_traits(f: &Field, instance_id: &TokenStream, store: &Store, cm: &Option
         }
     };
     let arbitrary = quote! {proof fn arbitrary() -> (tracked s: Self) {Self::__arbitrary()}};
-    let id_fn = quote! {closed spec fn instance_id(&self) -> ::vstd::tokens::InstanceId {#instance_id}};
+    let id_fn =
+        quote! {closed spec fn instance_id(&self) -> ::vstd::tokens::InstanceId {#instance_id}};
     match &f.stype {
-        ShardableType::Map(kt, v) | ShardableType::PersistentMap(kt, v)
-        | ShardableType::IMap(kt, v) | ShardableType::PersistentIMap(kt, v) => {
+        ShardableType::Map(kt, v)
+        | ShardableType::PersistentMap(kt, v)
+        | ShardableType::IMap(kt, v)
+        | ShardableType::PersistentIMap(kt, v) => {
             let agree = agree_body(quote! {&& self.__k == other.__k && self.__v != other.__v});
             let unique = if k.unique() {
                 let body = unique_body(quote! {mine.__k == other.__k});
@@ -1171,8 +1332,11 @@ fn token_traits(f: &Field, instance_id: &TokenStream, store: &Store, cm: &Option
                 #unique
             }
         }
-        ShardableType::Set(e) | ShardableType::PersistentSet(e) | ShardableType::Multiset(e)
-        | ShardableType::ISet(e) | ShardableType::PersistentISet(e) => {
+        ShardableType::Set(e)
+        | ShardableType::PersistentSet(e)
+        | ShardableType::Multiset(e)
+        | ShardableType::ISet(e)
+        | ShardableType::PersistentISet(e) => {
             let unique = if k.unique() {
                 let body = unique_body(quote! {mine.__e == other.__e});
                 quote! {
@@ -1211,7 +1375,9 @@ fn token_traits(f: &Field, instance_id: &TokenStream, store: &Store, cm: &Option
                 #unique
             }
         }
-        ShardableType::Variable(v) | ShardableType::Option(v) | ShardableType::PersistentOption(v) => {
+        ShardableType::Variable(v)
+        | ShardableType::Option(v)
+        | ShardableType::PersistentOption(v) => {
             let agree = agree_body(quote! {&& self.__v != other.__v});
             let unique = if k.unique() {
                 let body = unique_body(quote! {true});
@@ -1237,7 +1403,11 @@ fn token_traits(f: &Field, instance_id: &TokenStream, store: &Store, cm: &Option
             // An owned token: `weaken` copies it (`clone`). In a machine with
             // storage `clone` takes `&mut self`, so `weaken` does too, and the
             // operations are inherent (`MonotonicCountToken::weaken` takes `&self`).
-            let pat_extra = if cm.is_some() { quote! {base, desc,} } else { quote! {} };
+            let pat_extra = if cm.is_some() {
+                quote! {base, desc,}
+            } else {
+                quote! {}
+            };
             if !store.has_storage() {
                 quote! {
                     impl ::vstd::tokens::MonotonicCountToken for #nt {
@@ -1279,19 +1449,24 @@ fn token_traits(f: &Field, instance_id: &TokenStream, store: &Store, cm: &Option
             }
         }
         ShardableType::PersistentCount => {
-            let c_extra = if cm.is_some() { quote! {base: c.base, desc: c.desc,} } else { quote! {} };
+            let c_extra = if cm.is_some() {
+                quote! {base: c.base, desc: c.desc,}
+            } else {
+                quote! {}
+            };
             quote! {
-            impl ::vstd::tokens::MonotonicCountToken for #nt {
-                #id_fn
-                closed spec fn count(&self) -> ::vstd::prelude::nat {self.__n}
-                proof fn weaken(tracked &self, count: ::vstd::prelude::nat) -> (tracked s: Self) {
-                    ::vstd::prelude::use_type_invariant(self);
-                    let tracked c = *self;
-                    Self {raw: c.raw, #c_extra fake: c.fake, __n: count, __m: c.__m}
+                impl ::vstd::tokens::MonotonicCountToken for #nt {
+                    #id_fn
+                    closed spec fn count(&self) -> ::vstd::prelude::nat {self.__n}
+                    proof fn weaken(tracked &self, count: ::vstd::prelude::nat) -> (tracked s: Self) {
+                        ::vstd::prelude::use_type_invariant(self);
+                        let tracked c = *self;
+                        Self {raw: c.raw, #c_extra fake: c.fake, __n: count, __m: c.__m}
+                    }
+                    #arbitrary
                 }
-                #arbitrary
             }
-        }},
+        }
         ShardableType::Count => {
             let factory = format_ident!("field_{}", n);
             // With constants, a split token gets its own copy of `κ`.
@@ -1392,13 +1567,25 @@ fn collection_helpers(f: &Field, cm: &Option<Constants>) -> TokenStream {
     let split = format_ident!("__split_{}", n);
     let join = format_ident!("__join_{}", n);
     let lemmas = quote! {broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
-        ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};};
+    ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};};
     let pointwise = quote! {::vstd::resource::tsm_collections::Pointwise};
     let id_of = |x: TokenStream| id_call(f, x);
     // Mode-dependent pieces (see `Constants`): without constants a token is linked to
     // its instance by the location; with constants, by the descriptor `d`, and
     // each new token gets a copy of `κ`, split off `kappa`.
-    let (sid, split_params, split_reqs, take_kp, kp_args, rec_split, link_param, lloc, lid, larg, into_suffix) = match cm {
+    let (
+        sid,
+        split_params,
+        split_reqs,
+        take_kp,
+        kp_args,
+        rec_split,
+        link_param,
+        lloc,
+        lid,
+        larg,
+        into_suffix,
+    ) = match cm {
         None => (
             quote! {::vstd::resource::tsm_instance_id(raw.loc(), false)},
             quote! {},
@@ -1457,11 +1644,21 @@ fn collection_helpers(f: &Field, cm: &Option<Constants>) -> TokenStream {
     } else {
         (quote! {::vstd::imap::IMap}, quote! {::vstd::iset::ISet})
     };
-    let mlen = if fin { quote! {m.len()} } else { quote! {m.dom().len()} };
-    let (fin_m, fin_s) = if fin { (quote! {}, quote! {}) } else { (quote! {m.dom().finite(),}, quote! {s.finite(),}) };
+    let mlen = if fin {
+        quote! {m.len()}
+    } else {
+        quote! {m.dom().len()}
+    };
+    let (fin_m, fin_s) = if fin {
+        (quote! {}, quote! {})
+    } else {
+        (quote! {m.dom().finite(),}, quote! {s.finite(),})
+    };
     match &f.stype {
-        ShardableType::Map(kt, v) | ShardableType::PersistentMap(kt, v)
-        | ShardableType::IMap(kt, v) | ShardableType::PersistentIMap(kt, v) => {
+        ShardableType::Map(kt, v)
+        | ShardableType::PersistentMap(kt, v)
+        | ShardableType::IMap(kt, v)
+        | ShardableType::PersistentIMap(kt, v) => {
             let out_id = id_of(quote! {out[key]});
             let vals = quote! {|key: #kt| ::vstd::tokens::KeyValueToken::value(&m[key])};
             let all_vals = if fin {
@@ -1571,8 +1768,10 @@ fn collection_helpers(f: &Field, cm: &Option<Constants>) -> TokenStream {
             }
             quote! {impl #nt {#s}}
         }
-        ShardableType::Set(e) | ShardableType::PersistentSet(e)
-        | ShardableType::ISet(e) | ShardableType::PersistentISet(e) => {
+        ShardableType::Set(e)
+        | ShardableType::PersistentSet(e)
+        | ShardableType::ISet(e)
+        | ShardableType::PersistentISet(e) => {
             let out_id = id_of(quote! {out[x]});
             let mut s = quote! {
                 proof fn #split(tracked raw: Token, s: #set_t<#e>, #split_params)
@@ -1743,7 +1942,10 @@ fn collection_helpers(f: &Field, cm: &Option<Constants>) -> TokenStream {
                 }
             }
         }
-        ShardableType::Option(_) | ShardableType::PersistentOption(_) | ShardableType::Bool | ShardableType::PersistentBool => {
+        ShardableType::Option(_)
+        | ShardableType::PersistentOption(_)
+        | ShardableType::Bool
+        | ShardableType::PersistentBool => {
             let boolean = matches!(k, Kind::Bool | Kind::PersistentBool);
             let v = match &f.stype {
                 ShardableType::Option(v) | ShardableType::PersistentOption(v) => quote! {#v},
@@ -1752,7 +1954,12 @@ fn collection_helpers(f: &Field, cm: &Option<Constants>) -> TokenStream {
             let (ety, is_some, value, data) = if boolean {
                 (quote! {bool}, quote! {e}, quote! {true}, quote! {})
             } else {
-                (quote! {Option<#v>}, quote! {e is Some}, quote! {Some(e->Some_0)}, quote! {, e->Some_0})
+                (
+                    quote! {Option<#v>},
+                    quote! {e is Some},
+                    quote! {Some(e->Some_0)},
+                    quote! {, e->Some_0},
+                )
             };
             // The token gets the split's `κ` and a held copy of the descriptor.
             let opt_args = match cm {
@@ -1843,24 +2050,56 @@ fn reservation_type(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenSt
     let imply = quote! {::vstd::prelude::imply};
     let ext = quote! {::vstd::prelude::ext_equal};
     let lemmas = quote! {broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
-        ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas};};
+    ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas};};
     let (kt, vt) = match &f.stype {
-        ShardableType::IMap(kt, v) | ShardableType::PersistentIMap(kt, v) => (quote! {#kt}, quote! {#v}),
+        ShardableType::IMap(kt, v) | ShardableType::PersistentIMap(kt, v) => {
+            (quote! {#kt}, quote! {#v})
+        }
         ShardableType::ISet(e) | ShardableType::PersistentISet(e) => (quote! {#e}, quote! {()}),
         _ => unreachable!(),
     };
     let tr = trait_path(f);
     let id_of = |x: TokenStream| quote! {<#nt as #tr>::instance_id(&#x)};
-    let key_of = |x: TokenStream| if ml { quote! {<#nt as #tr>::key(&#x)} } else { quote! {<#nt as #tr>::element(&#x)} };
+    let key_of = |x: TokenStream| {
+        if ml {
+            quote! {<#nt as #tr>::key(&#x)}
+        } else {
+            quote! {<#nt as #tr>::element(&#x)}
+        }
+    };
     let val_of = |x: TokenStream| quote! {<#nt as #tr>::value(&#x)};
     // The bulk's value type, its domain, the empty value, and the whole collection.
-    let bty = if ml { quote! {::vstd::imap::IMap<#kt, #vt>} } else { quote! {::vstd::iset::ISet<#kt>} };
-    let bdom = |x: TokenStream| if ml { quote! {(#x).bm.dom()} } else { quote! {(#x).bm} };
-    let bempty = if ml { quote! {::vstd::imap::IMap::<#kt, #vt>::empty()} } else { quote! {::vstd::iset::ISet::<#kt>::empty()} };
-    let whole = |x: TokenStream| if ml { quote! {(#x).map()} } else { quote! {(#x).set()} };
+    let bty = if ml {
+        quote! {::vstd::imap::IMap<#kt, #vt>}
+    } else {
+        quote! {::vstd::iset::ISet<#kt>}
+    };
+    let bdom = |x: TokenStream| {
+        if ml {
+            quote! {(#x).bm.dom()}
+        } else {
+            quote! {(#x).bm}
+        }
+    };
+    let bempty = if ml {
+        quote! {::vstd::imap::IMap::<#kt, #vt>::empty()}
+    } else {
+        quote! {::vstd::iset::ISet::<#kt>::empty()}
+    };
+    let whole = |x: TokenStream| {
+        if ml {
+            quote! {(#x).map()}
+        } else {
+            quote! {(#x).set()}
+        }
+    };
     let pk = key_of(quote! {self.parts[k]});
     let pid = id_of(quote! {self.parts[k]});
-    let pval = if ml { val_of(quote! {self.parts[k]}) } else { quote! {()} };
+    let pval = if ml {
+        val_of(quote! {self.parts[k]})
+    } else {
+        quote! {()}
+    };
     let view = if ml {
         quote! {
             pub closed spec fn map(self) -> ::vstd::imap::IMap<#kt, #vt> {
@@ -1882,7 +2121,22 @@ fn reservation_type(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenSt
         }
     };
     // Mode-dependent fields and checks (see `Constants`).
-    let (extra_fields, extra_pat, none_extra, real_inv, none_inv, lemma_link, unwrap_desc, mint, mint_args, split_args, bulk_params, bulk_reqs, bulk_fields, bulk_id) = match cm {
+    let (
+        extra_fields,
+        extra_pat,
+        none_extra,
+        real_inv,
+        none_inv,
+        lemma_link,
+        unwrap_desc,
+        mint,
+        mint_args,
+        split_args,
+        bulk_params,
+        bulk_reqs,
+        bulk_fields,
+        bulk_id,
+    ) = match cm {
         None => (
             quote! {},
             quote! {},
@@ -1915,9 +2169,9 @@ fn reservation_type(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenSt
                 quote! {kappa, desc,},
                 quote! {kappa: None, desc: None,},
                 quote! {self.kappa is Some && self.desc is Some && #ok
-                    && self.inst == ::vstd::resource::tsm_instance_id(self.desc->Some_0.loc(), false)
-                    && self.bulk->Some_0.loc() == #ploc && self.kappa->Some_0.loc() == #ploc
-                    && self.kappa->Some_0.fragment() == #kappa_s},
+                && self.inst == ::vstd::resource::tsm_instance_id(self.desc->Some_0.loc(), false)
+                && self.bulk->Some_0.loc() == #ploc && self.kappa->Some_0.loc() == #ploc
+                && self.kappa->Some_0.fragment() == #kappa_s},
                 quote! {self.kappa is None && self.desc is None},
                 quote! {dref},
                 if cm.owned {
@@ -2071,8 +2325,16 @@ fn reservation_type(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenSt
             quote! {#w_s == m},
         )
     };
-    let whole_dom = if ml { quote! {whole.dom()} } else { quote! {whole} };
-    let bm_dom = if ml { quote! {bm.dom()} } else { quote! {bm} };
+    let whole_dom = if ml {
+        quote! {whole.dom()}
+    } else {
+        quote! {whole}
+    };
+    let bm_dom = if ml {
+        quote! {bm.dom()}
+    } else {
+        quote! {bm}
+    };
     let into_split_args = split_args.clone();
     // `__take` (exclusive only): the tokens of a sub-collection `e`, joined onto `acc`.
     let take = if persistent {
@@ -2421,11 +2683,17 @@ fn reservation_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> Toke
         quote! {::vstd::resource::tsm::Observation<'a, Protocol>}
     };
     let (kt, vt) = match &f.stype {
-        ShardableType::IMap(kt, v) | ShardableType::PersistentIMap(kt, v) => (quote! {#kt}, quote! {#v}),
+        ShardableType::IMap(kt, v) | ShardableType::PersistentIMap(kt, v) => {
+            (quote! {#kt}, quote! {#v})
+        }
         ShardableType::ISet(e) | ShardableType::PersistentISet(e) => (quote! {#e}, quote! {()}),
         _ => unreachable!(),
     };
-    let bty = if ml { quote! {::vstd::imap::IMap<#kt, #vt>} } else { quote! {::vstd::iset::ISet<#kt>} };
+    let bty = if ml {
+        quote! {::vstd::imap::IMap<#kt, #vt>}
+    } else {
+        quote! {::vstd::iset::ISet<#kt>}
+    };
     let tag = if k.persistent() {
         quote! {::vstd::resource::agree::AgreementRA::Agree}
     } else {
@@ -2466,47 +2734,52 @@ fn reservation_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> Toke
     let single_mkk = single(quote! {kk}, quote! {m});
     // With constants, each observed token's copy of `κ` (and the bulk's) is
     // joined too, so a non-empty observation includes `κ`.
-    let (kappa_req, kappa_ens, observe_tok, tok_step, kappa_pre, kappa_step, bulk_obs, bulk_step) = match cm {
-        None => (
-            quote! {},
-            quote! {},
-            quote! {let tracked o = tk.__borrow_raw(#larg).observe();},
-            quote! {},
-            quote! {},
-            quote! {},
-            quote! {Some(self.bulk.tracked_borrow().observe())},
-            quote! {},
-        ),
-        Some(cm) => {
-            let kappa = cm.kappa(quote! {d});
-            (
-                quote! {::vstd::prelude::imply(acc is Some, #t::fragment_included::<Protocol>(#kappa, acc->Some_0.fragment())),},
-                quote! {::vstd::prelude::imply(out is Some, #t::fragment_included::<Protocol>(#kappa, out->Some_0.fragment())),},
-                quote! {
-                    let tracked o1 = tk.__borrow_raw(#larg).observe();
-                    let tracked o2 = tk.__borrow_base(#larg).observe();
-                    let tracked o = o1.join(&o2);
-                },
-                quote! {#t::fragment_included_transitive::<Protocol>(o1.fragment(), o.fragment(), out->Some_0.fragment());},
-                quote! {#t::fragment_included_transitive::<Protocol>(#kappa, o.fragment(), acc2->Some_0.fragment());},
-                quote! {#t::fragment_included_transitive::<Protocol>(#kappa, acc2->Some_0.fragment(), out->Some_0.fragment());},
-                quote! {{
-                    let tracked b1 = self.bulk.tracked_borrow().observe();
-                    let tracked b2 = self.kappa.tracked_borrow().observe();
-                    Some(b1.join(&b2))
-                }},
-                quote! {
-                    if self.bulk is Some {
-                        #t::fragment_included_transitive::<Protocol>(Fragment::#factory(bm), acc->Some_0.fragment(), out->Some_0.fragment());
-                        #t::fragment_included_transitive::<Protocol>(#kappa, acc->Some_0.fragment(), out->Some_0.fragment());
-                    }
-                },
-            )
-        }
-    };
+    let (kappa_req, kappa_ens, observe_tok, tok_step, kappa_pre, kappa_step, bulk_obs, bulk_step) =
+        match cm {
+            None => (
+                quote! {},
+                quote! {},
+                quote! {let tracked o = tk.__borrow_raw(#larg).observe();},
+                quote! {},
+                quote! {},
+                quote! {},
+                quote! {Some(self.bulk.tracked_borrow().observe())},
+                quote! {},
+            ),
+            Some(cm) => {
+                let kappa = cm.kappa(quote! {d});
+                (
+                    quote! {::vstd::prelude::imply(acc is Some, #t::fragment_included::<Protocol>(#kappa, acc->Some_0.fragment())),},
+                    quote! {::vstd::prelude::imply(out is Some, #t::fragment_included::<Protocol>(#kappa, out->Some_0.fragment())),},
+                    quote! {
+                        let tracked o1 = tk.__borrow_raw(#larg).observe();
+                        let tracked o2 = tk.__borrow_base(#larg).observe();
+                        let tracked o = o1.join(&o2);
+                    },
+                    quote! {#t::fragment_included_transitive::<Protocol>(o1.fragment(), o.fragment(), out->Some_0.fragment());},
+                    quote! {#t::fragment_included_transitive::<Protocol>(#kappa, o.fragment(), acc2->Some_0.fragment());},
+                    quote! {#t::fragment_included_transitive::<Protocol>(#kappa, acc2->Some_0.fragment(), out->Some_0.fragment());},
+                    quote! {{
+                        let tracked b1 = self.bulk.tracked_borrow().observe();
+                        let tracked b2 = self.kappa.tracked_borrow().observe();
+                        Some(b1.join(&b2))
+                    }},
+                    quote! {
+                        if self.bulk is Some {
+                            #t::fragment_included_transitive::<Protocol>(Fragment::#factory(bm), acc->Some_0.fragment(), out->Some_0.fragment());
+                            #t::fragment_included_transitive::<Protocol>(#kappa, acc->Some_0.fragment(), out->Some_0.fragment());
+                        }
+                    },
+                )
+            }
+        };
     let single_parts = single(quote! {k}, quote! {self.parts});
     let observe_parts = format_ident!("__observe_parts_{}", n);
-    let key_m = if ml { quote! {<#nt as #tr>::key(&m[key])} } else { quote! {<#nt as #tr>::element(&m[key])} };
+    let key_m = if ml {
+        quote! {<#nt as #tr>::key(&m[key])}
+    } else {
+        quote! {<#nt as #tr>::element(&m[key])}
+    };
     let (larg_id, link_ok) = match cm {
         None => (quote! {loc}, quote! {}),
         Some(cm) => {
@@ -2514,8 +2787,16 @@ fn reservation_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> Toke
             (quote! {d.loc()}, quote! {#ok,})
         }
     };
-    let whole_self = if ml { quote! {self.map()} } else { quote! {self.set()} };
-    let bulk_rest = if ml { quote! {bm.remove_keys(e.dom())} } else { quote! {bm.difference(e)} };
+    let whole_self = if ml {
+        quote! {self.map()}
+    } else {
+        quote! {self.set()}
+    };
+    let bulk_rest = if ml {
+        quote! {bm.remove_keys(e.dom())}
+    } else {
+        quote! {bm.difference(e)}
+    };
     let (sub_req, eb, keys_e, edom, ev, eempty, whole_dom, bdom, value_eq) = if ml {
         (
             quote! {e.submap_of(self.map())},
@@ -2570,10 +2851,12 @@ fn reservation_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> Toke
     let bulk_incl = if k.persistent() {
         // The persistent joins need agreement, not disjointness: the bulk's own
         // entries agree with `e` on their common keys.
-        bulk_incl.to_string()
+        bulk_incl
+            .to_string()
             .replace("map_join", "persistent_map_join")
             .replace("set_join", "persistent_set_join")
-            .parse::<TokenStream>().unwrap()
+            .parse::<TokenStream>()
+            .unwrap()
     } else {
         bulk_incl
     };
@@ -2724,18 +3007,30 @@ fn finite_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenStre
     let embed = quote! {<Protocol as ::vstd::resource::tsm::Machine>::embed};
     let imply = quote! {::vstd::prelude::imply};
     let lemmas = quote! {broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
-        ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};};
+    ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};};
     let obs = if store.has_storage() {
         quote! {::vstd::resource::tsm_storage::StorageObservation<'a, Protocol>}
     } else {
         quote! {::vstd::resource::tsm::Observation<'a, Protocol>}
     };
     let (link_param, link_req, link_loc, larg, lid) = match cm {
-        None => (quote! {loc: ::vstd::resource::Loc}, quote! {}, quote! {loc}, quote! {loc}, quote! {loc}),
+        None => (
+            quote! {loc: ::vstd::resource::Loc},
+            quote! {},
+            quote! {loc},
+            quote! {loc},
+            quote! {loc},
+        ),
         Some(cm) => {
             let dty = &cm.desc_ty;
             let ok = cm.is_valid(quote! {d});
-            (quote! {tracked d: &#dty}, quote! {#ok,}, cm.protocol_loc(quote! {d}), quote! {d}, quote! {d.loc()})
+            (
+                quote! {tracked d: &#dty},
+                quote! {#ok,},
+                cm.protocol_loc(quote! {d}),
+                quote! {d},
+                quote! {d.loc()},
+            )
         }
     };
     let id = quote! {::vstd::resource::tsm_instance_id(#lid, false)};
@@ -2761,10 +3056,14 @@ fn finite_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenStre
         }
     };
     let (kappa_ens, kappa_parts_ens, observe_tok) = match cm {
-        None => (quote! {}, quote! {}, quote! {
-            let tracked o = tk.__borrow_raw(#larg).observe();
-            #t::fragment_included_reflexive::<Protocol>(o.fragment());
-        }),
+        None => (
+            quote! {},
+            quote! {},
+            quote! {
+                let tracked o = tk.__borrow_raw(#larg).observe();
+                #t::fragment_included_reflexive::<Protocol>(o.fragment());
+            },
+        ),
         Some(cm) => {
             let kappa = cm.kappa(quote! {d});
             (
@@ -2792,7 +3091,12 @@ fn finite_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenStre
             _ => quote! {()},
         };
         let (ety, is_some, value, le) = if boolean {
-            (quote! {bool}, quote! {e}, quote! {true}, quote! {::vstd::tokens::bool_value_le_option_token(e, *c, #id)})
+            (
+                quote! {bool},
+                quote! {e},
+                quote! {true},
+                quote! {::vstd::tokens::bool_value_le_option_token(e, *c, #id)},
+            )
         } else {
             (
                 quote! {Option<#v>},
@@ -2858,7 +3162,9 @@ fn finite_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenStre
     // The single fragment of the token for `key` (with value `val(key)`).
     let single_with = |key: TokenStream, val: &dyn Fn(TokenStream) -> TokenStream| -> TokenStream {
         match k {
-            Kind::Multiset => quote! {Fragment::#factory(::vstd::multiset::Multiset::singleton(#key))},
+            Kind::Multiset => {
+                quote! {Fragment::#factory(::vstd::multiset::Multiset::singleton(#key))}
+            }
             _ if k.map_like() => {
                 let v = val(key.clone());
                 quote! {Fragment::#factory(::vstd::map::Map::empty().insert(#key, #v))}
@@ -2949,7 +3255,11 @@ fn finite_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenStre
             } else {
                 quote! {::vstd::resource::exclusive::ExclusiveRA::Exclusive}
             };
-            let ev = if k.map_like() { quote! {e[kk]} } else { quote! {()} };
+            let ev = if k.map_like() {
+                quote! {e[kk]}
+            } else {
+                quote! {()}
+            };
             // The value of the token observed for `kk` (one of `c`) is that of `e`.
             let same_value = if k.map_like() {
                 quote! {assert(e.dom().subset_of(c.map().dom())); assert(c.map().dom().contains(kk)); assert(e[kk] == c.map()[kk]);}
@@ -2958,13 +3268,15 @@ fn finite_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenStre
             };
             let at_lemma = match k {
                 Kind::Map => quote! {::vstd::resource::tsm_collections::map_included_owned_at(
-                    (#single_e).#n, d.#n, z.#n, s.#n.to_imap(), kk, e[kk]);},
-                Kind::PersistentMap => quote! {::vstd::resource::tsm_generic::persistent_map_included_owned_at(
-                    (#single_e).#n, d.#n, z.#n, s.#n.to_imap(), kk, e[kk]);},
+                (#single_e).#n, d.#n, z.#n, s.#n.to_imap(), kk, e[kk]);},
+                Kind::PersistentMap => {
+                    quote! {::vstd::resource::tsm_generic::persistent_map_included_owned_at(
+                    (#single_e).#n, d.#n, z.#n, s.#n.to_imap(), kk, e[kk]);}
+                }
                 Kind::Set => quote! {::vstd::resource::tsm_collections::set_included_owned_at(
-                    (#single_e).#n, d.#n, z.#n, s.#n.to_iset(), kk);},
+                (#single_e).#n, d.#n, z.#n, s.#n.to_iset(), kk);},
                 _ => quote! {::vstd::resource::tsm_generic::persistent_set_included_owned_at(
-                    (#single_e).#n, d.#n, z.#n, s.#n.to_iset(), kk);},
+                (#single_e).#n, d.#n, z.#n, s.#n.to_iset(), kk);},
             };
             quote! {
                 // Each element of `e` is exactly that in `h` (`h` is valid).
@@ -3060,7 +3372,12 @@ fn finite_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> TokenStre
 // Operation proofs
 
 /// The included-owned lemma for one input token, given `op(op(tok, rest), z) == embed(pre)`.
-fn included_lemma(f: &Field, vals: &[TokenStream], tok: TokenStream, coll: Option<TokenStream>) -> TokenStream {
+fn included_lemma(
+    f: &Field,
+    vals: &[TokenStream],
+    tok: TokenStream,
+    coll: Option<TokenStream>,
+) -> TokenStream {
     let n = &f.name;
     let c = quote! {::vstd::resource::tsm_collections};
     let g = quote! {::vstd::resource::tsm_generic};
@@ -3109,15 +3426,33 @@ fn included_lemma(f: &Field, vals: &[TokenStream], tok: TokenStream, coll: Optio
                 }
                 assert((#observed).subset_of(pre.#n));
             },
-            Kind::IMap => quote! {#c::map_included_owned_many((#tok).#n, #rest, #z, pre.#n, #observed);},
-            Kind::ISet => quote! {#c::set_included_owned_many((#tok).#n, #rest, #z, pre.#n, #observed);},
-            Kind::PersistentIMap => quote! {#g::persistent_map_included_owned_many((#tok).#n, #rest, #z, pre.#n, #observed);},
-            Kind::PersistentISet => quote! {#g::persistent_set_included_owned_many((#tok).#n, #rest, #z, pre.#n, #observed);},
-            Kind::Multiset => quote! {#g::multiset_included_many((#tok).#n, #rest, #z, pre.#n, #observed);},
-            Kind::Option => quote! {#g::option_included_general((#tok).#n, #rest, #z, pre.#n, #observed);},
-            Kind::PersistentOption => quote! {#g::persistent_option_included_general((#tok).#n, #rest, #z, pre.#n, #observed);},
-            Kind::Bool => quote! {#g::bool_included_general((#tok).#n, #rest, #z, pre.#n, #observed);},
-            Kind::PersistentBool => quote! {#g::persistent_bool_included_general((#tok).#n, #rest, #z, pre.#n, #observed);},
+            Kind::IMap => {
+                quote! {#c::map_included_owned_many((#tok).#n, #rest, #z, pre.#n, #observed);}
+            }
+            Kind::ISet => {
+                quote! {#c::set_included_owned_many((#tok).#n, #rest, #z, pre.#n, #observed);}
+            }
+            Kind::PersistentIMap => {
+                quote! {#g::persistent_map_included_owned_many((#tok).#n, #rest, #z, pre.#n, #observed);}
+            }
+            Kind::PersistentISet => {
+                quote! {#g::persistent_set_included_owned_many((#tok).#n, #rest, #z, pre.#n, #observed);}
+            }
+            Kind::Multiset => {
+                quote! {#g::multiset_included_many((#tok).#n, #rest, #z, pre.#n, #observed);}
+            }
+            Kind::Option => {
+                quote! {#g::option_included_general((#tok).#n, #rest, #z, pre.#n, #observed);}
+            }
+            Kind::PersistentOption => {
+                quote! {#g::persistent_option_included_general((#tok).#n, #rest, #z, pre.#n, #observed);}
+            }
+            Kind::Bool => {
+                quote! {#g::bool_included_general((#tok).#n, #rest, #z, pre.#n, #observed);}
+            }
+            Kind::PersistentBool => {
+                quote! {#g::persistent_bool_included_general((#tok).#n, #rest, #z, pre.#n, #observed);}
+            }
             _ => quote! {},
         };
     }
@@ -3158,8 +3493,12 @@ fn included_lemma(f: &Field, vals: &[TokenStream], tok: TokenStream, coll: Optio
             let e = &vals[0];
             quote! {#g::multiset_included_owned((#tok).#n, #rest, #z, pre.#n, #e);}
         }
-        Kind::Bool => quote! {::vstd::resource::tsm_bool::bool_included_owned((#tok).#n, #rest, #z, pre.#n);},
-        Kind::PersistentBool => quote! {#g::persistent_bool_included_owned((#tok).#n, #rest, #z, pre.#n);},
+        Kind::Bool => {
+            quote! {::vstd::resource::tsm_bool::bool_included_owned((#tok).#n, #rest, #z, pre.#n);}
+        }
+        Kind::PersistentBool => {
+            quote! {#g::persistent_bool_included_owned((#tok).#n, #rest, #z, pre.#n);}
+        }
         Kind::PersistentOption => {
             let v = &vals[0];
             quote! {#c::persistent_option_included_owned((#tok).#n, #rest, #z, pre.#n, #v);}
@@ -3343,7 +3682,10 @@ fn constant_lemma(f: &Field, frag: &TokenStream) -> TokenStream {
 /// to the fragment after the `i`-th join. An optional observation (of a
 /// borrowed collection) is joined if present; if absent, its fragment is the
 /// unit, which is included in any fragment.
-fn shared_joins(take_shared: &[(Ident, TokenStream, Option<TokenStream>)], shared: &Ident) -> Vec<TokenStream> {
+fn shared_joins(
+    take_shared: &[(Ident, TokenStream, Option<TokenStream>)],
+    shared: &Ident,
+) -> Vec<TokenStream> {
     let t = quote! {::vstd::resource::tsm};
     let mut out = vec![];
     for (i, (obs, take, optional)) in take_shared.iter().enumerate() {
@@ -3394,7 +3736,12 @@ fn frame_block(frag: &TokenStream, upper: &TokenStream, lemma: &TokenStream) -> 
 }
 
 /// Proofs that every input fragment is included in `op(owned, shared)`.
-fn inclusions(owned: &[TokenStream], shared: &[TokenStream], h: &TokenStream, owned_ident: &Ident) -> TokenStream {
+fn inclusions(
+    owned: &[TokenStream],
+    shared: &[TokenStream],
+    h: &TokenStream,
+    owned_ident: &Ident,
+) -> TokenStream {
     let t = quote! {::vstd::resource::tsm};
     let mut out = vec![];
     let accs: Vec<Ident> = (0..owned.len()).map(|i| format_ident!("__tsm_oacc_{}", i)).collect();
@@ -3472,12 +3819,17 @@ fn rewrite_old(ts: TokenStream, with: &dyn Fn(&str) -> Option<TokenStream>) -> T
                             // Drop a preceding path (`::vstd::prelude::`). A
                             // keyword before a leading `::` (`match ::vstd::..`)
                             // is not a path segment.
-                            const KEYWORDS: &[&str] = &["match", "if", "else", "while", "for", "in", "return",
-                                "let", "mut", "ref", "move", "as", "box", "break", "loop", "unsafe", "where"];
+                            const KEYWORDS: &[&str] = &[
+                                "match", "if", "else", "while", "for", "in", "return", "let",
+                                "mut", "ref", "move", "as", "box", "break", "loop", "unsafe",
+                                "where",
+                            ];
                             loop {
                                 let l = out.len();
                                 if l >= 2 {
-                                    if let (TokenTree::Punct(a), TokenTree::Punct(b)) = (&out[l - 2], &out[l - 1]) {
+                                    if let (TokenTree::Punct(a), TokenTree::Punct(b)) =
+                                        (&out[l - 2], &out[l - 1])
+                                    {
                                         if a.as_char() == ':' && b.as_char() == ':' {
                                             out.truncate(l - 2);
                                             if let Some(TokenTree::Ident(seg)) = out.last() {
@@ -3492,7 +3844,8 @@ fn rewrite_old(ts: TokenStream, with: &dyn Fn(&str) -> Option<TokenStream>) -> T
                                 }
                                 break;
                             }
-                            let g2 = proc_macro2::Group::new(proc_macro2::Delimiter::Parenthesis, rep);
+                            let g2 =
+                                proc_macro2::Group::new(proc_macro2::Delimiter::Parenthesis, rep);
                             out.push(TokenTree::Group(g2));
                             i += 2;
                             continue;
@@ -3560,7 +3913,9 @@ fn guard_shapes(sm: &SM, parts: &ExchangeParts) -> HashMap<String, GuardShape> {
             let shape = match p.elt.as_ref() {
                 Some(MonoidElt::General(e)) => match (&f.stype, some_arg(e)) {
                     (ShardableType::StorageOption(_), Some(v)) => GuardShape::SomeOf(v),
-                    (ShardableType::StorageOption(_), None) => GuardShape::OptionGeneral(quote! {#e}),
+                    (ShardableType::StorageOption(_), None) => {
+                        GuardShape::OptionGeneral(quote! {#e})
+                    }
                     _ => GuardShape::MapRefs(quote! {#e}),
                 },
                 _ => GuardShape::Single,
@@ -3578,11 +3933,16 @@ fn rewrite_guard_outputs(sm: &SM, parts: &mut ExchangeParts, shapes: &HashMap<St
         let (ty, ens): (Option<TokenStream>, Box<dyn Fn(TokenStream) -> TokenStream>) = {
             let id = format_ident!("{}", name);
             let f = sm.fields.iter().find(|f| {
-                parts.params.get(&f.name.to_string()).is_some_and(|ps| ps.iter().any(|p| p.name == id))
+                parts
+                    .params
+                    .get(&f.name.to_string())
+                    .is_some_and(|ps| ps.iter().any(|p| p.name == id))
             });
             let (k, v) = match f.map(|f| &f.stype) {
                 Some(ShardableType::StorageOption(v)) => (quote! {int}, quote! {#v}),
-                Some(ShardableType::StorageMap(k, v)) | Some(ShardableType::StorageIMap(k, v)) => (quote! {#k}, quote! {#v}),
+                Some(ShardableType::StorageMap(k, v)) | Some(ShardableType::StorageIMap(k, v)) => {
+                    (quote! {#k}, quote! {#v})
+                }
                 _ => continue,
             };
             match shape.clone() {
@@ -3593,13 +3953,16 @@ fn rewrite_guard_outputs(sm: &SM, parts: &mut ExchangeParts, shapes: &HashMap<St
                 ),
                 GuardShape::OptionGeneral(_) => (
                     Some(quote! {::core::option::Option<&'a #v>}),
-                    Box::new(move |e: TokenStream| quote! {
-                        ((#id is Some) == ((#e) is Some)
-                            && ::vstd::prelude::imply(#id is Some, ::vstd::prelude::equal(*(#id->Some_0), (#e)->Some_0)))
+                    Box::new(move |e: TokenStream| {
+                        quote! {
+                            ((#id is Some) == ((#e) is Some)
+                                && ::vstd::prelude::imply(#id is Some, ::vstd::prelude::equal(*(#id->Some_0), (#e)->Some_0)))
+                        }
                     }),
                 ),
                 GuardShape::MapRefs(_) => {
-                    let infinite = matches!(f.map(|f| &f.stype), Some(ShardableType::StorageIMap(..)));
+                    let infinite =
+                        matches!(f.map(|f| &f.stype), Some(ShardableType::StorageIMap(..)));
                     let ty = if infinite {
                         quote! {::vstd::imap::IMap<#k, &'a #v>}
                     } else {
@@ -3607,10 +3970,12 @@ fn rewrite_guard_outputs(sm: &SM, parts: &mut ExchangeParts, shapes: &HashMap<St
                     };
                     (
                         Some(ty),
-                        Box::new(move |e: TokenStream| quote! {
-                            (::vstd::prelude::equal(#id.dom(), (#e).dom())
-                                && (forall|__tsm_k: #k| ::vstd::prelude::imply(#[trigger] #id.dom().contains(__tsm_k),
-                                    ::vstd::prelude::equal(*#id[__tsm_k], (#e)[__tsm_k]))))
+                        Box::new(move |e: TokenStream| {
+                            quote! {
+                                (::vstd::prelude::equal(#id.dom(), (#e).dom())
+                                    && (forall|__tsm_k: #k| ::vstd::prelude::imply(#[trigger] #id.dom().contains(__tsm_k),
+                                        ::vstd::prelude::equal(*#id[__tsm_k], (#e)[__tsm_k]))))
+                            }
                         }),
                     )
                 }
@@ -3632,7 +3997,11 @@ fn rewrite_guard_outputs(sm: &SM, parts: &mut ExchangeParts, shapes: &HashMap<St
 }
 
 /// Replace `[path::]equal(*id, e)` by `with(e)`.
-fn replace_guard_eq(ts: TokenStream, id: &Ident, with: &dyn Fn(TokenStream) -> TokenStream) -> TokenStream {
+fn replace_guard_eq(
+    ts: TokenStream,
+    id: &Ident,
+    with: &dyn Fn(TokenStream) -> TokenStream,
+) -> TokenStream {
     let trees: Vec<TokenTree> = ts.into_iter().collect();
     let mut out: Vec<TokenTree> = vec![];
     let mut i = 0;
@@ -3650,13 +4019,17 @@ fn replace_guard_eq(ts: TokenStream, id: &Ident, with: &dyn Fn(TokenStream) -> T
                         && matches!(&out[out.len() - 2], TokenTree::Punct(p) if p.as_char() == ':')
                     {
                         out.truncate(out.len() - 2);
-                        if matches!(out.last(), Some(TokenTree::Ident(x)) if x == "vstd" || x == "prelude" || x == "crate") {
+                        if matches!(out.last(), Some(TokenTree::Ident(x)) if x == "vstd" || x == "prelude" || x == "crate")
+                        {
                             out.pop();
                         }
                     }
                     let e: TokenStream = inner[3..].iter().cloned().collect();
                     let rep = with(e);
-                    out.push(TokenTree::Group(proc_macro2::Group::new(proc_macro2::Delimiter::Parenthesis, rep)));
+                    out.push(TokenTree::Group(proc_macro2::Group::new(
+                        proc_macro2::Delimiter::Parenthesis,
+                        rep,
+                    )));
                     i += 2;
                     continue;
                 }
@@ -3664,7 +4037,8 @@ fn replace_guard_eq(ts: TokenStream, id: &Ident, with: &dyn Fn(TokenStream) -> T
         }
         match &trees[i] {
             TokenTree::Group(g) => {
-                let mut g2 = proc_macro2::Group::new(g.delimiter(), replace_guard_eq(g.stream(), id, with));
+                let mut g2 =
+                    proc_macro2::Group::new(g.delimiter(), replace_guard_eq(g.stream(), id, with));
                 g2.set_span(g.span());
                 out.push(TokenTree::Group(g2));
             }
@@ -3681,7 +4055,11 @@ fn drop_derefs(ts: TokenStream, names: &HashSet<String>) -> TokenStream {
     let mut out: Vec<TokenTree> = vec![];
     for i in 0..trees.len() {
         if let TokenTree::Punct(p) = &trees[i] {
-            let unary = i == 0 || !matches!(&trees[i - 1], TokenTree::Ident(_) | TokenTree::Literal(_) | TokenTree::Group(_));
+            let unary = i == 0
+                || !matches!(
+                    &trees[i - 1],
+                    TokenTree::Ident(_) | TokenTree::Literal(_) | TokenTree::Group(_)
+                );
             if p.as_char() == '*' && unary {
                 if let Some(TokenTree::Ident(id)) = trees.get(i + 1) {
                     if names.contains(&id.to_string()) {
@@ -3715,10 +4093,17 @@ fn lets(s: &TransitionStmt, birds_eye: bool, out: &mut Vec<TokenStream>, skipped
 
 /// `lets`, with the values bound to withdrawn resources (`withdraw .. -= [k => let v]`
 /// binds `v` to the output parameter) replaced by `subst`.
-fn lets_with(s: &TransitionStmt, birds_eye: bool, out: &mut Vec<TokenStream>, skipped: &mut bool,
-    subst: &HashMap<String, TokenStream>) {
+fn lets_with(
+    s: &TransitionStmt,
+    birds_eye: bool,
+    out: &mut Vec<TokenStream>,
+    skipped: &mut bool,
+    subst: &HashMap<String, TokenStream>,
+) {
     match s {
-        TransitionStmt::Block(_, xs) => xs.iter().for_each(|x| lets_with(x, birds_eye, out, skipped, subst)),
+        TransitionStmt::Block(_, xs) => {
+            xs.iter().for_each(|x| lets_with(x, birds_eye, out, skipped, subst))
+        }
         TransitionStmt::Split(_, k, xs) => {
             if let SplitKind::Let(p, ty, lk, e) = &**k {
                 // A refutable pattern (`Some(let Goo::Qux(x))`) binds its
@@ -3809,7 +4194,11 @@ fn is_read_only(parts: &ExchangeParts, params: &[Param]) -> bool {
 
 /// The token parameters of an operation (those of `variable` fields from `var_params`), in
 /// field order.
-fn token_params<'a>(sm: &'a SM, parts: &'a ExchangeParts, var_params: &'a [TokenParam]) -> Vec<Param<'a>> {
+fn token_params<'a>(
+    sm: &'a SM,
+    parts: &'a ExchangeParts,
+    var_params: &'a [TokenParam],
+) -> Vec<Param<'a>> {
     let mut params: Vec<Param> = vec![];
     for f in &sm.fields {
         for p in parts.params.get(&f.name.to_string()).into_iter().flatten() {
@@ -3862,7 +4251,11 @@ fn guard_without_token(sm: &SM, parts: &ExchangeParts) -> bool {
     let vars = variable_params(sm, parts);
     let params = token_params(sm, parts, &vars);
     params.iter().any(|q| q.p.inout_type == InoutType::BorrowOut)
-        && !params.iter().any(|q| q.p.inout_type == InoutType::BorrowIn && !q.p.is_collection && !q.field.stype.is_storage())
+        && !params.iter().any(|q| {
+            q.p.inout_type == InoutType::BorrowIn
+                && !q.p.is_collection
+                && !q.field.stype.is_storage()
+        })
 }
 
 /// Whether a transition's checked body needs a unit resource.
@@ -3878,7 +4271,9 @@ fn needs_unit(sm: &SM, bundle: &SMBundle, tr: &Transition) -> Result<bool, Error
         return Ok(false);
     }
     Ok(!params.iter().any(|q| {
-        !q.field.stype.is_storage() && !q.p.is_collection && matches!(q.p.inout_type, InoutType::In | InoutType::InOut)
+        !q.field.stype.is_storage()
+            && !q.p.is_collection
+            && matches!(q.p.inout_type, InoutType::In | InoutType::InOut)
     }))
 }
 
@@ -3891,7 +4286,9 @@ fn borrows_token(sm: &SM, bundle: &SMBundle, tr: &Transition) -> Result<bool, Er
     let parts = exchange_parts_with(bundle, tr, &HashMap::new(), true)?;
     let vars = variable_params(sm, &parts);
     let params = token_params(sm, &parts, &vars);
-    Ok(params.iter().any(|q| !q.field.stype.is_storage() && !q.p.is_collection && q.p.inout_type == InoutType::BorrowIn))
+    Ok(params.iter().any(|q| {
+        !q.field.stype.is_storage() && !q.p.is_collection && q.p.inout_type == InoutType::BorrowIn
+    }))
 }
 
 /// Output of the checked facade.
@@ -3931,8 +4328,15 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     // be clonable); such guards borrow a `Unit` instead.
     let guard_unit = guard_base && store.has_storage() && sm.generics.is_some();
     let base = !store.has_storage() && unit_from_base || guard_base && !guard_unit;
-    let ctx = Ctx { sm, store: &store, base, cm: &cm, unit_init: store.has_storage() && (any_unit || guard_unit),
-        owned_base: base && sm.generics.is_some() && !store.has_storage(), guard_unit };
+    let ctx = Ctx {
+        sm,
+        store: &store,
+        base,
+        cm: &cm,
+        unit_init: store.has_storage() && (any_unit || guard_unit),
+        owned_base: base && sm.generics.is_some() && !store.has_storage(),
+        guard_unit,
+    };
     // The trusted macro's specifications call the token traits' methods.
     let mut items = vec![quote! {
         #[allow(unused_imports)]
@@ -3961,8 +4365,10 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                 let alias = format_ident!("{}_set", n);
                 items.push(quote! {#[allow(non_camel_case_types, type_alias_bounds)] pub type #alias = ::vstd::tokens::SetToken<#e, #nt>;});
             }
-            ShardableType::IMap(..) | ShardableType::PersistentIMap(..)
-            | ShardableType::ISet(_) | ShardableType::PersistentISet(_) => {
+            ShardableType::IMap(..)
+            | ShardableType::PersistentIMap(..)
+            | ShardableType::ISet(_)
+            | ShardableType::PersistentISet(_) => {
                 items.push(reservation_type(f, &cm, &store));
             }
             ShardableType::Multiset(e) => {
@@ -3983,7 +4389,8 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     let owned_base = base && generic && !store.has_storage();
     let inst_is_copy = !(owned_base || cm.as_ref().is_some_and(|cm| cm.owned));
     let (inst_derive, inst_copy) = copy_impls(&quote! {Instance}, inst_is_copy, generic);
-    let generic_args = sm.generics.as_ref().map(|g| crate::to_token_stream::get_generic_args(&g.params));
+    let generic_args =
+        sm.generics.as_ref().map(|g| crate::to_token_stream::get_generic_args(&g.params));
     let phantom_field = match &generic_args {
         Some(args) if !base => quote! {ghost __tsm_phantom: ::core::marker::PhantomData<(#args,)>,},
         _ => quote! {},
@@ -4102,16 +4509,24 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     let inst_clone = if inst_is_copy {
         quote! {pub proof fn clone(tracked &self) -> (tracked s: Self) ensures s == *self {*self}}
     } else {
-        let const_same: Vec<_> = cm.iter().flat_map(|cm| cm.consts.iter().map(|c| {
-            let n = &c.name;
-            quote! {s.#n() == self.#n()}
-        })).collect();
+        let const_same: Vec<_> = cm
+            .iter()
+            .flat_map(|cm| {
+                cm.consts.iter().map(|c| {
+                    let n = &c.name;
+                    quote! {s.#n() == self.#n()}
+                })
+            })
+            .collect();
         let (loc_copy, idem) = match &cm {
             None => (quote! {__loc: self.__loc,}, quote! {Fragment::unit().op_unit();}),
             Some(cm) => {
                 let d = cm.share(cm.by_ref(quote! {self.__desc}));
                 let kappa = cm.kappa(quote! {self.__desc});
-                (quote! {__desc: #d,}, quote! {Fragment::unit().op_unit(); assert(Fragment::op(#kappa, #kappa) == #kappa);})
+                (
+                    quote! {__desc: #d,},
+                    quote! {Fragment::unit().op_unit(); assert(Fragment::op(#kappa, #kappa) == #kappa);},
+                )
             }
         };
         let base_copy = if owned_base {
@@ -4121,7 +4536,11 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
         } else {
             quote! {}
         };
-        let phantom_copy = if generic && !base { quote! {__tsm_phantom: ::core::marker::PhantomData,} } else { quote! {} };
+        let phantom_copy = if generic && !base {
+            quote! {__tsm_phantom: ::core::marker::PhantomData,}
+        } else {
+            quote! {}
+        };
         quote! {
             /// A copy of the instance (it owns duplicable resources, so it is not `Copy`).
             pub proof fn clone(tracked &self) -> (tracked s: Self)
@@ -4168,7 +4587,11 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
         Some(cm) => cm.share(cm.by_ref(quote! {self.__desc})),
         None => quote! {},
     };
-    let pat_extra = if cm.is_some() { quote! {base, desc,} } else { quote! {} };
+    let pat_extra = if cm.is_some() {
+        quote! {base, desc,}
+    } else {
+        quote! {}
+    };
     let mut unit_fns = vec![];
     for f in &sm.fields {
         let Some(k) = kind(f) else { continue };
@@ -4287,12 +4710,15 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
             Some(_) => {
                 let (generics, attrs) = crate::verified_tokens::datatype_generics(sm);
                 let (decl, wc) = crate::to_token_stream::generics_for_decl(&generics);
-                let args = crate::to_token_stream::get_generic_args(&sm.generics.as_ref().unwrap().params);
+                let args =
+                    crate::to_token_stream::get_generic_args(&sm.generics.as_ref().unwrap().params);
                 // (The storage enums are named with their own parameters by
                 // `verified_storage_tagged`.)
                 let mut names: HashSet<String> =
                     ["Fragment", "Protocol", "State", "Token", "Instance", "Unit"]
-                        .iter().map(|s| s.to_string()).collect();
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect();
                 let attrs = quote! {#(#attrs)*};
                 // Leaked `&'static` tokens (the instance's base token and persistent
                 // tokens) need the machine's type parameters to be `'static`.
@@ -4304,7 +4730,8 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                         _ => false,
                     })
                 }
-                let params: HashSet<String> = args.iter().map(|a| quote! {#a}.to_string()).collect();
+                let params: HashSet<String> =
+                    args.iter().map(|a| quote! {#a}.to_string()).collect();
                 // (Persistent tokens of a machine with type parameters own their raw
                 // tokens; see `leaks`.)
                 let needs_static = base && !ctx.owned_base
@@ -4322,7 +4749,13 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                     wc
                 };
                 let args = quote! {#args};
-                let g = MachineGenerics { decl: to_trees(decl), wc: to_trees(wc), args: args.clone(), attrs: to_trees(attrs), names: std::mem::take(&mut names) };
+                let g = MachineGenerics {
+                    decl: to_trees(decl),
+                    wc: to_trees(wc),
+                    args: args.clone(),
+                    attrs: to_trees(attrs),
+                    names: std::mem::take(&mut names),
+                };
                 resolve_types(genericize(&out, &g), Some(&args))
             }
         };
@@ -4342,36 +4775,59 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
 
 /// A consumed token collection: its fragment, observed value, and join statement.
 /// The API only requires `e <= tokens`, so only the tokens for `e` are joined.
-fn collection_input(f: &Field, pname: &Ident, loc: &TokenStream, e: &Expr) -> Result<(TokenStream, TokenStream), Error> {
+fn collection_input(
+    f: &Field,
+    pname: &Ident,
+    loc: &TokenStream,
+    e: &Expr,
+) -> Result<(TokenStream, TokenStream), Error> {
     let n = &f.name;
     let nt = tyname(f);
     let factory = format_ident!("field_{}", n);
     let join = format_ident!("__join_{}", n);
     let frag = quote! {Fragment::#factory(#e)};
     match kind(f) {
-        Some(Kind::Map) => Ok((frag, quote! {
-            let tracked mut __tsm_tokens = #pname.into_map();
-            let tracked __tsm_sel = __tsm_tokens.tracked_remove_keys((#e).dom());
-            assert(::vstd::prelude::ext_equal(::vstd::map::Map::new(__tsm_sel.dom(),
-                |k| ::vstd::tokens::KeyValueToken::value(&__tsm_sel[k])), #e));
-            let tracked __tsm_acc = #nt::#join(__tsm_acc, __tsm_sel, #loc);
-        })),
-        Some(Kind::IMap) | Some(Kind::ISet) => Ok((frag, quote! {
-            let tracked __tsm_acc = #pname.__take(#e, __tsm_acc, #loc);
-        })),
-        Some(Kind::Set) => Ok((frag, quote! {
-            let tracked mut __tsm_tokens = #pname.into_map();
-            let tracked __tsm_sel = __tsm_tokens.tracked_remove_keys(#e);
-            assert(::vstd::prelude::ext_equal(__tsm_sel.dom(), #e));
-            let tracked __tsm_acc = #nt::#join(__tsm_acc, __tsm_sel, #loc);
-        })),
-        Some(Kind::Multiset) => Ok((frag, quote! {
-            let tracked __tsm_acc = #nt::#join(__tsm_acc, #pname, #e, #loc);
-        })),
-        Some(Kind::Option) | Some(Kind::Bool) => Ok((frag, quote! {
-            let tracked __tsm_acc = #nt::#join(__tsm_acc, #pname, #e, #loc);
-        })),
-        _ => err(f.name.span(), "generic field tokens consume map, set, multiset, option and bool token collections only"),
+        Some(Kind::Map) => Ok((
+            frag,
+            quote! {
+                let tracked mut __tsm_tokens = #pname.into_map();
+                let tracked __tsm_sel = __tsm_tokens.tracked_remove_keys((#e).dom());
+                assert(::vstd::prelude::ext_equal(::vstd::map::Map::new(__tsm_sel.dom(),
+                    |k| ::vstd::tokens::KeyValueToken::value(&__tsm_sel[k])), #e));
+                let tracked __tsm_acc = #nt::#join(__tsm_acc, __tsm_sel, #loc);
+            },
+        )),
+        Some(Kind::IMap) | Some(Kind::ISet) => Ok((
+            frag,
+            quote! {
+                let tracked __tsm_acc = #pname.__take(#e, __tsm_acc, #loc);
+            },
+        )),
+        Some(Kind::Set) => Ok((
+            frag,
+            quote! {
+                let tracked mut __tsm_tokens = #pname.into_map();
+                let tracked __tsm_sel = __tsm_tokens.tracked_remove_keys(#e);
+                assert(::vstd::prelude::ext_equal(__tsm_sel.dom(), #e));
+                let tracked __tsm_acc = #nt::#join(__tsm_acc, __tsm_sel, #loc);
+            },
+        )),
+        Some(Kind::Multiset) => Ok((
+            frag,
+            quote! {
+                let tracked __tsm_acc = #nt::#join(__tsm_acc, #pname, #e, #loc);
+            },
+        )),
+        Some(Kind::Option) | Some(Kind::Bool) => Ok((
+            frag,
+            quote! {
+                let tracked __tsm_acc = #nt::#join(__tsm_acc, #pname, #e, #loc);
+            },
+        )),
+        _ => err(
+            f.name.span(),
+            "generic field tokens consume map, set, multiset, option and bool token collections only",
+        ),
     }
 }
 
@@ -4382,7 +4838,9 @@ fn ext_step(f: &Field, a: &TokenStream, b: &TokenStream) -> TokenStream {
         Some(k) if k.map_like() || k.set_like() => {
             quote! {::vstd::resource::tsm_collections::Pointwise::extensionality((#a).#n, (#b).#n);}
         }
-        Some(Kind::Multiset) => quote! {assert(::vstd::prelude::ext_equal((#a).#n.values, (#b).#n.values));},
+        Some(Kind::Multiset) => {
+            quote! {assert(::vstd::prelude::ext_equal((#a).#n.values, (#b).#n.values));}
+        }
         _ => quote! {},
     }
 }
@@ -4390,11 +4848,18 @@ fn ext_step(f: &Field, a: &TokenStream, b: &TokenStream) -> TokenStream {
 /// The API's postconditions as separate assertions at the end of a method
 /// body (over its local outputs; `old(p)` rewritten by `in_body`). Z3 proves
 /// them one at a time much faster than the whole postcondition at once.
-fn ensures_steps(parts: &ExchangeParts, in_body: &dyn Fn(TokenStream) -> TokenStream) -> Vec<TokenStream> {
-    parts.enss.iter().map(|e| {
-        let e = in_body(quote! {#e});
-        quote! {assert(#e);}
-    }).collect()
+fn ensures_steps(
+    parts: &ExchangeParts,
+    in_body: &dyn Fn(TokenStream) -> TokenStream,
+) -> Vec<TokenStream> {
+    parts
+        .enss
+        .iter()
+        .map(|e| {
+            let e = in_body(quote! {#e});
+            quote! {assert(#e);}
+        })
+        .collect()
 }
 
 /// The `Instance` method of a transition (of an initializer, also its `_with_unit`
@@ -4420,14 +4885,20 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         parts.exch_name = format_ident!("{}_with_unit", parts.exch_name);
         let unit_out = format_ident!("__tsm_unit_out");
         parts.out_params.push((quote! {#unit_out}, quote! {Unit}, Mode::Tracked));
-        parts.enss.push(Expr::Verbatim(quote! {::vstd::prelude::equal(#unit_out.instance_id(), instance.id())}));
+        parts.enss.push(Expr::Verbatim(
+            quote! {::vstd::prelude::equal(#unit_out.instance_id(), instance.id())},
+        ));
         let (ret, req, ens) = signature_tokens(&parts);
         let with_unit = init_method(bundle, ctx, tr, &parts, ret, req, ens, true)?;
         return Ok(quote! {#plain #with_unit});
     }
     let name = &parts.exch_name;
     let in_params = &parts.in_params;
-    let gen = if parts.use_explicit_lifetime { quote! {<'a>} } else { quote! {} };
+    let gen = if parts.use_explicit_lifetime {
+        quote! {<'a>}
+    } else {
+        quote! {}
+    };
     let pn: Vec<_> = tr.params.iter().map(|p| &p.name).collect();
     let span = tr.name.span();
     let guard = params.iter().any(|q| q.p.inout_type == InoutType::BorrowOut);
@@ -4553,20 +5024,31 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         let gvals: Vec<TokenStream> = data.iter().map(|(d, _)| quote! {#ghost.#d}).collect();
         let tok_frag_ghost = single_fragment(f, &gvals);
         let incl_lemma_ghost = included_lemma(f, &gvals, quote! {#tok_frag_ghost}, None);
-        if kind(f) == Some(Kind::PersistentCount) && matches!(q.p.inout_type, InoutType::In | InoutType::BorrowIn) {
+        if kind(f) == Some(Kind::PersistentCount)
+            && matches!(q.p.inout_type, InoutType::In | InoutType::BorrowIn)
+        {
             extra_reqs.push(quote! {#pname.__n <= #pname.__m});
         }
         match q.p.inout_type {
             InoutType::In if q.p.is_collection => {
                 let Some(MonoidElt::General(e)) = q.p.elt.as_ref() else {
-                    return err(f.name.span(), "unsupported consumed collection for generic field tokens");
+                    return err(
+                        f.name.span(),
+                        "unsupported consumed collection for generic field tokens",
+                    );
                 };
                 let (coll_frag, join) = collection_input(f, pname, &link, e)?;
                 let e_body = in_body(quote! {#e});
                 coll_owned.push((in_body(join), coll_frag.clone()));
                 let observed = quote! {(#e)};
-                incl_frames.push((in_helper(coll_frag.clone()), in_helper(included_lemma(f, &[], coll_frag.clone(), Some(observed.clone())))));
-                incl_frames_body.push((in_body(coll_frag.clone()), in_body(included_lemma(f, &[], coll_frag.clone(), Some(observed)))));
+                incl_frames.push((
+                    in_helper(coll_frag.clone()),
+                    in_helper(included_lemma(f, &[], coll_frag.clone(), Some(observed.clone()))),
+                ));
+                incl_frames_body.push((
+                    in_body(coll_frag.clone()),
+                    in_body(included_lemma(f, &[], coll_frag.clone(), Some(observed))),
+                ));
                 let _ = e_body;
             }
             InoutType::In => {
@@ -4575,11 +5057,14 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
                 if cm.is_some() && kappa_from.is_none() {
                     kappa_from = Some(b.clone());
                 }
-                take_owned.push((raw.clone(), if cm.is_some() {
-                    quote! {let tracked (#raw, #b) = #pname.__into_raw(#link);}
-                } else {
-                    quote! {let tracked #raw = #pname.__into_raw(#link);}
-                }));
+                take_owned.push((
+                    raw.clone(),
+                    if cm.is_some() {
+                        quote! {let tracked (#raw, #b) = #pname.__into_raw(#link);}
+                    } else {
+                        quote! {let tracked #raw = #pname.__into_raw(#link);}
+                    },
+                ));
                 owned_frags.push(tok_frag.clone());
                 owned_frags_body.push(tok_frag_ghost.clone());
                 incl_frames.push((tok_frag.clone(), incl_lemma));
@@ -4598,11 +5083,14 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
                 } else {
                     quote! {let tracked #raw = #taken.__into_raw(#link);}
                 };
-                take_owned.push((raw.clone(), quote! {
-                    let tracked mut #taken = #ty::__arbitrary();
-                    ::vstd::modes::tracked_swap(#pname, &mut #taken);
-                    #into
-                }));
+                take_owned.push((
+                    raw.clone(),
+                    quote! {
+                        let tracked mut #taken = #ty::__arbitrary();
+                        ::vstd::modes::tracked_swap(#pname, &mut #taken);
+                        #into
+                    },
+                ));
                 owned_frags.push(tok_frag.clone());
                 owned_frags_body.push(tok_frag_ghost.clone());
                 incl_frames.push((tok_frag.clone(), incl_lemma));
@@ -4613,7 +5101,10 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
                 // types), or of the finite strategies (`vstd::tokens` types and
                 // `Option`), observed token by token.
                 let Some(MonoidElt::General(e)) = q.p.elt.as_ref() else {
-                    return err(f.name.span(), "unsupported borrowed token collection for generic field tokens");
+                    return err(
+                        f.name.span(),
+                        "unsupported borrowed token collection for generic field tokens",
+                    );
                 };
                 let factory = format_ident!("field_{}", f.name);
                 let obs = format_ident!("__tsm_obs_{}", pname);
@@ -4627,23 +5118,30 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
                     // Spanned at `e`: the precondition of a multiset's
                     // `__observe_coll` reports a repeated element there.
                     let at = verus_syn::spanned::Spanned::span(e);
-                    in_body(quote::quote_spanned! {at=> let tracked #obs = #nt::__observe_coll(#pname, #e, #link);})
+                    in_body(
+                        quote::quote_spanned! {at=> let tracked #obs = #nt::__observe_coll(#pname, #e, #link);},
+                    )
                 };
-                pending_collections.push((
-                    obs,
-                    take,
-                    frag.clone(),
-                    in_body(frag.clone()),
+                pending_collections.push((obs, take, frag.clone(), in_body(frag.clone())));
+                incl_frames.push((
+                    in_helper(frag.clone()),
+                    in_helper(included_lemma(f, &[], frag.clone(), Some(observed.clone()))),
                 ));
-                incl_frames.push((in_helper(frag.clone()), in_helper(included_lemma(f, &[], frag.clone(), Some(observed.clone())))));
-                incl_frames_body.push((in_body(frag.clone()), in_body(included_lemma(f, &[], frag, Some(observed)))));
+                incl_frames_body.push((
+                    in_body(frag.clone()),
+                    in_body(included_lemma(f, &[], frag, Some(observed))),
+                ));
             }
             InoutType::BorrowIn => {
                 let obs = format_ident!("__tsm_obs_{}", pname);
                 if first_borrow.is_none() {
                     first_borrow = Some(pname.clone());
                 }
-                take_shared.push((obs.clone(), quote! {let tracked #obs = #pname.__borrow_raw(#link).observe();}, None));
+                take_shared.push((
+                    obs.clone(),
+                    quote! {let tracked #obs = #pname.__borrow_raw(#link).observe();},
+                    None,
+                ));
                 shared_frags.push(tok_frag.clone());
                 shared_frags_body.push(tok_frag_ghost.clone());
                 incl_frames.push((tok_frag.clone(), incl_lemma));
@@ -4660,10 +5158,13 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     let read_consts: Vec<&Field> = sm
         .fields
         .iter()
-        .filter(|f| matches!(f.stype, ShardableType::Constant(_)) && read.contains(&f.name.to_string()))
+        .filter(|f| {
+            matches!(f.stype, ShardableType::Constant(_)) && read.contains(&f.name.to_string())
+        })
         .collect();
     if !read_consts.is_empty() {
-        let constants: Vec<&Field> = sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::Constant(_))).collect();
+        let constants: Vec<&Field> =
+            sm.fields.iter().filter(|f| matches!(f.stype, ShardableType::Constant(_))).collect();
         let base_frag = constants.iter().fold(quote! {Fragment::unit()}, |acc, c| {
             let w = format_ident!("with_{}", c.name);
             let n = &c.name;
@@ -4672,7 +5173,9 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         let obs = format_ident!("__tsm_obs_constants");
         // The constants' fragment `κ`: a consumed token's (or the unit's) copy,
         // else a borrowed token's.
-        let source = if kappa_from.is_some() || take_owned.is_empty() && !guard && !is_read_only(&parts, &params) {
+        let source = if kappa_from.is_some()
+            || take_owned.is_empty() && !guard && !is_read_only(&parts, &params)
+        {
             Some(quote! {let tracked #obs = __tsm_kappa.observe();})
         } else if let Some(p) = &first_borrow {
             Some(quote! {let tracked #obs = #p.__borrow_base(#link).observe();})
@@ -4692,14 +5195,21 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
             // otherwise the instance's reachable state has its constants.
             None
         } else {
-            return err(span, "generic field tokens: an operation reading a constant needs a token of the instance");
+            return err(
+                span,
+                "generic field tokens: an operation reading a constant needs a token of the instance",
+            );
         };
         match source {
             Some(source) => {
-                take_shared.push((obs.clone(), quote! {
-                    ::vstd::prelude::use_type_invariant(self);
-                    #source
-                }, None));
+                take_shared.push((
+                    obs.clone(),
+                    quote! {
+                        ::vstd::prelude::use_type_invariant(self);
+                        #source
+                    },
+                    None,
+                ));
                 shared_frags.push(base_frag.clone());
                 shared_frags_body.push(base_frag.clone());
                 for c in &read_consts {
@@ -4732,13 +5242,20 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         // A guard without borrowed tokens guards from the instance's leaked
         // unit (`κ`) token.
         if !ctx.base {
-            return err(span, "internal: generic field tokens need an instance base token for this guard");
+            return err(
+                span,
+                "internal: generic field tokens need an instance base token for this guard",
+            );
         }
         let root = format_ident!("__tsm_obs_base");
-        take_shared.push((root.clone(), quote! {
-            ::vstd::prelude::use_type_invariant(self);
-            let tracked #root = self.__base.observe();
-        }, None));
+        take_shared.push((
+            root.clone(),
+            quote! {
+                ::vstd::prelude::use_type_invariant(self);
+                let tracked #root = self.__base.observe();
+            },
+            None,
+        ));
         let frag = match cm {
             Some(cm) => cm.kappa(quote! {self.__desc}),
             None => quote! {Fragment::unit()},
@@ -4770,18 +5287,50 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     // changes) need no exchange: validate the borrowed tokens and reason
     // about a completion state.
     if is_read_only(&parts, &params) && coll_owned.is_empty() {
-        return read_only_method(ctx, tr, &parts, &take_shared, &incl_frames, &const_frames, &shared_frags, ret, req, ens, &early_body, &late_body);
+        return read_only_method(
+            ctx,
+            tr,
+            &parts,
+            &take_shared,
+            &incl_frames,
+            &const_frames,
+            &shared_frags,
+            ret,
+            req,
+            ens,
+            &early_body,
+            &late_body,
+        );
     }
     if guard {
         // A guard that borrows no token borrows a unit (see `Ctx::guard_unit`).
         let (unit_params, req) = if ctx.guard_unit && guard_without_token(sm, &parts) {
             let unit_req = quote! {__tsm_unit.instance_id() == (*self).id()};
-            let req = if req.is_empty() { quote! {requires #unit_req} } else { quote! {#req, #unit_req} };
+            let req = if req.is_empty() {
+                quote! {requires #unit_req}
+            } else {
+                quote! {#req, #unit_req}
+            };
             (vec![quote! {tracked __tsm_unit: &'a Unit}], req)
         } else {
             (vec![], req)
         };
-        return guard_method(ctx, tr, &parts, &params, &take_shared, &incl_frames, &shared_frags, &shapes, ret, req, ens, &early_body, &late_body, &unit_params);
+        return guard_method(
+            ctx,
+            tr,
+            &parts,
+            &params,
+            &take_shared,
+            &incl_frames,
+            &shared_frags,
+            &shapes,
+            ret,
+            req,
+            ens,
+            &early_body,
+            &late_body,
+            &unit_params,
+        );
     }
     // Without any owned token, the method takes a unit token (storage
     // machines) or splits one off the instance's shared token.
@@ -4791,9 +5340,17 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     if unit_param {
         in_params.push(quote! {tracked __tsm_unit: Unit});
     }
-    let unit_req = if unit_param { quote! {__tsm_unit.instance_id() == (*self).id(),} } else { quote! {} };
+    let unit_req = if unit_param {
+        quote! {__tsm_unit.instance_id() == (*self).id(),}
+    } else {
+        quote! {}
+    };
     let req = if !unit_req.is_empty() {
-        if req.is_empty() { quote! {requires #unit_req} } else { quote! {#req, #unit_req} }
+        if req.is_empty() {
+            quote! {requires #unit_req}
+        } else {
+            quote! {#req, #unit_req}
+        }
     } else {
         req
     };
@@ -4882,7 +5439,11 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     // Deposits: storage inputs.
     let mut deposits = vec![];
     // The deposit (a spec value).
-    let mut deposit_spec = if store.has_storage() { store.unit() } else { quote! {} };
+    let mut deposit_spec = if store.has_storage() {
+        store.unit()
+    } else {
+        quote! {}
+    };
     let mut withdrawals = vec![];
     for q in &params {
         let f = q.field;
@@ -4932,11 +5493,14 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
             (InoutType::Out, MonoidElt::General(e)) => {
                 withdrawals.push(in_body(store.unpack(f, pname, &quote! {#e})));
             }
-            _ => return err(f.name.span(), "unsupported storage operation for generic field tokens"),
+            _ => {
+                return err(f.name.span(), "unsupported storage operation for generic field tokens");
+            }
         }
     }
     let deposit_spec_helper = in_helper(deposit_spec.clone());
-    let withdrawn_binds_helper: Vec<_> = withdrawn_binds.iter().map(|b| in_helper(b.clone())).collect();
+    let withdrawn_binds_helper: Vec<_> =
+        withdrawn_binds.iter().map(|b| in_helper(b.clone())).collect();
     let withdrawn_binds_body: Vec<_> = withdrawn_binds.iter().map(|b| in_body(b.clone())).collect();
     let deposit_spec_body = in_body(deposit_spec.clone());
     let deposits: Vec<_> = deposits.into_iter().map(|d| in_body(d)).collect();
@@ -4950,14 +5514,20 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     let deposited = format_ident!("{}_deposited", tr.name);
     let owners = format_ident!("{}_owners_enabled", tr.name);
     let safety = format_ident!("{}_safety", tr.name);
-    let h = if has_shared { quote! {__tsm_hv} } else { quote! {Fragment::unit()} };
+    let h = if has_shared {
+        quote! {__tsm_hv}
+    } else {
+        quote! {Fragment::unit()}
+    };
     let h_param = format_ident!("__tsm_h", span = Span::mixed_site());
     let lemmas = quote! {broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
-        ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};};
+    ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};};
     let nondet: Vec<_> = sm
         .fields
         .iter()
-        .filter(|f| parts.out_params.iter().any(|o| o.0.to_string() == format!("original_field_{}", f.name)))
+        .filter(|f| {
+            parts.out_params.iter().any(|o| o.0.to_string() == format!("original_field_{}", f.name))
+        })
         .map(|f| {
             let n = format_ident!("original_field_{}", f.name);
             let fname = &f.name;
@@ -5027,21 +5597,19 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         // With constants, each new token gets its own copy of `κ`.
         let (kp, from_args, split_args) = match cm {
             None => (quote! {}, quote! {}, quote! {}),
-            Some(cm) => {
-                (
-                    quote! {
-                        let tracked (__tsm_kp, __tsm_kappa) = __tsm_kappa.split(__tsm_k, __tsm_k);
-                    },
-                    {
-                        let d = cm.share(cm.by_ref(quote! {self.__desc}));
-                        quote! {__tsm_kp, #d,}
-                    },
-                    {
-                        let d = cm.by_ref(quote! {self.__desc});
-                        quote! {, __tsm_kp, #d}
-                    },
-                )
-            }
+            Some(cm) => (
+                quote! {
+                    let tracked (__tsm_kp, __tsm_kappa) = __tsm_kappa.split(__tsm_k, __tsm_k);
+                },
+                {
+                    let d = cm.share(cm.by_ref(quote! {self.__desc}));
+                    quote! {__tsm_kp, #d,}
+                },
+                {
+                    let d = cm.by_ref(quote! {self.__desc});
+                    quote! {, __tsm_kp, #d}
+                },
+            ),
         };
         if q.p.inout_type == InoutType::InOut {
             let Some(e) = parts.var_updates.get(&f.name.to_string()) else {
@@ -5064,7 +5632,10 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         let elt = q.p.elt.as_ref().unwrap();
         if q.p.is_collection {
             let MonoidElt::General(e) = elt else {
-                return err(f.name.span(), "unsupported collection output for generic field tokens");
+                return err(
+                    f.name.span(),
+                    "unsupported collection output for generic field tokens",
+                );
             };
             let split = format_ident!("__split_{}", f.name);
             let k = kind(f).unwrap();
@@ -5084,18 +5655,25 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
             } else if k == Kind::Multiset || k.option_like() {
                 quote! {#kp let tracked #pname = #ty::#split(__tsm_piece, #e #split_args);}
             } else {
-                return err(f.name.span(), "unsupported collection output for generic field tokens");
+                return err(
+                    f.name.span(),
+                    "unsupported collection output for generic field tokens",
+                );
             };
             let fr = quote! {Fragment::#factory(#e)};
             outs.push((in_helper(fr.clone()), in_body(fr), in_body(mk)));
             continue;
         }
         let data: Vec<TokenStream> = match (kind(f).unwrap(), elt) {
-            (k, MonoidElt::SingletonKV(kk, Some(v))) if k.map_like() => vec![quote! {#kk}, quote! {#v}],
+            (k, MonoidElt::SingletonKV(kk, Some(v))) if k.map_like() => {
+                vec![quote! {#kk}, quote! {#v}]
+            }
             (k, MonoidElt::SingletonSet(e)) if k.set_like() => vec![quote! {#e}],
             (Kind::Multiset, MonoidElt::SingletonMultiset(e)) => vec![quote! {#e}],
             (Kind::Bool | Kind::PersistentBool, MonoidElt::True) => vec![],
-            (Kind::Option | Kind::PersistentOption, MonoidElt::OptionSome(Some(v))) => vec![quote! {#v}],
+            (Kind::Option | Kind::PersistentOption, MonoidElt::OptionSome(Some(v))) => {
+                vec![quote! {#v}]
+            }
             (Kind::Count, MonoidElt::General(n)) => vec![quote! {#n}],
             (Kind::PersistentCount, MonoidElt::General(n)) => vec![quote! {#n}, quote! {#n}],
             _ => return err(f.name.span(), "unsupported output element for generic field tokens"),
@@ -5107,9 +5685,19 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
             in_body(quote! {#kp let tracked #pname = #ty::__from_raw(__tsm_piece, #from_args #(#data),*);}),
         ));
     }
-    let expected_helper = outs.iter().rev().fold(quote! {Fragment::unit()}, |acc, (fr, _, _)| quote! {Fragment::op(#fr, #acc)});
-    let expected_body = outs.iter().rev().fold(quote! {Fragment::unit()}, |acc, (_, fr, _)| quote! {Fragment::op(#fr, #acc)});
-    let ext: Vec<_> = sm.fields.iter().map(|f| ext_step(f, &quote! {__tsm_out_frag}, &quote! {__tsm_expected})).collect();
+    let expected_helper = outs
+        .iter()
+        .rev()
+        .fold(quote! {Fragment::unit()}, |acc, (fr, _, _)| quote! {Fragment::op(#fr, #acc)});
+    let expected_body = outs
+        .iter()
+        .rev()
+        .fold(quote! {Fragment::unit()}, |acc, (_, fr, _)| quote! {Fragment::op(#fr, #acc)});
+    let ext: Vec<_> = sm
+        .fields
+        .iter()
+        .map(|f| ext_step(f, &quote! {__tsm_out_frag}, &quote! {__tsm_expected}))
+        .collect();
     // With many outputs, the remaining outputs after each piece are bound once
     // from the end (re-stating each remainder is quadratic in the number of
     // outputs; for a few outputs it is cheaper for the solver than the lets).
@@ -5131,17 +5719,30 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
             let tail = &tails[i];
             quote! {#tail}
         } else {
-            outs[i + 1..].iter().rev().fold(quote! {Fragment::unit()}, |acc, (_, fr2, _)| quote! {Fragment::op(#fr2, #acc)})
+            outs[i + 1..].iter().rev().fold(
+                quote! {Fragment::unit()},
+                |acc, (_, fr2, _)| quote! {Fragment::op(#fr2, #acc)},
+            )
         };
         splits.push(quote! {
             let tracked (__tsm_piece, __tsm_left) = __tsm_left.split(#fr, #tail);
             #mk
         });
     }
-    let has_deposit = params.iter().any(|q| q.field.stype.is_storage() && q.p.inout_type == InoutType::In);
-    let has_withdraw = params.iter().any(|q| q.field.stype.is_storage() && q.p.inout_type == InoutType::Out);
-    let map_ty = if store.has_storage() { store.storage_ty() } else { quote! {()} };
-    let withdrawn_unit = if store.has_storage() { store.tracked_unit() } else { quote! {()} };
+    let has_deposit =
+        params.iter().any(|q| q.field.stype.is_storage() && q.p.inout_type == InoutType::In);
+    let has_withdraw =
+        params.iter().any(|q| q.field.stype.is_storage() && q.p.inout_type == InoutType::Out);
+    let map_ty = if store.has_storage() {
+        store.storage_ty()
+    } else {
+        quote! {()}
+    };
+    let withdrawn_unit = if store.has_storage() {
+        store.tracked_unit()
+    } else {
+        quote! {()}
+    };
     // With a borrowed observation, the exchange (frame lemma and output
     // lifting) is a separate proof (`exchange_fn`), as the raw protocol's
     // operations are.
@@ -5154,7 +5755,11 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         (true, false) => {
             // The raw protocol operation does the frame and output lifting in its
             // own context.
-            let dep_arg = if has_deposit { quote! {__tsm_deposit,} } else { quote! {} };
+            let dep_arg = if has_deposit {
+                quote! {__tsm_deposit,}
+            } else {
+                quote! {}
+            };
             let raw = &tr.name;
             if has_withdraw {
                 quote! {
@@ -5200,7 +5805,9 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     }
     let use_invs: Vec<_> = params
         .iter()
-        .filter(|q| kind(q.field) == Some(Kind::PersistentCount) && q.p.inout_type == InoutType::BorrowIn)
+        .filter(|q| {
+            kind(q.field) == Some(Kind::PersistentCount) && q.p.inout_type == InoutType::BorrowIn
+        })
         .map(|q| {
             let pname = &q.p.name;
             quote! {::vstd::prelude::use_type_invariant(#pname);}
@@ -5233,16 +5840,17 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
                 quote! {__tsm_withdrawn.contains_key(#key) && __tsm_withdrawn[#key] == #v}
             }
             None => quote! {__tsm_withdrawn.contains_key(#key) && __tsm_withdrawn[#key] is #fname
-                && ::vstd::prelude::imply(!__tsm_deposit.contains_key(#key), __tsm_withdrawn[#key] == #st[#key])},
+            && ::vstd::prelude::imply(!__tsm_deposit.contains_key(#key), __tsm_withdrawn[#key] == #st[#key])},
         };
         match q.p.elt.as_ref() {
-            Some(MonoidElt::SingletonKV(k, v)) => {
-                withdraw_facts.push(single(store.key_of(f, Some(k)), v.as_ref().map(|v| quote! {#v})))
-            }
+            Some(MonoidElt::SingletonKV(k, v)) => withdraw_facts
+                .push(single(store.key_of(f, Some(k)), v.as_ref().map(|v| quote! {#v}))),
             Some(MonoidElt::OptionSome(v)) => {
                 withdraw_facts.push(single(store.key_of(f, None), v.as_ref().map(|v| quote! {#v})))
             }
-            Some(MonoidElt::General(e)) => withdraw_facts.push(store.withdraw_general_fact(f, &quote! {#e})),
+            Some(MonoidElt::General(e)) => {
+                withdraw_facts.push(store.withdraw_general_fact(f, &quote! {#e}))
+            }
             _ => {}
         }
     }
@@ -5257,12 +5865,26 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         let pname = &q.p.name;
         let Some(elt) = q.p.elt.as_ref() else { continue };
         let cond = match (kind(f), elt, q.p.is_collection) {
-            (Some(kd), MonoidElt::SingletonKV(k, Some(v)), false) if kd.map_like() => quote! {#pname.__k == #k && #pname.__v == #v},
-            (Some(kd), MonoidElt::SingletonKV(k, None), false) if kd.map_like() => quote! {#pname.__k == #k},
-            (Some(kd), MonoidElt::SingletonSet(e), false) if kd.set_like() => quote! {#pname.__e == #e},
-            (Some(Kind::Multiset), MonoidElt::SingletonMultiset(e), false) => quote! {#pname.__e == #e},
-            (Some(Kind::Option | Kind::PersistentOption), MonoidElt::OptionSome(Some(v)), false) => quote! {#pname.__v == #v},
-            (Some(Kind::Count | Kind::PersistentCount), MonoidElt::General(n), false) => quote! {#pname.__n == #n},
+            (Some(kd), MonoidElt::SingletonKV(k, Some(v)), false) if kd.map_like() => {
+                quote! {#pname.__k == #k && #pname.__v == #v}
+            }
+            (Some(kd), MonoidElt::SingletonKV(k, None), false) if kd.map_like() => {
+                quote! {#pname.__k == #k}
+            }
+            (Some(kd), MonoidElt::SingletonSet(e), false) if kd.set_like() => {
+                quote! {#pname.__e == #e}
+            }
+            (Some(Kind::Multiset), MonoidElt::SingletonMultiset(e), false) => {
+                quote! {#pname.__e == #e}
+            }
+            (
+                Some(Kind::Option | Kind::PersistentOption),
+                MonoidElt::OptionSome(Some(v)),
+                false,
+            ) => quote! {#pname.__v == #v},
+            (Some(Kind::Count | Kind::PersistentCount), MonoidElt::General(n), false) => {
+                quote! {#pname.__n == #n}
+            }
             _ => continue,
         };
         match_conds.push(in_helper(quote! {({ #(#early)* #cond })}));
@@ -5298,7 +5920,8 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         .iter()
         .map(|sf| quote! {::vstd::resource::tsm::fragment_included_frame::<Protocol>(#sf, #h_param);})
         .collect();
-    let frames_ready: Vec<_> = shared_steps.iter().cloned().chain(frames_post.iter().cloned()).collect();
+    let frames_ready: Vec<_> =
+        shared_steps.iter().cloned().chain(frames_post.iter().cloned()).collect();
     let ready_fn = format_ident!("__tsm_ready_{}", tr.name);
     let api_reqs: Vec<_> = parts.reqs.iter().map(|r| in_helper(quote! {#r})).collect();
     let (dep_param, dep_arg, dep_req, dep_goal, dep_ext) = if store.has_storage() {
@@ -5312,7 +5935,11 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     } else {
         (quote! {}, quote! {}, quote! {}, quote! {}, quote! {})
     };
-    let dep_comma = if store.has_storage() { quote! {,} } else { quote! {} };
+    let dep_comma = if store.has_storage() {
+        quote! {,}
+    } else {
+        quote! {}
+    };
     // The facts about `op(owned, h)` outside the completion quantifier
     // (ownership of read and updated variables) come from one completion.
     let (ready_req, ready_pre) = if has_shared {
@@ -5340,20 +5967,34 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     // lemmas relate to the state.
     let accessor_anchors: Vec<TokenStream> = params
         .iter()
-        .filter(|q| !q.field.stype.is_storage() && !q.p.is_collection
-            && matches!(q.p.inout_type, InoutType::In | InoutType::InOut | InoutType::BorrowIn))
+        .filter(|q| {
+            !q.field.stype.is_storage()
+                && !q.p.is_collection
+                && matches!(q.p.inout_type, InoutType::In | InoutType::InOut | InoutType::BorrowIn)
+        })
         .flat_map(|q| {
             let pname = &q.p.name;
             let pairs: &[(&str, &str)] = match kind(q.field) {
                 Some(Kind::Variable | Kind::Option | Kind::PersistentOption) => &[("value", "__v")],
-                Some(Kind::Map | Kind::PersistentMap | Kind::IMap | Kind::PersistentIMap) => &[("key", "__k"), ("value", "__v")],
-                Some(Kind::Set | Kind::PersistentSet | Kind::ISet | Kind::PersistentISet | Kind::Multiset) => &[("element", "__e")],
+                Some(Kind::Map | Kind::PersistentMap | Kind::IMap | Kind::PersistentIMap) => {
+                    &[("key", "__k"), ("value", "__v")]
+                }
+                Some(
+                    Kind::Set
+                    | Kind::PersistentSet
+                    | Kind::ISet
+                    | Kind::PersistentISet
+                    | Kind::Multiset,
+                ) => &[("element", "__e")],
                 _ => &[],
             };
-            pairs.iter().map(move |(acc, d)| {
-                let (acc, d) = (format_ident!("{}", acc), format_ident!("{}", d));
-                quote! {assert(::vstd::prelude::equal((#pname).#acc(), #pname.#d));}
-            }).collect::<Vec<_>>()
+            pairs
+                .iter()
+                .map(move |(acc, d)| {
+                    let (acc, d) = (format_ident!("{}", acc), format_ident!("{}", d));
+                    quote! {assert(::vstd::prelude::equal((#pname).#acc(), #pname.#d));}
+                })
+                .collect::<Vec<_>>()
         })
         .collect();
     let seq_hints = sequence_hints(&params, &owned_ident, &h_param, &in_helper);
@@ -5512,8 +6153,16 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     } else {
         quote! {}
     };
-    let bind_h = if has_shared { quote! {let ghost __tsm_hv = #shared_ident.fragment();} } else { quote! {} };
-    let post_args = if store.has_storage() { quote! {__tsm_deposit, __tsm_withdrawn} } else { quote! {} };
+    let bind_h = if has_shared {
+        quote! {let ghost __tsm_hv = #shared_ident.fragment();}
+    } else {
+        quote! {}
+    };
+    let post_args = if store.has_storage() {
+        quote! {__tsm_deposit, __tsm_withdrawn}
+    } else {
+        quote! {}
+    };
     // The trusted macro's specifications use the old `&mut` postcondition style.
     let mut_style = if inouts.is_empty() {
         quote! {}
@@ -5587,7 +6236,11 @@ fn read_only_method(
     let sm = ctx.sm;
     let name = &parts.exch_name;
     let in_params = &parts.in_params;
-    let gen = if parts.use_explicit_lifetime { quote! {<'a>} } else { quote! {} };
+    let gen = if parts.use_explicit_lifetime {
+        quote! {<'a>}
+    } else {
+        quote! {}
+    };
     let pn: Vec<_> = tr.params.iter().map(|p| &p.name).collect();
     let shared_ident = format_ident!("__tsm_shared", span = Span::mixed_site());
     let t = quote! {::vstd::resource::tsm};
@@ -5595,7 +6248,9 @@ fn read_only_method(
     let nondet: Vec<_> = sm
         .fields
         .iter()
-        .filter(|f| parts.out_params.iter().any(|o| o.0.to_string() == format!("original_field_{}", f.name)))
+        .filter(|f| {
+            parts.out_params.iter().any(|o| o.0.to_string() == format!("original_field_{}", f.name))
+        })
         .map(|f| {
             let n = format_ident!("original_field_{}", f.name);
             let fname = &f.name;
@@ -5620,7 +6275,8 @@ fn read_only_method(
         _ => quote! {(#(#ret_vals),*)},
     };
     let joins = shared_joins(take_shared, &shared_ident);
-    let hs: Vec<Ident> = (0..shared_frags.len()).map(|i| format_ident!("__tsm_hacc_{}", i)).collect();
+    let hs: Vec<Ident> =
+        (0..shared_frags.len()).map(|i| format_ident!("__tsm_hacc_{}", i)).collect();
     let mut incl = vec![];
     for (i, sf) in shared_frags.iter().enumerate() {
         if i == 0 {
@@ -5633,17 +6289,33 @@ fn read_only_method(
     }
     let frames_at: Vec<_> = incl_frames
         .iter()
-        .map(|(frag, lemma)| {
-            frame_block(frag, &quote! {#shared_ident.fragment()}, lemma)
-        })
+        .map(|(frag, lemma)| frame_block(frag, &quote! {#shared_ident.fragment()}, lemma))
         .collect();
     let use_invs = quote! {};
     let ens_steps = ensures_steps(parts, &|ts| ts);
     if take_shared.iter().all(|(_, _, optional)| optional.is_some()) {
-        return read_only_optional(ctx, tr, parts, take_shared, incl_frames, const_frames, shared_frags, ret, req, ens, early, late, &nondet, result);
+        return read_only_optional(
+            ctx,
+            tr,
+            parts,
+            take_shared,
+            incl_frames,
+            const_frames,
+            shared_frags,
+            ret,
+            req,
+            ens,
+            early,
+            late,
+            &nondet,
+            result,
+        );
     }
     if take_shared.first().is_some_and(|(_, _, optional)| optional.is_some()) {
-        return err(tr.name.span(), "internal: generic field tokens join borrowed collections after the other borrowed inputs");
+        return err(
+            tr.name.span(),
+            "internal: generic field tokens join borrowed collections after the other borrowed inputs",
+        );
     }
     Ok(quote! {
         pub proof fn #name #gen (#(#in_params),*) #ret #req #ens {
@@ -5692,7 +6364,11 @@ fn read_only_optional(
 ) -> Result<TokenStream, Error> {
     let name = &parts.exch_name;
     let in_params = &parts.in_params;
-    let gen = if parts.use_explicit_lifetime { quote! {<'a>} } else { quote! {} };
+    let gen = if parts.use_explicit_lifetime {
+        quote! {<'a>}
+    } else {
+        quote! {}
+    };
     let pn: Vec<_> = tr.params.iter().map(|p| &p.name).collect();
     let t = quote! {::vstd::resource::tsm};
     let safety = format_ident!("{}_safety", tr.name);
@@ -5701,7 +6377,8 @@ fn read_only_optional(
     let embed = quote! {<Protocol as ::vstd::resource::tsm::Machine>::embed};
     let ens_steps = ensures_steps(parts, &|ts| ts);
     let mut joins = vec![];
-    let hs: Vec<Ident> = (0..take_shared.len()).map(|i| format_ident!("__tsm_hacc_{}", i)).collect();
+    let hs: Vec<Ident> =
+        (0..take_shared.len()).map(|i| format_ident!("__tsm_hacc_{}", i)).collect();
     let gs: Vec<Ident> = (0..take_shared.len()).map(|i| format_ident!("__tsm_g_{}", i)).collect();
     for (i, (obs, take, sf)) in take_shared.iter().enumerate() {
         let sf = sf.as_ref().unwrap();
@@ -5765,7 +6442,9 @@ fn read_only_optional(
         for i in (0..take_shared.len()).rev() {
             let g = &gs[i];
             let hi = &hs[i];
-            let mut chain = vec![quote! {#t::fragment_included_transitive::<Protocol>(#kappa, #g->Some_0.fragment(), #hi);}];
+            let mut chain = vec![
+                quote! {#t::fragment_included_transitive::<Protocol>(#kappa, #g->Some_0.fragment(), #hi);},
+            ];
             for j in (i + 1)..take_shared.len() {
                 let (b, c) = (&hs[j - 1], &hs[j]);
                 chain.push(quote! {#t::fragment_included_transitive::<Protocol>(#kappa, #b, #c);});
@@ -5778,9 +6457,7 @@ fn read_only_optional(
         }
         let frames: Vec<_> = const_frames
             .iter()
-            .map(|(frag, lemma)| {
-                frame_block(frag, &quote! {#hf}, lemma)
-            })
+            .map(|(frag, lemma)| frame_block(frag, &quote! {#hf}, lemma))
             .collect();
         quote! {
             if __tsm_sh is Some {
@@ -5813,12 +6490,8 @@ fn read_only_optional(
             #consts_at
         }
     };
-    let frames_at: Vec<_> = incl_frames
-        .iter()
-        .map(|(frag, lemma)| {
-            frame_block(frag, &quote! {#hf}, lemma)
-        })
-        .collect();
+    let frames_at: Vec<_> =
+        incl_frames.iter().map(|(frag, lemma)| frame_block(frag, &quote! {#hf}, lemma)).collect();
     Ok(quote! {
         pub proof fn #name #gen (#(#in_params),*) #ret #req #ens {
             hide(State::invariant);
@@ -5862,7 +6535,11 @@ fn guard_method(
     let span = tr.name.span();
     let name = &parts.exch_name;
     let in_params: Vec<TokenStream> = parts.in_params.iter().chain(unit_params).cloned().collect();
-    let gen = if parts.use_explicit_lifetime { quote! {<'a>} } else { quote! {} };
+    let gen = if parts.use_explicit_lifetime {
+        quote! {<'a>}
+    } else {
+        quote! {}
+    };
     let pn: Vec<_> = tr.params.iter().map(|p| &p.name).collect();
     let t = quote! {::vstd::resource::tsm};
     let reqs_name = format_ident!("{}_requires", tr.name);
@@ -5874,7 +6551,8 @@ fn guard_method(
     if take_shared.is_empty() {
         return err(span, "generic field tokens support guards with at least one borrowed token");
     }
-    let hs: Vec<Ident> = (0..shared_frags.len()).map(|i| format_ident!("__tsm_hacc_{}", i)).collect();
+    let hs: Vec<Ident> =
+        (0..shared_frags.len()).map(|i| format_ident!("__tsm_hacc_{}", i)).collect();
     let mut incl = vec![];
     let joins2 = shared_joins(take_shared, &shared_ident);
 
@@ -5889,9 +6567,7 @@ fn guard_method(
     }
     let frames: Vec<_> = incl_frames
         .iter()
-        .map(|(frag, lemma)| {
-            frame_block(frag, &quote! {__tsm_f}, lemma)
-        })
+        .map(|(frag, lemma)| frame_block(frag, &quote! {__tsm_f}, lemma))
         .collect();
     let mut guards = vec![];
     let mut helpers = vec![];
@@ -5915,7 +6591,13 @@ fn guard_method(
                 continue;
             }
             Some(GuardShape::MapRefs(e)) => {
-                let (helper, fact, call) = guard_refs(store, f, &format_ident!("__tsm_guard_refs_{}_{}", tr.name, pname), pname, &e)?;
+                let (helper, fact, call) = guard_refs(
+                    store,
+                    f,
+                    &format_ident!("__tsm_guard_refs_{}_{}", tr.name, pname),
+                    pname,
+                    &e,
+                )?;
                 helpers.push(helper);
                 ref_facts.push(fact);
                 guards.push(call);
@@ -5957,7 +6639,9 @@ fn guard_method(
         .sm
         .fields
         .iter()
-        .filter(|f| parts.out_params.iter().any(|o| o.0.to_string() == format!("original_field_{}", f.name)))
+        .filter(|f| {
+            parts.out_params.iter().any(|o| o.0.to_string() == format!("original_field_{}", f.name))
+        })
         .map(|f| {
             let n = format_ident!("original_field_{}", f.name);
             let fname = &f.name;
@@ -6032,7 +6716,13 @@ fn guard_method(
 /// whose output is a map of references (`GuardShape::MapRefs`): a helper
 /// borrowing the value of each key of `e` from the guarded storage map, and
 /// the statements binding the output from `__tsm_guard`.
-fn guard_refs(store: &Store, f: &Field, helper: &Ident, pname: &Ident, e: &TokenStream) -> Result<(TokenStream, TokenStream, TokenStream), Error> {
+fn guard_refs(
+    store: &Store,
+    f: &Field,
+    helper: &Ident,
+    pname: &Ident,
+    e: &TokenStream,
+) -> Result<(TokenStream, TokenStream, TokenStream), Error> {
     let n = &f.name;
     let (k, v, infinite) = match &f.stype {
         ShardableType::StorageMap(k, v) => (k, v, false),
@@ -6044,7 +6734,8 @@ fn guard_refs(store: &Store, f: &Field, helper: &Ident, pname: &Ident, e: &Token
     let b = store.layout().helper("__borrow_", n);
     let borrow = quote! {::vstd::std_specs::option::OptionAdditionalFns::tracked_unwrap(#b(m, kc))};
     let map = store.storage_ty();
-    let (set_ty, emap_ty, out_ty, empty, choose_len, contains_len, remove_len, finite) = if infinite {
+    let (set_ty, emap_ty, out_ty, empty, choose_len, contains_len, remove_len, finite) = if infinite
+    {
         (
             quote! {::vstd::iset::ISet<#k>},
             quote! {::vstd::imap::IMap<#k, #v>},
@@ -6206,7 +6897,8 @@ fn init_method(
             for c in &cm.consts {
                 let take = format_ident!("take_{}", c.name);
                 let piece = format_ident!("__tsm_const_{}", c.name);
-                takes.push(quote! {let tracked (#piece, __tsm_rest) = Protocol::#take(__tsm_rest);});
+                takes
+                    .push(quote! {let tracked (#piece, __tsm_rest) = Protocol::#take(__tsm_rest);});
                 pieces.push(piece);
             }
             let first = &pieces[0];
@@ -6214,14 +6906,22 @@ fn init_method(
             for p in &pieces[1..] {
                 takes.push(quote! {let tracked __tsm_kappa = __tsm_kappa.join(#p);});
             }
-            let vals: Vec<_> = cm.consts.iter().map(|c| {
-                let n = &c.name;
-                quote! {post.#n}
-            }).collect();
+            let vals: Vec<_> = cm
+                .consts
+                .iter()
+                .map(|c| {
+                    let n = &c.name;
+                    quote! {post.#n}
+                })
+                .collect();
             let kappa = cm.kappa(quote! {__tsm_desc});
             let alloc = quote! {::vstd::resource::pcm::Resource::alloc(
-                Some(::vstd::resource::agree::AgreementRA::Agree(((#(#vals,)*), __tsm_all_loc))))};
-            let desc_alloc = if cm.owned { alloc } else { quote! {::vstd::modes::tracked_static_ref(#alloc)} };
+            Some(::vstd::resource::agree::AgreementRA::Agree(((#(#vals,)*), __tsm_all_loc))))};
+            let desc_alloc = if cm.owned {
+                alloc
+            } else {
+                quote! {::vstd::modes::tracked_static_ref(#alloc)}
+            };
             let idem = cm.kappa_idem(quote! {__tsm_desc});
             takes.push(quote! {
                 let tracked __tsm_desc = #desc_alloc;
@@ -6279,7 +6979,11 @@ fn init_method(
                     let tracked #arg = #ty::#split_token(__tsm_piece, #value #split_args, #id);
                 }
             }
-            Kind::Multiset | Kind::Option | Kind::PersistentOption | Kind::Bool | Kind::PersistentBool => quote! {
+            Kind::Multiset
+            | Kind::Option
+            | Kind::PersistentOption
+            | Kind::Bool
+            | Kind::PersistentBool => quote! {
                 assert(__tsm_piece.fragment() == Fragment::#factory(#value));
                 #kp
                 let tracked #arg = #ty::#split(__tsm_piece, #value #split_args);
@@ -6298,8 +7002,16 @@ fn init_method(
         };
         takes.push(stmt);
     }
-    let phantom = if sm.generics.is_some() && !ctx.base { quote! {, __tsm_phantom: ::core::marker::PhantomData} } else { quote! {} };
-    let base_hold = if ctx.owned_base { quote! {__tsm_base_tok} } else { quote! {::vstd::modes::tracked_static_ref(__tsm_base_tok)} };
+    let phantom = if sm.generics.is_some() && !ctx.base {
+        quote! {, __tsm_phantom: ::core::marker::PhantomData}
+    } else {
+        quote! {}
+    };
+    let base_hold = if ctx.owned_base {
+        quote! {__tsm_base_tok}
+    } else {
+        quote! {::vstd::modes::tracked_static_ref(__tsm_base_tok)}
+    };
     let base_stmt = match (cm, ctx.base) {
         (None, true) if store.has_storage() => quote! {
             Fragment::commutative(Fragment::unit(), __tsm_rest.fragment());
@@ -6312,7 +7024,9 @@ fn init_method(
             let tracked __tsm_base_tok = __tsm_rest.empty();
             let tracked instance = Instance {__loc: Ghost(__tsm_all_loc), __base: #base_hold};
         },
-        (None, false) => quote! {let tracked instance = Instance {__loc: Ghost(__tsm_all_loc) #phantom};},
+        (None, false) => {
+            quote! {let tracked instance = Instance {__loc: Ghost(__tsm_all_loc) #phantom};}
+        }
         (Some(_), true) => {
             quote! {
                 let tracked (__tsm_base_tok, __tsm_kappa) = __tsm_kappa.split(__tsm_k, __tsm_k);
@@ -6355,7 +7069,11 @@ fn init_method(
             quote! {Tracked(#n)}
         })
         .collect();
-    let result = if ret_vals.len() == 1 { quote! {#(#ret_vals)*} } else { quote! {(#(#ret_vals),*)} };
+    let result = if ret_vals.len() == 1 {
+        quote! {#(#ret_vals)*}
+    } else {
+        quote! {(#(#ret_vals),*)}
+    };
     let result = if parts.out_params.len() == 1 {
         let n = &parts.out_params[0].0;
         quote! {#n}
@@ -6487,7 +7205,9 @@ fn resolve_types(trees: Vec<Tree>, args: Option<&TokenStream>) -> Vec<Tree> {
     let mut out = vec![];
     for t in trees {
         match t {
-            Tree::Group(d, span, inner) => out.push(Tree::Group(d, span, resolve_types(inner, args))),
+            Tree::Group(d, span, inner) => {
+                out.push(Tree::Group(d, span, resolve_types(inner, args)))
+            }
             Tree::Token(TokenTree::Ident(id)) if id.to_string().starts_with("__TSM_TY_") => {
                 let name = Ident::new(&id.to_string()["__TSM_TY_".len()..], id.span());
                 match args {
@@ -6602,7 +7322,9 @@ fn turbofish_at(trees: &[Tree], i: usize, g: &MachineGenerics) -> Option<Vec<Tre
     }
     if i >= 1 {
         if let Some(prev) = trees[i - 1].ident() {
-            if ["struct", "enum", "type", "fn", "mod", "trait", "use"].contains(&prev.to_string().as_str()) {
+            if ["struct", "enum", "type", "fn", "mod", "trait", "use"]
+                .contains(&prev.to_string().as_str())
+            {
                 return None;
             }
         }
@@ -6622,7 +7344,8 @@ fn turbofish(trees: &[Tree], g: &MachineGenerics) -> Vec<Tree> {
     let mut out = vec![];
     for i in 0..trees.len() {
         // `hide`/`reveal` name the function by an untyped path.
-        let after_hide = i >= 1 && trees[i - 1].ident().is_some_and(|id| id == "hide" || id == "reveal");
+        let after_hide =
+            i >= 1 && trees[i - 1].ident().is_some_and(|id| id == "hide" || id == "reveal");
         match &trees[i] {
             Tree::Group(..) if after_hide => out.push(trees[i].clone()),
             Tree::Group(d, span, inner) => out.push(Tree::Group(*d, *span, turbofish(inner, g))),
@@ -6662,7 +7385,9 @@ pub fn append_tokens(output: TokenStream, api: TokenStream) -> Result<TokenStrea
                     ng.set_span(g.span());
                     out.push(TokenTree::Group(ng));
                 }
-                TokenTree::Group(g) if target.is_none() && g.delimiter() == Delimiter::Brace && api.is_some() => {
+                TokenTree::Group(g)
+                    if target.is_none() && g.delimiter() == Delimiter::Brace && api.is_some() =>
+                {
                     let mut ng = Group::new(g.delimiter(), inside(g.stream(), api));
                     ng.set_span(g.span());
                     out.push(TokenTree::Group(ng));
@@ -6692,43 +7417,77 @@ pub fn append_tokens(output: TokenStream, api: TokenStream) -> Result<TokenStrea
 /// Initial requirements of a machine with a storage map become named open
 /// spec functions (`State::__tsm_storage_initial_requirement_<i>`), which keeps
 /// the raw initializer's execution proof stable; clients see equal terms.
-pub fn normalize_initial_requirements(bundle:&mut crate::parse_token_stream::SMBundle)->Result<(),Error> {
-    let args=bundle.sm.generics.as_ref().map(|g|crate::to_token_stream::get_generic_args(&g.params));
-    let state=args.as_ref().map(|a|quote!{State::<#a>}).unwrap_or(quote!{State});
-    let mut unavailable:HashSet<_>=bundle.normal_fns.iter().map(|f|f.sig.ident.to_string())
-        .chain(bundle.extras.invariants.iter().map(|i|i.func.sig.ident.to_string()))
-        .chain(bundle.extras.lemmas.iter().map(|l|l.func.sig.ident.to_string()))
+pub fn normalize_initial_requirements(
+    bundle: &mut crate::parse_token_stream::SMBundle,
+) -> Result<(), Error> {
+    let args =
+        bundle.sm.generics.as_ref().map(|g| crate::to_token_stream::get_generic_args(&g.params));
+    let state = args.as_ref().map(|a| quote! {State::<#a>}).unwrap_or(quote! {State});
+    let mut unavailable: HashSet<_> = bundle
+        .normal_fns
+        .iter()
+        .map(|f| f.sig.ident.to_string())
+        .chain(bundle.extras.invariants.iter().map(|i| i.func.sig.ident.to_string()))
+        .chain(bundle.extras.lemmas.iter().map(|l| l.func.sig.ident.to_string()))
         .collect();
-    unavailable.extend(["invariant".to_string(),"__storage".to_string()]);
+    unavailable.extend(["invariant".to_string(), "__storage".to_string()]);
     for tr in &bundle.sm.transitions {
-        for suffix in ["","_strong","_enabled","_safety","_execute","_owners_enabled","_deposited","_guarded"] {
-            unavailable.insert(format!("{}{suffix}",tr.name));
+        for suffix in [
+            "",
+            "_strong",
+            "_enabled",
+            "_safety",
+            "_execute",
+            "_owners_enabled",
+            "_deposited",
+            "_guarded",
+        ] {
+            unavailable.insert(format!("{}{suffix}", tr.name));
         }
     }
     for index in 0..bundle.sm.transitions.len() {
-        let tr=&bundle.sm.transitions[index];
-        if tr.kind!=TransitionKind::Init {continue;}
-        let mut requirements=Vec::new();
-        initial_requires(&tr.body,&mut requirements)?;
-        let params:Vec<_>=tr.params.iter().map(|p|{let n=&p.name;let t=&p.ty;quote!{#n:#t}}).collect();
-        let names:Vec<_>=tr.params.iter().map(|p|&p.name).collect();
-        let mut replacements=Vec::new();
-        for (i,e) in requirements.iter().enumerate() {
-            let mut n=initial_fresh(&bundle.sm,tr,&format!("initial_requirement_{i}"));
-            while unavailable.contains(&n.to_string()) {n=Ident::new(&(n.to_string()+"_"),Span::mixed_site());}
-            unavailable.insert(n.to_string());
-            let f:verus_syn::ImplItemFn=verus_syn::parse2(quote!{pub open spec fn #n(#(#params),*)->bool{#e}})?;
-            bundle.normal_fns.push(f);
-            replacements.push(verus_syn::parse2::<Expr>(quote!{#state::#n(#(#names),*)})?);
+        let tr = &bundle.sm.transitions[index];
+        if tr.kind != TransitionKind::Init {
+            continue;
         }
-        fn replace(s:&mut TransitionStmt,expressions:&mut std::vec::IntoIter<Expr>) {
+        let mut requirements = Vec::new();
+        initial_requires(&tr.body, &mut requirements)?;
+        let params: Vec<_> = tr
+            .params
+            .iter()
+            .map(|p| {
+                let n = &p.name;
+                let t = &p.ty;
+                quote! {#n:#t}
+            })
+            .collect();
+        let names: Vec<_> = tr.params.iter().map(|p| &p.name).collect();
+        let mut replacements = Vec::new();
+        for (i, e) in requirements.iter().enumerate() {
+            let mut n = initial_fresh(&bundle.sm, tr, &format!("initial_requirement_{i}"));
+            while unavailable.contains(&n.to_string()) {
+                n = Ident::new(&(n.to_string() + "_"), Span::mixed_site());
+            }
+            unavailable.insert(n.to_string());
+            let f: verus_syn::ImplItemFn =
+                verus_syn::parse2(quote! {pub open spec fn #n(#(#params),*)->bool{#e}})?;
+            bundle.normal_fns.push(f);
+            replacements.push(verus_syn::parse2::<Expr>(quote! {#state::#n(#(#names),*)})?);
+        }
+        fn replace(s: &mut TransitionStmt, expressions: &mut std::vec::IntoIter<Expr>) {
             match s {
-                TransitionStmt::Block(_,xs)=>for x in xs {replace(x,expressions)},
-                TransitionStmt::Require(_,e)=>*e=expressions.next().expect("initializer requirement order"),
-                _=>{},
+                TransitionStmt::Block(_, xs) => {
+                    for x in xs {
+                        replace(x, expressions)
+                    }
+                }
+                TransitionStmt::Require(_, e) => {
+                    *e = expressions.next().expect("initializer requirement order")
+                }
+                _ => {}
             }
         }
-        replace(&mut bundle.sm.transitions[index].body,&mut replacements.into_iter());
+        replace(&mut bundle.sm.transitions[index].body, &mut replacements.into_iter());
     }
     Ok(())
 }
@@ -6770,27 +7529,50 @@ fn initial_fresh(sm: &SM, tr: &Transition, label: &str) -> Ident {
             _ => {}
         }
     }
-    fn tokens(t:TokenStream,names:&mut HashSet<String>) {
-        for token in t {match token {
-            proc_macro2::TokenTree::Ident(n)=>{names.insert(n.to_string());},
-            proc_macro2::TokenTree::Group(g)=>tokens(g.stream(),names),_=>{}
-        }}
-    }
-    fn expressions(s:&TransitionStmt,names:&mut HashSet<String>) {
-        match s {
-            TransitionStmt::Block(_,children)=>{for c in children {expressions(c,names);}},
-            TransitionStmt::Initialize(_,_,e)|TransitionStmt::Update(_,_,e)|TransitionStmt::Require(_,e)|TransitionStmt::Assert(_,e,_)=>tokens(quote!{#e},names),
-            TransitionStmt::Split(_,split,children)=>{
-                match &**split {
-                    SplitKind::Let(p,t,_,e)=>tokens(quote!{#p #t #e},names),
-                    SplitKind::Special(_,op,_,p)=>{tokens(quote!{#p},names);if let MonoidElt::SingletonKV(k,v)=&op.elt {tokens(quote!{#k #v},names);}},_=>{}
+    fn tokens(t: TokenStream, names: &mut HashSet<String>) {
+        for token in t {
+            match token {
+                proc_macro2::TokenTree::Ident(n) => {
+                    names.insert(n.to_string());
                 }
-                for c in children {expressions(c,names);}
-            },_=>{}
+                proc_macro2::TokenTree::Group(g) => tokens(g.stream(), names),
+                _ => {}
+            }
         }
     }
-    expressions(&tr.body,&mut unavailable);
-    if let Some(g)=&sm.generics {tokens(quote!{#g},&mut unavailable);}
+    fn expressions(s: &TransitionStmt, names: &mut HashSet<String>) {
+        match s {
+            TransitionStmt::Block(_, children) => {
+                for c in children {
+                    expressions(c, names);
+                }
+            }
+            TransitionStmt::Initialize(_, _, e)
+            | TransitionStmt::Update(_, _, e)
+            | TransitionStmt::Require(_, e)
+            | TransitionStmt::Assert(_, e, _) => tokens(quote! {#e}, names),
+            TransitionStmt::Split(_, split, children) => {
+                match &**split {
+                    SplitKind::Let(p, t, _, e) => tokens(quote! {#p #t #e}, names),
+                    SplitKind::Special(_, op, _, p) => {
+                        tokens(quote! {#p}, names);
+                        if let MonoidElt::SingletonKV(k, v) = &op.elt {
+                            tokens(quote! {#k #v}, names);
+                        }
+                    }
+                    _ => {}
+                }
+                for c in children {
+                    expressions(c, names);
+                }
+            }
+            _ => {}
+        }
+    }
+    expressions(&tr.body, &mut unavailable);
+    if let Some(g) = &sm.generics {
+        tokens(quote! {#g}, &mut unavailable);
+    }
     bindings(&tr.body, &mut unavailable);
     let mut candidate = format!("__tsm_storage_{label}");
     while unavailable.contains(&candidate) {
@@ -6814,7 +7596,7 @@ fn initial_requires(stmt: &TransitionStmt, requirements: &mut Vec<Expr>) -> Resu
             return Err(Error::new(
                 *stmt.get_span(),
                 "physical field initializer requires straight-line initialization",
-            ))
+            ));
         }
     }
     Ok(())

@@ -586,7 +586,10 @@ fn sub_update_rec(
                     // Spanned at the field, so that e.g. "expected struct, found
                     // enum" points at the update.
                     let path = respan(
-                        quote::ToTokens::to_token_stream(&expr_path_of_type(&type_path.path, span)?),
+                        quote::ToTokens::to_token_stream(&expr_path_of_type(
+                            &type_path.path,
+                            span,
+                        )?),
                         span,
                     );
                     let r = sub_update_rec(&child, None, child_desc, rest, val)?;
@@ -661,7 +664,10 @@ fn collection_value_type(ty: &Type) -> Option<Type> {
 
 /// The type path `a::B<T>` as an expression path `a::B::<T>` for a struct
 /// expression.
-fn expr_path_of_type(path: &verus_syn::Path, span: Span) -> verus_syn::parse::Result<verus_syn::Path> {
+fn expr_path_of_type(
+    path: &verus_syn::Path,
+    span: Span,
+) -> verus_syn::parse::Result<verus_syn::Path> {
     let mut path = path.clone();
     for segment in path.segments.iter_mut() {
         match &mut segment.arguments {
@@ -1083,7 +1089,10 @@ pub fn inline_unassigned(
         .filter(|f| !set.contains(&f.name.to_string()))
         .map(|f| (get_cur_ident(&f.name).to_string(), f.name.clone()))
         .collect();
-    fn rw(ts: proc_macro2::TokenStream, m: &std::collections::HashMap<String, Ident>) -> proc_macro2::TokenStream {
+    fn rw(
+        ts: proc_macro2::TokenStream,
+        m: &std::collections::HashMap<String, Ident>,
+    ) -> proc_macro2::TokenStream {
         use proc_macro2::{Group, TokenTree};
         let mut out = proc_macro2::TokenStream::new();
         for t in ts {
@@ -1109,7 +1118,9 @@ pub fn inline_unassigned(
         AssertProof {
             proof: p.proof.as_ref().map(|b| {
                 let b = &**b;
-                std::rc::Rc::new(verus_syn::parse2(rw(quote! {#b}, m)).expect("rewritten proof block"))
+                std::rc::Rc::new(
+                    verus_syn::parse2(rw(quote! {#b}, m)).expect("rewritten proof block"),
+                )
             }),
             error_msg: p.error_msg.clone(),
         }
@@ -1118,12 +1129,16 @@ pub fn inline_unassigned(
         let mut out = vec![];
         for s in sops {
             out.push(match s {
-                SimplStmt::Assign(_, ref n, _, _, true) if m.contains_key(&n.to_string()) => continue,
+                SimplStmt::Assign(_, ref n, _, _, true) if m.contains_key(&n.to_string()) => {
+                    continue;
+                }
                 SimplStmt::Assign(sp, n, t, e, p) => SimplStmt::Assign(sp, n, t, ex(&e, m), p),
                 SimplStmt::Require(sp, e) => SimplStmt::Require(sp, ex(&e, m)),
                 SimplStmt::PostCondition(sp, e, r) => SimplStmt::PostCondition(sp, ex(&e, m), r),
                 SimplStmt::Assert(sp, e, p) => SimplStmt::Assert(sp, ex(&e, m), pf(&p, m)),
-                SimplStmt::Let(sp, pat, ty, e, v, ids) => SimplStmt::Let(sp, pat, ty, ex(&e, m), go(v, m), ids),
+                SimplStmt::Let(sp, pat, ty, e, v, ids) => {
+                    SimplStmt::Let(sp, pat, ty, ex(&e, m), go(v, m), ids)
+                }
                 SimplStmt::Split(sp, k, es, ids) => {
                     let k = match *k {
                         SplitKind::If(e) => SplitKind::If(ex(&e, m)),

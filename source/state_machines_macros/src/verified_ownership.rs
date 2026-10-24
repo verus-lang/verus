@@ -57,7 +57,8 @@ impl Compiler<'_> {
         stmt: &TransitionStmt,
         current: TokenStream,
     ) -> Result<Option<TokenStream>, Error> {
-        let trivial = |p: Option<TokenStream>, current: &TokenStream| p.unwrap_or(quote! {(true, #current)});
+        let trivial =
+            |p: Option<TokenStream>, current: &TokenStream| p.unwrap_or(quote! {(true, #current)});
         match stmt {
             TransitionStmt::Block(_, children) => self.sequence(children, current),
             TransitionStmt::Split(span, kind, children) => match &**kind {
@@ -108,7 +109,15 @@ impl Compiler<'_> {
                         Error::new(*span, "ownership operation refers to an unknown field")
                     })?;
                     if is_monoid_type(&field.stype) {
-                        self.monoid_statement(field, operation, pattern.as_deref(), children, current, *span).map(Some)
+                        self.monoid_statement(
+                            field,
+                            operation,
+                            pattern.as_deref(),
+                            children,
+                            current,
+                            *span,
+                        )
+                        .map(Some)
                     } else if operation.stmt.is_for_storage() {
                         // Storage bindings refer to the mathematical state's
                         // permission. Checked state safety and physical exchange
@@ -287,7 +296,9 @@ impl Compiler<'_> {
                 ShardableType::PersistentOption(_) => quote! {
                     ::vstd::resource::tsm_collections::persistent_option_contains_operand((#observer).#name, #value)
                 },
-                ShardableType::Map(ref key_type, _) | ShardableType::IMap(ref key_type, _) if operand_trigger => {
+                ShardableType::Map(ref key_type, _) | ShardableType::IMap(ref key_type, _)
+                    if operand_trigger =>
+                {
                     let key = self.fresh("map_key");
                     quote! {forall|#key:#key_type| ::vstd::prelude::imply(#[trigger] (#value).contains_key(#key),(#observer).#name.at(#key)==Some(::vstd::resource::exclusive::ExclusiveRA::Exclusive((#value)[#key])))}
                 }
@@ -296,7 +307,9 @@ impl Compiler<'_> {
                     quote! {forall|#key:#key_type| ::vstd::prelude::imply((#value).contains_key(#key),(#[trigger] (#observer).#name.at(#key))==Some(::vstd::resource::exclusive::ExclusiveRA::Exclusive((#value)[#key])))}
                 }
                 ShardableType::PersistentMap(ref key_type, _)
-                | ShardableType::PersistentIMap(ref key_type, _) if operand_trigger => {
+                | ShardableType::PersistentIMap(ref key_type, _)
+                    if operand_trigger =>
+                {
                     let key = self.fresh("map_key");
                     quote! {forall|#key:#key_type| ::vstd::prelude::imply(#[trigger] (#value).contains_key(#key),(#observer).#name.at(#key)==Some(::vstd::resource::agree::AgreementRA::Agree((#value)[#key])))}
                 }
@@ -529,7 +542,6 @@ impl Compiler<'_> {
     }
 }
 
-
 /// The owned fragment after a monoid statement on `field` (operand `value`, bound to a
 /// name) of the fragment `current` of type `fragment`.
 pub(crate) fn next_fragment(
@@ -548,12 +560,8 @@ pub(crate) fn next_fragment(
             } else {
                 EffectOp::Add
             };
-            let component = updated_component(
-                &field.stype,
-                effect,
-                quote! {(#current).#name},
-                value.clone(),
-            );
+            let component =
+                updated_component(&field.stype, effect, quote! {(#current).#name}, value.clone());
             let setter = format_ident!("__tsm_set_{}", name);
             quote! {<#fragment>::#setter(#current, #component)}
         }
@@ -582,10 +590,7 @@ pub(crate) fn observed_value(
         (ShardableType::PersistentOption(_), MonoidElt::OptionSome(None)) => {
             quote! {Some((#observer).#name->Some_0->Agree_0)}
         }
-        (
-            ShardableType::Map(..) | ShardableType::IMap(..),
-            MonoidElt::SingletonKV(key, None),
-        ) => {
+        (ShardableType::Map(..) | ShardableType::IMap(..), MonoidElt::SingletonKV(key, None)) => {
             quote! {::vstd::imap::IMap::empty().insert(#key,(#observer).#name.at(#key)->Some_0->Exclusive_0)}
         }
         (

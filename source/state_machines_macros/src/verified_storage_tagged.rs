@@ -165,7 +165,9 @@ impl Params {
                         let Some(last) = a.meta.path().segments.last() else { return true };
                         let keep = !matches!(
                             last.ident.to_string().as_str(),
-                            "accept_recursive_types" | "reject_recursive_types" | "reject_recursive_types_in_ground_variants"
+                            "accept_recursive_types"
+                                | "reject_recursive_types"
+                                | "reject_recursive_types_in_ground_variants"
                         );
                         if !keep {
                             let annotation = &last.ident;
@@ -184,7 +186,9 @@ impl Params {
             .iter()
             .flat_map(|g| g.params.iter())
             .filter_map(|gp| match gp {
-                verus_syn::GenericParam::Type(t) if !used.contains(&t.ident) => Some(t.ident.clone()),
+                verus_syn::GenericParam::Type(t) if !used.contains(&t.ident) => {
+                    Some(t.ident.clone())
+                }
                 _ => None,
             })
             .collect();
@@ -197,8 +201,16 @@ impl Params {
             .filter(|p| !unused.iter().any(|u| mentions(p, u)))
             .collect();
         let list = quote! {#(#params),*};
-        let decl = if used.is_empty() { quote! {} } else { quote! {<#list>} };
-        let wc = if preds.is_empty() { quote! {} } else { quote! {where #(#preds),*} };
+        let decl = if used.is_empty() {
+            quote! {}
+        } else {
+            quote! {<#list>}
+        };
+        let wc = if preds.is_empty() {
+            quote! {}
+        } else {
+            quote! {where #(#preds),*}
+        };
         Params { used, list, decl, wc, attrs }
     }
 }
@@ -246,8 +258,17 @@ pub struct Tagged {
 }
 
 /// The prefixes of the per-field storage helpers (`<prefix><field>`).
-const HELPERS: [&str; 9] =
-    ["__tag_", "__untag_", "__untag_tag_", "__tag_finite_", "__tag_shape_", "__pack_", "__unpack_", "__borrow_", "__unwrap_"];
+const HELPERS: [&str; 9] = [
+    "__tag_",
+    "__untag_",
+    "__untag_tag_",
+    "__tag_finite_",
+    "__tag_shape_",
+    "__pack_",
+    "__unpack_",
+    "__borrow_",
+    "__unwrap_",
+];
 
 /// The value variant's field accessor (`->f_0`).
 fn accessor(field: &Ident) -> Ident {
@@ -263,7 +284,8 @@ impl Tagged {
     /// names.
     pub fn build(bundle: &SMBundle) -> Result<Option<Tagged>, Error> {
         let sm = &bundle.sm;
-        let fields: Vec<Field> = sm.fields.iter().filter(|f| f.stype.is_storage()).cloned().collect();
+        let fields: Vec<Field> =
+            sm.fields.iter().filter(|f| f.stype.is_storage()).cloned().collect();
         if fields.is_empty() {
             return Ok(None);
         }
@@ -307,17 +329,22 @@ impl Tagged {
                 if names.contains(&helper) {
                     return Err(Error::new(
                         field.name.span(),
-                        format!("`{helper}` conflicts with a generated storage helper of field `{}`", field.name),
+                        format!(
+                            "`{helper}` conflicts with a generated storage helper of field `{}`",
+                            field.name
+                        ),
                     ));
                 }
             }
         }
         let key = Enum::new(sm, fresh(&mut names, "__StorageKey"), &quote! {#(#key_variants)*});
-        let value = Enum::new(sm, fresh(&mut names, "__StorageValue"), &quote! {#(#value_variants)*});
+        let value =
+            Enum::new(sm, fresh(&mut names, "__StorageValue"), &quote! {#(#value_variants)*});
         let helpers = Params::new(sm, &quote! {#(#key_variants)* #(#value_variants)*});
         let dom_fn = fresh(&mut names, "__storage_dom");
         let val_fn = fresh(&mut names, "__storage_val");
-        let options_only = fields.iter().all(|f| matches!(f.stype, ShardableType::StorageOption(_)));
+        let options_only =
+            fields.iter().all(|f| matches!(f.stype, ShardableType::StorageOption(_)));
         let by_tags = options_only || fields.len() == 1;
         Ok(Some(Tagged { fields, key, value, helpers, dom_fn, val_fn, options_only, by_tags }))
     }
@@ -388,7 +415,11 @@ impl Tagged {
 
     /// A catch-all match arm on keys (none when the key enum has one variant).
     fn other_key_arm(&self, value: TokenStream) -> TokenStream {
-        if self.fields.len() > 1 { quote! {_ => #value,} } else { quote! {} }
+        if self.fields.len() > 1 {
+            quote! {_ => #value,}
+        } else {
+            quote! {}
+        }
     }
 
     /// A catch-all match arm on values (none when the value enum has one variant).
@@ -401,7 +432,11 @@ impl Tagged {
     pub fn helper(&self, prefix: &str, f: &Ident) -> TokenStream {
         let name = format_ident!("{}{}", prefix, f);
         let used = &self.helpers.used;
-        if used.is_empty() { quote! {#name} } else { quote! {#name::<#(#used),*>} }
+        if used.is_empty() {
+            quote! {#name}
+        } else {
+            quote! {#name::<#(#used),*>}
+        }
     }
 
     /// The tagged part of the general operand `e` of field `f` (`__tag_f`).
@@ -423,7 +458,8 @@ impl Tagged {
                 Ok(quote! {#unit.insert(#k, #v)})
             }
             MonoidElt::SingletonKV(k, Some(v)) => {
-                let (k, v) = (self.key_of(field, Some(&quote! {#k})), self.wrap(field, quote! {#v}));
+                let (k, v) =
+                    (self.key_of(field, Some(&quote! {#k})), self.wrap(field, quote! {#v}));
                 Ok(quote! {#unit.insert(#k, #v)})
             }
             MonoidElt::General(v) => {
@@ -434,7 +470,10 @@ impl Tagged {
                     .ok_or_else(|| Error::new(field.span(), "unknown storage field"))?;
                 Ok(self.tagged(f, &quote! {#v}))
             }
-            _ => Err(Error::new(field.span(), "verified deposit requires an explicit optional or map value")),
+            _ => Err(Error::new(
+                field.span(),
+                "verified deposit requires an explicit optional or map value",
+            )),
         }
     }
 
@@ -468,7 +507,7 @@ impl Tagged {
             // over every storage field.
             let (kt, dom, val) = (&self.key.ty, &self.dom_fn, &self.val_fn);
             quote! {::vstd::imap::IMap::new(|__tsm_key: #kt| State::#dom(#s, __tsm_key),
-                |__tsm_key: #kt| State::#val(#s, __tsm_key))}
+            |__tsm_key: #kt| State::#val(#s, __tsm_key))}
         }
     }
 
@@ -488,14 +527,18 @@ impl Tagged {
         // The helpers' generic parameters (with a lifetime for the borrows).
         let (hd, hw) = (&self.helpers.decl, &self.helpers.wc);
         let list = &self.helpers.list;
-        let bd = if self.helpers.used.is_empty() { quote! {<'a>} } else { quote! {<'a, #list>} };
+        let bd = if self.helpers.used.is_empty() {
+            quote! {<'a>}
+        } else {
+            quote! {<'a, #list>}
+        };
         let mut key_variants = vec![];
         let mut value_variants = vec![];
         let mut domains = vec![];
         let mut values = vec![];
         let mut helpers = vec![];
         let groups = quote! {broadcast use {::vstd::map::group_map_lemmas, ::vstd::imap::group_imap_lemmas,
-            ::vstd::set::group_set_lemmas, ::vstd::iset::group_iset_lemmas};};
+        ::vstd::set::group_set_lemmas, ::vstd::iset::group_iset_lemmas};};
         for f in &self.fields {
             let n = &f.name;
             let acc = accessor(n);
@@ -506,12 +549,18 @@ impl Tagged {
             let borrow = format_ident!("__borrow_{}", n);
             // The helpers' paths (with the parameters: a field's types need
             // not determine them, e.g. through an associated type).
-            let (tag_c, untag_c, pack_c, unpack_c) =
-                (self.helper("__tag_", n), self.helper("__untag_", n), self.helper("__pack_", n), self.helper("__unpack_", n));
+            let (tag_c, untag_c, pack_c, unpack_c) = (
+                self.helper("__tag_", n),
+                self.helper("__untag_", n),
+                self.helper("__pack_", n),
+                self.helper("__unpack_", n),
+            );
             let tag_finite_c = self.helper("__tag_finite_", n);
             let unwrap = format_ident!("__unwrap_{}", n);
             let payload = match &f.stype {
-                ShardableType::StorageOption(v) | ShardableType::StorageMap(_, v) | ShardableType::StorageIMap(_, v) => v,
+                ShardableType::StorageOption(v)
+                | ShardableType::StorageMap(_, v)
+                | ShardableType::StorageIMap(_, v) => v,
                 _ => unreachable!(),
             };
             let none = self.other_value_arm(quote! {None});
@@ -799,7 +848,11 @@ impl Tagged {
     /// machine with only `storage_option` fields (a union of singleton maps)
     /// needs the case split on the key's field.
     fn hint(&self, index: &Ident, goal: TokenStream) -> TokenStream {
-        if self.options_only { self.cases(index, &goal) } else { quote! {} }
+        if self.options_only {
+            self.cases(index, &goal)
+        } else {
+            quote! {}
+        }
     }
 
     /// `a == b`, pointwise.
@@ -850,7 +903,13 @@ impl Tagged {
         self.prove_le_with(idx, a, b, true)
     }
 
-    fn prove_le_with(&self, idx: &Ident, a: TokenStream, b: TokenStream, by_cases: bool) -> TokenStream {
+    fn prove_le_with(
+        &self,
+        idx: &Ident,
+        a: TokenStream,
+        b: TokenStream,
+        by_cases: bool,
+    ) -> TokenStream {
         let goal = quote! {(#b).contains_key(#idx) && (#a)[#idx] == (#b)[#idx]};
         // In each case, the key's presence first: the value equality then
         // follows from the same field's facts.

@@ -142,14 +142,12 @@ fn run_example(file_path: &str, verified_tsm: bool) {
     // Create a temp directory under target/ for --out-dir output
     let target_dir = std::env::current_exe().unwrap();
     let target_dir = target_dir.parent().unwrap().parent().unwrap();
-    let example_out_dir = target_dir
-        .join("test_inputs")
-        .join(format!(
-            "example-{}{}",
-            // the whole path: examples/verified_tsm repeats file names of other directories
-            relative_path.with_extension("").to_str().unwrap().replace("../", "").replace('/', "-"),
-            if verified_tsm { "-verified-tsm" } else { "" }
-        ));
+    let example_out_dir = target_dir.join("test_inputs").join(format!(
+        "example-{}{}",
+        // the whole path: examples/verified_tsm repeats file names of other directories
+        relative_path.with_extension("").to_str().unwrap().replace("../", "").replace('/', "-"),
+        if verified_tsm { "-verified-tsm" } else { "" }
+    ));
     if example_out_dir.exists() {
         std::fs::remove_dir_all(&example_out_dir).unwrap();
     }

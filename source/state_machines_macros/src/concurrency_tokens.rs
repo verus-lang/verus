@@ -1205,7 +1205,9 @@ fn get_init_param_output_type(sm: &SM, field: &Field, reservation: bool) -> Opti
         | ShardableType::Map(..)
         | ShardableType::IMap(..)
         | ShardableType::PersistentMap(..)
-        | ShardableType::PersistentIMap(..) => Some(field_token_collection_type(sm, field, reservation)),
+        | ShardableType::PersistentIMap(..) => {
+            Some(field_token_collection_type(sm, field, reservation))
+        }
 
         ShardableType::StorageOption(_) => None, // no output tokens for storage
         ShardableType::StorageMap(_, _) => None,

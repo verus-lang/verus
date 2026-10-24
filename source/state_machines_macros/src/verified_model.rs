@@ -28,9 +28,15 @@ use verus_syn::{Error, FnArgKind, FnMode, ModeSpec, Open, Publish, token};
 pub fn induction_spinoff(attrs: &[verus_syn::Attribute]) -> TokenStream {
     let present = attrs.iter().any(|a| {
         let p = a.path();
-        p.segments.len() == 2 && p.segments[0].ident == "verifier" && p.segments[1].ident == "spinoff_prover"
+        p.segments.len() == 2
+            && p.segments[0].ident == "verifier"
+            && p.segments[1].ident == "spinoff_prover"
     });
-    if present { quote! {} } else { quote! {#[verifier::spinoff_prover]} }
+    if present {
+        quote! {}
+    } else {
+        quote! {#[verifier::spinoff_prover]}
+    }
 }
 
 pub fn construct(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

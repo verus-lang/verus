@@ -4,7 +4,7 @@
 //! strong enabling from weak enabling.
 use crate::ast::{SimplStmt, SplitKind, TransitionKind};
 use crate::parse_token_stream::SMBundle;
-use crate::simplification::{simplify_ops, UPDATE_TMP_PREFIX};
+use crate::simplification::{UPDATE_TMP_PREFIX, simplify_ops};
 use crate::to_token_stream::{generics_for_decl, get_generic_args};
 use proc_macro2::{Span, TokenStream, TokenTree};
 use quote::{format_ident, quote};
@@ -17,7 +17,10 @@ fn reserve(tokens: TokenStream, names: &mut HashSet<String>) -> Result<(), Error
         match token {
             TokenTree::Ident(id) => {
                 if id.to_string().starts_with("r#update_tmp_") {
-                    return Err(Error::new(id.span(), "raw identifiers starting with 'update_tmp_' are reserved in checked models"));
+                    return Err(Error::new(
+                        id.span(),
+                        "raw identifiers starting with 'update_tmp_' are reserved in checked models",
+                    ));
                 }
                 names.insert(id.to_string().trim_start_matches("r#").to_string());
             }
@@ -69,10 +72,8 @@ fn statements(body: &[SimplStmt]) -> Result<TokenStream, Error> {
                         .zip(children)
                         .map(|(arm, child)| {
                             let pattern = &arm.pat;
-                            let guard = arm
-                                .guard
-                                .as_ref()
-                                .map(|(_, expression)| quote! {if #expression});
+                            let guard =
+                                arm.guard.as_ref().map(|(_, expression)| quote! {if #expression});
                             let body = statements(&child.1)?;
                             Ok(quote! {#pattern #guard => {#body}})
                         })
@@ -113,14 +114,8 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     let (generics, _) = crate::verified_tokens::datatype_generics(sm);
     let (declaration, where_clause) = generics_for_decl(&generics);
     let arguments = sm.generics.as_ref().map(|g| get_generic_args(&g.params));
-    let types = arguments
-        .as_ref()
-        .map(|a| quote! {<#a>})
-        .unwrap_or_default();
-    let expr = arguments
-        .as_ref()
-        .map(|a| quote! {::<#a>})
-        .unwrap_or_default();
+    let types = arguments.as_ref().map(|a| quote! {<#a>}).unwrap_or_default();
+    let expr = arguments.as_ref().map(|a| quote! {::<#a>}).unwrap_or_default();
     let mut names = HashSet::new();
     let fields_ast = &sm.fields_named_ast;
     reserve(quote! {#generics #fields_ast}, &mut names)?;
@@ -231,10 +226,8 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                 post
             }
         });
-        let outside_parameters: Vec<_> = parameters
-            .into_iter()
-            .map(|p| replace_self(p, &quote! {State #types}))
-            .collect();
+        let outside_parameters: Vec<_> =
+            parameters.into_iter().map(|p| replace_self(p, &quote! {State #types})).collect();
         wrappers.push(quote! {
             pub proof fn #name #declaration (#wrapper_input #(#outside_parameters),*)
                 -> (post: State #types) #where_clause

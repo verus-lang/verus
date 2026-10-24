@@ -13,30 +13,13 @@ use verus_syn::Error;
 /// methods; rejects names that collide with other `State` methods.
 pub fn output(bundle: &SMBundle, state: &TokenStream) -> Result<Vec<TokenStream>, Error> {
     let sm = &bundle.sm;
-    let mut methods: HashSet<String> = ["invariant", "__storage"]
-        .iter()
-        .map(|name| name.to_string())
-        .collect();
+    let mut methods: HashSet<String> =
+        ["invariant", "__storage"].iter().map(|name| name.to_string()).collect();
+    methods.extend(bundle.normal_fns.iter().map(|function| function.sig.ident.to_string()));
     methods.extend(
-        bundle
-            .normal_fns
-            .iter()
-            .map(|function| function.sig.ident.to_string()),
+        bundle.extras.invariants.iter().map(|invariant| invariant.func.sig.ident.to_string()),
     );
-    methods.extend(
-        bundle
-            .extras
-            .invariants
-            .iter()
-            .map(|invariant| invariant.func.sig.ident.to_string()),
-    );
-    methods.extend(
-        bundle
-            .extras
-            .lemmas
-            .iter()
-            .map(|lemma| lemma.func.sig.ident.to_string()),
-    );
+    methods.extend(bundle.extras.lemmas.iter().map(|lemma| lemma.func.sig.ident.to_string()));
     for transition in &sm.transitions {
         if transition.kind == TransitionKind::Init {
             methods.insert(transition.name.to_string());
@@ -58,10 +41,7 @@ pub fn output(bundle: &SMBundle, state: &TokenStream) -> Result<Vec<TokenStream>
     }
     let mut definitions = Vec::new();
     for transition in &sm.transitions {
-        if matches!(
-            transition.kind,
-            TransitionKind::Init | TransitionKind::Property
-        ) {
+        if matches!(transition.kind, TransitionKind::Init | TransitionKind::Property) {
             continue;
         }
         let name = &transition.name;

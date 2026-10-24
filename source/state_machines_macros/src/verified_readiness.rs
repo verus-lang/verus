@@ -3,7 +3,7 @@
 //! every transition `local_ready_supported` accepts, next to the
 //! all-completion API).
 use crate::ast::*;
-use crate::parse_token_stream::{parse_result_to_smir, ParseResult};
+use crate::parse_token_stream::{ParseResult, parse_result_to_smir};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
@@ -22,31 +22,63 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
     let mut generic = false;
     let mut remaining = vec![];
     for attr in parsed.attrs {
-        let attribute_name = if attr.path().leading_colon.is_none() && attr.path().segments.len() == 1 {
-            attr.path().segments[0].ident.to_string().trim_start_matches("r#").to_string()
-        } else {
-            String::new()
-        };
+        let attribute_name =
+            if attr.path().leading_colon.is_none() && attr.path().segments.len() == 1 {
+                attr.path().segments[0].ident.to_string().trim_start_matches("r#").to_string()
+            } else {
+                String::new()
+            };
         if attribute_name == "verified_field_tokens" {
             return Err(Error::new(
                 attr.path().segments[0].ident.span(),
                 "`#[verified_field_tokens]` was removed: per-field tokens (the generic interface) are the default; delete the attribute",
             ));
         } else if attribute_name == "verified_local_ready" {
+            // TODO: drop this
             return Err(Error::new(
                 attr.path().segments[0].ident.span(),
                 "`#[verified_local_ready(..)]` was removed: local readiness is generated for every raw transition (`M::local_ready::t`); delete the attribute",
             ));
         } else if attribute_name == "verified_generic_tokens" {
-            if generic {return Err(Error::new(attr.path().segments[0].ident.span(),"duplicate generic field tokens attribute"));}
-            if raw {return Err(Error::new(attr.path().segments[0].ident.span(),"generic field tokens and raw token attributes cannot be combined"));}
-            if !matches!(attr.meta,verus_syn::Meta::Path(_)){return Err(Error::new(attr.path().segments[0].ident.span(),"generic field tokens attribute takes no arguments"));}
-            generic=true;
+            if generic {
+                return Err(Error::new(
+                    attr.path().segments[0].ident.span(),
+                    "duplicate generic field tokens attribute",
+                ));
+            }
+            if raw {
+                return Err(Error::new(
+                    attr.path().segments[0].ident.span(),
+                    "generic field tokens and raw token attributes cannot be combined",
+                ));
+            }
+            if !matches!(attr.meta, verus_syn::Meta::Path(_)) {
+                return Err(Error::new(
+                    attr.path().segments[0].ident.span(),
+                    "generic field tokens attribute takes no arguments",
+                ));
+            }
+            generic = true;
         } else if attribute_name == "verified_raw_tokens" {
-            if raw {return Err(Error::new(attr.path().segments[0].ident.span(),"duplicate raw token attribute"));}
-            if generic {return Err(Error::new(attr.path().segments[0].ident.span(),"generic field tokens and raw token attributes cannot be combined"));}
-            if !matches!(attr.meta,verus_syn::Meta::Path(_)){return Err(Error::new(attr.path().segments[0].ident.span(),"raw token attribute takes no arguments"));}
-            raw=true;
+            if raw {
+                return Err(Error::new(
+                    attr.path().segments[0].ident.span(),
+                    "duplicate raw token attribute",
+                ));
+            }
+            if generic {
+                return Err(Error::new(
+                    attr.path().segments[0].ident.span(),
+                    "generic field tokens and raw token attributes cannot be combined",
+                ));
+            }
+            if !matches!(attr.meta, verus_syn::Meta::Path(_)) {
+                return Err(Error::new(
+                    attr.path().segments[0].ident.span(),
+                    "raw token attribute takes no arguments",
+                ));
+            }
+            raw = true;
         } else {
             remaining.push(attr);
         }
@@ -82,17 +114,18 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
         // Initial requirements over a storage map become named open spec
         // functions, which keeps the raw initializer's execution proof
         // stable; clients see equal terms.
-        if bundle.sm.fields.iter().any(|field| matches!(field.stype, ShardableType::StorageMap(..))) {
+        if bundle.sm.fields.iter().any(|field| matches!(field.stype, ShardableType::StorageMap(..)))
+        {
             crate::verified_generic_tokens::normalize_initial_requirements(&mut bundle)?;
         }
-        let api=crate::verified_generic_tokens::output(&bundle)?;
+        let api = crate::verified_generic_tokens::output(&bundle)?;
         // The generic interface is written against the general emitter's
         // interface, so every machine goes there directly. This is the
         // end point of `verified_tokens::output_raw`'s fallback as well,
         // and the general emitter carries the raw backend's lifted limits
         // (labels, several deposits/withdrawals/guards per path, ...).
-        let output=crate::verified_general::output(bundle)?;
-        return crate::verified_generic_tokens::append_tokens(output,api);
+        let output = crate::verified_general::output(bundle)?;
+        return crate::verified_generic_tokens::append_tokens(output, api);
     }
     // The raw interface: every transition, readonly transition and property
     // that `local_ready_supported` accepts gets the local-ready API.
@@ -143,8 +176,10 @@ fn has_closure(expr: &verus_syn::Expr) -> bool {
     impl<'ast> Visit<'ast> for Finder {
         fn visit_expr_unary(&mut self, e: &'ast verus_syn::ExprUnary) {
             use verus_syn::UnOp;
-            if let (UnOp::Forall(_) | UnOp::Exists(_) | UnOp::Choose(_), verus_syn::Expr::Closure(c)) =
-                (&e.op, &*e.expr)
+            if let (
+                UnOp::Forall(_) | UnOp::Exists(_) | UnOp::Choose(_),
+                verus_syn::Expr::Closure(c),
+            ) = (&e.op, &*e.expr)
             {
                 self.visit_expr(&c.body);
             } else {
@@ -170,7 +205,9 @@ fn closure_outside_conditions(stmt: &TransitionStmt) -> bool {
                 SplitKind::If(condition) => has_closure(condition),
                 SplitKind::Match(scrutinee, arms) => {
                     has_closure(scrutinee)
-                        || arms.iter().any(|arm| arm.guard.as_ref().is_some_and(|(_, g)| has_closure(g)))
+                        || arms
+                            .iter()
+                            .any(|arm| arm.guard.as_ref().is_some_and(|(_, g)| has_closure(g)))
                 }
                 SplitKind::Let(_, _, _, value) => has_closure(value),
                 SplitKind::Special(_, operation, _, _) => match &operation.elt {
@@ -197,12 +234,23 @@ fn closure_outside_conditions(stmt: &TransitionStmt) -> bool {
 pub(crate) fn inline_ownership(sm: &SM, tr: &Transition) -> bool {
     fn general_collection(stmt: &TransitionStmt, sm: &SM) -> bool {
         match stmt {
-            TransitionStmt::Block(_, children) => children.iter().any(|child| general_collection(child, sm)),
+            TransitionStmt::Block(_, children) => {
+                children.iter().any(|child| general_collection(child, sm))
+            }
             TransitionStmt::Split(_, split, children) => {
                 let here = match &**split {
-                    SplitKind::Special(field, op, _, _) => matches!(op.elt, MonoidElt::General(_))
-                        && sm.fields.iter().any(|f| f.name == *field
-                            && matches!(f.stype, ShardableType::Map(..) | ShardableType::IMap(..) | ShardableType::Multiset(_))),
+                    SplitKind::Special(field, op, _, _) => {
+                        matches!(op.elt, MonoidElt::General(_))
+                            && sm.fields.iter().any(|f| {
+                                f.name == *field
+                                    && matches!(
+                                        f.stype,
+                                        ShardableType::Map(..)
+                                            | ShardableType::IMap(..)
+                                            | ShardableType::Multiset(_)
+                                    )
+                            })
+                    }
                     _ => false,
                 };
                 here || children.iter().any(|child| general_collection(child, sm))
@@ -230,7 +278,10 @@ fn refutable_observation(kind: &SplitKind) -> Option<&verus_syn::Pat> {
     match kind {
         SplitKind::Special(_, operation, _, Some(pattern))
             if (operation.is_remove() || operation.is_have())
-                && matches!(operation.elt, MonoidElt::OptionSome(None) | MonoidElt::SingletonKV(_, None))
+                && matches!(
+                    operation.elt,
+                    MonoidElt::OptionSome(None) | MonoidElt::SingletonKV(_, None)
+                )
                 && !crate::util::is_definitely_irrefutable(pattern) =>
         {
             Some(pattern)
@@ -248,17 +299,11 @@ fn declared_requires(s: &TransitionStmt) -> Result<TokenStream, Error> {
     match s {
         TransitionStmt::Require(_, expr) => Ok(quote! {#expr}),
         TransitionStmt::Block(_, xs) => {
-            let xs = xs
-                .iter()
-                .map(declared_requires)
-                .collect::<Result<Vec<_>, _>>()?;
+            let xs = xs.iter().map(declared_requires).collect::<Result<Vec<_>, _>>()?;
             Ok(quote! {true #(&& (#xs))*})
         }
         TransitionStmt::Split(span, kind, xs) => {
-            let bodies = xs
-                .iter()
-                .map(declared_requires)
-                .collect::<Result<Vec<_>, _>>()?;
+            let bodies = xs.iter().map(declared_requires).collect::<Result<Vec<_>, _>>()?;
             match &**kind {
                 SplitKind::Let(pat, ty, LetKind::Normal, expr) => {
                     let ty = ty.as_ref().map(|ty| quote! {: #ty});
@@ -293,7 +338,7 @@ fn declared_requires(s: &TransitionStmt) -> Result<TokenStream, Error> {
                             return Err(Error::new(
                                 *span,
                                 "local-ready cannot observe a hidden or special-bound require",
-                            ))
+                            ));
                         }
                     };
                     let bound = crate::verified_monoids::bind_pattern(
@@ -363,37 +408,96 @@ pub struct Context<'a> {
 
 /// A `__tsm_<stem>_<n>` name that no parameter, field, generic or body identifier of `tr`
 /// uses.
-fn fresh(sm:&SM,tr:&Transition,stem:&str)->Ident {
-    fn reserve(tokens:TokenStream,names:&mut HashSet<String>){for token in tokens{match token{
-        proc_macro2::TokenTree::Ident(n)=>{names.insert(n.to_string());},
-        proc_macro2::TokenTree::Group(g)=>reserve(g.stream(),names),_=>{},
-    }}}
-    fn visit(stmt:&TransitionStmt,names:&mut HashSet<String>){match stmt{
-        TransitionStmt::Block(_,children)=>for child in children{visit(child,names)},
-        TransitionStmt::Initialize(_,_,e)|TransitionStmt::Update(_,_,e)|TransitionStmt::Require(_,e)|TransitionStmt::PostCondition(_,e)=>reserve(quote!{#e},names),
-        TransitionStmt::Assert(_,e,proof)=>{reserve(quote!{#e},names);if let Some(block)=&proof.proof{reserve(quote!{#block},names);}},
-        TransitionStmt::SubUpdate(_,_,indices,e)=>{reserve(quote!{#e},names);for index in indices{if let SubIdx::Idx(e)=index{reserve(quote!{#e},names);}}},
-        TransitionStmt::Split(_,split,children)=>{
-            match &**split{
-                SplitKind::If(e)=>reserve(quote!{#e},names),
-                SplitKind::Match(e,arms)=>{reserve(quote!{#e},names);for arm in arms{let pat=&arm.pat;reserve(quote!{#pat},names);if let Some((_,guard))=&arm.guard{reserve(quote!{#guard},names);}}},
-                SplitKind::Let(pat,ty,_,e)=>reserve(quote!{#pat #ty #e},names),
-                SplitKind::Special(_,op,proof,pat)=>{
-                    reserve(quote!{#pat},names);
-                    if let Some(block)=&proof.proof{reserve(quote!{#block},names);}
-                    match &op.elt{
-                        MonoidElt::OptionSome(Some(e))|MonoidElt::SingletonMultiset(e)|MonoidElt::SingletonSet(e)|MonoidElt::General(e)=>reserve(quote!{#e},names),
-                        MonoidElt::SingletonKV(key,value)=>reserve(quote!{#key #value},names),_=>{},
-                    }
-                },
+fn fresh(sm: &SM, tr: &Transition, stem: &str) -> Ident {
+    fn reserve(tokens: TokenStream, names: &mut HashSet<String>) {
+        for token in tokens {
+            match token {
+                proc_macro2::TokenTree::Ident(n) => {
+                    names.insert(n.to_string());
+                }
+                proc_macro2::TokenTree::Group(g) => reserve(g.stream(), names),
+                _ => {}
             }
-            for child in children{visit(child,names)}
-        },
-    }}
-    let mut unavailable:HashSet<_>=tr.params.iter().map(|p|p.name.to_string()).chain(sm.fields.iter().map(|f|f.name.to_string())).collect();
-    if let Some(g)=&sm.generics{reserve(quote!{#g},&mut unavailable);}
-    visit(&tr.body,&mut unavailable);
-    for suffix in 0usize..{let candidate=format!("__tsm_{stem}_{suffix}");if !unavailable.contains(&candidate){return Ident::new(&candidate,proc_macro2::Span::mixed_site());}}
+        }
+    }
+    fn visit(stmt: &TransitionStmt, names: &mut HashSet<String>) {
+        match stmt {
+            TransitionStmt::Block(_, children) => {
+                for child in children {
+                    visit(child, names)
+                }
+            }
+            TransitionStmt::Initialize(_, _, e)
+            | TransitionStmt::Update(_, _, e)
+            | TransitionStmt::Require(_, e)
+            | TransitionStmt::PostCondition(_, e) => reserve(quote! {#e}, names),
+            TransitionStmt::Assert(_, e, proof) => {
+                reserve(quote! {#e}, names);
+                if let Some(block) = &proof.proof {
+                    reserve(quote! {#block}, names);
+                }
+            }
+            TransitionStmt::SubUpdate(_, _, indices, e) => {
+                reserve(quote! {#e}, names);
+                for index in indices {
+                    if let SubIdx::Idx(e) = index {
+                        reserve(quote! {#e}, names);
+                    }
+                }
+            }
+            TransitionStmt::Split(_, split, children) => {
+                match &**split {
+                    SplitKind::If(e) => reserve(quote! {#e}, names),
+                    SplitKind::Match(e, arms) => {
+                        reserve(quote! {#e}, names);
+                        for arm in arms {
+                            let pat = &arm.pat;
+                            reserve(quote! {#pat}, names);
+                            if let Some((_, guard)) = &arm.guard {
+                                reserve(quote! {#guard}, names);
+                            }
+                        }
+                    }
+                    SplitKind::Let(pat, ty, _, e) => reserve(quote! {#pat #ty #e}, names),
+                    SplitKind::Special(_, op, proof, pat) => {
+                        reserve(quote! {#pat}, names);
+                        if let Some(block) = &proof.proof {
+                            reserve(quote! {#block}, names);
+                        }
+                        match &op.elt {
+                            MonoidElt::OptionSome(Some(e))
+                            | MonoidElt::SingletonMultiset(e)
+                            | MonoidElt::SingletonSet(e)
+                            | MonoidElt::General(e) => reserve(quote! {#e}, names),
+                            MonoidElt::SingletonKV(key, value) => {
+                                reserve(quote! {#key #value}, names)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                for child in children {
+                    visit(child, names)
+                }
+            }
+        }
+    }
+    let mut unavailable: HashSet<_> = tr
+        .params
+        .iter()
+        .map(|p| p.name.to_string())
+        .chain(sm.fields.iter().map(|f| f.name.to_string()))
+        .collect();
+    if let Some(g) = &sm.generics {
+        reserve(quote! {#g}, &mut unavailable);
+    }
+    visit(&tr.body, &mut unavailable);
+    for suffix in 0usize.. {
+        let candidate = format!("__tsm_{stem}_{suffix}");
+        if !unavailable.contains(&candidate) {
+            return Ident::new(&candidate, proc_macro2::Span::mixed_site());
+        }
+    }
     unreachable!()
 }
 
@@ -413,7 +517,8 @@ fn scoped_deposits(stmt: &TransitionStmt) -> bool {
     match stmt {
         TransitionStmt::Block(_, children) => children.iter().any(scoped_deposits),
         TransitionStmt::Split(_, split, children) => {
-            let scope = matches!(&**split, SplitKind::Let(..) | SplitKind::If(_) | SplitKind::Match(..));
+            let scope =
+                matches!(&**split, SplitKind::Let(..) | SplitKind::If(_) | SplitKind::Match(..));
             (scope && children.iter().any(storage)) || children.iter().any(scoped_deposits)
         }
         _ => false,
@@ -449,10 +554,19 @@ fn implicit_binding<'a>(sm: &'a SM, name: &Ident, operation: &SpecialOp) -> Opti
 /// `key` for a map): the owned fragment's entry if it has one, else the
 /// shared fragment's. A `remove` finds its value in `owned`, a `have` in
 /// either.
-fn fragment_value(field: &Field, key: Option<&verus_syn::Expr>, owned: &Ident, shared: &Ident) -> TokenStream {
+fn fragment_value(
+    field: &Field,
+    key: Option<&verus_syn::Expr>,
+    owned: &Ident,
+    shared: &Ident,
+) -> TokenStream {
     let n = &field.name;
     // A named function: an `if` cannot occur in a trigger the value reaches.
-    let entry = if field.stype.is_persistent() { quote! {agreement_entry} } else { quote! {exclusive_entry} };
+    let entry = if field.stype.is_persistent() {
+        quote! {agreement_entry}
+    } else {
+        quote! {exclusive_entry}
+    };
     let at = |f: &Ident| match key {
         Some(key) => quote! {#f.#n.at(#key)},
         None => quote! {#f.#n},
@@ -512,7 +626,10 @@ impl LocalState<'_> {
         // `remove`s and `have`s on every path, so an implicit value is never
         // an added one.)
         let branches = |this: &mut Self, children: &[TransitionStmt]| {
-            children.iter().map(|child| this.build(child, current.clone())).collect::<Result<Vec<_>, Error>>()
+            children
+                .iter()
+                .map(|child| this.build(child, current.clone()))
+                .collect::<Result<Vec<_>, Error>>()
         };
         Ok(match split {
             SplitKind::Let(pattern, ty, _, expression) => {
@@ -554,7 +671,7 @@ impl LocalState<'_> {
                                     return Err(Error::new(
                                         span,
                                         "local-ready cannot observe this binding",
-                                    ))
+                                    ));
                                 }
                             };
                             Some(crate::verified_monoids::bind_pattern(pattern, observed, body))
@@ -573,10 +690,11 @@ impl LocalState<'_> {
                     _ => (None, quote! {#se{#n:Some(#value),..#current}}),
                 };
                 let observed = fragment_value(field, key, &self.owned, &self.shared);
-                let body =
-                    self.sequence(children, quote! {#state})?.unwrap_or(quote! {#state});
+                let body = self.sequence(children, quote! {#state})?.unwrap_or(quote! {#state});
                 let body = match pattern {
-                    Some(pattern) => crate::verified_monoids::bind_pattern(pattern, quote! {#value}, body),
+                    Some(pattern) => {
+                        crate::verified_monoids::bind_pattern(pattern, quote! {#value}, body)
+                    }
                     None => body,
                 };
                 Some(quote! {{let #value = #observed; let #state = #updated; #body}})
@@ -588,7 +706,13 @@ impl LocalState<'_> {
 /// The local state of `local_ready::<tr>::precondition` for a transition with implicit
 /// bindings (`implicit_binding`), over `owned`/`h`; `None` if it has none (the
 /// local state is then the observation itself).
-fn implicit_local_state(sm: &SM, tr: &Transition, se: &TokenStream, pe: &TokenStream, ft: &TokenStream) -> Result<Option<TokenStream>, Error> {
+fn implicit_local_state(
+    sm: &SM,
+    tr: &Transition,
+    se: &TokenStream,
+    pe: &TokenStream,
+    ft: &TokenStream,
+) -> Result<Option<TokenStream>, Error> {
     let mut builder = LocalState {
         sm,
         se,
@@ -627,7 +751,8 @@ fn quantified_state(sm: &SM, tr: &Transition) -> bool {
         match statement {
             TransitionStmt::Block(_, children) => children.iter().any(|c| walk(sm, c)),
             TransitionStmt::Require(_, e) => {
-                mentions(quote! {#e}, &["forall", "exists", "choose"]) && mentions(quote! {#e}, &["pre"])
+                mentions(quote! {#e}, &["forall", "exists", "choose"])
+                    && mentions(quote! {#e}, &["pre"])
             }
             TransitionStmt::Split(_, split, children) => {
                 let here = match &**split {
@@ -636,7 +761,10 @@ fn quantified_state(sm: &SM, tr: &Transition) -> bool {
                             && matches!(operation.elt, MonoidElt::SingletonKV(..))
                             && sm.fields.iter().any(|f| {
                                 f.name == *name
-                                    && matches!(f.stype, ShardableType::Map(..) | ShardableType::IMap(..))
+                                    && matches!(
+                                        f.stype,
+                                        ShardableType::Map(..) | ShardableType::IMap(..)
+                                    )
                             });
                         let operand = match &operation.elt {
                             MonoidElt::SingletonKV(key, value) => quote! {#key #value},
@@ -702,18 +830,31 @@ fn agreement_fields<'a>(sm: &'a SM, tr: &Transition) -> Vec<&'a Field> {
             }
         }
     }
-    fn walk<'a>(sm: &'a SM, statement: &TransitionStmt, bound: &mut HashSet<String>,
-        out: &mut Vec<&'a Field>, uses_bound: &mut bool) {
+    fn walk<'a>(
+        sm: &'a SM,
+        statement: &TransitionStmt,
+        bound: &mut HashSet<String>,
+        out: &mut Vec<&'a Field>,
+        uses_bound: &mut bool,
+    ) {
         match statement {
-            TransitionStmt::Block(_, children) => children.iter().for_each(|c| walk(sm, c, bound, out, uses_bound)),
+            TransitionStmt::Block(_, children) => {
+                children.iter().for_each(|c| walk(sm, c, bound, out, uses_bound))
+            }
             TransitionStmt::Split(_, split, children) => {
                 match &**split {
-                    SplitKind::Let(pattern, ..) => {
-                        bound.extend(crate::ident_visitor::pattern_get_bound_idents(pattern).iter().map(|n| n.to_string()))
-                    }
+                    SplitKind::Let(pattern, ..) => bound.extend(
+                        crate::ident_visitor::pattern_get_bound_idents(pattern)
+                            .iter()
+                            .map(|n| n.to_string()),
+                    ),
                     SplitKind::Match(_, arms) => {
                         for arm in arms {
-                            bound.extend(crate::ident_visitor::pattern_get_bound_idents(&arm.pat).iter().map(|n| n.to_string()))
+                            bound.extend(
+                                crate::ident_visitor::pattern_get_bound_idents(&arm.pat)
+                                    .iter()
+                                    .map(|n| n.to_string()),
+                            )
                         }
                     }
                     SplitKind::Special(name, operation, _, pattern) => {
@@ -723,12 +864,24 @@ fn agreement_fields<'a>(sm: &'a SM, tr: &Transition) -> Vec<&'a Field> {
                             MonoidElt::SingletonSet(key) => Some(quote! {#key}),
                             _ => None,
                         };
-                        let field = sm.fields.iter().find(|f| f.name == *name).filter(|f| matches!(f.stype,
-                            ShardableType::Map(..) | ShardableType::IMap(..) | ShardableType::PersistentMap(..)
-                            | ShardableType::PersistentIMap(..) | ShardableType::Option(_) | ShardableType::PersistentOption(_)
-                            | ShardableType::Set(_) | ShardableType::ISet(_) | ShardableType::PersistentSet(_)
-                            | ShardableType::PersistentISet(_)));
-                        if let (Some(field), Some(operand), true) = (field, operand, operation.is_remove() || operation.is_have()) {
+                        let field = sm.fields.iter().find(|f| f.name == *name).filter(|f| {
+                            matches!(
+                                f.stype,
+                                ShardableType::Map(..)
+                                    | ShardableType::IMap(..)
+                                    | ShardableType::PersistentMap(..)
+                                    | ShardableType::PersistentIMap(..)
+                                    | ShardableType::Option(_)
+                                    | ShardableType::PersistentOption(_)
+                                    | ShardableType::Set(_)
+                                    | ShardableType::ISet(_)
+                                    | ShardableType::PersistentSet(_)
+                                    | ShardableType::PersistentISet(_)
+                            )
+                        });
+                        if let (Some(field), Some(operand), true) =
+                            (field, operand, operation.is_remove() || operation.is_have())
+                        {
                             let mut mentioned = HashSet::new();
                             names(operand, &mut mentioned);
                             *uses_bound |= !mentioned.is_disjoint(bound);
@@ -737,7 +890,11 @@ fn agreement_fields<'a>(sm: &'a SM, tr: &Transition) -> Vec<&'a Field> {
                             }
                         }
                         if let Some(pattern) = pattern {
-                            bound.extend(crate::ident_visitor::pattern_get_bound_idents(pattern).iter().map(|n| n.to_string()))
+                            bound.extend(
+                                crate::ident_visitor::pattern_get_bound_idents(pattern)
+                                    .iter()
+                                    .map(|n| n.to_string()),
+                            )
                         }
                     }
                     SplitKind::If(_) => {}
@@ -885,18 +1042,18 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     let owned_post = format_ident!("{}_owned_post", n);
     let shared_op = format_ident!("{}_with_shared", n);
 
-    let local_state = fresh(sm,tr, "local_state");
-    let observation = fresh(sm,tr, "observed_state");
-    let completion_frame = fresh(sm,tr, "completion_frame");
-    let full_state = fresh(sm,tr, "completion_state");
-    let certificate = fresh(sm,tr, "certificate");
-    let initial = fresh(sm,tr, "initial_fragment");
-    let physical_deposit = fresh(sm,tr, "physical_deposit");
-    let next = fresh(sm,tr, "next_token");
-    let returned_map = fresh(sm,tr, "withdrawn_map");
-    let before = fresh(sm,tr, "before_state");
-    let after = fresh(sm,tr, "after_state");
-    let witness_frame = fresh(sm,tr, "witness_frame");
+    let local_state = fresh(sm, tr, "local_state");
+    let observation = fresh(sm, tr, "observed_state");
+    let completion_frame = fresh(sm, tr, "completion_frame");
+    let full_state = fresh(sm, tr, "completion_state");
+    let certificate = fresh(sm, tr, "certificate");
+    let initial = fresh(sm, tr, "initial_fragment");
+    let physical_deposit = fresh(sm, tr, "physical_deposit");
+    let next = fresh(sm, tr, "next_token");
+    let returned_map = fresh(sm, tr, "withdrawn_map");
+    let before = fresh(sm, tr, "before_state");
+    let after = fresh(sm, tr, "after_state");
+    let witness_frame = fresh(sm, tr, "witness_frame");
     // The storage parts of the API, empty without storage: `deposit` parameters
     // and arguments (`dep_decl`, `dep_args`: of the predicates; `dep_param`,
     // `dep_arg`: of the operations), the outputs' storage arguments, and the
@@ -938,7 +1095,8 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         dep_args = quote! {#dep_value,};
         if withdraws {
             ret = quote! {tracked out:(#tt,#map)};
-            call = quote! {let tracked (#next,#returned_map)=Self::#local(owned,#dep_arg #(#pn),*);};
+            call =
+                quote! {let tracked (#next,#returned_map)=Self::#local(owned,#dep_arg #(#pn),*);};
             out = quote! {out.0};
         } else {
             call = quote! {let tracked #next=Self::#local(owned,#dep_arg #(#pn),*);let tracked #returned_map:#map=#tracked_unit;};
@@ -957,7 +1115,8 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         let after_s = quote! {#certificate.after.__storage()};
         let physical = if paired {
             let disjoint = storage.disjoint(before_s.clone(), dep_value.clone());
-            let within = storage.le(after_s.clone(), storage.op(before_s.clone(), dep_value.clone()));
+            let within =
+                storage.le(after_s.clone(), storage.op(before_s.clone(), dep_value.clone()));
             quote! {#dep_value==#se::#deposited(#certificate.before,#(#pn),*),
             #disjoint,
             #within,}
@@ -965,7 +1124,8 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
             let delta = storage.minus(after_s.clone(), before_s.clone());
             quote! {#dep_value==#delta,}
         };
-        let withdrawn_value = storage.minus(storage.op(before_s.clone(), dep_value.clone()), after_s.clone());
+        let withdrawn_value =
+            storage.minus(storage.op(before_s.clone(), dep_value.clone()), after_s.clone());
         cert_storage_ens = quote! {#physical #certificate.withdrawn==#withdrawn_value,};
         physical_let = quote! {let ghost #physical_deposit=#dep_value;};
         // A step that withdraws nothing and has one storage operation per path:
@@ -987,7 +1147,8 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         withdrawn_field = quote! {withdrawn:#returned_map,};
         local_deposit_req = quote! {&& deposit==Self::#local_deposited(#local_state,#(#pn),*)};
         deposit_ens = quote! {&&#se::#deposited(#full_state,#(#pn),*)==deposit};
-        let deposit_index = format_ident!("__tsm_deposit_index", span = proc_macro2::Span::mixed_site());
+        let deposit_index =
+            format_ident!("__tsm_deposit_index", span = proc_macro2::Span::mixed_site());
         let (local_deposit, full_deposit) = (
             quote! {Self::#local_deposited(#full_state,#(#pn),*)},
             quote! {#se::#deposited(#full_state,#(#pn),*)},
@@ -999,7 +1160,8 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         } else if scoped_deposits(&tr.body) {
             // Both deposit functions are inline: name them, as Verus cannot
             // choose a trigger in their `let`/`if`/`match` bodies.
-            let (local_name, full_name) = (fresh(sm, tr, "local_deposit"), fresh(sm, tr, "deposit"));
+            let (local_name, full_name) =
+                (fresh(sm, tr, "local_deposit"), fresh(sm, tr, "deposit"));
             let eq = storage.prove_eq(&deposit_index, quote! {#local_name}, quote! {#full_name});
             quote! {let #local_name = #local_deposit; let #full_name = #full_deposit; #eq}
         } else {
@@ -1010,7 +1172,16 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     // collection observation needs none).
     let hints = if chain {
         let split = quote! {#pe::__tsm_cfg_split};
-        let chain = crate::verified_chain::chain(sm, tr, ft, &split, quote! {owned}, quote! {h}, &completion_frame, &full_state)?;
+        let chain = crate::verified_chain::chain(
+            sm,
+            tr,
+            ft,
+            &split,
+            quote! {owned},
+            quote! {h},
+            &completion_frame,
+            &full_state,
+        )?;
         vec![chain]
     } else {
         vec![]
@@ -1151,7 +1322,16 @@ pub fn local_ready_guard_api(c: GuardContext<'_>) -> Result<TokenStream, Error> 
     // `h`: here the borrowed fragment and the unit.
     let hints = if chain {
         let split = quote! {#pe::__tsm_cfg_split};
-        vec![crate::verified_chain::chain(sm, tr, ft, &split, quote! {owned}, quote! {h}, &completion_frame, &full_state)?]
+        vec![crate::verified_chain::chain(
+            sm,
+            tr,
+            ft,
+            &split,
+            quote! {owned},
+            quote! {h},
+            &completion_frame,
+            &full_state,
+        )?]
     } else {
         vec![]
     };

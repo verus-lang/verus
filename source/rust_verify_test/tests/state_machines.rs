@@ -11287,4 +11287,3 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_rust_error_msg(e, "cannot find `pick` in `local_ready`")
 }
-

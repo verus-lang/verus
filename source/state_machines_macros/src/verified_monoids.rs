@@ -317,9 +317,10 @@ fn effect_expression(s: &TransitionStmt, f: &Field, kind: EffectOp) -> Result<To
                         // The later operands may use this statement's binding
                         // (e.g. in a condition), bound as below.
                         let rest = match (pattern, &op.elt) {
-                            (Some(p), MonoidElt::OptionSome(None) | MonoidElt::SingletonKV(_, None))
-                                if mentions_bound(p, &rest) =>
-                            {
+                            (
+                                Some(p),
+                                MonoidElt::OptionSome(None) | MonoidElt::SingletonKV(_, None),
+                            ) if mentions_bound(p, &rest) => {
                                 let bound = match &op.elt {
                                     MonoidElt::SingletonKV(k, None) => quote! {pre.#n[#k]},
                                     _ => quote! {pre.#n->Some_0},
@@ -361,7 +362,9 @@ fn sequential(f: &Field, a: TokenStream, b: TokenStream) -> TokenStream {
     let combine = match f.stype {
         ShardableType::Multiset(_) => quote! {#x.add(#y)},
         ShardableType::Count => quote! {(#x + #y) as nat},
-        ShardableType::PersistentCount => quote! {::vstd::resource::tsm_persistent::count_max(#x, #y)},
+        ShardableType::PersistentCount => {
+            quote! {::vstd::resource::tsm_persistent::count_max(#x, #y)}
+        }
         ShardableType::Bool | ShardableType::PersistentBool => quote! {(#x || #y)},
         ShardableType::Set(_)
         | ShardableType::ISet(_)
@@ -496,7 +499,11 @@ fn check_replacement_order(
 
 // Whether every modifying path removes exactly once and then adds exactly once
 // (stage 0: unmodified, 1: removed, 2: removed then added).
-fn single_replacement(s: &TransitionStmt, target: &Ident, mut stages: HashSet<u8>) -> Option<HashSet<u8>> {
+fn single_replacement(
+    s: &TransitionStmt,
+    target: &Ident,
+    mut stages: HashSet<u8>,
+) -> Option<HashSet<u8>> {
     match s {
         TransitionStmt::Block(_, children) => {
             for child in children {

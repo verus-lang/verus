@@ -8,11 +8,11 @@ use crate::to_token_stream::{
 };
 use crate::verified_monoids as monoids;
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote, ToTokens};
+use quote::{ToTokens, format_ident, quote};
 use std::collections::{HashMap, HashSet};
 use verus_syn::Error;
-use verus_syn::spanned::Spanned;
 use verus_syn::Ident;
+use verus_syn::spanned::Spanned;
 
 /// Adds the fields `stmt` updates to `out`.
 fn writes(stmt: &TransitionStmt, out: &mut HashSet<String>) {
@@ -21,7 +21,9 @@ fn writes(stmt: &TransitionStmt, out: &mut HashSet<String>) {
             out.insert(n.to_string());
         }
         TransitionStmt::Block(_, children) | TransitionStmt::Split(_, _, children) => {
-            for child in children { writes(child, out); }
+            for child in children {
+                writes(child, out);
+            }
         }
         _ => {}
     }
@@ -29,9 +31,12 @@ fn writes(stmt: &TransitionStmt, out: &mut HashSet<String>) {
 
 /// Some transition updates a `not_tokenized` field.
 fn updates_unowned(sm: &SM) -> bool {
-    let hidden: HashSet<_> = sm.fields.iter()
+    let hidden: HashSet<_> = sm
+        .fields
+        .iter()
         .filter(|f| matches!(f.stype, ShardableType::NotTokenized(_)))
-        .map(|f| f.name.to_string()).collect();
+        .map(|f| f.name.to_string())
+        .collect();
     sm.transitions.iter().any(|tr| {
         let mut changed = HashSet::new();
         writes(&tr.body, &mut changed);
@@ -50,7 +55,9 @@ fn drop_unowned_updates(stmt: &mut TransitionStmt, fields: &HashMap<String, Fiel
             *stmt = TransitionStmt::Block(*span, vec![]);
         }
         TransitionStmt::Block(_, children) | TransitionStmt::Split(_, _, children) => {
-            for child in children { drop_unowned_updates(child, fields); }
+            for child in children {
+                drop_unowned_updates(child, fields);
+            }
         }
         _ => {}
     }
@@ -410,7 +417,12 @@ fn storage_key_reads(
                 crate::field_access_visitor::visit_field_accesses(
                     &mut key.clone(),
                     |_, f, _| {
-                        if !withdraw || matches!(f.stype,ShardableType::Variable(_) | ShardableType::Constant(_)) {
+                        if !withdraw
+                            || matches!(
+                                f.stype,
+                                ShardableType::Variable(_) | ShardableType::Constant(_)
+                            )
+                        {
                             out.insert(f.name.to_string());
                         }
                     },
@@ -475,7 +487,10 @@ fn storage_deposit(
                 quote! {{let #p #t=#e;#child}}
             }
             SplitKind::Let(_, _, LetKind::BirdsEye, _) if has_deposit(s) => {
-                return Err(Error::new(*span, "a deposited resource cannot depend on a birds_eye binding"));
+                return Err(Error::new(
+                    *span,
+                    "a deposited resource cannot depend on a birds_eye binding",
+                ));
             }
             SplitKind::If(e) => {
                 let a = storage_deposit(&xs[0], fields, storage)?;
@@ -499,9 +514,11 @@ fn storage_deposit(
                     .collect::<Result<_, Error>>()?;
                 quote! {match #e{#(#cases),*}}
             }
-            SplitKind::Special(name, op, _, _) if op.stmt.is_deposit() => storage
-                .singleton(name, &op.elt)
-                .map_err(|_| Error::new(*span, "verified deposit requires an explicit optional or map value"))?,
+            SplitKind::Special(name, op, _, _) if op.stmt.is_deposit() => {
+                storage.singleton(name, &op.elt).map_err(|_| {
+                    Error::new(*span, "verified deposit requires an explicit optional or map value")
+                })?
+            }
             SplitKind::Special(name, op, _, binding) => {
                 let child = match xs.first() {
                     Some(x) => storage_deposit(x, fields, storage)?,
@@ -543,7 +560,9 @@ impl GuardScope {
     fn enter(&self, split: &SplitKind) -> Vec<GuardScope> {
         let bind = |scope: &mut GuardScope, pattern: &verus_syn::Pat| {
             scope.bound.extend(
-                crate::ident_visitor::pattern_get_bound_idents(pattern).iter().map(|n| n.to_string()),
+                crate::ident_visitor::pattern_get_bound_idents(pattern)
+                    .iter()
+                    .map(|n| n.to_string()),
             )
         };
         let mut inner = self.clone();
@@ -581,15 +600,26 @@ impl GuardScope {
 /// with whether the `have` is under an `if` or a `match`. A key that mentions a
 /// name bound in the transition is not observed (the spec fns reading the
 /// observation are outside its scope).
-fn guard_map_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<(Ident, verus_syn::Expr, bool)> {
+fn guard_map_haves(
+    s: &TransitionStmt,
+    fields: &HashMap<String, Field>,
+) -> Vec<(Ident, verus_syn::Expr, bool)> {
     let mut out = vec![];
-    fn walk(s: &TransitionStmt, fields: &HashMap<String, Field>, scope: &GuardScope, out: &mut Vec<(Ident, verus_syn::Expr, bool)>) {
+    fn walk(
+        s: &TransitionStmt,
+        fields: &HashMap<String, Field>,
+        scope: &GuardScope,
+        out: &mut Vec<(Ident, verus_syn::Expr, bool)>,
+    ) {
         match s {
             TransitionStmt::Block(_, xs) => xs.iter().for_each(|x| walk(x, fields, scope, out)),
             TransitionStmt::Split(_, k, xs) => {
                 if let SplitKind::Special(n, op, _, _) = &**k {
                     if matches!(op.stmt, MonoidStmtType::Have)
-                        && matches!(fields[&n.to_string()].stype, ShardableType::Map(..) | ShardableType::IMap(..))
+                        && matches!(
+                            fields[&n.to_string()].stype,
+                            ShardableType::Map(..) | ShardableType::IMap(..)
+                        )
                     {
                         if let MonoidElt::SingletonKV(key, _) = &op.elt {
                             if !scope.mentions_bound(quote! {#key}) {
@@ -613,9 +643,17 @@ fn guard_map_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<(
 /// The `option` and `persistent_option` fields of `have o >= Some(..)`
 /// statements, each with whether it is persistent and whether every such
 /// `have` of it is under an `if` or a `match`.
-fn guard_option_haves(s: &TransitionStmt, fields: &HashMap<String, Field>) -> Vec<(Ident, bool, bool)> {
+fn guard_option_haves(
+    s: &TransitionStmt,
+    fields: &HashMap<String, Field>,
+) -> Vec<(Ident, bool, bool)> {
     let mut out: Vec<(Ident, bool, bool)> = vec![];
-    fn walk(s: &TransitionStmt, fields: &HashMap<String, Field>, scope: &GuardScope, out: &mut Vec<(Ident, bool, bool)>) {
+    fn walk(
+        s: &TransitionStmt,
+        fields: &HashMap<String, Field>,
+        scope: &GuardScope,
+        out: &mut Vec<(Ident, bool, bool)>,
+    ) {
         match s {
             TransitionStmt::Block(_, xs) => xs.iter().for_each(|x| walk(x, fields, scope, out)),
             TransitionStmt::Split(_, k, xs) => {
@@ -878,11 +916,15 @@ pub fn output_with_ready(
     let chained: HashSet<String> = sm
         .transitions
         .iter()
-        .filter(|tr| local_ready.contains(&tr.name.to_string()) && crate::verified_chain::uses_chain(sm, tr))
+        .filter(|tr| {
+            local_ready.contains(&tr.name.to_string()) && crate::verified_chain::uses_chain(sm, tr)
+        })
         .map(|tr| tr.name.to_string())
         .collect();
     for tr in &sm.transitions {
-        let guard_property = matches!(tr.kind, TransitionKind::Property | TransitionKind::ReadonlyTransition) && contains_guard(&tr.body);
+        let guard_property =
+            matches!(tr.kind, TransitionKind::Property | TransitionKind::ReadonlyTransition)
+                && contains_guard(&tr.body);
         let n = &tr.name;
         let ready_inline = if local_ready.contains(&n.to_string()) {
             quote! {#[verifier::inline]}
@@ -937,8 +979,12 @@ pub fn output_with_ready(
                 }
             })
             .collect();
-        let preserved: HashSet<String> =
-            sm.fields.iter().map(|f| f.name.to_string()).filter(|f| !assigned.contains(f)).collect();
+        let preserved: HashSet<String> = sm
+            .fields
+            .iter()
+            .map(|f| f.name.to_string())
+            .filter(|f| !assigned.contains(f))
+            .collect();
         // The strong relation of a non-init transition is only established by
         // the generated executor: it needs no per-conjunct error messages.
         let relation = if tr.kind == TransitionKind::Init {
@@ -962,7 +1008,12 @@ pub fn output_with_ready(
             matches!(tr.kind, TransitionKind::Property | TransitionKind::ReadonlyTransition),
         )?;
         let mut replace_candidate = None;
-        check_storage_paths(&tr.body,&fields,&mut StoragePath::default(),&mut replace_candidate)?;
+        check_storage_paths(
+            &tr.body,
+            &fields,
+            &mut StoragePath::default(),
+            &mut replace_candidate,
+        )?;
         // Paired exchange outputs when some path has several storage operations.
         let paired = storage_ops > 1;
         // The checked backend's restrictions on monoid statements (operand forms, bindings,
@@ -980,7 +1031,11 @@ pub fn output_with_ready(
             quote! {h},
             local_ready.contains(&n.to_string()),
         )?;
-        let ownership_inline=if crate::verified_readiness::inline_ownership(sm,tr) {ready_inline.clone()}else{quote!{}};
+        let ownership_inline = if crate::verified_readiness::inline_ownership(sm, tr) {
+            ready_inline.clone()
+        } else {
+            quote! {}
+        };
         relations.push(quote!{#ownership_inline pub open spec fn #owners(pre:#st,owned:#ft,h:#ft,#(#params),*)->bool{#owner_expression}});
         // The composed removals of multiset fields, for the cardinality hints of the
         // inductiveness lemma below.
@@ -999,9 +1054,9 @@ pub fn output_with_ready(
             };
         relations.push(monoids::effect_functions(&cardinality_effects, &st, &params));
         let mut access_errors = vec![];
-        let mut token_footprint=tr.body.clone();
+        let mut token_footprint = tr.body.clone();
         if updates_unowned(sm) {
-            drop_unowned_updates(&mut token_footprint,&fields);
+            drop_unowned_updates(&mut token_footprint, &fields);
         }
         let (mut read, _) = crate::field_access_visitor::find_all_accesses(
             &mut token_footprint,
@@ -1072,9 +1127,13 @@ pub fn output_with_ready(
                             }
                         }
                     }).collect()
-            } else {vec![]};
-            f.block = verus_syn::parse2(quote! {{requires(#cond);ensures(post.invariant());#b #(#cardinality_hints)*}})?;
-            let spinoff=crate::verified_model::induction_spinoff(&f.attrs);
+            } else {
+                vec![]
+            };
+            f.block = verus_syn::parse2(
+                quote! {{requires(#cond);ensures(post.invariant());#b #(#cardinality_hints)*}},
+            )?;
+            let spinoff = crate::verified_model::induction_spinoff(&f.attrs);
             lemmas.push(quote! {::vstd::prelude::verus_impl!{#spinoff #f}});
         }
         let init_alias = if init {
@@ -1091,36 +1150,56 @@ pub fn output_with_ready(
                 let post_s = quote! {post.__storage()};
                 let dep = quote! {Self::#deposited(pre,#(#pn),*)};
                 let agrees = p.agrees(pre_s.clone(), post_s.clone());
-                let agrees_proof = p.prove_agrees_at(&storage_index, pre_s.clone(), post_s.clone(), replace_candidate);
+                let agrees_proof = p.prove_agrees_at(
+                    &storage_index,
+                    pre_s.clone(),
+                    post_s.clone(),
+                    replace_candidate,
+                );
                 let grow = p.le(pre_s.clone(), post_s.clone());
-                let grow_proof = if no_withdraw { p.prove_le(&storage_index, pre_s.clone(), post_s.clone()) } else { quote! {} };
-                let grow_ens = if no_withdraw { quote! {,#grow} } else { quote! {} };
+                let grow_proof = if no_withdraw {
+                    p.prove_le(&storage_index, pre_s.clone(), post_s.clone())
+                } else {
+                    quote! {}
+                };
+                let grow_ens = if no_withdraw {
+                    quote! {,#grow}
+                } else {
+                    quote! {}
+                };
                 if paired {
                     let transferred = p.op(pre_s.clone(), quote! {physical_deposit});
                     let disjoint = p.disjoint(pre_s.clone(), dep.clone());
                     let within = p.le(post_s.clone(), p.op(pre_s.clone(), dep.clone()));
                     let covered = p.le(p.op(pre_s.clone(), dep.clone()), post_s.clone());
-                    let covered_ens = if no_withdraw { quote! {,#covered} } else { quote! {} };
+                    let covered_ens = if no_withdraw {
+                        quote! {,#covered}
+                    } else {
+                        quote! {}
+                    };
                     let covered_proof = if no_withdraw {
                         p.prove_le(&storage_index, transferred.clone(), post_s.clone())
                     } else {
                         quote! {}
                     };
-                    (
-                        quote! {,#agrees,#disjoint,#within #grow_ens #covered_ens},
-                        {
-                            let disjoint_proof = p.prove_disjoint_at(&storage_index, pre_s.clone(), quote! {physical_deposit}, replace_candidate);
-                            let within_proof = p.prove_le(&storage_index, post_s.clone(), transferred.clone());
-                            quote! {
-                                let physical_deposit=#dep;
-                                #agrees_proof
-                                #grow_proof
-                                #disjoint_proof
-                                #within_proof
-                                #covered_proof
-                            }
-                        },
-                    )
+                    (quote! {,#agrees,#disjoint,#within #grow_ens #covered_ens}, {
+                        let disjoint_proof = p.prove_disjoint_at(
+                            &storage_index,
+                            pre_s.clone(),
+                            quote! {physical_deposit},
+                            replace_candidate,
+                        );
+                        let within_proof =
+                            p.prove_le(&storage_index, post_s.clone(), transferred.clone());
+                        quote! {
+                            let physical_deposit=#dep;
+                            #agrees_proof
+                            #grow_proof
+                            #disjoint_proof
+                            #within_proof
+                            #covered_proof
+                        }
+                    })
                 } else {
                     let delta = p.minus(post_s.clone(), pre_s.clone());
                     let delta_proof = p.prove_eq(&storage_index, dep.clone(), delta.clone());
@@ -1183,24 +1262,33 @@ pub fn output_with_ready(
             // fields (linked to `pre` by option_owned_frame) and persistent
             // option fields (by persistent_option_owned_frame).
             let option_haves = guard_option_haves(&tr.body, &fields);
-            let option_updates: Vec<_> = option_haves.iter().map(|(field, persistent, _)| {
-                if *persistent {
-                    quote! {#field: Some(f.#field->Some_0->Agree_0)}
-                } else {
-                    quote! {#field: Some(f.#field->Some_0->Exclusive_0)}
-                }
-            }).collect();
+            let option_updates: Vec<_> = option_haves
+                .iter()
+                .map(|(field, persistent, _)| {
+                    if *persistent {
+                        quote! {#field: Some(f.#field->Some_0->Agree_0)}
+                    } else {
+                        quote! {#field: Some(f.#field->Some_0->Exclusive_0)}
+                    }
+                })
+                .collect();
             let observed_base = if observed_fields.is_empty() && option_updates.is_empty() {
                 quote! {Self::__observed(f)}
             } else {
-                let updates: Vec<_> = option_updates.iter().cloned().chain(observed_fields.iter().map(|(field, keys)| {
-                    let inserts = keys.iter().map(|k| quote! {.insert(#k, f.#field.at(#k)->Some_0->Exclusive_0)});
-                    let empty = match fields[&field.to_string()].stype {
-                        ShardableType::IMap(..) => quote! {::vstd::imap::IMap::empty()},
-                        _ => quote! {::vstd::map::Map::empty()},
-                    };
-                    quote! {#field: #empty #(#inserts)*}
-                })).collect();
+                let updates: Vec<_> = option_updates
+                    .iter()
+                    .cloned()
+                    .chain(observed_fields.iter().map(|(field, keys)| {
+                        let inserts = keys
+                            .iter()
+                            .map(|k| quote! {.insert(#k, f.#field.at(#k)->Some_0->Exclusive_0)});
+                        let empty = match fields[&field.to_string()].stype {
+                            ShardableType::IMap(..) => quote! {::vstd::imap::IMap::empty()},
+                            _ => quote! {::vstd::map::Map::empty()},
+                        };
+                        quote! {#field: #empty #(#inserts)*}
+                    }))
+                    .collect();
                 quote! {#se{#(#updates,)* ..Self::__observed(f)}}
             };
             // The values the `have`s observe in `f` are the state's: the statement
@@ -1230,7 +1318,8 @@ pub fn output_with_ready(
                 quote! {Self::storage(pre)},
             );
             let guard_le = p.le(quote! {Self::#guarded(f,#(#pn),*)}, quote! {Self::storage(pre)});
-            relations.push(quote!{pub open spec fn #guarded(pre:#st,#(#params),*)->#sty{#expression}});
+            relations
+                .push(quote! {pub open spec fn #guarded(pre:#st,#(#params),*)->#sty{#expression}});
             let mut observed_req: Vec<_> = names
                 .iter()
                 .filter(|n| read.contains(&n.to_string()))
@@ -1240,7 +1329,9 @@ pub fn output_with_ready(
                     _ => unreachable!(),
                 })
                 .collect();
-            for (field, persistent, _) in option_haves.iter().filter(|(_, _, conditional)| !conditional) {
+            for (field, persistent, _) in
+                option_haves.iter().filter(|(_, _, conditional)| !conditional)
+            {
                 observed_req.push(if *persistent {
                     quote! {f.#field is Some && f.#field->Some_0 is Agree}
                 } else {
@@ -1416,11 +1507,8 @@ pub fn output_with_ready(
                     let local_expression = storage_deposit(&tr.body, &fields, layout)?;
                     let sty = layout.ty();
                     let local_deposited = quote! {#[verifier::inline] pub open spec fn deposited(pre:#st,#(#params),*)->#sty{#local_expression}};
-                    let reads: Vec<_> = names
-                        .iter()
-                        .copied()
-                        .filter(|n| read.contains(&n.to_string()))
-                        .collect();
+                    let reads: Vec<_> =
+                        names.iter().copied().filter(|n| read.contains(&n.to_string())).collect();
                     let api = crate::verified_readiness::local_ready_api(
                         crate::verified_readiness::Context {
                             sm,
@@ -1444,7 +1532,8 @@ pub fn output_with_ready(
                             chain: chained.contains(&n.to_string()),
                         },
                     )?;
-                    local_ready_items.push((n.clone(), quote! {#declared_requires #local_deposited #api}));
+                    local_ready_items
+                        .push((n.clone(), quote! {#declared_requires #local_deposited #api}));
                 }
             } else {
                 ops.push(quote!{
@@ -1517,11 +1606,8 @@ pub fn output_with_ready(
                             (pre,post,z)
                         }
                     });
-                    let reads: Vec<_> = names
-                        .iter()
-                        .copied()
-                        .filter(|n| read.contains(&n.to_string()))
-                        .collect();
+                    let reads: Vec<_> =
+                        names.iter().copied().filter(|n| read.contains(&n.to_string())).collect();
                     let api = crate::verified_readiness::local_ready_api(
                         crate::verified_readiness::Context {
                             sm,
@@ -1550,8 +1636,7 @@ pub fn output_with_ready(
             }
         }
     }
-    let (storage_state, storage_trait, token_type, mut broadcast) = if let Some(p) = storage
-    {
+    let (storage_state, storage_trait, token_type, mut broadcast) = if let Some(p) = storage {
         let sty = p.ty();
         let (key_ty, value_ty) = (p.key_ty(), p.value_ty());
         let storage_decl = p.decl(&decl, &where_clause, &st);
@@ -1823,8 +1908,7 @@ fn storage_operations(
     let pair = Ident::new(&pair_name, proc_macro2::Span::mixed_site());
     let witness = format_ident!("{}_witness", n);
     let output_at = format_ident!("__tsm_{}_output_at", n);
-    let outputs =
-        quote! {ISet::new(|#pair:(#ft,#map)|Self::#output(owned,h,#pair.0,deposit,#pair.1,#(#pn),*))};
+    let outputs = quote! {ISet::new(|#pair:(#ft,#map)|Self::#output(owned,h,#pair.0,deposit,#pair.1,#(#pn),*))};
     let lifted = quote! {#outputs.map(|#pair:(#ft,#map)|(<#ft>::op(#pair.0,h),#pair.1))};
     let ret = if withdraws {
         quote! {tracked out:(#tt,#map)}
