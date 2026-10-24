@@ -77,8 +77,8 @@ pub trait ExIterator {
                     &&& ret == Some(old(self).remaining()[0])
                     &&& old(self).produces()[0]
                 } else {
-                    &&& final(self).remaining() == old(self).remaining() 
-                    &&& final(self).produces() == old(self).produces() 
+                    &&& final(self).remaining() == old(self).remaining()
+                    &&& final(self).produces() == old(self).produces()
                     &&& ret == None
                 }
             }),
@@ -252,7 +252,7 @@ pub trait ExIterator {
             !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #[trigger] f.requires((x, )),
         ensures
             iter_state_preserved!(old(self), final(self)),
-            
+
             final(self).obeys_prophetic_iter_laws() ==> {
                 let num_consumed = old(self).remaining().len() - final(self).remaining().len();
                 &&& final(self).remaining().is_suffix_of(old(self).remaining())
@@ -335,7 +335,7 @@ pub trait ExIterator {
         ensures
             self.obeys_prophetic_iter_laws() ==> rev_post(self, r),
     ;
-    
+
     fn size_hint(&self) -> ((lower, upper): (usize, Option<usize>))
         ensures
             self.obeys_prophetic_iter_laws() ==>
@@ -384,7 +384,7 @@ pub trait ExDoubleEndedIterator : Iterator {
     fn next_back(&mut self) -> (ret: Option<<Self as core::iter::Iterator>::Item>)
         ensures
             iter_state_preserved!(old(self), final(self)),
-            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==> 
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==>
             <Self as IteratorSpec>::produces(final(self)) == if ret is Some { <Self as IteratorSpec>::produces(old(self)).drop_last() } else { <Self as IteratorSpec>::produces(old(self)) },
             // `next_back` pops the tail of the prophesized remaining(), or returns None
             <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==>
@@ -395,8 +395,8 @@ pub trait ExDoubleEndedIterator : Iterator {
                     &&& ret == Some(<Self as IteratorSpec>::remaining(old(self)).last())
                     &&& <Self as IteratorSpec>::produces(old(self)).last()
                 } else {
-                    &&& <Self as IteratorSpec>::remaining(final(self)) == <Self as IteratorSpec>::remaining(old(self)) 
-                    &&& <Self as IteratorSpec>::produces(final(self)) == <Self as IteratorSpec>::produces(old(self)) 
+                    &&& <Self as IteratorSpec>::remaining(final(self)) == <Self as IteratorSpec>::remaining(old(self))
+                    &&& <Self as IteratorSpec>::produces(final(self)) == <Self as IteratorSpec>::produces(old(self))
                     &&& ret == None
                 }
             }),
@@ -424,7 +424,7 @@ pub trait ExExactSizeIterator: Iterator {
     fn len(&self) -> (len: usize)
         ensures
             self.obeys_prophetic_iter_laws() ==> len == self.exact_len() == self.remaining().len() == self.produces().len(),
-    ; 
+    ;
 }
 
 /********************************************************************************
