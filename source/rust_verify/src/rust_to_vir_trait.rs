@@ -180,6 +180,7 @@ pub(crate) fn translate_trait<'tcx>(
     trait_vattrs: &VerifierAttrs,
     crate_items: &CrateItems,
     safety: Safety,
+    no_erasure_needed: &mut Vec<DefId>,
 ) -> Result<(), VirErr> {
     let tcx = ctxt.tcx;
     let orig_trait_path = ctxt.def_id_to_vir_path(trait_def_id);
@@ -367,6 +368,7 @@ pub(crate) fn translate_trait<'tcx>(
                         // (they would currently just get dropped here if we didn't return an error)
                     }
                     // spec functions live in extension trait, not in our trait
+                    no_erasure_needed.push(owner_id.to_def_id());
                     continue;
                 } else if !is_verus_spec && ex_assoc_item.is_none() {
                     return err_span(
@@ -429,6 +431,7 @@ pub(crate) fn translate_trait<'tcx>(
                     ex_item_id_for,
                     None,
                     &mut vir.opaque_types,
+                    no_erasure_needed,
                 )?;
                 if let Some(fun) = fun {
                     method_names.push(fun);
@@ -471,6 +474,7 @@ pub(crate) fn translate_trait<'tcx>(
                     ex_item_id_for,
                     None,
                     &mut vir.opaque_types,
+                    no_erasure_needed,
                 )?;
                 if let Some(fun) = fun {
                     method_names.push(fun);

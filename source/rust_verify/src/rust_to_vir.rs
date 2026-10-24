@@ -8,7 +8,7 @@ For soundness's sake, be as defensive as possible:
 
 use crate::context::{Context, ContextX};
 use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
-use crate::query::PreCrate;
+use crate::query::{PreCrate, QueryError};
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{def_id_to_vir_path_option, mk_visibility};
@@ -20,6 +20,7 @@ use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::{err_span, err_span_vec};
 use crate::verus_items::{self, VerusItem};
 use crate::{unsupported_err, unsupported_err_vec, unsupported_err_vec_unless};
+use rustc_hir::def_id::DefId;
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -45,7 +46,7 @@ impl State {
         &mut self,
         ctxt: &Context<'tcx>,
         name: &Fun,
-        id: rustc_span::def_id::DefId,
+        id: DefId,
     ) {
         self.fun_warn_configs
             .insert(name.clone(), crate::attributes::warning_config_walk_parents(ctxt.tcx, id));
@@ -61,13 +62,18 @@ fn check_item<'tcx>(
     id: &ItemId,
     item: &'tcx Item<'tcx>,
     crate_items: &CrateItems,
+    no_erasure_needed: &mut Vec<DefId>,
 ) -> Result<(), Vec<VirErr>> {
+    let def_id = item.owner_id.to_def_id();
+
     let attrs = ctxt.tcx.hir_attrs(item.hir_id());
     let vattrs = ctxt.get_verifier_attrs(attrs).map_err(|e| vec![e])?;
     if vattrs.internal_reveal_fn {
+        no_erasure_needed.push(def_id);
         return Ok(());
     }
     if vattrs.internal_const_body {
+        no_erasure_needed.push(def_id);
         return Ok(());
     }
     if vattrs.external_fn_specification && !matches!(&item.kind, ItemKind::Fn { .. }) {
@@ -92,6 +98,7 @@ fn check_item<'tcx>(
     let mut handle_const_or_static = |body_id: &rustc_hir::BodyId| {
         let def_id = body_id.hir_id.owner.to_def_id();
         if vattrs.size_of_global {
+            no_erasure_needed.push(def_id);
             return Ok(()); // handled earlier
         }
         if vattrs.item_broadcast_use {
@@ -174,13 +181,11 @@ fn check_item<'tcx>(
             }
             *reveals = Some(ctxt.spanned_new(item.span, funs));
 
+            no_erasure_needed.push(def_id);
             return Ok(());
         }
         if vattrs.structural_const_wrapper {
-            ctxt.erasure_info
-                .borrow_mut()
-                .ignored_functions
-                .push((item.owner_id.to_def_id(), item.span.data()));
+            no_erasure_needed.push(def_id);
             return Ok(());
         }
 
@@ -226,6 +231,7 @@ fn check_item<'tcx>(
                 None,
                 None,
                 &mut vir.opaque_types,
+                no_erasure_needed,
             )
             .map_err(|e| vec![e])?;
         }
@@ -308,6 +314,7 @@ fn check_item<'tcx>(
                 module_path.clone(),
                 crate_items,
                 attrs,
+                no_erasure_needed,
             )?;
         }
         ItemKind::Const(_ident, generics, _ty, ConstItemRhs::Body(body_id)) => {
@@ -350,6 +357,7 @@ fn check_item<'tcx>(
                 &vattrs,
                 crate_items,
                 *safety,
+                no_erasure_needed,
             )
             .map_err(|e| vec![e])?;
         }
@@ -405,7 +413,7 @@ fn check_anon_consts<'tcx>(
     state: &mut State,
     infos: &mut Vec<FunctionOrConstInfo<'tcx>>,
     crate_items: &CrateItems,
-) -> Result<(), Vec<VirErr>> {
+) -> Result<(), (Vec<VirErr>, Option<QueryError>)> {
     let tcx = ctxt.tcx;
     for id in tcx.hir_body_owners() {
         if !matches!(tcx.def_kind(id), DefKind::AnonConst) {
@@ -457,9 +465,27 @@ fn check_anon_consts<'tcx>(
         let Some(module_path) = module_path else {
             continue;
         };
+
+        // TODO: FIXME: This is too early to do type-checking.
+        // However, rustc ICEs if we don't type-check the body containing an anon const
+        // before calling `type_of`. We need to move the anon const machinery later.
+        // Until then, the https://github.com/verus-lang/verus/issues/2323 issue will
+        // persist in the presence of anon consts.
+        let local_def_id = owner.unwrap().as_local().unwrap();
+        if tcx.hir_node_by_def_id(local_def_id).associated_body().is_some() {
+            tcx.typeck(local_def_id);
+        } else {
+            if tcx.check_well_formed(local_def_id).is_err() {
+                let rust_error = Some(crate::query::QueryError { _i_just_emitted_an_error: () });
+                return Err((vec![], rust_error));
+            }
+        }
+
         let span = body.value.span;
         let mid_typ = tcx.type_of(id).skip_binder();
-        let typ = ctxt.mid_ty_to_vir(id.to_def_id(), span, &mid_typ, None).map_err(|e| vec![e])?;
+        let typ = ctxt
+            .mid_ty_to_vir(id.to_def_id(), span, &mid_typ, None)
+            .map_err(|e| (vec![e], None))?;
         crate::rust_to_vir_func::check_item_const_or_static(
             ctxt,
             state,
@@ -474,7 +500,7 @@ fn check_anon_consts<'tcx>(
             false,
             None,
         )
-        .map_err(|e| vec![e])?;
+        .map_err(|e| (vec![e], None))?;
     }
     Ok(())
 }
@@ -506,7 +532,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
     mut ctxtx: ContextX<'tcx>,
     imported: &Vec<Krate>,
     crate_items: &CrateItems,
-) -> Result<PreCrate<'tcx>, Vec<VirErr>> {
+) -> Result<PreCrate<'tcx>, (Vec<VirErr>, Option<QueryError>)> {
     let mut vir: KrateX = KrateX {
         functions: Vec::new(),
         reveal_groups: Vec::new(),
@@ -553,7 +579,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
     }
 
     if errors.len() > 0 {
-        return Err(errors);
+        return Err((errors, None));
     }
 
     let arch_word_bits = ctxtx.arch_word_bits.unwrap_or(vir::ast::ArchWordBits::Either32Or64);
@@ -606,7 +632,11 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
         imported,
         &crate_items,
     )
-    .map_err(|e| vec![e])?;
+    .map_err(|e| (vec![e], None))?;
+
+    let mut rust_error = None;
+
+    let mut no_erasure_needed = vec![];
 
     for crate_item in crate_items.items.iter() {
         match &crate_item.verif {
@@ -619,6 +649,18 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
                 match crate_item.id {
                     GeneralItemId::ItemId(item_id) => {
                         let item = ctxt.tcx.hir_item(item_id);
+
+                        if matches!(
+                            &item.kind,
+                            ItemKind::Struct(..) | ItemKind::Union(..) | ItemKind::Enum(..)
+                        ) {
+                            if tcx.check_well_formed(item.owner_id.def_id).is_err() {
+                                rust_error =
+                                    Some(crate::query::QueryError { _i_just_emitted_an_error: () });
+                                continue;
+                            }
+                        }
+
                         if let Err(errs) = check_item(
                             &ctxt,
                             &mut state,
@@ -628,6 +670,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
                             &item_id,
                             item,
                             &crate_items,
+                            &mut no_erasure_needed,
                         ) {
                             errors.extend(errs);
                         }
@@ -692,8 +735,8 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
         }
     }
 
-    if errors.len() > 0 {
-        return Err(errors);
+    if errors.len() > 0 || rust_error.is_some() {
+        return Err((errors, rust_error));
     }
 
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&CrateId::Vstd);
@@ -708,10 +751,10 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
         &mut state.external_info,
         &function_stubs,
     )
-    .map_err(|e| vec![e])?;
+    .map_err(|e| (vec![e], None))?;
 
     crate::rust_to_vir_adts::setup_type_invariants(&mut vir, &function_stubs)
-        .map_err(|e| vec![e])?;
+        .map_err(|e| (vec![e], None))?;
 
     let mut fun_warn_configs: HashMap<Fun, Option<WarningConfig>> = HashMap::new();
     for krate in imported {
@@ -731,11 +774,35 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
             fun_name_to_info.insert(stub.x.name.clone(), info.clone());
         }
     }
+
+    // Map DefId to the Fun that has the relave ErasureInfo and ErasureModes
+    let mut def_id_to_fun_name_for_erasure = HashMap::<DefId, Option<Fun>>::new();
+    for info in infos.iter() {
+        match &**info {
+            FunctionOrConstInfo::Function(info) => {
+                let f = def_id_to_fun_name_for_erasure
+                    .insert(info.def_id, Some(info.function.x.name.clone()));
+                assert!(f.is_none());
+            }
+            FunctionOrConstInfo::Const(info) => {
+                let f = def_id_to_fun_name_for_erasure
+                    .insert(info.def_id, Some(info.function.x.name.clone()));
+                assert!(f.is_none());
+            }
+            FunctionOrConstInfo::ForeignFunction(_) => {}
+        }
+    }
+    for def_id in no_erasure_needed.iter() {
+        let f = def_id_to_fun_name_for_erasure.insert(*def_id, None);
+        assert!(f.is_none());
+    }
+
     Ok(PreCrate {
         ctxt,
         warning_ctx: Arc::new(warning_ctx),
         krate_without_funs: Arc::new(vir),
         infos: infos,
         fun_name_to_info,
+        def_id_to_fun_name_for_erasure,
     })
 }

@@ -241,6 +241,7 @@ pub(crate) fn translate_impl<'tcx>(
     module_path: Path,
     crate_items: &CrateItems,
     attrs: &[rustc_hir::Attribute],
+    no_erasure_needed: &mut Vec<DefId>,
 ) -> Result<(), Vec<VirErr>> {
     let impl_def_id = item.owner_id.to_def_id();
     let impl_path = ctxt.def_id_to_vir_path(impl_def_id);
@@ -367,16 +368,13 @@ pub(crate) fn translate_impl<'tcx>(
 
         if ignore {
             for impl_item_id in impll.items {
-                let assoc_item = ctxt.tcx.associated_item(impl_item_id.hir_id().owner.to_def_id());
+                let def_id = impl_item_id.hir_id().owner.to_def_id();
+                no_erasure_needed.push(def_id);
+                let assoc_item = ctxt.tcx.associated_item(def_id);
                 match assoc_item.kind {
                     AssocKind::Fn { has_self, .. } if has_self => {
                         let impl_item = ctxt.tcx.hir_impl_item(*impl_item_id);
-                        if let ImplItemKind::Fn(sig, _) = &impl_item.kind {
-                            ctxt.erasure_info
-                                .borrow_mut()
-                                .ignored_functions
-                                .push((impl_item.owner_id.to_def_id(), sig.span.data()));
-                        } else {
+                        if !matches!(&impl_item.kind, ImplItemKind::Fn(_, _)) {
                             panic!("Fn impl item expected");
                         }
                     }
@@ -442,11 +440,16 @@ pub(crate) fn translate_impl<'tcx>(
         None
     };
 
+    if vattrs.external_trait_blanket {
+        for impl_item_id in impll.items {
+            let def_id = impl_item_id.hir_id().owner.to_def_id();
+            no_erasure_needed.push(def_id);
+        }
+        return Ok(());
+    }
+
     let mut errors = vec![];
     for impl_item_id in impll.items {
-        if vattrs.external_trait_blanket {
-            return Ok(());
-        }
         let r = translate_impl_item(
             ctxt,
             state,
@@ -461,6 +464,7 @@ pub(crate) fn translate_impl<'tcx>(
             impl_def_id,
             &impl_path,
             &autoderive_action,
+            no_erasure_needed,
         );
         if let Err(r) = r {
             errors.push(r);
@@ -483,6 +487,7 @@ pub(crate) fn translate_impl_item<'tcx>(
     impl_def_id: DefId,
     impl_path: &Path,
     autoderive_action: &Option<crate::automatic_derive::AutomaticDeriveAction>,
+    no_erasure_needed: &mut Vec<DefId>,
 ) -> Result<(), VirErr> {
     let impl_item = ctxt.tcx.hir_impl_item(*impl_item_id);
     let fn_attrs = ctxt.tcx.hir_attrs(impl_item.hir_id());
@@ -495,6 +500,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                 "an item in a trait impl cannot be marked external - you can either use external_body, or mark the entire trait impl as external",
             );
         }
+        no_erasure_needed.push(impl_item.owner_id.to_def_id());
         return Ok(());
     }
     let assoc_item = ctxt.tcx.associated_item(impl_item_id.hir_id().owner.to_def_id());
@@ -541,6 +547,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                         None,
                         *autoderive_action,
                         &mut vir.opaque_types,
+                        no_erasure_needed,
                     )?;
                 }
                 _ => unsupported_err!(item.span, "unsupported item in impl", impl_item_id),
@@ -618,6 +625,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                         None,
                         None,
                         &mut vir.opaque_types,
+                        no_erasure_needed,
                     )?;
                 }
             } else {

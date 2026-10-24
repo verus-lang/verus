@@ -1,9 +1,9 @@
 use crate::commands::{OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, CargoVerusArgs, ShowTriggers};
-use crate::context::{ContextX, ErasureInfo};
+use crate::context::ContextX;
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
-use crate::query::{Query, QueryError};
+use crate::query::{Query, QueryError, set_global_query};
 use crate::rust_to_vir_base::mk_crate_id;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
@@ -41,6 +41,7 @@ use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
 
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
+use std::rc::Rc;
 use vir::ast::{CrateId, Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX};
@@ -70,6 +71,14 @@ impl<'tcx> Reporter<'tcx> {
             spans: spans.clone(),
             compiler_diagnostics: &compiler.sess.dcx(),
             source_map: compiler.sess.source_map(),
+        }
+    }
+
+    pub(crate) fn new_from_tcx(spans: &SpanContext, tcx: TyCtxt<'tcx>) -> Self {
+        Reporter {
+            spans: spans.clone(),
+            compiler_diagnostics: &tcx.sess.dcx(),
+            source_map: tcx.sess.source_map(),
         }
     }
 }
@@ -2653,25 +2662,9 @@ impl Verifier {
             return Err((vec![err], vec![], None));
         }
 
-        let erasure_info = ErasureInfo {
-            local_hir_vir_ids: vec![],
-            binder_hir_vir_ids: vec![],
-            ctor_hir_vir_ids: vec![],
-            resolved_calls: vec![],
-            resolved_pats: vec![],
-            direct_var_modes: vec![],
-            ignored_functions: vec![],
-            bodies: vec![],
-            shadow_check: vec![],
-            extra_erase_ast_ids: vec![],
-            local_invariant_bodies: vec![],
-        };
-        let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
-
         let ctxtx = ContextX::new(
             self.args.clone(),
             tcx,
-            erasure_info,
             spans.clone(),
             verus_items,
             self.args.vstd == crate::config::Vstd::NoVstd,
@@ -2686,21 +2679,20 @@ impl Verifier {
         let map_query_err = |err: QueryError| {
             (vec![], ctxt_diagnostics.borrow_mut().drain(..).collect(), Some(err))
         };
+        let map_errors_query_diagnostics =
+            |(es, err)| (es, ctxt_diagnostics.borrow_mut().drain(..).collect(), err);
 
         let crate_items = crate::external::get_crate_items(&ctxtx).map_err(map_errs_diagnostics)?;
 
         check_no_opaque_types_in_trait(ctxtx.tcx, &crate_items).map_err(map_err_diagnostics)?;
 
-        if !self.args.no_lifetime {
-            crate::erase::setup_verus_aware_ids(&crate_items);
-        }
+        let verus_aware_ids = if !self.args.no_lifetime {
+            Some(crate::erase::setup_verus_aware_ids(&crate_items))
+        } else {
+            None
+        };
 
         let time_hir0 = Instant::now();
-
-        rustc_hir_analysis_verus::check_crate(tcx);
-        if tcx.dcx().err_count() != 0 {
-            return Ok(false);
-        }
 
         let time_hir1 = Instant::now();
         self.time_hir = time_hir1 - time_hir0;
@@ -2708,7 +2700,16 @@ impl Verifier {
         let time0 = Instant::now();
 
         let pre_crate = crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
-            .map_err(map_errs_diagnostics)?;
+            .map_err(map_errors_query_diagnostics)?;
+        if !self.args.no_lifetime {
+            crate::erase::check_verus_aware_ids(
+                tcx,
+                self.air_no_span.as_ref().unwrap(),
+                verus_aware_ids.unwrap(),
+                &pre_crate.def_id_to_fun_name_for_erasure,
+            )
+            .map_err(map_err_diagnostics)?;
+        }
 
         let time1 = Instant::now();
 
@@ -2718,15 +2719,21 @@ impl Verifier {
 
         ctxt.flush_diagnostics(diagnostics);
 
-        let mut query = Query::new(
+        let query = Rc::new(Query::new(
             self.args.clone(),
-            diagnostics,
+            Box::new(Reporter::new_from_tcx(spans, tcx)),
             self.func_details.clone(),
             self.deferred_errors.clone(),
             other_vir_crates,
             pre_crate,
             self.crate_id.clone().unwrap(),
-        );
+        ));
+        set_global_query(query.clone());
+
+        rustc_hir_analysis_verus::check_crate(tcx);
+        if tcx.dcx().err_count() != 0 {
+            return Ok(false);
+        }
 
         // Export crate if requested.
         let local_crate = query.get_exportable_crate().map_err(map_query_err)?;
@@ -2760,7 +2767,7 @@ impl Verifier {
         self.vir_crate = Some(merged_crate.clone());
         self.warning_ctx = Some(query.get_updated_warning_ctx().map_err(map_query_err)?);
 
-        if !self.args.no_lifetime {
+        /*if !self.args.no_lifetime {
             let functions = query.get_all_function_stubs().map_err(map_query_err)?;
             let datatypes = query.get_datatypes_map().map_err(map_query_err)?;
             let erasure_modes = query.get_erasure_modes().map_err(map_query_err)?;
@@ -2773,7 +2780,7 @@ impl Verifier {
                 &erasure_modes,
             )
             .map_err(map_err_diagnostics)?;
-        }
+        }*/
 
         // These can invoke mir_borrowck when opaque types are involved.
         // Thus, we can only run these after calling `setup_verus_ctxt_for_thir_erasure`
