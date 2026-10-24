@@ -1064,6 +1064,29 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
             new.wf(),
     ;
 
+    /// Creates an empty permission to a zero-sized region,
+    /// at any non-null, in-bounds pointer that satisfies the alignment requirement.
+    proof fn zero_sized(ptr: *mut Self::A) -> (tracked out: Self)
+        requires
+            ptr@.addr != 0,
+            ptr_addr_in_bounds(ptr),
+            Self::size(ptr@.metadata) == 0,
+            Self::satisfies_alignment(ptr@.addr),
+        ensures
+            out.ptr() == ptr,
+            out.bytes().len() == 0,
+            out.typed_value().is_empty(),
+            out.wf(),
+    {
+        broadcast use axiom_ptr_mut_from_data, ptrs_mut_eq, layout_of_unit_tuple;
+
+        // PointsToUntyped::zero_sized needs a pointer to a zero-sized type.
+        let tracked pt_untyped = PointsToUntyped::zero_sized(ptr_mut_from_data::<()>(
+            PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: () },
+        ));
+        Self::from_untyped(pt_untyped, ptr@.metadata)
+    }
+
     /// Borrows the typed value.
     proof fn borrow_typed_value(tracked &self) -> tracked &TypedValue<Self::A>
         requires
@@ -1127,6 +1150,33 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
             pt_untyped.bytes() == self.bytes(),
             pt_untyped.wf(),
             v == self.typed_value(),
+    ;
+
+    /// Creates a permission from an untyped permission, a typed value and pointer metadata.
+    /// The inverse of `into_raw_parts`.
+    /// If `typed_value` is valid, the bytes must decode to its value and the metadata must match it.
+    proof fn from_raw_parts(
+        tracked pt_untyped: PointsToUntyped,
+        tracked typed_value: TypedValue<Self::A>,
+        metadata: Metadata<Self::A>,
+    ) -> (tracked out: Self)
+        requires
+            pt_untyped.wf(),
+            pt_untyped.len() == Self::size(metadata),
+            Self::satisfies_alignment(pt_untyped.ptr()@.addr),
+            typed_value.is_valid() ==> {
+                &&& abs_decode(pt_untyped.bytes(), typed_value.value_ref())
+                &&& Self::metadata_matches(typed_value.value_ref(), metadata)
+            },
+        ensures
+            out.ptr() == ptr_mut_from_data::<Self::A>(PtrData {
+                addr: pt_untyped.ptr()@.addr,
+                provenance: pt_untyped.ptr()@.provenance,
+                metadata,
+            }),
+            out.bytes() == pt_untyped.bytes(),
+            out.typed_value() == typed_value,
+            out.wf(),
     ;
 
     /// Converts to an untyped permission for the same bytes,
@@ -1208,56 +1258,6 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
             out.wf(),
     {
         Self::from_raw_parts(pt_untyped, TypedValue::Empty, metadata)
-    }
-
-    /// Creates a permission from an untyped permission, a typed value and pointer metadata.
-    /// The inverse of `into_raw_parts`.
-    /// If `typed_value` is valid, the bytes must decode to its value and the metadata must match it.
-    proof fn from_raw_parts(
-        tracked pt_untyped: PointsToUntyped,
-        tracked typed_value: TypedValue<Self::A>,
-        metadata: Metadata<Self::A>,
-    ) -> (tracked out: Self)
-        requires
-            pt_untyped.wf(),
-            pt_untyped.len() == Self::size(metadata),
-            Self::satisfies_alignment(pt_untyped.ptr()@.addr),
-            typed_value.is_valid() ==> {
-                &&& abs_decode(pt_untyped.bytes(), typed_value.value_ref())
-                &&& Self::metadata_matches(typed_value.value_ref(), metadata)
-            },
-        ensures
-            out.ptr() == ptr_mut_from_data::<Self::A>(PtrData {
-                addr: pt_untyped.ptr()@.addr,
-                provenance: pt_untyped.ptr()@.provenance,
-                metadata,
-            }),
-            out.bytes() == pt_untyped.bytes(),
-            out.typed_value() == typed_value,
-            out.wf(),
-    ;
-
-    /// Creates an empty permission to a zero-sized region,
-    /// at any non-null, in-bounds pointer that satisfies the alignment requirement.
-    proof fn zero_sized(ptr: *mut Self::A) -> (tracked out: Self)
-        requires
-            ptr@.addr != 0,
-            ptr_addr_in_bounds(ptr),
-            Self::size(ptr@.metadata) == 0,
-            Self::satisfies_alignment(ptr@.addr),
-        ensures
-            out.ptr() == ptr,
-            out.bytes().len() == 0,
-            out.typed_value().is_empty(),
-            out.wf(),
-    {
-        broadcast use axiom_ptr_mut_from_data, ptrs_mut_eq, layout_of_unit_tuple;
-
-        // PointsToUntyped::zero_sized needs a pointer to a zero-sized type.
-        let tracked pt_untyped = PointsToUntyped::zero_sized(ptr_mut_from_data::<()>(
-            PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: () },
-        ));
-        Self::from_untyped(pt_untyped, ptr@.metadata)
     }
 }
 
