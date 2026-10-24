@@ -1,4 +1,5 @@
 use super::points_to_model::PTPhys;
+use super::points_to_model::PTTypedValue;
 use super::points_to_model::PointsTo;
 use super::super::prelude::*;
 use super::super::group_vstd_default;

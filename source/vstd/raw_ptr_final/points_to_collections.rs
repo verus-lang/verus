@@ -37,7 +37,9 @@ impl<T> View for SeqPointsTo<T, PointsTo<T>> {
 }
 
 // Interim: today's typed impl, adapted to the `*mut [T]` pointer,
-// with `split`, `join` and `subrange` as wrappers over the structural functions.
+// with `split`, `join` and `subrange` as wrappers over the structural functions,
+// and with PLAN.md's `wf` (each element `wf`), `ptrs_len_same_valid`, `stays_wf`
+// and `lemma_ptrs_len_same_valid`, since elements' `wf_basic` no longer has the decode clause.
 // Its contracts are replaced by the approved ones when this impl is approved.
 impl<T> SeqPointsTo<T, PointsTo<T>> {
     /// The pointer to the first element, without the length.
@@ -45,11 +47,12 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         self.ptr() as *mut T
     }
 
-    /// In addition to the well-formed-ness properties which must hold of every `SeqPointsTo`,
-    /// the `*mut T` pointer must be aligned to `T`.
+    /// In addition to the well-formed-ness properties which must hold of every `SeqPointsTo` (`wf_basic`),
+    /// the pointer must be aligned to `T`, and each element must be well-formed.
     pub open spec fn wf(self) -> bool {
         &&& self.wf_basic()
         &&& self.ptr()@.addr as nat % align_of::<T>() == 0
+        &&& forall|i| 0 <= i < self.len() ==> #[trigger] self[i].wf()
     }
 
     /// A "flattened" view of the abstract bytes.
@@ -112,34 +115,46 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         Seq::new(len, |i: int| self[start_index + i].value())
     }
 
+    /// The pointer-level `ptrs_len_same`, plus each element's `PTValueOps::ptrs_len_same_valid`.
+    /// Used by `stays_wf`.
+    pub open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
+        &&& Self::ptrs_len_same(old, new)
+        &&& forall|i| 0 <= i < new.len() ==> PointsTo::<T>::ptrs_len_same_valid(old[i], #[trigger] new[i])
+    }
+
     /// If `old` is well-formed and `new` has the same pointers and length, with each element
-    /// still satisfying decode validity (`ptrs_len_same`), then `new` is well-formed.
+    /// still satisfying decode validity (`ptrs_len_same_valid`), then `new` is well-formed.
     pub proof fn stays_wf(old: Self, new: Self)
         requires
             old.wf(),
-            Self::ptrs_len_same(old, new),
+            Self::ptrs_len_same_valid(old, new),
         ensures
             new.wf(),
     {
         Self::stays_wf_basic(old, new);
+        assert forall|i| 0 <= i < new.len() implies #[trigger] new[i].wf() by {
+            PointsTo::<T>::stays_wf(old[i], new[i]);
+        }
     }
 
-    /// If `old` and `new` are both well-formed with the same pointer and length, then each element
+    /// If `old` and `new` are both well-formed with the same pointer, then each element
     /// of `new` keeps the corresponding element of `old`'s pointers and length, and still
     /// satisfies decode validity.
+    /// Same pointer means same length (the pointer carries it), so no separate length condition.
     pub broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self)
         requires
             old.wf(),
             new.wf(),
             new.ptr() == old.ptr(),
-            new.len() == old.len(),
         ensures
-            #[trigger] Self::ptrs_len_same(old, new),
+            #[trigger] Self::ptrs_len_same_valid(old, new),
     {
-        assert forall|i: int| 0 <= i < new.len() implies PointsTo::<T>::ptrs_len_same(
-            old[i],
-            #[trigger] new[i],
-        ) by {
+        assert forall|i: int| 0 <= i < new.len() implies {
+            &&& PointsTo::<T>::ptrs_len_same_valid(old[i], #[trigger] new[i])
+            &&& PointsTo::<T>::ptrs_len_same(old[i], new[i])
+            &&& new[i].ptr() == old[i].ptr()
+        } by {
+            assert(new[i].ptr()@.addr == old[i].ptr()@.addr);
             PointsTo::<T>::lemma_ptrs_len_same_valid(old[i], new[i]);
         }
     }
@@ -679,7 +694,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 
             // Convert the tail into a typed permission holding the last typed value, if supplied
             let ghost_tail = tail;
-            let tracked mut tail_pt = PointsTo::<T>::from_untyped(tail);
+            let tracked mut tail_pt = PointsTo::<T>::from_untyped(tail, ());
             let tracked mut head_typed_value = typed_value;
             if typed_value.len() == capacity {
                 let tracked last = head_typed_value.tracked_pop();
@@ -1278,6 +1293,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 
             // Take the last value in the range out of the element at `end - 1`
             let tracked elt = self.index_mut(end - 1);
+            assert(<PointsTo<T> as PTTypedValue>::typed_value(*elt) == elt.typed_value());
             let tracked taken = elt.take();
 
             // The bytes of the whole sequence are unchanged
@@ -1308,7 +1324,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         } else {
             let tracked mut val = self.borrow_values(start, (n - 1) as nat);
             let j = start + n - 1;
-            let tracked last = self.tracked_seq_pt().tracked_borrow(j).borrow_value();
+            let tracked elt = self.tracked_seq_pt().tracked_borrow(j);
+            assert(<PointsTo<T> as PTTypedValue>::typed_value(*elt) == elt.typed_value());
+            let tracked last = elt.borrow();
             val.tracked_push(last);
             val
         }

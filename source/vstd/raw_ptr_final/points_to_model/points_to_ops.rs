@@ -86,22 +86,6 @@ impl<T, P: PTProperties<A = T>> PTProperties for SeqPointsTo<T, P> {
             self.seq_pt.tracked_borrow_mut(k).is_disjoint(other);
         }
     }
-
-    /// `new` has the same pointer and length as `old`, and each element of `new` keeps the
-    /// corresponding element of `old`'s pointer and satisfies its `ptrs_len_same`.
-    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
-        &&& new.ptr() == old.ptr()
-        &&& new.len() == old.len()
-        &&& forall|i: int|
-            #![trigger new[i]]
-            0 <= i < new.len() ==> P::ptrs_len_same(old[i], new[i]) && new[i].ptr() == old[i].ptr()
-    }
-
-    proof fn stays_wf_basic(old: Self, new: Self) {
-        assert forall|i: int| 0 <= i < new.len() implies #[trigger] new[i].wf_basic() by {
-            P::stays_wf_basic(old[i], new[i]);
-        }
-    }
 }
 
 impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
@@ -647,12 +631,11 @@ impl PointsToUntyped {
     }
 }
 
-// Interim: `ptrs_len_same` is today's `ptrs_len_same_valid`,
-// which also has the decode clause, since the interim `wf_basic` has it.
 impl<T> PTProperties for PointsToUnaligned<T> {
     /// Non-nullness follows from the underlying `PointsToUntyped`'s invariant,
     /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
     proof fn is_nonnull(tracked &self) {
+        self.pt_untyped.is_nonnull();
     }
 
     /// Delegates to the underlying `PointsToUntyped`'s `ptr_bounds`,
@@ -661,7 +644,8 @@ impl<T> PTProperties for PointsToUnaligned<T> {
         self.pt_untyped.ptr_bounds();
     }
 
-    /// Delegates to the underlying `PointsToUntyped`'s `provenance_not_none`.
+    /// Delegates to the underlying `PointsToUntyped`'s `provenance_not_none`,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
     proof fn provenance_not_none(tracked &self) {
         self.pt_untyped.provenance_not_none();
     }
@@ -674,93 +658,152 @@ impl<T> PTProperties for PointsToUnaligned<T> {
     ) {
         self.pt_untyped.is_disjoint(other);
     }
+}
 
-    /// `new` has the same pointer and the same underlying `PointsToUntyped` pointers and length as
-    /// `old`, and `new`'s bytes still decode to `new`'s value if `new` has a valid `TypedValue`.
-    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
-        &&& new.ptr() == old.ptr()
-        &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
-        &&& new.is_valid() ==> abs_decode::<T>(new.bytes(), &new.value())
+impl<T> PTProperties for PointsToUnaligned<[T]> {
+    /// Non-nullness follows from the underlying `PointsToUntyped`'s invariant,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
+    proof fn is_nonnull(tracked &self) {
+        self.pt_untyped.is_nonnull();
     }
 
-    /// Delegates to `PointsToUntyped::stays_wf` for the underlying bytes.
-    proof fn stays_wf_basic(old: Self, new: Self) {
-        PointsToUntyped::stays_wf(old.pt_untyped(), new.pt_untyped());
+    /// Delegates to the underlying `PointsToUntyped`'s `ptr_bounds`,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
+    proof fn ptr_bounds(tracked &self) {
+        self.pt_untyped.ptr_bounds();
+    }
+
+    /// Delegates to the underlying `PointsToUntyped`'s `provenance_not_none`,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
+    proof fn provenance_not_none(tracked &self) {
+        self.pt_untyped.provenance_not_none();
+    }
+
+    /// Delegates to the underlying `PointsToUntyped`'s `is_disjoint`,
+    /// since the two permissions track the same memory range.
+    proof fn is_disjoint<OtherPointsToPerm: PTPhys>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    ) {
+        self.pt_untyped.is_disjoint(other);
     }
 }
 
-// Interim: these move to the trait impls (`PTValueOps`, `PTSizedValue`)
-// and the generic aligned/unaligned conversions.
+impl<T> PTValueOps for PointsToUnaligned<T> {
+    // zero_sized, borrow, into_untyped, from_untyped: the trait's default bodies.
+
+    /// Borrows the `val` field.
+    proof fn borrow_typed_value(tracked &self) -> tracked &TypedValue<T> {
+        &self.val
+    }
+
+    /// Swaps `Empty` into the `val` field.
+    proof fn take_typed_value(tracked &mut self) -> (tracked v: TypedValue<T>) {
+        let tracked mut v = TypedValue::Empty;
+        crate::vstd::modes::tracked_swap(&mut v, &mut self.val);
+        v
+    }
+
+    /// Replaces the `val` field.
+    proof fn put_typed_value(tracked &mut self, tracked v: TypedValue<T>) {
+        self.val = v;
+    }
+
+    /// Splits into well-formed `pt_untyped` and `val` fields.
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<T>)) {
+        (self.pt_untyped, self.val)
+    }
+
+    /// Builds the struct from its well-formed fields.
+    proof fn from_untyped_with_typed_value(
+        tracked pt_untyped: PointsToUntyped,
+        tracked typed_value: TypedValue<T>,
+        metadata: (),
+    ) -> (tracked out: Self) {
+        PointsToUnaligned { val: typed_value, pt_untyped, metadata: Ghost(metadata) }
+    }
+
+    /// Borrows the `pt_untyped` field.
+    proof fn as_untyped(tracked &self) -> (tracked pt_untyped: &PointsToUntyped) {
+        &self.pt_untyped
+    }
+
+    /// Mutably borrows the `pt_untyped` field, setting the `val` field to `Empty`.
+    proof fn as_untyped_mut(tracked &mut self) -> (tracked pt_untyped: &mut PointsToUntyped) {
+        self.val = TypedValue::Empty;
+        &mut self.pt_untyped
+    }
+}
+
+impl<T> PTValueOps for PointsToUnaligned<[T]> {
+    // zero_sized, borrow, into_untyped, from_untyped: the trait's default bodies.
+
+    /// Borrows the `val` field.
+    proof fn borrow_typed_value(tracked &self) -> tracked &TypedValue<[T]> {
+        &self.val
+    }
+
+    /// Swaps `Empty` into the `val` field.
+    proof fn take_typed_value(tracked &mut self) -> (tracked v: TypedValue<[T]>) {
+        let tracked mut v = TypedValue::Empty;
+        crate::vstd::modes::tracked_swap(&mut v, &mut self.val);
+        v
+    }
+
+    /// Replaces the `val` field.
+    proof fn put_typed_value(tracked &mut self, tracked v: TypedValue<[T]>) {
+        self.val = v;
+    }
+
+    /// Splits into well-formed `pt_untyped` and `val` fields.
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<[T]>)) {
+        self.lemma_wf_basic();
+        let size = Self::size(self.ptr()@.metadata);
+        assert(self.pt_untyped.ptr()@ == PtrData::<[u8]> {
+            addr: self.ptr()@.addr,
+            provenance: self.ptr()@.provenance,
+            metadata: size as usize,
+        });
+        (self.pt_untyped, self.val)
+    }
+
+    /// Builds the struct from its well-formed fields.
+    proof fn from_untyped_with_typed_value(
+        tracked pt_untyped: PointsToUntyped,
+        tracked typed_value: TypedValue<[T]>,
+        metadata: usize,
+    ) -> (tracked out: Self) {
+        let tracked out = PointsToUnaligned { val: typed_value, pt_untyped, metadata: Ghost(metadata) };
+        assert(out.wf_basic());
+        assert(out.wf());
+        out
+    }
+
+    /// Borrows the `pt_untyped` field.
+    proof fn as_untyped(tracked &self) -> (tracked pt_untyped: &PointsToUntyped) {
+        &self.pt_untyped
+    }
+
+    /// Mutably borrows the `pt_untyped` field, setting the `val` field to `Empty`.
+    proof fn as_untyped_mut(tracked &mut self) -> (tracked pt_untyped: &mut PointsToUntyped) {
+        self.val = TypedValue::Empty;
+        &mut self.pt_untyped
+    }
+}
+
+impl<T> PTSizedValue for PointsToUnaligned<T> {
+    // take, put, copy, copy_typed_value, from_untyped_with_value: the trait's default bodies.
+
+    /// Trivial, since a `PointsToUnaligned` has no alignment requirement.
+    proof fn lemma_satisfies_alignment_offset(addr: usize, i: nat) {
+    }
+
+    /// Trivial, since `metadata_matches` is always `true` for a `Sized` value.
+    proof fn lemma_metadata_matches(value: &T) {
+    }
+}
+
 impl<T> PointsToUnaligned<T> {
-    /// If `old` is well-formed and `new` has the same pointers and length and still satisfies
-    /// decode validity (`ptrs_len_same`), then `new` is well-formed.
-    pub proof fn stays_wf(old: Self, new: Self)
-        requires
-            old.wf(),
-            Self::ptrs_len_same(old, new),
-        ensures
-            new.wf(),
-    {
-        Self::stays_wf_basic(old, new);
-    }
-
-    /// Convert PointsToUnaligned to an aligned PointsTo.
-    /// Requires the pointer address to be properly aligned.
-    ///
-    /// Ensures pointer locations remain the same, and memory
-    /// initializations states remain the same.
-    pub proof fn into_aligned(tracked self) -> (tracked perm: PointsTo<T>)
-        requires
-            self.wf(),
-            self.ptr()@.addr as int % align_of::<T>() as int == 0,
-        ensures
-            perm@ == self@,
-            perm.wf(),
-    {
-        broadcast use layout_of_sized;
-
-        PointsTo { pt_unaligned: self }
-    }
-
-    /// Borrow an unaligned PointsToUnaligned as an aligned PointsTo.
-    /// Requires the pointer address to be properly aligned.
-    ///
-    /// Ensures pointer locations remain the same, and memory
-    /// initializations states remain the same.
-    pub proof fn as_aligned(tracked &self) -> (tracked perm: &PointsTo<T>)
-        requires
-            self.wf(),
-            self.ptr()@.addr as int % align_of::<T>() as int == 0,
-        ensures
-            perm@ == self@,
-            perm.wf(),
-    {
-        shr_ref_struct_wrap(self, &PointsTo { pt_unaligned: *self }, "", "pt_unaligned")
-    }
-
-    /// If `T` is zero sized, then we can construct an uninitialized `PointsToUnaligned<T>`
-    /// from any non-null pointer whose address (and, if known, provenance) is otherwise valid.
-    /// The range of memory pointed to by this permission will be empty.
-    pub proof fn zero_sized(ptr: *mut T) -> (tracked perm: Self)
-        requires
-            ptr@.addr != 0,
-            size_of::<T>() == 0,
-            ptr_addr_in_bounds(ptr),
-        ensures
-            perm.ptr()@.addr == ptr@.addr,
-            perm.ptr()@.provenance == ptr@.provenance,
-            perm.is_empty(),
-            perm.bytes().len() == size_of::<T>(),
-            perm.wf(),
-    {
-        let tracked untyped: PointsToUntyped = PointsToUntyped::zero_sized(ptr);
-        PointsToUnaligned {
-            val: TypedValue::Empty,
-            pt_untyped: untyped,
-            metadata: Ghost(ptr@.metadata),
-        }
-    }
-
     /// Specializes `is_disjoint` to the case when the other permission is a `PointsToUnaligned<S>`.
     pub proof fn is_disjoint_unaligned<S>(tracked &mut self, tracked other: &PointsToUnaligned<S>)
         requires
@@ -770,111 +813,22 @@ impl<T> PointsToUnaligned<T> {
             other.wf(),
         ensures
             *old(self) == *final(self),
-            final(self).ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
-                + size_of::<S>() <= final(self).ptr() as int,
+            final(self).ptr()@.addr + size_of::<T>() <= other.ptr()@.addr
+                || other.ptr()@.addr + size_of::<S>() <= final(self).ptr()@.addr,
     {
         self.is_disjoint(other);
     }
 }
 
-// Interim: `ptrs_len_same` is today's `ptrs_len_same_valid`,
-// which also has the decode and length clauses, since the interim `wf_basic` has them.
-impl<T> PTProperties for PointsToUnaligned<[T]> {
-    /// Non-nullness follows from the underlying `PointsToUntyped`'s invariant,
-    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
-    proof fn is_nonnull(tracked &self) {
-    }
-
-    /// Delegates to the underlying `PointsToUntyped`'s `ptr_bounds`,
-    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
-    proof fn ptr_bounds(tracked &self) {
-        self.pt_untyped.ptr_bounds();
-    }
-
-    /// Delegates to the underlying `PointsToUntyped`'s `provenance_not_none`.
-    proof fn provenance_not_none(tracked &self) {
-        self.pt_untyped.provenance_not_none();
-    }
-
-    /// Delegates to the underlying `PointsToUntyped`'s `is_disjoint`,
-    /// since the two permissions track the same memory range.
-    proof fn is_disjoint<OtherPointsToPerm: PTPhys>(
-        tracked &mut self,
-        tracked other: &OtherPointsToPerm,
-    ) {
-        self.pt_untyped.is_disjoint(other);
-    }
-
-    /// `new` has the same pointer (so the same metadata) as `old`,
-    /// and the same underlying `PointsToUntyped` pointers and length.
-    /// If `new` is valid, its slice has `old`'s number of elements
-    /// (the length doesn't change, even if the typed value does),
-    /// and `new`'s bytes decode to it.
-    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
-        &&& new.ptr() == old.ptr()
-        &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
-        &&& new.is_valid() ==> {
-            &&& new.typed_value().value()@.len() == old.metadata()
-            &&& abs_decode::<[T]>(new.bytes(), new.typed_value().value())
-        }
-    }
-
-    /// Delegates to `PointsToUntyped::stays_wf` for the underlying bytes.
-    proof fn stays_wf_basic(old: Self, new: Self) {
-        PointsToUntyped::stays_wf(old.pt_untyped(), new.pt_untyped());
-    }
-}
-
-// Interim: per type, until the generic `PointsTo` impls.
-impl<T> PTProperties for PointsTo<T> {
+impl<T: ?Sized> PTProperties for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     /// Non-nullness follows from the underlying `PointsToUnaligned`'s invariant,
-    /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
-    proof fn is_nonnull(tracked &self) {
-    }
-
-    /// Delegates to the underlying `PointsToUnaligned`'s `ptr_bounds`,
-    /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
-    proof fn ptr_bounds(tracked &self) {
-        self.pt_unaligned.ptr_bounds();
-    }
-
-    /// Delegates to the underlying `PointsToUnaligned`'s `provenance_not_none`.
-    proof fn provenance_not_none(tracked &self) {
-        self.pt_unaligned.provenance_not_none();
-    }
-
-    /// Delegates to the underlying `PointsToUnaligned`'s `is_disjoint`,
-    /// since the two permissions track the same memory range.
-    proof fn is_disjoint<OtherPointsToPerm: PTPhys>(
-        tracked &mut self,
-        tracked other: &OtherPointsToPerm,
-    ) {
-        self.pt_unaligned.is_disjoint(other);
-    }
-
-    /// `new` has the same pointer as `old`, and they satisfy the `PointsToUnaligned` requirements
-    /// for preserving well-formed-ness.
-    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
-        &&& new.ptr() == old.ptr()
-        &&& PointsToUnaligned::<T>::ptrs_len_same(old.pt_unaligned(), new.pt_unaligned())
-    }
-
-    /// Delegates to `PointsToUnaligned::stays_wf`.
-    proof fn stays_wf_basic(old: Self, new: Self) {
-        PointsToUnaligned::<T>::stays_wf(old.pt_unaligned(), new.pt_unaligned());
-    }
-}
-
-// Interim: per type, until the generic `PointsTo` impls.
-impl<T> PTProperties for PointsTo<[T]> {
-    /// Non-nullness follows from the underlying `PointsToUnaligned`'s invariant,
-    /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
+    /// since `self.ptr()` is `self.pt_unaligned().ptr()`.
     proof fn is_nonnull(tracked &self) {
         self.pt_unaligned.is_nonnull();
     }
 
     /// Delegates to the underlying `PointsToUnaligned`'s `ptr_bounds`,
-    /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
+    /// since `self.ptr()` is `self.pt_unaligned().ptr()`.
     proof fn ptr_bounds(tracked &self) {
         self.pt_unaligned.ptr_bounds();
     }
@@ -892,54 +846,78 @@ impl<T> PTProperties for PointsTo<[T]> {
     ) {
         self.pt_unaligned.is_disjoint(other);
     }
+}
 
-    /// `new` has the same pointer as `old`, and they satisfy the `PointsToUnaligned` requirements
-    /// for preserving well-formed-ness.
-    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
-        &&& new.ptr() == old.ptr()
-        &&& PointsToUnaligned::<[T]>::ptrs_len_same(old.pt_unaligned(), new.pt_unaligned())
+impl<T: ?Sized> PTValueOps for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
+    // zero_sized, borrow, into_untyped, from_untyped: the trait's default bodies.
+
+    /// Delegates to the underlying `PointsToUnaligned`.
+    proof fn borrow_typed_value(tracked &self) -> tracked &TypedValue<T> {
+        self.pt_unaligned.borrow_typed_value()
     }
 
-    /// Delegates to `PointsToUnaligned`'s `stays_wf_basic`.
-    proof fn stays_wf_basic(old: Self, new: Self) {
-        PointsToUnaligned::<[T]>::stays_wf_basic(old.pt_unaligned(), new.pt_unaligned());
+    /// Delegates to the underlying `PointsToUnaligned`.
+    proof fn take_typed_value(tracked &mut self) -> (tracked v: TypedValue<T>) {
+        self.pt_unaligned.take_typed_value()
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`.
+    proof fn put_typed_value(tracked &mut self, tracked v: TypedValue<T>) {
+        self.pt_unaligned.put_typed_value(v);
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`.
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<T>)) {
+        self.pt_unaligned.into_untyped_with_typed_value()
+    }
+
+    /// Wraps the `PointsToUnaligned` built from the same parts.
+    /// (`satisfies_alignment` includes `PointsToUnaligned`'s, which its `from_untyped_with_typed_value` requires.)
+    proof fn from_untyped_with_typed_value(
+        tracked pt_untyped: PointsToUntyped,
+        tracked typed_value: TypedValue<T>,
+        metadata: Metadata<T>,
+    ) -> (tracked out: Self) {
+        let tracked pt_unaligned = PointsToUnaligned::<T>::from_untyped_with_typed_value(
+            pt_untyped,
+            typed_value,
+            metadata,
+        );
+        PointsTo { pt_unaligned }
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`.
+    proof fn as_untyped(tracked &self) -> (tracked pt_untyped: &PointsToUntyped) {
+        self.pt_unaligned.as_untyped()
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`.
+    proof fn as_untyped_mut(tracked &mut self) -> (tracked pt_untyped: &mut PointsToUntyped) {
+        self.pt_unaligned.as_untyped_mut()
     }
 }
 
-// Interim: these move to the trait impls (`PTValueOps`, `PTSizedValue`)
-// and the generic aligned/unaligned conversions.
+impl<T> PTSizedValue for PointsTo<T> {
+    // take, put, copy, copy_typed_value, from_untyped_with_value: the trait's default bodies.
+
+    /// Offsetting a pointer by multiples of `size_of::<T>()` preserves its alignment to `T`,
+    /// since `size_of::<T>()` is a multiple of `align_of::<T>()`.
+    proof fn lemma_satisfies_alignment_offset(addr: usize, i: nat) {
+        let a = align_of::<T>() as int;
+        let s = size_of::<T>() as int;
+        assert(spec_align_of_val::<T>(arbitrary()) == a);
+        crate::vstd::arithmetic::div_mod::lemma_fundamental_div_mod(s, a);
+        crate::vstd::arithmetic::mul::lemma_mul_is_associative(i as int, s / a, a);
+        crate::vstd::arithmetic::div_mod::lemma_mod_multiples_basic(i * (s / a), a);
+        crate::vstd::arithmetic::div_mod::lemma_add_mod_noop(addr as int, i * s, a);
+    }
+
+    /// Trivial, since `metadata_matches` is `PointsToUnaligned<T>`'s, which is always `true`.
+    proof fn lemma_metadata_matches(value: &T) {
+    }
+}
+
 impl<T> PointsTo<T> {
-    /// If `old` is well-formed and `new` has the same pointers and length and still satisfies
-    /// decode validity (`ptrs_len_same`), then `new` is well-formed.
-    pub proof fn stays_wf(old: Self, new: Self)
-        requires
-            old.wf(),
-            Self::ptrs_len_same(old, new),
-        ensures
-            new.wf(),
-    {
-        Self::stays_wf_basic(old, new);
-    }
-
-    /// If `old` and `new` are both well-formed with the same pointer, then `new` keeps `old`'s
-    /// underlying pointers and length, and still satisfies decode validity.
-    pub broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self)
-        requires
-            old.wf(),
-            new.wf(),
-            new.ptr() == old.ptr(),
-        ensures
-            #[trigger] Self::ptrs_len_same(old, new),
-    {
-        let old_u = old.pt_unaligned().pt_untyped();
-        let new_u = new.pt_unaligned().pt_untyped();
-        assert forall|j: int| 0 <= j < new_u.len() implies #[trigger] new_u[j].ptr() == old_u[j].ptr()
-            by {
-            assert(new_u[j].ptr()@.addr == old_u[j].ptr()@.addr);
-            assert(new_u[j].ptr()@.provenance == old_u[j].ptr()@.provenance);
-        }
-    }
-
     /// A `PointsTo<T>` is always aligned.
     pub proof fn is_aligned(tracked &self)
         requires
@@ -947,24 +925,7 @@ impl<T> PointsTo<T> {
         ensures
             self.ptr()@.addr as nat % align_of::<T>() == 0,
     {
-    }
-
-    /// From a non-null, aligned pointer to a zero-sized type, we can construct an
-    /// uninitialized `PointsTo<T>`. The memory range pointed to by this pointer will be empty.
-    pub proof fn zero_sized(ptr: *mut T) -> (tracked perm: PointsTo<T>)
-        requires
-            ptr@.addr != 0,
-            ptr@.addr as nat % align_of::<T>() == 0,
-            ptr_addr_in_bounds(ptr),
-            size_of::<T>() == 0,
-        ensures
-            perm.ptr() == ptr,
-            perm.is_empty(),
-            perm.bytes().len() == size_of::<T>(),
-            perm.wf(),
-    {
-        let tracked pt_unaligned = PointsToUnaligned::<T>::zero_sized(ptr);
-        PointsTo { pt_unaligned }
+        assert(spec_align_of_val::<T>(arbitrary()) == align_of::<T>());
     }
 
     /// Specializes `is_disjoint` to the case when the other permission is a `PointsTo<S>`.
@@ -976,316 +937,295 @@ impl<T> PointsTo<T> {
             other.wf(),
         ensures
             *old(self) == *final(self),
-            final(self).ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
-                + size_of::<S>() <= final(self).ptr() as int,
+            final(self).ptr()@.addr + size_of::<T>() <= other.ptr()@.addr
+                || other.ptr()@.addr + size_of::<S>() <= final(self).ptr()@.addr,
     {
+        self.lemma_wf_basic();
+        other.lemma_wf_basic();
         self.is_disjoint(other);
     }
+}
 
-    /// Convert an aligned `PointsTo` to an unaligned `PointsToUnaligned`.
-    /// This is always safe since aligned is stricter than unaligned.
-    ///
-    /// Ensures pointer locations remain the same, and memory
-    /// initializations states remain the same.
-    pub proof fn into_unaligned(tracked self) -> (tracked perm: PointsToUnaligned<T>)
+impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
+    /// Converts to a `PointsTo<T>`, given that the address is aligned.
+    pub proof fn into_aligned(tracked self) -> (tracked out: PointsTo<T>)
+        requires
+            self.wf(),
+            <PointsTo<T> as PTTypedValue>::satisfies_alignment(self.ptr()@.addr),
+        ensures
+            out.pt_unaligned() == self,
+            out.wf(),
+    {
+        PointsTo { pt_unaligned: self }
+    }
+
+    /// Borrows as a `PointsTo<T>`, given that the address is aligned.
+    pub proof fn as_aligned(tracked &self) -> (tracked out: &PointsTo<T>)
+        requires
+            self.wf(),
+            <PointsTo<T> as PTTypedValue>::satisfies_alignment(self.ptr()@.addr),
+        ensures
+            out.pt_unaligned() == *self,
+            out.wf(),
+    {
+        shr_ref_struct_wrap(self, &PointsTo { pt_unaligned: *self }, "", "pt_unaligned")
+    }
+
+    /// Mutably borrows as a `PointsTo<T>`, given that the address is aligned.
+    /// `final(self)` is the final `PointsTo<T>`'s underlying `PointsToUnaligned<T>`.
+    /// If the final `PointsTo<T>` satisfies `ptrs_len_same_valid` with the original,
+    /// `self` is well-formed afterwards.
+    pub proof fn as_aligned_mut(tracked &mut self) -> (tracked out: &mut PointsTo<T>)
+        requires
+            self.wf(),
+            <PointsTo<T> as PTTypedValue>::satisfies_alignment(self.ptr()@.addr),
+        ensures
+            out.pt_unaligned() == *old(self),
+            out.wf(),
+            *final(self) == final(out).pt_unaligned(),
+            <PointsTo<T> as PTTypedValue>::ptrs_len_same_valid(*out, *final(out)) ==> final(self).wf(),
+    {
+        let tracked out = PointsTo::from_unaligned_mut(self);
+        let out_ref = out;
+        if <PointsTo<T> as PTTypedValue>::ptrs_len_same_valid(*out_ref, *final(out_ref)) {
+            <PointsToUnaligned<T> as PTTypedValue>::stays_wf(
+                out_ref.pt_unaligned(),
+                final(out_ref).pt_unaligned(),
+            );
+        }
+        out
+    }
+}
+
+impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
+    /// Converts to a `PointsToUnaligned<T>`.
+    pub proof fn into_unaligned(tracked self) -> (tracked out: PointsToUnaligned<T>)
         requires
             self.wf(),
         ensures
-            perm@ == self@,
-            perm.wf(),
+            out == self.pt_unaligned(),
+            out.wf(),
     {
         self.pt_unaligned
     }
 
-    /// Borrow an aligned `PointsTo` as an unaligned `PointsToUnaligned`.
-    /// This is always safe since aligned is stricter than unaligned.
-    ///
-    /// Ensures pointer locations remain the same, and memory
-    /// initializations states remain the same.
-    pub proof fn as_unaligned(tracked &self) -> (tracked perm: &PointsToUnaligned<T>)
+    /// Borrows as a `PointsToUnaligned<T>`.
+    pub proof fn as_unaligned(tracked &self) -> (tracked out: &PointsToUnaligned<T>)
         requires
             self.wf(),
         ensures
-            perm@ == self@,
-            perm.wf(),
+            *out == self.pt_unaligned(),
+            out.wf(),
     {
         &self.pt_unaligned
     }
 
-    /// If the memory is valid, then the bytes must decode into the given value in memory.
-    pub broadcast proof fn bytes_decode(&self)
+    /// Mutably borrows the underlying `PointsToUnaligned<T>`.
+    /// `final(self)` holds the final `PointsToUnaligned<T>`.
+    /// If the final unaligned permission keeps the initial one's pointer (so the same aligned address)
+    /// and satisfies `ptrs_len_same_valid` with it,
+    /// `self` is well-formed afterwards.
+    pub proof fn as_unaligned_mut(tracked &mut self) -> (tracked out: &mut PointsToUnaligned<T>)
         requires
             self.wf(),
         ensures
-            self.is_valid() ==> #[trigger] abs_decode::<T>(self.bytes(), &self.value()),
-            self.bytes().len() == size_of::<T>(),
-    {
-    }
-
-    /// Converts a `PointsTo<T>` into a `PointsToUntyped`, an untyped permission to the same
-    /// underlying bytes, together with the `TypedValue<T>` that `self` held.
-    /// (Use `into_untyped` instead if you don't need the typed value.)
-    ///
-    /// The abstract bytes remain the same. This preserves the typed contents in memory on a
-    /// roundtrip (see `PointsTo::from_untyped_with_value`).
-    /// Note that this means provenance is not lost, which matches Rust's semantics for
-    /// casting/transmuting in-memory values.
-    ///
-    /// Returning the `tracked TypedValue<T>` prohibits creating permission-carrying types out of
-    /// thin air, i.e. in the case where `T` is a type that stores/represents a permission
-    /// (e.g., shared references).
-    pub proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, typed_value): (
-        PointsToUntyped,
-        TypedValue<T>,
-    ))
-        requires
-            self.wf(),
-        ensures
-            self.bytes() == pt_untyped.bytes(),
-            self.ptr()@.addr == pt_untyped.ptr()@.addr,
-            self.ptr()@.provenance == pt_untyped.ptr()@.provenance,
-            pt_untyped.wf(),
-            pt_untyped.len() == size_of::<T>(),
-            typed_value == self.typed_value(),
-    {
-        broadcast use group_vstd_default;
-
-        let tracked PointsTo { pt_unaligned } = self;
-        let tracked PointsToUnaligned { val, pt_untyped, metadata: _ } = pt_unaligned;
-        (pt_untyped, val)
-    }
-
-    /// Creates a `PointsTo<T>` from a `PointsToUntyped` with the same provenance
-    /// and a ptr corresponding to the range of the `PointsToUntyped`.
-    /// The resulting `PointsTo<T>` will be empty (uninitialized).
-    /// (Use `from_untyped_with_value` instead if you want to supply a value.)
-    pub proof fn from_untyped(tracked pt_untyped: PointsToUntyped) -> (tracked out: Self)
-        requires
-            pt_untyped.wf(),
-            pt_untyped.ptr()@.addr as int % align_of::<T>() as int == 0,
-            pt_untyped.len() == size_of::<T>(),
-        ensures
-            out.ptr() == pt_untyped.ptr() as *mut T,
-            out.bytes() == pt_untyped.bytes(),
-            out.is_empty(),
+            *out == old(self).pt_unaligned(),
             out.wf(),
+            final(self).pt_unaligned() == *final(out),
+            final(out).ptr() == out.ptr() && PointsToUnaligned::<T>::ptrs_len_same_valid(*out, *final(out))
+                ==> final(self).wf(),
     {
-        broadcast use group_vstd_default;
-
-        PointsTo {
-            pt_unaligned: PointsToUnaligned {
-                val: TypedValue::Empty,
-                pt_untyped,
-                metadata: Ghost(()),
-            },
+        let tracked out = &mut self.pt_unaligned;
+        let out_ref = out;
+        if PointsToUnaligned::<T>::ptrs_len_same_valid(*out_ref, *final(out_ref)) {
+            PointsToUnaligned::<T>::stays_wf(*out_ref, *final(out_ref));
         }
-    }
-
-    /// Creates a valid `PointsTo<T>` holding `value` from a `PointsToUntyped`, provided that its
-    /// abstract bytes can be decoded into `value`, its length is `size_of::<T>()`,
-    /// and its pointer is aligned to `T`.
-    ///
-    /// The abstract bytes remain the same. This preserves the typed contents in memory on a
-    /// roundtrip (see `PointsTo::into_untyped_with_typed_value`).
-    /// Note that this means provenance is not lost, which matches Rust's semantics for
-    /// casting/transmuting in-memory values.
-    ///
-    /// Requiring the `tracked value` prohibits creating permission-carrying types out of thin
-    /// air, in the case where `T` is a type that stores/represents a permission
-    /// (e.g., shared references).
-    pub proof fn from_untyped_with_value(tracked pt_untyped: PointsToUntyped, tracked value: T) -> (tracked out: Self)
-        requires
-            pt_untyped.wf(),
-            pt_untyped.ptr()@.addr as int % align_of::<T>() as int == 0,
-            pt_untyped.len() == size_of::<T>(),
-            abs_decode::<T>(pt_untyped.bytes(), &value),
-        ensures
-            out.ptr() == pt_untyped.ptr() as *mut T,
-            out.bytes() == pt_untyped.bytes(),
-            out.is_valid(),
-            out.value() == value,
-            out.wf(),
-    {
-        let tracked mut out = Self::from_untyped(pt_untyped);
-        out.put(value);
         out
     }
+}
 
-    /// Creates a `PointsToUntyped` from a `PointsTo<T>` with the same provenance
-    /// and a range corresponding to the address of the `PointsTo<T>` and size of `T`.
-    /// If there is any value stored in memory, it is dropped.
-    pub proof fn into_untyped(tracked self) -> (tracked pt_untyped: PointsToUntyped)
-        requires
-            self.wf(),
-        ensures
-            pt_untyped.ptr() as *mut T == self.ptr(),
-            pt_untyped.len() == size_of::<T>(),
-            pt_untyped.bytes() == self.bytes(),
-            pt_untyped.wf(),
-    {
-        broadcast use group_vstd_default;
-
-        let tracked PointsTo { pt_unaligned } = self;
-        let tracked PointsToUnaligned { val: _, pt_untyped, metadata: _ } = pt_unaligned;
-        pt_untyped
+impl<T> PointsToUnaligned<[T]> {
+    /// The number of elements in the slice (the pointer's metadata).
+    #[verifier::inline]
+    pub open spec fn len(self) -> nat {
+        self.ptr()@.metadata as nat
     }
 
-    /// Creates a reference to a `PointsToUntyped` from a reference to a `PointsTo<T>` with the same
-    /// provenance and a range corresponding to the address of the `PointsTo<T>` and size of `T`.
-    pub proof fn as_untyped(tracked &self) -> (tracked pt_untyped: &PointsToUntyped)
+    /// Borrows the permission to the element at index `i`.
+    /// If the slice permission is empty, so is the element's.
+    pub proof fn borrow_index(tracked &self, i: int) -> (tracked out: &PointsToUnaligned<T>)
         requires
             self.wf(),
+            0 <= i < self.len(),
         ensures
-            pt_untyped.ptr() as *mut T == self.ptr(),
-            pt_untyped.len() == size_of::<T>(),
-            pt_untyped.bytes() == self.bytes(),
-            pt_untyped.wf(),
+            out.ptr() == ptr_mut_from_data::<T>(PtrData {
+                addr: (self.ptr()@.addr + i * size_of::<T>()) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: (),
+            }),
+            out.bytes() == self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+            self.typed_value().is_valid() ==> {
+                &&& out.typed_value().is_valid()
+                &&& out.typed_value().value() == self.typed_value().value_ref()@[i]
+            },
+            self.typed_value().is_empty() ==> out.typed_value().is_empty(),
+            out.wf(),
     {
-        broadcast use group_vstd_default;
+        broadcast use crate::vstd::type_representation::abs_decode_slice;
 
-        self.pt_unaligned.tracked_pt_untyped()
+        let s = size_of::<T>() as int;
+        let n = self.len() as int;
+        crate::vstd::arithmetic::mul::lemma_mul_inequality(i + 1, n, s);
+        crate::vstd::arithmetic::mul::lemma_mul_is_distributive_add_other_way(s, i, 1);
+        crate::vstd::arithmetic::mul::lemma_mul_nonnegative(i, s);
+
+        // The element's bytes
+        let tracked (_, tail) = self.pt_untyped.split_ref((i * s) as nat);
+        let tracked (elem, _) = tail.split_ref(s as nat);
+        assert(elem.bytes() =~= self.bytes().subrange(i * s, (i + 1) * s));
+
+        // The element's typed value
+        let tracked typed_value: &TypedValue<T> = match &self.val {
+            TypedValue::Valid(b) => {
+                let tracked v: &[T] = b;
+                assert(abs_decode::<T>(self.bytes().subrange(i * s, (i + 1) * s), &v@[i]));
+                TypedValue::valid_ref(crate::vstd::slice::tracked_slice_index(v, i))
+            },
+            TypedValue::Empty => &TypedValue::Empty,
+        };
+        PointsToUnaligned::<T>::from_raw_parts_ref(elem, typed_value, ())
     }
 
-    /// Creates a mutable reference to a `PointsToUntyped` from a mutable reference to a `PointsTo<T>`
-    /// with the same provenance and a range corresponding to the address of the `PointsTo<T>` and
-    /// size of `T`. If this permission carries any typed value, it is dropped here.
-    /// (call `take` first if you want to save the value.)
-    pub proof fn as_untyped_mut(tracked &mut self) -> (tracked pt_untyped: &mut PointsToUntyped)
+    /// Borrows a `&PointsToUntyped` as a `&PointsToUnaligned<[T]>`
+    /// with an empty typed value of length `len`,
+    /// provided that the length matches the bytes.
+    pub proof fn from_untyped_ref<'a>(tracked pt_untyped: &'a PointsToUntyped, len: usize) -> (tracked out: &'a Self)
         requires
-            self.wf(),
-        ensures
-            pt_untyped.ptr() as *mut T == old(self).ptr(),
-            pt_untyped.len() == size_of::<T>(),
-            pt_untyped.bytes() == old(self).bytes(),
             pt_untyped.wf(),
-            final(self).ptr() == final(pt_untyped).ptr() as *mut T,
-            final(self).bytes() == final(pt_untyped).bytes(),
-            final(self).is_empty(),
-            // Criteria necessary for re-establishing invariants
-            PointsToUntyped::ptrs_len_same(*pt_untyped, *final(pt_untyped)) ==> final(self).wf(),
+            pt_untyped.len() == len * size_of::<T>(),
+        ensures
+            out.ptr()@ == (PtrData { addr: pt_untyped.ptr()@.addr, provenance: pt_untyped.ptr()@.provenance, metadata: len }),
+            out.bytes() == pt_untyped.bytes(),
+            out.typed_value().is_empty(),
+            out.wf(),
     {
-        broadcast use group_vstd_default;
-
-        self.pt_unaligned.val = TypedValue::Empty;
-        &mut self.pt_unaligned.pt_untyped
+        let tracked typed_value: &'a TypedValue<[T]> = &TypedValue::Empty;
+        PointsToUnaligned::<[T]>::from_raw_parts_ref(pt_untyped, typed_value, len)
     }
 
-    /// This takes a borrow of the `T` from the `TypedValue<T>` on `self`.
-    pub proof fn borrow_value(tracked &self) -> tracked &T
+    /// Borrows a `&PointsToUntyped` and `tracked &[T]` as a `&PointsToUnaligned<[T]>`
+    /// with a valid typed value set to `value`,
+    /// provided that the bytes decode to the value.
+    pub proof fn from_untyped_with_value_ref<'a>(tracked pt_untyped: &'a PointsToUntyped, tracked value: &'a [T])
+        -> (tracked out: &'a Self)
+        requires
+            pt_untyped.wf(),
+            abs_decode::<[T]>(pt_untyped.bytes(), value),
+        ensures
+            out.ptr()@ == (PtrData { addr: pt_untyped.ptr()@.addr, provenance: pt_untyped.ptr()@.provenance, metadata: value@.len() as usize }),
+            out.bytes() == pt_untyped.bytes(),
+            out.typed_value().is_valid(),
+            out.typed_value().value_ref() == value,
+            out.wf(),
+    {
+        broadcast use crate::vstd::slice::group_slice_axioms, crate::vstd::type_representation::abs_decode_slice;
+
+        assert(value@.len() == crate::vstd::slice::spec_slice_len(value));
+        let tracked typed_value = TypedValue::valid_ref(value);
+        PointsToUnaligned::<[T]>::from_raw_parts_ref(pt_untyped, typed_value, value@.len() as usize)
+    }
+}
+
+impl<T> PointsTo<[T]> {
+    /// The number of elements in the slice (the pointer's metadata).
+    #[verifier::inline]
+    pub open spec fn len(self) -> nat {
+        self.ptr()@.metadata as nat
+    }
+
+    /// Borrows the permission to the element at index `i`.
+    /// If the slice permission is empty, so is the element's.
+    pub proof fn borrow_index(tracked &self, i: int) -> (tracked out: &PointsTo<T>)
         requires
             self.wf(),
-            self.is_valid(),
-        returns
-            self.value(),
+            0 <= i < self.len(),
+        ensures
+            out.ptr() == ptr_mut_from_data::<T>(PtrData {
+                addr: (self.ptr()@.addr + i * size_of::<T>()) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: (),
+            }),
+            out.bytes() == self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+            self.typed_value().is_valid() ==> {
+                &&& out.typed_value().is_valid()
+                &&& out.typed_value().value() == self.typed_value().value_ref()@[i]
+            },
+            self.typed_value().is_empty() ==> out.typed_value().is_empty(),
+            out.wf(),
     {
-        match &self.pt_unaligned.val {
-            TypedValue::Valid(b) => b,
-            TypedValue::Empty => proof_from_false(),
+        let tracked elem = self.pt_unaligned.borrow_index(i);
+        let addr = self.ptr()@.addr;
+        assert(spec_align_of_val::<[T]>(arbitrary()) == align_of::<T>());
+        assert(spec_align_of_val::<T>(arbitrary()) == align_of::<T>());
+        // The element's address doesn't overflow:
+        // if it's not zero-sized, its first byte is in `self`'s bytes.
+        let s = size_of::<T>() as int;
+        assert(addr + i * s <= usize::MAX) by {
+            if s > 0 {
+                let u = self.pt_unaligned();
+                let bytes = u.pt_untyped();
+                u.lemma_wf_basic();
+                assert(bytes.wf());
+                assert(bytes.len() == self.len() * s);
+                assert(bytes.ptr()@.addr == addr);
+                crate::vstd::arithmetic::mul::lemma_mul_strict_inequality(i, self.len() as int, s);
+                assert(bytes[i * s].ptr()@.addr == addr + i * s);
+            } else {
+                assert(i * s == 0) by (nonlinear_arith)
+                    requires
+                        s == 0,
+                ;
+            }
         }
+        assert(<PointsTo<T> as PTPhys>::size(()) == s);
+        PointsTo::<T>::lemma_satisfies_alignment_offset(addr, i as nat);
+        elem.as_aligned()
     }
 
-    /// This moves the `T` out from the `TypedValue<T>` on `self`, leaving `self` empty.
-    pub proof fn take(tracked &mut self) -> (tracked val: T)
+    /// Borrows a `&PointsToUntyped` as a `&PointsTo<[T]>`
+    /// with an empty typed value of length `len`,
+    /// provided that the length matches the bytes and the `PointsToUntyped`'s pointer is aligned.
+    pub proof fn from_untyped_ref<'a>(tracked pt_untyped: &'a PointsToUntyped, len: usize) -> (tracked out: &'a Self)
         requires
-            self.wf(),
-            self.is_valid(),
+            pt_untyped.wf(),
+            pt_untyped.len() == len * size_of::<T>(),
+            Self::satisfies_alignment(pt_untyped.ptr()@.addr),
         ensures
-            val == old(self).value(),
-            final(self).ptr() == old(self).ptr(),
-            final(self).bytes() == old(self).bytes(),
-            final(self).is_empty(),
-            final(self).wf(),
+            out.ptr()@ == (PtrData { addr: pt_untyped.ptr()@.addr, provenance: pt_untyped.ptr()@.provenance, metadata: len }),
+            out.bytes() == pt_untyped.bytes(),
+            out.typed_value().is_empty(),
+            out.wf(),
     {
-        let tracked mut tmp = TypedValue::Empty;
-        crate::vstd::modes::tracked_swap(&mut tmp, &mut self.pt_unaligned.val);
-        match tmp {
-            TypedValue::Valid(b) => b.get(),
-            TypedValue::Empty => proof_from_false(),
-        }
+        PointsToUnaligned::<[T]>::from_untyped_ref(pt_untyped, len).as_aligned()
     }
 
-    /// Consumes the `T` and puts it in the `TypedValue<T>` for `self`.
-    pub proof fn put(tracked &mut self, tracked val: T)
+    /// Borrows a `&PointsToUntyped` and `tracked &[T]` as a `&PointsTo<[T]>`
+    /// with a valid typed value set to `value`,
+    /// provided that the bytes decode to the value and the `PointsToUntyped`'s pointer is aligned.
+    pub proof fn from_untyped_with_value_ref<'a>(tracked pt_untyped: &'a PointsToUntyped, tracked value: &'a [T])
+        -> (tracked out: &'a Self)
         requires
-            self.wf(),
-            abs_decode::<T>(self.bytes(), &val),
+            pt_untyped.wf(),
+            abs_decode::<[T]>(pt_untyped.bytes(), value),
+            Self::satisfies_alignment(pt_untyped.ptr()@.addr),
         ensures
-            final(self).ptr() == old(self).ptr(),
-            final(self).bytes() == old(self).bytes(),
-            final(self).is_valid(),
-            final(self).value() == val,
-            final(self).wf(),
+            out.ptr()@ == (PtrData { addr: pt_untyped.ptr()@.addr, provenance: pt_untyped.ptr()@.provenance, metadata: value@.len() as usize }),
+            out.bytes() == pt_untyped.bytes(),
+            out.typed_value().is_valid(),
+            out.typed_value().value_ref() == value,
+            out.wf(),
     {
-        self.pt_unaligned.val = TypedValue::Valid(Tracked(val));
-    }
-
-    /// Copies the `T` and puts it in the `TypedValue<T>` for `self`, given that `T` is `Copy`.
-    pub proof fn copy(tracked &mut self, tracked val: &T) where T: Copy
-        requires
-            self.wf(),
-            abs_decode::<T>(self.bytes(), val),
-        ensures
-            final(self).ptr() == old(self).ptr(),
-            final(self).bytes() == old(self).bytes(),
-            final(self).is_valid(),
-            final(self).value() == *val,
-            final(self).wf(),
-    {
-        self.put(*val);
-    }
-
-    /// This takes a borrow of the `TypedValue<T>` on `self`.
-    pub proof fn borrow_typed_value(tracked &self) -> tracked &TypedValue<T>
-        requires
-            self.wf(),
-        returns
-            self.typed_value(),
-    {
-        &self.pt_unaligned.val
-    }
-
-    /// This moves the `TypedValue<T>` out from `self`, leaving `self` empty.
-    pub proof fn take_typed_value(tracked &mut self) -> (tracked val: TypedValue<T>)
-        requires
-            self.wf(),
-        ensures
-            val == old(self).typed_value(),
-            final(self).ptr() == old(self).ptr(),
-            final(self).bytes() == old(self).bytes(),
-            final(self).is_empty(),
-            final(self).wf(),
-    {
-        let tracked mut tmp = TypedValue::Empty;
-        crate::vstd::modes::tracked_swap(&mut tmp, &mut self.pt_unaligned.val);
-        tmp
-    }
-
-    /// Consumes the `TypedValue<T>` and puts it in `self`.
-    pub proof fn put_typed_value(tracked &mut self, tracked val: TypedValue<T>)
-        requires
-            self.wf(),
-            val.is_valid() ==> abs_decode::<T>(self.bytes(), &val.value()),
-        ensures
-            final(self).ptr() == old(self).ptr(),
-            final(self).bytes() == old(self).bytes(),
-            final(self).typed_value() == val,
-            final(self).wf(),
-    {
-        self.pt_unaligned.val = val;
-    }
-
-    /// Copies the `TypedValue<T>` and puts it in `self`, given that `T` is `Copy`.
-    pub proof fn copy_typed_value(tracked &mut self, tracked val: &TypedValue<T>) where T: Copy
-        requires
-            self.wf(),
-            val.is_valid() ==> abs_decode::<T>(self.bytes(), &val.value()),
-        ensures
-            final(self).ptr() == old(self).ptr(),
-            final(self).bytes() == old(self).bytes(),
-            final(self).typed_value() == *val,
-            final(self).wf(),
-    {
-        self.put_typed_value(val.tracked_copy());
+        PointsToUnaligned::<[T]>::from_untyped_with_value_ref(pt_untyped, value).as_aligned()
     }
 }
 
@@ -1328,7 +1268,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 
 pub broadcast group group_points_to_lemmas {
     SeqPointsTo::lemma_ptrs_len_same_untyped,
-    PointsTo::lemma_ptrs_len_same_valid,
+    PTTypedValue::lemma_ptrs_len_same_valid,
 }
 
 } // verus!
