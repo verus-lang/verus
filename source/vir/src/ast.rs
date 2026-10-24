@@ -1229,6 +1229,7 @@ pub enum ExprX {
         invs: LoopInvariants,
         decrease: Exprs,
         atomic_call: bool,
+        known_no_back_edge: bool,
     },
     /// Open invariant
     OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),

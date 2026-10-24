@@ -2866,6 +2866,7 @@ fn check_expr(
             label,
             assume_termination: _,
             atomic_call: _,
+            known_no_back_edge: _,
         } => {
             let mut typing = typing.push_loop(label.clone(), Loop { ghost_loop: false });
 

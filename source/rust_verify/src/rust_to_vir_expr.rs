@@ -3278,6 +3278,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     //invs,
                     decrease,
                     atomic_call: header.atomic_call_loop,
+                    known_no_back_edge: false,
                 },
             )))
         }
@@ -3372,6 +3373,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     invs: header.loop_invariants(),
                     decrease: header.decrease,
                     atomic_call: header.atomic_call_loop,
+                    known_no_back_edge: false,
                 },
             )))
         }

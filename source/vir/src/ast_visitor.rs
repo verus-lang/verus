@@ -582,6 +582,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 invs,
                 decrease,
                 atomic_call,
+                known_no_back_edge,
             } => {
                 let cond = self.visit_opt_expr(cond)?;
                 let body = self.visit_expr(body)?;
@@ -599,6 +600,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         invs: R::get_vec_a(invs),
                         decrease: R::get_vec_a(decrease),
                         atomic_call: *atomic_call,
+                        known_no_back_edge: *known_no_back_edge,
                     })
                 })
             }

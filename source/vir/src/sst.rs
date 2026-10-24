@@ -307,6 +307,7 @@ pub enum StmX {
         ///
         /// This is only used when pre_stms is non-empty.
         pre_modified_params_excl: Option<Arc<crate::sst_vars::HavocSet>>,
+        known_no_back_edge: bool,
     },
     /// Atomic invariant opening for concurrent verification
     OpenInvariant(Stm),

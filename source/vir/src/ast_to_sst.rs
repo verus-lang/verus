@@ -2659,6 +2659,7 @@ pub(crate) fn expr_to_stm_opt(
             invs,
             decrease,
             atomic_call,
+            known_no_back_edge,
         } => {
             let is_for_loop = *is_for_loop;
             let produces_value =
@@ -2889,6 +2890,7 @@ pub(crate) fn expr_to_stm_opt(
                     modified_vars: None,
                     pre_modified_params_incl: None,
                     pre_modified_params_excl: None,
+                    known_no_back_edge: *known_no_back_edge,
                 },
             );
 

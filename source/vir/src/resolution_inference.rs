@@ -1078,6 +1078,7 @@ impl<'a> Builder<'a> {
                 invs: _,
                 decrease: _,
                 atomic_call: _,
+                known_no_back_edge: _,
             } => {
                 let outer_body_bb_pos = match cond {
                     Some(cond) => AstPosition::Before(cond.span.id),

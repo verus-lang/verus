@@ -2572,6 +2572,7 @@ fn loop_to_stmts(
         au_branch_bool,
         pre_modified_params_incl,
         pre_modified_params_excl,
+        known_no_back_edge: _,
     } = &stm.x
     else {
         unreachable!()

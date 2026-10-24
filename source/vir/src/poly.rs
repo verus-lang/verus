@@ -1015,6 +1015,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             au_branch_bool,
             pre_modified_params_excl,
             pre_modified_params_incl,
+            known_no_back_edge,
         } => {
             let pre_stms = visit_stms(ctx, state, pre_stms);
             let cond = cond
@@ -1043,6 +1044,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 au_branch_bool,
                 pre_modified_params_excl: pre_modified_params_excl.clone(),
                 pre_modified_params_incl: pre_modified_params_incl.clone(),
+                known_no_back_edge: *known_no_back_edge,
             })
         }
         StmX::OpenInvariant(s) => {
