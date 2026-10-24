@@ -87,9 +87,10 @@ and the permission from `from_raw_parts_ref`.
 /// Permission is for an arbitrary set of addresses, not necessarily contiguous,
 /// and with a given provenance.
 /// Internally represented as a map from addresses to `PointsToByte` permissions.
-/// Not a `PTPhys`, since it has no single pointer.
+/// Does not implement `PTPhys`, since it has no single pointer,
+/// although equivalent properties from `PTProperties` hold.
 // Note reading from uninitialized memory is UB, so we shouldn't give any
-// reading capabilities to PointsToRaw. Turning a PointsToRaw into a PointsTo
+// reading capabilities to `PointsToRaw`. Turning a `PointsToRaw` into a typed `PointsTo`
 // should always leave it as 'uninitialized'.
 pub tracked struct PointsToRaw {
     bytes: Map<int, PointsToByte>,
@@ -98,15 +99,13 @@ pub tracked struct PointsToRaw {
 
 impl PointsToRaw {
     /// The domain is finite, and each byte permission is at its key's address,
-    /// with this permission's provenance, which is non-null and contains that address.
+    /// with this permission's provenance.
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
         &&& self.bytes.dom().finite()
         &&& forall|a: int| #[trigger] self.bytes.dom().contains(a) ==> {
             &&& self.bytes[a].ptr()@.addr == a
             &&& self.bytes[a].ptr()@.provenance == self.provenance@
-            &&& self.provenance@ != Provenance::None
-            &&& self.provenance@.start_addr() <= a < self.provenance@.start_addr() + self.provenance@.alloc_len()
         }
     }
 
@@ -122,7 +121,7 @@ impl PointsToRaw {
         self.bytes.dom()
     }
 
-    /// The abstract byte at `a` (new: the old PointsToRaw had no contents).
+    /// The abstract byte at address `a`.
     pub closed spec fn byte(self, a: int) -> AbstractByte
         recommends
             self.dom().contains(a),
@@ -141,7 +140,10 @@ impl PointsToRaw {
     }
 
     /// The contents of `[start, start + len)` as a sequence.
-    pub open spec fn bytes_range(self, start: int, len: nat) -> Seq<AbstractByte> {
+    pub open spec fn bytes_range(self, start: int, len: nat) -> Seq<AbstractByte> 
+        recommends
+            self.contains_range(start, len),
+    {
         Seq::new(len, |i: int| self.byte(start + i))
     }
 
@@ -155,16 +157,16 @@ impl PointsToRaw {
     /// Splits the current `PointsToRaw` permission into a permission with domain `range`
     /// and a permission containing the rest of the domain,
     /// provided that `range` is contained in the domain of the current permission.
-    pub proof fn split(tracked self, range: Set<int>) -> (tracked res: (Self, Self))
+    pub proof fn split(tracked self, range: Set<int>) -> (tracked (subperm, rest): (Self, Self))
         requires
             range.subset_of(self.dom()),
         ensures
-            res.0.provenance() == self.provenance(),
-            res.1.provenance() == self.provenance(),
-            res.0.dom() == range,
-            res.1.dom() == self.dom().difference(range),
-            forall|a| res.0.dom().contains(a) ==> #[trigger] res.0.byte(a) == self.byte(a),
-            forall|a| res.1.dom().contains(a) ==> #[trigger] res.1.byte(a) == self.byte(a),
+            subperm.provenance() == self.provenance(),
+            rest.provenance() == self.provenance(),
+            subperm.dom() == range,
+            rest.dom() == self.dom().difference(range),
+            forall|a| subperm.dom().contains(a) ==> #[trigger] subperm.byte(a) == self.byte(a),
+            forall|a| rest.dom().contains(a) ==> #[trigger] rest.byte(a) == self.byte(a),
     ;
 
     /// Joins two `PointsToRaw` permissions into one,
@@ -176,24 +178,20 @@ impl PointsToRaw {
         ensures
             joined.provenance() == self.provenance(),
             joined.dom() == self.dom() + other.dom(),
+            // (the domains are disjoint by is_disjoint, so these don't conflict)
             forall|a| self.dom().contains(a) ==> #[trigger] joined.byte(a) == self.byte(a),
             forall|a| other.dom().contains(a) ==> #[trigger] joined.byte(a) == other.byte(a),
-            // (the domains are disjoint by is_disjoint, so these don't conflict)
     ;
 
-    /// The memory associated with a pointer should always be within bounds of its spatial provenance.
-    /// Stronger than the old axiom (`<` instead of `<=` at the end).
+    /// The memory associated with an address in the domain should always be within bounds of its spatial provenance.
     pub proof fn ptr_bounds(tracked &self)
-        requires
-            self.provenance().is_some(),
         ensures
-            forall|a| self.dom().contains(a) ==> self.provenance().start_addr() <= a
-                < self.provenance().start_addr() + self.provenance().alloc_len(),
+            forall|a| self.dom().contains(a) ==> self.provenance().unwrap().start_addr() <= a
+                < self.provenance().unwrap().start_addr() + self.provenance().unwrap().alloc_len(),
     ;
 
-    /// If the address domain is non-empty, then the provenance is non-null.
+    /// If the address domain is non-empty, then the provenance is not none.
     /// <https://doc.rust-lang.org/std/ptr/index.html#provenance>
-    /// Renamed from `provenance_non_null`, matching `PTProperties::provenance_not_none`.
     pub proof fn provenance_not_none(tracked &self)
         requires
             self.dom() != Set::<int>::empty(),
@@ -203,8 +201,8 @@ impl PointsToRaw {
 
     /// Guarantees that the memory ranges associated with two distinct, non-empty permissions will not overlap,
     /// since you cannot have two permissions to the same memory.
-    /// (`self` is an &mut reference to enforce distinctness,
-    /// so you cannot pass the same PointsToRaw as both arguments.)
+    /// (`self` is an `&mut` reference to enforce distinctness,
+    /// so you cannot pass the same `PointsToRaw` as both arguments.)
     pub proof fn is_disjoint(tracked &mut self, tracked other: &PointsToRaw)
         requires
             self.dom() != Set::<int>::empty(),
@@ -229,10 +227,9 @@ impl PointsToRaw {
     pub proof fn into_untyped(tracked self, start: usize, len: nat) -> (tracked out: PointsToUntyped)
         requires
             self.is_range(start as int, len as int),
-            len <= usize::MAX,
             start != 0,
-            len == 0 ==> ptr_addr_in_bounds(ptr_mut_from_data::<[u8]>(
-                PtrData { addr: start, provenance: self.provenance(), metadata: 0 })),
+            len == 0 && self.provenance().is_some() ==> self.provenance().unwrap().start_addr() <= start
+                <= self.provenance().unwrap().start_addr() + self.provenance().unwrap().alloc_len(),
         ensures
             out.ptr() == ptr_mut_from_data::<[u8]>(
                 PtrData { addr: start, provenance: self.provenance(), metadata: len as usize }),
