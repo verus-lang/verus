@@ -42,6 +42,9 @@ This proves `P ==> Q` via the `bit_vector` solver.
  * Non-truncating arithmetic (`+`, `-`, `*`, `/`, and `%`)
  * Truncating arithmetic (`add`, `sub`, `mul` functions)
  * Bit operations (`&`, `|`, `^`, `!`, `<<`, `>>`)
+   * The shift amount may have a signed type. Shifting by a negative amount is
+     [unspecified](./spec-bit-ops.md), so to reason about a shift by a signed amount,
+     the solver needs to know that the amount is nonnegative (e.g., from a `requires`).
  * Equality and inequality (`==`, `!=`, `<`, `>`, `<=`, `>=`)
  * Boolean operators (`&&`, `||`, `^`) and conditional expressions
  * The `usize::BITS` constant
