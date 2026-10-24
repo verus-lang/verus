@@ -74,7 +74,7 @@ Approved ([`points_to_ops.rs`: slices](TYPED_POINTS_TO_APPROVED.md#points_to_ops
 They need no new axioms:
 for `borrow_index`, the bytes come from `split_ref` on the untyped permission,
 a valid element's typed value from `tracked_slice_index` and `TypedValue::valid_ref`
-(an empty one from `tracked_static_mut_ref`, as in the other borrowed conversions),
+(an empty one from `&TypedValue::Empty`, a promoted constant),
 and the permission from `from_raw_parts_ref`.
 
 ### `points_to_collections.rs` (verified)
@@ -1017,7 +1017,8 @@ impl PTPhys for PointsToUnaligned<str> {
     /// if its memory region is `Self::size(self.ptr()@.metadata)` bytes,
     /// and the underlying `PointsToUntyped` is well-formed.
     open spec fn wf_basic(self) -> bool {
-        self.wf_basic_unaligned()
+        &&& self.pt_untyped().wf()
+        &&& self.pt_untyped().len() == Self::size(self.ptr()@.metadata)
     }
 
     /// `new` has the same pointer
@@ -1133,7 +1134,7 @@ impl PTValueOps for PointsToUnaligned<str> {
 Only shared casts: there are no owned or `&mut` `str` ↔ `[u8]` permission casts.
 Both are proved, with no new axioms:
 the value from rustlib's existing `str::as_bytes_tracked` / `str::from_bytes_tracked` and `TypedValue::valid_ref`
-(an empty value from `tracked_static_mut_ref`),
+(an empty value from `&TypedValue::Empty`, a promoted constant),
 and the permission from `from_raw_parts_ref` with the same untyped bytes and metadata.
 
 ```rust

@@ -45,7 +45,7 @@ Single-value permissions:
 
 | Code | Written | What it contains |
 |---|---|---|
-| `PTPhys for PointsToUnaligned<_>` | per type | `ptr` (same shape each time), the `size` formula, `wf_basic` (one call to the generic `wf_basic_unaligned`), and `ptrs_len_same` / `stays_wf_basic` (delegating to the untyped bytes) |
+| `PTPhys for PointsToUnaligned<_>` | per type | `ptr` (same shape each time), the `size` formula, `wf_basic` (the untyped permission is well-formed and has `size` bytes; same shape each time), and `ptrs_len_same` / `stays_wf_basic` (delegating to the untyped bytes) |
 | `PTProperties for PointsToUnaligned<_>` | per type (same body each time) | the pointer-level lemmas, all delegating to the untyped bytes |
 | `PTTypedValue for PointsToUnaligned<_>` | per type | `typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment` (`true`); the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic` (empty proofs), `lemma_ptrs_len_same_valid`, `stays_wf` |
 | `PTValueOps for PointsToUnaligned<_>` | per type | the operations that touch the fields (`borrow_typed_value`, `take_typed_value`, `put_typed_value`, `into_untyped_with_typed_value`, `from_untyped_with_typed_value`, `as_untyped`, `as_untyped_mut`) |
@@ -108,7 +108,7 @@ Other open spec fns, such as `len`, may live with the proofs that use them.
 |---|---|---|
 | the five trait definitions, with their default bodies | the `PTProperties` impls of `SeqPointsTo`, `PointsToUnaligned` and `PointsTo` | `PointsToRaw` (all of it) |
 | the struct definitions: `PointsToByte`, `TypedValue`, `SeqPointsTo`, `PointsToUntyped`, `PointsToUnaligned`, `PointsTo`; their closed accessors and the inherent spec fns (`typed_value`, `bytes`, `metadata`, `is_valid`, `value`, `value_ref`, `SeqPointsTo::len`, …); their `View` impls | the `PTValueOps` impls (per type for `PointsToUnaligned`, generic for `PointsTo`) and the `PTSizedValue` impls | the typed `SeqPointsTo` impl (`impl<T> SeqPointsTo<T, PointsTo<T>>`), including its `wf`, and its `View` |
-| well-formedness: every `PTPhys` impl (`ptr`, `size`, `wf_basic`, `ptrs_len_same`, `stays_wf_basic`), every `PTTypedValue` impl (`typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment`, `ptrs_len_same_valid`, and the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic`, `lemma_ptrs_len_same_valid`, `stays_wf`), `wf_basic_unaligned`, `PointsToUntyped::wf` and `bytes` | the structural `SeqPointsTo` impl (except the field primitives and M5) and `PointsToUntyped`'s proofs | |
+| well-formedness: every `PTPhys` impl (`ptr`, `size`, `wf_basic`, `ptrs_len_same`, `stays_wf_basic`), every `PTTypedValue` impl (`typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment`, `ptrs_len_same_valid`, and the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic`, `lemma_ptrs_len_same_valid`, `stays_wf`), `PointsToUntyped::wf` and `bytes` | the structural `SeqPointsTo` impl (except the field primitives and M5) and `PointsToUntyped`'s proofs | |
 | the axioms: `PointsToByte`'s `PTProperties` impl, `PointsToUntyped::join_ref` / `join_mut`, `from_raw_parts_ref`, `TypedValue::from_elems_ref`, M1, M3–M5, `PointsTo::borrow_mut` | the aligned/unaligned conversions | the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`) |
 | the tracked getters and byte disjointness: `TypedValue::tracked_copy`, `valid_ref`; `PointsToByte::is_disjoint_byte`; the field primitives, which say nothing about `wf`: `SeqPointsTo::tracked_seq_pt`, `tracked_seq_pt_mut`, `into_seq`, `PointsToUnaligned::tracked_pt_untyped`, `tracked_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_raw_parts_mut`, `PointsTo::tracked_pt_unaligned` | the slice permissions' `len`, `borrow_index` and borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`); `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`; `group_points_to_lemmas` | `group_points_to_collections_lemmas` |
 
@@ -152,7 +152,7 @@ Existing axioms with minor contract changes on this branch are in
 | `shared_ref_ptr` (`uninterp`), `mut_ref_slice_len`, `ptr_mut_ref_join`, `tracked_mut_ref_slice_subrange`, `tracked_mut_ref_slice_idx`, `cast_mut_ref_to_ptr`, `cast_mut_ref_slice_to_ptr`, `cast_mut_ref_str_to_ptr` | `ptr_specs.rs` | Reference ↔ pointer and permission boundary. | exec code; the source of valid permissions |
 | `abs_encode`, `abs_decode`, `abs_can_be_encoded` (`uninterp`); `encode_decode_len`, `encode_decode_inverse`, `shared_ref_cannot_be_encoded`; the per-type encoding impls | `type_representation.rs` | The abstract-byte encoding of values. | every decode clause |
 | layout axioms (`layout_of_sized`, `layout_of_slices`, `layout_of_str`, `layout_of_unit_tuple`, `align_properties`, …) | `layout.rs` | Sizes and alignments of types and values. | sizes, `satisfies_alignment`, `lemma_satisfies_alignment_offset`, the `zero_sized` default |
-| `tracked_swap`, `tracked_static_mut_ref` | `modes.rs` | Swapping tracked values; a `'static` borrow of an owned value. | `take_typed_value`, empty cases of borrowed conversions |
+| `tracked_swap`, `tracked_static_mut_ref` | `modes.rs` | Swapping tracked values; a `'static` borrow of an owned value. | `take_typed_value` |
 | `Seq` tracked operations (`tracked_borrow`, `tracked_borrow_mut`, `tracked_borrow_subrange_mut`, …) | `seq.rs` | Borrowing parts of a tracked `Seq`. | `as_untyped_mut`, `index_mut` |
 | `Map` tracked operations (`tracked_empty`, `tracked_remove_keys`, `tracked_union_prefer_right`, …) | `map.rs` | Building and splitting a tracked `Map`. | `PointsToRaw` |
 | `shr_ref_struct_wrap` | builtin | Borrowing a struct from a borrow of its only tracked field. | `as_aligned`, `subrange_basic`, `split_ref` |
@@ -1836,7 +1836,7 @@ impl<T: ?Sized> PointsToUnaligned<T> {
     /// which gives flexibility for getting the underlying `PointsToUntyped`
     /// when the permission is not well-formed.
     /// However, the `wf()` conditions on `self` should imply that `pt_untyped` is `wf()`.
-    // This is implemented by making `PTTypedValue::wf` on `self` include `wf_basic_unaligned`,
+    // This is implemented by making `PTTypedValue::wf` on `self` include `wf_basic`,
     // which includes `self.pt_untyped().wf()`.
     pub proof fn tracked_pt_untyped(tracked &self) -> tracked &PointsToUntyped
         returns
@@ -1897,17 +1897,6 @@ impl<T: ?Sized> PointsToUnaligned<T> {
     // Axioms: from_raw_parts_ref, from_raw_parts_mut (M3).
 }
 
-impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTPhys<A = T> {
-    /// A `PointsToUnaligned` is well-formed at the pointer level (`wf_basic`)
-    /// if its memory region is `Self::size(self.ptr()@.metadata)` bytes,
-    /// and the underlying `PointsToUntyped` is well-formed.
-    /// Every `PTPhys` impl for `PointsToUnaligned` uses this as its `wf_basic`.
-    pub open spec fn wf_basic_unaligned(self) -> bool {
-        &&& self.pt_untyped().wf()
-        &&& self.pt_untyped().len() == Self::size(self.ptr()@.metadata)
-    }
-}
-
 impl<T> PointsToUnaligned<T> {
     /// If the permission's associated memory is valid,
     /// returns the value that the pointer points to.
@@ -1947,7 +1936,8 @@ impl<T> PTPhys for PointsToUnaligned<T> {
     /// if its memory region is `size_of::<T>()` bytes,
     /// and the underlying `PointsToUntyped` is well-formed.
     open spec fn wf_basic(self) -> bool {
-        self.wf_basic_unaligned()
+        &&& self.pt_untyped().wf()
+        &&& self.pt_untyped().len() == Self::size(self.ptr()@.metadata)
     }
 
     /// `new` has the same pointer
@@ -1985,7 +1975,8 @@ impl<T> PTPhys for PointsToUnaligned<[T]> {
     /// if its memory region is `Self::size(self.ptr()@.metadata)` bytes,
     /// and the underlying `PointsToUntyped` is well-formed.
     open spec fn wf_basic(self) -> bool {
-        self.wf_basic_unaligned()
+        &&& self.pt_untyped().wf()
+        &&& self.pt_untyped().len() == Self::size(self.ptr()@.metadata)
     }
 
     /// `new` has the same pointer
@@ -2021,12 +2012,17 @@ impl<T> PTTypedValue for PointsToUnaligned<T> {
     }
 
     proof fn bytes_decode(&self) {
+        // This assert is only there so Verus unfolds the inherited default `wf` here,
+        // which it otherwise doesn't do at `PointsToUnaligned<T>`.
+        assert(self.wf());
     }
 
     proof fn satisfies_alignment_of_wf(&self) {
     }
 
     proof fn lemma_wf_basic(&self) {
+        // As in `bytes_decode`, the assert unfolds the default `wf`.
+        assert(self.wf());
     }
 
     // ptrs_len_same_valid: the trait's default body.
@@ -2886,8 +2882,8 @@ impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
 
     /// Mutably borrows the underlying `PointsToUnaligned<T>`.
     /// `final(self)` holds the final `PointsToUnaligned<T>`.
-    /// If the final unaligned permission satisfies `ptrs_len_same_valid`
-    /// with the initial unaligned permission (so it keeps the same aligned address),
+    /// If the final unaligned permission preserves the pointer
+    /// and satisfies `ptrs_len_same_valid` with it,
     /// `self` is well-formed afterwards.
     pub proof fn as_unaligned_mut(tracked &mut self) -> (tracked out: &mut PointsToUnaligned<T>)
         requires
@@ -2896,7 +2892,8 @@ impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
             *out == old(self).pt_unaligned(),
             out.wf(),
             final(self).pt_unaligned() == *final(out),
-            PointsToUnaligned::<T>::ptrs_len_same_valid(*out, *final(out)) ==> final(self).wf(),
+            final(out).ptr() == out.ptr() && PointsToUnaligned::<T>::ptrs_len_same_valid(*out, *final(out))
+                ==> final(self).wf(),
     ;
 }
 ```
