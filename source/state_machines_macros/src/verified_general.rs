@@ -1005,64 +1005,333 @@ fn field_declarations(sm: &SM) -> Result<FieldDecls<'_>, Error> {
     Ok(decls)
 }
 
-/// Adds a transition's relations, induction lemma, raw operations and local-ready
-/// API to `items`.
-fn transition_items(ctx: &Ctx, tr: &Transition, items: &mut Items) -> Result<(), Error> {
-    let Ctx {
-        bundle,
-        sm,
-        local_ready,
-        chained,
-        fields,
-        st,
-        se,
-        ft,
-        fe,
-        pt,
-        pe,
-        tt,
-        te,
-        result_ty,
-        result_expr,
-        marker_value,
-        decls,
-        ..
-    } = ctx;
-    let storage = ctx.storage;
-    let FieldDecls { names, temps, posts, .. } = decls;
-    let Items { relations, lemmas, operations: ops, local_ready: local_ready_items } = items;
-    let guard_property =
-        matches!(tr.kind, TransitionKind::Property | TransitionKind::ReadonlyTransition)
-            && contains_guard(&tr.body);
-    let n = &tr.name;
-    let ready_inline = if local_ready.contains(&n.to_string()) {
+/// A transition's parameters and the names of its generated items.
+struct Names<'a> {
+    /// The transition's name, which its raw operation also has.
+    name: &'a Ident,
+    pn: Vec<&'a Ident>,
+    params: Vec<TokenStream>,
+    strong: Ident,
+    enabled: Ident,
+    safety: Ident,
+    run: Ident,
+    req: Ident,
+    output: Ident,
+    frame: Ident,
+    owned_post: Ident,
+    shared: Ident,
+    deposited: Ident,
+    owners: Ident,
+    witness: Ident,
+}
+
+/// The fields and the storage a transition changes.
+struct Footprint {
+    /// The assigned fields and the monoid fields with effects.
+    changed: HashSet<String>,
+    deposits: bool,
+    withdraws: bool,
+    /// Whether some path has several storage operations: the exchange outputs are paired.
+    paired: bool,
+    /// A deposit that may replace a stored value (see `check_storage_paths`).
+    replace_candidate: Option<proc_macro2::Span>,
+    /// The monoid effects (`verified_monoids::transition_effects`).
+    effects: Vec<monoids::Effect>,
+}
+
+/// The pieces of a non-init step's raw operations.
+struct Step {
+    /// That the owned fragment owns the variables the step changes.
+    owned_req: Vec<TokenStream>,
+    /// That the owned and shared fragments observe the fields the step reads.
+    observed_req: Vec<TokenStream>,
+    /// The body of `t_owned_post`, the owned fragment after the step.
+    post_fragment: TokenStream,
+    /// The statement calculus's chain of the frame lemma (`verified_chain::frame_chain`).
+    frame_chain: TokenStream,
+}
+
+impl Ctx<'_> {
+    fn is_local_ready(&self, tr: &Transition) -> bool {
+        self.local_ready.contains(&tr.name.to_string())
+    }
+
+    /// The fragment's fields in `read`, in declaration order.
+    fn reads(&self, read: &HashSet<String>) -> Vec<&Ident> {
+        self.decls.names.iter().copied().filter(|n| read.contains(&n.to_string())).collect()
+    }
+}
+
+/// `#[verifier::inline]` if `inline`.
+fn inline_attr(inline: bool) -> TokenStream {
+    if inline {
         quote! {#[verifier::inline]}
     } else {
         quote! {}
-    };
+    }
+}
 
-    let strong = format_ident!("{}_strong", n);
-    let enabled = format_ident!("{}_enabled", n);
-    let safety = format_ident!("{}_safety", n);
-    let run = format_ident!("{}_execute", n);
-    let req = format_ident!("{}_requires", n);
-    let output = format_ident!("{}_outputs", n);
-    let frame = format_ident!("{}_frame", n);
-    let owned_post = format_ident!("{}_owned_post", n);
-    let shared = format_ident!("{}_with_shared", n);
-    let deposited = format_ident!("{}_deposited", n);
-    let owners = format_ident!("{}_owners_enabled", n);
-    let pn: Vec<_> = tr.params.iter().map(|p| &p.name).collect();
-    let params: Vec<_> = tr
-        .params
-        .iter()
-        .map(|p| {
-            let n = &p.name;
-            let t = &p.ty;
-            quote! {#n:#t}
-        })
-        .collect();
-    let (sops, assigned) = crate::simplification::inline_unassigned(
+/// Adds a transition's relations, induction lemma, raw operations and local-ready
+/// API to `items`.
+fn transition_items(ctx: &Ctx, tr: &Transition, items: &mut Items) -> Result<(), Error> {
+    let names = transition_names(tr);
+    let init = tr.kind == TransitionKind::Init;
+    let footprint = transition_footprint(ctx, tr)?;
+    items.relations.push(ownership_relation(ctx, tr, &names)?);
+    let cardinality = cardinality_effects(ctx, tr, &footprint.effects);
+    items.relations.push(monoids::effect_functions(&cardinality, &ctx.st, &names.params));
+    let read = token_reads(ctx, tr)?;
+    let induct = induction_lemma(ctx, tr, &names, &cardinality, &mut items.lemmas)?;
+    let deposit = match ctx.storage {
+        Some(layout) if !init => {
+            let expression = storage_deposit(&tr.body, &ctx.fields, layout)?;
+            items.relations.push(deposited_relation(ctx, tr, &names, layout, &expression));
+            Some(expression)
+        }
+        _ => None,
+    };
+    items.relations.push(step_relations(ctx, tr, &names, &footprint, &induct));
+    if matches!(tr.kind, TransitionKind::Property | TransitionKind::ReadonlyTransition)
+        && contains_guard(&tr.body)
+    {
+        guard_items(ctx, tr, &names, &read, items)
+    } else if init {
+        items.operations.push(init_operation(ctx, &names));
+        Ok(())
+    } else {
+        let step = step_parts(ctx, tr, &names, &footprint, &read)?;
+        items.operations.push(match ctx.storage {
+            Some(layout) => storage_operations(ctx, &names, &step, &footprint, layout),
+            None => plain_operations(ctx, &names, &step),
+        });
+        if ctx.is_local_ready(tr) {
+            if ctx.storage.is_none() {
+                items.operations.push(plain_witness(ctx, &names));
+            }
+            let api = step_local_ready(ctx, tr, &names, &step, &footprint, &read, deposit)?;
+            items.local_ready.push((names.name.clone(), api));
+        }
+        Ok(())
+    }
+}
+
+fn transition_names(tr: &Transition) -> Names<'_> {
+    let name = &tr.name;
+    Names {
+        name,
+        pn: tr.params.iter().map(|p| &p.name).collect(),
+        params: tr
+            .params
+            .iter()
+            .map(|p| {
+                let (name, ty) = (&p.name, &p.ty);
+                quote! {#name:#ty}
+            })
+            .collect(),
+        strong: format_ident!("{}_strong", name),
+        enabled: format_ident!("{}_enabled", name),
+        safety: format_ident!("{}_safety", name),
+        run: format_ident!("{}_execute", name),
+        req: format_ident!("{}_requires", name),
+        output: format_ident!("{}_outputs", name),
+        frame: format_ident!("{}_frame", name),
+        owned_post: format_ident!("{}_owned_post", name),
+        shared: format_ident!("{}_with_shared", name),
+        deposited: format_ident!("{}_deposited", name),
+        owners: format_ident!("{}_owners_enabled", name),
+        witness: format_ident!("{}_witness", name),
+    }
+}
+
+/// Rejects unsupported storage operations and the monoid statements outside the checked
+/// backend's restrictions (operand forms, bindings, the remove-have-add order of one
+/// field, bindings before additions).
+fn transition_footprint(ctx: &Ctx, tr: &Transition) -> Result<Footprint, Error> {
+    let mut changed = HashSet::new();
+    let (storage_ops, withdraws) = modified(
+        &tr.body,
+        &mut changed,
+        ctx.storage.is_some(),
+        &ctx.fields,
+        matches!(tr.kind, TransitionKind::Property | TransitionKind::ReadonlyTransition),
+    )?;
+    let mut replace_candidate = None;
+    check_storage_paths(
+        &tr.body,
+        &ctx.fields,
+        &mut StoragePath::default(),
+        &mut replace_candidate,
+    )?;
+    let effects = monoids::transition_effects(tr, &ctx.fields)?;
+    for effect in &effects {
+        changed.insert(effect.field.name.to_string());
+    }
+    Ok(Footprint {
+        changed,
+        deposits: has_deposit(&tr.body),
+        withdraws,
+        paired: storage_ops > 1,
+        replace_candidate,
+        effects,
+    })
+}
+
+/// `State::t_owners_enabled(pre, owned, h, ..)`: what the owned and shared fragments must
+/// own for the transition (`verified_ownership`).
+fn ownership_relation(ctx: &Ctx, tr: &Transition, names: &Names) -> Result<TokenStream, Error> {
+    let Ctx { sm, st, ft, .. } = ctx;
+    let Names { params, owners, .. } = names;
+    let ready = ctx.is_local_ready(tr);
+    let owner_expression = crate::verified_ownership::ownership_condition(
+        &tr.body,
+        &ctx.fields,
+        ft,
+        quote! {owned},
+        quote! {h},
+        ready,
+    )?;
+    let ownership_inline =
+        inline_attr(ready && crate::verified_readiness::inline_ownership(sm, tr));
+    Ok(
+        quote! {#ownership_inline pub open spec fn #owners(pre:#st,owned:#ft,h:#ft,#(#params),*)->bool{#owner_expression}},
+    )
+}
+
+/// The composed removals of multiset fields, for the cardinality hints of the
+/// inductiveness lemma (on machines with several storage fields).
+fn cardinality_effects<'a>(
+    ctx: &Ctx,
+    tr: &Transition,
+    effects: &'a [monoids::Effect],
+) -> Vec<&'a monoids::Effect> {
+    if ctx.storage.is_some_and(|layout| layout.fields.len() > 1) && tr.kind != TransitionKind::Init
+    {
+        effects
+            .iter()
+            .filter(|effect| {
+                matches!(effect.field.stype, ShardableType::Multiset(_))
+                    && effect.op == monoids::EffectOp::Remove
+                    && !effect.replacement
+            })
+            .collect()
+    } else {
+        vec![]
+    }
+}
+
+/// The fields the transition's token operations read; rejects reads of unowned fields.
+fn token_reads(ctx: &Ctx, tr: &Transition) -> Result<HashSet<String>, Error> {
+    let fields = &ctx.fields;
+    let mut access_errors = vec![];
+    let mut token_footprint = tr.body.clone();
+    if updates_unowned(ctx.sm) {
+        drop_unowned_updates(&mut token_footprint, fields);
+    }
+    let (mut read, _) = crate::field_access_visitor::find_all_accesses(
+        &mut token_footprint,
+        &mut access_errors,
+        fields,
+    );
+    storage_key_reads(&tr.body, fields, &mut read)?;
+    if let Some(e) = access_errors.into_iter().next() {
+        return Err(e);
+    }
+    for name in &read {
+        if !matches!(fields[name].stype, ShardableType::Variable(_) | ShardableType::Constant(_)) {
+            return Err(Error::new(
+                fields[name].name.span(),
+                "unowned fields cannot be read by a token operation",
+            ));
+        }
+    }
+    Ok(read)
+}
+
+/// Adds the transition's induction lemma, if it has one, to `lemmas`: the user's proof
+/// with the transition as precondition and the invariant as postcondition. Returns its
+/// call in the executor (empty without one).
+fn induction_lemma(
+    ctx: &Ctx,
+    tr: &Transition,
+    names: &Names,
+    cardinality: &[&monoids::Effect],
+    lemmas: &mut Vec<TokenStream>,
+) -> Result<TokenStream, Error> {
+    let Names { name, pn, strong, .. } = names;
+    let Some(lemma) = ctx.bundle.extras.lemmas.iter().find(|l| l.purpose.transition == **name)
+    else {
+        return Ok(quote! {});
+    };
+    let init = tr.kind == TransitionKind::Init;
+    let pre_arg = if init {
+        quote! {}
+    } else {
+        quote! {pre,}
+    };
+    let lemma_name = &lemma.func.sig.ident;
+    let call = quote! {Self::#lemma_name(#pre_arg post,#(#pn),*);};
+    let mut lemma_fn = lemma.func.clone();
+    fix_attrs(&mut lemma_fn.attrs);
+    let span = lemma_fn.sig.span();
+    set_mode_proof(&mut lemma_fn.sig, span);
+    let cond = if init {
+        quote! {Self::#name(post,#(#pn),*)}
+    } else {
+        quote! {pre.invariant() && Self::#strong(pre,post,#(#pn),*)}
+    };
+    let body = &lemma_fn.block;
+    let cardinality_hints: Vec<_> = if !init {
+        cardinality
+            .iter()
+            .map(|effect| {
+                let field = &effect.field.name;
+                let operand = &effect.function;
+                quote! {
+                    match Self::#operand(pre,#(#pn),*) {
+                        Some(removed) => {assert(post.#field.len()+removed.len()==pre.#field.len());},
+                        None => {assert(post.#field.len()==pre.#field.len());},
+                    }
+                }
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+    lemma_fn.block = verus_syn::parse2(
+        quote! {{requires(#cond);ensures(post.invariant());#body #(#cardinality_hints)*}},
+    )?;
+    let spinoff = crate::verified_model::induction_spinoff(&lemma_fn.attrs);
+    lemmas.push(quote! {::vstd::prelude::verus_impl!{#spinoff #lemma_fn}});
+    Ok(call)
+}
+
+/// `State::t_deposited(pre, ..)`, the storage a step deposits.
+fn deposited_relation(
+    ctx: &Ctx,
+    tr: &Transition,
+    names: &Names,
+    layout: &Tagged,
+    expression: &TokenStream,
+) -> TokenStream {
+    let st = &ctx.st;
+    let Names { params, deposited, .. } = names;
+    let ready_inline = inline_attr(ctx.is_local_ready(tr));
+    let sty = layout.ty();
+    quote! {#ready_inline pub open spec fn #deposited(pre:#st,#(#params),*)->#sty{#expression}}
+}
+
+/// The strong relation, the enabling condition, the safety lemma and the executor of a
+/// transition (and an init transition's initial-state predicate).
+fn step_relations(
+    ctx: &Ctx,
+    tr: &Transition,
+    names: &Names,
+    footprint: &Footprint,
+    induct: &TokenStream,
+) -> TokenStream {
+    let Ctx { sm, st, se, marker_value, decls, .. } = ctx;
+    let Names { name, pn, params, strong, enabled, safety, run, .. } = names;
+    let (stmts, assigned) = crate::simplification::inline_unassigned(
         sm,
         crate::simplification::simplify_ops(sm, &tr.body, tr.kind),
     );
@@ -1071,111 +1340,40 @@ fn transition_items(ctx: &Ctx, tr: &Transition, items: &mut Items) -> Result<(),
     let tr_temps: Vec<_> = sm
         .fields
         .iter()
-        .zip(temps)
+        .zip(&decls.temps)
         .filter(|(f, _)| assigned.contains(&f.name.to_string()))
-        .map(|(_, t)| t.clone())
+        .map(|(_, temp)| temp.clone())
         .collect();
     let tr_posts: Vec<_> = sm
         .fields
         .iter()
-        .zip(posts)
-        .map(|(f, p)| {
+        .zip(&decls.posts)
+        .map(|(f, post)| {
             if assigned.contains(&f.name.to_string()) {
-                p.clone()
+                post.clone()
             } else {
-                let n = &f.name;
-                quote! {#n:pre.#n}
+                let name = &f.name;
+                quote! {#name:pre.#name}
             }
         })
         .collect();
     let preserved: HashSet<String> =
         sm.fields.iter().map(|f| f.name.to_string()).filter(|f| !assigned.contains(f)).collect();
+    let init = tr.kind == TransitionKind::Init;
     // The strong relation of a non-init transition is only established by
     // the generated executor: it needs no per-conjunct error messages.
-    let relation = if tr.kind == TransitionKind::Init {
-        crate::to_relation::to_relation(&sops, false)
+    let relation = if init {
+        crate::to_relation::to_relation(&stmts, false)
     } else {
         crate::to_relation::to_relation_plain(
-            &crate::simplification::merge_preserved(sops.clone(), &preserved),
+            &crate::simplification::merge_preserved(stmts.clone(), &preserved),
             false,
         )
     };
-    let weak = crate::to_relation::to_is_enabled_condition_weak(&sops);
-    let enabling = crate::to_relation::to_is_enabled_condition_strong(&sops);
-    let safe_body = execute(&sops, true);
-    let run_body = execute(&sops, false);
-    let mut changed = HashSet::new();
-    let (storage_ops, withdraw) = modified(
-        &tr.body,
-        &mut changed,
-        storage.is_some(),
-        &fields,
-        matches!(tr.kind, TransitionKind::Property | TransitionKind::ReadonlyTransition),
-    )?;
-    let mut replace_candidate = None;
-    check_storage_paths(&tr.body, &fields, &mut StoragePath::default(), &mut replace_candidate)?;
-    // Paired exchange outputs when some path has several storage operations.
-    let paired = storage_ops > 1;
-    // The checked backend's restrictions on monoid statements (operand forms, bindings,
-    // the remove-have-add order of one field, bindings before additions), and the
-    // composed operands that the multiset cardinality hints below use.
-    let effects = monoids::transition_effects(tr, &fields)?;
-    for e in &effects {
-        changed.insert(e.field.name.to_string());
-    }
-    let owner_expression = crate::verified_ownership::ownership_condition(
-        &tr.body,
-        &fields,
-        &ft,
-        quote! {owned},
-        quote! {h},
-        local_ready.contains(&n.to_string()),
-    )?;
-    let ownership_inline = if crate::verified_readiness::inline_ownership(sm, tr) {
-        ready_inline.clone()
-    } else {
-        quote! {}
-    };
-    relations.push(quote!{#ownership_inline pub open spec fn #owners(pre:#st,owned:#ft,h:#ft,#(#params),*)->bool{#owner_expression}});
-    // The composed removals of multiset fields, for the cardinality hints of the
-    // inductiveness lemma below.
-    let cardinality_effects: Vec<_> =
-        if storage.is_some_and(|p| p.fields.len() > 1) && tr.kind != TransitionKind::Init {
-            effects
-                .iter()
-                .filter(|effect| {
-                    matches!(effect.field.stype, ShardableType::Multiset(_))
-                        && effect.op == monoids::EffectOp::Remove
-                        && !effect.replacement
-                })
-                .collect()
-        } else {
-            vec![]
-        };
-    relations.push(monoids::effect_functions(&cardinality_effects, &st, &params));
-    let mut access_errors = vec![];
-    let mut token_footprint = tr.body.clone();
-    if updates_unowned(sm) {
-        drop_unowned_updates(&mut token_footprint, &fields);
-    }
-    let (mut read, _) = crate::field_access_visitor::find_all_accesses(
-        &mut token_footprint,
-        &mut access_errors,
-        &fields,
-    );
-    storage_key_reads(&tr.body, &fields, &mut read)?;
-    if let Some(e) = access_errors.into_iter().next() {
-        return Err(e);
-    }
-    for n in &read {
-        if !matches!(fields[n].stype, ShardableType::Variable(_) | ShardableType::Constant(_)) {
-            return Err(Error::new(
-                fields[n].name.span(),
-                "unowned fields cannot be read by a token operation",
-            ));
-        }
-    }
-    let init = tr.kind == TransitionKind::Init;
+    let weak = crate::to_relation::to_is_enabled_condition_weak(&stmts);
+    let enabling = crate::to_relation::to_is_enabled_condition_strong(&stmts);
+    let safe_body = execute(&stmts, true);
+    let run_body = execute(&stmts, false);
     let pre_param = if init {
         quote! {}
     } else {
@@ -1187,550 +1385,542 @@ fn transition_items(ctx: &Ctx, tr: &Transition, items: &mut Items) -> Result<(),
         quote! {pre.invariant()}
     };
     // Build calls separately: declarations and expressions have different tokens.
-    let pre_call = if init {
+    let pre_arg = if init {
         quote! {}
     } else {
         quote! {pre,}
     };
-    let rel_pre = if init {
-        quote! {}
-    } else {
-        quote! {pre,}
-    };
-    let lemma = bundle.extras.lemmas.iter().find(|l| l.purpose.transition == *n);
-    let induct = if let Some(l) = lemma {
-        let id = &l.func.sig.ident;
-        quote! {Self::#id(#rel_pre post,#(#pn),*);}
-    } else {
-        quote! {}
-    };
-    if let Some(l) = lemma {
-        let mut f = l.func.clone();
-        fix_attrs(&mut f.attrs);
-        let span = f.sig.span();
-        set_mode_proof(&mut f.sig, span);
-        let cond = if init {
-            quote! {Self::#n(post,#(#pn),*)}
-        } else {
-            quote! {pre.invariant() && Self::#strong(pre,post,#(#pn),*)}
-        };
-        let b = &f.block;
-        let cardinality_hints: Vec<_> = if !init {
-            cardinality_effects.iter()
-                    .map(|effect| {
-                        let field = &effect.field.name;
-                        let operand = &effect.function;
-                        quote! {
-                            match Self::#operand(pre,#(#pn),*) {
-                                Some(removed) => {assert(post.#field.len()+removed.len()==pre.#field.len());},
-                                None => {assert(post.#field.len()==pre.#field.len());},
-                            }
-                        }
-                    }).collect()
-        } else {
-            vec![]
-        };
-        f.block = verus_syn::parse2(
-            quote! {{requires(#cond);ensures(post.invariant());#b #(#cardinality_hints)*}},
-        )?;
-        let spinoff = crate::verified_model::induction_spinoff(&f.attrs);
-        lemmas.push(quote! {::vstd::prelude::verus_impl!{#spinoff #f}});
-    }
     let init_alias = if init {
-        quote! {pub open spec fn #n(post:#st,#(#params),*)->bool {Self::#strong(post,#(#pn),*)}}
+        quote! {pub open spec fn #name(post:#st,#(#params),*)->bool {Self::#strong(post,#(#pn),*)}}
     } else {
         quote! {}
     };
-    let no_withdraw = !withdraw;
-    let storage_index =
-        format_ident!("__tsm_storage_index", span = proc_macro2::Span::mixed_site());
-    let (storage_ens, storage_proof) = match storage {
-        Some(p) if !init => {
-            let pre_s = quote! {pre.__storage()};
-            let post_s = quote! {post.__storage()};
-            let dep = quote! {Self::#deposited(pre,#(#pn),*)};
-            let agrees = p.agrees(pre_s.clone(), post_s.clone());
-            let agrees_proof =
-                p.prove_agrees_at(&storage_index, pre_s.clone(), post_s.clone(), replace_candidate);
-            let grow = p.le(pre_s.clone(), post_s.clone());
-            let grow_proof = if no_withdraw {
-                p.prove_le(&storage_index, pre_s.clone(), post_s.clone())
-            } else {
-                quote! {}
-            };
-            let grow_ens = if no_withdraw {
-                quote! {,#grow}
-            } else {
-                quote! {}
-            };
-            if paired {
-                let transferred = p.op(pre_s.clone(), quote! {physical_deposit});
-                let disjoint = p.disjoint(pre_s.clone(), dep.clone());
-                let within = p.le(post_s.clone(), p.op(pre_s.clone(), dep.clone()));
-                let covered = p.le(p.op(pre_s.clone(), dep.clone()), post_s.clone());
-                let covered_ens = if no_withdraw {
-                    quote! {,#covered}
-                } else {
-                    quote! {}
-                };
-                let covered_proof = if no_withdraw {
-                    p.prove_le(&storage_index, transferred.clone(), post_s.clone())
-                } else {
-                    quote! {}
-                };
-                (quote! {,#agrees,#disjoint,#within #grow_ens #covered_ens}, {
-                    let disjoint_proof = p.prove_disjoint_at(
-                        &storage_index,
-                        pre_s.clone(),
-                        quote! {physical_deposit},
-                        replace_candidate,
-                    );
-                    let within_proof =
-                        p.prove_le(&storage_index, post_s.clone(), transferred.clone());
-                    quote! {
-                        let physical_deposit=#dep;
-                        #agrees_proof
-                        #grow_proof
-                        #disjoint_proof
-                        #within_proof
-                        #covered_proof
-                    }
-                })
-            } else {
-                let delta = p.minus(post_s.clone(), pre_s.clone());
-                let delta_proof = p.prove_eq(&storage_index, dep.clone(), delta.clone());
-                (
-                    quote! {,#agrees,#dep==#delta #grow_ens},
-                    quote! {
-                        #grow_proof
-                        #agrees_proof
-                        #delta_proof
-                    },
-                )
-            }
-        }
+    let (storage_ens, storage_proof) = match ctx.storage {
+        Some(layout) if !init => executor_storage_facts(names, footprint, layout),
         _ => (quote! {}, quote! {}),
     };
-    if let Some(p) = storage {
-        if !init {
-            let expression = storage_deposit(&tr.body, &fields, p)?;
-            let sty = p.ty();
-            relations.push(quote!{#ready_inline pub open spec fn #deposited(pre:#st,#(#params),*)->#sty{#expression}});
-        }
-    }
-    relations.push(quote! {
+    quote! {
         pub open spec fn #strong(#pre_param post:#st,#(#params),*)->bool {#relation}
         #init_alias
         pub open spec fn #enabled(#pre_param #(#params),*)->bool {#weak}
         pub proof fn #safety(#pre_param #(#params),*)
             requires #inv_req
-            ensures ::vstd::prelude::imply(Self::#enabled(#pre_call #(#pn),*), {#enabling})
+            ensures ::vstd::prelude::imply(Self::#enabled(#pre_arg #(#pn),*), {#enabling})
         {#(#tr_temps)* let _={#safe_body};}
         pub proof fn #run(#pre_param #(#params),*)->(post:#st)
-            requires #inv_req, Self::#enabled(#pre_call #(#pn),*)
-            ensures Self::#strong(#rel_pre post,#(#pn),*),post.invariant() #storage_ens
+            requires #inv_req, Self::#enabled(#pre_arg #(#pn),*)
+            ensures Self::#strong(#pre_arg post,#(#pn),*),post.invariant() #storage_ens
         {
-            Self::#safety(#pre_call #(#pn),*);
+            Self::#safety(#pre_arg #(#pn),*);
             #(#tr_temps)* #run_body
             let post=#se{#marker_value #(#tr_posts),*};
             #storage_proof
             #induct
             post
         }
-    });
-    if guard_property {
-        let p = storage.unwrap();
-        let sty = p.ty();
-        let guarded = format_ident!("{}_guarded", n);
-        let expression = guarded_storage(&tr.body, &fields, p)?;
-        // Values bound by `have m >= [k => ..]` on exclusive map fields are
-        // observed from the owned fragment at k, so the guarded value stays
-        // a function of the fragment and is linked to `pre` by map_owned_frame.
-        let map_haves = guard_map_haves(&tr.body, &fields);
-        let mut observed_fields: Vec<(Ident, Vec<verus_syn::Expr>)> = vec![];
-        for (field, key, _) in &map_haves {
-            match observed_fields.iter_mut().find(|(n, _)| n == field) {
-                Some((_, keys)) => keys.push(key.clone()),
-                None => observed_fields.push((field.clone(), vec![key.clone()])),
-            }
-        }
-        // Likewise for values bound by `have o >= Some(..)` on option
-        // fields (linked to `pre` by option_owned_frame) and persistent
-        // option fields (by persistent_option_owned_frame).
-        let option_haves = guard_option_haves(&tr.body, &fields);
-        let option_updates: Vec<_> = option_haves
-            .iter()
-            .map(|(field, persistent, _)| {
-                if *persistent {
-                    quote! {#field: Some(f.#field->Some_0->Agree_0)}
-                } else {
-                    quote! {#field: Some(f.#field->Some_0->Exclusive_0)}
-                }
-            })
-            .collect();
-        let observed_base = if observed_fields.is_empty() && option_updates.is_empty() {
-            quote! {Self::__observed(f)}
-        } else {
-            let updates: Vec<_> = option_updates
-                .iter()
-                .cloned()
-                .chain(observed_fields.iter().map(|(field, keys)| {
-                    let inserts = keys
-                        .iter()
-                        .map(|k| quote! {.insert(#k, f.#field.at(#k)->Some_0->Exclusive_0)});
-                    let empty = match fields[&field.to_string()].stype {
-                        ShardableType::IMap(..) => quote! {::vstd::imap::IMap::empty()},
-                        _ => quote! {::vstd::map::Map::empty()},
-                    };
-                    quote! {#field: #empty #(#inserts)*}
-                }))
-                .collect();
-            quote! {#se{#(#updates,)* ..Self::__observed(f)}}
-        };
-        // The values the `have`s observe in `f` are the state's: the statement
-        // calculus's chain (with the unit as the borrowed fragment) states them.
-        let guard_links = if map_haves.is_empty() && option_haves.is_empty() {
-            quote! {}
-        } else {
-            let chain = crate::verified_chain::chain(
-                sm,
-                tr,
-                &ft,
-                &quote! {Self::__tsm_cfg_split},
-                quote! {f},
-                quote! {<#ft>::unit()},
-                &format_ident!("z"),
-                &format_ident!("pre"),
-            )?;
-            quote! {
-                assert(#se::#owners(pre,f,<#ft>::unit(),#(#pn),*));
-                #chain
-            }
-        };
-        // The guard's storage fact, by a case split on each key's field.
-        let guard_cases = p.prove_le_by_cases(
-            &format_ident!("__tsm_guard_key", span = proc_macro2::Span::mixed_site()),
-            quote! {Self::#guarded(f,#(#pn),*)},
-            quote! {Self::storage(pre)},
-        );
-        let guard_le = p.le(quote! {Self::#guarded(f,#(#pn),*)}, quote! {Self::storage(pre)});
-        relations.push(quote! {pub open spec fn #guarded(pre:#st,#(#params),*)->#sty{#expression}});
-        let mut observed_req: Vec<_> = names
-            .iter()
-            .filter(|n| read.contains(&n.to_string()))
-            .map(|n| match fields[&n.to_string()].stype {
-                ShardableType::Variable(_) => quote! {f.#n is Some &&f.#n->Some_0 is Exclusive},
-                ShardableType::Constant(_) => quote! {f.#n is Some &&f.#n->Some_0 is Agree},
-                _ => unreachable!(),
-            })
-            .collect();
-        for (field, persistent, _) in option_haves.iter().filter(|(_, _, conditional)| !conditional)
-        {
-            observed_req.push(if *persistent {
-                quote! {f.#field is Some && f.#field->Some_0 is Agree}
-            } else {
-                quote! {f.#field is Some && f.#field->Some_0 is Exclusive}
-            });
-        }
-        let observe_equal: Vec<_> = sm
-            .fields
-            .iter()
-            .filter(|f| read.contains(&f.name.to_string()))
-            .map(|f| {
-                let n = &f.name;
-                quote! {pre.#n==Self::__observed(f).#n}
-            })
-            .collect();
-        ops.push(quote!{
-                pub open spec fn #guarded(f:#ft,#(#params),*)->#sty{#se::#guarded(#observed_base,#(#pn),*)}
-                pub open spec fn #req(f:#ft,#(#params),*)->bool {
-                    true #(&& #observed_req)* &&
-                    forall|z:#ft,pre:#st|::vstd::prelude::imply(pre.invariant()&&<#ft>::op(f,z)==Self::embed(pre),
-                        #se::#owners(pre,f,<#ft>::unit(),#(#pn),*)&&#se::#enabled(pre,#(#pn),*))
-                }
-                pub proof fn #frame(f:#ft,#(#params),*)
-                    requires Self::#req(f,#(#pn),*)
-                    ensures ::vstd::resource::tsm_storage::frame_guard::<#pt>(f,Self::#guarded(f,#(#pn),*))
-                {
-                    // `frame_guard` is opaque; this is its proof (its users take it as an atom).
-                    reveal(::vstd::resource::tsm_storage::frame_guard);
-                    assert forall|z:#ft,pre:#st|Self::invariant(pre)&&<#ft>::op(f,z)==Self::embed(pre)
-                        implies #guard_le by {
-                        <#ft>::op_unit(f);
-                        assert(#se::#enabled(pre,#(#pn),*));
-                        let post=#se::#run(pre,#(#pn),*);
-                        assert(true #(&& #observe_equal)*);
-                        #guard_links
-                        assert(#se::#guarded(pre,#(#pn),*)==Self::#guarded(f,#(#pn),*));
-                        // The guard's storage fact (with its user proof) comes from safety.
-                        #se::#safety(pre,#(#pn),*);
-                        #guard_cases
-                    }
-                }
-                pub proof fn #n(tracked token:&#tt,#(#params),*)->(tracked out:&#sty)
-                    requires Self::#req(token.fragment(),#(#pn),*)
-                    ensures *out==Self::#guarded(token.fragment(),#(#pn),*)
-                {Self::#frame(token.fragment(),#(#pn),*);token.guard(Self::#guarded(token.fragment(),#(#pn),*))}
-            });
-        if local_ready.contains(&n.to_string()) {
-            let declared_requires =
-                crate::verified_readiness::declared_requires_spec(tr, &st, &params)?;
-            let reads: Vec<_> =
-                names.iter().copied().filter(|n| read.contains(&n.to_string())).collect();
-            let api = crate::verified_readiness::local_ready_guard_api(
-                crate::verified_readiness::GuardContext {
-                    sm,
-                    tr,
-                    st: &st,
-                    se: &se,
-                    pe,
-                    ft: &ft,
-                    tt: &tt,
-                    sty: &sty,
-                    params: &params,
-                    pn: &pn,
-                    observed: &observed_req,
-                    reads: &reads,
-                    chain: chained.contains(&n.to_string()),
-                },
-            )?;
-            local_ready_items.push((n.clone(), quote! {#declared_requires #api}));
-        }
-    } else if init {
-        let base_req = quote! {#se::#enabled(#(#pn),*)};
-        if let Some(p) = storage {
-            let sty = p.ty();
-            ops.push(quote!{
-                    pub proof fn #n(tracked base:#sty,#(#params),*)->(tracked out:#tt)
-                        requires #base_req,forall|s:#st|::vstd::prelude::imply(#se::#strong(s,#(#pn),*),base==s.__storage())
-                        ensures exists|s:#st|#se::#n(s,#(#pn),*)&&s.invariant()&&out.fragment()==Self::embed(s)
-                    {let s=#se::#run(#(#pn),*);#te::alloc_state(s,base)}
-                });
-        } else {
-            ops.push(quote!{
-                pub proof fn #n(#(#params),*)->(tracked out:#tt)
-                    requires #base_req
-                    ensures exists|s:#st| #se::#n(s,#(#pn),*) &&s.invariant()&&out.fragment()==Self::embed(s)
-                {let s=#se::#run(#(#pn),*);#te::alloc_state(s)}
-            });
-        }
+    }
+}
+
+/// The executor's postconditions on the storage of a step and their proof: the pre- and
+/// post-storage agree, the post-storage is the pre-storage with the deposit (or, paired,
+/// within it and covering it) and, without withdrawals, grows.
+fn executor_storage_facts(
+    names: &Names,
+    footprint: &Footprint,
+    layout: &Tagged,
+) -> (TokenStream, TokenStream) {
+    let Names { pn, deposited, .. } = names;
+    let Footprint { paired, replace_candidate, .. } = *footprint;
+    let no_withdraw = !footprint.withdraws;
+    let storage_index =
+        format_ident!("__tsm_storage_index", span = proc_macro2::Span::mixed_site());
+    let pre_storage = quote! {pre.__storage()};
+    let post_storage = quote! {post.__storage()};
+    let deposit = quote! {Self::#deposited(pre,#(#pn),*)};
+    let agrees = layout.agrees(pre_storage.clone(), post_storage.clone());
+    let agrees_proof = layout.prove_agrees_at(
+        &storage_index,
+        pre_storage.clone(),
+        post_storage.clone(),
+        replace_candidate,
+    );
+    let grow = layout.le(pre_storage.clone(), post_storage.clone());
+    let grow_proof = if no_withdraw {
+        layout.prove_le(&storage_index, pre_storage.clone(), post_storage.clone())
     } else {
-        let owned_req: Vec<_> = names
-            .iter()
-            .filter(|n| {
-                changed.contains(&n.to_string())
-                    && matches!(fields[&n.to_string()].stype, ShardableType::Variable(_))
-            })
-            .map(|n| quote! {owned.#n is Some &&owned.#n->Some_0 is Exclusive})
-            .collect();
-        let observed_req:Vec<_>=names.iter().filter(|n|read.contains(&n.to_string())).map(|n|match fields[&n.to_string()].stype {
-                ShardableType::Variable(_)=>quote!{<#ft>::op(owned,h).#n is Some &&<#ft>::op(owned,h).#n->Some_0 is Exclusive},
-                ShardableType::Constant(_)=>quote!{<#ft>::op(owned,h).#n is Some &&<#ft>::op(owned,h).#n->Some_0 is Agree},
-                _=>unreachable!(),
-            }).collect();
-        // The owned fragment after the transition: the chain's fragment (with the
-        // patterns' values from `pre`) for the monoid fields, and the post-state's
-        // values of the updated variables.
-        let post_fragment =
-            format_ident!("__tsm_post_fragment", span = proc_macro2::Span::mixed_site());
-        let post_walk = crate::verified_chain::owned_post_fragment(sm, tr, &ft)?;
-        let newfields: Vec<_> = names
-            .iter()
-            .map(|n| {
-                if monoids::is_monoid_type(&fields[&n.to_string()].stype) {
-                    quote! {#n:#post_fragment.#n}
-                } else if changed.contains(&n.to_string()) {
-                    quote! {#n:Some(ExclusiveRA::Exclusive(post.#n))}
-                } else {
-                    quote! {#n:owned.#n}
-                }
-            })
-            .collect();
-        let newfields =
-            vec![quote! {{let #post_fragment = #post_walk; #fe{#marker_value #(#newfields),*}}}];
-        let updated_variables: Vec<_> = names
-            .iter()
-            .copied()
-            .filter(|n| {
-                changed.contains(&n.to_string())
-                    && matches!(fields[&n.to_string()].stype, ShardableType::Variable(_))
-            })
-            .collect();
-        let effect_calls = vec![crate::verified_chain::frame_chain(
+        quote! {}
+    };
+    let grow_ens = if no_withdraw {
+        quote! {,#grow}
+    } else {
+        quote! {}
+    };
+    if paired {
+        let transferred = layout.op(pre_storage.clone(), quote! {physical_deposit});
+        let disjoint = layout.disjoint(pre_storage.clone(), deposit.clone());
+        let within =
+            layout.le(post_storage.clone(), layout.op(pre_storage.clone(), deposit.clone()));
+        let covered =
+            layout.le(layout.op(pre_storage.clone(), deposit.clone()), post_storage.clone());
+        let covered_ens = if no_withdraw {
+            quote! {,#covered}
+        } else {
+            quote! {}
+        };
+        let covered_proof = if no_withdraw {
+            layout.prove_le(&storage_index, transferred.clone(), post_storage.clone())
+        } else {
+            quote! {}
+        };
+        let disjoint_proof = layout.prove_disjoint_at(
+            &storage_index,
+            pre_storage.clone(),
+            quote! {physical_deposit},
+            replace_candidate,
+        );
+        let within_proof =
+            layout.prove_le(&storage_index, post_storage.clone(), transferred.clone());
+        (
+            quote! {,#agrees,#disjoint,#within #grow_ens #covered_ens},
+            quote! {
+                let physical_deposit=#deposit;
+                #agrees_proof
+                #grow_proof
+                #disjoint_proof
+                #within_proof
+                #covered_proof
+            },
+        )
+    } else {
+        let delta = layout.minus(post_storage.clone(), pre_storage.clone());
+        let delta_proof = layout.prove_eq(&storage_index, deposit.clone(), delta.clone());
+        (
+            quote! {,#agrees,#deposit==#delta #grow_ens},
+            quote! {
+                #grow_proof
+                #agrees_proof
+                #delta_proof
+            },
+        )
+    }
+}
+
+/// A `property!` or `readonly!` with a `guard`: `State::t_guarded`, the storage it
+/// guards, and the raw operation borrowing the token and returning a reference into the
+/// storage, with its requirement and frame lemma (and the local-ready API).
+fn guard_items(
+    ctx: &Ctx,
+    tr: &Transition,
+    names: &Names,
+    read: &HashSet<String>,
+    items: &mut Items,
+) -> Result<(), Error> {
+    let Ctx { sm, fields, st, se, pe, ft, pt, tt, .. } = ctx;
+    let Names { name, pn, params, enabled, safety, run, req, frame, owners, .. } = names;
+    let layout = ctx.storage.unwrap();
+    let sty = layout.ty();
+    let guarded = format_ident!("{}_guarded", name);
+    let expression = guarded_storage(&tr.body, fields, layout)?;
+    let map_haves = guard_map_haves(&tr.body, fields);
+    let option_haves = guard_option_haves(&tr.body, fields);
+    let observed_base = guard_observation(ctx, &map_haves, &option_haves);
+    // The values the `have`s observe in `f` are the state's: the statement
+    // calculus's chain (with the unit as the borrowed fragment) states them.
+    let guard_links = if map_haves.is_empty() && option_haves.is_empty() {
+        quote! {}
+    } else {
+        let chain = crate::verified_chain::chain(
             sm,
             tr,
-            &ft,
+            ft,
             &quote! {Self::__tsm_cfg_split},
-            &quote! {Self::__tsm_cfg_join},
-            quote! {Self::#owned_post(owned,pre,post,#(#pn),*)},
-            &updated_variables,
-        )?];
-        if let Some(layout) = storage {
-            ops.push(storage_operations(
-                &n,
-                &strong,
-                &enabled,
-                &run,
-                &req,
-                &output,
-                &frame,
-                &owned_post,
-                &shared,
-                &deposited,
-                &owners,
-                &st,
-                &se,
-                &ft,
-                &pt,
-                &tt,
-                &pn,
-                &params,
-                &owned_req,
-                &observed_req,
-                &newfields,
-                &effect_calls,
-                layout,
-                withdraw,
-                has_deposit(&tr.body),
-                paired,
-            ));
-            if local_ready.contains(&n.to_string()) {
-                let declared_requires =
-                    crate::verified_readiness::declared_requires_spec(tr, &st, &params)?;
-                let local_expression = storage_deposit(&tr.body, &fields, layout)?;
-                let sty = layout.ty();
-                let local_deposited = quote! {#[verifier::inline] pub open spec fn deposited(pre:#st,#(#params),*)->#sty{#local_expression}};
-                let reads: Vec<_> =
-                    names.iter().copied().filter(|n| read.contains(&n.to_string())).collect();
-                let api = crate::verified_readiness::local_ready_api(
-                    crate::verified_readiness::Context {
-                        sm,
-                        tr,
-                        st: &st,
-                        se: &se,
-                        pe,
-                        ft: &ft,
-                        tt: &tt,
-                        result: &result_ty,
-                        result_expr: &result_expr,
-                        params: &params,
-                        pn: &pn,
-                        owned: &owned_req,
-                        observed: &observed_req,
-                        reads: &reads,
-                        storage: Some(layout),
-                        deposits: has_deposit(&tr.body),
-                        withdraws: withdraw,
-                        paired,
-                        chain: chained.contains(&n.to_string()),
-                    },
-                )?;
-                local_ready_items
-                    .push((n.clone(), quote! {#declared_requires #local_deposited #api}));
-            }
+            quote! {f},
+            quote! {<#ft>::unit()},
+            &format_ident!("z"),
+            &format_ident!("pre"),
+        )?;
+        quote! {
+            assert(#se::#owners(pre,f,<#ft>::unit(),#(#pn),*));
+            #chain
+        }
+    };
+    // The guard's storage fact, by a case split on each key's field.
+    let guard_cases = layout.prove_le_by_cases(
+        &format_ident!("__tsm_guard_key", span = proc_macro2::Span::mixed_site()),
+        quote! {Self::#guarded(f,#(#pn),*)},
+        quote! {Self::storage(pre)},
+    );
+    let guard_le = layout.le(quote! {Self::#guarded(f,#(#pn),*)}, quote! {Self::storage(pre)});
+    items
+        .relations
+        .push(quote! {pub open spec fn #guarded(pre:#st,#(#params),*)->#sty{#expression}});
+    let mut observed_req = observed_requirements(ctx, read, quote! {f});
+    for (field, persistent, _) in option_haves.iter().filter(|(_, _, conditional)| !conditional) {
+        observed_req.push(if *persistent {
+            quote! {f.#field is Some && f.#field->Some_0 is Agree}
         } else {
-            ops.push(quote!{
-                pub open spec fn #owned_post(owned:#ft,pre:#st,post:#st,#(#params),*)->#ft {#(#newfields)*}
-                pub open spec fn #req(owned:#ft,h:#ft,#(#params),*)->bool {
-                    true #(&& #owned_req)* #(&& #observed_req)* && forall|z:#ft,pre:#st|::vstd::prelude::imply(#[trigger] ::vstd::resource::tsm::completes_with::<#pt>(<#ft>::op(owned,h),z,pre),
-                        #se::#enabled(pre,#(#pn),*)&&#se::#owners(pre,owned,h,#(#pn),*))
-                }
-                pub open spec fn #output(owned:#ft,h:#ft,new:#ft,#(#params),*)->bool {
-                    exists|z:#ft,pre:#st,post:#st|pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre)
-                    && #se::#strong(pre,post,#(#pn),*)&&post.invariant()&&new==Self::#owned_post(owned,pre,post,#(#pn),*)
-                    &&<#ft>::op(<#ft>::op(new,h),z)==Self::embed(post)
-                }
-                pub proof fn #frame(owned:#ft,h:#ft,#(#params),*)
-                    requires Self::#req(owned,h,#(#pn),*)
-                    ensures ::vstd::resource::tsm::frame_update_nondeterministic::<#pt>(
-                        <#ft>::op(owned,h),ISet::new(|new:#ft|Self::#output(owned,h,new,#(#pn),*)).map(|new:#ft|<#ft>::op(new,h)))
-                {
-                    let outputs=ISet::new(|new:#ft|Self::#output(owned,h,new,#(#pn),*));
-                    assert forall|z:#ft,pre:#st|pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre)
-                        implies ::vstd::resource::tsm::update_point::<#pt>(owned,h,z,pre,outputs) by {
-                        assert(::vstd::resource::tsm::completes_with::<#pt>(<#ft>::op(owned,h),z,pre));
-                        assert(#se::#owners(pre,owned,h,#(#pn),*));
-                        let post=#se::#run(pre,#(#pn),*);
-                        #(#effect_calls)*
-                        let new=Self::#owned_post(owned,pre,post,#(#pn),*);
-                        <#ft>::associative(new,h,z);
-                        assert(Self::#output(owned,h,new,#(#pn),*));
-                        ::vstd::resource::tsm::update_point_intro::<#pt>(owned,h,z,pre,outputs,new,post);
-                    }
-                    ::vstd::resource::tsm::frame_update_by_points::<#pt>(owned,h,outputs);
-                }
-                pub proof fn #shared(tracked owned:#tt,tracked shared:&#tt,#(#params),*)->(tracked out:#tt)
-                    requires owned.loc()==shared.loc(),Self::#req(owned.fragment(),shared.fragment(),#(#pn),*)
-                    ensures out.loc()==owned.loc(),Self::#output(owned.fragment(),shared.fragment(),out.fragment(),#(#pn),*)
-                {
-                    Self::#frame(owned.fragment(),shared.fragment(),#(#pn),*);
-                    let outputs=ISet::new(|new:#ft|Self::#output(owned.fragment(),shared.fragment(),new,#(#pn),*));
-                    owned.update_nondeterministic_with_shared(shared,outputs)
-                }
-                pub proof fn #n(tracked owned:#tt,#(#params),*)->(tracked out:#tt)
-                    requires Self::#req(owned.fragment(),<#ft>::unit(),#(#pn),*)
-                    ensures out.loc()==owned.loc(),Self::#output(owned.fragment(),<#ft>::unit(),out.fragment(),#(#pn),*)
-                {
-                    let tracked empty=owned.empty();
-                    Self::#shared(owned,&empty,#(#pn),*)
-                }
-            });
-            if local_ready.contains(&n.to_string()) {
-                // Local readiness over the plain token: the same API without
-                // deposits and withdrawals, and a witness for `observed`.
-                let declared_requires =
-                    crate::verified_readiness::declared_requires_spec(tr, &st, &params)?;
-                let witness = format_ident!("{}_witness", n);
-                let output_at = |z: TokenStream, pre: TokenStream, post: TokenStream| {
-                    quote! {
-                        #pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),#z)==Self::embed(#pre)
-                        && #se::#strong(#pre,#post,#(#pn),*)&&#post.invariant()&&new==Self::#owned_post(owned,#pre,#post,#(#pn),*)
-                        &&<#ft>::op(<#ft>::op(new,h),#z)==Self::embed(#post)
-                    }
-                };
-                let chosen = output_at(quote! {z}, quote! {pre}, quote! {post});
-                let result = output_at(quote! {result.2}, quote! {result.0}, quote! {result.1});
-                ops.push(quote! {
-                        pub proof fn #witness(owned:#ft,h:#ft,new:#ft,#(#params),*)->(result:(#st,#st,#ft))
-                            requires Self::#output(owned,h,new,#(#pn),*)
-                            ensures #result
-                        {
-                            let (z,pre,post)=choose|z:#ft,pre:#st,post:#st| #chosen;
-                            (pre,post,z)
-                        }
-                    });
-                let reads: Vec<_> =
-                    names.iter().copied().filter(|n| read.contains(&n.to_string())).collect();
-                let api = crate::verified_readiness::local_ready_api(
-                    crate::verified_readiness::Context {
-                        sm,
-                        tr,
-                        st: &st,
-                        se: &se,
-                        pe,
-                        ft: &ft,
-                        tt: &tt,
-                        result: &result_ty,
-                        result_expr: &result_expr,
-                        params: &params,
-                        pn: &pn,
-                        owned: &owned_req,
-                        observed: &observed_req,
-                        reads: &reads,
-                        storage: None,
-                        deposits: false,
-                        withdraws: false,
-                        paired: false,
-                        chain: chained.contains(&n.to_string()),
-                    },
-                )?;
-                local_ready_items.push((n.clone(), quote! {#declared_requires #api}));
+            quote! {f.#field is Some && f.#field->Some_0 is Exclusive}
+        });
+    }
+    let observe_equal: Vec<_> = sm
+        .fields
+        .iter()
+        .filter(|f| read.contains(&f.name.to_string()))
+        .map(|f| {
+            let name = &f.name;
+            quote! {pre.#name==Self::__observed(f).#name}
+        })
+        .collect();
+    items.operations.push(quote!{
+        pub open spec fn #guarded(f:#ft,#(#params),*)->#sty{#se::#guarded(#observed_base,#(#pn),*)}
+        pub open spec fn #req(f:#ft,#(#params),*)->bool {
+            true #(&& #observed_req)* &&
+            forall|z:#ft,pre:#st|::vstd::prelude::imply(pre.invariant()&&<#ft>::op(f,z)==Self::embed(pre),
+                #se::#owners(pre,f,<#ft>::unit(),#(#pn),*)&&#se::#enabled(pre,#(#pn),*))
+        }
+        pub proof fn #frame(f:#ft,#(#params),*)
+            requires Self::#req(f,#(#pn),*)
+            ensures ::vstd::resource::tsm_storage::frame_guard::<#pt>(f,Self::#guarded(f,#(#pn),*))
+        {
+            // `frame_guard` is opaque; this is its proof (its users take it as an atom).
+            reveal(::vstd::resource::tsm_storage::frame_guard);
+            assert forall|z:#ft,pre:#st|Self::invariant(pre)&&<#ft>::op(f,z)==Self::embed(pre)
+                implies #guard_le by {
+                <#ft>::op_unit(f);
+                assert(#se::#enabled(pre,#(#pn),*));
+                let post=#se::#run(pre,#(#pn),*);
+                assert(true #(&& #observe_equal)*);
+                #guard_links
+                assert(#se::#guarded(pre,#(#pn),*)==Self::#guarded(f,#(#pn),*));
+                // The guard's storage fact (with its user proof) comes from safety.
+                #se::#safety(pre,#(#pn),*);
+                #guard_cases
             }
         }
+        pub proof fn #name(tracked token:&#tt,#(#params),*)->(tracked out:&#sty)
+            requires Self::#req(token.fragment(),#(#pn),*)
+            ensures *out==Self::#guarded(token.fragment(),#(#pn),*)
+        {Self::#frame(token.fragment(),#(#pn),*);token.guard(Self::#guarded(token.fragment(),#(#pn),*))}
+    });
+    if ctx.is_local_ready(tr) {
+        let declared_requires = crate::verified_readiness::declared_requires_spec(tr, st, params)?;
+        let api = crate::verified_readiness::local_ready_guard_api(
+            crate::verified_readiness::GuardContext {
+                sm,
+                tr,
+                st,
+                se,
+                pe,
+                ft,
+                tt,
+                sty: &sty,
+                params,
+                pn,
+                observed: &observed_req,
+                reads: &ctx.reads(read),
+                chain: ctx.chained.contains(&name.to_string()),
+            },
+        )?;
+        items.local_ready.push((names.name.clone(), quote! {#declared_requires #api}));
     }
     Ok(())
 }
 
+/// The state a guard's fragment `f` observes: `__observed(f)`, with the values the
+/// `have`s bind read from `f`.
+fn guard_observation(
+    ctx: &Ctx,
+    map_haves: &[(Ident, verus_syn::Expr, bool)],
+    option_haves: &[(Ident, bool, bool)],
+) -> TokenStream {
+    let Ctx { fields, se, .. } = ctx;
+    // Values bound by `have m >= [k => ..]` on exclusive map fields are
+    // observed from the owned fragment at k, so the guarded value stays
+    // a function of the fragment and is linked to `pre` by map_owned_frame.
+    let mut observed_fields: Vec<(Ident, Vec<verus_syn::Expr>)> = vec![];
+    for (field, key, _) in map_haves {
+        match observed_fields.iter_mut().find(|(name, _)| name == field) {
+            Some((_, keys)) => keys.push(key.clone()),
+            None => observed_fields.push((field.clone(), vec![key.clone()])),
+        }
+    }
+    // Likewise for values bound by `have o >= Some(..)` on option
+    // fields (linked to `pre` by option_owned_frame) and persistent
+    // option fields (by persistent_option_owned_frame).
+    let option_updates: Vec<_> = option_haves
+        .iter()
+        .map(|(field, persistent, _)| {
+            if *persistent {
+                quote! {#field: Some(f.#field->Some_0->Agree_0)}
+            } else {
+                quote! {#field: Some(f.#field->Some_0->Exclusive_0)}
+            }
+        })
+        .collect();
+    if observed_fields.is_empty() && option_updates.is_empty() {
+        return quote! {Self::__observed(f)};
+    }
+    let updates: Vec<_> = option_updates
+        .iter()
+        .cloned()
+        .chain(observed_fields.iter().map(|(field, keys)| {
+            let inserts =
+                keys.iter().map(|k| quote! {.insert(#k, f.#field.at(#k)->Some_0->Exclusive_0)});
+            let empty = match fields[&field.to_string()].stype {
+                ShardableType::IMap(..) => quote! {::vstd::imap::IMap::empty()},
+                _ => quote! {::vstd::map::Map::empty()},
+            };
+            quote! {#field: #empty #(#inserts)*}
+        }))
+        .collect();
+    quote! {#se{#(#updates,)* ..Self::__observed(f)}}
+}
+
+/// That `fragment` observes each field in `read`: owns the variables and agrees on the
+/// constants.
+fn observed_requirements(
+    ctx: &Ctx,
+    read: &HashSet<String>,
+    fragment: TokenStream,
+) -> Vec<TokenStream> {
+    ctx.reads(read)
+        .into_iter()
+        .map(|name| match ctx.fields[&name.to_string()].stype {
+            ShardableType::Variable(_) => {
+                quote! {#fragment.#name is Some &&#fragment.#name->Some_0 is Exclusive}
+            }
+            ShardableType::Constant(_) => {
+                quote! {#fragment.#name is Some &&#fragment.#name->Some_0 is Agree}
+            }
+            _ => unreachable!(),
+        })
+        .collect()
+}
+
+/// An init transition's raw operation, which allocates the token (with the initial
+/// storage, on machines with storage).
+fn init_operation(ctx: &Ctx, names: &Names) -> TokenStream {
+    let Ctx { st, se, tt, te, .. } = ctx;
+    let Names { name, pn, params, strong, enabled, run, .. } = names;
+    let base_req = quote! {#se::#enabled(#(#pn),*)};
+    if let Some(layout) = ctx.storage {
+        let sty = layout.ty();
+        quote! {
+            pub proof fn #name(tracked base:#sty,#(#params),*)->(tracked out:#tt)
+                requires #base_req,forall|s:#st|::vstd::prelude::imply(#se::#strong(s,#(#pn),*),base==s.__storage())
+                ensures exists|s:#st|#se::#name(s,#(#pn),*)&&s.invariant()&&out.fragment()==Self::embed(s)
+            {let s=#se::#run(#(#pn),*);#te::alloc_state(s,base)}
+        }
+    } else {
+        quote! {
+            pub proof fn #name(#(#params),*)->(tracked out:#tt)
+                requires #base_req
+                ensures exists|s:#st| #se::#name(s,#(#pn),*) &&s.invariant()&&out.fragment()==Self::embed(s)
+            {let s=#se::#run(#(#pn),*);#te::alloc_state(s)}
+        }
+    }
+}
+
+/// The requirements, the owned post-fragment and the frame chain of a non-init step.
+fn step_parts(
+    ctx: &Ctx,
+    tr: &Transition,
+    names: &Names,
+    footprint: &Footprint,
+    read: &HashSet<String>,
+) -> Result<Step, Error> {
+    let Ctx { sm, fields, ft, fe, marker_value, decls, .. } = ctx;
+    let Names { pn, owned_post, .. } = names;
+    let changed = &footprint.changed;
+    let updated_variables: Vec<_> = decls
+        .names
+        .iter()
+        .copied()
+        .filter(|name| {
+            changed.contains(&name.to_string())
+                && matches!(fields[&name.to_string()].stype, ShardableType::Variable(_))
+        })
+        .collect();
+    let owned_req = updated_variables
+        .iter()
+        .map(|name| quote! {owned.#name is Some &&owned.#name->Some_0 is Exclusive})
+        .collect();
+    let observed_req = observed_requirements(ctx, read, quote! {<#ft>::op(owned,h)});
+    // The owned fragment after the transition: the chain's fragment (with the
+    // patterns' values from `pre`) for the monoid fields, and the post-state's
+    // values of the updated variables.
+    let post_fragment =
+        format_ident!("__tsm_post_fragment", span = proc_macro2::Span::mixed_site());
+    let post_walk = crate::verified_chain::owned_post_fragment(sm, tr, ft)?;
+    let fields_after: Vec<_> = decls
+        .names
+        .iter()
+        .map(|name| {
+            if monoids::is_monoid_type(&fields[&name.to_string()].stype) {
+                quote! {#name:#post_fragment.#name}
+            } else if changed.contains(&name.to_string()) {
+                quote! {#name:Some(ExclusiveRA::Exclusive(post.#name))}
+            } else {
+                quote! {#name:owned.#name}
+            }
+        })
+        .collect();
+    let frame_chain = crate::verified_chain::frame_chain(
+        sm,
+        tr,
+        ft,
+        &quote! {Self::__tsm_cfg_split},
+        &quote! {Self::__tsm_cfg_join},
+        quote! {Self::#owned_post(owned,pre,post,#(#pn),*)},
+        &updated_variables,
+    )?;
+    Ok(Step {
+        owned_req,
+        observed_req,
+        post_fragment: quote! {{let #post_fragment = #post_walk; #fe{#marker_value #(#fields_after),*}}},
+        frame_chain,
+    })
+}
+
+/// The local-ready API of a non-init step (`verified_readiness::local_ready_api`), with
+/// the inlined `deposited` on machines with storage; over the plain token, it has no
+/// deposits and withdrawals.
+fn step_local_ready(
+    ctx: &Ctx,
+    tr: &Transition,
+    names: &Names,
+    step: &Step,
+    footprint: &Footprint,
+    read: &HashSet<String>,
+    deposit: Option<TokenStream>,
+) -> Result<TokenStream, Error> {
+    let Ctx { sm, st, se, pe, ft, tt, result_ty, result_expr, .. } = ctx;
+    let Names { name, pn, params, .. } = names;
+    let declared_requires = crate::verified_readiness::declared_requires_spec(tr, st, params)?;
+    let local_deposited = match (ctx.storage, deposit) {
+        (Some(layout), Some(expression)) => {
+            let sty = layout.ty();
+            quote! {#[verifier::inline] pub open spec fn deposited(pre:#st,#(#params),*)->#sty{#expression}}
+        }
+        _ => quote! {},
+    };
+    let with_storage = ctx.storage.is_some();
+    let api = crate::verified_readiness::local_ready_api(crate::verified_readiness::Context {
+        sm,
+        tr,
+        st,
+        se,
+        pe,
+        ft,
+        tt,
+        result: result_ty,
+        result_expr,
+        params,
+        pn,
+        owned: &step.owned_req,
+        observed: &step.observed_req,
+        reads: &ctx.reads(read),
+        storage: ctx.storage,
+        deposits: with_storage && footprint.deposits,
+        withdraws: with_storage && footprint.withdraws,
+        paired: with_storage && footprint.paired,
+        chain: ctx.chained.contains(&name.to_string()),
+    })?;
+    Ok(quote! {#declared_requires #local_deposited #api})
+}
+
+/// The raw operations of a step on a machine without storage: its requirement, outputs
+/// and frame lemma, and the update of the owned token (with a shared one).
+fn plain_operations(ctx: &Ctx, names: &Names, step: &Step) -> TokenStream {
+    let Ctx { st, se, ft, pt, tt, .. } = ctx;
+    let Names {
+        name,
+        pn,
+        params,
+        strong,
+        enabled,
+        run,
+        req,
+        output,
+        frame,
+        owned_post,
+        shared,
+        owners,
+        ..
+    } = names;
+    let Step { owned_req, observed_req, post_fragment, frame_chain } = step;
+    quote! {
+        pub open spec fn #owned_post(owned:#ft,pre:#st,post:#st,#(#params),*)->#ft {#post_fragment}
+        pub open spec fn #req(owned:#ft,h:#ft,#(#params),*)->bool {
+            true #(&& #owned_req)* #(&& #observed_req)* && forall|z:#ft,pre:#st|::vstd::prelude::imply(#[trigger] ::vstd::resource::tsm::completes_with::<#pt>(<#ft>::op(owned,h),z,pre),
+                #se::#enabled(pre,#(#pn),*)&&#se::#owners(pre,owned,h,#(#pn),*))
+        }
+        pub open spec fn #output(owned:#ft,h:#ft,new:#ft,#(#params),*)->bool {
+            exists|z:#ft,pre:#st,post:#st|pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre)
+            && #se::#strong(pre,post,#(#pn),*)&&post.invariant()&&new==Self::#owned_post(owned,pre,post,#(#pn),*)
+            &&<#ft>::op(<#ft>::op(new,h),z)==Self::embed(post)
+        }
+        pub proof fn #frame(owned:#ft,h:#ft,#(#params),*)
+            requires Self::#req(owned,h,#(#pn),*)
+            ensures ::vstd::resource::tsm::frame_update_nondeterministic::<#pt>(
+                <#ft>::op(owned,h),ISet::new(|new:#ft|Self::#output(owned,h,new,#(#pn),*)).map(|new:#ft|<#ft>::op(new,h)))
+        {
+            let outputs=ISet::new(|new:#ft|Self::#output(owned,h,new,#(#pn),*));
+            assert forall|z:#ft,pre:#st|pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),z)==Self::embed(pre)
+                implies ::vstd::resource::tsm::update_point::<#pt>(owned,h,z,pre,outputs) by {
+                assert(::vstd::resource::tsm::completes_with::<#pt>(<#ft>::op(owned,h),z,pre));
+                assert(#se::#owners(pre,owned,h,#(#pn),*));
+                let post=#se::#run(pre,#(#pn),*);
+                #frame_chain
+                let new=Self::#owned_post(owned,pre,post,#(#pn),*);
+                <#ft>::associative(new,h,z);
+                assert(Self::#output(owned,h,new,#(#pn),*));
+                ::vstd::resource::tsm::update_point_intro::<#pt>(owned,h,z,pre,outputs,new,post);
+            }
+            ::vstd::resource::tsm::frame_update_by_points::<#pt>(owned,h,outputs);
+        }
+        pub proof fn #shared(tracked owned:#tt,tracked shared:&#tt,#(#params),*)->(tracked out:#tt)
+            requires owned.loc()==shared.loc(),Self::#req(owned.fragment(),shared.fragment(),#(#pn),*)
+            ensures out.loc()==owned.loc(),Self::#output(owned.fragment(),shared.fragment(),out.fragment(),#(#pn),*)
+        {
+            Self::#frame(owned.fragment(),shared.fragment(),#(#pn),*);
+            let outputs=ISet::new(|new:#ft|Self::#output(owned.fragment(),shared.fragment(),new,#(#pn),*));
+            owned.update_nondeterministic_with_shared(shared,outputs)
+        }
+        pub proof fn #name(tracked owned:#tt,#(#params),*)->(tracked out:#tt)
+            requires Self::#req(owned.fragment(),<#ft>::unit(),#(#pn),*)
+            ensures out.loc()==owned.loc(),Self::#output(owned.fragment(),<#ft>::unit(),out.fragment(),#(#pn),*)
+        {
+            let tracked empty=owned.empty();
+            Self::#shared(owned,&empty,#(#pn),*)
+        }
+    }
+}
+
+/// The witness of a plain step's outputs, for its local-ready API: a completion and the
+/// pre- and post-states that produce the new fragment.
+fn plain_witness(ctx: &Ctx, names: &Names) -> TokenStream {
+    let Ctx { st, se, ft, .. } = ctx;
+    let Names { pn, params, strong, output, owned_post, witness, .. } = names;
+    let output_at = |z: TokenStream, pre: TokenStream, post: TokenStream| {
+        quote! {
+            #pre.invariant()&&<#ft>::op(<#ft>::op(owned,h),#z)==Self::embed(#pre)
+            && #se::#strong(#pre,#post,#(#pn),*)&&#post.invariant()&&new==Self::#owned_post(owned,#pre,#post,#(#pn),*)
+            &&<#ft>::op(<#ft>::op(new,h),#z)==Self::embed(#post)
+        }
+    };
+    let chosen = output_at(quote! {z}, quote! {pre}, quote! {post});
+    let result = output_at(quote! {result.2}, quote! {result.0}, quote! {result.1});
+    quote! {
+        pub proof fn #witness(owned:#ft,h:#ft,new:#ft,#(#params),*)->(result:(#st,#st,#ft))
+            requires Self::#output(owned,h,new,#(#pn),*)
+            ensures #result
+        {
+            let (z,pre,post)=choose|z:#ft,pre:#st,post:#st| #chosen;
+            (pre,post,z)
+        }
+    }
+}
 /// The machine's module: `State`, `Fragment` and `Protocol` with their items, and the
 /// local-ready API.
 fn machine_module(ctx: &Ctx, items: &Items, field_api: &(TokenStream, TokenStream)) -> TokenStream {
@@ -1890,11 +2080,7 @@ fn protocol_items(ctx: &Ctx, items: &Items, field_takes: &TokenStream) -> TokenS
     let storage_machine = storage_machine(ctx);
     let token_type = token_type(ctx);
     let observation = transition_observation(ctx);
-    let observation_inline = if ctx.local_ready.is_empty() {
-        quote! {}
-    } else {
-        quote! {#[verifier::inline]}
-    };
+    let observation_inline = inline_attr(!ctx.local_ready.is_empty());
     let operations = &items.operations;
     let calculus = cfg_split_join(ctx);
     quote! {
@@ -2044,35 +2230,33 @@ fn local_ready_module(ctx: &Ctx, apis: &[(Ident, TokenStream)]) -> TokenStream {
 
 /// The operations of a transition on a machine with storage: its requirement, outputs,
 /// witness and frame lemma, and its storage exchanges.
-#[allow(clippy::too_many_arguments)]
 fn storage_operations(
-    n: &Ident,
-    strong: &Ident,
-    enabled: &Ident,
-    run: &Ident,
-    req: &Ident,
-    output: &Ident,
-    frame: &Ident,
-    owned_post: &Ident,
-    shared: &Ident,
-    deposited: &Ident,
-    owners: &Ident,
-    st: &TokenStream,
-    se: &TokenStream,
-    ft: &TokenStream,
-    pt: &TokenStream,
-    tt: &TokenStream,
-    pn: &Vec<&Ident>,
-    params: &Vec<TokenStream>,
-    owned_req: &Vec<TokenStream>,
-    observed_req: &Vec<TokenStream>,
-    newfields: &Vec<TokenStream>,
-    effect_calls: &Vec<TokenStream>,
-    storage: &crate::verified_storage_tagged::Tagged,
-    withdraws: bool,
-    deposits: bool,
-    paired: bool,
+    ctx: &Ctx,
+    names: &Names,
+    step: &Step,
+    footprint: &Footprint,
+    storage: &Tagged,
 ) -> TokenStream {
+    let Ctx { st, se, ft, pt, tt, .. } = ctx;
+    let Names {
+        name,
+        pn,
+        params,
+        strong,
+        enabled,
+        run,
+        req,
+        output,
+        frame,
+        owned_post,
+        shared,
+        deposited,
+        owners,
+        witness,
+        ..
+    } = names;
+    let Step { owned_req, observed_req, post_fragment, frame_chain } = step;
+    let Footprint { deposits, withdraws, paired, .. } = *footprint;
     let map = storage.ty();
     let unit = storage.unit();
     let tracked_unit = storage.tracked_unit();
@@ -2084,8 +2268,7 @@ fn storage_operations(
         pair_name.push('_');
     }
     let pair = Ident::new(&pair_name, proc_macro2::Span::mixed_site());
-    let witness = format_ident!("{}_witness", n);
-    let output_at = format_ident!("__tsm_{}_output_at", n);
+    let output_at = format_ident!("__tsm_{}_output_at", name);
     let outputs = quote! {ISet::new(|#pair:(#ft,#map)|Self::#output(owned,h,#pair.0,deposit,#pair.1,#(#pn),*))};
     let lifted = quote! {#outputs.map(|#pair:(#ft,#map)|(<#ft>::op(#pair.0,h),#pair.1))};
     let ret = if withdraws {
@@ -2203,7 +2386,7 @@ fn storage_operations(
         quote! {::vstd::resource::tsm_storage::exchange_point_intro_delta::<#pt>(owned,h,z,pre,deposit,outputs,new,post);}
     };
     quote! {
-            pub open spec fn #owned_post(owned:#ft,pre:#st,post:#st,#(#params),*)->#ft {#(#newfields)*}
+            pub open spec fn #owned_post(owned:#ft,pre:#st,post:#st,#(#params),*)->#ft {#post_fragment}
             pub open spec fn #req(owned:#ft,h:#ft,deposit:#map,#(#params),*)->bool {
                 true #(&& #owned_req)* #(&& #observed_req)* &&
                 forall|z:#ft,pre:#st|::vstd::prelude::imply(
@@ -2237,7 +2420,7 @@ fn storage_operations(
                     implies ::vstd::resource::tsm_storage::exchange_point::<#pt>(owned,h,z,pre,deposit,outputs) by {
                         assert(::vstd::resource::tsm::completes_with::<#pt>(<#ft>::op(owned,h),z,pre));
                         let post=#se::#run(pre,#(#pn),*);
-                        #(#effect_calls)*
+                        #frame_chain
                         let new=Self::#owned_post(owned,pre,post,#(#pn),*);
                         <#ft>::associative(new,h,z);
                         #transfer_proof
@@ -2256,7 +2439,7 @@ fn storage_operations(
                 let tracked (out,withdrawn)=owned.exchange_nondeterministic_with_shared(shared,deposit,outputs);
                 #return_value
             }
-            pub proof fn #n(tracked owned:#tt,#deposit_param #(#params),*)->(#ret)
+            pub proof fn #name(tracked owned:#tt,#deposit_param #(#params),*)->(#ret)
                 requires Self::#req(owned.fragment(),<#ft>::unit(),#deposit_spec,#(#pn),*)
                 ensures #out_token.loc()==owned.loc(),#plain_ens
             {
