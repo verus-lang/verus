@@ -138,7 +138,7 @@ impl SmtSolver {
 
     /// Classify a `(get-info :reason-unknown)` response line
     pub(crate) fn parse_reason_unknown(&self, line: &str) -> Option<SmtReasonUnknown> {
-        if self.reason_unknown_canceled_strs().iter().any(|s| line == *s) {
+        if self.reason_unknown_canceled_strs().contains(&line) {
             Some(SmtReasonUnknown::Canceled)
         } else if line == "(:reason-unknown \"unknown\")" || line == "(:reason-unknown \"\")" {
             // it appears this sometimes happens when rlimit is exceeded;
