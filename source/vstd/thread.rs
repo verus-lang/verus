@@ -7,6 +7,19 @@ use verus_builtin_macros::*;
 
 verus! {
 
+/// Runs `f`, aborting the process if it panics, so that unwinding never
+/// reaches verified code.
+#[verifier::external]
+fn abort_on_panic<R, F: FnOnce() -> R>(msg: &str, f: F) -> R {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(res) => res,
+        Err(_) => {
+            println!("{}", msg);
+            std::process::abort();
+        },
+    }
+}
+
 /// Object returned by [`spawn()`](spawn) to allow thread joining.
 /// (Wrapper around [`std::thread::JoinHandle`](https://doc.rust-lang.org/std/thread/struct.JoinHandle.html).)
 ///
@@ -31,24 +44,16 @@ impl<Ret> JoinHandle<Ret> {
                 Result::Err(_) => true,
             },
     {
-        let res = std::panic::catch_unwind(
-            std::panic::AssertUnwindSafe(
-                ||
-                    {
-                        match self.handle.join() {
-                            Ok(v) => Ok(v),
-                            Err(_) => Err(()),
-                        }
-                    },
-            ),
-        );
-        match res {
-            Ok(res) => res,
-            Err(_) => {
-                println!("panic on join");
-                std::process::abort();
-            },
-        }
+        abort_on_panic(
+            "panic on join",
+            ||
+                {
+                    match self.handle.join() {
+                        Ok(v) => Ok(v),
+                        Err(_) => Err(()),
+                    }
+                },
+        )
     }
 }
 
@@ -114,22 +119,14 @@ pub fn spawn<F, Ret>(f: F) -> (handle: JoinHandle<Ret>) where
     ensures
         forall|ret: Ret| #[trigger] handle.predicate(ret) ==> f.ensures((), ret),
 {
-    let res = std::panic::catch_unwind(
-        std::panic::AssertUnwindSafe(
-            ||
-                {
-                    let handle = std::thread::spawn(move || f());
-                    JoinHandle { handle }
-                },
-        ),
-    );
-    match res {
-        Ok(res) => res,
-        Err(_) => {
-            println!("panic on spawn");
-            std::process::abort();
-        },
-    }
+    abort_on_panic(
+        "panic on spawn",
+        ||
+            {
+                let handle = std::thread::spawn(move || f());
+                JoinHandle { handle }
+            },
+    )
 }
 
 /// A scope to spawn scoped threads in, created by [`scope()`](scope).
@@ -166,24 +163,16 @@ impl<'scope, Ret> ScopedJoinHandle<'scope, Ret> {
                 Result::Err(_) => true,
             },
     {
-        let res = std::panic::catch_unwind(
-            std::panic::AssertUnwindSafe(
-                ||
-                    {
-                        match self.handle.join() {
-                            Ok(v) => Ok(v),
-                            Err(_) => Err(()),
-                        }
-                    },
-            ),
-        );
-        match res {
-            Ok(res) => res,
-            Err(_) => {
-                println!("panic on join");
-                std::process::abort();
-            },
-        }
+        abort_on_panic(
+            "panic on join",
+            ||
+                {
+                    match self.handle.join() {
+                        Ok(v) => Ok(v),
+                        Err(_) => Err(()),
+                    }
+                },
+        )
     }
 }
 
@@ -207,22 +196,14 @@ impl<'scope, 'env> Scope<'scope, 'env> {
         ensures
             forall|ret: Ret| #[trigger] handle.predicate(ret) ==> f.ensures((), ret),
     {
-        let res = std::panic::catch_unwind(
-            std::panic::AssertUnwindSafe(
-                ||
-                    {
-                        let handle = self.inner.spawn(move || f());
-                        ScopedJoinHandle { handle }
-                    },
-            ),
-        );
-        match res {
-            Ok(res) => res,
-            Err(_) => {
-                println!("panic on spawn");
-                std::process::abort();
-            },
-        }
+        abort_on_panic(
+            "panic on spawn",
+            ||
+                {
+                    let handle = self.inner.spawn(move || f());
+                    ScopedJoinHandle { handle }
+                },
+        )
     }
 }
 
@@ -286,34 +267,24 @@ pub fn scope<'env, F, T>(f: F) -> (r: T) where
     ensures
         exists|s: &Scope<'_, 'env>| f.ensures((s,), r),
 {
-    let res = std::panic::catch_unwind(
-        std::panic::AssertUnwindSafe(
-            ||
-                {
-                    std::thread::scope(
-                        |s|
-                            {
-                                // SAFETY: `Scope` is a `repr(transparent)` wrapper around
-                                // `std::thread::Scope` with the same lifetime parameters.
-                                let s: &Scope<'_, 'env> = unsafe {
-                                    &*(s as *const std::thread::Scope<'_, 'env> as *const Scope<
-                                        '_,
-                                        'env,
-                                    >)
-                                };
-                                f(s)
-                            },
-                    )
-                },
-        ),
-    );
-    match res {
-        Ok(res) => res,
-        Err(_) => {
-            println!("panic on scope");
-            std::process::abort();
-        },
-    }
+    abort_on_panic(
+        "panic on scope",
+        ||
+            {
+                std::thread::scope(
+                    |s|
+                        {
+                            let s: &Scope<'_, 'env> = unsafe {
+                                &*(s as *const std::thread::Scope<'_, 'env> as *const Scope<
+                                    '_,
+                                    'env,
+                                >)
+                            };
+                            f(s)
+                        },
+                )
+            },
+    )
 }
 
 /// Wrapper around Rust's
