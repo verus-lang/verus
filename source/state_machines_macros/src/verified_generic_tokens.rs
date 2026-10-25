@@ -16,12 +16,33 @@ use crate::ast::*;
 use crate::concurrency_tokens::{
     ExchangeParts, InoutType, Mode, TokenParam, exchange_parts_with, signature_tokens,
 };
+use crate::hygiene::{binder, binders};
 use crate::parse_token_stream::SMBundle;
 use crate::token_trees::{Tree, from_trees, to_trees};
 use proc_macro2::{Span, TokenStream, TokenTree};
-use quote::{format_ident, quote};
 use std::collections::{HashMap, HashSet};
 use verus_syn::{Error, Expr, Ident, Type};
+
+// Every identifier this emitter writes is hygienic (`crate::hygiene`): `quote!` and
+// `format_ident!` here resolve the identifiers they create at the mixed site, so that
+// the binders of the generated proofs (`__tsm_acc`, `__tsm_z`, `owned`, ...) are
+// invisible to the user's tokens, which keep their spans. `output` then resolves the
+// identifiers reserved for the trusted macro (`pre`, `self`, `param_token_*`, ...),
+// which the user's tokens and the trusted macro's signatures
+// (`concurrency_tokens::signature_tokens`) share, at the call site again
+// (`hygiene::resolve_reserved_at_call_site`).
+macro_rules! quote {
+    ($($tt:tt)*) => {
+        ::quote::quote_spanned!(::proc_macro2::Span::mixed_site()=> $($tt)*)
+    };
+}
+macro_rules! format_ident {
+    ($($tt:tt)*) => {{
+        let mut ident = ::quote::format_ident!($($tt)*);
+        ident.set_span(ident.span().resolved_at(Span::mixed_site()));
+        ident
+    }};
+}
 
 fn err<T>(span: Span, msg: &str) -> Result<T, Error> {
     Err(Error::new(span, msg))
@@ -210,9 +231,9 @@ impl Store {
         }
     }
     /// Statements withdrawing the general operand `e` of `f` from the tracked
-    /// map `__tsm_withdrawn` into `p`. Unpacking takes the tagged part apart
+    /// map `withdrawn` into `p`. Unpacking takes the tagged part apart
     /// key by key, so a `storage_imap` operand needs a finite domain.
-    fn unpack(&self, f: &Field, p: &Ident, e: &TokenStream) -> TokenStream {
+    fn unpack(&self, f: &Field, p: &Ident, e: &TokenStream, withdrawn: &Ident) -> TokenStream {
         let n = &f.name;
         let tagged = self.tagged(f, e);
         let unpack = self.layout().helper("__unpack_", n);
@@ -221,7 +242,7 @@ impl Store {
                 let untag = self.layout().helper("__untag_", n);
                 let tag_finite = self.layout().helper("__tag_finite_", n);
                 quote! {
-                    let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #tagged);
+                    let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut #withdrawn, #tagged);
                     assert(::vstd::prelude::ext_equal(#untag(__tsm_part), (#e).to_imap()));
                     #tag_finite(#e);
                     let tracked #p = #unpack(__tsm_part);
@@ -254,7 +275,7 @@ impl Store {
                 quote! {
                     #fin
                     #shape(#e);
-                    let tracked __tsm_part = __tsm_withdrawn.tracked_remove_keys(#tagged.dom());
+                    let tracked __tsm_part = #withdrawn.tracked_remove_keys(#tagged.dom());
                     assert(::vstd::prelude::ext_equal(__tsm_part, #tagged));
                     let tracked __tsm_finite = #unpack(__tsm_part);
                     let tracked #p = ::vstd::resource::tsm_generic::tracked_map_to_imap(__tsm_finite);
@@ -264,7 +285,7 @@ impl Store {
             _ => {
                 let lemma = self.layout().helper("__untag_tag_", n);
                 quote! {
-                    let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut __tsm_withdrawn, #tagged);
+                    let tracked __tsm_part = ::vstd::resource::tsm_generic::tracked_remove_submap(&mut #withdrawn, #tagged);
                     #lemma(#e);
                     let tracked #p = #unpack(__tsm_part);
                 }
@@ -272,13 +293,13 @@ impl Store {
         }
     }
     /// Facts making the general withdrawal of `e` possible.
-    fn withdraw_general_fact(&self, f: &Field, e: &TokenStream) -> TokenStream {
+    fn withdraw_general_fact(&self, f: &Field, e: &TokenStream, withdrawn: &Ident) -> TokenStream {
         let tagged = self.tagged(f, e);
         match &f.stype {
             ShardableType::StorageMap(..) => {
-                quote! {#tagged.submap_of(__tsm_withdrawn) && (#e).dom().finite()}
+                quote! {#tagged.submap_of(#withdrawn) && (#e).dom().finite()}
             }
-            _ => quote! {#tagged.submap_of(__tsm_withdrawn)},
+            _ => quote! {#tagged.submap_of(#withdrawn)},
         }
     }
 }
@@ -2850,13 +2871,26 @@ fn reservation_observe(f: &Field, cm: &Option<Constants>, store: &Store) -> Toke
     let _ = bulk_join;
     let bulk_incl = if k.persistent() {
         // The persistent joins need agreement, not disjointness: the bulk's own
-        // entries agree with `e` on their common keys.
-        bulk_incl
-            .to_string()
-            .replace("map_join", "persistent_map_join")
-            .replace("set_join", "persistent_set_join")
-            .parse::<TokenStream>()
-            .unwrap()
+        // entries agree with `e` on their common keys. (Renamed token by token, so
+        // that every token keeps its span.)
+        fn persistent_joins(tokens: TokenStream) -> TokenStream {
+            tokens
+                .into_iter()
+                .map(|token| match token {
+                    TokenTree::Ident(id) if id == "map_join" || id == "set_join" => {
+                        TokenTree::Ident(Ident::new(&format!("persistent_{id}"), id.span()))
+                    }
+                    TokenTree::Group(g) => {
+                        let mut copy =
+                            proc_macro2::Group::new(g.delimiter(), persistent_joins(g.stream()));
+                        copy.set_span(g.span());
+                        TokenTree::Group(copy)
+                    }
+                    token => token,
+                })
+                .collect()
+        }
+        persistent_joins(bulk_incl)
     } else {
         bulk_incl
     };
@@ -4763,14 +4797,14 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     };
     let main = finish(quote! {#(#items)*});
     let ops = finish(ops);
-    Ok(quote! {
+    Ok(crate::hygiene::resolve_reserved_at_call_site(quote! {
         #main
         mod __tsm_ops {
             #[allow(unused_imports)]
             use super::*;
             #ops
         }
-    })
+    }))
 }
 
 /// A consumed token collection: its fragment, observed value, and join statement.
@@ -4900,6 +4934,21 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         quote! {}
     };
     let pn: Vec<_> = tr.params.iter().map(|p| &p.name).collect();
+    // The binders that are parameters of the helper proofs (or shared with them),
+    // named apart from the transition's parameters (`crate::hygiene`).
+    let [owned_ident, shared_ident, h_param, deposit, withdrawn, out_frag, witnessed] = binders(
+        [
+            "__tsm_owned",
+            "__tsm_shared",
+            "__tsm_h",
+            "__tsm_deposit",
+            "__tsm_withdrawn",
+            "__tsm_out_frag",
+            "__tsm_r",
+        ],
+        &tr.params,
+    );
+    let ghost_of = |p: &dyn std::fmt::Display| binder(&format!("__tsm_ghost_{p}"), &tr.params);
     let span = tr.name.span();
     let guard = params.iter().any(|q| q.p.inout_type == InoutType::BorrowOut);
     // A read-only operation with nothing to establish needs no proof.
@@ -4918,7 +4967,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     let in_body = |ts: TokenStream| -> TokenStream {
         rewrite_old(ts, &|p: &str| {
             if inouts.contains(p) {
-                let g = format_ident!("__tsm_ghost_{}", p);
+                let g = ghost_of(&p);
                 Some(quote! {#g})
             } else {
                 None
@@ -4959,7 +5008,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
             _ => continue,
         };
         let ty = &q.p.ty;
-        let actual = store.at(&quote! {__tsm_withdrawn}, f, key);
+        let actual = store.at(&quote! {#withdrawn}, f, key);
         withdrawn_arb.insert(q.p.name.to_string(), quote! {::vstd::prelude::arbitrary::<#ty>()});
         let pname = &q.p.name;
         withdrawn_binds.push(quote! {let #pname: #ty = #actual;});
@@ -4992,8 +5041,6 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     // borrowed token (to observe its copy).
     let mut kappa_from: Option<Ident> = None;
     let mut first_borrow: Option<Ident> = None;
-    let owned_ident = format_ident!("__tsm_owned", span = Span::mixed_site());
-    let shared_ident = format_ident!("__tsm_shared", span = Span::mixed_site());
     let mut take_owned: Vec<(Ident, TokenStream)> = vec![];
     // Observations of the borrowed inputs: (name, statement, and for an
     // optional observation of a borrowed collection, its fragment).
@@ -5020,7 +5067,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         let vals: Vec<TokenStream> = data.iter().map(|(d, _)| quote! {#pname.#d}).collect();
         let tok_frag = single_fragment(f, &vals);
         let incl_lemma = included_lemma(f, &vals, quote! {#tok_frag}, None);
-        let ghost = format_ident!("__tsm_ghost_{}", pname);
+        let ghost = ghost_of(pname);
         let gvals: Vec<TokenStream> = data.iter().map(|(d, _)| quote! {#ghost.#d}).collect();
         let tok_frag_ghost = single_fragment(f, &gvals);
         let incl_lemma_ghost = included_lemma(f, &gvals, quote! {#tok_frag_ghost}, None);
@@ -5456,20 +5503,20 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
             (InoutType::In, MonoidElt::SingletonKV(k, _)) => {
                 let key = store.key_of(f, Some(k));
                 let val = store.wrap(f, quote! {#pname});
-                deposits.push(in_body(quote! {__tsm_deposit.tracked_insert(#key, #val);}));
+                deposits.push(in_body(quote! {#deposit.tracked_insert(#key, #val);}));
                 deposit_spec = quote! {#deposit_spec.insert(#key, #val)};
             }
             (InoutType::In, MonoidElt::OptionSome(_)) => {
                 let key = store.key_of(f, None);
                 let val = store.wrap(f, quote! {#pname});
-                deposits.push(quote! {__tsm_deposit.tracked_insert(#key, #val);});
+                deposits.push(quote! {#deposit.tracked_insert(#key, #val);});
                 deposit_spec = quote! {#deposit_spec.insert(#key, #val)};
             }
             (InoutType::In, MonoidElt::General(_)) => {
                 let pack = store.pack(f, &quote! {#pname}, "a deposit into");
                 deposits.push(quote! {
                     #pack
-                    __tsm_deposit.tracked_union_prefer_right(__tsm_packed);
+                    #deposit.tracked_union_prefer_right(__tsm_packed);
                 });
                 let tagged = store.tagged(f, &quote! {#pname});
                 deposit_spec = quote! {#deposit_spec.union_prefer_right(#tagged)};
@@ -5478,7 +5525,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
                 let key = store.key_of(f, Some(k));
                 let unwrap = store.unwrap(f, pname);
                 withdrawals.push(in_body(quote! {
-                    let tracked #pname = __tsm_withdrawn.tracked_remove(#key);
+                    let tracked #pname = #withdrawn.tracked_remove(#key);
                     #unwrap
                 }));
             }
@@ -5486,12 +5533,12 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
                 let key = store.key_of(f, None);
                 let unwrap = store.unwrap(f, pname);
                 withdrawals.push(in_body(quote! {
-                    let tracked #pname = __tsm_withdrawn.tracked_remove(#key);
+                    let tracked #pname = #withdrawn.tracked_remove(#key);
                     #unwrap
                 }));
             }
             (InoutType::Out, MonoidElt::General(e)) => {
-                withdrawals.push(in_body(store.unpack(f, pname, &quote! {#e})));
+                withdrawals.push(in_body(store.unpack(f, pname, &quote! {#e}, &withdrawn)));
             }
             _ => {
                 return err(f.name.span(), "unsupported storage operation for generic field tokens");
@@ -5519,7 +5566,6 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     } else {
         quote! {Fragment::unit()}
     };
-    let h_param = format_ident!("__tsm_h", span = Span::mixed_site());
     let lemmas = quote! {broadcast use {::vstd::map::group_map_lemmas, ::vstd::set::group_set_lemmas,
     ::vstd::imap::group_imap_lemmas, ::vstd::iset::group_iset_lemmas, ::vstd::multiset::group_multiset_axioms};};
     let nondet: Vec<_> = sm
@@ -5696,7 +5742,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     let ext: Vec<_> = sm
         .fields
         .iter()
-        .map(|f| ext_step(f, &quote! {__tsm_out_frag}, &quote! {__tsm_expected}))
+        .map(|f| ext_step(f, &quote! {#out_frag}, &quote! {__tsm_expected}))
         .collect();
     // With many outputs, the remaining outputs after each piece are bound once
     // from the end (re-stating each remainder is quadratic in the number of
@@ -5749,14 +5795,14 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     let exchange_fn = format_ident!("__tsm_exchange_{}", tr.name);
     let call = match (store.has_storage(), has_shared) {
         (true, true) => quote! {
-            let tracked (__tsm_out, __tsm_withdrawn) =
-                Self::#exchange_fn(__tsm_acc, &#shared_ident, __tsm_deposit, #owned_ident, #h, #(#pn),*);
+            let tracked (__tsm_out, #withdrawn) =
+                Self::#exchange_fn(__tsm_acc, &#shared_ident, #deposit, #owned_ident, #h, #(#pn),*);
         },
         (true, false) => {
             // The raw protocol operation does the frame and output lifting in its
             // own context.
             let dep_arg = if has_deposit {
-                quote! {__tsm_deposit,}
+                quote! {#deposit,}
             } else {
                 quote! {}
             };
@@ -5764,13 +5810,13 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
             if has_withdraw {
                 quote! {
                     #owned_ident.op_unit();
-                    let tracked (__tsm_out, __tsm_withdrawn) = Protocol::#raw(__tsm_acc, #dep_arg #(#pn),*);
+                    let tracked (__tsm_out, #withdrawn) = Protocol::#raw(__tsm_acc, #dep_arg #(#pn),*);
                 }
             } else {
                 quote! {
                     #owned_ident.op_unit();
                     let tracked __tsm_out = Protocol::#raw(__tsm_acc, #dep_arg #(#pn),*);
-                    let tracked __tsm_withdrawn: #map_ty = #withdrawn_unit;
+                    let tracked #withdrawn: #map_ty = #withdrawn_unit;
                 }
             }
         }
@@ -5792,7 +5838,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     for q in &params {
         if matches!(q.p.inout_type, InoutType::In | InoutType::BorrowIn | InoutType::InOut) {
             let pname = &q.p.name;
-            let gname = format_ident!("__tsm_ghost_{}", pname);
+            let gname = ghost_of(pname);
             let ty = &q.p.ty;
             if matches!(q.p.inout_type, InoutType::BorrowIn | InoutType::InOut) {
                 ghost_binds.push(quote! {let ghost #gname = *#pname;});
@@ -5837,10 +5883,10 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         let single = |key: TokenStream, value: Option<TokenStream>| match value {
             Some(v) => {
                 let v = store.wrap(f, v);
-                quote! {__tsm_withdrawn.contains_key(#key) && __tsm_withdrawn[#key] == #v}
+                quote! {#withdrawn.contains_key(#key) && #withdrawn[#key] == #v}
             }
-            None => quote! {__tsm_withdrawn.contains_key(#key) && __tsm_withdrawn[#key] is #fname
-            && ::vstd::prelude::imply(!__tsm_deposit.contains_key(#key), __tsm_withdrawn[#key] == #st[#key])},
+            None => quote! {#withdrawn.contains_key(#key) && #withdrawn[#key] is #fname
+            && ::vstd::prelude::imply(!#deposit.contains_key(#key), #withdrawn[#key] == #st[#key])},
         };
         match q.p.elt.as_ref() {
             Some(MonoidElt::SingletonKV(k, v)) => withdraw_facts
@@ -5849,7 +5895,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
                 withdraw_facts.push(single(store.key_of(f, None), v.as_ref().map(|v| quote! {#v})))
             }
             Some(MonoidElt::General(e)) => {
-                withdraw_facts.push(store.withdraw_general_fact(f, &quote! {#e}))
+                withdraw_facts.push(store.withdraw_general_fact(f, &quote! {#e}, &withdrawn))
             }
             _ => {}
         }
@@ -5926,11 +5972,11 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     let api_reqs: Vec<_> = parts.reqs.iter().map(|r| in_helper(quote! {#r})).collect();
     let (dep_param, dep_arg, dep_req, dep_goal, dep_ext) = if store.has_storage() {
         (
-            quote! {__tsm_deposit: #map_ty},
-            quote! {__tsm_deposit},
-            quote! {({ #(#early_helper)* __tsm_deposit == #deposit_spec_helper }),},
-            quote! {&& __tsm_deposit == State::#deposited(pre, #(#pn),*)},
-            quote! {assert(::vstd::prelude::ext_equal(__tsm_deposit, State::#deposited(pre, #(#pn),*)));},
+            quote! {#deposit: #map_ty},
+            quote! {#deposit},
+            quote! {({ #(#early_helper)* #deposit == #deposit_spec_helper }),},
+            quote! {&& #deposit == State::#deposited(pre, #(#pn),*)},
+            quote! {assert(::vstd::prelude::ext_equal(#deposit, State::#deposited(pre, #(#pn),*)));},
         )
     } else {
         (quote! {}, quote! {}, quote! {}, quote! {}, quote! {})
@@ -6029,10 +6075,10 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     };
     let (post_store_params, _post_store_args, witness_call) = if store.has_storage() {
         (
-            quote! {__tsm_deposit: #map_ty, __tsm_withdrawn: #map_ty,},
-            quote! {__tsm_deposit, __tsm_withdrawn,},
+            quote! {#deposit: #map_ty, #withdrawn: #map_ty,},
+            quote! {#deposit, #withdrawn,},
             quote! {
-                let (pre, post, __tsm_z) = Protocol::#witness(#owned_ident, #h_param, __tsm_out_frag, __tsm_deposit, __tsm_withdrawn, #(#pn),*);
+                let (pre, post, __tsm_z) = Protocol::#witness(#owned_ident, #h_param, #out_frag, #deposit, #withdrawn, #(#pn),*);
             },
         )
     } else {
@@ -6043,45 +6089,48 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
                 let (__tsm_z, pre, post) = choose|__tsm_z: Fragment, pre: State, post: State| pre.invariant()
                     && Fragment::op(Fragment::op(#owned_ident, #h_param), __tsm_z) == <Protocol as ::vstd::resource::tsm::Machine>::embed(pre)
                     && State::#strong(pre, post, #(#pn),*) && post.invariant()
-                    && __tsm_out_frag == Protocol::#owned_post_fn(#owned_ident, pre, post, #(#pn),*)
-                    && Fragment::op(Fragment::op(__tsm_out_frag, #h_param), __tsm_z) == <Protocol as ::vstd::resource::tsm::Machine>::embed(post);
+                    && #out_frag == Protocol::#owned_post_fn(#owned_ident, pre, post, #(#pn),*)
+                    && Fragment::op(Fragment::op(#out_frag, #h_param), __tsm_z) == <Protocol as ::vstd::resource::tsm::Machine>::embed(post);
             },
         )
     };
     let outputs_req = if store.has_storage() {
-        quote! {Protocol::#outputs_fn(#owned_ident, #h_param, __tsm_out_frag, __tsm_deposit, __tsm_withdrawn, #(#pn),*)}
+        quote! {Protocol::#outputs_fn(#owned_ident, #h_param, #out_frag, #deposit, #withdrawn, #(#pn),*)}
     } else {
-        quote! {Protocol::#outputs_fn(#owned_ident, #h_param, __tsm_out_frag, #(#pn),*)}
+        quote! {Protocol::#outputs_fn(#owned_ident, #h_param, #out_frag, #(#pn),*)}
     };
+    // The exchange's parameters and return value (`crate::hygiene`).
+    let [x_acc, x_obs, x_deposit, x_owned, x_h, x_out] =
+        binders(["acc", "obs", "deposit", "owned", "h", "out"], &tr.params);
     let exchange_helper = match (store.has_storage(), has_shared) {
         (true, true) => quote! {
-            proof fn #exchange_fn<'b>(tracked acc: Token,
-                tracked obs: &::vstd::resource::tsm_storage::StorageObservation<'b, Protocol>,
-                tracked deposit: #map_ty, owned: Fragment, h: Fragment, #(#tparams),*)
-                -> (tracked out: (Token, #map_ty))
-                requires acc.fragment() == owned, obs.fragment() == h, acc.loc() == obs.loc(),
-                    Protocol::#reqs_name(owned, h, deposit, #(#pn),*),
-                ensures out.0.loc() == acc.loc(),
-                    Protocol::#outputs_fn(owned, h, out.0.fragment(), deposit, out.1, #(#pn),*),
+            proof fn #exchange_fn<'b>(tracked #x_acc: Token,
+                tracked #x_obs: &::vstd::resource::tsm_storage::StorageObservation<'b, Protocol>,
+                tracked #x_deposit: #map_ty, #x_owned: Fragment, #x_h: Fragment, #(#tparams),*)
+                -> (tracked #x_out: (Token, #map_ty))
+                requires #x_acc.fragment() == #x_owned, #x_obs.fragment() == #x_h, #x_acc.loc() == #x_obs.loc(),
+                    Protocol::#reqs_name(#x_owned, #x_h, #x_deposit, #(#pn),*),
+                ensures #x_out.0.loc() == #x_acc.loc(),
+                    Protocol::#outputs_fn(#x_owned, #x_h, #x_out.0.fragment(), #x_deposit, #x_out.1, #(#pn),*),
             {
-                Protocol::#frame_fn(owned, h, deposit, #(#pn),*);
+                Protocol::#frame_fn(#x_owned, #x_h, #x_deposit, #(#pn),*);
                 let outputs = ::vstd::iset::ISet::new(|__tsm_pair: (Fragment, #map_ty)|
-                    Protocol::#outputs_fn(owned, h, __tsm_pair.0, deposit, __tsm_pair.1, #(#pn),*));
-                acc.exchange_nondeterministic_with_observation(obs, deposit, outputs)
+                    Protocol::#outputs_fn(#x_owned, #x_h, __tsm_pair.0, #x_deposit, __tsm_pair.1, #(#pn),*));
+                #x_acc.exchange_nondeterministic_with_observation(#x_obs, #x_deposit, outputs)
             }
         },
         (false, true) => quote! {
-            proof fn #exchange_fn<'b>(tracked acc: Token,
-                tracked obs: &::vstd::resource::tsm::Observation<'b, Protocol>,
-                owned: Fragment, h: Fragment, #(#tparams),*)
-                -> (tracked out: Token)
-                requires acc.fragment() == owned, obs.fragment() == h, acc.loc() == obs.loc(),
-                    Protocol::#reqs_name(owned, h, #(#pn),*),
-                ensures out.loc() == acc.loc(), Protocol::#outputs_fn(owned, h, out.fragment(), #(#pn),*),
+            proof fn #exchange_fn<'b>(tracked #x_acc: Token,
+                tracked #x_obs: &::vstd::resource::tsm::Observation<'b, Protocol>,
+                #x_owned: Fragment, #x_h: Fragment, #(#tparams),*)
+                -> (tracked #x_out: Token)
+                requires #x_acc.fragment() == #x_owned, #x_obs.fragment() == #x_h, #x_acc.loc() == #x_obs.loc(),
+                    Protocol::#reqs_name(#x_owned, #x_h, #(#pn),*),
+                ensures #x_out.loc() == #x_acc.loc(), Protocol::#outputs_fn(#x_owned, #x_h, #x_out.fragment(), #(#pn),*),
             {
-                Protocol::#frame_fn(owned, h, #(#pn),*);
-                let outputs = ::vstd::iset::ISet::new(|__tsm_new: Fragment| Protocol::#outputs_fn(owned, h, __tsm_new, #(#pn),*));
-                acc.update_nondeterministic_with_observation(obs, outputs)
+                Protocol::#frame_fn(#x_owned, #x_h, #(#pn),*);
+                let outputs = ::vstd::iset::ISet::new(|__tsm_new: Fragment| Protocol::#outputs_fn(#x_owned, #x_h, __tsm_new, #(#pn),*));
+                #x_acc.update_nondeterministic_with_observation(#x_obs, outputs)
             }
         },
         _ => quote! {},
@@ -6090,8 +6139,8 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         #exchange_helper
         #ready
         proof fn #post_fn(&self, #(#ghost_params,)* #(#tparams,)* #owned_ident: Fragment, #h_param: Fragment,
-            __tsm_out_frag: Fragment, #post_store_params)
-            -> (__tsm_r: (State, State, Fragment))
+            #out_frag: Fragment, #post_store_params)
+            -> (#witnessed: (State, State, Fragment))
             requires
                 #outputs_req,
                 #(#extra_reqs,)*
@@ -6099,16 +6148,16 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
                 #(#incl_reqs,)*
                 #(#match_conds,)*
             ensures
-                __tsm_r.0.invariant(),
-                Fragment::op(Fragment::op(#owned_ident, #h_param), __tsm_r.2)
-                    == <Protocol as ::vstd::resource::tsm::Machine>::embed(__tsm_r.0),
+                #witnessed.0.invariant(),
+                Fragment::op(Fragment::op(#owned_ident, #h_param), #witnessed.2)
+                    == <Protocol as ::vstd::resource::tsm::Machine>::embed(#witnessed.0),
                 ({
-                let pre = __tsm_r.0;
+                let pre = #witnessed.0;
                 #(#early_actual_helper)*
                 #(#withdrawn_binds_helper)*
                 #(#nondet)*
                 #(#late_helper)*
-                __tsm_out_frag == #expected_helper #(&& #withdraw_facts)*
+                #out_frag == #expected_helper #(&& #withdraw_facts)*
             }),
         {
             hide(State::invariant);
@@ -6120,7 +6169,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
             #(#nondet)*
             #(#late_helper)*
             let __tsm_expected = #expected_helper;
-            assert(__tsm_out_frag == __tsm_expected) by {
+            assert(#out_frag == __tsm_expected) by {
                 #(#ext)*
             }
             #(assert(#withdraw_facts);)*
@@ -6130,16 +6179,16 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
     let deposit_stmts = if store.has_storage() {
         let unit = store.tracked_unit();
         quote! {
-            let tracked mut __tsm_deposit: #map_ty = #unit;
+            let tracked mut #deposit: #map_ty = #unit;
             #(#deposits)*
-            assert(__tsm_deposit == #deposit_spec_body);
+            assert(#deposit == #deposit_spec_body);
         }
     } else {
         quote! {}
     };
     let withdraw_stmts = if store.has_storage() {
         quote! {
-            let tracked mut __tsm_withdrawn = __tsm_withdrawn;
+            let tracked mut #withdrawn = #withdrawn;
             #(#withdrawals)*
         }
     } else {
@@ -6159,7 +6208,7 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
         quote! {}
     };
     let post_args = if store.has_storage() {
-        quote! {__tsm_deposit, __tsm_withdrawn}
+        quote! {#deposit, #withdrawn}
     } else {
         quote! {}
     };
@@ -6729,7 +6778,7 @@ fn guard_refs(
         ShardableType::StorageIMap(k, v) => (k, v, true),
         _ => return err(f.name.span(), "internal: map guard of a non-map field"),
     };
-    let skey = store.key_of(f, Some(&verus_syn::parse_quote! {kk}));
+    let skey = store.key_of(f, Some(&verus_syn::parse2(quote! {kk})?));
     let sval = store.wrap(f, quote! {e[kk]});
     let b = store.layout().helper("__borrow_", n);
     let borrow = quote! {::vstd::std_specs::option::OptionAdditionalFns::tracked_unwrap(#b(m, kc))};

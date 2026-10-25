@@ -31,8 +31,18 @@
 //! Binders that user tokens do name keep the call-site span: `pre` and `post`
 //! (reserved in every state machine, see `ident_visitor::validate_ident`) and
 //! the user's own parameters and binders.
+//!
+//! The raw emitters (`verified_general`, `verified_operations`,
+//! `verified_readiness`, `verified_chain`, `verified_tokens`) name each binder
+//! explicitly (`Binders`). The generic interface's emitter
+//! (`verified_generic_tokens`), whose proofs bind hundreds of `__tsm_*` names,
+//! writes every identifier at the mixed site instead (its `quote!` and
+//! `format_ident!`) and then resolves the identifiers that its proofs share
+//! with the user's tokens and the trusted macro's signatures, the reserved ones,
+//! at the call site again (`resolve_reserved_at_call_site`); the parameters of
+//! its helper proofs are named apart from the transition's (`binder`).
 use crate::ast::TransitionParam;
-use proc_macro2::{Ident, Span};
+use proc_macro2::{Group, Ident, Span, TokenStream, TokenTree};
 
 /// The internal binder `name` of the generated items of a transition with the
 /// parameters `params` (see the module documentation).
@@ -103,6 +113,38 @@ impl Binders {
 /// `binder` for a transition with the parameters named `params`.
 pub(crate) fn binder_among(name: &str, params: &[&Ident]) -> Ident {
     named_apart(name, params.iter().copied())
+}
+
+/// The identifiers that every state machine reserves for its generated code
+/// (`ident_visitor::validate_ident`), and `self`: no user binder has these
+/// names, and the user's tokens and the generated code share them.
+fn reserved(name: &str) -> bool {
+    ["pre", "post", "self", "instance", "tmp_tuple", "tmp_e", "tmp_assert"].contains(&name)
+        || ["param_token_", "original_field_", crate::simplification::UPDATE_TMP_PREFIX]
+            .iter()
+            .any(|prefix| name.starts_with(prefix))
+}
+
+/// `tokens` with the reserved identifiers (`reserved`) resolved at the call
+/// site (keeping their locations): for an emitter whose own identifiers
+/// resolve at the mixed site (`verified_generic_tokens`).
+pub(crate) fn resolve_reserved_at_call_site(tokens: TokenStream) -> TokenStream {
+    tokens
+        .into_iter()
+        .map(|token| match token {
+            TokenTree::Ident(mut ident) if reserved(&ident.to_string()) => {
+                ident.set_span(ident.span().resolved_at(Span::call_site()));
+                TokenTree::Ident(ident)
+            }
+            TokenTree::Group(group) => {
+                let mut copy =
+                    Group::new(group.delimiter(), resolve_reserved_at_call_site(group.stream()));
+                copy.set_span(group.span());
+                TokenTree::Group(copy)
+            }
+            token => token,
+        })
+        .collect()
 }
 
 fn named_apart<'a>(name: &str, params: impl Iterator<Item = &'a Ident> + Clone) -> Ident {
