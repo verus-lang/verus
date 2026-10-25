@@ -100,6 +100,10 @@ pub struct Tagged<B> {
 }
 
 impl<B> vstd::std_specs::control_flow::TrySpecImpl for Tagged<B> {
+    open spec fn may_unwind(&self) -> bool {
+        false
+    }
+
     open spec fn branch_model_is_valid() -> bool {
         true
     }
@@ -109,6 +113,12 @@ impl<B> vstd::std_specs::control_flow::TrySpecImpl for Tagged<B> {
             Some(b) => ControlFlow::Continue(b),
             None => ControlFlow::Break(Stop { code: self.code }),
         }
+    }
+}
+
+impl<B> vstd::std_specs::control_flow::FromResidualSpecImpl<Stop> for Tagged<B> {
+    open spec fn may_unwind(residual: &Stop) -> bool {
+        false
     }
 }
 

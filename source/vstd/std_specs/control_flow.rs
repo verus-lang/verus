@@ -30,6 +30,9 @@ pub trait ExTry: FromResidual<Self::Residual> {
 
     type Residual: core::ops::Residual<Self::Output>;
 
+    /// Whether `branch` may unwind for this value.
+    spec fn may_unwind(&self) -> bool;
+
     /// The result of `branch` matches its functional spec
     spec fn branch_model_is_valid() -> bool;
 
@@ -38,16 +41,23 @@ pub trait ExTry: FromResidual<Self::Residual> {
     fn branch(self) -> (ret: ControlFlow<Self::Residual, Self::Output>) where Self: Sized
         ensures
             Self::branch_model_is_valid() ==> ret == Self::branch_model(self),
+        no_unwind when !self.may_unwind()
     ;
 
     fn from_output(output: Self::Output) -> Self where Self: Sized;
 }
 
 #[verifier::external_trait_specification]
+#[verifier::external_trait_extension(FromResidualSpec via FromResidualSpecImpl)]
 pub trait ExFromResidual<R> {
     type ExternalTraitSpecificationFor: FromResidual<R>;
 
-    fn from_residual(residual: R) -> Self where Self: Sized;
+    /// Whether converting this residual may unwind.
+    spec fn may_unwind(residual: &R) -> bool;
+
+    fn from_residual(residual: R) -> Self where Self: Sized
+        no_unwind when !Self::may_unwind(&residual)
+    ;
 }
 
 /// We can provide stronger guarantees for types that obey these laws
@@ -62,6 +72,10 @@ pub open spec fn try_laws<R: Try>() -> bool {
 }
 
 impl<T> TrySpecImpl for Option<T> {
+    open spec fn may_unwind(&self) -> bool {
+        false
+    }
+
     open spec fn branch_model_is_valid() -> bool {
         true
     }
@@ -75,6 +89,10 @@ impl<T> TrySpecImpl for Option<T> {
 }
 
 impl<T, E> TrySpecImpl for Result<T, E> {
+    open spec fn may_unwind(&self) -> bool {
+        false
+    }
+
     open spec fn branch_model_is_valid() -> bool {
         true
     }
@@ -88,6 +106,10 @@ impl<T, E> TrySpecImpl for Result<T, E> {
 }
 
 impl<B, C> TrySpecImpl for ControlFlow<B, C> {
+    open spec fn may_unwind(&self) -> bool {
+        false
+    }
+
     open spec fn branch_model_is_valid() -> bool {
         true
     }
@@ -97,6 +119,25 @@ impl<B, C> TrySpecImpl for ControlFlow<B, C> {
             ControlFlow::Continue(v) => ControlFlow::Continue(v),
             ControlFlow::Break(e) => ControlFlow::Break(ControlFlow::Break(e)),
         }
+    }
+}
+
+impl<T> FromResidualSpecImpl<Option<Infallible>> for Option<T> {
+    open spec fn may_unwind(residual: &Option<Infallible>) -> bool {
+        false
+    }
+}
+
+impl<B, C> FromResidualSpecImpl<ControlFlow<B, Infallible>> for ControlFlow<B, C> {
+    open spec fn may_unwind(residual: &ControlFlow<B, Infallible>) -> bool {
+        false
+    }
+}
+
+impl<T, E, F: From<E>> FromResidualSpecImpl<Result<Infallible, E>> for Result<T, F> {
+    open spec fn may_unwind(residual: &Result<Infallible, E>) -> bool {
+        // The error conversion may unwind.
+        true
     }
 }
 
