@@ -1477,12 +1477,14 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
         TyKind::FnPtr(..) => unsupported_err!(span, "function pointer types"),
-        TyKind::Coroutine(..) => unsupported_err!(span, "generator types"),
-        TyKind::CoroutineWitness(..) => unsupported_err!(span, "generator witness types"),
-        TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
-        TyKind::Placeholder(..) => unsupported_err!(span, "type inference Placeholder types"),
-        TyKind::Infer(..) => unsupported_err!(span, "type inference Infer types"),
-        TyKind::Error(..) => unsupported_err!(span, "type inference error types"),
+        TyKind::Coroutine(..) => unsupported_err!(span, "coroutine types"),
+        TyKind::CoroutineWitness(..) => unsupported_err!(span, "coroutine witness types"),
+        TyKind::Bound(..) => {
+            unsupported_err!(span, "bound type variables from higher-ranked (`for<...>`) binders")
+        }
+        TyKind::Placeholder(..) => unsupported_err!(span, "placeholder types"),
+        TyKind::Infer(..) => unsupported_err!(span, "uninferred types"),
+        TyKind::Error(..) => unsupported_err!(span, "types that failed to type-check"),
         TyKind::CoroutineClosure(_, _) => unsupported_err!(span, "coroutine closure types"),
         TyKind::Pat(_, _) => unsupported_err!(span, "pattern types"),
         TyKind::UnsafeBinder(_) => unsupported_err!(span, "unsafe binder types"),

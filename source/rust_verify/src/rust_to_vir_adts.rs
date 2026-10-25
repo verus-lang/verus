@@ -594,7 +594,10 @@ pub(crate) fn check_item_external<'tcx>(
     if !(external_predicates.parent.is_none() && proxy_predicates.parent.is_none()) {
         // I think this error is impossible?
         // 'Parent' nodes should only exist for stuff in an impl
-        return err_span(span, "expected GenericPredicates to not have a parent");
+        return crate::util::internal_err_span(
+            span,
+            "expected GenericPredicates to not have a parent".to_string(),
+        );
     }
     let external_typing_env = TypingEnv::post_analysis(ctxt.tcx, external_adt_def.did());
     let proxy_typing_env = TypingEnv::post_analysis(ctxt.tcx, proxy_adt_def.did());

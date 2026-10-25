@@ -288,7 +288,7 @@ fn check_trigger_expr(
             | UnaryOp::CastToInteger => Ok(()),
             UnaryOp::Not => Err(error(&exp.span, "triggers cannot contain boolean operators")),
             UnaryOp::Length(_) => {
-                Err(error(&exp.span, "triggers cannot contain builtin Length operator"))
+                Err(error(&exp.span, "triggers cannot contain the array/slice length operator"))
             }
         },
         ExpX::UnaryOpr(op, arg) => match op {

@@ -1026,8 +1026,8 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
         }
         PatKind::Never => unsupported_err!(pat.span, "never patterns", pat),
         PatKind::Deref(_) => unsupported_err!(pat.span, "deref patterns", pat),
-        PatKind::Err(_) => unsupported_err!(pat.span, "err patterns", pat),
-        PatKind::Missing => unsupported_err!(pat.span, "missing patterns", pat),
+        PatKind::Err(_) => unsupported_err!(pat.span, "patterns that failed to type-check", pat),
+        PatKind::Missing => unsupported_err!(pat.span, "missing patterns in parameters", pat),
     };
     let pattern = bctx.spanned_typed_new(pat.span, &pat_typ, pattern);
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
@@ -3643,16 +3643,22 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::ConstBlock(..) => unsupported_err!(expr.span, format!("const block expressions")),
         ExprKind::Type(..) => unsupported_err!(expr.span, format!("type expressions")),
-        ExprKind::DropTemps(..) => unsupported_err!(expr.span, format!("drop-temps expressions")),
-        ExprKind::Let(..) => unsupported_err!(expr.span, format!("let expressions")),
+        ExprKind::DropTemps(..) => {
+            unsupported_err!(expr.span, format!("this kind of temporary-scope expression"))
+        }
+        ExprKind::Let(..) => {
+            unsupported_err!(expr.span, format!("`let` expressions in conditions"))
+        }
         ExprKind::Yield(..) => unsupported_err!(expr.span, format!("yield expressions")),
         ExprKind::InlineAsm(..) => unsupported_err!(expr.span, format!("inline-asm expressions")),
-        ExprKind::Err(..) => unsupported_err!(expr.span, format!("Err expressions")),
-        ExprKind::Become(..) => unsupported_err!(expr.span, format!("Become expressions")),
-        ExprKind::UnsafeBinderCast(..) => {
-            unsupported_err!(expr.span, format!("unsafe binder cast"))
+        ExprKind::Err(..) => {
+            unsupported_err!(expr.span, format!("expressions that failed to type-check"))
         }
-        ExprKind::Use(..) => unsupported_err!(expr.span, "use expressions"),
+        ExprKind::Become(..) => unsupported_err!(expr.span, format!("`become` expressions")),
+        ExprKind::UnsafeBinderCast(..) => {
+            unsupported_err!(expr.span, format!("unsafe binder casts"))
+        }
+        ExprKind::Use(..) => unsupported_err!(expr.span, "`.use` expressions"),
         ExprKind::AddrOf(rustc_ast::BorrowKind::Pin, _, _) => {
             unsupported_err!(expr.span, "pinned borrow expressions")
         }
