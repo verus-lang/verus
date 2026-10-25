@@ -597,7 +597,7 @@ impl<T> TypedValue<[T]> {
             // (a zero-length Seq counts as valid); otherwise empty.
             (forall|i: int| #![trigger elems[i]] 0 <= i < elems.len() ==> elems[i].is_valid()) ==> {
                 &&& out.is_valid()
-                &&& out.value()@ == Seq::new(elems.len(), |i: int| elems[i].value())
+                &&& out.value_ref()@ == Seq::new(elems.len(), |i: int| elems[i].value())
             },
             !(forall|i: int| #![trigger elems[i]] 0 <= i < elems.len() ==> elems[i].is_valid()) ==> out.is_empty(),
     ;
@@ -622,18 +622,18 @@ impl<T> TypedValue<[T]> {
             // (a zero-length Seq counts as valid); otherwise empty.
             (forall|i: int| #![trigger elems[i]] 0 <= i < elems.len() ==> elems[i].is_valid()) ==> {
                 &&& out.is_valid()
-                &&& out.value()@ == Seq::new(elems.len(), |i: int| elems[i].value())
+                &&& out.value_ref()@ == Seq::new(elems.len(), |i: int| elems[i].value())
             },
             !(forall|i: int| #![trigger elems[i]] 0 <= i < elems.len() ==> elems[i].is_valid()) ==> out.is_empty(),
             // Finally: a valid slice of the same length is distributed back to the elements;
             // anything else leaves every element empty.
-            final(out).is_valid() && final(out).value()@.len() == elems.len() ==> forall|i: int|
+            final(out).is_valid() && final(out).value_ref()@.len() == elems.len() ==> forall|i: int|
                 #![trigger elems[i]]
                 0 <= i < elems.len() ==> {
                     &&& final(elems[i]).is_valid()
-                    &&& final(elems[i]).value() == final(out).value()@[i]
+                    &&& final(elems[i]).value() == final(out).value_ref()@[i]
                 },
-            !(final(out).is_valid() && final(out).value()@.len() == elems.len()) ==> forall|i: int|
+            !(final(out).is_valid() && final(out).value_ref()@.len() == elems.len()) ==> forall|i: int|
                 #![trigger elems[i]]
                 0 <= i < elems.len() ==> final(elems[i]).is_empty(),
     ;
