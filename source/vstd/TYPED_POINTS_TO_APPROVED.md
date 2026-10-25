@@ -1212,26 +1212,26 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         self.seq_pt().map(|i: int, pt: PointsTo<T>| pt.typed_value())
     }
 
-    /// Returns `true` if all of the permission's associated memory in the given subrange is valid for the type `T`.
+    /// Returns `true` if all of the permission's associated memory in `[start, end)` is valid for the type `T`.
     #[verifier::inline]
-    pub open spec fn is_valid_subrange(&self, start_index: int, len: nat) -> bool {
-        &&& 0 <= start_index <= start_index + len <= self.len()
-        &&& forall|i: int| start_index <= i < start_index + len ==> #[trigger] self[i].is_valid()
+    pub open spec fn is_valid_subrange(&self, start: int, end: int) -> bool {
+        &&& 0 <= start <= end <= self.len()
+        &&& forall|i: int| start <= i < end ==> #[trigger] self[i].is_valid()
     }
 
-    /// Given that the subrange is valid, returns the underlying values in that subrange as a sequence.
+    /// Given that `[start, end)` is valid, returns the underlying values in it as a sequence.
     #[verifier::inline]
-    pub open spec fn value_subrange(&self, start_index: int, len: nat) -> Seq<T>
+    pub open spec fn value_subrange(&self, start: int, end: int) -> Seq<T>
         recommends
-            self.is_valid_subrange(start_index, len),
+            self.is_valid_subrange(start, end),
     {
-        Seq::new(len, |i: int| self[start_index + i].value())
+        Seq::new((end - start) as nat, |i: int| self[start + i].value())
     }
 
     /// Returns `true` if all of the permission's associated memory is valid for the type `T`.
     #[verifier::inline]
     pub open spec fn is_valid(&self) -> bool {
-        self.is_valid_subrange(0, self.len())
+        self.is_valid_subrange(0, self.len() as int)
     }
 
     /// Returns `true` if any part of the permission's associated memory is not valid for the type `T`.
@@ -1253,7 +1253,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         recommends
             self.is_valid(),
     {
-        self.value_subrange(0, self.len())
+        self.value_subrange(0, self.len() as int)
     }
 
     /// The pointer-level `ptrs_len_same`,
@@ -1419,20 +1419,20 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             joined.wf(),
     ;
 
-    /// Given that the subrange is within bounds,
+    /// Given that `[start, end)` is within bounds,
     /// it is always possible to borrow a permission to just that subrange.
-    pub proof fn subrange(tracked &self, start_index: nat, len: nat) -> (tracked sub: &Self)
+    pub proof fn subrange(tracked &self, start: nat, end: nat) -> (tracked sub: &Self)
         requires
             self.wf(),
-            start_index + len <= self.len(),
+            start <= end <= self.len(),
         ensures
             sub.wf(),
             sub.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize,
+                addr: (self.ptr()@.addr + start * size_of::<T>()) as usize,
                 provenance: self.ptr()@.provenance,
-                metadata: len as usize,
+                metadata: (end - start) as usize,
             }),
-            sub.seq_pt() == self.seq_pt().subrange(start_index as int, (start_index + len) as int),
+            sub.seq_pt() == self.seq_pt().subrange(start as int, end as int),
     ;
 
     /// Returns a mutable reference to the sub-permission covering indices `[i, j)`.
@@ -1552,9 +1552,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         requires
             self.wf(),
             0 <= start <= end <= self.len(),
-            self.is_valid_subrange(start, (end - start) as nat),
+            self.is_valid_subrange(start, end),
         ensures
-            val.map_values(|r: &T| *r) == self.value_subrange(start, (end - start) as nat),
+            val.map_values(|r: &T| *r) == self.value_subrange(start, end),
     ;
 
     /// This moves a subrange of the values out from `self`,
@@ -1563,9 +1563,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         requires
             self.wf(),
             0 <= start <= end <= self.len(),
-            self.is_valid_subrange(start, (end - start) as nat),
+            self.is_valid_subrange(start, end),
         ensures
-            val == old(self).value_subrange(start, (end - start) as nat),
+            val == old(self).value_subrange(start, end),
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
             final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
@@ -1595,8 +1595,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
             final(self).len() == old(self).len(),
-            final(self).is_valid_subrange(start, val.len()),
-            final(self).value_subrange(start, val.len()) == val,
+            final(self).is_valid_subrange(start, start + val.len()),
+            final(self).value_subrange(start, start + val.len()) == val,
             forall|i: int|
                 0 <= i < old(self).len() && !(start <= i < start + val.len())
                     ==> #[trigger] final(self).seq_typed_value()[i] == old(self).seq_typed_value()[i],
@@ -1622,8 +1622,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
             final(self).len() == old(self).len(),
-            final(self).is_valid_subrange(start, val.len()),
-            final(self).value_subrange(start, val.len()) == val,
+            final(self).is_valid_subrange(start, start + val.len()),
+            final(self).value_subrange(start, start + val.len()) == val,
             forall|i: int|
                 0 <= i < old(self).len() && !(start <= i < start + val.len())
                     ==> #[trigger] final(self).seq_typed_value()[i] == old(self).seq_typed_value()[i],
@@ -1635,12 +1635,12 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         requires
             self.wf(),
             0 <= start <= end <= self.len(),
-            self.is_valid_subrange(start, (end - start) as nat),
+            self.is_valid_subrange(start, end),
         ensures
             ret.len() == end - start,
             forall|i: int| 0 <= i < ret.len() ==> *#[trigger] ret[i] == old(self)[start + i].value(),
             final(self).ptr() == old(self).ptr(),
-            final(self).is_valid_subrange(start, ret.len()),
+            final(self).is_valid_subrange(start, end),
             forall|i: int|
                 #![trigger ret[i]]
                 0 <= i < ret.len() ==> final(self)[start + i].value() == *final(ret[i]),

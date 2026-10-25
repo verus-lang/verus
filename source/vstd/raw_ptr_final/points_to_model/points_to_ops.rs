@@ -268,17 +268,17 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
         joined
     }
 
-    /// Borrows the sub-sequence of `len` permissions starting at `start`.
-    pub proof fn subrange_basic(tracked &self, start: nat, len: nat) -> (tracked sub: &Self)
+    /// Borrows the sub-sequence of permissions in `[start, end)`.
+    pub proof fn subrange_basic(tracked &self, start: nat, end: nat) -> (tracked sub: &Self)
         requires
             self.wf_basic(),
-            start + len <= self.len(),
+            start <= end <= self.len(),
         ensures
-            sub.seq_pt() == self.seq_pt().subrange(start as int, (start + len) as int),
+            sub.seq_pt() == self.seq_pt().subrange(start as int, end as int),
             sub.ptr() == ptr_mut_from_data::<[T]>(PtrData {
                 addr: (self.ptr()@.addr + start * P::size(())) as usize,
                 provenance: self.ptr()@.provenance,
-                metadata: len as usize,
+                metadata: (end - start) as usize,
             }),
             sub.wf_basic(),
     {
@@ -296,14 +296,11 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             PtrData {
                 addr: (self.ptr()@.addr + start * s) as usize,
                 provenance: self.ptr()@.provenance,
-                metadata: len as usize,
+                metadata: (end - start) as usize,
             },
         );
 
-        let tracked seq_pt = self.seq_pt.tracked_borrow_subrange(
-            start as int,
-            (start + len) as int,
-        );
+        let tracked seq_pt = self.seq_pt.tracked_borrow_subrange(start as int, end as int);
         let tracked sub = shr_ref_struct_wrap(
             seq_pt,
             &Self { seq_pt: *seq_pt, ptr: Ghost(sub_ptr) },
@@ -453,7 +450,7 @@ impl PointsToUntyped {
             second.wf(),
     {
         let tracked first = self.subrange_basic(0, mid);
-        let tracked second = self.subrange_basic(mid, (self.len() - mid) as nat);
+        let tracked second = self.subrange_basic(mid, self.len());
         assert(first.bytes() =~= self.bytes().take(mid as int));
         assert(second.bytes() =~= self.bytes().skip(mid as int));
         (first, second)
