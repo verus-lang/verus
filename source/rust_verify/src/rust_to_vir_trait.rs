@@ -775,7 +775,7 @@ fn make_trait_decl<'tcx>(
     if spec_method_info.function_for_autospec.is_some()
         || method_info.function_for_autospec.is_some()
     {
-        return Err(error(&spec_method.span, "not support: autospec on trait"));
+        return Err(error(&spec_method.span, "not supported: autospec on trait"));
     }
 
     methodx.opaqueness = opaqueness;

@@ -2225,7 +2225,7 @@ pub(crate) fn expr_to_stm_opt(
                 let e_exists = mk_exp(ExpX::Unary(UnaryOp::MustBeElaborated, e_exists));
                 let error = error(
                     &cond_exp.span,
-                    "recommendation not met: cannot prove that there exists values that satisfy the condition of the choose expression",
+                    "recommendation not met: cannot prove that there exist values that satisfy the condition of the choose expression",
                 );
                 let assertx = StmX::Assert(state.next_assert_id(), Some(error), e_exists);
                 check_stms.push(Spanned::new(cond_exp.span.clone(), assertx));
@@ -3158,7 +3158,7 @@ pub(crate) fn expr_to_stm_opt(
 
                 let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
                 let error =
-                    error(&expr.span, "cannot show atomic postcondition hold at end of block");
+                    error(&expr.span, "cannot show atomic postcondition holds at end of block");
 
                 stms.push(Spanned::new(
                     expr.span.clone(),

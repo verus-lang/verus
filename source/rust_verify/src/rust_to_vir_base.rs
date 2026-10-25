@@ -1441,7 +1441,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Dynamic(preds, _) => {
             use rustc_middle::ty::ExistentialPredicate;
             if preds.len() != 1 {
-                unsupported_err!(span, "dyn with more that one trait");
+                unsupported_err!(span, "dyn with more than one trait");
             }
             match preds[0].skip_binder() {
                 ExistentialPredicate::Trait(trait_ref) => {
@@ -2425,7 +2425,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
     collect_hidden_type_eqs: bool,
     hidden_type_eqs: &mut Vec<(Typ, Typ)>,
 ) -> Result<Option<OpaqueType>, VirErr> {
-    let unmatch_err_msg = "opaque type of assume assume_specification specification does not match the opaque type of the orginal function";
+    let unmatch_err_msg = "opaque type of assume_specification does not match the opaque type of the original function";
     let unmatch_err = || crate::internal_err!(span, unmatch_err_msg);
 
     match (

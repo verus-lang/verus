@@ -107,7 +107,10 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                 ExprX::Header(header) => match &**header {
                     HeaderExprX::UnwrapParameter(unwrap) => {
                         if !unwrap_parameter_allowed {
-                            return Err(error(&stmt.span, "unwrap_parameter must appear "));
+                            return Err(error(
+                                &stmt.span,
+                                "unwrap_parameter must appear before all other header declarations",
+                            ));
                         }
                         is_unwrap_parameter = true;
                         unwrap_parameters.push(unwrap.clone());
@@ -122,7 +125,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if require.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to requires allowed (use requires([e1, ..., en]) for multiple expressions",
+                                "only one call to requires allowed (use requires([e1, ..., en]) for multiple expressions)",
                             ));
                         }
                         allowed = allows.require();
@@ -132,7 +135,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if recommend.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to recommends allowed (use recommends([e1, ..., en]) for multiple expressions",
+                                "only one call to recommends allowed (use recommends([e1, ..., en]) for multiple expressions)",
                             ));
                         }
                         recommend = Some(es.clone());
@@ -141,7 +144,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if ensure.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions",
+                                "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions)",
                             ));
                         }
                         if es.1.len() == 0 {
@@ -161,7 +164,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if invariant_except_break.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to invariant_except_break allowed (use invariant_except_break([e1, ..., en]) for multiple expressions",
+                                "only one call to invariant_except_break allowed (use invariant_except_break([e1, ..., en]) for multiple expressions)",
                             ));
                         }
                         allowed = allows.loops();
@@ -171,7 +174,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if invariant.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to invariant allowed (use invariant([e1, ..., en]) for multiple expressions",
+                                "only one call to invariant allowed (use invariant([e1, ..., en]) for multiple expressions)",
                             ));
                         }
                         allowed = allows.loops();
@@ -191,7 +194,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if decrease_when.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one if decrease_when expression currently supported",
+                                "only one decreases_when expression currently supported",
                             ));
                         }
                         decrease_when = Some(e.clone());

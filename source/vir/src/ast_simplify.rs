@@ -1743,7 +1743,7 @@ pub fn krate_merge_arch(krate: &Krate, other_krates: &[Krate]) -> Result<Arch, V
             (crate::ast::ArchWordBits::Exactly(l), crate::ast::ArchWordBits::Exactly(r)) => {
                 if l != r {
                     return Err(crate::messages::error_bare(
-                        "all crates must have compatible arch_word_bits (set via `global size_of usize`",
+                        "all crates must have compatible arch_word_bits (set via `global size_of usize`)",
                     ));
                 } else {
                     crate::ast::ArchWordBits::Exactly(l)

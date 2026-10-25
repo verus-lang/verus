@@ -654,8 +654,7 @@ pub fn check_singular_valid(
             // the resultant poly fails to reduce to 0. the poly is not going to be very informative, so we just return the error message.
             let err = error(
                 &err.spans[0],
-                "postcondition not satisfied, Singular cannot prove one of the the ensures"
-                    .to_string(),
+                "postcondition not satisfied, Singular cannot prove one of the ensures".to_string(),
             )
             .primary_label(&err.spans[0], "Singular cannot prove this");
             return ValidityResult::Invalid(None, Some(err), None);

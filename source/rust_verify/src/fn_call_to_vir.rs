@@ -971,7 +971,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                     let body = tcx.hir_body(closure.body);
                     let [update_param, ghost_au_param] = body.params else {
-                        panic!("the closure should take exactly two argument")
+                        panic!("the closure should take exactly two arguments")
                     };
 
                     let ExprKind::Block(Block { expr: Some(inner), .. }, _) = body.value.kind
@@ -2367,7 +2367,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 return err_span(
                     expr.span,
                     format!(
-                        "to use `{name}`, disable mut-ref backwards-compatability (add #[verifier::deprecated_postcondition_mut_ref_style(false)] to the function)"
+                        "to use `{name}`, disable mut-ref backwards-compatibility (add #[verifier::deprecated_postcondition_mut_ref_style(false)] to the function)"
                     ),
                 );
             }
@@ -2645,7 +2645,7 @@ fn extract_quant<'tcx>(
             )?;
             let typ = Arc::new(TypX::Bool);
             if !matches!(bctx.types.expr_ty_adjusted(expr).kind(), TyKind::Bool) {
-                return err_span(expr.span, "forall/ensures needs a bool expression");
+                return err_span(expr.span, "forall/exists needs a bool expression");
             }
             Ok(bctx.spanned_typed_new(span, &typ, ExprX::Quant(quant, Arc::new(binders), vir_expr)))
         }
@@ -3040,7 +3040,7 @@ fn get_string_lit_arg<'tcx>(
         }
         _ => err_span(
             arg.span,
-            format!("Verus verus_builtin `{fn_name_for_error_msg:}` requires a string literal"),
+            format!("Verus builtin `{fn_name_for_error_msg:}` requires a string literal"),
         ),
     }
 }

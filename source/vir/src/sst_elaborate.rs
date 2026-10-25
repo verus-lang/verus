@@ -96,7 +96,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                 if trigs.len() > 0 {
                     let msg = "#[trigger] on a spec_fn closure is deprecated - \
                         generally spec_fn closures don't need triggers because spec_fn \
-                        closures are triggered automatically by calls to to closures. \
+                        closures are triggered automatically by calls to closures. \
                         If you think you need additional triggers, see the discussion in \
                         https://github.com/verus-lang/verus/pull/331 \
                         for alternatives.";

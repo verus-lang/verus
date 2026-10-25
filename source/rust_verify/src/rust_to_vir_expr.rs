@@ -2497,7 +2497,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             } else {
                 // Could be a const. In this case the array needs to be translated like:
                 //    forall |i| array[i] satisfies post-condition of const
-                unsupported_err!(expr.span, format!("array-fill expresion with non-copy type"))
+                unsupported_err!(expr.span, format!("array-fill expression with non-copy type"))
             }
         }
         ExprKind::Lit(lit) => Ok(ExprOrPlace::Expr(lit_to_vir(

@@ -646,7 +646,7 @@ pub(crate) fn check_item_external<'tcx>(
         {
             return err_span(
                 span,
-                "cannot apply `external_type_specification` to Verus verus_builtin types",
+                "cannot apply `external_type_specification` to Verus builtin types",
             );
         }
         _ => {}

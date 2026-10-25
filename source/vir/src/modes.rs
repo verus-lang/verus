@@ -2454,7 +2454,7 @@ fn check_expr(
                 // Could probably support 'proof' functions (in ghost code) as well
                 return Err(error(
                     &expr.span,
-                    "cannot use a function as a value unless it as mode 'exec'",
+                    "cannot use a function as a value unless it has mode 'exec'",
                 ));
             }
 
@@ -3568,7 +3568,7 @@ fn check_expr(
             if typing.in_pure {
                 return Err(error(
                     &expr.span,
-                    "`str_ref_struct_wrap` is not allowed inside pure context",
+                    "`shr_ref_struct_wrap` is not allowed inside pure context",
                 ));
             }
             let proph1 = check_expr_has_mode(
@@ -3715,7 +3715,7 @@ fn check_stmt(
                 None => {}
                 Some(expr) => {
                     if mode != Mode::Exec {
-                        return Err(error(&stmt.span, "let-else only work in exec mode"));
+                        return Err(error(&stmt.span, "let-else only works in exec mode"));
                     }
                     proph.check(&stmt.span, NoProphReason::LetElse)?;
                     outer_proph.outer_check(&stmt.span, OuterProphReason::LetElse)?;

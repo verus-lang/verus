@@ -2516,7 +2516,7 @@ impl Verifier {
 
         if self.args.profile && self.count_errors == 0 {
             let msg = note_bare(
-                "--profile reports prover performance data only when rlimts are exceeded, use --profile-all to always report profiler results",
+                "--profile reports prover performance data only when rlimits are exceeded, use --profile-all to always report profiler results",
             );
             reporter.report(&msg.to_any());
         }

@@ -711,10 +711,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             return do_arith_then_clip(ctx, state, &exp.span, arith_op, lhs, rhs, None);
         }
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {
-            return Err(error(
-                &exp.span,
-                "error: cannot use extensional equality in bit vector proof",
-            ));
+            return Err(error(&exp.span, "cannot use extensional equality in bit vector proof"));
         }
         ExpX::UnaryOpr(
             crate::ast::UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits),
@@ -1062,7 +1059,7 @@ fn bv_typ_for_vir_typ(state: &mut State, span: &Span, typ: &Typ) -> Result<BvTyp
         Err(error(
             span,
             format!(
-                "error: bit_vector prover cannot handle type `{:}`", crate::ast_util::typ_to_diagnostic_str(typ)
+                "bit_vector prover cannot handle type `{:}`", crate::ast_util::typ_to_diagnostic_str(typ)
             ),
         ).help("bit_vector can only handle variables of type `bool`, fixed-width integers, or floating point"))
     }
