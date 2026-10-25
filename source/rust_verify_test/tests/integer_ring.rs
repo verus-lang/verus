@@ -307,7 +307,7 @@ test_verify_one_file! {
         dbg!(&err.warnings);
         assert_eq!(err.warnings.len(), 3);
         assert!(err.warnings[0].message.contains("integer_ring: this precondition is superfluous and has no impact on the `integer_ring` decision procedure"));
-        assert!(err.warnings[1].message.contains("integer_ring: this lemma should have `d != 0` as a precondition, since this expression is used as a divisor. (This will be a hard error in the future.)"));
+        assert!(err.warnings[1].message.contains("integer_ring: this lemma should have `d != 0` as a precondition, since this expression is used as a divisor (this will be a hard error in the future)"));
         assert!(err.warnings[2].message.contains("2 warnings emitted"));
     }
 }
