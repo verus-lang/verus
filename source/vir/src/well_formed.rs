@@ -1189,7 +1189,7 @@ fn check_function_inner(
         if function.x.mode != Mode::Exec && typ_contains_opaque(&function.x.outer_ret.x.typ) {
             return Err(error(
                 &function.x.outer_ret.span,
-                format!("opaque type is not supported in {} mode", function.x.mode),
+                format!("`impl Trait` types are not supported in {} mode", function.x.mode),
             ));
         }
 
@@ -1529,7 +1529,7 @@ fn check_function_inner(
         if typ_contains_opaque(&function.x.inner_ret.x.typ) {
             return Err(error(
                 &r.span,
-                "`returns` clause is not allowed for function that returns opaque type",
+                "`returns` clause is not allowed for function that returns an `impl Trait` type",
             )
             .secondary_label(
                 &function.span,

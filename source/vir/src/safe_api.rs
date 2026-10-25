@@ -26,7 +26,7 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
             return Err(error(
                 &function.span,
                 &format!(
-                    "Verus does not currently support opaque types together with the check-api-safety flag: `{:}`; unverified, safe client code may be able to call this function without satisfying the precondition",
+                    "Verus does not currently support `impl Trait` types together with the check-api-safety flag: `{:}`; unverified, safe client code may be able to call this function without satisfying the precondition",
                     fun_as_friendly_rust_name(&function.x.name),
                 ),
             ));

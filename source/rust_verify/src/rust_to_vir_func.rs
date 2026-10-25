@@ -2482,10 +2482,7 @@ pub(crate) fn finish_function<'tcx>(
                 if !matches!(**ret_typ, TypX::Opaque { .. }) {
                     return err_span(
                         sig.span,
-                        format!(
-                            "async function must return opaque type (impl Future) {:?}",
-                            ret_typ,
-                        ),
+                        format!("async function must return an `impl Future` type {:?}", ret_typ,),
                     );
                 }
             }

@@ -1396,7 +1396,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     (Arc::new(TypX::Opaque { def_path: def_path, args: Arc::new(args) }), false)
                 }
                 rustc_middle::ty::AliasTyKind::Free { def_id: _ } => {
-                    unsupported_err!(span, "opaque type")
+                    unsupported_err!(span, "lazy type aliases")
                 }
             }
         }
@@ -2428,7 +2428,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
     collect_hidden_type_eqs: bool,
     hidden_type_eqs: &mut Vec<(Typ, Typ)>,
 ) -> Result<Option<OpaqueType>, VirErr> {
-    let unmatch_err_msg = "opaque type of `assume_specification` does not match the opaque type of the original function";
+    let unmatch_err_msg = "`impl Trait` return type of `assume_specification` does not match the `impl Trait` return type of the original function";
     let unmatch_err = || crate::internal_err!(span, unmatch_err_msg);
 
     match (
