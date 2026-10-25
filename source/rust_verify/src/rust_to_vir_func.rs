@@ -162,7 +162,7 @@ fn handle_autospec<'tcx>(
             return err_span(span, format!("`allow_in_spec` can only be used on an exec function"));
         }
         if !matches!(&functionx.kind, FunctionKind::Static) {
-            return err_span(span, format!("`allow_in_spec` not supported for trait functions"));
+            return err_span(span, format!("`allow_in_spec` not supported for trait methods"));
         }
 
         let mut spec_params = vec![];
@@ -973,7 +973,7 @@ fn handle_external_fn<'tcx>(
                 _ => {
                     return err_span(
                         sig.span,
-                        "`assume_specification` not supported for trait functions",
+                        "`assume_specification` not supported for trait methods",
                     );
                 }
             };
@@ -2141,7 +2141,7 @@ pub(crate) fn check_item_fn<'tcx>(
             if mode == Mode::Spec && open_closed_present && !has_body {
                 return err_span(
                     sig.span,
-                    "trait function declarations cannot be open or closed, as they don't have a body",
+                    "trait method declarations cannot be open or closed, as they don't have a body",
                 );
             }
         }
@@ -2800,7 +2800,7 @@ fn check_generics_for_invariant_fn<'tcx>(
         );
     }
     if tcx.trait_of_assoc(id).is_some() {
-        return err_span(span, "`#[verifier::type_invariant]` function cannot be a trait function");
+        return err_span(span, "`#[verifier::type_invariant]` function cannot be a trait method");
     }
 
     let ty = crate::rust_to_vir_base::ty_remove_references(&inputs[0]);
@@ -3227,7 +3227,7 @@ fn get_external_def_id<'tcx>(
                 ),
             ),
             ResolutionResult::Resolved { resolved_item: ResolvedItem::FromTrait(..), .. } => {
-                unsupported_err!(sig.span, "`assume_specification` for a provided trait method");
+                unsupported_err!(sig.span, "`assume_specification` for a provided method");
             }
             ResolutionResult::Resolved {
                 impl_def_id,

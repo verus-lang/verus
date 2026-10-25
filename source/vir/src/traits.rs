@@ -819,7 +819,7 @@ pub(crate) fn redirect_calls_in_default_methods(
                     // we could consider this to be a panic rather than an Err.)
                     return Err(error(
                         span,
-                        "call from trait default method to same trait with different type arguments is not allowed",
+                        "call from provided method to same trait with different type arguments is not allowed",
                     ));
                 }
             }

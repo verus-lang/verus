@@ -940,7 +940,7 @@ fn can_inline_function(
     match &fun_to_inline.x.kind {
         FunctionKind::Static | FunctionKind::TraitMethodImpl { .. } => {}
         FunctionKind::TraitMethodDecl { .. } => {
-            return Err(Some("trait function (note: expand-errors is currently limited in its support for resolving generic trait functions)".to_string()));
+            return Err(Some("trait method (note: expand-errors is currently limited in its support for resolving generic trait methods)".to_string()));
         }
         FunctionKind::ForeignTraitMethodImpl { .. } => {
             return Err(Some("Verus internal error: ForeignTraitMethodImpl".to_string()));

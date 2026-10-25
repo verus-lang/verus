@@ -1137,7 +1137,7 @@ fn check_function_inner(
         if orig_decl.x.returns && function.x.returns.is_some() {
             return Err(error(
                 &function.span,
-                "a `returns` clause cannot be declared on both a trait method impl and its declaration",
+                "a `returns` clause cannot be declared on both a trait method implementation and its declaration",
             ).secondary_span(&orig_decl.span));
         }
     } else {
@@ -1148,7 +1148,7 @@ fn check_function_inner(
         {
             return Err(error(
                 &function.span,
-                "only exec trait functions can be marked `impls_cannot_extend_spec`",
+                "only exec trait methods can be marked `impls_cannot_extend_spec`",
             ));
         }
         if function.x.ensure.1.len() > 0 {
@@ -1281,7 +1281,7 @@ fn check_function_inner(
         }
         match function.x.kind {
             FunctionKind::TraitMethodDecl { .. } | FunctionKind::TraitMethodImpl { .. } => {
-                return Err(error(&function.span, "`atomic` not supported for trait functions"));
+                return Err(error(&function.span, "`atomic` not supported for trait methods"));
             }
             FunctionKind::Static | FunctionKind::ForeignTraitMethodImpl { .. } => {
                 // ok
@@ -1700,7 +1700,7 @@ fn check_function_inner(
         if !matches!(function.x.kind, FunctionKind::Static) {
             return Err(error(
                 &function.span,
-                "`#[verifier::type_invariant]` function cannot be a trait function",
+                "`#[verifier::type_invariant]` function cannot be a trait method",
             ));
         }
 
@@ -2122,7 +2122,7 @@ fn check_decreases_by_consistency(
                 if function.x.decrease.len() > 0 {
                     return Err(error(
                         &function.span,
-                        "Verus does not currently support recursion and `decreases` in trait default methods",
+                        "Verus does not currently support recursion and `decreases` in provided methods",
                     ));
                 }
             }

@@ -3814,7 +3814,7 @@ fn check_function_inner(
             return Err(error(
                 &function.span,
                 format!(
-                    "implementation of trait function cannot be marked prophetic if the trait function is not"
+                    "trait method implementation cannot be marked prophetic if the trait method is not"
                 ),
             ));
         }
