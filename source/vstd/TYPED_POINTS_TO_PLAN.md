@@ -1062,6 +1062,111 @@ not just the value matching the pointer metadata.
 The other rustlib axioms (the `str` reference helpers):
 see [New rustlib axioms](#new-rustlib-axioms).
 
+#### Modified rustlib specs
+
+Existing rustlib specs that mention `PointsTo<str>` or `PointsTo<[T]>`,
+restated for the new API
+(`typed_value().value_ref()`, `is_valid()` and `wf()` in place of `value()` and `is_init()`).
+The functions that are `external_body` only because these were missing
+(`str::get_unchecked`, `get_unchecked_mut`, `split_at_unchecked`,
+and the `SliceIndex<str>` / `SliceIndexVerus<str>` methods in `str/traits.rs`)
+get their verified bodies back, with unchanged specs.
+
+**`str::as_str_ptr_verus` / `as_ptr_verus`** (`str/mod.rs`; `as_ptr_verus` calls `as_str_ptr_verus`).
+Still `external_body`, since Verus doesn't support the `&str` → `*const str` cast.
+The ensures state the permission directly, and add `wf`,
+which `ptr_ref_str` and `ptr_ref2_str_ghost` now require.
+`as_ptr_tracked` stays commented out.
+
+```rust
+#[verifier::shadow_data]
+#[verifier::external_body] // Ok - cast from `&self` to `*const str`
+// Axiomatizes cast from `&self` to `*const str`, since Verus doesn't support it.
+pub const fn as_str_ptr_verus(&self) -> ((ptr, perm): (*const str, Tracked<&PointsTo<str>>))
+    ensures
+        ptr == shared_ref_ptr(shadow_data(self)),
+        perm@.ptr() == shared_ref_ptr(shadow_data(self)),
+        perm@.is_valid(),
+        perm@.typed_value().value_ref() == self,
+        perm@.wf(),
+{
+    (self as *const str, Tracked::assume_new())
+}
+
+#[verifier::shadow_data]
+pub const fn as_ptr_verus(&self) -> ((ptr, perm): (*const u8, Tracked<&PointsTo<str>>))
+    ensures
+        ptr == shared_ref_ptr(shadow_data(self)) as *const u8,
+        perm@.ptr() == shared_ref_ptr(shadow_data(self)),
+        perm@.is_valid(),
+        perm@.typed_value().value_ref() == self,
+        perm@.wf(),
+{
+    let (ptr, perm) = self.as_str_ptr_verus();
+    (ptr as *const u8, perm)
+}
+```
+
+**`slice_index.rs` wrappers.**
+The `perm_ptr` / `perm_init` / `perm_value_eq` / `valid_indices` wrappers stay,
+since `SliceIndexVerus` is generic over `T: ?Sized`.
+Their defining axioms for `[T]` and `str` are restored on the new API and added back to `group_slice_index_specs`.
+`perm_init` includes `wf`:
+`SliceIndexVerus::output_ptr_ref` only requires `perm_init(perm)`,
+and the `ptr_ref_slice` / `ptr_ref_str` it calls now require `perm.wf()`.
+`valid_indices_slice_points_to` (currently uninterpreted) gets a definition.
+
+```rust
+pub open spec fn valid_indices_slice_points_to<T>(start: int, end: int, slice: &PointsTo<[T]>) -> bool {
+    0 <= start <= end <= slice.len()
+}
+
+pub broadcast axiom fn def_valid_indices_str_points_to(start: int, end: int, slice: &PointsTo<str>)
+    ensures
+        valid_indices_str(start, end, slice.typed_value().value_ref()) <==> #[trigger] valid_indices(
+            start,
+            end,
+            slice,
+        ),
+;
+
+pub broadcast axiom fn def_perm_ptr_slice<T>(perm: &PointsTo<[T]>)
+    ensures
+        #[trigger] perm_ptr(perm) == perm.ptr(),
+;
+
+pub broadcast axiom fn def_perm_ptr_str(perm: &PointsTo<str>)
+    ensures
+        #[trigger] perm_ptr(perm) == perm.ptr(),
+;
+
+pub broadcast axiom fn def_perm_init_slice<T>(perm: &PointsTo<[T]>)
+    ensures
+        #[trigger] perm_init(perm) <==> perm.is_valid() && perm.wf(),
+;
+
+pub broadcast axiom fn def_perm_init_str(perm: &PointsTo<str>)
+    ensures
+        #[trigger] perm_init(perm) <==> perm.is_valid() && perm.wf(),
+;
+
+pub broadcast axiom fn def_perm_value_eq_slice<T>(perm: &PointsTo<[T]>, val: &[T])
+    ensures
+        #[trigger] perm_value_eq(perm, val) <==> perm.typed_value().value_ref()@ == val@,
+;
+
+pub broadcast axiom fn def_perm_value_eq_str(perm: &PointsTo<str>, val: &str)
+    ensures
+        #[trigger] perm_value_eq(perm, val) <==> perm.typed_value().value_ref() == val,
+;
+```
+
+**Shared-reference transmutes** (`proofs/str.rs`).
+`transmute_shared_ref_str_u8_slice` and `transmute_shared_ref_u8_slice_str` go back from axioms to proofs, with unchanged specs:
+`SharedReference<str>::points_to`, then `PointsTo<str>::as_bytes`, then `ptr_ref2_slice_ghost`;
+and `SharedReference<[u8]>::points_to`, then `PointsTo<str>::from_bytes_ref`, then `ptr_ref2_str_ghost`.
+`src.value().inv()` gives the UTF-8 that `as_bytes` may need (see the `as_bytes_tracked` question above).
+
 ## Inherent impls
 
 What stays outside the traits, by impl block, after all phases.
