@@ -41,7 +41,7 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
             return Err(error(
                 &function.span,
                 &format!(
-                    "safe API violation: 'requires' clause is nontrivial for function `{:}`; unverified, safe client code may be able to call this function without satisfying the precondition",
+                    "safe API violation: `requires` clause is nontrivial for function `{:}`; unverified, safe client code may be able to call this function without satisfying the precondition",
                     fun_as_friendly_rust_name(&function.x.name),
                 ),
             ));
@@ -56,7 +56,7 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
             return Err(error(
                 &function.span,
                 &format!(
-                    "safe API violation: 'requires' clause is nontrivial for provided method `{:}`; unverified, safe client code may be able to call this function without satisfying the precondition",
+                    "safe API violation: `requires` clause is nontrivial for provided method `{:}`; unverified, safe client code may be able to call this function without satisfying the precondition",
                     fun_as_friendly_rust_name(&function.x.name),
                 ),
             ));
@@ -70,7 +70,7 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
                     return Err(error(
                         &function.span,
                         &format!(
-                            "safe API violation: 'requires' clause is nontrivial for function `{:}`; unverified, safe client code may be able to call this function without satisfying the precondition",
+                            "safe API violation: `requires` clause is nontrivial for function `{:}`; unverified, safe client code may be able to call this function without satisfying the precondition",
                             fun_as_friendly_rust_name(&function.x.name),
                         ),
                     ));
@@ -89,7 +89,7 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
                 return Err(error(
                     &function.span,
                     &format!(
-                        "safe API violation: 'unwind' clause is nontrivial for trait function `{:}`; unverified, safe client code may be able to implement this trait without meeting these unwinding requirements",
+                        "safe API violation: `unwind` clause is nontrivial for trait function `{:}`; unverified, safe client code may be able to implement this trait without meeting these unwinding requirements",
                         fun_as_friendly_rust_name(&function.x.name),
                     ),
                 ));
@@ -102,7 +102,7 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
                 return Err(error(
                     &function.span,
                     &format!(
-                        "safe API violation: 'invariant' clause is nontrivial for trait function `{:}`; unverified, safe client code may be able to implement this trait without obeying invariant-reentrancy requirements",
+                        "safe API violation: `invariant` clause is nontrivial for trait function `{:}`; unverified, safe client code may be able to implement this trait without obeying invariant-reentrancy requirements",
                         fun_as_friendly_rust_name(&function.x.name),
                     ),
                 ));
@@ -118,7 +118,7 @@ pub(crate) fn err_for_trait_ensures(span: &Span, fun: &Fun) -> VirErr {
     return error(
         span,
         &format!(
-            "safe API violation: 'ensures' clause is nontrivial for trait function `{:}`; unverified, safe client code may be able to implement this trait without satisfying the postcondition",
+            "safe API violation: `ensures` clause is nontrivial for trait function `{:}`; unverified, safe client code may be able to implement this trait without satisfying the postcondition",
             fun_as_friendly_rust_name(fun),
         ),
     );
@@ -202,7 +202,7 @@ pub fn axioms_for_default_spec_fns(
     if cur_function.x.decrease.len() > 0 {
         return Err(error(
             &cur_function.span,
-            "Internal Verus Error (check-api-safety): decreases clause in trait function",
+            "Internal Verus Error (check-api-safety): `decreases` clause in trait function",
         ));
     }
 

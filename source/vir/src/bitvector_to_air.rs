@@ -468,19 +468,19 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::IntToReal => {
                 return Err(error(
                     &exp.span,
-                    "int-to-real coercion not supported in bit_vector assert",
+                    "int-to-real coercion not supported in `bit_vector` assert",
                 ));
             }
             UnaryOp::RealToInt => {
                 return Err(error(
                     &exp.span,
-                    "real-to-int coercion not supported in bit_vector assert",
+                    "real-to-int coercion not supported in `bit_vector` assert",
                 ));
             }
             UnaryOp::FloatToBits => {
                 return Err(error(
                     &exp.span,
-                    "float-to-bits coercion not supported in bit_vector assert",
+                    "float-to-bits coercion not supported in `bit_vector` assert",
                 ));
             }
             UnaryOp::HeightTrigger => panic!("internal error: unexpected HeightTrigger"),
@@ -494,13 +494,13 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::NewStrLit => {
                 return Err(error(
                     &exp.span,
-                    "strslice_new_strlit not supported in bit_vector assert",
+                    "`strslice_new_strlit` not supported in `bit_vector` assert",
                 ));
             }
             UnaryOp::StrLen => {
                 return Err(error(
                     &exp.span,
-                    "string slice length not supported in bit_vector assert",
+                    "string slice length not supported in `bit_vector` assert",
                 ));
             }
             UnaryOp::CastToInteger => {
@@ -972,21 +972,21 @@ impl BvTyp {
     fn expect_bool(&self, span: &Span) -> Result<(), VirErr> {
         match self {
             BvTyp::Bool => Ok(()),
-            _ => Err(error(span, format!("Verus Internal Error: expect_bool"))),
+            _ => Err(error(span, format!("Verus Internal Error: `expect_bool`"))),
         }
     }
 
     fn expect_bv_signed(&self, span: &Span) -> Result<(), VirErr> {
         match self {
             BvTyp::Bv(_, Extend::Sign) => Ok(()),
-            _ => Err(error(span, format!("Verus Internal Error: expect_bv_signed"))),
+            _ => Err(error(span, format!("Verus Internal Error: `expect_bv_signed`"))),
         }
     }
 
     fn expect_bv(&self, span: &Span) -> Result<(u32, Extend), VirErr> {
         match self {
             BvTyp::Bv(w, extend) => Ok((*w, *extend)),
-            _ => Err(error(span, format!("Verus Internal Error: expect_bv"))),
+            _ => Err(error(span, format!("Verus Internal Error: `expect_bv`"))),
         }
     }
 
@@ -1017,7 +1017,7 @@ fn width_of_int_range(state: &mut State, span: &Span, range: &IntRange) -> Resul
             Ok(bitwidth_exact(state, IntegerTypeBitwidth::ArchWordSize))
         }
         IntRange::Int | IntRange::Nat => {
-            Err(error(span, format!("symbolic int/nat not supported in bit-vector query")))
+            Err(error(span, format!("symbolic `int`/`nat` not supported in bit-vector query")))
         }
         IntRange::Char => Err(error(span, format!("char not supported in bit-vector query"))),
     }
@@ -1059,9 +1059,9 @@ fn bv_typ_for_vir_typ(state: &mut State, span: &Span, typ: &Typ) -> Result<BvTyp
         Err(error(
             span,
             format!(
-                "bit_vector prover cannot handle type `{:}`", crate::ast_util::typ_to_diagnostic_str(typ)
+                "`bit_vector` prover cannot handle type `{:}`", crate::ast_util::typ_to_diagnostic_str(typ)
             ),
-        ).help("bit_vector can only handle variables of type `bool`, fixed-width integers, or floating point"))
+        ).help("`bit_vector` can only handle variables of type `bool`, fixed-width integers, or floating point"))
     }
 }
 

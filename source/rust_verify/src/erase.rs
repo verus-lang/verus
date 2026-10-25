@@ -281,7 +281,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             dbg!(mode);
             return Err(vir::messages::error(
                 span,
-                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, var lookup failed",
+                "Verus Internal Error: `setup_verus_ctxt_for_thir_erasure` failed, var lookup failed",
             ));
         }
         for hir_id in &local_id_to_hir[&span.id] {
@@ -302,7 +302,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             dbg!(mode);
             return Err(vir::messages::error(
                 span,
-                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, binder lookup failed",
+                "Verus Internal Error: `setup_verus_ctxt_for_thir_erasure` failed, binder lookup failed",
             ));
         }
         for hir_id in &binder_id_to_hir[&span.id] {
@@ -358,7 +358,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             dbg!(mode);
             return Err(vir::messages::error(
                 span,
-                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, ctor lookup failed",
+                "Verus Internal Error: `setup_verus_ctxt_for_thir_erasure` failed, ctor lookup failed",
             ));
         }
         for hir_id in &ctor_id_to_hir[&span.id] {

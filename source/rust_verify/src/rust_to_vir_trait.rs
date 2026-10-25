@@ -279,16 +279,16 @@ pub(crate) fn translate_trait<'tcx>(
             return err_span(
                 trait_span,
                 format!(
-                    "external_trait_private_bound {:?} is not a private non-local bound for this trait",
+                    "`external_trait_private_bound` {:?} is not a private non-local bound for this trait",
                     bound,
                 ),
             );
         }
         if !crate::rust_to_vir_func::predicates_match(ctxt.tcx, &preds1, &preds2) {
             let err =
-                err_span_bare(trait_span, "external_trait_specification trait bound mismatch")
+                err_span_bare(trait_span, "`external_trait_specification` trait bound mismatch")
                     .help(format!(
-                        "external_trait_specification requires trait bounds to match exactly \
+                        "`external_trait_specification` requires trait bounds to match exactly \
                     but the proxy's trait bounds are:\n{}\nthe external trait bounds are:\n{}",
                         preds2.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n"),
                         preds1.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n")
@@ -327,7 +327,7 @@ pub(crate) fn translate_trait<'tcx>(
         if crate_items.is_trait_item_external(*trait_item_id) {
             return err_span(
                 *span,
-                "a trait item cannot be marked 'external' - perhaps you meant to mark the entire trait external?",
+                "a trait item cannot be marked `external` - perhaps you meant to mark the entire trait external?",
             );
         }
 
@@ -787,7 +787,7 @@ fn make_trait_decl<'tcx>(
     if !matches!(method_info.body_id, CheckItemFnEither::ParamNames(_)) {
         return Err(error(
             &spec_method.span,
-            "a VERUS_SPEC function should be paired with a function that has no body",
+            "a `VERUS_SPEC` function should be paired with a function that has no body",
         ));
     }
 

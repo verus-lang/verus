@@ -1209,10 +1209,10 @@ fn eval_array_index(
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
     state.iterations += 1;
     if state.iterations > ctx.max_iterations {
-        return Err(error(&exp.span, "assert_by_compute timed out"));
+        return Err(error(&exp.span, "`assert_by_compute` timed out"));
     }
     if state.depth > ctx.max_depth {
-        return Err(error(&exp.span, "assert_by_compute exceeded maximum recursion depth"));
+        return Err(error(&exp.span, "`assert_by_compute` exceeded maximum recursion depth"));
     }
     state.check_time_warning(ctx);
 
@@ -2238,7 +2238,7 @@ fn eval_expr_launch(
                 Err(error(
                     &exp.span,
                     &format!(
-                        "assert_by_compute_only failed to simplify down to true; instead got: {}",
+                        "`assert_by_compute_only` failed to simplify down to true; instead got: {}",
                         res.x.to_user_string(&ctx.global)
                     )
                     .to_string(),

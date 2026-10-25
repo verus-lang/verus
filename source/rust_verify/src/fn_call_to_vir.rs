@@ -541,13 +541,13 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::OpenInvariantBlock(_) => err_span(
             expr.span,
             format!(
-                "{} should never be used except through open_atomic_invariant or open_local_invariant macro",
+                "{} should never be used except through `open_atomic_invariant` or `open_local_invariant` macro",
                 f_name
             ),
         ),
         VerusItem::OpenAtomicUpdate(_) => err_span(
             expr.span,
-            format!("{f_name} should never be used except through open_atomic_update macro"),
+            format!("{f_name} should never be used except through `open_atomic_update` macro"),
         ),
         VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Decimal)) => {
             record_spec_fn(bctx, expr);
@@ -619,7 +619,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 mk_expr(ExprX::Const(const_int_from_string(s.to_string())))
             } else {
-                err_span(arg.span, "spec_literal_* requires a string literal")
+                err_span(arg.span, "`spec_literal_*` requires a string literal")
             }
         }
         VerusItem::Spec(spec_item) => {
@@ -672,7 +672,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     unsupported_err_unless!(
                         args_len == 1,
                         expr.span,
-                        "expected requires/recommends",
+                        "expected `requires`/`recommends`",
                         &args
                     );
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
@@ -695,7 +695,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                                 _ => {
                                     return err_span(
                                         arg.span,
-                                        "requires/recommends needs a bool expression",
+                                        "`requires`/`recommends` needs a `bool` expression",
                                     );
                                 }
                             },
@@ -723,7 +723,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let ExprX::InvMask(mask_spec) = &inner.x else {
                         return err_span(
                             expr.span,
-                            "malformed opens_invariants item; \
+                            "malformed `opens_invariants` item; \
                             expected invariant mask expression",
                         );
                     };
@@ -754,7 +754,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         let vir_arg = expr_to_vir_consume(&bctx, arg)?;
                         let typ = undecorate_typ(&vir_arg.typ);
                         let TypX::Int(..) = &*typ else {
-                            return err_span(arg.span, "invariant mask must be type int");
+                            return err_span(arg.span, "invariant mask must be type `int`");
                         };
 
                         vir_args.push(vir_arg);
@@ -852,14 +852,14 @@ fn verus_item_to_vir<'tcx, 'a>(
                         };
                         record_loop_spec(bctx, expr, loop_hir_id, kind);
                     } else {
-                        return err_span(expr.span, "invariant is only expected inside a loop");
+                        return err_span(expr.span, "`invariant` is only expected inside a loop");
                     }
 
                     unsupported_err_unless!(args_len == 1, expr.span, "expected invariant", &args);
                     let subargs = extract_array(args[0]);
                     for arg in &subargs {
                         if !matches!(bctx.types.expr_ty_adjusted(arg).kind(), TyKind::Bool) {
-                            return err_span(arg.span, "invariant needs a bool expression");
+                            return err_span(arg.span, "`invariant` needs a `bool` expression");
                         }
                     }
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
@@ -1016,7 +1016,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::Quant(quant_item) => {
             record_spec_fn_pure_args_only(bctx, expr);
-            unsupported_err_unless!(args_len == 1, expr.span, "expected forall/exists", &args);
+            unsupported_err_unless!(args_len == 1, expr.span, "expected `forall`/`exists`", &args);
             let quant = match quant_item {
                 QuantItem::Forall => air::ast::Quant::Forall,
                 QuantItem::Exists => air::ast::Quant::Exists,
@@ -1064,7 +1064,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 Ok(expr)
             }
             DirectiveItem::RevealHideInternalPath => {
-                err_span(expr.span, "reveal_internal_path is only for internal verus use")
+                err_span(expr.span, "`reveal_internal_path` is only for internal verus use")
             }
             DirectiveItem::RevealStrlit => {
                 record_spec_fn_pure_args_only(bctx, expr);
@@ -1083,7 +1083,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 unsupported_err_unless!(
                     args_len == 1,
                     expr.span,
-                    "reveal_byteslit expects one argument"
+                    "`reveal_byteslit` expects one argument"
                 );
                 let bytes = if let ExprKind::Lit(lit) = &args[0].kind {
                     match lit.node {
@@ -1251,14 +1251,22 @@ fn verus_item_to_vir<'tcx, 'a>(
                 mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind), arg))
             }
             ExprItem::ClosureToFnSpec | ExprItem::ClosureToFnProof => {
-                unsupported_err_unless!(args_len == 1, expr.span, "expected closure_to_fn", &args);
+                unsupported_err_unless!(
+                    args_len == 1,
+                    expr.span,
+                    "expected `closure_to_fn`",
+                    &args
+                );
                 if !bctx.in_ghost {
                     if matches!(expr_item, ExprItem::ClosureToFnSpec) {
-                        return err_span(args[0].span, "cannot use spec_fn closure in 'exec' mode");
+                        return err_span(
+                            args[0].span,
+                            "cannot use `spec_fn` closure in `exec` mode",
+                        );
                     } else {
                         return err_span(
                             args[0].span,
-                            "cannot use proof_fn closure in 'exec' mode",
+                            "cannot use `proof_fn` closure in `exec` mode",
                         );
                     }
                 }
@@ -1311,7 +1319,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         }
                         _ => unsupported_err!(
                             expr.span,
-                            "is_smaller_than_lexicographic requires tuple arguments"
+                            "`is_smaller_than_lexicographic` requires tuple arguments"
                         ),
                     }
                 } else {
@@ -1326,7 +1334,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 )
             }
             ExprItem::DefaultEnsures => {
-                return err_span(expr.span, "default_ensures not allowed here");
+                return err_span(expr.span, "`default_ensures` not allowed here");
             }
             ExprItem::IsVariant => {
                 record_spec_fn(bctx, expr);
@@ -1426,7 +1434,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 },
             );
 
-            unsupported_err_unless!(args_len == 1, expr.span, "expected Ghost/Tracked", &args);
+            unsupported_err_unless!(args_len == 1, expr.span, "expected `Ghost`/`Tracked`", &args);
             let arg = &args[0];
             if get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id))
                 == Some(GhostBlockAttr::Wrapper)
@@ -1487,7 +1495,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                     mk_expr(ExprX::AssertAssume { is_assume: false, expr: exp, msg: None })
                 }
                 AssertItem::AssertBy => {
-                    unsupported_err_unless!(args_len == 2, expr.span, "expected assert_by", &args);
+                    unsupported_err_unless!(
+                        args_len == 2,
+                        expr.span,
+                        "expected `assert_by`",
+                        &args
+                    );
                     let vars = Arc::new(vec![]);
                     let require = bctx.spanned_typed_new(
                         expr.span,
@@ -1502,7 +1515,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     unsupported_err_unless!(
                         args_len == 1,
                         expr.span,
-                        "expected assert_by_compute",
+                        "expected `assert_by_compute`",
                         &args
                     );
                     let exp = expr_to_vir_consume(bctx, &args[0])?;
@@ -1512,7 +1525,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     unsupported_err_unless!(
                         args_len == 1,
                         expr.span,
-                        "expected assert_by_compute_only",
+                        "expected `assert_by_compute_only`",
                         &args
                     );
                     let exp = expr_to_vir_consume(bctx, &args[0])?;
@@ -1522,7 +1535,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     unsupported_err_unless!(
                         args_len == 1,
                         expr.span,
-                        "expected assert_nonlinear_by/assert_bitvector_by with one argument",
+                        "expected `assert_nonlinear_by`/`assert_bitvector_by` with one argument",
                         &args
                     );
                     let bctx = bctx.set_header_setting(HeaderSetting::Assert);
@@ -1544,7 +1557,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     if header.ensure.0.len() == 0 {
                         return err_span(
                             expr.span,
-                            "assert_nonlinear_by/assert_bitvector_by must have at least one ensures",
+                            "`assert_nonlinear_by`/`assert_bitvector_by` must have at least one `ensures`",
                         );
                     }
                     assert!(header.ensure.1.len() == 0);
@@ -1556,7 +1569,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     if expr_vattrs.spinoff_prover {
                         return err_span(
                             expr.span,
-                            "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith and assert by bit_vector",
+                            "`#[verifier::spinoff_prover]` is implied for assert by `nonlinear_arith` and assert by `bit_vector`",
                         );
                     }
                     mk_expr(ExprX::AssertQuery {
@@ -1574,7 +1587,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     unsupported_err_unless!(
                         args_len == 1,
                         expr.span,
-                        "expected assert_forall_by",
+                        "expected `assert_forall_by`",
                         &args
                     );
                     extract_assert_forall_by(bctx, expr.span, args[0])
@@ -1604,9 +1617,14 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::UseTypeInvariant => {
             record_misc(bctx, expr, MiscCall::UseTypeInvariant);
-            unsupported_err_unless!(args_len == 1, expr.span, "expected use_type_invariant", &args);
+            unsupported_err_unless!(
+                args_len == 1,
+                expr.span,
+                "expected `use_type_invariant`",
+                &args
+            );
             if !bctx.in_ghost {
-                return err_span(expr.span, "use_type_invariant must be in a 'proof' block");
+                return err_span(expr.span, "`use_type_invariant` must be in a `proof` block");
             }
             let exp = expr_to_vir_consume(bctx, &args[0])?;
 
@@ -1624,7 +1642,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::WithTriggers => {
             record_spec_fn(bctx, expr);
-            unsupported_err_unless!(args_len == 2, expr.span, "expected with_triggers", &args);
+            unsupported_err_unless!(args_len == 2, expr.span, "expected `with_triggers`", &args);
             let triggers_tuples = expr_to_vir_consume(bctx, args[0])?;
             let body = expr_to_vir_consume(bctx, args[1])?;
             let mut trigs: Vec<vir::ast::Exprs> = Vec::new();
@@ -1638,14 +1656,14 @@ fn verus_item_to_vir<'tcx, 'a>(
                             _ => {
                                 return err_span(
                                     expr.span,
-                                    "expected tuple arguments to with_triggers",
+                                    "expected tuple arguments to `with_triggers`",
                                 );
                             }
                         }
                     }
                 }
                 _ => {
-                    return err_span(expr.span, "expected tuple arguments to with_triggers");
+                    return err_span(expr.span, "expected tuple arguments to `with_triggers`");
                 }
             }
             let triggers = Arc::new(trigs);
@@ -1814,7 +1832,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     mk_expr(ExprX::Unary(UnaryOp::IeeeFloat(vir::ast::IeeeFloatUnaryOp::Neg), varg))
                 }
                 _ => {
-                    return err_span(expr.span, "spec_neg expected int or real or float type");
+                    return err_span(expr.span, "`spec_neg` expected int or real or float type");
                 }
             }
         }
@@ -2046,7 +2064,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     return Err(vir_err_span_str(expr.span, "mismatched types; types must be compatible to use == or !=")
                         .secondary_label(&crate::spans::err_air_span(args[0].span), format!("this is `{}`", typ_to_diagnostic_str(&t1)))
                         .secondary_label(&crate::spans::err_air_span(args[1].span), format!("this is `{}`", typ_to_diagnostic_str(&t2)))
-                        .help("decorations (like &,Ghost,Tracked,Box,Rc,...) are transparent for == or != in spec code"));
+                        .help("decorations (like `&`, `Ghost`, `Tracked`, `Box`, `Rc`, ...) are transparent for `==` or `!=` in spec code"));
                 }
             }
 
@@ -2337,7 +2355,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         item @ (VerusItem::HasResolved | VerusItem::HasResolvedUnsized) => {
             record_spec_fn_pure_args_only(bctx, expr);
             if !bctx.in_ghost {
-                return err_span(expr.span, "has_resolved must be in a 'proof' block");
+                return err_span(expr.span, "`has_resolved` must be in a `proof` block");
             }
             let bctx = BodyCtxt { in_explicit_prophecy_node: true, ..bctx.clone() };
             let exp = expr_to_vir_consume(&bctx, &args[0])?;
@@ -2347,7 +2365,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 VerusItem::HasResolvedUnsized => match arg_typ.kind() {
                     TyKind::Ref(_, t, rustc_middle::ty::Mutability::Not) => *t,
                     _ => {
-                        return err_span(expr.span, "has_resolved_unsized expects shared ref");
+                        return err_span(expr.span, "`has_resolved_unsized` expects shared ref");
                     }
                 },
                 _ => unreachable!(),
@@ -2367,7 +2385,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 return err_span(
                     expr.span,
                     format!(
-                        "to use `{name}`, disable mut-ref backwards-compatibility (add #[verifier::deprecated_postcondition_mut_ref_style(false)] to the function)"
+                        "to use `{name}`, disable mut-ref backwards-compatibility (add `#[verifier::deprecated_postcondition_mut_ref_style(false)]` to the function)"
                     ),
                 );
             }
@@ -2645,11 +2663,11 @@ fn extract_quant<'tcx>(
             )?;
             let typ = Arc::new(TypX::Bool);
             if !matches!(bctx.types.expr_ty_adjusted(expr).kind(), TyKind::Bool) {
-                return err_span(expr.span, "forall/exists needs a bool expression");
+                return err_span(expr.span, "`forall`/`exists` needs a `bool` expression");
             }
             Ok(bctx.spanned_typed_new(span, &typ, ExprX::Quant(quant, Arc::new(binders), vir_expr)))
         }
-        _ => err_span(expr.span, "argument to forall/exists must be a closure"),
+        _ => err_span(expr.span, "argument to `forall`/`exists` must be a closure"),
     }
 }
 
@@ -2683,7 +2701,7 @@ fn get_ensures_arg<'tcx>(
         }
         Ok((default_ensures, vir_expr))
     } else {
-        err_span(expr.span, "ensures needs a bool expression")
+        err_span(expr.span, "`ensures` needs a `bool` expression")
     }
 }
 
@@ -2718,13 +2736,13 @@ fn extract_assert_forall_by<'tcx>(
             )?;
             assert!(header.ensure.1.len() == 0);
             if header.require.len() > 1 {
-                return err_span(expr.span, "assert_forall_by can have at most one requires");
+                return err_span(expr.span, "`assert_forall_by` can have at most one `requires`");
             }
             if header.ensure.0.len() != 1 {
-                return err_span(expr.span, "assert_forall_by must have exactly one ensures");
+                return err_span(expr.span, "`assert_forall_by` must have exactly one `ensures`");
             }
             if header.ensure_id_typ.is_some() {
-                return err_span(expr.span, "ensures clause must be a bool");
+                return err_span(expr.span, "`ensures` clause must be a `bool`");
             }
             let typ = unit_typ();
             let vars = Arc::new(binders);
@@ -2741,7 +2759,7 @@ fn extract_assert_forall_by<'tcx>(
             let forallx = ExprX::AssertBy { vars, require, ensure, proof: vir_expr };
             Ok(bctx.spanned_typed_new(span, &typ, forallx))
         }
-        _ => err_span(expr.span, "argument to forall/exists must be a closure"),
+        _ => err_span(expr.span, "argument to `forall`/`exists` must be a closure"),
     }
 }
 
@@ -2783,7 +2801,7 @@ fn extract_choose<'tcx>(
                     return err_span(
                         expr.span,
                         format!(
-                            "expected choose_tuple to have type {:?}, found type {:?}",
+                            "expected `choose_tuple` to have type {:?}, found type {:?}",
                             typ, expr_typ
                         ),
                     );
@@ -2793,7 +2811,7 @@ fn extract_choose<'tcx>(
                 if params.len() != 1 {
                     return err_span(
                         expr.span,
-                        "choose expects exactly one parameter (use choose_tuple for multiple parameters)",
+                        "choose expects exactly one parameter (use `choose_tuple` for multiple parameters)",
                     );
                 }
                 vars[0].clone()
@@ -3144,7 +3162,7 @@ fn check_union_field<'tcx>(
     };
 
     if !adt.is_union() {
-        return err_span(span, format!("get_union_field expects a union type"));
+        return err_span(span, format!("`get_union_field` expects a union type"));
     }
 
     let variant = adt.non_enum_variant();

@@ -869,7 +869,7 @@ impl Verifier {
                     }
                     let mut msg = format!("{}: resource limit (rlimit) exceeded", context.desc);
                     if !self.args.profile && !self.args.profile_all && !self.args.capture_profiles {
-                        msg.push_str("; consider rerunning with --profile for more details");
+                        msg.push_str("; consider rerunning with `--profile` for more details");
                     }
                     if let Some(level) = level {
                         reporter.report(&message(level, msg, &context.span).to_any());
@@ -1594,8 +1594,8 @@ impl Verifier {
                                     reporter.report(
                                         &warning(
                                             &cmds.context.span,
-                                            "#[verifier::rlimit] is not supported with your current solver; \
-                                             the global --rlimit applies instead",
+                                            "`#[verifier::rlimit]` is not supported with your current solver; \
+                                             the global `--rlimit` applies instead",
                                         )
                                         .to_any(),
                                     );
@@ -2516,7 +2516,7 @@ impl Verifier {
 
         if self.args.profile && self.count_errors == 0 {
             let msg = note_bare(
-                "--profile reports prover performance data only when rlimits are exceeded, use --profile-all to always report profiler results",
+                "`--profile` reports prover performance data only when rlimits are exceeded, use `--profile-all` to always report profiler results",
             );
             reporter.report(&msg.to_any());
         }
@@ -2568,13 +2568,13 @@ impl Verifier {
             let msg = "Verus printed one or more automatically chosen quantifier triggers\n\
                 because it had low confidence in the chosen triggers.\n\
                 To suppress these messages, do one of the following:\n  \
-                (1) manually annotate a single desired trigger using #[trigger]\n      \
-                (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),\n  \
-                (2) manually annotate multiple desired triggers using #![trigger ...]\n      \
-                (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),\n  \
-                (3) accept the automatically chosen trigger using #![auto]\n      \
-                (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))\n  \
-                (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.\n\
+                (1) manually annotate a single desired trigger using `#[trigger]`\n      \
+                (example: `forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)`),\n  \
+                (2) manually annotate multiple desired triggers using `#![trigger ...]`\n      \
+                (example: `forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)`),\n  \
+                (3) accept the automatically chosen trigger using `#![auto]`\n      \
+                (example: `forall|i: int, j: int| #![auto] f(i) && g(i) && h(j)`)\n  \
+                (4) use the `--triggers-mode silent` command-line option to suppress all printing of triggers.\n\
                 (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;\n\
                 the theorem prover instantiates a quantifier whenever some expression matches the\n\
                 pattern specified by one of the quantifier's triggers.)\

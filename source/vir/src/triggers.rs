@@ -175,9 +175,10 @@ fn get_free_vars(exp: &Exp) -> Result<HashSet<VarIdent>, VirErr> {
                 free_vars.insert(x.clone());
                 Ok(())
             }
-            ExpX::Bind(_, _) => {
-                Err(error(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose"))
-            }
+            ExpX::Bind(_, _) => Err(error(
+                &exp.span,
+                "triggers cannot contain `let`/`forall`/`exists`/`lambda`/`choose`",
+            )),
             _ => Ok(()),
         },
         &mut |typ: &Typ, free_vars: &mut HashSet<VarIdent>, _scope_map| match &**typ {
@@ -244,7 +245,7 @@ fn check_trigger_expr(
             {
                 return Err(error(
                     &exp.span,
-                    "let variables in triggers not supported, use #![trigger ...] instead",
+                    "let variables in triggers not supported, use `#![trigger ...]` instead",
                 ));
             }
             Ok(())
@@ -311,7 +312,7 @@ fn check_trigger_expr(
                 Ok(())
             }
             UnaryOpr::LoopIsolationBoundary(..) => {
-                Err(error(&exp.span, "triggers cannot contain loop_isolation_boundary"))
+                Err(error(&exp.span, "triggers cannot contain `loop_isolation_boundary`"))
             }
         },
         ExpX::Binary(op, arg1, arg2) => {
@@ -322,7 +323,7 @@ fn check_trigger_expr(
                 }
                 HeightCompare { .. } => Err(error(
                     &exp.span,
-                    "triggers cannot contain interior is_smaller_than expressions",
+                    "triggers cannot contain interior `is_smaller_than` expressions",
                 )),
                 Inequality(_) => Err(error(&exp.span, "triggers cannot contain inequalities")),
                 StrGetChar | Bitwise(..) => {
@@ -347,11 +348,14 @@ fn check_trigger_expr(
             check_trigger_expr_arg(state, arg2);
             Ok(())
         }
-        ExpX::If(_, _, _) => Err(error(&exp.span, "triggers cannot contain if/else")),
-        ExpX::WithTriggers(..) => Err(error(&exp.span, "triggers cannot contain #![trigger ...]")),
-        ExpX::Bind(_, _) => {
-            Err(error(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose"))
+        ExpX::If(_, _, _) => Err(error(&exp.span, "triggers cannot contain `if`/`else`")),
+        ExpX::WithTriggers(..) => {
+            Err(error(&exp.span, "triggers cannot contain `#![trigger ...]`"))
         }
+        ExpX::Bind(_, _) => Err(error(
+            &exp.span,
+            "triggers cannot contain `let`/`forall`/`exists`/`lambda`/`choose`",
+        )),
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
@@ -495,7 +499,7 @@ pub(crate) fn build_triggers(
         if state.auto_trigger != AutoType::None {
             return Err(error(
                 span,
-                "cannot use both manual triggers (#[trigger] or #![trigger ...]) and #![auto]",
+                "cannot use both manual triggers (`#[trigger]` or `#![trigger ...]`) and `#![auto]`",
             ));
         }
         let mut trigs: Vec<Trig> = Vec::new();

@@ -263,7 +263,7 @@ pub fn demote_external_traits(
                     || {
                         format!(
                             "cannot use external trait {} as a bound without declaring the trait \
-                            (use #[verifier::external_trait_specification] to declare the trait); \
+                            (use `#[verifier::external_trait_specification]` to declare the trait); \
                             this is a warning for now but will eventually be an error",
                             path_as_friendly_rust_name(trait_path)
                         )
@@ -869,20 +869,20 @@ pub(crate) fn redirect_calls_in_default_methods(
 
 fn check_modes(function: &Function, span: &Span) -> Result<(), VirErr> {
     if function.x.mode != Mode::Exec {
-        return Err(error(span, "function for external trait must have mode 'exec'"));
+        return Err(error(span, "function for external trait must have mode `exec`"));
     }
     for param in function.x.params.iter() {
         if param.x.mode != Mode::Exec {
             return Err(error(
                 span,
-                "function for external trait must have all parameters have mode 'exec'",
+                "function for external trait must have all parameters have mode `exec`",
             ));
         }
     }
     if function.x.outer_ret.x.mode != Mode::Exec {
         return Err(error(
             span,
-            "function for external trait must have all parameters have mode 'exec'",
+            "function for external trait must have all parameters have mode `exec`",
         ));
     }
     Ok(())
@@ -1806,7 +1806,7 @@ fn compute_dyn_compatibility(
         if f.x.mode == Mode::Spec {
             // No ensures clauses allowed for spec functions
             if f.x.ensure.0.len() + f.x.ensure.1.len() > 0 {
-                let reason = format!("spec fn {f_name} cannot have ensures");
+                let reason = format!("spec fn {f_name} cannot have `ensures`");
                 return Arc::new(DynCompatible::Reject { reason });
             }
         } else {

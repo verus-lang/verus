@@ -306,7 +306,7 @@ pub fn krate_infer_resolution(
         let Dt::Path(path) = datatype.x.name.clone() else {
             return Err(vec![crate::messages::internal_error(
                 &datatype.span,
-                "Dt::Tuple in datatypes before ast_simplify",
+                "Dt::Tuple in datatypes before `ast_simplify`",
             )]);
         };
         datatypes.insert(path, datatype.clone());
@@ -2044,7 +2044,7 @@ impl<'a> Builder<'a> {
             TypX::Datatype(dt, ..) => get_typ_inv_fun_dt(&self.locals.datatypes, dt),
             _ => {
                 dbg!(&p.typ);
-                self.errors.push(error(&p.span, "Verus Internal Error: get_typ_inv_fun failed"));
+                self.errors.push(error(&p.span, "Verus Internal Error: `get_typ_inv_fun` failed"));
                 None
             }
         }

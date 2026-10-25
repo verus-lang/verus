@@ -109,7 +109,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if !unwrap_parameter_allowed {
                             return Err(error(
                                 &stmt.span,
-                                "unwrap_parameter must appear before all other header declarations",
+                                "`unwrap_parameter` must appear before all other header declarations",
                             ));
                         }
                         is_unwrap_parameter = true;
@@ -118,14 +118,14 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                     HeaderExprX::NoMethodBody => {
                         return Err(error(
                             &stmt.span,
-                            "no_method_body() must be a method's final expression, with no semicolon",
+                            "`no_method_body()` must be a method's final expression, with no semicolon",
                         ));
                     }
                     HeaderExprX::Requires(es) => {
                         if require.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to requires allowed (use requires([e1, ..., en]) for multiple expressions)",
+                                "only one call to `requires` allowed (use `requires([e1, ..., en])` for multiple expressions)",
                             ));
                         }
                         allowed = allows.require();
@@ -135,7 +135,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if recommend.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to recommends allowed (use recommends([e1, ..., en]) for multiple expressions)",
+                                "only one call to `recommends` allowed (use `recommends([e1, ..., en])` for multiple expressions)",
                             ));
                         }
                         recommend = Some(es.clone());
@@ -144,19 +144,19 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if ensure.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions)",
+                                "only one call to `ensures` allowed (use `ensures([e1, ..., en])` for multiple expressions)",
                             ));
                         }
                         if es.1.len() == 0 {
                             allowed = allows.ensure();
                         } else if !allows.all() {
-                            return Err(error(&stmt.span, "default_ensures not allowed here"));
+                            return Err(error(&stmt.span, "`default_ensures` not allowed here"));
                         }
                         ensure = Some((id_typ.clone(), es.clone()));
                     }
                     HeaderExprX::Returns(e) => {
                         if returns.is_some() {
-                            return Err(error(&stmt.span, "only one call to returns allowed"));
+                            return Err(error(&stmt.span, "only one call to `returns` allowed"));
                         }
                         returns = Some(e.clone());
                     }
@@ -164,7 +164,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if invariant_except_break.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to invariant_except_break allowed (use invariant_except_break([e1, ..., en]) for multiple expressions)",
+                                "only one call to `invariant_except_break` allowed (use `invariant_except_break([e1, ..., en])` for multiple expressions)",
                             ));
                         }
                         allowed = allows.loops();
@@ -174,7 +174,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if invariant.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to invariant allowed (use invariant([e1, ..., en]) for multiple expressions)",
+                                "only one call to `invariant` allowed (use `invariant([e1, ..., en])` for multiple expressions)",
                             ));
                         }
                         allowed = allows.loops();
@@ -184,7 +184,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if decrease.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one decreases expression currently supported",
+                                "only one `decreases` expression currently supported",
                             ));
                         }
                         allowed = allows.loops();
@@ -194,7 +194,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if decrease_when.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one decreases_when expression currently supported",
+                                "only one `decreases_when` expression currently supported",
                             ));
                         }
                         decrease_when = Some(e.clone());
@@ -203,7 +203,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if decrease_by.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one decreases_by expression currently supported",
+                                "only one `decreases_by` expression currently supported",
                             ));
                         }
                         decrease_by = Some(path.clone());
@@ -234,7 +234,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         match unwind_spec {
                             None => {}
                             _ => {
-                                return Err(error(&stmt.span, "only one unwind spec allowed"));
+                                return Err(error(&stmt.span, "only one `unwind` spec allowed"));
                             }
                         }
                         unwind_spec = match &**header {
@@ -251,7 +251,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                             _ => {
                                 return Err(error(
                                     &stmt.span,
-                                    "only one open_visibility_qualifier declaration allowed",
+                                    "only one `open_visibility_qualifier` declaration allowed",
                                 ));
                             }
                         }
@@ -377,7 +377,7 @@ pub fn read_header(body: &mut Expr, allows: &HeaderAllows) -> Result<Header, Vir
                         if block.len() != 0 {
                             return Err(error(
                                 &e.span,
-                                "no statements are allowed before no_method_body()",
+                                "no statements are allowed before `no_method_body()`",
                             ));
                         }
                         expr = None;

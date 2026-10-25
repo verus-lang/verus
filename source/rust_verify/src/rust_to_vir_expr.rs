@@ -837,7 +837,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
                 ByRef::No => var_typ.clone(),
                 ByRef::Yes(_pinnedness, Mutability::Mut) => match &*var_typ {
                     TypX::MutRef(t) => t.clone(),
-                    _ => crate::internal_err!(pat.span, "expected &mut type"),
+                    _ => crate::internal_err!(pat.span, "expected `&mut` type"),
                 },
                 ByRef::Yes(_pinnedness, Mutability::Not) => match &*var_typ {
                     TypX::Decorate(TypDecoration::Ref, None, t) => t.clone(),
@@ -1015,7 +1015,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
         }
         PatKind::Slice(pats, inner, suffix) => {
             if inner.is_some() || suffix.len() > 0 {
-                unsupported_err!(pat.span, "slice patterns with '..'", pat);
+                unsupported_err!(pat.span, "slice patterns with `..`", pat);
             }
             let mut patterns = vec![];
             for pat in pats.iter() {
@@ -1869,7 +1869,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                                 if bctx.ctxt.no_vstd {
                                     return err_span(
                                         expr.span,
-                                        "coercing an array to a slice is not supported with --no-vstd",
+                                        "coercing an array to a slice is not supported with `--no-vstd`",
                                     );
                                 }
                                 let fun = vir::fun!(CrateId::Vstd => "raw_ptr", "cast_array_ptr_to_slice_ptr");
@@ -1923,7 +1923,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                                 if bctx.ctxt.no_vstd {
                                     return err_span(
                                         expr.span,
-                                        "coercing an array to a slice is not supported with --no-vstd",
+                                        "coercing an array to a slice is not supported with `--no-vstd`",
                                     );
                                 }
 
@@ -2166,7 +2166,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         } {
             return err_span(
                 expr.span,
-                "the attribute #[verifier::truncate] is only allowed on casts (you may need parentheses around the cast)",
+                "the attribute `#[verifier::truncate]` is only allowed on casts (you may need parentheses around the cast)",
             );
         }
     }
@@ -2330,7 +2330,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         if bctx.ctxt.no_vstd {
                             return err_span(
                                 expr.span,
-                                "non-static calls are not supported with --no-vstd",
+                                "non-static calls are not supported with `--no-vstd`",
                             );
                         }
 
@@ -2363,7 +2363,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             if arg_modes.len() != args.len() {
                                 return err_span(
                                     expr.span,
-                                    "could not read mode annotations from proof_fn type",
+                                    "could not read mode annotations from `proof_fn` type",
                                 );
                             }
                             let arg_modes = Arc::new(arg_modes);
@@ -2455,7 +2455,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Array(exprs) => {
             if bctx.ctxt.no_vstd {
-                return err_span(expr.span, "array literals are not supported with --no-vstd");
+                return err_span(expr.span, "array literals are not supported with `--no-vstd`");
             }
             let args: Result<Vec<vir::ast::Expr>, VirErr> =
                 exprs.iter().map(|e| expr_to_vir_consume(bctx, e)).collect();
@@ -2463,7 +2463,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Repeat(e, _array_len) => {
             if bctx.ctxt.no_vstd {
-                return err_span(expr.span, "array literals are not supported with --no-vstd");
+                return err_span(expr.span, "array literals are not supported with `--no-vstd`");
             }
             let ty = bctx.types.expr_ty_adjusted(e);
             let is_copy =
@@ -2583,7 +2583,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     if bctx.ctxt.no_vstd {
                         return err_span(
                             expr.span,
-                            "float `as` cast is not supported with --no-vstd",
+                            "float `as` cast is not supported with `--no-vstd`",
                         );
                     }
                     let fun = vir::fun!(CrateId::Vstd => "float", "float_cast");
@@ -4071,7 +4071,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     }
 
     if infer_mode && prophetic {
-        crate::internal_err!(pattern.span, "decl is marked infer_mode and prophetic");
+        crate::internal_err!(pattern.span, "decl is marked `infer_mode` and prophetic");
     }
 
     let proph_mode = if prophetic {
@@ -4195,7 +4195,7 @@ fn unwrap_parameter_to_vir<'tcx>(
             let stmt = bctx.spanned_new(stmt1.span, StmtX::Expr(expr));
             Ok(vec![stmt])
         }
-        _ => err_span(stmt1.span, "ill-formed unwrap_parameter header"),
+        _ => err_span(stmt1.span, "ill-formed `unwrap_parameter` header"),
     }
 }
 
@@ -4291,7 +4291,7 @@ pub(crate) fn get_open_visibility_qualifier<'tcx>(
 ) -> Result<vir::ast::Visibility, VirErr> {
     let item = ctxt.tcx.hir_item(item_id);
     if !matches!(&item.kind, ItemKind::Use(..)) {
-        crate::internal_err!(item.span, "open_visibility_qualifier should be on a 'use' item");
+        crate::internal_err!(item.span, "`open_visibility_qualifier` should be on a `use` item");
     }
 
     let hir_id = item.hir_id();
@@ -4312,7 +4312,7 @@ pub(crate) fn stmts_to_vir<'tcx>(
             if let Some(stmt2) = stmts.next() {
                 return Ok(Some(unwrap_parameter_to_vir(bctx, stmt, stmt2)?));
             } else {
-                return err_span(stmt.span, "ill-formed unwrap_parameter header");
+                return err_span(stmt.span, "ill-formed `unwrap_parameter` header");
             }
         }
         Ok(Some(stmt_to_vir(bctx, stmt)?))
@@ -4364,7 +4364,7 @@ pub(crate) fn closure_to_vir<'tcx>(
         unsupported_err_unless!(
             matches!(fn_decl.implicit_self(), rustc_hir::ImplicitSelfKind::None),
             closure_expr.span,
-            "implicit_self in closure"
+            "`implicit_self` in closure"
         );
         let body = bctx.ctxt.tcx.hir_body(*body_id);
 
@@ -4648,7 +4648,7 @@ pub(crate) fn deref_primitive<'tcx>(
             unsupported_err!(
                 span,
                 format!(
-                    "dereferencing a raw pointer. Currently, Verus only supports raw pointers through the permissioned raw_ptr interface: https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html"
+                    "dereferencing a raw pointer. Currently, Verus only supports raw pointers through the permissioned `raw_ptr` interface: https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html"
                 )
             );
         }
@@ -4853,7 +4853,7 @@ fn ctor_tail_get_taken_fields<'tcx>(
     let ExprKind::Struct(_, fields, _) = &expr.kind else {
         crate::internal_err!(
             expr.span,
-            "ctor_tail_get_taken_fields should only be called for ExprKind::Struct"
+            "`ctor_tail_get_taken_fields` should only be called for ExprKind::Struct"
         );
     };
 
@@ -5037,7 +5037,7 @@ fn loop_isolation_boundary_check(
     block: &vir::ast::Expr,
 ) -> Result<(bool, vir::ast::Label), VirErr> {
     let err =
-        || crate::internal_err!(span, "loop_isolation_boundary block not of the expected form");
+        || crate::internal_err!(span, "`loop_isolation_boundary` block not of the expected form");
 
     let ExprX::Block(stmts, Some(e)) = &block.x else {
         return err();

@@ -1217,7 +1217,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         _ => {
                             unsupported_err!(
                                 span,
-                                "expected first type argument of spec_fn to be a tuple"
+                                "expected first type argument of `spec_fn` to be a tuple"
                             );
                         }
                     };
@@ -1752,7 +1752,7 @@ fn get_proof_fn_one_mode<'tcx>(
         }
         _ => {}
     }
-    err_span(span, "could not read mode annotations from proof_fn type")
+    err_span(span, "could not read mode annotations from `proof_fn` type")
 }
 
 pub(crate) fn try_get_proof_fn_modes<'tcx>(
@@ -2231,7 +2231,7 @@ fn check_generics_bounds_main<'tcx>(
     }
 
     for mid_param in mid_params.iter().skip(skip_n) {
-        unsupported_err_unless!(!mid_param.pure_wrt_drop, span, "may_dangle attribute");
+        unsupported_err_unless!(!mid_param.pure_wrt_drop, span, "`may_dangle` attribute");
 
         match mid_param.kind {
             GenericParamDefKind::Type { .. } | GenericParamDefKind::Const { .. } => {}
@@ -2254,7 +2254,7 @@ fn check_generics_bounds_main<'tcx>(
             if error_on_polarity {
                 return err_span(
                     span,
-                    "the accept_recursive_type/reject_recursive_type attributes are not expected for this kind of item",
+                    "the `accept_recursive_type`/`reject_recursive_type` attributes are not expected for this kind of item",
                 );
             }
             accept_recs.remove(&param_name);
@@ -2267,7 +2267,7 @@ fn check_generics_bounds_main<'tcx>(
             _ => {
                 return err_span(
                     span,
-                    "type parameter can only have one of reject_recursive_types, reject_recursive_types_in_ground_variants, accept_recursive_types",
+                    "type parameter can only have one of `reject_recursive_types`, `reject_recursive_types_in_ground_variants`, `accept_recursive_types`",
                 );
             }
         };
@@ -2280,7 +2280,7 @@ fn check_generics_bounds_main<'tcx>(
             {
                 return err_span(
                     span,
-                    "in external_body datatype, each type parameter must be one of: #[verifier::reject_recursive_types], #[verifier::reject_recursive_types_in_ground_variants], #[verifier::accept_recursive_types] (reject_recursive_types is always safe to use)",
+                    "in `external_body` datatype, each type parameter must be one of: `#[verifier::reject_recursive_types]`, `#[verifier::reject_recursive_types_in_ground_variants]`, `#[verifier::accept_recursive_types]` (`reject_recursive_types` is always safe to use)",
                 );
             }
         }
@@ -2425,7 +2425,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
     collect_hidden_type_eqs: bool,
     hidden_type_eqs: &mut Vec<(Typ, Typ)>,
 ) -> Result<Option<OpaqueType>, VirErr> {
-    let unmatch_err_msg = "opaque type of assume_specification does not match the opaque type of the original function";
+    let unmatch_err_msg = "opaque type of `assume_specification` does not match the opaque type of the original function";
     let unmatch_err = || crate::internal_err!(span, unmatch_err_msg);
 
     match (

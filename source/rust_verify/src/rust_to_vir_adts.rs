@@ -314,7 +314,7 @@ pub(crate) fn check_item_union<'tcx>(
 
     let mode = get_mode(Mode::Exec, attrs);
     if mode != Mode::Exec {
-        return err_span(span, "a 'union' can only be exec-mode");
+        return err_span(span, "a `union` can only be exec-mode");
     }
     let VariantData::Struct { fields: hir_fields, recovered: _ } = variant_data else {
         return err_span(span, "check_item_union: wrong VariantData");
@@ -460,7 +460,7 @@ fn get_sized_constraint<'tcx>(
     loop {
         idx += 1;
         if idx > 10000 {
-            crate::internal_err!(span, "get_sized_constraint exceeded iterations");
+            crate::internal_err!(span, "`get_sized_constraint` exceeded iterations");
         }
 
         // Try normalizing (i.e., eliminating any projection types)
@@ -534,7 +534,7 @@ pub(crate) fn check_item_external<'tcx>(
 
     let mode = get_mode(Mode::Exec, attrs);
     if mode != Mode::Exec {
-        return err_span(span, "external_type_specification can only be used with exec types");
+        return err_span(span, "`external_type_specification` can only be used with exec types");
     }
 
     // The proxy_adt_def should look like:
@@ -544,12 +544,15 @@ pub(crate) fn check_item_external<'tcx>(
     let mut fields_iter = proxy_adt_def.all_fields();
     let first_field = match fields_iter.next() {
         None => {
-            return err_span(span, "external_type_specification should look like `struct X(Type)`");
+            return err_span(
+                span,
+                "`external_type_specification` should look like `struct X(Type)`",
+            );
         }
         Some(first_field) => first_field,
     };
     if fields_iter.next().is_some() {
-        return err_span(span, "external_type_specification should look like `struct X(Type)`");
+        return err_span(span, "`external_type_specification` should look like `struct X(Type)`");
     }
     let external_ty = ctxt.tcx.type_of(first_field.did).skip_binder();
     let (external_adt_def, substs_ref) = match external_ty.kind() {
@@ -698,7 +701,7 @@ pub(crate) fn check_item_external<'tcx>(
         if inner_vis != external_item_visibility {
             return err_span(
                 span,
-                "external_type_specification: private fields not supported for transparent datatypes (try 'external_body' instead?)",
+                "external_type_specification: private fields not supported for transparent datatypes (try `external_body` instead?)",
             );
         }
         let transparency = DatatypeTransparency::WhenVisible(inner_vis);
@@ -748,7 +751,7 @@ pub(crate) fn check_item_external<'tcx>(
         if total_vis != external_item_visibility {
             return err_span(
                 span,
-                "external_type_specification: private fields not supported for transparent datatypes (try 'external_body' instead?)",
+                "external_type_specification: private fields not supported for transparent datatypes (try `external_body` instead?)",
             );
         }
 
@@ -806,7 +809,7 @@ pub(crate) fn setup_type_invariants(
             if f.x.params.len() != 1 {
                 return Err(vir::messages::error(
                     &f.span,
-                    "#[verifier::type_invariant]: expected 1 parameter",
+                    "`#[verifier::type_invariant]`: expected 1 parameter",
                 ));
             }
             let param_typ = &f.x.params[0].x.typ;

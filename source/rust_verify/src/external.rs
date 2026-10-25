@@ -373,7 +373,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
             if !general_item.may_have_external_body() {
                 self.errors.push(crate::util::err_span_bare(
                     span,
-                    "#[verifier::external_body] doesn't make sense for this item type -- it is only applicable to functions and datatype declarations",
+                    "`#[verifier::external_body]` doesn't make sense for this item type -- it is only applicable to functions and datatype declarations",
                   ));
                 return;
             }
@@ -505,13 +505,13 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
         if eattrs.external_body {
             diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                 span,
-                format!("#[verifier::external_body] has no effect because item is already marked external"),
+                format!("`#[verifier::external_body]` has no effect because item is already marked external"),
             )));
         } else if eattrs.verify {
             diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                 span,
                 format!(
-                    "#[verifier::verify] has no effect because item is already marked external"
+                    "`#[verifier::verify]` has no effect because item is already marked external"
                 ),
             )));
         } else if eattrs.external_fn_specification {
@@ -528,7 +528,7 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
         } else if eattrs.external_type_specification {
             diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                 span,
-                format!("#[verifier::external_type_specification] has no effect because item is already marked external"),
+                format!("`#[verifier::external_type_specification]` has no effect because item is already marked external"),
             )));
             if eattrs.external {
                 errors.push(crate::util::err_span_bare(
@@ -541,7 +541,7 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
         } else if eattrs.external_trait_specification {
             diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                 span,
-                format!("#[verifier::external_trait_specification] has no effect because item is already marked external"),
+                format!("`#[verifier::external_trait_specification]` has no effect because item is already marked external"),
             )));
             if eattrs.external {
                 errors.push(crate::util::err_span_bare(

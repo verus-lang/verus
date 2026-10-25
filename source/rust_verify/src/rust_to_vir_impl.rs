@@ -492,7 +492,7 @@ pub(crate) fn translate_impl_item<'tcx>(
             // sanity check - this should be redundant with prior check in external.rs
             return err_span(
                 item.span,
-                "an item in a trait impl cannot be marked external - you can either use external_body, or mark the entire trait impl as external",
+                "an item in a trait impl cannot be marked external - you can either use `external_body`, or mark the entire trait impl as external",
             );
         }
         return Ok(());
@@ -849,7 +849,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
         for (fun_def_id, fun_span) in funs.iter() {
             let path = ctxt.def_id_to_vir_path(*fun_def_id);
             if !methods_we_have.insert(path.last_segment()) {
-                return err_span(*fun_span, "duplicate assume_specification for this method");
+                return err_span(*fun_span, "duplicate `assume_specification` for this method");
             }
         }
 
@@ -877,7 +877,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                 return err_span(
                     span,
                     format!(
-                        "using assume_specification for this function requires you to specify all other functions for the same trait impl, but the method `{:}` is missing",
+                        "using `assume_specification` for this function requires you to specify all other functions for the same trait impl, but the method `{:}` is missing",
                         method.path.last_segment()
                     ),
                 );

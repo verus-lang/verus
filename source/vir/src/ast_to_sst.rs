@@ -2381,7 +2381,7 @@ pub(crate) fn expr_to_stm_opt(
             if let Maybe::Some(Value::Exp(_)) = e {
                 return Err(error(
                     &expr.span,
-                    "'assert ... by' block cannot end with an expression",
+                    "`assert ... by` block cannot end with an expression",
                 ));
             }
             let (require_checks, require_exp) = expr_to_pure_exp_check(ctx, state, &require)?;
@@ -2450,7 +2450,7 @@ pub(crate) fn expr_to_stm_opt(
                     if let Maybe::Some(Value::Exp(_)) = e {
                         return Err(error(
                             &expr.span,
-                            "'assert ... by' block cannot end with an expression",
+                            "`assert ... by` block cannot end with an expression",
                         ));
                     }
                     inner_body.extend(proof_stms);
@@ -2529,12 +2529,14 @@ pub(crate) fn expr_to_stm_opt(
                 AssertQueryMode::BitVector => {
                     // check if assertion block consists only of requires/ensures
                     let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
-                    let proof_block_err =
-                        Err(error(&expr.span, "assert_bitvector_by cannot contain a proof block"));
+                    let proof_block_err = Err(error(
+                        &expr.span,
+                        "`assert_bitvector_by` cannot contain a proof block",
+                    ));
                     if let Maybe::Some(Value::Exp(_)) = e {
                         return Err(error(
                             &expr.span,
-                            "assert_bitvector_by cannot contain a return value",
+                            "`assert_bitvector_by` cannot contain a return value",
                         ));
                     }
                     if proof_stms.len() > 1 {
@@ -2668,9 +2670,9 @@ pub(crate) fn expr_to_stm_opt(
             if produces_value && loop_isolation {
                 return Err(error(
                     &expr.span,
-                    "loops with value-bearing 'break' do not yet support loop isolation",
+                    "loops with value-bearing `break` do not yet support loop isolation",
                 )
-                .help("add #[verifier::loop_isolation(false)] to this loop"));
+                .help("add `#[verifier::loop_isolation(false)]` to this loop"));
             }
             let allow_complex_invariants = *allow_complex_invariants;
             let id = state.loop_id_counter;
@@ -2698,7 +2700,7 @@ pub(crate) fn expr_to_stm_opt(
                 // in the same query
                 return Err(error(
                     &expr.span,
-                    "loop with loop_isolation=false contains 'break' statement inside a nested loop with loop_isolation=true",
+                    "loop with `loop_isolation(false)` contains `break` statement inside a nested loop with `loop_isolation(true)`",
                 ));
             }
             let has_user_break = num_breaks > if is_for_loop { 1 } else { 0 };
@@ -2733,15 +2735,15 @@ pub(crate) fn expr_to_stm_opt(
             if allow_complex_invariants && loop_isolation && !is_for_loop {
                 return Err(error(
                     &expr.span,
-                    "attribute 'allow_complex_invariants' can only be used with 'loop_isolation(false)'",
+                    "attribute `allow_complex_invariants` can only be used with `loop_isolation(false)`",
                 ));
             }
 
             if !loop_isolation && !simple_invs && !allow_complex_invariants {
                 return Err(error(
                     &expr.span,
-                    "loop invariants with 'loop_isolation(false)' cannot be invariant_except_break \
-                        or ensures, unless #[verifier::allow_complex_invariants] is used",
+                    "loop invariants with `loop_isolation(false)` cannot be `invariant_except_break` \
+                        or `ensures`, unless `#[verifier::allow_complex_invariants]` is used",
                 ));
             }
             let mut cnd = if let Some(cond) = cond {
@@ -2770,8 +2772,8 @@ pub(crate) fn expr_to_stm_opt(
                         && !function.x.attrs.exec_allows_no_decreases_clause
                 })
             {
-                return Err(error(&expr.span, "loop must have a decreases clause")
-                            .help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function"));
+                return Err(error(&expr.span, "loop must have a `decreases` clause")
+                            .help("to disable this check, use `#[verifier::exec_allows_no_decreases_clause]` on the function"));
             }
 
             let mut body_prefix = Vec::new();
@@ -4339,7 +4341,7 @@ fn place_to_exp_for_read(
         // Shouldn't have these for reads
         return Err(error(
             &place.span,
-            "Verus internal error: place_to_expr_for_read does not expect any UserDefinedTypInvariantObligation",
+            "Verus internal error: `place_to_expr_for_read` does not expect any UserDefinedTypInvariantObligation",
         ));
     }
     Ok((stms, Maybe::Some(rhs)))
@@ -4901,7 +4903,7 @@ fn assert_assume_satisfies_user_defined_type_invariant(
     if typ_inv == TypInv::UnwindError {
         return Err(crate::messages::error_with_label(
             &exp.span,
-            "this function call takes a &mut ref of a field of a datatype with a user-defined type invariant; thus, this function should be marked no_unwind (note: this check is currently implemented overly-conservatively and requires the function to be marked no_unwind in its signature)",
+            "this function call takes a `&mut` ref of a field of a datatype with a user-defined type invariant; thus, this function should be marked `no_unwind` (note: this check is currently implemented overly-conservatively and requires the function to be marked `no_unwind` in its signature)",
             "mutable reference to this place",
         ).secondary_label(&function.span, "type invariant declared here"));
     }

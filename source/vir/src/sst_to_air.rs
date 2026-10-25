@@ -1924,7 +1924,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     UnwindAir::MayUnwind => unreachable!(),
                     UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
                         &stm.span,
-                        "cannot show this call will not unwind, in function marked 'no_unwind'",
+                        "cannot show this call will not unwind, in function marked `no_unwind`",
                         format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
                     ),
                     UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
@@ -1937,7 +1937,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     }
                     UnwindAir::NoUnwindWhen(_e) => error_with_label(
                         &stm.span,
-                        "cannot show this call will not unwind, in function marked 'no_unwind'",
+                        "cannot show this call will not unwind, in function marked `no_unwind`",
                         "this call might unwind",
                     ),
                 };
@@ -1949,7 +1949,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 } else {
                     error.secondary_label(
                         &func.span,
-                        "perhaps you need to mark this function as 'no_unwind'?",
+                        "perhaps you need to mark this function as `no_unwind`?",
                     )
                 };
                 let e = mk_implies(&e1, &e2);
@@ -1993,7 +1993,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         stmts.push(Arc::new(havoc));
                     }
                 } else {
-                    crate::messages::internal_error(&stm.span, "ens_has_return but no Dest");
+                    crate::messages::internal_error(&stm.span, "`ens_has_return` but no Dest");
                 }
             }
             if let Some(is_trait_default) = is_trait_default {
@@ -2333,8 +2333,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     }
                     if *is_break && *both {
                         let msg = "(hint: if this is not supposed to be true at the break, \
-                            use 'invariant_except_break' for it instead of 'invariant', \
-                            and use 'ensures' for what is true at the break)";
+                            use `invariant_except_break` for it instead of `invariant`, \
+                            and use `ensures` for what is true at the break)";
                         error = error.secondary_label(span, msg);
                     }
                     stmts.push(Arc::new(StmtX::Assert(None, error, None, inv.clone())));
@@ -2347,7 +2347,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         }
                         if info.loop_isolation {
                             let s = "decrease checking for labeled continue not supported unless \
-                                loop is marked #[verifier::loop_isolation(false)]";
+                                loop is marked `#[verifier::loop_isolation(false)]`";
                             return Err(error(&stm.span, s));
                         }
                     }
@@ -3081,7 +3081,7 @@ pub(crate) fn body_stm_to_air(
             for req in reqs.iter() {
                 let error = error_with_label(
                     &req.span,
-                    "unsupported expression in integer_ring".to_string(),
+                    "unsupported expression in `integer_ring`".to_string(),
                     "at the require clause".to_string(),
                 );
                 let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
@@ -3093,7 +3093,7 @@ pub(crate) fn body_stm_to_air(
             for ens in post_condition.ens_exps.iter() {
                 let error = error_with_label(
                     &ens.span,
-                    "unsupported expression in integer_ring".to_string(),
+                    "unsupported expression in `integer_ring`".to_string(),
                     "at the ensure clause".to_string(),
                 );
                 let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;

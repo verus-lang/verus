@@ -161,7 +161,7 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
 
     let path_string = if let Some(_trait_def_id) = ctxt.tcx.trait_of_assoc(external_def_id) {
         return Err(crate::util::error(
-            "cannot build specification for unresolved trait item; consider an external_trait_specification declaration",
+            "cannot build specification for unresolved trait item; consider an `external_trait_specification` declaration",
         ));
     } else if let Some(impl_def_id) = ctxt.tcx.impl_of_assoc(external_def_id) {
         let of_trait = ctxt.tcx.impl_opt_trait_ref(impl_def_id).is_some();

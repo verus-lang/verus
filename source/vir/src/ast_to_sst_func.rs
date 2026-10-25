@@ -178,7 +178,7 @@ fn func_body_to_sst(
                 match &expr.x {
                     ExprX::Return(_) => Err(error(
                         &expr.span,
-                        "explicit returns are not allowed in decreases_by function",
+                        "explicit returns are not allowed in `decreases_by` function",
                     )),
                     _ => Ok(()),
                 }
@@ -354,7 +354,7 @@ fn req_ens_to_sst(
 
     let specs = if function.x.attrs.is_async && !pre {
         if !ens_has_return {
-            crate::internal_err!(function.span.clone(), "async function expects ens_has_return");
+            crate::internal_err!(function.span.clone(), "async function expects `ens_has_return`");
         }
         &rewrite_async_ens_vir(function, specs)?
     } else {
