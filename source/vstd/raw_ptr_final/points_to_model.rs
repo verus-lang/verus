@@ -145,18 +145,19 @@ pub trait PTTypedValue: PTPhys {
 
     /// Validity constraints on the typed value:
     /// if it is valid, the bytes decode to it,
-    /// and it is consistent with the pointer metadata.
+    /// and it satisfies `additional_validity_constraints`.
     open spec fn valid_value(self) -> bool {
         self.typed_value().is_valid() ==> {
             &&& abs_decode(self.bytes(), self.typed_value().value_ref())
-            &&& Self::metadata_matches(self.typed_value().value_ref(), self.ptr()@.metadata)
+            &&& Self::additional_validity_constraints(self.typed_value().value_ref(), self.ptr()@.metadata)
         }
     }
 
-    /// Whether the pointer metadata `metadata` is consistent with `value`.
+    /// Validity constraints on a valid `value`, beyond its bytes decoding to it,
+    /// given the pointer metadata `metadata`.
     /// For a slice, this means the slice has `metadata` elements;
-    /// for other types, it is always `true`.
-    spec fn metadata_matches(value: &Self::A, metadata: Metadata<Self::A>) -> bool;
+    /// for a `Sized` type, it is always `true`.
+    spec fn additional_validity_constraints(value: &Self::A, metadata: Metadata<Self::A>) -> bool;
 
     /// Whether `addr` satisfies this permission type's alignment requirement:
     /// alignment to `Self::A` for `PointsTo`,
@@ -171,7 +172,7 @@ pub trait PTTypedValue: PTPhys {
             self.bytes().len() == Self::size(self.ptr()@.metadata),
             self.typed_value().is_valid() ==> {
                 &&& abs_decode(self.bytes(), self.typed_value().value_ref())
-                &&& Self::metadata_matches(self.typed_value().value_ref(), self.ptr()@.metadata)
+                &&& Self::additional_validity_constraints(self.typed_value().value_ref(), self.ptr()@.metadata)
             },
     ;
 
@@ -269,7 +270,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
             self.wf(),
             v.is_valid() ==> {
                 &&& abs_decode(self.bytes(), v.value_ref())
-                &&& Self::metadata_matches(v.value_ref(), self.ptr()@.metadata)
+                &&& Self::additional_validity_constraints(v.value_ref(), self.ptr()@.metadata)
             },
         ensures
             final(self).ptr() == old(self).ptr(),
@@ -321,7 +322,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
             Self::satisfies_alignment(pt_untyped.ptr()@.addr),
             typed_value.is_valid() ==> {
                 &&& abs_decode(pt_untyped.bytes(), typed_value.value_ref())
-                &&& Self::metadata_matches(typed_value.value_ref(), metadata)
+                &&& Self::additional_validity_constraints(typed_value.value_ref(), metadata)
             },
         ensures
             out.ptr() == ptr_mut_from_data::<Self::A>(PtrData {
@@ -429,10 +430,10 @@ pub trait PTSizedValue: PTValueOps<A: Sized> {
             Self::satisfies_alignment((addr + i * Self::size(())) as usize),
     ;
 
-    /// The pointer metadata of a `Sized` value always matches `()`.
-    proof fn lemma_metadata_matches(value: &Self::A)
+    /// A `Sized` value has no additional validity constraints.
+    proof fn lemma_additional_validity_constraints(value: &Self::A)
         ensures
-            Self::metadata_matches(value, ()),
+            Self::additional_validity_constraints(value, ()),
     ;
 
     /// Moves the value out, leaving `self` empty.
@@ -465,7 +466,7 @@ pub trait PTSizedValue: PTValueOps<A: Sized> {
             final(self).typed_value().value() == v,
             final(self).wf(),
     {
-        Self::lemma_metadata_matches(&v);
+        Self::lemma_additional_validity_constraints(&v);
         self.put_typed_value(TypedValue::Valid(Tracked(v)));
     }
 
@@ -497,7 +498,7 @@ pub trait PTSizedValue: PTValueOps<A: Sized> {
             final(self).wf(),
     {
         if v.is_valid() {
-            Self::lemma_metadata_matches(&v.value());
+            Self::lemma_additional_validity_constraints(&v.value());
         }
         self.put_typed_value(v.tracked_copy());
     }
@@ -521,7 +522,7 @@ pub trait PTSizedValue: PTValueOps<A: Sized> {
             out.typed_value().value() == value,
             out.wf(),
     {
-        Self::lemma_metadata_matches(&value);
+        Self::lemma_additional_validity_constraints(&value);
         Self::from_untyped_with_typed_value(pt_untyped, TypedValue::Valid(Tracked(value)), ())
     }
 }
@@ -1254,8 +1255,8 @@ impl<T> PTTypedValue for PointsToUnaligned<T> {
         self.pt_untyped().bytes()
     }
 
-    /// Always `true`: a `Sized` value has no pointer metadata.
-    open spec fn metadata_matches(value: &T, metadata: ()) -> bool {
+    /// Always `true`: a `Sized` value has no additional validity constraints.
+    open spec fn additional_validity_constraints(value: &T, metadata: ()) -> bool {
         true
     }
 
@@ -1303,7 +1304,7 @@ impl<T> PTTypedValue for PointsToUnaligned<[T]> {
     }
 
     /// The slice has `metadata` elements.
-    open spec fn metadata_matches(value: &[T], metadata: usize) -> bool {
+    open spec fn additional_validity_constraints(value: &[T], metadata: usize) -> bool {
         value@.len() == metadata
     }
 
@@ -1533,9 +1534,9 @@ impl<T: ?Sized> PTTypedValue for PointsTo<T> where PointsToUnaligned<T>: PTValue
         &&& Self::satisfies_alignment(self.ptr()@.addr)
     }
 
-    /// Delegates to `PointsToUnaligned::metadata_matches`.
-    open spec fn metadata_matches(value: &T, metadata: Metadata<T>) -> bool {
-        <PointsToUnaligned<T> as PTTypedValue>::metadata_matches(value, metadata)
+    /// Delegates to `PointsToUnaligned::additional_validity_constraints`.
+    open spec fn additional_validity_constraints(value: &T, metadata: Metadata<T>) -> bool {
+        <PointsToUnaligned<T> as PTTypedValue>::additional_validity_constraints(value, metadata)
     }
 
     /// The pointer's address is aligned to `T`.

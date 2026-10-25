@@ -47,7 +47,7 @@ Single-value permissions:
 |---|---|---|
 | `PTPhys for PointsToUnaligned<_>` | per type | `ptr` (same shape each time), the `size` formula, `wf_basic` (the untyped permission is well-formed and has `size` bytes; same shape each time), and `ptrs_len_same` / `stays_wf_basic` (delegating to the untyped bytes) |
 | `PTProperties for PointsToUnaligned<_>` | per type (same body each time) | the pointer-level lemmas, all delegating to the untyped bytes |
-| `PTTypedValue for PointsToUnaligned<_>` | per type | `typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment` (`true`); the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic` (empty proofs), `lemma_ptrs_len_same_valid_value`, `stays_wf` |
+| `PTTypedValue for PointsToUnaligned<_>` | per type | `typed_value`, `bytes`, `additional_validity_constraints`, `satisfies_alignment` (`true`); the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic` (empty proofs), `lemma_ptrs_len_same_valid_value`, `stays_wf` |
 | `PTValueOps for PointsToUnaligned<_>` | per type | the operations that touch the fields (`borrow_typed_value`, `take_typed_value`, `put_typed_value`, `into_untyped_with_typed_value`, `from_untyped_with_typed_value`, `as_untyped`, `as_untyped_mut`) |
 | `PTSizedValue for PointsToUnaligned<T>` | once (Sized `T` only) | the two lemmas |
 | `PTPhys`, `PTProperties`, `View`, `PTTypedValue`, `PTValueOps` for `PointsTo<T: ?Sized>` | once (generic) | delegation to `self.pt_unaligned`, except `satisfies_alignment` (adds alignment) and `from_untyped_with_typed_value` (wraps the result) |
@@ -108,7 +108,7 @@ Other open spec fns, such as `len`, may live with the proofs that use them.
 |---|---|---|
 | the five trait definitions, with their default bodies | the `PTProperties` impls of `SeqPointsTo`, `PointsToUnaligned` and `PointsTo` | `PointsToRaw` (all of it) |
 | the struct definitions: `PointsToByte`, `TypedValue`, `SeqPointsTo`, `PointsToUntyped`, `PointsToUnaligned`, `PointsTo`; their closed accessors and the inherent spec fns (`typed_value`, `bytes`, `metadata`, `is_valid`, `value`, `value_ref`, `SeqPointsTo::len`, …); their `View` impls | the `PTValueOps` impls (per type for `PointsToUnaligned`, generic for `PointsTo`) and the `PTSizedValue` impls | the typed `SeqPointsTo` impl (`impl<T> SeqPointsTo<T, PointsTo<T>>`), including its `wf`, and its `View` |
-| well-formedness: every `PTPhys` impl (`ptr`, `size`, `wf_basic`, `ptrs_len_same`, `stays_wf_basic`), every `PTTypedValue` impl (`typed_value`, `bytes`, `metadata_matches`, `satisfies_alignment`, `valid_value`, `ptrs_len_same_valid_value`, and the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic`, `lemma_ptrs_len_same_valid_value`, `stays_wf`), `PointsToUntyped::wf` and `bytes` | the structural `SeqPointsTo` impl (except the field primitives and M5) and `PointsToUntyped`'s proofs | |
+| well-formedness: every `PTPhys` impl (`ptr`, `size`, `wf_basic`, `ptrs_len_same`, `stays_wf_basic`), every `PTTypedValue` impl (`typed_value`, `bytes`, `additional_validity_constraints`, `satisfies_alignment`, `valid_value`, `ptrs_len_same_valid_value`, and the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic`, `lemma_ptrs_len_same_valid_value`, `stays_wf`), `PointsToUntyped::wf` and `bytes` | the structural `SeqPointsTo` impl (except the field primitives and M5) and `PointsToUntyped`'s proofs | |
 | the axioms: `PointsToByte`'s `PTProperties` impl, `PointsToUntyped::join_ref` / `join_mut`, `from_raw_parts_ref`, `TypedValue::from_elems_ref`, M1, M3–M5, `PointsTo::borrow_mut` | the aligned/unaligned conversions | the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`) |
 | the tracked getters and byte disjointness: `TypedValue::tracked_copy`, `valid_ref`; `PointsToByte::is_disjoint_byte`; the field primitives, which say nothing about `wf`: `SeqPointsTo::tracked_seq_pt`, `tracked_seq_pt_mut`, `into_seq`, `PointsToUnaligned::tracked_pt_untyped`, `tracked_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_raw_parts_mut`, `PointsTo::tracked_pt_unaligned` | the slice permissions' `len`, `borrow_index` and borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`); `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`; `group_points_to_lemmas` | `group_points_to_collections_lemmas` |
 
@@ -929,7 +929,7 @@ Axioms: `TypedValue::<[T]>::from_elems_mut` (M1), `from_elems_ref`
 ### `PointsToUnaligned`: specs (phases 2, 2b; `str` in rustlib)
 
 rustlib writes the `PTPhys`, `PTProperties` and `PTTypedValue` impls for `PointsToUnaligned<str>`
-in the same shape as the `[T]` ones (`size(len) = len`; `metadata_matches` is `true`, since `str` decoding is `EncodingStr`'s).
+in the same shape as the `[T]` ones (`size(len) = len`; `additional_validity_constraints` is `true`, since `str` decoding is `EncodingStr`'s).
 `PTPhys` is sealed by the crate-private `PTPhysSealed`,
 but vstd's `impl<T: ?Sized> PTPhysSealed for PointsToUnaligned<T>` already covers `str`,
 and vstd is a module of rustlib's `core`, so rustlib can write these impls.
@@ -1372,8 +1372,8 @@ impl<T> PTSizedValue for PointsToUnaligned<T> {
     /// Trivial, since a `PointsToUnaligned` has no alignment requirement.
     proof fn lemma_satisfies_alignment_offset(addr: usize, i: nat);
 
-    /// Trivial, since `metadata_matches` is always `true` for a `Sized` value.
-    proof fn lemma_metadata_matches(value: &T);
+    /// Trivial, since `additional_validity_constraints` is always `true` for a `Sized` value.
+    proof fn lemma_additional_validity_constraints(value: &T);
 }
 
 impl<T> PointsToUnaligned<T> {
@@ -1452,8 +1452,8 @@ impl<T> PTSizedValue for PointsTo<T> {
     /// since `size_of::<T>()` is a multiple of `align_of::<T>()`.
     proof fn lemma_satisfies_alignment_offset(addr: usize, i: nat);
 
-    /// Trivial, since `metadata_matches` is `PointsToUnaligned<T>`'s, which is always `true`.
-    proof fn lemma_metadata_matches(value: &T);
+    /// Trivial, since `additional_validity_constraints` is `PointsToUnaligned<T>`'s, which is always `true`.
+    proof fn lemma_additional_validity_constraints(value: &T);
 }
 
 impl<T> PointsTo<T> {

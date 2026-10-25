@@ -798,8 +798,8 @@ impl<T> PTSizedValue for PointsToUnaligned<T> {
     proof fn lemma_satisfies_alignment_offset(addr: usize, i: nat) {
     }
 
-    /// Trivial, since `metadata_matches` is always `true` for a `Sized` value.
-    proof fn lemma_metadata_matches(value: &T) {
+    /// Trivial, since `additional_validity_constraints` is always `true` for a `Sized` value.
+    proof fn lemma_additional_validity_constraints(value: &T) {
     }
 }
 
@@ -912,8 +912,8 @@ impl<T> PTSizedValue for PointsTo<T> {
         crate::vstd::arithmetic::div_mod::lemma_add_mod_noop(addr as int, i * s, a);
     }
 
-    /// Trivial, since `metadata_matches` is `PointsToUnaligned<T>`'s, which is always `true`.
-    proof fn lemma_metadata_matches(value: &T) {
+    /// Trivial, since `additional_validity_constraints` is `PointsToUnaligned<T>`'s, which is always `true`.
+    proof fn lemma_additional_validity_constraints(value: &T) {
     }
 }
 
