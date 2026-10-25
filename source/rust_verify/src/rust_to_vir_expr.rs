@@ -990,7 +990,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
             };
             PatternX::Range(e1, e2)
         }
-        PatKind::Guard(..) => unsupported_err!(pat.span, "pattern guards", pat),
+        PatKind::Guard(..) => unsupported_err!(pat.span, "guard patterns", pat),
         PatKind::Ref(subpat, pinnedness, mutability) => {
             // pinned patterns such as `&pin const x` unsupported
             unsupported_err_unless!(

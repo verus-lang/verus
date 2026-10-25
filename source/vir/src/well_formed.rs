@@ -799,7 +799,7 @@ fn check_one_expr(
                     // This is nontrivial because we might need to evaluate the guard condition more than once
                     return Err(error(
                         &arm.x.pattern.span,
-                        "Verus does not currently support a match arm containing both an or-pattern (|) and a match-guard",
+                        "Verus does not currently support a match arm containing both an or-pattern (|) and a match guard",
                     ));
                 }
                 if let Some(span) = has_ref_mut_binding {
@@ -815,7 +815,7 @@ fn check_one_expr(
                         // the test condition, but the mutable borrow is immutable until it ends
                         return Err(error(
                             &span,
-                            "Verus does not currently support a match arm containing both a match-guard and a `ref mut` binding",
+                            "Verus does not currently support a match arm containing both a match guard and a `ref mut` binding",
                         ));
                     }
                 }

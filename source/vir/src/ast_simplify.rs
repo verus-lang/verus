@@ -607,7 +607,7 @@ fn simplify_one_expr(
                     if_expr = Some(SpannedTyped::new(&expr.span, &expr.typ.clone(), ifx));
                 } else if *assert_irrefutable && !test_is_true {
                     if has_guard {
-                        return Err(error(&arm.x.guard.span, "if-guard on final match arm"));
+                        return Err(error(&arm.x.guard.span, "match guard on final match arm"));
                     }
                     let assertion = SpannedTyped::new(
                         &arm.x.pattern.span,
