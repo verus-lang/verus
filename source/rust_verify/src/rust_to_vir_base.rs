@@ -2257,7 +2257,7 @@ fn check_generics_bounds_main<'tcx>(
             if error_on_polarity {
                 return err_span(
                     span,
-                    "the `accept_recursive_type`/`reject_recursive_type` attributes are not expected for this kind of item",
+                    "the `accept_recursive_types`/`reject_recursive_types` attributes are not expected for this kind of item",
                 );
             }
             accept_recs.remove(&param_name);

@@ -1319,7 +1319,7 @@ fn check_function_inner(
     {
         return Err(error(
             &function.span,
-            "select at most one verifier attribute: `integer_ring`, `non_linear`, `bit_vector`",
+            "select at most one verifier attribute: `integer_ring`, `nonlinear`, `bit_vector`",
         ));
     }
 
