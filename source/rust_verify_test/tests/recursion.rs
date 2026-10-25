@@ -18,7 +18,7 @@ test_verify_one_file! {
         spec fn arith_sum_nat(i: nat) -> nat {
             if i == 0 { 0 } else { i + arith_sum_nat((i - 1) as nat) }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -40,7 +40,7 @@ test_verify_one_file! {
                 count_down_stmt((i - 1) as nat);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -580,7 +580,7 @@ test_verify_one_file! {
                 dec1((j - 1) as nat);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -599,7 +599,7 @@ test_verify_one_file! {
                 dec1((j - 1) as nat);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -615,7 +615,7 @@ test_verify_one_file! {
             extra_dependency(dec1);
             unimplemented!();
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -695,8 +695,8 @@ test_verify_one_file! {
         assert_eq!(err.errors.len(), 2);
         assert!(err.errors[0].code.is_none());
         assert!(err.errors[1].code.is_none());
-        assert!(err.errors[0].message.contains("recursive function must have a decreases clause"));
-        assert!(err.errors[1].message.contains("recursive function must have a decreases clause"));
+        assert!(err.errors[0].message.contains("recursive function must have a `decreases` clause"));
+        assert!(err.errors[1].message.contains("recursive function must have a `decreases` clause"));
     }
 }
 
@@ -799,7 +799,7 @@ test_verify_one_file! {
         //#[verifier(decreases_by)]
         proof fn check_arith_sum(i: int) {
         }
-    } => Err(err) => assert_vir_error_msg(err, "proof function must be marked #[verifier::decreases_by] or #[verifier::recommends_by] to be used as decreases_by/recommends_by")
+    } => Err(err) => assert_vir_error_msg(err, "proof function must be marked `#[verifier::decreases_by]` or `#[verifier::recommends_by]` to be used as `decreases_by`/`recommends_by`")
 }
 
 test_verify_one_file! {
@@ -816,7 +816,7 @@ test_verify_one_file! {
         #[verifier(decreases_by)]
         proof fn check_arith_sum(i: int) {
         }
-    } => Err(err) => assert_vir_error_msg(err, "unless it is used in some decreases_by/recommends_by")
+    } => Err(err) => assert_vir_error_msg(err, "unless it is used in some `decreases_by`/`recommends_by`")
 }
 
 test_verify_one_file! {
@@ -835,7 +835,7 @@ test_verify_one_file! {
             decreases i
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "decreases_by/recommends_by function cannot have its own decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "`decreases_by`/`recommends_by` function cannot have its own `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -853,7 +853,7 @@ test_verify_one_file! {
             requires i >= 0
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "decreases_by/recommends_by function cannot have requires clauses")
+    } => Err(err) => assert_vir_error_msg(err, "`decreases_by`/`recommends_by` function cannot have `requires` clauses")
 }
 
 test_verify_one_file! {
@@ -871,7 +871,7 @@ test_verify_one_file! {
             ensures i >= 0
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "decreases_by/recommends_by function cannot have ensures clauses")
+    } => Err(err) => assert_vir_error_msg(err, "`decreases_by`/`recommends_by` function cannot have `ensures` clauses")
 }
 
 test_verify_one_file! {
@@ -942,7 +942,7 @@ test_verify_one_file! {
                 check_arith_sum(i);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call a decreases_by/recommends_by function directly")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call a `decreases_by`/`recommends_by` function directly")
 }
 
 test_verify_one_file! {
@@ -963,7 +963,7 @@ test_verify_one_file! {
         proof fn test() {
             check_arith_sum(0);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call a decreases_by/recommends_by function directly")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call a `decreases_by`/`recommends_by` function directly")
 }
 
 test_verify_one_file! {
@@ -984,7 +984,7 @@ test_verify_one_file! {
         proof fn check_f(x: int) {
             test();
         }
-    } => Err(err) => assert_vir_error_msg(err, "found cyclic dependency in decreases_by function")
+    } => Err(err) => assert_vir_error_msg(err, "found cyclic dependency in `decreases_by` function")
 }
 
 test_verify_one_file! {
@@ -1000,7 +1000,7 @@ test_verify_one_file! {
         proof fn check_f(x: int) {
             let foo = f(x); // cyclic dependency on f
         }
-    } => Err(err) => assert_vir_error_msg(err, "found cyclic dependency in decreases_by function")
+    } => Err(err) => assert_vir_error_msg(err, "found cyclic dependency in `decreases_by` function")
 }
 
 test_verify_one_file! {
@@ -1017,7 +1017,7 @@ test_verify_one_file! {
         #[verifier(decreases_by)]
         proof fn check_arith_sum(i: int) {
         }
-    } => Err(err) => assert_vir_error_msg(err, "only spec functions can use decreases_by/recommends_by")
+    } => Err(err) => assert_vir_error_msg(err, "only spec functions can use `decreases_by`/`recommends_by`")
 }
 
 test_verify_one_file! {
@@ -1033,7 +1033,7 @@ test_verify_one_file! {
         #[verifier(decreases_by)]
         spec fn check_arith_sum(i: int) {
         }
-    } => Err(err) => assert_vir_error_msg(err, "decreases_by/recommends_by function must have mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "`decreases_by`/`recommends_by` function must have mode proof")
 }
 
 test_verify_one_file! {
@@ -1281,7 +1281,7 @@ test_verify_one_file_with_options! {
             }
         }
     } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
+        assert!(err.warnings.iter().find(|x| x.message.contains("if `exec_allows_no_decreases_clause` is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
     }
 }
 
@@ -1298,7 +1298,7 @@ test_verify_one_file_with_options! {
             }
         }
     } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
+        assert!(err.warnings.iter().find(|x| x.message.contains("if `exec_allows_no_decreases_clause` is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
     }
 }
 
@@ -1328,7 +1328,7 @@ test_verify_one_file! {
         #[verifier(decreases_by)]
         proof fn check_e(s: &mut u64, i: usize) {
         }
-    } => Err(err) => assert_vir_error_msg(err, "only spec functions can use decreases_by/recommends_by")
+    } => Err(err) => assert_vir_error_msg(err, "only spec functions can use `decreases_by`/`recommends_by`")
 }
 
 test_verify_one_file! {
@@ -1387,7 +1387,7 @@ test_verify_one_file! {
                 assert(false);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "a decreases_by function must be in the same module as the function definition")
+    } => Err(err) => assert_vir_error_msg(err, "a `decreases_by` function must be in the same module as the function definition")
 }
 
 test_verify_one_file! {
@@ -2018,7 +2018,7 @@ test_verify_one_file! {
             assert(impossible_fun() == !impossible_fun());
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "found cyclic dependency in decreases_by function")
+    } => Err(err) => assert_vir_error_msg(err, "found cyclic dependency in `decreases_by` function")
 }
 
 test_verify_one_file! {
@@ -2417,5 +2417,5 @@ test_verify_one_file! {
         proof fn foo_proof() -> ! {
             proof_from_false()
         }
-    } => Err(err) => assert_vir_error_msg(err, "decreases_by/recommends_by function cannot have a return value")
+    } => Err(err) => assert_vir_error_msg(err, "`decreases_by`/`recommends_by` function cannot have a return value")
 }

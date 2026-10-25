@@ -68,7 +68,7 @@ test_verify_one_file! {
         proof fn test1() {
             let tracked t = shr_ref_struct_wrap(&0int, &(1int, 2int), "", "0");
         }
-    } => Err(err) => assert_vir_error_msg(err, "shr_ref_struct_wrap not supported for tuples")
+    } => Err(err) => assert_vir_error_msg(err, "`shr_ref_struct_wrap` not supported for tuples")
 }
 
 test_verify_one_file! {
@@ -137,7 +137,7 @@ test_verify_one_file! {
         proof fn test(tracked y: &Y) -> (tracked x: &X) {
             shr_ref_struct_wrap(&0int, &arbitrary(), "", "g")
         }
-    } => Err(err) => assert_vir_error_msg(err, "shr_ref_struct_wrap cannot target ghost-mode field")
+    } => Err(err) => assert_vir_error_msg(err, "`shr_ref_struct_wrap` cannot target ghost-mode field")
 }
 
 test_verify_one_file! {
@@ -157,7 +157,7 @@ test_verify_one_file! {
         proof fn test(tracked y: &Y) -> (tracked x: &X) {
             shr_ref_struct_wrap(&0int, &arbitrary(), "", "g")
         }
-    } => Err(err) => assert_vir_error_msg(err, "shr_ref_struct_wrap cannot target ghost-mode datatype")
+    } => Err(err) => assert_vir_error_msg(err, "`shr_ref_struct_wrap` cannot target ghost-mode datatype")
 }
 
 test_verify_one_file! {
@@ -177,7 +177,7 @@ test_verify_one_file! {
         proof fn test(tracked y: &Y) -> (tracked x: &X) {
             shr_ref_struct_wrap(y, &arbitrary(), "", "y")
         }
-    } => Err(err) => assert_vir_error_msg(err, "shr_ref_struct_wrap can only be applied when all other fields of the relevant variant are ghost-mode or of type Ghost (field `g2` does not meet this requirement)")
+    } => Err(err) => assert_vir_error_msg(err, "`shr_ref_struct_wrap` can only be applied when all other fields of the relevant variant are ghost-mode or of type `Ghost` (field `g2` does not meet this requirement)")
 }
 
 test_verify_one_file! {
@@ -202,7 +202,7 @@ test_verify_one_file! {
         proof fn test(tracked y: &Y) -> (tracked x: &X) {
             shr_ref_struct_wrap(y, &arbitrary(), "Foo", "y")
         }
-    } => Err(err) => assert_vir_error_msg(err, "shr_ref_struct_wrap can only be applied when all other fields of the relevant variant are ghost-mode or of type Ghost (field `g2` does not meet this requirement)")
+    } => Err(err) => assert_vir_error_msg(err, "`shr_ref_struct_wrap` can only be applied when all other fields of the relevant variant are ghost-mode or of type `Ghost` (field `g2` does not meet this requirement)")
 }
 
 test_verify_one_file! {
