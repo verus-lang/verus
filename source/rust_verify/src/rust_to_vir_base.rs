@@ -1534,7 +1534,10 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
         ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
         ConstKind::Value(Value { ty, valtree }) => {
             let ValTreeKind::Leaf(i) = *valtree else {
-                unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst));
+                unsupported_err!(
+                    span.expect("span"),
+                    format!("this const generic argument ({:?})", cnst)
+                );
             };
             match ty.kind() {
                 TyKind::Uint(_) => {
@@ -1547,12 +1550,18 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
                 }
                 TyKind::Bool => Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0))),
                 _ => {
-                    unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
+                    unsupported_err!(
+                        span.expect("span"),
+                        format!("this const generic argument ({:?})", cnst)
+                    )
                 }
             }
         }
         _ => {
-            unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
+            unsupported_err!(
+                span.expect("span"),
+                format!("this const generic argument ({:?})", cnst)
+            )
         }
     }
 }

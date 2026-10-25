@@ -1031,14 +1031,17 @@ fn handle_external_fn<'tcx>(
         if substs1_early.len() + poly_sig1.skip_binder().bound_vars().len() != 0 {
             return err_span(
                 sig.span,
-                "generics are not allowed in external specification for const",
+                "generics are not allowed in an external specification for a constant item",
             );
         }
         let sig1 = poly_sig1x.skip_binder();
         use rustc_middle::ty::FnSig;
         let FnSig { inputs_and_output: io1, fn_sig_kind: _ } = &sig1;
         if io1.len() != 1 {
-            return err_span(sig.span, "external specification for const must have 0 parameters");
+            return err_span(
+                sig.span,
+                "an external specification for a constant item must have 0 parameters",
+            );
         }
         let ty1 = io1[0];
         if !compare_external_ty(ctxt.tcx, &ctxt.verus_items, &ty1, &ty2, external_trait_from_to) {
@@ -1856,7 +1859,7 @@ pub(crate) fn check_item_fn<'tcx>(
             let mode_opt = crate::attributes::get_mode_opt(attrs);
             let ret_mode = get_ret_mode(Mode::Exec, attrs);
             if mode_opt.is_some() || ret_mode != Mode::Exec {
-                unsupported_err!(sig.span, "non-default modes on associated consts")
+                unsupported_err!(sig.span, "non-default modes on associated constants")
             }
             (Some((typ.clone(), Mode::Exec)), vec![])
         }
@@ -3298,12 +3301,12 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             None => {
                 return err_span(
                     span,
-                    "explicitly mark the static as `exec` and use an `ensures` clause",
+                    "explicitly mark the `static` item as `exec` and use an `ensures` clause",
                 );
             }
             Some(m) => {
                 if m != Mode::Exec {
-                    return err_span(span, "a static item can only have mode `exec`");
+                    return err_span(span, "a `static` item can only have mode `exec`");
                 }
             }
         }
@@ -3490,15 +3493,15 @@ pub(crate) fn finish_const_or_static<'tcx>(
     )?;
     crate::pre_header::sanity_check_preheader(span, &header, &pre_header)?;
     if header.require.len() + header.recommend.len() > 0 {
-        return err_span(span, "consts cannot have `requires`/`recommends`");
+        return err_span(span, "constant items cannot have `requires`/`recommends`");
     }
 
     let spec_or_dual = ret_mode == Mode::Spec || func_mode == Mode::Spec;
     if spec_or_dual && (header.ensure.0.len() > 0 || header.ensure.1.len() > 0) {
-        return err_span(span, "const cannot have `ensures` unless it is `exec const`");
+        return err_span(span, "a constant item cannot have `ensures` unless it is `exec const`");
     }
     if spec_or_dual && header.returns.is_some() {
-        return err_span(span, "const cannot have `returns` unless it is `exec const`");
+        return err_span(span, "a constant item cannot have `returns` unless it is `exec const`");
     }
 
     let inner_ret = outer_ret.clone();

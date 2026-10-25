@@ -1737,20 +1737,20 @@ fn check_function_inner(
         if !function.x.require.is_empty() {
             return Err(error(
                 &function.span,
-                "`requires` clauses are not allowed on the implementation for `Drop`",
+                "`requires` clauses are not allowed on `Drop` implementations",
             ));
         }
         if !matches!(&function.x.mask_spec, Some(crate::ast::MaskSpec::InvariantOpens(_span, es)) if es.len() == 0)
         {
             return Err(error(
                 &function.span,
-                "the implementation for `Drop` must be marked `opens_invariants` none",
+                "a `Drop` implementation must be marked `opens_invariants none`",
             ));
         }
         if !matches!(&function.x.unwind_spec, Some(crate::ast::UnwindSpec::NoUnwind)) {
             return Err(error(
                 &function.span,
-                "the implementation for `Drop` must be marked `no_unwind`",
+                "a `Drop` implementation must be marked `no_unwind`",
             ));
         }
     }

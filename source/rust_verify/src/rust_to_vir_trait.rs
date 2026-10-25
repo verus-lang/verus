@@ -447,7 +447,10 @@ pub(crate) fn translate_trait<'tcx>(
                         (CheckItemFnEither::BodyId(body_id), true)
                     }
                     Some(_) => {
-                        crate::unsupported_err!(trait_span, "non-expression trait const defaults")
+                        crate::unsupported_err!(
+                            trait_span,
+                            "non-expression default values for associated constants"
+                        )
                     }
                     None => (CheckItemFnEither::ParamNames(param_names.as_slice()), false),
                 };

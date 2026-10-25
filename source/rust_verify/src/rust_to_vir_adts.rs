@@ -322,12 +322,15 @@ pub(crate) fn check_item_union<'tcx>(
         return err_span(span, "a `union` can only be exec-mode");
     }
     let VariantData::Struct { fields: hir_fields, recovered: _ } = variant_data else {
-        return err_span(span, "check_item_union: wrong VariantData");
+        return crate::util::internal_err_span(
+            span,
+            "check_item_union: wrong VariantData".to_string(),
+        );
     };
     for hir_field_def in hir_fields.iter() {
         let mode = get_mode(Mode::Exec, ctxt.tcx.hir_attrs(hir_field_def.hir_id));
         if mode != Mode::Exec {
-            return err_span(span, "a union field can only be exec-mode");
+            return err_span(span, "a `union` field can only be exec-mode");
         }
     }
 
