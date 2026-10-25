@@ -2528,12 +2528,12 @@ pub(crate) fn expr_to_stm_opt(
                     let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
                     let proof_block_err = Err(error(
                         &expr.span,
-                        "`assert_bitvector_by` cannot contain a proof block",
+                        "`assert ... by(bit_vector)` cannot contain a proof block",
                     ));
                     if let Maybe::Some(Value::Exp(_)) = e {
                         return Err(error(
                             &expr.span,
-                            "`assert_bitvector_by` cannot contain a return value",
+                            "`assert ... by(bit_vector)` cannot contain a return value",
                         ));
                     }
                     if proof_stms.len() > 1 {

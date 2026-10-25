@@ -125,7 +125,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if require.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to `requires` allowed (use `requires([e1, ..., en])` for multiple expressions)",
+                                "only one `requires` clause allowed (use `requires e1, ..., en` for multiple expressions)",
                             ));
                         }
                         allowed = allows.require();
@@ -135,7 +135,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if recommend.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to `recommends` allowed (use `recommends([e1, ..., en])` for multiple expressions)",
+                                "only one `recommends` clause allowed (use `recommends e1, ..., en` for multiple expressions)",
                             ));
                         }
                         recommend = Some(es.clone());
@@ -144,7 +144,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if ensure.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to `ensures` allowed (use `ensures([e1, ..., en])` for multiple expressions)",
+                                "only one `ensures` clause allowed (use `ensures e1, ..., en` for multiple expressions)",
                             ));
                         }
                         if es.1.len() == 0 {
@@ -156,7 +156,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                     }
                     HeaderExprX::Returns(e) => {
                         if returns.is_some() {
-                            return Err(error(&stmt.span, "only one call to `returns` allowed"));
+                            return Err(error(&stmt.span, "only one `returns` clause allowed"));
                         }
                         returns = Some(e.clone());
                     }
@@ -164,7 +164,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if invariant_except_break.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to `invariant_except_break` allowed (use `invariant_except_break([e1, ..., en])` for multiple expressions)",
+                                "only one `invariant_except_break` clause allowed (use `invariant_except_break e1, ..., en` for multiple expressions)",
                             ));
                         }
                         allowed = allows.loops();
@@ -174,7 +174,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if invariant.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to `invariant` allowed (use `invariant([e1, ..., en])` for multiple expressions)",
+                                "only one `invariant` clause allowed (use `invariant e1, ..., en` for multiple expressions)",
                             ));
                         }
                         allowed = allows.loops();
@@ -194,7 +194,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if decrease_when.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one `decreases_when` expression currently supported",
+                                "only one `decreases ... when` expression currently supported",
                             ));
                         }
                         decrease_when = Some(e.clone());
@@ -203,7 +203,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if decrease_by.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one `decreases_by` expression currently supported",
+                                "only one `decreases ... via` function currently supported",
                             ));
                         }
                         decrease_by = Some(path.clone());

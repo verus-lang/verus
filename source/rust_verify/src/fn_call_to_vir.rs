@@ -1515,7 +1515,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     internal_err_unless!(
                         args_len == 1,
                         expr.span,
-                        "expected `assert_nonlinear_by`/`assert_bitvector_by` with one argument",
+                        "expected `assert ... by(nonlinear_arith)`/`assert ... by(bit_vector)` with one argument",
                         &args
                     );
                     let bctx = bctx.set_header_setting(HeaderSetting::Assert);
@@ -1537,7 +1537,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     if header.ensure.0.len() == 0 {
                         return err_span(
                             expr.span,
-                            "`assert_nonlinear_by`/`assert_bitvector_by` must have at least one `ensures`",
+                            "`assert ... by(nonlinear_arith)`/`assert ... by(bit_vector)` must have at least one `ensures`",
                         );
                     }
                     assert!(header.ensure.1.len() == 0);

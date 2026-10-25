@@ -1202,7 +1202,7 @@ fn check_function_inner(
         if function.x.require.len() != 0 {
             return Err(error(
                 &function.span,
-                "`decreases_by`/`recommends_by` function cannot have `requires` clauses (use `decreases_when` in the spec function instead)",
+                "`decreases_by`/`recommends_by` function cannot have `requires` clauses (use `decreases ... when` in the spec function instead)",
             ));
         }
         if function.x.ensure.0.len() + function.x.ensure.1.len() != 0 {
@@ -1475,7 +1475,7 @@ fn check_function_inner(
     }
 
     if function.x.is_main() && function.x.mode != Mode::Exec {
-        return Err(error(&function.span, "`main` function should be `#[verifier::exec]`"));
+        return Err(error(&function.span, "`main` function must be `exec`"));
     }
 
     // These should be true by construction in Rust->VIR; sanity check them here.
@@ -1636,13 +1636,13 @@ fn check_function_inner(
         if function.x.mode != Mode::Spec {
             return Err(error(
                 &function.span,
-                "only spec functions can use `decreases_when` (use `requires` for proof/exec functions)",
+                "only spec functions can use `decreases ... when` (use `requires` for proof/exec functions)",
             ));
         }
         if function.x.decrease.len() == 0 {
             return Err(error(
                 &function.span,
-                "`decreases_when` can only be used when there is a `decreases` clause (use `recommends(...)` for nonrecursive functions)",
+                "`decreases ... when` can only be used when there is a `decreases` clause (use `recommends` for nonrecursive functions)",
             ));
         }
         check_expr(

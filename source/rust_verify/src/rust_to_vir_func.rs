@@ -2694,8 +2694,8 @@ fn check_external_fn_specification_trait_method_decl_typs(
         unsupported_err_unless!(ensure.0.len() + ensure.1.len() == 0, span, "`ensures` clauses");
         unsupported_err_unless!(returns.is_some(), span, "`returns` clauses");
         unsupported_err_unless!(decrease.len() == 0, span, "`decreases` clauses");
-        unsupported_err_unless!(decrease_when.is_none(), span, "`decreases_when` clauses");
-        unsupported_err_unless!(decrease_by.is_none(), span, "`decreases_by` clauses");
+        unsupported_err_unless!(decrease_when.is_none(), span, "`decreases ... when` clauses");
+        unsupported_err_unless!(decrease_by.is_none(), span, "`decreases ... via` clauses");
         unsupported_err_unless!(matches!(mask_spec, None), span, "opens_invariants");
         unsupported_err_unless!(matches!(unwind_spec, None), span, "unwind");
         unsupported_err_unless!(body.is_none(), span, "opens_invariants");
