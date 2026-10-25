@@ -973,7 +973,7 @@ impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = 
 
     /// Mutably borrows as a `PointsTo<T>`, given that the address is aligned.
     /// `final(self)` is the final `PointsTo<T>`'s underlying `PointsToUnaligned<T>`.
-    /// If the final `PointsTo<T>` satisfies `ptrs_len_same_valid` with the original,
+    /// If the final `PointsTo<T>` satisfies `ptrs_len_same_valid_value` with the original,
     /// `self` is well-formed afterwards.
     pub proof fn as_aligned_mut(tracked &mut self) -> (tracked out: &mut PointsTo<T>)
         requires
@@ -983,11 +983,11 @@ impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = 
             out.pt_unaligned() == *old(self),
             out.wf(),
             *final(self) == final(out).pt_unaligned(),
-            <PointsTo<T> as PTTypedValue>::ptrs_len_same_valid(*out, *final(out)) ==> final(self).wf(),
+            <PointsTo<T> as PTTypedValue>::ptrs_len_same_valid_value(*out, *final(out)) ==> final(self).wf(),
     {
         let tracked out = PointsTo::from_unaligned_mut(self);
         let out_ref = out;
-        if <PointsTo<T> as PTTypedValue>::ptrs_len_same_valid(*out_ref, *final(out_ref)) {
+        if <PointsTo<T> as PTTypedValue>::ptrs_len_same_valid_value(*out_ref, *final(out_ref)) {
             <PointsToUnaligned<T> as PTTypedValue>::stays_wf(
                 out_ref.pt_unaligned(),
                 final(out_ref).pt_unaligned(),
@@ -1023,7 +1023,7 @@ impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     /// Mutably borrows the underlying `PointsToUnaligned<T>`.
     /// `final(self)` holds the final `PointsToUnaligned<T>`.
     /// If the final unaligned permission keeps the initial one's pointer (so the same aligned address)
-    /// and satisfies `ptrs_len_same_valid` with it,
+    /// and satisfies `ptrs_len_same_valid_value` with it,
     /// `self` is well-formed afterwards.
     pub proof fn as_unaligned_mut(tracked &mut self) -> (tracked out: &mut PointsToUnaligned<T>)
         requires
@@ -1032,12 +1032,12 @@ impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
             *out == old(self).pt_unaligned(),
             out.wf(),
             final(self).pt_unaligned() == *final(out),
-            final(out).ptr() == out.ptr() && PointsToUnaligned::<T>::ptrs_len_same_valid(*out, *final(out))
+            final(out).ptr() == out.ptr() && PointsToUnaligned::<T>::ptrs_len_same_valid_value(*out, *final(out))
                 ==> final(self).wf(),
     {
         let tracked out = &mut self.pt_unaligned;
         let out_ref = out;
-        if PointsToUnaligned::<T>::ptrs_len_same_valid(*out_ref, *final(out_ref)) {
+        if PointsToUnaligned::<T>::ptrs_len_same_valid_value(*out_ref, *final(out_ref)) {
             PointsToUnaligned::<T>::stays_wf(*out_ref, *final(out_ref));
         }
         out
@@ -1268,7 +1268,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 
 pub broadcast group group_points_to_lemmas {
     SeqPointsTo::lemma_ptrs_len_same_untyped,
-    PTTypedValue::lemma_ptrs_len_same_valid,
+    PTTypedValue::lemma_ptrs_len_same_valid_value,
 }
 
 } // verus!

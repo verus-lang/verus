@@ -38,8 +38,8 @@ impl<T> View for SeqPointsTo<T, PointsTo<T>> {
 
 // Interim: today's typed impl, adapted to the `*mut [T]` pointer,
 // with `split`, `join` and `subrange` as wrappers over the structural functions,
-// and with PLAN.md's `wf` (each element `wf`), `ptrs_len_same_valid`, `stays_wf`
-// and `lemma_ptrs_len_same_valid`, since elements' `wf_basic` no longer has the decode clause.
+// and with PLAN.md's `wf` (each element `wf`), `ptrs_len_same_valid_value`, `stays_wf`
+// and `lemma_ptrs_len_same_valid_value`, since elements' `wf_basic` no longer has the decode clause.
 // Its contracts are replaced by the approved ones when this impl is approved.
 impl<T> SeqPointsTo<T, PointsTo<T>> {
     /// The pointer to the first element, without the length.
@@ -115,19 +115,19 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         Seq::new(len, |i: int| self[start_index + i].value())
     }
 
-    /// The pointer-level `ptrs_len_same`, plus each element's `PTValueOps::ptrs_len_same_valid`.
+    /// The pointer-level `ptrs_len_same`, plus each element's `valid_value`.
     /// Used by `stays_wf`.
-    pub open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
+    pub open spec fn ptrs_len_same_valid_value(old: Self, new: Self) -> bool {
         &&& Self::ptrs_len_same(old, new)
-        &&& forall|i| 0 <= i < new.len() ==> PointsTo::<T>::ptrs_len_same_valid(old[i], #[trigger] new[i])
+        &&& forall|i| #![trigger new[i]] 0 <= i < new.len() ==> new[i].valid_value()
     }
 
     /// If `old` is well-formed and `new` has the same pointers and length, with each element
-    /// still satisfying decode validity (`ptrs_len_same_valid`), then `new` is well-formed.
+    /// still satisfying its validity constraints (`valid_value`), then `new` is well-formed.
     pub proof fn stays_wf(old: Self, new: Self)
         requires
             old.wf(),
-            Self::ptrs_len_same_valid(old, new),
+            Self::ptrs_len_same_valid_value(old, new),
         ensures
             new.wf(),
     {
@@ -139,23 +139,23 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 
     /// If `old` and `new` are both well-formed with the same pointer, then each element
     /// of `new` keeps the corresponding element of `old`'s pointers and length, and still
-    /// satisfies decode validity.
+    /// satisfies its validity constraints.
     /// Same pointer means same length (the pointer carries it), so no separate length condition.
-    pub broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self)
+    pub broadcast proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self)
         requires
             old.wf(),
             new.wf(),
             new.ptr() == old.ptr(),
         ensures
-            #[trigger] Self::ptrs_len_same_valid(old, new),
+            #[trigger] Self::ptrs_len_same_valid_value(old, new),
     {
-        assert forall|i: int| 0 <= i < new.len() implies {
-            &&& PointsTo::<T>::ptrs_len_same_valid(old[i], #[trigger] new[i])
+        assert forall|i: int| #![trigger new[i]] 0 <= i < new.len() implies {
+            &&& new[i].valid_value()
             &&& PointsTo::<T>::ptrs_len_same(old[i], new[i])
             &&& new[i].ptr() == old[i].ptr()
         } by {
             assert(new[i].ptr()@.addr == old[i].ptr()@.addr);
-            PointsTo::<T>::lemma_ptrs_len_same_valid(old[i], new[i]);
+            PointsTo::<T>::lemma_ptrs_len_same_valid_value(old[i], new[i]);
         }
     }
 
@@ -955,7 +955,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             assert forall|i: int| 0 <= i < new_self.len() implies PointsTo::<
                 T,
             >::ptrs_len_same(old_self[i], #[trigger] new_self[i]) by {
-                PointsTo::<T>::lemma_ptrs_len_same_valid(old_self[i], new_self[i]);
+                PointsTo::<T>::lemma_ptrs_len_same_valid_value(old_self[i], new_self[i]);
             }
         }
         raw
@@ -1364,7 +1364,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     //                 &&& final(perms)[i].is_valid()
     //                 &&& final(perms)[i].ptr() == old(perms)[i].ptr()
     //                 &&& final(perms)[i].value() == *final(ret[i])
-    //                 &&& PointsTo::<T>::ptrs_len_same_valid(old(perms)[i], final(perms)[i])
+    //                 &&& PointsTo::<T>::ptrs_len_same_valid_value(old(perms)[i], final(perms)[i])
     //                 &&& final(perms)[i].wf()
     //             },
     //         forall|i: int|
@@ -1420,7 +1420,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     //             start,
     //             Seq::new(ret.len(), |i: int| TypedValue::Valid(Tracked(*final(ret[i])))),
     //         ),
-    //         Self::ptrs_len_same_valid(*old(self), *final(self)),
+    //         Self::ptrs_len_same_valid_value(*old(self), *final(self)),
     //         final(self).wf(),
     // {
     //     let old_self = *self;
@@ -1462,7 +1462,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     //
     //     // Re-establishing invariants
     //     assert forall|i: int| 0 <= i < new_self.len() implies {
-    //         &&& PointsTo::<T>::ptrs_len_same_valid(old_self[i], #[trigger] new_self[i])
+    //         &&& PointsTo::<T>::ptrs_len_same_valid_value(old_self[i], #[trigger] new_self[i])
     //         &&& new_self[i].wf()
     //     } by {
     //         assert(old_self[i].wf_basic());
@@ -1649,7 +1649,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 // Not in `group_vstd_default`.
 // While porting, code that needs these lemmas may need an explicit `broadcast use`.
 pub broadcast group group_points_to_collections_lemmas {
-    SeqPointsTo::lemma_ptrs_len_same_valid,
+    SeqPointsTo::lemma_ptrs_len_same_valid_value,
 }
 
 } // verus!

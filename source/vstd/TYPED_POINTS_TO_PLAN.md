@@ -91,8 +91,12 @@ Approved ([`points_to_collections.rs`: `PointsToRaw`](TYPED_POINTS_TO_APPROVED.m
 /// The interface for a `SeqPointsTo<T, PointsTo<T>>` permission,
 /// which represents permission to access a contiguous sequence of memory locations,
 /// each aligned to `T` and possibly holding a valid value of type `T`.
-/// We track the pointer to the start of that memory, along with the
+/// We track the `*mut T` pointer to the start of that memory, along with the
 /// `PointsTo<T>` permission for each element.
+/// 
+/// Note: the actual struct has a `*mut [T]` pointer,
+/// but we can get the metadata from the length of `seq_pt`,
+/// so the view only has the thin pointer.
 #[cfg(verus_keep_ghost)]
 pub ghost struct SeqPointsToData<T> {
     pub ptr: *mut T,
@@ -110,13 +114,16 @@ impl<T> View for SeqPointsTo<T, PointsTo<T>> {
 
 // The only typed sequence impl (there is no generic typed impl).
 impl<T> SeqPointsTo<T, PointsTo<T>> {
-    /// The pointer to the first element, without the length.
+    /// The pointer to the start of the memory region tracked by this permission, 
+    /// without the metadata (the metadata is the same as `self.len()`).
     pub open spec fn thin_ptr(self) -> *mut T {
         self.ptr() as *mut T
     }
 
-    /// In addition to the well-formed-ness properties which must hold of every `SeqPointsTo` (`wf_basic`),
-    /// the pointer must be aligned to `T`, and each element must be well-formed.
+    /// In addition to the well-formedness properties which must hold of every `SeqPointsTo` (`wf_basic`),
+    /// the pointer must be aligned to `T`, and each element must be fully well-formed.
+    // `SeqPointsTo::wf_basic` ensures each element satisfies its own `T::wf_basic()`,
+    // which only captures pointer-level well-formedness conditions for ensuring `PTProperties` invariants.
     pub open spec fn wf(self) -> bool {
         &&& self.wf_basic()
         &&& PointsTo::<T>::satisfies_alignment(self.ptr()@.addr)
@@ -135,15 +142,31 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         perms.fold_left(Seq::empty(), |acc: Seq<AbstractByte>, elt: PointsTo<T>| acc + elt.bytes())
     }
 
-    /// The (possibly-valid) typed value of each element, as a sequence.
+    /// The sequence of (possibly-valid) typed values of each element.
     pub open spec fn seq_typed_value(self) -> Seq<TypedValue<T>> {
         self.seq_pt().map(|i: int, pt: PointsTo<T>| pt.typed_value())
+    }
+
+    /// Returns `true` if all of the permission's associated memory in the given subrange is valid for the type `T`.
+    #[verifier::inline]
+    pub open spec fn is_valid_subrange(&self, start_index: int, len: nat) -> bool {
+        &&& 0 <= start_index <= start_index + len <= self.len()
+        &&& forall|i: int| start_index <= i < start_index + len ==> #[trigger] self[i].is_valid()
+    }
+
+    /// Given that the subrange is valid, returns the underlying values in that subrange as a sequence.
+    #[verifier::inline]
+    pub open spec fn value_subrange(&self, start_index: int, len: nat) -> Seq<T>
+        recommends
+            self.is_valid_subrange(start_index, len),
+    {
+        Seq::new(len, |i: int| self[start_index + i].value())
     }
 
     /// Returns `true` if all of the permission's associated memory is valid for the type `T`.
     #[verifier::inline]
     pub open spec fn is_valid(&self) -> bool {
-        forall|i| 0 <= i < self.len() ==> #[trigger] self[i].is_valid()
+        self.is_valid_subrange(0, self.len())
     }
 
     /// Returns `true` if any part of the permission's associated memory is not valid for the type `T`.
@@ -165,53 +188,39 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         recommends
             self.is_valid(),
     {
-        Seq::new(self.len(), |i| self[i].value())
+        self.value_subrange(0, self.len())
     }
 
-    /// Returns `true` if all of the permission's associated memory in the given subrange is valid for the type `T`.
-    #[verifier::inline]
-    pub open spec fn is_valid_subrange(&self, start_index: int, len: nat) -> bool {
-        &&& 0 <= start_index <= start_index + len <= self.len()
-        &&& forall|i: int| start_index <= i < start_index + len ==> #[trigger] self[i].is_valid()
-    }
-
-    /// Given that the subrange is valid, returns the underlying values in that subrange as a sequence.
-    #[verifier::inline]
-    pub open spec fn value_subrange(&self, start_index: int, len: nat) -> Seq<T>
-        recommends
-            self.is_valid_subrange(start_index, len),
-    {
-        Seq::new(len, |i: int| self[start_index + i].value())
-    }
-
-    /// The pointer-level `ptrs_len_same`, plus each element's `PTTypedValue::ptrs_len_same_valid`.
-    /// Used by `stays_wf`.
-    pub open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
+    /// The pointer-level `ptrs_len_same`, 
+    /// which ensures `old` and `new` have the same pointer and length
+    /// and that `P::ptrs_len_same` holds on each element of `old` and `new`,
+    /// plus each element's validity constraints (`valid_value`).
+    pub open spec fn ptrs_len_same_valid_value(old: Self, new: Self) -> bool {
         &&& Self::ptrs_len_same(old, new)
-        &&& forall|i| 0 <= i < new.len() ==> PointsTo::<T>::ptrs_len_same_valid(old[i], #[trigger] new[i])
+        &&& forall|i| #![trigger new[i]] 0 <= i < new.len() ==> new[i].valid_value()
     }
 
     /// If `old` is well-formed and `new` has the same pointers and length, with each element
-    /// still satisfying decode validity (`ptrs_len_same_valid`), then `new` is well-formed.
+    /// still satisfying its validity constraints (`valid_value`), then `new` is well-formed.
     pub proof fn stays_wf(old: Self, new: Self)
         requires
             old.wf(),
-            Self::ptrs_len_same_valid(old, new),
+            Self::ptrs_len_same_valid_value(old, new),
         ensures
             new.wf(),
     ;
 
     /// If `old` and `new` are both well-formed with the same pointer, then each element
     /// of `new` keeps the corresponding element of `old`'s pointers and length, and still
-    /// satisfies decode validity.
-    /// Same pointer means same length (the pointer carries it), so no separate length condition.
-    pub broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self)
+    /// satisfies its validity constraints.
+    /// Same pointer means same length (the pointer carries it), so there is no separate length condition.
+    pub broadcast proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self)
         requires
             old.wf(),
             new.wf(),
             new.ptr() == old.ptr(),
         ensures
-            #[trigger] Self::ptrs_len_same_valid(old, new),
+            #[trigger] Self::ptrs_len_same_valid_value(old, new),
     ;
 
     /// A `SeqPointsTo<T, PointsTo<T>>` is always aligned to `T`.
@@ -230,22 +239,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             #![trigger self.seq_typed_value()[i]]
             #![trigger self.seq_pt()[i]]
             self.seq_typed_value()[i] == self.seq_pt()[i].typed_value(),
-    ;
-
-    /// We can construct a `SeqPointsTo` with `length`-many `PointsTo` permissions,
-    /// provided that `T` is zero-sized and that the pointer is non-null and aligned.
-    pub proof fn zero_sized(ptr: *mut T, length: nat) -> (tracked out: Self)
-        requires
-            ptr@.addr != 0,
-            PointsTo::<T>::satisfies_alignment(ptr@.addr),
-            ptr_addr_in_bounds(ptr),
-            size_of::<T>() == 0,
-            length <= usize::MAX,    // new
-        ensures
-            forall|i| 0 <= i < out.len() ==> (#[trigger] out[i]).is_empty(),
-            out.thin_ptr() == ptr,
-            out.len() == length,
-            out.wf(),
     ;
 
     /// The length of the abstract bytes matches the size of this type multiplied by the number of elements this permission represents.
@@ -295,6 +288,22 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     )
                     &&& self.seq_pt()[i].bytes().len() == size_of::<T>()
                 },
+    ;
+
+    /// We can construct a `SeqPointsTo` with `length`-many `PointsTo` permissions,
+    /// provided that `T` is zero-sized and that the pointer is non-null and aligned.
+    pub proof fn zero_sized(ptr: *mut T, length: nat) -> (tracked out: Self)
+        requires
+            ptr@.addr != 0,
+            PointsTo::<T>::satisfies_alignment(ptr@.addr),
+            ptr_addr_in_bounds(ptr),
+            size_of::<T>() == 0,
+            length <= usize::MAX,    // new
+        ensures
+            forall|i| 0 <= i < out.len() ==> (#[trigger] out[i]).is_empty(),
+            out.thin_ptr() == ptr,
+            out.len() == length,
+            out.wf(),
     ;
 
     /// Converts a `SeqPointsTo<T, PointsTo<T>>` into a `PointsToUntyped` covering the same bytes,
@@ -417,7 +426,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     /// `self` keeps its pointer,
     /// with the sub-sequence of permissions replaced by the final sub-permission's.
     /// Provided that the sub-permission keeps its pointers and length,
-    /// with each element still satisfying decode validity (`ptrs_len_same_valid`),
+    /// with each element still satisfying its validity constraints (`ptrs_len_same_valid_value`),
     /// `self` is also still well-formed.
     ///
     /// Proved from M5 (`from_seq_mut`) in phase 3b;
@@ -438,7 +447,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).seq_pt() == old(self).seq_pt().subrange(0, i as int) + final(r).seq_pt()
                 + old(self).seq_pt().subrange(j as int, old(self).len() as int),
             // Criteria necessary for re-establishing invariants
-            Self::ptrs_len_same_valid(*r, *final(r)) ==> final(self).wf(),
+            Self::ptrs_len_same_valid_value(*r, *final(r)) ==> final(self).wf(),
     ;
 
     /// Creates a `SeqPointsTo<T, PointsTo<T>>` of length `len`
@@ -770,7 +779,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     /// otherwise every element ends empty
     /// (the values of any valid elements are dropped).
     /// If the slice permission keeps its pointers and length,
-    /// with its value still satisfying decode validity (`ptrs_len_same_valid`),
+    /// with its value still satisfying its validity constraints (`ptrs_len_same_valid_value`),
     /// the sequence holds its bytes and is well-formed.
     pub proof fn as_slice_pt_mut(tracked &mut self) -> (tracked out: &mut PointsTo<[T]>)
         requires
@@ -792,7 +801,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 ==> final(self).is_fully_empty(),
             // Criteria necessary for re-establishing invariants
             // (the bytes too, since `join_mut` ties them back only under `ptrs_len_same`).
-            <PointsTo<[T]> as PTTypedValue>::ptrs_len_same_valid(*out, *final(out)) ==> {
+            <PointsTo<[T]> as PTTypedValue>::ptrs_len_same_valid_value(*out, *final(out)) ==> {
                 &&& final(self).bytes() == final(out).bytes()
                 &&& final(self).wf()
             },
@@ -899,10 +908,10 @@ impl PTTypedValue for PointsToUnaligned<str> {
 
     proof fn lemma_wf_basic(&self);
 
-    // ptrs_len_same_valid: the trait's default body.
+    // ptrs_len_same_valid_value: the trait's default body.
 
     /// From `PointsToUntyped::lemma_ptrs_len_same_untyped` on the underlying permissions.
-    broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self);
+    broadcast proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self);
 
     /// From `PointsToUntyped::stays_wf` on the underlying permissions.
     proof fn stays_wf(old: Self, new: Self);
@@ -1184,10 +1193,10 @@ everything else exists today.
 | `impl<T> PointsToUnaligned<[T]>` | `len` (new, inline); `from_untyped_ref`, `from_untyped_with_value_ref`, `borrow_index` (new, phase 4; the primary implementations). (removed in 2b: inherent `wf`) | |
 | `impl<T: ?Sized> PointsTo<T>` | closed `pt_unaligned`; `typed_value`, `metadata`, `bytes`, `is_valid`, `is_empty` (open, delegating); `tracked_pt_unaligned`; `from_unaligned_mut` (new axiom M4) | |
 | `impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | `into_unaligned`, `as_unaligned`, `as_unaligned_mut` (new, generic) | Contracts in [`PointsTo`: proofs and aligned/unaligned conversions](#pointsto-proofs-and-alignedunaligned-conversions). |
-| `impl<T> PointsTo<T>` | `value`, `is_aligned`, `is_disjoint_pointsto<S>`; `borrow_mut` (axiom). (removed: `wf`, `stays_wf`, `lemma_ptrs_len_same_valid`, `zero_sized`, `bytes_decode`, the untyped conversions, the value operations) | Removed ones are `PTValueOps` / `PTSizedValue` methods. |
+| `impl<T> PointsTo<T>` | `value`, `is_aligned`, `is_disjoint_pointsto<S>`; `borrow_mut` (axiom). (removed: `wf`, `stays_wf`, `lemma_ptrs_len_same_valid_value`, `zero_sized`, `bytes_decode`, the untyped conversions, the value operations) | Removed ones are `PTValueOps` / `PTSizedValue` methods. |
 | `impl<T> PointsTo<[T]>` | `len` (new, inline); `from_untyped_ref`, `from_untyped_with_value_ref`, `borrow_index` (new, phase 4; compositions over the `PointsToUnaligned` versions). (removed: inherent `wf`) | |
 | `impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P>` (`points_to_model.rs` / `points_to_ops.rs`) | `seq_pt`, `len`, `spec_index`; `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut`, `from_seq`, `empty`, `into_seq` (moved here in phase 1); `split_basic`, `join_basic`, `subrange_basic` (new); `from_seq_mut` (new axiom M5) | Structural; stated with `wf_basic`. The only code touching the fields. |
-| `impl<T> SeqPointsTo<T, PointsTo<T>>` | `View` (`SeqPointsToData<T>`); `thin_ptr`, `wf`, `bytes`, `bytes_inner`, `seq_typed_value`, `is_valid`, `is_empty`, `is_fully_empty`, `seq_value`, `is_valid_subrange`, `value_subrange`, `ptrs_len_same_valid`, `stays_wf`, `lemma_ptrs_len_same_valid`, `typed_value_equiv`, the byte lemmas, `split`, `join`, `subrange`, `subrange_mut` (proved in phase 3b), `zero_sized`, the untyped conversions, the value operations, `is_aligned`, `is_disjoint_seqpt`; `as_slice_pt`, `as_slice_pt_mut` (new, phase 4) | The only typed sequence impl. |
+| `impl<T> SeqPointsTo<T, PointsTo<T>>` | `View` (`SeqPointsToData<T>`); `thin_ptr`, `wf`, `bytes`, `bytes_inner`, `seq_typed_value`, `is_valid`, `is_empty`, `is_fully_empty`, `seq_value`, `is_valid_subrange`, `value_subrange`, `ptrs_len_same_valid_value`, `stays_wf`, `lemma_ptrs_len_same_valid_value`, `typed_value_equiv`, the byte lemmas, `split`, `join`, `subrange`, `subrange_mut` (proved in phase 3b), `zero_sized`, the untyped conversions, the value operations, `is_aligned`, `is_disjoint_seqpt`; `as_slice_pt`, `as_slice_pt_mut` (new, phase 4) | The only typed sequence impl. |
 | `impl SeqPointsTo<u8, PointsToByte>` (`PointsToUntyped`, `points_to_model.rs` / `points_to_ops.rs`) | `View`, `bytes`, `wf`, `stays_wf`, `lemma_ptrs_len_same_untyped` (renamed), `zero_sized<T>`, `split`, `split_ref`, `join` (wrappers over the `_basic` primitives); `join_ref`, `join_mut` (axioms); `split_mut` (proved in phase 3b); `is_disjoint_untyped` | |
 | `impl PointsToByte` (renamed from `PointsToSingleton`) | `byte`, `is_disjoint_byte` (renamed from `is_disjoint_singleton`, in phase 1 with the type) | |
 | `impl PointsToRaw` | everything in [`PointsToRaw` (phase 2c)](#pointstoraw-phase-2c) above (new) | Not a `PTPhys`. |

@@ -136,11 +136,18 @@ pub trait PTTypedValue: PTPhys {
 
     /// Well-formedness: the pointer-level conditions (`wf_basic`),
     /// the alignment requirement for this permission type,
-    /// and validity constraints.
+    /// and validity constraints (`valid_value`).
     open spec fn wf(self) -> bool {
         &&& self.wf_basic()
         &&& Self::satisfies_alignment(self.ptr()@.addr)
-        &&& self.typed_value().is_valid() ==> {
+        &&& self.valid_value()
+    }
+
+    /// Validity constraints on the typed value:
+    /// if it is valid, the bytes decode to it,
+    /// and it is consistent with the pointer metadata.
+    open spec fn valid_value(self) -> bool {
+        self.typed_value().is_valid() ==> {
             &&& abs_decode(self.bytes(), self.typed_value().value_ref())
             &&& Self::metadata_matches(self.typed_value().value_ref(), self.ptr()@.metadata)
         }
@@ -185,30 +192,27 @@ pub trait PTTypedValue: PTPhys {
     ;
 
     /// Invariants which must hold between `old` and `new` to preserve well-formedness (see `stays_wf`).
-    open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
+    open spec fn ptrs_len_same_valid_value(old: Self, new: Self) -> bool {
         &&& Self::ptrs_len_same(old, new)
-        &&& new.typed_value().is_valid() ==> {
-            &&& abs_decode(new.bytes(), new.typed_value().value_ref())
-            &&& Self::metadata_matches(new.typed_value().value_ref(), new.ptr()@.metadata)
-        }
+        &&& new.valid_value()
     }
 
-    /// Two well-formed permissions with the same pointer satisfy `ptrs_len_same_valid`.
-    broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self)
+    /// Two well-formed permissions with the same pointer satisfy `ptrs_len_same_valid_value`.
+    broadcast proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self)
         requires
             old.wf(),
             new.wf(),
             new.ptr() == old.ptr(),
         ensures
-            #[trigger] Self::ptrs_len_same_valid(old, new),
+            #[trigger] Self::ptrs_len_same_valid_value(old, new),
     ;
 
-    /// If `old` is well-formed and `new` satisfies `ptrs_len_same_valid`,
+    /// If `old` is well-formed and `new` satisfies `ptrs_len_same_valid_value`,
     /// then `new` is well-formed.
     proof fn stays_wf(old: Self, new: Self)
         requires
             old.wf(),
-            Self::ptrs_len_same_valid(old, new),
+            Self::ptrs_len_same_valid_value(old, new),
         ensures
             new.wf(),
     ;
@@ -1272,13 +1276,13 @@ impl<T> PTTypedValue for PointsToUnaligned<T> {
     proof fn lemma_wf_basic(&self) {
     }
 
-    // ptrs_len_same_valid: the trait's default body.
+    // ptrs_len_same_valid_value: the trait's default body.
 
     /// From `PointsToUntyped::lemma_ptrs_len_same_untyped` on the underlying permissions.
-    broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self) {
+    broadcast proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self) {
         PointsToUntyped::lemma_ptrs_len_same_untyped(old.pt_untyped(), new.pt_untyped());
-        // As in `bytes_decode`, this assert unfolds the default `ptrs_len_same_valid`.
-        assert(Self::ptrs_len_same_valid(old, new));
+        // As in `bytes_decode`, this assert unfolds the default `ptrs_len_same_valid_value`.
+        assert(Self::ptrs_len_same_valid_value(old, new));
     }
 
     /// From `PointsToUntyped::stays_wf` on the underlying permissions.
@@ -1317,10 +1321,10 @@ impl<T> PTTypedValue for PointsToUnaligned<[T]> {
     proof fn lemma_wf_basic(&self) {
     }
 
-    // ptrs_len_same_valid: the trait's default body.
+    // ptrs_len_same_valid_value: the trait's default body.
 
     /// From `PointsToUntyped::lemma_ptrs_len_same_untyped` on the underlying permissions.
-    broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self) {
+    broadcast proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self) {
         PointsToUntyped::lemma_ptrs_len_same_untyped(old.pt_untyped(), new.pt_untyped());
     }
 
@@ -1553,17 +1557,22 @@ impl<T: ?Sized> PTTypedValue for PointsTo<T> where PointsToUnaligned<T>: PTValue
         self.pt_unaligned().lemma_wf_basic();
     }
 
+    /// Delegates to the underlying `PointsToUnaligned`.
+    open spec fn valid_value(self) -> bool {
+        <PointsToUnaligned<T> as PTTypedValue>::valid_value(self.pt_unaligned())
+    }
+
     /// `new` has the same pointer as `old`,
     /// and they satisfy the `PointsToUnaligned` requirements
     /// for preserving well-formed-ness.
-    open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
+    open spec fn ptrs_len_same_valid_value(old: Self, new: Self) -> bool {
         &&& new.ptr() == old.ptr()
-        &&& <PointsToUnaligned<T> as PTTypedValue>::ptrs_len_same_valid(old.pt_unaligned(), new.pt_unaligned())
+        &&& <PointsToUnaligned<T> as PTTypedValue>::ptrs_len_same_valid_value(old.pt_unaligned(), new.pt_unaligned())
     }
 
     /// Delegates to the underlying `PointsToUnaligned`.
-    broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self) {
-        <PointsToUnaligned<T> as PTTypedValue>::lemma_ptrs_len_same_valid(old.pt_unaligned(), new.pt_unaligned());
+    broadcast proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self) {
+        <PointsToUnaligned<T> as PTTypedValue>::lemma_ptrs_len_same_valid_value(old.pt_unaligned(), new.pt_unaligned());
     }
 
     /// Delegates to the underlying `PointsToUnaligned`.
