@@ -46,6 +46,9 @@ verus! {
 /// The identifier of the `Allocator` instance used to allocate memory.
 pub type AllocId = int;
 
+/// The `AllocId` of allocations made by the global allocator.
+pub uninterp spec fn global_alloc_id() -> AllocId;
+
 /// An allocation has a start address, length, and alignment.
 /// Since the `Allocator` trait permits allocations that are larger than the originally-requested size,
 /// we also keep track of this.

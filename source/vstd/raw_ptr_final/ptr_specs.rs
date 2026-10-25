@@ -269,22 +269,23 @@ pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> 
 // {
 //     unsafe { &*ptr }
 // }
-// /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
-// /// The memory pointed to by `ptr` must be initialized.
-// TODO: add back in
-// #[inline(always)]
-// #[verifier::external_body]
-// pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<[T]>>) -> (v: &[T])
-//     requires
-//         perm.ptr() == ptr,
-//         perm.is_valid(),
-//     ensures
-//         v@ == perm.value(),
-//     opens_invariants none
-//     no_unwind
-// {
-//     unsafe { &*ptr }
-// }
+/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<[T]>>) -> (v: &[T])
+    requires
+        perm.ptr() == ptr,
+        perm.is_valid(),
+        perm.wf(),
+    ensures
+        v@ == perm.typed_value().value_ref()@,
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &*ptr }
+}
+
 /// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
@@ -307,29 +308,31 @@ pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>
     unsafe { &mut *ptr }
 }
 
+/// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v: &mut [T])
+    requires
+        old(perm).ptr() == ptr,
+        old(perm).is_valid(),
+        old(perm).wf(),
+    ensures
+        final(perm).ptr() == ptr,
+        final(perm).is_valid(),
+        // The final bytes decode to the final value.
+        final(perm).wf(),
+        old(perm).typed_value().value_ref()@ == v@,
+        final(perm).typed_value().value_ref()@ == final(v)@,
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
+}
+
 // /// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
 // /// The memory pointed to by `ptr` must be initialized.
 // TODO: move to rustlib
-// #[inline(always)]
-// #[verifier::external_body]
-// pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v:
-//     &mut [T])
-//     requires
-//         old(perm).ptr() == ptr,
-//         old(perm).is_valid(),
-//     ensures
-//         final(perm).ptr() == ptr,
-//         final(perm).is_valid(),
-//         old(perm).value() == v@,
-//         final(perm).value() == final(v)@,
-//     opens_invariants none
-//     no_unwind
-// {
-//     unsafe { &mut *ptr }
-// }
-// /// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
-// /// The memory pointed to by `ptr` must be initialized.
-// TODO: add back in
 // #[inline(always)]
 // #[verifier::external_body]
 // pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo<str>>) -> (v:
@@ -433,16 +436,18 @@ pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
         *final(*mut_ref) == *old(*mut_ref),
 ;
 
+/// Convert from a shared reference to a `&'a mut [T]` to a `&'a PointsTo<[T]>`.
+pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T])
+    -> (tracked pt: &'a PointsTo<[T]>)
+    ensures
+        pt.ptr() == mut_ref_ptr(*mut_ref),
+        pt.is_valid(),
+        pt.typed_value().value_ref()@ == (*old(*mut_ref))@,
+        pt.wf(),
+        &*final(*mut_ref) == &*old(*mut_ref),
+;
+
 // TODO: move to rustlib
-// /// Convert from a shared reference to a `&'a mut [T]` to a `&'a PointsTo<[T]>`.
-// pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T]) -> (tracked pt:
-//     &'a PointsTo<[T]>)
-//     ensures
-//         pt.ptr() == mut_ref_ptr(*mut_ref),
-//         pt.is_valid(),
-//         pt.value() == (*old(*mut_ref))@,
-//         &*final(*mut_ref) == &*old(*mut_ref),
-// ;
 // /// Convert from a shared reference to a `&'a mut str` to a `&'a PointsTo<str>`.
 // pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) -> (tracked pt:
 //     &'a PointsTo<str>)
@@ -542,6 +547,83 @@ pub const fn cast_mut_ref_str_to_ptr(mut_ref: &mut str) -> ((ptr, perm): (
         &*final(perm@) == &*final(mut_ref),
 {
     (mut_ref as *mut str, Tracked::assume_new())
+}
+
+////////////////////////////////////////
+// Allocation
+////////////////////////////////////////
+/// Allocate with the global allocator.
+/// The precondition should be consistent with the
+/// [documented safety conditions on `alloc`](https://doc.rust-lang.org/alloc/alloc/trait.GlobalAlloc.html#tymethod.alloc).
+/// Returns a pointer with a corresponding [`PointsToUntyped`] permission.
+/// The byte contents are arbitrary (uninitialized).
+///
+/// Here we allocate exactly the size of memory requested
+/// (shown by having both the `Provenance` `orig_size` and `alloc_len` be the provided `size`).
+/// This is a stronger guarantee than `Allocator::allocate`, which may allocate a larger block of memory.
+#[cfg(feature = "std")]
+#[verifier::external_body]
+pub fn allocate(size: usize, align: usize) -> ((ptr, perm): (*mut u8, Tracked<PointsToUntyped>))
+    requires
+        valid_layout(size, align),
+        size != 0,
+    ensures
+        perm@.ptr() == ptr_mut_from_data::<[u8]>(
+            PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: size },
+        ),
+        perm@.wf(),
+        ptr@.provenance is Some,
+        ptr@.addr == ptr@.provenance.unwrap().start_addr(),
+        ptr@.provenance.unwrap().alloc_len() == size,
+        ptr@.provenance.unwrap().orig_size() == size,
+        ptr@.provenance.unwrap().alignment() == align,
+        ptr@.provenance.unwrap().alloc_id() == global_alloc_id(),
+        // ptr@.addr % align == 0 and ptr@.addr + size <= usize::MAX follow from provenance_properties.
+    opens_invariants none
+{
+    // SAFETY: valid_layout is a precondition
+    let layout = unsafe { alloc::alloc::Layout::from_size_align_unchecked(size, align) };
+    // SAFETY: size != 0
+    let ptr = unsafe { ::alloc::alloc::alloc(layout) };
+    if ptr == core::ptr::null_mut() {
+        std::process::abort();
+    }
+    (ptr, Tracked::assume_new())
+}
+
+/// Deallocate with the global allocator.
+///
+/// The provenance ensures that the
+/// [documented safety conditions on `dealloc`](https://doc.rust-lang.org/1.82.0/core/alloc/trait.GlobalAlloc.html#tymethod.dealloc)
+/// are satisfied; by also giving up the [`PointsToUntyped`] permission for the whole allocation,
+/// we ensure there can be no use-after-free bug as a result of this deallocation.
+/// In order to do so, the parameters of the provenance and the [`PointsToUntyped`] permission
+/// must match the parameters of the deallocation.
+///
+/// We have two different ways to track size within the provenance:
+/// `orig_size`, the original requested size, and `alloc_len`, the size of memory actually allocated.
+/// According to the `Allocator` documentation, it's possible to have `orig_size <= alloc_len`.
+/// Here, we restrict them to be the same.
+#[cfg(feature = "alloc")]
+#[verifier::external_body]
+pub fn deallocate(ptr: *mut u8, size: usize, align: usize, Tracked(perm): Tracked<PointsToUntyped>)
+    requires
+        perm.wf(),
+        ptr@.provenance == perm.ptr()@.provenance,
+        ptr@.addr == perm.ptr()@.addr,
+        ptr@.provenance is Some,
+        ptr@.provenance.unwrap().alloc_id() == global_alloc_id(),
+        ptr@.addr == ptr@.provenance.unwrap().start_addr(),
+        perm.len() == ptr@.provenance.unwrap().alloc_len(),
+        size == ptr@.provenance.unwrap().orig_size(),
+        align == ptr@.provenance.unwrap().alignment(),
+    opens_invariants none
+{
+    // SAFETY: ensured by the provenance and the PointsToUntyped
+    let layout = unsafe { alloc::alloc::Layout::from_size_align_unchecked(size, align) };
+    unsafe {
+        ::alloc::alloc::dealloc(ptr, layout);
+    }
 }
 
 } // verus!
