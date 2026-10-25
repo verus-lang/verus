@@ -454,7 +454,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).wf(),
     ;
 
-
     /// Copies the given `TypedValue<T>`s into the subrange starting at `start`.
     pub proof fn copy_typed_value_subrange(
         tracked &mut self,
@@ -485,8 +484,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     ;
 
     /// This takes a borrow of each of the values in a subrange of `self`.
-    /// Renamed from `borrow_value_subrange`
-    /// (matching `take_subrange` / `put_subrange` / `copy_subrange` and `PTValueOps::borrow`).
     pub proof fn borrow_subrange(tracked &self, start: int, end: int) -> (tracked val: Seq<&T>)
         requires
             self.wf(),
@@ -542,7 +539,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).wf(),
     ;
 
-
     /// Copies the given values into the subrange starting at `start`.
     pub proof fn copy_subrange(tracked &mut self, start: int, tracked val: &Seq<T>) where T: Copy
         requires
@@ -569,6 +565,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     ==> #[trigger] final(self).seq_typed_value()[i] == old(self).seq_typed_value()[i],
             final(self).wf(),
     ;
+
     /// Converts a `SeqPointsTo<T, PointsTo<T>>` into a `PointsToUntyped` covering the same bytes,
     /// together with the `TypedValue<T>` of each element.
     /// (Use `into_untyped` instead if you don't need the typed values.)
@@ -741,12 +738,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).ptr()@.addr + final(self).len() * size_of::<T>() <= other.ptr()@.addr
                 || other.ptr()@.addr + other.len() * size_of::<S>() <= final(self).ptr()@.addr,
     ;
-
-    // Private helpers, as today:
-    // `bytes_len_helper`, `bytes_subrange`, `bytes_decode_helper`, `bytes_inner_ext`
-    // (the byte lemmas);
-    // `untyped_ref_join`, `untyped_mut_join` (`as_untyped`, `as_untyped_mut`);
-    // `borrow_typed_values`, `copy_typed_values`, `copy_values`, `borrow_values` (the value operations).
 }
 ```
 
