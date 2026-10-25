@@ -1916,13 +1916,17 @@ pub(crate) fn check_item_fn<'tcx>(
             if vattrs.allow_in_spec {
                 return err_span(
                     span,
-                    format!("`allow_in_spec` not supported for function with `&mut` param"),
+                    format!(
+                        "`allow_in_spec` not supported for function with a mutable reference parameter"
+                    ),
                 );
             }
             if vattrs.autospec.is_some() {
                 return err_span(
                     span,
-                    format!("`when_used_as_spec` not supported for function with `&mut` param"),
+                    format!(
+                        "`when_used_as_spec` not supported for function with a mutable reference parameter"
+                    ),
                 );
             }
         }

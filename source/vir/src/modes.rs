@@ -3438,10 +3438,7 @@ fn check_expr(
                 Mode::Exec => {}
                 Mode::Proof => {}
                 Mode::Spec => {
-                    return Err(error(
-                        &place.span,
-                        "cannot take mutable borrow of ghost-mode place",
-                    ));
+                    return Err(error(&place.span, "cannot mutably borrow a ghost-mode place"));
                 }
             }
             proph.check(&expr.span, NoProphReason::MutBorrow)?;

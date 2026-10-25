@@ -2340,7 +2340,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 VerusItem::HasResolvedUnsized => match arg_typ.kind() {
                     TyKind::Ref(_, t, rustc_middle::ty::Mutability::Not) => *t,
                     _ => {
-                        return err_span(expr.span, "`has_resolved_unsized` expects shared ref");
+                        return err_span(
+                            expr.span,
+                            "`has_resolved_unsized` expects a shared reference",
+                        );
                     }
                 },
                 _ => unreachable!(),
@@ -2360,7 +2363,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 return err_span(
                     expr.span,
                     format!(
-                        "to use `{name}`, disable mut-ref backwards-compatibility (add `#[verifier::deprecated_postcondition_mut_ref_style(false)]` to the function)"
+                        "to use `{name}`, disable mutable reference backwards-compatibility (add `#[verifier::deprecated_postcondition_mut_ref_style(false)]` to the function)"
                     ),
                 );
             }
