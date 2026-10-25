@@ -290,17 +290,13 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] spec_bitshift_negative verus_code! {
-        // TODO bit_vector solver currently doesn't support bit-shifts by signed types.
-        // However, if it ever does, then this test case should test that Verus
-        // checks for underflow (maybe as a recommends check?)
-
-        // If our solver interprets (-1i8) as 255 then the following assert would pass,
-        // but it may be preferable to leave shifts-by-negatives underspecified?
-        // That can be decided later, though.
+        // Shifting by a negative amount is unspecified, so the bit_vector solver can't
+        // prove what it gives. (If the solver interpreted (-1i8) as 255, the following
+        // assert would pass.) Exec code checks that the amount is nonnegative.
         fn test() {
             assert(1i8 >> (-1i8) == 0i8) by(bit_vector); // FAILS
         }
-    } => Err(e) => assert_vir_error_msg(e, "bit-shift with possibly negative shift")
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {

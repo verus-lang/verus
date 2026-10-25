@@ -730,19 +730,74 @@ test_verify_one_bv_file! {
 }
 
 test_verify_one_bv_file! {
-    #[test] test_shl_signed_unsupported verus_code! {
-        fn test_shl_neg(x: i32, y: i32) {
-            assert(x << y == x) by(bit_vector);
+    #[test] test_shift_signed_amount verus_code! {
+        fn test_shr(x: i32, y: i32)
+            requires 0 <= y < 32,
+        {
+            assert(x >> y == x >> (y as u32)) by(bit_vector) requires 0 <= y < 32;
         }
-    } => Err(err) => assert_vir_error_msg(err, "not supported: bit-shift with possibly negative shift")
+
+        fn test_shl(x: i32, y: i32)
+            requires 0 <= y < 32,
+        {
+            assert(x << y == x << (y as u32)) by(bit_vector) requires 0 <= y < 32;
+        }
+
+        fn test_mixed_widths(a: u8, b: i64, c: i64, d: i8)
+            requires 0 <= b < 8, 0 <= d < 64,
+        {
+            assert(a >> b == a >> (b as u64)) by(bit_vector) requires 0 <= b < 8;
+            assert(c << d == c << (d as u8)) by(bit_vector) requires 0 <= d < 64;
+        }
+
+        fn test_arch(x: isize, y: isize)
+            requires 0 <= y < 32,
+        {
+            assert(x >> y == x >> (y as usize)) by(bit_vector) requires 0 <= y < 32;
+        }
+
+        // As with an unsigned amount, there is no upper bound on the amount
+        fn test_large_amount(x: i8, y: i32)
+            requires y >= 8,
+        {
+            assert(x >> y == 0 || x >> y == -1) by(bit_vector) requires y >= 8;
+            assert(x << y == 0) by(bit_vector) requires y >= 8;
+        }
+
+        fn test_computed_amount(code: i32)
+            requires 1 <= code <= 15,
+        {
+            assert((0xaaafff1bu32 as i32) >> (code << 1) < 0) by(bit_vector) requires 1 <= code <= 15;
+        }
+    } => Ok(())
 }
 
 test_verify_one_bv_file! {
-    #[test] test_shr_signed_unsupported verus_code! {
-        fn test_shl_neg(x: i32, y: i32) {
-            assert(x >> y == x) by(bit_vector);
+    #[test] test_shift_negative_amount_unspecified verus_code! {
+        fn test_shl(x: i32, y: i32) {
+            assert(x << y == x) by(bit_vector); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "not supported: bit-shift with possibly negative shift")
+
+        fn test_shr_no_lower_bound(x: i32, y: i32)
+            requires y < 32,
+        {
+            // y may be negative
+            assert(x >> y == x >> (y as u32)) by(bit_vector) requires y < 32; // FAILS
+        }
+
+        // A shift by a negative amount is unspecified, not a shift by a large amount
+        fn test_shr_negative(x: i32, y: i32)
+            requires y < 0,
+        {
+            assert(x >> y == 0 || x >> y == -1) by(bit_vector) requires y < 0; // FAILS
+        }
+
+        fn test_shl_negative(x: u16, y: i8)
+            requires y < 0,
+        {
+            assert(x << y == 0) by(bit_vector) requires y < 0; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_bv_file! {
