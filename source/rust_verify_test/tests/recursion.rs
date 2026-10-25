@@ -2086,6 +2086,53 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // From: https://github.com/verus-lang/verus/issues/1195
+    #[test] lemma_decreases_call_in_closure_help verus_code! {
+        use vstd::prelude::*;
+
+        pub enum Foo {
+            Bar(Vec<Foo>),
+        }
+
+        pub enum SpecFoo {
+            Bar(Seq<SpecFoo>),
+        }
+
+        impl Foo {
+            pub open spec fn dview(&self) -> SpecFoo
+                decreases self
+            {
+                match self {
+                    Foo::Bar(v) => {
+                        SpecFoo::Bar(Seq::new(v.len() as nat, |i: int| v[i].dview()))
+                    }
+                }
+            }
+        }
+    } => Err(e) => assert_help_error_msg(e, "this call is inside a closure")
+}
+
+test_verify_one_file! {
+    #[test] lemma_decreases_call_outside_closure_no_help verus_code! {
+        use vstd::prelude::*;
+
+        macro_rules! call_k {
+            ($e:expr) => { k($e) };
+        }
+
+        spec fn k(n: nat) -> Seq<int>
+            decreases n
+        {
+            let f = |i: int| call_k!(n);
+            call_k!(n)
+        }
+    } => Err(e) => {
+        assert_eq!(e.errors.len(), 2);
+        assert_eq!(e.errors.iter().filter(|x| x.rendered.contains("inside a closure")).count(), 1);
+    }
+}
+
+test_verify_one_file! {
     #[test] lemma_decreases_poly verus_code! {
         spec fn dec<A>(x: &A, y: &A) -> bool {
             decreases_to!(x => y)

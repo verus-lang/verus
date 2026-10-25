@@ -8,7 +8,7 @@ use crate::ast::{
 use crate::ast_util::{
     ast_expr_get_proof_note, dt_as_friendly_rust_name, fun_as_friendly_rust_name, get_field_or_err,
     get_variant_or_err, is_body_visible_to, is_unit, is_visible_to_opt, path_as_friendly_rust_name,
-    referenced_vars_expr, typ_to_diagnostic_str, types_equal, undecorate_typ,
+    referenced_vars_expr, typ_contains_opaque, typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
 use crate::context::WarningConfig;
 use crate::def::user_local_name;
@@ -1082,6 +1082,15 @@ fn check_function_inner(
     };
 
     if let Some(method) = method_if_not_demoted(demote_trait_lookup, function) {
+        if let FunctionKind::TraitMethodImpl { trait_path, trait_typ_args, .. }
+        | FunctionKind::ForeignTraitMethodImpl { trait_path, trait_typ_args, .. } =
+            &function.x.kind
+        {
+            // trait_method_impl_typ_args relies on trait_typ_args being Self plus the trait generics
+            if let Some(tr) = ctxt.lookup.merged_traits.trait_map.get(trait_path) {
+                assert!(trait_typ_args.len() == tr.x.typ_params.len() + 1);
+            }
+        }
         if function.x.require.len() > 0 {
             return Err(error(
                 &function.span,
@@ -1174,9 +1183,7 @@ fn check_function_inner(
             ));
         }
 
-        if function.x.mode != Mode::Exec
-            && matches!(*function.x.outer_ret.x.typ, TypX::Opaque { .. })
-        {
+        if function.x.mode != Mode::Exec && typ_contains_opaque(&function.x.outer_ret.x.typ) {
             return Err(error(
                 &function.x.outer_ret.span,
                 format!("Opaque type is not supported in {} mode", function.x.mode),
@@ -1514,7 +1521,7 @@ fn check_function_inner(
         )?;
     }
     if let Some(r) = &function.x.returns {
-        if matches!(*function.x.inner_ret.x.typ, TypX::Opaque { .. }) {
+        if typ_contains_opaque(&function.x.inner_ret.x.typ) {
             return Err(error(
                 &r.span,
                 "`returns` clause is not allowed for function that returns opaque type",

@@ -742,3 +742,19 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails_type_invariant_error(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] dyn_spec_fn_method_generics verus_code! {
+        trait T {
+            spec fn f<C>(&self, c: C) -> int where Self: Sized;
+        }
+
+        struct S;
+
+        impl T for S {
+            spec fn f<C>(&self, c: C) -> int { 5 }
+        }
+
+        fn test(x: &dyn T) {}
+    } => Ok(())
+}

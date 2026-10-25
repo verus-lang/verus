@@ -1064,7 +1064,7 @@ pub(crate) fn need_fndef_axiom(fndef_typs: &HashSet<Fun>, f: &Function) -> bool 
 }
 
 fn add_fndef_axioms_to_function(
-    _ctx: &GlobalCtx,
+    fndef_funs: &HashMap<&Fun, &Function>,
     state: &mut State,
     function: &Function,
     fn_once_trait_in_scope: bool,
@@ -1082,7 +1082,12 @@ fn add_fndef_axioms_to_function(
 
     let (fun, typ_args, is_trait_method_impl, inherit) = match &function.x.kind {
         FunctionKind::TraitMethodImpl { method, trait_typ_args, inherit_body_from, .. } => {
-            (method, trait_typ_args.clone(), true, inherit_body_from.is_some())
+            let typ_args = crate::traits::trait_method_impl_typ_args(
+                fndef_funs[method],
+                trait_typ_args,
+                &function.x.typ_params,
+            );
+            (method, typ_args, true, inherit_body_from.is_some())
         }
         _ => {
             let typ_args: Vec<_> = function
@@ -1475,11 +1480,17 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let fn_once_trait_path = ClosureKind::FnOnce.trait_path();
     let fn_once_trait_in_scope = traits.iter().any(|t| t.x.name == fn_once_trait_path);
 
+    // A TraitMethodImpl needs fndef axioms only if its trait method is in fndef_typs
+    let fndef_funs: HashMap<&Fun, &Function> = functions
+        .iter()
+        .filter(|f| state.fndef_typs.contains(&f.x.name))
+        .map(|f| (&f.x.name, f))
+        .collect();
     let mut new_functions: Vec<Function> = Vec::with_capacity(functions.len());
     for f in functions.iter() {
         if need_fndef_axiom(&state.fndef_typs, f) {
             let (f2, tis, ai) =
-                add_fndef_axioms_to_function(ctx, &mut state, f, fn_once_trait_in_scope)?;
+                add_fndef_axioms_to_function(&fndef_funs, &mut state, f, fn_once_trait_in_scope)?;
             trait_impls.extend(tis);
             if let Some(ai) = ai {
                 assoc_type_impls.push(ai);

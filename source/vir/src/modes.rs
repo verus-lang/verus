@@ -899,12 +899,13 @@ fn add_pattern(
     ctxt: &Ctxt,
     record: &mut Record,
     typing: &mut Typing,
+    outer_mode: Mode,
     mode: Mode,
     proph_var: Option<ProphVar>,
     pattern: &Pattern,
 ) -> Result<(), VirErr> {
     let mut decls = vec![];
-    add_pattern_rec(ctxt, record, typing, &mut decls, mode, pattern)?;
+    add_pattern_rec(ctxt, record, typing, &mut decls, outer_mode, mode, pattern)?;
     for decl in decls {
         let PatternBoundDecl { span: _, name, mode } = decl;
         typing.insert(&name, mode, proph_var.clone());
@@ -924,6 +925,7 @@ fn add_pattern_rec(
     record: &mut Record,
     typing: &mut Typing,
     decls: &mut Vec<PatternBoundDecl>,
+    outer_mode: Mode,
     mode: Mode,
     pattern: &Pattern,
 ) -> Result<(), VirErr> {
@@ -932,6 +934,14 @@ fn add_pattern_rec(
     }
 
     let mode = if typing.in_pure { Mode::Spec } else { mode };
+
+    let check_match_allowed = || {
+        if outer_mode == Mode::Exec && mode != Mode::Exec {
+            Err(error(&pattern.span, "cannot match on ghost value in exec context"))
+        } else {
+            Ok(())
+        }
+    };
 
     match &pattern.x {
         PatternX::Wildcard => Ok(()),
@@ -945,7 +955,7 @@ fn add_pattern_rec(
             sub_pat,
         } => {
             check_binding(&pattern.span, by_ref, mode)?;
-            add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat)?;
+            add_pattern_rec(ctxt, record, typing, decls, outer_mode, mode, sub_pat)?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
@@ -953,6 +963,9 @@ fn add_pattern_rec(
             let variant = match dt {
                 Dt::Path(path) => {
                     let datatype = &ctxt.lookup.dts[path];
+                    if datatype.x.variants.len() > 1 {
+                        check_match_allowed()?;
+                    }
                     Some(
                         datatype
                             .x
@@ -975,6 +988,7 @@ fn add_pattern_rec(
                     record,
                     typing,
                     decls,
+                    outer_mode,
                     mode_join(field_mode, mode),
                     &binder.a,
                 )?;
@@ -984,8 +998,8 @@ fn add_pattern_rec(
         PatternX::Or(pat1, pat2) => {
             let mut decls1 = vec![];
             let mut decls2 = vec![];
-            add_pattern_rec(ctxt, record, typing, &mut decls1, mode, pat1)?;
-            add_pattern_rec(ctxt, record, typing, &mut decls2, mode, pat2)?;
+            add_pattern_rec(ctxt, record, typing, &mut decls1, outer_mode, mode, pat1)?;
+            add_pattern_rec(ctxt, record, typing, &mut decls2, outer_mode, mode, pat2)?;
 
             // Rust type-checking should have made sure that both sides
             // of the pattern bound the same variables with the same types.
@@ -1014,11 +1028,13 @@ fn add_pattern_rec(
             Ok(())
         }
         PatternX::Expr(expr) => {
+            check_match_allowed()?;
             check_expr_in_pattern(expr)?;
             check_expr_has_mode(ctxt, record, typing, mode, expr, mode, &Proph::No)?;
             Ok(())
         }
         PatternX::Range(expr1, expr2) => {
+            check_match_allowed()?;
             if let Some(expr1) = expr1 {
                 check_expr_in_pattern(expr1)?;
                 check_expr_has_mode(ctxt, record, typing, mode, expr1, mode, &Proph::No)?;
@@ -1029,11 +1045,16 @@ fn add_pattern_rec(
             }
             Ok(())
         }
-        PatternX::ImmutRef(sub_pat) => add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat),
-        PatternX::MutRef(sub_pat) => add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat),
+        PatternX::ImmutRef(sub_pat) => {
+            add_pattern_rec(ctxt, record, typing, decls, outer_mode, mode, sub_pat)
+        }
+        PatternX::MutRef(sub_pat) => {
+            add_pattern_rec(ctxt, record, typing, decls, outer_mode, mode, sub_pat)
+        }
         PatternX::Slice(pats) => {
+            check_match_allowed()?;
             for pat in pats.iter() {
-                add_pattern_rec(ctxt, record, typing, decls, mode, pat)?;
+                add_pattern_rec(ctxt, record, typing, decls, outer_mode, mode, pat)?;
             }
             Ok(())
         }
@@ -2796,6 +2817,7 @@ fn check_expr(
                     ctxt,
                     record,
                     &mut typing,
+                    outer_mode,
                     mode1,
                     Some(proph_for_binders.clone()),
                     &arm.x.pattern,
@@ -3688,7 +3710,7 @@ fn check_stmt(
                     Some(ProphVar::Yes(ProphVarReason::Explicit(stmt.span.clone())))
                 }
             };
-            add_pattern(ctxt, record, typing, mode, proph_var, pattern)?;
+            add_pattern(ctxt, record, typing, outer_mode, mode, proph_var, pattern)?;
             match els.as_ref() {
                 None => {}
                 Some(expr) => {
