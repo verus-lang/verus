@@ -573,10 +573,15 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
 
     if state == VerifState::Default && !opts_in_to_verus(&eattrs) {
         if eattrs.any_other_verus_specific_attribute && !general_item.is_module() {
-            diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
-                span,
-                format!("verus-related attribute has no effect because Verus is already ignoring this item."),
-            )));
+            diagnostics.push(VirErrAs::Warning(
+                crate::util::err_span_bare(
+                    span,
+                    "verus-related attribute has no effect because verus is ignoring this item",
+                )
+                .help(
+                    "either wrap it in the `verus!` macro or apply the `#[verus_spec(...)]` attribute"
+                )
+            ));
         }
     }
 }
