@@ -1708,13 +1708,13 @@ fn check_function_inner(
         if function.x.decrease_when.is_some() {
             return Err(error(
                 &function.span,
-                "`#[verifier::type_invariant]` function should not have a `when` clause (consider adding it as a conjunct in the body)",
+                "`#[verifier::type_invariant]` function cannot have a `when` clause (consider adding it as a conjunct in the body)",
             ));
         }
         if function.x.require.len() > 0 {
             return Err(error(
                 &function.span,
-                "`#[verifier::type_invariant]` function should not have a `recommends` clause (consider adding it as a conjunct in the body)",
+                "`#[verifier::type_invariant]` function cannot have a `recommends` clause (consider adding it as a conjunct in the body)",
             ));
         }
     }
@@ -1779,7 +1779,7 @@ fn check_datatype(ctxt: &Ctxt, dt: &Datatype, emit: &mut EmitErrorState) -> Resu
                 if vis.is_public() {
                     return Err(error(
                         &dt.span,
-                        "`#[verifier::type_invariant]`: a struct with a type invariant cannot have any fields public to the crate",
+                        "a struct with a `#[verifier::type_invariant]` cannot have any fields public to the crate",
                     ));
                 }
             }

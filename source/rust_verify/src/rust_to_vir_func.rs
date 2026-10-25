@@ -2794,7 +2794,10 @@ fn check_generics_for_invariant_fn<'tcx>(
     let inputs = fn_sig.inputs().skip_binder();
 
     if inputs.len() != 1 {
-        return err_span(span, "`#[verifier::type_invariant]`: expected 1 parameter");
+        return err_span(
+            span,
+            "`#[verifier::type_invariant]` function must have exactly 1 parameter",
+        );
     }
     if tcx.trait_of_assoc(id).is_some() {
         return err_span(span, "`#[verifier::type_invariant]` function cannot be a trait function");
@@ -2854,7 +2857,10 @@ fn check_generics_for_invariant_fn<'tcx>(
             if !preds_match {
                 println!("datatype_predicates: {:#?}", preds1);
                 println!("func_predicates: {:#?}", preds2);
-                return err_span(span, "`#[verifier::type_invariant]`: trait bounds should match");
+                return err_span(
+                    span,
+                    "`#[verifier::type_invariant]` function must have the same trait bounds as its datatype",
+                );
             }
 
             Ok(())
@@ -2862,7 +2868,7 @@ fn check_generics_for_invariant_fn<'tcx>(
         _ => {
             return err_span(
                 span,
-                "type_invariant: expected parameter to be a datatype declared in this crate",
+                "`#[verifier::type_invariant]` function parameter must be a datatype declared in this crate",
             );
         }
     }

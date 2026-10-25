@@ -814,7 +814,7 @@ pub(crate) fn setup_type_invariants(
             if f.x.params.len() != 1 {
                 return Err(vir::messages::error(
                     &f.span,
-                    "`#[verifier::type_invariant]`: expected 1 parameter",
+                    "`#[verifier::type_invariant]` function must have exactly 1 parameter",
                 ));
             }
             let param_typ = &f.x.params[0].x.typ;
@@ -825,7 +825,7 @@ pub(crate) fn setup_type_invariants(
                     if let Some(f2) = &dt.x.user_defined_invariant_fn {
                         return Err(vir::messages::error(
                             &f.span,
-                            "type_invariant: multiple type invariants defined for the same type",
+                            "multiple `#[verifier::type_invariant]` functions defined for the same type",
                         )
                         .primary_span(&get_fun_span(functions, &f2.fun)));
                     }
@@ -837,13 +837,13 @@ pub(crate) fn setup_type_invariants(
                 } else {
                     return Err(vir::messages::error(
                         &f.span,
-                        "type_invariant: expected parameter to be a datatype declared in this crate",
+                        "`#[verifier::type_invariant]` function parameter must be a datatype declared in this crate",
                     ));
                 }
             } else {
                 return Err(vir::messages::error(
                     &f.span,
-                    "type_invariant: expected parameter to be a datatype declared in this crate",
+                    "`#[verifier::type_invariant]` function parameter must be a datatype declared in this crate",
                 ));
             }
         }
