@@ -154,7 +154,7 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
         }
-    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'Ghost' wrapper")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for `Ghost` wrapper")
 }
 
 test_verify_one_file_with_options! {
@@ -775,7 +775,7 @@ test_verify_one_file_with_options! {
 
             *y_ref = 20;
         }
-    } => Err(err) => assert_vir_error_msg(err, "not yet implemented: zero-arm match expressions")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support zero-arm match expressions")
 }
 
 test_verify_one_file_with_options! {
@@ -2829,7 +2829,7 @@ test_verify_one_file_with_options! {
         fn foo(x: &mut bool) {
             assert(mut_ref_current(final(x)));
         }
-    } => Err(err) => assert_vir_error_msg(err, "The result of `final` must be dereferenced")
+    } => Err(err) => assert_vir_error_msg(err, "the result of `final` must be dereferenced")
 }
 
 test_verify_one_file_with_options! {
@@ -3249,7 +3249,7 @@ test_verify_one_file_with_options! {
         {
             test(a);
         }
-    } => Err(err) => assert_vir_error_msg(err, "to use `final`, disable mut-ref backwards-compatability")
+    } => Err(err) => assert_vir_error_msg(err, "to use `final`, disable mutable reference backwards-compatibility")
 }
 
 test_verify_one_file_with_options! {
@@ -3269,7 +3269,7 @@ test_verify_one_file_with_options! {
         {
             test(a);
         }
-    } => Err(err) => assert_vir_error_msg(err, "For more flexible mutable reference support, disable the backwards-compatability")
+    } => Err(err) => assert_vir_error_msg(err, "for more flexible mutable reference support, disable the backwards-compatibility")
 }
 
 test_verify_one_file_with_options! {
@@ -3419,7 +3419,7 @@ test_verify_one_file_with_options! {
             assert(a == 20);
             assert(b == 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support assigning during a mutable borrow like this")
 }
 
 test_verify_one_file_with_options! {
@@ -3461,7 +3461,7 @@ test_verify_one_file_with_options! {
             assert(a == 20);
             assert(b == 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support assigning during a mutable borrow like this")
 }
 
 test_verify_one_file_with_options! {
@@ -3482,7 +3482,7 @@ test_verify_one_file_with_options! {
             assert(a == 20);
             assert(b == 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support assigning during a mutable borrow like this")
 }
 
 test_verify_one_file_with_options! {
@@ -3539,7 +3539,7 @@ test_verify_one_file_with_options! {
             let mut a_ref = [&mut a, &mut b];
             set_to(a_ref[0], ({ a_ref[0] = &mut c; 20 }));
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support assigning during a mutable borrow like this")
 }
 
 test_verify_one_file_with_options! {
@@ -3561,7 +3561,7 @@ test_verify_one_file_with_options! {
             // this would be ok but we're not going to compare indices
             set_to(a_ref[0], ({ a_ref[1] = &mut c; 20 }));
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support assigning during a mutable borrow like this")
 }
 
 test_verify_one_file_with_options! {
@@ -3583,7 +3583,7 @@ test_verify_one_file_with_options! {
             let mut a_ref = [(&mut a, &mut b), (&mut c, &mut d)];
             set_to(a_ref[0].0, ({ a_ref[0] = (&mut e, &mut f); 20 }));
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support assigning during a mutable borrow like this")
 }
 
 test_verify_one_file_with_options! {
@@ -3605,7 +3605,7 @@ test_verify_one_file_with_options! {
             let mut a_ref = [(&mut a, &mut b), (&mut c, &mut d)];
             set_to(a_ref[0].0, ({ a_ref[0].0 = &mut e; 20 }));
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support assigning during a mutable borrow like this")
 }
 
 test_verify_one_file_with_options! {
@@ -3716,7 +3716,7 @@ test_verify_one_file_with_options! {
             set_to(a_ref, ({ loop { a_ref = &mut b; break; } 20 }));
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support assigning during a mutable borrow like this")
 }
 
 test_verify_one_file_with_options! {
@@ -3730,7 +3730,7 @@ test_verify_one_file_with_options! {
             let mut a_ref = &mut a;
             let t = Ctor(a_ref, ({ a_ref = &mut b; 20 }));
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning during mutable borrow like this")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support assigning during a mutable borrow like this")
 }
 
 // vec works differently than slice/array since it's a method call instead of a place expression
@@ -4985,7 +4985,7 @@ test_verify_one_file_with_options! {
                 proof { *i = Ghost(19); }
             });
         }
-    } => Err(err) => assert_vir_error_msg(err, "Cannot show invariant holds at end of block")
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant holds at end of block")
 }
 
 test_verify_one_file_with_options! {

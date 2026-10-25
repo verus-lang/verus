@@ -142,7 +142,7 @@ fn handle_autospec<'tcx>(
         if vattrs.allow_in_spec {
             return err_span(
                 span,
-                format!("a function cannot be marked both 'when_used_as_spec' and 'allow_in_spec'"),
+                format!("a function cannot be marked both `when_used_as_spec` and `allow_in_spec`"),
             );
         }
         let mut this_path = crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(
@@ -159,10 +159,10 @@ fn handle_autospec<'tcx>(
             ctxt.tcx, def_id,
         );
         if functionx.mode != Mode::Exec {
-            return err_span(span, format!("allow_in_spec can only be used on an exec function"));
+            return err_span(span, format!("`allow_in_spec` can only be used on an exec function"));
         }
         if !matches!(&functionx.kind, FunctionKind::Static) {
-            return err_span(span, format!("allow_in_spec not supported for trait functions"));
+            return err_span(span, format!("`allow_in_spec` not supported for trait methods"));
         }
 
         let mut spec_params = vec![];
@@ -171,7 +171,7 @@ fn handle_autospec<'tcx>(
                 return err_span(
                     span,
                     format!(
-                        "allow_in_spec not supported for function with wrapped Tracked/Ghost params"
+                        "`allow_in_spec` not supported for function with wrapped `Tracked`/`Ghost` params"
                     ),
                 );
             }
@@ -270,7 +270,7 @@ fn finish_autospec<'tcx>(
     let Some(ret_clause) = &function_main.x.returns else {
         return err_span(
             span,
-            format!("allow_in_spec can only be used on a function with a returns clause"),
+            format!("`allow_in_spec` can only be used on a function with a `returns` clause"),
         );
     };
     let vir::ast::FunctionStubX {
@@ -439,29 +439,27 @@ pub(crate) fn extract_desugared_async_body<'tcx>(
                     match expr.kind {
                         rustc_hir::ExprKind::DropTemps(expr) => expr,
                         _ => {
-                            return err_span(
+                            return crate::util::internal_err_span(
                                 body.value.span,
                                 format!(
-                                    "internal error: async function desugared closure expression is not `DropTemps`"
+                                    "async function desugared closure expression is not `DropTemps`"
                                 ),
                             );
                         }
                     }
                 }
                 _ => {
-                    return err_span(
+                    return crate::util::internal_err_span(
                         body.value.span,
-                        format!(
-                            "internal error: async function desugared closure doesn't have a block"
-                        ),
+                        format!("async function desugared closure doesn't have a block"),
                     );
                 }
             }
         }
         _ => {
-            return err_span(
+            return crate::util::internal_err_span(
                 body.value.span,
-                format!("internal error: async function desugared body is not a closure"),
+                format!("async function desugared body is not a closure"),
             );
         }
     };
@@ -480,7 +478,7 @@ fn check_fn_decl<'tcx>(
     assume_specification_opaque_type_map: Option<&HashMap<Path, Path>>,
 ) -> Result<Option<(Typ, Mode)>, VirErr> {
     let FnDecl { inputs: _, output, fn_decl_kind } = decl;
-    unsupported_err_unless!(!fn_decl_kind.c_variadic(), span, "c_variadic functions");
+    unsupported_err_unless!(!fn_decl_kind.c_variadic(), span, "C-variadic functions");
     match fn_decl_kind.implicit_self() {
         rustc_hir::ImplicitSelfKind::None => {}
         rustc_hir::ImplicitSelfKind::Imm => {}
@@ -975,7 +973,7 @@ fn handle_external_fn<'tcx>(
                 _ => {
                     return err_span(
                         sig.span,
-                        "assume_specification not supported for trait functions",
+                        "`assume_specification` not supported for trait methods",
                     );
                 }
             };
@@ -994,7 +992,7 @@ fn handle_external_fn<'tcx>(
         {
             return err_span(
                 sig.span,
-                "cannot apply `assume_specification` to Verus verus_builtin functions",
+                "cannot apply `assume_specification` to Verus builtin functions",
             );
         }
         _ => {}
@@ -1033,14 +1031,17 @@ fn handle_external_fn<'tcx>(
         if substs1_early.len() + poly_sig1.skip_binder().bound_vars().len() != 0 {
             return err_span(
                 sig.span,
-                "generics are not allowed in external specification for const",
+                "generics are not allowed in an external specification for a constant item",
             );
         }
         let sig1 = poly_sig1x.skip_binder();
         use rustc_middle::ty::FnSig;
         let FnSig { inputs_and_output: io1, fn_sig_kind: _ } = &sig1;
         if io1.len() != 1 {
-            return err_span(sig.span, "external specification for const must have 0 parameters");
+            return err_span(
+                sig.span,
+                "an external specification for a constant item must have 0 parameters",
+            );
         }
         let ty1 = io1[0];
         if !compare_external_ty(ctxt.tcx, &ctxt.verus_items, &ty1, &ty2, external_trait_from_to) {
@@ -1138,8 +1139,8 @@ fn handle_external_fn<'tcx>(
     if !preds_match {
         let err = err_span_bare(
             sig.span,
-            "assume_specification trait bound mismatch")
-            .help(format!("assume_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds\n\
+            "`assume_specification` trait bound mismatch")
+            .help(format!("`assume_specification` requires function type signatures to match exactly, ignoring any `Destruct` trait bounds\n\
           but the proxy function's trait bounds are:\n{}\nthe external function's trait bounds are:\n{}",
           proxy_preds.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n"),
           external_preds.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n")));
@@ -1285,7 +1286,7 @@ fn assume_specification_mismatch_type_error<'tcx, A>(
     err_span(
         span,
         format!(
-            "assume_specification requires function type signature to match `{:}` exactly \n      assume_specification provided: `{:}`\n      expected:                      `{:}`",
+            "`assume_specification` requires function type signature to match `{:}` exactly \n      `assume_specification` provided: `{:}`\n      expected:                      `{:}`",
             ex, t1, t2
         ),
     )
@@ -1425,7 +1426,7 @@ fn create_reveal_group<'tcx>(
                     continue;
                 }
             }
-            return err_span(span, "reveal_group must consist of reveal statements");
+            return err_span(span, "`reveal_group` must consist of reveal statements");
         }
         let broadcast_use_by_default_when_this_crate_is_imported =
             if vattrs.broadcast_use_by_default_when_this_crate_is_imported {
@@ -1443,11 +1444,11 @@ fn create_reveal_group<'tcx>(
         if let Some(groups) = reveal_groups {
             groups.push(ctxt.spanned_new(span, groupx));
         } else {
-            return err_span(span, "reveal_group not allowed here");
+            return err_span(span, "`reveal_group` not allowed here");
         }
         return Ok(());
     }
-    err_span(span, "reveal_group must have block body")
+    err_span(span, "`reveal_group` must have block body")
 }
 
 fn make_attributes<'tcx>(
@@ -1466,7 +1467,7 @@ fn make_attributes<'tcx>(
     if vattrs.nonlinear && vattrs.spinoff_prover {
         return err_span(
             span,
-            "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith",
+            "`#[verifier::spinoff_prover]` is implied for assert by `nonlinear_arith`",
         );
     }
     let fattrs = FunctionAttrsX {
@@ -1523,7 +1524,7 @@ pub(crate) fn fixup_unerased_proxy_path(
         let p = path.pop_segment().push_segment(Arc::new(id[prefix.len()..].to_string()));
         Ok(p)
     } else {
-        crate::internal_err!(span, "bad use of unerased_proxy attribute")
+        crate::internal_err!(span, "bad use of `unerased_proxy` attribute")
     }
 }
 
@@ -1649,13 +1650,16 @@ pub(crate) fn check_item_fn<'tcx>(
     if vattrs.encoded_const || vattrs.encoded_static {
         let fn_sig = ctxt.tcx.fn_sig(id).skip_binder();
         if fn_sig.inputs().skip_binder().len() != 0 {
-            return err_span(sig.span, "encoded_const must have 0 arguments");
+            return err_span(sig.span, "`encoded_const` must have 0 arguments");
         }
 
         let body_id = match body_id {
             CheckItemFnEither::BodyId(body_id) => body_id,
             CheckItemFnEither::ParamNames(_) => {
-                crate::internal_err!(sig.span, "encoded_const expected CheckItemFnEither::BodyId");
+                crate::internal_err!(
+                    sig.span,
+                    "`encoded_const` expected CheckItemFnEither::BodyId"
+                );
             }
         };
 
@@ -1713,7 +1717,7 @@ pub(crate) fn check_item_fn<'tcx>(
         if is_verus_spec {
             return err_span(
                 sig.span,
-                "assume_specification attribute not supported with VERUS_SPEC",
+                "`assume_specification` attribute not supported with `VERUS_SPEC`",
             );
         }
 
@@ -1793,7 +1797,7 @@ pub(crate) fn check_item_fn<'tcx>(
     if opaque_types.len() > opaque_types_len_before || is_async {
         let reason = if is_async { "async" } else { "impl trait in return position" };
         if mode != Mode::Exec {
-            return err_span(sig.span, format!("{reason} is only supported for 'exec' functions"));
+            return err_span(sig.span, format!("{reason} is only supported for `exec` functions"));
         }
         if vattrs.autospec.is_some() {
             return err_span(
@@ -1835,7 +1839,7 @@ pub(crate) fn check_item_fn<'tcx>(
             if mode != Mode::Exec && safety == &HeaderSafety::Normal(Safety::Unsafe) {
                 return err_span(
                     sig.span,
-                    format!("'unsafe' only makes sense on exec-mode functions"),
+                    format!("`unsafe` only makes sense on exec-mode functions"),
                 );
             }
             let ret_typ_mode = check_fn_decl(
@@ -1855,7 +1859,7 @@ pub(crate) fn check_item_fn<'tcx>(
             let mode_opt = crate::attributes::get_mode_opt(attrs);
             let ret_mode = get_ret_mode(Mode::Exec, attrs);
             if mode_opt.is_some() || ret_mode != Mode::Exec {
-                unsupported_err!(sig.span, "non-default mode on associated const")
+                unsupported_err!(sig.span, "non-default modes on associated constants")
             }
             (Some((typ.clone(), Mode::Exec)), vec![])
         }
@@ -1915,13 +1919,17 @@ pub(crate) fn check_item_fn<'tcx>(
             if vattrs.allow_in_spec {
                 return err_span(
                     span,
-                    format!("allow_in_spec not supported for function with &mut param"),
+                    format!(
+                        "`allow_in_spec` not supported for function with a mutable reference parameter"
+                    ),
                 );
             }
             if vattrs.autospec.is_some() {
                 return err_span(
                     span,
-                    format!("when_used_as_spec not supported for function with &mut param"),
+                    format!(
+                        "`when_used_as_spec` not supported for function with a mutable reference parameter"
+                    ),
                 );
             }
         }
@@ -1956,7 +1964,7 @@ pub(crate) fn check_item_fn<'tcx>(
 
     if vattrs.reveal_group {
         let CheckItemFnEither::BodyId(body_id) = body_id else {
-            return err_span(sig.span, "reveal_group must have body");
+            return err_span(sig.span, "`reveal_group` must have body");
         };
         let body = find_body(ctxt, body_id);
         let (vir_body, _) = body_to_vir(
@@ -1993,14 +2001,14 @@ pub(crate) fn check_item_fn<'tcx>(
         (FunctionKind::TraitMethodDecl { .. }, false, true, _) => {
             return err_span(
                 sig.span,
-                "trait method declaration body must start with call to no_method_body()",
+                "trait method declaration body must start with call to `no_method_body()`",
             );
         }
         (FunctionKind::TraitMethodDecl { .. }, true, false, _) => {
             return err_span(
                 sig.span,
                 format!(
-                    "trait declaration with no_method_body() should start with {:}",
+                    "trait declaration with `no_method_body()` should start with {:}",
                     VERUS_SPEC
                 ),
             );
@@ -2018,13 +2026,13 @@ pub(crate) fn check_item_fn<'tcx>(
         (_, true, _, _) => {
             return err_span(
                 sig.span,
-                "no_method_body can only appear in trait method declarations",
+                "`no_method_body` can only appear in trait method declarations",
             );
         }
     }
 
     if mode != Mode::Exec && vattrs.external_fn_specification {
-        return err_span(sig.span, "assume_specification should be 'exec'");
+        return err_span(sig.span, "`assume_specification` should be `exec`");
     }
 
     let mut all_param_names: Vec<vir::ast::VarIdent> = Vec::new();
@@ -2056,7 +2064,7 @@ pub(crate) fn check_item_fn<'tcx>(
             if mode != Mode::Exec {
                 return err_span(
                     sig.span,
-                    "only exec functions can use Ghost(x) or Tracked(x) parameters",
+                    "only exec functions can use `Ghost(x)` or `Tracked(x)` parameters",
                 );
             }
             let mut paramx = param.x.clone();
@@ -2140,7 +2148,7 @@ pub(crate) fn check_item_fn<'tcx>(
             if mode == Mode::Spec && open_closed_present && !has_body {
                 return err_span(
                     sig.span,
-                    "trait function declarations cannot be open or closed, as they don't have a body",
+                    "trait method declarations cannot be open or closed, as they don't have a body",
                 );
             }
         }
@@ -2150,7 +2158,7 @@ pub(crate) fn check_item_fn<'tcx>(
     if vattrs.nonlinear && vattrs.spinoff_prover {
         return err_span(
             sig.span,
-            "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith",
+            "`#[verifier::spinoff_prover]` is implied for assert by `nonlinear_arith`",
         );
     }
 
@@ -2426,13 +2434,13 @@ pub(crate) fn finish_function<'tcx>(
     if mode == Mode::Spec
         && (header.require.len() + header.ensure.0.len() + header.ensure.1.len()) > 0
     {
-        return err_span(sig.span, "spec functions cannot have requires/ensures");
+        return err_span(sig.span, "spec functions cannot have `requires`/`ensures`");
     }
     if mode == Mode::Spec && header.returns.is_some() && !is_external_const {
         return err_span(sig.span, "spec functions cannot have `returns` clause");
     }
     if mode != Mode::Spec && header.recommend.len() > 0 {
-        return err_span(sig.span, "non-spec functions cannot have recommends");
+        return err_span(sig.span, "non-spec functions cannot have `recommends`");
     }
     if mode != Mode::Exec && header.atomic_update.is_some() {
         return err_span(sig.span, "non-exec function cannot have atomic specification");
@@ -2470,7 +2478,10 @@ pub(crate) fn finish_function<'tcx>(
                 if !vir::ast_util::types_equal(&typ, &ret_typ) {
                     return err_span(
                         sig.span,
-                        format!("return type is {:?}, but ensures expects type {:?}", ret_typ, typ),
+                        format!(
+                            "return type is {:?}, but `ensures` expects type {:?}",
+                            ret_typ, typ
+                        ),
                     );
                 }
             }
@@ -2478,10 +2489,7 @@ pub(crate) fn finish_function<'tcx>(
                 if !matches!(**ret_typ, TypX::Opaque { .. }) {
                     return err_span(
                         sig.span,
-                        format!(
-                            "async function must return opaque type (impl Future) {:?}",
-                            ret_typ,
-                        ),
+                        format!("async function must return an `impl Future` type {:?}", ret_typ,),
                     );
                 }
             }
@@ -2686,12 +2694,12 @@ fn check_external_fn_specification_trait_method_decl_typs(
         } = func;
 
         // We would need to implement substitution logic to support these
-        unsupported_err_unless!(require.len() == 0, span, "requires clauses");
-        unsupported_err_unless!(ensure.0.len() + ensure.1.len() == 0, span, "ensures clauses");
-        unsupported_err_unless!(returns.is_some(), span, "returns clauses");
-        unsupported_err_unless!(decrease.len() == 0, span, "decreases clauses");
-        unsupported_err_unless!(decrease_when.is_none(), span, "decreases_when clauses");
-        unsupported_err_unless!(decrease_by.is_none(), span, "decreases_by clauses");
+        unsupported_err_unless!(require.len() == 0, span, "`requires` clauses");
+        unsupported_err_unless!(ensure.0.len() + ensure.1.len() == 0, span, "`ensures` clauses");
+        unsupported_err_unless!(returns.is_some(), span, "`returns` clauses");
+        unsupported_err_unless!(decrease.len() == 0, span, "`decreases` clauses");
+        unsupported_err_unless!(decrease_when.is_none(), span, "`decreases ... when` clauses");
+        unsupported_err_unless!(decrease_by.is_none(), span, "`decreases ... via` clauses");
         unsupported_err_unless!(matches!(mask_spec, None), span, "opens_invariants");
         unsupported_err_unless!(matches!(unwind_spec, None), span, "unwind");
         unsupported_err_unless!(body.is_none(), span, "opens_invariants");
@@ -2719,17 +2727,17 @@ fn param_names_for_async_func<'tcx>(
             match closure_body.value.kind {
                 rustc_hir::ExprKind::Block(block, ..) => block.stmts,
                 _ => {
-                    return err_span(
+                    return crate::util::internal_err_span(
                         body_hir.value.span,
-                        format!("internal error: async function doesn't have a function block"),
+                        format!("async function doesn't have a function block"),
                     );
                 }
             }
         }
         _ => {
-            return err_span(
+            return crate::util::internal_err_span(
                 body_hir.value.span,
-                format!("internal error: async function doesn't have a function block"),
+                format!("async function doesn't have a function block"),
             );
         }
     };
@@ -2790,10 +2798,13 @@ fn check_generics_for_invariant_fn<'tcx>(
     let inputs = fn_sig.inputs().skip_binder();
 
     if inputs.len() != 1 {
-        return err_span(span, "#[verifier::type_invariant]: expected 1 parameter");
+        return err_span(
+            span,
+            "`#[verifier::type_invariant]` function must have exactly 1 parameter",
+        );
     }
     if tcx.trait_of_assoc(id).is_some() {
-        return err_span(span, "#[verifier::type_invariant] function cannot be a trait function");
+        return err_span(span, "`#[verifier::type_invariant]` function cannot be a trait method");
     }
 
     let ty = crate::rust_to_vir_base::ty_remove_references(&inputs[0]);
@@ -2804,7 +2815,7 @@ fn check_generics_for_invariant_fn<'tcx>(
             if adt_def.is_union() {
                 return err_span(
                     span,
-                    "not supported: #[verifier::type_invariant] for union types",
+                    "Verus does not currently support `#[verifier::type_invariant]` for union types",
                 );
             }
             assert!(adt_def.is_struct() || adt_def.is_enum());
@@ -2850,7 +2861,10 @@ fn check_generics_for_invariant_fn<'tcx>(
             if !preds_match {
                 println!("datatype_predicates: {:#?}", preds1);
                 println!("func_predicates: {:#?}", preds2);
-                return err_span(span, "#[verifier::type_invariant]: trait bounds should match");
+                return err_span(
+                    span,
+                    "`#[verifier::type_invariant]` function must have the same trait bounds as its datatype",
+                );
             }
 
             Ok(())
@@ -2858,7 +2872,7 @@ fn check_generics_for_invariant_fn<'tcx>(
         _ => {
             return err_span(
                 span,
-                "type_invariant: expected parameter to be a datatype declared in this crate",
+                "`#[verifier::type_invariant]` function parameter must be a datatype declared in this crate",
             );
         }
     }
@@ -3090,7 +3104,7 @@ fn get_external_def_id<'tcx>(
     let err = || {
         err_span(
             sig.span,
-            format!("assume_specification encoding error: body should end in call expression"),
+            format!("`assume_specification` encoding error: body should end in call expression"),
         )
     };
 
@@ -3098,7 +3112,7 @@ fn get_external_def_id<'tcx>(
         err_span(
             sig.span,
             format!(
-                "assume_specification encoding error: async function body should end in await to a call expression"
+                "`assume_specification` encoding error: async function body should end in await to a call expression"
             ),
         )
     };
@@ -3207,17 +3221,17 @@ fn get_external_def_id<'tcx>(
         match resolution {
             ResolutionResult::Unresolved => err_span(
                 sig.span,
-                "assume_specification cannot be used to specify generic specifications of trait methods; consider using external_trait_specification instead",
+                "`assume_specification` cannot be used to specify generic specifications of trait methods; consider using `external_trait_specification` instead",
             ),
             ResolutionResult::Builtin(b) => err_span(
                 sig.span,
                 format!(
-                    "Verus assume_specification does not support this verus_builtin impl '{:?}'",
+                    "Verus `assume_specification` does not support this builtin impl `{:?}`",
                     b
                 ),
             ),
             ResolutionResult::Resolved { resolved_item: ResolvedItem::FromTrait(..), .. } => {
-                unsupported_err!(sig.span, "assume_specification for a provided trait method");
+                unsupported_err!(sig.span, "`assume_specification` for a provided method");
             }
             ResolutionResult::Resolved {
                 impl_def_id,
@@ -3287,12 +3301,12 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             None => {
                 return err_span(
                     span,
-                    "explicitly mark the static as `exec` and use an `ensures` clause",
+                    "explicitly mark the `static` item as `exec` and use an `ensures` clause",
                 );
             }
             Some(m) => {
                 if m != Mode::Exec {
-                    return err_span(span, "a static item can only have mode `exec`");
+                    return err_span(span, "a `static` item can only have mode `exec`");
                 }
             }
         }
@@ -3479,15 +3493,15 @@ pub(crate) fn finish_const_or_static<'tcx>(
     )?;
     crate::pre_header::sanity_check_preheader(span, &header, &pre_header)?;
     if header.require.len() + header.recommend.len() > 0 {
-        return err_span(span, "consts cannot have requires/recommends");
+        return err_span(span, "constant items cannot have `requires`/`recommends`");
     }
 
     let spec_or_dual = ret_mode == Mode::Spec || func_mode == Mode::Spec;
     if spec_or_dual && (header.ensure.0.len() > 0 || header.ensure.1.len() > 0) {
-        return err_span(span, "const cannot have `ensures` unless it is `exec const`");
+        return err_span(span, "a constant item cannot have `ensures` unless it is `exec const`");
     }
     if spec_or_dual && header.returns.is_some() {
-        return err_span(span, "const cannot have `returns` unless it is `exec const`");
+        return err_span(span, "a constant item cannot have `returns` unless it is `exec const`");
     }
 
     let inner_ret = outer_ret.clone();
@@ -3560,7 +3574,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let name = Arc::new(FunX { path });
 
     if vattrs.external_fn_specification {
-        return err_span(span, "assume_specification not supported here");
+        return err_span(span, "`assume_specification` not supported here");
     }
 
     let mode = get_mode(Mode::Exec, attrs);
@@ -3674,7 +3688,7 @@ fn get_body_visibility_and_fuel(
     if open_visibility_qualifier.is_some() && publish != Some(AttrPublish::Open) {
         crate::internal_err!(
             span,
-            "found 'open_visibility_qualifier' declaration but no 'publish' attribute"
+            "found `open_visibility_qualifier` declaration but no `publish` attribute"
         )
     }
 
@@ -3709,7 +3723,7 @@ fn get_body_visibility_and_fuel(
         }
 
         if opaque && opaque_outside_module {
-            return err_span(span, "function is marked both 'opaque' and 'opaque_outside_module'");
+            return err_span(span, "function is marked both `opaque` and `opaque_outside_module`");
         }
 
         if publish == Some(AttrPublish::Open) && func_visibility == &private_vis {
@@ -3723,7 +3737,7 @@ fn get_body_visibility_and_fuel(
             if !vis.at_least_as_restrictive_as(&func_visibility) {
                 return err_span(
                     span,
-                    "the function body is declared 'open' to a wider scope than the function itself",
+                    "the function body is declared `open` to a wider scope than the function itself",
                 );
             }
         }
@@ -3870,7 +3884,7 @@ fn get_async_inner_return_ty<'tcx>(
         })
         .collect::<Vec<_>>();
     if ty_list.len() != 1 {
-        crate::internal_err!(span, "get_async_inner_return_ty failed to find bound");
+        crate::internal_err!(span, "`get_async_inner_return_ty` failed to find bound");
     }
     Ok(ty_list[0])
 }

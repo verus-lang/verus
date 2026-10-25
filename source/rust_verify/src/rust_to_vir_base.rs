@@ -4,7 +4,7 @@ use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::err_span;
 use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
-use crate::{unsupported_err, unsupported_err_unless};
+use crate::{internal_err, unsupported_err, unsupported_err_unless};
 use rustc_ast::{BindingMode, ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
@@ -750,7 +750,7 @@ fn err_for_builtin_tracked_ghost_deref<'tcx>(
     };
 
     Err(crate::util::err_span_bare(span, format!("reliance on trait bound `{ty}: core::ops::{trait_name}`"))
-        .help(format!("The trait bound `{ty_name}<_>: {trait_name}` is treated specially by Verus, and it is not meant to be used generically")))
+        .help(format!("the trait bound `{ty_name}<_>: {trait_name}` is treated specially by Verus, and it is not meant to be used generically")))
 }
 
 pub(crate) fn is_tracked_or_ghost_ty<'tcx>(
@@ -1215,9 +1215,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let param_typs = match &*typ_arg_tuple {
                         TypX::Datatype(Dt::Tuple(_), typs, _) => typs.clone(),
                         _ => {
-                            unsupported_err!(
+                            internal_err!(
                                 span,
-                                "expected first type argument of spec_fn to be a tuple"
+                                "expected first type argument of `spec_fn` to be a tuple"
                             );
                         }
                     };
@@ -1396,7 +1396,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     (Arc::new(TypX::Opaque { def_path: def_path, args: Arc::new(args) }), false)
                 }
                 rustc_middle::ty::AliasTyKind::Free { def_id: _ } => {
-                    unsupported_err!(span, "opaque type")
+                    unsupported_err!(span, "lazy type aliases")
                 }
             }
         }
@@ -1425,7 +1425,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         ..
                     } => None,
                     ResolutionResult::Builtin(b) => {
-                        unsupported_err!(span, format!("built-in instance {:?}", b));
+                        unsupported_err!(span, format!("this built-in instance: {:?}", b));
                     }
                 }
             };
@@ -1441,7 +1441,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Dynamic(preds, _) => {
             use rustc_middle::ty::ExistentialPredicate;
             if preds.len() != 1 {
-                unsupported_err!(span, "dyn with more that one trait");
+                unsupported_err!(span, "dyn with more than one trait");
             }
             match preds[0].skip_binder() {
                 ExistentialPredicate::Trait(trait_ref) => {
@@ -1477,12 +1477,14 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
         TyKind::FnPtr(..) => unsupported_err!(span, "function pointer types"),
-        TyKind::Coroutine(..) => unsupported_err!(span, "generator types"),
-        TyKind::CoroutineWitness(..) => unsupported_err!(span, "generator witness types"),
-        TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
-        TyKind::Placeholder(..) => unsupported_err!(span, "type inference Placeholder types"),
-        TyKind::Infer(..) => unsupported_err!(span, "type inference Infer types"),
-        TyKind::Error(..) => unsupported_err!(span, "type inference error types"),
+        TyKind::Coroutine(..) => unsupported_err!(span, "coroutine types"),
+        TyKind::CoroutineWitness(..) => unsupported_err!(span, "coroutine witness types"),
+        TyKind::Bound(..) => {
+            unsupported_err!(span, "bound type variables from higher-ranked (`for<...>`) binders")
+        }
+        TyKind::Placeholder(..) => unsupported_err!(span, "placeholder types"),
+        TyKind::Infer(..) => unsupported_err!(span, "uninferred types"),
+        TyKind::Error(..) => unsupported_err!(span, "types that failed to type-check"),
         TyKind::CoroutineClosure(_, _) => unsupported_err!(span, "coroutine closure types"),
         TyKind::Pat(_, _) => unsupported_err!(span, "pattern types"),
         TyKind::UnsafeBinder(_) => unsupported_err!(span, "unsafe binder types"),
@@ -1534,7 +1536,10 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
         ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
         ConstKind::Value(Value { ty, valtree }) => {
             let ValTreeKind::Leaf(i) = *valtree else {
-                unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst));
+                unsupported_err!(
+                    span.expect("span"),
+                    format!("this const generic argument ({:?})", cnst)
+                );
             };
             match ty.kind() {
                 TyKind::Uint(_) => {
@@ -1547,12 +1552,18 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
                 }
                 TyKind::Bool => Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0))),
                 _ => {
-                    unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
+                    unsupported_err!(
+                        span.expect("span"),
+                        format!("this const generic argument ({:?})", cnst)
+                    )
                 }
             }
         }
         _ => {
-            unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
+            unsupported_err!(
+                span.expect("span"),
+                format!("this const generic argument ({:?})", cnst)
+            )
         }
     }
 }
@@ -1752,7 +1763,7 @@ fn get_proof_fn_one_mode<'tcx>(
         }
         _ => {}
     }
-    err_span(span, "could not read mode annotations from proof_fn type")
+    err_span(span, "could not read mode annotations from `proof_fn` type")
 }
 
 pub(crate) fn try_get_proof_fn_modes<'tcx>(
@@ -1954,7 +1965,7 @@ where
                         None,
                     )?
                 } else {
-                    return err_span(*span, "Verus does not yet support this type of bound");
+                    return err_span(*span, "Verus does not currently support this type of bound");
                 };
                 let substs = pred.projection_term.args;
                 let trait_def_id = pred.projection_term.trait_def_id(tcx);
@@ -1978,7 +1989,10 @@ where
                         );
                         bounds.push(Arc::new(bound));
                     } else {
-                        return err_span(*span, "Verus does not yet support this type of bound");
+                        return err_span(
+                            *span,
+                            "Verus does not currently support this type of bound",
+                        );
                     }
                 } else {
                     panic!("internal error: generic_bound should return GenericBoundX::Trait")
@@ -1999,7 +2013,7 @@ where
                 bounds.push(Arc::new(bound));
             }
             _ => {
-                return err_span(*span, "Verus does not yet support this type of bound");
+                return err_span(*span, "Verus does not currently support this type of bound");
             }
         }
     }
@@ -2231,7 +2245,7 @@ fn check_generics_bounds_main<'tcx>(
     }
 
     for mid_param in mid_params.iter().skip(skip_n) {
-        unsupported_err_unless!(!mid_param.pure_wrt_drop, span, "may_dangle attribute");
+        unsupported_err_unless!(!mid_param.pure_wrt_drop, span, "`may_dangle` attribute");
 
         match mid_param.kind {
             GenericParamDefKind::Type { .. } | GenericParamDefKind::Const { .. } => {}
@@ -2254,7 +2268,7 @@ fn check_generics_bounds_main<'tcx>(
             if error_on_polarity {
                 return err_span(
                     span,
-                    "the accept_recursive_type/reject_recursive_type attributes are not expected for this kind of item",
+                    "the `accept_recursive_types`/`reject_recursive_types` attributes are not expected for this kind of item",
                 );
             }
             accept_recs.remove(&param_name);
@@ -2267,7 +2281,7 @@ fn check_generics_bounds_main<'tcx>(
             _ => {
                 return err_span(
                     span,
-                    "type parameter can only have one of reject_recursive_types, reject_recursive_types_in_ground_variants, accept_recursive_types",
+                    "type parameter can only have one of `reject_recursive_types`, `reject_recursive_types_in_ground_variants`, `accept_recursive_types`",
                 );
             }
         };
@@ -2280,7 +2294,7 @@ fn check_generics_bounds_main<'tcx>(
             {
                 return err_span(
                     span,
-                    "in external_body datatype, each type parameter must be one of: #[verifier::reject_recursive_types], #[verifier::reject_recursive_types_in_ground_variants], #[verifier::accept_recursive_types] (reject_recursive_types is always safe to use)",
+                    "in `external_body` datatype, each type parameter must be one of: `#[verifier::reject_recursive_types]`, `#[verifier::reject_recursive_types_in_ground_variants]`, `#[verifier::accept_recursive_types]` (`reject_recursive_types` is always safe to use)",
                 );
             }
         }
@@ -2292,7 +2306,7 @@ fn check_generics_bounds_main<'tcx>(
                 typ_params.push((Arc::new(param_name), accept_rec));
             }
             _ => {
-                unsupported_err!(span, "this kind of generic param");
+                unsupported_err!(span, "this kind of generic parameter");
             }
         }
     }
@@ -2425,7 +2439,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
     collect_hidden_type_eqs: bool,
     hidden_type_eqs: &mut Vec<(Typ, Typ)>,
 ) -> Result<Option<OpaqueType>, VirErr> {
-    let unmatch_err_msg = "opaque type of assume assume_specification specification does not match the opaque type of the orginal function";
+    let unmatch_err_msg = "`impl Trait` return type of `assume_specification` does not match the `impl Trait` return type of the original function";
     let unmatch_err = || crate::internal_err!(span, unmatch_err_msg);
 
     match (
@@ -2566,7 +2580,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                                 } else {
                                     return err_span(
                                         assume_specification_ty_span,
-                                        "Verus does not yet support this type of bound",
+                                        "Verus does not currently support this type of bound",
                                     );
                                 }
                             } else {
@@ -2599,7 +2613,10 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                                 None,
                             )?
                         } else {
-                            return err_span(span, "Verus does not yet support this type of bound");
+                            return err_span(
+                                span,
+                                "Verus does not currently support this type of bound",
+                            );
                         };
                         let substs = pred.projection_term.args;
                         let trait_def_id = pred.projection_term.trait_def_id(ctxt.tcx);
@@ -2626,7 +2643,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             } else {
                                 return err_span(
                                     span,
-                                    "Verus does not yet support this type of bound",
+                                    "Verus does not currently support this type of bound",
                                 );
                             }
                         } else {

@@ -340,5 +340,5 @@ test_verify_one_file! {
         {
 
         }
-    } => Err(err) => assert_vir_error_msg(err, "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute")
+    } => Err(err) => assert_vir_error_msg(err, "invalid trigger attribute: to provide a trigger expression, use the `#![trigger <expr>]` attribute")
 }

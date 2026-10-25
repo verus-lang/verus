@@ -728,7 +728,7 @@ impl Verifier {
             }
             msg = msg.secondary_label(
                 &bnd_info.user.as_ref().unwrap().span,
-                "Triggers selected for this quantifier".to_string(),
+                "triggers selected for this quantifier".to_string(),
             );
 
             diagnostics.report(&msg.to_any());
@@ -867,9 +867,9 @@ impl Verifier {
                     if self.expand_flag {
                         invalidity = true;
                     }
-                    let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.desc);
+                    let mut msg = format!("{}: resource limit (rlimit) exceeded", context.desc);
                     if !self.args.profile && !self.args.profile_all && !self.args.capture_profiles {
-                        msg.push_str("; consider rerunning with --profile for more details");
+                        msg.push_str("; consider rerunning with `--profile` for more details");
                     }
                     if let Some(level) = level {
                         reporter.report(&message(level, msg, &context.span).to_any());
@@ -1594,8 +1594,8 @@ impl Verifier {
                                     reporter.report(
                                         &warning(
                                             &cmds.context.span,
-                                            "#[verifier::rlimit] is not supported with your current solver; \
-                                             the global --rlimit applies instead",
+                                            "`#[verifier::rlimit]` is not supported with your current solver; \
+                                             the global `--rlimit` applies instead",
                                         )
                                         .to_any(),
                                     );
@@ -1712,7 +1712,7 @@ impl Verifier {
                                             } else {
                                                 reporter.report(
                                                     &note_bare(format!(
-                                                        "Profile statistics for {}",
+                                                        "profile statistics for {}",
                                                         fun_as_friendly_rust_name(&function.x.name)
                                                     ))
                                                     .to_any(),
@@ -1727,7 +1727,7 @@ impl Verifier {
                                         Err(err) => {
                                             reporter.report_now(
                                                 &warning_bare(format!(
-                                                    "Failed parsing profile file for {}: {}",
+                                                    "failed parsing profile file for {}: {}",
                                                     current_profile_description, err
                                                 ))
                                                 .to_any(),
@@ -1846,7 +1846,7 @@ impl Verifier {
                         } else {
                             reporter.report(
                                 &note_bare(format!(
-                                    "Profile statistics for {}",
+                                    "profile statistics for {}",
                                     bucket_id.friendly_name()
                                 ))
                                 .to_any(),
@@ -1861,7 +1861,7 @@ impl Verifier {
                     Err(err) => {
                         reporter.report_now(
                             &warning_bare(format!(
-                                "Failed parsing profile file for {}: {}",
+                                "failed parsing profile file for {}: {}",
                                 bucket_id.friendly_name(),
                                 err
                             ))
@@ -2516,7 +2516,7 @@ impl Verifier {
 
         if self.args.profile && self.count_errors == 0 {
             let msg = note_bare(
-                "--profile reports prover performance data only when rlimts are exceeded, use --profile-all to always report profiler results",
+                "`--profile` reports prover performance data only when rlimits are exceeded, use `--profile-all` to always report profiler results",
             );
             reporter.report(&msg.to_any());
         }
@@ -2568,13 +2568,13 @@ impl Verifier {
             let msg = "Verus printed one or more automatically chosen quantifier triggers\n\
                 because it had low confidence in the chosen triggers.\n\
                 To suppress these messages, do one of the following:\n  \
-                (1) manually annotate a single desired trigger using #[trigger]\n      \
-                (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),\n  \
-                (2) manually annotate multiple desired triggers using #![trigger ...]\n      \
-                (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),\n  \
-                (3) accept the automatically chosen trigger using #![auto]\n      \
-                (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))\n  \
-                (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.\n\
+                (1) manually annotate a single desired trigger using `#[trigger]`\n      \
+                (example: `forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)`),\n  \
+                (2) manually annotate multiple desired triggers using `#![trigger ...]`\n      \
+                (example: `forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)`),\n  \
+                (3) accept the automatically chosen trigger using `#![auto]`\n      \
+                (example: `forall|i: int, j: int| #![auto] f(i) && g(i) && h(j)`)\n  \
+                (4) use the `--triggers-mode silent` command-line option to suppress all printing of triggers.\n\
                 (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;\n\
                 the theorem prover instantiates a quantifier whenever some expression matches the\n\
                 pattern specified by one of the quantifier's triggers.)\
@@ -2902,7 +2902,7 @@ fn check_no_opaque_types_in_trait<'tcx>(
                             if matches!(ty.kind, rustc_hir::TyKind::OpaqueDef { .. }) {
                                 crate::unsupported_err!(
                                     ty.span,
-                                    "Verus does not yet support Opaque types in trait def"
+                                    "`impl Trait` types in trait definitions"
                                 );
                             }
                         }
@@ -2972,7 +2972,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     self.verifier.import_virs_via_cargo = Some(imports);
                 }
                 Err(err) => {
-                    eprintln!("Error: {}", err);
+                    eprintln!("error: {}", err);
                     std::process::exit(1);
                 }
             }
@@ -3059,7 +3059,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             match crate::cargo_verus::handle_transitive_imports(tcx, &self.unresolved_import_deps) {
                 Ok(extra) => import_virs_via_cargo.extend(extra),
                 Err(err) => {
-                    eprintln!("Error: {}", err);
+                    eprintln!("error: {}", err);
                     std::process::exit(1);
                 }
             }
@@ -3162,7 +3162,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                             reporter.report(&msg.clone().to_any());
                         }
                         reporter.report(
-                            &note_bare("This error was found in Verus's Trait-Conflict-Checker")
+                            &note_bare("this error was found in Verus's trait-conflict checker")
                                 .to_any(),
                         );
                         return rustc_driver::Compilation::Stop;

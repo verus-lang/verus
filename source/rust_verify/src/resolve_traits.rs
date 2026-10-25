@@ -32,7 +32,7 @@ pub(crate) fn resolve_trait_item<'tcx>(
     args: GenericArgsRef<'tcx>,
 ) -> Result<ResolutionResult<'tcx>, VirErr> {
     let Some(trait_def_id) = tcx.trait_of_assoc(trait_item_id) else {
-        crate::internal_err!(span, "resolve_trait_method called for non-trait item");
+        crate::internal_err!(span, "`resolve_trait_method` called for non-trait item");
     };
 
     let normalized_args =
@@ -59,7 +59,7 @@ pub(crate) fn resolve_trait_item<'tcx>(
             };
             let leaf_def = ancestors.leaf_def(tcx, trait_item_id);
             let Some(leaf_def) = leaf_def else {
-                crate::internal_err!(span, "leaf_def failed");
+                crate::internal_err!(span, "`leaf_def` failed");
             };
 
             // Get the args you would use to instantiate the impl item.
@@ -102,7 +102,7 @@ pub(crate) fn resolve_trait_item<'tcx>(
         Ok(ImplSource::Builtin(b, _)) => Ok(ResolutionResult::Builtin(*b)),
         Ok(ImplSource::Param(_)) => Ok(ResolutionResult::Unresolved),
         Err(_) => {
-            crate::internal_err!(span, "codegen_select_candidate failed");
+            crate::internal_err!(span, "`codegen_select_candidate` failed");
         }
     }
 }

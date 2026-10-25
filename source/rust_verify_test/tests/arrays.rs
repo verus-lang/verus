@@ -457,7 +457,7 @@ test_verify_one_file! {
             let ar = [C; 13];
             assert(ar@[0] == ar@[1]); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: array-fill expresion with non-copy type")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support array-fill expression with non-copy type")
 }
 
 test_verify_one_file! {

@@ -205,7 +205,7 @@ test_verify_one_file! {
         async spec fn foo() -> bool {
             true
         }
-    } => Err(err) => assert_vir_error_msg(err, "async is only supported for 'exec' functions")
+    } => Err(err) => assert_vir_error_msg(err, "async is only supported for `exec` functions")
 }
 
 test_verify_one_file! {
@@ -213,7 +213,7 @@ test_verify_one_file! {
         async proof fn foo() -> bool {
             true
         }
-    } => Err(err) => assert_vir_error_msg(err, "async is only supported for 'exec' functions")
+    } => Err(err) => assert_vir_error_msg(err, "async is only supported for `exec` functions")
 }
 
 test_verify_one_file! {

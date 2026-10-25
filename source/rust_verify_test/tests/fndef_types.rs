@@ -294,7 +294,7 @@ test_verify_one_file! {
         fn test() {
             let x = foo;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it as mode 'exec'")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it has mode `exec`")
 }
 
 test_verify_one_file! {
@@ -304,7 +304,7 @@ test_verify_one_file! {
         fn test() {
             let x = foo;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it as mode 'exec'")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it has mode `exec`")
 }
 
 test_verify_one_file! {
@@ -314,7 +314,7 @@ test_verify_one_file! {
         spec fn test() -> bool {
             call_requires(foo, ())
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it as mode 'exec'")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it has mode `exec`")
 }
 
 test_verify_one_file! {
@@ -727,7 +727,7 @@ test_verify_one_file! {
         fn b(i: u8)
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "Non-static calls are not supported with --no-vstd")
+    } => Err(err) => assert_vir_error_msg(err, "non-static calls are not supported with `--no-vstd`")
 }
 
 test_verify_one_file! {

@@ -254,7 +254,7 @@ pub(crate) fn translate_impl<'tcx>(
         if matches!(rust_item, Some(RustItem::Fn | RustItem::FnOnce | RustItem::FnMut)) {
             return err_span_vec(
                 item.span,
-                "Verus does not support implementing this trait via an `impl` block",
+                "Verus does not currently support implementing this trait via an `impl` block",
             );
         }
 
@@ -492,7 +492,7 @@ pub(crate) fn translate_impl_item<'tcx>(
             // sanity check - this should be redundant with prior check in external.rs
             return err_span(
                 item.span,
-                "an item in a trait impl cannot be marked external - you can either use external_body, or mark the entire trait impl as external",
+                "an item in a trait impl cannot be marked external - you can either use `external_body`, or mark the entire trait impl as external",
             );
         }
         return Ok(());
@@ -543,18 +543,14 @@ pub(crate) fn translate_impl_item<'tcx>(
                         &mut vir.opaque_types,
                     )?;
                 }
-                _ => unsupported_err!(item.span, "unsupported item in impl", impl_item_id),
+                _ => unsupported_err!(item.span, "this kind of item in an impl", impl_item_id),
             }
         }
         AssocKind::Type { .. } => {
             if impl_item.generics.predicates.len() != 0
                 || impl_item.generics.has_where_clause_predicates
             {
-                unsupported_err!(
-                    item.span,
-                    "unsupported generics on associated type",
-                    impl_item_id
-                );
+                unsupported_err!(item.span, "generic associated types", impl_item_id);
             }
             if let ImplItemKind::Type(_ty) = impl_item.kind {
                 if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone() {
@@ -572,10 +568,10 @@ pub(crate) fn translate_impl_item<'tcx>(
                     )?;
                     vir.assoc_type_impls.push(assoc_type_impl);
                 } else {
-                    unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
+                    unsupported_err!(item.span, "this kind of item in an impl", impl_item_id);
                 }
             } else {
-                unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
+                unsupported_err!(item.span, "this kind of item in an impl", impl_item_id);
             }
         }
         AssocKind::Const { name: _name, is_type_const: _ } => {
@@ -621,7 +617,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                     )?;
                 }
             } else {
-                unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
+                unsupported_err!(item.span, "this kind of item in an impl", impl_item_id);
             }
         }
     }
@@ -849,7 +845,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
         for (fun_def_id, fun_span) in funs.iter() {
             let path = ctxt.def_id_to_vir_path(*fun_def_id);
             if !methods_we_have.insert(path.last_segment()) {
-                return err_span(*fun_span, "duplicate assume_specification for this method");
+                return err_span(*fun_span, "duplicate `assume_specification` for this method");
             }
         }
 
@@ -877,7 +873,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                 return err_span(
                     span,
                     format!(
-                        "using assume_specification for this function requires you to specify all other functions for the same trait impl, but the method `{:}` is missing",
+                        "using `assume_specification` for this function requires you to specify all other functions for the same trait impl, but the method `{:}` is missing",
                         method.path.last_segment()
                     ),
                 );
