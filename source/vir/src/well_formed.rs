@@ -807,7 +807,7 @@ fn check_one_expr(
                         // This probably isn't that bad to support
                         return Err(error(
                             &span,
-                            "Verus does not currently support a pattern containing both an or-pattern (|) and a binding by mutable reference",
+                            "Verus does not currently support a pattern containing both an or-pattern (|) and a `ref mut` binding",
                         ));
                     }
                     if has_guard {
@@ -815,7 +815,7 @@ fn check_one_expr(
                         // the test condition, but the mutable borrow is immutable until it ends
                         return Err(error(
                             &span,
-                            "Verus does not currently support a match arm containing both a match-guard and a binding by mutable reference",
+                            "Verus does not currently support a match arm containing both a match-guard and a `ref mut` binding",
                         ));
                     }
                 }
@@ -923,7 +923,7 @@ fn check_one_stmt(_ctxt: &Ctxt, stmt: &Stmt) -> Result<(), VirErr> {
                 if has_or {
                     return Err(error(
                         &span,
-                        "Verus does not currently support a pattern containing both an or-pattern (|) and a binding by mutable reference",
+                        "Verus does not currently support a pattern containing both an or-pattern (|) and a `ref mut` binding",
                     ));
                 }
             }

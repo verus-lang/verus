@@ -340,7 +340,7 @@ pub(crate) fn param_pat_to_decl<'tcx>(
     if let Some(span) = vir::patterns::pattern_find_mut_binding(&pattern) {
         return Err(vir::messages::error(
             &span,
-            "mutable-reference bindings in parameters are not supported",
+            "Verus does not currently support `ref mut` bindings in parameters",
         ));
     }
 

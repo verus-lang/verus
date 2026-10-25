@@ -2270,7 +2270,7 @@ fn check_illegal_muts(
         PatternX::Constructor(dt, _variant, patterns) => {
             if let Some(_typ_inv_fun) = get_typ_inv_fun_dt(datatypes, dt) {
                 if let Some(span) = crate::patterns::pattern_find_mut_binding(pattern) {
-                    errors.push(error(&pattern.span, "Verus does not currently support using a pattern to take a mutable reference to a field of a datatype that has a declared type invariant").secondary_label(&span, "mutable binding here"));
+                    errors.push(error(&pattern.span, "Verus does not currently support using a pattern to take a mutable reference to a field of a datatype that has a declared type invariant").secondary_label(&span, "`ref mut` binding here"));
                 }
                 // Can skip recursing; either we already added an error, or there are no
                 // mutable bindings in this node.

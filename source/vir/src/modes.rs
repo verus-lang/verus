@@ -1064,7 +1064,7 @@ fn add_pattern_rec(
 fn check_binding(span: &Span, by_ref: &ByRef, mode: Mode) -> Result<(), VirErr> {
     match (by_ref, mode) {
         (ByRef::MutRef, Mode::Spec) => {
-            Err(error(span, "a `mut ref` binding in a pattern is not allowed in spec mode"))
+            Err(error(span, "a `ref mut` binding in a pattern is not allowed in spec mode"))
         }
         (ByRef::No | ByRef::ImmutRef, _) => Ok(()),
         (_, Mode::Proof) => Ok(()),
