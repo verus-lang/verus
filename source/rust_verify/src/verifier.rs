@@ -2634,6 +2634,37 @@ impl Verifier {
             })
         };
 
+        // mk_crate_id identifies vstd, core, and alloc by name alone, so a local crate with one of
+        // these names would receive vstd's trusted specifications or be exempt from --no-cheating.
+        // Only allow these names when explicitly verifying vstd or the standard library.
+        use crate::config::Vstd;
+        let reserved_name_allowed = match mk_crate_id(tcx, LOCAL_CRATE) {
+            CrateId::Vstd => self.args.vstd == Vstd::IsVstd,
+            CrateId::Core | CrateId::Alloc => {
+                matches!(self.args.vstd, Vstd::IsCore | Vstd::ImportedViaCore)
+            }
+            CrateId::Internal | CrateId::Id(..) => true,
+        };
+        if !reserved_name_allowed {
+            let err = vir::messages::error(
+                &self.air_no_span.as_ref().unwrap(),
+                format!(
+                    "the crate name `{}` is reserved; use a different crate name",
+                    tcx.crate_name(LOCAL_CRATE)
+                ),
+            );
+            return Err((vec![err], vec![]));
+        }
+        // --no-cheating exempts vstd's functions, so it cannot check the crate that is vstd
+        if self.args.no_cheating && self.args.vstd == Vstd::IsVstd {
+            let err = vir::messages::error(
+                &self.air_no_span.as_ref().unwrap(),
+                "--no-cheating cannot be used with --is-vstd \
+                (with cargo verus, use --fwd-verus-args-to roots to pass --no-cheating only to your own crates)",
+            );
+            return Err((vec![err], vec![]));
+        }
+
         let mut crate_ids: HashSet<CrateId> = HashSet::new();
         for c in tcx.crates(()) {
             let id = mk_crate_id(tcx, *c);
