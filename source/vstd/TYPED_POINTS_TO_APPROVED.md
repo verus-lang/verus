@@ -929,7 +929,7 @@ Axioms: `TypedValue::<[T]>::from_elems_mut` (M1), `from_elems_ref`
 ### `PointsToUnaligned`: specs (phases 2, 2b; `str` in rustlib)
 
 rustlib writes the `PTPhys`, `PTProperties` and `PTTypedValue` impls for `PointsToUnaligned<str>`
-in the same shape as the `[T]` ones (`size(len) = len`; `additional_validity_constraints` is `true`, since `str` decoding is `EncodingStr`'s).
+in the same shape as the `[T]` ones (`size(len) = len`; `additional_validity_constraints` is UTF-8 validity, `str::inv`, since `str` decoding is `EncodingStr`'s, which doesn't include it).
 `PTPhys` is sealed by the crate-private `PTPhysSealed`,
 but vstd's `impl<T: ?Sized> PTPhysSealed for PointsToUnaligned<T>` already covers `str`,
 and vstd is a module of rustlib's `core`, so rustlib can write these impls.

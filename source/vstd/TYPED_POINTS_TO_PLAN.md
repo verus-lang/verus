@@ -890,11 +890,12 @@ impl PTTypedValue for PointsToUnaligned<str> {
         self.pt_untyped().bytes()
     }
 
-    /// Always `true`:
+    /// The value is valid UTF-8 (`str::inv`).
+    /// Its length already matches the metadata:
     /// decoding (`EncodingStr`) makes the `str`'s length its number of bytes,
     /// which `wf_basic` makes the metadata.
-    open spec fn metadata_matches(value: &str, metadata: usize) -> bool {
-        true
+    open spec fn additional_validity_constraints(value: &str, metadata: usize) -> bool {
+        value.inv()
     }
 
     /// Always `true`: a `PointsToUnaligned` has no alignment requirement.
@@ -1056,17 +1057,18 @@ impl PointsTo<str> {
 }
 ```
 
-On hold (asking Natalie): `as_bytes_tracked` requires a UTF-8 value (`self.inv()`), which `self.wf()` doesn't give,
-since UTF-8 isn't part of decoding.
-Options: drop `as_bytes_tracked`'s `requires self.inv()` in rustlib,
-or have `as_bytes` require `self.typed_value().is_valid() ==> valid_utf8(self.typed_value().value_ref()@)`.
+`as_bytes` gets the UTF-8 value that `as_bytes_tracked` requires (`self.inv()`) from `self.wf()`,
+through `additional_validity_constraints`.
+`from_bytes_ref`'s output is well-formed because its value is valid only if it is valid UTF-8.
 
-Open (to revisit when reviewing `str`): UTF-8 validity might also need to be added to the `str` permissions themselves,
-for example as part of a valid `PointsToUnaligned<str>`'s well-formedness,
-since decoding (`EncodingStr`) doesn't include it.
-Planned approach: generalize `PTTypedValue::metadata_matches`
-to cover validity requirements beyond decoding (such as UTF-8 for `str`),
-not just the value matching the pointer metadata.
+To review: since UTF-8 validity is now part of a valid `str` permission's `wf`,
+the approved `str` reference axioms that ensure `pt.wf()`
+(`SharedReference<str>::points_to`, `mut_ref_to_shr_points_to_str`,
+and the restated `as_str_ptr_verus` in [Modified rustlib specs](#modified-rustlib-specs))
+now also assert that the referenced `str` is valid UTF-8,
+and `ptr_mut_ref_str`'s `final(perm).wf()` asserts that writes through the `&mut str` keep it valid UTF-8.
+This should be sound, since UTF-8 validity is a library invariant of every `&str` / `&mut str`
+that safe code can't break, but these axioms now state more than before.
 
 The other rustlib axioms (the `str` reference helpers):
 see [New rustlib axioms](#new-rustlib-axioms).
@@ -1173,8 +1175,8 @@ pub broadcast axiom fn def_perm_value_eq_str(perm: &PointsTo<str>, val: &str)
 **Shared-reference transmutes** (`proofs/str.rs`).
 `transmute_shared_ref_str_u8_slice` and `transmute_shared_ref_u8_slice_str` go back from axioms to proofs, with unchanged specs:
 `SharedReference<str>::points_to`, then `PointsTo<str>::as_bytes`, then `ptr_ref2_slice_ghost`;
-and `SharedReference<[u8]>::points_to`, then `PointsTo<str>::from_bytes_ref`, then `ptr_ref2_str_ghost`.
-`src.value().inv()` gives the UTF-8 that `as_bytes` may need (see the `as_bytes_tracked` question above).
+and `SharedReference<[u8]>::points_to`, then `PointsTo<str>::from_bytes_ref`, then `ptr_ref2_str_ghost`
+(`valid_utf8(src.value()@)` makes `from_bytes_ref`'s output valid).
 
 ## Inherent impls
 
@@ -1229,7 +1231,7 @@ and the `PTPhys`, `PTTypedValue`, `PTProperties` and `PTValueOps` impls for `Poi
 The impls aren't axioms, but they're trusted in effect:
 `PTPhys::size` and `wf_basic` fix what memory a `PointsToUnaligned<str>` claims,
 which the `str` reference axioms rely on,
-and `PTTypedValue`'s `metadata_matches` and `satisfies_alignment` feed into `wf`.
+and `PTTypedValue`'s `additional_validity_constraints` and `satisfies_alignment` feed into `wf`.
 Sealing doesn't keep them in vstd:
 vstd's `impl<T: ?Sized> PTPhysSealed for PointsToUnaligned<T>` covers every `PointsToUnaligned<_>`,
 so rustlib can write `PTPhys` for any of them, not just `str`.
