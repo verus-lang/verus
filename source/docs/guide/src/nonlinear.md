@@ -211,7 +211,7 @@ pub proof fn lemma_mod_difference_equal(x: int, y: int, d: int) by(nonlinear_ari
 }
 ```
 
-In the `lemma_mod_between` function below, we want to prove that `x % d <= z % d < y % d`. However, `integer_ring` only supports equalities, so we cannot prove `lemma_mod_between` directly. Instead, we provide facts that can help assist the proof. The helper lemma provides 1) `x % d - y % d == x - y  (mod d)` and 2) ` y % d - z % d == y - z  (mod d)`. The rest of the proof is done via `by(nonlinear_arith)`.
+In the `lemma_mod_between` function below, we want to prove that `x % d <= z % d < y % d`. However, `integer_ring` only supports equalities, so we cannot prove `lemma_mod_between` directly. Instead, we provide facts that can help assist the proof. The helper lemma provides 1) `x % d - z % d == x - z  (mod d)` and 2) `z % d - y % d == z - y  (mod d)`. The rest of the proof is done via `by(nonlinear_arith)`.
 
 ```rust
 pub proof fn lemma_mod_between_helper(x: int, y: int, d: int, small_x:int, small_y:int, tmp1:int) by(integer_ring)
@@ -224,8 +224,8 @@ pub proof fn lemma_mod_between_helper(x: int, y: int, d: int, small_x:int, small
 {}
 
 // note that below two facts are from the helper function, and the rest are done by `by(nonlinear_arith)`.
-// x % d - y % d == x - y  (mod d)
-// y % d - z % d == y - z  (mod d)
+// x % d - z % d == x - z  (mod d)
+// z % d - y % d == z - y  (mod d)
 pub proof fn lemma_mod_between(d: int, x: int, y: int, z: int) by(nonlinear_arith)
     requires
         d > 0,
