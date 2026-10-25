@@ -1304,23 +1304,33 @@ impl<T> PTTypedValue for PointsToUnaligned<[T]> {
     }
 
     proof fn bytes_decode(&self) {
+        // As in `PointsToUnaligned<T>`'s `bytes_decode`,
+        // this assert unfolds the inherited default `wf`.
+        assert(self.wf());
     }
 
     proof fn satisfies_alignment_of_wf(&self) {
     }
 
     proof fn lemma_wf_basic(&self) {
+        // As in `bytes_decode`, this assert unfolds the default `wf`.
+        assert(self.wf());
     }
 
     // ptrs_len_same_valid_value: the trait's default body.
 
     /// From `PointsToUntyped::lemma_ptrs_len_same_untyped` on the underlying permissions.
     broadcast proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self) {
+        // As in `bytes_decode`, these asserts unfold the default `wf` and `ptrs_len_same_valid_value`.
+        assert(old.wf() && new.wf());
         PointsToUntyped::lemma_ptrs_len_same_untyped(old.pt_untyped(), new.pt_untyped());
+        assert(Self::ptrs_len_same_valid_value(old, new));
     }
 
     /// From `PointsToUntyped::stays_wf` on the underlying permissions.
     proof fn stays_wf(old: Self, new: Self) {
+        // As in `bytes_decode`, this assert unfolds the default `wf` and `ptrs_len_same_valid_value`.
+        assert(old.wf() && Self::ptrs_len_same_valid_value(old, new));
         PointsToUntyped::stays_wf(old.pt_untyped(), new.pt_untyped());
     }
 }
