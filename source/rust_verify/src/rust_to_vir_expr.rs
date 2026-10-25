@@ -1039,9 +1039,72 @@ pub(crate) fn block_expr_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
 ) -> Result<ExprOrPlace, VirErr> {
-    let ExprKind::Block(body, label) = &expr.kind else { unreachable!() };
+    let ExprKind::Block(_body, label) = &expr.kind else { unreachable!() };
+    let label = label.map(|label| bctx.fresh_label(expr.hir_id, &Some(label)));
 
-    unsupported_err_unless!(label.is_none(), expr.span, "block with label");
+    let e = block_expr_to_vir_inner(bctx, expr)?.expect_expr();
+
+    fn label_is_used(
+        span: Span,
+        e: &vir::ast::Expr,
+        label: &vir::ast::Label,
+    ) -> Result<bool, VirErr> {
+        let mut found = false;
+        vir::ast_visitor::expr_visitor_check::<VirErr, _>(e, &mut |_, e| {
+            if let ExprX::BreakOrContinue { label: l, is_break: true, .. } = &e.x
+                && l == label
+            {
+                found = true;
+            }
+            if let ExprX::BreakOrContinue { is_break: false, .. } = &e.x {
+                // Unsupported in Rust; this is just a sanity check
+                crate::internal_err!(span, "found 'continue' for block label");
+            }
+            Ok(())
+        })?;
+        Ok(found)
+    }
+
+    if let Some(label) = label
+        && label_is_used(expr.span, &e, &label)?
+    {
+        // Translate 'a: { block } as
+        // 'a: loop { break 'a { block } }
+        let break_expr = bctx.spanned_typed_new(
+            expr.span,
+            &vir::ast_util::unit_typ(),
+            ExprX::BreakOrContinue { label: label.clone(), value: Some(e.clone()), is_break: true },
+        );
+        let loop_expr = bctx.spanned_typed_new(
+            expr.span,
+            &e.typ,
+            ExprX::Loop {
+                loop_isolation: false,
+                allow_complex_invariants: false,
+                is_for_loop: false,
+                assume_termination: true,
+                label: label,
+                cond: None,
+                body: break_expr,
+                invs: Arc::new(vec![]),
+                decrease: Arc::new(vec![]),
+                atomic_call: false,
+                // This should get inferred as 'true' during resolution inference:
+                known_no_back_edge: false,
+            },
+        );
+        Ok(ExprOrPlace::Expr(loop_expr))
+    } else {
+        Ok(ExprOrPlace::Expr(e))
+    }
+}
+
+pub(crate) fn block_expr_to_vir_inner<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+) -> Result<ExprOrPlace, VirErr> {
+    let ExprKind::Block(body, _label) = &expr.kind else { unreachable!() };
+
     if is_invariant_block(bctx, expr)? {
         return invariant_block_to_vir(bctx, expr);
     }
@@ -1075,9 +1138,9 @@ pub(crate) fn block_expr_to_vir<'tcx>(
         } else if crate::attributes::is_loop_isolation_boundary(
             bctx.ctxt.tcx.hir_attrs(expr.hir_id),
         ) {
-            let (wrap, label) = loop_isolation_boundary_check(expr.span, &block)?;
+            let (wrap, loop_label) = loop_isolation_boundary_check(expr.span, &block)?;
             let block = if wrap {
-                let x = ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(label), block);
+                let x = ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(loop_label), block);
                 bctx.spanned_typed_new(expr.span, &expr_typ()?, x)
             } else {
                 block
