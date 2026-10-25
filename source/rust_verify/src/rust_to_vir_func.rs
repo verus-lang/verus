@@ -311,6 +311,7 @@ fn finish_autospec<'tcx>(
         extra_dependencies: vec![],
 
         body: Some(ret_clause.clone()),
+        return_opaque_type_eqs: Arc::new(vec![]),
         require: function_main.x.require.clone(), // requires becomes recommends
         ensure: (Arc::new(vec![]), Arc::new(vec![])),
         returns: None,
@@ -1545,6 +1546,7 @@ pub(crate) struct FunctionInfo<'tcx> {
     pub external_trait_from_to: Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     pub migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     pub assume_specification_opaque_type_map: Option<HashMap<Path, Path>>,
+    pub return_opaque_type_eqs: Vec<(Typ, Typ)>,
     pub ret_typ_mode: Option<(Typ, Mode)>,
     pub autoderive_action: Option<AutomaticDeriveAction>,
     pub is_external_const: bool,
@@ -1768,13 +1770,33 @@ pub(crate) fn check_item_fn<'tcx>(
         (this_path.clone(), None, visibility, kind, has_self_param, safety, false, None, is_async)
     };
 
+    let collect_hidden_type_eqs = external_id.is_none()
+        && matches!(&body_id, CheckItemFnEither::BodyId(_))
+        && !vattrs.external_body
+        && !vattrs.external_fn_specification;
     let opaque_types_len_before = opaque_types.len();
-    let assume_specification_opaque_type_map = if let Some(external_id) = external_id {
-        Some(check_fn_opaque_ty(ctxt, opaque_types, &external_id, sig.output_span(), Some(&id))?)
-    } else {
-        check_fn_opaque_ty(ctxt, opaque_types, &id, sig.output_span(), None)?;
-        None
-    };
+    let (assume_specification_opaque_type_map, return_opaque_type_eqs) =
+        if let Some(external_id) = external_id {
+            let (opaque_type_map, _) = check_fn_opaque_ty(
+                ctxt,
+                opaque_types,
+                &external_id,
+                sig.output_span(),
+                Some(&id),
+                false,
+            )?;
+            (Some(opaque_type_map), Vec::new())
+        } else {
+            let (_, hidden_type_eqs) = check_fn_opaque_ty(
+                ctxt,
+                opaque_types,
+                &id,
+                sig.output_span(),
+                None,
+                collect_hidden_type_eqs,
+            )?;
+            (None, hidden_type_eqs)
+        };
 
     if opaque_types.len() > opaque_types_len_before || is_async {
         let reason = if is_async { "async" } else { "impl trait in return position" };
@@ -2264,6 +2286,7 @@ pub(crate) fn check_item_fn<'tcx>(
         external_trait_from_to,
         migrate_postcondition_vars,
         assume_specification_opaque_type_map,
+        return_opaque_type_eqs,
         ret_typ_mode,
         autoderive_action: autoderive_action,
         is_external_const,
@@ -2307,6 +2330,7 @@ pub(crate) fn finish_function<'tcx>(
         ref external_trait_from_to,
         ref migrate_postcondition_vars,
         ref assume_specification_opaque_type_map,
+        ref return_opaque_type_eqs,
         ref ret_typ_mode,
         autoderive_action,
         ref is_external_const,
@@ -2432,6 +2456,11 @@ pub(crate) fn finish_function<'tcx>(
         }
         (_, returns) => ((ensure0, ensure1), returns, body),
     };
+    let return_opaque_type_eqs = if body.is_some() && !is_external_const {
+        Arc::new(return_opaque_type_eqs.clone())
+    } else {
+        Arc::new(vec![])
+    };
 
     if header.ensure.0.len() + header.ensure.1.len() > 0 {
         match (is_async, &header.ensure_id_typ, ret_typ_mode.as_ref()) {
@@ -2493,6 +2522,7 @@ pub(crate) fn finish_function<'tcx>(
         item_kind,
         attrs,
         body,
+        return_opaque_type_eqs,
         extra_dependencies: header.extra_dependencies,
         hidden: Arc::new(header.hidden.clone()),
     };
@@ -2664,6 +2694,7 @@ fn check_external_fn_specification_trait_method_decl_typs(
             item_kind: _,
             attrs: _,
             body,
+            return_opaque_type_eqs: _,
             extra_dependencies: _,
             hidden: _,
         } = func;
@@ -3503,6 +3534,7 @@ pub(crate) fn finish_const_or_static<'tcx>(
         item_kind,
         attrs,
         body: if vattrs.external_body { None } else { Some(vir_body) },
+        return_opaque_type_eqs: Arc::new(vec![]),
         extra_dependencies: vec![],
         hidden: Arc::new(header.hidden.clone()),
     };
@@ -3624,6 +3656,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         item_kind: ItemKind::Function,
         attrs: Default::default(),
         body: None,
+        return_opaque_type_eqs: Arc::new(vec![]),
         extra_dependencies: vec![],
         hidden: Arc::new(vec![]),
     };
