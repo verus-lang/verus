@@ -213,7 +213,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     /// If `old` and `new` are both well-formed with the same pointer, then each element
     /// of `new` keeps the corresponding element of `old`'s pointers and length, and still
     /// satisfies its validity constraints.
-    /// Same pointer means same length (the pointer carries it), so there is no separate length condition.
+    /// Having the same pointer means the length is the same (the pointer carries it), 
+    /// so there is no separate length precondition.
     pub broadcast proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self)
         requires
             old.wf(),
@@ -291,14 +292,16 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     ;
 
     /// We can construct a `SeqPointsTo` with `length`-many `PointsTo` permissions,
-    /// provided that `T` is zero-sized and that the pointer is non-null and aligned.
+    /// provided that `T` is zero-sized; 
+    /// the pointer is non-null, aligned, and within bounds of its provenance;
+    /// and the length is bounded by `usize::MAX`.
     pub proof fn zero_sized(ptr: *mut T, length: nat) -> (tracked out: Self)
         requires
+            size_of::<T>() == 0,
             ptr@.addr != 0,
             PointsTo::<T>::satisfies_alignment(ptr@.addr),
             ptr_addr_in_bounds(ptr),
-            size_of::<T>() == 0,
-            length <= usize::MAX,    // new
+            length <= usize::MAX,
         ensures
             forall|i| 0 <= i < out.len() ==> (#[trigger] out[i]).is_empty(),
             out.thin_ptr() == ptr,
@@ -335,6 +338,46 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             pt_untyped.wf(),
     ;
 
+    /// Creates a `SeqPointsTo<T, PointsTo<T>>` of length `capacity` from a `PointsToUntyped`,
+    /// with the first `typed_value.len()` elements holding the given typed values,
+    /// under the following conditions:
+    ///
+    /// (1) The pointer's address is aligned to `T`.
+    ///
+    /// (2) The length is exactly `capacity * size_of::<T>()`.
+    ///
+    /// (3) For each valid element in `typed_value`,
+    ///     the corresponding abstract bytes for the `PointsToUntyped` can be decoded into its value.
+    ///     `typed_value` may contain empty elements (these are ignored for purposes of decoding)
+    ///     and can be a prefix of the total `capacity`
+    ///     (in which case, the remaining memory is all logically uninitialized).
+    ///
+    /// The abstract bytes remain the same.
+    /// This preserves the typed contents in memory on a roundtrip
+    /// (see `SeqPointsTo::into_untyped_with_typed_value`).
+    pub proof fn from_untyped_with_typed_value(
+        tracked pt_untyped: PointsToUntyped,
+        capacity: usize,
+        tracked typed_value: Seq<TypedValue<T>>,
+    ) -> (tracked out: Self)
+        requires
+            pt_untyped.wf(),
+            PointsTo::<T>::satisfies_alignment(pt_untyped.ptr()@.addr),
+            pt_untyped.len() == capacity * size_of::<T>(),
+            typed_value.len() <= capacity,
+            forall|i: int| 0 <= i < typed_value.len() && typed_value[i].is_valid() ==> #[trigger] abs_decode::<T>(
+                pt_untyped.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+                &typed_value[i].value(),
+            ),
+        ensures
+            out.ptr()@.addr == pt_untyped.ptr()@.addr,
+            out.ptr()@.provenance == pt_untyped.ptr()@.provenance,
+            out.len() == capacity,
+            out.bytes() == pt_untyped.bytes(),
+            forall|i: int| 0 <= i < typed_value.len() ==> (#[trigger] out[i]).typed_value() == typed_value[i],
+            out.wf(),
+    ;
+
     /// Creates a `PointsToUntyped` from a `SeqPointsTo<T, PointsTo<T>>`
     /// with the same address and provenance
     /// and a length of `self.len() * size_of::<T>()`.
@@ -353,6 +396,70 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             ),
             pt_untyped.bytes() == self.bytes(),
             pt_untyped.wf(),
+    ;
+
+    /// Creates a `SeqPointsTo<T, PointsTo<T>>` of length `len`
+    /// from a `PointsToUntyped` with the same address and provenance.
+    /// The resulting permission will be empty (uninitialized).
+    /// (Use `from_untyped_with_typed_value` instead if you want to supply typed values.)
+    pub proof fn from_untyped(tracked pt_untyped: PointsToUntyped, len: usize) -> (tracked out: Self)
+        requires
+            pt_untyped.wf(),
+            PointsTo::<T>::satisfies_alignment(pt_untyped.ptr()@.addr),
+            pt_untyped.len() == len * size_of::<T>(),
+        ensures
+            out.ptr()@.addr == pt_untyped.ptr()@.addr,
+            out.ptr()@.provenance == pt_untyped.ptr()@.provenance,
+            out.len() == len,
+            out.bytes() == pt_untyped.bytes(),
+            out.is_fully_empty(),
+            out.wf(),
+    ;
+
+    /// Creates a reference to a `PointsToUntyped`
+    /// from a reference to a `SeqPointsTo<T, PointsTo<T>>`,
+    /// with the same address and provenance, a length of `self.len() * size_of::<T>()`,
+    /// and the same abstract bytes.
+    pub proof fn as_untyped(tracked &self) -> (tracked pt_untyped: &PointsToUntyped)
+        requires
+            self.wf(),
+        ensures
+            pt_untyped.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (self.len() * size_of::<T>()) as usize,
+                },
+            ),
+            pt_untyped.bytes() == self.bytes(),
+            pt_untyped.wf(),
+    ;
+
+    /// Creates a mutable reference to a `PointsToUntyped`
+    /// from a mutable reference to a `SeqPointsTo<T, PointsTo<T>>`,
+    /// with the same address and provenance and a length of `self.len() * size_of::<T>()`.
+    /// If this permission carries any typed values, they are dropped here.
+    pub proof fn as_untyped_mut(tracked &mut self) -> (tracked pt_untyped: &mut PointsToUntyped)
+        requires
+            self.wf(),
+        ensures
+            pt_untyped.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: old(self).ptr()@.addr,
+                    provenance: old(self).ptr()@.provenance,
+                    metadata: (old(self).len() * size_of::<T>()) as usize,
+                },
+            ),
+            pt_untyped.bytes() == old(self).bytes(),
+            pt_untyped.wf(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).len() == old(self).len(),
+            final(self).is_fully_empty(),
+            // Criteria necessary for re-establishing invariants
+            PointsToUntyped::ptrs_len_same(*pt_untyped, *final(pt_untyped)) ==> ({
+                &&& final(self).bytes() == final(pt_untyped).bytes()
+                &&& final(self).wf()
+            }),
     ;
 
     /// Splits the `SeqPointsTo` into two permissions at the index boundary `mid`.
@@ -448,110 +555,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 + old(self).seq_pt().subrange(j as int, old(self).len() as int),
             // Criteria necessary for re-establishing invariants
             Self::ptrs_len_same_valid_value(*r, *final(r)) ==> final(self).wf(),
-    ;
-
-    /// Creates a `SeqPointsTo<T, PointsTo<T>>` of length `len`
-    /// from a `PointsToUntyped` with the same address and provenance.
-    /// The resulting permission will be empty (uninitialized).
-    /// (Use `from_untyped_with_typed_value` instead if you want to supply typed values.)
-    pub proof fn from_untyped(tracked pt_untyped: PointsToUntyped, len: usize) -> (tracked out: Self)
-        requires
-            pt_untyped.wf(),
-            PointsTo::<T>::satisfies_alignment(pt_untyped.ptr()@.addr),
-            pt_untyped.len() == len * size_of::<T>(),
-        ensures
-            out.ptr()@.addr == pt_untyped.ptr()@.addr,          // was out.ptr() == pt_untyped.ptr() as *mut T
-            out.ptr()@.provenance == pt_untyped.ptr()@.provenance,
-            out.len() == len,
-            out.bytes() == pt_untyped.bytes(),
-            out.is_fully_empty(),
-            out.wf(),
-    ;
-
-    /// Creates a `SeqPointsTo<T, PointsTo<T>>` of length `capacity` from a `PointsToUntyped`,
-    /// with the first `typed_value.len()` elements holding the given typed values,
-    /// under the following conditions:
-    ///
-    /// (1) The pointer's address is aligned to `T`.
-    ///
-    /// (2) The length is exactly `capacity * size_of::<T>()`.
-    ///
-    /// (3) For each valid element in `typed_value`,
-    ///     the corresponding abstract bytes for the `PointsToUntyped` can be decoded into its value.
-    ///     `typed_value` may contain empty elements (these are ignored for purposes of decoding)
-    ///     and can be a prefix of the total `capacity`
-    ///     (in which case, the remaining memory is all logically uninitialized).
-    ///
-    /// The abstract bytes remain the same.
-    /// This preserves the typed contents in memory on a roundtrip
-    /// (see `SeqPointsTo::into_untyped_with_typed_value`).
-    pub proof fn from_untyped_with_typed_value(
-        tracked pt_untyped: PointsToUntyped,
-        capacity: usize,
-        tracked typed_value: Seq<TypedValue<T>>,
-    ) -> (tracked out: Self)
-        requires
-            pt_untyped.wf(),
-            PointsTo::<T>::satisfies_alignment(pt_untyped.ptr()@.addr),
-            pt_untyped.len() == capacity * size_of::<T>(),
-            typed_value.len() <= capacity,
-            forall|i: int| 0 <= i < typed_value.len() && typed_value[i].is_valid() ==> #[trigger] abs_decode::<T>(
-                pt_untyped.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
-                &typed_value[i].value(),
-            ),
-        ensures
-            out.ptr()@.addr == pt_untyped.ptr()@.addr,
-            out.ptr()@.provenance == pt_untyped.ptr()@.provenance,
-            out.len() == capacity,
-            out.bytes() == pt_untyped.bytes(),
-            forall|i: int| 0 <= i < typed_value.len() ==> (#[trigger] out[i]).typed_value() == typed_value[i],
-            out.wf(),
-    ;
-
-    /// Creates a reference to a `PointsToUntyped`
-    /// from a reference to a `SeqPointsTo<T, PointsTo<T>>`,
-    /// with the same address and provenance, a length of `self.len() * size_of::<T>()`,
-    /// and the same abstract bytes.
-    pub proof fn as_untyped(tracked &self) -> (tracked raw: &PointsToUntyped)
-        requires
-            self.wf(),
-        ensures
-            raw.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData {
-                    addr: self.ptr()@.addr,
-                    provenance: self.ptr()@.provenance,
-                    metadata: (self.len() * size_of::<T>()) as usize,
-                },
-            ),
-            raw.bytes() == self.bytes(),
-            raw.wf(),
-    ;
-
-    /// Creates a mutable reference to a `PointsToUntyped`
-    /// from a mutable reference to a `SeqPointsTo<T, PointsTo<T>>`,
-    /// with the same address and provenance and a length of `self.len() * size_of::<T>()`.
-    /// If this permission carries any typed values, they are dropped here.
-    pub proof fn as_untyped_mut(tracked &mut self) -> (tracked raw: &mut PointsToUntyped)
-        requires
-            self.wf(),
-        ensures
-            raw.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData {
-                    addr: old(self).ptr()@.addr,
-                    provenance: old(self).ptr()@.provenance,
-                    metadata: (old(self).len() * size_of::<T>()) as usize,
-                },
-            ),
-            raw.bytes() == old(self).bytes(),
-            raw.wf(),
-            final(self).ptr() == old(self).ptr(),
-            final(self).len() == old(self).len(),
-            final(self).is_fully_empty(),
-            // Criteria necessary for re-establishing invariants
-            PointsToUntyped::ptrs_len_same(*raw, *final(raw)) ==> ({
-                &&& final(self).bytes() == final(raw).bytes()
-                &&& final(self).wf()
-            }),
     ;
 
     /// This takes a borrow of each of the `TypedValue<T>`s in a subrange of `self`.
