@@ -373,7 +373,14 @@ The design is in [Sequence → slice conversions](TYPED_POINTS_TO_PLAN.md#sequen
 
 1. `PointsToUnaligned::as_raw_parts_mut` in `points_to_ops.rs` (disjoint field borrows).
 2. The sequence → slice conversions, `SeqPointsTo<T, PointsTo<T>>` → `PointsTo<[T]>` (`&` and `&mut`),
-   as described in the design.
+   as described in the design. How they're built (without field access):
+   - `as_slice_pt`: the bytes from the sequence's `as_untyped` (`join_ref`),
+     the typed value from `from_elems_ref` on the elements' typed values
+     (empty when any element is empty),
+     then `from_raw_parts_ref` gives a `&PointsToUnaligned<[T]>` and `as_aligned` the `&PointsTo<[T]>`.
+   - `as_slice_pt_mut`: each element through `as_unaligned_mut`, then `as_raw_parts_mut` (in `points_to_model.rs`)
+     for its bytes and typed value; the bytes merged with `join_mut`, the typed values with M1,
+     the permission assembled with M3, and `as_aligned_mut` (M4) for the `&mut PointsTo<[T]>`.
 3. `borrow_index` on `PointsToUnaligned<[T]>`, and on `PointsTo<[T]>` through the aligned/unaligned conversions.
 
 ### Phase 4b: restore the slice reference helpers
