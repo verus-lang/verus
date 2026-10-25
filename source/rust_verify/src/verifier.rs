@@ -2902,7 +2902,7 @@ fn check_no_opaque_types_in_trait<'tcx>(
                             if matches!(ty.kind, rustc_hir::TyKind::OpaqueDef { .. }) {
                                 crate::unsupported_err!(
                                     ty.span,
-                                    "Verus does not yet support Opaque types in trait def"
+                                    "opaque types in trait definitions"
                                 );
                             }
                         }

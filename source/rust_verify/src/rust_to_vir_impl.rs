@@ -543,18 +543,14 @@ pub(crate) fn translate_impl_item<'tcx>(
                         &mut vir.opaque_types,
                     )?;
                 }
-                _ => unsupported_err!(item.span, "unsupported item in impl", impl_item_id),
+                _ => unsupported_err!(item.span, "this kind of item in an impl", impl_item_id),
             }
         }
         AssocKind::Type { .. } => {
             if impl_item.generics.predicates.len() != 0
                 || impl_item.generics.has_where_clause_predicates
             {
-                unsupported_err!(
-                    item.span,
-                    "unsupported generics on associated type",
-                    impl_item_id
-                );
+                unsupported_err!(item.span, "generic associated types", impl_item_id);
             }
             if let ImplItemKind::Type(_ty) = impl_item.kind {
                 if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone() {
@@ -572,10 +568,10 @@ pub(crate) fn translate_impl_item<'tcx>(
                     )?;
                     vir.assoc_type_impls.push(assoc_type_impl);
                 } else {
-                    unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
+                    unsupported_err!(item.span, "this kind of item in an impl", impl_item_id);
                 }
             } else {
-                unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
+                unsupported_err!(item.span, "this kind of item in an impl", impl_item_id);
             }
         }
         AssocKind::Const { name: _name, is_type_const: _ } => {
@@ -621,7 +617,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                     )?;
                 }
             } else {
-                unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
+                unsupported_err!(item.span, "this kind of item in an impl", impl_item_id);
             }
         }
     }

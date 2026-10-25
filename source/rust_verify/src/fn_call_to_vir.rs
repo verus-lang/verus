@@ -17,7 +17,7 @@ use crate::verus_items::{
     CompilableOprItem, DirectiveItem, EqualityItem, ExprItem, QuantItem, RustItem, SpecArithItem,
     SpecGhostTrackedItem, SpecItem, SpecLiteralItem, SpecOrdItem, UnaryOpItem, VerusItem,
 };
-use crate::{unsupported_err, unsupported_err_unless};
+use crate::{err_unless, internal_err_unless, unsupported_err};
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::{Block, BlockCheckMode, Expr, ExprKind, QPath, StmtKind};
@@ -551,7 +551,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         ),
         VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Decimal)) => {
             record_spec_fn(bctx, expr);
-            unsupported_err_unless!(args_len == 1, expr.span, "expected spec_literal_*", &args);
+            internal_err_unless!(args_len == 1, expr.span, "expected spec_literal_*", &args);
             let arg = &args[0];
             let s = get_string_lit_arg(&args[0], &f_name)?;
             match &*expr_typ()? {
@@ -600,7 +600,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(spec_literal_item)) => {
             record_spec_fn(bctx, expr);
 
-            unsupported_err_unless!(args_len == 1, expr.span, "expected spec_literal_*", &args);
+            internal_err_unless!(args_len == 1, expr.span, "expected spec_literal_*", &args);
             let arg = &args[0];
             let s = get_string_lit_arg(&args[0], &f_name)?;
             let is_num = s.chars().count() > 0 && s.chars().all(|c| c.is_digit(10));
@@ -669,7 +669,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 SpecItem::Requires | SpecItem::Recommends | SpecItem::Returns => {
                     record_spec_fn_pure_args_only(bctx, expr);
-                    unsupported_err_unless!(
+                    internal_err_unless!(
                         args_len == 1,
                         expr.span,
                         "expected `requires`/`recommends`",
@@ -803,7 +803,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     } else {
                         record_spec_fn_pure_args_only(bctx, expr);
                     }
-                    unsupported_err_unless!(args_len == 1, expr.span, "expected ensures", &args);
+                    internal_err_unless!(args_len == 1, expr.span, "expected ensures", &args);
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                     let header = extract_ensures(&bctx, args[0])?;
                     // extract_ensures does most of the necessary work, so we can return at this point
@@ -811,12 +811,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 SpecItem::AtomicSpec => {
                     record_spec_fn_pure_args_only(bctx, expr);
-                    unsupported_err_unless!(
-                        args_len == 1,
-                        expr.span,
-                        "expected atomic spec",
-                        &args
-                    );
+                    internal_err_unless!(args_len == 1, expr.span, "expected atomic spec", &args);
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                     let expr = expr_to_vir_consume(&bctx, args[0])?;
                     mk_expr_span(
@@ -836,7 +831,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         record_spec_fn_pure_args_only(bctx, expr);
                     }
 
-                    unsupported_err_unless!(args_len == 1, expr.span, "expected decreases", &args);
+                    internal_err_unless!(args_len == 1, expr.span, "expected decreases", &args);
                     let subargs = extract_tuple(args[0]);
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                     let vir_args = vec_map_result(&subargs, |arg| expr_to_vir_consume(&bctx, arg))?;
@@ -855,7 +850,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         return err_span(expr.span, "`invariant` is only expected inside a loop");
                     }
 
-                    unsupported_err_unless!(args_len == 1, expr.span, "expected invariant", &args);
+                    internal_err_unless!(args_len == 1, expr.span, "expected invariant", &args);
                     let subargs = extract_array(args[0]);
                     for arg in &subargs {
                         if !matches!(bctx.types.expr_ty_adjusted(arg).kind(), TyKind::Bool) {
@@ -886,7 +881,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 SpecItem::DecreasesBy | SpecItem::RecommendsBy => {
                     record_spec_fn_pure_args_only(bctx, expr);
-                    unsupported_err_unless!(args_len == 1, expr.span, "expected function", &args);
+                    internal_err_unless!(args_len == 1, expr.span, "expected function", &args);
                     let x = get_fn_path(bctx, &args[0])?;
                     let header = Arc::new(HeaderExprX::DecreasesBy(x));
                     mk_expr(ExprX::Header(header))
@@ -911,7 +906,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 SpecItem::Admit => {
                     record_spec_fn_pure_args_only(bctx, expr);
-                    unsupported_err_unless!(args_len == 0, expr.span, "expected admit", args);
+                    internal_err_unless!(args_len == 0, expr.span, "expected admit", args);
                     let f = bctx.spanned_typed_new(
                         expr.span,
                         &Arc::new(TypX::Bool),
@@ -1016,7 +1011,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::Quant(quant_item) => {
             record_spec_fn_pure_args_only(bctx, expr);
-            unsupported_err_unless!(args_len == 1, expr.span, "expected `forall`/`exists`", &args);
+            internal_err_unless!(args_len == 1, expr.span, "expected `forall`/`exists`", &args);
             let quant = match quant_item {
                 QuantItem::Forall => air::ast::Quant::Forall,
                 QuantItem::Exists => air::ast::Quant::Exists,
@@ -1027,7 +1022,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::Directive(directive_item) => match directive_item {
             DirectiveItem::ExtraDependency => {
                 record_spec_fn_pure_args_only(bctx, expr);
-                unsupported_err_unless!(
+                internal_err_unless!(
                     args_len == 1,
                     expr.span,
                     "expected hide / extra dependency",
@@ -1080,7 +1075,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
             DirectiveItem::RevealByteslit => {
                 record_spec_fn_pure_args_only(bctx, expr);
-                unsupported_err_unless!(
+                internal_err_unless!(
                     args_len == 1,
                     expr.span,
                     "`reveal_byteslit` expects one argument"
@@ -1101,12 +1096,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             DirectiveItem::InlineAirStmt => {
                 if bctx.ctxt.cmd_line_args.allow_inline_air {
                     record_spec_fn_pure_args_only(bctx, expr);
-                    unsupported_err_unless!(
-                        args_len == 1,
-                        expr.span,
-                        "expected air statement",
-                        &args
-                    );
+                    internal_err_unless!(args_len == 1, expr.span, "expected air statement", &args);
                     let s = get_string_lit_arg(&args[0], &f_name)?;
                     mk_expr(ExprX::AirStmt(Arc::new(s)))
                 } else {
@@ -1121,12 +1111,12 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::Expr(expr_item) => match expr_item {
             ExprItem::Choose => {
                 record_spec_fn_pure_args_only(bctx, expr);
-                unsupported_err_unless!(args_len == 1, expr.span, "expected choose", &args);
+                internal_err_unless!(args_len == 1, expr.span, "expected choose", &args);
                 extract_choose(bctx, expr.span, args[0], false, expr_typ()?)
             }
             ExprItem::ChooseTuple => {
                 record_spec_fn_pure_args_only(bctx, expr);
-                unsupported_err_unless!(args_len == 1, expr.span, "expected choose", &args);
+                internal_err_unless!(args_len == 1, expr.span, "expected choose", &args);
                 extract_choose(bctx, expr.span, args[0], true, expr_typ()?)
             }
             ExprItem::Old => {
@@ -1251,12 +1241,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind), arg))
             }
             ExprItem::ClosureToFnSpec | ExprItem::ClosureToFnProof => {
-                unsupported_err_unless!(
-                    args_len == 1,
-                    expr.span,
-                    "expected `closure_to_fn`",
-                    &args
-                );
+                internal_err_unless!(args_len == 1, expr.span, "expected `closure_to_fn`", &args);
                 if !bctx.in_ghost {
                     if matches!(expr_item, ExprItem::ClosureToFnSpec) {
                         return err_span(
@@ -1317,10 +1302,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                         (ExprKind::Tup(_), ExprKind::Tup(_)) => {
                             (extract_tuple(args[0]), extract_tuple(args[1]))
                         }
-                        _ => unsupported_err!(
+                        _ => err_span(
                             expr.span,
-                            "`is_smaller_than_lexicographic` requires tuple arguments"
-                        ),
+                            "`is_smaller_than_lexicographic` requires tuple arguments",
+                        )?,
                     }
                 } else {
                     (vec![args[0]], vec![args[1]])
@@ -1434,7 +1419,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 },
             );
 
-            unsupported_err_unless!(args_len == 1, expr.span, "expected `Ghost`/`Tracked`", &args);
+            internal_err_unless!(args_len == 1, expr.span, "expected `Ghost`/`Tracked`", &args);
             let arg = &args[0];
             if get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id))
                 == Some(GhostBlockAttr::Wrapper)
@@ -1490,17 +1475,12 @@ fn verus_item_to_vir<'tcx, 'a>(
             record_spec_fn_pure_args_only(bctx, expr);
             match assert_item {
                 AssertItem::Assert => {
-                    unsupported_err_unless!(args_len == 1, expr.span, "expected assert", &args);
+                    internal_err_unless!(args_len == 1, expr.span, "expected assert", &args);
                     let exp = expr_to_vir_consume(bctx, &args[0])?;
                     mk_expr(ExprX::AssertAssume { is_assume: false, expr: exp, msg: None })
                 }
                 AssertItem::AssertBy => {
-                    unsupported_err_unless!(
-                        args_len == 2,
-                        expr.span,
-                        "expected `assert_by`",
-                        &args
-                    );
+                    internal_err_unless!(args_len == 2, expr.span, "expected `assert_by`", &args);
                     let vars = Arc::new(vec![]);
                     let require = bctx.spanned_typed_new(
                         expr.span,
@@ -1512,7 +1492,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     mk_expr(ExprX::AssertBy { vars, require, ensure, proof })
                 }
                 AssertItem::AssertByCompute => {
-                    unsupported_err_unless!(
+                    internal_err_unless!(
                         args_len == 1,
                         expr.span,
                         "expected `assert_by_compute`",
@@ -1522,7 +1502,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     mk_expr(ExprX::AssertCompute(exp, ComputeMode::Z3))
                 }
                 AssertItem::AssertByComputeOnly => {
-                    unsupported_err_unless!(
+                    internal_err_unless!(
                         args_len == 1,
                         expr.span,
                         "expected `assert_by_compute_only`",
@@ -1532,7 +1512,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     mk_expr(ExprX::AssertCompute(exp, ComputeMode::ComputeOnly))
                 }
                 AssertItem::AssertNonlinearBy | AssertItem::AssertBitvectorBy => {
-                    unsupported_err_unless!(
+                    internal_err_unless!(
                         args_len == 1,
                         expr.span,
                         "expected `assert_nonlinear_by`/`assert_bitvector_by` with one argument",
@@ -1584,7 +1564,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     })
                 }
                 AssertItem::AssertForallBy => {
-                    unsupported_err_unless!(
+                    internal_err_unless!(
                         args_len == 1,
                         expr.span,
                         "expected `assert_forall_by`",
@@ -1617,12 +1597,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::UseTypeInvariant => {
             record_misc(bctx, expr, MiscCall::UseTypeInvariant);
-            unsupported_err_unless!(
-                args_len == 1,
-                expr.span,
-                "expected `use_type_invariant`",
-                &args
-            );
+            internal_err_unless!(args_len == 1, expr.span, "expected `use_type_invariant`", &args);
             if !bctx.in_ghost {
                 return err_span(expr.span, "`use_type_invariant` must be in a `proof` block");
             }
@@ -1642,7 +1617,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::WithTriggers => {
             record_spec_fn(bctx, expr);
-            unsupported_err_unless!(args_len == 2, expr.span, "expected `with_triggers`", &args);
+            internal_err_unless!(args_len == 2, expr.span, "expected `with_triggers`", &args);
             let triggers_tuples = expr_to_vir_consume(bctx, args[0])?;
             let body = expr_to_vir_consume(bctx, args[1])?;
             let mut trigs: Vec<vir::ast::Exprs> = Vec::new();
@@ -1671,7 +1646,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::UnaryOp(UnaryOpItem::SpecCastReal) => {
             record_spec_fn(bctx, expr);
-            unsupported_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
+            internal_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
             let source_vir0 = expr_to_vir(bctx, &args[0])?;
             let source_vir = source_vir0.consume(bctx, bctx.types.expr_ty_adjusted(&args[0]));
             let source_ty = undecorate_typ(&source_vir.typ);
@@ -1686,7 +1661,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::UnaryOp(UnaryOpItem::RealFloor) => {
             record_spec_fn(bctx, expr);
-            unsupported_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
+            internal_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
             let source_vir0 = expr_to_vir(bctx, &args[0])?;
             let source_vir = source_vir0.consume(bctx, bctx.types.expr_ty_adjusted(&args[0]));
             let source_ty = undecorate_typ(&source_vir.typ);
@@ -1695,7 +1670,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::UnaryOp(UnaryOpItem::SpecCastFloat) => {
             record_spec_fn(bctx, expr);
-            unsupported_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
+            internal_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
             let source_vir0 = expr_to_vir(bctx, &args[0])?;
             let source_vir = source_vir0.consume(bctx, bctx.types.expr_ty_adjusted(&args[0]));
             let source_ty = undecorate_typ(&source_vir.typ);
@@ -1716,7 +1691,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             record_spec_fn(bctx, expr);
             let to_ty = undecorate_typ(&expr_typ()?);
 
-            unsupported_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
+            internal_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
             let source_vir0 = expr_to_vir(bctx, &args[0])?;
             let source_vir0_ty = bctx.types.expr_ty_adjusted(&args[0]);
             let source_vir = source_vir0.consume(bctx, source_vir0_ty);
@@ -1841,8 +1816,8 @@ fn verus_item_to_vir<'tcx, 'a>(
             let vir_args = mk_vir_args(bctx, &args)?;
             match chained_item {
                 ChainedItem::Value => {
-                    unsupported_err_unless!(args_len == 1, expr.span, "spec_chained_value", &args);
-                    unsupported_err_unless!(
+                    internal_err_unless!(args_len == 1, expr.span, "spec_chained_value", &args);
+                    err_unless!(
                         matches!(
                             *undecorate_typ(&vir_args[0].typ),
                             TypX::Int(_) | TypX::Real | TypX::Float(_),
@@ -1858,7 +1833,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     Ok(bctx.spanned_typed_new(expr.span, &Arc::new(TypX::Bool), exprx))
                 }
                 ChainedItem::Cmp => {
-                    unsupported_err_unless!(args_len == 1, expr.span, "spec_chained_cmp", args);
+                    internal_err_unless!(args_len == 1, expr.span, "spec_chained_cmp", args);
                     Ok(vir_args[0].clone())
                 }
                 ChainedItem::Le
@@ -1866,14 +1841,14 @@ fn verus_item_to_vir<'tcx, 'a>(
                 | ChainedItem::Ge
                 | ChainedItem::Gt
                 | ChainedItem::Eq => {
-                    unsupported_err_unless!(args_len == 2, expr.span, "chained inequality", &args);
-                    unsupported_err_unless!(
+                    internal_err_unless!(args_len == 2, expr.span, "chained inequality", &args);
+                    internal_err_unless!(
                         matches!(&vir_args[0].x, ExprX::Multi(MultiOp::Chained(_), _)),
                         expr.span,
-                        "chained inequalities for non-integer types",
+                        "expected chained inequality",
                         &args
                     );
-                    unsupported_err_unless!(
+                    err_unless!(
                         matches!(
                             *undecorate_typ(&vir_args[1].typ),
                             TypX::Int(_) | TypX::Real | TypX::Float(_),
@@ -1892,7 +1867,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                                 (TypX::Float(f1), TypX::Float(f2)) => f1 == f2,
                                 _ => false,
                             };
-                            unsupported_err_unless!(
+                            err_unless!(
                                 types_match,
                                 expr.span,
                                 "chained inequalities require all elements to have the same type (all integers or all reals or all floats)"
@@ -3017,7 +2992,7 @@ fn mk_one_vir_arg<'tcx>(
     span: Span,
     args: &Vec<&'tcx Expr<'tcx>>,
 ) -> Result<vir::ast::Expr, VirErr> {
-    unsupported_err_unless!(args.len() == 1, span, "expected 1 argument", &args);
+    internal_err_unless!(args.len() == 1, span, "expected 1 argument", &args);
     expr_to_vir_consume(bctx, &args[0])
 }
 
@@ -3026,7 +3001,7 @@ fn mk_two_vir_args<'tcx>(
     span: Span,
     args: &Vec<&'tcx Expr<'tcx>>,
 ) -> Result<(vir::ast::Expr, vir::ast::Expr), VirErr> {
-    unsupported_err_unless!(args.len() == 2, span, "expected 2 arguments", &args);
+    internal_err_unless!(args.len() == 2, span, "expected 2 arguments", &args);
     let e0 = expr_to_vir_consume(bctx, &args[0])?;
     let e1 = expr_to_vir_consume(bctx, &args[1])?;
     Ok((e0, e1))

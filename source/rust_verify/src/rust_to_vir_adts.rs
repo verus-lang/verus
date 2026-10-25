@@ -49,7 +49,12 @@ where
                 rustc_ast::Recovered::No => false,
                 _ => true,
             };
-            unsupported_err_unless!(!recovered, span, "recovered_struct", variant_data_opt);
+            unsupported_err_unless!(
+                !recovered,
+                span,
+                "structs recovered from a parse error",
+                variant_data_opt
+            );
             Some(*fields)
         }
         Some(VariantData::Tuple(fields, _variant_id, _local_def_id)) => Some(*fields),

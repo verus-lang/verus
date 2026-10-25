@@ -4,7 +4,7 @@ use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::err_span;
 use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
-use crate::{unsupported_err, unsupported_err_unless};
+use crate::{internal_err, unsupported_err, unsupported_err_unless};
 use rustc_ast::{BindingMode, ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
@@ -1215,7 +1215,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let param_typs = match &*typ_arg_tuple {
                         TypX::Datatype(Dt::Tuple(_), typs, _) => typs.clone(),
                         _ => {
-                            unsupported_err!(
+                            internal_err!(
                                 span,
                                 "expected first type argument of `spec_fn` to be a tuple"
                             );

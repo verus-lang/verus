@@ -71,7 +71,7 @@ use crate::verus_items::{
     self, CompilableOprItem, DummyCaptureItem, InvariantItem, OpenAtomicUpdateItem,
     OpenInvariantBlockItem, RustItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem, VstdItem,
 };
-use crate::{unsupported_err, unsupported_err_unless};
+use crate::{internal_err_unless, unsupported_err, unsupported_err_unless};
 use air::ast::Binder;
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
@@ -287,7 +287,7 @@ impl ExprOrPlace {
 
 pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> Result<(bool, VarIdent), VirErr> {
     let Pat { hir_id: _, kind, span, default_binding_modes } = pat;
-    unsupported_err_unless!(default_binding_modes, *span, "default_binding_modes");
+    unsupported_err_unless!(default_binding_modes, *span, "patterns without default binding modes");
     match kind {
         PatKind::Binding(annotation, id, ident, _subpat) => {
             let BindingMode(_, mutability) = annotation;
@@ -692,13 +692,13 @@ pub(crate) fn get_fn_path<'tcx>(
             if let Some(_) =
                 bctx.ctxt.tcx.impl_of_assoc(id).and_then(|ii| bctx.ctxt.tcx.trait_impl_of_assoc(ii))
             {
-                unsupported_err!(expr.span, format!("Fn {:?}", id))
+                unsupported_err!(expr.span, format!("this function reference ({:?})", id))
             } else {
                 let path = bctx.ctxt.def_id_to_vir_path(id);
                 Ok(Arc::new(FunX { path }))
             }
         }
-        _ => unsupported_err!(expr.span, format!("{:?}", expr)),
+        _ => unsupported_err!(expr.span, format!("this function expression ({:?})", expr)),
     }
 }
 
@@ -2068,7 +2068,7 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
         unsupported_err_unless!(
             vdef.fields.len() == 0,
             expr.span,
-            "Enum variant should not contain any fields."
+            "casting an enum whose variants have fields"
         );
         let variant_name = vdef.name.to_string();
         let (adt_path, _) =
@@ -2085,7 +2085,7 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
         let vir_arm = bctx.spanned_new(expr.span, ArmX { pattern, guard, body });
         vir_arms.push(vir_arm);
     }
-    unsupported_err_unless!(vir_arms.len() > 0, expr.span, "Zero-sized empty Enum expr");
+    unsupported_err_unless!(vir_arms.len() > 0, expr.span, "casting an enum with no variants");
     return Ok(mk_expr(ExprX::Match(place_vir, Arc::new(vir_arms), false))?);
 }
 
@@ -2191,7 +2191,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
     match &expr.kind {
         ExprKind::Block(body, label) => {
-            unsupported_err_unless!(label.is_none(), expr.span, "block with label");
+            unsupported_err_unless!(label.is_none(), expr.span, "labeled block expressions");
             if is_invariant_block(bctx, expr)? {
                 return invariant_block_to_vir(bctx, expr);
             }
@@ -3001,7 +3001,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             Ok(ExprOrPlace::Place(place))
                         }
                     }
-                    node => unsupported_err!(expr.span, format!("Path {:?}", node)),
+                    node => {
+                        unsupported_err!(expr.span, format!("this path expression ({:?})", node))
+                    }
                 },
                 (_, Some((ctor, ctor_kind))) => {
                     if ctor_kind != CtorKind::Const {
@@ -3101,7 +3103,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         TypX::Int(_) => {}
                         TypX::Bool => {}
                         _ => {
-                            unsupported_err!(expr.span, format!("non-int ConstParam {:?}", id))
+                            unsupported_err!(
+                                expr.span,
+                                format!(
+                                    "const generic parameters whose type is not an integer or `bool` ({:?})",
+                                    id
+                                )
+                            )
                         }
                     }
                     if let Some(name) = gparam {
@@ -3109,10 +3117,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         let opr = vir::ast::NullaryOpr::ConstGeneric(typ);
                         mk_expr(ExprX::NullaryOpr(opr))
                     } else {
-                        unsupported_err!(expr.span, format!("ConstParam {:?}", id))
+                        unsupported_err!(
+                            expr.span,
+                            format!("this use of a const generic parameter ({:?})", id)
+                        )
                     }
                 }
-                (res, _) => unsupported_err!(expr.span, format!("Path {:?}", res)),
+                (res, _) => {
+                    unsupported_err!(expr.span, format!("this path expression ({:?})", res))
+                }
             }
         }
         ExprKind::Assign(lhs, rhs, _) => {
@@ -3125,10 +3138,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             // REVIEW: this call to mid_ty_simplify seems unneeded?
             let lhs_ty = mid_ty_simplify(tcx, &bctx.ctxt.verus_items, &lhs_ty);
             let field_opr = if let Some(adt_def) = lhs_ty.ty_adt_def() {
-                unsupported_err_unless!(
+                internal_err_unless!(
                     adt_def.variants().len() == 1,
                     expr.span,
-                    "field_of_adt_with_multiple_variants",
+                    "expected a struct or union for field access",
                     expr
                 );
                 let datatype_path = bctx.ctxt.def_id_to_vir_path(adt_def.did());
@@ -3160,7 +3173,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         str::parse(&name.as_str()).expect("integer index into tuple");
                     mk_tuple_field_opr(t_args.len(), field)
                 } else {
-                    unsupported_err!(expr.span, "field_of_non_adt", expr)
+                    unsupported_err!(expr.span, "field access on this type", expr)
                 }
             };
             let field_type = expr_typ()?.clone();
@@ -3394,10 +3407,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     Some(vir::ast::CtorUpdateTail { place: place, taken_fields: tf })
                 }
                 StructTailExpr::DefaultFields(..) => {
-                    unsupported_err!(
-                        expr.span,
-                        "default fields in struct expression not supported"
-                    );
+                    unsupported_err!(expr.span, "default field values in struct expressions");
                 }
                 _ => None,
             };
@@ -3646,7 +3656,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             unsupported_err!(expr.span, format!("unsafe binder cast"))
         }
         ExprKind::Use(..) => unsupported_err!(expr.span, "use expressions"),
-        ExprKind::AddrOf(rustc_ast::BorrowKind::Pin, _, _) => unsupported_err!(expr.span, "pin"),
+        ExprKind::AddrOf(rustc_ast::BorrowKind::Pin, _, _) => {
+            unsupported_err!(expr.span, "pinned borrow expressions")
+        }
     }
 }
 
@@ -3990,7 +4002,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
                 let rhs_ty = bctx.types.expr_ty_adjusted(rhs);
                 unsupported_err!(
                     span,
-                    format!("unsupported binary op: {:?} for {lhs_ty:} and {rhs_ty:}", op.node)
+                    format!("binary operator {:?} for `{lhs_ty:}` and `{rhs_ty:}`", op.node)
                 )
             }
         },
@@ -4360,8 +4372,8 @@ pub(crate) fn closure_to_vir<'tcx>(
     proof_fn_modes: Option<(Arc<Vec<Mode>>, Mode)>,
 ) -> Result<vir::ast::Expr, VirErr> {
     if let ExprKind::Closure(Closure { fn_decl, body: body_id, def_id, .. }) = &closure_expr.kind {
-        unsupported_err_unless!(!fn_decl.c_variadic(), closure_expr.span, "c_variadic");
-        unsupported_err_unless!(
+        unsupported_err_unless!(!fn_decl.c_variadic(), closure_expr.span, "C-variadic closures");
+        internal_err_unless!(
             matches!(fn_decl.implicit_self(), rustc_hir::ImplicitSelfKind::None),
             closure_expr.span,
             "`implicit_self` in closure"
@@ -4648,12 +4660,12 @@ pub(crate) fn deref_primitive<'tcx>(
             unsupported_err!(
                 span,
                 format!(
-                    "dereferencing a raw pointer. Currently, Verus only supports raw pointers through the permissioned `raw_ptr` interface: https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html"
+                    "dereferencing a raw pointer (Verus currently only supports raw pointers through the permissioned `raw_ptr` interface: https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html)"
                 )
             );
         }
         _ => {
-            unsupported_err!(span, format!("primitive deref operation for {ty:?}"))
+            unsupported_err!(span, format!("dereferencing a value of type `{ty}`"))
         }
     }
 }

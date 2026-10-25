@@ -4,7 +4,7 @@ use std::sync::Arc;
 use rustc_hir::{Expr, ExprKind, QPath, def::Res};
 use vir::ast::{ExprX, FunX, HeaderExprX};
 
-use crate::{unsupported_err, unsupported_err_unless, util::err_span};
+use crate::{internal_err_unless, unsupported_err, util::err_span};
 
 pub(crate) enum RevealHideResult {
     Expr(vir::ast::Expr),
@@ -19,7 +19,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
     tcx: rustc_middle::ty::TyCtxt<'ctxt>,
     mk_expr: Option<impl Fn(ExprX) -> Result<vir::ast::Expr, vir::ast::VirErr>>,
 ) -> Result<RevealHideResult, vir::ast::VirErr> {
-    unsupported_err_unless!(args_len == 2, expr.span, "expected reveal", &args);
+    internal_err_unless!(args_len == 2, expr.span, "expected reveal", &args);
     let ExprKind::Block(block, None) = args[0].kind else {
         unsupported_err!(expr.span, "invalid reveal", &args);
     };
@@ -56,7 +56,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
                         Res::Def(_, def_id) => tcx.type_of(*def_id).skip_binder(),
                         Res::PrimTy(prim_ty) => crate::util::hir_prim_ty_to_mir_ty(tcx, prim_ty),
                         _ => {
-                            unsupported_err!(expr.span, "type {:?} not supported in reveal", ty_res)
+                            unsupported_err!(expr.span, "`reveal` for type {:?}", ty_res)
                         }
                     };
                     *tcx.non_blanket_impls_for_ty(trait_, ty_)

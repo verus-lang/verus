@@ -71,6 +71,21 @@ macro_rules! internal_err {
 }
 
 #[macro_export]
+macro_rules! internal_err_unless {
+    ($assertion: expr, $span: expr, $msg: expr) => {
+        if (!$assertion) {
+            $crate::util::internal_err_span($span, $msg.to_string())?;
+        }
+    };
+    ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
+        if (!$assertion) {
+            dbg!($info);
+            $crate::util::internal_err_span($span, $msg.to_string())?;
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! unsupported_err_unless {
     ($assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {

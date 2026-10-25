@@ -478,7 +478,7 @@ fn check_fn_decl<'tcx>(
     assume_specification_opaque_type_map: Option<&HashMap<Path, Path>>,
 ) -> Result<Option<(Typ, Mode)>, VirErr> {
     let FnDecl { inputs: _, output, fn_decl_kind } = decl;
-    unsupported_err_unless!(!fn_decl_kind.c_variadic(), span, "`c_variadic` functions");
+    unsupported_err_unless!(!fn_decl_kind.c_variadic(), span, "C-variadic functions");
     match fn_decl_kind.implicit_self() {
         rustc_hir::ImplicitSelfKind::None => {}
         rustc_hir::ImplicitSelfKind::Imm => {}

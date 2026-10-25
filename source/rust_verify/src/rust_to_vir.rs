@@ -363,7 +363,7 @@ fn check_item<'tcx>(
             return Ok(());
         }
         _ => {
-            unsupported_err_vec!(item.span, "unsupported item", item);
+            unsupported_err_vec!(item.span, "this kind of item", item);
         }
     }
     Ok(())
@@ -393,7 +393,7 @@ fn check_foreign_item<'tcx>(
             )?;
         }
         _ => {
-            unsupported_err!(item.span, "unsupported foreign item", item);
+            unsupported_err!(item.span, "this kind of foreign item", item);
         }
     }
     Ok(())
