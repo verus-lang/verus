@@ -312,7 +312,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         {
             self.errors.push(crate::util::err_span_bare(
                 span,
-                "An individual item of a trait impl cannot be marked external. Perhaps you meant to mark the entire trait impl external, or you meant to mark this item as `external_body`?",
+                "an individual item of a trait impl cannot be marked external; perhaps you meant to mark the entire trait impl external, or you meant to mark this item as `external_body`?",
               ));
             return;
         }
@@ -322,7 +322,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         {
             self.errors.push(crate::util::err_span_bare(
                 span,
-                "An individual item of a trait cannot be marked external. Perhaps you meant to mark the entire trait external?",
+                "an individual item of a trait cannot be marked external; perhaps you meant to mark the entire trait external?",
               ));
             return;
         }
@@ -443,7 +443,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                 if in_impl.is_trait {
                     self.errors.push(crate::util::err_span_bare(
                         span,
-                    "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.",
+                    "in order to verify any items of this trait impl, the entire impl must be verified; try wrapping the entire impl in the `verus!` macro",
                     ));
                 } else {
                     if let Some(module_path) = self.module_path.clone() {
@@ -575,7 +575,7 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
         if eattrs.any_other_verus_specific_attribute && !general_item.is_module() {
             diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                 span,
-                format!("verus-related attribute has no effect because Verus is already ignoring this item. You may need to mark it as `#[verifier::verify]`."),
+                format!("verus-related attribute has no effect because Verus is already ignoring this item; you may need to mark it as `#[verifier::verify]`"),
             )));
         }
     }

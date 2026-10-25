@@ -139,7 +139,7 @@ pub fn dyn_compatability_check(
         match &**tr.x.dyn_compatible.as_ref().expect("dyn_compatible should be Some") {
             DynCompatible::Accept => Ok(()),
             DynCompatible::Reject { reason } => {
-                let msg = format!("Trait is not Verus dyn-compatible: {}", reason);
+                let msg = format!("trait is not Verus dyn-compatible: {}", reason);
                 Err(error(span, msg))
             }
             DynCompatible::RejectUnsizedBlanketImpl { trait_path } => {
@@ -200,7 +200,7 @@ fn check_one_typ(
                     Err(error(
                         span,
                         &format!("Verus does not recognize associated type `{}` of trait `{}`", name, path_as_friendly_rust_name(trait_path)),
-                    ).help("If this trait was declared to Verus via `external_trait_specification`, it may need the associated type declared"))
+                    ).help("if this trait was declared to Verus via `external_trait_specification`, it may need the associated type declared"))
                 }
             } else {
                 Err(error(
@@ -272,7 +272,7 @@ fn check_path_and_get_datatype<'a>(
                 let path_string = path_as_friendly_rust_name(path);
                 let msg = if is_known_external(ctxt, path) {
                     format!(
-                        "cannot use type `{path_string:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.",
+                        "cannot use type `{path_string:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`",
                     )
                 } else {
                     format!(
@@ -339,7 +339,7 @@ fn check_path_and_get_function<'a>(
                 let path_string = path_as_friendly_rust_name(&x.path);
                 let err_str = if locally_defined {
                     format!(
-                        "cannot use function `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.",
+                        "cannot use function `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`",
                         path_string
                     )
                 } else {
@@ -683,7 +683,7 @@ fn check_one_expr(
                         &WarningAllow::AssertForallImplication,
                         || "using ==> in `assert forall` does not currently assume the antecedent in the body; consider using `implies` instead of `==>`",
                         |msg| {
-                            let msg = msg.help("If you didn't mean to assume the antecedent, we're very curious to hear why! To tell us, please open an issue on the Verus issue tracker on github with the title `Don't always make assert forall assume the antecedent`. If no one opens such an issue, we'll soon change the behavior of Verus to always assume the antecedent of the outermost implication");
+                            let msg = msg.help("if you didn't mean to assume the antecedent, we're very curious to hear why! To tell us, please open an issue on the Verus issue tracker on github with the title `Don't always make assert forall assume the antecedent`. If no one opens such an issue, we'll soon change the behavior of Verus to always assume the antecedent of the outermost implication");
                             emit.emit(VirErrAs::Warning(msg));
                         },
                     );
@@ -732,7 +732,7 @@ fn check_one_expr(
                         return Err(error(
                             &expr.span,
                             format!(
-                                "reveal/fuel statement is not allowed here because the function `{:}` is marked 'closed' and thus its body is not visible here. (Note: 'reveal' statements are intended for functions that are opaque, not functions that are closed)",
+                                "reveal/fuel statement is not allowed here because the function `{:}` is marked 'closed' and thus its body is not visible here (note: 'reveal' statements are intended for functions that are opaque, not functions that are closed)",
                                 path_as_friendly_rust_name(&f.x.name.path),
                             ),
                         ));
@@ -770,7 +770,7 @@ fn check_one_expr(
             return Err(error(
                 &expr.span,
                 format!(
-                    "This Verus builtin header should go at the {:} (this is probably a Verus bug, unless you are manually writing calls to Verus builtin headers, which is unusual)",
+                    "this Verus builtin header should go at the {:} (this is probably a Verus bug, unless you are manually writing calls to Verus builtin headers, which is unusual)",
                     header.location_for_diagnostic()
                 ),
             ));
@@ -779,9 +779,9 @@ fn check_one_expr(
             return Err(error(
                 &expr.span,
                 if *migrated {
-                    "This `&mut` parameter must be dereferenced (either explicitly, as in `*x`, or implicitly, as in `x.field`). For more flexible mutable reference support, disable the backwards-compatibility (add #[verifier::deprecated_postcondition_mut_ref_style(false)] to the function)"
+                    "this `&mut` parameter must be dereferenced (either explicitly, as in `*x`, or implicitly, as in `x.field`); for more flexible mutable reference support, disable the backwards-compatibility (add #[verifier::deprecated_postcondition_mut_ref_style(false)] to the function)"
                 } else {
-                    "The result of `final` must be dereferenced (either explicitly, as in `*final(x)`, or implicitly, as in `final(x).field`)"
+                    "the result of `final` must be dereferenced (either explicitly, as in `*final(x)`, or implicitly, as in `final(x).field`)"
                 },
             ));
         }
@@ -796,7 +796,7 @@ fn check_one_expr(
                     // This is nontrivial because we might need to evaluate the guard condition more than once
                     return Err(error(
                         &arm.x.pattern.span,
-                        "Not supported: match arm containing both an or-pattern (|) and a match-guard",
+                        "not supported: match arm containing both an or-pattern (|) and a match-guard",
                     ));
                 }
                 if let Some(span) = has_ref_mut_binding {
@@ -804,7 +804,7 @@ fn check_one_expr(
                         // This probably isn't that bad to support
                         return Err(error(
                             &span,
-                            "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
+                            "not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
                         ));
                     }
                     if has_guard {
@@ -812,7 +812,7 @@ fn check_one_expr(
                         // the test condition, but the mutable borrow is immutable until it ends
                         return Err(error(
                             &span,
-                            "Not supported: match arm containing both a match-guard and a binding by mutable reference",
+                            "not supported: match arm containing both a match-guard and a binding by mutable reference",
                         ));
                     }
                 }
@@ -821,7 +821,7 @@ fn check_one_expr(
                 if i == arms.len() - 1 && has_guard {
                     return Err(error(
                         &arm.x.guard.span,
-                        "Not supported: match where the last arm has a match guard (this would necessarily mean the entire arm is unreachable)",
+                        "not supported: match where the last arm has a match guard (this would necessarily mean the entire arm is unreachable)",
                     ));
                 }
             }
@@ -830,7 +830,7 @@ fn check_one_expr(
             return Err(error(
                 &expr.span,
                 "`old` is meaningless in spec functions",
-            ).help("You can dereference the mutable reference normally to get the \"current\"/\"old\" value"));
+            ).help("you can dereference the mutable reference normally to get the \"current\"/\"old\" value"));
         }
         ExprX::ShrRefStructWrap(_e1, _e2, t1, t2, variant_ident, field_ident) => {
             let datatype_typ = undecorate_typ(&t2);
@@ -920,7 +920,7 @@ fn check_one_stmt(_ctxt: &Ctxt, stmt: &Stmt) -> Result<(), VirErr> {
                 if has_or {
                     return Err(error(
                         &span,
-                        "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
+                        "not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
                     ));
                 }
             }
@@ -1186,7 +1186,7 @@ fn check_function_inner(
         if function.x.mode != Mode::Exec && typ_contains_opaque(&function.x.outer_ret.x.typ) {
             return Err(error(
                 &function.x.outer_ret.span,
-                format!("Opaque type is not supported in {} mode", function.x.mode),
+                format!("opaque type is not supported in {} mode", function.x.mode),
             ));
         }
 
@@ -1316,7 +1316,7 @@ fn check_function_inner(
     {
         return Err(error(
             &function.span,
-            "Select at most one verifier attribute: integer_ring, non_linear, bit_vector",
+            "select at most one verifier attribute: integer_ring, non_linear, bit_vector",
         ));
     }
 
@@ -1358,7 +1358,7 @@ fn check_function_inner(
     if function.x.attrs.integer_ring && !_no_verify {
         return Err(error(
             &function.span,
-            "Please cargo build with `--features singular` to use integer_ring attribute",
+            "please cargo build with `--features singular` to use integer_ring attribute",
         ));
     }
 
@@ -1375,7 +1375,7 @@ fn check_function_inner(
             Err(_) => {
                 return Err(error(
                     &function.span,
-                    "Please provide VERUS_SINGULAR_PATH to use integer_ring attribute",
+                    "please provide VERUS_SINGULAR_PATH to use integer_ring attribute",
                 ));
             }
         };

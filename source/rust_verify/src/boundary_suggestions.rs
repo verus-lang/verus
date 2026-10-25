@@ -33,7 +33,7 @@ pub(crate) fn build_boundary_suggestion<'tcx>(
         rustc_hir::def::DefKind::Const { is_type_const: _ } => {
             build_const_assume_specification_suggestion(ctxt, external_def_id, path)
         }
-        _ => Err(crate::util::error("Building boundary suggestion for non type/fn/const")),
+        _ => Err(crate::util::error("building boundary suggestion for non type/fn/const")),
     }
 }
 pub(crate) fn build_external_type_suggestion<'tcx>(
@@ -121,7 +121,7 @@ pub(crate) fn check_visibilities<'tcx, T: TypeVisitable<TyCtxt<'tcx>>>(
                 return crate::util::err_span(
                     tcx.def_span(def_id),
                     format!(
-                        "Could not build suggestion as there is no visible path to {}.",
+                        "could not build suggestion as there is no visible path to {}",
                         tcx.def_path_str(def_id)
                     ),
                 );
@@ -161,7 +161,7 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
 
     let path_string = if let Some(_trait_def_id) = ctxt.tcx.trait_of_assoc(external_def_id) {
         return Err(crate::util::error(
-            "Cannot build specification for unresolved trait item.  Consider an external_trait_specification declaration.",
+            "cannot build specification for unresolved trait item; consider an external_trait_specification declaration",
         ));
     } else if let Some(impl_def_id) = ctxt.tcx.impl_of_assoc(external_def_id) {
         let of_trait = ctxt.tcx.impl_opt_trait_ref(impl_def_id).is_some();
@@ -500,7 +500,7 @@ fn build_generics_declarations<'tcx>(
                         return crate::util::err_span(
                             ctxt.tcx.def_span(param.def_id),
                             format!(
-                                "Could not find type for const generic parameter {}",
+                                "could not find type for const generic parameter {}",
                                 param.name.as_str()
                             ),
                         );

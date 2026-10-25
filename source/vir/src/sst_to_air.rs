@@ -845,7 +845,7 @@ fn clip_bitwise_result(bit_expr: ExprX, exp: &Exp) -> Result<Expr, VirErr> {
     } else {
         return Err(error(
             &exp.span,
-            format!("In translating Bitwise operator, encountered non-integer operand",),
+            format!("in translating bitwise operator, encountered non-integer operand",),
         ));
     }
 }
@@ -2488,7 +2488,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             match stmt {
                 Ok(stmt) => vec![stmt],
                 Err(err) => {
-                    return Err(error(&stm.span, format!("Invalid inline AIR statement: {}", err)));
+                    return Err(error(&stm.span, format!("invalid inline AIR statement: {}", err)));
                 }
             }
         }
@@ -3081,7 +3081,7 @@ pub(crate) fn body_stm_to_air(
             for req in reqs.iter() {
                 let error = error_with_label(
                     &req.span,
-                    "Unsupported expression in integer_ring".to_string(),
+                    "unsupported expression in integer_ring".to_string(),
                     "at the require clause".to_string(),
                 );
                 let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
@@ -3093,7 +3093,7 @@ pub(crate) fn body_stm_to_air(
             for ens in post_condition.ens_exps.iter() {
                 let error = error_with_label(
                     &ens.span,
-                    "Unsupported expression in integer_ring".to_string(),
+                    "unsupported expression in integer_ring".to_string(),
                     "at the ensure clause".to_string(),
                 );
                 let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;

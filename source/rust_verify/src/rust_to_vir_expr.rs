@@ -662,7 +662,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                         Ok(PatternX::Expr(expr))
                     }
                 }
-                Res::Err => err_span(span, format!("Couldn't resolve {qpath:#?}")),
+                Res::Err => err_span(span, format!("couldn't resolve {qpath:#?}")),
                 _ => match resolve_ctor(bctx.ctxt.tcx, res) {
                     Some((ctor, CtorKind::Const)) => {
                         let variant_name = str_ident(&ctor.variant_def.ident(tcx).as_str());
@@ -1869,7 +1869,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                                 if bctx.ctxt.no_vstd {
                                     return err_span(
                                         expr.span,
-                                        "Coercing an array to a slice is not supported with --no-vstd",
+                                        "coercing an array to a slice is not supported with --no-vstd",
                                     );
                                 }
                                 let fun = vir::fun!(CrateId::Vstd => "raw_ptr", "cast_array_ptr_to_slice_ptr");
@@ -1923,7 +1923,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                                 if bctx.ctxt.no_vstd {
                                     return err_span(
                                         expr.span,
-                                        "Coercing an array to a slice is not supported with --no-vstd",
+                                        "coercing an array to a slice is not supported with --no-vstd",
                                     );
                                 }
 
@@ -2330,7 +2330,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         if bctx.ctxt.no_vstd {
                             return err_span(
                                 expr.span,
-                                "Non-static calls are not supported with --no-vstd",
+                                "non-static calls are not supported with --no-vstd",
                             );
                         }
 
@@ -2455,7 +2455,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Array(exprs) => {
             if bctx.ctxt.no_vstd {
-                return err_span(expr.span, "Array literals are not supported with --no-vstd");
+                return err_span(expr.span, "array literals are not supported with --no-vstd");
             }
             let args: Result<Vec<vir::ast::Expr>, VirErr> =
                 exprs.iter().map(|e| expr_to_vir_consume(bctx, e)).collect();
@@ -2463,7 +2463,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Repeat(e, _array_len) => {
             if bctx.ctxt.no_vstd {
-                return err_span(expr.span, "Array literals are not supported with --no-vstd");
+                return err_span(expr.span, "array literals are not supported with --no-vstd");
             }
             let ty = bctx.types.expr_ty_adjusted(e);
             let is_copy =
@@ -2583,7 +2583,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     if bctx.ctxt.no_vstd {
                         return err_span(
                             expr.span,
-                            "Float `as` cast is not supported with --no-vstd",
+                            "float `as` cast is not supported with --no-vstd",
                         );
                     }
                     let fun = vir::fun!(CrateId::Vstd => "float", "float_cast");
@@ -3706,10 +3706,10 @@ fn lit_to_vir<'tcx>(
                     }
                 }
             }
-            return err_span(span, "Unsupported floating point literal");
+            return err_span(span, "unsupported floating point literal");
         }
         _ => {
-            return err_span(span, "Unsupported constant type");
+            return err_span(span, "unsupported constant type");
         }
     }
 }
@@ -4779,7 +4779,7 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Result<Pl
                 return Err(vir::messages::error(
                     &place.span,
                     "to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`",
-                ).help("For information on the new mutable reference support, see: https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md"));
+                ).help("for information on the new mutable reference support, see: https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md"));
             }
         }
     }

@@ -238,7 +238,7 @@ pub fn enable_default_features_and_verus_attr(
 }
 
 fn error(msg: String) -> ! {
-    eprintln!("Error: {}", msg);
+    eprintln!("error: {}", msg);
     std::process::exit(-1)
 }
 
@@ -680,7 +680,7 @@ pub fn parse_args_with_imports(
         verify_function: {
             if matches.opt_present(OPT_VERIFY_FUNCTION) {
                 if matches.opt_present(OPT_VERIFY_MODULE) {
-                    error("When using --verify-function, use --verify-only-module instead of --verify-module".to_owned())
+                    error("when using --verify-function, use --verify-only-module instead of --verify-module".to_owned())
                 }
                 if !matches.opt_present(OPT_VERIFY_ONLY_MODULE)
                     && !matches.opt_present(OPT_VERIFY_ROOT)
@@ -694,7 +694,7 @@ pub fn parse_args_with_imports(
                     + (if matches.opt_present(OPT_VERIFY_ROOT) { 1 } else { 0 })
                     > 1
                 {
-                    error("Must pass at most one --verify-only-module or --verify-root when using --verify-function".to_string())
+                    error("must pass at most one --verify-only-module or --verify-root when using --verify-function".to_string())
                 }
             }
             matches.opt_str(OPT_VERIFY_FUNCTION)
@@ -806,14 +806,14 @@ pub fn parse_args_with_imports(
                 if !(matches.opt_present(OPT_VERIFY_ONLY_MODULE)
                     || matches.opt_present(OPT_VERIFY_ROOT))
                 {
-                    error("Must pass --verify-only-module or --verify-root when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
+                    error("must pass --verify-only-module or --verify-root when using profile-all; to capture a full project's profile, consider -V capture-profiles".to_string())
                 }
                 if matches.opt_present(OPT_VERIFY_MODULE) {
-                    error("When using --profile-all, use --verify-only-module instead of --verify-module".to_string())
+                    error("when using --profile-all, use --verify-only-module instead of --verify-module".to_string())
                 }
                 if matches.opt_count(OPT_VERIFY_ONLY_MODULE) > 1 {
                     error(
-                        "Must pass at most one --verify-only-module when using profile-all"
+                        "must pass at most one --verify-only-module when using profile-all"
                             .to_string(),
                     )
                 }

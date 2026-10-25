@@ -1096,7 +1096,7 @@ fn eval_seq(
                                 ctx.warning(
                                     &exp.span,
                                     &WarningAllow::AssertComputeUnsimplified,
-                                    || "Computation tried to index into a sequence using a value that does not fit into usize",
+                                    || "computation tried to index into a sequence using a value that does not fit into usize",
                                     |msg| state.msgs.push(msg),
                                 );
                                 ok_seq(0, &s)
@@ -1108,7 +1108,7 @@ fn eval_seq(
                                     ctx.warning(
                                         &exp.span,
                                         &WarningAllow::AssertComputeUnsimplified,
-                                        || "Computation tried to index past the length of a sequence",
+                                        || "computation tried to index past the length of a sequence",
                                         |msg| state.msgs.push(msg),
                                     );
                                     ok_seq(0, &s)
@@ -1175,7 +1175,7 @@ fn eval_array_index(
                     ctx.warning(
                         &exp.span,
                         &WarningAllow::AssertComputeUnsimplified,
-                        || "Computation tried to index into an array using a value that does not fit into usize",
+                        || "computation tried to index into an array using a value that does not fit into usize",
                         |msg| state.msgs.push(msg),
                     );
                     ok
@@ -1187,7 +1187,7 @@ fn eval_array_index(
                         ctx.warning(
                             &exp.span,
                             &WarningAllow::AssertComputeUnsimplified,
-                            || "Computation tried to index past the length of an array",
+                            || "computation tried to index past the length of an array",
                             |msg| state.msgs.push(msg),
                         );
                         ok
@@ -1324,7 +1324,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     ctx.warning(
                                         &exp.span,
                                         &WarningAllow::AssertComputeUnsimplified,
-                                        || "Computation clipped an integer that was out of range",
+                                        || "computation clipped an integer that was out of range",
                                         |msg| state.msgs.push(msg),
                                     );
                                     ok.clone()
@@ -1339,7 +1339,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     ctx.warning(
                                         &exp.span,
                                         &WarningAllow::AssertComputeUnsimplified,
-                                        || "Computation clipped an integer that was out of range",
+                                        || "computation clipped an integer that was out of range",
                                         |msg| state.msgs.push(msg),
                                     );
                                     ok.clone()
@@ -1377,7 +1377,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 ctx.warning(
                                                     &exp.span,
                                                     &WarningAllow::AssertComputeUnsimplified,
-                                                    || "Computation clipped an arch-dependent integer that was out of range",
+                                                    || "computation clipped an arch-dependent integer that was out of range",
                                                     |msg| state.msgs.push(msg),
                                                 );
                                                 ok.clone()
@@ -1399,7 +1399,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 ctx.warning(
                                                     &exp.span,
                                                     &WarningAllow::AssertComputeUnsimplified,
-                                                    || "Computation clipped an arch-dependent integer that was out of range",
+                                                    || "computation clipped an arch-dependent integer that was out of range",
                                                     |msg| state.msgs.push(msg),
                                                 );
                                                 ok.clone()
@@ -2066,7 +2066,7 @@ fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
         ExpX::Interp(InterpExp::Seq(v)) => cleanup_seq(&e.span, e.typ.clone(), v),
         ExpX::Interp(InterpExp::Closure(..)) => Err(error(
             &e.span,
-            "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
+            "proof by computation included a closure literal that wasn't applied; this is not yet supported",
         )),
         _ => Ok(e.clone()),
     })
@@ -2223,7 +2223,7 @@ fn eval_expr_launch(
                         &WarningAllow::AssertComputeUnsimplified,
                         || {
                             format!(
-                                "Failed to simplify expression <<{}>> before sending to Z3",
+                                "failed to simplify expression <<{}>> before sending to Z3",
                                 exp.x.to_user_string(&ctx.global),
                             )
                         },
@@ -2238,7 +2238,7 @@ fn eval_expr_launch(
                 Err(error(
                     &exp.span,
                     &format!(
-                        "assert_by_compute_only failed to simplify down to true.  Instead got: {}.",
+                        "assert_by_compute_only failed to simplify down to true; instead got: {}",
                         res.x.to_user_string(&ctx.global)
                     )
                     .to_string(),

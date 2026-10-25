@@ -1203,7 +1203,7 @@ fn check_place(
                     );
                     if let Some(note) = note {
                         e = e.secondary_label(&note.1, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
-                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
+                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type; you can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
                     }
                     return Err(e);
                 }
@@ -1255,7 +1255,7 @@ fn check_place(
                     );
                     if let Some(note) = note {
                         e = e.secondary_label(&note.1, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
-                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
+                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type; you can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
                     }
                     return Err(e);
                 }
@@ -1546,7 +1546,7 @@ fn check_tracked_swap(
                     e = error(&arg.span, format!("cannot mutate exec-mode place in ghost code"));
                 }
                 e = e.secondary_label(&note.1, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
-                e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
+                e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type; you can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
             }
             return Err(e);
         }
@@ -3124,7 +3124,7 @@ fn check_expr(
         }
         ExprX::OpenInvariant(inv, binder, body, atomicity) => {
             if outer_mode == Mode::Spec {
-                return Err(error(&expr.span, "Cannot open invariant in Spec mode."));
+                return Err(error(&expr.span, "cannot open invariant in spec mode"));
             }
 
             record.var_modes.insert(binder.name.clone(), Mode::Proof);
@@ -3143,7 +3143,7 @@ fn check_expr(
             drop(ghost_typing);
 
             if mode1 != Mode::Proof {
-                return Err(error(&inv.span, "Invariant must be Proof mode."));
+                return Err(error(&inv.span, "invariant must be proof mode"));
             }
             let mut typing = typing.push_var_scope();
 

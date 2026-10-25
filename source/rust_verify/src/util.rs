@@ -364,8 +364,8 @@ where
 
 pub(crate) fn no_builtin_err(span: &vir::messages::Span) -> VirErr {
     vir::messages::error(span,
-        "The verus_builtin crate was not imported but it is necessary to run Verus. You likely need to add `use vstd::prelude::*;` at the top of a lib.rs or main.rs file.")
-    .help("For getting started with Verus, see: https://verus-lang.github.io/verus/guide/getting_started.html")
+        "the verus_builtin crate was not imported but it is necessary to run Verus; you likely need to add `use vstd::prelude::*;` at the top of a lib.rs or main.rs file")
+    .help("for getting started with Verus, see: https://verus-lang.github.io/verus/guide/getting_started.html")
 }
 
 pub(crate) fn iter_crate_free_items<'tcx>(

@@ -2995,7 +2995,7 @@ pub(crate) fn expr_to_stm_opt(
                 Maybe::Some(_e) => {
                     if !ctx.checking_spec_preconditions() {
                         let error =
-                            error(&expr.span, "Cannot show invariant holds at end of block");
+                            error(&expr.span, "cannot show invariant holds at end of block");
                         // Note, we re-use the `main_inv` exp here, but it contains a mutable
                         stms1.push(Spanned::new(
                             expr.span.clone(),

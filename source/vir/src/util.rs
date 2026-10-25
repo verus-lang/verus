@@ -36,7 +36,7 @@ pub fn internal_err_span<A>(
     if let Some(verus_github_bug_report_url) = get_verus_github_bug_report_url() {
         e = e.map_err(|e| {
             e.help(format!(
-                "This is a bug in the verifier. Please report it at {}.",
+                "this is a bug in the verifier; please report it at {}",
                 verus_github_bug_report_url
             ))
         });

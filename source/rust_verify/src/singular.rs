@@ -276,7 +276,7 @@ impl SingularEncoder {
                     )));
                 } else if vir::def::EUC_DIV == (**fname).as_str() {
                     return Err(format!(
-                        "unsupported operator: division. Consider registering the division result as a new variable before calling integer_ring lemma"
+                        "unsupported operator: division; consider registering the division result as a new variable before calling integer_ring lemma"
                     ));
                 } else {
                     // treat as uninterpreted functions
@@ -502,7 +502,7 @@ fn diagnostics_for_ne0(
     for e in expected_set.iter() {
         if !provided_set.contains(e) {
             diagnostics.report(&vir::messages::warning(func_span,
-                format!("integer_ring: this lemma should have `{:} != 0` as a precondition, since this expression is used as a divisor. (This will be a hard error in the future.)", e.to_diagnostic_string())).to_any());
+                format!("integer_ring: this lemma should have `{:} != 0` as a precondition, since this expression is used as a divisor (this will be a hard error in the future)", e.to_diagnostic_string())).to_any());
         }
     }
 }

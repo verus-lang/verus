@@ -728,7 +728,7 @@ impl Verifier {
             }
             msg = msg.secondary_label(
                 &bnd_info.user.as_ref().unwrap().span,
-                "Triggers selected for this quantifier".to_string(),
+                "triggers selected for this quantifier".to_string(),
             );
 
             diagnostics.report(&msg.to_any());
@@ -867,7 +867,7 @@ impl Verifier {
                     if self.expand_flag {
                         invalidity = true;
                     }
-                    let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.desc);
+                    let mut msg = format!("{}: resource limit (rlimit) exceeded", context.desc);
                     if !self.args.profile && !self.args.profile_all && !self.args.capture_profiles {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
@@ -1712,7 +1712,7 @@ impl Verifier {
                                             } else {
                                                 reporter.report(
                                                     &note_bare(format!(
-                                                        "Profile statistics for {}",
+                                                        "profile statistics for {}",
                                                         fun_as_friendly_rust_name(&function.x.name)
                                                     ))
                                                     .to_any(),
@@ -1727,7 +1727,7 @@ impl Verifier {
                                         Err(err) => {
                                             reporter.report_now(
                                                 &warning_bare(format!(
-                                                    "Failed parsing profile file for {}: {}",
+                                                    "failed parsing profile file for {}: {}",
                                                     current_profile_description, err
                                                 ))
                                                 .to_any(),
@@ -1846,7 +1846,7 @@ impl Verifier {
                         } else {
                             reporter.report(
                                 &note_bare(format!(
-                                    "Profile statistics for {}",
+                                    "profile statistics for {}",
                                     bucket_id.friendly_name()
                                 ))
                                 .to_any(),
@@ -1861,7 +1861,7 @@ impl Verifier {
                     Err(err) => {
                         reporter.report_now(
                             &warning_bare(format!(
-                                "Failed parsing profile file for {}: {}",
+                                "failed parsing profile file for {}: {}",
                                 bucket_id.friendly_name(),
                                 err
                             ))
@@ -2972,7 +2972,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     self.verifier.import_virs_via_cargo = Some(imports);
                 }
                 Err(err) => {
-                    eprintln!("Error: {}", err);
+                    eprintln!("error: {}", err);
                     std::process::exit(1);
                 }
             }
@@ -3059,7 +3059,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             match crate::cargo_verus::handle_transitive_imports(tcx, &self.unresolved_import_deps) {
                 Ok(extra) => import_virs_via_cargo.extend(extra),
                 Err(err) => {
-                    eprintln!("Error: {}", err);
+                    eprintln!("error: {}", err);
                     std::process::exit(1);
                 }
             }
@@ -3162,7 +3162,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                             reporter.report(&msg.clone().to_any());
                         }
                         reporter.report(
-                            &note_bare("This error was found in Verus's Trait-Conflict-Checker")
+                            &note_bare("this error was found in Verus's trait-conflict checker")
                                 .to_any(),
                         );
                         return rustc_driver::Compilation::Stop;

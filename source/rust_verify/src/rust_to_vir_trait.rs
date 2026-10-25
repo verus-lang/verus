@@ -523,7 +523,7 @@ pub(crate) fn translate_trait<'tcx>(
 
                     if preds1.len() != preds2.len() {
                         let mut t = format!(
-                            "Mismatched bounds on associated type ({} != {})\n",
+                            "mismatched bounds on associated type ({} != {})\n",
                             preds1.len(),
                             preds2.len(),
                         );
@@ -545,7 +545,7 @@ pub(crate) fn translate_trait<'tcx>(
                                     return err_span(
                                         trait_span,
                                         format!(
-                                            "Mismatched bounds on associated type ({} != {})",
+                                            "mismatched bounds on associated type ({} != {})",
                                             p1, p2
                                         ),
                                     );
@@ -558,7 +558,7 @@ pub(crate) fn translate_trait<'tcx>(
                                     return err_span(
                                         trait_span,
                                         format!(
-                                            "Mismatched projection bounds on associated type ({} != {})",
+                                            "mismatched projection bounds on associated type ({} != {})",
                                             p1, p2
                                         ),
                                     );

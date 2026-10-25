@@ -122,12 +122,12 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
     };
     let span = &ctxt.spans.to_air_span(expr.span);
     let rustc_ast::LitKind::Int(fuel_val, rustc_ast::LitIntType::Unsuffixed) = fuel_lit.node else {
-        return Err(vir::messages::error(span, "Fuel must be a u32 value"));
+        return Err(vir::messages::error(span, "fuel must be a u32 value"));
     };
     let fuel_n: u32 = fuel_val
         .get()
         .try_into()
-        .map_err(|_| vir::messages::error(span, "Fuel must be a u32 value"))?;
+        .map_err(|_| vir::messages::error(span, "fuel must be a u32 value"))?;
 
     let fun = Arc::new(FunX { path });
     if let Some(mk_expr) = mk_expr {

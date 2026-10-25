@@ -1663,7 +1663,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     UnaryOp::IeeeFloat(vir::ast::IeeeFloatUnaryOp::Cast),
                     source_vir,
                 )),
-                _ => err_span(expr.span, "Only integer and float types can be cast to real"),
+                _ => err_span(expr.span, "only integer and float types can be cast to real"),
             }
         }
         VerusItem::UnaryOp(UnaryOpItem::RealFloor) => {
@@ -1690,7 +1690,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 _ => err_span(
                     expr.span,
-                    "Only i8...u128, isize, usize, real, and float types can be cast to float",
+                    "only i8...u128, isize, usize, real, and float types can be cast to float",
                 ),
             }
         }

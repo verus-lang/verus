@@ -1608,7 +1608,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
     }
     if do_check {
         if let Some((rustc_attr, span)) = unsupported_rustc_attr {
-            return err_span(span, format!("The attribute `{rustc_attr:}` is not supported"));
+            return err_span(span, format!("the attribute `{rustc_attr:}` is not supported"));
         }
     }
     Ok(vs)

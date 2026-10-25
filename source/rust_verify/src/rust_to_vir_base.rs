@@ -750,7 +750,7 @@ fn err_for_builtin_tracked_ghost_deref<'tcx>(
     };
 
     Err(crate::util::err_span_bare(span, format!("reliance on trait bound `{ty}: core::ops::{trait_name}`"))
-        .help(format!("The trait bound `{ty_name}<_>: {trait_name}` is treated specially by Verus, and it is not meant to be used generically")))
+        .help(format!("the trait bound `{ty_name}<_>: {trait_name}` is treated specially by Verus, and it is not meant to be used generically")))
 }
 
 pub(crate) fn is_tracked_or_ghost_ty<'tcx>(

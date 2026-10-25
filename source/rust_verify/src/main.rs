@@ -67,7 +67,7 @@ pub fn main() {
     rustc_driver::init_logger(&logger_handler, rustc_log::LoggerConfig::from_env("RUSTVERIFY_LOG"));
 
     if via_cargo != has_rustc {
-        let _ = logger_handler.early_err("Error: VERUS_DRIVER_VIA_CARGO must be 1 if and only if 'rustc' is the first argument to verus");
+        let _ = logger_handler.early_err("VERUS_DRIVER_VIA_CARGO must be 1 if and only if 'rustc' is the first argument to verus");
         std::process::exit(1);
     }
 
