@@ -1214,7 +1214,7 @@ fn check_function_inner(
         if function.x.returns.is_some() {
             return Err(error(
                 &function.span,
-                "`decreases_by`/`recommends_by` function cannot have `ensures` clauses",
+                "`decreases_by`/`recommends_by` function cannot have `returns` clauses",
             ));
         }
         if !is_unit(&function.x.outer_ret.x.typ) {
