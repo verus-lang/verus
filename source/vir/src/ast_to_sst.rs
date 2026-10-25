@@ -2,10 +2,10 @@ use crate::ast::{
     ArithOp, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
     BoundsCheck, ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr,
     Fun, Function, Ident, IntRange, IntegerTypeBoundKind, InvAtomicity, Label, LogicalOp,
-    LoopInvariantKind, MaskSpec, Mode, OverflowBehavior, PatternBinding, PatternX, Place, PlaceX,
-    SignedDivEdgeCaseBehavior, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr,
-    UninterpretedFloatBinaryOp, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
-    VarIdentDisambiguate, VariantCheck, VirErr,
+    LoopInvariantKind, LoopSource, MaskSpec, Mode, OverflowBehavior, PatternBinding, PatternX,
+    Place, PlaceX, SignedDivEdgeCaseBehavior, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, UninterpretedFloatBinaryOp, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders,
+    VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
 use crate::ast_util::{
@@ -2660,6 +2660,7 @@ pub(crate) fn expr_to_stm_opt(
             decrease,
             atomic_call,
             known_no_back_edge,
+            source,
         } => {
             let is_for_loop = *is_for_loop;
             let produces_value =
@@ -2698,7 +2699,13 @@ pub(crate) fn expr_to_stm_opt(
                 // in the same query
                 return Err(error(
                     &expr.span,
-                    "loop with `loop_isolation(false)` contains `break` statement inside a nested loop with `loop_isolation(true)`",
+                    format!(
+                        "{:} contains `break` statement inside a nested loop with `loop_isolation(true)`",
+                        match source {
+                            LoopSource::Loop => "loop with `loop_isolation(false)`",
+                            LoopSource::BreakableBlock => "breakable block",
+                        }
+                    ),
                 ));
             }
             let has_user_break = num_breaks > if is_for_loop { 1 } else { 0 };

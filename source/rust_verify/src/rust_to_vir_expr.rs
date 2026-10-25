@@ -1039,8 +1039,8 @@ pub(crate) fn block_expr_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
 ) -> Result<ExprOrPlace, VirErr> {
-    let ExprKind::Block(_body, label) = &expr.kind else { unreachable!() };
-    let label = label.map(|label| bctx.fresh_label(expr.hir_id, &Some(label)));
+    let ExprKind::Block(body, label) = &expr.kind else { unreachable!() };
+    let label = label.map(|label| bctx.fresh_label(body.hir_id, &Some(label)));
 
     let e = block_expr_to_vir_inner(bctx, expr)?.expect_expr();
 
@@ -1091,6 +1091,7 @@ pub(crate) fn block_expr_to_vir<'tcx>(
                 atomic_call: false,
                 // This should get inferred as 'true' during resolution inference:
                 known_no_back_edge: false,
+                source: vir::ast::LoopSource::BreakableBlock,
             },
         );
         Ok(ExprOrPlace::Expr(loop_expr))
@@ -3353,6 +3354,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     decrease,
                     atomic_call: header.atomic_call_loop,
                     known_no_back_edge: false,
+                    source: vir::ast::LoopSource::Loop,
                 },
             )))
         }
@@ -3448,6 +3450,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     decrease: header.decrease,
                     atomic_call: header.atomic_call_loop,
                     known_no_back_edge: false,
+                    source: vir::ast::LoopSource::Loop,
                 },
             )))
         }

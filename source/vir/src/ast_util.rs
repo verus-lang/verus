@@ -1583,3 +1583,12 @@ pub fn function_to_stub(f: &Function) -> crate::ast::FunctionStub {
         },
     )
 }
+
+impl fmt::Display for LoopSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LoopSource::Loop => write!(f, "loop"),
+            LoopSource::BreakableBlock => write!(f, "breakable block"),
+        }
+    }
+}

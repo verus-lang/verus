@@ -359,15 +359,16 @@ fn infer_resolution(
     module: &Path,
     rtypes: &ResolutionTypes,
 ) -> Result<Expr, VirErr> {
-    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts, loops_with_no_back_edges) = new_cfg(
-        params,
-        body,
-        &info.read_kind_finals,
-        datatypes,
-        functions,
-        &info.var_modes,
-        &info.temporary_modes,
-    )?;
+    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts, loops_with_no_back_edges) =
+        new_cfg(
+            params,
+            body,
+            &info.read_kind_finals,
+            datatypes,
+            functions,
+            &info.var_modes,
+            &info.temporary_modes,
+        )?;
     //println!("{:}", pretty_cfg(&cfg));
     let resolutions = if info.dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
     apply_resolutions(
@@ -1093,6 +1094,7 @@ impl<'a> Builder<'a> {
                 decrease: _,
                 atomic_call: _,
                 known_no_back_edge: _,
+                source: _,
             } => {
                 let outer_body_bb_pos = match cond {
                     Some(cond) => AstPosition::Before(cond.span.id),
