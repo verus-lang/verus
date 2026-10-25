@@ -1683,7 +1683,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 _ => err_span(
                     expr.span,
-                    "only i8...u128, isize, usize, real, and float types can be cast to float",
+                    "only fixed-width integer types (`i8` through `u128`, `isize`, `usize`), `real`, and float types can be cast to float",
                 ),
             }
         }
@@ -1765,7 +1765,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 ((TypX::Float(_), _), TypX::Int(_)) => err_span(
                     expr.span,
-                    "for floats, only casts to i8..u128, isize, and usize are supported",
+                    "for floats, only casts to fixed-width integer types (`i8` through `u128`, `isize`, `usize`) are supported",
                 ),
                 ((TypX::Real, _), TypX::Int(_)) => err_span(
                     expr.span,
