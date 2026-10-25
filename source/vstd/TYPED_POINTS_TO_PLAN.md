@@ -309,6 +309,266 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             out.wf(),
     ;
 
+    /// Splits the `SeqPointsTo` into two permissions at the index boundary `mid`.
+    pub proof fn split(tracked self, mid: nat) -> (tracked (first, second): (Self, Self))
+        requires
+            mid <= self.len(),
+            self.wf(),
+        ensures
+            first.seq_pt() == self.seq_pt().take(mid as int),
+            second.seq_pt() == self.seq_pt().skip(mid as int),
+            first.bytes() == self.bytes().take(mid as int * size_of::<T>()),
+            second.bytes() == self.bytes().skip(mid as int * size_of::<T>()),
+            first.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: mid as usize,
+            }),
+            second.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: (self.ptr()@.addr + mid * size_of::<T>()) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: (self.len() - mid) as usize,
+            }),
+            first.wf(),
+            second.wf(),
+    ;
+
+    /// Concatenates `SeqPointsTo` permissions `self` and `other`,
+    /// provided their pointers have the same provenance
+    /// and `other`'s pointer starts at the end of `self`'s range.
+    pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
+        requires
+            self.wf(),
+            other.wf(),
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len() * size_of::<T>(),
+            size_of::<T>() == 0 ==> self.len() + other.len() <= usize::MAX,
+        ensures
+            joined.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: (self.len() + other.len()) as usize,
+            }),
+            joined.seq_pt() == self.seq_pt() + other.seq_pt(),
+            joined.bytes() == self.bytes() + other.bytes(),
+            joined.wf(),
+    ;
+
+    /// Given that the subrange is within bounds,
+    /// it is always possible to borrow a permission to just that subrange.
+    pub proof fn subrange(tracked &self, start_index: nat, len: nat) -> (tracked sub: &Self)
+        requires
+            self.wf(),
+            start_index + len <= self.len(),
+        ensures
+            sub.wf(),
+            sub.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: len as usize,
+            }),
+            sub.seq_pt() == self.seq_pt().subrange(start_index as int, (start_index + len) as int),
+    ;
+
+    /// Returns a mutable reference to the sub-permission covering indices `[i, j)`.
+    /// The sub-permission has the same provenance,
+    /// and its pointer is offset from `self.ptr()` by `i * size_of::<T>()`.
+    ///
+    /// `self` keeps its pointer,
+    /// with the sub-sequence of permissions replaced by the final sub-permission's.
+    /// Provided that the sub-permission keeps its pointers and length,
+    /// with each element still satisfying its validity constraints (`ptrs_len_same_valid_value`),
+    /// `self` is also still well-formed.
+    pub proof fn subrange_mut(tracked &mut self, i: nat, j: nat) -> (tracked subperm: &mut Self)
+        requires
+            self.wf(),
+            i <= j <= self.len(),
+        ensures
+            subperm.wf(),
+            subperm.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: (old(self).ptr()@.addr + i * size_of::<T>()) as usize,
+                provenance: old(self).ptr()@.provenance,
+                metadata: (j - i) as usize,
+            }),
+            subperm.seq_pt() == old(self).seq_pt().subrange(i as int, j as int),
+            final(self).ptr() == old(self).ptr(),
+            final(self).seq_pt() == old(self).seq_pt().subrange(0, i as int) + final(subperm).seq_pt()
+                + old(self).seq_pt().subrange(j as int, old(self).len() as int),
+            // Criteria necessary for re-establishing invariants
+            Self::ptrs_len_same_valid_value(*subperm, *final(subperm)) ==> final(self).wf(),
+    ;
+
+    /// This takes a borrow of each of the `TypedValue<T>`s in a subrange of `self`.
+    pub proof fn borrow_typed_value_subrange(tracked &self, start: int, end: int) -> (tracked val:
+        Seq<&TypedValue<T>>)
+        requires
+            self.wf(),
+            0 <= start <= end <= self.len(),
+        ensures
+            val.map_values(|r: &TypedValue<T>| *r) == self.seq_typed_value().subrange(start, end),
+    ;
+
+    /// This moves a subrange of the `TypedValue<T>`s out from `self`,
+    /// leaving that subrange empty.
+    pub proof fn take_typed_value_subrange(tracked &mut self, start: int, end: int) -> (tracked val:
+        Seq<TypedValue<T>>)
+        requires
+            self.wf(),
+            0 <= start <= end <= self.len(),
+        ensures
+            val == old(self).seq_typed_value().subrange(start, end),
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
+                start,
+                Seq::new((end - start) as nat, |i: int| TypedValue::Empty),
+            ),
+            final(self).wf(),
+    ;
+
+
+    /// Consumes the `Seq<TypedValue<T>>`
+    /// and puts it in the specified subrange of the `TypedValue<T>`s for `self`.
+    pub proof fn put_typed_value_subrange(
+        tracked &mut self,
+        start: int,
+        tracked val: Seq<TypedValue<T>>,
+    )
+        requires
+            self.wf(),
+            0 <= start <= start + val.len() <= self.len(),
+            forall|i: int|
+                0 <= i < val.len() ==> {
+                    (#[trigger] val[i]).is_valid() ==> abs_decode::<T>(
+                        self.bytes().subrange(
+                            (start + i) * size_of::<T>(),
+                            (start + i + 1) * size_of::<T>(),
+                        ),
+                        &val[i].value(),
+                    )
+                },
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(start, val),
+            final(self).wf(),
+    ;
+
+
+    /// Copies the given `TypedValue<T>`s into the subrange starting at `start`.
+    pub proof fn copy_typed_value_subrange(
+        tracked &mut self,
+        start: int,
+        tracked val: Seq<&TypedValue<T>>,
+    ) where T: Copy
+        requires
+            self.wf(),
+            0 <= start <= start + val.len() <= self.len(),
+            forall|i: int|
+                0 <= i < val.len() ==> {
+                    (#[trigger] val[i]).is_valid() ==> abs_decode::<T>(
+                        self.bytes().subrange(
+                            (start + i) * size_of::<T>(),
+                            (start + i + 1) * size_of::<T>(),
+                        ),
+                        &val[i].value(),
+                    )
+                },
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
+                start,
+                val.map_values(|r: &TypedValue<T>| *r),
+            ),
+            final(self).wf(),
+    ;
+
+    /// This takes a borrow of each of the values in a subrange of `self`.
+    /// Renamed from `borrow_value_subrange`
+    /// (matching `take_subrange` / `put_subrange` / `copy_subrange` and `PTValueOps::borrow`).
+    pub proof fn borrow_subrange(tracked &self, start: int, end: int) -> (tracked val: Seq<&T>)
+        requires
+            self.wf(),
+            0 <= start <= end <= self.len(),
+            self.is_valid_subrange(start, (end - start) as nat),
+        ensures
+            val.map_values(|r: &T| *r) == self.value_subrange(start, (end - start) as nat),
+    ;
+
+    /// This moves a subrange of the values out from `self`,
+    /// leaving that subrange empty.
+    pub proof fn take_subrange(tracked &mut self, start: int, end: int) -> (tracked val: Seq<T>)
+        requires
+            self.wf(),
+            0 <= start <= end <= self.len(),
+            self.is_valid_subrange(start, (end - start) as nat),
+        ensures
+            val == old(self).value_subrange(start, (end - start) as nat),
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
+                start,
+                Seq::new((end - start) as nat, |i: int| TypedValue::Empty),
+            ),
+            final(self).wf(),
+    ;
+
+    /// Consumes the `Seq<T>`
+    /// and puts it in the specified subrange of the `TypedValue<T>`s for `self`.
+    pub proof fn put_subrange(tracked &mut self, start: int, tracked val: Seq<T>)
+        requires
+            self.wf(),
+            0 <= start <= start + val.len() <= self.len(),
+            forall|i: int|
+                0 <= i < val.len() ==> {
+                    abs_decode::<T>(
+                        self.bytes().subrange(
+                            (start + i) * size_of::<T>(),
+                            (start + i + 1) * size_of::<T>(),
+                        ),
+                        &val[i],
+                    )
+                },
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).len() == old(self).len(),
+            final(self).is_valid_subrange(start, val.len()),
+            final(self).value_subrange(start, val.len()) == val,
+            forall|i: int|
+                0 <= i < old(self).len() && !(start <= i < start + val.len())
+                    ==> #[trigger] final(self).seq_typed_value()[i] == old(self).seq_typed_value()[i],
+            final(self).wf(),
+    ;
+
+
+    /// Copies the given values into the subrange starting at `start`.
+    pub proof fn copy_subrange(tracked &mut self, start: int, tracked val: &Seq<T>) where T: Copy
+        requires
+            self.wf(),
+            0 <= start <= start + val.len() <= self.len(),
+            forall|i: int|
+                0 <= i < val.len() ==> {
+                    abs_decode::<T>(
+                        self.bytes().subrange(
+                            (start + i) * size_of::<T>(),
+                            (start + i + 1) * size_of::<T>(),
+                        ),
+                        &val[i],
+                    )
+                },
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).len() == old(self).len(),
+            final(self).is_valid_subrange(start, val.len()),
+            final(self).value_subrange(start, val.len()) == val,
+            forall|i: int|
+                0 <= i < old(self).len() && !(start <= i < start + val.len())
+                    ==> #[trigger] final(self).seq_typed_value()[i] == old(self).seq_typed_value()[i],
+            final(self).wf(),
+    ;
     /// Converts a `SeqPointsTo<T, PointsTo<T>>` into a `PointsToUntyped` covering the same bytes,
     /// together with the `TypedValue<T>` of each element.
     /// (Use `into_untyped` instead if you don't need the typed values.)
@@ -355,6 +615,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     /// The abstract bytes remain the same.
     /// This preserves the typed contents in memory on a roundtrip
     /// (see `SeqPointsTo::into_untyped_with_typed_value`).
+
     pub proof fn from_untyped_with_typed_value(
         tracked pt_untyped: PointsToUntyped,
         capacity: usize,
@@ -460,270 +721,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 &&& final(self).bytes() == final(pt_untyped).bytes()
                 &&& final(self).wf()
             }),
-    ;
-
-    /// Splits the `SeqPointsTo` into two permissions at the index boundary `mid`.
-    /// Built on `split_basic`, adding the bytes, alignment and element `wf` facts.
-    pub proof fn split(tracked self, mid: nat) -> (tracked (first, second): (Self, Self))
-        requires
-            mid <= self.len(),
-            self.wf(),
-        ensures
-            first.seq_pt() == self.seq_pt().take(mid as int),
-            second.seq_pt() == self.seq_pt().skip(mid as int),
-            first.bytes() == self.bytes().take(mid as int * size_of::<T>()),
-            second.bytes() == self.bytes().skip(mid as int * size_of::<T>()),
-            first.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: self.ptr()@.addr,
-                provenance: self.ptr()@.provenance,
-                metadata: mid as usize,
-            }),
-            second.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: (self.ptr()@.addr + mid * size_of::<T>()) as usize,
-                provenance: self.ptr()@.provenance,
-                metadata: (self.len() - mid) as usize,
-            }),
-            first.wf(),
-            second.wf(),
-    ;
-
-    /// Concatenates `SeqPointsTo` permissions `self` and `other`,
-    /// provided their pointers have the same provenance
-    /// and `other`'s pointer starts at the end of `self`'s range.
-    /// Built on `join_basic`, adding the bytes and `wf` facts.
-    pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
-        requires
-            self.wf(),
-            other.wf(),
-            self.ptr()@.provenance == other.ptr()@.provenance,
-            other.ptr()@.addr == self.ptr()@.addr + self.len() * size_of::<T>(),
-            size_of::<T>() == 0 ==> self.len() + other.len() <= usize::MAX,    // new: needed by `join_basic`
-        ensures
-            joined.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: self.ptr()@.addr,
-                provenance: self.ptr()@.provenance,
-                metadata: (self.len() + other.len()) as usize,
-            }),
-            joined.seq_pt() == self.seq_pt() + other.seq_pt(),
-            joined.bytes() == self.bytes() + other.bytes(),
-            joined.wf(),
-    ;
-
-    /// Given that the subrange is within bounds,
-    /// it is always possible to borrow a permission to just that subrange.
-    /// Built on `subrange_basic`, adding the alignment and `wf` facts.
-    pub proof fn subrange(tracked &self, start_index: nat, len: nat) -> (tracked sub: &Self)
-        requires
-            self.wf(),
-            start_index + len <= self.len(),
-        ensures
-            sub.wf(),
-            sub.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize,
-                provenance: self.ptr()@.provenance,
-                metadata: len as usize,
-            }),
-            sub.seq_pt() == self.seq_pt().subrange(start_index as int, (start_index + len) as int),
-    ;
-
-    /// Returns a mutable reference to the sub-permission covering indices `[i, j)`.
-    /// The sub-permission has the same provenance,
-    /// and its pointer is offset from `self.ptr()` by `i * size_of::<T>()`.
-    ///
-    /// `self` keeps its pointer,
-    /// with the sub-sequence of permissions replaced by the final sub-permission's.
-    /// Provided that the sub-permission keeps its pointers and length,
-    /// with each element still satisfying its validity constraints (`ptrs_len_same_valid_value`),
-    /// `self` is also still well-formed.
-    ///
-    /// Proved from M5 (`from_seq_mut`) in phase 3b;
-    /// until then, an axiom on `SeqPointsTo<T, PointsTo<T>>` only.
-    pub proof fn subrange_mut(tracked &mut self, i: nat, j: nat) -> (tracked r: &mut Self)
-        requires
-            self.wf(),
-            i <= j <= self.len(),
-        ensures
-            r.wf(),
-            r.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: (old(self).ptr()@.addr + i * size_of::<T>()) as usize,
-                provenance: old(self).ptr()@.provenance,
-                metadata: (j - i) as usize,
-            }),
-            r.seq_pt() == old(self).seq_pt().subrange(i as int, j as int),
-            final(self).ptr() == old(self).ptr(),
-            final(self).seq_pt() == old(self).seq_pt().subrange(0, i as int) + final(r).seq_pt()
-                + old(self).seq_pt().subrange(j as int, old(self).len() as int),
-            // Criteria necessary for re-establishing invariants
-            Self::ptrs_len_same_valid_value(*r, *final(r)) ==> final(self).wf(),
-    ;
-
-    /// This takes a borrow of each of the `TypedValue<T>`s in a subrange of `self`.
-    pub proof fn borrow_typed_value_subrange(tracked &self, start: int, end: int) -> (tracked val:
-        Seq<&TypedValue<T>>)
-        requires
-            self.wf(),
-            0 <= start <= end <= self.len(),
-        ensures
-            val.map_values(|r: &TypedValue<T>| *r) == self.seq_typed_value().subrange(start, end),
-    ;
-
-    /// Copies the given `TypedValue<T>`s into the subrange starting at `start`.
-    pub proof fn copy_typed_value_subrange(
-        tracked &mut self,
-        start: int,
-        tracked val: Seq<&TypedValue<T>>,
-    ) where T: Copy
-        requires
-            self.wf(),
-            0 <= start <= start + val.len() <= self.len(),
-            forall|i: int|
-                0 <= i < val.len() ==> {
-                    (#[trigger] val[i]).is_valid() ==> abs_decode::<T>(
-                        self.bytes().subrange(
-                            (start + i) * size_of::<T>(),
-                            (start + i + 1) * size_of::<T>(),
-                        ),
-                        &val[i].value(),
-                    )
-                },
-        ensures
-            final(self).ptr() == old(self).ptr(),
-            final(self).bytes() == old(self).bytes(),
-            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
-                start,
-                val.map_values(|r: &TypedValue<T>| *r),
-            ),
-            final(self).wf(),
-    ;
-
-    /// This moves a subrange of the `TypedValue<T>`s out from `self`,
-    /// leaving that subrange empty.
-    pub proof fn take_typed_value_subrange(tracked &mut self, start: int, end: int) -> (tracked val:
-        Seq<TypedValue<T>>)
-        requires
-            self.wf(),
-            0 <= start <= end <= self.len(),
-        ensures
-            val == old(self).seq_typed_value().subrange(start, end),
-            final(self).ptr() == old(self).ptr(),
-            final(self).bytes() == old(self).bytes(),
-            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
-                start,
-                Seq::new((end - start) as nat, |i: int| TypedValue::Empty),
-            ),
-            final(self).wf(),
-    ;
-
-    /// Consumes the `Seq<T>`
-    /// and puts it in the specified subrange of the `TypedValue<T>`s for `self`.
-    pub proof fn put_subrange(tracked &mut self, start: int, tracked val: Seq<T>)
-        requires
-            self.wf(),
-            0 <= start <= start + val.len() <= self.len(),
-            forall|i: int|
-                0 <= i < val.len() ==> {
-                    abs_decode::<T>(
-                        self.bytes().subrange(
-                            (start + i) * size_of::<T>(),
-                            (start + i + 1) * size_of::<T>(),
-                        ),
-                        &val[i],
-                    )
-                },
-        ensures
-            final(self).ptr() == old(self).ptr(),
-            final(self).bytes() == old(self).bytes(),
-            final(self).len() == old(self).len(),
-            final(self).is_valid_subrange(start, val.len()),
-            final(self).value_subrange(start, val.len()) == val,
-            forall|i: int|
-                0 <= i < old(self).len() && !(start <= i < start + val.len())
-                    ==> #[trigger] final(self).seq_typed_value()[i] == old(self).seq_typed_value()[i],
-            final(self).wf(),
-    ;
-
-    /// Consumes the `Seq<TypedValue<T>>`
-    /// and puts it in the specified subrange of the `TypedValue<T>`s for `self`.
-    pub proof fn put_typed_value_subrange(
-        tracked &mut self,
-        start: int,
-        tracked val: Seq<TypedValue<T>>,
-    )
-        requires
-            self.wf(),
-            0 <= start <= start + val.len() <= self.len(),
-            forall|i: int|
-                0 <= i < val.len() ==> {
-                    (#[trigger] val[i]).is_valid() ==> abs_decode::<T>(
-                        self.bytes().subrange(
-                            (start + i) * size_of::<T>(),
-                            (start + i + 1) * size_of::<T>(),
-                        ),
-                        &val[i].value(),
-                    )
-                },
-        ensures
-            final(self).ptr() == old(self).ptr(),
-            final(self).bytes() == old(self).bytes(),
-            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(start, val),
-            final(self).wf(),
-    ;
-
-    /// Copies the given values into the subrange starting at `start`.
-    pub proof fn copy_subrange(tracked &mut self, start: int, tracked val: &Seq<T>) where T: Copy
-        requires
-            self.wf(),
-            0 <= start <= start + val.len() <= self.len(),
-            forall|i: int|
-                0 <= i < val.len() ==> {
-                    abs_decode::<T>(
-                        self.bytes().subrange(
-                            (start + i) * size_of::<T>(),
-                            (start + i + 1) * size_of::<T>(),
-                        ),
-                        &val[i],
-                    )
-                },
-        ensures
-            final(self).ptr() == old(self).ptr(),
-            final(self).bytes() == old(self).bytes(),
-            final(self).len() == old(self).len(),
-            final(self).is_valid_subrange(start, val.len()),
-            final(self).value_subrange(start, val.len()) == val,
-            forall|i: int|
-                0 <= i < old(self).len() && !(start <= i < start + val.len())
-                    ==> #[trigger] final(self).seq_typed_value()[i] == old(self).seq_typed_value()[i],
-            final(self).wf(),
-    ;
-
-    /// This moves a subrange of the values out from `self`,
-    /// leaving that subrange empty.
-    pub proof fn take_subrange(tracked &mut self, start: int, end: int) -> (tracked val: Seq<T>)
-        requires
-            self.wf(),
-            0 <= start <= end <= self.len(),
-            self.is_valid_subrange(start, (end - start) as nat),
-        ensures
-            val == old(self).value_subrange(start, (end - start) as nat),
-            final(self).ptr() == old(self).ptr(),
-            final(self).bytes() == old(self).bytes(),
-            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
-                start,
-                Seq::new((end - start) as nat, |i: int| TypedValue::Empty),
-            ),
-            final(self).wf(),
-    ;
-
-    /// This takes a borrow of each of the values in a subrange of `self`.
-    /// Renamed from `borrow_value_subrange`
-    /// (matching `take_subrange` / `put_subrange` / `copy_subrange` and `PTValueOps::borrow`).
-    pub proof fn borrow_subrange(tracked &self, start: int, end: int) -> (tracked val: Seq<&T>)
-        requires
-            self.wf(),
-            0 <= start <= end <= self.len(),
-            self.is_valid_subrange(start, (end - start) as nat),
-        ensures
-            val.map_values(|r: &T| *r) == self.value_subrange(start, (end - start) as nat),
     ;
 
     /// Specializes `is_disjoint` to the case
