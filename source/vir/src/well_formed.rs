@@ -1325,10 +1325,7 @@ fn check_function_inner(
 
     if function.x.attrs.bit_vector {
         if function.x.mode != Mode::Proof {
-            return Err(error(
-                &function.span,
-                "bit-vector function mode must be declared as proof",
-            ));
+            return Err(error(&function.span, "`bit_vector` function must be declared as proof"));
         }
         if let Some(body) = &function.x.body {
             crate::ast_visitor::expr_visitor_check(body, &mut |_scope_map, expr| {
@@ -1337,7 +1334,7 @@ fn check_function_inner(
                     _ => {
                         return Err(error(
                             &function.span,
-                            "bit-vector function mode cannot have a body",
+                            "`bit_vector` function cannot have a body",
                         ));
                     }
                 }
@@ -1350,7 +1347,7 @@ fn check_function_inner(
                 _ => {
                     return Err(error(
                         &p.span,
-                        "bit-vector function mode cannot have a datatype other than Integer/Boolean",
+                        "`bit_vector` function parameters must have type `bool` or an integer type (e.g., `u64` or `int`)",
                     ));
                 }
             }

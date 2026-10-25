@@ -107,7 +107,7 @@ fn make_query(
     let mut air_body: Vec<air::ast::Stmt> = Vec::new();
     for (span, ens) in ensures_air.iter() {
         // This error seems to be ignored, the message below is the important one
-        let error = error(span, format!("bitvector assertion not satisfied"));
+        let error = error(span, format!("`bit_vector` assertion not satisfied"));
         let ens_stmt = air::ast::StmtX::Assert(None, error, None, ens.clone());
         air_body.push(Arc::new(ens_stmt));
     }
@@ -118,7 +118,7 @@ fn make_query(
         None => "".to_string(),
         Some(w) => format!(" (with arch-size set to {} bits)", w),
     };
-    let error = format!("bitvector assertion not satisfied{}", special_note);
+    let error = format!("`bit_vector` assertion not satisfied{}", special_note);
 
     (query, error)
 }
@@ -509,11 +509,11 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefFinal(_) => {
                 return Err(error(
                     &exp.span,
-                    "Verus does not currently support this mutable reference operator for bit-vector",
+                    "Verus does not currently support this mutable reference operator in `bit_vector` proofs",
                 ));
             }
             UnaryOp::Length(_) => {
-                panic!("ArrayLength operation not allowed in bitvector query")
+                panic!("array length operation not allowed in `bit_vector` proofs")
             }
         },
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp) => {
@@ -711,7 +711,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             return do_arith_then_clip(ctx, state, &exp.span, arith_op, lhs, rhs, None);
         }
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {
-            return Err(error(&exp.span, "cannot use extensional equality in bit vector proof"));
+            return Err(error(&exp.span, "cannot use extensional equality in `bit_vector` proofs"));
         }
         ExpX::UnaryOpr(
             crate::ast::UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits),
@@ -796,7 +796,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 return Err(error(
                     &exp.span,
                     format!(
-                        "Verus does not currently support this binding for bit-vector: {:?}",
+                        "Verus does not currently support this binding in `bit_vector` proofs: {:?}",
                         exp.x
                     ),
                 ));
@@ -809,7 +809,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             return Err(error(
                 &exp.span,
                 format!(
-                    "Verus does not currently support this expression for bit-vector: {:?}",
+                    "Verus does not currently support this expression in `bit_vector` proofs: {:?}",
                     exp.x
                 ),
             ));
@@ -827,7 +827,7 @@ fn bitvector_expect_finite(
         Some(w) => Ok(bitwidth_exact(state, *w)),
         None => Err(error(
             span,
-            format!("IntRange error: expected finite-width integer for bit-vector, got {:?}", typ),
+            format!("expected finite-width integer in `bit_vector` proof, got {:?}", typ),
         )),
     }
 }
@@ -838,7 +838,7 @@ fn vir_typ_to_air(state: &mut State, span: &Span, typ: &Typ) -> Result<air::ast:
         TypX::Bool => Ok(bool_typ()),
         TypX::Decorate(_, _, t) => vir_typ_to_air(state, span, t),
         TypX::Boxed(t) => vir_typ_to_air(state, span, t),
-        _ => Err(error(span, format!("unsupported type in bitvector {:?}", typ))),
+        _ => Err(error(span, format!("unsupported type in `bit_vector` proof: {:?}", typ))),
     }
 }
 
@@ -1012,7 +1012,7 @@ fn signedness_of_int_range(span: &Span, range: &IntRange) -> Result<Extend, VirE
     match range {
         IntRange::Int | IntRange::I(_) | IntRange::ISize => Ok(Extend::Sign),
         IntRange::Nat | IntRange::U(_) | IntRange::USize => Ok(Extend::Zero),
-        IntRange::Char => Err(error(span, format!("char not supported in bit-vector query"))),
+        IntRange::Char => Err(error(span, format!("`char` not supported in `bit_vector` proofs"))),
     }
 }
 
@@ -1023,9 +1023,9 @@ fn width_of_int_range(state: &mut State, span: &Span, range: &IntRange) -> Resul
             Ok(bitwidth_exact(state, IntegerTypeBitwidth::ArchWordSize))
         }
         IntRange::Int | IntRange::Nat => {
-            Err(error(span, format!("symbolic `int`/`nat` not supported in bit-vector query")))
+            Err(error(span, format!("symbolic `int`/`nat` not supported in `bit_vector` proofs")))
         }
-        IntRange::Char => Err(error(span, format!("char not supported in bit-vector query"))),
+        IntRange::Char => Err(error(span, format!("`char` not supported in `bit_vector` proofs"))),
     }
 }
 
