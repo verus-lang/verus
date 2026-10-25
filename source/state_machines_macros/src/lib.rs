@@ -11,6 +11,7 @@ mod check_bind_stmts;
 mod check_birds_eye;
 mod concurrency_tokens;
 mod field_access_visitor;
+mod hygiene;
 mod ident_visitor;
 mod inherent_safety_conditions;
 mod lemmas;

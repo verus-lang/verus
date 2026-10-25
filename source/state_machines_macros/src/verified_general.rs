@@ -3,6 +3,7 @@
 //! completion is never exposed as the actual global state. The transitions' raw
 //! operations are emitted by `verified_operations`.
 use crate::ast::*;
+use crate::hygiene::Binders;
 use crate::parse_token_stream::SMBundle;
 use crate::to_token_stream::{
     fix_attrs, generics_for_decl, get_generic_args, set_mode_proof, shardable_type_to_type,
@@ -742,6 +743,8 @@ fn execute(xs: &[SimplStmt], safety: bool) -> TokenStream {
         };
     };
     let tail = execute(rest, safety);
+    // A local of the safety proof, around the user's expressions (`crate::hygiene`).
+    let enabled = format_ident!("__tsm_enabled", span = proc_macro2::Span::mixed_site());
     match first {
         SimplStmt::Require(_, e) if safety => quote! { if #e { #tail } else { false } },
         SimplStmt::Require(..) => tail,
@@ -769,7 +772,7 @@ fn execute(xs: &[SimplStmt], safety: bool) -> TokenStream {
             let ty = ty.as_ref().map(|t| quote! {: #t});
             let inner = execute(child, safety);
             if safety {
-                quote! {let __tsm_enabled={let #p #ty = #e; #inner}; if __tsm_enabled {#tail}else{false}}
+                quote! {let #enabled={let #p #ty = #e; #inner}; if #enabled {#tail}else{false}}
             } else {
                 quote! { { let #p #ty = #e; #inner } #tail }
             }
@@ -797,7 +800,7 @@ fn execute(xs: &[SimplStmt], safety: bool) -> TokenStream {
                 _ => unreachable!(),
             };
             if safety {
-                quote! {let __tsm_enabled=#split; if __tsm_enabled{#tail}else{false}}
+                quote! {let #enabled=#split; if #enabled{#tail}else{false}}
             } else {
                 quote! {#split #tail}
             }
@@ -1008,12 +1011,14 @@ fn field_declarations(sm: &SM) -> Result<FieldDecls<'_>, Error> {
     Ok(decls)
 }
 
-/// A transition's parameters and the names of its generated items.
+/// A transition's parameters, the names of its generated items, and the binders of
+/// those, which no user name can collide with or capture (`crate::hygiene`).
 pub(crate) struct Names<'a> {
     /// The transition's name, which its raw operation also has.
     pub(crate) name: &'a Ident,
     pub(crate) pn: Vec<&'a Ident>,
     pub(crate) params: Vec<TokenStream>,
+    pub(crate) b: Binders,
     pub(crate) strong: Ident,
     pub(crate) enabled: Ident,
     pub(crate) safety: Ident,
@@ -1107,6 +1112,7 @@ fn transition_names(tr: &Transition) -> Names<'_> {
                 quote! {#name:#ty}
             })
             .collect(),
+        b: Binders::new(&tr.params),
         strong: format_ident!("{}_strong", name),
         enabled: format_ident!("{}_enabled", name),
         safety: format_ident!("{}_safety", name),
@@ -1159,20 +1165,20 @@ fn transition_footprint(ctx: &Ctx, tr: &Transition) -> Result<Footprint, Error> 
 /// own for the transition (`verified_ownership`).
 fn ownership_relation(ctx: &Ctx, tr: &Transition, names: &Names) -> Result<TokenStream, Error> {
     let Ctx { sm, st, ft, .. } = ctx;
-    let Names { params, owners, .. } = names;
+    let Names { params, owners, b: Binders { owned, h, .. }, .. } = names;
     let ready = ctx.is_local_ready(tr);
     let owner_expression = crate::verified_ownership::ownership_condition(
         &tr.body,
         &ctx.fields,
         ft,
-        quote! {owned},
-        quote! {h},
+        quote! {#owned},
+        quote! {#h},
         ready,
     )?;
     let ownership_inline =
         inline_attr(ready && crate::verified_readiness::inline_ownership(sm, tr));
     Ok(
-        quote! {#ownership_inline pub open spec fn #owners(pre:#st,owned:#ft,h:#ft,#(#params),*)->bool{#owner_expression}},
+        quote! {#ownership_inline pub open spec fn #owners(pre:#st,#owned:#ft,#h:#ft,#(#params),*)->bool{#owner_expression}},
     )
 }
 
@@ -1408,7 +1414,7 @@ fn executor_storage_facts(
     footprint: &Footprint,
     layout: &Tagged,
 ) -> (TokenStream, TokenStream) {
-    let Names { pn, deposited, .. } = names;
+    let Names { pn, deposited, b: Binders { physical_deposit, .. }, .. } = names;
     let Footprint { paired, replace_candidate, .. } = *footprint;
     let no_withdraw = !footprint.withdraws;
     let storage_index =
@@ -1435,7 +1441,7 @@ fn executor_storage_facts(
         quote! {}
     };
     if paired {
-        let transferred = layout.op(pre_storage.clone(), quote! {physical_deposit});
+        let transferred = layout.op(pre_storage.clone(), quote! {#physical_deposit});
         let disjoint = layout.disjoint(pre_storage.clone(), deposit.clone());
         let within =
             layout.le(post_storage.clone(), layout.op(pre_storage.clone(), deposit.clone()));
@@ -1454,7 +1460,7 @@ fn executor_storage_facts(
         let disjoint_proof = layout.prove_disjoint_at(
             &storage_index,
             pre_storage.clone(),
-            quote! {physical_deposit},
+            quote! {#physical_deposit},
             replace_candidate,
         );
         let within_proof =
@@ -1462,7 +1468,7 @@ fn executor_storage_facts(
         (
             quote! {,#agrees,#disjoint,#within #grow_ens #covered_ens},
             quote! {
-                let physical_deposit=#deposit;
+                let #physical_deposit=#deposit;
                 #agrees_proof
                 #grow_proof
                 #disjoint_proof

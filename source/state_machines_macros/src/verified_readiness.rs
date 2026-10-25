@@ -3,6 +3,7 @@
 //! every transition `local_ready_supported` accepts, next to the
 //! all-completion API).
 use crate::ast::*;
+use crate::hygiene::binders;
 use crate::parse_token_stream::{ParseResult, parse_result_to_smir};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -724,9 +725,10 @@ fn implicit_local_state(
         return Ok(None);
     };
     let (o, s) = (&builder.owned, &builder.shared);
+    let [owned, h] = binders(["owned", "h"], &tr.params);
     Ok(Some(quote! {{
-        let #o = owned; let #s = h;
-        let pre = #pe::__observed(<#ft>::op(owned,h));
+        let #o = #owned; let #s = #h;
+        let pre = #pe::__observed(<#ft>::op(#owned,#h));
         #state
     }}))
 }
@@ -916,6 +918,7 @@ fn agreement_fields<'a>(sm: &'a SM, tr: &Transition) -> Vec<&'a Field> {
 /// the fragments until such a fact is instantiated.
 fn agreement(sm: &SM, tr: &Transition, completion: &Ident, z: &Ident) -> Vec<TokenStream> {
     let c = quote! {::vstd::resource::tsm_collections};
+    let [owned, h] = binders(["owned", "h"], &tr.params);
     agreement_fields(sm, tr)
         .into_iter()
         .map(|field| {
@@ -928,11 +931,11 @@ fn agreement(sm: &SM, tr: &Transition, completion: &Ident, z: &Ident) -> Vec<Tok
                 (quote! {Exclusive_0}, quote! {Exclusive})
             };
             let laws = quote! {
-                <#ct>::commutative(owned.#n,h.#n);
-                <#ct>::associative(owned.#n,h.#n,#z.#n);
-                <#ct>::associative(h.#n,owned.#n,#z.#n);
+                <#ct>::commutative(#owned.#n,#h.#n);
+                <#ct>::associative(#owned.#n,#h.#n,#z.#n);
+                <#ct>::associative(#h.#n,#owned.#n,#z.#n);
             };
-            let facts: Vec<_> = [(quote! {owned}, quote! {h}), (quote! {h}, quote! {owned})]
+            let facts: Vec<_> = [(quote! {#owned}, quote! {#h}), (quote! {#h}, quote! {#owned})]
                 .into_iter()
                 .map(|(this, other)| {
                     let frame = quote! {<#ct>::op(#other.#n,#z.#n)};
@@ -1015,7 +1018,7 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         result_expr,
         params,
         pn,
-        owned,
+        owned: owned_req,
         observed,
         reads,
         storage,
@@ -1025,6 +1028,9 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         chain,
     } = c;
     let n = &tr.name;
+    // The operations' own binders (`crate::hygiene`).
+    let [owned, h, shared, deposit, out_binder] =
+        binders(["owned", "h", "shared", "deposit", "out"], &tr.params);
     let local_req = format_ident!("precondition");
     let ready = format_ident!("ready");
     let local = format_ident!("run");
@@ -1068,9 +1074,9 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     let mut local_deposit_req = quote! {};
     let mut deposit_ens = quote! {};
     let mut deposit_eq = quote! {};
-    let mut ret = quote! {tracked out:#tt};
-    let mut call = quote! {let tracked #next=Self::#local(owned,#(#pn),*);};
-    let mut out = quote! {out};
+    let mut ret = quote! {tracked #out_binder:#tt};
+    let mut call = quote! {let tracked #next=Self::#local(#owned,#(#pn),*);};
+    let mut out = quote! {#out_binder};
     let mut witness_args = quote! {};
     let mut cert_storage_ens = quote! {};
     let mut cert_wd_shape = quote! {};
@@ -1082,27 +1088,27 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         let unit = storage.unit();
         let tracked_unit = storage.tracked_unit();
         if deposits {
-            dep_param = quote! {tracked deposit:#map,};
-            dep_arg = quote! {deposit,};
+            dep_param = quote! {tracked #deposit:#map,};
+            dep_arg = quote! {#deposit,};
         }
         let dep_value = if deposits {
-            quote! {deposit}
+            quote! {#deposit}
         } else {
             unit.clone()
         };
-        dep_decl = quote! {deposit:#map,};
-        dep_spec = quote! {deposit,};
+        dep_decl = quote! {#deposit:#map,};
+        dep_spec = quote! {#deposit,};
         dep_args = quote! {#dep_value,};
         if withdraws {
-            ret = quote! {tracked out:(#tt,#map)};
+            ret = quote! {tracked #out_binder:(#tt,#map)};
             call =
-                quote! {let tracked (#next,#returned_map)=Self::#local(owned,#dep_arg #(#pn),*);};
-            out = quote! {out.0};
+                quote! {let tracked (#next,#returned_map)=Self::#local(#owned,#dep_arg #(#pn),*);};
+            out = quote! {#out_binder.0};
         } else {
-            call = quote! {let tracked #next=Self::#local(owned,#dep_arg #(#pn),*);let tracked #returned_map:#map=#tracked_unit;};
+            call = quote! {let tracked #next=Self::#local(#owned,#dep_arg #(#pn),*);let tracked #returned_map:#map=#tracked_unit;};
         }
         let wd = if withdraws {
-            quote! {out.1}
+            quote! {#out_binder.1}
         } else {
             unit.clone()
         };
@@ -1145,8 +1151,8 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         }
         witness_args = quote! {#physical_deposit,#returned_map,};
         withdrawn_field = quote! {withdrawn:#returned_map,};
-        local_deposit_req = quote! {&& deposit==Self::#local_deposited(#local_state,#(#pn),*)};
-        deposit_ens = quote! {&&#se::#deposited(#full_state,#(#pn),*)==deposit};
+        local_deposit_req = quote! {&& #deposit==Self::#local_deposited(#local_state,#(#pn),*)};
+        deposit_ens = quote! {&&#se::#deposited(#full_state,#(#pn),*)==#deposit};
         let deposit_index =
             format_ident!("__tsm_deposit_index", span = proc_macro2::Span::mixed_site());
         let (local_deposit, full_deposit) = (
@@ -1177,8 +1183,8 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
             tr,
             ft,
             &split,
-            quote! {owned},
-            quote! {h},
+            quote! {#owned},
+            quote! {#h},
             &completion_frame,
             &full_state,
         )?;
@@ -1194,7 +1200,7 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
     // read a variable from it).
     let implicit_state = match implicit_local_state(sm, tr, se, pe, ft)? {
         None if !agreement_fields(sm, tr).is_empty() || quantified_state(sm, tr) => {
-            Some(quote! {#pe::__observed(<#ft>::op(owned,h))})
+            Some(quote! {#pe::__observed(<#ft>::op(#owned,#h))})
         }
         state => state,
     };
@@ -1202,72 +1208,72 @@ pub fn local_ready_api(c: Context<'_>) -> Result<TokenStream, Error> {
         Some(state) => {
             let name = format_ident!("local_state");
             (
-                quote! {Self::#name(owned,h,#(#pn),*)},
+                quote! {Self::#name(#owned,#h,#(#pn),*)},
                 quote! {
                     /// The local state of `precondition`: values bound by patterns are the fragments'.
-                    pub open spec fn #name(owned:#ft,h:#ft,#(#params),*)->#st {#state}
+                    pub open spec fn #name(#owned:#ft,#h:#ft,#(#params),*)->#st {#state}
                 },
                 agreement(sm, tr, &full_state, &completion_frame),
             )
         }
-        None => (quote! {#pe::__observed(<#ft>::op(owned,h))}, quote! {}, vec![]),
+        None => (quote! {#pe::__observed(<#ft>::op(#owned,#h))}, quote! {}, vec![]),
     };
     Ok(quote! {
         #local_state_fn
         /// Local observations suffice only because the following theorem checks every completion.
         #[verifier::inline]
-        pub open spec fn #local_req(owned:#ft,h:#ft,#dep_decl #(#params),*)->bool {
-            true #(&& #owned)* #(&& #observed)* && {
+        pub open spec fn #local_req(#owned:#ft,#h:#ft,#dep_decl #(#params),*)->bool {
+            true #(&& #owned_req)* #(&& #observed)* && {
                 let #local_state=#local_value;
-                Self::#declared(#local_state,#(#pn),*) && #se::#owners(#local_state,owned,h,#(#pn),*)
+                Self::#declared(#local_state,#(#pn),*) && #se::#owners(#local_state,#owned,#h,#(#pn),*)
                     #local_deposit_req
             }
         }
-        pub proof fn #ready(owned:#ft,h:#ft,#dep_decl #(#params),*)
-            requires Self::#local_req(owned,h,#dep_spec #(#pn),*)
-            ensures #pe::#req(owned,h,#dep_spec #(#pn),*)
+        pub proof fn #ready(#owned:#ft,#h:#ft,#dep_decl #(#params),*)
+            requires Self::#local_req(#owned,#h,#dep_spec #(#pn),*)
+            ensures #pe::#req(#owned,#h,#dep_spec #(#pn),*)
         {
             let #observation=#local_value;
             assert forall|#completion_frame:#ft,#full_state:#st|#full_state.invariant()
-                &&<#ft>::op(<#ft>::op(owned,h),#completion_frame)==#pe::embed(#full_state)
+                &&<#ft>::op(<#ft>::op(#owned,#h),#completion_frame)==#pe::embed(#full_state)
                 implies #se::#enabled(#full_state,#(#pn),*)
                     #deposit_ens
-                    &&#se::#owners(#full_state,owned,h,#(#pn),*) by {
+                    &&#se::#owners(#full_state,#owned,#h,#(#pn),*) by {
                 #(assert(#full_state.#reads==#observation.#reads);)*
                 #(#agreement)*
                 assert(Self::#declared(#full_state,#(#pn),*));
-                assert(#se::#owners(#full_state,owned,h,#(#pn),*));
+                assert(#se::#owners(#full_state,#owned,#h,#(#pn),*));
                 #(#hints)*
                 #deposit_eq
             }
         }
-        pub proof fn #local_shared(tracked owned:#tt,tracked shared:&#tt,#dep_param #(#params),*)->(#ret)
-            requires owned.loc()==shared.loc(),Self::#local_req(owned.fragment(),shared.fragment(),#dep_args #(#pn),*)
-            ensures #out.loc()==owned.loc(),#pe::#output(owned.fragment(),shared.fragment(),#out.fragment(),#wd_args #(#pn),*)
+        pub proof fn #local_shared(tracked #owned:#tt,tracked #shared:&#tt,#dep_param #(#params),*)->(#ret)
+            requires #owned.loc()==#shared.loc(),Self::#local_req(#owned.fragment(),#shared.fragment(),#dep_args #(#pn),*)
+            ensures #out.loc()==#owned.loc(),#pe::#output(#owned.fragment(),#shared.fragment(),#out.fragment(),#wd_args #(#pn),*)
         {
-            Self::#ready(owned.fragment(),shared.fragment(),#dep_args #(#pn),*);
-            #pe::#shared_op(owned,shared,#dep_arg #(#pn),*)
+            Self::#ready(#owned.fragment(),#shared.fragment(),#dep_args #(#pn),*);
+            #pe::#shared_op(#owned,#shared,#dep_arg #(#pn),*)
         }
-        pub proof fn #local(tracked owned:#tt,#dep_param #(#params),*)->(#ret)
-            requires Self::#local_req(owned.fragment(),<#ft>::unit(),#dep_args #(#pn),*)
-            ensures #out.loc()==owned.loc(),#pe::#output(owned.fragment(),<#ft>::unit(),#out.fragment(),#wd_args #(#pn),*)
+        pub proof fn #local(tracked #owned:#tt,#dep_param #(#params),*)->(#ret)
+            requires Self::#local_req(#owned.fragment(),<#ft>::unit(),#dep_args #(#pn),*)
+            ensures #out.loc()==#owned.loc(),#pe::#output(#owned.fragment(),<#ft>::unit(),#out.fragment(),#wd_args #(#pn),*)
         {
-            Self::#ready(owned.fragment(),<#ft>::unit(),#dep_args #(#pn),*);
-            #pe::#n(owned,#dep_arg #(#pn),*)
+            Self::#ready(#owned.fragment(),<#ft>::unit(),#dep_args #(#pn),*);
+            #pe::#n(#owned,#dep_arg #(#pn),*)
         }
         /// Returned states describe a compatible completion, not a distinguished hidden history.
-        pub proof fn #observed_op(tracked owned:#tt,#dep_param #(#params),*)->(tracked #certificate:#result)
-            requires Self::#local_req(owned.fragment(),<#ft>::unit(),#dep_args #(#pn),*)
-            ensures #certificate.token.loc()==owned.loc(),#certificate.before.invariant(),#certificate.after.invariant(),
-                <#ft>::op(<#ft>::op(owned.fragment(),<#ft>::unit()),#certificate.frame)==#pe::embed(#certificate.before),
+        pub proof fn #observed_op(tracked #owned:#tt,#dep_param #(#params),*)->(tracked #certificate:#result)
+            requires Self::#local_req(#owned.fragment(),<#ft>::unit(),#dep_args #(#pn),*)
+            ensures #certificate.token.loc()==#owned.loc(),#certificate.before.invariant(),#certificate.after.invariant(),
+                <#ft>::op(<#ft>::op(#owned.fragment(),<#ft>::unit()),#certificate.frame)==#pe::embed(#certificate.before),
                 #se::#strong(#certificate.before,#certificate.after,#(#pn),*),
-                #certificate.token.fragment()==#pe::#owned_post(owned.fragment(),#certificate.before,#certificate.after,#(#pn),*),
+                #certificate.token.fragment()==#pe::#owned_post(#owned.fragment(),#certificate.before,#certificate.after,#(#pn),*),
                 <#ft>::op(<#ft>::op(#certificate.token.fragment(),<#ft>::unit()),#certificate.frame)==#pe::embed(#certificate.after),
                 #cert_storage_ens
-                #pe::#output(owned.fragment(),<#ft>::unit(),#certificate.token.fragment(),#cert_wd_args #(#pn),*)
+                #pe::#output(#owned.fragment(),<#ft>::unit(),#certificate.token.fragment(),#cert_wd_args #(#pn),*)
                 #cert_wd_shape
         {
-            let ghost #initial=owned.fragment();
+            let ghost #initial=#owned.fragment();
             #physical_let
             #call
             let (#before,#after,#witness_frame)=#pe::#witness(#initial,<#ft>::unit(),#next.fragment(),#witness_args #(#pn),*);
@@ -1318,6 +1324,8 @@ pub fn local_ready_guard_api(c: GuardContext<'_>) -> Result<TokenStream, Error> 
     let observation = fresh(sm, tr, "observed_state");
     let completion_frame = fresh(sm, tr, "completion_frame");
     let full_state = fresh(sm, tr, "completion_state");
+    // The operations' own binders (`crate::hygiene`).
+    let [owned, h, f, token, out] = binders(["owned", "h", "f", "token", "out"], &tr.params);
     // The readiness facts of the statements (as in `local_ready_api`), over `owned` and
     // `h`: here the borrowed fragment and the unit.
     let hints = if chain {
@@ -1327,8 +1335,8 @@ pub fn local_ready_guard_api(c: GuardContext<'_>) -> Result<TokenStream, Error> 
             tr,
             ft,
             &split,
-            quote! {owned},
-            quote! {h},
+            quote! {#owned},
+            quote! {#h},
             &completion_frame,
             &full_state,
         )?]
@@ -1337,57 +1345,57 @@ pub fn local_ready_guard_api(c: GuardContext<'_>) -> Result<TokenStream, Error> 
     };
     // The local state, as `local_ready_api`'s.
     let implicit_state = match implicit_local_state(sm, tr, se, pe, ft)? {
-        None if !agreement_fields(sm, tr).is_empty() => Some(quote! {#pe::__observed(f)}),
+        None if !agreement_fields(sm, tr).is_empty() => Some(quote! {#pe::__observed(#f)}),
         state => state,
     };
     let (local_value, local_state_fn, agreement) = match implicit_state {
         Some(state) => (
-            quote! {Self::local_state(f,#(#pn),*)},
+            quote! {Self::local_state(#f,#(#pn),*)},
             quote! {
                 /// The local state of `precondition`: values bound by patterns are the fragment's.
-                pub open spec fn local_state(f:#ft,#(#params),*)->#st {let owned=f; let h=<#ft>::unit(); #state}
+                pub open spec fn local_state(#f:#ft,#(#params),*)->#st {let #owned=#f; let #h=<#ft>::unit(); #state}
             },
             agreement(sm, tr, &full_state, &completion_frame),
         ),
-        None => (quote! {#pe::__observed(f)}, quote! {}, vec![]),
+        None => (quote! {#pe::__observed(#f)}, quote! {}, vec![]),
     };
     Ok(quote! {
         #local_state_fn
         /// Local observations suffice only because the following theorem checks every completion.
         #[verifier::inline]
-        pub open spec fn precondition(f:#ft,#(#params),*)->bool {
+        pub open spec fn precondition(#f:#ft,#(#params),*)->bool {
             true #(&& #observed)* && {
                 let #local_state=#local_value;
-                Self::declared_requires(#local_state,#(#pn),*) && #se::#owners(#local_state,f,<#ft>::unit(),#(#pn),*)
+                Self::declared_requires(#local_state,#(#pn),*) && #se::#owners(#local_state,#f,<#ft>::unit(),#(#pn),*)
             }
         }
         #[allow(unused_variables)]
-        pub proof fn ready(f:#ft,#(#params),*)
-            requires Self::precondition(f,#(#pn),*)
-            ensures #pe::#req(f,#(#pn),*)
+        pub proof fn ready(#f:#ft,#(#params),*)
+            requires Self::precondition(#f,#(#pn),*)
+            ensures #pe::#req(#f,#(#pn),*)
         {
-            let owned=f;
-            let h=<#ft>::unit();
-            <#ft>::op_unit(f);
+            let #owned=#f;
+            let #h=<#ft>::unit();
+            <#ft>::op_unit(#f);
             let #observation=#local_value;
             assert forall|#completion_frame:#ft,#full_state:#st|#full_state.invariant()
-                &&<#ft>::op(f,#completion_frame)==#pe::embed(#full_state)
-                implies #se::#owners(#full_state,f,<#ft>::unit(),#(#pn),*)
+                &&<#ft>::op(#f,#completion_frame)==#pe::embed(#full_state)
+                implies #se::#owners(#full_state,#f,<#ft>::unit(),#(#pn),*)
                     &&#se::#enabled(#full_state,#(#pn),*) by {
-                assert(<#ft>::op(<#ft>::op(owned,h),#completion_frame)==#pe::embed(#full_state));
+                assert(<#ft>::op(<#ft>::op(#owned,#h),#completion_frame)==#pe::embed(#full_state));
                 #(assert(#full_state.#reads==#observation.#reads);)*
                 #(#agreement)*
                 assert(Self::declared_requires(#full_state,#(#pn),*));
-                assert(#se::#owners(#full_state,owned,h,#(#pn),*));
+                assert(#se::#owners(#full_state,#owned,#h,#(#pn),*));
                 #(#hints)*
             }
         }
-        pub proof fn run(tracked token:&#tt,#(#params),*)->(tracked out:&#sty)
-            requires Self::precondition(token.fragment(),#(#pn),*)
-            ensures *out==#pe::#guarded(token.fragment(),#(#pn),*)
+        pub proof fn run(tracked #token:&#tt,#(#params),*)->(tracked #out:&#sty)
+            requires Self::precondition(#token.fragment(),#(#pn),*)
+            ensures *#out==#pe::#guarded(#token.fragment(),#(#pn),*)
         {
-            Self::ready(token.fragment(),#(#pn),*);
-            #pe::#n(token,#(#pn),*)
+            Self::ready(#token.fragment(),#(#pn),*);
+            #pe::#n(#token,#(#pn),*)
         }
     })
 }

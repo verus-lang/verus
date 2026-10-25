@@ -14,6 +14,7 @@
 //! values, safety) tuples, and its continuation follows once. The generated proof has
 //! no quantifier: all of them are inside the vstd lemmas.
 use crate::ast::*;
+use crate::hygiene::{binder, binders};
 use crate::verified_monoids::{bind_pattern, operand_type};
 use crate::verified_ownership::{bound_value, next_fragment, observed_value};
 use proc_macro2::{Span, TokenStream};
@@ -777,9 +778,10 @@ pub(crate) fn owned_post_fragment(
     // The walk starts from a hygienic name: a `let` or a pattern of the transition may
     // bind `owned`.
     let start = format_ident!("__tsm_post_owned_0", span = Span::mixed_site());
+    let owned = binder("owned", &tr.params);
     Ok(match post_fragment(&tr.body, &fields, fragment_type, quote! {#start}, &mut 0)? {
-        Some(walk) => quote! {{let #start = owned; #walk}},
-        None => quote! {owned},
+        Some(walk) => quote! {{let #start = #owned; #walk}},
+        None => quote! {#owned},
     })
 }
 
@@ -803,10 +805,10 @@ pub(crate) fn frame_chain(
     if modified(&tr.body, sm).iter().all(|f| counting(&f.stype)) {
         return Ok(quote! {});
     }
-    let frame = format_ident!("z");
+    let [owned, h, z] = binders(["owned", "h", "z"], &tr.params);
     let state = format_ident!("pre");
     let chain =
-        chain_of(sm, tr, fragment_type, split, quote! {owned}, quote! {h}, &frame, &state, true)?;
+        chain_of(sm, tr, fragment_type, split, quote! {#owned}, quote! {#h}, &z, &state, true)?;
     let c = quote! {::vstd::resource::tsm_calculus};
     let new = format_ident!("__tsm_frame_new", span = Span::mixed_site());
     let exclusive = |e: TokenStream| {
@@ -817,15 +819,15 @@ pub(crate) fn frame_chain(
         let after = exclusive(quote! {post.#n});
         let before = exclusive(quote! {pre.#n});
         quote! {
-            #c::cfg_iff(owned.#n, h.#n, z.#n, #before);
-            #c::var_update(owned.#n, h.#n, z.#n, pre.#n, post.#n);
-            #c::cfg_iff(#after, h.#n, z.#n, #after);
+            #c::cfg_iff(#owned.#n, #h.#n, #z.#n, #before);
+            #c::var_update(#owned.#n, #h.#n, #z.#n, pre.#n, post.#n);
+            #c::cfg_iff(#after, #h.#n, #z.#n, #after);
         }
     });
     Ok(quote! {
         #chain
         #(#updates)*
         let #new = #new_fragment;
-        #join(#new, h, z, post);
+        #join(#new, #h, #z, post);
     })
 }

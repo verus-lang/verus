@@ -2,6 +2,7 @@
 //! backend emits ordinary checked resource-algebra and frame-update proofs.
 use crate::ast::*;
 use crate::field_access_visitor::visit_field_accesses;
+use crate::hygiene::{binder, binder_among};
 use crate::parse_token_stream::SMBundle;
 use crate::to_token_stream::{
     fix_attrs, generics_for_decl, get_generic_args, set_mode_proof, shardable_type_to_type,
@@ -82,15 +83,17 @@ fn flatten(stmt: &TransitionStmt, out: &mut Straight) -> Result<(), Error> {
     Ok(())
 }
 /// `e` with its field reads rewritten to reads of the state `s` or, with `fragment`, of the
-/// fragment `f` (whose read fields are added to `used`).
+/// fragment `f` (whose read fields are added to `used`), for the transition `n`.
 fn rewrite_fields(
     e: &Expr,
     fields: &HashMap<String, Field>,
+    n: &Names,
     fragment: bool,
     used: &mut HashSet<String>,
 ) -> Result<TokenStream, Error> {
     let mut expr = e.clone();
     let mut errors = vec![];
+    let (s, f) = (&n.s, &n.f);
     visit_field_accesses(
         &mut expr,
         |errs, field, node| {
@@ -98,8 +101,8 @@ fn rewrite_fields(
             used.insert(n.to_string());
             if fragment {
                 let inner = match field.stype {
-                    ShardableType::Variable(_) => quote! { f.#n->Some_0->Exclusive_0 },
-                    ShardableType::Constant(_) => quote! { f.#n->Some_0->Agree_0 },
+                    ShardableType::Variable(_) => quote! { #f.#n->Some_0->Exclusive_0 },
+                    ShardableType::Constant(_) => quote! { #f.#n->Some_0->Agree_0 },
                     _ => {
                         errs.push(Error::new(
                             n.span(),
@@ -110,7 +113,7 @@ fn rewrite_fields(
                 };
                 *node = Expr::Verbatim(inner);
             } else {
-                *node = Expr::Verbatim(quote! { s.#n });
+                *node = Expr::Verbatim(quote! { #s.#n });
             }
         },
         &mut errors,
@@ -207,11 +210,14 @@ struct Items {
     induction: Vec<TokenStream>,
 }
 
-/// A transition's parameters and the names of its generated items.
+/// A transition's parameters, the names of its generated items, and the binders of the
+/// state and the fragment its expressions read (`crate::hygiene`).
 struct Names<'a> {
     tr: &'a Ident,
     pnames: Vec<&'a Ident>,
     params: Vec<TokenStream>,
+    s: Ident,
+    f: Ident,
     next: Ident,
     local: Ident,
     req: Ident,
@@ -386,8 +392,8 @@ fn transition_items(
     let n = transition_names(trans);
     let mut used = HashSet::new();
     let mut effects = CountEffects::default();
-    count_effects(ctx, &flat, &mut used, &mut effects)?;
-    let (next_fields, out_fields) = post_fields(ctx, trans, &flat, &effects, &mut used)?;
+    count_effects(ctx, &n, &flat, &mut used, &mut effects)?;
+    let (next_fields, out_fields) = post_fields(ctx, trans, &n, &flat, &effects, &mut used)?;
     let conds = conditions(ctx, &n, &flat, &effects, used)?;
     let shared = shared_fragment(ctx, &flat, &n)?;
     let (induct_call, induction) = induction_lemma(ctx, bundle, trans, &n)?;
@@ -399,8 +405,9 @@ fn transition_items(
     }
     let (next, params) = (&n.next, &n.params);
     let (state_ty, state_expr, marker_value) = (&ctx.state_ty, &ctx.state_expr, &ctx.marker_value);
+    let s = &n.s;
     items.relations.push(quote! {
-        pub open spec fn #next(s: #state_ty, #(#params),*) -> #state_ty { #state_expr { #marker_value #(#next_fields),* } }
+        pub open spec fn #next(#s: #state_ty, #(#params),*) -> #state_ty { #state_expr { #marker_value #(#next_fields),* } }
     });
     items.relations.push(step_relations(ctx, &n, &conds));
     items.operations.push(frame_items(ctx, &n, &conds, &out_fields, &induct_call));
@@ -427,6 +434,8 @@ fn transition_names(trans: &Transition) -> Names<'_> {
                 quote! { #n: #t }
             })
             .collect(),
+        s: binder("s", &trans.params),
+        f: binder("f", &trans.params),
         next: format_ident!("{}_next", tr),
         local: format_ident!("{}_fragment", tr),
         req: format_ident!("{}_requires", tr),
@@ -444,11 +453,13 @@ fn transition_names(trans: &Transition) -> Names<'_> {
 /// Adds the effects of the transition's count operations to `effects`.
 fn count_effects(
     ctx: &Ctx,
+    n: &Names,
     flat: &Straight,
     used: &mut HashSet<String>,
     effects: &mut CountEffects,
 ) -> Result<(), Error> {
     let fields = &ctx.fields;
+    let (s, f) = (&n.s, &n.f);
     for (id, op, amount) in &flat.count_ops {
         if !matches!(fields[&id.to_string()].stype, ShardableType::Count) {
             return Err(Error::new(
@@ -456,8 +467,8 @@ fn count_effects(
                 "verified backend currently supports add/remove/have only for count fields",
             ));
         }
-        let amount_state = rewrite_fields(amount, fields, false, &mut HashSet::new())?;
-        let amount_local = rewrite_fields(amount, fields, true, used)?;
+        let amount_state = rewrite_fields(amount, fields, n, false, &mut HashSet::new())?;
+        let amount_local = rewrite_fields(amount, fields, n, true, used)?;
         if matches!(op, MonoidStmtType::Have) && effects.count_next.contains_key(&id.to_string()) {
             return Err(Error::new(
                 id.span(),
@@ -465,8 +476,8 @@ fn count_effects(
             ));
         }
         if !matches!(op, MonoidStmtType::Add(false)) {
-            effects.req_state.push(quote! { s.#id >= (#amount_state) });
-            effects.req_local.push(quote! { f.#id.count >= (#amount_local) });
+            effects.req_state.push(quote! { #s.#id >= (#amount_state) });
+            effects.req_local.push(quote! { #f.#id.count >= (#amount_local) });
         }
         if matches!(op, MonoidStmtType::Add(false) | MonoidStmtType::Remove) {
             if effects.count_next.contains_key(&id.to_string()) {
@@ -476,11 +487,11 @@ fn count_effects(
                 ));
             }
             let (state, local) = if matches!(op, MonoidStmtType::Add(false)) {
-                (quote! { s.#id + (#amount_state) }, quote! { f.#id.count + (#amount_local) })
+                (quote! { #s.#id + (#amount_state) }, quote! { #f.#id.count + (#amount_local) })
             } else {
                 (
-                    quote! { (s.#id - (#amount_state)) as nat },
-                    quote! { (f.#id.count - (#amount_local)) as nat },
+                    quote! { (#s.#id - (#amount_state)) as nat },
+                    quote! { (#f.#id.count - (#amount_local)) as nat },
                 )
             };
             effects.count_next.insert(id.to_string(), state);
@@ -494,23 +505,25 @@ fn count_effects(
 fn post_fields(
     ctx: &Ctx,
     trans: &Transition,
+    names: &Names,
     flat: &Straight,
     effects: &CountEffects,
     used: &mut HashSet<String>,
 ) -> Result<(Vec<TokenStream>, Vec<TokenStream>), Error> {
     let fields = &ctx.fields;
+    let (s, f) = (&names.s, &names.f);
     let mut next_fields = vec![];
     let mut out_fields = vec![];
     for field in &ctx.sm.fields {
         let n = &field.name;
         if let Some(e) = flat.updates.get(&n.to_string()) {
-            let e_state = rewrite_fields(e, fields, false, &mut HashSet::new())?;
+            let e_state = rewrite_fields(e, fields, names, false, &mut HashSet::new())?;
             next_fields.push(quote! { #n: #e_state });
             if trans.kind != TransitionKind::Init {
                 match field.stype {
                     ShardableType::Variable(_) => {
                         used.insert(n.to_string());
-                        let e_local = rewrite_fields(e, fields, true, used)?;
+                        let e_local = rewrite_fields(e, fields, names, true, used)?;
                         out_fields.push(quote! { #n: Some(ExclusiveRA::Exclusive(#e_local)) });
                     }
                     ShardableType::NotTokenized(_) => {}
@@ -528,12 +541,12 @@ fn post_fields(
                 let local = &effects.count_local[&n.to_string()];
                 out_fields.push(quote! { #n: ::vstd::resource::tsm::CountRA { count: #local } });
             } else {
-                next_fields.push(quote! { #n: s.#n });
+                next_fields.push(quote! { #n: #s.#n });
             }
             if !matches!(field.stype, ShardableType::NotTokenized(_))
                 && !effects.count_local.contains_key(&n.to_string())
             {
-                out_fields.push(quote! { #n: f.#n });
+                out_fields.push(quote! { #n: #f.#n });
             }
         }
     }
@@ -553,16 +566,16 @@ fn conditions(
     let mut req_state = effects.req_state.clone();
     let mut req_local = effects.req_local.clone();
     for e in &flat.requires {
-        req_state.push(rewrite_fields(e, fields, false, &mut HashSet::new())?);
-        req_local.push(rewrite_fields(e, fields, true, &mut used)?);
+        req_state.push(rewrite_fields(e, fields, n, false, &mut HashSet::new())?);
+        req_local.push(rewrite_fields(e, fields, n, true, &mut used)?);
     }
     let mut fact_state = vec![];
     let mut fact_local = vec![];
     let mut asserts = vec![];
     for (e, proof) in &flat.assertions {
-        let es = rewrite_fields(e, fields, false, &mut HashSet::new())?;
+        let es = rewrite_fields(e, fields, n, false, &mut HashSet::new())?;
         fact_state.push(es.clone());
-        fact_local.push(rewrite_fields(e, fields, true, &mut used)?);
+        fact_local.push(rewrite_fields(e, fields, n, true, &mut used)?);
         if let Some(block) = &proof.proof {
             asserts.push(quote! { assert(#es) by #block });
         } else {
@@ -571,16 +584,17 @@ fn conditions(
     }
     let mut used: Vec<_> = used.into_iter().collect();
     used.sort();
+    let f = &n.f;
     let required_ownership = used
         .iter()
         .map(|name| {
             let id = Ident::new(name, n.tr.span());
             match fields[name].stype {
                 ShardableType::Variable(_) => {
-                    quote! { f.#id is Some && f.#id->Some_0 is Exclusive }
+                    quote! { #f.#id is Some && #f.#id->Some_0 is Exclusive }
                 }
                 ShardableType::Constant(_) => {
-                    quote! { f.#id is Some && f.#id->Some_0 is Agree }
+                    quote! { #f.#id is Some && #f.#id->Some_0 is Agree }
                 }
                 _ => unreachable!(),
             }
@@ -594,6 +608,7 @@ fn shared_fragment(ctx: &Ctx, flat: &Straight, n: &Names) -> Result<SharedFragme
     let fields = &ctx.fields;
     let (local, pnames) = (&n.local, &n.pnames);
     let mut shared = SharedFragment { fields: vec![], owned_requirements: vec![] };
+    let (owned, f) = (binder_among("owned", pnames), &n.f);
     for field in &ctx.sm.fields {
         let id = &field.name;
         if matches!(field.stype, ShardableType::NotTokenized(_)) {
@@ -602,21 +617,21 @@ fn shared_fragment(ctx: &Ctx, flat: &Straight, n: &Names) -> Result<SharedFragme
         if flat.updates.contains_key(&id.to_string()) {
             shared
                 .owned_requirements
-                .push(quote! { owned.#id is Some && owned.#id->Some_0 is Exclusive });
-            shared.fields.push(quote! { #id: Self::#local(f, #(#pnames),*).#id });
+                .push(quote! { #owned.#id is Some && #owned.#id->Some_0 is Exclusive });
+            shared.fields.push(quote! { #id: Self::#local(#f, #(#pnames),*).#id });
         } else if let Some((_, op, amount)) = flat.count_ops.iter().find(|(n, op, _)| {
             n == id && matches!(op, MonoidStmtType::Add(false) | MonoidStmtType::Remove)
         }) {
-            let amount = rewrite_fields(amount, fields, true, &mut HashSet::new())?;
+            let amount = rewrite_fields(amount, fields, n, true, &mut HashSet::new())?;
             let count = if matches!(op, MonoidStmtType::Add(false)) {
-                quote! { owned.#id.count + (#amount) }
+                quote! { #owned.#id.count + (#amount) }
             } else {
-                shared.owned_requirements.push(quote! { owned.#id.count >= (#amount) });
-                quote! { (owned.#id.count - (#amount)) as nat }
+                shared.owned_requirements.push(quote! { #owned.#id.count >= (#amount) });
+                quote! { (#owned.#id.count - (#amount)) as nat }
             };
             shared.fields.push(quote! { #id: ::vstd::resource::tsm::CountRA { count: #count } });
         } else {
-            shared.fields.push(quote! { #id: owned.#id });
+            shared.fields.push(quote! { #id: #owned.#id });
         }
     }
     Ok(shared)
@@ -635,10 +650,11 @@ fn induction_lemma(
         return Ok((TokenStream::new(), None));
     };
     let id = &l.func.sig.ident;
+    let s = &n.s;
     let induct_call = if trans.kind == TransitionKind::Init {
-        quote! { #state_expr::#id(s, #(#pnames),*); }
+        quote! { #state_expr::#id(#s, #(#pnames),*); }
     } else {
-        quote! { #state_expr::#id(s, post, #(#pnames),*); }
+        quote! { #state_expr::#id(#s, post, #(#pnames),*); }
     };
     let mut f = l.func.clone();
     fix_attrs(&mut f.attrs);
@@ -681,14 +697,16 @@ fn init_items(
         })
         .collect();
     items.relations.push(quote! { pub open spec fn #tr(post:#state_ty, #(#params),*) -> bool { post == #state_expr { #marker_value #(#init_fields),* } && true #(&& (#req_state))* } });
+    let s = &n.s;
+    let token = binder_among("token", &n.pnames);
     items.operations.push(quote! {
-        pub proof fn #tr(#(#params),*) -> (tracked token: #token_ty)
+        pub proof fn #tr(#(#params),*) -> (tracked #token: #token_ty)
             requires true #(&& (#req_local))*
-            ensures token.fragment() == #protocol_expr::embed(#state_expr { #marker_value #(#init_fields),* })
+            ensures #token.fragment() == #protocol_expr::embed(#state_expr { #marker_value #(#init_fields),* })
         {
-            let s = #state_expr { #marker_value #(#init_fields),* };
+            let #s = #state_expr { #marker_value #(#init_fields),* };
             #induct_call
-            #token_expr::alloc_state(s)
+            #token_expr::alloc_state(#s)
         }
     });
 }
@@ -699,15 +717,16 @@ fn step_relations(ctx: &Ctx, n: &Names, conds: &Conditions) -> TokenStream {
         (&n.next, &n.safety, &n.strong, &n.pnames, &n.params);
     let (state_ty, req_state, fact_state, asserts) =
         (&ctx.state_ty, &conds.req_state, &conds.fact_state, &conds.asserts);
+    let s = &n.s;
     quote! {
         pub open spec fn #strong(pre:#state_ty, post:#state_ty, #(#params),*) -> bool {
-            let s = pre;
-            post == Self::#next(s, #(#pnames),*) && true #(&& (#req_state))* #(&& (#fact_state))*
+            let #s = pre;
+            post == Self::#next(#s, #(#pnames),*) && true #(&& (#req_state))* #(&& (#fact_state))*
         }
-        pub proof fn #safety(s:#state_ty, #(#params),*)
-            requires s.invariant(), true #(&& (#req_state))*
+        pub proof fn #safety(#s:#state_ty, #(#params),*)
+            requires #s.invariant(), true #(&& (#req_state))*
             ensures true #(&& (#fact_state))*
-        { let pre = s; #(#asserts)* }
+        { let pre = #s; #(#asserts)* }
     }
 }
 
@@ -726,19 +745,20 @@ fn frame_items(
     let (fragment_ty, fragment_expr) = (&ctx.fragment_ty, &ctx.fragment_expr);
     let (required_ownership, req_local, fact_local) =
         (&conds.required_ownership, &conds.req_local, &conds.fact_local);
+    let (f, z, s) = (&n.f, binder_among("z", pnames), &n.s);
     quote! {
-        pub open spec fn #req(f: #fragment_ty, #(#params),*) -> bool {
+        pub open spec fn #req(#f: #fragment_ty, #(#params),*) -> bool {
             true #(&& (#required_ownership))* #(&& (#req_local))*
         }
-        pub open spec fn #facts(f: #fragment_ty, #(#params),*) -> bool { true #(&& (#fact_local))* }
-        pub open spec fn #local(f: #fragment_ty, #(#params),*) -> #fragment_ty { #fragment_expr { #marker_value #(#out_fields),* } }
-        pub proof fn #frame_lemma(f: #fragment_ty, z: #fragment_ty, s:#state_ty, #(#params),*)
-            requires Self::#req(f, #(#pnames),*), s.invariant(), #fragment_expr::op(f,z) == Self::embed(s)
-            ensures Self::#facts(f, #(#pnames),*), #state_expr::#next(s, #(#pnames),*).invariant(),
-                #fragment_expr::op(Self::#local(f, #(#pnames),*),z) == Self::embed(#state_expr::#next(s, #(#pnames),*))
+        pub open spec fn #facts(#f: #fragment_ty, #(#params),*) -> bool { true #(&& (#fact_local))* }
+        pub open spec fn #local(#f: #fragment_ty, #(#params),*) -> #fragment_ty { #fragment_expr { #marker_value #(#out_fields),* } }
+        pub proof fn #frame_lemma(#f: #fragment_ty, #z: #fragment_ty, #s:#state_ty, #(#params),*)
+            requires Self::#req(#f, #(#pnames),*), #s.invariant(), #fragment_expr::op(#f,#z) == Self::embed(#s)
+            ensures Self::#facts(#f, #(#pnames),*), #state_expr::#next(#s, #(#pnames),*).invariant(),
+                #fragment_expr::op(Self::#local(#f, #(#pnames),*),#z) == Self::embed(#state_expr::#next(#s, #(#pnames),*))
         {
-            #state_expr::#safety(s, #(#pnames),*);
-            let post = #state_expr::#next(s, #(#pnames),*);
+            #state_expr::#safety(#s, #(#pnames),*);
+            let post = #state_expr::#next(#s, #(#pnames),*);
             #induct_call
         }
     }
@@ -751,24 +771,26 @@ fn update_operation(ctx: &Ctx, n: &Names) -> TokenStream {
     let (pnames, params) = (&n.pnames, &n.params);
     let (state_ty, state_expr, fragment_ty, fragment_expr, token_ty) =
         (&ctx.state_ty, &ctx.state_expr, &ctx.fragment_ty, &ctx.fragment_expr, &ctx.token_ty);
+    let [token, z, out] = ["token", "z", "out"].map(|name| binder_among(name, pnames));
+    let (f, s) = (&n.f, &n.s);
     quote! {
-        pub proof fn #tr(tracked token: #token_ty, #(#params),*) -> (tracked out: #token_ty)
-            requires Self::#req(token.fragment(), #(#pnames),*)
-            ensures out.loc() == token.loc(), out.fragment() == Self::#local(token.fragment(), #(#pnames),*), Self::#facts(token.fragment(), #(#pnames),*)
+        pub proof fn #tr(tracked #token: #token_ty, #(#params),*) -> (tracked #out: #token_ty)
+            requires Self::#req(#token.fragment(), #(#pnames),*)
+            ensures #out.loc() == #token.loc(), #out.fragment() == Self::#local(#token.fragment(), #(#pnames),*), Self::#facts(#token.fragment(), #(#pnames),*)
         {
             // `frame_update` is opaque; this is its proof.
             reveal(::vstd::resource::tsm::frame_update);
-            let f = token.fragment();
-            assert forall|z:#fragment_ty, s:#state_ty| s.invariant() && #fragment_expr::op(f,z) == Self::embed(s)
-                implies exists|post:#state_ty| post.invariant() && #fragment_expr::op(Self::#local(f, #(#pnames),*),z) == Self::embed(post) by {
-                Self::#frame_lemma(f,z,s, #(#pnames),*);
-                let post = #state_expr::#next(s, #(#pnames),*);
-                assert(post.invariant() && #fragment_expr::op(Self::#local(f, #(#pnames),*),z) == Self::embed(post));
+            let #f = #token.fragment();
+            assert forall|#z:#fragment_ty, #s:#state_ty| #s.invariant() && #fragment_expr::op(#f,#z) == Self::embed(#s)
+                implies exists|post:#state_ty| post.invariant() && #fragment_expr::op(Self::#local(#f, #(#pnames),*),#z) == Self::embed(post) by {
+                Self::#frame_lemma(#f,#z,#s, #(#pnames),*);
+                let post = #state_expr::#next(#s, #(#pnames),*);
+                assert(post.invariant() && #fragment_expr::op(Self::#local(#f, #(#pnames),*),#z) == Self::embed(post));
             }
-            token.validate();
-            let (z,s) = choose|z:#fragment_ty, s:#state_ty| s.invariant() && #fragment_expr::op(f,z) == Self::embed(s);
-            Self::#frame_lemma(f,z,s, #(#pnames),*);
-            token.update(Self::#local(f, #(#pnames),*))
+            #token.validate();
+            let (#z,#s) = choose|#z:#fragment_ty, #s:#state_ty| #s.invariant() && #fragment_expr::op(#f,#z) == Self::embed(#s);
+            Self::#frame_lemma(#f,#z,#s, #(#pnames),*);
+            #token.update(Self::#local(#f, #(#pnames),*))
         }
     }
 }
@@ -783,25 +805,27 @@ fn shared_items(ctx: &Ctx, n: &Names, shared: &SharedFragment, items: &mut Items
     let (state_ty, state_expr, fragment_ty, fragment_expr, marker_value) =
         (&ctx.state_ty, &ctx.state_expr, &ctx.fragment_ty, &ctx.fragment_expr, &ctx.marker_value);
     let (shared_fields, shared_owned_requirements) = (&shared.fields, &shared.owned_requirements);
+    let [owned, h, z] = ["owned", "h", "z"].map(|name| binder_among(name, pnames));
+    let (f, s) = (&n.f, &n.s);
     items.operations.push(quote! {
-        pub open spec fn #shared_req(owned:#fragment_ty, h:#fragment_ty, #(#params),*) -> bool {
-            let f = #fragment_expr::op(owned,h);
-            Self::#req(f, #(#pnames),*) #(&& (#shared_owned_requirements))*
+        pub open spec fn #shared_req(#owned:#fragment_ty, #h:#fragment_ty, #(#params),*) -> bool {
+            let #f = #fragment_expr::op(#owned,#h);
+            Self::#req(#f, #(#pnames),*) #(&& (#shared_owned_requirements))*
         }
-        pub open spec fn #owned_next(owned:#fragment_ty, h:#fragment_ty, #(#params),*) -> #fragment_ty {
-            let f = #fragment_expr::op(owned,h);
+        pub open spec fn #owned_next(#owned:#fragment_ty, #h:#fragment_ty, #(#params),*) -> #fragment_ty {
+            let #f = #fragment_expr::op(#owned,#h);
             #fragment_expr { #marker_value #(#shared_fields),* }
         }
-        pub proof fn #shared_frame(owned:#fragment_ty, h:#fragment_ty, z:#fragment_ty, s:#state_ty, #(#params),*)
-            requires Self::#shared_req(owned,h, #(#pnames),*), s.invariant(),
-                #fragment_expr::op(#fragment_expr::op(owned,h),z) == Self::embed(s)
-            ensures Self::#facts(#fragment_expr::op(owned,h), #(#pnames),*),
-                #state_expr::#next(s, #(#pnames),*).invariant(),
-                #fragment_expr::op(#fragment_expr::op(Self::#owned_next(owned,h, #(#pnames),*),h),z) == Self::embed(#state_expr::#next(s, #(#pnames),*))
+        pub proof fn #shared_frame(#owned:#fragment_ty, #h:#fragment_ty, #z:#fragment_ty, #s:#state_ty, #(#params),*)
+            requires Self::#shared_req(#owned,#h, #(#pnames),*), #s.invariant(),
+                #fragment_expr::op(#fragment_expr::op(#owned,#h),#z) == Self::embed(#s)
+            ensures Self::#facts(#fragment_expr::op(#owned,#h), #(#pnames),*),
+                #state_expr::#next(#s, #(#pnames),*).invariant(),
+                #fragment_expr::op(#fragment_expr::op(Self::#owned_next(#owned,#h, #(#pnames),*),#h),#z) == Self::embed(#state_expr::#next(#s, #(#pnames),*))
         {
-            let f = #fragment_expr::op(owned,h);
-            Self::#frame_lemma(f,z,s, #(#pnames),*);
-            assert(#fragment_expr::op(Self::#owned_next(owned,h, #(#pnames),*),h) == Self::#local(f, #(#pnames),*));
+            let #f = #fragment_expr::op(#owned,#h);
+            Self::#frame_lemma(#f,#z,#s, #(#pnames),*);
+            assert(#fragment_expr::op(Self::#owned_next(#owned,#h, #(#pnames),*),#h) == Self::#local(#f, #(#pnames),*));
         }
     });
     items.operations.push(shared_update_operation(ctx, n));
@@ -814,27 +838,30 @@ fn shared_update_operation(ctx: &Ctx, n: &Names) -> TokenStream {
         (&n.shared_req, &n.owned_next, &n.shared_frame, &n.shared_tr);
     let (state_ty, state_expr, fragment_ty, fragment_expr, token_ty) =
         (&ctx.state_ty, &ctx.state_expr, &ctx.fragment_ty, &ctx.fragment_expr, &ctx.token_ty);
+    let [token, shared, owned, h, z, out] =
+        ["token", "shared", "owned", "h", "z", "out"].map(|name| binder_among(name, pnames));
+    let (f, s) = (&n.f, &n.s);
     quote! {
-        pub proof fn #shared_tr(tracked mut token:#token_ty, tracked shared:&#token_ty, #(#params),*) -> (tracked out:#token_ty)
-            requires token.loc()==shared.loc(), Self::#shared_req(token.fragment(),shared.fragment(), #(#pnames),*)
-            ensures out.loc()==token.loc(), out.fragment()==Self::#owned_next(token.fragment(),shared.fragment(), #(#pnames),*),
-                Self::#facts(#fragment_expr::op(token.fragment(),shared.fragment()), #(#pnames),*)
+        pub proof fn #shared_tr(tracked mut #token:#token_ty, tracked #shared:&#token_ty, #(#params),*) -> (tracked #out:#token_ty)
+            requires #token.loc()==#shared.loc(), Self::#shared_req(#token.fragment(),#shared.fragment(), #(#pnames),*)
+            ensures #out.loc()==#token.loc(), #out.fragment()==Self::#owned_next(#token.fragment(),#shared.fragment(), #(#pnames),*),
+                Self::#facts(#fragment_expr::op(#token.fragment(),#shared.fragment()), #(#pnames),*)
         {
             // `frame_update` is opaque; this is its proof.
             reveal(::vstd::resource::tsm::frame_update);
-            let owned=token.fragment(); let h=shared.fragment(); let f=#fragment_expr::op(owned,h);
-            assert forall|z:#fragment_ty,s:#state_ty| s.invariant() && #fragment_expr::op(f,z)==Self::embed(s)
+            let #owned=#token.fragment(); let #h=#shared.fragment(); let #f=#fragment_expr::op(#owned,#h);
+            assert forall|#z:#fragment_ty,#s:#state_ty| #s.invariant() && #fragment_expr::op(#f,#z)==Self::embed(#s)
                 implies exists|post:#state_ty| post.invariant()
-                    && #fragment_expr::op(#fragment_expr::op(Self::#owned_next(owned,h, #(#pnames),*),h),z)==Self::embed(post) by {
-                Self::#shared_frame(owned,h,z,s, #(#pnames),*);
-                let post=#state_expr::#next(s, #(#pnames),*);
+                    && #fragment_expr::op(#fragment_expr::op(Self::#owned_next(#owned,#h, #(#pnames),*),#h),#z)==Self::embed(post) by {
+                Self::#shared_frame(#owned,#h,#z,#s, #(#pnames),*);
+                let post=#state_expr::#next(#s, #(#pnames),*);
                 assert(post.invariant()
-                    && #fragment_expr::op(#fragment_expr::op(Self::#owned_next(owned,h, #(#pnames),*),h),z)==Self::embed(post));
+                    && #fragment_expr::op(#fragment_expr::op(Self::#owned_next(#owned,#h, #(#pnames),*),#h),#z)==Self::embed(post));
             }
-            token.validate_2(shared);
-            let (z,s)=choose|z:#fragment_ty,s:#state_ty| s.invariant() && #fragment_expr::op(f,z)==Self::embed(s);
-            Self::#shared_frame(owned,h,z,s, #(#pnames),*);
-            token.update_with_shared(shared,Self::#owned_next(owned,h, #(#pnames),*))
+            #token.validate_2(#shared);
+            let (#z,#s)=choose|#z:#fragment_ty,#s:#state_ty| #s.invariant() && #fragment_expr::op(#f,#z)==Self::embed(#s);
+            Self::#shared_frame(#owned,#h,#z,#s, #(#pnames),*);
+            #token.update_with_shared(#shared,Self::#owned_next(#owned,#h, #(#pnames),*))
         }
     }
 }
