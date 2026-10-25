@@ -33,13 +33,9 @@ pub trait ExTry: FromResidual<Self::Residual> {
     /// The result of `branch` matches its functional spec
     spec fn branch_model_is_valid() -> bool;
 
-    spec fn branch_model(self) -> ControlFlow<Self::Residual, Self::Output> where
-        Self: Sized,
-    ;
+    spec fn branch_model(self) -> ControlFlow<Self::Residual, Self::Output> where Self: Sized;
 
-    fn branch(self) -> (ret: ControlFlow<Self::Residual, Self::Output>) where
-        Self: Sized,
-
+    fn branch(self) -> (ret: ControlFlow<Self::Residual, Self::Output>) where Self: Sized
         ensures
             Self::branch_model_is_valid() ==> ret == Self::branch_model(self),
     ;
