@@ -109,7 +109,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             }
         }
         Some(RustItem::CloneFrom) => {
-            return err_span(expr.span, "Verus does not yet support `clone_from`");
+            return err_span(expr.span, "Verus does not currently support `clone_from`");
         }
         _ => {}
     }
@@ -278,7 +278,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                 vir::ast::CallTargetKind::Dynamic
             }
             ResolutionResult::Builtin(b) => {
-                unsupported_err!(expr.span, format!("built-in instance {:?}", b));
+                unsupported_err!(expr.span, format!("this built-in instance: {:?}", b));
             }
             ResolutionResult::Unresolved => {
                 // Method is generic
@@ -378,7 +378,7 @@ pub(crate) fn const_var_to_vir<'tcx>(
     if is_generic_assoc_const {
         // associated const --> ExprX::Call rather than ExprX::ConstVar
         let Some(expr) = expr else {
-            unsupported_err!(span, "associated constant in pattern");
+            unsupported_err!(span, "associated constants in patterns");
         };
         return fn_call_or_assoc_const_to_vir(bctx, expr, id, node_substs, span, None, None, true);
     }
@@ -2415,7 +2415,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             };
             return Err(vir::messages::error(
                 &crate::spans::err_air_span(expr.span),
-                format!("not supported: using {tyname}::{derefname}"),
+                format!("Verus does not currently support using `{tyname}::{derefname}`"),
             )
             .help("you can implicitly dereference this type using `*`"));
         }

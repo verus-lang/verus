@@ -298,7 +298,7 @@ pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> Result<(bool, VarIdent), VirErr
             Ok((mutable, local_to_var(ident, id.local_id)))
         }
         _ => {
-            unsupported_err!(*span, "only variables are supported here, not general patterns")
+            unsupported_err!(*span, "general patterns here (only variables are supported)")
         }
     }
 }
@@ -618,7 +618,7 @@ fn patexpr_unsupported_type_err<'tcx>(
 ) -> Result<(), VirErr> {
     let pat_ty = bctx.types.node_type(pat.hir_id);
     if !crate::rust_to_vir_base::ty_has_smt_equality(bctx, span, pat_ty)? {
-        unsupported_err!(span, format!("equality-testing this type in pattern: {:?}", pat_ty));
+        unsupported_err!(span, format!("equality-testing this type in a pattern: {:?}", pat_ty));
     }
     Ok(())
 }
@@ -962,7 +962,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
                     let e1 = patexpr_to_vir(bctx, expr1.span, pat, &pat_typ, expr1)?;
                     if let PatternX::Expr(e1) = e1 {
                         if !matches!(&*e1.typ, TypX::Int(_)) {
-                            unsupported_err!(expr1.span, "range pattern with non-int type");
+                            unsupported_err!(expr1.span, "range patterns with non-integer types");
                         }
                         Some(e1)
                     } else {
@@ -976,7 +976,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
                     let e2 = patexpr_to_vir(bctx, expr2.span, pat, &pat_typ, expr2)?;
                     if let PatternX::Expr(e2) = e2 {
                         if !matches!(&*e2.typ, TypX::Int(_)) {
-                            unsupported_err!(expr2.span, "range pattern with non-int type");
+                            unsupported_err!(expr2.span, "range patterns with non-integer types");
                         }
                         let ineq = match range_end {
                             rustc_hir::RangeEnd::Included => InequalityOp::Le,
@@ -2036,7 +2036,7 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
                     if val > u32::MAX as u128 {
                         unsupported_err!(
                             expr.span,
-                            "discriminant does not fit in 32-bits when usize is used"
+                            "discriminants that do not fit in 32 bits when usize is used"
                         )
                     }
                     vir::ast_util::const_int_from_u128(val)
@@ -2053,16 +2053,13 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
                     if !(v >= i32::MIN as i128 && v <= i32::MAX as i128) {
                         unsupported_err!(
                             expr.span,
-                            "discriminant does not fit in 32-bits when isize is used"
+                            "discriminants that do not fit in 32 bits when isize is used"
                         )
                     }
                     vir::ast_util::const_int_from_i128(v)
                 }
             },
-            _ => unsupported_err!(
-                expr.span,
-                format!("discriminant of enum when enum has type {:?}", ty)
-            ),
+            _ => unsupported_err!(expr.span, format!("discriminants of an enum of type {:?}", ty)),
         };
         let cast_to = mk_expr(ExprX::Const(val))?;
         unsupported_err_unless!(
@@ -2574,7 +2571,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         return err_span(
                             expr.span,
                             format!(
-                                "Verus does not support `as` cast from `{}` to `{}`",
+                                "Verus does not currently support `as` cast from `{}` to `{}`",
                                 typ_to_diagnostic_str(&source_vir_ty),
                                 typ_to_diagnostic_str(&to_vir_ty),
                             ),
@@ -2612,7 +2609,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     return err_span(
                         expr.span,
                         format!(
-                            "Verus does not support this cast: `{:#?}` to `{:#?}`",
+                            "Verus does not currently support this cast: `{:#?}` to `{:#?}`",
                             source_ty, to_ty
                         ),
                     );
@@ -2722,7 +2719,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             Some(arg_ty),
                         )?));
                     } else {
-                        unsupported_err!(expr.span, "unary op negation of floating point")
+                        unsupported_err!(expr.span, "unary negation of floating point values")
                     };
                 }
 
@@ -3796,7 +3793,7 @@ fn binopkind_to_binaryop_inner<'tcx>(
         BinOpKind::And | BinOpKind::Or => {
             // And and Or aren't allowed for AssignOp, and for normal BinOps,
             // these are handled separately.
-            unsupported_err!(lhs.span, "use of `&&` or `||` here");
+            unsupported_err!(lhs.span, "`&&` or `||` here");
         }
         BinOpKind::Eq | BinOpKind::Ne if is_smt_equality(bctx, span, &lhs.hir_id, &rhs.hir_id)? => {
             let op = match op {
@@ -4031,7 +4028,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     let prophetic = parsed_attrs.contains(&Attr::Prophetic);
     let els = if let Some(els) = els {
         if matches!(mode, Mode::Spec | Mode::Proof) {
-            unsupported_err!(els.span, "let-else in spec/proof", els);
+            unsupported_err!(els.span, "let-else in spec or proof code", els);
         }
         let init = initializer.unwrap();
         let init_type = typ_of_expr_adjusted(bctx, els.span, &init.hir_id)?;

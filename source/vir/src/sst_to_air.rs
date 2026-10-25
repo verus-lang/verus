@@ -2314,7 +2314,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 if loop_info.is_for_loop && !*is_break {
                     // At the very least, the syntax macro will need to advance the ghost iterator
                     // at each continue.
-                    return Err(error(&stm.span, "for-loops do not yet support continue"));
+                    return Err(error(
+                        &stm.span,
+                        "Verus does not currently support `continue` in `for` loops",
+                    ));
                 }
                 let invs = if *is_break {
                     loop_info.invs_exit.clone()

@@ -24,7 +24,7 @@ pub(crate) fn vir_err_span_string(span: Span, msg: String) -> VirErr {
 }
 
 pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {
-    err_span(span, format!("The verifier does not yet support the following Rust feature: {}", msg))
+    err_span(span, format!("Verus does not currently support {}", msg))
 }
 
 pub(crate) fn internal_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {

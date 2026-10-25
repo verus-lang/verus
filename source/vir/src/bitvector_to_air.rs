@@ -509,7 +509,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefFinal(_) => {
                 return Err(error(
                     &exp.span,
-                    "unsupported for bitvector: this mutable reference operator",
+                    "Verus does not currently support this mutable reference operator for bit-vector",
                 ));
             }
             UnaryOp::Length(_) => {
@@ -622,7 +622,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 return Err(error(
                     &exp.span,
                     format!(
-                        "not supported: bit-shift with possibly negative shift (If you believe this value is always nonnegative, try casting the RHS to an unsigned type)"
+                        "Verus does not currently support bit-shift with possibly negative shift (if you believe this value is always nonnegative, try casting the RHS to an unsigned type)"
                     ),
                 ));
             }
@@ -653,7 +653,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 return Err(error(
                     &exp.span,
                     format!(
-                        "not supported: bit-shift with possibly negative shift (If you believe this value is always nonnegative, try casting the RHS to an unsigned type)"
+                        "Verus does not currently support bit-shift with possibly negative shift (if you believe this value is always nonnegative, try casting the RHS to an unsigned type)"
                     ),
                 ));
             }
@@ -795,7 +795,10 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             _ => {
                 return Err(error(
                     &exp.span,
-                    format!("unsupported for bit-vector: bind conversion, {:?} ", exp.x),
+                    format!(
+                        "Verus does not currently support this binding for bit-vector: {:?}",
+                        exp.x
+                    ),
                 ));
             }
         },
@@ -805,7 +808,10 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
         _ => {
             return Err(error(
                 &exp.span,
-                format!("unsupported for bit-vector: expression conversion {:?}", exp.x),
+                format!(
+                    "Verus does not currently support this expression for bit-vector: {:?}",
+                    exp.x
+                ),
             ));
         }
     }
@@ -1096,7 +1102,7 @@ fn do_arith_then_clip(
         {
             int_range = None;
         } else {
-            return Err(error(span, format!("not supported: nat cast here")));
+            return Err(error(span, format!("Verus does not currently support a nat cast here")));
         }
     }
 

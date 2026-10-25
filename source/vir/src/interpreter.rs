@@ -2066,7 +2066,7 @@ fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
         ExpX::Interp(InterpExp::Seq(v)) => cleanup_seq(&e.span, e.typ.clone(), v),
         ExpX::Interp(InterpExp::Closure(..)) => Err(error(
             &e.span,
-            "proof by computation included a closure literal that wasn't applied; this is not yet supported",
+            "Verus does not currently support proof by computation that includes a closure literal that isn't applied",
         )),
         _ => Ok(e.clone()),
     })

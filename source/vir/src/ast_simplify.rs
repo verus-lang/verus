@@ -644,7 +644,10 @@ fn simplify_one_expr(
                 };
                 Ok(if_expr)
             } else {
-                Err(error(&expr.span, "not yet implemented: zero-arm match expressions"))
+                Err(error(
+                    &expr.span,
+                    "Verus does not currently support zero-arm match expressions",
+                ))
             }
         }
         ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: expr1 } => Ok(expr1.clone()),

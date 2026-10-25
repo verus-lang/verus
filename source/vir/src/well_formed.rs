@@ -764,7 +764,7 @@ fn check_one_expr(
                 _ => {
                     return Err(error(
                         &expr.span,
-                        "proof blocks inside spec code is currently supported only for spec functions with `decreases`",
+                        "Verus currently supports proof blocks inside spec code only for spec functions with `decreases`",
                     ));
                 }
             }
@@ -799,7 +799,7 @@ fn check_one_expr(
                     // This is nontrivial because we might need to evaluate the guard condition more than once
                     return Err(error(
                         &arm.x.pattern.span,
-                        "not supported: match arm containing both an or-pattern (|) and a match-guard",
+                        "Verus does not currently support a match arm containing both an or-pattern (|) and a match-guard",
                     ));
                 }
                 if let Some(span) = has_ref_mut_binding {
@@ -807,7 +807,7 @@ fn check_one_expr(
                         // This probably isn't that bad to support
                         return Err(error(
                             &span,
-                            "not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
+                            "Verus does not currently support a pattern containing both an or-pattern (|) and a binding by mutable reference",
                         ));
                     }
                     if has_guard {
@@ -815,7 +815,7 @@ fn check_one_expr(
                         // the test condition, but the mutable borrow is immutable until it ends
                         return Err(error(
                             &span,
-                            "not supported: match arm containing both a match-guard and a binding by mutable reference",
+                            "Verus does not currently support a match arm containing both a match-guard and a binding by mutable reference",
                         ));
                     }
                 }
@@ -824,7 +824,7 @@ fn check_one_expr(
                 if i == arms.len() - 1 && has_guard {
                     return Err(error(
                         &arm.x.guard.span,
-                        "not supported: match where the last arm has a match guard (this would necessarily mean the entire arm is unreachable)",
+                        "Verus does not currently support a match where the last arm has a match guard (this would necessarily mean the entire arm is unreachable)",
                     ));
                 }
             }
@@ -923,7 +923,7 @@ fn check_one_stmt(_ctxt: &Ctxt, stmt: &Stmt) -> Result<(), VirErr> {
                 if has_or {
                     return Err(error(
                         &span,
-                        "not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
+                        "Verus does not currently support a pattern containing both an or-pattern (|) and a binding by mutable reference",
                     ));
                 }
             }
@@ -2125,7 +2125,7 @@ fn check_decreases_by_consistency(
                 if function.x.decrease.len() > 0 {
                     return Err(error(
                         &function.span,
-                        "trait default methods do not yet support recursion and `decreases`",
+                        "Verus does not currently support recursion and `decreases` in trait default methods",
                     ));
                 }
             }

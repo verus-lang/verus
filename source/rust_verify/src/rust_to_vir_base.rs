@@ -1425,7 +1425,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         ..
                     } => None,
                     ResolutionResult::Builtin(b) => {
-                        unsupported_err!(span, format!("built-in instance {:?}", b));
+                        unsupported_err!(span, format!("this built-in instance: {:?}", b));
                     }
                 }
             };
@@ -1954,7 +1954,7 @@ where
                         None,
                     )?
                 } else {
-                    return err_span(*span, "Verus does not yet support this type of bound");
+                    return err_span(*span, "Verus does not currently support this type of bound");
                 };
                 let substs = pred.projection_term.args;
                 let trait_def_id = pred.projection_term.trait_def_id(tcx);
@@ -1978,7 +1978,10 @@ where
                         );
                         bounds.push(Arc::new(bound));
                     } else {
-                        return err_span(*span, "Verus does not yet support this type of bound");
+                        return err_span(
+                            *span,
+                            "Verus does not currently support this type of bound",
+                        );
                     }
                 } else {
                     panic!("internal error: generic_bound should return GenericBoundX::Trait")
@@ -1999,7 +2002,7 @@ where
                 bounds.push(Arc::new(bound));
             }
             _ => {
-                return err_span(*span, "Verus does not yet support this type of bound");
+                return err_span(*span, "Verus does not currently support this type of bound");
             }
         }
     }
@@ -2292,7 +2295,7 @@ fn check_generics_bounds_main<'tcx>(
                 typ_params.push((Arc::new(param_name), accept_rec));
             }
             _ => {
-                unsupported_err!(span, "this kind of generic param");
+                unsupported_err!(span, "this kind of generic parameter");
             }
         }
     }
@@ -2566,7 +2569,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                                 } else {
                                     return err_span(
                                         assume_specification_ty_span,
-                                        "Verus does not yet support this type of bound",
+                                        "Verus does not currently support this type of bound",
                                     );
                                 }
                             } else {
@@ -2599,7 +2602,10 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                                 None,
                             )?
                         } else {
-                            return err_span(span, "Verus does not yet support this type of bound");
+                            return err_span(
+                                span,
+                                "Verus does not currently support this type of bound",
+                            );
                         };
                         let substs = pred.projection_term.args;
                         let trait_def_id = pred.projection_term.trait_def_id(ctxt.tcx);
@@ -2626,7 +2632,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             } else {
                                 return err_span(
                                     span,
-                                    "Verus does not yet support this type of bound",
+                                    "Verus does not currently support this type of bound",
                                 );
                             }
                         } else {

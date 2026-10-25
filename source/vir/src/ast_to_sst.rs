@@ -839,7 +839,7 @@ impl Sequencer {
                         if let Some(span) = crate::sst_vars::find_overlapping_assignment(stm, loc) {
                             return Err(error_with_label(
                                 &loc.span,
-                                "Verus doesn't support assigning during mutable borrow like this",
+                                "Verus does not currently support assigning during a mutable borrow like this",
                                 "this borrow",
                             )
                             .secondary_label(&span, "followed by this assignment"));
@@ -2667,7 +2667,7 @@ pub(crate) fn expr_to_stm_opt(
             if produces_value && loop_isolation {
                 return Err(error(
                     &expr.span,
-                    "loops with value-bearing `break` do not yet support loop isolation",
+                    "Verus does not currently support loop isolation for loops with value-bearing `break`",
                 )
                 .help("add `#[verifier::loop_isolation(false)]` to this loop"));
             }
@@ -3859,7 +3859,7 @@ pub(crate) fn expr_to_stm_opt(
                 if let Some(span) = crate::sst_vars::find_overlapping_assignment(stm, &loc) {
                     return Err(error(
                         &span,
-                        "Verus doesn't support assigning to scrutinee during match guard",
+                        "Verus does not currently support assigning to the scrutinee during a match guard",
                     ));
                 }
             }
@@ -4907,7 +4907,7 @@ fn assert_assume_satisfies_user_defined_type_invariant(
     if typ_inv == TypInv::BareMutRefError {
         return Err(crate::messages::error_with_label(
             &exp.span,
-            "not supported: taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)",
+            "Verus does not currently support taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)",
             "mutable reference to this place",
         ).secondary_label(&function.span, "type invariant declared here"));
     }

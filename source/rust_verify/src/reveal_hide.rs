@@ -4,7 +4,7 @@ use std::sync::Arc;
 use rustc_hir::{Expr, ExprKind, QPath, def::Res};
 use vir::ast::{ExprX, FunX, HeaderExprX};
 
-use crate::{internal_err_unless, unsupported_err, util::err_span};
+use crate::{internal_err, internal_err_unless, unsupported_err, util::err_span};
 
 pub(crate) enum RevealHideResult {
     Expr(vir::ast::Expr),
@@ -21,13 +21,13 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
 ) -> Result<RevealHideResult, vir::ast::VirErr> {
     internal_err_unless!(args_len == 2, expr.span, "expected reveal", &args);
     let ExprKind::Block(block, None) = args[0].kind else {
-        unsupported_err!(expr.span, "invalid reveal", &args);
+        internal_err!(expr.span, "invalid reveal", &args);
     };
     if block.stmts.len() != 1 || !matches!(block.stmts[0].kind, rustc_hir::StmtKind::Item(_)) {
-        unsupported_err!(expr.span, "invalid reveal", &args);
+        internal_err!(expr.span, "invalid reveal", &args);
     }
     let Some(block_expr) = block.expr.as_ref() else {
-        unsupported_err!(expr.span, "invalid reveal", &args);
+        internal_err!(expr.span, "invalid reveal", &args);
     };
     let is_broadcast_use = {
         let expr_attrs = ctxt.tcx.hir_attrs(block_expr.hir_id);
@@ -35,13 +35,13 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
         expr_vattrs.broadcast_use_reveal
     };
     let ExprKind::Path(QPath::Resolved(None, path)) = &block_expr.kind else {
-        unsupported_err!(expr.span, "invalid reveal", &args);
+        internal_err!(expr.span, "invalid reveal", &args);
     };
     let id = {
         let Some(path_map) =
             &*crate::verifier::BODY_HIR_ID_TO_REVEAL_PATH_RES.read().expect("lock failed")
         else {
-            unsupported_err!(expr.span, "invalid reveal", &args);
+            internal_err!(expr.span, "invalid reveal", &args);
         };
         let (ty_res, res) = &path_map[&path.res.def_id()];
         if let Some(ty_res) = ty_res {
@@ -110,7 +110,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
             match res {
                 crate::hir_hide_reveal_rewrite::ResOrSymbol::Res(res) => res.def_id(),
                 crate::hir_hide_reveal_rewrite::ResOrSymbol::Symbol(_) => {
-                    unsupported_err!(expr.span, "unexpected reveal", &args);
+                    internal_err!(expr.span, "unexpected reveal", &args);
                 }
             }
         }
@@ -118,7 +118,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
     let path = ctxt.def_id_to_vir_path(id);
 
     let ExprKind::Lit(fuel_lit) = args[1].kind else {
-        unsupported_err!(expr.span, "invalid reveal", &args);
+        internal_err!(expr.span, "invalid reveal", &args);
     };
     let span = &ctxt.spans.to_air_span(expr.span);
     let rustc_ast::LitKind::Int(fuel_val, rustc_ast::LitIntType::Unsuffixed) = fuel_lit.node else {

@@ -254,7 +254,7 @@ pub(crate) fn translate_impl<'tcx>(
         if matches!(rust_item, Some(RustItem::Fn | RustItem::FnOnce | RustItem::FnMut)) {
             return err_span_vec(
                 item.span,
-                "Verus does not support implementing this trait via an `impl` block",
+                "Verus does not currently support implementing this trait via an `impl` block",
             );
         }
 

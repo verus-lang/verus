@@ -1856,7 +1856,7 @@ pub(crate) fn check_item_fn<'tcx>(
             let mode_opt = crate::attributes::get_mode_opt(attrs);
             let ret_mode = get_ret_mode(Mode::Exec, attrs);
             if mode_opt.is_some() || ret_mode != Mode::Exec {
-                unsupported_err!(sig.span, "non-default mode on associated const")
+                unsupported_err!(sig.span, "non-default modes on associated consts")
             }
             (Some((typ.clone(), Mode::Exec)), vec![])
         }
@@ -2808,7 +2808,7 @@ fn check_generics_for_invariant_fn<'tcx>(
             if adt_def.is_union() {
                 return err_span(
                     span,
-                    "not supported: `#[verifier::type_invariant]` for union types",
+                    "Verus does not currently support `#[verifier::type_invariant]` for union types",
                 );
             }
             assert!(adt_def.is_struct() || adt_def.is_enum());

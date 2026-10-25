@@ -360,7 +360,7 @@ pub(crate) fn translate_trait<'tcx>(
                         if !is_verus_spec {
                             return err_span(
                                 *span,
-                                "feature not yet supported: external spec extensions cannot yet provide default bodies",
+                                "Verus does not currently support default bodies in external spec extensions",
                             );
                         }
                         // TODO: support defaults
@@ -447,7 +447,7 @@ pub(crate) fn translate_trait<'tcx>(
                         (CheckItemFnEither::BodyId(body_id), true)
                     }
                     Some(_) => {
-                        crate::unsupported_err!(trait_span, "non-expression trait const default")
+                        crate::unsupported_err!(trait_span, "non-expression trait const defaults")
                     }
                     None => (CheckItemFnEither::ParamNames(param_names.as_slice()), false),
                 };
@@ -479,7 +479,7 @@ pub(crate) fn translate_trait<'tcx>(
             TraitItemKind::Type(_, Some(_)) => {
                 return err_span(
                     trait_span,
-                    "Verus does not yet support associated types with a concrete type",
+                    "Verus does not currently support associated types with a concrete type",
                 );
             }
             TraitItemKind::Type(_generic_bounds, None) => {
@@ -574,7 +574,7 @@ pub(crate) fn translate_trait<'tcx>(
                             _ => {
                                 return err_span(
                                     trait_span,
-                                    "Verus does not yet support this bound on external specs",
+                                    "Verus does not currently support this bound on external specs",
                                 );
                             }
                         }
@@ -775,7 +775,10 @@ fn make_trait_decl<'tcx>(
     if spec_method_info.function_for_autospec.is_some()
         || method_info.function_for_autospec.is_some()
     {
-        return Err(error(&spec_method.span, "not supported: autospec on trait"));
+        return Err(error(
+            &spec_method.span,
+            "Verus does not currently support autospec on traits",
+        ));
     }
 
     methodx.opaqueness = opaqueness;
