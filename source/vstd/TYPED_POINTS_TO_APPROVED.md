@@ -1377,6 +1377,17 @@ impl<T> PTSizedValue for PointsToUnaligned<T> {
 }
 
 impl<T> PointsToUnaligned<T> {
+    /// The pointer has the underlying `PointsToUntyped`'s address and provenance,
+    /// and the stored metadata.
+    pub proof fn lemma_ptr_def(self)
+        ensures
+            self.ptr() == ptr_mut_from_data::<T>(PtrData {
+                addr: self.pt_untyped().ptr()@.addr,
+                provenance: self.pt_untyped().ptr()@.provenance,
+                metadata: self.metadata(),
+            }),
+    ;
+
     /// Specializes `is_disjoint` to the case when the other permission is a `PointsToUnaligned<S>`.
     pub proof fn is_disjoint_unaligned<S>(tracked &mut self, tracked other: &PointsToUnaligned<S>)
         requires
@@ -1567,6 +1578,17 @@ impl<T> PointsToUnaligned<[T]> {
         self.ptr()@.metadata as nat
     }
 
+    /// The pointer has the underlying `PointsToUntyped`'s address and provenance,
+    /// and the stored metadata.
+    pub proof fn lemma_ptr_def(self)
+        ensures
+            self.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: self.pt_untyped().ptr()@.addr,
+                provenance: self.pt_untyped().ptr()@.provenance,
+                metadata: self.metadata(),
+            }),
+    ;
+
     /// Borrows the permission to the element at index `i`.
     /// If the slice permission is empty, so is the element's.
     pub proof fn borrow_index(tracked &self, i: int) -> (tracked out: &PointsToUnaligned<T>)
@@ -1748,7 +1770,7 @@ impl PointsToRaw {
     /// The contents of `[start, start + len)` as a sequence.
     pub open spec fn bytes_range(self, start: int, len: nat) -> Seq<AbstractByte>
         recommends
-            self.contains_range(start, len),
+            self.contains_range(start, len as int),
     {
         Seq::new(len, |i: int| self.byte(start + i))
     }
@@ -2326,6 +2348,26 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).value_subrange(start, val.len()) == val,
             forall|i: int|
                 0 <= i < old(self).len() && !(start <= i < start + val.len())
+                    ==> #[trigger] final(self).seq_typed_value()[i] == old(self).seq_typed_value()[i],
+            final(self).wf(),
+    ;
+
+    /// This takes a mutable borrow of each of the values in a subrange of `self`.
+    pub proof fn borrow_mut_subrange(tracked &mut self, start: int, end: int) -> (tracked ret: Seq<&mut T>)
+        requires
+            self.wf(),
+            0 <= start <= end <= self.len(),
+            self.is_valid_subrange(start, (end - start) as nat),
+        ensures
+            ret.len() == end - start,
+            forall|i: int| 0 <= i < ret.len() ==> *#[trigger] ret[i] == old(self)[start + i].value(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).is_valid_subrange(start, ret.len()),
+            forall|i: int|
+                #![trigger ret[i]]
+                0 <= i < ret.len() ==> final(self)[start + i].value() == *final(ret[i]),
+            forall|i: int|
+                0 <= i < old(self).len() && !(start <= i < end)
                     ==> #[trigger] final(self).seq_typed_value()[i] == old(self).seq_typed_value()[i],
             final(self).wf(),
     ;
