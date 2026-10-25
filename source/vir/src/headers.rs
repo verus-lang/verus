@@ -363,9 +363,9 @@ pub fn read_header(body: &mut Expr, allows: &HeaderAllows) -> Result<Header, Vir
                     }
                     NestedHeaderBlock::Yes => {}
                     NestedHeaderBlock::Conflict => {
-                        return Err(error(
+                        return Err(crate::messages::internal_error(
                             &stmt.span,
-                            "internal error: invalid nested header block",
+                            "invalid nested header block",
                         ));
                     }
                 }

@@ -543,12 +543,9 @@ impl PreLocalDeclKind {
         match self {
             PreLocalDeclKind::Immutable(Immutable(imm)) => {
                 if let Some(span) = mutbl {
-                    Err(error(
+                    Err(crate::messages::internal_error(
                         span,
-                        format!(
-                            "Verus Internal Error: assignment for immutable decl kind {:?}",
-                            imm
-                        ),
+                        format!("assignment for immutable decl kind {:?}", imm),
                     ))
                 } else {
                     Ok(imm)
@@ -4339,9 +4336,9 @@ fn place_to_exp_for_read(
     let (_lhs, rhs, obligations) = unwrap_or_return_never!(res, stms);
     if obligations.len() > 0 {
         // Shouldn't have these for reads
-        return Err(error(
+        return Err(crate::messages::internal_error(
             &place.span,
-            "Verus internal error: `place_to_expr_for_read` does not expect any UserDefinedTypInvariantObligation",
+            "`place_to_expr_for_read` does not expect any UserDefinedTypInvariantObligation",
         ));
     }
     Ok((stms, Maybe::Some(rhs)))

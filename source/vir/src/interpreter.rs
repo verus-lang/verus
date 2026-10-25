@@ -2037,9 +2037,9 @@ fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
             // Convert back to a standard SST representation
             seq_to_sst(span, inner_type.clone(), &cleaned?)
         }
-        _ => Err(error(
+        _ => Err(crate::messages::internal_error(
             &span,
-            format!("Internal error: Expected to find a sequence type but found: {:?}", typ),
+            format!("expected to find a sequence type but found: {:?}", typ),
         )),
     }
 }

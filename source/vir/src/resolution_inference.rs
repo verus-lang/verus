@@ -2044,7 +2044,8 @@ impl<'a> Builder<'a> {
             TypX::Datatype(dt, ..) => get_typ_inv_fun_dt(&self.locals.datatypes, dt),
             _ => {
                 dbg!(&p.typ);
-                self.errors.push(error(&p.span, "Verus Internal Error: `get_typ_inv_fun` failed"));
+                self.errors
+                    .push(crate::messages::internal_error(&p.span, "`get_typ_inv_fun` failed"));
                 None
             }
         }
@@ -2070,9 +2071,9 @@ impl<'a> Builder<'a> {
                 ));
             }
             ComputedPlaceTyped::Ghost(_) => {
-                self.errors.push(error(
+                self.errors.push(crate::messages::internal_error(
                     span,
-                    "Verus Internal Error: inconsistent state, move out of ghost place",
+                    "inconsistent state, move out of ghost place",
                 ));
             }
             ComputedPlaceTyped::Exact(_) => unreachable!(),

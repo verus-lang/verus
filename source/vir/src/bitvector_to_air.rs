@@ -972,21 +972,21 @@ impl BvTyp {
     fn expect_bool(&self, span: &Span) -> Result<(), VirErr> {
         match self {
             BvTyp::Bool => Ok(()),
-            _ => Err(error(span, format!("Verus Internal Error: `expect_bool`"))),
+            _ => Err(crate::messages::internal_error(span, format!("`expect_bool`"))),
         }
     }
 
     fn expect_bv_signed(&self, span: &Span) -> Result<(), VirErr> {
         match self {
             BvTyp::Bv(_, Extend::Sign) => Ok(()),
-            _ => Err(error(span, format!("Verus Internal Error: `expect_bv_signed`"))),
+            _ => Err(crate::messages::internal_error(span, format!("`expect_bv_signed`"))),
         }
     }
 
     fn expect_bv(&self, span: &Span) -> Result<(u32, Extend), VirErr> {
         match self {
             BvTyp::Bv(w, extend) => Ok((*w, *extend)),
-            _ => Err(error(span, format!("Verus Internal Error: `expect_bv`"))),
+            _ => Err(crate::messages::internal_error(span, format!("`expect_bv`"))),
         }
     }
 

@@ -357,9 +357,9 @@ fn simplify_one_expr(
                 };
                 match scope_map.get(x) {
                     None => {
-                        return Err(error(
+                        return Err(crate::messages::internal_error(
                             &expr.span,
-                            "Verus Internal Error: cannot find this variable",
+                            "cannot find this variable",
                         ));
                     }
                     Some(entry) if entry.user_mut == Some(false) && entry.init => {
@@ -734,10 +734,12 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
                 }
             }
         }
-        StmtX::Decl { pattern, mode: _, init: None, els: Some(_), .. } => Err(error(
-            &pattern.span,
-            "Verus Internal Error: Decl with else-block but no initializer",
-        )),
+        StmtX::Decl { pattern, mode: _, init: None, els: Some(_), .. } => {
+            Err(crate::messages::internal_error(
+                &pattern.span,
+                "Decl with else-block but no initializer",
+            ))
+        }
         StmtX::Decl { pattern, mode: _, init: Some(_init), els: None, assert_irrefutable: _ }
             if matches!(
                 pattern.x,
@@ -797,9 +799,9 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
         }
         TypX::AnonymousClosure(typs, typ, kind, id) => {
             let Some(fun) = local.fun.clone() else {
-                return Err(error(
+                return Err(crate::messages::internal_error(
                     &local.span,
-                    format!("Verus Internal Error: found AnonymousClosure type outside function"),
+                    format!("found AnonymousClosure type outside function"),
                 ));
             };
             let path =

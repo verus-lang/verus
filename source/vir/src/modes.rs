@@ -1085,7 +1085,7 @@ fn check_expr_in_pattern(expr: &Expr) -> Result<(), VirErr> {
             check_expr_in_pattern(expr2)
         }
         ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(..), expr1) => check_expr_in_pattern(expr1),
-        _ => Err(error(&expr.span, "Verus Internal Error: bad PatternX::Expr")),
+        _ => Err(crate::messages::internal_error(&expr.span, "bad PatternX::Expr")),
     }
 }
 
@@ -1220,9 +1220,9 @@ fn check_place(
         PlaceAccess::MutBorrow(None) => {
             let found = record.mut_bor_place_modes.insert(place.span.id, (place_mode, note));
             if found.is_some() {
-                return Err(error(
+                return Err(crate::messages::internal_error(
                     &place.span,
-                    "Verus Internal Error: duplicate ast id for mut borrow",
+                    "duplicate ast id for mut borrow",
                 ));
             }
 
@@ -1235,9 +1235,9 @@ fn check_place(
             let found =
                 record.mut_bor_place_modes.insert(place.span.id, (place_mode, note.clone()));
             if found.is_some() {
-                return Err(error(
+                return Err(crate::messages::internal_error(
                     &place.span,
-                    "Verus Internal Error: duplicate ast id for mut borrow",
+                    "duplicate ast id for mut borrow",
                 ));
             }
 
@@ -1355,9 +1355,9 @@ fn check_place_rec_inner(
                 ));
             }
             if *get_variant {
-                return Err(error(
+                return Err(crate::messages::internal_error(
                     &place.span,
-                    "Verus Internal Error: field accesses should be through Expr nodes for builtin spec operators like `get_variant_field`",
+                    "field accesses should be through Expr nodes for builtin spec operators like `get_variant_field`",
                 ));
             }
 
@@ -1420,9 +1420,9 @@ fn check_place_rec_inner(
                 check_expr(ctxt, record, typing, outer_mode, expect, e, outer_proph)?;
 
             if record.temporary_modes.contains_key(&place.span.id) {
-                return Err(error(
+                return Err(crate::messages::internal_error(
                     &place.span,
-                    &format!("Verus Internal Error: duplicate PlaceX::Temporary ID"),
+                    &format!("duplicate PlaceX::Temporary ID"),
                 ));
             }
             record.temporary_modes.insert(place.span.id, mode);
@@ -1445,17 +1445,15 @@ fn check_place_rec_inner(
             Ok((mode, proph))
         }
         PlaceX::WithExpr(..) => {
-            return Err(error(
+            return Err(crate::messages::internal_error(
                 &place.span,
-                &format!("Verus Internal Error: WithExpr node shouldn't exist yet"),
+                &format!("WithExpr node shouldn't exist yet"),
             ));
         }
         PlaceX::UserDefinedTypInvariantObligation(..) => {
-            return Err(error(
+            return Err(crate::messages::internal_error(
                 &place.span,
-                &format!(
-                    "Verus Internal Error: UserDefinedTypInvariantObligation node shouldn't exist yet"
-                ),
+                &format!("UserDefinedTypInvariantObligation node shouldn't exist yet"),
             ));
         }
         PlaceX::Index(p, idx, _kind, _needs_bounds_check) => {
@@ -2245,9 +2243,9 @@ fn check_expr(
             e1,
         ) => {
             if !*get_variant {
-                return Err(error(
+                return Err(crate::messages::internal_error(
                     &expr.span,
-                    "Verus Internal Error: field accesses should be through Place nodes (except for builtin spec operators like `get_variant_field`)",
+                    "field accesses should be through Place nodes (except for builtin spec operators like `get_variant_field`)",
                 ));
             }
             if *get_variant && ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -3593,14 +3591,15 @@ fn unwrap_mut_ref_tracked_typ(span: &Span, typ: &Typ) -> Result<Typ, VirErr> {
     match &*crate::ast_util::undecorate_typ(typ) {
         TypX::MutRef(t) => match &**t {
             TypX::Decorate(TypDecoration::Tracked, _, t) => Ok(t.clone()),
-            _ => Err(error(
+            _ => Err(crate::messages::internal_error(
                 span,
-                "Verus Internal Error: `mut_ref_tracked` should be `&mut Tracked<T>`",
+                "`mut_ref_tracked` should be `&mut Tracked<T>`",
             )),
         },
-        _ => {
-            Err(error(span, "Verus Internal Error: `mut_ref_tracked` should be `&mut Tracked<T>`"))
-        }
+        _ => Err(crate::messages::internal_error(
+            span,
+            "`mut_ref_tracked` should be `&mut Tracked<T>`",
+        )),
     }
 }
 

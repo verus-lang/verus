@@ -32,16 +32,7 @@ pub fn internal_err_span<A>(
     span: crate::messages::Span,
     msg: String,
 ) -> Result<A, crate::ast::VirErr> {
-    let mut e = err_span(span, format!("verus internal error: {}", msg));
-    if let Some(verus_github_bug_report_url) = get_verus_github_bug_report_url() {
-        e = e.map_err(|e| {
-            e.help(format!(
-                "this is a bug in the verifier; please report it at {}",
-                verus_github_bug_report_url
-            ))
-        });
-    }
-    e
+    Err(crate::messages::internal_error(&span, msg))
 }
 
 #[macro_export]

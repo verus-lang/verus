@@ -1088,9 +1088,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     ExprX::Apply(Arc::new(crate::def::BIT_NOT.to_string()), Arc::new(vec![expr]));
                 if let Some(width) = width_opt {
                     if !check_bitwidth_typ_matches(&e.typ, *width, false) {
-                        return Err(error(
+                        return Err(crate::messages::internal_error(
                             &e.span,
-                            format!("Verus Internal Error: BitNot: type doesn't match"),
+                            format!("BitNot: type doesn't match"),
                         ));
                     }
                     return clip_bitwise_result(bit_expr, e);
@@ -1208,9 +1208,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         ident_apply(&name, &exprs)
                     }
                     _ => {
-                        return Err(error(
+                        return Err(crate::messages::internal_error(
                             &exp.span,
-                            format!("Verus Internal Error: ArrayLength expected Array or Slice"),
+                            format!("ArrayLength expected Array or Slice"),
                         ));
                     }
                 }
@@ -1422,9 +1422,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                             // The clip (below) is based on the type so we need to make
                             // sure that the clip is what we expected based on Shl's arguments
                             if !check_bitwidth_typ_matches(&exp.typ, *width, *signed) {
-                                return Err(error(
+                                return Err(crate::messages::internal_error(
                                     &exp.span,
-                                    format!("Verus Internal Error: BitShl: type doesn't match"),
+                                    format!("BitShl: type doesn't match"),
                                 ));
                             }
                             crate::def::BIT_SHL
@@ -2238,9 +2238,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                                 (crate::def::fn_array_update(), typ_args)
                             }
                             _ => {
-                                return Err(error(
+                                return Err(crate::messages::internal_error(
                                     &stm.span,
-                                    format!("Verus Internal Error: Assign expected Array or Slice"),
+                                    format!("Assign expected Array or Slice"),
                                 ));
                             }
                         };

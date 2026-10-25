@@ -439,29 +439,27 @@ pub(crate) fn extract_desugared_async_body<'tcx>(
                     match expr.kind {
                         rustc_hir::ExprKind::DropTemps(expr) => expr,
                         _ => {
-                            return err_span(
+                            return crate::util::internal_err_span(
                                 body.value.span,
                                 format!(
-                                    "internal error: async function desugared closure expression is not `DropTemps`"
+                                    "async function desugared closure expression is not `DropTemps`"
                                 ),
                             );
                         }
                     }
                 }
                 _ => {
-                    return err_span(
+                    return crate::util::internal_err_span(
                         body.value.span,
-                        format!(
-                            "internal error: async function desugared closure doesn't have a block"
-                        ),
+                        format!("async function desugared closure doesn't have a block"),
                     );
                 }
             }
         }
         _ => {
-            return err_span(
+            return crate::util::internal_err_span(
                 body.value.span,
-                format!("internal error: async function desugared body is not a closure"),
+                format!("async function desugared body is not a closure"),
             );
         }
     };
@@ -2725,17 +2723,17 @@ fn param_names_for_async_func<'tcx>(
             match closure_body.value.kind {
                 rustc_hir::ExprKind::Block(block, ..) => block.stmts,
                 _ => {
-                    return err_span(
+                    return crate::util::internal_err_span(
                         body_hir.value.span,
-                        format!("internal error: async function doesn't have a function block"),
+                        format!("async function doesn't have a function block"),
                     );
                 }
             }
         }
         _ => {
-            return err_span(
+            return crate::util::internal_err_span(
                 body_hir.value.span,
-                format!("internal error: async function doesn't have a function block"),
+                format!("async function doesn't have a function block"),
             );
         }
     };

@@ -296,9 +296,9 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         };
 
         if matches!(general_item, GeneralItem::ImplItem(_)) && self.in_impl.is_none() {
-            self.errors.push(crate::util::err_span_bare(
-                span,
-                "Verus internal error: expected ImplItem to be child of Impl",
+            self.errors.push(vir::messages::internal_error(
+                &crate::spans::err_air_span(span),
+                "expected ImplItem to be child of Impl",
             ));
             return;
         }

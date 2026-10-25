@@ -105,12 +105,9 @@ fn exp_for_decrease(_ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
     match &*undecorate_typ(&exp.typ) {
         TypX::Int(_) => Ok(exp.clone()),
         TypX::Datatype(..) => Ok(exp.clone()),
-        _ => Err(error(
+        _ => Err(crate::messages::internal_error(
             &exp.span,
-            format!(
-                "internal error: unsupported type for decreases {}",
-                typ_to_diagnostic_str(&exp.typ)
-            ),
+            format!("unsupported type for decreases {}", typ_to_diagnostic_str(&exp.typ)),
         )),
     }
 }

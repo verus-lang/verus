@@ -200,9 +200,9 @@ pub fn axioms_for_default_spec_fns(
     };
 
     if cur_function.x.decrease.len() > 0 {
-        return Err(error(
+        return Err(crate::messages::internal_error(
             &cur_function.span,
-            "Internal Verus Error (check-api-safety): `decreases` clause in trait function",
+            "(check-api-safety) `decreases` clause in trait function",
         ));
     }
 

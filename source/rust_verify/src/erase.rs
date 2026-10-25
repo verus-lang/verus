@@ -279,9 +279,9 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         if !local_id_to_hir.contains_key(&span.id) {
             dbg!(span);
             dbg!(mode);
-            return Err(vir::messages::error(
+            return Err(vir::messages::internal_error(
                 span,
-                "Verus Internal Error: `setup_verus_ctxt_for_thir_erasure` failed, var lookup failed",
+                "`setup_verus_ctxt_for_thir_erasure` failed, var lookup failed",
             ));
         }
         for hir_id in &local_id_to_hir[&span.id] {
@@ -300,9 +300,9 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         if !binder_id_to_hir.contains_key(&span.id) {
             dbg!(span);
             dbg!(mode);
-            return Err(vir::messages::error(
+            return Err(vir::messages::internal_error(
                 span,
-                "Verus Internal Error: `setup_verus_ctxt_for_thir_erasure` failed, binder lookup failed",
+                "`setup_verus_ctxt_for_thir_erasure` failed, binder lookup failed",
             ));
         }
         for hir_id in &binder_id_to_hir[&span.id] {
@@ -336,10 +336,10 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         if let Some((span, name, binder_hir_id)) = get_binder_hir_id(tcx, *hir_id) {
             if let Some(binder_mode) = binders.get(&binder_hir_id) {
                 if matches!(binder_mode, VarErasure::Erase) && !matches!(mode, VarErasure::Erase) {
-                    return crate::util::err_span(
+                    return crate::util::internal_err_span(
                         span,
                         format!(
-                            "Verus Internal Error: inconsistent erasure modes: var `{:}` is {mode:?} but the binder is Erase",
+                            "inconsistent erasure modes: var `{:}` is {mode:?} but the binder is Erase",
                             name.as_str()
                         ),
                     );
@@ -356,9 +356,9 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         if !ctor_id_to_hir.contains_key(&span.id) {
             dbg!(span);
             dbg!(mode);
-            return Err(vir::messages::error(
+            return Err(vir::messages::internal_error(
                 span,
-                "Verus Internal Error: `setup_verus_ctxt_for_thir_erasure` failed, ctor lookup failed",
+                "`setup_verus_ctxt_for_thir_erasure` failed, ctor lookup failed",
             ));
         }
         for hir_id in &ctor_id_to_hir[&span.id] {

@@ -1812,7 +1812,7 @@ fn compute_dyn_compatibility(
         } else {
             if f.x.params.len() == 0 {
                 // Rust should already check that there is a self parameter
-                let reason = format!("internal Verus error: {f_name} has no self parameter");
+                let reason = format!("Verus internal error: {f_name} has no self parameter");
                 return Arc::new(DynCompatible::Reject { reason });
             }
             let self_param = &f.x.params[0];
