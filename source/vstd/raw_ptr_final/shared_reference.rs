@@ -88,51 +88,52 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
     ;
 }
 
-// impl<'a, T> SharedReference<'a, [T]> {
-//     #[verifier::external_body]
-//     pub const fn as_slice_ptr(self) -> (ptr: *const [T])
-//         ensures
-//             ptr == self.ptr(),
-//     {
-//         self.0 as *const [T]
-//     }
+impl<'a, T> SharedReference<'a, [T]> {
+    #[verifier::external_body]
+    pub const fn as_slice_ptr(self) -> (ptr: *const [T])
+        ensures
+            ptr == self.ptr(),
+    {
+        self.0 as *const [T]
+    }
 
-//     // commonly used operation: this function's signature corresponds to Rust's `slice::as_ptr`
-//     pub const fn as_ptr(self) -> (ptr: *const T)
-//         ensures
-//             ptr == self.ptr() as *const T,
-//     {
-//         self.as_slice_ptr() as *const T
-//     }
+    // commonly used operation: this function's signature corresponds to Rust's `slice::as_ptr`
+    pub const fn as_ptr(self) -> (ptr: *const T)
+        ensures
+            ptr == self.ptr() as *const T,
+    {
+        self.as_slice_ptr() as *const T
+    }
 
-//     pub const fn len(self) -> (output: usize)
-//         ensures
-//             output == self.value()@.len(),
-//     {
-//         broadcast use super::super::slice::group_slice_axioms;
+    pub const fn len(self) -> (output: usize)
+        ensures
+            output == self.value()@.len(),
+    {
+        broadcast use super::super::slice::group_slice_axioms;
 
-//         self.as_ref().len()
-//     }
+        self.as_ref().len()
+    }
 
-//     pub const fn index(self, idx: usize) -> (out: &'a T)
-//         requires
-//             0 <= idx < self.value()@.len(),
-//         ensures
-//             *out == self.value()@.index(idx as int),
-//     {
-//         broadcast use group_vstd_default;
+    pub const fn index(self, idx: usize) -> (out: &'a T)
+        requires
+            0 <= idx < self.value()@.len(),
+        ensures
+            *out == self.value()@.index(idx as int),
+    {
+        broadcast use group_vstd_default;
 
-//         &(self.as_ref())[idx]
-//     }
+        &(self.as_ref())[idx]
+    }
 
-//     /// A shared slice reference gives a shared, valid slice permission.
-//     pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<[T]>)
-//         ensures
-//             pt.ptr() == self.ptr(),
-//             pt.is_valid(),
-//             pt.value() == self.value()@,
-//     ;
-// }
+    /// A shared slice reference gives a shared, valid slice permission.
+    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<[T]>)
+        ensures
+            pt.ptr() == self.ptr(),
+            pt.is_valid(),
+            pt.typed_value().value_ref()@ == self.value()@,
+            pt.wf(),
+    ;
+}
 
 // impl<'a> SharedReference<'a, str> {
 //     #[verifier::external_body]
@@ -222,19 +223,18 @@ pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) ->
 //         v.ptr() == ptr,
 // ;
 
-// /// The ghost version of `ptr_ref2` for slices.
-// /// Because this doesn't constitute a retag,
-// /// the returned value's pointer has the same provenance as the original pointer.
-// pub axiom fn ptr_ref2_slice_ghost<'a, T>(
-//     ptr: *const [T],
-//     tracked perm: &PointsTo<[T]>,
-// ) -> (tracked v: SharedReference<'a, [T]>)
-//     requires
-//         perm.ptr() == ptr,
-//         perm.is_valid(),
-//     ensures
-//         v.value()@ == perm.value(),
-//         v.ptr() == ptr,
-// ;
+/// The ghost version of `ptr_ref2` for slices.
+/// Because this doesn't constitute a retag,
+/// the returned value's pointer has the same provenance as the original pointer.
+pub axiom fn ptr_ref2_slice_ghost<'a, T>(ptr: *const [T], tracked perm: &PointsTo<[T]>)
+    -> (tracked v: SharedReference<'a, [T]>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_valid(),
+        perm.wf(),
+    ensures
+        v.value()@ == perm.typed_value().value_ref()@,
+        v.ptr() == ptr,
+;
 
 }
