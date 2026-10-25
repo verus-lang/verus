@@ -408,6 +408,16 @@ extracted with `t_witness`. Readonly transitions and properties take a borrowed
 token and ensure facts about every completion. Storage guards return a shared
 reference into the guarded storage value.
 
+The generated operations' own parameters, binders and return values (`owned`, `h`
+or `shared`, `deposit`, `new`, the completion `z`, the result `out`, ...) are
+hygienic: a transition parameter or a `let` or pattern of a transition may have any
+of these names: any name the trusted macro accepts (every state machine reserves
+`pre`, `post`, `instance` and a few generated names and prefixes, such as
+`param_token_*`). Their names are as shown here unless a parameter
+of the transition has the same name; then the generated one has a `_` appended
+(`owned_`, `out_`), as parameters of one function need distinct names. Clients pass
+the arguments positionally, so this changes no call.
+
 ### Local readiness
 
 The raw interface adds, for every transition, readonly transition and property

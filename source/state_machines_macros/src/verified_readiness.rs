@@ -87,27 +87,6 @@ pub fn construct(mut parsed: ParseResult) -> Result<TokenStream, Error> {
     parsed.attrs = remaining;
     let mut bundle = parse_result_to_smir(parsed, true)?;
     crate::lemmas::check_lemmas(&bundle)?;
-    // Parameter and binder names of the generated raw operations, which transition
-    // parameters must not shadow or duplicate.
-    for tr in &bundle.sm.transitions {
-        for param in &tr.params {
-            let name = param.name.to_string();
-            // Only the names that fail to compile in every position (`z`: in every
-            // non-init transition); `new`, `shared`, `outputs` and `result` are accepted, as
-            // they compile where no generated binder takes them (e.g. `init!`, guard-only
-            // properties, generic `result`), and fail with the compiler's error elsewhere.
-            let reserved = ["owned", "h", "out"].contains(&name.as_str())
-                || (name == "z" && tr.kind != TransitionKind::Init);
-            if reserved {
-                return Err(Error::new(
-                    param.name.span(),
-                    format!(
-                        "`{name}` cannot name a transition parameter of the checked macro: the generated raw operations use it"
-                    ),
-                ));
-            }
-        }
-    }
     if !raw {
         // The generic interface has no local-ready API: every generic operation
         // already has a token-level precondition, and its generated readiness
