@@ -314,7 +314,7 @@ impl IteratorSpecImpl for IterCtr {
     open spec fn decrease(&self) -> Option<nat> { None }
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
-        Some(((index + self.count) % (u64::MAX as int + 1)) as u64)
+        Some((index % (u64::MAX as int + 1)) as u64)
     }
 }
 // ANCHOR_END: ctr_iter_spec
