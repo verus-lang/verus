@@ -217,7 +217,6 @@ impl PointsToRaw {
             let tracked mut byte = bytes.tracked_remove(a);
             byte.is_disjoint_byte(other.bytes.tracked_borrow(a));
         }
-        assert(self.dom().intersect(other.dom()) =~= Set::<int>::empty());
     }
 
     /// Builds a map from `perms`, keyed by address, given that they're consecutive from `start`.
@@ -243,7 +242,6 @@ impl PointsToRaw {
 
         if perms.len() == 0 {
             let tracked m = Map::tracked_empty();
-            assert(m.dom() =~= set_int_range(start, start));
             m
         } else {
             let tracked mut rest = perms;
@@ -299,7 +297,6 @@ impl PointsToRaw {
         let tracked bytes = Self::map_from_seq(perms, start, provenance);
         crate::vstd::set_lib::lemma_int_range(start, start + old_untyped.len());
         let tracked out = PointsToRaw { bytes, provenance: Ghost(provenance) };
-        assert(out.bytes_range(start, old_untyped.len()) =~= old_untyped.bytes());
         out
     }
 
@@ -339,7 +336,6 @@ impl PointsToRaw {
             assert(bytes.dom().contains(start + i));
         }
         let tracked out = PointsToUntyped::from_seq(perms, ptr);
-        assert(out.bytes() =~= old_self.bytes_range(start as int, len));
         out
     }
 }
@@ -465,7 +461,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             new.wf(),
     {
-        Self::stays_wf_basic(old, new);
         assert forall|i| 0 <= i < new.len() implies #[trigger] new[i].wf() by {
             PointsTo::<T>::stays_wf(old[i], new[i]);
         }
@@ -501,7 +496,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             self.ptr()@.addr as nat % align_of::<T>() == 0,
     {
-        assert(spec_align_of_val::<T>(arbitrary()) == align_of::<T>());
     }
 
     /// Proof of equivalence for two different ways to get the `TypedValue<T>` at a given index `i`.
@@ -580,7 +574,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 perms.subrange(0, split),
             ) + Self::bytes_inner(perms.subrange(split, perms.len() - 1)));
 
-            assert(perms.drop_last() == perms.subrange(0, perms.len() - 1));
             assert(perms.subrange(split, perms.len() as int).drop_last() == perms.subrange(
                 split,
                 perms.len() - 1,
@@ -675,7 +668,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         if len > 0 {
             self.bytes_decode_helper(len - 1);
             assert(self.seq_pt()[len - 1].wf());
-            self.typed_value_equiv(len - 1);
         }
     }
 
@@ -749,9 +741,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     requires
                         size_of::<T>() == 0,
                 ;
-                if i < old_self.len() {
-                    assert(perms[i] == old_self[i]);
-                }
             }
             let tracked seq = Self::from_seq(perms, ptr);
             seq.zero_sized_helper((remaining - 1) as nat, total)
@@ -1303,7 +1292,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         } else {
             let old_perms = *perms;
             let perms_ref = perms;
-            assert(old_perms[0].wf() && old_perms[0].is_valid());
+            assert(old_perms[0].wf());
+            assert(old_perms[0].is_valid());
             let tracked (first, rest) = perms.tracked_split_borrow_mut(1);
             assert(first[0] == old_perms[0]);
             let tracked elt = first.tracked_borrow_mut(0);
@@ -1350,9 +1340,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         let tracked seq_pt = self.tracked_seq_pt_mut();
         let tracked sub = seq_pt.tracked_borrow_subrange_mut(start, end);
         let sub_ref = sub;
-        assert forall|i: int| 0 <= i < sub.len() implies #[trigger] sub[i].wf()
-            && sub[i].is_valid() by {
-        }
         let tracked ret = Self::borrow_mut_values(sub);
 
         let new_self = *final(self_ref);
@@ -1363,10 +1350,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             &&& start <= i < end ==> new_self[i] == final(sub_ref)[i - start]
             &&& !(start <= i < end) ==> new_self[i] == old_self[i]
         } by {
-            if start <= i < end {
-                assert(sub_ref[i - start] == old_self[i]);
-            }
-            new_self[i].lemma_wf_basic();
         }
         ret
     }
@@ -1415,16 +1398,10 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     },
                 ),
             );
-            assert(pt_untyped.bytes() =~= self.bytes());
             (pt_untyped, Seq::tracked_empty())
         } else {
             let tracked mut seq_pt = self.into_seq();
             let tracked last = seq_pt.tracked_pop();
-            assert forall|i: int| 0 <= i < seq_pt.len() implies {
-                &&& #[trigger] seq_pt[i].ptr()@.addr == old_self.ptr()@.addr + i * size_of::<T>()
-                &&& seq_pt[i].ptr()@.provenance == old_self.ptr()@.provenance
-            } by {
-            }
             let tracked head = Self::from_seq(seq_pt, old_self.thin_ptr());
             let ghost old_head = head;
             let ghost old_last = last;
@@ -1438,11 +1415,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             assert(head_typed_value =~= old_self.seq_typed_value()) by {
                 assert forall|i: int| 0 <= i < old_self.len() implies head_typed_value[i]
                     == #[trigger] old_self.seq_typed_value()[i] by {
-                    if i < old_self.len() - 1 {
-                        assert(old_head[i] == old_self[i]);
-                    } else {
-                        assert(old_last == old_self[i]);
-                    }
                 }
             }
             (pt_untyped, head_typed_value)
@@ -1497,7 +1469,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     capacity == 0,
             ;
             let tracked out = Self::empty(pt_untyped.ptr() as *mut T);
-            assert(out.bytes() =~= pt_untyped.bytes());
             out
         } else {
             if size_of::<T>() != 0 {
@@ -1546,7 +1517,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             tail_seq.tracked_push(tail_pt);
             assert forall|i: int| 0 <= i < tail_seq.len() implies #[trigger] tail_seq[i].ptr()@.addr
                 == tail_ptr@.addr + i * size_of::<T>() by {
-                assert(i == 0);
                 assert(0 * size_of::<T>() == 0) by (nonlinear_arith);
             }
             let tracked tail_typed = Self::from_seq(tail_seq, tail_ptr);
@@ -1582,10 +1552,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 reveal_with_fuel(Seq::fold_left, 2);
             }
             let tracked out = head_typed.join(tail_typed);
-            assert(old_untyped.bytes().take(
-                ((capacity - 1) as nat * size_of::<T>()) as int,
-            ) + old_untyped.bytes().skip(((capacity - 1) as nat * size_of::<T>()) as int)
-                =~= old_untyped.bytes());
             out
         }
     }
@@ -1777,7 +1743,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 &&& init[k].ptr()@.addr == base@.addr + k * size_of::<T>()
                 &&& init[k].ptr()@.provenance == base@.provenance
             } by {
-                assert(init[k] == old_perms[k]);
             }
 
             // The prefix, joined
@@ -1829,21 +1794,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             }),
     {
         let base = self.thin_ptr();
-        let old_self = *self;
-        let self_ref = self;
         let tracked perms = self.tracked_seq_pt_mut();
         let tracked pt_untyped = Self::untyped_mut_join(perms, base);
-        let pt_untyped_ref = pt_untyped;
-
-        // Final values
-        if PointsToUntyped::ptrs_len_same(*pt_untyped_ref, *final(pt_untyped_ref)) {
-            let new_self = *final(self_ref);
-            assert forall|i: int| 0 <= i < new_self.len() implies PointsTo::<
-                T,
-            >::ptrs_len_same(old_self[i], #[trigger] new_self[i]) by {
-                PointsTo::<T>::lemma_ptrs_len_same_valid_value(old_self[i], new_self[i]);
-            }
-        }
         pt_untyped
     }
 
@@ -1892,22 +1844,17 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         let tracked elems = self.borrow_typed_values(0, n);
         let tracked typed_value = TypedValue::<[T]>::from_elems_ref(elems);
         self.bytes_len();
-        assert(spec_align_of_val::<[T]>(arbitrary()) == align_of::<T>());
-        assert(spec_align_of_val::<T>(arbitrary()) == align_of::<T>());
         match typed_value {
             TypedValue::Valid(b) => {
                 let tracked value: &[T] = b;
                 assert forall|i: int| 0 <= i < n implies #[trigger] self[i].is_valid() by {
                     assert(elems[i].is_valid());
-                    self.typed_value_equiv(i);
                 }
-                assert(value@ =~= self.seq_value());
                 self.bytes_decode();
                 assert forall|i: int| 0 <= i < value@.len() implies abs_decode::<T>(
                     pt_untyped.bytes().subrange(i * s, (i + 1) * s),
                     &#[trigger] value@[i],
                 ) by {
-                    assert(elems[i].is_valid());
                 }
                 PointsTo::<[T]>::from_untyped_with_value_ref(pt_untyped, value)
             },
@@ -1990,7 +1937,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 &&& init[i].ptr()@.addr == base@.addr + i * s
                 &&& init[i].ptr()@.provenance == base@.provenance
             } by {
-                assert(init[i] == old_perms[i]);
             }
 
             // The prefix
@@ -1999,7 +1945,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 
             // The last element
             let tracked elt = last.tracked_borrow_mut(0);
-            let elt_ref = elt;
             let tracked unaligned = elt.as_unaligned_mut();
             let tracked (b, typed_value) = unaligned.as_raw_parts_mut();
             assert(k * s + s == old_perms.len() * s) by (nonlinear_arith)
@@ -2026,7 +1971,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             }) by {
                 if PointsToUntyped::ptrs_len_same(*joined_ref, *final(joined_ref)) {
                     assert((*final(perms_ref)).drop_last() =~= *final(init_ref));
-                    assert(final(a_ref).bytes().len() == k * s);
                     assert forall|i: int| 0 <= i < final(perms_ref).len() implies {
                         &&& #[trigger] final(perms_ref)[i].ptr() == old_perms[i].ptr()
                         &&& final(perms_ref)[i].bytes() == final(joined_ref).bytes().subrange(
@@ -2036,17 +1980,12 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                         &&& final(perms_ref)[i].valid_value() ==> final(perms_ref)[i].wf()
                     } by {
                         if i < k {
-                            assert(final(perms_ref)[i] == final(init_ref)[i]);
                             assert(0 <= i * s <= (i + 1) * s <= k * s) by (nonlinear_arith)
                                 requires
                                     0 <= i,
                                     i + 1 <= k,
                                     s >= 0,
                             ;
-                            assert(final(joined_ref).bytes().subrange(i * s, (i + 1) * s)
-                                =~= final(a_ref).bytes().subrange(i * s, (i + 1) * s));
-                        } else {
-                            assert(final(perms_ref)[i] == *final(elt_ref));
                         }
                     }
                 }
@@ -2096,13 +2035,10 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         let s = size_of::<T>() as int;
         self.bytes_len();
         self.bytes_decode();
-        assert(spec_align_of_val::<[T]>(arbitrary()) == align_of::<T>());
-        assert(spec_align_of_val::<T>(arbitrary()) == align_of::<T>());
         let base = self.thin_ptr();
         let tracked perms = self.tracked_seq_pt_mut();
         let perms_ref = perms;
         let tracked (pt_untyped, typed_values) = Self::raw_parts_mut(perms, base);
-        let pt_untyped_ref = pt_untyped;
         let elems = typed_values;
         let tracked typed_value = TypedValue::<[T]>::from_elems_mut(typed_values);
         let tracked unaligned = PointsToUnaligned::<[T]>::from_raw_parts_mut(
@@ -2129,7 +2065,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             assert forall|i: int| 0 <= i < n implies #[trigger] old_self[i].is_valid() by {
                 assert(elems[i].is_valid());
             }
-            assert(value@ =~= old_self.seq_value());
         }
         let tracked out = unaligned.as_aligned_mut();
         let out_ref = out;
@@ -2146,7 +2081,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         if <PointsTo<[T]> as PTTypedValue>::ptrs_len_same_valid_value(*out_ref, *final(out_ref)) {
             let final_unaligned = final(out_ref).pt_unaligned();
             final_unaligned.bytes_decode();
-            assert(PointsToUntyped::ptrs_len_same(*pt_untyped_ref, *final(pt_untyped_ref)));
             assert forall|i: int| #![trigger new_self[i]] 0 <= i < n implies new_self[i].wf()
                 && new_self[i].wf_basic() by {
                 assert(new_self[i] == final(perms_ref)[i]);
@@ -2156,7 +2090,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                         &final_unaligned.typed_value().value_ref()@[i],
                     ));
                 }
-                new_self[i].lemma_wf_basic();
             }
         }
         out

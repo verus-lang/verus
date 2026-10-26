@@ -413,11 +413,7 @@ impl PointsToUntyped {
             first.wf(),
             second.wf(),
     {
-        let old_self = self;
-        let tracked (first, second) = self.split_basic(mid);
-        assert(first.bytes() =~= old_self.bytes().take(mid as int));
-        assert(second.bytes() =~= old_self.bytes().skip(mid as int));
-        (first, second)
+        self.split_basic(mid)
     }
 
     /// Splits a shared borrow of a `PointsToUntyped`
@@ -449,11 +445,7 @@ impl PointsToUntyped {
             first.wf(),
             second.wf(),
     {
-        let tracked first = self.subrange_basic(0, mid);
-        let tracked second = self.subrange_basic(mid, self.len());
-        assert(first.bytes() =~= self.bytes().take(mid as int));
-        assert(second.bytes() =~= self.bytes().skip(mid as int));
-        (first, second)
+        (self.subrange_basic(0, mid), self.subrange_basic(mid, self.len()))
     }
 
     /// Splits a mutable borrow of a `PointsToUntyped`
@@ -501,7 +493,6 @@ impl PointsToUntyped {
                 ==> final(self).wf(),
     {
         let old_self = *self;
-        let self_ref = self;
         if old_self.len() != 0 {
             self.provenance_not_none();
             self.ptr_bounds();
@@ -523,34 +514,6 @@ impl PointsToUntyped {
         let tracked (s1, s2) = self.seq_pt.tracked_split_borrow_mut(mid as int);
         let tracked first = Self::from_seq_mut(s1, p1);
         let tracked second = Self::from_seq_mut(s2, p2);
-        let first_ref = first;
-        let second_ref = second;
-
-        // The halves are well-formed
-        assert forall|i: int| 0 <= i < second_ref.len() implies {
-            &&& #[trigger] second_ref[i].ptr()@.provenance == second_ref.ptr()@.provenance
-            &&& second_ref[i].ptr()@.addr == second_ref.ptr()@.addr + i * PointsToByte::size(())
-        } by {
-        }
-        assert(first_ref.bytes() =~= old_self.bytes().take(mid as int));
-        assert(second_ref.bytes() =~= old_self.bytes().skip(mid as int));
-
-        // Final values
-        let new_self = *final(self_ref);
-        assert(new_self.bytes() =~= final(first_ref).bytes() + final(second_ref).bytes());
-        if Self::ptrs_len_same(*first_ref, *final(first_ref)) && Self::ptrs_len_same(
-            *second_ref,
-            *final(second_ref),
-        ) {
-            assert forall|i: int| 0 <= i < new_self.len() implies {
-                &&& #[trigger] new_self[i].ptr()@.provenance == new_self.ptr()@.provenance
-                &&& new_self[i].ptr()@.addr == new_self.ptr()@.addr + i * PointsToByte::size(())
-            } by {
-                if i >= mid {
-                    assert(new_self[i] == final(second_ref)[i - mid]);
-                }
-            }
-        }
         (first, second)
     }
 
@@ -575,11 +538,7 @@ impl PointsToUntyped {
             ),
             joined.wf(),
     {
-        let old_self = self;
-        let old_other = other;
-        let tracked joined = self.join_basic(other);
-        assert(joined.bytes() =~= old_self.bytes() + old_other.bytes());
-        joined
+        self.join_basic(other)
     }
 }
 
@@ -709,7 +668,6 @@ impl<T> PTValueOps for PointsToUnaligned<[T]> {
 
     /// Splits into well-formed `pt_untyped` and `val` fields.
     proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<[T]>)) {
-        self.lemma_wf_basic();
         (self.pt_untyped, self.val)
     }
 
@@ -868,7 +826,6 @@ impl<T> PointsTo<T> {
         ensures
             self.ptr()@.addr as nat % align_of::<T>() == 0,
     {
-        assert(spec_align_of_val::<T>(arbitrary()) == align_of::<T>());
     }
 
     /// Specializes `is_disjoint` to the case when the other permission is a `PointsTo<S>`.
@@ -1105,7 +1062,6 @@ impl<T> PointsTo<[T]> {
     {
         let tracked elem = self.pt_unaligned.borrow_index(i);
         let addr = self.ptr()@.addr;
-        assert(spec_align_of_val::<[T]>(arbitrary()) == align_of::<T>());
         // The element's address doesn't overflow:
         // if it's not zero-sized, its first byte is in `self`'s bytes.
         let s = size_of::<T>() as int;
@@ -1113,7 +1069,6 @@ impl<T> PointsTo<[T]> {
             if s > 0 {
                 let u = self.pt_unaligned();
                 let bytes = u.pt_untyped();
-                u.lemma_wf_basic();
                 crate::vstd::arithmetic::mul::lemma_mul_strict_inequality(i, self.len() as int, s);
                 assert(bytes[i * s].ptr()@.addr == addr + i * s);
             } else {
