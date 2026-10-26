@@ -421,6 +421,27 @@ pub open spec fn cloned<T: Clone>(a: T, b: T) -> bool {
     strictly_cloned(a, b) || a == b
 }
 
+/// Relates `source`, `previous`, and `result` using `clone_from`'s postcondition.
+/// Overrides may depend on the previous destination value.
+///
+/// Use [`cloned_from`] when Rust may clone or copy the source instead.
+#[verifier::prophetic]
+pub open spec fn strictly_cloned_from<T: Clone>(source: T, previous: T, result: T) -> bool {
+    exists|dest: &mut T|
+        {
+            &&& *dest == previous
+            &&& *final(dest) == result
+            &&& #[trigger] call_ensures(<T as Clone>::clone_from, (dest, &source), ())
+        }
+}
+
+/// Allows either [`strictly_cloned_from`] or a clone or copy of the source ([`cloned`]).
+/// Rust's `TrivialClone` specialization can copy elements instead of updating them.
+#[verifier::prophetic]
+pub open spec fn cloned_from<T: Clone>(source: T, previous: T, result: T) -> bool {
+    strictly_cloned_from(source, previous, result) || cloned(source, result)
+}
+
 } // verus!
 verus! {
 

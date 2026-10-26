@@ -45,6 +45,12 @@ test_verify_one_file! {
             let b = m.contains_key(&3);
             assert(!b);
         }
+
+        fn clone_from_map(dest: &mut BTreeMap<u64, u64>, source: &BTreeMap<u64, u64>)
+            ensures final(dest)@ == source@,
+        {
+            dest.clone_from(source);
+        }
     } => Ok(())
 }
 
@@ -417,6 +423,11 @@ test_verify_one_file! {
         extern crate alloc;
         use alloc::collections::BTreeSet;
         use vstd::prelude::*;
+
+        fn clone_from_set_is_callable(dest: &mut BTreeSet<u64>, source: &BTreeSet<u64>) {
+            dest.clone_from(source);
+        }
+
         fn test()
         {
             let mut m = BTreeSet::<u32>::new();

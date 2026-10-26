@@ -17,6 +17,18 @@ test_verify_one_file! {
             let err_result = Result::<Vec<u8>, Vec<bool>>::Err(error);
             assert(err_result.deep_view() == Result::<Seq<u8>, Seq<bool>>::Err(error.deep_view()));
         }
+
+        fn clone_from_transitions() {
+            let mut dest: Result<u64, u8> = Ok(1);
+            dest.clone_from(&Ok(7));
+            assert(dest == Ok::<u64, u8>(7));
+            dest.clone_from(&Err(3));
+            assert(dest == Err::<u64, u8>(3));
+            dest.clone_from(&Err(4));
+            assert(dest == Err::<u64, u8>(4));
+            dest.clone_from(&Ok(9));
+            assert(dest == Ok::<u64, u8>(9));
+        }
     } => Ok(())
 }
 

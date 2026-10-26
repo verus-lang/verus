@@ -1953,6 +1953,9 @@ pub struct TraitImplX {
     pub owning_module: Option<Path>,
     // Not declared directly to Verus, but imported based on related traits and types:
     pub auto_imported: bool,
+    /// VIR function identifiers for trait defaults rustc confirms this impl uses.
+    /// Overrides and methods that specialization could replace are excluded.
+    pub inherited_default_methods: Arc<Vec<Fun>>,
     // Is a blanket implementation declared by external_trait_extension:
     pub external_trait_blanket: bool,
 }

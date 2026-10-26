@@ -292,6 +292,22 @@ fn check_path_and_get_datatype<'a>(
     }
 }
 
+fn default_method_specification_error(span: &Span, method: &str) -> VirErr {
+    error(
+        span,
+        format!(
+            "cannot use the default implementation of trait method `{method}` \
+            here: Verus has no specification connecting this call to the \
+            trait's default method body \
+            (note: either declare `{method}` in the trait's \
+            `external_trait_specification`, with `default_ensures` if the \
+            default body's contract should be usable, or implement the trait \
+            inside the verus! macro / register the implementation with \
+            `assume_specification`)"
+        ),
+    )
+}
+
 // Returns:
 // - Ok(Ok(f)) on success
 // - Ok(Err(())) to indicate that an error was reported via "emit",
@@ -336,6 +352,13 @@ fn check_path_and_get_function<'a>(
                     Some(_) => true,
                     _ => false,
                 };
+                if let Some(method) = crate::def::trait_inherit_default_method_name(x) {
+                    emit.emit_boundary_err(
+                        x.path.clone(),
+                        default_method_specification_error(span, &method),
+                    );
+                    return Ok(Err(()));
+                }
                 let path_string = path_as_friendly_rust_name(&x.path);
                 let err_str = if locally_defined {
                     format!(
@@ -2330,5 +2353,29 @@ pub fn check_crate_final(
 
 /// Check the post-merge krate.
 pub fn check_crate_merged(merged_krate: &Krate) -> Result<(), VirErr> {
+    // Inherited method records are created after per-function checking.
+    // Check their availability here for calls.
+    let functions: HashSet<Fun> = merged_krate.functions.iter().map(|f| f.x.name.clone()).collect();
+    let check_default = |fun: &Fun, span: &Span| -> Result<(), VirErr> {
+        if !functions.contains(fun)
+            && let Some(method) = crate::def::trait_inherit_default_method_name(fun)
+        {
+            return Err(default_method_specification_error(span, &method));
+        }
+        Ok(())
+    };
+    for function in &merged_krate.functions {
+        crate::ast_visitor::function_visitor_check(function, &mut |expr| -> Result<(), VirErr> {
+            if let ExprX::Call { target: CallTarget::Fun(kind, fun, _, _, attrs), .. } = &expr.x
+                && !(attrs.assume_external_allowed && !functions.contains(fun))
+            {
+                check_default(fun, &expr.span)?;
+                if let CallTargetKind::DynamicResolved { resolved, .. } = kind {
+                    check_default(resolved, &expr.span)?;
+                }
+            }
+            Ok(())
+        })?;
+    }
     crate::recursive_types::check_recursive_types(merged_krate)
 }

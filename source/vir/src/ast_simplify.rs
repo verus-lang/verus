@@ -1136,6 +1136,7 @@ fn add_fndef_axioms_to_function(
                 trait_typ_arg_impls: Spanned::new(function.span.clone(), Arc::new(vec![])),
                 owning_module: None,
                 auto_imported: true,
+                inherited_default_methods: Arc::new(vec![]),
                 external_trait_blanket: false,
             };
             trait_impls_out.push(Spanned::new(function.span.clone(), trait_implx));
@@ -1445,6 +1446,7 @@ fn add_tuple_auto_impl(
         trait_typ_arg_impls: Spanned::new(ctx.no_span.clone(), Arc::new(vec![])),
         owning_module: None,
         auto_imported: true,
+        inherited_default_methods: Arc::new(vec![]),
         external_trait_blanket: false,
     };
     trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));
@@ -1644,6 +1646,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             trait_typ_arg_impls: Spanned::new(ctx.no_span.clone(), Arc::new(vec![])),
             owning_module: None,
             auto_imported: true,
+            inherited_default_methods: Arc::new(vec![]),
             external_trait_blanket: false,
         };
         trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));

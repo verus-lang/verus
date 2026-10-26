@@ -910,7 +910,6 @@ pub(crate) enum RustItem {
     ArcNew,
     RcNew,
     CloneClone,
-    CloneFrom,
     IntIntrinsic(RustIntIntrinsicItem),
     TryTraitBranch,
     ResidualTraitFromResidual,
@@ -1051,9 +1050,6 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     }
     if rust_path == Some("core::clone::Clone::clone") {
         return Some(RustItem::CloneClone);
-    }
-    if rust_path == Some("core::clone::Clone::clone_from") {
-        return Some(RustItem::CloneFrom);
     }
 
     if rust_path == Some("core::slice::index::private_slice_index::Sealed") {

@@ -108,9 +108,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 return Ok(arg);
             }
         }
-        Some(RustItem::CloneFrom) => {
-            return err_span(expr.span, "Verus does not currently support `clone_from`");
-        }
         _ => {}
     }
 
@@ -277,8 +274,12 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                 // dyn T dispatch
                 vir::ast::CallTargetKind::Dynamic
             }
-            ResolutionResult::Builtin(b) => {
-                unsupported_err!(expr.span, format!("this built-in instance: {:?}", b));
+            ResolutionResult::Builtin(_) => {
+                // Builtin impls, such as tuple Clone, need separate trait-call support.
+                let trait_def_id = tcx.trait_of_assoc(f).expect("trait method");
+                let msg =
+                    format!("compiler-generated `{}` implementations", tcx.item_name(trait_def_id));
+                unsupported_err!(expr.span, msg);
             }
             ResolutionResult::Unresolved => {
                 // Method is generic

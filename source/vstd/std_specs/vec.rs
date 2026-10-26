@@ -308,6 +308,23 @@ pub assume_specification<T: Clone, A: Allocator + Clone>[ <Vec<T, A> as Clone>::
         vec@ =~= res@ ==> vec@ == res@,
 ;
 
+pub assume_specification<T: Clone, A: Allocator + Clone>[ <Vec<T, A> as Clone>::clone_from ](
+    vec: &mut Vec<T, A>,
+    source: &Vec<T, A>,
+)
+    ensures
+        final(vec)@.len() == source@.len(),
+        forall|i: int| #![all_triggers] 0 <= i < source@.len() ==>
+            if i < old(vec)@.len() {
+                // Reused elements are updated with T::clone_from, or copied when T: TrivialClone.
+                cloned_from(source@[i], old(vec)@[i], final(vec)@[i])
+            } else {
+                cloned::<T>(source@[i], final(vec)@[i])
+            },
+        vec_clone_trigger(*source, *final(vec)),
+        source@ =~= final(vec)@ ==> source@ == final(vec)@,
+;
+
 pub broadcast proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(
     v1: Vec<T, A>,
     v2: Vec<T, A>,

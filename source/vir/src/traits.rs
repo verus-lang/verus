@@ -2,9 +2,8 @@ use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
     GenericBoundX, GenericBounds, Ident, Idents, ImplPath, ImplPaths, Krate, Mode, Path, Place,
     Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr,
-    Visibility,
 };
-use crate::ast_util::path_as_friendly_rust_name;
+use crate::ast_util::{path_as_friendly_rust_name, typ_to_diagnostic_str};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -604,13 +603,24 @@ pub fn inherit_default_bodies(
             // skip external traits and marker traits
             continue;
         }
-        if trait_impl.x.auto_imported {
-            // skip external impls
-            continue;
-        }
         for default_function in &default_methods[&trait_impl.x.trait_path] {
             let impl_path = &trait_impl.x.impl_path;
             let method = &default_function.x.name;
+            // A missing VIR method does not prove inheritance: external overrides
+            // may have no specification. Require rustc's confirmation.
+            if !trait_impl.x.inherited_default_methods.contains(method) {
+                continue;
+            }
+
+            // When we verified this default's body, we assumed the impl's other
+            // methods meet their specs. We never checked that for auto-imported
+            // impls, so they can't inherit a verified default. They can inherit a
+            // default from an external_trait_specification: that one has no body
+            // to verify, just a default_ensures we trust about the library's code.
+            let trusted_bodyless_contract = default_function.x.proxy.is_some();
+            if !trusted_bodyless_contract && trait_impl.x.auto_imported {
+                continue;
+            }
             if !method_impls.contains(&(impl_path, method)) {
                 // Create a shell Function for trait_impl, with these purposes:
                 // - used as a recursion::Node::Fun in the call graph
@@ -670,14 +680,6 @@ pub fn inherit_default_bodies(
                 .unwrap();
                 let name =
                     crate::def::trait_inherit_default_name(&default_function.x.name, &impl_path);
-                let visibility = Visibility {
-                    restricted_to: default_function
-                        .x
-                        .visibility
-                        .restricted_to
-                        .clone()
-                        .and(trait_impl.x.owning_module.clone()),
-                };
                 let f_typ_params = f_typ_params.iter().map(rename_f_typ_param);
                 let typ_params: Vec<Ident> =
                     trait_impl.x.typ_params.iter().cloned().chain(f_typ_params).collect();
@@ -696,8 +698,9 @@ pub fn inherit_default_bodies(
                     name,
                     proxy: None,
                     kind: inherit_kind,
-                    // TODO: we could try to use the impl visibility and owning module for better pruning:
-                    visibility,
+                    // Inheriting a method does not change where the trait method
+                    // or its body is visible.
+                    visibility: default_function.x.visibility.clone(),
                     body_visibility: default_function.x.body_visibility.clone(),
                     opaqueness: default_function.x.opaqueness.clone(),
                     owning_module: trait_impl.x.owning_module.clone(),
@@ -786,7 +789,21 @@ pub(crate) fn redirect_calls_in_default_methods(
                         default_name
                     } else {
                         // turn T::f into impl::f
-                        trait_impl_map[&(callee, caller_impl.clone())].clone()
+                        trait_impl_map
+                            .get(&(callee.clone(), caller_impl.clone()))
+                            .cloned()
+                            .ok_or_else(|| {
+                                error(
+                                    span,
+                                    format!(
+                                        "cannot analyze inherited default method `{}`: the implementation of `{}` for `{}` has no specification",
+                                        path_as_friendly_rust_name(&f_trait.x.name.path),
+                                        path_as_friendly_rust_name(&callee.path),
+                                        typ_to_diagnostic_str(&caller_trait_typ_args[0]),
+                                    ),
+                                )
+                                .help("add an `assume_specification` for this method implementation")
+                            })?
                     };
 
                     // If we can directly resolve a call from f1 inside impl to f2 inside
