@@ -24,12 +24,14 @@ test_verify_one_file! {
             m.insert(6, -8);
             assert(m@[3] == 4);
 
+            assert(m@.contains_key(3));
             let b = m.contains_key(&3);
             assert(b);
 
             let n = m.len();
             assert(n == 2);
 
+            assert(m@.contains_key(6));
             let v = m.get(&6);
             match v {
                 Some(v) => assert(*v == -8),
@@ -59,6 +61,7 @@ test_verify_one_file! {
             m.insert(1, 10);
             m.insert(2, 20);
 
+            assert(m@.contains_key(1));
             match m.get_mut(&1) {
                 Some(value) => {
                     assert(*value == 10);
@@ -435,12 +438,14 @@ test_verify_one_file! {
             let res = m.insert(3);
             assert(!res);
 
+            assert(m@.contains(3));
             let b = m.contains(&3);
             assert(b);
 
             let n = m.len();
             assert(n == 2);
 
+            assert(m@.contains(6));
             let v = m.get(&6);
             match v {
                 Some(v) => assert(*v == 6),
@@ -543,6 +548,7 @@ test_verify_one_file! {
             let s3 = MyStruct { i: 9, j: 9 };
 
             m.insert(MyStruct { i: 9, j: 9 });
+            assert(m@.contains(s3));
             let res = m.remove(&s3);
             assert(res);
             let res = m.remove(&s3);

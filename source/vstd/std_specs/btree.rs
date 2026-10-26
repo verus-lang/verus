@@ -10,11 +10,9 @@
 //! `vstd::std_specs::btree::group_btree_axioms`.
 use super::super::laws_cmp::obeys_cmp;
 use super::super::prelude::*;
+use super::borrow::BorrowSpec;
 use super::cmp::OrdSpec;
 use super::iter::IteratorSpec;
-
-#[cfg(verus_keep_ghost)]
-use super::super::map::assert_maps_equal;
 
 use alloc::alloc::Allocator;
 use alloc::boxed::Box;
@@ -257,43 +255,41 @@ impl<'a, Key, Value, A> CursorMutSpecFns<Key, Value> for CursorMut<'a, Key, Valu
 ///
 /// This is the semantic requirement imposed on `Key: Borrow<Q>` by the standard library's
 /// borrowed-key `BTreeMap` operations.
-pub uninterp spec fn borrowed_key_ordering_matches<Key: Borrow<Q> + Ord, Q: Ord + ?Sized>() -> bool;
-
-/// A key type has the same ordering as itself.
-pub broadcast axiom fn axiom_deref_key_ordering_matches<Key: Ord>()
-    ensures
-        #[trigger] borrowed_key_ordering_matches::<Key, Key>(),
-;
-
-/// The ordering of a stored key relative to a borrowed lookup key.
-pub uninterp spec fn borrowed_key_cmp<Key, Q: ?Sized>(stored_key: Key, key: &Q) -> Ordering;
-
-/// Comparing a stored key against a borrowed key of the same type agrees with [`OrdSpec`].
-pub broadcast axiom fn axiom_deref_key_cmp<Key: Ord>(stored_key: Key, key: &Key)
-    ensures
-        #[trigger] borrowed_key_cmp::<Key, Key>(stored_key, key) == stored_key.cmp_spec(key),
-;
+pub open spec fn borrowed_key_ordering_matches<Key: Borrow<Q> + Ord, Q: Ord + ?Sized>() -> bool {
+    forall|k1: Key, k2: Key|
+        #[trigger] k1.cmp_spec(&k2) == <Key as BorrowSpec<Q>>::spec_borrow(&k1).cmp_spec(
+            <Key as BorrowSpec<Q>>::spec_borrow(&k2),
+        )
+}
 
 /// Whether a key occurs before the gap returned by [`BTreeMap::lower_bound_mut`].
-pub open spec fn before_lower_bound<Key, Q: ?Sized>(key: Key, bound: Bound<&Q>) -> bool {
+pub open spec fn before_lower_bound<Key: Borrow<Q>, Q: Ord + ?Sized>(
+    key: Key,
+    bound: Bound<&Q>,
+) -> bool {
+    let borrowed_key = <Key as BorrowSpec<Q>>::spec_borrow(&key);
     match bound {
-        Bound::Included(bound_key) => borrowed_key_cmp(key, bound_key) is Less,
-        Bound::Excluded(bound_key) => !(borrowed_key_cmp(key, bound_key) is Greater),
+        Bound::Included(bound_key) => borrowed_key.cmp_spec(bound_key) is Less,
+        Bound::Excluded(bound_key) => !(borrowed_key.cmp_spec(bound_key) is Greater),
         Bound::Unbounded => false,
     }
 }
 
 /// Whether a key occurs before the gap returned by [`BTreeMap::upper_bound_mut`].
-pub open spec fn before_upper_bound<Key, Q: ?Sized>(key: Key, bound: Bound<&Q>) -> bool {
+pub open spec fn before_upper_bound<Key: Borrow<Q>, Q: Ord + ?Sized>(
+    key: Key,
+    bound: Bound<&Q>,
+) -> bool {
+    let borrowed_key = <Key as BorrowSpec<Q>>::spec_borrow(&key);
     match bound {
-        Bound::Included(bound_key) => !(borrowed_key_cmp(key, bound_key) is Greater),
-        Bound::Excluded(bound_key) => borrowed_key_cmp(key, bound_key) is Less,
+        Bound::Included(bound_key) => !(borrowed_key.cmp_spec(bound_key) is Greater),
+        Bound::Excluded(bound_key) => borrowed_key.cmp_spec(bound_key) is Less,
         Bound::Unbounded => true,
     }
 }
 
 /// Whether a cursor is at the gap selected by [`BTreeMap::lower_bound_mut`].
-pub open spec fn positioned_at_lower_bound<Key, Value, Q: ?Sized>(
+pub open spec fn positioned_at_lower_bound<Key: Borrow<Q>, Value, Q: Ord + ?Sized>(
     model: CursorMutModel<Key, Value>,
     bound: Bound<&Q>,
 ) -> bool {
@@ -306,7 +302,7 @@ pub open spec fn positioned_at_lower_bound<Key, Value, Q: ?Sized>(
 }
 
 /// Whether a cursor is at the gap selected by [`BTreeMap::upper_bound_mut`].
-pub open spec fn positioned_at_upper_bound<Key, Value, Q: ?Sized>(
+pub open spec fn positioned_at_upper_bound<Key: Borrow<Q>, Value, Q: Ord + ?Sized>(
     model: CursorMutModel<Key, Value>,
     bound: Bound<&Q>,
 ) -> bool {
@@ -451,20 +447,6 @@ pub broadcast proof fn lemma_btree_map_deepview_values<K: DeepView, V: DeepView>
     }
 }
 
-/// Borrowing a key works the same way on deep_view as on view,
-/// if deep_view is injective; see `axiom_contains_deref_key`.
-pub broadcast axiom fn axiom_btree_map_deepview_borrow<
-    K: DeepView + Borrow<Q>,
-    V: DeepView,
-    Q: View<V = <K as DeepView>::V> + Eq + ?Sized,
->(m: BTreeMap<K, V>, k: &Q)
-    requires
-        key_obeys_cmp_spec::<K>(),
-        crate::relations::injective(|k: K| k.deep_view()),
-    ensures
-        #[trigger] contains_borrowed_key(m@, k) <==> m.deep_view().contains_key(k@),
-;
-
 pub uninterp spec fn spec_btree_map_len<Key, Value, A: Allocator + Clone>(
     m: &BTreeMap<Key, Value, A>,
 ) -> usize;
@@ -526,37 +508,6 @@ pub assume_specification<Key: Ord, Value, A: Allocator + Clone>[ BTreeMap::<
         },
 ;
 
-// The specification for `contains_key` has a parameter `key: &Q`
-// where you'd expect to find `key: &Key`. This allows for the case
-// that `Key` can be borrowed as something other than `&Key`. For
-// instance, `Box<u32>` can be borrowed as `&u32` and `String` can be
-// borrowed as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively.
-// To deal with this, we have a specification function that opaquely
-// specifies what it means for a map to contain a borrowed key of type
-// `&Q`. And the postcondition of `contains_key` just says that its
-// result matches the output of that specification function. But this
-// isn't very helpful by itself, since there's no body to that
-// specification function. So we have special-case axioms that say
-// what this means in two important circumstances: (1) `Key = Q` and
-// (2) `Key = Box<Q>`.
-pub uninterp spec fn contains_borrowed_key<Key, Value, Q: ?Sized>(
-    m: Map<Key, Value>,
-    k: &Q,
-) -> bool;
-
-pub broadcast axiom fn axiom_contains_deref_key<Q, Value>(m: Map<Q, Value>, k: &Q)
-    ensures
-        #[trigger] contains_borrowed_key::<Q, Value, Q>(m, k) <==> m.contains_key(*k),
-;
-
-pub broadcast axiom fn axiom_contains_box<Q, Value>(m: Map<Box<Q>, Value>, k: &Q)
-    ensures
-        #[trigger] contains_borrowed_key::<Box<Q>, Value, Q>(m, k) <==> m.contains_key(
-            Box::new(*k),
-        ),
-;
-
 pub assume_specification<
     Key: Borrow<Q> + Ord,
     Value,
@@ -564,45 +515,14 @@ pub assume_specification<
     Q: Ord + ?Sized,
 >[ BTreeMap::<Key, Value, A>::contains_key::<Q> ](m: &BTreeMap<Key, Value, A>, k: &Q) -> (result:
     bool)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> result == contains_borrowed_key(m@, k),
-;
-
-// The specification for `get` has a parameter `key: &Q` where you'd
-// expect to find `key: &Key`. This allows for the case that `Key` can
-// be borrowed as something other than `&Key`. For instance,
-// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
-// as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively.
-// To deal with this, we have a specification function that opaquely
-// specifies what it means for a map to map a borrowed key of type
-// `&Q` to a certain value. And the postcondition of `get` says that
-// its result matches the output of that specification function. (It
-// also says that its result corresponds to the output of
-// `contains_borrowed_key`, discussed above.) But this isn't very
-// helpful by itself, since there's no body to that specification
-// function. So we have special-case axioms that say what this means
-// in two important circumstances: (1) `Key = Q` and (2) `Key =
-// Box<Q>`.
-pub uninterp spec fn maps_borrowed_key_to_value<Key, Value, Q: ?Sized>(
-    m: Map<Key, Value>,
-    k: &Q,
-    v: Value,
-) -> bool;
-
-pub broadcast axiom fn axiom_maps_deref_key_to_value<Q, Value>(m: Map<Q, Value>, k: &Q, v: Value)
-    ensures
-        #[trigger] maps_borrowed_key_to_value::<Q, Value, Q>(m, k, v) <==> m.contains_key(*k)
-            && m[*k] == v,
-;
-
-pub broadcast axiom fn axiom_maps_box_key_to_value<Q, Value>(m: Map<Box<Q>, Value>, q: &Q, v: Value)
-    ensures
-        #[trigger] maps_borrowed_key_to_value::<Box<Q>, Value, Q>(m, q, v) <==> {
-            let k = Box::new(*q);
-            &&& m.contains_key(k)
-            &&& m[k] == v
-        },
+        ({
+            &&& obeys_cmp::<Key>()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> result == exists|key: Key|
+            #[trigger] m@.contains_key(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k,
 ;
 
 pub assume_specification<
@@ -617,52 +537,13 @@ pub assume_specification<
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> match result {
-            Some(v) => maps_borrowed_key_to_value(m@, k, *v),
-            None => !contains_borrowed_key(m@, k),
+        obeys_cmp::<Key>() && <Key as BorrowSpec<Q>>::obeys_borrow_spec() ==> match result {
+            Some(v) => exists|key: Key|
+                #[trigger] m@.contains_key(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k
+                    && m@[key] == *v,
+            None => forall|key: Key|
+                #[trigger] m@.contains_key(key) ==> <Key as BorrowSpec<Q>>::spec_borrow(&key) != k,
         },
-;
-
-// The specification for `remove` has a parameter `key: &Q` where
-// you'd expect to find `key: &Key`. This allows for the case that
-// `Key` can be borrowed as something other than `&Key`. For instance,
-// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
-// as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively. To deal with this, we have a specification function
-// that opaquely specifies what it means for two maps to be related by
-// a remove of a certain `&Q`. And the postcondition of `remove` says
-// that `old(self)@` and `self@` satisfy that relationship. (It also
-// says that its result corresponds to the output of
-// `contains_borrowed_key` and `maps_borrowed_key_to_value`, discussed
-// above.) But this isn't very helpful by itself, since there's no
-// body to that specification function. So we have special-case axioms
-// that say what this means in two important circumstances: (1) `Key =
-// Q` and (2) `Key = Box<Q>`.
-pub uninterp spec fn borrowed_key_removed<Key, Value, Q: ?Sized>(
-    old_m: Map<Key, Value>,
-    new_m: Map<Key, Value>,
-    k: &Q,
-) -> bool;
-
-pub broadcast axiom fn axiom_deref_key_removed<Q, Value>(
-    old_m: Map<Q, Value>,
-    new_m: Map<Q, Value>,
-    k: &Q,
-)
-    ensures
-        #[trigger] borrowed_key_removed::<Q, Value, Q>(old_m, new_m, k) <==> new_m == old_m.remove(
-            *k,
-        ),
-;
-
-pub broadcast axiom fn axiom_box_key_removed<Q, Value>(
-    old_m: Map<Box<Q>, Value>,
-    new_m: Map<Box<Q>, Value>,
-    q: &Q,
-)
-    ensures
-        #[trigger] borrowed_key_removed::<Box<Q>, Value, Q>(old_m, new_m, q) <==> new_m
-            == old_m.remove(Box::new(*q)),
 ;
 
 pub assume_specification<
@@ -672,76 +553,23 @@ pub assume_specification<
     Q: Ord + ?Sized,
 >[ BTreeMap::<Key, Value, A>::remove::<Q> ](m: &mut BTreeMap<Key, Value, A>, k: &Q) -> (result:
     Option<Value>)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> {
-            &&& borrowed_key_removed(old(m)@, final(m)@, k)
-            &&& match result {
-                Some(v) => maps_borrowed_key_to_value(old(m)@, k, v),
-                None => !contains_borrowed_key(old(m)@, k),
-            }
+        ({
+            &&& obeys_cmp::<Key>()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> match result {
+            Some(v) => exists|key: Key|
+                #[trigger] old(m)@.contains_key(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k
+                    && old(m)@[key] == v && final(m)@ == old(m)@.remove(key),
+            None => {
+                &&& forall|key: Key|
+                    #[trigger] old(m)@.contains_key(key) ==> <Key as BorrowSpec<Q>>::spec_borrow(&key) != k
+                &&& final(m)@ == old(m)@
+            },
         },
 ;
-
-/// Relates a map before and after mutating the value selected by a borrowed key.
-pub open spec fn borrowed_key_mutated<Key, Value, Q: ?Sized>(
-    old_map: Map<Key, Value>,
-    new_map: Map<Key, Value>,
-    key: &Q,
-    old_value: Value,
-    new_value: Value,
-) -> bool {
-    &&& maps_borrowed_key_to_value(old_map, key, old_value)
-    &&& maps_borrowed_key_to_value(new_map, key, new_value)
-    &&& exists|remainder: Map<Key, Value>|
-        {
-            &&& borrowed_key_removed(old_map, remainder, key)
-            &&& borrowed_key_removed(new_map, remainder, key)
-        }
-}
-
-/// Simplifies [`borrowed_key_mutated`] when the borrowed key has the map's key type.
-pub broadcast proof fn lemma_borrowed_key_mutated_deref<Key, Value>(
-    old_map: Map<Key, Value>,
-    new_map: Map<Key, Value>,
-    key: &Key,
-    old_value: Value,
-    new_value: Value,
-)
-    ensures
-        #[trigger] borrowed_key_mutated(old_map, new_map, key, old_value, new_value) <==> {
-            &&& old_map.contains_key(*key)
-            &&& old_map[*key] == old_value
-            &&& new_map == old_map.insert(*key, new_value)
-        },
-{
-    broadcast use {
-        axiom_deref_key_removed,
-        axiom_maps_deref_key_to_value,
-        super::super::map::group_map_lemmas,
-        super::super::set::group_set_lemmas,
-    };
-
-    if borrowed_key_mutated(old_map, new_map, key, old_value, new_value) {
-        let remainder = choose|remainder: Map<Key, Value>|
-            {
-                &&& borrowed_key_removed(old_map, remainder, key)
-                &&& borrowed_key_removed(new_map, remainder, key)
-            };
-        assert(remainder == new_map.remove(*key));
-        assert_maps_equal!(new_map, old_map.insert(*key, new_value), candidate => {
-            if candidate != *key {
-                assert(old_map.remove(*key)[candidate] == old_map[candidate]);
-            }
-        });
-    } else if old_map.contains_key(*key) && old_map[*key] == old_value && new_map == old_map.insert(
-        *key,
-        new_value,
-    ) {
-        let remainder = old_map.remove(*key);
-        assert_maps_equal!(new_map.remove(*key), remainder, candidate => {});
-        assert(borrowed_key_removed(new_map, remainder, key));
-    }
-}
 
 /// Specification for [`BTreeMap::get_mut`].
 pub assume_specification<
@@ -757,9 +585,20 @@ pub assume_specification<
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> match result {
-            Some(value) => borrowed_key_mutated(old(map)@, final(map)@, key, *value, *final(value)),
-            None => !contains_borrowed_key(old(map)@, key) && final(map)@ == old(map)@,
+        obeys_cmp::<Key>() && <Key as BorrowSpec<Q>>::obeys_borrow_spec() ==> match result {
+            Some(value) =>
+                exists|stored_key: Key| {
+                    &&& #[trigger] old(map)@.contains_key(stored_key)
+                    &&& <Key as BorrowSpec<Q>>::spec_borrow(&stored_key) == key
+                    &&& old(map)@[stored_key] == *value
+                    &&& final(map)@ == old(map)@.insert(stored_key, *final(value))
+                },
+            None => {
+                &&& forall|stored_key: Key|
+                    #[trigger] old(map)@.contains_key(stored_key)
+                        ==> <Key as BorrowSpec<Q>>::spec_borrow(&stored_key) != key
+                &&& final(map)@ == old(map)@
+            },
         },
 ;
 
@@ -1134,68 +973,18 @@ pub assume_specification<Key: Ord, A: Allocator + Clone>[ BTreeSet::<Key, A>::in
         },
 ;
 
-// The specification for `contains` has a parameter `key: &Q`
-// where you'd expect to find `key: &Key`. This allows for the case
-// that `Key` can be borrowed as something other than `&Key`. For
-// instance, `Box<u32>` can be borrowed as `&u32` and `String` can be
-// borrowed as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively.
-// To deal with this, we have a specification function that opaquely
-// specifies what it means for a set to contain a borrowed key of type
-// `&Q`. And the postcondition of `contains` just says that its
-// result matches the output of that specification function. But this
-// isn't very helpful by itself, since there's no body to that
-// specification function. So we have special-case axioms that say
-// what this means in two important circumstances: (1) `Key = Q` and
-// (2) `Key = Box<Q>`.
-pub uninterp spec fn set_contains_borrowed_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q) -> bool;
-
-pub broadcast axiom fn axiom_set_contains_deref_key<Q>(m: Set<Q>, k: &Q)
-    ensures
-        #[trigger] set_contains_borrowed_key::<Q, Q>(m, k) <==> m.contains(*k),
-;
-
-pub broadcast axiom fn axiom_set_contains_box<Q>(m: Set<Box<Q>>, k: &Q)
-    ensures
-        #[trigger] set_contains_borrowed_key::<Box<Q>, Q>(m, k) <==> m.contains(Box::new(*k)),
-;
-
 pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?Sized>[ BTreeSet::<
     Key,
     A,
 >::contains ](m: &BTreeSet<Key, A>, k: &Q) -> (result: bool)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> result == set_contains_borrowed_key(m@, k),
-;
-
-// The specification for `get` has a parameter `key: &Q` where you'd
-// expect to find `key: &Key`. This allows for the case that `Key` can
-// be borrowed as something other than `&Key`. For instance,
-// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
-// as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively.
-// To deal with this, we have a specification function that opaquely
-// specifies what it means for a returned reference to point to an
-// element of a BTreeSet. And the postcondition of `get` says that
-// its result matches the output of that specification function. (It
-// also says that its result corresponds to the output of
-// `contains_borrowed_key`, discussed above.) But this isn't very
-// helpful by itself, since there's no body to that specification
-// function. So we have special-case axioms that say what this means
-// in two important circumstances: (1) `Key = Q` and (2) `Key =
-// Box<Q>`.
-pub uninterp spec fn sets_borrowed_key_to_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q, v: &Key) -> bool;
-
-pub broadcast axiom fn axiom_set_deref_key_to_value<Q>(m: Set<Q>, k: &Q, v: &Q)
-    ensures
-        #[trigger] sets_borrowed_key_to_key::<Q, Q>(m, k, v) <==> m.contains(*k) && k == v,
-;
-
-pub broadcast axiom fn axiom_set_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &Box<Q>)
-    ensures
-        #[trigger] sets_borrowed_key_to_key::<Box<Q>, Q>(m, q, v) <==> (m.contains(*v) && Box::new(
-            *q,
-        ) == v),
+        ({
+            &&& obeys_cmp::<Key>()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> result == exists|key: Key|
+            #[trigger] m@.contains(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k,
 ;
 
 pub assume_specification<
@@ -1204,54 +993,39 @@ pub assume_specification<
     A: Allocator + Clone,
     Q: Ord + ?Sized,
 >[ BTreeSet::<Key, A>::get::<Q> ](m: &'a BTreeSet<Key, A>, k: &Q) -> (result: Option<&'a Key>)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> match result {
-            Some(v) => sets_borrowed_key_to_key(m@, k, v),
-            None => !set_contains_borrowed_key(m@, k),
+        ({
+            &&& obeys_cmp::<Key>()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> match result {
+            Some(key) => m@.contains(*key) && <Key as BorrowSpec<Q>>::spec_borrow(key) == k,
+            None => forall|key: Key|
+                #[trigger] m@.contains(key) ==> <Key as BorrowSpec<Q>>::spec_borrow(&key) != k,
         },
-;
-
-// The specification for `remove` has a parameter `key: &Q` where
-// you'd expect to find `key: &Key`. This allows for the case that
-// `Key` can be borrowed as something other than `&Key`. For instance,
-// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
-// as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively. To deal with this, we have a specification function
-// that opaquely specifies what it means for two sets to be related by
-// a remove of a certain `&Q`. And the postcondition of `remove` says
-// that `old(self)@` and `self@` satisfy that relationship. (It also
-// says that its result corresponds to the output of
-// `set_contains_borrowed_key`, discussed above.) But this isn't very
-// helpful by itself, since there's no body to that specification
-// function. So we have special-case axioms that say what this means
-// in two important circumstances: (1) `Key = Q` and (2) `Key = Box<Q>`.
-pub uninterp spec fn sets_differ_by_borrowed_key<Key, Q: ?Sized>(
-    old_m: Set<Key>,
-    new_m: Set<Key>,
-    k: &Q,
-) -> bool;
-
-pub broadcast axiom fn axiom_set_deref_key_removed<Q>(old_m: Set<Q>, new_m: Set<Q>, k: &Q)
-    ensures
-        #[trigger] sets_differ_by_borrowed_key::<Q, Q>(old_m, new_m, k) <==> new_m == old_m.remove(
-            *k,
-        ),
-;
-
-pub broadcast axiom fn axiom_set_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: Set<Box<Q>>, q: &Q)
-    ensures
-        #[trigger] sets_differ_by_borrowed_key::<Box<Q>, Q>(old_m, new_m, q) <==> new_m
-            == old_m.remove(Box::new(*q)),
 ;
 
 pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?Sized>[ BTreeSet::<
     Key,
     A,
 >::remove::<Q> ](m: &mut BTreeSet<Key, A>, k: &Q) -> (result: bool)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>()
     ensures
-        obeys_cmp::<Key>() ==> {
-            &&& sets_differ_by_borrowed_key(old(m)@, final(m)@, k)
-            &&& result == set_contains_borrowed_key(old(m)@, k)
+        ({
+            &&& obeys_cmp::<Key>()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> {
+            if result {
+                exists|key: Key|
+                    #[trigger] old(m)@.contains(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k
+                        && final(m)@ == old(m)@.remove(key)
+            } else {
+                &&& forall|key: Key|
+                    #[trigger] old(m)@.contains(key) ==> <Key as BorrowSpec<Q>>::spec_borrow(&key) != k
+                &&& final(m)@ == old(m)@
+            }
         },
 ;
 
@@ -1284,27 +1058,11 @@ pub broadcast axiom fn axiom_btree_set_decreases<Key, A: Allocator + Clone>(m: B
 pub broadcast group group_btree_axioms {
     axiom_key_obeys_cmp_spec_meaning,
     axiom_increasing_seq_meaning,
-    axiom_box_key_removed,
-    axiom_contains_deref_key,
-    axiom_contains_box,
-    axiom_deref_key_removed,
-    axiom_maps_deref_key_to_value,
-    axiom_maps_box_key_to_value,
-    axiom_btree_map_deepview_borrow,
     axiom_spec_btree_map_len,
-    axiom_set_box_key_removed,
-    axiom_set_contains_deref_key,
-    axiom_set_contains_box,
-    axiom_set_deref_key_removed,
-    axiom_set_deref_key_to_value,
-    axiom_set_box_key_to_value,
     axiom_spec_btree_set_len,
     axiom_btree_map_decreases,
     axiom_btree_set_decreases,
-    axiom_deref_key_ordering_matches,
-    axiom_deref_key_cmp,
     axiom_has_resolved_cursor,
-    lemma_borrowed_key_mutated_deref,
 }
 
 } // verus!
