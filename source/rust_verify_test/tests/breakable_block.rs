@@ -109,7 +109,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "break/continue is not allowed outside executable context")
+    } => Err(err) => assert_vir_error_msg(err, "`break`/`continue` is not allowed outside executable context")
 }
 
 test_verify_one_file! {
@@ -193,5 +193,5 @@ test_verify_one_file! {
             };
             assert(y == if cond { 20u32 } else { 30u32 });
         }
-    } => Err(err) => assert_vir_error_msg(err, "breakable block contains 'break' statement inside a nested loop with loop_isolation=true")
+    } => Err(err) => assert_vir_error_msg(err, "breakable block contains `break` statement inside a nested loop with `loop_isolation(true)`")
 }
