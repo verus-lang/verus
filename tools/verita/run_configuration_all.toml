@@ -71,22 +71,16 @@ Copy-Item -Path $libcRlib.FullName -Destination "build/liblibc.rlib"
 
 [[project]]
 name = "vest"
-#TODO: restore this when it is updated
-#git_url = "https://github.com/secure-foundations/vest.git"
-#refspec = "main"
-git_url = "https://github.com/Chris-Hawblitzel/vest.git"
-refspec = "origin/verita1"
+git_url = "https://github.com/secure-foundations/vest.git"
+refspec = "origin/main"
 cargo_verus = true
 crate_roots = ["vest_lib"]
 extra_verus_args = ["--rlimit", "100"]
 
 [[project]]
 name = "vest-generated"
-#TODO: restore this when it is updated
-#git_url = "https://github.com/secure-foundations/vest.git"
-#refspec = "main"
-git_url = "https://github.com/Chris-Hawblitzel/vest.git"
-refspec = "origin/verita1"
+git_url = "https://github.com/secure-foundations/vest.git"
+refspec = "origin/main"
 cargo_verus = true
 crate_roots = ["vest_tests"]
 extra_verus_args = ["--verify-module", "tls"]
