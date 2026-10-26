@@ -29,6 +29,177 @@ What remains to review is the trusted UTF-8 assumptions and the modified rustlib
 - `TypedValue::<[T]>::from_elems_ref` ([New axioms](#new-axioms)).
 - `PointsToUntyped::join_ref` / `join_mut` ([New axioms](#new-axioms)).
 
+The specs, written out in full
+(copies of the ones in TYPED_POINTS_TO_APPROVED.md, the code, and [Modified rustlib specs](#modified-rustlib-specs)).
+
+### UTF-8 assumptions
+
+A `str` permission's `wf` includes UTF-8 validity,
+through `PointsToUnaligned<str>`'s `additional_validity_constraints`
+([approved](TYPED_POINTS_TO_APPROVED.md#rustlib-str)):
+
+```rust
+    /// The value is valid UTF-8 (`str::inv`).
+    /// Its length already matches the metadata:
+    /// the `str`'s length is equal to the number of bytes by decoding (`EncodingStr`),
+    /// which is equal to the metadata by `wf_basic`.
+    open spec fn additional_validity_constraints(value: &str, metadata: usize) -> bool {
+        value.inv()
+    }
+```
+
+So each `wf()` in these ensures asserts that the `str` is valid UTF-8.
+All four are in rustlib.
+
+```rust
+impl<'a> SharedReference<'a, str> {
+    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<str>)
+        ensures
+            pt.ptr() == self.ptr(),
+            pt.is_valid(),
+            pt.typed_value().value_ref() == self.value(),
+            pt.wf(),
+    ;
+}
+
+/// Convert from a shared reference to a `&'a mut str` to a `&'a PointsTo<str>`.
+pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) -> (tracked pt: &'a PointsTo<str>)
+    ensures
+        pt.ptr() == mut_ref_ptr(*mut_ref),
+        pt.is_valid(),
+        pt.typed_value().value_ref() == &*old(*mut_ref),
+        pt.wf(),
+        &*final(*mut_ref) == &*old(*mut_ref),
+;
+
+/// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo<str>>) -> (v: &mut str)
+    requires
+        old(perm).ptr() == ptr,
+        old(perm).is_valid(),
+        old(perm).wf(),
+    ensures
+        final(perm).ptr() == ptr,
+        final(perm).is_valid(),
+        // The final bytes decode to the final value.
+        final(perm).wf(),
+        old(perm).typed_value().value_ref() == &*v,
+        final(perm).typed_value().value_ref() == &*final(v),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
+}
+
+// In `impl str` (`str/mod.rs`).
+#[verifier::shadow_data]
+#[verifier::external_body] // Ok - cast from `&self` to `*const str`
+// Axiomatizes cast from `&self` to `*const str`, since Verus doesn't support it.
+pub const fn as_str_ptr_verus(&self) -> ((ptr, perm): (*const str, Tracked<&PointsTo<str>>))
+    ensures
+        ptr == shared_ref_ptr(shadow_data(self)),
+        perm@.ptr() == shared_ref_ptr(shadow_data(self)),
+        perm@.is_valid(),
+        perm@.typed_value().value_ref() == self,
+        perm@.wf(),
+{
+    (self as *const str, Tracked::assume_new())
+}
+```
+
+### `TypedValue::<[T]>::from_elems_ref`
+
+`points_to_model.rs`; the shared counterpart of M1 (`from_elems_mut`, approved).
+It replaces the generic `tracked_slice_from_refs`,
+so it only covers `TypedValue`s, which have no physical memory.
+
+```rust
+impl<T> TypedValue<[T]> {
+    /// A sequence of borrows of typed values acts as one borrow of a slice typed value.
+    /// If any element is empty, the slice is empty.
+    pub axiom fn from_elems_ref<'a>(tracked elems: Seq<&'a TypedValue<T>>)
+        -> (tracked out: &'a TypedValue<[T]>)
+        ensures
+            // Valid with the elements' values if every element is valid
+            // (a zero-length Seq counts as valid); otherwise empty.
+            (forall|i: int| #![trigger elems[i]] 0 <= i < elems.len() ==> elems[i].is_valid()) ==> {
+                &&& out.is_valid()
+                &&& out.value_ref()@ == Seq::new(elems.len(), |i: int| elems[i].value())
+            },
+            !(forall|i: int| #![trigger elems[i]] 0 <= i < elems.len() ==> elems[i].is_valid()) ==> out.is_empty(),
+    ;
+}
+```
+
+### `PointsToUntyped::join_ref` / `join_mut`
+
+`points_to_model.rs`, in `impl PointsToUntyped`.
+
+```rust
+    /// Joins shared borrows of two `PointsToUntyped` permissions into a shared borrow of a
+    /// single `PointsToUntyped`, under the same conditions as `join`.
+    ///
+    /// This is the shared-borrow analogue of `join`. It's an axiom because the joined permission
+    /// isn't stored anywhere that could be borrowed.
+    pub axiom fn join_ref<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked joined: &'a Self)
+        requires
+            self.wf(),
+            other.wf(),
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len(),
+        ensures
+            joined.seq_pt() == self.seq_pt() + other.seq_pt(),
+            joined.bytes() == self.bytes() + other.bytes(),
+            joined.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (self.len() + other.len()) as usize,
+                },
+            ),
+            joined.wf(),
+    ;
+
+    /// Joins mutable borrows of two `PointsToUntyped` permissions into a mutable borrow of a
+    /// single `PointsToUntyped`, under the same conditions as `join`.
+    ///
+    /// If the joined permission keeps its pointers and length, then so do `self` and `other`, and
+    /// their final byte permissions concatenate to the joined permission's final ones.
+    ///
+    /// This is the mutable-borrow analogue of `join`. It's an axiom because the joined permission
+    /// isn't stored anywhere that could be borrowed.
+    pub axiom fn join_mut<'a>(tracked &'a mut self, tracked other: &'a mut Self) -> (tracked joined:
+        &'a mut Self)
+        requires
+            self.wf(),
+            other.wf(),
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len(),
+        ensures
+            joined.seq_pt() == old(self).seq_pt() + old(other).seq_pt(),
+            joined.bytes() == old(self).bytes() + old(other).bytes(),
+            joined.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: old(self).ptr()@.addr,
+                    provenance: old(self).ptr()@.provenance,
+                    metadata: (old(self).len() + old(other).len()) as usize,
+                },
+            ),
+            joined.wf(),
+            Self::ptrs_len_same(*joined, *final(joined)) ==> {
+                &&& final(self).ptr() == old(self).ptr()
+                &&& final(other).ptr() == old(other).ptr()
+                &&& final(self).wf()
+                &&& final(other).wf()
+                &&& final(joined).seq_pt() == final(self).seq_pt() + final(other).seq_pt()
+                &&& final(joined).bytes() == final(self).bytes() + final(other).bytes()
+            },
+    ;
+```
+
 ## Specifications
 
 Every module is written out item by item, with its documentation and contract.
