@@ -218,7 +218,7 @@ fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Pa
                 vir::def::RUST_DEF_FOREIGN_MOD.to_string() + &d.disambiguator.to_string()
             }
             DefPathData::OpaqueTy => {
-                vir::def::RUST_OPAQUE_TYPE.to_string() + &d.disambiguator.to_string()
+                vir::def::RUST_DEF_OPAQUE_TYPE.to_string() + &d.disambiguator.to_string()
             }
             DefPathData::Closure => {
                 vir::def::RUST_DEF_CLOSURE.to_string() + &d.disambiguator.to_string()

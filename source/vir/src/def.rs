@@ -296,8 +296,7 @@ pub const RUST_DEF_TYPE_NS_DISAMBIGUATED: &str = "tdis%";
 pub const RUST_DEF_VALUE_NS_DISAMBIGUATED: &str = "vdis%";
 pub const RUST_DEF_CLOSURE: &str = "closure%";
 pub const RUST_DEF_ANON_CONST: &str = "anon_const%";
-
-pub const RUST_OPAQUE_TYPE: &str = "opaque";
+pub const RUST_DEF_OPAQUE_TYPE: &str = "opaque%";
 
 // used by axiom-usage-info to identify axioms from the prelude
 pub const AXIOM_NAME_PRELUDE: &str = "prelude_axiom_";
