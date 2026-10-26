@@ -26,7 +26,7 @@ What is still under review is in [TYPED_POINTS_TO_PLAN.md](TYPED_POINTS_TO_PLAN.
 |---|---|---|---|---|---|
 | `PointsToUnaligned<T>` | `PTPhys`, `PTProperties`: per type (phase 2) | yes | yes | vstd | phase 2 |
 | `PointsToUnaligned<[T]>` | `PTPhys`: per type (done); `PTProperties`: per type (phase 2) | yes | no | vstd | phase 2b |
-| `PointsToUnaligned<str>` | `PTPhys`, `PTProperties`: per type | yes | no | rustlib | after phase 3b ([specs](TYPED_POINTS_TO_PLAN.md#str-rustlib)) |
+| `PointsToUnaligned<str>` | `PTPhys`, `PTProperties`: per type | yes | no | rustlib | after phase 3b ([specs](#rustlib-str)) |
 | `PointsTo<T>` | yes, generic | yes, generic | yes | vstd | phase 2 (generic from phase 2b) |
 | `PointsTo<[T]>` | yes, generic | yes, generic | no | vstd, nothing slice-specific | phase 2b |
 | `PointsTo<str>` | yes, generic | yes, generic | no | vstd, nothing `str`-specific | once rustlib adds `PointsToUnaligned<str>` |
@@ -76,7 +76,7 @@ Sequences:
 | `SeqPointsTo<T, PointsTo<T>>` → `PointsTo<[T]>` | no | yes | yes | vstd | phase 4 |
 | `PointsTo<[T]>` → `PointsTo<T>` at an index (`borrow_index`) | no | yes | no | vstd, composed from the unaligned version and the aligned/unaligned conversions | phase 4 |
 | `PointsToUnaligned<[T]>` → `PointsToUnaligned<T>` at an index (`borrow_index`) | no | yes | no | vstd | phase 4 |
-| `PointsToUnaligned<str>` ↔ `PointsToUnaligned<[u8]>` | no | yes | no | rustlib | after phase 3b ([specs](TYPED_POINTS_TO_PLAN.md#str-rustlib)) |
+| `PointsToUnaligned<str>` ↔ `PointsToUnaligned<[u8]>` | no | yes | no | rustlib | after phase 3b ([specs](#rustlib-str)) |
 | `PointsTo<str>` ↔ `PointsTo<[u8]>` | no | yes | no | rustlib, via the unaligned versions and the aligned/unaligned conversions | after phase 3b |
 | `PointsToRaw` ↔ `PointsToUntyped` (a contiguous range) | yes | no | no | vstd | phase 2c |
 
@@ -928,7 +928,8 @@ Axioms: `TypedValue::<[T]>::from_elems_mut` (M1), `from_elems_ref`
 ### `PointsToUnaligned`: specs (phases 2, 2b; `str` in rustlib)
 
 rustlib writes the `PTPhys`, `PTProperties` and `PTTypedValue` impls for `PointsToUnaligned<str>`
-in the same shape as the `[T]` ones (`size(len) = len`; `additional_validity_constraints` is UTF-8 validity, `str::inv`, since `str` decoding is `EncodingStr`'s, which doesn't include it).
+in the same shape as the `[T]` ones (`size(len) = len`; `additional_validity_constraints` is UTF-8 validity, `str::inv`, since `str` decoding is `EncodingStr`'s, which doesn't include it);
+see [rustlib: `str`](#rustlib-str).
 `PTPhys` is sealed by the crate-private `PTPhysSealed`,
 but vstd's `impl<T: ?Sized> PTPhysSealed for PointsToUnaligned<T>` already covers `str`,
 and vstd is a module of rustlib's `core`, so rustlib can write these impls.
@@ -1003,3 +1004,224 @@ There are no slice → sequence conversions
 and no borrowed constructors for sequences.
 
 Approved; the code is in `points_to_collections.rs`.
+
+### rustlib: `str`
+
+Signatures only; rustlib fixes the details.
+rustlib writes `PTPhys`, `PTTypedValue`, `PTProperties` and `PTValueOps` for `PointsToUnaligned<str>`;
+its `View` and everything for `PointsTo<str>` come from the generic impls (alignment 1, from `layout_of_str`).
+These impls are trusted code in rustlib.
+
+```rust
+impl PTPhys for PointsToUnaligned<str> {
+    type A = str;
+
+    /// Builds the `*mut str` from the underlying untyped pointer's address and provenance
+    /// and the stored metadata.
+    open spec fn ptr(self) -> *mut str {
+        ptr_mut_from_data::<str>(
+            PtrData {
+                addr: self.pt_untyped().ptr()@.addr,
+                provenance: self.pt_untyped().ptr()@.provenance,
+                metadata: self.metadata(),
+            },
+        )
+    }
+
+    /// The size of the pointed-to region is the length in bytes.
+    open spec fn size(metadata: usize) -> nat {
+        metadata as nat
+    }
+
+    /// A `PointsToUnaligned<str>` is well-formed at the pointer level
+    /// if its memory region is `Self::size(self.ptr()@.metadata)` bytes,
+    /// and the underlying `PointsToUntyped` is well-formed.
+    open spec fn wf_basic(self) -> bool {
+        &&& self.pt_untyped().wf()
+        &&& self.pt_untyped().len() == Self::size(self.ptr()@.metadata)
+    }
+
+    /// `new` has the same pointer
+    /// and the same underlying `PointsToUntyped` pointers and length as `old`.
+    open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
+    }
+
+    proof fn stays_wf_basic(old: Self, new: Self) {
+    }
+}
+
+impl PTTypedValue for PointsToUnaligned<str> {
+    /// The inherent `typed_value` accessor.
+    open spec fn typed_value(self) -> TypedValue<str> {
+        PointsToUnaligned::<str>::typed_value(self)
+    }
+
+    /// The underlying untyped permission's bytes.
+    open spec fn bytes(self) -> Seq<AbstractByte> {
+        self.pt_untyped().bytes()
+    }
+
+    /// The value is valid UTF-8 (`str::inv`).
+    /// Its length already matches the metadata:
+    /// the `str`'s length is equal to the number of bytes by decoding (`EncodingStr`),
+    /// which is equal to the metadata by `wf_basic`.
+    open spec fn additional_validity_constraints(value: &str, metadata: usize) -> bool {
+        value.inv()
+    }
+
+    /// Always `true`: a `PointsToUnaligned` has no alignment requirement.
+    open spec fn satisfies_alignment(addr: usize) -> bool {
+        true
+    }
+
+    proof fn bytes_decode(&self);
+
+    proof fn satisfies_alignment_of_wf(&self);
+
+    proof fn lemma_wf_basic(&self);
+
+    // ptrs_len_same_valid_value: the trait's default body.
+
+    /// From `PointsToUntyped::lemma_ptrs_len_same_untyped` on the underlying permissions.
+    proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self);
+
+    /// From `PointsToUntyped::stays_wf` on the underlying permissions.
+    proof fn stays_wf(old: Self, new: Self);
+}
+```
+
+`PTProperties` and `PTValueOps` are the same as for `T` and `[T]`,
+except that `PTValueOps` goes through the generic field helpers
+(`tracked_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_raw_parts_mut`, `tracked_pt_untyped`),
+since rustlib can't touch the fields.
+
+```rust
+impl PTProperties for PointsToUnaligned<str> {
+    /// Non-nullness follows from the underlying `PointsToUntyped`'s invariant,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
+    proof fn is_nonnull(tracked &self);
+
+    /// Delegates to the underlying `PointsToUntyped`'s `ptr_bounds`,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
+    proof fn ptr_bounds(tracked &self);
+
+    /// Delegates to the underlying `PointsToUntyped`'s `provenance_not_none`,
+    /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
+    proof fn provenance_not_none(tracked &self);
+
+    /// Delegates to the underlying `PointsToUntyped`'s `is_disjoint`,
+    /// since the two permissions track the same memory range.
+    proof fn is_disjoint<OtherPointsToPerm: PTPhys>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    );
+}
+
+impl PTValueOps for PointsToUnaligned<str> {
+    // zero_sized, borrow, into_untyped, from_untyped: the trait's default bodies.
+
+    /// Delegates to `tracked_typed_value`.
+    proof fn borrow_typed_value(tracked &self) -> tracked &TypedValue<str>;
+
+    /// Swaps `Empty` into the typed value,
+    /// through `as_raw_parts_mut`.
+    proof fn take_typed_value(tracked &mut self) -> (tracked v: TypedValue<str>);
+
+    /// Replaces the typed value,
+    /// through `as_raw_parts_mut`.
+    proof fn put_typed_value(tracked &mut self, tracked v: TypedValue<str>);
+
+    /// Delegates to `into_raw_parts`.
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<str>));
+
+    /// Delegates to `from_raw_parts`.
+    proof fn from_untyped_with_typed_value(
+        tracked pt_untyped: PointsToUntyped,
+        tracked typed_value: TypedValue<str>,
+        metadata: usize,
+    ) -> (tracked out: Self);
+
+    /// Delegates to `tracked_pt_untyped`.
+    proof fn as_untyped(tracked &self) -> (tracked pt_untyped: &PointsToUntyped);
+
+    /// Empties the typed value, then mutably borrows the untyped bytes,
+    /// through `as_raw_parts_mut`.
+    proof fn as_untyped_mut(tracked &mut self) -> (tracked pt_untyped: &mut PointsToUntyped);
+}
+```
+
+Only shared casts: there are no owned or `&mut` `str` ↔ `[u8]` permission casts.
+Both are proved, with no new axioms:
+the value from rustlib's existing `str::as_bytes_tracked` / `str::from_bytes_tracked` and `TypedValue::valid_ref`
+(an empty value from `&TypedValue::Empty`, a promoted constant),
+and the permission from `from_raw_parts_ref` with the same untyped bytes and metadata.
+
+```rust
+impl PointsToUnaligned<str> {
+    /// Borrows as a `PointsToUnaligned<[u8]>` to the same bytes, with the same metadata;
+    /// the value becomes the string's bytes.
+    pub proof fn as_bytes(tracked &self) -> (tracked out: &PointsToUnaligned<[u8]>)
+        requires
+            self.wf(),
+        ensures
+            out.ptr()@.addr == self.ptr()@.addr,
+            out.ptr()@.provenance == self.ptr()@.provenance,
+            out.ptr()@.metadata == self.ptr()@.metadata,
+            out.bytes() == self.bytes(),
+            out.typed_value().is_valid() == self.typed_value().is_valid(),
+            self.typed_value().is_valid() ==> out.typed_value().value_ref()@ == self.typed_value().value_ref()@,
+            out.wf(),
+    ;
+
+    /// Borrows a `&PointsToUnaligned<[u8]>` as a `str` permission to the same bytes,
+    /// with the same metadata, provided that the byte slice is valid UTF-8.
+    pub proof fn from_bytes_ref(tracked pt_slice: &PointsToUnaligned<[u8]>) -> (tracked out: &PointsToUnaligned<str>)
+        requires
+            pt_slice.wf(),
+            pt_slice.typed_value().is_valid() ==> valid_utf8(pt_slice.typed_value().value_ref()@),
+        ensures
+            out.ptr()@.addr == pt_slice.ptr()@.addr,
+            out.ptr()@.provenance == pt_slice.ptr()@.provenance,
+            out.ptr()@.metadata == pt_slice.ptr()@.metadata,
+            out.bytes() == pt_slice.bytes(),
+            out.typed_value().is_valid() == pt_slice.typed_value().is_valid(),
+            pt_slice.typed_value().is_valid() ==> out.typed_value().value_ref()@ == pt_slice.typed_value().value_ref()@,
+            out.wf(),
+    ;
+}
+
+impl PointsTo<str> {
+    /// Borrows as a `PointsTo<[u8]>` to the same bytes, with the same metadata;
+    /// the value becomes the string's bytes.
+    pub proof fn as_bytes(tracked &self) -> (tracked out: &PointsTo<[u8]>)
+        requires
+            self.wf(),
+        ensures
+            out.ptr()@.addr == self.ptr()@.addr,
+            out.ptr()@.provenance == self.ptr()@.provenance,
+            out.ptr()@.metadata == self.ptr()@.metadata,
+            out.bytes() == self.bytes(),
+            out.typed_value().is_valid() == self.typed_value().is_valid(),
+            self.typed_value().is_valid() ==> out.typed_value().value_ref()@ == self.typed_value().value_ref()@,
+            out.wf(),
+    ;
+
+    /// Borrows a `&PointsTo<[u8]>` as a `str` permission to the same bytes,
+    /// with the same metadata, provided that the byte slice is valid UTF-8.
+    pub proof fn from_bytes_ref(tracked pt_slice: &PointsTo<[u8]>) -> (tracked out: &PointsTo<str>)
+        requires
+            pt_slice.wf(),
+            pt_slice.typed_value().is_valid() ==> valid_utf8(pt_slice.typed_value().value_ref()@),
+        ensures
+            out.ptr()@.addr == pt_slice.ptr()@.addr,
+            out.ptr()@.provenance == pt_slice.ptr()@.provenance,
+            out.ptr()@.metadata == pt_slice.ptr()@.metadata,
+            out.bytes() == pt_slice.bytes(),
+            out.typed_value().is_valid() == pt_slice.typed_value().is_valid(),
+            pt_slice.typed_value().is_valid() ==> out.typed_value().value_ref()@ == pt_slice.typed_value().value_ref()@,
+            out.wf(),
+    ;
+}
+```
