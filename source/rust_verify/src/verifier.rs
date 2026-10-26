@@ -2085,9 +2085,9 @@ impl Verifier {
         let time_verify_sequential_start = Instant::now();
 
         let reporter = Reporter::new(spans, compiler);
-        if let Err(msg) = create_observer_from_args(&self.args.observers) {
-            return Err(VerifyErr::Vir(vir::messages::error_bare(msg)));
-        }
+        // Checked before verification starts; each bucket builds its own observer.
+        create_observer_from_args(&self.args.observers)
+            .map_err(|msg| VerifyErr::Vir(vir::messages::error_bare(msg)))?;
         if !self.args.observers.is_empty() {
             self.span_resolver =
                 Some(crate::spans::span_resolver(spans, compiler.sess.source_map()));
