@@ -55,7 +55,7 @@ Single-value permissions:
 | trait default bodies | once (in the traits) | `PTTypedValue::wf`, `valid_value`, `ptrs_len_same_valid_value`; `PTValueOps::borrow`, `into_untyped`, `from_untyped`, `zero_sized`; `PTSizedValue::take`, `put`, `copy`, `copy_typed_value`, `from_untyped_with_value` |
 | `impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | once (generic) | `into_aligned`, `as_aligned`, `as_aligned_mut` |
 | `impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | once (generic) | `into_unaligned`, `as_unaligned`, `as_unaligned_mut` |
-| `impl<T> PointsToUnaligned<[T]>` | once (slices) | `borrow_index` and the borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`): the primary implementations |
+| `impl<T> PointsToUnaligned<[T]>` | once (slices) | `borrow_index`, `subrange` and the borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`): the primary implementations |
 | `impl<T> PointsTo<[T]>` | once (slices) | the same functions, as compositions over the `PointsToUnaligned<[T]>` versions and the aligned/unaligned conversions |
 
 Sequences:
@@ -76,9 +76,41 @@ Sequences:
 | `SeqPointsTo<T, PointsTo<T>>` → `PointsTo<[T]>` | no | yes | yes | vstd | phase 4 |
 | `PointsTo<[T]>` → `PointsTo<T>` at an index (`borrow_index`) | no | yes | no | vstd, composed from the unaligned version and the aligned/unaligned conversions | phase 4 |
 | `PointsToUnaligned<[T]>` → `PointsToUnaligned<T>` at an index (`borrow_index`) | no | yes | no | vstd | phase 4 |
+| `PointsTo<[T]>` → `PointsTo<[T]>` for a subrange (`subrange`) | no | yes | no | vstd, composed from the unaligned version and the aligned/unaligned conversions | rustlib port |
+| `PointsToUnaligned<[T]>` → `PointsToUnaligned<[T]>` for a subrange (`subrange`) | no | yes | no | vstd ([spec](#slice-subrange)) | rustlib port |
 | `PointsToUnaligned<str>` ↔ `PointsToUnaligned<[u8]>` | no | yes | no | rustlib | after phase 3b ([specs](#rustlib-str)) |
 | `PointsTo<str>` ↔ `PointsTo<[u8]>` | no | yes | no | rustlib, via the unaligned versions and the aligned/unaligned conversions | after phase 3b |
 | `PointsToRaw` ↔ `PointsToUntyped` (a contiguous range) | yes | no | no | vstd | phase 2c |
+
+### Slice subrange
+
+`points_to_ops.rs`, next to `borrow_index`.
+`PointsTo<[T]>` has the same contract.
+
+```rust
+impl<T> PointsToUnaligned<[T]> {
+    /// Borrows the permission to elements `[start, end)`.
+    /// If the slice permission is empty, so is the subrange's.
+    pub proof fn subrange(tracked &self, start: nat, end: nat) -> (tracked out: &PointsToUnaligned<[T]>)
+        requires
+            self.wf(),
+            start <= end <= self.len(),
+        ensures
+            out.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: (self.ptr()@.addr + start * size_of::<T>()) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: (end - start) as usize,
+            }),
+            out.bytes() == self.bytes().subrange(start * size_of::<T>(), end * size_of::<T>()),
+            self.typed_value().is_valid() ==> {
+                &&& out.typed_value().is_valid()
+                &&& out.typed_value().value_ref()@ == self.typed_value().value_ref()@.subrange(start as int, end as int)
+            },
+            self.typed_value().is_empty() ==> out.typed_value().is_empty(),
+            out.wf(),
+    ;
+}
+```
 
 ## API changes not visible in the specs
 
@@ -110,7 +142,7 @@ Other open spec fns, such as `len`, may live with the proofs that use them.
 | the struct definitions: `PointsToByte`, `TypedValue`, `SeqPointsTo`, `PointsToUntyped`, `PointsToUnaligned`, `PointsTo`; their closed accessors and the inherent spec fns (`typed_value`, `bytes`, `metadata`, `is_valid`, `value`, `value_ref`, `SeqPointsTo::len`, …); their `View` impls | the `PTValueOps` impls (per type for `PointsToUnaligned`, generic for `PointsTo`) and the `PTSizedValue` impls | the typed `SeqPointsTo` impl (`impl<T> SeqPointsTo<T, PointsTo<T>>`), including its `wf`, and its `View` |
 | well-formedness: every `PTPhys` impl (`ptr`, `size`, `wf_basic`, `ptrs_len_same`, `stays_wf_basic`), every `PTTypedValue` impl (`typed_value`, `bytes`, `additional_validity_constraints`, `satisfies_alignment`, `valid_value`, `ptrs_len_same_valid_value`, and the lemmas `bytes_decode`, `satisfies_alignment_of_wf`, `lemma_wf_basic`, `lemma_ptrs_len_same_valid_value`, `stays_wf`), `PointsToUntyped::wf` and `bytes` | the structural `SeqPointsTo` impl (except the field primitives and M5) and `PointsToUntyped`'s proofs | |
 | the axioms: `PointsToByte`'s `PTProperties` impl, `PointsToUntyped::join_ref` / `join_mut`, `from_raw_parts_ref`, `TypedValue::from_elems_ref`, M1, M3–M5, `PointsTo::borrow_mut` | the aligned/unaligned conversions | the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`) |
-| the tracked getters and byte disjointness: `TypedValue::tracked_copy`, `valid_ref`; `PointsToByte::is_disjoint_byte`; the field primitives, which say nothing about `wf`: `SeqPointsTo::tracked_seq_pt`, `tracked_seq_pt_mut`, `into_seq`, `PointsToUnaligned::tracked_pt_untyped`, `tracked_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_raw_parts_mut`, `PointsTo::tracked_pt_unaligned` | the slice permissions' `len`, `borrow_index` and borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`); `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`; `group_points_to_lemmas` | `group_points_to_collections_lemmas` |
+| the tracked getters and byte disjointness: `TypedValue::tracked_copy`, `valid_ref`; `PointsToByte::is_disjoint_byte`; the field primitives, which say nothing about `wf`: `SeqPointsTo::tracked_seq_pt`, `tracked_seq_pt_mut`, `into_seq`, `PointsToUnaligned::tracked_pt_untyped`, `tracked_typed_value`, `into_raw_parts`, `from_raw_parts`, `as_raw_parts_mut`, `PointsTo::tracked_pt_unaligned` | the slice permissions' `len`, `borrow_index`, `subrange` and borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`); `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`; `group_points_to_lemmas` | `group_points_to_collections_lemmas` |
 
 `group_points_to_lemmas` (in `group_vstd_default`) holds the broadcast lemmas of `points_to_model.rs` and `points_to_ops.rs`:
 
@@ -187,6 +219,7 @@ it's in [New axioms and axioms with bigger changes](#new-axioms-and-axioms-with-
 | `mut_ref_to_shr_points_to_str` (rustlib) | rustlib | Moved from vstd's commented-out code; now ensures `pt.wf()`. | the source of valid `str` permissions from `&mut str` |
 | `SharedReference<str>::points_to` (rustlib) | rustlib | Moved from vstd's commented-out code; now ensures `pt.wf()`. | the source of valid shared `str` permissions |
 | `ptr_ref2_str_ghost` (rustlib) | rustlib | Moved from vstd's commented-out code; now requires `perm.wf()`. | `SharedReference<str>` from a `str` permission |
+| `SharedReference<str>::as_str_ptr` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code; the body uses `as_ref()` (the field is private to vstd). | exec `str` pointers (`as_ptr`) |
 
 The restored slice and `str` versions also state the value through `typed_value().value_ref()`
 (with `@` for slices) in place of the old `value()`, which the planned `PointsTo<[T]>` / `PointsTo<str>` don't have.
@@ -343,6 +376,22 @@ rustlib, the `str` versions (moved from vstd's commented-out code):
 
 ```rust
 impl<'a> SharedReference<'a, str> {
+    #[verifier::external_body]
+    pub const fn as_str_ptr(self) -> (ptr: *const str)
+        ensures
+            ptr == self.ptr(),
+    {
+        self.as_ref() as *const str
+    }
+
+    // commonly used operation: this function's signature corresponds to Rust's `str::as_ptr`
+    pub const fn as_ptr(self) -> (ptr: *const u8)
+        ensures
+            ptr == self.ptr() as *const u8,
+    {
+        self.as_str_ptr() as *const u8
+    }
+
     pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<str>)
         ensures
             pt.ptr() == self.ptr(),
@@ -1221,6 +1270,29 @@ impl PointsTo<str> {
             out.bytes() == pt_slice.bytes(),
             out.typed_value().is_valid() == pt_slice.typed_value().is_valid(),
             pt_slice.typed_value().is_valid() ==> out.typed_value().value_ref()@ == pt_slice.typed_value().value_ref()@,
+            out.wf(),
+    ;
+
+    /// Borrows the permission to bytes `[start, end)`,
+    /// provided that they're valid UTF-8 when the permission is valid.
+    pub proof fn subrange(tracked &self, start: nat, end: nat) -> (tracked out: &PointsTo<str>)
+        requires
+            self.wf(),
+            start <= end <= self.ptr()@.metadata,
+            self.typed_value().is_valid()
+                ==> valid_utf8(self.typed_value().value_ref()@.subrange(start as int, end as int)),
+        ensures
+            out.ptr() == ptr_mut_from_data::<str>(PtrData {
+                addr: (self.ptr()@.addr + start) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: (end - start) as usize,
+            }),
+            out.bytes() == self.bytes().subrange(start as int, end as int),
+            self.typed_value().is_valid() ==> {
+                &&& out.typed_value().is_valid()
+                &&& out.typed_value().value_ref()@ == self.typed_value().value_ref()@.subrange(start as int, end as int)
+            },
+            self.typed_value().is_empty() ==> out.typed_value().is_empty(),
             out.wf(),
     ;
 }
