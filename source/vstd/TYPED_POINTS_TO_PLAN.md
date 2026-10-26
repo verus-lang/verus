@@ -22,19 +22,30 @@ are approved and are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.m
 The modified rustlib specs are provisionally accepted.
 What remains is the [items to run by Travis](#to-run-by-travis).
 
-## To run by Travis
+## TODO: ask Travis
 
 - The [trusted UTF-8 assumptions](#trusted-utf-8-assumptions):
   `SharedReference<str>::points_to`, `mut_ref_to_shr_points_to_str`, `ptr_mut_ref_str` and `str::as_str_ptr_verus`
   now also assert that the `str` is valid UTF-8, through `wf`.
+  - We cannot enforce UTF-8 as an invariant of `PointsTo<str>` - it should only guarantee as much as a `&str` or `&mut str` would guarantee, which doesn't guarantee UTF-8.
 - The [trusted `wf` of a `Box`'s permission](#trusted-wf-of-a-boxs-permission):
   rustlib's `Box::into_non_null_with_allocator_verus` now also ensures the permission it returns is `wf`.
+  - Yes - a `Box<T>` is just a pointer and `PointsTo<T>`.
 - `TypedValue::<[T]>::from_elems_ref` ([New axioms](#new-axioms)).
+  - Yes, but this is a change from the current VerusBelt model. 
+    The current VerusBelt model enforces multiple shared references in a struct are distinct.
+    This is probably a problem with the VerusBelt model, because Rust semantics do allow duplicate shared references in a struct.
+    We can allow this axiom, but we MUST ensure that we don't do things which contradict it:
+    e.g., a slice with two shared references cannot assume that they are distinct. 
 - `PointsToUntyped::join_ref` / `join_mut` ([New axioms](#new-axioms)).
+   - These axioms should be defined on `Seq` instead,
+    and then prove `join_ref` and `join_mut` from the `Seq` axioms.
 - `tracked_slice_subrange` ([For the rustlib port](#tracked_slice_subrange-trusted-alternative-to-from_elems_ref-for-subrange)):
   an alternative to building slice subranges with `from_elems_ref`.
+   - Seems fine to add. With additional slice (or maybe it was pattern?) support the axiom will be proved, but that's not in place yet.
 - `TrivialOwnershipData` ([For the rustlib port](#tracked-values-of-trivial-ownership-types-trusted)):
   spec integers can be made tracked.
+  - Yes this is fine. Note that another user also needs this, so for now only make minimal changes since we will probably each add some version of it.
 
 The specs, written out in full
 (copies of the ones in TYPED_POINTS_TO_APPROVED.md, the code, and [Modified rustlib specs](#modified-rustlib-specs)).
