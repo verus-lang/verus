@@ -97,6 +97,11 @@ jobs:
           cp "$z3" ./target-verus/release/
           "./target-verus/release/$(basename "$z3")" --version
 
+      - name: add MacOS gatekeeper allow script
+        if: matrix.build == 'macos' || matrix.build == 'macos-x86_64'
+        working-directory: ./source
+        run: cp ../tools/macos_allow_gatekeeper.sh ./target-verus/release
+
       - name: create archive
         working-directory: ./source
         run: |
