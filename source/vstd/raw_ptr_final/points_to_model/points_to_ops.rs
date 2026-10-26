@@ -224,7 +224,38 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             }),
             joined.wf_basic(),
     {
-        let old_self = self;
+        let p = ptr_mut_from_data::<[T]>(
+            PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: (self.len() + other.len()) as usize,
+            },
+        );
+        self.lemma_join_wf_basic(&other, SeqPointsTo { seq_pt: self.seq_pt + other.seq_pt, ptr: Ghost(p) });
+
+        let tracked mut seq_pt = self.seq_pt;
+        seq_pt.tracked_add(other.seq_pt);
+        SeqPointsTo { seq_pt: seq_pt, ptr: Ghost(p) }
+    }
+
+    /// A permission made of `self`'s permissions followed by `other`'s,
+    /// starting at `self`'s pointer, is well-formed under `join_basic`'s requirements.
+    proof fn lemma_join_wf_basic(tracked &self, tracked other: &Self, joined: Self)
+        requires
+            self.wf_basic(),
+            other.wf_basic(),
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len() * P::size(()),
+            P::size(()) == 0 ==> self.len() + other.len() <= usize::MAX,
+            joined.seq_pt() == self.seq_pt() + other.seq_pt(),
+            joined.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: (self.len() + other.len()) as usize,
+            }),
+        ensures
+            joined.wf_basic(),
+    {
         let s = P::size(());
         // For non-zero-sized permissions, the joined length fits in a `usize`,
         // since `other`'s range ends within its provenance.
@@ -243,29 +274,17 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
                     s != 0,
             ;
         }
-        let p = ptr_mut_from_data::<[T]>(
-            PtrData {
-                addr: self.ptr()@.addr,
-                provenance: self.ptr()@.provenance,
-                metadata: (self.len() + other.len()) as usize,
-            },
-        );
-
-        let tracked mut seq_pt = self.seq_pt;
-        seq_pt.tracked_add(other.seq_pt);
-        let tracked joined = SeqPointsTo { seq_pt: seq_pt, ptr: Ghost(p) };
 
         assert forall|i: int| 0 <= i < joined.len() implies {
             &&& #[trigger] joined[i].ptr()@.provenance == joined.ptr()@.provenance
             &&& joined[i].ptr()@.addr == joined.ptr()@.addr + i * s
             &&& joined[i].wf_basic()
         } by {
-            if i >= old_self.len() {
-                assert(old_self.ptr()@.addr + old_self.len() * s + (i - old_self.len()) * s
-                    == old_self.ptr()@.addr + i * s) by (nonlinear_arith);
+            if i >= self.len() {
+                assert(self.ptr()@.addr + self.len() * s + (i - self.len()) * s
+                    == self.ptr()@.addr + i * s) by (nonlinear_arith);
             }
         }
-        joined
     }
 
     /// Borrows the sub-sequence of permissions in `[start, end)`.
@@ -539,6 +558,93 @@ impl PointsToUntyped {
             joined.wf(),
     {
         self.join_basic(other)
+    }
+
+    /// Joins shared borrows of two `PointsToUntyped` permissions into a shared borrow of a
+    /// single `PointsToUntyped`, under the same conditions as `join`.
+    pub proof fn join_ref<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked joined: &'a Self)
+        requires
+            self.wf(),
+            other.wf(),
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len(),
+        ensures
+            joined.seq_pt() == self.seq_pt() + other.seq_pt(),
+            joined.bytes() == self.bytes() + other.bytes(),
+            joined.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (self.len() + other.len()) as usize,
+                },
+            ),
+            joined.wf(),
+    {
+        let p = ptr_mut_from_data::<[u8]>(
+            PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: (self.len() + other.len()) as usize,
+            },
+        );
+        let tracked seq_pt = self.seq_pt.tracked_add_borrow(&other.seq_pt);
+        let tracked joined = shr_ref_struct_wrap(
+            seq_pt,
+            &Self { seq_pt: *seq_pt, ptr: Ghost(p) },
+            "",
+            "seq_pt",
+        );
+        self.lemma_join_wf_basic(other, *joined);
+        joined
+    }
+
+    /// Joins mutable borrows of two `PointsToUntyped` permissions into a mutable borrow of a
+    /// single `PointsToUntyped`, under the same conditions as `join`.
+    ///
+    /// If the joined permission keeps its pointers and length, then so do `self` and `other`, and
+    /// their final byte permissions concatenate to the joined permission's final ones.
+    pub proof fn join_mut<'a>(tracked &'a mut self, tracked other: &'a mut Self) -> (tracked joined:
+        &'a mut Self)
+        requires
+            self.wf(),
+            other.wf(),
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len(),
+        ensures
+            joined.seq_pt() == old(self).seq_pt() + old(other).seq_pt(),
+            joined.bytes() == old(self).bytes() + old(other).bytes(),
+            joined.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: old(self).ptr()@.addr,
+                    provenance: old(self).ptr()@.provenance,
+                    metadata: (old(self).len() + old(other).len()) as usize,
+                },
+            ),
+            joined.wf(),
+            Self::ptrs_len_same(*joined, *final(joined)) ==> {
+                &&& final(self).ptr() == old(self).ptr()
+                &&& final(other).ptr() == old(other).ptr()
+                &&& final(self).wf()
+                &&& final(other).wf()
+                &&& final(joined).seq_pt() == final(self).seq_pt() + final(other).seq_pt()
+                &&& final(joined).bytes() == final(self).bytes() + final(other).bytes()
+            },
+    {
+        let old_self = *self;
+        let old_other = *other;
+        let p = ptr_mut_from_data::<[u8]>(
+            PtrData {
+                addr: old_self.ptr()@.addr,
+                provenance: old_self.ptr()@.provenance,
+                metadata: (old_self.len() + old_other.len()) as usize,
+            },
+        );
+        self.lemma_join_wf_basic(other, Self { seq_pt: old_self.seq_pt + old_other.seq_pt, ptr: Ghost(p) });
+
+        let tracked s1 = self.tracked_seq_pt_mut();
+        let tracked s2 = other.tracked_seq_pt_mut();
+        let tracked seq_pt = s1.tracked_add_borrow_mut(s2);
+        Self::from_seq_mut(seq_pt, p)
     }
 }
 

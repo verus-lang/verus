@@ -794,66 +794,6 @@ impl PointsToUntyped {
     pub open spec fn wf(self) -> bool {
         self.wf_basic()
     }
-
-    /// Joins shared borrows of two `PointsToUntyped` permissions into a shared borrow of a
-    /// single `PointsToUntyped`, under the same conditions as `join`.
-    ///
-    /// This is the shared-borrow analogue of `join`. It's an axiom because the joined permission
-    /// isn't stored anywhere that could be borrowed.
-    pub axiom fn join_ref<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked joined: &'a Self)
-        requires
-            self.wf(),
-            other.wf(),
-            self.ptr()@.provenance == other.ptr()@.provenance,
-            other.ptr()@.addr == self.ptr()@.addr + self.len(),
-        ensures
-            joined.seq_pt() == self.seq_pt() + other.seq_pt(),
-            joined.bytes() == self.bytes() + other.bytes(),
-            joined.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData {
-                    addr: self.ptr()@.addr,
-                    provenance: self.ptr()@.provenance,
-                    metadata: (self.len() + other.len()) as usize,
-                },
-            ),
-            joined.wf(),
-    ;
-
-    /// Joins mutable borrows of two `PointsToUntyped` permissions into a mutable borrow of a
-    /// single `PointsToUntyped`, under the same conditions as `join`.
-    ///
-    /// If the joined permission keeps its pointers and length, then so do `self` and `other`, and
-    /// their final byte permissions concatenate to the joined permission's final ones.
-    ///
-    /// This is the mutable-borrow analogue of `join`. It's an axiom because the joined permission
-    /// isn't stored anywhere that could be borrowed.
-    pub axiom fn join_mut<'a>(tracked &'a mut self, tracked other: &'a mut Self) -> (tracked joined:
-        &'a mut Self)
-        requires
-            self.wf(),
-            other.wf(),
-            self.ptr()@.provenance == other.ptr()@.provenance,
-            other.ptr()@.addr == self.ptr()@.addr + self.len(),
-        ensures
-            joined.seq_pt() == old(self).seq_pt() + old(other).seq_pt(),
-            joined.bytes() == old(self).bytes() + old(other).bytes(),
-            joined.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData {
-                    addr: old(self).ptr()@.addr,
-                    provenance: old(self).ptr()@.provenance,
-                    metadata: (old(self).len() + old(other).len()) as usize,
-                },
-            ),
-            joined.wf(),
-            Self::ptrs_len_same(*joined, *final(joined)) ==> {
-                &&& final(self).ptr() == old(self).ptr()
-                &&& final(other).ptr() == old(other).ptr()
-                &&& final(self).wf()
-                &&& final(other).wf()
-                &&& final(joined).seq_pt() == final(self).seq_pt() + final(other).seq_pt()
-                &&& final(joined).bytes() == final(self).bytes() + final(other).bytes()
-            },
-    ;
 }
 
 /// Represents (typed) contents of memory.
