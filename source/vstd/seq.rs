@@ -259,6 +259,27 @@ impl<A> Seq<A> {
         unimplemented!()
     }
 
+    /// Combine tracked borrows of two sequences into one borrow of their concatenation.
+    pub axiom fn tracked_add_borrow<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked ret:
+        &'a Self)
+        ensures
+            *ret == *self + *other,
+    ;
+
+    /// Combine tracked mutable borrows of two sequences into one mutable borrow of their concatenation
+    /// (the inverse of `tracked_split_borrow_mut`).
+    /// If the concatenation keeps its length,
+    /// its final value splits back into `self`'s and `other`'s at `self`'s length.
+    pub axiom fn tracked_add_borrow_mut<'a>(tracked &'a mut self, tracked other: &'a mut Self) -> (tracked ret:
+        &'a mut Self)
+        ensures
+            *ret == *old(self) + *old(other),
+            final(ret).len() == ret.len() ==> {
+                &&& *final(self) == final(ret).take(old(self).len() as int)
+                &&& *final(other) == final(ret).skip(old(self).len() as int)
+            },
+    ;
+
     pub proof fn tracked_push(tracked &mut self, tracked v: A)
         ensures
             *final(self) == old(self).push(v),
