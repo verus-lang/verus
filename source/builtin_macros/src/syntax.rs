@@ -2166,7 +2166,7 @@ impl Visitor {
                 }
                 Item::AssumeSpecification(assume_specification) => {
                     *item = if self.erase_ghost.erase() {
-                        Item::Verbatim(quote! { })
+                        Item::Verbatim(quote! {})
                     } else {
                         self.handle_assume_specification(
                             assume_specification,
