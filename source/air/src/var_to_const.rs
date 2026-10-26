@@ -244,7 +244,7 @@ fn lower_stmt(
 
 pub(crate) fn lower_query(
     query: &Query,
-    observer: Option<&mut dyn crate::air_observer::AirObserver>,
+    mut observer: Option<&mut dyn crate::air_observer::AirObserver>,
 ) -> (Query, Snapshots, Vec<Decl>) {
     let QueryX { local, assertion } = &**query;
     let mut decls: Vec<Decl> = Vec::new();
@@ -269,9 +269,18 @@ pub(crate) fn lower_query(
         if let DeclX::Var(x, t) = &**decl {
             versions.insert(x.clone(), 0);
             types.insert(x.clone(), t.clone());
+            let base = x.clone();
             let x = Arc::new(rename_var(x, 0));
             let decl = Arc::new(DeclX::Const(x.clone(), t.clone()));
             decls.push(decl);
+            if let Some(obs) = observer.as_mut() {
+                obs.on_wp_version_created(
+                    &x,
+                    &base,
+                    0,
+                    crate::air_observer::VersionOrigin::Initial,
+                );
+            }
         }
         if let DeclX::Const(_, _) = &**decl {
             local_vars.push(decl.clone());

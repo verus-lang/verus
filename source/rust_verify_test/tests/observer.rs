@@ -63,7 +63,7 @@ struct D {
     query_lowered: usize,
     query_snapshot_counts: Vec<usize>,
     version_correlations: Vec<(String, u32, String)>,
-    version_bases: Vec<(String, String, u32)>,
+    version_bases: Vec<(String, String, u32, String)>,
     assign_files: std::collections::BTreeSet<String>,
     lambda_decls: Vec<String>,
     choose_decls: Vec<String>,
@@ -996,8 +996,8 @@ test_verify_one_file_with_options! {
     }
 }
 
-/// Every version-origin kind an observer receives is one the lowering produces. Across the
-/// whole corpus, the only origins are `Havoc` and `Assign`.
+/// Every version-origin kind an observer receives is one the lowering produces: `Initial`,
+/// `Havoc` or `Assign`.
 #[test]
 fn test_observer_version_origins_exhaustive() {
     let seeds: Vec<(&str, String)> = vec![
@@ -1031,7 +1031,7 @@ fn test_observer_version_origins_exhaustive() {
         let d = parse(err);
         for ev in d.events.iter().filter(|e| e.starts_with("wp_version:")) {
             assert!(
-                ev == "wp_version:Havoc" || ev == "wp_version:Assign",
+                ev == "wp_version:Initial" || ev == "wp_version:Havoc" || ev == "wp_version:Assign",
                 "seed {}: unexpected version origin {}",
                 name,
                 ev
@@ -1223,13 +1223,51 @@ test_verify_one_file_with_options! {
     } => Err(err) => {
         let d = parse(&err);
         let has = |v: &str, b: &str, n: u32| {
-            d.version_bases.iter().any(|(vv, bb, nn)| vv == v && bb == b && *nn == n)
+            d.version_bases.iter().any(|(vv, bb, nn, _)| vv == v && bb == b && *nn == n)
         };
         assert!(has("x@1", "x@", 1), "local; got {:?}", d.version_bases);
         assert!(has("p!@1", "p!", 1), "mutable-reference parameter; got {:?}", d.version_bases);
         assert!(has("x$1@1", "x$1@", 1), "shadowing local; got {:?}", d.version_bases);
-        assert!(d.version_bases.iter().all(|(v, b, n)| v == &format!("{}{}", b, n)
+        assert!(d.version_bases.iter().all(|(v, b, n, _)| v == &format!("{}{}", b, n)
             || v == &format!("{}@{}", b, n)), "versioned name is base + number; got {:?}", d.version_bases);
+    }
+}
+
+test_verify_one_file_with_options! {
+    // Version 0 of every local is reported as `Initial`, in every query (the loop's too), before
+    // any later version of the same variable.
+    #[test]
+    test_observer_initial_versions ["observers=test"] => verus_code! {
+        fn g(a: &mut u64) ensures *final(a) == 1 { *a = 1; }
+        fn f(p: &mut u64) {
+            g(p);
+            let mut x: u64 = 0;
+            while x < 3
+                invariant x <= 3
+                decreases 3 - x
+            {
+                x = x + 1;
+            }
+            let mut x: u64 = 5;
+            x = 6;
+            assert(x == 7);
+        }
+    } => Err(err) => {
+        let d = parse(&err);
+        let v = &d.version_bases;
+        let initial = |name: &str, base: &str| {
+            v.iter().filter(|(vv, bb, n, k)| vv == name && bb == base && *n == 0 && k == "Initial").count()
+        };
+        assert!(initial("x@0", "x@") >= 2, "local, in the loop query and the function query; got {:?}", v);
+        assert!(initial("p!@0", "p!") >= 1, "mutable-reference parameter; got {:?}", v);
+        assert!(initial("x$1@0", "x$1@") >= 1, "shadowing local; got {:?}", v);
+        assert!(v.iter().all(|(_, _, n, k)| (*n == 0) == (k == "Initial")), "version 0 is exactly Initial; got {:?}", v);
+        for (i, (_, b, n, _)) in v.iter().enumerate() {
+            if *n > 0 {
+                assert!(v[..i].iter().any(|(_, bb, nn, _)| bb == b && *nn == 0),
+                    "version {} of {} reported before its version 0; got {:?}", n, b, v);
+            }
+        }
     }
 }
 
@@ -1359,6 +1397,17 @@ mod correlator {
         c.begin_query(&query(vec![a1.clone()]));
         assert!(c.resolve(&Arc::new("y@".to_string()), VersionOrigin::Assign).is_none());
         c.begin_query(&query(vec![a1]));
+        assert_eq!(line(&mut c, "x@1"), Some(5));
+    }
+
+    /// Version 0 has no statement: it neither resolves nor consumes the next statement.
+    #[test]
+    fn an_initial_version_does_not_consume_a_statement() {
+        let mut c = VersionCorrelator::new();
+        let a1 = assign("x@");
+        c.record(&a1, &stm(5));
+        c.begin_query(&query(vec![a1]));
+        assert!(c.resolve(&Arc::new("x@".to_string()), VersionOrigin::Initial).is_none());
         assert_eq!(line(&mut c, "x@1"), Some(5));
     }
 }

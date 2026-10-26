@@ -182,6 +182,9 @@ impl VersionCorrelator {
     /// that is not the next statement's leaves that version and every later one in the query
     /// unresolved, rather than paired with the wrong statement.
     pub fn resolve(&mut self, base: &air::ast::Ident, kind: VersionOrigin) -> Option<Stm> {
+        if kind == VersionOrigin::Initial {
+            return None;
+        }
         let (var, expected_kind, src) = self.current.pop_front()?;
         if base != &var || kind != expected_kind {
             self.current.clear();

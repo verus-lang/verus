@@ -52,7 +52,7 @@ pub struct TestObserver {
     pub query_snapshot_counts: Vec<usize>,
     pub version_correlations: Vec<(String, u32, String)>,
     /// Per created version: (versioned name, base, version number).
-    pub version_bases: Vec<(String, String, u32)>,
+    pub version_bases: Vec<(String, String, u32, String)>,
     #[serde(skip)]
     pub correlator: vir::vir_observer::VersionCorrelator,
     #[serde(skip)]
@@ -195,7 +195,12 @@ impl air::air_observer::AirObserver for TestObserver {
         kind: air::air_observer::VersionOrigin,
     ) {
         self.events.push(format!("wp_version:{:?}", kind));
-        self.version_bases.push((versioned.to_string(), base.to_string(), version));
+        self.version_bases.push((
+            versioned.to_string(),
+            base.to_string(),
+            version,
+            format!("{:?}", kind),
+        ));
         if let Some(stm) = self.correlator.resolve(base, kind) {
             if let Some(line) =
                 self.span_resolver.as_ref().and_then(|r| r(&stm.span)).map(|l| l.line)

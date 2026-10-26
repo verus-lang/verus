@@ -12,6 +12,8 @@ use std::any::Any;
 /// Origin of a WP versioned constant created during `lower_query`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VersionOrigin {
+    /// Version 0 of a local, at the start of the query.
+    Initial,
     /// From a `StmtX::Havoc` — unconstrained new version (loop entry).
     Havoc,
     /// From a `StmtX::Assign` — constrained new version (= rhs).
@@ -32,16 +34,10 @@ pub trait AirObserver: Any {
     /// query's own pre-existing locals are in `query.local`).
     fn on_query_lowered(&mut self, _query: &Query, _snapshots: &Snapshots, _local_vars: &[Decl]) {}
 
-    /// `lower_query` created version `version` of the variable `base` (its AIR name, as in the
-    /// `Havoc` or `Assign` statement, e.g. `x@` or `p!`); `versioned` is the constant's name.
-    ///
-    /// Versions are numbered per query. Every version originates in a `Havoc` or an `Assign`:
-    /// merging at branch and break joins takes the maximum of the branch versions. Each arm of
-    /// a branch is versioned from the same state, so a version can be created once in each arm
-    /// that assigns the variable; it is reported once per creating statement.
-    ///
-    /// See `VersionCorrelator` in `vir/src/vir_observer.rs` for a helper that pairs these
-    /// callbacks with the SST statements that produced them.
+    /// `lower_query` created version `version` of `base` (its AIR name, e.g. `x@` or `p!`) as the
+    /// constant `versioned`. Versions are numbered per query: version 0 of each local is
+    /// `Initial`; later versions come from a `Havoc` or `Assign`, reported once per creating
+    /// statement (so once per branch arm that assigns). See `VersionCorrelator`.
     fn on_wp_version_created(
         &mut self,
         _versioned: &Ident,
