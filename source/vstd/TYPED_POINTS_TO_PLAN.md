@@ -20,7 +20,60 @@ and all of `points_to_collections.rs` (`PointsToRaw`, the typed `SeqPointsTo`, a
 and rustlib's `str` impls and casts
 are approved and are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md).
 The modified rustlib specs are provisionally accepted.
-What remains is the [items to run by Travis](#to-run-by-travis).
+The `Seq` join axioms (`tracked_add_borrow` / `tracked_add_borrow_mut`, approved by Travis),
+and `PointsToUntyped::join_ref` / `join_mut` proved from them, are approved and in TYPED_POINTS_TO_APPROVED.md.
+What remains is the [UTF-8 plan](#plan-remove-utf-8-from-pointstostr), which waits on another discussion.
+
+## Plan: remove UTF-8 from `PointsTo<str>`
+
+Not started; waiting on your discussion.
+Per Travis, a `PointsTo<str>` should guarantee only what a `&str` / `&mut str` does,
+and UTF-8 is a library (safety) invariant of `str`, not a validity invariant,
+so `wf` shouldn't include it.
+UTF-8 then comes only from rustlib's `str::inv()` preconditions on `&str`s, as it does for code that doesn't use permissions.
+
+**Spec changes** (all to approved rustlib specs in TYPED_POINTS_TO_APPROVED.md, "rustlib: `str`"):
+
+1. `PTTypedValue for PointsToUnaligned<str>`: `additional_validity_constraints` becomes `true`,
+   with the doc "No constraints beyond decoding: UTF-8 is a library invariant of `str`, not part of the permission."
+   (Its length already matches the metadata, as now.)
+   `wf` then means the same for `str` as for `[u8]`.
+2. `from_bytes_ref` (`PointsToUnaligned<str>` and `PointsTo<str>`):
+   drop the requires `pt_slice.typed_value().is_valid() ==> valid_utf8(...)`,
+   and "provided that the byte slice is valid UTF-8" from the doc.
+   It was only there to establish `out.wf()`.
+3. `PointsTo<str>::subrange`: drop the requires `... ==> valid_utf8(...subrange(start, end))`,
+   and "provided that they're valid UTF-8 when the permission is valid" from the doc;
+   its requires become `self.wf()` and `start <= end <= self.ptr()@.metadata`.
+   (It needn't fall on char boundaries either.)
+
+Keeping 2 and 3 instead would break the `SliceIndex<str>` methods in `str/traits.rs` (G2's sites):
+they have no `inv()` requires, so they get the sub-bytes' UTF-8 only from the parent permission's `wf`.
+
+**No longer trusted assumptions.**
+The [trusted UTF-8 assumptions](#trusted-utf-8-assumptions) go away with no text change:
+`SharedReference<str>::points_to`, `mut_ref_to_shr_points_to_str`, `ptr_mut_ref_str` and `str::as_str_ptr_verus`
+still ensure `wf()`, which no longer says anything about UTF-8.
+The Travis item about them is answered by this plan.
+
+**Callers to update** (rustlib; found by rebuilding after 1–3):
+proofs that read UTF-8 off a permission's `wf`
+(e.g. `split_at_unchecked` calls `valid_utf8_split(perm.value(), mid)`)
+get it from the `&str`'s `inv()` requires instead,
+through the permission's `typed_value().value_ref() == self`.
+Where a function has no `inv()` requires and ensures nothing about UTF-8 (the `SliceIndex<str>` methods),
+nothing replaces it.
+The transmute proofs (`transmute_shared_ref_u8_slice_str`) keep their `valid_utf8` requires, which `from_bytes_ref` no longer needs.
+
+**Docs.** TYPED_POINTS_TO_APPROVED.md's "rustlib: `str`" section and its summary of `str`'s
+`additional_validity_constraints` (in "`PointsToUnaligned`: specs");
+this file's [UTF-8 assumptions](#utf-8-assumptions) and [trusted UTF-8 assumptions](#trusted-utf-8-assumptions) sections (deleted);
+rustlib's RUSTLIB_PORT_PLAN.md, G2 ("The sites check char boundaries, which give the sub-bytes' `valid_utf8`").
+
+**Open question for the discussion:**
+whether anything outside rustlib's `str` code relies on a `PointsTo<str>` being UTF-8
+(for example, a future `&mut str` API that wants writes through the permission to keep it UTF-8;
+with this plan that's the caller's obligation, stated on the `&mut str`).
 
 ## TODO: ask Travis
 
@@ -40,6 +93,7 @@ What remains is the [items to run by Travis](#to-run-by-travis).
 - `PointsToUntyped::join_ref` / `join_mut` ([New axioms](#new-axioms)).
    - These axioms should be defined on `Seq` instead,
     and then prove `join_ref` and `join_mut` from the `Seq` axioms.
+   - Done: `Seq::tracked_add_borrow` / `tracked_add_borrow_mut`, approved by Travis; in TYPED_POINTS_TO_APPROVED.md.
 - `tracked_slice_subrange` ([For the rustlib port](#tracked_slice_subrange-trusted-alternative-to-from_elems_ref-for-subrange)):
   an alternative to building slice subranges with `from_elems_ref`.
    - Seems fine to add. With additional slice (or maybe it was pattern?) support the axiom will be proved, but that's not in place yet.
@@ -152,72 +206,6 @@ impl<T> TypedValue<[T]> {
 }
 ```
 
-### `PointsToUntyped::join_ref` / `join_mut`
-
-`points_to_model.rs`, in `impl PointsToUntyped`.
-
-```rust
-    /// Joins shared borrows of two `PointsToUntyped` permissions into a shared borrow of a
-    /// single `PointsToUntyped`, under the same conditions as `join`.
-    ///
-    /// This is the shared-borrow analogue of `join`. It's an axiom because the joined permission
-    /// isn't stored anywhere that could be borrowed.
-    pub axiom fn join_ref<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked joined: &'a Self)
-        requires
-            self.wf(),
-            other.wf(),
-            self.ptr()@.provenance == other.ptr()@.provenance,
-            other.ptr()@.addr == self.ptr()@.addr + self.len(),
-        ensures
-            joined.seq_pt() == self.seq_pt() + other.seq_pt(),
-            joined.bytes() == self.bytes() + other.bytes(),
-            joined.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData {
-                    addr: self.ptr()@.addr,
-                    provenance: self.ptr()@.provenance,
-                    metadata: (self.len() + other.len()) as usize,
-                },
-            ),
-            joined.wf(),
-    ;
-
-    /// Joins mutable borrows of two `PointsToUntyped` permissions into a mutable borrow of a
-    /// single `PointsToUntyped`, under the same conditions as `join`.
-    ///
-    /// If the joined permission keeps its pointers and length, then so do `self` and `other`, and
-    /// their final byte permissions concatenate to the joined permission's final ones.
-    ///
-    /// This is the mutable-borrow analogue of `join`. It's an axiom because the joined permission
-    /// isn't stored anywhere that could be borrowed.
-    pub axiom fn join_mut<'a>(tracked &'a mut self, tracked other: &'a mut Self) -> (tracked joined:
-        &'a mut Self)
-        requires
-            self.wf(),
-            other.wf(),
-            self.ptr()@.provenance == other.ptr()@.provenance,
-            other.ptr()@.addr == self.ptr()@.addr + self.len(),
-        ensures
-            joined.seq_pt() == old(self).seq_pt() + old(other).seq_pt(),
-            joined.bytes() == old(self).bytes() + old(other).bytes(),
-            joined.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData {
-                    addr: old(self).ptr()@.addr,
-                    provenance: old(self).ptr()@.provenance,
-                    metadata: (old(self).len() + old(other).len()) as usize,
-                },
-            ),
-            joined.wf(),
-            Self::ptrs_len_same(*joined, *final(joined)) ==> {
-                &&& final(self).ptr() == old(self).ptr()
-                &&& final(other).ptr() == old(other).ptr()
-                &&& final(self).wf()
-                &&& final(other).wf()
-                &&& final(joined).seq_pt() == final(self).seq_pt() + final(other).seq_pt()
-                &&& final(joined).bytes() == final(self).bytes() + final(other).bytes()
-            },
-    ;
-```
-
 ## For the rustlib port: slice subranges and integer casts
 
 Proposed for the gaps flagged in rustlib's `RUSTLIB_PORT_PLAN.md` (G1–G4).
@@ -227,8 +215,9 @@ Proposed for the gaps flagged in rustlib's `RUSTLIB_PORT_PLAN.md` (G1–G4).
 Approved; the spec is in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#slice-subrange).
 G1, and through it G2 and G4.
 
-### `tracked_slice_subrange` (trusted; alternative to `from_elems_ref` for `subrange`)
+### `tracked_slice_subrange` (trusted)
 
+Accepted (Travis; added for other users, since `subrange` uses `from_elems_ref`).
 `slice.rs`, next to `tracked_slice_index`:
 
 ```rust
@@ -243,12 +232,13 @@ pub axiom fn tracked_slice_subrange<'a, T>(tracked s: &'a [T], i: int, j: int) -
 
 ### Tracked values of trivial-ownership types (trusted)
 
+Accepted (Travis), kept minimal since another user needs something similar.
 G3. `modes.rs`, next to `tracked_static_mut_ref`:
 
 ```rust
 /// Types whose values own no resources (no permissions, tokens or other tracked data),
 /// so any spec value can be used as a tracked one.
-pub trait TrivialOwnershipData: Sized {
+pub trait TrivialOwnership: Sized {
     /// Makes a spec value tracked.
     proof fn tracked_from_spec(v: Self) -> (tracked out: Self)
         ensures
@@ -257,8 +247,7 @@ pub trait TrivialOwnershipData: Sized {
 }
 ```
 
-Implemented by macro for the primitive integer types
-(`u8`, `u16`, `u32`, `u64`, `u128`, `usize`, `i8`, `i16`, `i32`, `i64`, `i128`, `isize`),
+Implemented only for `u32` and `usize` (what rustlib's G3 uses),
 each impl's `tracked_from_spec` an `axiom fn`, so every impl is visibly trusted
 (as with the `AbstractByteRepresentation` impls' `abs_encode_impl`).
 
@@ -525,7 +514,7 @@ everything else exists today.
 | `impl<T> PointsTo<[T]>` | `len` (new, inline); `from_untyped_ref`, `from_untyped_with_value_ref`, `borrow_index` (new, phase 4; compositions over the `PointsToUnaligned` versions); `subrange` (new, rustlib port). (removed: inherent `wf`) | |
 | `impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P>` (`points_to_model.rs` / `points_to_ops.rs`) | `seq_pt`, `len`, `spec_index`; `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut`, `from_seq`, `empty`, `into_seq` (moved here in phase 1); `split_basic`, `join_basic`, `subrange_basic` (new); `from_seq_mut` (new axiom M5) | Structural; stated with `wf_basic`. The only code touching the fields. |
 | `impl<T> SeqPointsTo<T, PointsTo<T>>` | `View` (`SeqPointsToData<T>`); `thin_ptr`, `wf`, `bytes`, `bytes_inner`, `seq_typed_value`, `is_valid`, `is_empty`, `is_fully_empty`, `seq_value`, `is_valid_subrange`, `value_subrange`, `ptrs_len_same_valid_value`, `stays_wf`, `lemma_ptrs_len_same_valid_value`, `typed_value_equiv`, the byte lemmas, `split`, `join`, `subrange`, `subrange_mut` (proved in phase 3b), `zero_sized`, the untyped conversions, the value operations, `is_aligned`, `is_disjoint_seqpt`; `as_slice_pt`, `as_slice_pt_mut` (new, phase 4) | The only typed sequence impl. |
-| `impl SeqPointsTo<u8, PointsToByte>` (`PointsToUntyped`, `points_to_model.rs` / `points_to_ops.rs`) | `View`, `bytes`, `wf`, `stays_wf`, `lemma_ptrs_len_same_untyped` (renamed), `zero_sized<T>`, `split`, `split_ref`, `join` (wrappers over the `_basic` primitives); `join_ref`, `join_mut` (axioms); `split_mut` (proved in phase 3b); `is_disjoint_untyped` | |
+| `impl SeqPointsTo<u8, PointsToByte>` (`PointsToUntyped`, `points_to_model.rs` / `points_to_ops.rs`) | `View`, `bytes`, `wf`, `stays_wf`, `lemma_ptrs_len_same_untyped` (renamed), `zero_sized<T>`, `split`, `split_ref`, `join` (wrappers over the `_basic` primitives); `join_ref`, `join_mut` (proved from the `Seq` join axioms); `split_mut` (proved in phase 3b); `is_disjoint_untyped` | |
 | `impl PointsToByte` (renamed from `PointsToSingleton`) | `byte`, `is_disjoint_byte` (renamed from `is_disjoint_singleton`, in phase 1 with the type) | |
 | `impl PointsToRaw` | everything in [`PointsToRaw` (phase 2c)](#pointstoraw-phase-2c) above (new) | Not a `PTPhys`. |
 | free functions | `tracked_slice_index`, `tracked_ref` (new axioms, phase 3b); `allocate`, `deallocate` (ported, phase 2c, with `PointsToUntyped` in place of `PointsToRaw`; in `ptr_specs.rs`; `Dealloc` dropped) | |
@@ -565,15 +554,15 @@ so rustlib can write `PTPhys` for any of them, not just `str`.
 ## New axioms
 
 All in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes)
-and approved, including `allocate`, `deallocate`, `global_alloc_id` and `PointsTo::borrow_mut`,
-except `TypedValue::<[T]>::from_elems_ref` and the untyped joins `join_ref` / `join_mut` (waiting on Travis).
+and approved, including `allocate`, `deallocate`, `global_alloc_id`, `PointsTo::borrow_mut`
+and `TypedValue::<[T]>::from_elems_ref` (approved by Travis).
 
 Minor changes to existing axioms (`ptr_ref`, `ptr_ref2`, `ptr_ref2_ghost`, `mut_ref_to_shr_points_to`, `SharedReference::points_to`,
 and the restored slice versions `ptr_ref_slice`, `ptr_ref2_slice_ghost`, `mut_ref_to_shr_points_to_slice`, `SharedReference<[T]>::points_to`)
 are approved and in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#minor-changes-to-existing-trusted-specs),
 and so are the strengthened `ptr_mut_ref`, `ptr_mut_ref_slice` and `ptr_mut_ref_str`,
 the other `str` reference helpers (minor changes), the new `Seq` tracked operations
-(`tracked_borrow_subrange`, `tracked_split_borrow_mut`),
+(`tracked_borrow_subrange`, `tracked_split_borrow_mut`, `tracked_add_borrow`, `tracked_add_borrow_mut`),
 and the borrowed-assembly axioms (`tracked_slice_index`, `tracked_ref`,
 `PointsToUnaligned::from_raw_parts_ref`, M1, M3–M5)
 ([TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes)).
