@@ -60,7 +60,7 @@ domain ℤ with a bespoke validity range:
 
 | Type    | Bound |
 |---------|-------|
-| `int`   | `[0, 0xD7FF] ∪ [0xE000, 0x10FFFF]` |
+| `char`  | `[0, 0xD7FF] ∪ [0xE000, 0x10FFFF]` |
 
 This is consistent with the
 [Rust definition of a `char`](https://doc.rust-lang.org/std/primitive.char.html)

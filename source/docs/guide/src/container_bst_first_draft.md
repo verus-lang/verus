@@ -100,9 +100,9 @@ During this traversal, we'll either find a node with the right key, in which cas
 the `value`, or we'll reach a leaf without ever finding the desired node, in which case we
 create a new node.
 
-(Aside: One slight snag has to do with a limitation of Verus's handling of mutable references.
-Specifically, Verus doesn't yet support an easy way to get a
-`&mut T` out of a `&mut Option<T>`. To get around this, we use [`Option::take`](https://doc.rust-lang.org/std/option/enum.Option.html#method.take) to get ownership of the node.)
+(Aside: Rather than borrowing a `&mut T` out of the `&mut Option<T>`, this code uses
+[`Option::take`](https://doc.rust-lang.org/std/option/enum.Option.html#method.take) to get ownership of the node.
+We'll see mutable references into the tree [below](#implementing-get_mut).)
 
 ```rust
 {{#include ../../../../examples/guide/bst_map.rs:insert}}

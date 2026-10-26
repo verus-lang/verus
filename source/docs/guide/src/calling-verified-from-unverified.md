@@ -34,7 +34,7 @@ pub unsafe fn index_unchecked<T>(vec: &Vec<T>, i: usize) -> &T
 pub fn index<T>(vec: &Vec<T>, i: usize) -> Option<&T>
 {
     if i < vec.len() {
-        Some(index_unchecked(vec, i))
+        Some(unsafe { index_unchecked(vec, i) })
     } else {
         None
     }

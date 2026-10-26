@@ -54,7 +54,7 @@ The `allow_complex_invariants` attribute enables this by transforming the invari
 **This attribute only applies when `loop_isolation` is false.** Using it with `loop_isolation(true)`
 (or the default) will produce an error.
 
-## `#![verifier::allow_in_spec]`
+## `#[verifier::allow_in_spec]`
 
 Can be applied to an executable function with a [`returns` clause](./reference-returns.md).
 This allows the function to be used in spec mode, where it is interpreted as equivalent
