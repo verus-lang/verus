@@ -24,15 +24,15 @@ fn main() -> anyhow::Result<()> {
     let mut artifacts = cargo_verus_toolchains::installed::required_artifacts();
     artifacts
         .extend(["verus", "rust_verify", "cargo-verus"].map(|name| format!("{name}{EXE_SUFFIX}")));
-    #[cfg(target_os = "macos")]
-    artifacts.push("macos_allow_gatekeeper.sh".into());
     let mut artifacts: Vec<_> =
-        artifacts.into_iter().map(|name| (cli.build_dir.join(&name), name)).collect();
+        artifacts.into_iter().map(|name| cli.build_dir.join(name)).collect();
 
-    let z3 = format!("z3{EXE_SUFFIX}");
-    artifacts.push((PathBuf::from(&z3), z3));
+    #[cfg(target_os = "macos")]
+    artifacts.push("../tools/macos_allow_gatekeeper.sh".into());
 
-    for (source, _) in &artifacts {
+    artifacts.push(format!("z3{EXE_SUFFIX}").into());
+
+    for source in &artifacts {
         if !source.is_file() {
             bail!("missing release artifact: {}", source.display());
         }
@@ -41,8 +41,8 @@ fn main() -> anyhow::Result<()> {
     // Require a fresh directory so stale files cannot enter the archive.
     fs::create_dir(&cli.output_dir)
         .with_context(|| format!("creating release directory {}", cli.output_dir.display()))?;
-    for (source, artifact) in &artifacts {
-        let destination = cli.output_dir.join(artifact);
+    for source in &artifacts {
+        let destination = cli.output_dir.join(source.file_name().unwrap());
         fs::copy(source, &destination).with_context(|| {
             format!("copying {} to {}", source.display(), destination.display())
         })?;
