@@ -810,7 +810,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
         #[verifier::ext_equal]
         #item_enum
 
-        #[derive(Eq, Hash, PartialEq, Debug)]
+        #[derive(Eq, Hash, PartialEq)]
         #vis enum #exec_name {
             #(#exec_variants,)*
         }
