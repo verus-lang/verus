@@ -105,12 +105,9 @@ fn exp_for_decrease(_ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
     match &*undecorate_typ(&exp.typ) {
         TypX::Int(_) => Ok(exp.clone()),
         TypX::Datatype(..) => Ok(exp.clone()),
-        _ => Err(error(
+        _ => Err(crate::messages::internal_error(
             &exp.span,
-            format!(
-                "internal error: unsupported type for decreases {}",
-                typ_to_diagnostic_str(&exp.typ)
-            ),
+            format!("unsupported type for decreases {}", typ_to_diagnostic_str(&exp.typ)),
         )),
     }
 }
@@ -223,8 +220,8 @@ fn check_decrease_call(
             return Err(error(
                 span,
                 format!(
-                    "in mutually recursive functions, decreases clauses at the same position \
-                     must have compatible types: the caller's decreases clause #{} has {} type, \
+                    "in mutually recursive functions, `decreases` clauses at the same position \
+                     must have compatible types: the caller's `decreases` clause #{} has {} type, \
                      but the callee's has {} type",
                     i + 1,
                     caller_kind,
@@ -306,7 +303,7 @@ pub(crate) fn rewrite_spec_recursive_fun_with_fueled_rec_call(
         return Ok((body.clone(), scc_rep));
     }
     if !function.x.has.has_decrease {
-        return Err(error(&function.span, "recursive function must have a decreases clause"));
+        return Err(error(&function.span, "recursive function must have a `decreases` clause"));
     }
     let ctxt = Ctxt {
         recursive_function_name: function.x.name.clone(),
@@ -355,6 +352,28 @@ pub(crate) fn rewrite_rec_call_with_fuel_const(body: &Exp, fuel: usize) -> Exp {
     })
 }
 
+// Spans of the calls inside spec closures. A spec closure is a function over its whole domain,
+// so a recursive call in its body must decrease for every input, not just the ones it's applied to.
+fn closure_call_spans(function: &Function) -> Vec<Span> {
+    let mut spans = Vec::new();
+    if let Some(body) = &function.x.body {
+        crate::ast_visitor::expr_visitor_walk(body, &mut |expr| {
+            if let ExprX::Closure(_, body) = &expr.x {
+                crate::ast_visitor::expr_visitor_walk(body, &mut |e| {
+                    if matches!(e.x, ExprX::Call { .. }) && e.span.id != 0 {
+                        spans.push(e.span.clone());
+                    }
+                    crate::visitor::VisitorControlFlow::Recurse
+                });
+                // the walk above already covered any nested closures
+                return crate::visitor::VisitorControlFlow::Return;
+            }
+            crate::visitor::VisitorControlFlow::Recurse
+        });
+    }
+    spans
+}
+
 fn check_termination<'a>(
     ctx: &'a Ctx,
     diagnostics: &impl Diagnostics,
@@ -367,9 +386,9 @@ fn check_termination<'a>(
             || (!function.x.attrs.exec_allows_no_decreases_clause
                 && !function.x.attrs.exec_assume_termination))
     {
-        let mut e = error(&function.span, "recursive function must have a decreases clause");
+        let mut e = error(&function.span, "recursive function must have a `decreases` clause");
         if function.x.mode == crate::ast::Mode::Exec {
-            e = e.help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function");
+            e = e.help("to disable this check, use `#[verifier::exec_allows_no_decreases_clause]` on the function");
         }
         return Err(e);
     }
@@ -388,13 +407,23 @@ fn check_termination<'a>(
         ctx,
         caller_decreases_typs,
     };
+    let closure_call_spans = closure_call_spans(function);
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
         StmX::Call {
             fun: crate::sst::CallTarget::Fun(fun), resolved_method, args, dest, ..
         } if is_recursive_call(&ctxt, fun, resolved_method) => {
             let check =
                 check_decrease_call(&ctxt, diagnostics, &s.span, fun, resolved_method, args)?;
-            let error = error(&s.span, "could not prove termination");
+            let mut error = error(&s.span, "could not prove termination");
+            if closure_call_spans.iter().any(|c| c.id == s.span.id) {
+                error = error
+                    .help(
+                        "this call is inside a closure, and Verus checks the decreases measure for all possible values of the closure inputs, even if it is only applied to a subset of those inputs",
+                    )
+                    .help(
+                        "if needed, guard the call with a conditional, e.g., `if 0 <= i < len { call(...) } else { arbitrary() }`",
+                    );
+            }
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(None, Some(error), check));
 
             let mut stms = vec![stm_assert, s.clone()];

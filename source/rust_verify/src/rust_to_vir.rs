@@ -208,8 +208,6 @@ fn check_item<'tcx>(
 
     match &item.kind {
         ItemKind::Fn { sig, generics, body: body_id, .. } => {
-            // let _ =
-            //     check_fn_opaque_ty(ctxt, &mut vir.opaque_types, &item.owner_id.to_def_id()).map_err(|e| vec![e])?;
             check_item_fn(
                 ctxt,
                 state,
@@ -365,7 +363,7 @@ fn check_item<'tcx>(
             return Ok(());
         }
         _ => {
-            unsupported_err_vec!(item.span, "unsupported item", item);
+            unsupported_err_vec!(item.span, "this kind of item", item);
         }
     }
     Ok(())
@@ -395,7 +393,7 @@ fn check_foreign_item<'tcx>(
             )?;
         }
         _ => {
-            unsupported_err!(item.span, "unsupported foreign item", item);
+            unsupported_err!(item.span, "this kind of foreign item", item);
         }
     }
     Ok(())
@@ -497,7 +495,9 @@ fn check_extern_crate_alias<'tcx>(item: &'tcx Item<'tcx>) -> Result<(), VirErr> 
         if RESERVED_EXTERN_CRATE_NAMES.contains(&alias) && orig_name.as_str() != alias {
             return err_span(
                 item.span,
-                format!("Verus does not support renaming a crate to `{alias}` with `extern crate`"),
+                format!(
+                    "Verus does not currently support renaming a crate to `{alias}` with `extern crate`"
+                ),
             );
         }
     }

@@ -114,7 +114,7 @@ fn clone_add_post_condition<'tcx>(
     };
     let warn_unsupported = || {
         warn(
-            "Verus does not (yet) support autoderive Clone impl when the clone is not a copy; continuing, but without adding a specification for the derived Clone impl",
+            "Verus does not currently support autoderive Clone impl when the clone is not a copy; continuing, but without adding a specification for the derived Clone impl",
         )
     };
 

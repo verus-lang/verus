@@ -349,7 +349,7 @@ test_verify_one_file! {
             }) by (compute);   // FAILS
         }
 
-    } => Err(err) => assert_vir_error_msg(err, "Proof by computation included a closure literal that wasn't applied")
+    } => Err(err) => assert_vir_error_msg(err, "proof by computation that includes a closure literal that isn't applied")
 }
 
 test_verify_one_file! {
@@ -598,7 +598,7 @@ test_verify_one_file! {
         }
     } => Ok(err) => {
         assert_eq!(
-            err.warnings.iter().filter(|w| w.message.contains("Failed to simplify expression")).count(),
+            err.warnings.iter().filter(|w| w.message.contains("failed to simplify expression")).count(),
             2,
         );
     }
@@ -807,7 +807,7 @@ test_verify_one_file! {
         proof fn test() {
             assert(mk1() == mk2()) by (compute);
         }
-    } => Err(err) => assert_vir_error_msg(err, "Proof by computation included a closure literal that wasn't applied")
+    } => Err(err) => assert_vir_error_msg(err, "proof by computation that includes a closure literal that isn't applied")
 }
 
 test_verify_one_file! {
@@ -1035,7 +1035,7 @@ test_verify_one_file! {
         }
     } => Err(err) => {
         assert_eq!(err.errors.len(), 1);
-        assert!(err.errors[0].rendered.contains("assert_by_compute exceeded maximum recursion depth"));
+        assert!(err.errors[0].rendered.contains("`assert_by_compute` exceeded maximum recursion depth"));
     }
 }
 
@@ -1083,7 +1083,7 @@ test_verify_one_file! {
             *a = 5;
             assert(*old(a) == *a) by(compute_only);
         }
-    } => Err(err) => assert_vir_error_msg(err, "assert_by_compute_only failed to simplify down to true")
+    } => Err(err) => assert_vir_error_msg(err, "`assert_by_compute_only` failed to simplify down to true")
 }
 
 test_verify_one_file! {
@@ -1094,7 +1094,7 @@ test_verify_one_file! {
             assert(has_resolved(x) == x) by (compute_only);
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "assert_by_compute_only failed to simplify down to true")
+    } => Err(err) => assert_vir_error_msg(err, "`assert_by_compute_only` failed to simplify down to true")
 }
 
 test_verify_one_file! {
@@ -1103,7 +1103,7 @@ test_verify_one_file! {
         proof fn test() {
             assert(Seq::<int>::new(18446744073709551616nat, |i: int| 0int).len() == 0) by (compute_only);
         }
-    } => Err(err) => assert_vir_error_msg(err, "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.")
+    } => Err(err) => assert_vir_error_msg(err, "proof by computation that includes a closure literal that isn't applied")
 }
 
 test_verify_one_file! {
@@ -1418,7 +1418,7 @@ test_verify_one_file! {
         proof fn bad() {
             assert(t(-1) == 7) by (bit_vector);
         }
-    } => Err(err) => assert_vir_error_msg(err, "unsupported for bit-vector")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support this expression in `bit_vector` proofs")
 }
 
 test_verify_one_file! {

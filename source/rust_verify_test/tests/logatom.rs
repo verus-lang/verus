@@ -204,7 +204,7 @@ test_verify_one_file! {
                 Tracked(Ok(Token::invalid()))
             });
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot show atomic postcondition hold at end of block")
+    } => Err(err) => assert_vir_error_msg(err, "cannot show atomic postcondition holds at end of block")
 }
 
 test_verify_one_file! {
@@ -249,7 +249,7 @@ test_verify_one_file! {
                 Tracked(Err(Token::invalid()))
             });
         }
-    } => Err(err) => assert_any_vir_error_msg(err, "cannot show atomic postcondition hold at end of block")
+    } => Err(err) => assert_any_vir_error_msg(err, "cannot show atomic postcondition holds at end of block")
 }
 
 test_verify_one_file! {

@@ -49,7 +49,12 @@ where
                 rustc_ast::Recovered::No => false,
                 _ => true,
             };
-            unsupported_err_unless!(!recovered, span, "recovered_struct", variant_data_opt);
+            unsupported_err_unless!(
+                !recovered,
+                span,
+                "structs recovered from a parse error",
+                variant_data_opt
+            );
             Some(*fields)
         }
         Some(VariantData::Tuple(fields, _variant_id, _local_def_id)) => Some(*fields),
@@ -314,15 +319,18 @@ pub(crate) fn check_item_union<'tcx>(
 
     let mode = get_mode(Mode::Exec, attrs);
     if mode != Mode::Exec {
-        return err_span(span, "a 'union' can only be exec-mode");
+        return err_span(span, "a `union` can only be exec-mode");
     }
     let VariantData::Struct { fields: hir_fields, recovered: _ } = variant_data else {
-        return err_span(span, "check_item_union: wrong VariantData");
+        return crate::util::internal_err_span(
+            span,
+            "check_item_union: wrong VariantData".to_string(),
+        );
     };
     for hir_field_def in hir_fields.iter() {
         let mode = get_mode(Mode::Exec, ctxt.tcx.hir_attrs(hir_field_def.hir_id));
         if mode != Mode::Exec {
-            return err_span(span, "a union field can only be exec-mode");
+            return err_span(span, "a `union` field can only be exec-mode");
         }
     }
 
@@ -460,7 +468,7 @@ fn get_sized_constraint<'tcx>(
     loop {
         idx += 1;
         if idx > 10000 {
-            crate::internal_err!(span, "get_sized_constraint exceeded iterations");
+            crate::internal_err!(span, "`get_sized_constraint` exceeded iterations");
         }
 
         // Try normalizing (i.e., eliminating any projection types)
@@ -534,7 +542,7 @@ pub(crate) fn check_item_external<'tcx>(
 
     let mode = get_mode(Mode::Exec, attrs);
     if mode != Mode::Exec {
-        return err_span(span, "external_type_specification can only be used with exec types");
+        return err_span(span, "`external_type_specification` can only be used with exec types");
     }
 
     // The proxy_adt_def should look like:
@@ -544,12 +552,15 @@ pub(crate) fn check_item_external<'tcx>(
     let mut fields_iter = proxy_adt_def.all_fields();
     let first_field = match fields_iter.next() {
         None => {
-            return err_span(span, "external_type_specification should look like `struct X(Type)`");
+            return err_span(
+                span,
+                "`external_type_specification` should look like `struct X(Type)`",
+            );
         }
         Some(first_field) => first_field,
     };
     if fields_iter.next().is_some() {
-        return err_span(span, "external_type_specification should look like `struct X(Type)`");
+        return err_span(span, "`external_type_specification` should look like `struct X(Type)`");
     }
     let external_ty = ctxt.tcx.type_of(first_field.did).skip_binder();
     let (external_adt_def, substs_ref) = match external_ty.kind() {
@@ -583,7 +594,10 @@ pub(crate) fn check_item_external<'tcx>(
     if !(external_predicates.parent.is_none() && proxy_predicates.parent.is_none()) {
         // I think this error is impossible?
         // 'Parent' nodes should only exist for stuff in an impl
-        return err_span(span, "expected GenericPredicates to not have a parent");
+        return crate::util::internal_err_span(
+            span,
+            "expected GenericPredicates to not have a parent".to_string(),
+        );
     }
     let external_typing_env = TypingEnv::post_analysis(ctxt.tcx, external_adt_def.did());
     let proxy_typing_env = TypingEnv::post_analysis(ctxt.tcx, proxy_adt_def.did());
@@ -646,7 +660,7 @@ pub(crate) fn check_item_external<'tcx>(
         {
             return err_span(
                 span,
-                "cannot apply `external_type_specification` to Verus verus_builtin types",
+                "cannot apply `external_type_specification` to Verus builtin types",
             );
         }
         _ => {}
@@ -698,7 +712,7 @@ pub(crate) fn check_item_external<'tcx>(
         if inner_vis != external_item_visibility {
             return err_span(
                 span,
-                "external_type_specification: private fields not supported for transparent datatypes (try 'external_body' instead?)",
+                "external_type_specification: private fields not supported for transparent datatypes (try `external_body` instead?)",
             );
         }
         let transparency = DatatypeTransparency::WhenVisible(inner_vis);
@@ -748,7 +762,7 @@ pub(crate) fn check_item_external<'tcx>(
         if total_vis != external_item_visibility {
             return err_span(
                 span,
-                "external_type_specification: private fields not supported for transparent datatypes (try 'external_body' instead?)",
+                "external_type_specification: private fields not supported for transparent datatypes (try `external_body` instead?)",
             );
         }
 
@@ -806,7 +820,7 @@ pub(crate) fn setup_type_invariants(
             if f.x.params.len() != 1 {
                 return Err(vir::messages::error(
                     &f.span,
-                    "#[verifier::type_invariant]: expected 1 parameter",
+                    "`#[verifier::type_invariant]` function must have exactly 1 parameter",
                 ));
             }
             let param_typ = &f.x.params[0].x.typ;
@@ -817,7 +831,7 @@ pub(crate) fn setup_type_invariants(
                     if let Some(f2) = &dt.x.user_defined_invariant_fn {
                         return Err(vir::messages::error(
                             &f.span,
-                            "type_invariant: multiple type invariants defined for the same type",
+                            "multiple `#[verifier::type_invariant]` functions defined for the same type",
                         )
                         .primary_span(&get_fun_span(functions, &f2.fun)));
                     }
@@ -829,13 +843,13 @@ pub(crate) fn setup_type_invariants(
                 } else {
                     return Err(vir::messages::error(
                         &f.span,
-                        "type_invariant: expected parameter to be a datatype declared in this crate",
+                        "`#[verifier::type_invariant]` function parameter must be a datatype declared in this crate",
                     ));
                 }
             } else {
                 return Err(vir::messages::error(
                     &f.span,
-                    "type_invariant: expected parameter to be a datatype declared in this crate",
+                    "`#[verifier::type_invariant]` function parameter must be a datatype declared in this crate",
                 ));
             }
         }

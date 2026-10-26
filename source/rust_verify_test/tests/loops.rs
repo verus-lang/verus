@@ -706,7 +706,7 @@ test_verify_one_file_with_options! {
                 break 5u64;
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "loops with value-bearing 'break' do not yet support loop isolation")
+    } => Err(err) => assert_vir_error_msg(err, "loops with value-bearing `break`")
 }
 
 test_verify_one_file_with_options! {
@@ -1669,7 +1669,7 @@ test_verify_one_file! {
                 i = i + 1;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "loop invariants with 'loop_isolation(false)' cannot be invariant_except_break or ensures, unless #[verifier::allow_complex_invariants] is used")
+    } => Err(err) => assert_vir_error_msg(err, "loop invariants with `loop_isolation(false)` cannot be `invariant_except_break` or `ensures`, unless `#[verifier::allow_complex_invariants]` is used")
 }
 
 test_verify_one_file! {

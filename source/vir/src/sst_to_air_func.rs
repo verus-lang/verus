@@ -315,17 +315,16 @@ fn func_body_to_air(
     let mut impl_def_reqs: Vec<Expr> = Vec::new();
     let (name, rec_name, typ_args) =
         if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &function.x.kind {
-            let (mut trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
+            let (trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
+            let typ_args = crate::traits::trait_method_impl_typ_args(
+                &ctx.func_map[method],
+                &trait_typ_args,
+                &function.x.typ_params,
+            );
             let (typ_params, eqs) = hide_projections_air(ctx, &typ_params, holes);
-            let n_inner_typ_params = ctx.func_map[method].x.typ_params.len() - trait_typ_args.len();
-            let inner_typ_params_lo = typ_params.len() - n_inner_typ_params;
-            let inner_typ_params = typ_params[inner_typ_params_lo..].to_vec();
-            for x in &inner_typ_params {
-                Arc::make_mut(&mut trait_typ_args).push(Arc::new(TypX::TypParam(x.clone())));
-            }
             impl_typ_params = typ_params;
             impl_def_reqs.extend(eqs);
-            (method.clone(), function.x.name.clone(), trait_typ_args.clone())
+            (method.clone(), function.x.name.clone(), typ_args)
         } else if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
             let typ_args = vec_map(&typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
             let name = crate::def::trait_default_name(&function.x.name);
@@ -476,7 +475,7 @@ fn req_ens_to_air(
                 } else {
                     return Err(crate::messages::error(
                         &exp.span,
-                        "default_ensures not allowed here",
+                        "`default_ensures` not allowed here",
                     ));
                 }
             }
@@ -617,7 +616,6 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
         FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } => {
             if ctx.funcs_with_ensure_predicate[method] {
                 let ens = prefix_ensures(&fun_to_air_ident(&ctx.name_ctxt, &method));
-                let mut typ_args = (**trait_typ_args).clone();
                 let f_method = &ctx.func_map[method];
                 let override_default =
                     if let FunctionKind::TraitMethodDecl { has_default, .. } = &f_method.x.kind {
@@ -625,18 +623,12 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
                     } else {
                         false
                     };
-                let num_trait_and_method_typ_params = f_method.x.typ_params.len();
-                let num_method_typ_params = num_trait_and_method_typ_params - trait_typ_args.len();
-                let num_our_total_typ_params = function.x.typ_params.len();
-                let skip_to_our_method_typ_params =
-                    num_our_total_typ_params - num_method_typ_params;
-                // Add the arguments for the method's type parameters, skipping over our impl params
-                for method_typ_param in
-                    function.x.typ_params.iter().skip(skip_to_our_method_typ_params)
-                {
-                    typ_args.push(Arc::new(TypX::TypParam(method_typ_param.clone())));
-                }
-                (true, Some((override_default, ens, Arc::new(typ_args))))
+                let typ_args = crate::traits::trait_method_impl_typ_args(
+                    f_method,
+                    trait_typ_args,
+                    &function.x.typ_params,
+                );
+                (true, Some((override_default, ens, typ_args)))
             } else {
                 (true, None)
             }
@@ -736,7 +728,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
         if function.x.has.has_ensures {
             return Err(crate::messages::error(
                 &function.x.outer_ret.span,
-                "ensures clause unsupported on spec function",
+                "`ensures` clause unsupported on spec function",
             ));
         }
     }
@@ -794,7 +786,6 @@ pub fn func_axioms_to_air(
     function: &FunctionSst,
     public_body: bool,
 ) -> Result<(Commands, Vec<CommandsWithContext>), VirErr> {
-    let typ_to_ids = |typ| typ_to_ids(ctx, typ);
     let func_axioms_sst = &function.x.axioms;
     let mut decl_commands: Vec<Command> = Vec::new();
     let mut check_commands: Vec<CommandsWithContext> = Vec::new();
@@ -831,21 +822,14 @@ pub fn func_axioms_to_air(
                             &mut typ_bounds,
                             trait_typ_args,
                         );
-                    let (mut trait_typ_args, holes) =
-                        crate::traits::hide_projections(trait_typ_args);
+                    let (trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
+                    let typ_args = crate::traits::trait_method_impl_typ_args(
+                        &ctx.func_map[f_trait],
+                        &trait_typ_args,
+                        &function.x.typ_params,
+                    );
                     let (typ_params, eqs) = hide_projections_air(ctx, &typ_params, holes);
-                    let n_inner_typ_params =
-                        ctx.func_map[f_trait].x.typ_params.len() - trait_typ_args.len();
-                    let inner_typ_params_lo = typ_params.len() - n_inner_typ_params;
-                    let inner_typ_params = typ_params[inner_typ_params_lo..].to_vec();
-                    for x in &inner_typ_params {
-                        Arc::make_mut(&mut trait_typ_args)
-                            .push(Arc::new(TypX::TypParam(x.clone())));
-                    }
-                    let mut args: Vec<Expr> = trait_typ_args.iter().flat_map(typ_to_ids).collect();
-                    for p in function.x.pars.iter() {
-                        args.push(ident_var(&p.x.name.lower()));
-                    }
+                    let args = func_def_typs_args(ctx, None, &typ_args, &function.x.pars);
                     let default_name = crate::def::trait_default_name(f_trait);
                     let default_name =
                         &suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &default_name));
@@ -858,7 +842,7 @@ pub fn func_axioms_to_air(
                         &suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &function.x.name)),
                         false,
                         &typ_params,
-                        &trait_typ_args,
+                        &typ_args,
                         &function.x.pars,
                         &pre,
                         &extra_trigger_terms,

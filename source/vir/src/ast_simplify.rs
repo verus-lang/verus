@@ -357,9 +357,9 @@ fn simplify_one_expr(
                 };
                 match scope_map.get(x) {
                     None => {
-                        return Err(error(
+                        return Err(crate::messages::internal_error(
                             &expr.span,
-                            "Verus Internal Error: cannot find this variable",
+                            "cannot find this variable",
                         ));
                     }
                     Some(entry) if entry.user_mut == Some(false) && entry.init => {
@@ -607,7 +607,7 @@ fn simplify_one_expr(
                     if_expr = Some(SpannedTyped::new(&expr.span, &expr.typ.clone(), ifx));
                 } else if *assert_irrefutable && !test_is_true {
                     if has_guard {
-                        return Err(error(&arm.x.guard.span, "if-guard on final match arm"));
+                        return Err(error(&arm.x.guard.span, "match guard on final match arm"));
                     }
                     let assertion = SpannedTyped::new(
                         &arm.x.pattern.span,
@@ -644,7 +644,10 @@ fn simplify_one_expr(
                 };
                 Ok(if_expr)
             } else {
-                Err(error(&expr.span, "not yet implemented: zero-arm match expressions"))
+                Err(error(
+                    &expr.span,
+                    "Verus does not currently support zero-arm match expressions",
+                ))
             }
         }
         ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: expr1 } => Ok(expr1.clone()),
@@ -734,10 +737,12 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
                 }
             }
         }
-        StmtX::Decl { pattern, mode: _, init: None, els: Some(_), .. } => Err(error(
-            &pattern.span,
-            "Verus Internal Error: Decl with else-block but no initializer",
-        )),
+        StmtX::Decl { pattern, mode: _, init: None, els: Some(_), .. } => {
+            Err(crate::messages::internal_error(
+                &pattern.span,
+                "Decl with else-block but no initializer",
+            ))
+        }
         StmtX::Decl { pattern, mode: _, init: Some(_init), els: None, assert_irrefutable: _ }
             if matches!(
                 pattern.x,
@@ -797,9 +802,9 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
         }
         TypX::AnonymousClosure(typs, typ, kind, id) => {
             let Some(fun) = local.fun.clone() else {
-                return Err(error(
+                return Err(crate::messages::internal_error(
                     &local.span,
-                    format!("Verus Internal Error: found AnonymousClosure type outside function"),
+                    format!("found AnonymousClosure type outside function"),
                 ));
             };
             let path =
@@ -1064,7 +1069,7 @@ pub(crate) fn need_fndef_axiom(fndef_typs: &HashSet<Fun>, f: &Function) -> bool 
 }
 
 fn add_fndef_axioms_to_function(
-    _ctx: &GlobalCtx,
+    fndef_funs: &HashMap<&Fun, &Function>,
     state: &mut State,
     function: &Function,
     fn_once_trait_in_scope: bool,
@@ -1082,7 +1087,12 @@ fn add_fndef_axioms_to_function(
 
     let (fun, typ_args, is_trait_method_impl, inherit) = match &function.x.kind {
         FunctionKind::TraitMethodImpl { method, trait_typ_args, inherit_body_from, .. } => {
-            (method, trait_typ_args.clone(), true, inherit_body_from.is_some())
+            let typ_args = crate::traits::trait_method_impl_typ_args(
+                fndef_funs[method],
+                trait_typ_args,
+                &function.x.typ_params,
+            );
+            (method, typ_args, true, inherit_body_from.is_some())
         }
         _ => {
             let typ_args: Vec<_> = function
@@ -1475,11 +1485,17 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let fn_once_trait_path = ClosureKind::FnOnce.trait_path();
     let fn_once_trait_in_scope = traits.iter().any(|t| t.x.name == fn_once_trait_path);
 
+    // A TraitMethodImpl needs fndef axioms only if its trait method is in fndef_typs
+    let fndef_funs: HashMap<&Fun, &Function> = functions
+        .iter()
+        .filter(|f| state.fndef_typs.contains(&f.x.name))
+        .map(|f| (&f.x.name, f))
+        .collect();
     let mut new_functions: Vec<Function> = Vec::with_capacity(functions.len());
     for f in functions.iter() {
         if need_fndef_axiom(&state.fndef_typs, f) {
             let (f2, tis, ai) =
-                add_fndef_axioms_to_function(ctx, &mut state, f, fn_once_trait_in_scope)?;
+                add_fndef_axioms_to_function(&fndef_funs, &mut state, f, fn_once_trait_in_scope)?;
             trait_impls.extend(tis);
             if let Some(ai) = ai {
                 assoc_type_impls.push(ai);
@@ -1732,7 +1748,7 @@ pub fn krate_merge_arch(krate: &Krate, other_krates: &[Krate]) -> Result<Arch, V
             (crate::ast::ArchWordBits::Exactly(l), crate::ast::ArchWordBits::Exactly(r)) => {
                 if l != r {
                     return Err(crate::messages::error_bare(
-                        "all crates must have compatible arch_word_bits (set via `global size_of usize`",
+                        "all crates must have compatible `arch_word_bits` (set via `global size_of usize`)",
                     ));
                 } else {
                     crate::ast::ArchWordBits::Exactly(l)

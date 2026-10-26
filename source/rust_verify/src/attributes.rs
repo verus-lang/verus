@@ -187,7 +187,7 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
             {
                 return err_span(
                     attr.span(),
-                    "attributes spec, proof, exec are not supported anymore; use the verus! macro instead",
+                    "attributes spec, proof, exec are not supported anymore; use the `verus!` macro instead",
                 );
             }
             [segment] if segment.as_str().starts_with("rustc_") => {
@@ -450,7 +450,7 @@ pub(crate) fn parse_attrs(
             if let Some(diagnostics) = diagnostics {
                 diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                     span,
-                    format!("#[verifier({attr_name})] is deprecated, {msg}"),
+                    format!("`#[verifier({attr_name})]` is deprecated, {msg}"),
                 )));
             }
         };
@@ -491,7 +491,7 @@ pub(crate) fn parse_attrs(
                     if groups.len() == 0 {
                         return err_span(
                             *span,
-                            "expected either #[trigger] or non-empty #[trigger(...)]",
+                            "expected either `#[trigger]` or non-empty `#[trigger(...)]`",
                         );
                     }
                     v.push(Attr::Trigger(Some(groups)));
@@ -501,7 +501,13 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
                 AttrTree::Fun(_, arg, None) if arg == "external_body" => v.push(Attr::ExternalBody),
                 AttrTree::Fun(_, arg, None) if arg == "external" => v.push(Attr::External),
-                AttrTree::Fun(_, arg, None) if arg == "verify" => v.push(Attr::Verify),
+                AttrTree::Fun(_, arg, None) if arg == "verify" => {
+                    report_deprecated(
+                        "verifier::verify",
+                        "use `verus! { ... }` or `#[verus_spec(...)]` or `#[verus_verify(...)]` instead",
+                    );
+                    v.push(Attr::Verify)
+                }
                 AttrTree::Fun(_, arg, None) if arg == "opaque" => v.push(Attr::Opaque),
                 AttrTree::Fun(_, arg, None) if arg == "opaque_outside_module" => {
                     v.push(Attr::OpaqueOutsideModule)
@@ -668,7 +674,7 @@ pub(crate) fn parse_attrs(
                         }
                         return err_span(
                             *span,
-                            "expected `assert`, `assert_by`, and/or `ensures` for auto_ext_equal",
+                            "expected `assert`, `assert_by`, and/or `ensures` for `auto_ext_equal`",
                         );
                     }
                     v.push(Attr::AutoExtEqual(auto_ext_equal))
@@ -747,7 +753,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "invalid_trigger_attribute" => {
                     return err_span(
                         span,
-                        "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute",
+                        "invalid trigger attribute: to provide a trigger expression, use the `#![trigger <expr>]` attribute",
                     );
                 }
                 AttrTree::Fun(_, arg, None) if arg == "impls_cannot_extend_spec" => {
@@ -809,7 +815,7 @@ pub(crate) fn parse_attrs(
                         if groups.len() == 0 {
                             return err_span(
                                 *span,
-                                "expected either #[trigger] or non-empty #[trigger(...)]",
+                                "expected either `#[trigger]` or non-empty `#[trigger(...)]`",
                             );
                         }
                         v.push(Attr::Trigger(Some(groups)));
@@ -821,6 +827,7 @@ pub(crate) fn parse_attrs(
                         v.push(Attr::AllTriggers)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
+                    AttrTree::Fun(_, arg, None) if arg == "verify" => v.push(Attr::Verify),
                     AttrTree::Fun(_, arg, None) if arg == "proof_block" => {
                         v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
                     }
@@ -1608,7 +1615,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
     }
     if do_check {
         if let Some((rustc_attr, span)) = unsupported_rustc_attr {
-            return err_span(span, format!("The attribute `{rustc_attr:}` is not supported"));
+            return err_span(span, format!("the attribute `{rustc_attr:}` is not supported"));
         }
     }
     Ok(vs)

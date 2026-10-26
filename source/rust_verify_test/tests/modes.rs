@@ -436,7 +436,7 @@ test_verify_one_file_with_options! {
             let mut s = S { a: 5, b: false };
             muts_exec(&mut s.a);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow a ghost-mode place")
 }
 
 const PROOF_FN_COMMON: &str = code_str! {
@@ -517,7 +517,7 @@ test_verify_one_file! {
             let mut g = g;
             f(&mut g.e); // fails, tracked <- ghost assign
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow a ghost-mode place")
 }
 
 test_verify_one_file! {
@@ -781,7 +781,7 @@ test_verify_one_file! {
                 f(g.borrow_mut()); // fails, tracked <- ghost assign
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow a ghost-mode place")
 }
 
 test_verify_one_file! {
@@ -1238,7 +1238,7 @@ test_verify_one_file! {
         fn test1(Ghost(g): Ghost<&mut int>, Ghost(t): Tracked<&mut S>)
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "ill-formed unwrap_parameter header")
+    } => Err(err) => assert_vir_error_msg(err, "ill-formed `unwrap_parameter` header")
 }
 
 test_verify_one_file! {
@@ -1283,7 +1283,7 @@ test_verify_one_file! {
             #[verus::internal(header_unwrap_parameter)] let h;
             #[verifier(proof_block)] { h = g }; // should be tmp_h.view()
         }
-    } => Err(err) => assert_vir_error_msg(err, "ill-formed unwrap_parameter header")
+    } => Err(err) => assert_vir_error_msg(err, "Verus internal error: ill-formed `unwrap_parameter` header")
 }
 
 test_verify_one_file! {
@@ -1299,7 +1299,7 @@ test_verify_one_file! {
             let ghost mut i = 1000;
             test1(Ghost(&mut i), Tracked(&mut t2));
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow a ghost-mode place")
 }
 
 test_verify_one_file! {
@@ -1883,7 +1883,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "break/continue is not allowed outside executable context")
+    } => Err(err) => assert_vir_error_msg(err, "`break`/`continue` is not allowed outside executable context")
 }
 
 test_verify_one_file! {
@@ -1898,7 +1898,7 @@ test_verify_one_file! {
                 }
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "break/continue is not allowed outside executable context")
+    } => Err(err) => assert_vir_error_msg(err, "`break`/`continue` is not allowed outside executable context")
 }
 
 test_verify_one_file! {
@@ -1913,7 +1913,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "break/continue is not allowed outside executable context")
+    } => Err(err) => assert_vir_error_msg(err, "`break`/`continue` is not allowed outside executable context")
 }
 
 test_verify_one_file! {
@@ -1925,7 +1925,7 @@ test_verify_one_file! {
                 let x = Tracked(break);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "break/continue is not allowed outside executable context")
+    } => Err(err) => assert_vir_error_msg(err, "`break`/`continue` is not allowed outside executable context")
 }
 
 test_verify_one_file! {
@@ -1937,7 +1937,7 @@ test_verify_one_file! {
                 let x = Ghost(break);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "break/continue is not allowed outside executable context")
+    } => Err(err) => assert_vir_error_msg(err, "`break`/`continue` is not allowed outside executable context")
 }
 
 test_verify_one_file! {
@@ -1949,5 +1949,41 @@ test_verify_one_file! {
                 let ghost x = break;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "break/continue is not allowed outside executable context")
+    } => Err(err) => assert_vir_error_msg(err, "`break`/`continue` is not allowed outside executable context")
+}
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3171
+    #[test] exec_match_on_ghost1 verus_code! {
+        pub struct S {
+            pub ghost g: u64,
+        }
+
+        fn test() -> (r: u64)
+            ensures r == 1,
+        {
+            let mut s = S { g: 7 };
+            proof { s.g = 5; }
+            match s {
+                S { g: 5 } => 1,
+                _ => 0,
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot match on ghost value in exec context")
+}
+
+test_verify_one_file! {
+    #[test] exec_match_on_ghost2 verus_code! {
+        enum E { A, B }
+        struct S {
+            pub ghost g: E,
+        }
+
+        fn test(s: S) {
+            match s {
+                S { g: E::A } => {}
+                _ => {}
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot match on ghost value in exec context")
 }
