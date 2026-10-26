@@ -343,6 +343,22 @@ pub assume_specification[ <bool as PartialEq<bool>>::eq ](x: &bool, y: &bool) ->
 
 pub assume_specification[ <bool as PartialEq<bool>>::ne ](x: &bool, y: &bool) -> bool;
 
+/* char */
+
+impl PartialEqSpecImpl for char {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &char) -> bool {
+        *self == *other
+    }
+}
+
+pub assume_specification[ <char as PartialEq<char>>::eq ](x: &char, y: &char) -> bool;
+
+pub assume_specification[ <char as PartialEq<char>>::ne ](x: &char, y: &char) -> bool;
+
 /* floating point */
 
 /*
