@@ -1547,10 +1547,11 @@ pub(crate) struct FunctionInfo<'tcx> {
     pub external_trait_from_to: Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     pub migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     pub assume_specification_opaque_type_map: Option<HashMap<Path, Path>>,
-    pub return_opaque_type_eqs: Vec<(Typ, Typ)>,
     pub ret_typ_mode: Option<(Typ, Mode)>,
     pub autoderive_action: Option<AutomaticDeriveAction>,
     pub is_external_const: bool,
+    pub has_opaque_types: bool,
+    pub external_id: Option<DefId>,
 }
 
 pub(crate) struct ConstInfo {
@@ -1774,35 +1775,24 @@ pub(crate) fn check_item_fn<'tcx>(
         (this_path.clone(), None, visibility, kind, has_self_param, safety, false, None, is_async)
     };
 
-    let collect_hidden_type_eqs = external_id.is_none()
-        && matches!(&body_id, CheckItemFnEither::BodyId(_))
-        && !vattrs.external_body
-        && !vattrs.external_fn_specification;
     let opaque_types_len_before = opaque_types.len();
-    let (assume_specification_opaque_type_map, return_opaque_type_eqs) =
-        if let Some(external_id) = external_id {
-            let (opaque_type_map, _) = check_fn_opaque_ty(
-                ctxt,
-                opaque_types,
-                &external_id,
-                sig.output_span(),
-                Some(&id),
-                false,
-            )?;
-            (Some(opaque_type_map), Vec::new())
-        } else {
-            let (_, hidden_type_eqs) = check_fn_opaque_ty(
-                ctxt,
-                opaque_types,
-                &id,
-                sig.output_span(),
-                None,
-                collect_hidden_type_eqs,
-            )?;
-            (None, hidden_type_eqs)
-        };
+    let assume_specification_opaque_type_map = if let Some(external_id) = external_id {
+        let (opaque_type_map, _) = check_fn_opaque_ty(
+            ctxt,
+            opaque_types,
+            &external_id,
+            sig.output_span(),
+            Some(&id),
+            false,
+        )?;
+        Some(opaque_type_map)
+    } else {
+        let (_, _) = check_fn_opaque_ty(ctxt, opaque_types, &id, sig.output_span(), None, false)?;
+        None
+    };
+    let has_opaque_types = opaque_types.len() > opaque_types_len_before;
 
-    if opaque_types.len() > opaque_types_len_before || is_async {
+    if has_opaque_types || is_async {
         let reason = if is_async { "async" } else { "impl trait in return position" };
         if mode != Mode::Exec {
             return err_span(sig.span, format!("{reason} is only supported for `exec` functions"));
@@ -2294,10 +2284,11 @@ pub(crate) fn check_item_fn<'tcx>(
         external_trait_from_to,
         migrate_postcondition_vars,
         assume_specification_opaque_type_map,
-        return_opaque_type_eqs,
         ret_typ_mode,
         autoderive_action: autoderive_action,
         is_external_const,
+        has_opaque_types,
+        external_id,
     }));
 
     if is_verus_spec { Ok(None) } else { Ok(Some(name)) }
@@ -2338,10 +2329,11 @@ pub(crate) fn finish_function<'tcx>(
         ref external_trait_from_to,
         ref migrate_postcondition_vars,
         ref assume_specification_opaque_type_map,
-        ref return_opaque_type_eqs,
         ref ret_typ_mode,
         autoderive_action,
         ref is_external_const,
+        has_opaque_types,
+        external_id,
     } = *function_info;
     let vir::ast::FunctionStubX {
         name,
@@ -2464,11 +2456,6 @@ pub(crate) fn finish_function<'tcx>(
         }
         (_, returns) => ((ensure0, ensure1), returns, body),
     };
-    let return_opaque_type_eqs = if body.is_some() && !is_external_const {
-        Arc::new(return_opaque_type_eqs.clone())
-    } else {
-        Arc::new(vec![])
-    };
 
     if header.ensure.0.len() + header.ensure.1.len() > 0 {
         match (is_async, &header.ensure_id_typ, ret_typ_mode.as_ref()) {
@@ -2503,6 +2490,25 @@ pub(crate) fn finish_function<'tcx>(
         }
     }
 
+    // Compute the hidden type equalities.
+    // Note: We couldn't do this earlier in `check_item_fn` because
+    // computing the hidden equalities requires us to open opaque type
+    // definitions, which in turn may invoke type-checking, which would
+    // casue dependency issues if we did in `check_item_fn`.
+    let collect_hidden_type_eqs = has_opaque_types
+        && external_id.is_none()
+        && matches!(&body_id, CheckItemFnEither::BodyId(_))
+        && !vattrs.external_body
+        && !vattrs.external_fn_specification
+        && !is_external_const;
+    let return_opaque_type_eqs = if collect_hidden_type_eqs {
+        // We already collected the opaque types once, so we don't need
+        // to do it again (hence, passing a throw-away Vec for the output).
+        check_fn_opaque_ty(ctxt, &mut vec![], &def_id, sig.output_span(), None, false)?.1
+    } else {
+        vec![]
+    };
+
     let mut functionx = FunctionX {
         name,
         proxy,
@@ -2530,7 +2536,7 @@ pub(crate) fn finish_function<'tcx>(
         item_kind,
         attrs,
         body,
-        return_opaque_type_eqs,
+        return_opaque_type_eqs: Arc::new(return_opaque_type_eqs),
         extra_dependencies: header.extra_dependencies,
         hidden: Arc::new(header.hidden.clone()),
     };

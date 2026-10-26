@@ -538,7 +538,12 @@ pub(crate) fn prepare_local_def_id<'tcx>(
     tcx: TyCtxt<'tcx>,
     local_def_id: LocalDefId,
 ) -> Result<(), rustc_errors::ErrorGuaranteed> {
-    let query = crate::query::get_global_query(tcx);
+    let Some(query) = crate::query::get_global_query(tcx) else {
+        panic!(
+            "Internal Verus Error: The thir_body query is running for item {:?}, but the Verus `Query` system has not been initialized. Please file a github issue for this error and consider using `--no-lifetime` as a temporary measure to work around the issue.",
+            local_def_id
+        );
+    };
 
     #[allow(deprecated)]
     let map_query_err = |_err: crate::query::QueryError| {

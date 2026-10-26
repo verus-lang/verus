@@ -3,6 +3,7 @@
 use crate::boundary_suggestions::build_boundary_suggestion;
 use crate::config::Args;
 use crate::context::{Context, ErasureInfo};
+use crate::rust_to_vir::AnonConstToCheck;
 use crate::rust_to_vir_func::FunctionOrConstInfo;
 use crate::rust_to_vir_func::finish_item;
 use crate::verifier::FuncDetails;
@@ -31,6 +32,10 @@ pub(crate) struct PreCrate<'tcx> {
     pub infos: Vec<Arc<FunctionOrConstInfo<'tcx>>>,
     pub fun_name_to_info: HashMap<Fun, Arc<FunctionOrConstInfo<'tcx>>>,
     pub def_id_to_fun_name_for_erasure: HashMap<DefId, Option<Fun>>,
+    /// Anonymous constants to be mode-checked. Unlike the items in `infos`, their
+    /// `FunctionOrConstInfo`s are built on demand (see `Query::get_anon_const_info`).
+    pub anon_consts: Vec<Arc<AnonConstToCheck>>,
+    pub fun_name_to_anon_const: HashMap<Fun, Arc<AnonConstToCheck>>,
 }
 
 /// Used to guarantee that we emitted an error
@@ -54,6 +59,8 @@ pub(crate) struct State<'tcx> {
     cache_initial_wf_results: Option<Res<InitialWfResults>>,
     /// All function stubs, across this crate and imported crates
     cache_all_function_stubs: Option<Res<Arc<HashMap<Fun, FunctionStub>>>>,
+    /// FunctionOrConstInfos for anonymous constants, generated on demand
+    cache_anon_const_infos: HashMap<Fun, Res<Arc<FunctionOrConstInfo<'tcx>>>>,
     /// Pre-check functions, immediately after translation from HIR
     cache_unchecked_functions: HashMap<Fun, Res<(Function, Arc<ErasureInfo>)>>,
     /// Completed functions
@@ -82,14 +89,14 @@ pub(crate) struct Query<'tcx> {
 macro_rules! cache_or_compute {
     ( $self:ident, $name:ident, $fun_name:ident ( $( $args:expr ),* )  ) => {{
         let state = $self.state.borrow();
-        if let Some($name) = &state.$name {
-            $name.clone()
+        if let Some(x) = &state.$name {
+            x.clone()
         } else {
             std::mem::drop(state);
             let s = $self.$fun_name();
             let mut state = $self.state.borrow_mut();
-            state.$name = Some(s);
-            state.$name.clone().unwrap()
+            state.$name = Some(s.clone());
+            s
         }
     }};
 }
@@ -115,6 +122,7 @@ impl<'tcx> Query<'tcx> {
                 cache_merged_traits: None,
                 cache_initial_wf_results: None,
                 cache_all_function_stubs: None,
+                cache_anon_const_infos: HashMap::new(),
                 cache_unchecked_functions: HashMap::new(),
                 cache_checked_functions: HashMap::new(),
                 cache_exportable_crate: None,
@@ -319,6 +327,81 @@ impl<'tcx> Query<'tcx> {
         Ok(self.get_initial_wf_results()?.lookup.dts.clone())
     }
 
+    //// Anonymous constants
+    ////
+    //// Anonymous constants are translated to VIR and checked (so that we can reject
+    //// ghost code inside them) but they are never verified, since Rust's own const
+    //// evaluator already checks them.
+    ////
+    //// Unlike for the other items, we build the `FunctionOrConstInfo` here rather than
+    //// in `crate_to_vir`: asking for the type of an anonymous constant ICEs unless its
+    //// enclosing item has been type-checked first, and type-checking the enclosing item
+    //// may require mode-checking results, which are only available once the query
+    //// system is up and running.
+
+    fn get_anon_const_info(&self, fun: &Fun) -> Res<Arc<FunctionOrConstInfo<'tcx>>> {
+        let state = self.state.borrow();
+        if let Some(info) = state.cache_anon_const_infos.get(fun) {
+            return info.clone();
+        }
+        std::mem::drop(state);
+        let res = self._compute_anon_const_info(fun);
+        let mut state = self.state.borrow_mut();
+        state.cache_anon_const_infos.insert(fun.clone(), res.clone());
+        res
+    }
+
+    fn _compute_anon_const_info(&self, fun: &Fun) -> Res<Arc<FunctionOrConstInfo<'tcx>>> {
+        let pre_crate = self.get_pre_crate()?;
+        let ctxt = &pre_crate.ctxt;
+        let tcx = ctxt.tcx;
+        let anon_const = &pre_crate.fun_name_to_anon_const[fun];
+
+        // `type_of` on an anonymous constant requires that the item containing it
+        // has already been type-checked.
+        if tcx.hir_node_by_def_id(anon_const.owner_def_id).associated_body().is_some() {
+            tcx.typeck(anon_const.owner_def_id);
+        } else if tcx.check_well_formed(anon_const.owner_def_id).is_err() {
+            return Err(QueryError { _i_just_emitted_an_error: () });
+        }
+
+        let body = tcx.hir_body_owned_by(anon_const.def_id);
+        let span = body.value.span;
+        let mid_typ = tcx.type_of(anon_const.def_id).skip_binder();
+
+        let result = (|| {
+            let typ = ctxt.mid_ty_to_vir(anon_const.def_id.to_def_id(), span, &mid_typ, None)?;
+            // `check_item_const_or_static` only uses the `State` to record warning
+            // configs; for an anonymous constant that was already done up front in
+            // `collect_anon_consts`, so a throw-away `State` is fine here.
+            let mut state = crate::rust_to_vir::State {
+                external_info: crate::rust_to_vir_impl::ExternalInfo::new(),
+                fun_warn_configs: HashMap::new(),
+            };
+            let mut infos: Vec<FunctionOrConstInfo<'tcx>> = Vec::new();
+            let name = crate::rust_to_vir_func::check_item_const_or_static(
+                ctxt,
+                &mut state,
+                &mut infos,
+                span,
+                anon_const.def_id.to_def_id(),
+                vir::ast::Visibility { restricted_to: Some(anon_const.module_path.clone()) },
+                &anon_const.module_path,
+                &[],
+                &typ,
+                &body.id(),
+                false,
+                None,
+            )?;
+            assert!(&name == fun);
+            assert!(infos.len() == 1);
+            Ok(Arc::new(infos.pop().unwrap()))
+        })();
+
+        ctxt.flush_diagnostics(&*self.reporter);
+        result.map_err(|e| self.emit_error(e))
+    }
+
     //// Translating an individual function from HIR -> VIR
 
     pub fn get_unchecked_function(&self, fun: &Fun) -> Res<Function> {
@@ -338,7 +421,14 @@ impl<'tcx> Query<'tcx> {
 
         let pre_crate = self.get_pre_crate()?;
         let ctxt = &pre_crate.ctxt;
-        let info = &pre_crate.fun_name_to_info[fun];
+        let anon_const_info;
+        let info = match pre_crate.fun_name_to_info.get(fun) {
+            Some(info) => info,
+            None => {
+                anon_const_info = self.get_anon_const_info(fun)?;
+                &anon_const_info
+            }
+        };
         let mut new_functions = vec![];
         let result = finish_item(ctxt, &info, &mut new_functions);
         ctxt.flush_diagnostics(&*self.reporter);
@@ -466,13 +556,18 @@ impl<'tcx> Query<'tcx> {
         for stub in pre_crate.infos.iter().flat_map(|info| info.iter_stubs()) {
             match self.get_checked_function(&stub.x.name) {
                 Ok((function, _, _, dyn_compatability_checks)) => {
-                    // Anonymous constants are translated only for mode checking.
-                    // Rust's const evaluator already checks them, so don't verify them.
-                    if !vir::def::is_anon_const(&function.x.name) {
-                        cratex.functions.push(function);
-                        all_dyn_compatability_checks.push(dyn_compatability_checks);
-                    }
+                    cratex.functions.push(function);
+                    all_dyn_compatability_checks.push(dyn_compatability_checks);
                 }
+                Err(err) => found_err = Some(err),
+            }
+        }
+        // Anonymous constants are translated only for mode checking.
+        // Rust's const evaluator already checks them, so don't verify them;
+        // their functions are deliberately left out of the crate.
+        for anon_const in pre_crate.anon_consts.iter() {
+            match self.get_checked_function(&anon_const.fun) {
+                Ok(_) => {}
                 Err(err) => found_err = Some(err),
             }
         }
@@ -605,12 +700,15 @@ pub fn set_global_query<'tcx>(query: Rc<Query<'tcx>>) {
     })
 }
 
-pub fn get_global_query<'tcx>(_tcx: TyCtxt<'tcx>) -> Rc<Query<'tcx>> {
+pub fn get_global_query<'tcx>(_tcx: TyCtxt<'tcx>) -> Option<Rc<Query<'tcx>>> {
     // SAFETY: We coerce 'static back to 'tcx here.
     // The _tcx argument ensures 'tcx is instantiated with the correct lifetime variable.
-    QUERY.with_borrow(|q| {
-        let query: Rc<Query<'static>> = q.as_ref().unwrap().clone();
-        let query: Rc<Query<'tcx>> = unsafe { std::mem::transmute(query) };
-        query
+    QUERY.with_borrow(|q| match q {
+        Some(q) => {
+            let query: Rc<Query<'static>> = q.clone();
+            let query: Rc<Query<'tcx>> = unsafe { std::mem::transmute(query) };
+            Some(query)
+        }
+        None => None,
     })
 }

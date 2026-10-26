@@ -20,7 +20,7 @@ use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::{err_span, err_span_vec};
 use crate::verus_items::{self, VerusItem};
 use crate::{unsupported_err, unsupported_err_vec, unsupported_err_vec_unless};
-use rustc_hir::def_id::DefId;
+use rustc_hir::def_id::{DefId, LocalDefId};
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -407,14 +407,33 @@ fn check_foreign_item<'tcx>(
     Ok(())
 }
 
-/// Translate anonymous constants through executable VIR bodies for mode checking.
-fn check_anon_consts<'tcx>(
+/// An anonymous constant that needs to be mode-checked.
+pub(crate) struct AnonConstToCheck {
+    /// The anonymous constant itself
+    pub(crate) def_id: LocalDefId,
+    /// The closest enclosing verus-aware item; this needs to be type-checked
+    /// before we can ask for the type of the anonymous constant.
+    pub(crate) owner_def_id: LocalDefId,
+    pub(crate) module_path: Path,
+    /// The VIR name of the function we create for the anonymous constant
+    pub(crate) fun: Fun,
+}
+
+/// Find the anonymous constants that need to be translated to executable VIR bodies
+/// for mode checking.
+///
+/// We only gather the information that can be obtained from HIR here. The
+/// `FunctionOrConstInfo` for each anonymous constant is generated later, on demand,
+/// by the query system (see `Query::get_anon_const_info`), because computing the type
+/// of an anonymous constant requires type-checking its enclosing item, which must not
+/// happen until the query system is available.
+fn collect_anon_consts<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
-    infos: &mut Vec<FunctionOrConstInfo<'tcx>>,
     crate_items: &CrateItems,
-) -> Result<(), (Vec<VirErr>, Option<QueryError>)> {
+) -> Vec<AnonConstToCheck> {
     let tcx = ctxt.tcx;
+    let mut anon_consts = vec![];
     for id in tcx.hir_body_owners() {
         if !matches!(tcx.def_kind(id), DefKind::AnonConst) {
             continue;
@@ -436,7 +455,7 @@ fn check_anon_consts<'tcx>(
         // The erased copy that verus! generates for each const and const fn is external,
         // but its anonymous constants also appear in the unerased proxy, which is checked here.
         let mut owner = tcx.opt_parent(id.to_def_id());
-        let module_path = loop {
+        let owner_and_module_path = loop {
             let Some(owner_id) = owner else { break None };
             if let Some(local) = owner_id.as_local() {
                 if let Some(verif) = crate_items.map.get(&rustc_hir::OwnerId { def_id: local }) {
@@ -453,7 +472,7 @@ fn check_anon_consts<'tcx>(
                             if *external_body && in_body() {
                                 None
                             } else {
-                                Some(module_path.clone())
+                                Some((local, module_path.clone()))
                             }
                         }
                         _ => None,
@@ -462,47 +481,20 @@ fn check_anon_consts<'tcx>(
             }
             owner = tcx.opt_parent(owner_id);
         };
-        let Some(module_path) = module_path else {
+        let Some((owner_def_id, module_path)) = owner_and_module_path else {
             continue;
         };
 
-        // TODO: FIXME: This is too early to do type-checking.
-        // However, rustc ICEs if we don't type-check the body containing an anon const
-        // before calling `type_of`. We need to move the anon const machinery later.
-        // Until then, the https://github.com/verus-lang/verus/issues/2323 issue will
-        // persist in the presence of anon consts.
-        let local_def_id = owner.unwrap().as_local().unwrap();
-        if tcx.hir_node_by_def_id(local_def_id).associated_body().is_some() {
-            tcx.typeck(local_def_id);
-        } else {
-            if tcx.check_well_formed(local_def_id).is_err() {
-                let rust_error = Some(crate::query::QueryError { _i_just_emitted_an_error: () });
-                return Err((vec![], rust_error));
-            }
-        }
+        // The `Fun` name is needed up front so that the warning config for the anonymous
+        // constant makes it into the `WarningCtx`, which is built before the query system
+        // exists. `Query::get_anon_const_info` asserts that the name computed here agrees
+        // with the name of the `FunctionStub` it eventually builds.
+        let fun = Arc::new(FunX { path: ctxt.def_id_to_vir_path(id.to_def_id()) });
+        state.insert_fun_warn_config(ctxt, &fun, id.to_def_id());
 
-        let span = body.value.span;
-        let mid_typ = tcx.type_of(id).skip_binder();
-        let typ = ctxt
-            .mid_ty_to_vir(id.to_def_id(), span, &mid_typ, None)
-            .map_err(|e| (vec![e], None))?;
-        crate::rust_to_vir_func::check_item_const_or_static(
-            ctxt,
-            state,
-            infos,
-            span,
-            id.to_def_id(),
-            vir::ast::Visibility { restricted_to: Some(module_path.clone()) },
-            &module_path,
-            &[],
-            &typ,
-            &body.id(),
-            false,
-            None,
-        )
-        .map_err(|e| (vec![e], None))?;
+        anon_consts.push(AnonConstToCheck { def_id: id, owner_def_id, module_path, fun });
     }
-    Ok(())
+    anon_consts
 }
 
 pub(crate) fn get_root_module_path<'tcx>(ctxt: &ContextX<'tcx>) -> Path {
@@ -743,7 +735,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
 
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&CrateId::Vstd);
 
-    check_anon_consts(&ctxt, &mut state, &mut infos, crate_items)?;
+    let anon_consts = collect_anon_consts(&ctxt, &mut state, crate_items);
 
     let function_stubs = infos.iter().flat_map(|info| info.iter_stubs()).cloned().collect();
     crate::rust_to_vir_impl::collect_external_trait_impls(
@@ -799,10 +791,19 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
         assert!(f.is_none());
     }
 
+    let anon_consts = anon_consts.into_iter().map(|a| Arc::new(a)).collect::<Vec<_>>();
+    let mut fun_name_to_anon_const = HashMap::<Fun, Arc<AnonConstToCheck>>::new();
+    for anon_const in anon_consts.iter() {
+        let f = fun_name_to_anon_const.insert(anon_const.fun.clone(), anon_const.clone());
+        assert!(f.is_none());
+    }
+
     Ok(PreCrate {
         ctxt,
         warning_ctx: Arc::new(warning_ctx),
         krate_without_funs: Arc::new(vir),
+        anon_consts,
+        fun_name_to_anon_const,
         infos: infos,
         fun_name_to_info,
         def_id_to_fun_name_for_erasure,
