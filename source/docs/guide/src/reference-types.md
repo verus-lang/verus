@@ -139,7 +139,7 @@ fn example() {
 ```
 
 However, it is still not sufficient for two mutable references to originate from
-the same point. Two snapshots taken at different times will compare unequal if 
+the same borrow. Two snapshots taken at different times will compare unequal if 
 the mutable reference was updated in between:
 
 ```rust
