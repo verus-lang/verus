@@ -187,47 +187,48 @@ fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Pa
     let mut segments: Vec<vir::ast::Ident> = Vec::new();
     for d in def_path.data.iter() {
         use rustc_hir::definitions::DefPathData;
-        match &d.data {
+        let s = match &d.data {
             DefPathData::ValueNs(symbol) => {
-                if symbol.as_str() == "_" {
-                    segments.push(Arc::new(
-                        vir::def::RUST_DEF_UNNAMED.to_string() + &d.disambiguator.to_string(),
-                    ));
+                if d.disambiguator == 0 {
+                    symbol.to_string()
                 } else {
-                    segments.push(Arc::new(symbol.to_string()));
+                    format!(
+                        "{:}{:}%{:}",
+                        vir::def::RUST_DEF_VALUE_NS_DISAMBIGUATED,
+                        d.disambiguator,
+                        symbol.as_str()
+                    )
                 }
             }
             DefPathData::TypeNs(symbol) => {
-                segments.push(Arc::new(vir::def::RUST_DEF_TYPE_NS.to_string() + symbol.as_str()));
+                if d.disambiguator == 0 {
+                    format!("{:}{:}", vir::def::RUST_DEF_TYPE_NS, symbol.as_str())
+                } else {
+                    format!(
+                        "{:}{:}%{:}",
+                        vir::def::RUST_DEF_TYPE_NS_DISAMBIGUATED,
+                        d.disambiguator,
+                        symbol.as_str()
+                    )
+                }
             }
-            DefPathData::Ctor => {
-                segments.push(Arc::new(vir::def::RUST_DEF_CTOR.to_string()));
-            }
-            DefPathData::Impl => {
-                segments.push(vir::def::impl_ident(d.disambiguator));
-            }
+            DefPathData::Ctor => vir::def::RUST_DEF_CTOR.to_string(),
+            DefPathData::Impl => vir::def::impl_ident(d.disambiguator),
             DefPathData::ForeignMod => {
-                segments.push(Arc::new(
-                    vir::def::RUST_DEF_FOREIGN_MOD.to_string() + &d.disambiguator.to_string(),
-                ));
+                vir::def::RUST_DEF_FOREIGN_MOD.to_string() + &d.disambiguator.to_string()
             }
             DefPathData::OpaqueTy => {
-                segments.push(Arc::new(
-                    vir::def::RUST_OPAQUE_TYPE.to_string() + &d.disambiguator.to_string(),
-                ));
+                vir::def::RUST_OPAQUE_TYPE.to_string() + &d.disambiguator.to_string()
             }
             DefPathData::Closure => {
-                segments.push(Arc::new(
-                    vir::def::RUST_DEF_CLOSURE.to_string() + &d.disambiguator.to_string(),
-                ));
+                vir::def::RUST_DEF_CLOSURE.to_string() + &d.disambiguator.to_string()
             }
             DefPathData::AnonConst => {
-                segments.push(Arc::new(
-                    vir::def::RUST_DEF_ANON_CONST.to_string() + &d.disambiguator.to_string(),
-                ));
+                vir::def::RUST_DEF_ANON_CONST.to_string() + &d.disambiguator.to_string()
             }
             _ => return None,
-        }
+        };
+        segments.push(Arc::new(s));
     }
     Some(Arc::new(PathX { krate, segments: Arc::new(segments) }))
 }

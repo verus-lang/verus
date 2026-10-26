@@ -291,8 +291,9 @@ pub const PERVASIVE_PREFIX: &str = "pervasive::";
 
 pub const RUST_DEF_FOREIGN_MOD: &str = "foreign_mod%";
 pub const RUST_DEF_CTOR: &str = "ctor%";
-pub const RUST_DEF_UNNAMED: &str = "unnamed%";
 pub const RUST_DEF_TYPE_NS: &str = "t%";
+pub const RUST_DEF_TYPE_NS_DISAMBIGUATED: &str = "tdis%";
+pub const RUST_DEF_VALUE_NS_DISAMBIGUATED: &str = "vdis%";
 pub const RUST_DEF_CLOSURE: &str = "closure%";
 pub const RUST_DEF_ANON_CONST: &str = "anon_const%";
 
@@ -672,8 +673,8 @@ pub fn prefix_spec_fn_type(i: usize) -> Path {
     Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![ident]) })
 }
 
-pub fn impl_ident(disambiguator: u32) -> Ident {
-    Arc::new(format!("{}{}", PREFIX_IMPL_IDENT, disambiguator))
+pub fn impl_ident(disambiguator: u32) -> String {
+    format!("{}{}", PREFIX_IMPL_IDENT, disambiguator)
 }
 
 pub(crate) fn impl_tuple(trait_suffix: &str, arity: usize) -> Ident {
