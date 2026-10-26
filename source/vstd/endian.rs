@@ -1151,9 +1151,36 @@ impl Base for u8 {
     }
 }
 
+impl Base for u16 {
+    open spec fn base() -> nat {
+        u16::MAX as nat + 1
+    }
+
+    proof fn base_min() {
+    }
+}
+
+impl Base for u32 {
+    open spec fn base() -> nat {
+        u32::MAX as nat + 1
+    }
+
+    proof fn base_min() {
+    }
+}
+
 impl Base for u64 {
     open spec fn base() -> nat {
         u64::MAX as nat + 1
+    }
+
+    proof fn base_min() {
+    }
+}
+
+impl Base for u128 {
+    open spec fn base() -> nat {
+        u128::MAX as nat + 1
     }
 
     proof fn base_min() {
@@ -1179,42 +1206,13 @@ impl BasePow2 for u8 {
     }
 }
 
-impl BasePow2 for u64 {
+impl BasePow2 for u16 {
     open spec fn bits() -> nat {
-        64
+        16
     }
 
     proof fn bits_to_base() {
         crate::vstd::arithmetic::power2::lemma2_to64();
-    }
-}
-
-impl BasePow2 for usize {
-    open spec fn bits() -> nat {
-        usize::BITS as nat
-    }
-
-    proof fn bits_to_base() {
-        crate::vstd::arithmetic::power2::lemma2_to64();
-    }
-}
-
-impl CompatibleSmallerBaseFor<u64> for u8 {
-    proof fn compatible() {
-    }
-}
-
-impl CompatibleSmallerBaseFor<usize> for u8 {
-    proof fn compatible() {
-    }
-}
-
-impl Base for u32 {
-    open spec fn base() -> nat {
-        u32::MAX as nat + 1
-    }
-
-    proof fn base_min() {
     }
 }
 
@@ -1228,7 +1226,100 @@ impl BasePow2 for u32 {
     }
 }
 
+impl BasePow2 for u64 {
+    open spec fn bits() -> nat {
+        64
+    }
+
+    proof fn bits_to_base() {
+        crate::vstd::arithmetic::power2::lemma2_to64();
+    }
+}
+
+impl BasePow2 for u128 {
+    open spec fn bits() -> nat {
+        128
+    }
+
+    proof fn bits_to_base() {
+        assert(0x1_0000_0000_0000_0000_0000_0000_0000_0000 == pow2(128)) by (compute);
+    }
+}
+
+impl BasePow2 for usize {
+    open spec fn bits() -> nat {
+        usize::BITS as nat
+    }
+
+    proof fn bits_to_base() {
+        crate::vstd::arithmetic::power2::lemma2_to64();
+    }
+}
+
+// Note: we do not implement `CompatibleSmallerBaseFor<usize>` for `u32`,
+// since this is only true on `64`-bit platforms.
+impl CompatibleSmallerBaseFor<u16> for u8 {
+    proof fn compatible() {
+    }
+}
+
 impl CompatibleSmallerBaseFor<u32> for u8 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u64> for u8 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u128> for u8 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<usize> for u8 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u32> for u16 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u64> for u16 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u128> for u16 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<usize> for u16 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u64> for u32 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u128> for u32 {
+    proof fn compatible() {
+    }
+}
+
+
+impl CompatibleSmallerBaseFor<u128> for u64 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u128> for usize {
     proof fn compatible() {
     }
 }

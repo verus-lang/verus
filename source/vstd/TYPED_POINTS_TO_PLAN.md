@@ -215,7 +215,7 @@ Proposed for the gaps flagged in rustlib's `RUSTLIB_PORT_PLAN.md` (G1–G4).
 
 ### `subrange` on slice permissions (verified)
 
-Approved; the spec is in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#slice-subrange).
+Approved and implemented in `points_to_ops.rs`.
 G1, and through it G2 and G4.
 
 ### `tracked_slice_subrange` (trusted)
@@ -253,6 +253,14 @@ pub trait TrivialOwnership: Sized {
 Implemented only for `u32` and `usize` (what rustlib's G3 uses),
 each impl's `tracked_from_spec` an `axiom fn`, so every impl is visibly trusted
 (as with the `AbstractByteRepresentation` impls' `abs_encode_impl`).
+
+### Decoding integers from smaller integers' bytes (verified)
+
+G3. Approved and implemented in `type_representation.rs` (no new axioms):
+the trait `DecodesToNat`, implemented for every unsigned integer type
+(`u16` and `u128` gained `Base` / `BasePow2` impls in `endian.rs` for this),
+and the general `lemma_abs_decode_to_big`.
+rustlib's cast helpers keep their generic signatures, with the bound `V: TrivialOwnership + DecodesToNat`.
 
 ## Specifications
 
