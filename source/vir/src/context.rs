@@ -886,10 +886,10 @@ impl Ctx {
             opaque_type_map.insert(opaque_type.x.name.clone(), opaque_type.clone());
         }
 
-        // Register the observer and deliver the krate. The observer receives the
-        // NameCtxt so it can compute AIR names consistently with lowering — both
-        // share the same NameCtxt instance, so crate-name interning decisions
-        // made here are reused during lowering.
+        // Register the observer; deliver the span resolver, then the krate. The observer
+        // receives the NameCtxt so it can compute AIR names consistently with lowering — both
+        // share the same NameCtxt instance, so crate-name interning decisions made here are
+        // reused during lowering.
         let crate::vir_observer::Observers {
             vir: observer,
             air: air_observer,

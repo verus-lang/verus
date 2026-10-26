@@ -2,7 +2,8 @@
 //!
 //! Defines `VirObserver` — callbacks fired during SST→AIR lowering (havoc,
 //! assign, variable definitions, for-loops, quantifier binders, reveals,
-//! assertion ids, and function/krate lifecycle).
+//! assertion ids, the span resolver, and function/krate lifecycle) — and the helpers
+//! `VersionCorrelator`, `SourceLocation`, and `SpanResolver`.
 
 use crate::ast::{Krate, Typ, VarIdent};
 use crate::sst::{Exp, Stm};
@@ -80,7 +81,7 @@ pub trait VirObserver: Any {
 /// (up to) one shared observer object. Each field is `Some` only if the observer
 /// implements that trait, so a consumer couples nothing it does not use. All
 /// populated fields point at the same underlying `RefCell` (via `Rc` unsizing
-/// coercion at the factory), so callbacks mutate one shared object.
+/// coercion at the factory), so callbacks mutate one shared object; plus the span resolver.
 #[derive(Clone, Default)]
 pub struct Observers {
     pub vir: Option<std::rc::Rc<std::cell::RefCell<dyn VirObserver>>>,

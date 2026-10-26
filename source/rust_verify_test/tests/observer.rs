@@ -34,7 +34,14 @@
 //! check_valid_result(Timeout)         |      |      |       |      |       |      |      |  TODO  |      |
 //! invalid model_defs size             |  +   |  +   |       |  +   |       |      |  +   |        |      |
 //! eval_bool_expr during Invalid       |  +   |      |       |      |       |      |      |        |      |
+//! on_query_start (version pairing)    |  +   |      |       |      |       |  +   |      |        |      |
+//! on_span_resolver (lines, file)      |  +   |      |       |      |       |  +   |      |        |      |
+//! on_wp_version_created (base, num)   |  +   |  +   |       |      |       |      |      |        |      |
+//! on_wp_version_created (Initial)     |  +   |  +   |       |      |       |      |      |        |      |
 //! ```
+//!
+//! Version provenance is also pinned by the rows in the version-provenance section (exact
+//! version/line pairs, a set over branch arms) and the `VersionCorrelator` unit tests.
 //!
 //! Payload-content rows later in the file assert on what each callback delivers.
 
@@ -617,7 +624,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
 
-    // ── §3.1 QueryResultObserver-only, Invalid: eval_expr liveness + decoupling ──
+    // ── §3.1 QueryResultObserver-only, Invalid: eval_bool_expr liveness + decoupling ──
     #[test]
     test_query_result_only_invalid ["observers=query-result-only"] => verus_code! {
         proof fn bad()

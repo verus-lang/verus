@@ -31,10 +31,8 @@ use rustc_index::bit_set::DenseBitSet;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 
-/// Build the observer registry for a given observer name. The concrete type is
-/// known here, so each `Rc<RefCell<Concrete>>` is coerced (unsizing) into an
-/// independent per-trait handle. A consumer that implements only a subset of the
-/// traits populates only those slots. `TestObserver` implements all three.
+/// The observer registered under `name`, with a handle per trait it implements; `None` if
+/// no observer has that name.
 fn create_observer(name: &str) -> Option<vir::vir_observer::Observers> {
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -400,7 +398,6 @@ pub struct Verifier {
     vir_crate: Option<Krate>,
     crate_id: Option<CrateId>,
     air_no_span: Option<vir::messages::Span>,
-    /// Built only when `-V observers=` is set.
     span_resolver: Option<vir::vir_observer::SpanResolver>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
     crate_items: Option<Arc<crate::external::CrateItems>>,
@@ -2085,7 +2082,6 @@ impl Verifier {
         let time_verify_sequential_start = Instant::now();
 
         let reporter = Reporter::new(spans, compiler);
-        // Checked before verification starts; each bucket builds its own observer.
         create_observer_from_args(&self.args.observers)
             .map_err(|msg| VerifyErr::Vir(vir::messages::error_bare(msg)))?;
         if !self.args.observers.is_empty() {

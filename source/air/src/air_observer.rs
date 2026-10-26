@@ -1,7 +1,7 @@
 //! AIR-level verification pipeline observer.
 //!
 //! Defines `AirObserver` — the interface for observing the AIR-level
-//! verification pipeline: query lowering, WP version creation, and lambda /
+//! verification pipeline: query start, query lowering, WP version creation, and lambda /
 //! choose / axiom declarations.  Implementing this trait allows for recording
 //! the results of AIR-level passes that are used to prepare a verification query
 //! for the solver.
@@ -14,7 +14,7 @@ use std::any::Any;
 pub enum VersionOrigin {
     /// Version 0 of a local, at the start of the query.
     Initial,
-    /// From a `StmtX::Havoc` — unconstrained new version (loop entry).
+    /// From a `StmtX::Havoc` — unconstrained new version (loop entry, call destination).
     Havoc,
     /// From a `StmtX::Assign` — constrained new version (= rhs).
     Assign,

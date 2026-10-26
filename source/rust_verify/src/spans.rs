@@ -367,10 +367,8 @@ impl<'tcx> crate::context::BodyCtxt<'tcx> {
     }
 }
 
-/// A resolver from VIR spans to source locations, for observers. It stands in for
-/// `from_air_span` and the source map's line lookup on the verifier's worker threads, where
-/// observers run and neither can be used; the line tables it needs are copied here, on the
-/// main thread.
+/// A resolver from VIR spans to source locations for observers, which run on worker threads:
+/// it replicates `from_air_span` and the line lookup, which run only on the main thread.
 pub(crate) fn span_resolver(
     spans: &SpanContext,
     source_map: &SourceMap,

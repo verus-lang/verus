@@ -1,6 +1,7 @@
-//! Built-in test observer activated by `-V observers=test`.
-//! Records callback data and, at the end of verification, emits it as a JSON note
-//! (`OBSERVER:{...}`) that `rust_verify_test/tests/observer.rs` deserializes.
+//! Observers for the test suite, selected by `-V observer=` (`test`, `air-only`,
+//! `query-result-only`, `vir-only`). Built into the binary because the tests run Verus as a
+//! subprocess; each records callback data and, at the end of verification, emits it as a JSON
+//! note that `rust_verify_test/tests/observer.rs` deserializes.
 
 use serde::Serialize;
 use std::any::Any;
@@ -51,13 +52,11 @@ pub struct TestObserver {
     pub query_lowered_count: usize,
     pub query_snapshot_counts: Vec<usize>,
     pub version_correlations: Vec<(String, u32, String)>,
-    /// Per created version: (versioned name, base, version, kind).
     pub version_bases: Vec<(String, String, u32, String)>,
     #[serde(skip)]
     pub correlator: vir::vir_observer::VersionCorrelator,
     #[serde(skip)]
     pub span_resolver: Option<vir::vir_observer::SpanResolver>,
-    /// Files the resolver returned for assignment statements.
     pub assign_files: std::collections::BTreeSet<String>,
     pub lambda_decls: Vec<String>,
     pub choose_decls: Vec<String>,
