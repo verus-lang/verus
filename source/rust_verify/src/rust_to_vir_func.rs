@@ -167,25 +167,38 @@ fn get_sibling<'tcx>(
     }
 
     let module = tcx.parent_module_from_def_id(def_id.expect_local());
+    let mut candidates = vec![];
     for item_id in tcx.hir_module_items(module).free_items() {
+        if tcx.parent(item_id.owner_id.to_def_id()) != module.to_def_id() {
+            continue;
+        }
         let item = tcx.hir_item(item_id);
         match item.kind {
             rustc_hir::ItemKind::Fn { ident, .. } if ident.name.as_str() == name => {
-                return Ok(item.owner_id.to_def_id());
+                candidates.push(item.owner_id.to_def_id());
             }
             rustc_hir::ItemKind::Const(ident, ..) if ident.name.as_str() == name => {
-                return Ok(item.owner_id.to_def_id());
+                candidates.push(item.owner_id.to_def_id());
             }
             _ => {}
         }
     }
 
-    return err_span(
-        span,
-        format!(
-            "unable to find item of name `{name:}` in this module (should be a top-level item in the module)"
-        ),
-    );
+    if candidates.len() == 1 {
+        return Ok(candidates[0]);
+    } else if candidates.len() == 0 {
+        return err_span(
+            span,
+            format!(
+                "unable to find item of name `{name:}` in this module (should be a top-level item in the module)"
+            ),
+        );
+    } else {
+        return err_span(
+            span,
+            format!("sibling item of name `{name:}` in this module is ambiguous"),
+        );
+    }
 }
 
 fn handle_autospec<'tcx>(
