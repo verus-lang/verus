@@ -69,7 +69,7 @@ test_verify_one_file! {
             type Item;
             type Other;
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_trait_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "`external_trait_specification` trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -139,7 +139,7 @@ test_verify_one_file! {
         fn ex_foo() {
             X::foo()
         }
-    } => Err(err) => assert_vir_error_msg(err, "using assume_specification for this function requires you to specify all other functions for the same trait impl, but the method `bar` is missing")
+    } => Err(err) => assert_vir_error_msg(err, "using `assume_specification` for this function requires you to specify all other functions for the same trait impl, but the method `bar` is missing")
 }
 
 test_verify_one_file! {
@@ -214,7 +214,7 @@ test_verify_one_file! {
         fn ex_bar() {
             X::bar()
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate assume_specification for this method")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate `assume_specification` for this method")
 }
 
 test_verify_one_file! {
@@ -373,7 +373,7 @@ test_verify_one_file! {
         trait Ex<A: Copy> {
             type ExternalTraitSpecificationFor: T<A>;
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_trait_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "`external_trait_specification` trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -671,7 +671,7 @@ test_verify_one_file! {
                 !TSpec::<u8>::s(self, q, a, b, x)
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -728,7 +728,7 @@ test_verify_one_file! {
             spec fn s1() -> bool { <u32 as TSpec>::s2() }
             spec fn s2() -> bool { !<u32 as TSpec>::s1() }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {

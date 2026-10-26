@@ -136,7 +136,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
             if let Some(did) = did {
                 if let Ok(s) = build_boundary_suggestion(&ctxt, *did, &path) {
                     err = err
-                        .help(format!("The following declaration may resolve this error:\n{}", s));
+                        .help(format!("the following declaration may resolve this error:\n{}", s));
                 }
             }
             self.emit_error(err);

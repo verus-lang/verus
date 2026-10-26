@@ -957,7 +957,7 @@ test_verify_one_file_with_options! {
         fn g((x, y): &mut (u64, u64)) {}
     } => Err(err) => assert_vir_error_msgs(err, &[
         "patterns in ghost or tracked parameters of exec functions are not supported",
-        "mutable-reference bindings in parameters are not supported",
+        "Verus does not currently support `ref mut` bindings in parameters",
     ])
 }
 

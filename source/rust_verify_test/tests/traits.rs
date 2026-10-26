@@ -108,7 +108,7 @@ test_verify_one_file_with_options! {
                 no_method_body()
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait declaration with no_method_body() should start with VERUS_SPEC__")
+    } => Err(err) => assert_vir_error_msg(err, "trait declaration with `no_method_body()` should start with VERUS_SPEC__")
 }
 
 test_verify_one_file_with_options! {
@@ -121,7 +121,7 @@ test_verify_one_file_with_options! {
                 let b = true; // no code after no_method_body
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body() must be a method's final expression, with no semicolon")
+    } => Err(err) => assert_vir_error_msg(err, "`no_method_body()` must be a method's final expression, with no semicolon")
 }
 
 test_verify_one_file_with_options! {
@@ -131,7 +131,7 @@ test_verify_one_file_with_options! {
                 no_method_body(); // no semicolon allowed
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait declaration with no_method_body() should start with VERUS_SPEC__")
+    } => Err(err) => assert_vir_error_msg(err, "trait declaration with `no_method_body()` should start with VERUS_SPEC__")
 }
 
 test_verify_one_file_with_options! {
@@ -142,7 +142,7 @@ test_verify_one_file_with_options! {
                 no_method_body() // can't appear after header
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no statements are allowed before no_method_body()")
+    } => Err(err) => assert_vir_error_msg(err, "no statements are allowed before `no_method_body()`")
 }
 
 test_verify_one_file_with_options! {
@@ -156,7 +156,7 @@ test_verify_one_file_with_options! {
                 let b = true; // no code after no_method_body
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "a VERUS_SPEC function should be paired with a function that has no body")
+    } => Err(err) => assert_vir_error_msg(err, "a `VERUS_SPEC` function should be paired with a function that has no body")
 }
 
 test_verify_one_file_with_options! {
@@ -164,7 +164,7 @@ test_verify_one_file_with_options! {
         fn f() {
             no_method_body() // can't appear in static function
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
+    } => Err(err) => assert_vir_error_msg(err, "`no_method_body` can only appear in trait method declarations")
 }
 
 test_verify_one_file_with_options! {
@@ -181,8 +181,8 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_vir_error_msgs(err, &[
-        "trait declaration with no_method_body() should start with VERUS_SPEC__",
-        "no_method_body can only appear in trait method declarations",
+        "trait declaration with `no_method_body()` should start with VERUS_SPEC__",
+        "`no_method_body` can only appear in trait method declarations",
     ])
 }
 
@@ -198,7 +198,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `requires`")
 }
 
 test_verify_one_file_with_options! {
@@ -215,7 +215,7 @@ test_verify_one_file_with_options! {
             fn VERUS_SPEC__f(&self) { }
             fn f(&self);
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method declaration body must start with call to no_method_body()")
+    } => Err(err) => assert_vir_error_msg(err, "trait method declaration body must start with call to `no_method_body()`")
 }
 
 test_verify_one_file_with_options! {
@@ -461,7 +461,7 @@ test_verify_one_file! {
                 self.f()
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file_with_options! {
@@ -481,7 +481,7 @@ test_verify_one_file_with_options! {
             }
         }
     } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
+        assert!(err.warnings.iter().find(|x| x.message.contains("if `exec_allows_no_decreases_clause` is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
     }
 }
 
@@ -931,7 +931,7 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => {
-        assert_vir_error_msg(err, "recursive function must have a decreases clause")
+        assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
     }
 }
 
@@ -2874,7 +2874,7 @@ test_verify_one_file_with_options! {
         }
         }
     } => Err(err) => assert_vir_error_msgs(err, &[
-        "The verifier does not yet support the following Rust feature: foreign types",
+        "Verus does not currently support foreign types",
     ])
 }
 
@@ -3014,7 +3014,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "requires are not allowed on the implementation for Drop")
+    } => Err(err) => assert_vir_error_msg(err, "`requires` clauses are not allowed on `Drop` implementations")
 }
 
 test_verify_one_file! {
@@ -3041,7 +3041,7 @@ test_verify_one_file! {
                 let x = 1 / 0;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "An individual item of a trait impl cannot be marked external")
+    } => Err(err) => assert_vir_error_msg(err, "an individual item of a trait impl cannot be marked external")
 }
 
 test_verify_one_file! {
@@ -3071,7 +3071,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "requires are not allowed on the implementation for Drop")
+    } => Err(err) => assert_vir_error_msg(err, "`requires` clauses are not allowed on `Drop` implementations")
 }
 
 test_verify_one_file! {
@@ -3084,7 +3084,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "the implementation for Drop must be marked opens_invariants none")
+    } => Err(err) => assert_vir_error_msg(err, "a `Drop` implementation must be marked `opens_invariants none`")
 }
 
 test_verify_one_file! {
@@ -3097,7 +3097,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "the implementation for Drop must be marked no_unwind")
+    } => Err(err) => assert_vir_error_msg(err, "a `Drop` implementation must be marked `no_unwind`")
 }
 
 test_verify_one_file! {
@@ -3214,7 +3214,7 @@ test_verify_one_file! {
         pub trait SomeTrait {
             open spec fn foo(&self) -> bool;
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait function declarations cannot be open or closed, as they don't have a body")
+    } => Err(err) => assert_vir_error_msg(err, "trait method declarations cannot be open or closed, as they don't have a body")
 }
 
 test_verify_one_file! {
@@ -3636,7 +3636,7 @@ test_verify_one_file! {
         }
         struct S;
         impl T for S { spec fn f() -> int { Self::g() } }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -3647,7 +3647,7 @@ test_verify_one_file! {
         }
         struct S;
         impl T for S { spec fn f(i: int) -> int decreases i { Self::g(i) } }
-    } => Err(err) => assert_vir_error_msg(err, "trait default methods do not yet support recursion and decreases")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support recursion and `decreases`")
 }
 
 test_verify_one_file! {
@@ -3751,7 +3751,7 @@ test_verify_one_file! {
         impl T for bool {
             proof fn f() { h(); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -3768,7 +3768,7 @@ test_verify_one_file! {
         impl T for bool {
             proof fn g() { h(); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -3785,7 +3785,7 @@ test_verify_one_file! {
         impl T for bool {
             proof fn g() { h(); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -3802,7 +3802,7 @@ test_verify_one_file! {
         impl T for bool {
             proof fn g<A>() { h(); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -3929,7 +3929,7 @@ test_verify_one_file! {
             proof fn f() ensures false { Self::g(); }
             proof fn g() ensures false { Self::f(); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {

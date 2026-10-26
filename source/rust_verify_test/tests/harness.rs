@@ -110,7 +110,7 @@ fn cvc5_solver_and_smtlib_options_are_mutually_exclusive() {
     assert!(!output.status.success());
     assert!(
         String::from_utf8_lossy(&output.stderr)
-            .contains("-V cvc5 and -V cvc5-smtlib are mutually exclusive")
+            .contains("`-V cvc5` and `-V cvc5-smtlib` are mutually exclusive")
     );
 }
 

@@ -75,7 +75,7 @@ test_verify_one_file! {
     #[test] test1_fails3 verus_code! {
         spec const C: u64 = S;
         spec const S: u64 = C;
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -189,7 +189,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] spec_dual_mode_unsupported verus_code! {
         static E: u64 = 0;
-    } => Err(e) => assert_vir_error_msg(e, "explicitly mark the static as `exec`")
+    } => Err(e) => assert_vir_error_msg(e, "explicitly mark the `static` item as `exec`")
 }
 
 test_verify_one_file! {
@@ -571,7 +571,7 @@ test_verify_one_file! {
     #[test] const_with_ensures_issue2175 verus_code! {
         #[verus_spec(ensures true)]
         pub const C: char = 'x';
-    } => Err(err) => assert_vir_error_msg(err, "const cannot have `ensures` unless it is `exec const`")
+    } => Err(err) => assert_vir_error_msg(err, "a constant item cannot have `ensures` unless it is `exec const`")
 }
 
 test_verify_one_file! {

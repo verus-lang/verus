@@ -845,7 +845,7 @@ fn clip_bitwise_result(bit_expr: ExprX, exp: &Exp) -> Result<Expr, VirErr> {
     } else {
         return Err(error(
             &exp.span,
-            format!("In translating Bitwise operator, encountered non-integer operand",),
+            format!("in translating bitwise operator, encountered non-integer operand",),
         ));
     }
 }
@@ -1088,9 +1088,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     ExprX::Apply(Arc::new(crate::def::BIT_NOT.to_string()), Arc::new(vec![expr]));
                 if let Some(width) = width_opt {
                     if !check_bitwidth_typ_matches(&e.typ, *width, false) {
-                        return Err(error(
+                        return Err(crate::messages::internal_error(
                             &e.span,
-                            format!("Verus Internal Error: BitNot: type doesn't match"),
+                            format!("BitNot: type doesn't match"),
                         ));
                     }
                     return clip_bitwise_result(bit_expr, e);
@@ -1208,9 +1208,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         ident_apply(&name, &exprs)
                     }
                     _ => {
-                        return Err(error(
+                        return Err(crate::messages::internal_error(
                             &exp.span,
-                            format!("Verus Internal Error: ArrayLength expected Array or Slice"),
+                            format!("ArrayLength expected Array or Slice"),
                         ));
                     }
                 }
@@ -1422,9 +1422,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                             // The clip (below) is based on the type so we need to make
                             // sure that the clip is what we expected based on Shl's arguments
                             if !check_bitwidth_typ_matches(&exp.typ, *width, *signed) {
-                                return Err(error(
+                                return Err(crate::messages::internal_error(
                                     &exp.span,
-                                    format!("Verus Internal Error: BitShl: type doesn't match"),
+                                    format!("BitShl: type doesn't match"),
                                 ));
                             }
                             crate::def::BIT_SHL
@@ -1924,7 +1924,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     UnwindAir::MayUnwind => unreachable!(),
                     UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
                         &stm.span,
-                        "cannot show this call will not unwind, in function marked 'no_unwind'",
+                        "cannot show this call will not unwind, in function marked `no_unwind`",
                         format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
                     ),
                     UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
@@ -1937,19 +1937,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     }
                     UnwindAir::NoUnwindWhen(_e) => error_with_label(
                         &stm.span,
-                        "cannot show this call will not unwind, in function marked 'no_unwind'",
+                        "cannot show this call will not unwind, in function marked `no_unwind`",
                         "this call might unwind",
                     ),
                 };
                 let error = if let UnwindSpec::NoUnwindWhen(e) = &callee_unwind_spec {
                     error.secondary_label(
                         &e.span,
-                        "this conditition needs to hold to show that the callee will not unwind",
+                        "this condition needs to hold to show that the callee will not unwind",
                     )
                 } else {
                     error.secondary_label(
                         &func.span,
-                        "perhaps you need to mark this function as 'no_unwind'?",
+                        "perhaps you need to mark this function as `no_unwind`?",
                     )
                 };
                 let e = mk_implies(&e1, &e2);
@@ -1993,7 +1993,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         stmts.push(Arc::new(havoc));
                     }
                 } else {
-                    crate::messages::internal_error(&stm.span, "ens_has_return but no Dest");
+                    crate::messages::internal_error(&stm.span, "`ens_has_return` but no Dest");
                 }
             }
             if let Some(is_trait_default) = is_trait_default {
@@ -2238,9 +2238,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                                 (crate::def::fn_array_update(), typ_args)
                             }
                             _ => {
-                                return Err(error(
+                                return Err(crate::messages::internal_error(
                                     &stm.span,
-                                    format!("Verus Internal Error: Assign expected Array or Slice"),
+                                    format!("Assign expected Array or Slice"),
                                 ));
                             }
                         };
@@ -2314,7 +2314,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 if loop_info.is_for_loop && !*is_break {
                     // At the very least, the syntax macro will need to advance the ghost iterator
                     // at each continue.
-                    return Err(error(&stm.span, "for-loops do not yet support continue"));
+                    return Err(error(
+                        &stm.span,
+                        "Verus does not currently support `continue` in `for` loops",
+                    ));
                 }
                 let invs = if *is_break {
                     loop_info.invs_exit.clone()
@@ -2333,8 +2336,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     }
                     if *is_break && *both {
                         let msg = "(hint: if this is not supposed to be true at the break, \
-                            use 'invariant_except_break' for it instead of 'invariant', \
-                            and use 'ensures' for what is true at the break)";
+                            use `invariant_except_break` for it instead of `invariant`, \
+                            and use `ensures` for what is true at the break)";
                         error = error.secondary_label(span, msg);
                     }
                     stmts.push(Arc::new(StmtX::Assert(None, error, None, inv.clone())));
@@ -2347,7 +2350,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         }
                         if info.loop_isolation {
                             let s = "decrease checking for labeled continue not supported unless \
-                                loop is marked #[verifier::loop_isolation(false)]";
+                                loop is marked `#[verifier::loop_isolation(false)]`";
                             return Err(error(&stm.span, s));
                         }
                     }
@@ -2488,7 +2491,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             match stmt {
                 Ok(stmt) => vec![stmt],
                 Err(err) => {
-                    return Err(error(&stm.span, format!("Invalid inline AIR statement: {}", err)));
+                    return Err(error(&stm.span, format!("invalid inline AIR statement: {}", err)));
                 }
             }
         }
@@ -2943,7 +2946,7 @@ pub(crate) fn body_stm_to_air(
 
     if is_bit_vector_mode {
         if is_integer_ring {
-            panic!("Error: integer_ring and bit_vector should not be used together");
+            panic!("integer_ring and bit_vector should not be used together");
         }
 
         let queries = bv_to_queries(ctx, reqs, &post_condition.ens_exps)?;
@@ -3081,7 +3084,7 @@ pub(crate) fn body_stm_to_air(
             for req in reqs.iter() {
                 let error = error_with_label(
                     &req.span,
-                    "Unspported expression in integer_ring".to_string(),
+                    "unsupported expression in `integer_ring`".to_string(),
                     "at the require clause".to_string(),
                 );
                 let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
@@ -3093,7 +3096,7 @@ pub(crate) fn body_stm_to_air(
             for ens in post_condition.ens_exps.iter() {
                 let error = error_with_label(
                     &ens.span,
-                    "Unspported expression in integer_ring".to_string(),
+                    "unsupported expression in `integer_ring`".to_string(),
                     "at the ensure clause".to_string(),
                 );
                 let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;

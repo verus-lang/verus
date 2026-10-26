@@ -212,7 +212,7 @@ test_verify_one_file_with_options! {
             };
         }
     } => Err(err) => assert_vir_error_msg(err,
-        "mutable-reference bindings in parameters are not supported")
+        "`ref mut` bindings in parameters")
 }
 
 test_verify_one_file_with_options! {
@@ -221,7 +221,7 @@ test_verify_one_file_with_options! {
             let f = |ref mut x: u64| {};
         }
     } => Err(err) => assert_vir_error_msg(err,
-        "mutable-reference bindings in parameters are not supported")
+        "`ref mut` bindings in parameters")
 }
 
 test_verify_one_file_with_options! {
@@ -232,7 +232,7 @@ test_verify_one_file_with_options! {
             let f = |Pair { values: (x, ref mut y) }: Pair| {};
         }
     } => Err(err) => assert_vir_error_msg(err,
-        "mutable-reference bindings in parameters are not supported")
+        "`ref mut` bindings in parameters")
 }
 
 test_verify_one_file_with_options! {
@@ -723,7 +723,7 @@ test_verify_one_file_with_options! {
             let f = || true;
             f()
         }
-    }).to_string() => Err(err) => assert_vir_error_msg(err, "closure in ghost code must be marked as a spec_fn")
+    }).to_string() => Err(err) => assert_vir_error_msg(err, "closure in ghost code must be marked as a `spec_fn`")
 }
 
 test_verify_one_file_with_options! {
@@ -733,7 +733,7 @@ test_verify_one_file_with_options! {
         #[verifier::spec] fn foo<F: Fn(u64) -> u64>(f: F) -> u64 {
             f(5)
         }
-    } => Err(err) => assert_vir_error_msg(err, "to call a non-static function in ghost code, it must be a spec_fn")
+    } => Err(err) => assert_vir_error_msg(err, "to call a non-static function in ghost code, it must be a `spec_fn`")
 }
 
 test_verify_one_file_with_options! {
@@ -1610,7 +1610,7 @@ test_verify_one_file! {
                 0
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support implementing this trait")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support implementing this trait")
 }
 
 test_verify_one_file! {
@@ -1630,7 +1630,7 @@ test_verify_one_file! {
                 0
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support implementing this trait")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support implementing this trait")
 }
 
 test_verify_one_file! {
@@ -1657,7 +1657,7 @@ test_verify_one_file! {
                 0
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support implementing this trait")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support implementing this trait")
 }
 
 test_verify_one_file! {
