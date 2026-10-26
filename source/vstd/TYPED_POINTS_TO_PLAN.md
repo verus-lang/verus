@@ -27,6 +27,8 @@ What remains is the [items to run by Travis](#to-run-by-travis).
 - The [trusted UTF-8 assumptions](#trusted-utf-8-assumptions):
   `SharedReference<str>::points_to`, `mut_ref_to_shr_points_to_str`, `ptr_mut_ref_str` and `str::as_str_ptr_verus`
   now also assert that the `str` is valid UTF-8, through `wf`.
+- The [trusted `wf` of a `Box`'s permission](#trusted-wf-of-a-boxs-permission):
+  rustlib's `Box::into_non_null_with_allocator_verus` now also ensures the permission it returns is `wf`.
 - `TypedValue::<[T]>::from_elems_ref` ([New axioms](#new-axioms)).
 - `PointsToUntyped::join_ref` / `join_mut` ([New axioms](#new-axioms)).
 - `tracked_slice_subrange` ([For the rustlib port](#tracked_slice_subrange-trusted-alternative-to-from_elems_ref-for-subrange)):
@@ -358,6 +360,31 @@ the other `str` reference helpers (`ptr_ref_str`, `ptr_ref2_str_ghost`) only req
 and the generic `?Sized` axioms (`from_raw_parts_ref`, `from_raw_parts_mut`, `from_unaligned_mut`) say nothing about `wf`.
 This should be sound, since UTF-8 validity is a library invariant of every `&str` / `&mut str`
 that safe code can't break, but these axioms now state more than before.
+
+#### Trusted `wf` of a `Box`'s permission
+
+To review: rustlib's `Box::into_non_null_with_allocator_verus` (`alloc/src/boxed.rs`, `external_body`)
+now also ensures `out.2@.wf()` for the `PointsTo<T>` it returns (sized `T`),
+since `linked_list` passes that permission to `ptr_mut_ref`, which requires `wf`.
+`Box` has no spec of its own about its memory (it's an opaque `external_body` struct with only `alloc_id`),
+so this is a new trusted fact.
+It should be sound, since a `Box`'s pointer is aligned and points to an initialized `T`:
+`wf` asks for `size_of::<T>()` consecutive bytes at the pointer, alignment to `T`,
+and that a valid value's bytes decode to it,
+but not that the provenance is `Some` or the range in bounds, so a zero-sized `T`'s dangling pointer is covered.
+(Its counterpart `from_raw_in_verus` now requires `perm.wf()` and `perm.is_valid()`.)
+
+```rust
+pub fn into_non_null_with_allocator_verus(b: Self) -> (out: (NonNull<T>, A, Tracked<PointsTo<T>>))
+    where T: Sized
+    ensures
+        out.0@ == out.2@.ptr(),
+        *b == out.2@.value(),
+        out.2@.is_valid(),
+        out.2@.wf(),
+        b.alloc_id() == out.1.alloc_id(),
+        out.0@@.provenance.unwrap().alloc_id() == out.1.alloc_id()
+```
 
 #### Modified rustlib specs
 
