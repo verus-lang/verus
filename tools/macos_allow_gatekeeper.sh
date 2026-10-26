@@ -2,13 +2,22 @@
 set -e
 set -x
 
-cd "$( dirname "${{BASH_SOURCE[0]}}" )"
+script_dir=$(dirname "${BASH_SOURCE[0]}")
+cd "$script_dir"
 
-xattr -d com.apple.quarantine libverus_builtin.rlib
-xattr -d com.apple.quarantine libverus_builtin_macros.dylib
-xattr -d com.apple.quarantine libverus_state_machines_macros.dylib
-xattr -d com.apple.quarantine rust_verify
-xattr -d com.apple.quarantine verus
-xattr -d com.apple.quarantine cargo-verus
+remove_quarantine() {
+    local attributes
+    attributes=$(xattr "$1")
+    if printf '%s\n' "$attributes" | grep -Fxq 'com.apple.quarantine'; then
+        xattr -d com.apple.quarantine "$1"
+    fi
+}
 
-xattr -d com.apple.quarantine z3
+remove_quarantine libverus_builtin.rlib
+remove_quarantine libverus_builtin_macros.dylib
+remove_quarantine libverus_state_machines_macros.dylib
+remove_quarantine rust_verify
+remove_quarantine verus
+remove_quarantine cargo-verus
+
+remove_quarantine z3
