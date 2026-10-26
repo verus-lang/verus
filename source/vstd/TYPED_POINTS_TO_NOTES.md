@@ -2856,6 +2856,32 @@ What this requires of vstd:
 stay public and generic over `T: ?Sized`,
 not narrowed to slices.
 
+## For the rustlib port: slice subrange and integer casts
+
+The proof plans behind the specs in TYPED_POINTS_TO_PLAN.md, "For the rustlib port".
+
+**Slice `subrange`.**
+The bytes come from `PointsToUntyped::split_ref` (as in `borrow_index`), and the decode clause from `abs_decode_slice`.
+`PointsTo<[T]>`'s version keeps alignment with `lemma_satisfies_alignment_offset`, as in `borrow_index`.
+The typed value needs a tracked `&[T]` subslice
+(`tracked_slice_index` gives one element; `tracked_mut_ref_slice_subrange` is `&mut` only).
+It's assembled with `TypedValue::<[T]>::from_elems_ref` over `tracked_slice_index(v, k)` for `k` in `[start, end)`,
+so `subrange` adds no new axiom, but depends on `from_elems_ref` (waiting on Travis).
+`tracked_slice_subrange`, the shared counterpart of `tracked_mut_ref_slice_subrange`
+and the ghost version of the exec `slice_subrange`, would make the typed value direct,
+with no recursive proof building a `Seq` of borrows.
+
+**`TrivialOwnershipData` (G3).**
+rustlib reads 4 (or 8) initialized `u8`s as one `u32` (or `usize`) with `read_unaligned`.
+The bytes decode to the integer (`u8` decoding gives `all_init`, which is all an unsigned integer's `decode` needs),
+but a valid `PointsToUnaligned<u32>` needs a tracked `u32`,
+and no proof can make a tracked value from a spec one.
+Integers own no resources, so a spec integer can be made tracked.
+The cast is then verified: split the bytes, `TypedValue::Valid` from the tracked integer
+(borrowed through `tracked_static_mut_ref`), and `from_raw_parts_ref`.
+Its value is `bytes_to_endian(bytes).to_nat()`;
+rustlib's proofs state it through `to_big_from_digits`, so they need a bridging lemma (verified).
+
 ## Decisions
 
 Settled during design review (kept here with their reasons):
