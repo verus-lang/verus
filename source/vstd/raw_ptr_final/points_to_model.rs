@@ -1161,7 +1161,7 @@ impl<T> PTPhys for PointsToUnaligned<T> {
 
     /// Builds the `*mut T` from the underlying untyped pointer's address and provenance
     /// and the stored metadata.
-    closed spec fn ptr(self) -> *mut T {
+    open spec fn ptr(self) -> *mut T {
         ptr_mut_from_data::<T>(
             PtrData {
                 addr: self.pt_untyped().ptr()@.addr,
@@ -1200,7 +1200,7 @@ impl<T> PTPhys for PointsToUnaligned<[T]> {
 
     /// Builds the `*mut [T]` from the underlying untyped pointer's address and provenance
     /// and the stored metadata.
-    closed spec fn ptr(self) -> *mut [T] {
+    open spec fn ptr(self) -> *mut [T] {
         ptr_mut_from_data::<[T]>(
             PtrData {
                 addr: self.pt_untyped().ptr()@.addr,
@@ -1270,7 +1270,7 @@ impl<T> PTTypedValue for PointsToUnaligned<T> {
     // ptrs_len_same_valid_value: the trait's default body.
 
     /// From `PointsToUntyped::lemma_ptrs_len_same_untyped` on the underlying permissions.
-    broadcast proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self) {
+    proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self) {
         PointsToUntyped::lemma_ptrs_len_same_untyped(old.pt_untyped(), new.pt_untyped());
         // As in `bytes_decode`, this assert unfolds the default `ptrs_len_same_valid_value`.
         assert(Self::ptrs_len_same_valid_value(old, new));
@@ -1320,7 +1320,7 @@ impl<T> PTTypedValue for PointsToUnaligned<[T]> {
     // ptrs_len_same_valid_value: the trait's default body.
 
     /// From `PointsToUntyped::lemma_ptrs_len_same_untyped` on the underlying permissions.
-    broadcast proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self) {
+    proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self) {
         // As in `bytes_decode`, these asserts unfold the default `wf` and `ptrs_len_same_valid_value`.
         assert(old.wf() && new.wf());
         PointsToUntyped::lemma_ptrs_len_same_untyped(old.pt_untyped(), new.pt_untyped());
@@ -1572,7 +1572,7 @@ impl<T: ?Sized> PTTypedValue for PointsTo<T> where PointsToUnaligned<T>: PTValue
     }
 
     /// Delegates to the underlying `PointsToUnaligned`.
-    broadcast proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self) {
+    proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self) {
         <PointsToUnaligned<T> as PTTypedValue>::lemma_ptrs_len_same_valid_value(old.pt_unaligned(), new.pt_unaligned());
     }
 

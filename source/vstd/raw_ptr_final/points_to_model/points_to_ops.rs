@@ -747,18 +747,6 @@ impl<T> PTSizedValue for PointsToUnaligned<T> {
 }
 
 impl<T> PointsToUnaligned<T> {
-    /// The pointer has the underlying `PointsToUntyped`'s address and provenance,
-    /// and the stored metadata.
-    pub proof fn lemma_ptr_def(self)
-        ensures
-            self.ptr() == ptr_mut_from_data::<T>(PtrData {
-                addr: self.pt_untyped().ptr()@.addr,
-                provenance: self.pt_untyped().ptr()@.provenance,
-                metadata: self.metadata(),
-            }),
-    {
-    }
-
     /// Specializes `is_disjoint` to the case when the other permission is a `PointsToUnaligned<S>`.
     pub proof fn is_disjoint_unaligned<S>(tracked &mut self, tracked other: &PointsToUnaligned<S>)
         requires
@@ -1002,18 +990,6 @@ impl<T> PointsToUnaligned<[T]> {
     #[verifier::inline]
     pub open spec fn len(self) -> nat {
         self.ptr()@.metadata as nat
-    }
-
-    /// The pointer has the underlying `PointsToUntyped`'s address and provenance,
-    /// and the stored metadata.
-    pub proof fn lemma_ptr_def(self)
-        ensures
-            self.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: self.pt_untyped().ptr()@.addr,
-                provenance: self.pt_untyped().ptr()@.provenance,
-                metadata: self.metadata(),
-            }),
-    {
     }
 
     /// Borrows the permission to the element at index `i`.

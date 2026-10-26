@@ -50,18 +50,23 @@ impl PointsToRaw {
         self.provenance@
     }
 
+    /// The map from addresses to `PointsToByte` permissions. 
+    pub closed spec fn bytes(self) -> Map<int, PointsToByte> {
+        self.bytes
+    }
+
     /// Memory addresses (domain) that the `PointsToRaw` permission gives access to.
     /// This set may be split apart and/or recombined, in order to create permissions to smaller pieces of the allocation.
-    pub closed spec fn dom(self) -> Set<int> {
-        self.bytes.dom()
+    pub open spec fn dom(self) -> Set<int> {
+        self.bytes().dom()
     }
 
     /// The abstract byte at address `a`.
-    pub closed spec fn byte(self, a: int) -> AbstractByte
+    pub open spec fn byte(self, a: int) -> AbstractByte
         recommends
             self.dom().contains(a),
     {
-        self.bytes[a].byte()
+        self.bytes()[a].byte()
     }
 
     /// Returns `true` if the domain of this permission is exactly the range `[start, start + len)`.
@@ -1996,11 +2001,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             let tracked elt = last.tracked_borrow_mut(0);
             let elt_ref = elt;
             let tracked unaligned = elt.as_unaligned_mut();
-            let unaligned_ref = unaligned;
-            unaligned_ref.lemma_wf_basic();
             let tracked (b, typed_value) = unaligned.as_raw_parts_mut();
-            PointsToUnaligned::<T>::lemma_ptr_def(*unaligned_ref);
-            PointsToUnaligned::<T>::lemma_ptr_def(*final(unaligned_ref));
             assert(k * s + s == old_perms.len() * s) by (nonlinear_arith)
                 requires
                     k == old_perms.len() - 1,
@@ -2109,8 +2110,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             typed_value,
             n as usize,
         );
-        let unaligned_ref = unaligned;
-        PointsToUnaligned::<[T]>::lemma_ptr_def(*unaligned_ref);
 
         // The elements' typed values
         assert forall|i: int| 0 <= i < n implies *#[trigger] elems[i] == old_self.seq_typed_value()[i]
@@ -2134,7 +2133,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         }
         let tracked out = unaligned.as_aligned_mut();
         let out_ref = out;
-        PointsToUnaligned::<[T]>::lemma_ptr_def(final(out_ref).pt_unaligned());
 
         // Final values
         let new_self = *final(self_ref);
@@ -2147,7 +2145,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         }
         if <PointsTo<[T]> as PTTypedValue>::ptrs_len_same_valid_value(*out_ref, *final(out_ref)) {
             let final_unaligned = final(out_ref).pt_unaligned();
-            final_unaligned.lemma_wf_basic();
             final_unaligned.bytes_decode();
             assert(PointsToUntyped::ptrs_len_same(*pt_untyped_ref, *final(pt_untyped_ref)));
             assert forall|i: int| #![trigger new_self[i]] 0 <= i < n implies new_self[i].wf()

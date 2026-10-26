@@ -742,7 +742,7 @@ impl<T> PointsToPhys for PointsToUnaligned<T> {
     type A = T;
 
     /// Casts the underlying untyped pointer to a `*mut T`.
-    closed spec fn ptr(self) -> *mut T {
+    open spec fn ptr(self) -> *mut T {
         self.pt_untyped().ptr() as *mut T
     }
 
@@ -931,7 +931,7 @@ impl<T> PointsToPhys for PointsToUnaligned<[T]> {
 
     /// Builds the `*mut [T]` from the underlying untyped pointer's address and provenance
     /// and the stored metadata.
-    closed spec fn ptr(self) -> *mut [T] {
+    open spec fn ptr(self) -> *mut [T] {
         ptr_mut_from_data::<[T]>(
             PtrData {
                 addr: self.pt_untyped().ptr()@.addr,
