@@ -12,7 +12,10 @@ For example, while the `len()` method of
 [`std::collections::HashSet`](https://doc.rust-lang.org/std/collections/hash_set/struct.HashSet.html)
 returns a length of type `usize`,
 which is bounded,
-the `len()` methods of `Seq`, `Set`, and `ISet` each return
+the `len()` methods of
+[`Seq`](https://verus-lang.github.io/verus/verusdoc/vstd/seq/struct.Seq.html#method.len),
+[`Set`](https://verus-lang.github.io/verus/verusdoc/vstd/set/struct.Set.html#method.len), and
+[`ISet`](https://verus-lang.github.io/verus/verusdoc/vstd/iset/struct.ISet.html#method.len) each return
 a length of type `nat`, which is unbounded.
 
 `Seq`, `Set`, and `Map` objects are always finite.
