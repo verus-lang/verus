@@ -200,7 +200,7 @@ pub(crate) fn rewrite_verus_attribute(
         ));
     }
     if !contains_external {
-        attributes.push(quote_spanned!(item.span() => #[verifier::verify]));
+        attributes.push(quote_spanned!(item.span() => #[verus::internal(verify)]));
     }
 
     // Inject #[verus_spec] where missing and stamp impl methods with the sentinel marker.
@@ -405,9 +405,14 @@ fn check_misuse_verus_spec(
 /// The source of #[verus_spec] is ruled out if it is applied in `verus_spec`
 /// rewriting and after `check_misuse_verus_spec` has been executed.
 fn is_verus_macro_applied(attrs: &syn::Attribute) -> bool {
+    let expected_internal = |args: &syn::Meta| match args {
+        syn::Meta::List(meta_list) if meta_list.tokens.to_string() == "verify" => true,
+        _ => false,
+    };
     attrs.path().segments.len() == 2
         && attrs.path().segments[0].ident == "verus"
         && attrs.path().segments[1].ident == "internal"
+        && !expected_internal(&attrs.meta)
 }
 
 /// Adds a `#[verus_spec]` attribute to the given attributes if it's not already present.

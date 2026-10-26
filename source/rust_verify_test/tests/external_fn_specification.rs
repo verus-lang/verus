@@ -1461,14 +1461,14 @@ test_verify_one_file! {
     #[test] module_external code! {
         #[verifier::external]
         mod moo {
-            #[verifier::verify]
+            #[verus::internal(verify)]
             fn stuff() {
                 verus_builtin::assert_(false);
             }
         }
     } => Ok(err) => {
         assert!(err.warnings.len() == 2);
-        assert!(err.warnings[0].message.contains("`#[verifier::verify]` has no effect because item is already marked external"));
+        assert!(err.warnings[0].message.contains("`#[verus::internal(verify)]` has no effect because item is already marked external"));
     }
 }
 
@@ -1659,4 +1659,23 @@ test_verify_one_file! {
             &**x
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3171 shape 3
+    #[test] test_no_verifier_verify_attribute1 code! {
+        verus! {
+        pub spec const C: bool = (-7i8 % 2i8) == 1i8;
+        fn g(y: u8) -> (r: u8) requires y == 1 ensures r == 1 { y }
+        }
+        #[verifier::verify]
+        fn f() -> u8 {
+            let y: u8 = if C { 1 } else { 2 };
+            g(y)
+        }
+    } => Ok(err) => {
+        assert_eq!(err.errors.len(), 0);
+        assert_eq!(err.warnings.len(), 2);
+        assert!(err.warnings[0].message.contains("`#[verifier(verifier::verify)]` is deprecated"));
+    }
 }

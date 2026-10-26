@@ -590,14 +590,14 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] patterns_in_param_position_without_macro [] => code! {
-        #[verifier::verify]
+        #[verus::internal(verify)]
         fn add_pair((a, b): (i32, i32)) -> i32 {
             requires(a == 1 && b == 2);
             ensures(|result: i32| [result == a + b]);
             a + b
         }
 
-        #[verifier::verify]
+        #[verus::internal(verify)]
         fn ignore_arg(_: bool, value: i32, _: u64) -> i32 {
             ensures(|result: i32| [result == value]);
             value
@@ -844,7 +844,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] wildcard_params_in_trait_methods [] => code! {
-        #[verifier::verify]
+        #[verus::internal(verify)]
         trait Plain {
             fn m(&self, _: u32, _: u32);
         }
