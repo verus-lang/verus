@@ -1251,7 +1251,7 @@ test_verify_one_file_with_options! {
     }
 }
 
-// ---- VersionCorrelator, directly ----------------------------------------------------------
+// ---- VersionCorrelator unit tests ---------------------------------------------------------
 
 mod correlator {
     use air::ast::{QueryX, StmtX};

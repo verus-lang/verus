@@ -51,8 +51,6 @@ pub trait VirObserver: Any {
     fn on_for_loop(&mut self, _stm: &Stm) {}
     fn on_quantifier_binder(&mut self, _binder: &crate::ast::VarBinder<Typ>, _exp: &Exp) {}
     fn on_reveal_string(&mut self, _lit: &std::sync::Arc<String>) {}
-    /// The resolver for source locations of spans in this crate; delivered once, before any
-    /// lowering callback.
     fn on_span_resolver(&mut self, _resolver: &SpanResolver) {}
     /// Return the id the lowering should attach to this assertion, or keep `parent`
     /// (the lowering's own choice) by returning it unchanged, as the default does.
@@ -92,7 +90,6 @@ pub struct Observers {
     pub query_result: Option<
         std::rc::Rc<std::cell::RefCell<dyn air::query_result_observer::QueryResultObserver>>,
     >,
-    /// Delivered to the `VirObserver` (`on_span_resolver`) before any other callback.
     pub span_resolver: Option<SpanResolver>,
 }
 
