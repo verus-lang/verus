@@ -29,6 +29,10 @@ What remains is the [items to run by Travis](#to-run-by-travis).
   now also assert that the `str` is valid UTF-8, through `wf`.
 - `TypedValue::<[T]>::from_elems_ref` ([New axioms](#new-axioms)).
 - `PointsToUntyped::join_ref` / `join_mut` ([New axioms](#new-axioms)).
+- `tracked_slice_subrange` ([For the rustlib port](#tracked_slice_subrange-trusted-alternative-to-from_elems_ref-for-subrange)):
+  an alternative to building slice subranges with `from_elems_ref`.
+- `TrivialOwnershipData` ([For the rustlib port](#tracked-values-of-trivial-ownership-types-trusted)):
+  spec integers can be made tracked.
 
 The specs, written out in full
 (copies of the ones in TYPED_POINTS_TO_APPROVED.md, the code, and [Modified rustlib specs](#modified-rustlib-specs)).
@@ -200,6 +204,50 @@ impl<T> TypedValue<[T]> {
             },
     ;
 ```
+
+## For the rustlib port: slice subranges and integer casts
+
+Proposed for the gaps flagged in rustlib's `RUSTLIB_PORT_PLAN.md` (G1–G4).
+
+### `subrange` on slice permissions (verified)
+
+Approved; the spec is in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#slice-subrange).
+G1, and through it G2 and G4.
+
+### `tracked_slice_subrange` (trusted; alternative to `from_elems_ref` for `subrange`)
+
+`slice.rs`, next to `tracked_slice_index`:
+
+```rust
+/// Borrows elements `[i, j)` of a borrowed slice.
+pub axiom fn tracked_slice_subrange<'a, T>(tracked s: &'a [T], i: int, j: int) -> (tracked out: &'a [T])
+    requires
+        0 <= i <= j <= s@.len(),
+    ensures
+        out@ == s@.subrange(i, j),
+;
+```
+
+### Tracked values of trivial-ownership types (trusted)
+
+G3. `modes.rs`, next to `tracked_static_mut_ref`:
+
+```rust
+/// Types whose values own no resources (no permissions, tokens or other tracked data),
+/// so any spec value can be used as a tracked one.
+pub trait TrivialOwnershipData: Sized {
+    /// Makes a spec value tracked.
+    proof fn tracked_from_spec(v: Self) -> (tracked out: Self)
+        ensures
+            out == v,
+    ;
+}
+```
+
+Implemented by macro for the primitive integer types
+(`u8`, `u16`, `u32`, `u64`, `u128`, `usize`, `i8`, `i16`, `i32`, `i64`, `i128`, `isize`),
+each impl's `tracked_from_spec` an `axiom fn`, so every impl is visibly trusted
+(as with the `AbstractByteRepresentation` impls' `abs_encode_impl`).
 
 ## Specifications
 
@@ -432,11 +480,11 @@ everything else exists today.
 | `impl<T: ?Sized> PointsToUnaligned<T>` | closed accessors `typed_value`, `pt_untyped`, `metadata`; `bytes`, `is_valid`, `is_empty` (inline); `tracked_pt_untyped`; `as_raw_parts_mut` (new, phase 4); `tracked_typed_value`, `into_raw_parts`, `from_raw_parts` (new; for rustlib's `str`); `from_raw_parts_ref` (new axiom, phase 3b), `from_raw_parts_mut` (new axiom M3, phase 3b) | The inherent `typed_value`/`bytes` coexist with the trait's (phase 0, item 5). |
 | `impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | `into_aligned`, `as_aligned` (new, generic); `as_aligned_mut` (new, generic, phase 3b: needs M4) | Contracts in [`PointsTo`: proofs and aligned/unaligned conversions](#pointsto-proofs-and-alignedunaligned-conversions). |
 | `impl<T> PointsToUnaligned<T>` | `value`; `is_disjoint_unaligned<S>`. (removed: `wf`, `stays_wf`, `zero_sized`) | |
-| `impl<T> PointsToUnaligned<[T]>` | `len` (new, inline); `from_untyped_ref`, `from_untyped_with_value_ref`, `borrow_index` (new, phase 4; the primary implementations). (removed in 2b: inherent `wf`) | |
+| `impl<T> PointsToUnaligned<[T]>` | `len` (new, inline); `from_untyped_ref`, `from_untyped_with_value_ref`, `borrow_index` (new, phase 4; the primary implementations); `subrange` (new, rustlib port). (removed in 2b: inherent `wf`) | |
 | `impl<T: ?Sized> PointsTo<T>` | closed `pt_unaligned`; `typed_value`, `metadata`, `bytes`, `is_valid`, `is_empty` (open, delegating); `tracked_pt_unaligned`; `from_unaligned_mut` (new axiom M4) | |
 | `impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T>` | `into_unaligned`, `as_unaligned`, `as_unaligned_mut` (new, generic) | Contracts in [`PointsTo`: proofs and aligned/unaligned conversions](#pointsto-proofs-and-alignedunaligned-conversions). |
 | `impl<T> PointsTo<T>` | `value`, `is_aligned`, `is_disjoint_pointsto<S>`; `borrow_mut` (axiom). (removed: `wf`, `stays_wf`, `lemma_ptrs_len_same_valid_value`, `zero_sized`, `bytes_decode`, the untyped conversions, the value operations) | Removed ones are `PTValueOps` / `PTSizedValue` methods. |
-| `impl<T> PointsTo<[T]>` | `len` (new, inline); `from_untyped_ref`, `from_untyped_with_value_ref`, `borrow_index` (new, phase 4; compositions over the `PointsToUnaligned` versions). (removed: inherent `wf`) | |
+| `impl<T> PointsTo<[T]>` | `len` (new, inline); `from_untyped_ref`, `from_untyped_with_value_ref`, `borrow_index` (new, phase 4; compositions over the `PointsToUnaligned` versions); `subrange` (new, rustlib port). (removed: inherent `wf`) | |
 | `impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P>` (`points_to_model.rs` / `points_to_ops.rs`) | `seq_pt`, `len`, `spec_index`; `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut`, `from_seq`, `empty`, `into_seq` (moved here in phase 1); `split_basic`, `join_basic`, `subrange_basic` (new); `from_seq_mut` (new axiom M5) | Structural; stated with `wf_basic`. The only code touching the fields. |
 | `impl<T> SeqPointsTo<T, PointsTo<T>>` | `View` (`SeqPointsToData<T>`); `thin_ptr`, `wf`, `bytes`, `bytes_inner`, `seq_typed_value`, `is_valid`, `is_empty`, `is_fully_empty`, `seq_value`, `is_valid_subrange`, `value_subrange`, `ptrs_len_same_valid_value`, `stays_wf`, `lemma_ptrs_len_same_valid_value`, `typed_value_equiv`, the byte lemmas, `split`, `join`, `subrange`, `subrange_mut` (proved in phase 3b), `zero_sized`, the untyped conversions, the value operations, `is_aligned`, `is_disjoint_seqpt`; `as_slice_pt`, `as_slice_pt_mut` (new, phase 4) | The only typed sequence impl. |
 | `impl SeqPointsTo<u8, PointsToByte>` (`PointsToUntyped`, `points_to_model.rs` / `points_to_ops.rs`) | `View`, `bytes`, `wf`, `stays_wf`, `lemma_ptrs_len_same_untyped` (renamed), `zero_sized<T>`, `split`, `split_ref`, `join` (wrappers over the `_basic` primitives); `join_ref`, `join_mut` (axioms); `split_mut` (proved in phase 3b); `is_disjoint_untyped` | |
