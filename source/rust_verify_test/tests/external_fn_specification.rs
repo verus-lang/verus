@@ -359,7 +359,7 @@ test_verify_one_file! {
         assume_specification[char::REPLACEMENT_CHARACTER] -> u8;
     } => Err(err) => assert_error_msgs(err, &[
         "mismatched types",
-        "assume_specification requires function type signature to match `core::char::methods::impl&%0::REPLACEMENT_CHARACTER` exactly"
+        "`assume_specification` requires function type signature to match `core::char::methods::impl&%0::REPLACEMENT_CHARACTER` exactly"
     ])
 }
 

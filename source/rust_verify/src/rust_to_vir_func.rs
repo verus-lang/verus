@@ -2504,7 +2504,7 @@ pub(crate) fn finish_function<'tcx>(
     let return_opaque_type_eqs = if collect_hidden_type_eqs {
         // We already collected the opaque types once, so we don't need
         // to do it again (hence, passing a throw-away Vec for the output).
-        check_fn_opaque_ty(ctxt, &mut vec![], &def_id, sig.output_span(), None, false)?.1
+        check_fn_opaque_ty(ctxt, &mut vec![], &def_id, sig.output_span(), None, true)?.1
     } else {
         vec![]
     };
