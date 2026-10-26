@@ -73,7 +73,7 @@ fn create_observer(name: &str) -> Option<vir::vir_observer::Observers> {
     }
 }
 
-/// The observer named by `-V observers=`, or none. The core supports one observer at a time.
+/// The observer named by `-V observers=`, if any; at most one is supported.
 fn create_observer_from_args(names: &[String]) -> Result<vir::vir_observer::Observers, String> {
     match names {
         [] => Ok(Default::default()),
@@ -400,7 +400,7 @@ pub struct Verifier {
     vir_crate: Option<Krate>,
     crate_id: Option<CrateId>,
     air_no_span: Option<vir::messages::Span>,
-    /// Source locations of spans, delivered to a registered observer (`-V observers=`).
+    /// Built only when `-V observers=` is set.
     span_resolver: Option<vir::vir_observer::SpanResolver>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
     crate_items: Option<Arc<crate::external::CrateItems>>,

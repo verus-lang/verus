@@ -51,7 +51,7 @@ pub struct TestObserver {
     pub query_lowered_count: usize,
     pub query_snapshot_counts: Vec<usize>,
     pub version_correlations: Vec<(String, u32, String)>,
-    /// Per created version: (versioned name, base, version number).
+    /// Per created version: (versioned name, base, version, kind).
     pub version_bases: Vec<(String, String, u32, String)>,
     #[serde(skip)]
     pub correlator: vir::vir_observer::VersionCorrelator,

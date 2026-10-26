@@ -630,10 +630,8 @@ impl Context {
         smt_output[0].clone()
     }
 
-    /// Evaluate an AIR expression against the current solver model as a boolean.
-    /// Returns `Some(true)` / `Some(false)` if the solver returns a boolean, and `None`
-    /// otherwise: for a non-boolean value, including the multi-line output the solver prints
-    /// for compound values (quantified formulas, datatype constructors).
+    /// Evaluate a boolean AIR expression in the current solver model; `None` unless the solver
+    /// answers `true` or `false`.
     pub fn evaluate_bool(&mut self, expr: &crate::ast::Expr) -> Option<bool> {
         let printer =
             crate::printer::Printer::new(self.message_interface.clone(), true, self.solver.clone());

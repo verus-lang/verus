@@ -551,8 +551,7 @@ test_verify_one_file_with_options! {
     } => Ok(err) => {
         let d = parse(&err);
         let e = &d.events;
-        // L1: the span resolver is delivered first; then on_krate, exactly once, before
-        // everything else.
+        // L1: span_resolver first, then on_krate exactly once.
         assert_eq!(e.first().map(|s| s.as_str()), Some("span_resolver"),
             "L1: span_resolver must be first; events={:?}", e);
         assert_eq!(e.get(1).map(|s| s.as_str()), Some("krate"),
@@ -1111,10 +1110,8 @@ test_verify_one_file_with_options! {
 
 // ---- Version provenance --------------------------------------------------------------------
 //
-// One function lowers to several queries, checked in turn (each isolated loop, then the body).
-// Versions are numbered per query, so each versioned constant must be paired with the statement
-// that created it *in that query*. Line numbers are positions in the generated test file (the
-// harness prepends a fixed prelude).
+// One function lowers to several queries; each version must be paired with its statement in that
+// query. Lines are positions in the generated test file.
 
 fn first_pass(d: &D, var: &str, n: usize) -> Vec<(String, u32, String)> {
     d.version_correlations.iter().filter(|(v, _, _)| v.starts_with(var)).take(n).cloned().collect()
@@ -1124,9 +1121,8 @@ fn vc(v: &str, line: u32, k: &str) -> (String, u32, String) {
 }
 
 test_verify_one_file_with_options! {
-    // Pins: callback order is not version-creation order. `x` is assigned before a `while` loop
-    // and twice inside it. The loop's query is checked first and versions only the body
-    // assignments; pairing in callback order gave its `x@1` the pre-loop line.
+    // Pins: the loop's query is checked first; pairing in callback order gave its `x@1` the
+    // pre-loop line.
     #[test]
     test_observer_version_provenance_loop ["observers=test"] => verus_code! {
         fn f() {
@@ -1154,9 +1150,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // Pins: one AIR statement in two queries. A `for` loop's desugaring assigns ghost variables
-    // before the loop, and those statements are copied into the loop's query as well as the
-    // function's; each query must pair them again.
+    // Pins: a pre-loop statement copied into the loop's query is paired in both queries.
     #[test]
     test_observer_version_provenance_for_loop ["observers=test"] => verus_code! {
         use vstd::prelude::*;
@@ -1179,10 +1173,8 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // Pins: the correlator walks a query in the order versions are created. Each arm of a branch
-    // is versioned from the same state, so a version can be created in more than one arm (here
-    // `x@1`); the merge creates none. The pairing is a set, one entry per creating statement: a
-    // walk in the wrong order would give the then-arm's `x@2` the else-arm's line.
+    // Pins: arms are walked in creation order; `x@1` is created in both arms, so the pairing is
+    // a set.
     #[test]
     test_observer_version_provenance_branches ["observers=test"] => verus_code! {
         fn f(b: bool) {
@@ -1206,9 +1198,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // Each created version is reported with its variable's AIR name and its number, so a
-    // consumer need not parse the versioned name: a local is `x@`, a parameter `p!` (versioned as
-    // `p!@1`), and a shadowing local carries its renumbering (`x$1@`).
+    // Pins: each version's base and number: local `x@`, `&mut` parameter `p!`, shadowed `x$1@`.
     #[test]
     test_observer_version_base_and_number ["observers=test"] => verus_code! {
         fn g(a: &mut u64) ensures *final(a) == 1 { *a = 1; }
@@ -1234,8 +1224,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // Version 0 of every local is reported as `Initial`, in every query (the loop's too), before
-    // any later version of the same variable.
+    // Pins: version 0 of every local is `Initial`, in every query, before later versions.
     #[test]
     test_observer_initial_versions ["observers=test"] => verus_code! {
         fn g(a: &mut u64) ensures *final(a) == 1 { *a = 1; }
@@ -1272,8 +1261,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // Source locations come from the compiler's source map, delivered to the observer as a
-    // resolver; the provenance rows above check its lines, this one its file.
+    // Pins: the resolver names the test's file (the rows above check its lines).
     #[test]
     test_observer_span_resolver_file ["observers=test"] => verus_code! {
         fn f() {
@@ -1296,8 +1284,7 @@ mod correlator {
     use std::sync::Arc;
     use vir::vir_observer::{VersionCorrelator, VersionOrigin};
 
-    /// A statement marked by `id` (carried as the span id), so a test can tell which one the
-    /// correlator returned.
+    /// A statement identified by `id` (its span id).
     fn stm(id: u32) -> vir::sst::Stm {
         let span = vir::messages::Span {
             raw_span: Arc::new(()),
@@ -1316,8 +1303,7 @@ mod correlator {
             assertion: Arc::new(StmtX::Block(Arc::new(stmts))),
         })
     }
-    /// Resolve the next version of `x@` (the base every statement in these tests assigns) and
-    /// return the id of the statement paired with it.
+    /// The id of the statement paired with the next version of `x@`.
     fn line(c: &mut VersionCorrelator, _versioned: &str) -> Option<u32> {
         c.resolve(&Arc::new("x@".to_string()), VersionOrigin::Assign).map(|s| s.span.id as u32)
     }
@@ -1361,9 +1347,7 @@ mod correlator {
         assert_eq!(line(&mut c, "x@1"), None);
     }
 
-    /// A version whose base or kind is not the next statement's means the pairing has lost
-    /// alignment with the query: that version and every later one in the query are unknown,
-    /// in every build profile.
+    /// After a base or kind mismatch, the rest of the query is unresolved, in every build profile.
     #[test]
     fn a_mismatch_leaves_the_rest_of_the_query_unresolved() {
         let mut c = VersionCorrelator::new();

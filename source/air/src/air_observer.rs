@@ -25,8 +25,7 @@ pub enum VersionOrigin {
 /// All methods have default no-op implementations except `as_any`
 /// and `as_any_mut` which must be implemented (trivially: `self`).
 pub trait AirObserver: Any {
-    /// A query is about to be checked; `query` is the query as the caller constructed it,
-    /// before any AIR pass.
+    /// The query about to be checked, before any AIR pass.
     fn on_query_start(&mut self, _query: &Query) {}
     /// A verification query has been lowered (variables → versioned constants).
     /// `snapshots` maps each snapshot name to the variable versions current at that point;

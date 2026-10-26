@@ -367,9 +367,10 @@ impl<'tcx> crate::context::BodyCtxt<'tcx> {
     }
 }
 
-/// A resolver from VIR spans to source locations, for observers. The source map is not
-/// thread-safe, so the line tables of the files it has loaded are copied here, on the thread
-/// that owns it; the resolver itself is plain data.
+/// A resolver from VIR spans to source locations, for observers. It stands in for
+/// `from_air_span` and the source map's line lookup on the verifier's worker threads, where
+/// observers run and neither can be used; the line tables it needs are copied here, on the
+/// main thread.
 pub(crate) fn span_resolver(
     spans: &SpanContext,
     source_map: &SourceMap,
@@ -404,8 +405,7 @@ pub(crate) fn span_resolver(
             } else {
                 let (original_start, _, start, _) =
                     spans.pos_to_extern_source_file_resolve(crate_id, original_lo, None)?;
-                // `original_lo` lies in the file found for it; `None` rather than a wrapped
-                // position if it did not.
+                // `None` rather than a wrapped position.
                 BytePos(original_lo.0.checked_sub(original_start.0)? + start.0)
             }
         } else {

@@ -41,10 +41,8 @@ pub trait VirObserver: Any {
         _current_crate: &crate::ast::CrateId,
     ) {
     }
-    // Havoc and Assign are the only lowerings that create a new version of a variable.
-    // `air_stmt` is the AIR statement `stm` lowers to, so an observer can pair each version
-    // with its source statement in every query where that AIR statement appears
-    // (see `VersionCorrelator`).
+    // Havoc and Assign create new versions; `air_stmt`, the AIR statement `stm` lowers to,
+    // lets an observer pair each version with `stm` (see `VersionCorrelator`).
     fn on_havoc(&mut self, _stm: &Stm, _var: &VarIdent, _air_stmt: &air::ast::Stmt) {}
     fn on_assign(&mut self, _stm: &Stm, _var: &VarIdent, _air_stmt: &air::ast::Stmt) {}
     fn on_variable_def(&mut self, _stm: &Stm, _var: &VarIdent) {}
@@ -103,9 +101,8 @@ pub struct SourceLocation {
     pub line: u32,
 }
 
-/// Resolves a span to the location where it starts, using the compiler's source map. `None`
-/// for a span with no source position, or in a file the source map had not loaded when
-/// verification began.
+/// Where a span starts, from the compiler's source map; `None` if it has no position or its
+/// file was not loaded when verification began.
 pub type SpanResolver = Arc<
     dyn Fn(&crate::messages::Span) -> Option<SourceLocation>
         + Send
@@ -115,23 +112,16 @@ pub type SpanResolver = Arc<
 
 /// Pairs each AIR versioned constant with the SST statement that created it.
 ///
-/// One function's lowering is checked as several queries, and a statement can appear in more
-/// than one of them (statements before a loop are copied into the loop's own query). The
-/// pairing is therefore made per query, by statement identity: `record` remembers which SST
-/// statement each AIR `Havoc`/`Assign` came from, `begin_query` lists the version-creating
-/// statements of the query about to be checked in the order `lower_query` visits them, and each
-/// `resolve` takes the next one. A version created in several arms of a branch is resolved once
-/// per creating statement, so a version's origin is a set.
+/// A statement can appear in several queries of one lowering (statements before a loop are
+/// copied into the loop's query), so pairing is per query: `record` maps each AIR
+/// `Havoc`/`Assign` to its SST statement, `begin_query` lists the query's version-creating
+/// statements in `lower_query` order, and `resolve` takes the next one. A version created in
+/// several branch arms is resolved once per arm.
 ///
-/// A lowering's statements are all recorded before any of its queries is checked, and the next
-/// lowering begins only after they have been. So the first `record` after a `begin_query` starts
-/// a new lowering, and the previous lowering's records are released then.
+/// Records are released when the next lowering starts recording.
 pub struct VersionCorrelator {
-    /// AIR statement (by address; the `Arc` is kept so the address stays valid) → SST origin.
     sources: HashMap<usize, (air::ast::Stmt, Stm)>,
-    /// The current query's version-creating statements, in visiting order.
     current: VecDeque<(air::ast::Ident, VersionOrigin, Option<Stm>)>,
-    /// Whether a query has been begun since the last `record`.
     checking: bool,
 }
 
@@ -174,13 +164,10 @@ impl VersionCorrelator {
         }
     }
 
-    /// The SST statement that created the version of `base` being reported, or `None` if it is
-    /// not known. Call once per `AirObserver::on_wp_version_created`, with its `base` and `kind`.
-    ///
-    /// `None` when the version's AIR statement was not produced by the SST lowering, or when
-    /// the versions reported for this query no longer follow its statements: a `base` or `kind`
-    /// that is not the next statement's leaves that version and every later one in the query
-    /// unresolved, rather than paired with the wrong statement.
+    /// The SST statement that created the version of `base` being reported; call once per
+    /// `on_wp_version_created`. `None` for an `Initial` version, for AIR not produced by the SST
+    /// lowering, and, after a `base` or `kind` that does not match the next statement, for the
+    /// rest of the query.
     pub fn resolve(&mut self, base: &air::ast::Ident, kind: VersionOrigin) -> Option<Stm> {
         if kind == VersionOrigin::Initial {
             return None;
