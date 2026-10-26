@@ -101,7 +101,7 @@ impl<T> PointsToUnaligned<[T]> {
                 provenance: self.ptr()@.provenance,
                 metadata: (end - start) as usize,
             }),
-            out.bytes() == self.bytes().subrange(start * size_of::<T>(), end * size_of::<T>()),
+            out.bytes() == self.bytes().subrange((start * size_of::<T>()) as int, (end * size_of::<T>()) as int),
             self.typed_value().is_valid() ==> {
                 &&& out.typed_value().is_valid()
                 &&& out.typed_value().value_ref()@ == self.typed_value().value_ref()@.subrange(start as int, end as int)

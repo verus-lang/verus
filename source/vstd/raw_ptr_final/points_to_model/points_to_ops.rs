@@ -1048,6 +1048,26 @@ impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     }
 }
 
+/// Borrows the typed values of elements `[i, j)` of a borrowed slice, in order.
+proof fn tracked_slice_elem_refs<'a, T>(tracked v: &'a [T], i: int, j: int) -> (tracked out: Seq<&'a TypedValue<T>>)
+    requires
+        0 <= i <= j <= v@.len(),
+    ensures
+        out.len() == j - i,
+        forall|k: int|
+            #![trigger out[k]]
+            0 <= k < j - i ==> out[k].is_valid() && out[k].value() == v@[i + k],
+    decreases j - i,
+{
+    if i == j {
+        Seq::tracked_empty()
+    } else {
+        let tracked mut out = tracked_slice_elem_refs(v, i, j - 1);
+        out.tracked_push(TypedValue::valid_ref(crate::vstd::slice::tracked_slice_index(v, j - 1)));
+        out
+    }
+}
+
 impl<T> PointsToUnaligned<[T]> {
     /// The number of elements in the slice (the pointer's metadata).
     #[verifier::inline]
@@ -1097,6 +1117,72 @@ impl<T> PointsToUnaligned<[T]> {
             TypedValue::Empty => &TypedValue::Empty,
         };
         PointsToUnaligned::<T>::from_raw_parts_ref(elem, typed_value, ())
+    }
+
+    /// Borrows the permission to elements `[start, end)`.
+    /// If the slice permission is empty, so is the subrange's.
+    pub proof fn subrange(tracked &self, start: nat, end: nat) -> (tracked out: &PointsToUnaligned<[T]>)
+        requires
+            self.wf(),
+            start <= end <= self.len(),
+        ensures
+            out.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: (self.ptr()@.addr + start * size_of::<T>()) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: (end - start) as usize,
+            }),
+            out.bytes() == self.bytes().subrange((start * size_of::<T>()) as int, (end * size_of::<T>()) as int),
+            self.typed_value().is_valid() ==> {
+                &&& out.typed_value().is_valid()
+                &&& out.typed_value().value_ref()@ == self.typed_value().value_ref()@.subrange(start as int, end as int)
+            },
+            self.typed_value().is_empty() ==> out.typed_value().is_empty(),
+            out.wf(),
+    {
+        broadcast use crate::vstd::type_representation::abs_decode_slice;
+
+        let s = size_of::<T>() as int;
+        let n = self.len() as int;
+        let i = start as int;
+        let j = end as int;
+        assert(0 <= i * s <= j * s <= n * s && (j - i) * s == j * s - i * s) by (nonlinear_arith)
+            requires
+                0 <= i <= j <= n,
+                0 <= s,
+        ;
+
+        // The subrange's bytes
+        let tracked (_, tail) = self.pt_untyped.split_ref((i * s) as nat);
+        let tracked (sub, _) = tail.split_ref(((j - i) * s) as nat);
+
+        // The subrange's typed value
+        let tracked typed_value: &TypedValue<[T]> = match &self.val {
+            TypedValue::Valid(b) => {
+                let tracked v: &[T] = b;
+                TypedValue::from_elems_ref(tracked_slice_elem_refs(v, i, j))
+            },
+            TypedValue::Empty => &TypedValue::Empty,
+        };
+        let tracked out = PointsToUnaligned::<[T]>::from_raw_parts_ref(sub, typed_value, (j - i) as usize);
+
+        if self.typed_value().is_valid() {
+            let w = out.typed_value().value_ref()@;
+            // Each element's slot in the subrange's bytes is its slot in `self`'s bytes
+            assert forall|k: int| 0 <= k < w.len() implies abs_decode::<T>(
+                out.bytes().subrange(k * s, (k + 1) * s),
+                &#[trigger] w[k],
+            ) by {
+                assert((k + 1) * s == k * s + s && (k + 1) * s <= (j - i) * s && (i + k) * s == i * s + k * s
+                    && (i + k + 1) * s == i * s + (k + 1) * s && (i + k + 1) * s <= n * s) by (nonlinear_arith)
+                    requires
+                        0 <= k < j - i,
+                        j <= n,
+                        0 <= s,
+                ;
+                assert(out.bytes().subrange(k * s, (k + 1) * s) =~= self.bytes().subrange((i + k) * s, (i + k + 1) * s));
+            }
+        }
+        out
     }
 
     /// Borrows a `&PointsToUntyped` as a `&PointsToUnaligned<[T]>`
@@ -1186,6 +1272,46 @@ impl<T> PointsTo<[T]> {
         }
         PointsTo::<T>::lemma_satisfies_alignment_offset(addr, i as nat);
         elem.as_aligned()
+    }
+
+    /// Borrows the permission to elements `[start, end)`.
+    /// If the slice permission is empty, so is the subrange's.
+    pub proof fn subrange(tracked &self, start: nat, end: nat) -> (tracked out: &PointsTo<[T]>)
+        requires
+            self.wf(),
+            start <= end <= self.len(),
+        ensures
+            out.ptr() == ptr_mut_from_data::<[T]>(PtrData {
+                addr: (self.ptr()@.addr + start * size_of::<T>()) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: (end - start) as usize,
+            }),
+            out.bytes() == self.bytes().subrange((start * size_of::<T>()) as int, (end * size_of::<T>()) as int),
+            self.typed_value().is_valid() ==> {
+                &&& out.typed_value().is_valid()
+                &&& out.typed_value().value_ref()@ == self.typed_value().value_ref()@.subrange(start as int, end as int)
+            },
+            self.typed_value().is_empty() ==> out.typed_value().is_empty(),
+            out.wf(),
+    {
+        let tracked sub = self.pt_unaligned.subrange(start, end);
+        let addr = self.ptr()@.addr;
+        // The subrange's address doesn't overflow:
+        // if `self` isn't zero-sized, its bytes are in bounds of its provenance.
+        let s = size_of::<T>() as int;
+        let n = self.len() as int;
+        assert(0 <= start * s <= n * s) by (nonlinear_arith)
+            requires
+                start <= n,
+                0 <= s,
+        ;
+        if n * s > 0 {
+            let tracked bytes = &self.pt_unaligned.pt_untyped;
+            bytes.provenance_not_none();
+            bytes.ptr_bounds();
+        }
+        PointsTo::<T>::lemma_satisfies_alignment_offset(addr, start);
+        sub.as_aligned()
     }
 
     /// Borrows a `&PointsToUntyped` as a `&PointsTo<[T]>`
