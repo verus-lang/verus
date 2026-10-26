@@ -456,6 +456,32 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait_default_method_signature code!{
+        #[verus_verify]
+        trait X {
+            #[verus_spec(ret =>
+                with
+                    Ghost(w): Ghost<u32>
+                ensures ret
+            )]
+            fn f(&self, x: u32) -> bool {
+                true
+            }
+        }
+
+        #[verus_verify]
+        struct S;
+
+        #[verus_verify]
+        impl X for S {
+            fn f(&self, x: u32) -> bool {
+                false
+            }
+        }
+    } => Err(e) => assert_vir_error_msg(e, "`with` does not support trait")
+}
+
+test_verify_one_file! {
     #[test] test_unverified_code_signature code!{
         #[verus_spec(ret =>
             with

@@ -477,6 +477,10 @@ fn cfg_attr_verus_spec_pred(attr: &syn::Attribute) -> Option<TokenStream> {
 ///    `#[verus_spec]` expansion that the method lives inside an impl block,
 ///    enabling it to apply impl-specific rewrites.
 ///
+/// 3. **Mark trait default methods with a sentinel attribute.** A trait method with a
+///    default body looks to `#[verus_spec]` like a free function, so each one that has a
+///    `#[verus_spec]` attribute is tagged with `#[allow(unused, verus_trait_method_marker)]`.
+///
 /// Recursion into nested items is intentionally skipped here; `#[verus_spec]`
 /// handles that during its own expansion pass.
 fn prepare_items_for_verus_spec(span: proc_macro2::Span, i: &mut syn::Item) {
@@ -501,6 +505,33 @@ fn prepare_items_for_verus_spec(span: proc_macro2::Span, i: &mut syn::Item) {
                         ));
                     }
                     _ => {}
+                }
+            }
+        }
+        syn::Item::Trait(t) => {
+            for item in &mut t.items {
+                if let syn::TraitItem::Fn(syn::TraitItemFn { attrs, default: Some(_), .. }) = item {
+                    if attrs.iter().any(|attr| attr.path().is_ident(VERUS_SPEC)) {
+                        attrs.push(crate::syntax::mk_rust_attr_syn(
+                            span,
+                            "allow",
+                            quote_spanned! { span => (unused, verus_trait_method_marker)},
+                        ));
+                    } else {
+                        // `#[cfg_attr(pred, verus_spec(..))]`: the marker must only appear
+                        // when the `#[verus_spec]` that removes it does
+                        let preds: Vec<TokenStream> =
+                            attrs.iter().filter_map(cfg_attr_verus_spec_pred).collect();
+                        if !preds.is_empty() {
+                            attrs.push(crate::syntax::mk_rust_attr_syn(
+                                span,
+                                "cfg_attr",
+                                quote_spanned! { span =>
+                                    any(#(#preds),*), allow(unused, verus_trait_method_marker)
+                                },
+                            ));
+                        }
+                    }
                 }
             }
         }
@@ -718,19 +749,37 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
 
             fun.attrs.push(mk_verus_attr_syn(fun.span(), quote! { verus_macro }));
 
-            let is_hidden_impl_marker = |attr: &syn::Attribute| {
+            let is_hidden_marker = |attr: &syn::Attribute, marker: &str| {
                 attr.path().get_ident().map_or(false, |ident| {
                     ident == "allow"
                         && matches!(&attr.meta, syn::Meta::List(meta_list)
-                        if meta_list.tokens.to_string().contains("verus_impl_method_marker"))
+                        if meta_list.tokens.to_string().contains(marker))
                 })
             };
 
-            // Check if the function has the impl method marker
-            let is_impl_fn = fun.attrs.iter().any(&is_hidden_impl_marker);
+            // Check if the function has the impl or trait method marker
+            let is_impl_fn =
+                fun.attrs.iter().any(|attr| is_hidden_marker(attr, "verus_impl_method_marker"));
+            let is_trait_fn =
+                fun.attrs.iter().any(|attr| is_hidden_marker(attr, "verus_trait_method_marker"));
 
-            // Remove the marker attribute (internal use only)
-            fun.attrs.retain(|attr| !is_hidden_impl_marker(attr));
+            // Remove the marker attributes (internal use only)
+            fun.attrs.retain(|attr| {
+                !is_hidden_marker(attr, "verus_impl_method_marker")
+                    && !is_hidden_marker(attr, "verus_trait_method_marker")
+            });
+
+            if is_trait_fn {
+                if let Some(with) = &spec_attr.spec.with {
+                    // A trait default method would be split into `f` and `_VERUS_VERIFIED_f`,
+                    // and an impl could override `f` alone.
+                    // Keep `f` so that impls overriding it don't report more errors.
+                    return proc_macro::TokenStream::from(quote_spanned!(with.with.span() =>
+                        ::core::compile_error!("`with` does not support trait");
+                        #fun
+                    ));
+                }
+            }
 
             let mut new_stream = TokenStream::new();
             let mut rustdoc_attrs: Vec<syn::Attribute> = vec![];
