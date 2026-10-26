@@ -1286,9 +1286,11 @@ impl PointsTo<str> {
 
 `specs/slice_index.rs`.
 The defining axioms for `[T]` and `str` are restated on the new API;
-`perm_ptr` and its defining axioms are new and in `group_slice_index_specs`.
-`SliceIndexVerus`'s requires (`output_ptr_ref`, `get_unchecked_verus`, `get_unchecked_mut_verus`) use `perm_ptr(perm)` in place of `perm.ptr()`.
-`perm_init` includes `wf`.
+`perm_ptr`, `perm_wf` and their defining axioms are new and in `group_slice_index_specs`.
+`SliceIndexVerus`'s requires (`output_ptr_ref`, `get_unchecked_verus`, `get_unchecked_mut_verus`) use `perm_ptr(perm)` in place of `perm.ptr()`,
+and `get_unchecked_verus` / `get_unchecked_mut_verus` also require `perm_wf(perm)`;
+their comments "(1) follows from the below condition and `PointsTo<T>::{ptr_bounds, axiom_pt_slice_len}`" become "... `perm_wf(perm)` and `PointsTo<T>::ptr_bounds`".
+`perm_init` is an open spec fn (`is_valid()` and `perm_wf`); its defining axioms are removed.
 `valid_indices_slice_points_to` bounds the indices by `slice.len()` (the pointer's metadata).
 Everything else in the file is unchanged.
 
@@ -1319,18 +1321,23 @@ pub broadcast axiom fn def_perm_ptr_str(perm: &PointsTo<str>)
         #[trigger] perm_ptr(perm) == perm.ptr(),
 ;
 
+/// True when the given permission is well-formed.
+pub uninterp spec fn perm_wf<T: ?Sized>(perm: &PointsTo<T>) -> bool;
+
+pub broadcast axiom fn def_perm_wf_slice<T>(perm: &PointsTo<[T]>)
+    ensures
+        #[trigger] perm_wf(perm) <==> perm.wf(),
+;
+
+pub broadcast axiom fn def_perm_wf_str(perm: &PointsTo<str>)
+    ensures
+        #[trigger] perm_wf(perm) <==> perm.wf(),
+;
+
 /// True when the given permission is (fully) initialized and well-formed.
-pub uninterp spec fn perm_init<T: ?Sized>(perm: &PointsTo<T>) -> bool;
-
-pub broadcast axiom fn def_perm_init_slice<T>(perm: &PointsTo<[T]>)
-    ensures
-        #[trigger] perm_init(perm) <==> perm.is_valid() && perm.wf(),
-;
-
-pub broadcast axiom fn def_perm_init_str(perm: &PointsTo<str>)
-    ensures
-        #[trigger] perm_init(perm) <==> perm.is_valid() && perm.wf(),
-;
+pub open spec fn perm_init<T: ?Sized>(perm: &PointsTo<T>) -> bool {
+    perm.is_valid() && perm_wf(perm)
+}
 
 pub broadcast axiom fn def_perm_value_eq_slice<T>(perm: &PointsTo<[T]>, val: &[T])
     ensures
