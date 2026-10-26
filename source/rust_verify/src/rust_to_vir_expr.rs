@@ -1051,14 +1051,15 @@ pub(crate) fn block_expr_to_vir<'tcx>(
     ) -> Result<bool, VirErr> {
         let mut found = false;
         vir::ast_visitor::expr_visitor_check::<VirErr, _>(e, &mut |_, e| {
-            if let ExprX::BreakOrContinue { label: l, is_break: true, .. } = &e.x
+            if let ExprX::BreakOrContinue { label: l, is_break, .. } = &e.x
                 && l == label
             {
-                found = true;
-            }
-            if let ExprX::BreakOrContinue { is_break: false, .. } = &e.x {
-                // Unsupported in Rust; this is just a sanity check
-                crate::internal_err!(span, "found 'continue' for block label");
+                if *is_break {
+                    found = true;
+                } else {
+                    // Unsupported in Rust; this is just a sanity check
+                    crate::internal_err!(span, "unexpected `continue` for labeled block");
+                }
             }
             Ok(())
         })?;
