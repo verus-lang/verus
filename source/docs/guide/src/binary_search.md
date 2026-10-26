@@ -74,7 +74,7 @@ This tells us that there is some witness `i_witness` such that:
 i1 <= i_witness <= i2 && k == v[i_witness]
 ```
 
-In this case, we execute `i1 = ix + 1`:
+In the case that `v[ix] < k`, we execute `i1 = ix + 1`:
 
 ```rust
 let ix = i1 + (i2 - i1) / 2;

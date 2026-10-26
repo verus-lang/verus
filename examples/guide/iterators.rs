@@ -264,12 +264,6 @@ struct IterCtr {
 }
 // ANCHOR_END: ctr_iter_def
 
-impl IterCtr {
-    pub closed spec fn count_spec(&self) -> u64 {
-        self.count
-    }
-}
-
 // ANCHOR: ctr_new
 impl IterCtr {
     fn new() -> (r: Self)
@@ -320,7 +314,7 @@ impl IteratorSpecImpl for IterCtr {
     open spec fn decrease(&self) -> Option<nat> { None }
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
-        Some(((index + self.count_spec()) % (u64::MAX as int + 1)) as u64)
+        Some(((index + self.count) % (u64::MAX as int + 1)) as u64)
     }
 }
 // ANCHOR_END: ctr_iter_spec
