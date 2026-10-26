@@ -35,7 +35,13 @@ impl UserFilter {
     pub fn from_args(args: &Args, local_krate: &Krate) -> Result<UserFilter, VirErr> {
         let validate_module_name = |s: &str| -> Result<vir::ast::Idents, VirErr> {
             let segments = parse_path_segments_from_user_str(s)?;
-            if local_krate.modules.iter().find(|m| m.x.path.segments == segments).is_none() {
+            let segments = path_strip_type_ns(&segments);
+            if local_krate
+                .modules
+                .iter()
+                .find(|m| path_strip_type_ns(&m.x.path.segments) == segments)
+                .is_none()
+            {
                 let mut lines = local_krate
                     .modules
                     .iter()
@@ -86,7 +92,7 @@ impl UserFilter {
                 let mods = local_krate
                     .modules
                     .iter()
-                    .map(|m| m.x.path.segments.clone())
+                    .map(|m| path_strip_type_ns(&m.x.path.segments))
                     .filter(|m_segments| {
                         vir::ast_util::path_segments_match_prefix(m_segments, &arg_segments)
                     })
@@ -129,7 +135,7 @@ impl UserFilter {
             .filter(|m| {
                 // Return true if the ModuleId is in the remaining_modules set,
                 // and if so, remove it from the set.
-                remaining_modules.take(&m.x.path.segments).is_some()
+                remaining_modules.take(&path_strip_type_ns(&m.x.path.segments)).is_some()
             })
             .cloned()
             .collect();
@@ -180,7 +186,7 @@ impl UserFilter {
             .iter()
             .filter(|f| match &f.x.owning_module {
                 None => false,
-                Some(m) => module_id == &m.segments,
+                Some(m) => module_id == &path_strip_type_ns(&m.segments),
             })
             .map(|f| {
                 let name = friendly_fun_name_crate_relative(
@@ -201,7 +207,7 @@ impl UserFilter {
         }
 
         // Get all substring matches, even if the user didn't use any * in their pattern.
-        // We might use of these automatically, or if not, this list will at least help us
+        // We might use one of these automatically, or if not, this list will at least help us
         // print an informative error message.
         let substring_matches =
             Self::get_all_substring_matches(function_pattern, &module_fun_names);
@@ -304,4 +310,8 @@ impl UserFilter {
             true
         }
     }
+}
+
+fn path_strip_type_ns(path: &Arc<Vec<Arc<String>>>) -> Arc<Vec<Arc<String>>> {
+    Arc::new(path.iter().map(|s| Arc::new(vir::def::strip_type_ns(s).to_string())).collect())
 }
