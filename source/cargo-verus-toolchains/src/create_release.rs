@@ -17,6 +17,9 @@ struct Cli {
     /// New directory to create for the release archive contents.
     #[arg(long, default_value = "release-archive")]
     output_dir: PathBuf,
+    /// Include the macOS Gatekeeper quarantine removal script.
+    #[arg(long)]
+    for_macos: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -27,8 +30,9 @@ fn main() -> anyhow::Result<()> {
     let mut artifacts: Vec<_> =
         artifacts.into_iter().map(|name| cli.build_dir.join(name)).collect();
 
-    #[cfg(target_os = "macos")]
-    artifacts.push("../tools/macos_allow_gatekeeper.sh".into());
+    if cli.for_macos {
+        artifacts.push("../tools/macos_allow_gatekeeper.sh".into());
+    }
 
     artifacts.push(format!("z3{EXE_SUFFIX}").into());
 
