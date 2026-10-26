@@ -376,3 +376,60 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "future cannot be sent between threads safely")
 }
+
+test_verify_one_file! {
+    #[test] opaque_type_with_anon_consts verus_code! {
+        use vstd::prelude::*;
+        use std::future::Future;
+
+        pub fn consumes_opaque<'a, F>(f: F)
+            where
+            F: Future<Output = usize> + Send
+        {}
+
+        async fn ret42(r: &usize) -> (res: usize)
+        {
+            *r
+        }
+
+        async fn caller() {
+            let j = 5;
+            let f1 = ret42(&j);
+            // The presence of the anonymous const (the 2 in the array type)
+            // can cause dependency ordering issues if we aren't careful.
+            let r: [u64; 2] = [0, 1];
+            consumes_opaque(f1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] opaque_type_with_anon_consts_fail verus_code! {
+        use vstd::prelude::*;
+        use std::future::Future;
+
+        spec const N: usize = 5;
+
+        pub fn consumes_opaque<'a, F>(f: F)
+            where
+            F: Future<Output = usize> + Send
+        {}
+
+        async fn ret42(r: &usize) -> (res: usize)
+        {
+            *r
+        }
+
+        async fn caller() {
+            let j = 5;
+            let f1 = ret42(&j);
+            // The presence of the anonymous const (the 2 in the array type)
+            // can cause dependency ordering issues if we aren't careful.
+            // The dependency issues are related to this particular mode-checking error,
+            // so this test is here to ensure the mode-checking error still fires
+            // even in the presence of the opaque type dependency scenario.
+            let r = [0u8; core::mem::size_of_val(&N)];
+            consumes_opaque(f1);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+}
