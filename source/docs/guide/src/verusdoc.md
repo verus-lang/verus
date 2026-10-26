@@ -24,9 +24,9 @@ fi
 # Note the VERUSDOC environment variable.
 
 RUSTC_BOOTSTRAP=1 VERUSDOC=1 rustdoc \
-  --extern builtin=$VERUS/target-verus/debug/libbuiltin.rlib \
-  --extern builtin_macros=$VERUS/target-verus/debug/libbuiltin_macros.$DYN_LIB_EXT \
-  --extern state_machines_macros=$VERUS/target-verus/debug/libstate_machines_macros.$DYN_LIB_EXT \
+  --extern verus_builtin=$VERUS/target-verus/debug/libverus_builtin.rlib \
+  --extern verus_builtin_macros=$VERUS/target-verus/debug/libverus_builtin_macros.$DYN_LIB_EXT \
+  --extern verus_state_machines_macros=$VERUS/target-verus/debug/libverus_state_machines_macros.$DYN_LIB_EXT \
   --extern vstd=$VERUS/target-verus/debug/libvstd.rlib \
   --edition=2021 \
   --cfg verus_keep_ghost \
@@ -50,8 +50,8 @@ If you run it with a file `lib.rs` like this:
 ```
 #![allow(unused_imports)]
 
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use vstd::prelude::*;
 
 verus!{

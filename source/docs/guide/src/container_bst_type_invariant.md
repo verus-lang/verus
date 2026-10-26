@@ -145,7 +145,7 @@ In other words, the type invariant holds for _all_ possible final values of the 
 reference.
 
 ```rust
-{{#include ../../../../examples/guide/bst_map_type_invariant.rs:delete}}
+{{#include ../../../../examples/guide/bst_map_type_invariant.rs:get_mut}}
 ```
 
 ### The new signatures and specifications

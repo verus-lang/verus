@@ -20,7 +20,7 @@ uses the `vstd::seq` module:
 {{#include ../../../../examples/guide/vstd_example.rs}}
 ```
 
-For convenience, the `vstd::prelude` module includes `builtin_macros`, `builtin`,
+For convenience, the `vstd::prelude` module includes `verus_builtin_macros`, `verus_builtin`,
 as well as types from `seq`, `set`, `map`, `option`, `result`, and `string`:
 
 ```rust

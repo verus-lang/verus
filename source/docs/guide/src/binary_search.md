@@ -48,7 +48,7 @@ The key steps are:
 - The witness `i_witness` from the current iteration's
   `exists|i: int| ...` serves as the witness for the next iteration's
   `exists|i: int| ...`.
-- The comparison `*v.index(ix) < k` tells us whether `v[ix] < k` or `v[ix] >= k`.
+- The `if` condition `v[ix] < k` splits the proof into two cases: `v[ix] < k` and `v[ix] >= k`.
 - The expressions `v[i_witness]` and `v[ix]` match the trigger `v[i], v[j]`
   in the expression `forall|i: int, j: int| ... v[i] <= v[j]`.
 
@@ -58,8 +58,8 @@ as the next subsection discusses,
 the whole point is that the SMT solver takes care of the boring details automatically
 if we set things up right.)
 
-There are two cases to consider, one where the `if` condition `*v.index(ix) < k` is true and one
-where `*v.index(ix) < k` is false.
+There are two cases to consider, one where the `if` condition `v[ix] < k` is true and one
+where it is false.
 We'll just look at the former, where `v[ix] < k`.
 
 We assume the loop invariant at the beginning of the loop iteration:
@@ -74,11 +74,11 @@ This tells us that there is some witness `i_witness` such that:
 i1 <= i_witness <= i2 && k == v[i_witness]
 ```
 
-In the case where `*v.index(ix) < k` is true, we execute `i1 = ix + 1`:
+In this case, we execute `i1 = ix + 1`:
 
 ```rust
 let ix = i1 + (i2 - i1) / 2;
-if *v.index(ix) < k {
+if v[ix] < k {
     i1 = ix + 1;
 } else {
 ```
@@ -94,7 +94,7 @@ To prove an `exists` expression, the SMT solver needs to match the expression's 
 The automatically chosen trigger for this expression is `v[i]`,
 so the SMT solver looks for expressions of the form `v[...]`.
 It finds `v[i_witness]` from the previous loop invariant (shown above).
-It also finds `v[ix]` from the call `v.index(ix)` in the expression `*v.index(ix) < k`.
+It also finds `v[ix]` from the `if` condition `v[ix] < k`.
 Based on these, it attempts to prove `ix + 1 <= i <= i2 && k == v[i]`
 with `i = i_witness` or `i = ix`:
 
@@ -144,7 +144,7 @@ We already know `k == v[i_witness]`, so this becomes:
 ```
 
 The right-hand side of the `==>` says `k <= v[ix]`,
-which contradicts our assumption that `v[ix] < k` in the case where `*v.index(ix) < k`.
+which contradicts our assumption that `v[ix] < k`.
 This means that the left-hand side of the `==>` must be false:
 
 ```

@@ -72,8 +72,12 @@ Therefore, we can verify this code by using a cell with a data invariant:
 Concretely, the above can be implemented in Verus using
 [`InvCell`](https://verus-lang.github.io/verus/verusdoc/vstd/cell/struct.InvCell.html),
 provided by Verus' standard library, which provides a data-invariant-based specification.
-When constructing a new `InvCell<T>`, the user specifies a data invariant: some boolean predicate
+An `InvCell<T, Pred>` takes a second type parameter `Pred`, which implements the
+[`Predicate<T>`](https://verus-lang.github.io/verus/verusdoc/vstd/predicate/trait.Predicate.html) trait.
+This gives the cell's data invariant: a boolean predicate
 over the type `T` which tells the cell what values are allowed to be stored.
+(When constructing a new `InvCell` with `InvCell::new(val, Ghost(pred))`, the user supplies
+a ghost value `pred` of type `Pred` and must show that the initial value `val` satisfies it.)
 Then, the `InvCell` only has to impose the restriction that whenever the user writes to the cell,
 the value `val` being written has to satisfy the predicate, `cell.inv(val)`.
 In exchange, though, whenever the user _reads_ from the cell, they know the value they

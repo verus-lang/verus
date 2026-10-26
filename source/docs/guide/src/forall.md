@@ -181,7 +181,7 @@ irrelevant instantiations that clog up the SMT solver with useless information,
 slowing down the proof.
 
 In this case, `s[i]` is probably a good trigger to choose.
-It matches whenever the function `test_use_forall_succeeds4`
+It matches whenever the function `test_use_forall_succeeds3`
 talks about an element of the sequence `s`,
 yielding a fact that is likely to be useful for reasoning about `s`.
 

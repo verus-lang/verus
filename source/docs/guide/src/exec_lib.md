@@ -39,8 +39,8 @@ when writing specifications about the `Vec` contents.
 
 Verus support for `std::vec::Vec` is currently being expanded. For up-to-date
 documentation, visit [this link](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/vec/index.html).
-Note that these functions provide specifications for `std::vec::Vec` functions. Thus,
-for example, `ex_vec_insert` represents support for the `Vec` function `insert`. Code written 
-in Verus should use `insert` rather than `ex_vec_insert`.
+Note that vstd provides these as [specifications](./reference-assume-specification.md) for
+the ordinary `std::vec::Vec` functions, so code written in Verus simply calls the standard
+`Vec` methods (e.g., `v.insert(i, x)`) directly.
 
 Documentation for `std::vec::Vec` functionality can be found [here](https://doc.rust-lang.org/std/vec/struct.Vec.html).
