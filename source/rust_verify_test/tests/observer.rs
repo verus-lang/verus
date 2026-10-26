@@ -541,7 +541,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
 
-    // ── §3.2 Cross-trait lifecycle sequencing (L1–L5) via the ordered trace ──
+    // ── §3.2 Cross-trait lifecycle sequencing (L1–L4) via the ordered trace ──
     #[test]
     test_lifecycle_sequencing ["observer=test"] => verus_code! {
         fn seq_demo(n: u64) -> (r: u64)
@@ -568,6 +568,25 @@ test_verify_one_file_with_options! {
         let body = idx(e, "body_start").expect("body_start present");
         let flow = idx(e, "function_lowered").expect("function_lowered present");
         assert!(body < flow, "L2: body_start before function_lowered; events={:?}", e);
+        // L3: each query starts, then creates its versions, then is lowered.
+        let mut open = false;
+        for ev in e.iter() {
+            match ev.as_str() {
+                "query_start" => {
+                    assert!(!open, "L3: query_start inside a query; events={:?}", e);
+                    open = true;
+                }
+                "query_lowered" => {
+                    assert!(open, "L3: query_lowered without query_start; events={:?}", e);
+                    open = false;
+                }
+                v if v.starts_with("wp_version:") => {
+                    assert!(open, "L3: version created outside a query; events={:?}", e);
+                }
+                _ => {}
+            }
+        }
+        assert!(count(e, "query_start") >= 2, "L3: the loop and the body are queries; events={:?}", e);
         // L4: some on_query_lowered precedes a check_valid result.
         let q = idx(e, "query_lowered").expect("query_lowered present");
         let cv = idx_pfx(e, "check_valid:").expect("check_valid present");

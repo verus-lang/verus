@@ -168,6 +168,7 @@ fn dt_name(d: &vir::ast::Datatype) -> String {
 
 impl air::air_observer::AirObserver for TestObserver {
     fn on_query_start(&mut self, query: &air::ast::Query) {
+        self.events.push("query_start".to_string());
         self.correlator.begin_query(query);
     }
     fn on_query_lowered(
