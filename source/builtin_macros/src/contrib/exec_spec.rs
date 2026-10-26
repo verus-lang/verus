@@ -436,7 +436,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
         #[verifier::ext_equal]
         #item_struct
 
-        #[derive(Eq, Hash, PartialEq, Debug)]
+        #[derive(Eq, Hash, PartialEq)]
         #vis struct #exec_name #exec_fields
 
         impl vstd::contrib::exec_spec::ExecSpecType for #spec_name {
