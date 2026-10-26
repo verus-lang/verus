@@ -950,6 +950,19 @@ impl<T> PointsTo<T> {
     }
 }
 
+impl<T: ?Sized> PointsToUnaligned<T> {
+    /// Permissions with the same untyped permission, typed value and metadata are equal.
+    pub proof fn lemma_eq_from_raw_parts(a: Self, b: Self)
+        requires
+            a.pt_untyped() == b.pt_untyped(),
+            a.typed_value() == b.typed_value(),
+            a.metadata() == b.metadata(),
+        ensures
+            a == b,
+    {
+    }
+}
+
 impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     /// Converts to a `PointsTo<T>`, given that the address is aligned.
     pub proof fn into_aligned(tracked self) -> (tracked out: PointsTo<T>)
