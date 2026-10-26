@@ -77,40 +77,10 @@ Sequences:
 | `PointsTo<[T]>` → `PointsTo<T>` at an index (`borrow_index`) | no | yes | no | vstd, composed from the unaligned version and the aligned/unaligned conversions | phase 4 |
 | `PointsToUnaligned<[T]>` → `PointsToUnaligned<T>` at an index (`borrow_index`) | no | yes | no | vstd | phase 4 |
 | `PointsTo<[T]>` → `PointsTo<[T]>` for a subrange (`subrange`) | no | yes | no | vstd, composed from the unaligned version and the aligned/unaligned conversions | rustlib port |
-| `PointsToUnaligned<[T]>` → `PointsToUnaligned<[T]>` for a subrange (`subrange`) | no | yes | no | vstd ([spec](#slice-subrange)) | rustlib port |
+| `PointsToUnaligned<[T]>` → `PointsToUnaligned<[T]>` for a subrange (`subrange`) | no | yes | no | vstd (`points_to_ops.rs`) | rustlib port |
 | `PointsToUnaligned<str>` ↔ `PointsToUnaligned<[u8]>` | no | yes | no | rustlib | after phase 3b ([specs](#rustlib-str)) |
 | `PointsTo<str>` ↔ `PointsTo<[u8]>` | no | yes | no | rustlib, via the unaligned versions and the aligned/unaligned conversions | after phase 3b |
 | `PointsToRaw` ↔ `PointsToUntyped` (a contiguous range) | yes | no | no | vstd | phase 2c |
-
-### Slice subrange
-
-`points_to_ops.rs`, next to `borrow_index`.
-`PointsTo<[T]>` has the same contract.
-
-```rust
-impl<T> PointsToUnaligned<[T]> {
-    /// Borrows the permission to elements `[start, end)`.
-    /// If the slice permission is empty, so is the subrange's.
-    pub proof fn subrange(tracked &self, start: nat, end: nat) -> (tracked out: &PointsToUnaligned<[T]>)
-        requires
-            self.wf(),
-            start <= end <= self.len(),
-        ensures
-            out.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: (self.ptr()@.addr + start * size_of::<T>()) as usize,
-                provenance: self.ptr()@.provenance,
-                metadata: (end - start) as usize,
-            }),
-            out.bytes() == self.bytes().subrange((start * size_of::<T>()) as int, (end * size_of::<T>()) as int),
-            self.typed_value().is_valid() ==> {
-                &&& out.typed_value().is_valid()
-                &&& out.typed_value().value_ref()@ == self.typed_value().value_ref()@.subrange(start as int, end as int)
-            },
-            self.typed_value().is_empty() ==> out.typed_value().is_empty(),
-            out.wf(),
-    ;
-}
-```
 
 ## API changes not visible in the specs
 
