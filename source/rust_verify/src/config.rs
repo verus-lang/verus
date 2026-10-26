@@ -445,7 +445,7 @@ pub fn parse_args_with_imports(
             EXTENDED_NO_BV_SIMPLIFY,
             "internal option to disable simplification of bit-vector assertions before sending to the SMT solver",
         ),
-        (EXTENDED_OBSERVERS, "Comma-separated list of observers (e.g., test)"),
+        (EXTENDED_OBSERVERS, "Observer to run during verification (one at a time; e.g., test)"),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()

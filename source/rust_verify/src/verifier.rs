@@ -35,7 +35,7 @@ use rustc_span::Span;
 /// known here, so each `Rc<RefCell<Concrete>>` is coerced (unsizing) into an
 /// independent per-trait handle. A consumer that implements only a subset of the
 /// traits populates only those slots. `TestObserver` implements all three.
-fn create_observer(name: &str) -> vir::vir_observer::Observers {
+fn create_observer(name: &str) -> Option<vir::vir_observer::Observers> {
     use std::cell::RefCell;
     use std::rc::Rc;
     match name {
@@ -45,39 +45,41 @@ fn create_observer(name: &str) -> vir::vir_observer::Observers {
             let air: Rc<RefCell<dyn air::air_observer::AirObserver>> = o.clone();
             let query_result: Rc<RefCell<dyn air::query_result_observer::QueryResultObserver>> =
                 o.clone();
-            vir::vir_observer::Observers {
+            Some(vir::vir_observer::Observers {
                 vir: Some(vir),
                 air: Some(air),
                 query_result: Some(query_result),
                 span_resolver: None,
-            }
+            })
         }
         // Dedicated single-trait observers: each populates only its own slot,
         // proving a consumer couples nothing it does not implement.
         "air-only" => {
             let o = Rc::new(RefCell::new(crate::test_observer::AirOnlyObserver::new()));
             let air: Rc<RefCell<dyn air::air_observer::AirObserver>> = o;
-            vir::vir_observer::Observers { air: Some(air), ..Default::default() }
+            Some(vir::vir_observer::Observers { air: Some(air), ..Default::default() })
         }
         "query-result-only" => {
             let o = Rc::new(RefCell::new(crate::test_observer::QueryResultOnlyObserver::new()));
             let qr: Rc<RefCell<dyn air::query_result_observer::QueryResultObserver>> = o;
-            vir::vir_observer::Observers { query_result: Some(qr), ..Default::default() }
+            Some(vir::vir_observer::Observers { query_result: Some(qr), ..Default::default() })
         }
         "vir-only" => {
             let o = Rc::new(RefCell::new(crate::test_observer::VirOnlyObserver::new()));
             let vir: Rc<RefCell<dyn vir::vir_observer::VirObserver>> = o;
-            vir::vir_observer::Observers { vir: Some(vir), ..Default::default() }
+            Some(vir::vir_observer::Observers { vir: Some(vir), ..Default::default() })
         }
-        _ => vir::vir_observer::Observers::default(),
+        _ => None,
     }
 }
 
-fn create_observer_from_args(names: &[String]) -> vir::vir_observer::Observers {
-    if names.len() > 1 {
-        panic!("only one observer may be specified at a time; got: {:?}", names);
+/// The observer named by `-V observers=`, or none. The core supports one observer at a time.
+fn create_observer_from_args(names: &[String]) -> Result<vir::vir_observer::Observers, String> {
+    match names {
+        [] => Ok(Default::default()),
+        [name] => create_observer(name).ok_or_else(|| format!("unknown observer `{name}`")),
+        _ => Err(format!("only one observer may be given; got {}", names.join(", "))),
     }
-    names.first().map_or_else(Default::default, |n| create_observer(n))
 }
 
 fn emit_observer_summaries(any: &dyn std::any::Any, reporter: &impl air::messages::Diagnostics) {
@@ -2023,6 +2025,7 @@ impl Verifier {
             vir::vir_observer::Observers {
                 span_resolver: self.span_resolver.clone(),
                 ..create_observer_from_args(&self.args.observers)
+                    .expect("observer arguments are checked in verify_crate_inner")
             },
         )?;
         if self.args.log_all || self.args.log_args.log_vir_poly {
@@ -2082,6 +2085,9 @@ impl Verifier {
         let time_verify_sequential_start = Instant::now();
 
         let reporter = Reporter::new(spans, compiler);
+        if let Err(msg) = create_observer_from_args(&self.args.observers) {
+            return Err(VerifyErr::Vir(vir::messages::error_bare(msg)));
+        }
         if !self.args.observers.is_empty() {
             self.span_resolver =
                 Some(crate::spans::span_resolver(spans, compiler.sess.source_map()));

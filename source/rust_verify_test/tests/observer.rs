@@ -1362,3 +1362,19 @@ mod correlator {
         assert_eq!(line(&mut c, "x@1"), Some(5));
     }
 }
+
+// An observer name that does not exist is an error, not a run with no observer.
+test_verify_one_file_with_options! {
+    #[test]
+    test_observer_unknown_name ["observers=no-such-observer"] => verus_code! {
+        fn f() {}
+    } => Err(err) => assert_vir_error_msg(err, "unknown observer `no-such-observer`")
+}
+
+// The core supports one observer at a time; naming two is an error.
+test_verify_one_file_with_options! {
+    #[test]
+    test_observer_two_names ["observers=test,air-only"] => verus_code! {
+        fn f() {}
+    } => Err(err) => assert_vir_error_msg(err, "only one observer may be given")
+}
