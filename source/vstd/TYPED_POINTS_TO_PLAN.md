@@ -20,6 +20,14 @@ and all of `points_to_collections.rs` (`PointsToRaw`, the typed `SeqPointsTo`, a
 are approved and are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md).
 What remains to review is rustlib's `str` and the modified rustlib specs.
 
+## To run by Travis
+
+- The [trusted UTF-8 assumptions](#trusted-utf-8-assumptions):
+  `SharedReference<str>::points_to`, `mut_ref_to_shr_points_to_str`, `ptr_mut_ref_str` and `str::as_str_ptr_verus`
+  now also assert that the `str` is valid UTF-8, through `wf`.
+- `TypedValue::<[T]>::from_elems_ref` ([New axioms](#new-axioms)).
+- `PointsToUntyped::join_ref` / `join_mut` ([New axioms](#new-axioms)).
+
 ## Specifications
 
 Every module is written out item by item, with its documentation and contract.
@@ -116,7 +124,7 @@ impl PTPhys for PointsToUnaligned<str> {
 
     /// Builds the `*mut str` from the underlying untyped pointer's address and provenance
     /// and the stored metadata.
-    closed spec fn ptr(self) -> *mut str {
+    open spec fn ptr(self) -> *mut str {
         ptr_mut_from_data::<str>(
             PtrData {
                 addr: self.pt_untyped().ptr()@.addr,
@@ -163,8 +171,8 @@ impl PTTypedValue for PointsToUnaligned<str> {
 
     /// The value is valid UTF-8 (`str::inv`).
     /// Its length already matches the metadata:
-    /// decoding (`EncodingStr`) makes the `str`'s length its number of bytes,
-    /// which `wf_basic` makes the metadata.
+    /// the `str`'s length is equal to the number of bytes by decoding (`EncodingStr`),
+    /// which is equal to the metadata by `wf_basic`.
     open spec fn additional_validity_constraints(value: &str, metadata: usize) -> bool {
         value.inv()
     }
@@ -183,7 +191,7 @@ impl PTTypedValue for PointsToUnaligned<str> {
     // ptrs_len_same_valid_value: the trait's default body.
 
     /// From `PointsToUntyped::lemma_ptrs_len_same_untyped` on the underlying permissions.
-    broadcast proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self);
+    proof fn lemma_ptrs_len_same_valid_value(old: Self, new: Self);
 
     /// From `PointsToUntyped::stays_wf` on the underlying permissions.
     proof fn stays_wf(old: Self, new: Self);
@@ -258,7 +266,7 @@ and the permission from `from_raw_parts_ref` with the same untyped bytes and met
 
 ```rust
 impl PointsToUnaligned<str> {
-    /// Borrows as a byte-slice permission to the same bytes, with the same metadata;
+    /// Borrows as a `PointsToUnaligned<[u8]>` to the same bytes, with the same metadata;
     /// the value becomes the string's bytes.
     pub proof fn as_bytes(tracked &self) -> (tracked out: &PointsToUnaligned<[u8]>)
         requires
@@ -273,28 +281,26 @@ impl PointsToUnaligned<str> {
             out.wf(),
     ;
 
-    /// Borrows a byte-slice permission as a `str` permission to the same bytes,
-    /// with the same metadata.
-    /// Valid only if the value is valid UTF-8; otherwise empty.
-    pub proof fn from_bytes_ref(tracked p: &PointsToUnaligned<[u8]>) -> (tracked out: &PointsToUnaligned<str>)
+    /// Borrows a `&PointsToUnaligned<[u8]>` as a `str` permission to the same bytes,
+    /// with the same metadata, provided that the byte slice is valid UTF-8.
+    pub proof fn from_bytes_ref(tracked pt_slice: &PointsToUnaligned<[u8]>) -> (tracked out: &PointsToUnaligned<str>)
         requires
-            p.wf(),
+            pt_slice.wf(),
+            pt_slice.typed_value().is_valid() ==> valid_utf8(pt_slice.typed_value().value_ref()@),
         ensures
-            out.ptr()@.addr == p.ptr()@.addr,
-            out.ptr()@.provenance == p.ptr()@.provenance,
-            out.ptr()@.metadata == p.ptr()@.metadata,
-            out.bytes() == p.bytes(),
-            out.typed_value().is_valid() <==> p.typed_value().is_valid() && valid_utf8(p.typed_value().value_ref()@),
-            out.typed_value().is_valid() ==> out.typed_value().value_ref()@ == p.typed_value().value_ref()@,
+            out.ptr()@.addr == pt_slice.ptr()@.addr,
+            out.ptr()@.provenance == pt_slice.ptr()@.provenance,
+            out.ptr()@.metadata == pt_slice.ptr()@.metadata,
+            out.bytes() == pt_slice.bytes(),
+            out.typed_value().is_valid() == pt_slice.typed_value().is_valid(),
+            pt_slice.typed_value().is_valid() ==> out.typed_value().value_ref()@ == pt_slice.typed_value().value_ref()@,
             out.wf(),
     ;
 }
 
 impl PointsTo<str> {
-    /// Borrows as a byte-slice permission to the same bytes, with the same metadata;
+    /// Borrows as a `PointsTo<[u8]>` to the same bytes, with the same metadata;
     /// the value becomes the string's bytes.
-    /// Through `as_unaligned`, `PointsToUnaligned::<str>::as_bytes` and `as_aligned`
-    /// (alignment 1 for both `str` and `[u8]`).
     pub proof fn as_bytes(tracked &self) -> (tracked out: &PointsTo<[u8]>)
         requires
             self.wf(),
@@ -308,21 +314,19 @@ impl PointsTo<str> {
             out.wf(),
     ;
 
-    /// Borrows a byte-slice permission as a `str` permission to the same bytes,
-    /// with the same metadata.
-    /// Valid only if the value is valid UTF-8; otherwise empty.
-    /// Through `as_unaligned`, `PointsToUnaligned::<str>::from_bytes_ref` and `as_aligned`
-    /// (alignment 1 for both `str` and `[u8]`).
-    pub proof fn from_bytes_ref(tracked p: &PointsTo<[u8]>) -> (tracked out: &PointsTo<str>)
+    /// Borrows a `&PointsTo<[u8]>` as a `str` permission to the same bytes,
+    /// with the same metadata, provided that the byte slice is valid UTF-8.
+    pub proof fn from_bytes_ref(tracked pt_slice: &PointsTo<[u8]>) -> (tracked out: &PointsTo<str>)
         requires
-            p.wf(),
+            pt_slice.wf(),
+            pt_slice.typed_value().is_valid() ==> valid_utf8(pt_slice.typed_value().value_ref()@),
         ensures
-            out.ptr()@.addr == p.ptr()@.addr,
-            out.ptr()@.provenance == p.ptr()@.provenance,
-            out.ptr()@.metadata == p.ptr()@.metadata,
-            out.bytes() == p.bytes(),
-            out.typed_value().is_valid() <==> p.typed_value().is_valid() && valid_utf8(p.typed_value().value_ref()@),
-            out.typed_value().is_valid() ==> out.typed_value().value_ref()@ == p.typed_value().value_ref()@,
+            out.ptr()@.addr == pt_slice.ptr()@.addr,
+            out.ptr()@.provenance == pt_slice.ptr()@.provenance,
+            out.ptr()@.metadata == pt_slice.ptr()@.metadata,
+            out.bytes() == pt_slice.bytes(),
+            out.typed_value().is_valid() == pt_slice.typed_value().is_valid(),
+            pt_slice.typed_value().is_valid() ==> out.typed_value().value_ref()@ == pt_slice.typed_value().value_ref()@,
             out.wf(),
     ;
 }
@@ -330,19 +334,32 @@ impl PointsTo<str> {
 
 `as_bytes` gets the UTF-8 value that `as_bytes_tracked` requires (`self.inv()`) from `self.wf()`,
 through `additional_validity_constraints`.
-`from_bytes_ref`'s output is well-formed because its value is valid only if it is valid UTF-8.
-
-To review: since UTF-8 validity is now part of a valid `str` permission's `wf`,
-the approved `str` reference axioms that ensure `pt.wf()`
-(`SharedReference<str>::points_to`, `mut_ref_to_shr_points_to_str`,
-and the restated `as_str_ptr_verus` in [Modified rustlib specs](#modified-rustlib-specs))
-now also assert that the referenced `str` is valid UTF-8,
-and `ptr_mut_ref_str`'s `final(perm).wf()` asserts that writes through the `&mut str` keep it valid UTF-8.
-This should be sound, since UTF-8 validity is a library invariant of every `&str` / `&mut str`
-that safe code can't break, but these axioms now state more than before.
+`from_bytes_ref`'s output is well-formed because its value, if valid, is required to be valid UTF-8.
 
 The other rustlib axioms (the `str` reference helpers):
 see [New rustlib axioms](#new-rustlib-axioms).
+
+#### Trusted UTF-8 assumptions
+
+To review: since UTF-8 validity is now part of a valid `str` permission's `wf`,
+these trusted items now also assert that the `str` is valid UTF-8:
+
+- `SharedReference<str>::points_to` (axiom): ensures `pt.wf()`,
+  so the referenced `str` is valid UTF-8.
+- `mut_ref_to_shr_points_to_str` (axiom): ensures `pt.wf()`,
+  so the current value of the `&mut str` is valid UTF-8.
+- `ptr_mut_ref_str` (`external_body`): ensures `final(perm).wf()`,
+  so writes through the returned `&mut str` keep it valid UTF-8.
+- `str::as_str_ptr_verus` (`external_body`, restated in [Modified rustlib specs](#modified-rustlib-specs)):
+  ensures `perm@.wf()`, so `self` is valid UTF-8.
+  (`as_ptr_verus` ensures the same, but is verified from `as_str_ptr_verus`.)
+
+These are the only ones:
+the other `str` reference helpers (`ptr_ref_str`, `ptr_ref2_str_ghost`) only require `wf`,
+`def_perm_init_str` is a definition,
+and the generic `?Sized` axioms (`from_raw_parts_ref`, `from_raw_parts_mut`, `from_unaligned_mut`) say nothing about `wf`.
+This should be sound, since UTF-8 validity is a library invariant of every `&str` / `&mut str`
+that safe code can't break, but these axioms now state more than before.
 
 #### Modified rustlib specs
 
@@ -447,7 +464,7 @@ pub broadcast axiom fn def_perm_value_eq_str(perm: &PointsTo<str>, val: &str)
 `transmute_shared_ref_str_u8_slice` and `transmute_shared_ref_u8_slice_str` go back from axioms to proofs, with unchanged specs:
 `SharedReference<str>::points_to`, then `PointsTo<str>::as_bytes`, then `ptr_ref2_slice_ghost`;
 and `SharedReference<[u8]>::points_to`, then `PointsTo<str>::from_bytes_ref`, then `ptr_ref2_str_ghost`
-(`valid_utf8(src.value()@)` makes `from_bytes_ref`'s output valid).
+(`valid_utf8(src.value()@)` satisfies `from_bytes_ref`'s requires).
 
 ## Inherent impls
 
