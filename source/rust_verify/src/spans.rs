@@ -404,7 +404,9 @@ pub(crate) fn span_resolver(
             } else {
                 let (original_start, _, start, _) =
                     spans.pos_to_extern_source_file_resolve(crate_id, original_lo, None)?;
-                original_lo - original_start + start
+                // `original_lo` lies in the file found for it; `None` rather than a wrapped
+                // position if it did not.
+                BytePos(original_lo.0.checked_sub(original_start.0)? + start.0)
             }
         } else {
             return None;
