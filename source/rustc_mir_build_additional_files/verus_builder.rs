@@ -31,8 +31,9 @@ body so that some constraint is always reachable.
 */
 
 use crate::builder::{BasicBlock, BorrowKind, Builder, PlaceBuilder, Rvalue, TerminatorKind, Ty};
+use rustc_hir::def_id::LocalDefId;
 use rustc_middle::thir::ExprId;
-use rustc_middle::ty::TyKind;
+use rustc_middle::ty::{TyCtxt, TyKind};
 use std::collections::{HashMap, HashSet};
 
 pub(crate) struct VerusMirBuilderCtxt {
@@ -66,10 +67,12 @@ pub(super) fn record_call_inhabitedness<'a, 'tcx>(
 /// The builder calls this when deciding if it should delete the edge.
 pub(crate) fn skip_edge_deletion_for_uninhabited_ty<'a, 'tcx>(
     verus_mir_builder_ctxt: &VerusMirBuilderCtxt,
+    tcx: TyCtxt<'tcx>,
+    def_id: LocalDefId,
     block: rustc_middle::mir::BasicBlock,
     ty: Ty<'tcx>,
 ) -> bool {
-    func_ty_skip_edge_deletion_for_uninhabited_ty(ty)
+    func_ty_skip_edge_deletion_for_uninhabited_ty(tcx, def_id, ty)
         || verus_mir_builder_ctxt.force_treat_inhabited.contains(&block)
 }
 
@@ -78,10 +81,15 @@ pub(crate) fn skip_edge_deletion_for_uninhabited_ty<'a, 'tcx>(
 /// `erased_ghost_value::<!>()`.
 /// To prevent such calls from influencing the CFG, we check if any call is to
 /// `erased_ghost_value`, and if so, skip the CFG trimming logic.
-pub fn func_ty_skip_edge_deletion_for_uninhabited_ty<'tcx>(ty: Ty<'tcx>) -> bool {
+pub fn func_ty_skip_edge_deletion_for_uninhabited_ty<'a, 'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: LocalDefId,
+    ty: Ty<'tcx>,
+) -> bool {
     match ty.kind() {
         TyKind::FnDef(fn_def_id, _) => {
-            let Some(erasure_ctxt) = crate::verus::get_verus_erasure_ctxt_option() else {
+            let def_id = crate::verus::enclosing_fn_local_def_id(tcx, def_id);
+            let Some(erasure_ctxt) = crate::verus::get_verus_erasure_ctxt_option(def_id) else {
                 return false;
             };
             *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id
