@@ -801,6 +801,150 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] pin_get_mut verus_code! {
+        use vstd::prelude::*;
+        use vstd::simple_pptr::PPtr;
+        use vstd::std_specs::pin::PinAdditionalSpecFns;
+        use core::pin::Pin;
+
+        broadcast use vstd::std_specs::pin::group_pin_axioms;
+
+        struct X {
+            value: u64,
+        }
+
+        fn update(pin: Pin<&mut X>)
+            requires
+                pin.mut_ref().current.value < 100,
+            ensures
+                pin.mut_ref().future.value().value == pin.mut_ref().current.value + 1,
+        {
+            let x = pin.get_mut();
+            x.value = x.value + 1;
+        }
+
+        fn update_slice(pin: Pin<&mut [u64]>)
+            requires
+                pin.mut_ref().current@.len() > 0,
+                pin.mut_ref().current@[0] < 100,
+            ensures
+                pin.mut_ref().future.value()@.len() == pin.mut_ref().current@.len(),
+                pin.mut_ref().future.value()@[0] == pin.mut_ref().current@[0] + 1,
+        {
+            let slice = pin.get_mut();
+            slice[0] = slice[0] + 1;
+        }
+
+        fn replace_pptr<V: core::marker::Unpin>(
+            pin: Pin<&mut PPtr<V>>,
+            replacement: PPtr<V>,
+        )
+            ensures
+                *pin.mut_ref().future.value() == replacement,
+        {
+            *pin.get_mut() = replacement;
+        }
+
+        fn preserve_pptr<V>(pin: Pin<&mut PPtr<V>>)
+            ensures
+                pin.mut_ref().future.value() == pin.mut_ref().current,
+        {
+        }
+
+        fn unchanged(pin: Pin<&mut X>)
+            ensures
+                pin.mut_ref().future.value() == pin.mut_ref().current,
+        {
+        }
+
+        fn get_mut_unchanged(pin: Pin<&mut X>)
+            ensures
+                pin.mut_ref().future.value() == pin.mut_ref().current,
+        {
+            let _x = pin.get_mut();
+        }
+
+        fn changed_is_not_resolved(pin: Pin<&mut X>)
+            ensures
+                pin.mut_ref().future.value() == pin.mut_ref().current, // FAILS
+        {
+            let x = pin.get_mut();
+            x.value = if x.value == 0 { 1 } else { 0 };
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] pin_nested verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::pin::PinAdditionalSpecFns;
+        use core::pin::Pin;
+
+        broadcast use vstd::std_specs::pin::group_pin_axioms;
+
+        struct X {
+            value: u64,
+        }
+
+        fn nested_unchanged<'a>(pin: Pin<&mut Pin<&'a mut X>>)
+            ensures
+                pin.mut_ref().future.value() == pin.mut_ref().current,
+        {
+        }
+
+        fn pin_ref_unchanged<'a>(pin: &mut Pin<&'a mut X>)
+            ensures
+                final(pin).mut_ref() == old(pin).mut_ref(),
+        {
+        }
+
+        fn replace_nested<'a>(
+            outer: Pin<&mut Pin<&'a mut X>>,
+            replacement: Pin<&'a mut X>,
+        )
+            ensures
+                outer.mut_ref().future.value().mut_ref() == replacement.mut_ref(),
+        {
+            let slot = outer.get_mut();
+            *slot = replacement;
+        }
+
+        fn replace_pin<'a>(slot: &mut Pin<&'a mut X>, replacement: Pin<&'a mut X>)
+            ensures
+                final(slot).mut_ref() == replacement.mut_ref(),
+        {
+            *slot = replacement;
+        }
+
+        fn option_unchanged<'a>(option: Option<Pin<&'a mut X>>)
+            ensures
+                match option {
+                    Some(pin) => pin.mut_ref().future.value() == pin.mut_ref().current,
+                    None => true,
+                },
+        {
+        }
+
+        struct Node<'a> {
+            next: Option<Pin<&'a mut Node<'a>>>,
+        }
+
+        fn recursive_target_unchanged<'a>(pin: Pin<&mut Node<'a>>)
+            ensures
+                pin.mut_ref().future.value() == pin.mut_ref().current,
+        {
+        }
+
+        fn outer_resolution_does_not_resolve_inner<'a>(pin: Pin<&mut Pin<&'a mut X>>)
+            ensures
+                pin.mut_ref().current.mut_ref().future.value()
+                    == pin.mut_ref().current.mut_ref().current, // FAILS
+        {
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] vec_deref_mut verus_code! {
         use vstd::prelude::*;
 
