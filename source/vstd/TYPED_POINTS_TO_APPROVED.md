@@ -462,6 +462,8 @@ are also trusted (axioms in `points_to_model.rs`), but unchanged
 | `Seq::tracked_add_borrow` | `seq.rs` | Two borrowed tracked `Seq`s act as one borrowed concatenation. | `PointsToUntyped::join_ref` | yes |
 | `Seq::tracked_add_borrow_mut` | `seq.rs` | The same for mutable borrows; the parts' final values are tied back if the concatenation keeps its length. | `PointsToUntyped::join_mut` | yes |
 | `tracked_slice_index` (phase 3b) | `slice.rs` | Borrows an element of a borrowed slice. | `borrow_index` | yes |
+| `tracked_slice_subrange` (rustlib port) | `slice.rs` | Borrows a subrange of a borrowed slice. | other users (slice `subrange` uses `from_elems_ref`) | yes |
+| `TrivialOwnership` and its `u32` / `usize` impls (rustlib port) | `modes.rs` | A spec value of a type that owns no resources can be made tracked. | rustlib's `u32` / `usize` casts of `[u8]` permissions (G3) | yes |
 | `TypedValue::<[T]>::from_elems_ref` (phase 3b) | `points_to_model.rs` | Per-element shared typed values act as one shared slice typed value (the shared counterpart of M1). Replaces the generic `tracked_slice_from_refs`, so it only covers `TypedValue`s, which have no physical memory. | shared sequence → slice | yes |
 | `tracked_ref` (phase 3b) | `modes.rs` | A borrow is a borrowed `Tracked` of itself. | `TypedValue::valid_ref` | yes |
 | `PointsToUnaligned::from_raw_parts_ref` (phase 3b) | `points_to_model.rs` | Borrowed bytes and typed value act as one borrowed permission. | borrowed constructors, `borrow_index`, sequence → slice, `str` ↔ `[u8]` | yes |
@@ -620,6 +622,14 @@ pub axiom fn tracked_slice_index<'a, T>(tracked s: &'a [T], i: int) -> (tracked 
     ensures
         *e == s@[i],
 ;
+
+/// Borrows elements `[i, j)` of a borrowed slice.
+pub axiom fn tracked_slice_subrange<'a, T>(tracked s: &'a [T], i: int, j: int) -> (tracked out: &'a [T])
+    requires
+        0 <= i <= j <= s@.len(),
+    ensures
+        out@ == s@.subrange(i, j),
+;
 ```
 
 `modes.rs`, next to `tracked_swap`:
@@ -630,6 +640,23 @@ pub axiom fn tracked_ref<'a, T: ?Sized>(tracked t: &'a T) -> (tracked out: &'a T
     ensures
         &**out == t,
 ;
+```
+
+**Tracked values of trivial-ownership types** (rustlib port).
+`modes.rs`, next to `tracked_static_mut_ref`.
+Implemented only for `u32` and `usize`,
+each impl's `tracked_from_spec` an `axiom fn`.
+
+```rust
+/// Types whose values own no resources (no permissions, tokens or other tracked data),
+/// so any spec value can be used as a tracked one.
+pub trait TrivialOwnership: Sized {
+    /// Makes a spec value tracked.
+    proof fn tracked_from_spec(v: Self) -> (tracked out: Self)
+        ensures
+            out == v,
+    ;
+}
 ```
 
 **Borrowed permission assembly** (new, phase 3b).

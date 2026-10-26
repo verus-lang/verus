@@ -35,4 +35,22 @@ pub axiom fn tracked_static_mut_ref<V>(tracked v: V) -> (tracked res: &'static m
         *res == v,
 ;
 
+/// Types whose values own no resources (no permissions, tokens or other tracked data),
+/// so any spec value can be used as a tracked one.
+pub trait TrivialOwnership: Sized {
+    /// Makes a spec value tracked.
+    proof fn tracked_from_spec(v: Self) -> (tracked out: Self)
+        ensures
+            out == v,
+    ;
+}
+
+impl TrivialOwnership for u32 {
+    axiom fn tracked_from_spec(v: Self) -> (tracked out: Self);
+}
+
+impl TrivialOwnership for usize {
+    axiom fn tracked_from_spec(v: Self) -> (tracked out: Self);
+}
+
 } // verus!
