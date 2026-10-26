@@ -14,9 +14,7 @@ We have a couple of postprocessors to allow special stylings in the guide.
 
 ## Grammar items
 
-The first one (`verus-grammar.py`)
-
-First, there's the `V@` and `R@` notation, used in the reference section for grammar items.
+The first one (`verus-grammar.py`) handles the `V@` and `R@` notation, used in the reference section for grammar items.
 e.g., this in src/reference-assume-specification.md:
 
 > ```verus-grammar

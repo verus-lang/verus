@@ -50,7 +50,7 @@ For instance, the code below sets the `verifier::loop_isolation` option to false
 
 > [!CAUTION]
 > This should only be used to guard `use` statements and setting config attributes.
-> Using this feature flag for conditional compilation of code can introduce **unsoundness**,
+> Using this `cfg` flag for conditional compilation of code can introduce **unsoundness**,
 > breaking the verification guarantees.
 >
 > As an example, the code below will verify successfully, even though `f()` returns
@@ -75,7 +75,7 @@ For instance, the code below sets the `verifier::loop_isolation` option to false
 ## `Cargo.toml` configuration
 
 [Since version 1.80](https://blog.rust-lang.org/2024/05/06/check-cfg/), Rust automatically checks if all `cfgs` match expected config names.
-The `verus_only` feature is passed in directly by Verus and never declared in a
+The `verus_only` `cfg` flag is passed in directly by Verus and never declared in a
 `Cargo.toml`. This means that Rust will emit a warning when compiling. To prevent this, add the
 following to your `Cargo.toml`:
 

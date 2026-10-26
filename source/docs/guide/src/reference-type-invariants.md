@@ -46,11 +46,11 @@ of type `X`.  Therefore, Verus adds a proof obligation that the predicate holds:
 
  * For any constructor expression of `X`
  * After any assignment to a field of `X`
- * After any function call that takes a mutable borrow to `X` 
+ * After any function call that takes a mutable reference to `X`
 
 Currently, there is no support for "temporarily breaking" a type invariant, though this
 capability may be added in the future. This can often be worked around by taking mutable
-borrows to the fields.
+references to the fields.
 
 ### Applying the type invariant
 

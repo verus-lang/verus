@@ -432,7 +432,7 @@ enum List {
     Nil,
 }
 
-fn build_zero_list(len: u64) {
+fn build_zero_list(len: u64) -> List {
     let mut list = List::Nil;
     let mut cur = &mut list;
 

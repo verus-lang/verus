@@ -22,10 +22,10 @@ This proves `P ==> Q` via the `integer_ring` solver.
 
 ### Supported predicates
 
-The `integer_ring` mode only supports basic arithmetic: `+`, `-`, `*`, `%`, and `/`, `==`,
-and `!=`.
+The `integer_ring` mode only supports basic arithmetic (`+`, `-`, `*`, `%`, and `/`)
+and the comparisons `==` and `!=`.
 
-Verus checks that the `requires` clause include terms that all divisors are nonzero.
+Verus checks that the `requires` clauses state that all divisors are nonzero.
 
 ### Solver operation
 

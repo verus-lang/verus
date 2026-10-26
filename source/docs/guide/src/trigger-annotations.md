@@ -1,7 +1,7 @@
 # Trigger annotations
 
-To every quantifier expression (`forall`, `exists`, `choose`) in the program, including "implicit"
-quantifiers such as in `broadcast` lemmas.
+Verus assigns a set of triggers to every quantifier expression (`forall`, `exists`, `choose`)
+in the program, including "implicit" quantifiers such as in `broadcast` lemmas.
 
 There are many implications of triggers on proof automation that Verus developers should be
 aware of. See [the relevant chapter of the guide](./quants.md), particularly the section

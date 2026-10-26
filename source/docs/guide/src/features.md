@@ -1,6 +1,6 @@
 # Supported Rust Features
 
-Quick reference for supported Rust features. Note that this list does not include all _Verus_ features, and Verus has many spec/proof features without any standard Rust equivalent---this list only concerns Rust features. See [the guide](./modes.md) for more information about Verus' distinction between executable Rust code, specification code, and proof code.
+Quick reference for supported Rust features. Note that this list does not include all _Verus_ features, and Verus has many spec/proof features without any standard Rust equivalent---this list only concerns Rust features. See [the guide](./modes.md) for more information about Verus's distinction between executable Rust code, specification code, and proof code.
 
 Note that Verus is in active development. If a feature is unsupported, it might be genuinely hard, or it might just be low priority. See the [GitHub issues](https://github.com/verus-lang/verus/issues) or [discussions](https://github.com/verus-lang/verus/discussions) for information on planned features.
 

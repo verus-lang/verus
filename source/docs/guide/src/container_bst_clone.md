@@ -1,7 +1,7 @@
 # Implementing Clone
 
 As a finishing touch, let's implement `Clone` for `TreeMap<K, V>`.
-The main trick here will be in figuring out the correct specification for `TreeMap::<K, V>::Clone`.
+The main trick here will be in figuring out the correct specification for `TreeMap::<K, V>::clone`.
 
 Naturally, such an implementation will require both `K: Clone` and `V: Clone`.
 However, to write a sensible clone implementation for the tree, we have to consider
@@ -94,13 +94,13 @@ if every struct needs to have a unique identifier). Anyway, the postcondition of
 `WeirdInt::clone` doesn't say both objects are equal, only that the `int_value` fields are equal.
 This postcondition can then be inferred for each value in the map, as shown.
 
-### Implementing `TreeMap::<K, V>::Clone`.
+### Implementing `TreeMap::<K, V>::clone`.
 
 As usual, we write the implementation as a recursive function.
 
-It's not necessary to implement `Node::Clone`; one could instead just implement a normal
-recursive function as a helper for `TreeMap::Clone`; but it's more Rust-idiomatic to do it
-this way. This lets us call `Option<Node<K, V>>::Clone`
+It's not necessary to implement `Clone` for `Node`; one could instead just implement a normal
+recursive function as a helper for `TreeMap::clone`; but it's more Rust-idiomatic to do it
+this way. This lets us call `clone` on the `Option<Box<Node<K, V>>>` root
 in the implementation of `TreeMap::clone` (the spec for `Option::clone` is provided by
 vstd). However, you can see that there are a few 'gotchas' that need
 to be worked around.

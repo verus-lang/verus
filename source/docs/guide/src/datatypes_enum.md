@@ -40,7 +40,7 @@ If an `enum` field reuses a name, you can qualify the field access:
 ```
 
 For variants like `Shape` declared with round parentheses `()`,
-you can use Verus' `->` tuple-like syntax to access a single field
+you can use Verus's `->` tuple-like syntax to access a single field
 without a match destruction:
 ```rust
 {{#include ../../../../examples/guide/datatypes.rs:rect_height}}
@@ -50,7 +50,7 @@ without a match destruction:
 
 `match` is natural for examining every variant of an `enum`.
 If you'd like to bind the fields while only considering one or two of the
-variants, you can use Verus' `matches` syntax:
+variants, you can use Verus's `matches` syntax:
 ```rust
 {{#include ../../../../examples/guide/datatypes.rs:cuddly}}
 ```

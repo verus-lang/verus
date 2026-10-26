@@ -30,7 +30,7 @@
 
 ## `#![all_triggers]`
 
-Applied to a quantifier, and instructs Verus to aggressively select trigger groups for
+Applies to a quantifier and instructs Verus to aggressively select trigger groups for
 the quantifier.
 See [the trigger specification procedure](./trigger-annotations.md#selecting-trigger-groups)
 for more information.
@@ -74,8 +74,8 @@ This attribute is used by `vstd`'s [trusted atomic types](https://verus-lang.git
 
 ## `#![auto]`
 
-Applied to a quantifier, and indicates intent for Verus to use heuristics to automatically 
-infer 
+Applies to a quantifier and indicates intent for Verus to use heuristics to automatically
+infer triggers.
 Technically has no effect on verification, but may impact verbose trigger logging.
 See [the trigger specification procedure](./trigger-annotations.md#selecting-trigger-groups)
 for more information.

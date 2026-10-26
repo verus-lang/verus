@@ -41,7 +41,7 @@ In nearly all situations, there is no need to reason about the pointer address.
 
 ### Mutable borrows
 
-Mutable borrows are a bit more complicated—see the [next chapter](./mutable-references.md) for details.
+Mutable borrows are a bit more complicated—see the [next section](./mutable-references.md) for details.
 
 ### Lifetime variables
 

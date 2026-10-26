@@ -25,7 +25,7 @@ V@[spec_let_stmt]   ::= let R@[pattern] = V@[spec_expr];
 
 Spec expressions support `let`-bindings, but not `let mut`-bindings.
 
-### if / if let / match statements
+### if / if let / match expressions
 
 **Syntax:**
 

@@ -136,7 +136,7 @@ which suppresses the note:
 In practice, a valid trigger needs to follow two rules: 
 
 1. A trigger for a statement needs to contain all of its non-free variables, meaning those variables that are instantiated by a `forall` or an `exists`.
-    In order to achieve this, you can split the trigger into multiple parts. You can learn more about this in the [next chapter](https://verus-lang.github.io/verus/guide/multitriggers.html)
+    In order to achieve this, you can split the trigger into multiple parts. You can learn more about this in the [next section](./multitriggers.md).
 2. A trigger cannot contain equality or disequality (`==`, `===`, `!=`, or `!==`), any basic integer arithmetic operator (like `<=` or `+`), or any basic boolean operator (like `&&`)
 
 Suppose we want to choose the following invalid trigger, `0 <= i`:
