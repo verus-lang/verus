@@ -79,7 +79,7 @@ dependencies = ["build-cargo-verus"]
 command = "cargo-verus"
 install_crate = false
 args = ["build", "--manifest-path", "vstd/Cargo.toml", "${@}"]
-dependencies = ["install-cargo-verus"]
+dependencies = ["install"]
 
 [tasks.build-cargo-verus]
 command = "cargo"
