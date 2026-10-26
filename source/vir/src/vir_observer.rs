@@ -177,20 +177,19 @@ impl VersionCorrelator {
         }
     }
 
-    /// The SST statement that created the version of `base` being reported, or `None` if its
-    /// AIR statement was not produced by the SST lowering. Call once per
-    /// `AirObserver::on_wp_version_created`, with its `base` and `kind`.
+    /// The SST statement that created the version of `base` being reported, or `None` if it is
+    /// not known. Call once per `AirObserver::on_wp_version_created`, with its `base` and `kind`.
+    ///
+    /// `None` when the version's AIR statement was not produced by the SST lowering, or when
+    /// the versions reported for this query no longer follow its statements: a `base` or `kind`
+    /// that is not the next statement's leaves that version and every later one in the query
+    /// unresolved, rather than paired with the wrong statement.
     pub fn resolve(&mut self, base: &air::ast::Ident, kind: VersionOrigin) -> Option<Stm> {
         let (var, expected_kind, src) = self.current.pop_front()?;
-        debug_assert!(
-            base == &var && kind == expected_kind,
-            "versions are created in the order lower_query visits the statements: \
-             got {} ({:?}), expected {} ({:?})",
-            base,
-            kind,
-            var,
-            expected_kind
-        );
+        if base != &var || kind != expected_kind {
+            self.current.clear();
+            return None;
+        }
         src
     }
 }

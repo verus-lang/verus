@@ -1322,4 +1322,43 @@ mod correlator {
         c.begin_query(&query(vec![old]));
         assert_eq!(line(&mut c, "x@1"), None);
     }
+
+    /// A version whose base or kind is not the next statement's means the pairing has lost
+    /// alignment with the query: that version and every later one in the query are unknown,
+    /// in every build profile.
+    #[test]
+    fn a_mismatch_leaves_the_rest_of_the_query_unresolved() {
+        let mut c = VersionCorrelator::new();
+        let (a1, a2, a3) = (assign("x@"), assign("x@"), assign("x@"));
+        c.record(&a1, &stm(5));
+        c.record(&a2, &stm(6));
+        c.record(&a3, &stm(7));
+        c.begin_query(&query(vec![a1, a2, a3]));
+        assert_eq!(line(&mut c, "x@1"), Some(5));
+        // Wrong base: not paired with statement 6.
+        assert!(c.resolve(&Arc::new("y@".to_string()), VersionOrigin::Assign).is_none());
+        // Statement 7 would match `x@`, but alignment is lost.
+        assert_eq!(line(&mut c, "x@3"), None);
+    }
+
+    #[test]
+    fn a_kind_mismatch_is_unresolved() {
+        let mut c = VersionCorrelator::new();
+        let a1 = assign("x@");
+        c.record(&a1, &stm(5));
+        c.begin_query(&query(vec![a1]));
+        assert!(c.resolve(&Arc::new("x@".to_string()), VersionOrigin::Havoc).is_none());
+    }
+
+    /// The next query starts aligned again.
+    #[test]
+    fn alignment_is_restored_at_the_next_query() {
+        let mut c = VersionCorrelator::new();
+        let a1 = assign("x@");
+        c.record(&a1, &stm(5));
+        c.begin_query(&query(vec![a1.clone()]));
+        assert!(c.resolve(&Arc::new("y@".to_string()), VersionOrigin::Assign).is_none());
+        c.begin_query(&query(vec![a1]));
+        assert_eq!(line(&mut c, "x@1"), Some(5));
+    }
 }
