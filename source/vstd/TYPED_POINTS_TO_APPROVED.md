@@ -240,7 +240,7 @@ pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<
         perm.is_valid(),
         perm.wf(),
     ensures
-        v@ == perm.typed_value().value_ref()@,
+        v@ == perm.value(),
     opens_invariants none
     no_unwind
 {
@@ -253,7 +253,7 @@ pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut 
     ensures
         pt.ptr() == mut_ref_ptr(*mut_ref),
         pt.is_valid(),
-        pt.typed_value().value_ref()@ == (*old(*mut_ref))@,
+        pt.value() == (*old(*mut_ref))@,
         pt.wf(),
         &*final(*mut_ref) == &*old(*mut_ref),
 ;
@@ -323,7 +323,7 @@ impl<'a, T> SharedReference<'a, [T]> {
         ensures
             pt.ptr() == self.ptr(),
             pt.is_valid(),
-            pt.typed_value().value_ref()@ == self.value()@,
+            pt.value() == self.value()@,
             pt.wf(),
     ;
 }
@@ -338,7 +338,7 @@ pub axiom fn ptr_ref2_slice_ghost<'a, T>(ptr: *const [T], tracked perm: &PointsT
         perm.is_valid(),
         perm.wf(),
     ensures
-        v.value()@ == perm.typed_value().value_ref()@,
+        v.value()@ == perm.value(),
         v.ptr() == ptr,
 ;
 ```
@@ -476,7 +476,7 @@ pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>
 ```
 
 The restored slice version (phase 4b),
-with the value stated as `typed_value().value_ref()@` in place of the old `value()` (a `Seq<T>`):
+with the value stated through `PointsTo<[T]>::value()` (the elements, `typed_value().value_ref()@`):
 
 ```rust
 /// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
@@ -493,8 +493,8 @@ pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut Poi
         final(perm).is_valid(),
         // The final bytes decode to the final value.
         final(perm).wf(),
-        old(perm).typed_value().value_ref()@ == v@,
-        final(perm).typed_value().value_ref()@ == final(v)@,
+        old(perm).value() == v@,
+        final(perm).value() == final(v)@,
     opens_invariants none
     no_unwind
 {
@@ -1174,7 +1174,7 @@ impl PointsToUnaligned<str> {
             out.ptr()@.metadata == self.ptr()@.metadata,
             out.bytes() == self.bytes(),
             out.typed_value().is_valid() == self.typed_value().is_valid(),
-            self.typed_value().is_valid() ==> out.typed_value().value_ref()@ == self.typed_value().value_ref()@,
+            self.typed_value().is_valid() ==> out.value() == self.typed_value().value_ref()@,
             out.wf(),
     ;
 
@@ -1183,14 +1183,14 @@ impl PointsToUnaligned<str> {
     pub proof fn from_bytes_ref(tracked pt_slice: &PointsToUnaligned<[u8]>) -> (tracked out: &PointsToUnaligned<str>)
         requires
             pt_slice.wf(),
-            pt_slice.typed_value().is_valid() ==> valid_utf8(pt_slice.typed_value().value_ref()@),
+            pt_slice.typed_value().is_valid() ==> valid_utf8(pt_slice.value()),
         ensures
             out.ptr()@.addr == pt_slice.ptr()@.addr,
             out.ptr()@.provenance == pt_slice.ptr()@.provenance,
             out.ptr()@.metadata == pt_slice.ptr()@.metadata,
             out.bytes() == pt_slice.bytes(),
             out.typed_value().is_valid() == pt_slice.typed_value().is_valid(),
-            pt_slice.typed_value().is_valid() ==> out.typed_value().value_ref()@ == pt_slice.typed_value().value_ref()@,
+            pt_slice.typed_value().is_valid() ==> out.typed_value().value_ref()@ == pt_slice.value(),
             out.wf(),
     ;
 }
@@ -1207,7 +1207,7 @@ impl PointsTo<str> {
             out.ptr()@.metadata == self.ptr()@.metadata,
             out.bytes() == self.bytes(),
             out.typed_value().is_valid() == self.typed_value().is_valid(),
-            self.typed_value().is_valid() ==> out.typed_value().value_ref()@ == self.typed_value().value_ref()@,
+            self.typed_value().is_valid() ==> out.value() == self.typed_value().value_ref()@,
             out.wf(),
     ;
 
@@ -1216,14 +1216,14 @@ impl PointsTo<str> {
     pub proof fn from_bytes_ref(tracked pt_slice: &PointsTo<[u8]>) -> (tracked out: &PointsTo<str>)
         requires
             pt_slice.wf(),
-            pt_slice.typed_value().is_valid() ==> valid_utf8(pt_slice.typed_value().value_ref()@),
+            pt_slice.typed_value().is_valid() ==> valid_utf8(pt_slice.value()),
         ensures
             out.ptr()@.addr == pt_slice.ptr()@.addr,
             out.ptr()@.provenance == pt_slice.ptr()@.provenance,
             out.ptr()@.metadata == pt_slice.ptr()@.metadata,
             out.bytes() == pt_slice.bytes(),
             out.typed_value().is_valid() == pt_slice.typed_value().is_valid(),
-            pt_slice.typed_value().is_valid() ==> out.typed_value().value_ref()@ == pt_slice.typed_value().value_ref()@,
+            pt_slice.typed_value().is_valid() ==> out.typed_value().value_ref()@ == pt_slice.value(),
             out.wf(),
     ;
 
@@ -1311,7 +1311,7 @@ pub open spec fn perm_init<T: ?Sized>(perm: &PointsTo<T>) -> bool {
 
 pub broadcast axiom fn def_perm_value_eq_slice<T>(perm: &PointsTo<[T]>, val: &[T])
     ensures
-        #[trigger] perm_value_eq(perm, val) <==> perm.typed_value().value_ref()@ == val@,
+        #[trigger] perm_value_eq(perm, val) <==> perm.value() == val@,
 ;
 
 pub broadcast axiom fn def_perm_value_eq_str(perm: &PointsTo<str>, val: &str)

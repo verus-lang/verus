@@ -279,7 +279,7 @@ pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<
         perm.is_valid(),
         perm.wf(),
     ensures
-        v@ == perm.typed_value().value_ref()@,
+        v@ == perm.value(),
     opens_invariants none
     no_unwind
 {
@@ -322,8 +322,8 @@ pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut Poi
         final(perm).is_valid(),
         // The final bytes decode to the final value.
         final(perm).wf(),
-        old(perm).typed_value().value_ref()@ == v@,
-        final(perm).typed_value().value_ref()@ == final(v)@,
+        old(perm).value() == v@,
+        final(perm).value() == final(v)@,
     opens_invariants none
     no_unwind
 {
@@ -442,7 +442,7 @@ pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut 
     ensures
         pt.ptr() == mut_ref_ptr(*mut_ref),
         pt.is_valid(),
-        pt.typed_value().value_ref()@ == (*old(*mut_ref))@,
+        pt.value() == (*old(*mut_ref))@,
         pt.wf(),
         &*final(*mut_ref) == &*old(*mut_ref),
 ;

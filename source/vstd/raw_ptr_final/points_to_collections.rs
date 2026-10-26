@@ -1832,7 +1832,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             out.ptr() == self.ptr(),
             out.bytes() == self.bytes(),
-            self.is_valid() ==> out.typed_value().is_valid() && out.typed_value().value_ref()@ == self.seq_value(),
+            self.is_valid() ==> out.typed_value().is_valid() && out.value() == self.seq_value(),
             !self.is_valid() ==> out.typed_value().is_empty(),
             out.wf(),
     {
@@ -2010,15 +2010,15 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             out.ptr() == old(self).ptr(),
             out.bytes() == old(self).bytes(),
             old(self).is_valid() ==> out.typed_value().is_valid()
-                && out.typed_value().value_ref()@ == old(self).seq_value(),
+                && out.value() == old(self).seq_value(),
             !old(self).is_valid() ==> out.typed_value().is_empty(),
             out.wf(),
             // Finally: the pointer, length and typed values, unconditionally.
             final(self).ptr() == old(self).ptr(),
             final(self).len() == old(self).len(),
-            final(out).typed_value().is_valid() && final(out).typed_value().value_ref()@.len() == old(self).len()
-                ==> final(self).is_valid() && final(self).seq_value() == final(out).typed_value().value_ref()@,
-            !(final(out).typed_value().is_valid() && final(out).typed_value().value_ref()@.len() == old(self).len())
+            final(out).typed_value().is_valid() && final(out).value().len() == old(self).len()
+                ==> final(self).is_valid() && final(self).seq_value() == final(out).value(),
+            !(final(out).typed_value().is_valid() && final(out).value().len() == old(self).len())
                 ==> final(self).is_fully_empty(),
             // Criteria necessary for re-establishing invariants
             // (the bytes too, since `join_mut` ties them back only under `ptrs_len_same`).
@@ -2075,8 +2075,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             == *final(elems[i]) by {
             assert(new_self[i] == final(perms_ref)[i]);
         }
-        if final(out_ref).typed_value().is_valid() && final(out_ref).typed_value().value_ref()@.len() == n {
-            assert(new_self.seq_value() =~= final(out_ref).typed_value().value_ref()@);
+        if final(out_ref).typed_value().is_valid() && final(out_ref).value().len() == n {
+            assert(new_self.seq_value() =~= final(out_ref).value());
         }
         if <PointsTo<[T]> as PTTypedValue>::ptrs_len_same_valid_value(*out_ref, *final(out_ref)) {
             let final_unaligned = final(out_ref).pt_unaligned();
@@ -2087,7 +2087,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 if final_unaligned.typed_value().is_valid() {
                     assert(abs_decode::<T>(
                         final_unaligned.bytes().subrange(i * s, (i + 1) * s),
-                        &final_unaligned.typed_value().value_ref()@[i],
+                        &final_unaligned.value()[i],
                     ));
                 }
             }

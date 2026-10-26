@@ -130,7 +130,7 @@ impl<'a, T> SharedReference<'a, [T]> {
         ensures
             pt.ptr() == self.ptr(),
             pt.is_valid(),
-            pt.typed_value().value_ref()@ == self.value()@,
+            pt.value() == self.value()@,
             pt.wf(),
     ;
 }
@@ -233,7 +233,7 @@ pub axiom fn ptr_ref2_slice_ghost<'a, T>(ptr: *const [T], tracked perm: &PointsT
         perm.is_valid(),
         perm.wf(),
     ensures
-        v.value()@ == perm.typed_value().value_ref()@,
+        v.value()@ == perm.value(),
         v.ptr() == ptr,
 ;
 

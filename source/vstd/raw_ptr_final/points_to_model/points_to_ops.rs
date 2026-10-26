@@ -1108,6 +1108,17 @@ impl<T> PointsToUnaligned<[T]> {
         self.ptr()@.metadata as nat
     }
 
+    /// If the permission's associated memory is valid,
+    /// returns the slice's elements.
+    /// Otherwise, the result is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> Seq<T>
+        recommends
+            self.is_valid(),
+    {
+        self.typed_value().value_ref()@
+    }
+
     /// Borrows the permission to the element at index `i`.
     /// If the slice permission is empty, so is the element's.
     pub proof fn borrow_index(tracked &self, i: int) -> (tracked out: &PointsToUnaligned<T>)
@@ -1123,7 +1134,7 @@ impl<T> PointsToUnaligned<[T]> {
             out.bytes() == self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
             self.typed_value().is_valid() ==> {
                 &&& out.typed_value().is_valid()
-                &&& out.typed_value().value() == self.typed_value().value_ref()@[i]
+                &&& out.typed_value().value() == self.value()[i]
             },
             self.typed_value().is_empty() ==> out.typed_value().is_empty(),
             out.wf(),
@@ -1167,7 +1178,7 @@ impl<T> PointsToUnaligned<[T]> {
             out.bytes() == self.bytes().subrange((start * size_of::<T>()) as int, (end * size_of::<T>()) as int),
             self.typed_value().is_valid() ==> {
                 &&& out.typed_value().is_valid()
-                &&& out.typed_value().value_ref()@ == self.typed_value().value_ref()@.subrange(start as int, end as int)
+                &&& out.value() == self.value().subrange(start as int, end as int)
             },
             self.typed_value().is_empty() ==> out.typed_value().is_empty(),
             out.wf(),
@@ -1199,7 +1210,7 @@ impl<T> PointsToUnaligned<[T]> {
         let tracked out = PointsToUnaligned::<[T]>::from_raw_parts_ref(sub, typed_value, (j - i) as usize);
 
         if self.typed_value().is_valid() {
-            let w = out.typed_value().value_ref()@;
+            let w = out.value();
             // Each element's slot in the subrange's bytes is its slot in `self`'s bytes
             assert forall|k: int| 0 <= k < w.len() implies abs_decode::<T>(
                 out.bytes().subrange(k * s, (k + 1) * s),
@@ -1265,6 +1276,17 @@ impl<T> PointsTo<[T]> {
         self.ptr()@.metadata as nat
     }
 
+    /// If the permission's associated memory is valid,
+    /// returns the slice's elements.
+    /// Otherwise, the result is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> Seq<T>
+        recommends
+            self.is_valid(),
+    {
+        self.typed_value().value_ref()@
+    }
+
     /// Borrows the permission to the element at index `i`.
     /// If the slice permission is empty, so is the element's.
     pub proof fn borrow_index(tracked &self, i: int) -> (tracked out: &PointsTo<T>)
@@ -1280,7 +1302,7 @@ impl<T> PointsTo<[T]> {
             out.bytes() == self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
             self.typed_value().is_valid() ==> {
                 &&& out.typed_value().is_valid()
-                &&& out.typed_value().value() == self.typed_value().value_ref()@[i]
+                &&& out.typed_value().value() == self.value()[i]
             },
             self.typed_value().is_empty() ==> out.typed_value().is_empty(),
             out.wf(),
@@ -1320,7 +1342,7 @@ impl<T> PointsTo<[T]> {
             out.bytes() == self.bytes().subrange((start * size_of::<T>()) as int, (end * size_of::<T>()) as int),
             self.typed_value().is_valid() ==> {
                 &&& out.typed_value().is_valid()
-                &&& out.typed_value().value_ref()@ == self.typed_value().value_ref()@.subrange(start as int, end as int)
+                &&& out.value() == self.value().subrange(start as int, end as int)
             },
             self.typed_value().is_empty() ==> out.typed_value().is_empty(),
             out.wf(),
@@ -1414,12 +1436,12 @@ impl<T> PointsTo<[T]> {
             ),
             out.bytes() == self.bytes(),
             out.is_valid(),
-            out.value() as int == to_big_from_digits::<V, T>(self.typed_value().value_ref()@).index(0),
+            out.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
             out.wf(),
     {
         broadcast use crate::vstd::type_representation::abs_decode_slice, EndianNat::exp_properties;
 
-        let ghost digits = self.typed_value().value_ref()@;
+        let ghost digits = self.value();
         let ghost k = digits.len() as int;
         let ghost s = size_of::<T>() as int;
         self.bytes_decode();
@@ -1494,7 +1516,7 @@ impl<T> PointsTo<[T]> {
             ),
             out.bytes() == self.bytes(),
             out.is_valid(),
-            out.value() as int == to_big_from_digits::<V, T>(self.typed_value().value_ref()@).index(0),
+            out.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
             out.wf(),
     {
         self.as_big_unaligned::<V>().as_aligned()
