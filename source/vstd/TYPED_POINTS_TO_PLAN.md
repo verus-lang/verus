@@ -260,7 +260,8 @@ G3. Approved and implemented in `type_representation.rs` (no new axioms):
 the trait `DecodesToNat`, implemented for every unsigned integer type
 (`u16` and `u128` gained `Base` / `BasePow2` impls in `endian.rs` for this),
 and the general `lemma_abs_decode_to_big`.
-rustlib's cast helpers keep their generic signatures, with the bound `V: TrivialOwnership + DecodesToNat`.
+The cast helpers `PointsTo<[T]>::as_big_aligned` / `as_big_unaligned` (verified) are in `points_to_ops.rs`,
+with the bound `V: TrivialOwnership + DecodesToNat + 'static`.
 
 ## Specifications
 

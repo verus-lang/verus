@@ -1,6 +1,10 @@
 #![allow(unused_imports)]
 
 use super::*;
+use crate::vstd::endian::{
+    to_big_from_digits, to_big_from_digits_single, to_endian_from_digits, BasePow2,
+    CompatibleSmallerBaseFor, EndianNat,
+};
 
 verus! {
 
@@ -913,10 +917,26 @@ impl<T> PTSizedValue for PointsTo<T> {
         let a = align_of::<T>() as int;
         let s = size_of::<T>() as int;
         assert(spec_align_of_val::<T>(arbitrary()) == a);
+        // `s` is a multiple of `a`, so `i * s` is too
         crate::vstd::arithmetic::div_mod::lemma_fundamental_div_mod(s, a);
+        assert(s == a * (s / a));
         crate::vstd::arithmetic::mul::lemma_mul_is_associative(i as int, s / a, a);
+        assert(i * s == (i * (s / a)) * a) by {
+            crate::vstd::arithmetic::mul::lemma_mul_is_commutative(a, s / a);
+        }
         crate::vstd::arithmetic::div_mod::lemma_mod_multiples_basic(i * (s / a), a);
+        assert((i * s) % a == 0);
         crate::vstd::arithmetic::div_mod::lemma_add_mod_noop(addr as int, i * s, a);
+        let r = (addr + i * Self::size(())) as usize;
+        assert(Self::size(()) == s);
+        assert(addr as int % a == 0);
+        assert((addr + i * s) % a == 0) by {
+            assert(((addr as int % a) + ((i * s) % a)) % a == (addr + i * s) % a);
+            crate::vstd::arithmetic::div_mod::lemma_small_mod(0, a as nat);
+        }
+        assert(r as int == addr + i * s);
+        assert(r as nat % spec_align_of_val::<T>(arbitrary()) == 0);
+        assert(<PointsToUnaligned<T> as PTTypedValue>::satisfies_alignment(r));
     }
 
     /// Trivial, since `additional_validity_constraints` is `PointsToUnaligned<T>`'s, which is always `true`.
@@ -1270,18 +1290,16 @@ impl<T> PointsTo<[T]> {
         // The element's address doesn't overflow:
         // if it's not zero-sized, its first byte is in `self`'s bytes.
         let s = size_of::<T>() as int;
-        assert(addr + i * s <= usize::MAX) by {
-            if s > 0 {
-                let u = self.pt_unaligned();
-                let bytes = u.pt_untyped();
-                crate::vstd::arithmetic::mul::lemma_mul_strict_inequality(i, self.len() as int, s);
-                assert(bytes[i * s].ptr()@.addr == addr + i * s);
-            } else {
-                assert(i * s == 0) by (nonlinear_arith)
-                    requires
-                        s == 0,
-                ;
-            }
+        if s > 0 {
+            crate::vstd::arithmetic::mul::lemma_mul_strict_inequality(i, self.len() as int, s);
+            let tracked bytes = &self.pt_unaligned.pt_untyped;
+            bytes.provenance_not_none();
+            bytes.ptr_bounds();
+        } else {
+            assert(i * s == 0) by (nonlinear_arith)
+                requires
+                    s == 0,
+            ;
         }
         PointsTo::<T>::lemma_satisfies_alignment_offset(addr, i as nat);
         elem.as_aligned()
@@ -1361,6 +1379,125 @@ impl<T> PointsTo<[T]> {
             out.wf(),
     {
         PointsToUnaligned::<[T]>::from_untyped_with_value_ref(pt_untyped, value).as_aligned()
+    }
+
+    /// Borrows a `[T]` permission as an unaligned permission to one bigger integer `V`, under the following conditions:
+    ///
+    /// (1) `T` and `V` are integer types whose bytes decode to the natural number which represents them (`DecodesToNat`),
+    /// where the bit encoding of a `V` can be viewed as the bit encoding for multiple `T`s
+    /// (as defined precisely in the trait `CompatibleSmallerBaseFor<V>`),
+    /// and `V` carries trivial ownership data (`TrivialOwnership`).
+    ///
+    /// (2) The permission is well-formed and its memory is initialized.
+    ///
+    /// (3) `self.len() * size_of::<T>() == size_of::<V>()`.
+    ///
+    /// The `V`'s value is the integer with the `T`s as its digits,
+    /// in this platform's endianness (`to_big_from_digits`),
+    /// and the bytes are unchanged.
+    /// Unlike `as_big_aligned`, there is no alignment precondition.
+    // We require the `'static` bound because the new typed value is borrowed through `tracked_static_ref`:
+    // it isn't stored anywhere that could be borrowed for `self`'s lifetime.
+    // This bound is satisfied by all the unsigned primitive integers,
+    // which are `vstd`'s only `DecodesToNat` impls.
+    pub proof fn as_big_unaligned<V>(tracked &self) -> (tracked out: &PointsToUnaligned<V>)
+        where
+            T: DecodesToNat + CompatibleSmallerBaseFor<V>,
+            V: crate::vstd::modes::TrivialOwnership + DecodesToNat + 'static,
+        requires
+            self.wf(),
+            self.is_valid(),
+            self.len() * size_of::<T>() == size_of::<V>(),
+        ensures
+            out.ptr() == ptr_mut_from_data::<V>(
+                PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: () },
+            ),
+            out.bytes() == self.bytes(),
+            out.is_valid(),
+            out.value() as int == to_big_from_digits::<V, T>(self.typed_value().value_ref()@).index(0),
+            out.wf(),
+    {
+        broadcast use crate::vstd::type_representation::abs_decode_slice, EndianNat::exp_properties;
+
+        let ghost digits = self.typed_value().value_ref()@;
+        let ghost k = digits.len() as int;
+        let ghost s = size_of::<T>() as int;
+        self.bytes_decode();
+        T::lemma_base_size();
+        T::bits_to_base();
+        V::lemma_base_size();
+        // Each element is a digit in base `T`, since its bytes decode to it
+        assert forall|i: int| 0 <= i < k implies 0 <= (#[trigger] digits[i] as int) < T::base() by {
+            assert(0 <= i * s && (i + 1) * s <= k * s) by (nonlinear_arith)
+                requires
+                    0 <= i < k,
+                    s >= 0,
+            ;
+            let chunk = self.bytes().subrange(i * s, (i + 1) * s);
+            T::lemma_abs_decode(chunk, digits[i]);
+            bytes_to_endian(chunk).to_nat_properties();
+        }
+        // The elements are one digit in base `V`
+        assert(k == EndianNat::<T>::exp::<V>()) by {
+            assert(s > 0) by (nonlinear_arith)
+                requires
+                    T::bits() == 8 * s,
+                    T::bits() > 1,
+            ;
+            assert((8 * (k * s)) / (8 * s) == k) by (nonlinear_arith)
+                requires
+                    s > 0,
+            ;
+        }
+        to_big_from_digits_single::<V, T>(digits);
+        to_endian_from_digits::<T>(digits).to_nat_properties();
+        let ghost n = to_big_from_digits::<V, T>(digits).index(0);
+        V::lemma_from_nat(n as nat);
+        let ghost v = V::from_nat(n as nat);
+        lemma_abs_decode_to_big::<V, T>(self.bytes(), digits, v);
+
+        let tracked typed_value: &TypedValue<V> = crate::vstd::modes::tracked_static_ref(
+            TypedValue::Valid(Tracked(V::tracked_from_spec(v))),
+        );
+        PointsToUnaligned::<V>::from_raw_parts_ref(self.as_untyped(), typed_value, ())
+    }
+
+    /// Borrows a `[T]` permission as an aligned permission to one bigger integer `V`, under the following conditions:
+    ///
+    /// (1) `T` and `V` are integer types whose bytes decode to the natural number which represents them (`DecodesToNat`),
+    /// where the bit encoding of a `V` can be viewed as the bit encoding for multiple `T`s
+    /// (as defined precisely in the trait `CompatibleSmallerBaseFor<V>`),
+    /// and `V` carries trivial ownership data (`TrivialOwnership`).
+    ///
+    /// (2) The permission is well-formed and its memory is initialized.
+    ///
+    /// (3) `self.len() * size_of::<T>() == size_of::<V>()`.
+    ///
+    /// (4) The pointer's address is aligned to `V`.
+    ///
+    /// The `V`'s value is the integer with the `T`s as its digits,
+    /// in this platform's endianness (`to_big_from_digits`),
+    /// and the bytes are unchanged.
+    // `V: 'static` for the same reason as `as_big_unaligned`.
+    pub proof fn as_big_aligned<V>(tracked &self) -> (tracked out: &PointsTo<V>)
+        where
+            T: DecodesToNat + CompatibleSmallerBaseFor<V>,
+            V: crate::vstd::modes::TrivialOwnership + DecodesToNat + 'static,
+        requires
+            self.wf(),
+            self.is_valid(),
+            self.len() * size_of::<T>() == size_of::<V>(),
+            self.ptr()@.addr as int % align_of::<V>() as int == 0,
+        ensures
+            out.ptr() == ptr_mut_from_data::<V>(
+                PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: () },
+            ),
+            out.bytes() == self.bytes(),
+            out.is_valid(),
+            out.value() as int == to_big_from_digits::<V, T>(self.typed_value().value_ref()@).index(0),
+            out.wf(),
+    {
+        self.as_big_unaligned::<V>().as_aligned()
     }
 }
 
