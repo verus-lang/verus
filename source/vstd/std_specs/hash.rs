@@ -18,11 +18,18 @@
 //! the future, we plan to devise a way for you to prove that it does
 //! so, so that you don't have to make such an assumption.
 //!
+//! Borrowed-key lookups also require
+//! `borrowed_key_hashing_matches::<Key, Q>()` and use the model in
+//! `BorrowSpec`. Their postconditions additionally require `Q` to obey
+//! the key model. Compatibility is supplied for identity and `Box`
+//! borrowing; for other implementations it must be assumed explicitly.
+//!
 //! By default, the Verus standard library brings useful axioms
 //! about the behavior of `HashMap` and `HashSet` into the ambient
 //! reasoning context by broadcasting the group
 //! `vstd::std_specs::hash::group_hash_axioms`.
 use super::super::prelude::*;
+use super::borrow::BorrowSpec;
 use super::iter::IteratorSpec;
 
 use core::alloc::Allocator;
@@ -105,6 +112,36 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
 /// does so, so that you don't have to make such an assumption.
 #[verifier::external_body]
 pub uninterp spec fn obeys_key_model<Key: ?Sized>() -> bool;
+
+/// Whether borrowing a key preserves its `Hash` and `Eq` behavior.
+///
+/// Owned keys and their borrowed forms must hash identically for any
+/// hasher and compare equal in the same circumstances. This predicate
+/// is opaque because `Hash` does not yet have a specification model.
+pub uninterp spec fn borrowed_key_hashing_matches<
+    Key: Borrow<Q> + Hash + Eq + ?Sized,
+    Q: Hash + Eq + ?Sized,
+>() -> bool;
+
+pub broadcast axiom fn axiom_borrowed_key_hashing_matches_self<Q: Hash + Eq + ?Sized>()
+    ensures
+        #[trigger] borrowed_key_hashing_matches::<Q, Q>(),
+;
+
+pub broadcast axiom fn axiom_borrowed_key_hashing_matches_ref<Q: Hash + Eq + ?Sized>()
+    ensures
+        #[trigger] borrowed_key_hashing_matches::<&Q, Q>(),
+;
+
+pub broadcast axiom fn axiom_borrowed_key_hashing_matches_box<Q: Hash + Eq + ?Sized, A: Allocator>()
+    ensures
+        #[trigger] borrowed_key_hashing_matches::<Box<Q, A>, Q>(),
+;
+
+pub broadcast axiom fn axiom_borrowed_key_hashing_matches_string()
+    ensures
+        #[trigger] borrowed_key_hashing_matches::<String, str>(),
+;
 
 // These axioms state that any primitive type, or `Box` thereof,
 // obeys the requirements to be a key in a hash table that
@@ -530,22 +567,6 @@ pub broadcast proof fn lemma_hashmap_deepview_values<K: DeepView, V: DeepView>(m
     }
 }
 
-/// Borrowing a key works the same way on deep_view as on view,
-/// if deep_view is injective; see `axiom_contains_deref_key`.
-pub broadcast proof fn axiom_hashmap_deepview_borrow<
-    K: DeepView + Borrow<Q>,
-    V: DeepView,
-    Q: View<V = <K as DeepView>::V> + Hash + Eq + ?Sized,
->(m: HashMap<K, V>, k: &Q)
-    requires
-        obeys_key_model::<K>(),
-        crate::relations::injective(|k: K| k.deep_view()),
-    ensures
-        #[trigger] contains_borrowed_key(m@, k) <==> m.deep_view().contains_key(k@),
-{
-    admit();
-}
-
 pub uninterp spec fn spec_hash_map_len<Key, Value, S, A: Allocator>(
     m: &HashMap<Key, Value, S, A>,
 ) -> usize;
@@ -652,41 +673,6 @@ pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ H
         },
 ;
 
-// The specification for `contains_key` has a parameter `key: &Q`
-// where you'd expect to find `key: &Key`. This allows for the case
-// that `Key` can be borrowed as something other than `&Key`. For
-// instance, `Box<u32>` can be borrowed as `&u32` and `String` can be
-// borrowed as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively.
-// To deal with this, we have a specification function that opaquely
-// specifies what it means for a map to contain a borrowed key of type
-// `&Q`. And the postcondition of `contains_key` just says that its
-// result matches the output of that specification function. But this
-// isn't very helpful by itself, since there's no body to that
-// specification function. So we have special-case axioms that say
-// what this means in two important circumstances: (1) `Key = Q` and
-// (2) `Key = Box<Q>`.
-pub uninterp spec fn contains_borrowed_key<Key, Value, Q: ?Sized>(
-    m: Map<Key, Value>,
-    k: &Q,
-) -> bool;
-
-pub broadcast proof fn axiom_contains_deref_key<Q, Value>(m: Map<Q, Value>, k: &Q)
-    ensures
-        #[trigger] contains_borrowed_key::<Q, Value, Q>(m, k) <==> m.contains_key(*k),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_contains_box<Q, Value>(m: Map<Box<Q>, Value>, k: &Q)
-    ensures
-        #[trigger] contains_borrowed_key::<Box<Q>, Value, Q>(m, k) <==> m.contains_key(
-            Box::new(*k),
-        ),
-{
-    admit();
-}
-
 pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
     Value,
@@ -697,53 +683,17 @@ pub assume_specification<
     m: &HashMap<Key, Value, S, A>,
     k: &Q,
 ) -> (result: bool)
+    requires
+        borrowed_key_hashing_matches::<Key, Q>(),
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result == contains_borrowed_key(
-            m@,
-            k,
-        ),
+        ({
+            &&& obeys_key_model::<Key>()
+            &&& obeys_key_model::<Q>()
+            &&& builds_valid_hashers::<S>()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> result == exists|key: Key| #[trigger]
+            m@.contains_key(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k,
 ;
-
-// The specification for `get` has a parameter `key: &Q` where you'd
-// expect to find `key: &Key`. This allows for the case that `Key` can
-// be borrowed as something other than `&Key`. For instance,
-// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
-// as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively.
-// To deal with this, we have a specification function that opaquely
-// specifies what it means for a map to map a borrowed key of type
-// `&Q` to a certain value. And the postcondition of `get` says that
-// its result matches the output of that specification function. (It
-// also says that its result corresponds to the output of
-// `contains_borrowed_key`, discussed above.) But this isn't very
-// helpful by itself, since there's no body to that specification
-// function. So we have special-case axioms that say what this means
-// in two important circumstances: (1) `Key = Q` and (2) `Key =
-// Box<Q>`.
-pub uninterp spec fn maps_borrowed_key_to_value<Key, Value, Q: ?Sized>(
-    m: Map<Key, Value>,
-    k: &Q,
-    v: Value,
-) -> bool;
-
-pub broadcast proof fn axiom_maps_deref_key_to_value<Q, Value>(m: Map<Q, Value>, k: &Q, v: Value)
-    ensures
-        #[trigger] maps_borrowed_key_to_value::<Q, Value, Q>(m, k, v) <==> m.contains_key(*k)
-            && m[*k] == v,
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_maps_box_key_to_value<Q, Value>(m: Map<Box<Q>, Value>, q: &Q, v: Value)
-    ensures
-        #[trigger] maps_borrowed_key_to_value::<Box<Q>, Value, Q>(m, q, v) <==> {
-            let k = Box::new(*q);
-            &&& m.contains_key(k)
-            &&& m[k] == v
-        },
-{
-    admit();
-}
 
 pub assume_specification<
     'a,
@@ -754,58 +704,22 @@ pub assume_specification<
     Q: Hash + Eq + ?Sized,
 >[ HashMap::<Key, Value, S, A>::get::<Q> ](m: &'a HashMap<Key, Value, S, A>, k: &Q) -> (result:
     Option<&'a Value>)
+    requires
+        borrowed_key_hashing_matches::<Key, Q>(),
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
-            Some(v) => maps_borrowed_key_to_value(m@, k, *v),
-            None => !contains_borrowed_key(m@, k),
+        ({
+            &&& obeys_key_model::<Key>()
+            &&& obeys_key_model::<Q>()
+            &&& builds_valid_hashers::<S>()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> match result {
+            Some(v) => exists|key: Key| #[trigger]
+                m@.contains_key(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k && m@[key]
+                    == *v,
+            None => forall|key: Key| #[trigger]
+                m@.contains_key(key) ==> <Key as BorrowSpec<Q>>::spec_borrow(&key) != k,
         },
 ;
-
-// The specification for `remove` has a parameter `key: &Q` where
-// you'd expect to find `key: &Key`. This allows for the case that
-// `Key` can be borrowed as something other than `&Key`. For instance,
-// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
-// as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively. To deal with this, we have a specification function
-// that opaquely specifies what it means for two maps to be related by
-// a remove of a certain `&Q`. And the postcondition of `remove` says
-// that `old(self)@` and `self@` satisfy that relationship. (It also
-// says that its result corresponds to the output of
-// `contains_borrowed_key` and `maps_borrowed_key_to_value`, discussed
-// above.) But this isn't very helpful by itself, since there's no
-// body to that specification function. So we have special-case axioms
-// that say what this means in two important circumstances: (1) `Key =
-// Q` and (2) `Key = Box<Q>`.
-pub uninterp spec fn borrowed_key_removed<Key, Value, Q: ?Sized>(
-    old_m: Map<Key, Value>,
-    new_m: Map<Key, Value>,
-    k: &Q,
-) -> bool;
-
-pub broadcast proof fn axiom_deref_key_removed<Q, Value>(
-    old_m: Map<Q, Value>,
-    new_m: Map<Q, Value>,
-    k: &Q,
-)
-    ensures
-        #[trigger] borrowed_key_removed::<Q, Value, Q>(old_m, new_m, k) <==> new_m == old_m.remove(
-            *k,
-        ),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_box_key_removed<Q, Value>(
-    old_m: Map<Box<Q>, Value>,
-    new_m: Map<Box<Q>, Value>,
-    q: &Q,
-)
-    ensures
-        #[trigger] borrowed_key_removed::<Box<Q>, Value, Q>(old_m, new_m, q) <==> new_m
-            == old_m.remove(Box::new(*q)),
-{
-    admit();
-}
 
 pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
@@ -815,13 +729,24 @@ pub assume_specification<
     Q: Hash + Eq + ?Sized,
 >[ HashMap::<Key, Value, S, A>::remove::<Q> ](m: &mut HashMap<Key, Value, S, A>, k: &Q) -> (result:
     Option<Value>)
+    requires
+        borrowed_key_hashing_matches::<Key, Q>(),
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& borrowed_key_removed(old(m)@, final(m)@, k)
-            &&& match result {
-                Some(v) => maps_borrowed_key_to_value(old(m)@, k, v),
-                None => !contains_borrowed_key(old(m)@, k),
-            }
+        ({
+            &&& obeys_key_model::<Key>()
+            &&& obeys_key_model::<Q>()
+            &&& builds_valid_hashers::<S>()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> match result {
+            Some(v) => exists|key: Key| #[trigger]
+                old(m)@.contains_key(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k && old(
+                    m,
+                )@[key] == v && final(m)@ == old(m)@.remove(key),
+            None => {
+                &&& forall|key: Key| #[trigger]
+                    old(m)@.contains_key(key) ==> <Key as BorrowSpec<Q>>::spec_borrow(&key) != k
+                &&& final(m)@ == old(m)@
+            },
         },
 ;
 
@@ -996,80 +921,23 @@ pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet:
         },
 ;
 
-// The specification for `contains` has a parameter `key: &Q`
-// where you'd expect to find `key: &Key`. This allows for the case
-// that `Key` can be borrowed as something other than `&Key`. For
-// instance, `Box<u32>` can be borrowed as `&u32` and `String` can be
-// borrowed as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively.
-// To deal with this, we have a specification function that opaquely
-// specifies what it means for a set to contain a borrowed key of type
-// `&Q`. And the postcondition of `contains` just says that its
-// result matches the output of that specification function. But this
-// isn't very helpful by itself, since there's no body to that
-// specification function. So we have special-case axioms that say
-// what this means in two important circumstances: (1) `Key = Q` and
-// (2) `Key = Box<Q>`.
-pub uninterp spec fn set_contains_borrowed_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q) -> bool;
-
-pub broadcast proof fn axiom_set_contains_deref_key<Q>(m: Set<Q>, k: &Q)
-    ensures
-        #[trigger] set_contains_borrowed_key::<Q, Q>(m, k) <==> m.contains(*k),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_set_contains_box<Q>(m: Set<Box<Q>>, k: &Q)
-    ensures
-        #[trigger] set_contains_borrowed_key::<Box<Q>, Q>(m, k) <==> m.contains(Box::new(*k)),
-{
-    admit();
-}
-
 pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
     S: BuildHasher,
     A: Allocator,
     Q: Hash + Eq + ?Sized,
 >[ HashSet::<Key, S, A>::contains ](m: &HashSet<Key, S, A>, k: &Q) -> (result: bool)
+    requires
+        borrowed_key_hashing_matches::<Key, Q>(),
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result
-            == set_contains_borrowed_key(m@, k),
+        ({
+            &&& obeys_key_model::<Key>()
+            &&& obeys_key_model::<Q>()
+            &&& builds_valid_hashers::<S>()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> result == exists|key: Key| #[trigger]
+            m@.contains(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k,
 ;
-
-// The specification for `get` has a parameter `key: &Q` where you'd
-// expect to find `key: &Key`. This allows for the case that `Key` can
-// be borrowed as something other than `&Key`. For instance,
-// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
-// as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively.
-// To deal with this, we have a specification function that opaquely
-// specifies what it means for a returned reference to point to an
-// element of a HashSet. And the postcondition of `get` says that
-// its result matches the output of that specification function. (It
-// also says that its result corresponds to the output of
-// `contains_borrowed_key`, discussed above.) But this isn't very
-// helpful by itself, since there's no body to that specification
-// function. So we have special-case axioms that say what this means
-// in two important circumstances: (1) `Key = Q` and (2) `Key =
-// Box<Q>`.
-pub uninterp spec fn sets_borrowed_key_to_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q, v: &Key) -> bool;
-
-pub broadcast proof fn axiom_set_deref_key_to_value<Q>(m: Set<Q>, k: &Q, v: &Q)
-    ensures
-        #[trigger] sets_borrowed_key_to_key::<Q, Q>(m, k, v) <==> m.contains(*k) && k == v,
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_set_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &Box<Q>)
-    ensures
-        #[trigger] sets_borrowed_key_to_key::<Box<Q>, Q>(m, q, v) <==> (m.contains(*v) && Box::new(
-            *q,
-        ) == v),
-{
-    admit();
-}
 
 pub assume_specification<
     'a,
@@ -1078,49 +946,20 @@ pub assume_specification<
     A: Allocator,
     Q: Hash + Eq + ?Sized,
 >[ HashSet::<Key, S, A>::get::<Q> ](m: &'a HashSet<Key, S, A>, k: &Q) -> (result: Option<&'a Key>)
+    requires
+        borrowed_key_hashing_matches::<Key, Q>(),
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
-            Some(v) => sets_borrowed_key_to_key(m@, k, v),
-            None => !set_contains_borrowed_key(m@, k),
+        ({
+            &&& obeys_key_model::<Key>()
+            &&& obeys_key_model::<Q>()
+            &&& builds_valid_hashers::<S>()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> match result {
+            Some(key) => m@.contains(*key) && <Key as BorrowSpec<Q>>::spec_borrow(key) == k,
+            None => forall|key: Key| #[trigger]
+                m@.contains(key) ==> <Key as BorrowSpec<Q>>::spec_borrow(&key) != k,
         },
 ;
-
-// The specification for `remove` has a parameter `key: &Q` where
-// you'd expect to find `key: &Key`. This allows for the case that
-// `Key` can be borrowed as something other than `&Key`. For instance,
-// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
-// as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively. To deal with this, we have a specification function
-// that opaquely specifies what it means for two sets to be related by
-// a remove of a certain `&Q`. And the postcondition of `remove` says
-// that `old(self)@` and `self@` satisfy that relationship. (It also
-// says that its result corresponds to the output of
-// `set_contains_borrowed_key`, discussed above.) But this isn't very
-// helpful by itself, since there's no body to that specification
-// function. So we have special-case axioms that say what this means
-// in two important circumstances: (1) `Key = Q` and (2) `Key = Box<Q>`.
-pub uninterp spec fn sets_differ_by_borrowed_key<Key, Q: ?Sized>(
-    old_m: Set<Key>,
-    new_m: Set<Key>,
-    k: &Q,
-) -> bool;
-
-pub broadcast proof fn axiom_set_deref_key_removed<Q>(old_m: Set<Q>, new_m: Set<Q>, k: &Q)
-    ensures
-        #[trigger] sets_differ_by_borrowed_key::<Q, Q>(old_m, new_m, k) <==> new_m == old_m.remove(
-            *k,
-        ),
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_set_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: Set<Box<Q>>, q: &Q)
-    ensures
-        #[trigger] sets_differ_by_borrowed_key::<Box<Q>, Q>(old_m, new_m, q) <==> new_m
-            == old_m.remove(Box::new(*q)),
-{
-    admit();
-}
 
 pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
@@ -1128,10 +967,24 @@ pub assume_specification<
     A: Allocator,
     Q: Hash + Eq + ?Sized,
 >[ HashSet::<Key, S, A>::remove::<Q> ](m: &mut HashSet<Key, S, A>, k: &Q) -> (result: bool)
+    requires
+        borrowed_key_hashing_matches::<Key, Q>(),
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& sets_differ_by_borrowed_key(old(m)@, final(m)@, k)
-            &&& result == set_contains_borrowed_key(old(m)@, k)
+        ({
+            &&& obeys_key_model::<Key>()
+            &&& obeys_key_model::<Q>()
+            &&& builds_valid_hashers::<S>()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> {
+            if result {
+                exists|key: Key| #[trigger]
+                    old(m)@.contains(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k
+                        && final(m)@ == old(m)@.remove(key)
+            } else {
+                &&& forall|key: Key| #[trigger]
+                    old(m)@.contains(key) ==> <Key as BorrowSpec<Q>>::spec_borrow(&key) != k
+                &&& final(m)@ == old(m)@
+            }
         },
 ;
 
@@ -1439,13 +1292,10 @@ pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::insert_en
 ;
 
 pub broadcast group group_hash_axioms {
-    axiom_box_key_removed,
-    axiom_contains_deref_key,
-    axiom_contains_box,
-    axiom_deref_key_removed,
-    axiom_maps_deref_key_to_value,
-    axiom_maps_box_key_to_value,
-    axiom_hashmap_deepview_borrow,
+    axiom_borrowed_key_hashing_matches_self,
+    axiom_borrowed_key_hashing_matches_ref,
+    axiom_borrowed_key_hashing_matches_box,
+    axiom_borrowed_key_hashing_matches_string,
     axiom_bool_obeys_hash_table_key_model,
     axiom_u8_obeys_hash_table_key_model,
     axiom_u16_obeys_hash_table_key_model,
@@ -1463,12 +1313,6 @@ pub broadcast group group_hash_axioms {
     axiom_box_integer_type_obeys_hash_table_key_model,
     axiom_random_state_builds_valid_hashers,
     axiom_spec_hash_map_len,
-    axiom_set_box_key_removed,
-    axiom_set_contains_deref_key,
-    axiom_set_contains_box,
-    axiom_set_deref_key_removed,
-    axiom_set_deref_key_to_value,
-    axiom_set_box_key_to_value,
     axiom_spec_hash_set_len,
     axiom_hashmap_decreases,
     axiom_hashset_decreases,

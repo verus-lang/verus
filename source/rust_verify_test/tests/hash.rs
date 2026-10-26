@@ -56,6 +56,8 @@ test_verify_one_file! {
 
             m.insert(6, -8);
             assert(m@[3] == 4);
+            assert(m@.contains_key(3));
+            assert(m@.contains_key(6));
 
             let b = m.contains_key(&3);
             assert(b);
@@ -123,6 +125,8 @@ test_verify_one_file! {
 
             let res = m.insert(3);
             assert(!res);
+            assert(m@.contains(3));
+            assert(m@.contains(6));
 
             let b = m.contains(&3);
             assert(b);
@@ -212,6 +216,8 @@ test_verify_one_file! {
             let six = Box::<u32>::new(6);
             m.insert(three, 4);
             m.insert(six, -8);
+            assert(m@.contains_key(three));
+            assert(m@.contains_key(six));
 
             let b = m.contains_key(&3);
             assert(b);
@@ -253,6 +259,8 @@ test_verify_one_file! {
 
             let res = m.insert(Box::<u32>::new(3));
             assert(!res);
+            assert(m@.contains(three));
+            assert(m@.contains(six));
 
             let b = m.contains(&3);
             assert(b);
@@ -384,6 +392,7 @@ test_verify_one_file! {
             let s3 = MyStruct { i: 9, j: 9 };
 
             m.insert(MyStruct { i: 9, j: 9 });
+            assert(m@.contains(s3));
             let res = m.remove(&s3);
             assert(res);
             let res = m.remove(&s3);
@@ -395,6 +404,91 @@ test_verify_one_file! {
             assert(!b);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_borrow verus_code! {
+        use core::borrow::Borrow;
+        use core::hash::Hash;
+        use std::collections::{HashMap, HashSet};
+        use vstd::prelude::*;
+        use vstd::std_specs::borrow::BorrowSpec;
+        use vstd::std_specs::hash::{borrowed_key_hashing_matches, obeys_key_model};
+
+        fn test_map<Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized>(key: Key, query: &Q)
+            requires
+                obeys_key_model::<Key>(),
+                obeys_key_model::<Q>(),
+                borrowed_key_hashing_matches::<Key, Q>(),
+                <Key as BorrowSpec<Q>>::obeys_borrow_spec(),
+                <Key as BorrowSpec<Q>>::spec_borrow(&key) == query,
+        {
+            let mut m = HashMap::<Key, u32>::new();
+            m.insert(key, 42);
+            assert(m@.contains_key(key));
+
+            let present = m.contains_key(query);
+            assert(present);
+            let value = m.get(query);
+            assert(value == Some(&42u32));
+            let removed = m.remove(query);
+            assert(removed == Some(42));
+            assert(m@ == Map::<Key, u32>::empty());
+
+            let present = m.contains_key(query);
+            assert(!present);
+            let value = m.get(query);
+            assert(value.is_none());
+            let removed = m.remove(query);
+            assert(removed.is_none());
+            assert(m@ == Map::<Key, u32>::empty());
+        }
+
+        fn test_set<Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized>(key: Key, query: &Q)
+            requires
+                obeys_key_model::<Key>(),
+                obeys_key_model::<Q>(),
+                borrowed_key_hashing_matches::<Key, Q>(),
+                <Key as BorrowSpec<Q>>::obeys_borrow_spec(),
+                <Key as BorrowSpec<Q>>::spec_borrow(&key) == query,
+        {
+            let mut m = HashSet::<Key>::new();
+            m.insert(key);
+            assert(m@.contains(key));
+
+            let present = m.contains(query);
+            assert(present);
+            let value = m.get(query);
+            assert(value == Some(&key));
+            let removed = m.remove(query);
+            assert(removed);
+            assert(m@ == Set::<Key>::empty());
+
+            let present = m.contains(query);
+            assert(!present);
+            let value = m.get(query);
+            assert(value.is_none());
+            let removed = m.remove(query);
+            assert(!removed);
+            assert(m@ == Set::<Key>::empty());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_borrow_requires_compatibility verus_code! {
+        use core::borrow::Borrow;
+        use core::hash::Hash;
+        use std::collections::HashMap;
+        use vstd::prelude::*;
+
+        fn test<Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized>(
+            m: &HashMap<Key, u32>,
+            query: &Q,
+        ) {
+            let _ = m.contains_key(query); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
