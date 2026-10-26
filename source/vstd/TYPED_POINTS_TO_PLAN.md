@@ -19,7 +19,8 @@ the module layout, all of `points_to_model.rs`'s and `points_to_ops.rs`'s impl b
 and all of `points_to_collections.rs` (`PointsToRaw`, the typed `SeqPointsTo`, and the sequence → slice conversions),
 and rustlib's `str` impls and casts
 are approved and are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md).
-What remains to review is the trusted UTF-8 assumptions and the modified rustlib specs.
+The modified rustlib specs are provisionally accepted.
+What remains is the [items to run by Travis](#to-run-by-travis).
 
 ## To run by Travis
 
@@ -311,6 +312,8 @@ This should be sound, since UTF-8 validity is a library invariant of every `&str
 that safe code can't break, but these axioms now state more than before.
 
 #### Modified rustlib specs
+
+Provisionally accepted (2026-10-25): used for the rustlib port, and revisited if the port needs changes.
 
 Existing rustlib specs that mention `PointsTo<str>` or `PointsTo<[T]>`,
 restated for the new API
