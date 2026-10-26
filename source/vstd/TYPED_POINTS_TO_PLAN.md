@@ -86,6 +86,7 @@ so nothing outside rustlib's `str` code is affected.
 - The [trusted `wf` of a `Box`'s permission](#trusted-wf-of-a-boxs-permission):
   rustlib's `Box::into_non_null_with_allocator_verus` now also ensures the permission it returns is `wf`.
   - Yes - a `Box<T>` is just a pointer and `PointsTo<T>`.
+  - Done: approved.
 - `TypedValue::<[T]>::from_elems_ref` ([New axioms](#new-axioms)).
   - Yes, but this is a change from the current VerusBelt model. 
     The current VerusBelt model enforces multiple shared references in a struct are distinct.
@@ -365,7 +366,7 @@ that safe code can't break, but these axioms now state more than before.
 
 #### Trusted `wf` of a `Box`'s permission
 
-To review: rustlib's `Box::into_non_null_with_allocator_verus` (`alloc/src/boxed.rs`, `external_body`)
+Approved (2026-10-26). rustlib's `Box::into_non_null_with_allocator_verus` (`alloc/src/boxed.rs`, `external_body`)
 now also ensures `out.2@.wf()` for the `PointsTo<T>` it returns (sized `T`),
 since `linked_list` passes that permission to `ptr_mut_ref`, which requires `wf`.
 `Box` has no spec of its own about its memory (it's an opaque `external_body` struct with only `alloc_id`),
@@ -436,58 +437,7 @@ pub const fn as_ptr_verus(&self) -> ((ptr, perm): (*const u8, Tracked<&PointsTo<
 ```
 
 **`slice_index.rs` wrappers.**
-The `perm_ptr` / `perm_init` / `perm_value_eq` / `valid_indices` wrappers stay,
-since `SliceIndexVerus` is generic over `T: ?Sized`.
-Their defining axioms for `[T]` and `str` are restored on the new API and added back to `group_slice_index_specs`.
-`perm_init` includes `wf`:
-`SliceIndexVerus::output_ptr_ref` only requires `perm_init(perm)`,
-and the `ptr_ref_slice` / `ptr_ref_str` it calls now require `perm.wf()`.
-`valid_indices_slice_points_to` (currently uninterpreted) gets a definition.
-
-```rust
-pub open spec fn valid_indices_slice_points_to<T>(start: int, end: int, slice: &PointsTo<[T]>) -> bool {
-    0 <= start <= end <= slice.len()
-}
-
-pub broadcast axiom fn def_valid_indices_str_points_to(start: int, end: int, slice: &PointsTo<str>)
-    ensures
-        valid_indices_str(start, end, slice.typed_value().value_ref()) <==> #[trigger] valid_indices(
-            start,
-            end,
-            slice,
-        ),
-;
-
-pub broadcast axiom fn def_perm_ptr_slice<T>(perm: &PointsTo<[T]>)
-    ensures
-        #[trigger] perm_ptr(perm) == perm.ptr(),
-;
-
-pub broadcast axiom fn def_perm_ptr_str(perm: &PointsTo<str>)
-    ensures
-        #[trigger] perm_ptr(perm) == perm.ptr(),
-;
-
-pub broadcast axiom fn def_perm_init_slice<T>(perm: &PointsTo<[T]>)
-    ensures
-        #[trigger] perm_init(perm) <==> perm.is_valid() && perm.wf(),
-;
-
-pub broadcast axiom fn def_perm_init_str(perm: &PointsTo<str>)
-    ensures
-        #[trigger] perm_init(perm) <==> perm.is_valid() && perm.wf(),
-;
-
-pub broadcast axiom fn def_perm_value_eq_slice<T>(perm: &PointsTo<[T]>, val: &[T])
-    ensures
-        #[trigger] perm_value_eq(perm, val) <==> perm.typed_value().value_ref()@ == val@,
-;
-
-pub broadcast axiom fn def_perm_value_eq_str(perm: &PointsTo<str>, val: &str)
-    ensures
-        #[trigger] perm_value_eq(perm, val) <==> perm.typed_value().value_ref() == val,
-;
-```
+Approved (2026-10-26); in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#rustlib-slice_indexrs-wrappers).
 
 **Shared-reference transmutes** (`proofs/str.rs`).
 `transmute_shared_ref_str_u8_slice` and `transmute_shared_ref_u8_slice_str` go back from axioms to proofs, with unchanged specs:

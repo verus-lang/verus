@@ -1281,3 +1281,64 @@ impl PointsTo<str> {
     ;
 }
 ```
+
+### rustlib: `slice_index.rs` wrappers
+
+`specs/slice_index.rs`.
+The defining axioms for `[T]` and `str` are restated on the new API;
+`perm_ptr` and its defining axioms are new and in `group_slice_index_specs`.
+`SliceIndexVerus`'s requires (`output_ptr_ref`, `get_unchecked_verus`, `get_unchecked_mut_verus`) use `perm_ptr(perm)` in place of `perm.ptr()`.
+`perm_init` includes `wf`.
+`valid_indices_slice_points_to` bounds the indices by `slice.len()` (the pointer's metadata).
+Everything else in the file is unchanged.
+
+```rust
+/// The pointer of the given permission.
+pub uninterp spec fn perm_ptr<T: ?Sized>(perm: &PointsTo<T>) -> *mut T;
+
+pub open spec fn valid_indices_slice_points_to<T>(start: int, end: int, slice: &PointsTo<[T]>) -> bool {
+    0 <= start <= end <= slice.len()
+}
+
+pub broadcast axiom fn def_valid_indices_str_points_to(start: int, end: int, slice: &PointsTo<str>)
+    ensures
+        valid_indices_str(start, end, slice.typed_value().value_ref()) <==> #[trigger] valid_indices(
+            start,
+            end,
+            slice,
+        ),
+;
+
+pub broadcast axiom fn def_perm_ptr_slice<T>(perm: &PointsTo<[T]>)
+    ensures
+        #[trigger] perm_ptr(perm) == perm.ptr(),
+;
+
+pub broadcast axiom fn def_perm_ptr_str(perm: &PointsTo<str>)
+    ensures
+        #[trigger] perm_ptr(perm) == perm.ptr(),
+;
+
+/// True when the given permission is (fully) initialized and well-formed.
+pub uninterp spec fn perm_init<T: ?Sized>(perm: &PointsTo<T>) -> bool;
+
+pub broadcast axiom fn def_perm_init_slice<T>(perm: &PointsTo<[T]>)
+    ensures
+        #[trigger] perm_init(perm) <==> perm.is_valid() && perm.wf(),
+;
+
+pub broadcast axiom fn def_perm_init_str(perm: &PointsTo<str>)
+    ensures
+        #[trigger] perm_init(perm) <==> perm.is_valid() && perm.wf(),
+;
+
+pub broadcast axiom fn def_perm_value_eq_slice<T>(perm: &PointsTo<[T]>, val: &[T])
+    ensures
+        #[trigger] perm_value_eq(perm, val) <==> perm.typed_value().value_ref()@ == val@,
+;
+
+pub broadcast axiom fn def_perm_value_eq_str(perm: &PointsTo<str>, val: &str)
+    ensures
+        #[trigger] perm_value_eq(perm, val) <==> perm.typed_value().value_ref() == val,
+;
+```
