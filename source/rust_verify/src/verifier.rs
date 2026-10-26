@@ -31,67 +31,6 @@ use rustc_index::bit_set::DenseBitSet;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 
-/// The observer registered under `name`, with a handle per trait it implements; `None` if
-/// no observer has that name.
-fn create_observer(name: &str) -> Option<vir::vir_observer::Observers> {
-    use std::cell::RefCell;
-    use std::rc::Rc;
-    match name {
-        "test" => {
-            let o = Rc::new(RefCell::new(crate::test_observer::TestObserver::new()));
-            let vir: Rc<RefCell<dyn vir::vir_observer::VirObserver>> = o.clone();
-            let air: Rc<RefCell<dyn air::air_observer::AirObserver>> = o.clone();
-            let query_result: Rc<RefCell<dyn air::query_result_observer::QueryResultObserver>> =
-                o.clone();
-            Some(vir::vir_observer::Observers {
-                vir: Some(vir),
-                air: Some(air),
-                query_result: Some(query_result),
-                span_resolver: None,
-            })
-        }
-        // Dedicated single-trait observers: each populates only its own slot,
-        // proving a consumer couples nothing it does not implement.
-        "air-only" => {
-            let o = Rc::new(RefCell::new(crate::test_observer::AirOnlyObserver::new()));
-            let air: Rc<RefCell<dyn air::air_observer::AirObserver>> = o;
-            Some(vir::vir_observer::Observers { air: Some(air), ..Default::default() })
-        }
-        "query-result-only" => {
-            let o = Rc::new(RefCell::new(crate::test_observer::QueryResultOnlyObserver::new()));
-            let qr: Rc<RefCell<dyn air::query_result_observer::QueryResultObserver>> = o;
-            Some(vir::vir_observer::Observers { query_result: Some(qr), ..Default::default() })
-        }
-        "vir-only" => {
-            let o = Rc::new(RefCell::new(crate::test_observer::VirOnlyObserver::new()));
-            let vir: Rc<RefCell<dyn vir::vir_observer::VirObserver>> = o;
-            Some(vir::vir_observer::Observers { vir: Some(vir), ..Default::default() })
-        }
-        _ => None,
-    }
-}
-
-/// The observer named by `-V observers=`, if any; at most one is supported.
-fn create_observer_from_args(names: &[String]) -> Result<vir::vir_observer::Observers, String> {
-    match names {
-        [] => Ok(Default::default()),
-        [name] => create_observer(name).ok_or_else(|| format!("unknown observer `{name}`")),
-        _ => Err(format!("only one observer may be given; got {}", names.join(", "))),
-    }
-}
-
-fn emit_observer_summaries(any: &dyn std::any::Any, reporter: &impl air::messages::Diagnostics) {
-    if let Some(o) = any.downcast_ref::<crate::test_observer::TestObserver>() {
-        reporter.report(&note_bare(&o.summary_json()).to_any());
-    } else if let Some(o) = any.downcast_ref::<crate::test_observer::AirOnlyObserver>() {
-        reporter.report(&note_bare(&o.summary_json()).to_any());
-    } else if let Some(o) = any.downcast_ref::<crate::test_observer::QueryResultOnlyObserver>() {
-        reporter.report(&note_bare(&o.summary_json()).to_any());
-    } else if let Some(o) = any.downcast_ref::<crate::test_observer::VirOnlyObserver>() {
-        reporter.report(&note_bare(&o.summary_json()).to_any());
-    }
-}
-
 use rustc_span::def_id::LOCAL_CRATE;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
@@ -1948,11 +1887,11 @@ impl Verifier {
         // Emit observer summaries as diagnostic notes. Only one underlying object
         // exists; try each handle (a single-trait observer populates only one).
         if let Some(obs_cell) = &ctx.observer {
-            emit_observer_summaries(obs_cell.borrow().as_any(), reporter);
+            crate::observers::emit_observer_summaries(obs_cell.borrow().as_any(), reporter);
         } else if let Some(obs_cell) = &ctx.air_observer {
-            emit_observer_summaries(obs_cell.borrow().as_any(), reporter);
+            crate::observers::emit_observer_summaries(obs_cell.borrow().as_any(), reporter);
         } else if let Some(obs_cell) = &ctx.query_result_observer {
-            emit_observer_summaries(obs_cell.borrow().as_any(), reporter);
+            crate::observers::emit_observer_summaries(obs_cell.borrow().as_any(), reporter);
         }
 
         Ok(VerifyBucketOut {
@@ -2021,7 +1960,7 @@ impl Verifier {
             resolved_typs.unwrap(),
             vir::vir_observer::Observers {
                 span_resolver: self.span_resolver.clone(),
-                ..create_observer_from_args(&self.args.observers)
+                ..crate::observers::create_observer_from_args(self.args.observer.as_deref())
                     .expect("observer arguments are checked in verify_crate_inner")
             },
         )?;
@@ -2082,9 +2021,9 @@ impl Verifier {
         let time_verify_sequential_start = Instant::now();
 
         let reporter = Reporter::new(spans, compiler);
-        create_observer_from_args(&self.args.observers)
+        crate::observers::create_observer_from_args(self.args.observer.as_deref())
             .map_err(|msg| VerifyErr::Vir(vir::messages::error_bare(msg)))?;
-        if !self.args.observers.is_empty() {
+        if self.args.observer.is_some() {
             self.span_resolver =
                 Some(crate::spans::span_resolver(spans, compiler.sess.source_map()));
         }

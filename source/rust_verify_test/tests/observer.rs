@@ -207,7 +207,7 @@ fn idx_pfx(events: &[String], prefix: &str) -> Option<usize> {
 
 test_verify_one_file_with_options! {
     #[test]
-    test_observer_loop ["observers=test"] => verus_code! {
+    test_observer_loop ["observer=test"] => verus_code! {
         fn test_loop(n: u64)
             requires n > 0
             ensures false
@@ -270,7 +270,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test]
-    test_observer_mut_ref ["observers=test"] => verus_code! {
+    test_observer_mut_ref ["observer=test"] => verus_code! {
         struct Pair { a: u64, b: u64 }
         spec fn is_positive(x: int) -> bool { x >= 0 }
         fn test_mut(p: &mut Pair, x: &mut u64)
@@ -303,7 +303,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test]
-    test_observer_valid ["observers=test"] => verus_code! {
+    test_observer_valid ["observer=test"] => verus_code! {
         fn add_one(x: u64) -> (r: u64)
             requires x < 100
             ensures r == x + 1
@@ -332,7 +332,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test]
-    test_observer_spec ["observers=test"] => verus_code! {
+    test_observer_spec ["observer=test"] => verus_code! {
         use vstd::prelude::*;
         spec fn has_pos(s: Seq<int>) -> bool {
             exists|i: int| 0 <= i < s.len() && s[i] > 0
@@ -365,7 +365,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test]
-    test_observer_break ["observers=test"] => verus_code! {
+    test_observer_break ["observer=test"] => verus_code! {
         use vstd::prelude::*;
         fn find(v: &Vec<u64>, target: u64) -> (found: bool)
             ensures !found // wrong
@@ -411,7 +411,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test]
-    test_observer_for_loop ["observers=test"] => verus_code! {
+    test_observer_for_loop ["observer=test"] => verus_code! {
         use vstd::prelude::*;
         fn sum_first(v: &Vec<u64>, n: usize) -> (s: u64)
             requires n <= v.len(), n < 100,
@@ -441,7 +441,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test]
-    test_observer_loop_invariant ["observers=test"] => verus_code! {
+    test_observer_loop_invariant ["observer=test"] => verus_code! {
         fn bad_loop(n: u64)
             requires n > 0
             ensures false
@@ -477,7 +477,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test]
-    test_observer_bitvector ["observers=test"] => verus_code! {
+    test_observer_bitvector ["observer=test"] => verus_code! {
         proof fn test_bv(x: u32) by(bit_vector)
             ensures x & 0xff == x
         { }
@@ -490,7 +490,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test]
-    test_observer_reveal_string ["observers=test"] => verus_code! {
+    test_observer_reveal_string ["observer=test"] => verus_code! {
         use vstd::prelude::*;
         use vstd::string::*;
         fn test_reveal()
@@ -513,7 +513,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test]
-    test_body_boundary ["observers=test"] => verus_code! {
+    test_body_boundary ["observer=test"] => verus_code! {
         use vstd::prelude::*;
 
         // requires has forall|x|, body has forall|y|
@@ -543,7 +543,7 @@ test_verify_one_file_with_options! {
 
     // ── §3.2 Cross-trait lifecycle sequencing (L1–L5) via the ordered trace ──
     #[test]
-    test_lifecycle_sequencing ["observers=test"] => verus_code! {
+    test_lifecycle_sequencing ["observer=test"] => verus_code! {
         fn seq_demo(n: u64) -> (r: u64)
             requires n < 100,
             ensures r == n,
@@ -579,7 +579,7 @@ test_verify_one_file_with_options! {
 
     // ── §3.1 VirObserver-only: functional coverage + decoupling proof ──
     #[test]
-    test_vir_only_observer ["observers=vir-only"] => verus_code! {
+    test_vir_only_observer ["observer=vir-only"] => verus_code! {
         fn vo(a: u64) -> (r: u64)
             ensures r == a,
         {
@@ -605,7 +605,7 @@ test_verify_one_file_with_options! {
 
     // ── §3.1 AirObserver-only: functional coverage + decoupling proof ──
     #[test]
-    test_air_only_observer ["observers=air-only"] => verus_code! {
+    test_air_only_observer ["observer=air-only"] => verus_code! {
         proof fn ao(x: u64)
             requires x < 10,
             ensures x < 20,
@@ -626,7 +626,7 @@ test_verify_one_file_with_options! {
 
     // ── §3.1 QueryResultObserver-only, Invalid: eval_bool_expr liveness + decoupling ──
     #[test]
-    test_query_result_only_invalid ["observers=query-result-only"] => verus_code! {
+    test_query_result_only_invalid ["observer=query-result-only"] => verus_code! {
         proof fn bad()
             ensures false,
         { }
@@ -647,7 +647,7 @@ test_verify_one_file_with_options! {
     // ── §3.1/§3.4 QueryResultObserver-only, Valid: no unsat core (capabilities live on AirObserver) ──
     // ── §3.1 QueryResultObserver-only, Valid: sees the Valid result + decoupling ──
     #[test]
-    test_query_result_only_valid ["observers=query-result-only"] => verus_code! {
+    test_query_result_only_valid ["observer=query-result-only"] => verus_code! {
         proof fn good(x: u64)
             requires x < 10,
             ensures x < 20,
@@ -686,7 +686,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     // covers (VO axis): nested-loops seed drives transitive havoc + all three assert-id kinds.
     #[test]
-    test_observer_seed_nested_loops ["observers=test"] => vc_shapes::seed_nested_loops()
+    test_observer_seed_nested_loops ["observer=test"] => vc_shapes::seed_nested_loops()
     => Err(err) => {
         let d = parse(&err);
         assert!(has(&d.krate_function_names, "test"), "got {:?}", d.krate_function_names);
@@ -703,7 +703,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     // covers (VO axis): on_quantifier_binder_decl — a choose binding declares its binder.
     #[test]
-    test_observer_binder_decl ["observers=test"] => verus_code! {
+    test_observer_binder_decl ["observer=test"] => verus_code! {
         spec fn p(i: int) -> bool;
         proof fn f() {
             let w = choose|i: int| p(i);
@@ -721,7 +721,7 @@ test_verify_one_file_with_options! {
     // covers (VO axis): on_check_valid_result Invalid payload — the live evaluator's
     // three-way contract: Some(true) / Some(false) / None per failing query.
     #[test]
-    test_observer_eval_three_way ["observers=test"] => verus_code! {
+    test_observer_eval_three_way ["observer=test"] => verus_code! {
         proof fn f(x: u64) {
             assert(x < 5);
         }
@@ -738,7 +738,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     // covers (VO axis over corpus): guarded match — merges and per-arm assigns observed.
     #[test]
-    test_observer_seed_match_guard ["observers=test"] => vc_shapes::seed_match_guard()
+    test_observer_seed_match_guard ["observer=test"] => vc_shapes::seed_match_guard()
     => Err(err) => {
         let d = parse(&err);
         assert!(d.switch_count >= 1, "a match lowers to a Switch; got {}", d.switch_count);
@@ -749,7 +749,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     // covers (VO axis over corpus): early return — ensures obligation still identified.
     #[test]
-    test_observer_seed_early_return ["observers=test"] => vc_shapes::seed_early_return()
+    test_observer_seed_early_return ["observer=test"] => vc_shapes::seed_early_return()
     => Err(err) => {
         let d = parse(&err);
         assert!(has(&d.assert_id_kinds, "Ensures"), "got {:?}", d.assert_id_kinds);
@@ -786,7 +786,7 @@ fn test_observer_neutrality_differential() {
     ];
     for (name, code) in seeds {
         let plain = verify_one_file(&format!("neutral_{}_plain", name), code.clone(), &[]);
-        let observed = verify_one_file(&format!("neutral_{}_obs", name), code, &["observers=test"]);
+        let observed = verify_one_file(&format!("neutral_{}_obs", name), code, &["observer=test"]);
         let (p, o) = match (&plain, &observed) {
             (Ok(p), Ok(o)) | (Err(p), Err(o)) | (Ok(p), Err(o)) | (Err(p), Ok(o)) => (p, o),
         };
@@ -821,7 +821,7 @@ test_verify_one_file_with_options! {
     // covers: S-continue — the loop's invariants (and decreases) are asserted at the
     // continue site; the too-strong invariant fails there.
     #[test]
-    test_observer_seed_continue ["observers=test"] => vc_shapes::seed_continue()
+    test_observer_seed_continue ["observer=test"] => vc_shapes::seed_continue()
     => Err(err) => {
         let d = parse(&err);
         assert!(has(&d.assert_id_kinds, "LoopInvariant"), "got {:?}", d.assert_id_kinds);
@@ -834,7 +834,7 @@ test_verify_one_file_with_options! {
     // covers: S-break-labeled — `break 'outer` asserts the TARGET loop's invariants at
     // the break site; the outer invariant fails there.
     #[test]
-    test_observer_seed_break_labeled ["observers=test"] => vc_shapes::seed_break_labeled()
+    test_observer_seed_break_labeled ["observer=test"] => vc_shapes::seed_break_labeled()
     => Err(err) => {
         let d = parse(&err);
         assert!(has(&d.assert_id_kinds, "LoopInvariant"), "got {:?}", d.assert_id_kinds);
@@ -846,7 +846,7 @@ test_verify_one_file_with_options! {
     // covers: S-loop-noniso — without loop isolation the loop lowers into the enclosing
     // query as a labeled Breakable region with Break jumps.
     #[test]
-    test_observer_seed_loop_break_noniso ["observers=test"] => vc_shapes::seed_loop_break_noniso()
+    test_observer_seed_loop_break_noniso ["observer=test"] => vc_shapes::seed_loop_break_noniso()
     => Err(err) => {
         let d = parse(&err);
         assert!(d.breakable_count >= 1, "non-isolated loop must lower as Breakable; got {}",
@@ -859,7 +859,7 @@ test_verify_one_file_with_options! {
     // covers: S-break-labeled-noniso — a labeled break without isolation still lowers the
     // loops as Breakable regions with Break jumps (two nested loops -> two of each).
     #[test]
-    test_observer_seed_break_labeled_noniso ["observers=test"] => vc_shapes::seed_break_labeled_noniso()
+    test_observer_seed_break_labeled_noniso ["observer=test"] => vc_shapes::seed_break_labeled_noniso()
     => Err(err) => {
         let d = parse(&err);
         assert!(d.breakable_count >= 2, "nested non-isolated loops -> Breakable regions; got {}",
@@ -872,7 +872,7 @@ test_verify_one_file_with_options! {
     // covers: S-nested-noniso — nested loops without isolation: nested Breakable regions
     // in a single query.
     #[test]
-    test_observer_seed_nested_loops_noniso ["observers=test"] => vc_shapes::seed_nested_loops_noniso()
+    test_observer_seed_nested_loops_noniso ["observer=test"] => vc_shapes::seed_nested_loops_noniso()
     => Err(err) => {
         let d = parse(&err);
         assert!(d.breakable_count >= 2, "two nested Breakable regions; got {}",
@@ -886,7 +886,7 @@ test_verify_one_file_with_options! {
     // and its result callback names the obligations it checked: two postconditions and one
     // loop invariant here, none of which fail.
     #[test]
-    test_observer_valid_reports_obligations ["observers=test"] => verus_code! {
+    test_observer_valid_reports_obligations ["observer=test"] => verus_code! {
         fn test(n: u64) -> (r: u64)
             requires n < 100
             ensures r >= n, r < 200
@@ -922,7 +922,7 @@ test_verify_one_file_with_options! {
     // axioms the solver used. A call to a lemma with a broadcast-style axiom makes the core
     // non-empty.
     #[test]
-    test_observer_valid_usage_info ["observers=test", "-V axiom-usage-info"] => verus_code! {
+    test_observer_valid_usage_info ["observer=test", "-V axiom-usage-info"] => verus_code! {
         spec fn f(x: int) -> int;
         proof fn lemma_f(x: int)
             ensures f(x) > 0
@@ -951,7 +951,7 @@ test_verify_one_file_with_options! {
     // A `choose` payload carries the witness predicate: a consumer can render
     // `choose|x: int| p(x)` rather than only knowing a choose exists.
     #[test]
-    test_observer_choose_payload ["observers=test"] => vc_shapes::seed_choose_witness()
+    test_observer_choose_payload ["observer=test"] => vc_shapes::seed_choose_witness()
     => Err(err) => {
         let d = parse(&err);
         assert!(!d.choose_payloads.is_empty(), "got {:?}", d.choose_payloads);
@@ -969,7 +969,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     // A lambda payload carries typed binders, so a consumer can render `|x: int| ...`.
     #[test]
-    test_observer_lambda_binder_types ["observers=test"] => verus_code! {
+    test_observer_lambda_binder_types ["observer=test"] => verus_code! {
         spec fn apply_to_one(f: spec_fn(int) -> int) -> int { f(1) }
         proof fn test()
             ensures apply_to_one(|x: int| x + 1) == 3
@@ -990,7 +990,7 @@ test_verify_one_file_with_options! {
     // A binder declaration payload carries its kind: a consumer can tell a quantifier binder
     // from a choose binder (both fire the same callback).
     #[test]
-    test_observer_binder_decl_kinds ["observers=test"] => vc_shapes::seed_forall_and_choose()
+    test_observer_binder_decl_kinds ["observer=test"] => vc_shapes::seed_forall_and_choose()
     => Err(err) => {
         let d = parse(&err);
         assert!(d.binder_decl_payloads.iter().any(|s| s.contains("QuantBinder")),
@@ -1030,7 +1030,7 @@ fn test_observer_version_origins_exhaustive() {
         ("atomic_invariant_open", vc_shapes::seed_atomic_invariant_open()),
     ];
     for (name, code) in seeds {
-        let r = verify_one_file(&format!("origins_{}", name), code, &["observers=test"]);
+        let r = verify_one_file(&format!("origins_{}", name), code, &["observer=test"]);
         let err = match &r {
             Ok(e) | Err(e) => e,
         };
@@ -1050,7 +1050,7 @@ test_verify_one_file_with_options! {
     // The four payloads below were delivered but never inspected. Each row asserts the payload
     // names a construct from the source, so a consumer can rely on it.
     #[test]
-    test_observer_remaining_payloads ["observers=test"] => verus_code! {
+    test_observer_remaining_payloads ["observer=test"] => verus_code! {
         spec fn sq(x: int) -> int { x * x }
         proof fn test(n: int)
             requires n > 2
@@ -1084,7 +1084,7 @@ test_verify_one_file_with_options! {
     // inductiveness lemma) appear as ordinary functions, and the failing obligation is the
     // lemma's postcondition.
     #[test]
-    test_observer_seed_state_machine ["observers=test", "vstd"] => vc_shapes::seed_state_machine_inductive()
+    test_observer_seed_state_machine ["observer=test", "vstd"] => vc_shapes::seed_state_machine_inductive()
     => Err(err) => {
         // The macro generates its own module, so the observer reports more than one krate.
         let ds = parse_all(&err);
@@ -1104,7 +1104,7 @@ test_verify_one_file_with_options! {
     // failing obligation is a call precondition (the closing call's requires), which the
     // observer sees as a query result but not as a labeled assertion kind.
     #[test]
-    test_observer_seed_atomic_invariant ["observers=test", "vstd"] => vc_shapes::seed_atomic_invariant_open()
+    test_observer_seed_atomic_invariant ["observer=test", "vstd"] => vc_shapes::seed_atomic_invariant_open()
     => Err(err) => {
         let d = parse(&err);
         assert!(d.assigns.iter().any(|a| a.starts_with("inner")), "got {:?}", d.assigns);
@@ -1131,7 +1131,7 @@ test_verify_one_file_with_options! {
     // Pins: the loop's query is checked first; pairing in callback order gave its `x@1` the
     // pre-loop line.
     #[test]
-    test_observer_version_provenance_loop ["observers=test"] => verus_code! {
+    test_observer_version_provenance_loop ["observer=test"] => verus_code! {
         fn f() {
             let mut x: u64 = 1;
             x = 2;
@@ -1159,7 +1159,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     // Pins: a pre-loop statement copied into the loop's query is paired in both queries.
     #[test]
-    test_observer_version_provenance_for_loop ["observers=test"] => verus_code! {
+    test_observer_version_provenance_for_loop ["observer=test"] => verus_code! {
         use vstd::prelude::*;
         fn f() {
             let mut x: u64 = 2;
@@ -1183,7 +1183,7 @@ test_verify_one_file_with_options! {
     // Pins: arms are walked in creation order; `x@1` is created in both arms, so the pairing is
     // a set.
     #[test]
-    test_observer_version_provenance_branches ["observers=test"] => verus_code! {
+    test_observer_version_provenance_branches ["observer=test"] => verus_code! {
         fn f(b: bool) {
             let mut x: u64 = 0;
             if b {
@@ -1207,7 +1207,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     // Pins: each version's base and number: local `x@`, `&mut` parameter `p!`, shadowed `x$1@`.
     #[test]
-    test_observer_version_base_and_number ["observers=test"] => verus_code! {
+    test_observer_version_base_and_number ["observer=test"] => verus_code! {
         fn g(a: &mut u64) ensures *final(a) == 1 { *a = 1; }
         fn f(p: &mut u64) {
             g(p);
@@ -1233,7 +1233,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     // Pins: version 0 of every local is `Initial`, in every query, before later versions.
     #[test]
-    test_observer_initial_versions ["observers=test"] => verus_code! {
+    test_observer_initial_versions ["observer=test"] => verus_code! {
         fn g(a: &mut u64) ensures *final(a) == 1 { *a = 1; }
         fn f(p: &mut u64) {
             g(p);
@@ -1270,7 +1270,7 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     // Pins: the resolver names the test's file (the rows above check its lines).
     #[test]
-    test_observer_span_resolver_file ["observers=test"] => verus_code! {
+    test_observer_span_resolver_file ["observer=test"] => verus_code! {
         fn f() {
             let mut x: u64 = 0;
             x = 1;
@@ -1406,15 +1406,7 @@ mod correlator {
 // An observer name that does not exist is an error, not a run with no observer.
 test_verify_one_file_with_options! {
     #[test]
-    test_observer_unknown_name ["observers=no-such-observer"] => verus_code! {
+    test_observer_unknown_name ["observer=no-such-observer"] => verus_code! {
         fn f() {}
     } => Err(err) => assert_vir_error_msg(err, "unknown observer `no-such-observer`")
-}
-
-// The core supports one observer at a time; naming two is an error.
-test_verify_one_file_with_options! {
-    #[test]
-    test_observer_two_names ["observers=test,air-only"] => verus_code! {
-        fn f() {}
-    } => Err(err) => assert_vir_error_msg(err, "only one observer may be given")
 }
