@@ -51,7 +51,7 @@ In this case, verification succeeds:
 verification results:: verified: 1 errors: 0
 ```
 
-There are two paths through the code, one when `s1.is_empty()` and one when `!s1.empty()`.
+There are two paths through the code, one when `s1.is_empty()` and one when `!s1.is_empty()`.
 The failure could lie along either path, or both.
 Let's prepare to work on each branch of the `if`/`else` separately
 by moving a separate copy of the `assume` into each branch:
@@ -220,7 +220,7 @@ error: assertion failed
 
 Fortunately, the recursive call `lemma_len_intersect::<A>(s1.remove(a), s2)` succeeded,
 so we have some information from the postcondition of this call.
-Let's write this out explictly so we can examine it more closely,
+Let's write this out explicitly so we can examine it more closely,
 substituting `s1.remove(a)` for `s1`:
 
 ```rust
@@ -240,7 +240,7 @@ substituting `s1.remove(a)` for `s1`:
 verification results:: verified: 1 errors: 0
 ```
 
-Let's compare what we know above `s1.remove(a)` with what we're trying to prove about `s1`:
+Let's compare what we know about `s1.remove(a)` with what we're trying to prove about `s1`:
 
 ```rust
         assert(s1.remove(a).intersect(s2).len() <= s1.remove(a).len()); // WE KNOW THIS
@@ -324,7 +324,7 @@ we'll be done:
             <= s1.remove(a).intersect(s2).len() + 1);
 ```
 
-Is there anyway we can make `s1.remove(a).intersect(s2)` look more like `s1.intersect(s2)`
+Is there any way we can make `s1.remove(a).intersect(s2)` look more like `s1.intersect(s2)`
 so that it's easier to prove this inequality?
 If we switched the order from `s1.remove(a).intersect(s2)` to `s1.intersect(s2).remove(a)`,
 then the subexpression `s1.intersect(s2)` would match:
@@ -361,7 +361,7 @@ error: assertion failed
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
 ```
 
-One of these assertion succeeds and the other fails.
+One of these assertions succeeds and the other fails.
 The only difference between the successful assertion
 and the failing assertion is the order of `intersect` and `remove`
 in `s1.intersect(s2).remove(a)` and `s1.remove(a).intersect(s2)`,
@@ -454,7 +454,7 @@ verification results:: verified: 1 errors: 0
 
 The code above contains a lot of unnecessary `assert`s, though,
 so it's worth spending a few minutes cleaning the code up
-for sake of anyone who has to maintain the code in the future.
+for the sake of anyone who has to maintain the code in the future.
 We want to clear out unnecessary code so there's less code to maintain,
 but keep enough information so
 someone maintaining the code can still understand the code.

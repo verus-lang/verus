@@ -6,7 +6,7 @@ We then define the semantics of specification expressions in terms of the mathem
 
 ## Integer types
 
-Verus integer types include the standard Rust primitive types (`u8`, `u16`, `u32`, `u64`, `u128`, `usize`, `i8`, `i16`, `i132`, `i64`, `i128`, and `isize`) together with Verus builtin types
+Verus integer types include the standard Rust primitive types (`u8`, `u16`, `u32`, `u64`, `u128`, `usize`, `i8`, `i16`, `i32`, `i64`, `i128`, and `isize`) together with Verus builtin types
 `int` and `nat`.
 
 **Mathematical domain.**
@@ -23,7 +23,7 @@ Some types have an additional validity predicate restricting their range:
 | `isize` | <code>&#x5b;-2<sup>isize::BITS-1</sup>, 2<sup>isize::BITS-1</sup>)</code>  |
 
 For `isize` and `usize`, the assumptions Verus makes about the platform word size (`usize::BITS`, or equivalently, `isize::BITS`) are configurable
-via the [`global` directive](http://localhost:3000/reference-global.html#with-usize-and-isize).
+via the [`global` directive](./reference-global.md#with-usize-and-isize).
 
 **Spec equality.** Spec equality on integers is defined as integer equality.
 
@@ -33,7 +33,7 @@ Types are inferred for bare literals, but the types may be made explicit (e.g., 
 
 **Spec operators**
 
-* Integer types are inter-covertible using [`as`-casts](./reference-as.md).
+* Integer types are inter-convertible using [`as`-casts](./reference-as.md).
 * Verus supports [standard arithmetic operators](./spec-arithmetic.md).
 * Verus supports [bit arithmetic operators](./spec-bit-ops.md).
 
@@ -49,7 +49,7 @@ The mathematical domain of `bool` is the set of discrete boolean values,
 
 **Spec operators.**
 Besides the standard `&&` and `||`, Verus supports some additional boolean operators that are
-standard in logic, including [`implication and equivalence`](./reference-implication.md) (`==>`, `<==` and `<==>`) and [low-predence variations](./prefix-and-or.md) of conjunctions and disjunction.
+standard in logic, including [`implication and equivalence`](./reference-implication.md) (`==>`, `<==` and `<==>`) and [low-precedence variations](./prefix-and-or.md) of conjunctions and disjunctions.
 
 
 ## Char
@@ -60,7 +60,7 @@ domain ℤ with a bespoke validity range:
 
 | Type    | Bound |
 |---------|-------|
-| `int`   | `[0, 0xD7ff] ∪ [0xE000, 0x10FFFF]` |
+| `int`   | `[0, 0xD7FF] ∪ [0xE000, 0x10FFFF]` |
 
 This is consistent with the
 [Rust definition of a `char`](https://doc.rust-lang.org/std/primitive.char.html)
@@ -72,7 +72,7 @@ as a "Unicode scalar value":
 
 **Literal expressions.** Standard [`char` literals](https://doc.rust-lang.org/reference/tokens.html#character-literals) are accepted in spec code.
 
-**Spec operators.** In spec code, a `char` is inter-covertible with the integer types using [`as`-casts](./reference-as.md).
+**Spec operators.** In spec code, a `char` is inter-convertible with the integer types using [`as`-casts](./reference-as.md).
 This is more
 permissive than exec code, which disallows many of these coercions.
 As with other coercions, the result may be undefined if the integer being coerced does not
@@ -107,7 +107,7 @@ See [the guide page](./mutable-references.md)
 for practical information on using mutable references.
 
 > [!NOTE]
-> Verus used to treat mutable references very differently before 2026-05-03 release.
+> Verus used to treat mutable references very differently before the 2026-05-03 release.
 > See [the migration guide](https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md) for more information about the transition.
 
 
@@ -120,7 +120,7 @@ At this time, there is no built-in support for explicitly reasoning about the po
 There is no extensional notion of equality for mutable references, and there is currently
 no way to prove equality except via basic reflexivity.
 
-This means that even if two mutables have the same current value, final value, and address,
+This means that even if two mutable references have the same current value, final value, and address,
 they are not necessarily equal. In particular, a reborrow is not equal to the mutable borrow
 it is borrowed from.
 For two references to be provably equal, they must originate from the same borrow instruction.
@@ -207,7 +207,7 @@ In spec code, one reasons about a mutable reference `x: &mut T` through two key 
 ## Raw Pointer (`*const T` and `*mut T`)
 
 This page only discusses the raw pointer types.
-See the [`raw_ptr`](https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html) vstd librararies for practical information on reasoning with pointers.
+See the [`raw_ptr`](https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html) vstd library for practical information on reasoning with pointers.
 
 **Mathematical interpretation.**
 In spec code, a pointer `ptr: *mut T` or `ptr: *const T` is defined as a triple of three

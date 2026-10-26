@@ -1,6 +1,6 @@
 # Documentation with Rustdoc
 
-Verus provides a tool to help make Verus specification look nice in rustdoc.
+Verus provides a tool to help make Verus specifications look nice in rustdoc.
 To do this, you first run `rustdoc` on a crate and then run an HTML postprocessor called
 Verusdoc.
 
@@ -72,4 +72,4 @@ pub fn compute_max(x: u32, y: u32) -> (max: u32)
 
 It will generate rustdoc that looks like this:
 
-![Screenshot of a verusdoc example illustrating the inclusion of an `ensures` clauses](graphics/verusdoc-example.png)
+![Screenshot of a verusdoc example illustrating the inclusion of an `ensures` clause](graphics/verusdoc-example.png)

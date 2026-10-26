@@ -9,16 +9,16 @@
 ### Methods of invocation
 
 **As a proof function.**
-The `nonlinear_arith` solver can be invoked with a `by(nonlinear_arith)` on a [proof function](./reference-proof-signature.md).
+The `integer_ring` solver can be invoked with a `by(integer_ring)` on a [proof function](./reference-proof-signature.md).
 
 ```
-proof fn example(...) by(nonlinear_arith)
+proof fn example(...) by(integer_ring)
     requires P
     ensures Q
 { }
 ```
 
-This proves `P ==> Q` via the `bit_vector` solver.
+This proves `P ==> Q` via the `integer_ring` solver.
 
 ### Supported predicates
 

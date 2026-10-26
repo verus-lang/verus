@@ -87,7 +87,7 @@ V@[deref_expr] ::= \* V@[spec_expr]
 ```
 
 Verus attempts to ignore `Box` and references as much as possible in spec mode.
-However, you still needs to satisfy the Rust type-checker, so you may need to insert
+However, you still need to satisfy the Rust type-checker, so you may need to insert
 references (`&`) or dereferences (`*`) to satisfy the checker. Verus will ignore these
 operations however.
 

@@ -49,7 +49,7 @@ The key steps are:
   `exists|i: int| ...` serves as the witness for the next iteration's
   `exists|i: int| ...`.
 - The comparison `*v.index(ix) < k` tells us whether `v[ix] < k` or `v[ix] >= k`.
-- The expressions `v[i_witness]` and `v[ix]` match the trigger `v[i], v[j]` trigger
+- The expressions `v[i_witness]` and `v[ix]` match the trigger `v[i], v[j]`
   in the expression `forall|i: int, j: int| ... v[i] <= v[j]`.
 
 We'll now walk through these steps in more detail.
@@ -60,7 +60,7 @@ if we set things up right.)
 
 There are two cases to consider, one where the `if` condition `*v.index(ix) < k` is true and one
 where `*v.index(ix) < k` is false.
-We'll just look at the former, where `v[ik] < k`.
+We'll just look at the former, where `v[ix] < k`.
 
 We assume the loop invariant at the beginning of the loop iteration:
 
@@ -119,7 +119,7 @@ forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
 ```
 
 In order to instantiate this, the SMT solver again relies on triggers.
-In this `forall`, expression, the trigger is `v[i], v[j]`,
+In this `forall` expression, the trigger is `v[i], v[j]`,
 so again the SMT solver looks for terms of the form `v[...]`
 and finds `v[i_witness]` and `v[ix]`.
 There are four different possible assignments of `i_witness` and `ix` to `i` and `j`.
@@ -144,7 +144,7 @@ We already know `k == v[i_witness]`, so this becomes:
 ```
 
 The right-hand side of the `==>` says `k <= v[ix]`,
-which contradicts our assumption that `v[ik] < k` in the case where `*v.index(ix) < k`.
+which contradicts our assumption that `v[ix] < k` in the case where `*v.index(ix) < k`.
 This means that the left-hand side of the `==>` must be false:
 
 ```

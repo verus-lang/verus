@@ -49,7 +49,7 @@ and treat the Rust code as if it were code written in a purely functional langua
 which makes verification easier.
 
 At present, we do not intend to:
-- support all Rust features and libraries (instead, we will focus a high-value features and libraries needed to support our users)
+- support all Rust features and libraries (instead, we will focus on high-value features and libraries needed to support our users)
 - verify the verifier itself
 - verify the Rust/LLVM compilers
 

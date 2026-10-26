@@ -13,7 +13,7 @@ You can allocate `Vec` using `Vec::new` and then push elements into it:
 ```
 
 The code above is able to make assertions directly about the `Vec` value `v`.
-You could also write more compilicated specifications and proofs about `Vec` values.
+You could also write more complicated specifications and proofs about `Vec` values.
 In general, though, Verus encourages programmers to write `spec` functions
 and `proof` functions about mathematical types like `Seq`, `Set`, and `Map` instead
 of hard-wiring the specifications and proofs to particular concrete datatypes like `Vec`.

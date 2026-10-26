@@ -34,7 +34,7 @@ e.g., this in src/reference-assume-specification.md:
 The V@ is used for Verus-specific concepts and R@ is used for Rust-specific concepts.
 The postprocessors will automatically crosslink the pages through V@ links.
 
-## The DIFF admoninition
+## The DIFF admonition
 
 mdbook has a nice feature called admonitions: https://rust-lang.github.io/mdBook/format/markdown.html?highlight=admoni#admonitions
 

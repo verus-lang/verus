@@ -4,7 +4,7 @@ To every quantifier expression (`forall`, `exists`, `choose`) in the program, in
 quantifiers such as in `broadcast` lemmas.
 
 There are many implications of triggers on proof automation that Verus developers should be
-aware of. See [the relevant chapter of the guide](./quants.md), particulary the section
+aware of. See [the relevant chapter of the guide](./quants.md), particularly the section
 on [multiple triggers and matching loops](./multitriggers.md).
 
 This page explains the procedure Verus uses to determine these triggers from Verus source code.
@@ -95,8 +95,8 @@ The behavior can be configured through the command line:
 <tr><td><code>--triggers-mode silent</code></td><td>Do not show automatically chosen triggers</td></tr>
 <tr><td><code>--triggers-mode selective</code></td><td><strong>Default.</strong> Show automatically chosen triggers only when heuristics are un-confident, and when <code>#![auto]</code> has not been supplied</td></tr>
 <tr><td><code>--triggers</code></td><td>Show all automatically chosen triggers for verified modules</td></tr>
-<tr><td><code>--triggers-mode verbose</code></td><td>Show all automatically chosen triggers for verified modules and imported definitions from other module</td></tr>
+<tr><td><code>--triggers-mode verbose</code></td><td>Show all automatically chosen triggers for verified modules and imported definitions from other modules</td></tr>
 </tbody></table>
 </div>
 
-See more triggers logging options in `verus --help`
+See more trigger logging options in `verus --help`

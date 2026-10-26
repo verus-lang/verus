@@ -122,7 +122,7 @@ for more information.
 ## `#[verifier::inline]`
 
 The attribute `#[verifier::inline]` can be applied to any _spec-mode_ function to indicate
-that that Verus should automatically expand its definition in the STM-LIB encoding.
+that Verus should automatically expand its definition in the SMT-LIB encoding.
 
 This has no effect on the semantics of the function but may impact triggering.
 
@@ -136,7 +136,7 @@ body (absent any loop invariants).
 
  * When set to `true`: Verus does not automatically infer anything inside the loop body,
    not even function preconditions.
- * When set the `false`: Verus automatically makes some facts from outside the loop body
+ * When set to `false`: Verus automatically makes some facts from outside the loop body
    available in the loop body. In particular, any assertion outside the loop body
    that depends only on variables not mutated by the loop body will also be available
    inside the loop.
@@ -255,7 +255,7 @@ applied to the solver for that function.
 The default `rlimit` is 10. The rlimit is roughly proportional to the amount of time taken
 by the solver before it gives up. The default, 10, is meant to be around 2 seconds.
 
-The rlmit may be set to `infinity` to remove the limit.
+The rlimit may be set to `infinity` to remove the limit.
 
 The rlimit can also be configured with the `--rlimit` command line option.
 

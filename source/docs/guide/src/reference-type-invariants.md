@@ -22,7 +22,7 @@ impl X {
 }
 ```
 
-It can be inside an `impl` block and take `self`, of it can be declared as a top-level item.
+It can be inside an `impl` block and take `self`, or it can be declared as a top-level item.
 It can have any name.
 
 The invariant predicate must:
@@ -42,7 +42,7 @@ it is recommended that they be as private as possible.
 
 For any type `X` with a type invariant,
 Verus enforces that the predicate always hold for any exec object or tracked-mode ghost object
-of type `X`.  Therefore, Verus add a proof obligation that the predicate holds:
+of type `X`.  Therefore, Verus adds a proof obligation that the predicate holds:
 
  * For any constructor expression of `X`
  * After any assignment to a field of `X`

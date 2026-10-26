@@ -47,7 +47,7 @@ automatically, we can mark it with the `#[verifier::type_invariant]` attribute:
 
 This has two effects:
 
- * It adds an extra constraint that *all* `TreeMap` objects satsify the `well_formed()` condition
+ * It adds an extra constraint that *all* `TreeMap` objects satisfy the `well_formed()` condition
     at all times. This constraint is checked by Verus whenever a `TreeMap` object is constructed
     or modified.
  * It allows the programmer to _assume_ the `well_formed()` condition at all times, even when
@@ -169,7 +169,7 @@ impl<V> TreeMap<V> {
 These are almost the same as what we had before; the only difference is that all
 the `well_formed()` clauses have been removed.
 
-Conveniently, there are no longer _any_ `requires` clause at all, so it's always possible
+Conveniently, there are no longer _any_ `requires` clauses at all, so it's always possible
 to call any of these functions. 
 This is also important if we want to prove the API "safe" in the Rust sense
 (see [this page](./memory-safety.md)).

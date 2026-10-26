@@ -8,7 +8,7 @@ is on the developer to meet them.
 The developer needs to meet these assumptions:
 
  * Any `requires` clauses on the function being called
- * Any trait implementation used to meet the function's trait bounds are implemented
+ * Any trait implementations used to meet the function's trait bounds are implemented
    according to the trait specifications.
 
 Let me give an example of the latter. Suppose **V** is the verified source code, which declares
@@ -37,7 +37,7 @@ fn drop(&mut self)
 (See [`opens_invariants`](./reference-opens-invariants.md) and [`no_unwind`](./reference-unwind-sig.md).)
 
 For any _verified_ implementation of `Drop`, Verus checks that it meets this criterion.
-For unverified implementations of drop, this onus is on the user to meet this criterion.
+For unverified implementations of `Drop`, this onus is on the user to meet this criterion.
 
 # Warning
 

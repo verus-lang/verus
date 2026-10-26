@@ -25,6 +25,8 @@ pub mod test_mod {
         1
     }
 }
+
+} // verus!
 ```
 
 To remedy this, Verus provides the `verus_only` flag, which is turned on during
@@ -51,7 +53,7 @@ For instance, the code below sets the `verifier::loop_isolation` option to false
 > Using this feature flag for conditional compilation of code can introduce **unsoundness**,
 > breaking the verification guarantees.
 >
-> As an example, the code below will verify successfully, even though it `f()` returns
+> As an example, the code below will verify successfully, even though `f()` returns
 > 42 when running the executable.
 >
 > ```rust
@@ -66,8 +68,8 @@ For instance, the code below sets the `verifier::loop_isolation` option to false
 > ```
 
 > [!NOTE]
-> Verus is under _active development_ meaning this option may change or be removed
-> (in particular if a better solution to this problem is devised). See the [Github discussion](https://github.com/verus-lang/verus/discussions/2101)
+> Verus is under _active development_, meaning this option may change or be removed
+> (in particular if a better solution to this problem is devised). See the [GitHub discussion](https://github.com/verus-lang/verus/discussions/2101)
 > for more information.
 
 ## `Cargo.toml` configuration

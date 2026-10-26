@@ -13,14 +13,14 @@ Here, we will overview the equivalent concepts in Verus.
 To understand the key challenge in verifying these interior mutability patterns,
 recall an important fact of Verus's SMT encoding. Verus assumes that any value of type `&T`,
 for any type `T`, can never change. However, we also know that the contents of a
-`&Cell<V>` might change. After all, that's the whole point of the `Cell<T>` type!
+`&Cell<T>` might change. After all, that's the whole point of the `Cell<T>` type!
 
 The inescapable conclusion, then, is that
 _the value taken by a `Cell<T>` in Verus' SMT encoding must not depend on the cell's contents_.
 Instead, the SMT "value" of a `Cell<T>` is nothing more than a unique identifier for the Cell.
 In some regards, it may help to think of `Cell<T>` as similar to a pointer `T*`.
 The value of the `Cell<T>` is _only_ its identifier (its "pointer address") rather than
-its contents ("the thing pointed to be a pointer"). Of course, it's _not_ a pointer, but
+its contents ("the thing pointed to by a pointer"). Of course, it's _not_ a pointer, but
 from the perspective of the encoding, it might as well be.
 
 Note one immediate ramification of this property:
@@ -50,7 +50,7 @@ balance of both approaches. We'll introduce both here.
 
 Suppose we have an expensive computation and we want to memoize its value. The first time
 we need to compute the value, we perform the computation and store its value for whenever
-it's needed later. To do this, we'll use a `Cell`, whose interior is intialized to `None`
+it's needed later. To do this, we'll use a `Cell`, whose interior is initialized to `None`
 to store the computed value.
 The memoized compute function will then:
 

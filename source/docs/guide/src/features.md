@@ -2,7 +2,7 @@
 
 Quick reference for supported Rust features. Note that this list does not include all _Verus_ features, and Verus has many spec/proof features without any standard Rust equivalent---this list only concerns Rust features. See [the guide](./modes.md) for more information about Verus' distinction between executable Rust code, specification code, and proof code.
 
-Note that Verus is in active development. If a feature is unsupported, it might be genuinely hard, or it might just be low priority. See the [github issues](https://github.com/verus-lang/verus/issues) or [discussions](https://github.com/verus-lang/verus/discussions) for information on planned features.
+Note that Verus is in active development. If a feature is unsupported, it might be genuinely hard, or it might just be low priority. See the [GitHub issues](https://github.com/verus-lang/verus/issues) or [discussions](https://github.com/verus-lang/verus/discussions) for information on planned features.
 
 **Last Updated: 2026-05-13**
 
@@ -66,7 +66,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Const generics</td>
-    <td>Partially Supported</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>Custom discriminants</td>
@@ -148,12 +148,12 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Partially supported</td>
   </tr>
   <tr>
-    <td>Compound assigments (<code>+=</code>, etc.)</td>
+    <td>Compound assignments (<code>+=</code>, etc.)</td>
     <td>Supported</td>
   </tr>
   <tr>
     <td>Array expressions</td>
-    <td>Partially supported (no fill expressions with `const` arguments)</td>
+    <td>Partially supported (no fill expressions with <code>const</code> arguments)</td>
   </tr>
   <tr>
     <td>Range expressions</td>
@@ -192,7 +192,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Supported</td>
   </tr>
   <tr>
-    <td>Implicit coercions, derefences, and borrows</td>
+    <td>Implicit coercions, dereferences, and borrows</td>
     <td>Supported</td>
   </tr>
   </tbody>
@@ -271,7 +271,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Closure types</td>
-    <td>Partially Supported (no mutable captures)</td>
+    <td>Partially supported (no mutable captures)</td>
   </tr>
   <tr>
     <td>Trait objects (dyn)</td>
@@ -416,6 +416,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   </tbody>
   <thead><tr><th colspan="2"><strong>Crates and code organization</strong></th></tr></thead>
+  <tbody>
   <tr>
     <td>Multi-crate projects</td>
     <td>Partially supported</td>
@@ -432,4 +433,5 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>rustdoc</td>
     <td>Supported</td>
   </tr>
+  </tbody>
 </table></div>
