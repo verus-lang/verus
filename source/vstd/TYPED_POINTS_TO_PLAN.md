@@ -22,15 +22,19 @@ are approved and are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.m
 The modified rustlib specs are provisionally accepted.
 The `Seq` join axioms (`tracked_add_borrow` / `tracked_add_borrow_mut`, approved by Travis),
 and `PointsToUntyped::join_ref` / `join_mut` proved from them, are approved and in TYPED_POINTS_TO_APPROVED.md.
-What remains is the [UTF-8 plan](#plan-remove-utf-8-from-pointstostr), which waits on another discussion.
+Whether to [remove UTF-8 from `PointsTo<str>`](#plan-remove-utf-8-from-pointstostr) is on hold;
+the approved specs still include it.
 
 ## Plan: remove UTF-8 from `PointsTo<str>`
 
-Not started; waiting on your discussion.
+**On hold.** The approved specs (TYPED_POINTS_TO_APPROVED.md, "rustlib: `str`") still include UTF-8 in `wf`,
+and the rustlib port's other work goes ahead without waiting on this.
+A copy of the current UTF-8 specs is in [POINTS_TO_STR_UTF8_SNAPSHOT.md](POINTS_TO_STR_UTF8_SNAPSHOT.md).
+
 Per Travis, a `PointsTo<str>` should guarantee only what a `&str` / `&mut str` does,
 and UTF-8 is a library (safety) invariant of `str`, not a validity invariant,
 so `wf` shouldn't include it.
-UTF-8 then comes only from rustlib's `str::inv()` preconditions on `&str`s, as it does for code that doesn't use permissions.
+UTF-8 would then come only from rustlib's `str::inv()` preconditions on `&str`s, as it does for code that doesn't use permissions.
 
 **Spec changes** (all to approved rustlib specs in TYPED_POINTS_TO_APPROVED.md, "rustlib: `str`"):
 
@@ -54,7 +58,6 @@ they have no `inv()` requires, so they get the sub-bytes' UTF-8 only from the pa
 The [trusted UTF-8 assumptions](#trusted-utf-8-assumptions) go away with no text change:
 `SharedReference<str>::points_to`, `mut_ref_to_shr_points_to_str`, `ptr_mut_ref_str` and `str::as_str_ptr_verus`
 still ensure `wf()`, which no longer says anything about UTF-8.
-The Travis item about them is answered by this plan.
 
 **Callers to update** (rustlib; found by rebuilding after 1–3):
 proofs that read UTF-8 off a permission's `wf`
@@ -70,10 +73,8 @@ The transmute proofs (`transmute_shared_ref_u8_slice_str`) keep their `valid_utf
 this file's [UTF-8 assumptions](#utf-8-assumptions) and [trusted UTF-8 assumptions](#trusted-utf-8-assumptions) sections (deleted);
 rustlib's RUSTLIB_PORT_PLAN.md, G2 ("The sites check char boundaries, which give the sub-bytes' `valid_utf8`").
 
-**Open question for the discussion:**
-whether anything outside rustlib's `str` code relies on a `PointsTo<str>` being UTF-8
-(for example, a future `&mut str` API that wants writes through the permission to keep it UTF-8;
-with this plan that's the caller's obligation, stated on the `&mut str`).
+Rustlib is the only user of `PointsTo<str>` (the definitions are moving to rustlib),
+so nothing outside rustlib's `str` code is affected.
 
 ## TODO: ask Travis
 
@@ -81,6 +82,7 @@ with this plan that's the caller's obligation, stated on the `&mut str`).
   `SharedReference<str>::points_to`, `mut_ref_to_shr_points_to_str`, `ptr_mut_ref_str` and `str::as_str_ptr_verus`
   now also assert that the `str` is valid UTF-8, through `wf`.
   - We cannot enforce UTF-8 as an invariant of `PointsTo<str>` - it should only guarantee as much as a `&str` or `&mut str` would guarantee, which doesn't guarantee UTF-8.
+  - On hold: see [Plan: remove UTF-8 from `PointsTo<str>`](#plan-remove-utf-8-from-pointstostr).
 - The [trusted `wf` of a `Box`'s permission](#trusted-wf-of-a-boxs-permission):
   rustlib's `Box::into_non_null_with_allocator_verus` now also ensures the permission it returns is `wf`.
   - Yes - a `Box<T>` is just a pointer and `PointsTo<T>`.
