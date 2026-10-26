@@ -624,26 +624,24 @@ impl Context {
         self.smt_log.log_eval(expr);
         let smt_data = self.smt_log.take_pipe_data();
         let smt_output = self.get_smt_process().send_commands(smt_data);
-        if smt_output.len() == 1 {
-            smt_output[0].clone()
-        } else {
-            // The solver prints multi-line output for compound model values (quantified
-            // formulas, algebraic data type constructors). These are never simple booleans,
-            // so return a value that callers will treat as unknown.
-            "unknown".to_string()
+        if smt_output.len() != 1 {
+            panic!("unexpected output from SMT eval {:?}", smt_output);
         }
+        smt_output[0].clone()
     }
 
     /// Evaluate an AIR expression against the current solver model as a boolean.
-    /// Returns `Some(true)` / `Some(false)` if the solver returns a boolean,
-    /// `None` if the expression is non-boolean or evaluation fails.
+    /// Returns `Some(true)` / `Some(false)` if the solver returns a boolean, and `None`
+    /// otherwise: for a non-boolean value, including the multi-line output the solver prints
+    /// for compound values (quantified formulas, datatype constructors).
     pub fn evaluate_bool(&mut self, expr: &crate::ast::Expr) -> Option<bool> {
         let printer =
             crate::printer::Printer::new(self.message_interface.clone(), true, self.solver.clone());
-        let node = printer.expr_to_node(expr);
-        match self.eval_expr(node).as_str() {
-            "true" => Some(true),
-            "false" => Some(false),
+        self.smt_log.log_eval(printer.expr_to_node(expr));
+        let smt_data = self.smt_log.take_pipe_data();
+        match self.get_smt_process().send_commands(smt_data).as_slice() {
+            [v] if v == "true" => Some(true),
+            [v] if v == "false" => Some(false),
             _ => None,
         }
     }
