@@ -86,6 +86,7 @@ pub enum LineContent {
     Comment,
     StateMachine(StateMachineCode),
     Atomic,
+    OpenInvariant,
 }
 
 pub struct LineInfo {

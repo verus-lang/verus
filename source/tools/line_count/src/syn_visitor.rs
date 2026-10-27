@@ -812,6 +812,49 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
             for tok in tokens_here {
                 self.mark(&tok.span(), CodeKind::Proof, LineContent::Atomic);
             }
+        } else if outer_last_segment == Some("open_atomic_invariant".into())
+            || outer_last_segment == Some("open_local_invariant".into())
+            || outer_last_segment == Some("open_atomic_invariant_in_proof".into())
+            || outer_last_segment == Some("open_local_invariant_in_proof".into())
+        {
+            // The body block is counted as if it were not inside the macro
+            let mut tokens: Vec<proc_macro2::TokenTree> = i.tokens.clone().into_iter().collect();
+            let body = match tokens.pop() {
+                Some(proc_macro2::TokenTree::Group(g))
+                    if g.delimiter() == proc_macro2::Delimiter::Brace =>
+                {
+                    Some(g)
+                }
+                Some(tok) => {
+                    tokens.push(tok);
+                    None
+                }
+                None => None,
+            };
+            if let Some(body) = &body {
+                let block: Option<verus_syn::Block> =
+                    verus_syn::parse2(proc_macro2::TokenTree::Group(body.clone()).into()).ok();
+                if let Some(block) = block {
+                    self.visit_block(&block);
+                }
+            }
+            // `open_atomic_invariant!(inv => inner => {` and `});` lines are proof
+            let kind = self.mode_or_trusted(CodeKind::Proof);
+            self.mark(&i.path, kind, LineContent::OpenInvariant);
+            self.mark(&i.delimiter.span().close(), kind, LineContent::OpenInvariant);
+            for tok in tokens {
+                self.mark(&tok.span(), kind, LineContent::OpenInvariant);
+            }
+            if let Some(body) = &body {
+                self.mark(&body.span_open(), kind, LineContent::OpenInvariant);
+                self.mark(&body.span_close(), kind, LineContent::OpenInvariant);
+            }
+            // for atomic invariant macros, the Atomic attribution is added to the whole macro invocation
+            if outer_last_segment == Some("open_atomic_invariant".into())
+                || outer_last_segment == Some("open_atomic_invariant_in_proof".into())
+            {
+                self.mark_content(i, LineContent::Atomic);
+            }
         } else if outer_last_segment == Some("tld_get_mut".into())
             || outer_last_segment == Some("page_get_mut_inner".into())
             || outer_last_segment == Some("unused_page_get_mut_prev".into())
