@@ -1842,11 +1842,7 @@ pub(crate) fn expr_to_stm_opt(
                                 stms.push(init_var(&expr.span, &temp_ident, &call));
                             }
                         }
-                        let ti = if may_unwind {
-                            TypInv::UnwindError(Some(x.clone()))
-                        } else {
-                            TypInv::Call(x)
-                        };
+                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(x) };
                         typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
                         // tmp
                         Ok((stms, Maybe::Some(Value::Exp(temp_var))))
@@ -1864,11 +1860,7 @@ pub(crate) fn expr_to_stm_opt(
                             None,
                             body,
                         )?);
-                        let ti = if may_unwind {
-                            TypInv::UnwindError(Some(x.clone()))
-                        } else {
-                            TypInv::Call(x)
-                        };
+                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(x) };
                         typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
                         Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
                     }
@@ -1910,7 +1902,7 @@ pub(crate) fn expr_to_stm_opt(
                 body,
             };
             stms.push(Spanned::new(expr.span.clone(), call));
-            let ti = TypInv::UnwindError(None); // exec functions are may_unwind = true by default
+            let ti = TypInv::UnwindError; // exec functions are may_unwind = true by default
             typ_inv_obligations(ctx, state, &mut stms, all_obligations, ti)?;
             Ok((stms, Maybe::Some(Value::Exp(temp_var))))
         }
@@ -4689,11 +4681,7 @@ fn stmt_to_stm(
                         // to handle the right-hand-side, if possible.
                         let ret = Maybe::Some(Value::ImplicitUnit(stmt.span.clone()));
 
-                        let ti = if may_unwind {
-                            TypInv::UnwindError(Some(fun.clone()))
-                        } else {
-                            TypInv::Call(fun)
-                        };
+                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(fun) };
                         typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
 
                         return Ok((stms, ret, Some((name.clone(), decl, None))));
@@ -4924,8 +4912,7 @@ fn typ_inv_may_read_field(ctx: &Ctx, inv: &Fun, f: &FieldOpr) -> bool {
 
 #[derive(PartialEq, Eq, Clone)]
 enum TypInv {
-    /// a call that may unwind (the callee, if known)
-    UnwindError(Option<Fun>),
+    UnwindError,
     BareMutRefError,
     Assign,
     Call(Fun),
@@ -4943,19 +4930,21 @@ fn typ_inv_obligations(
     for obligation in obligations.into_iter().rev() {
         let Obligation { fun, exp, field } = obligation;
         // A call that may unwind leaves the datatype with whatever the callee wrote into the
-        // borrowed field. That is harmless when the invariant cannot read that field: the rest
-        // of the value is unchanged, so the invariant still holds on unwinding, and on return
-        // it is checked as for a no_unwind call.
-        let typ_inv = match (&typ_inv, &field) {
-            (TypInv::UnwindError(callee), Some(f)) if !typ_inv_may_read_field(ctx, &fun, f) => {
-                match callee {
-                    Some(c) => TypInv::Call(c.clone()),
-                    None => TypInv::Assign,
-                }
-            }
-            _ => typ_inv.clone(),
-        };
-        assert_assume_satisfies_user_defined_type_invariant(ctx, state, &exp, stms, &fun, typ_inv)?;
+        // borrowed field. When the invariant cannot read that field, the rest of the value is
+        // unchanged and the invariant still holds, so there is nothing to check.
+        if typ_inv == TypInv::UnwindError
+            && field.as_ref().is_some_and(|f| !typ_inv_may_read_field(ctx, &fun, f))
+        {
+            continue;
+        }
+        assert_assume_satisfies_user_defined_type_invariant(
+            ctx,
+            state,
+            &exp,
+            stms,
+            &fun,
+            typ_inv.clone(),
+        )?;
     }
     Ok(())
 }
@@ -4978,7 +4967,7 @@ fn assert_assume_satisfies_user_defined_type_invariant(
 
     let function = ctx.func_map.get(fun).unwrap();
 
-    if matches!(typ_inv, TypInv::UnwindError(_)) {
+    if typ_inv == TypInv::UnwindError {
         return Err(crate::messages::error_with_label(
             &exp.span,
             "this function call takes a &mut ref of a field of a datatype with a user-defined type invariant; thus, this function should be marked no_unwind (note: this check is currently implemented overly-conservatively and requires the function to be marked no_unwind in its signature)",
@@ -5007,7 +4996,7 @@ fn assert_assume_satisfies_user_defined_type_invariant(
                         format!("value may fail to meet its declared type invariant after mutation (type invariant is checked at end of call to `{:}`)", crate::ast_util::fun_as_friendly_rust_name(fun)),
                     TypInv::Assign =>
                         "value may fail to meet its declared type invariant after assignment".to_string(),
-                    TypInv::Assume | TypInv::UnwindError(_) | TypInv::BareMutRefError => unreachable!(),
+                    TypInv::Assume | TypInv::UnwindError | TypInv::BareMutRefError => unreachable!(),
                 }
             )
             .secondary_label(&function.span, "type invariant declared here");
