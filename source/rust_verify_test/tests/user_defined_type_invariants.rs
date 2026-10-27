@@ -2900,7 +2900,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] atmoic_invariant_early_exit_issue3137 verus_code! {
+    #[test] atomic_invariant_early_exit_issue3137 verus_code! {
         use vstd::prelude::*;
         use vstd::invariant::*;
 
@@ -2929,4 +2929,95 @@ test_verify_one_file! {
             });
         }
     } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_unwinding verus_code! {
+        struct X { i: u64 }
+
+        #[verifier::type_invariant]
+        spec fn the_inv(x: X) -> bool { x.i == 0 }
+
+        fn c(a: &mut u64, b1: bool, b2: bool)
+            ensures b1 ==> *final(a) == 0,
+            no_unwind when !(b2 ==> *final(a) == 0)
+        {
+            assume(false);
+        }
+
+        fn test1() {
+            let mut x = X { i: 0 };
+            c(&mut x.i, false, false); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "value may fail to meet its declared type invariant if the call to `test_crate::c` unwinds (type invariant is checked on the unwinding path of the call)",
+        "value may fail to meet its declared type invariant after mutation (type invariant is checked at end of call to `test_crate::c`)",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_unwinding2 verus_code! {
+        struct X { i: u64 }
+
+        #[verifier::type_invariant]
+        spec fn the_inv(x: X) -> bool { x.i == 0 }
+
+        fn c(a: &mut u64, b1: bool, b2: bool)
+            ensures b1 ==> *final(a) == 0,
+            no_unwind when !(b2 ==> *final(a) == 0)
+        {
+            assume(false);
+        }
+
+        fn test2() {
+            let mut x = X { i: 0 };
+            c(&mut x.i, false, true); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "value may fail to meet its declared type invariant after mutation (type invariant is checked at end of call to `test_crate::c`)",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_unwinding3 verus_code! {
+        struct X { i: u64 }
+
+        #[verifier::type_invariant]
+        spec fn the_inv(x: X) -> bool { x.i == 0 }
+
+        fn c(a: &mut u64, b1: bool, b2: bool)
+            ensures b1 ==> *final(a) == 0,
+            no_unwind when !(b2 ==> *final(a) == 0)
+        {
+            assume(false);
+        }
+
+        fn test3() {
+            let mut x = X { i: 0 };
+            c(&mut x.i, true, false); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "value may fail to meet its declared type invariant if the call to `test_crate::c` unwinds (type invariant is checked on the unwinding path of the call)",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_unwinding4 verus_code! {
+        struct X { i: u64 }
+
+        #[verifier::type_invariant]
+        spec fn the_inv(x: X) -> bool { x.i == 0 }
+
+        fn c(a: &mut u64, b1: bool, b2: bool)
+            ensures b1 ==> *final(a) == 0,
+            no_unwind when !(b2 ==> *final(a) == 0)
+        {
+            assume(false);
+        }
+
+        fn test4() {
+            let mut x = X { i: 0 };
+            c(&mut x.i, true, true);
+        }
+    } => Ok(())
 }
