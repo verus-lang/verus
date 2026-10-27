@@ -1,3 +1,32 @@
+//! This module contains exec implementations of the fixed-width arithmetic
+//! builtins `add`, `sub`, and `mul`.
+//!
+//! Unlike `a + b` (which has type `int` in spec code), `add(a, b)` stays in
+//! the operand type and wraps on overflow, so it has a direct exec
+//! counterpart. The macros rename a call `add(a, b)` to `exec_add(a, b)`,
+//! which resolves to the [`exec_add`] defined here. For example,
+//!
+//! ```rust
+//! exec_spec_verified! {
+//!     spec fn add_u8(a: u8, b: u8) -> u8 {
+//!         add(a, b)
+//!     }
+//! }
+//! ```
+//!
+//! generates (simplified)
+//!
+//! ```rust
+//! fn exec_add_u8(a: u8, b: u8) -> (res: u8)
+//!     ensures res == add_u8(a, b)
+//! {
+//!     exec_add(a, b)
+//! }
+//! ```
+//!
+//! where `exec_add_u8(200, 100) == 44`. Each operation is computed in
+//! `u128`/`i128` (which cannot overflow for operands of at most 64 bits) and
+//! then truncated back to the operand type.
 use crate::contrib::exec_spec::*;
 use crate::prelude::*;
 

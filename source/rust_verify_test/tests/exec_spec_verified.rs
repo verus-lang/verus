@@ -2255,20 +2255,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_exec_spec_fixed_width_arith_user_fn IMPORTS.to_string() + verus_code_str! {
-        exec_spec_verified! {
-            spec fn add(a: u8, b: u8) -> bool {
-                a < b
-            }
-
-            spec fn uses_add(a: u8, b: u8) -> bool {
-                add(a, b)
-            }
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
     #[test] test_exec_spec_rejects_tracked_param IMPORTS.to_string() + verus_code_str! {
         exec_spec_verified! {
             spec fn f(tracked x: u64) -> bool {

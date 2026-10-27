@@ -322,7 +322,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_exec_spec_unverified_ported_forms IMPORTS.to_string() + verus_code_str! {
+    #[test] test_exec_spec_unverified_misc_forms IMPORTS.to_string() + verus_code_str! {
         use vstd::raw_ptr::MemContents;
 
         exec_spec_unverified! {
