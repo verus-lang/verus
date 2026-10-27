@@ -384,8 +384,6 @@ pub trait ExDoubleEndedIterator : Iterator {
     fn next_back(&mut self) -> (ret: Option<<Self as core::iter::Iterator>::Item>)
         ensures
             iter_state_preserved!(old(self), final(self)),
-            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==>
-            <Self as IteratorSpec>::produces(final(self)) == if ret is Some { <Self as IteratorSpec>::produces(old(self)).drop_last() } else { <Self as IteratorSpec>::produces(old(self)) },
             // `next_back` pops the tail of the prophesized remaining(), or returns None
             <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==>
             ({
