@@ -1536,7 +1536,7 @@ impl Visitor {
 
     pub fn desugar_const_or_static(
         &mut self,
-        _con_mode: &FnMode,
+        con_mode: &FnMode,
         con_ensures: &mut Option<Ensures>,
         con_block: &mut Option<Box<Block>>,
         con_expr: &mut Option<Box<Expr>>,
@@ -1571,6 +1571,15 @@ impl Visitor {
             *con_semi_token = Some(Semi { spans: [con_span] });
         }
         *con_ensures = None;
+        if self.erase_ghost.erase() && matches!(con_mode, FnMode::Spec(_) | FnMode::SpecChecked(_))
+        {
+            // When erasing ghost code, a (pub) spec const may be kept as an item,
+            // but its body is spec code that rustc can't const-check, so replace it.
+            if let Some(expr) = con_expr.as_mut() {
+                let span = expr.span();
+                **expr = Expr::Verbatim(quote_spanned!(span => unsafe { ::core::mem::zeroed() }));
+            }
+        }
     }
 
     fn visit_const_or_static(

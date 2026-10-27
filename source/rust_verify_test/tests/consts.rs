@@ -811,3 +811,18 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
+
+test_verify_one_file! {
+    #[test] pub_spec_const_with_spec_ops verus_code! {
+        use vstd::prelude::*;
+        pub const W: u64 = 52;
+        pub spec const MAXP: u64 = ((1u64 << W) - 1u64) as u64;
+        pub spec const BIG: nat = 512 * 512 * 4096;
+        pub spec const S: Seq<nat> = seq![1nat, BIG];
+
+        proof fn test() {
+            assert(BIG == 1073741824);
+            assert(S[1] == BIG);
+        }
+    } => Ok(())
+}
