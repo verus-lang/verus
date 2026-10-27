@@ -1031,6 +1031,13 @@ pub fn assert_rust_error_msg_any(err: TestErr, expected_msg: &str) {
     assert!(found);
 }
 
+pub fn assert_error_msgs(err: TestErr, expected_msgs: &[&str]) {
+    assert_eq!(err.errors.len(), expected_msgs.len());
+    for (error, expected_msg) in err.errors.iter().zip(expected_msgs.iter()) {
+        assert!(error.message.contains(expected_msg));
+    }
+}
+
 pub fn assert_spans_contain(err: &Diagnostic, needle: &str) {
     assert!(
         err.spans
