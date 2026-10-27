@@ -355,10 +355,6 @@ impl PartialEqSpecImpl for char {
     }
 }
 
-pub assume_specification[ <char as PartialEq<char>>::eq ](x: &char, y: &char) -> bool;
-
-pub assume_specification[ <char as PartialEq<char>>::ne ](x: &char, y: &char) -> bool;
-
 /* floating point */
 
 /*
