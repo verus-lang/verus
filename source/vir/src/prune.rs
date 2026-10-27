@@ -453,6 +453,12 @@ fn maybe_reach_set_ops_for_call(
         if !caller_mask.is_all() && !callee_mask.is_none() {
             reach_set_ops(state, ctxt);
         }
+    } else {
+        // A mask can be missing only before trait demotion (the first, whole-crate pruning):
+        // a trait impl function whose trait declaration is not in the map, e.g. an impl of
+        // `Drop` or of an external trait. After trait demotion every trait impl function is
+        // paired with its declaration. The mask check may still need the set operations.
+        reach_set_ops(state, ctxt);
     }
 }
 
