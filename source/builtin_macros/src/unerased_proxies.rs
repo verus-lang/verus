@@ -131,7 +131,9 @@ impl crate::syntax::Visitor {
 
     fn item_needs_unerased_proxy(&self, item: &Item) -> bool {
         match item {
-            Item::Const(item_const) => !is_external(&item_const.attrs),
+            // `const _` cannot be referred to, so it needs no proxy (and the proxy name
+            // `VERUS_UNERASED_PROXY___` would clash between two such items).
+            Item::Const(item_const) => item_const.ident != "_" && !is_external(&item_const.attrs),
             Item::Static(item_static) => !is_external(&item_static.attrs),
             Item::Fn(item_fn) => item_fn.sig.constness.is_some() && !is_external(&item_fn.attrs),
             _ => false,
@@ -538,6 +540,17 @@ impl crate::syntax::Visitor {
                 let erased = self.item_make_external_and_erased(item);
                 new_items.push(proxy);
                 new_items.push(erased);
+            } else if let Item::Const(mut c) = item {
+                if c.ident == "_" && !is_external(&c.attrs) {
+                    // The value of `const _` cannot be used; only the items declared in its
+                    // block matter. Like the wrapper `derive(Structural)` emits, the const
+                    // itself is ignored and the items inside are verified as usual.
+                    c.attrs.push(mk_verus_attr(
+                        c.const_token.span,
+                        quote! { structural_const_wrapper },
+                    ));
+                }
+                new_items.push(Item::Const(c));
             } else {
                 new_items.push(item);
             }

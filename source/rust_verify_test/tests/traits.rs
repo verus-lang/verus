@@ -5039,3 +5039,42 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    // derive macros (serde, ...) put their impls in `const _: () = { ... };` blocks; two such
+    // blocks used to give their impls the same path ("duplicate specification")
+    #[test] test_impls_in_anonymous_consts verus_code! {
+        trait T1 { fn f(&self) -> u8; }
+        trait T2 { fn g(&self) -> u8; }
+        struct A;
+        const _: () = {
+            impl T1 for A { fn f(&self) -> u8 { 1 } }
+        };
+        const _: () = {
+            impl T2 for A { fn g(&self) -> u8 { 2 } }
+        };
+        fn test(a: &A) {
+            let x = a.f();
+            let y = a.g();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // items inside `const _` are verified like any other item
+    #[test] test_anonymous_const_items_verified verus_code! {
+        trait T1 {
+            fn f(&self) -> (r: u8)
+                ensures
+                    r == 1; // FAILS
+        }
+        struct A;
+        const _: () = {
+            impl T1 for A {
+                fn f(&self) -> (r: u8) {
+                    2
+                }
+            }
+        };
+    } => Err(err) => assert_one_fails(err)
+}
