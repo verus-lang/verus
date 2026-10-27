@@ -2,7 +2,7 @@ use super::super::prelude::*;
 use super::super::seq::{
     group_seq_lemmas, lemma_seq_empty, lemma_seq_subrange_index, lemma_seq_subrange_len,
 };
-use core::iter::{Filter, FromIterator, Iterator, Rev, Skip, Take, Zip};
+use core::iter::{Enumerate, Filter, FromIterator, Iterator, Rev, Skip, Take, Zip};
 
 // Reduce the boilerplate in the definitions below.  We have to use a macro,
 // since inside of ExIterator, we don't yet know that `self` is an Iterator.
@@ -189,6 +189,12 @@ pub trait ExIterator {
         ensures
             self.obeys_prophetic_iter_laws() ==>
                 FromIteratorSpec::from_iter_ensures(self.remaining(), self.produces(), collection),
+    ;
+
+    fn enumerate(self) -> (r: Enumerate<Self>)
+        where Self: Sized,
+        ensures
+            self.obeys_prophetic_iter_laws() ==> enumerate_post(self, r),
     ;
 
     fn filter<P>(self, predicate: P) -> (r: core::iter::Filter<Self, P>)
@@ -497,6 +503,59 @@ impl <I> IteratorSpecImpl for &mut I
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         <I as IteratorSpec>::peek(*self, index)
+    }
+}
+
+/********************************************************************************
+ * Definitions for `enumerate()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+pub struct ExEnumerate<I>(Enumerate<I>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn enumerate_iter<I>(e: Enumerate<I>) -> I;
+
+// Define Iter::enumerate's postcondition
+pub uninterp spec fn enumerate_post<I>(i: I, e: Enumerate<I>) -> bool;
+
+// The count starts at 0 and is incremented with the caller's overflow checks,
+// so past `usize::MAX` it either panics or wraps around (as `k as usize` does).
+pub broadcast axiom fn enumerate_postcondition<I: IteratorSpec>(i: I, r: Enumerate<I>)
+    requires
+        i.obeys_prophetic_iter_laws(),
+        #[trigger] enumerate_post(i, r),
+    ensures
+        IteratorSpec::remaining(&r).len() == i.remaining().len(),
+        forall|k: int|
+            #![trigger IteratorSpec::remaining(&r)[k]]
+            #![trigger i.remaining()[k]]
+            0 <= k < i.remaining().len() ==> IteratorSpec::remaining(&r)[k] == (k as usize, i.remaining()[k]),
+        IteratorSpec::produces(&r) == i.produces(),
+        enumerate_iter(r) == i,
+        IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
+;
+
+impl <I> IteratorSpecImpl for Enumerate<I>
+    where I: Iterator {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        enumerate_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    #[verifier::prophetic]
+    uninterp spec fn produces(&self) -> Seq<bool>;
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        match enumerate_iter(*self).peek(index) {
+            Some(x) => Some((index as usize, x)),
+            None => None,
+        }
     }
 }
 
@@ -1068,6 +1127,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
  ********************************************************************************/
 
 pub broadcast group group_iter_axioms {
+    enumerate_postcondition,
     rev_postcondition,
     zip_postcondition,
     filter_postcondition,
