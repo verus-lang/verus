@@ -94,20 +94,22 @@ jobs:
           fi
 
           test -f "$z3"
-          cp "$z3" ./target-verus/release/
-          "./target-verus/release/$(basename "$z3")" --version
+          "$z3" --version
 
-      - name: add MacOS gatekeeper allow script
-        if: matrix.build == 'macos' || matrix.build == 'macos-x86_64'
-        working-directory: ./source
-        run: cp ../tools/macos_allow_gatekeeper.sh ./target-verus/release
-
-      - name: create archive
+      - name: stage release artifacts
         working-directory: ./source
         run: |
-          ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
-          cp -R ./target-verus/release "../${{ matrix.release_name }}"
-          cd ..
+          if [[ "${{ matrix.build }}" == "macos" || "${{ matrix.build }}" == "macos-x86_64" ]]; then
+            FOR_MAC="--for-macos"
+          else
+            FOR_MAC=""
+          fi
+
+          cargo run --release -p cargo-verus-toolchains --bin create-release -- $FOR_MAC --output-dir "../${{ matrix.release_name }}"
+
+      - name: create archive
+        working-directory: .
+        run: |
           if [ "${{ runner.os }}" == "Windows" ]; then
             7z a "${{ matrix.release_name }}.zip" "./${{ matrix.release_name }}"
           else

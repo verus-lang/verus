@@ -1385,6 +1385,52 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_slice_swap verus_code! {
+        use vstd::prelude::*;
+
+        fn test_slice(s: &mut [u8])
+            requires
+                old(s)@ == seq![1u8, 2, 3],
+        {
+            s.swap(0, 2);
+            assert(s@ == seq![3u8, 2, 1]);
+            s.swap(1, 1);
+            assert(s@ == seq![3u8, 2, 1]);
+        }
+
+        fn test_array() {
+            let mut a: [u16; 4] = [10, 20, 30, 40];
+            a.swap(1, 3);
+            assert(a@ == seq![10u16, 40, 30, 20]);
+        }
+
+        fn test_vec() {
+            let mut v: Vec<u32> = vec![1, 2];
+            v.swap(0, 1);
+            assert(v@ == seq![2u32, 1]);
+        }
+
+        fn test_generic<T>(s: &mut [T], i: usize, j: usize)
+            requires
+                i < old(s)@.len(),
+                j < old(s)@.len(),
+            ensures
+                final(s)@.len() == old(s)@.len(),
+                final(s)@[i as int] == old(s)@[j as int],
+                final(s)@[j as int] == old(s)@[i as int],
+                forall|k: int| 0 <= k < old(s)@.len() && k != i && k != j ==> final(s)@[k] == old(s)@[k],
+            no_unwind
+        {
+            s.swap(i, j);
+        }
+
+        fn test_out_of_bounds(s: &mut [u8]) {
+            s.swap(0, 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     // GitHub issue #2968
     #[test] test_range_inclusive_exhausted_iter verus_code! {
         use core::ops::{Bound, RangeBounds};

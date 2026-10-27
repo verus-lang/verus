@@ -211,6 +211,11 @@ jobs:
           cargo run --release --bin rust_verify -- -V cvc5 ../examples/assorted_demo.rs
           cargo nextest run --release -p air
           cargo nextest run --release -p rust_verify_test
+          # cvc5: multi-error reporting reads the failing assertion labels out of the model;
+          # cvc5 returns total models, so these tests exercise label confirmation (run
+          # at low parallelism: cvc5's rlimit is sensitive to CPU contention)
+          VERUS_EXTRA_ARGS="-V cvc5" cargo nextest run --release -p rust_verify_test \
+            --test mut_refs_slices_arrays -j 4
 
   # check if it builds and that basic tests pass on our main supported platforms
   basic-test:
