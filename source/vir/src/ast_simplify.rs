@@ -393,6 +393,7 @@ fn simplify_one_expr(
                 args: Arc::new(vec![]),
                 post_args: None,
                 body: None,
+                unwind_path: None,
             };
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
@@ -401,6 +402,7 @@ fn simplify_one_expr(
             args,
             post_args,
             body,
+            unwind_path,
         } => {
             assert!(attrs.autospec == AutospecUsage::Final);
 
@@ -433,6 +435,7 @@ fn simplify_one_expr(
                 args,
                 post_args: post_args.clone(),
                 body: body.clone(),
+                unwind_path: unwind_path.clone(),
             };
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
@@ -880,6 +883,7 @@ fn mk_closure_req_call(
             args: Arc::new(vec![fn_val.clone(), arg_tuple.clone()]),
             post_args: None,
             body: None,
+            unwind_path: None,
         },
     )
 }
@@ -906,6 +910,7 @@ fn mk_closure_ens_call(
             args: Arc::new(vec![fn_val.clone(), arg_tuple.clone(), ret_arg.clone()]),
             post_args: None,
             body: None,
+            unwind_path: None,
         },
     )
 }
@@ -932,6 +937,7 @@ fn mk_closure_opens_call(
             args: Arc::new(vec![fn_val.clone(), arg_tuple.clone()]),
             post_args: None,
             body: None,
+            unwind_path: None,
         },
     )
 }

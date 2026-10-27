@@ -423,6 +423,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 assert_id,
                 body,
                 restrict_unwind,
+                unwind_path,
             } => {
                 let resolved_method = if let Some((f, ts)) = resolved_method {
                     let ts = self.visit_typs(ts)?;
@@ -434,6 +435,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let args = self.visit_exps(args)?;
                 let dest = R::map_opt(dest, &mut |d| self.visit_dest(d))?;
                 let body = R::map_opt(body, &mut |s| self.visit_stm(s))?;
+                let unwind_path = R::map_opt(unwind_path, &mut |s| self.visit_stm(s))?;
                 R::ret(|| {
                     stm_new(StmX::Call {
                         fun: fun.clone(),
@@ -447,6 +449,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         assert_id: assert_id.clone(),
                         body: R::get_opt(body),
                         restrict_unwind: *restrict_unwind,
+                        unwind_path: R::get_opt(unwind_path),
                     })
                 })
             }

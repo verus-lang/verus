@@ -544,6 +544,7 @@ fn check_one_expr(
             args: _,
             post_args: _,
             body: _,
+            unwind_path: _,
         } => {
             if attrs.assume_external_allowed && !ctxt.funs.contains_key(x) {
                 if ctxt.no_cheating && !ctxt.assumptions_allowed(function) {

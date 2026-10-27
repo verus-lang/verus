@@ -232,6 +232,9 @@ pub enum StmX {
         /// If true, check the callee's `requires[no_unwind]` conditions
         /// (see CallTargetAttrs::restrict_unwind)
         restrict_unwind: bool,
+        /// Code to be executed in the case that the call unwinds
+        /// (e.g., resolutions and type invariant obligations)
+        unwind_path: Option<Stm>,
     },
     /// Assertion to be verified by the SMT solver; reports Stm's span on failure plus optional extra info
     Assert(Option<AssertId>, Option<Message>, Exp),
