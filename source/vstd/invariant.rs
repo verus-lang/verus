@@ -582,6 +582,21 @@ macro_rules! open_atomic_invariant {
     };
 }
 
+/// Like [`open_atomic_invariant!`], but for use inside a `#[verus_spec]` function:
+/// the body uses attribute syntax (`proof!`, `proof_decl!`, `proof_with!`) rather than
+/// verus syntax.
+#[macro_export]
+macro_rules! open_atomic_invariant_attr {
+    [$($tail:tt)*] => {
+        #[allow(unexpected_cfgs)] // make sure client crates don't see "unexpected `cfg` condition name: `verus_...`"
+        {
+            $crate::vstd::prelude::verus_exec_inv_macro_exprs_attr!(
+                $crate::vstd::invariant::open_atomic_invariant_internal!($crate::vstd::invariant::create_open_invariant_credit() => $($tail)*)
+            )
+        }
+    };
+}
+
 #[macro_export]
 macro_rules! open_atomic_invariant_in_proof {
     [$($tail:tt)*] => {
@@ -622,6 +637,7 @@ macro_rules! open_atomic_invariant_in_proof_internal {
 }
 
 pub use open_atomic_invariant;
+pub use open_atomic_invariant_attr;
 pub use open_atomic_invariant_in_proof;
 #[doc(hidden)]
 pub use open_atomic_invariant_in_proof_internal;
@@ -734,6 +750,22 @@ macro_rules! open_local_invariant {
     };
 }
 
+/// Like [`open_local_invariant!`], but for use inside a `#[verus_spec]` function:
+/// the body uses attribute syntax (`proof!`, `proof_decl!`, `proof_with!`) rather than
+/// verus syntax.
+#[macro_export]
+macro_rules! open_local_invariant_attr {
+    [$($tail:tt)*] => {
+        #[allow(unexpected_cfgs)] // make sure client crates don't see "unexpected `cfg` condition name: `verus_...`"
+        {
+            #[cfg(verus_keep_ghost_body)]
+            let credit = $crate::vstd::invariant::create_open_invariant_credit();
+            $crate::vstd::prelude::verus_exec_inv_macro_exprs_attr!(
+                $crate::vstd::invariant::open_local_invariant_internal!(credit => $($tail)*))
+        }
+    };
+}
+
 #[macro_export]
 macro_rules! open_local_invariant_in_proof {
     [$($tail:tt)*] => {
@@ -772,6 +804,7 @@ macro_rules! open_local_invariant_in_proof_internal {
 }
 
 pub use open_local_invariant;
+pub use open_local_invariant_attr;
 pub use open_local_invariant_in_proof;
 #[doc(hidden)]
 pub use open_local_invariant_in_proof_internal;

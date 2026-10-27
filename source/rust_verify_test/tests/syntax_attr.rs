@@ -1678,3 +1678,136 @@ test_verify_one_file! {
         static MY_STATIC2: u64 = 0;
     } => Err(e) => assert_any_vir_error_msg(e, "#[verifier::external_body] doesn't make sense for this item type -- it is only applicable to functions and datatype declarations" )
 }
+
+test_verify_one_file! {
+    #[test] test_proof_with_assign code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(ret =>
+            with Tracked(y): Tracked<&mut int>
+            ensures *final(y) == *old(y) + 1, ret == x
+        )]
+        fn incr(x: u32) -> u32 {
+            proof!{ *y = *y + 1; }
+            x
+        }
+
+        #[verus_spec]
+        fn test() {
+            proof_decl!{ let tracked mut y: int = 0; }
+            let mut r = 0;
+            proof_with!(Tracked(&mut y));
+            r = incr(7);
+            proof!{
+                assert(y == 1);
+                assert(r == 7);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_open_invariant_attr code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        verus!{
+        pub struct P;
+        impl InvariantPredicate<(), int> for P {
+            open spec fn inv(k: (), v: int) -> bool { v == 5 }
+        }
+        }
+
+        #[verus_verify(external_body, atomic)]
+        #[verus_spec(r =>
+            with Tracked(x): Tracked<&mut int>
+            ensures *final(x) == *old(x), r == 3,
+            opens_invariants none
+            no_unwind
+        )]
+        fn touch() -> u8 { 3 }
+
+        #[verus_spec(
+            with Tracked(inv): Tracked<&AtomicInvariant<(), int, P>>
+        )]
+        fn test_atomic() {
+            let mut r = 0;
+            open_atomic_invariant_attr!(inv => g => {
+                proof!{ assert(g == 5); }
+                proof_with!(Tracked(&mut g));
+                r = touch();
+            });
+            proof!{ assert(r == 3); }
+        }
+
+        #[verus_spec(
+            with Tracked(inv): Tracked<&LocalInvariant<(), int, P>>
+        )]
+        fn test_local() {
+            open_local_invariant_attr!(inv => g => {
+                proof_with!(Tracked(&mut g));
+                let r = touch();
+                proof!{
+                    assert(g == 5);
+                    assert(r == 3);
+                }
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_open_invariant_attr_fail code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        verus!{
+        pub struct P;
+        impl InvariantPredicate<(), int> for P {
+            open spec fn inv(k: (), v: int) -> bool { v == 5 }
+        }
+        }
+
+        #[verus_spec(
+            with Tracked(inv): Tracked<&AtomicInvariant<(), int, P>>
+        )]
+        fn test() {
+            open_atomic_invariant_attr!(inv => g => {
+                proof!{ g = 6; }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Cannot show invariant holds at end of block")
+}
+
+test_verify_one_file! {
+    #[test] test_open_invariant_attr_non_atomic code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        verus!{
+        pub struct P;
+        impl InvariantPredicate<(), int> for P {
+            open spec fn inv(k: (), v: int) -> bool { v == 5 }
+        }
+        }
+
+        #[verus_verify(external_body)]
+        #[verus_spec(
+            with Tracked(x): Tracked<&mut int>
+            ensures *final(x) == *old(x),
+            opens_invariants none
+            no_unwind
+        )]
+        fn touch() {}
+
+        #[verus_spec(
+            with Tracked(inv): Tracked<&AtomicInvariant<(), int, P>>
+        )]
+        fn test() {
+            open_atomic_invariant_attr!(inv => g => {
+                proof_with!(Tracked(&mut g));
+                touch();
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain non-atomic operations")
+}

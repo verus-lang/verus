@@ -23,6 +23,7 @@ pub use verus_builtin_macros::verus_exec_expr;
 pub use verus_builtin_macros::verus_exec_expr_erase_ghost;
 pub use verus_builtin_macros::verus_exec_expr_keep_ghost;
 pub use verus_builtin_macros::verus_exec_inv_macro_exprs;
+pub use verus_builtin_macros::verus_exec_inv_macro_exprs_attr;
 pub use verus_builtin_macros::verus_exec_macro_exprs;
 pub use verus_builtin_macros::verus_ghost_inv_macro_exprs;
 pub use verus_builtin_macros::verus_impl;

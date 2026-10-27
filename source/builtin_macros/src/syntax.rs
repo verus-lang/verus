@@ -5886,17 +5886,20 @@ pub(crate) fn proof_macro_exprs(
     proc_macro::TokenStream::from(new_stream)
 }
 
+/// If `attr_body` is true, the last element (the body block) is rewritten the same way
+/// as the body of a `#[verus_spec]` function, rather than with verus syntax.
 pub(crate) fn inv_au_macro_exprs(
     erase_ghost: EraseGhost,
     treat_elements_as_ghost: bool,
     ghost_override_index: usize,
+    attr_body: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     let stream = rejoin_tokens(stream);
     let mut invoke: MacroInvoke = parse_macro_input!(stream as MacroInvoke);
     let mut new_stream = TokenStream::new();
     let mut visitor = Visitor {
-        erase_ghost,
+        erase_ghost: erase_ghost.clone(),
         use_spec_traits: true,
         inside_ghost: 0,
         inside_pat: 0,
@@ -5910,7 +5913,7 @@ pub(crate) fn inv_au_macro_exprs(
         additional_items: Vec::new(),
     };
 
-    invoke
+    let mut exprs: Vec<&mut Box<Expr>> = invoke
         .elements
         .elements
         .iter_mut()
@@ -5918,14 +5921,27 @@ pub(crate) fn inv_au_macro_exprs(
             MacroElement::Expr(expr) => Some(expr),
             _ => None,
         })
-        .enumerate()
-        .for_each(|(idx, expr)| {
-            // Always treat the element at `ghost_override_index` as ghost
-            // even if `treat_elements_as_ghost` is false.
-            let ghost = treat_elements_as_ghost || idx == ghost_override_index;
-            visitor.inside_ghost = u32::from(ghost);
-            visitor.visit_expr_mut(expr);
-        });
+        .collect();
+    let body_idx = if attr_body { exprs.len().checked_sub(1) } else { None };
+    exprs.iter_mut().enumerate().for_each(|(idx, expr)| {
+        if Some(idx) == body_idx {
+            let mut body: syn::Expr = match syn::parse2(expr.to_token_stream()) {
+                Ok(body) => body,
+                Err(err) => {
+                    **expr = Box::new(Expr::Verbatim(err.to_compile_error()));
+                    return;
+                }
+            };
+            crate::attr_rewrite::replace_expr(erase_ghost.clone(), &mut body);
+            **expr = Box::new(Expr::Verbatim(body.to_token_stream()));
+            return;
+        }
+        // Always treat the element at `ghost_override_index` as ghost
+        // even if `treat_elements_as_ghost` is false.
+        let ghost = treat_elements_as_ghost || idx == ghost_override_index;
+        visitor.inside_ghost = u32::from(ghost);
+        visitor.visit_expr_mut(expr);
+    });
 
     invoke.to_tokens(&mut new_stream);
     proc_macro::TokenStream::from(new_stream)

@@ -128,10 +128,11 @@ pub(crate) fn rewrite_verus_attribute(
         ["external", "external_body", "external_type_specification"];
     // Modifier attrs are compatible with both external and non-external attrs.
     // They neither set contains_external nor contains_non_external.
-    const MODIFIER_ATTRS: [&str; 3] = [
+    const MODIFIER_ATTRS: [&str; 4] = [
         "reject_recursive_types",
         "reject_recursive_types_in_ground_variants",
         "accept_recursive_types",
+        "atomic",
     ];
 
     for arg in &args {
@@ -1045,6 +1046,11 @@ fn rewrite_with_expr(
     expr: &mut Expr,
     call_with_spec: verus_syn::WithSpecOnExpr,
 ) -> Vec<verus_syn::Stmt> {
+    // For an assignment `x = rhs`, apply the `with` to `rhs`.
+    if let syn::Expr::Assign(syn::ExprAssign { right, .. }) = expr {
+        return rewrite_with_expr(erase, right, call_with_spec);
+    }
+
     let verus_syn::WithSpecOnExpr { inputs, outputs, follows, erased_fields, .. } = call_with_spec;
 
     if outputs.is_some() || inputs.len() > 0 {
