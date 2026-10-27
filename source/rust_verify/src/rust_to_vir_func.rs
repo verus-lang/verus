@@ -3260,7 +3260,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     if vattrs.publish == Some(AttrPublish::Open) && mode_opt == Some(Mode::Exec) {
         return err_span(
             span,
-            "const is marked 'exec' mode but also has an internal 'open' attribute (note: this can happen if `#[verus_spec(...)]` is used inside the `verus!` macro)",
+            "const is marked `exec` mode but also has an internal `open` attribute (note: this can happen if `#[verus_spec(...)]` is used inside the `verus!` macro)",
         );
     }
 

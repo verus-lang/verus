@@ -164,7 +164,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] static_mut_unsupported verus_code! {
         static mut x: u64 = 0;
-    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature: static mut")
+    } => Err(e) => assert_vir_error_msg(e, "Verus does not currently support static mut")
 }
 
 test_verify_one_file! {
@@ -582,7 +582,7 @@ test_verify_one_file! {
         assert!(err.warnings.len() == 1);
         assert!(err.errors.len() == 1);
         assert!(err.warnings[0].message.contains("#[verus_spec] is likely used inside a verus! block"));
-        assert_vir_error_msg(err, "const is marked 'exec' mode but also has an internal 'open' attribute (note: this can happen if `#[verus_spec(...)]` is used inside the `verus!` macro)");
+        assert_vir_error_msg(err, "const is marked `exec` mode but also has an internal `open` attribute (note: this can happen if `#[verus_spec(...)]` is used inside the `verus!` macro)");
     }
 }
 
