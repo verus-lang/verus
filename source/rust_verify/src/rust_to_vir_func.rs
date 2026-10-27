@@ -14,7 +14,7 @@ use crate::rust_to_vir_expr::{
     param_pat_to_mut_var,
 };
 use crate::util::{err_span, err_span_bare};
-use crate::verus_items::{BuiltinTypeItem, VerusItem};
+use crate::verus_items::{VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_hir::{
     Attribute, Body, BodyId, Expr, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety,
@@ -34,7 +34,7 @@ use std::sync::Arc;
 use std::vec;
 use vir::ast::{
     BodyVisibility, CrateId, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionStubX, FunctionX,
-    ItemKind, Mode, OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypDecoration, TypX,
+    ItemKind, Mode, OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypX,
     UnwrapParameter, VarIdent, VirErr, Visibility,
 };
 use vir::ast_util::{air_unique_var, unit_typ};
@@ -340,7 +340,6 @@ fn mk_bctx<'tcx>(
     mode: Mode,
     external_body: bool,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
-    migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     param_names: Vec<VarIdent>,
     external_opaque_type_map: Option<HashMap<Path, Path>>,
 ) -> BodyCtxt<'tcx> {
@@ -353,7 +352,6 @@ fn mk_bctx<'tcx>(
         external_body,
         in_ghost: mode != Mode::Exec,
         atomically: None,
-        migrate_postcondition_vars,
         in_fn_sig: false,
         in_postcondition: false,
         in_old: false,
@@ -375,7 +373,6 @@ fn body_to_vir<'tcx>(
     ret_mode: Mode,
     external_body: bool,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
-    migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     params: &[vir::ast::Param],
     external_opaque_type_map: Option<HashMap<Path, Path>>,
     is_async: bool,
@@ -388,7 +385,6 @@ fn body_to_vir<'tcx>(
         mode,
         external_body,
         external_trait_from_to,
-        migrate_postcondition_vars,
         param_names,
         external_opaque_type_map,
     );
@@ -1545,7 +1541,6 @@ pub(crate) struct FunctionInfo<'tcx> {
     pub sig: FnOrConstSig<'tcx>,
     pub vattrs: VerifierAttrs,
     pub external_trait_from_to: Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
-    pub migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     pub assume_specification_opaque_type_map: Option<HashMap<Path, Path>>,
     pub ret_typ_mode: Option<(Typ, Mode)>,
     pub autoderive_action: Option<AutomaticDeriveAction>,
@@ -1649,11 +1644,6 @@ pub(crate) fn check_item_fn<'tcx>(
     let mode = match &sig.sig {
         FnOrConstSigEnum::Fn(..) => get_mode(Mode::Exec, attrs),
         FnOrConstSigEnum::ConstVar(..) => get_mode(Mode::Spec, attrs),
-    };
-
-    let do_migration = {
-        let migration_attr = crate::attributes::migrate_postconditions_walk_parents(ctxt.tcx, id);
-        migration_attr == Some(true)
     };
 
     if vattrs.encoded_const || vattrs.encoded_static {
@@ -1892,7 +1882,6 @@ pub(crate) fn check_item_fn<'tcx>(
             .collect(),
     };
 
-    let mut migrate_postcondition_vars: HashSet<VarIdent> = HashSet::new();
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     assert!(params.len() == inputs.len());
     for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
@@ -1904,12 +1893,6 @@ pub(crate) fn check_item_fn<'tcx>(
             // where the mode will later be overridden by the separate spec method anyway:
             Mode::Exec
         };
-
-        if do_migration {
-            if is_mut_ty(ctxt, *input).is_some() {
-                migrate_postcondition_vars.insert(name.clone());
-            }
-        }
 
         let typ = ctxt.mid_ty_to_vir(id, span, input, None)?;
 
@@ -1974,7 +1957,6 @@ pub(crate) fn check_item_fn<'tcx>(
             mode,
             false,
             &external_trait_from_to,
-            None,
             &vir_params,
             assume_specification_opaque_type_map.clone(),
             false,
@@ -2042,21 +2024,6 @@ pub(crate) fn check_item_fn<'tcx>(
         all_param_names.push(unwrap.inner_name.clone());
         unwrap_param_map.insert(unwrap.outer_name.clone(), unwrap.clone());
     }
-
-    let migrate_postcondition_vars = if do_migration {
-        let mut new = HashSet::new();
-        for var in migrate_postcondition_vars.iter() {
-            let v = match unwrap_param_map.get(var) {
-                Some(unwrap) => unwrap.inner_name.clone(),
-                None => var.clone(),
-            };
-            let inserted = new.insert(v.clone());
-            assert!(inserted);
-        }
-        Some(new)
-    } else {
-        None
-    };
 
     for param in vir_params.iter_mut() {
         all_param_names.push(param.x.name.clone());
@@ -2282,7 +2249,6 @@ pub(crate) fn check_item_fn<'tcx>(
         vattrs,
         def_id: id,
         external_trait_from_to,
-        migrate_postcondition_vars,
         assume_specification_opaque_type_map,
         ret_typ_mode,
         autoderive_action: autoderive_action,
@@ -2327,7 +2293,6 @@ pub(crate) fn finish_function<'tcx>(
         ref vattrs,
         def_id,
         ref external_trait_from_to,
-        ref migrate_postcondition_vars,
         ref assume_specification_opaque_type_map,
         ref ret_typ_mode,
         autoderive_action,
@@ -2373,7 +2338,6 @@ pub(crate) fn finish_function<'tcx>(
                 mode,
                 external_body,
                 &external_trait_from_to,
-                migrate_postcondition_vars.clone(),
                 &params,
                 assume_specification_opaque_type_map.clone(),
                 is_async,
@@ -2895,38 +2859,6 @@ fn check_generics_for_invariant_fn<'tcx>(
                 "`#[verifier::type_invariant]` function parameter must be a datatype declared in this crate",
             );
         }
-    }
-}
-
-fn is_mut_ty<'tcx>(
-    ctxt: &Context<'tcx>,
-    ty: rustc_middle::ty::Ty<'tcx>,
-) -> Option<(&'tcx rustc_middle::ty::Ty<'tcx>, Option<(Mode, TypDecoration)>)> {
-    use rustc_middle::ty::*;
-    match ty.kind() {
-        TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some((tys, None)),
-        TyKind::Adt(AdtDef(adt_def_data), args) => {
-            let did = adt_def_data.did;
-            let verus_item = ctxt.verus_items.id_to_name.get(&did);
-            if let Some(VerusItem::BuiltinType(
-                bt @ (BuiltinTypeItem::Ghost | BuiltinTypeItem::Tracked),
-            )) = verus_item
-            {
-                assert_eq!(args.len(), 1);
-                if let Some(t) = args[0].as_type() {
-                    if let Some((inner, None)) = is_mut_ty(ctxt, t) {
-                        let mode_and_decoration = match bt {
-                            BuiltinTypeItem::Ghost => (Mode::Spec, TypDecoration::Ghost),
-                            BuiltinTypeItem::Tracked => (Mode::Proof, TypDecoration::Tracked),
-                            _ => unreachable!(),
-                        };
-                        return Some((inner, Some(mode_and_decoration)));
-                    }
-                }
-            }
-            None
-        }
-        _ => None,
     }
 }
 
@@ -3498,7 +3430,6 @@ pub(crate) fn finish_const_or_static<'tcx>(
         ret_mode,
         vattrs.external_body,
         &None,
-        None,
         &[],
         None,
         false,

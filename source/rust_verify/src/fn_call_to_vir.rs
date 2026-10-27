@@ -2352,22 +2352,6 @@ fn verus_item_to_vir<'tcx, 'a>(
             mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
         }
         VerusItem::MutRefCurrent | VerusItem::MutRefFuture | VerusItem::Final => {
-            let name = match verus_item {
-                VerusItem::MutRefCurrent => "mut_ref_current",
-                VerusItem::MutRefFuture => "mut_ref_future",
-                VerusItem::Final => "final",
-                _ => unreachable!(),
-            };
-
-            if bctx.migrate_postcondition_vars.is_some() {
-                return err_span(
-                    expr.span,
-                    format!(
-                        "to use `{name}`, disable mutable reference backwards-compatibility (add `#[verifier::deprecated_postcondition_mut_ref_style(false)]` to the function)"
-                    ),
-                );
-            }
-
             record_spec_fn(bctx, expr);
             let exp = expr_to_vir_consume(bctx, &args[0])?;
             let op = match verus_item {

@@ -810,7 +810,6 @@ fn make_trait_decl<'tcx>(
         sig: spec_method_info.sig.clone(),
         vattrs: spec_method_info.vattrs.clone(),
         external_trait_from_to: spec_method_info.external_trait_from_to.clone(),
-        migrate_postcondition_vars: spec_method_info.migrate_postcondition_vars.clone(),
         assume_specification_opaque_type_map: spec_method_info
             .assume_specification_opaque_type_map
             .clone(),

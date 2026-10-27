@@ -85,7 +85,6 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) external_body: bool,
     pub(crate) in_ghost: bool,
     pub(crate) atomically: Option<Arc<AtomicallyCtxt>>,
-    pub(crate) migrate_postcondition_vars: Option<std::collections::HashSet<vir::ast::VarIdent>>,
     /// Context to interpret a header if we encounter one
     /// (this is used to determine when it's correct to set `in_fn_sig`).
     pub(crate) header_setting: HeaderSetting,
@@ -230,12 +229,6 @@ impl<'tcx> BodyCtxt<'tcx> {
         ty: &rustc_middle::ty::Ty<'tcx>,
     ) -> Result<vir::ast::Typ, VirErr> {
         self.ctxt.mid_ty_to_vir(self.fun_id, span, ty, self.external_opaque_type_map.as_ref())
-    }
-    pub(crate) fn is_param_migrated(&self, ident: &vir::ast::VarIdent) -> bool {
-        let Some(vars) = &self.migrate_postcondition_vars else {
-            return false;
-        };
-        vars.contains(ident)
     }
 
     pub(crate) fn is_param_for_fn_or_non_spec_closure(&self, ident: &vir::ast::VarIdent) -> bool {

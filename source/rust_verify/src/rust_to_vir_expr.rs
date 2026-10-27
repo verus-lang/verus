@@ -2952,18 +2952,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             erasure_info.shadow_check.push(expr.hir_id);
                         }
 
-                        if bctx.in_postcondition && !bctx.in_old && bctx.is_param_migrated(&name) {
-                            {
-                                let mut erasure_info = bctx.erasure_info.borrow_mut();
-                                erasure_info
-                                    .local_hir_vir_ids
-                                    .push((Some(expr.hir_id), place.span.id));
-                            }
-                            let e = ExprOrPlace::Place(place).to_spec_expr(bctx);
-                            let x = ExprX::Unary(UnaryOp::MutRefFinal(true), e);
-                            let e = bctx.spanned_typed_new(expr.span, typ, x);
-                            Ok(ExprOrPlace::Expr(e))
-                        } else if bctx.in_old {
+                        if bctx.in_old {
                             // old(x) should create a VarAt(Pre) if we're in the body of a function
                             // with x as a param.
                             // If we're in the signature of the function that declares x,
