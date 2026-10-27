@@ -619,7 +619,7 @@ fn smt_get_model(
     let e = context.message_interface.append_labels(&error, &discovered_additional_info);
 
     // Notify the observer while the solver model is still valid.
-    // `eval_bool_expr` calls `context.evaluate_bool()`, which sends `(get-value ...)` to the solver.
+    // `eval_bool_expr` calls `context.evaluate_bool()`, which sends `get-value` to the solver.
     // This only works before the label is disabled (which invalidates the model).
     // Clone the shared handle so `context` stays free for the eval_bool_expr closure.
     let obs = context.query_result_observer.clone();
