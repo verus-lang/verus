@@ -157,7 +157,7 @@ Existing axioms with minor contract changes on this branch are in
 |---|---|---|---|
 | `PointsToByte` (`external_body` struct; `uninterp` `ptr`, `byte`) | `points_to_model.rs` | A permission to one byte, with its address and abstract byte. | everything byte-level |
 | `PointsToByte`'s `is_nonnull`, `ptr_bounds`, `provenance_not_none`, `is_disjoint` | `points_to_model.rs` | A byte permission's pointer is non-null, within its allocation, has non-null provenance; two byte permissions are at different addresses. | `PointsToUntyped`'s and `PointsToRaw`'s pointer-level lemmas |
-| `ProvenanceData` (`external_body`; `uninterp` `start_addr`, `alloc_len`, `alignment`, `orig_size`, `alloc_id`), `provenance_properties` | `ptr_model.rs` | The allocation model. `orig_size` replaces `Dealloc`'s size tracking. | pointer bounds, `allocate` / `deallocate` |
+| `AllocationData` (`start_addr`, `alloc_len`, `alignment`, `orig_size`, `alloc_id`); `Tag` (`external_body`); `ProvenanceData` (`external_body`; `uninterp` `spatial_data`, `tag`; `open` accessors for each `AllocationData` field); `provenance_properties` (triggered on `spatial_data`); `provenance_eq_up_to_tag` | `ptr_model.rs` | The allocation model, plus a tag that tracks reborrows. `orig_size` replaces `Dealloc`'s size tracking. | pointer bounds, `allocate` / `deallocate`, `ptr_eq_up_to_tag` |
 | pointer model: `View for *mut T` (`uninterp`), `ptr_mut_from_data` (`uninterp`), `axiom_ptr_mut_from_data`, `ptrs_mut_eq`, `tracked_ptr_mut_from_data` | `ptr_model.rs` | A pointer is its `PtrData` (address, provenance, metadata). | every pointer spec (e.g. the generic `PointsToUnaligned` pointer built from its metadata) |
 | `assume_specification`s for pointer `==`, `null`, `null_mut`, `addr`, `with_addr`; the `cast_*` `external_body` functions | `ptr_specs.rs` | The exec pointer operations match the model. | exec code |
 | `SharedReference` (`external_body`; `uninterp` `value`, `ptr`), `ptr_nonnull`, `axiom_shared_ref_value_view` | `shared_reference.rs` | A shared reference with its pointer. | exec code; the source of valid shared permissions |
@@ -1262,6 +1262,7 @@ and `get_unchecked_verus` / `get_unchecked_mut_verus` also require `perm_wf(perm
 their comments "(1) follows from the below condition and `PointsTo<T>::{ptr_bounds, axiom_pt_slice_len}`" become "... `perm_wf(perm)` and `PointsTo<T>::ptr_bounds`".
 `perm_init` is an open spec fn (`is_valid()` and `perm_wf`); its defining axioms are removed.
 `valid_indices_slice_points_to` bounds the indices by `slice.len()` (the pointer's metadata).
+`valid_indices_str_points_to` bounds the indices by `slice.ptr()@.metadata` and, when the value is valid, requires them to be on its char boundaries.
 Everything else in the file is unchanged.
 
 ```rust
@@ -1272,9 +1273,19 @@ pub open spec fn valid_indices_slice_points_to<T>(start: int, end: int, slice: &
     0 <= start <= end <= slice.len()
 }
 
+/// For a `str` permission, the indices must be within the pointer's metadata,
+/// and, if the permission holds a value, on char boundaries of the value.
+pub open spec fn valid_indices_str_points_to(start: int, end: int, slice: &PointsTo<str>) -> bool {
+    &&& 0 <= start <= end <= slice.ptr()@.metadata
+    &&& slice.typed_value().is_valid() ==> {
+        &&& is_char_boundary(slice.typed_value().value_ref()@, start)
+        &&& is_char_boundary(slice.typed_value().value_ref()@, end)
+    }
+}
+
 pub broadcast axiom fn def_valid_indices_str_points_to(start: int, end: int, slice: &PointsTo<str>)
     ensures
-        valid_indices_str(start, end, slice.typed_value().value_ref()) <==> #[trigger] valid_indices(
+        valid_indices_str_points_to(start, end, slice) <==> #[trigger] valid_indices(
             start,
             end,
             slice,
