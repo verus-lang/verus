@@ -42,6 +42,25 @@ impl FileStats {
         }
     }
 
+    /// Like `mark`, but on lines that already contain `keep`, add `kind` instead of replacing
+    pub fn mark_keeping(
+        &mut self,
+        spanned: &(impl Spanned + Debug),
+        keep: CodeKind,
+        kind: CodeKind,
+        content: LineContent,
+    ) {
+        for l in to_lines_range(spanned) {
+            if !self.lines[l].kinds.contains(&keep) {
+                self.lines[l]
+                    .kinds
+                    .retain(|x| !matches!(x, CodeKind::Spec | CodeKind::Proof | CodeKind::Exec));
+            }
+            self.lines[l].kinds.insert(kind);
+            self.lines[l].line_content.insert(content);
+        }
+    }
+
     pub fn mark_with_additional_kind(
         &mut self,
         spanned: &impl Spanned,

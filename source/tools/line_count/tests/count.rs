@@ -404,8 +404,8 @@ fn test_open_invariant() {
     Exec               | Signature(Exec)                | fn open_nested(
     Exec               | Signature(Exec)                |     a: &PAtomicU32,
     Exec               | Signature(Exec)                |     b: &PAtomicU32,
-    Proof              | Signature(Exec)                |     i: Tracked<AtomicInvariant<AtomicCellId, PermissionU32, EvenPredicate>>,
-    Proof              | Signature(Exec)                |     j: Tracked<AtomicInvariant<AtomicCellId, PermissionU32, EvenPredicate>>,
+    Proof Exec         | Signature(Exec)                |     i: Tracked<AtomicInvariant<AtomicCellId, PermissionU32, EvenPredicate>>,
+    Proof Exec         | Signature(Exec)                |     j: Tracked<AtomicInvariant<AtomicCellId, PermissionU32, EvenPredicate>>,
     Exec               | Signature(Exec)                | )
     Spec               | Signature(Exec FunctionSpec    |     requires
     Spec               | Signature(Exec FunctionSpec    |         i@.constant() == a.id(),
@@ -477,8 +477,8 @@ fn test_open_invariant() {
     Proof              | Code(Proof) Body(Proof)        | }
                        |                                |
     Exec               | Signature(Exec)                | fn use_credits(
-    Proof              | Signature(Exec)                |     i: Tracked<AtomicInvariant<AtomicCellId, PermissionU32, EvenPredicate>>,
-    Proof              | Signature(Exec)                |     Tracked(inv): Tracked<&LocalInvariant<CellId, PointsTo<u8>, EvenCell>>,
+    Proof Exec         | Signature(Exec)                |     i: Tracked<AtomicInvariant<AtomicCellId, PermissionU32, EvenPredicate>>,
+    Proof Exec         | Signature(Exec)                |     Tracked(inv): Tracked<&LocalInvariant<CellId, PointsTo<u8>, EvenCell>>,
     Exec               | Code(Exec Signature Body(Exec  | ) {
     Exec               | Code(Exec) Body(Exec)          |     let credit1 = create_open_invariant_credit();
     Exec               | Code(Exec) Body(Exec)          |     let credit2 = create_open_invariant_credit();
@@ -492,9 +492,9 @@ fn test_open_invariant() {
 
     | file              | Trusted | Spec | Proof | Exec | Proof+Exec | Comment | Layout | unaccounted |
     |-------------------|---------|------|-------|------|------------|---------|--------|-------------|
-    | open_invariant.rs |       1 |   19 |    57 |   16 |          6 |       5 |      4 |          28 |
+    | open_invariant.rs |       1 |   19 |    53 |   16 |         10 |       5 |      4 |          28 |
     |-------------------|---------|------|-------|------|------------|---------|--------|-------------|
-    | total             |       1 |   19 |    57 |   16 |          6 |       5 |      4 |          28 |
+    | total             |       1 |   19 |    53 |   16 |         10 |       5 |      4 |          28 |
     ");
 }
 
@@ -516,22 +516,22 @@ fn test_tracked() {
     Exec               | Code(Exec) Body(Exec)          | }
                        |                                |
     Exec               | Signature(Exec)                | fn baz(
-    Proof              | Signature(Exec)                |     Tracked(perm1): Tracked<&PermissionU32>,
+    Proof Exec         | Signature(Exec)                |     Tracked(perm1): Tracked<&PermissionU32>,
     Exec               | Signature(Exec)                |     x: u32,
-    Proof              | Signature(Exec)                |     Tracked(perm2): Tracked<&PermissionU32>,
+    Proof Exec         | Signature(Exec)                |     Tracked(perm2): Tracked<&PermissionU32>,
     Exec               | Signature(Exec)                |     y: u32,
     Exec               | Code(Exec Signature Body(Exec  | ) {
     Exec               | Code(Exec) Body(Exec)          | }
                        |                                |
     Exec               | Code(Exec Signature Body(Exec  | fn tracked_args() {
-    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let (a, Tracked(p)) = PAtomicU32::new(0);
+    Exec               | Code(Exec) Body(Exec)          |     let (a, Tracked(p)) = PAtomicU32::new(0);
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let y = a.load(Tracked(&p));
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     foo(Tracked(&p), 4);
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     bar(4, Tracked(&p));
     Exec               | Code(Exec) Body(Exec)          |     baz(
-    Proof              | Code(Exec Body(Exec GhostTrac  |         Tracked(&p),
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |         Tracked(&p),
     Exec               | Code(Exec) Body(Exec)          |         4,
-    Proof              | Code(Exec Body(Exec GhostTrac  |         Tracked(&p),
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |         Tracked(&p),
     Exec               | Code(Exec) Body(Exec)          |         y,
     Exec               | Code(Exec) Body(Exec)          |     );
     Exec               | Code(Exec) Body(Exec)          | }
@@ -545,18 +545,30 @@ fn test_tracked() {
                        |                                |
     Comment            | Comment                        | // Tracked struct fields
     Exec               | DatatypeDecl                   | struct Wrapper {
-    Proof              | DatatypeDecl GhostTracked(P    |     perm: Tracked<PermissionU32>,
+    Proof Exec         | DatatypeDecl GhostTracked(P    |     perm: Tracked<PermissionU32>,
     Exec               | DatatypeDecl                   |     x: u32,
     Exec               | DatatypeDecl                   | }
                        |                                |
+    Comment            | Comment                        | // Tracked struct fields sharing a line with exec fields
+    Proof Exec         | DatatypeDecl GhostTracked(P    | struct OneLineWrapper { x: u32, perm: Tracked<PermissionU32> }
+                       |                                |
+    Proof Exec         | DatatypeDecl GhostTracked(P    | struct OneLineWrapperTrackedFirst { perm: Tracked<PermissionU32>, x: u32 }
+                       |                                |
+    Proof Exec         | DatatypeDecl GhostTracked(P    | struct TupleWrapper(Tracked<PermissionU32>, u32);
+                       |                                |
+    Exec               | DatatypeDecl                   | enum TrackedEnum {
+    Proof Exec         | DatatypeDecl GhostTracked(P    |     A(Tracked<PermissionU32>, u32),
+    Proof Exec         | DatatypeDecl GhostTracked(P    |     B { perm: Tracked<PermissionU32>, x: u32 },
+    Exec               | DatatypeDecl                   | }
+                       |                                |
     Comment            | Comment                        | // Tracked return types
-    Proof Exec         | Code(Exec Signature Body(Exec  | fn ret_named() -> (t: Tracked<PermissionU32>) {
-    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let (a, Tracked(p)) = PAtomicU32::new(0);
-    Proof              | Code(Exec Body(Exec GhostTrac  |     Tracked(p)
+    Exec               | Code(Exec Signature Body(Exec  | fn ret_named() -> (t: Tracked<PermissionU32>) {
+    Exec               | Code(Exec) Body(Exec)          |     let (a, Tracked(p)) = PAtomicU32::new(0);
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     Tracked(p)
     Exec               | Code(Exec) Body(Exec)          | }
                        |                                |
-    Proof Exec         | Code(Exec Signature Body(Exec  | fn ret_unnamed() -> Tracked<PermissionU32> {
-    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let (a, Tracked(p)) = PAtomicU32::new(0);
+    Exec               | Code(Exec Signature Body(Exec  | fn ret_unnamed() -> Tracked<PermissionU32> {
+    Exec               | Code(Exec) Body(Exec)          |     let (a, Tracked(p)) = PAtomicU32::new(0);
     Comment            | Comment                        |     // below is counted as Proof Exec -- after ghost erasure, would still have return;
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     return Tracked(p);
     Exec               | Code(Exec) Body(Exec)          | }
@@ -568,31 +580,31 @@ fn test_tracked() {
                        |                                |
     Comment            | Comment                        | // Variable bindings with Tracked or tracked
     Exec               | Code(Exec Signature Body(Exec  | fn tracked_bindings() {
-    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let (a, Tracked(p1)) = PAtomicU32::new(0);
-    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let (b, Tracked(p2)) = PAtomicU32::new(0);
-    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let (c, Tracked(p3)) = PAtomicU32::new(0);
+    Exec               | Code(Exec) Body(Exec)          |     let (a, Tracked(p1)) = PAtomicU32::new(0);
+    Exec               | Code(Exec) Body(Exec)          |     let (b, Tracked(p2)) = PAtomicU32::new(0);
+    Exec               | Code(Exec) Body(Exec)          |     let (c, Tracked(p3)) = PAtomicU32::new(0);
     Proof              | Code(Exec Body(Exec GhostTrac  |     let tracked q1 = p1;
     Proof              | Code(Exec Body(Exec GhostTrac  |     let t1 = Tracked(q1);
-    Proof              | Code(Exec Body(Exec GhostTrac  |     let Tracked(q1) = t1;
+    Exec               | Code(Exec) Body(Exec)          |     let Tracked(q1) = t1;
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let w = Wrapper { perm: Tracked(q1), x: 1 };
     Exec               | Code(Exec) Body(Exec)          |     let y = Wrapper {
-    Proof              | Code(Exec Body(Exec GhostTrac  |         perm: Tracked(p2),
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |         perm: Tracked(p2),
     Exec               | Code(Exec) Body(Exec)          |         x: 1
     Exec               | Code(Exec) Body(Exec)          |     };
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let o = Some(Tracked(p3));
-    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let (Tracked(v1), Tracked(v2)) = ret_tup();
+    Exec               | Code(Exec) Body(Exec)          |     let (Tracked(v1), Tracked(v2)) = ret_tup();
     Exec               | Code(Exec) Body(Exec)          | }
                        |                                |
     Comment            | Comment                        | // Tracked nested inside other types
     Exec               | DatatypeDecl                   | struct OptWrapper {
-    Proof Exec         | DatatypeDecl GhostTracked(P    |     opt: Option<Tracked<PermissionU32>>,
+    Exec               | DatatypeDecl                   |     opt: Option<Tracked<PermissionU32>>,
     Exec               | DatatypeDecl                   | }
                        |                                |
-    Proof Exec         | Code(Exec Signature Body(Exec  | fn nested_param(o: Option<Tracked<&PermissionU32>>) {
+    Exec               | Code(Exec Signature Body(Exec  | fn nested_param(o: Option<Tracked<&PermissionU32>>) {
     Exec               | Code(Exec) Body(Exec)          | }
                        |                                |
-    Proof Exec         | Code(Exec Signature Body(Exec  | fn nested_ret() -> (t: Option<Tracked<PermissionU32>>) {
-    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let v: Vec<Tracked<PermissionU32>> = Vec::new();
+    Exec               | Code(Exec Signature Body(Exec  | fn nested_ret() -> (t: Option<Tracked<PermissionU32>>) {
+    Exec               | Code(Exec) Body(Exec)          |     let v: Vec<Tracked<PermissionU32>> = Vec::new();
     Exec               | Code(Exec) Body(Exec)          |     None
     Exec               | Code(Exec) Body(Exec)          | }
                        |                                |
@@ -600,8 +612,8 @@ fn test_tracked() {
 
     | file       | Trusted | Spec | Proof | Exec | Proof+Exec | Comment | Layout | unaccounted |
     |------------|---------|------|-------|------|------------|---------|--------|-------------|
-    | tracked.rs |       4 |    2 |    10 |   30 |         22 |       6 |      0 |          19 |
+    | tracked.rs |       4 |    2 |     2 |   46 |         21 |       7 |      0 |          23 |
     |------------|---------|------|-------|------|------------|---------|--------|-------------|
-    | total      |       4 |    2 |    10 |   30 |         22 |       6 |      0 |          19 |
+    | total      |       4 |    2 |     2 |   46 |         21 |       7 |      0 |          23 |
     ");
 }
