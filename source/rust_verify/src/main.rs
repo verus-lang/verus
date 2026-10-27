@@ -67,7 +67,7 @@ pub fn main() {
     rustc_driver::init_logger(&logger_handler, rustc_log::LoggerConfig::from_env("RUSTVERIFY_LOG"));
 
     if via_cargo != has_rustc {
-        let _ = logger_handler.early_err("Error: VERUS_DRIVER_VIA_CARGO must be 1 if and only if 'rustc' is the first argument to verus");
+        let _ = logger_handler.early_err("`VERUS_DRIVER_VIA_CARGO` must be 1 if and only if `rustc` is the first argument to verus");
         std::process::exit(1);
     }
 
@@ -531,7 +531,7 @@ pub fn main() {
     if verifier.args.output_json {
         // Render function verification details as JSON.
         let mut func_details: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
-        for (func, details) in &verifier.func_details {
+        for (func, details) in verifier.func_details.lock().unwrap().iter() {
             let name = vir::ast_util::fun_as_friendly_rust_name(&func);
             func_details.insert(name, details.to_json());
         }

@@ -809,7 +809,7 @@ test_verify_one_file! {
             *x = *x + y;
             *x
         }
-    } => Err(e) => assert_vir_error_msg(e, "when_used_as_spec not supported for function with &mut param")
+    } => Err(e) => assert_vir_error_msg(e, "`when_used_as_spec` not supported for function with a mutable reference parameter")
 }
 
 test_verify_one_file! {
@@ -1800,7 +1800,7 @@ test_verify_one_file! {
     #[test] test_verus_verify_on_static_with_external_body code! {
         #[verus_verify(external_body)]
         static MY_STATIC2: u64 = 0;
-    } => Err(e) => assert_any_vir_error_msg(e, "#[verifier::external_body] doesn't make sense for this item type -- it is only applicable to functions and datatype declarations" )
+    } => Err(e) => assert_any_vir_error_msg(e, "`#[verifier::external_body]` doesn't make sense for this item type -- it is only applicable to functions and datatype declarations" )
 }
 
 test_verify_one_file! {
@@ -1849,6 +1849,33 @@ test_verify_one_file! {
                     n = i;
                 }
                 n
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] verus_verify_external_body_with_spec_with_decreases code! {
+        struct X { }
+
+        #[verus_verify]
+        impl X {
+            #[verus_verify(external_body)]
+            #[verus_spec(ret =>
+                requires true,
+                ensures true,
+                decreases 255 - i,
+            )]
+            fn test(i: u8) -> bool {
+                proof!{
+                    let x = 5int;
+                }
+
+                if i < 255 {
+                    Self::test(i + 1)
+                } else {
+                    true
+                }
             }
         }
     } => Ok(())

@@ -1,14 +1,13 @@
 use crate::ast::{
-    AutospecUsage, CallTarget, Expr, ExprX, Fun, Function, Krate, KrateX, SpannedTyped, VirErr,
+    AutospecUsage, CallTarget, Expr, ExprX, Fun, Function, FunctionStub, SpannedTyped, VirErr,
 };
 use crate::ast_visitor::VisitorScopeMap;
-use crate::util::vec_map_result;
 pub use air::ast_util::{ident_binder, str_ident};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<Expr, VirErr> {
+fn simplify_one_expr(functions: &HashMap<Fun, FunctionStub>, expr: &Expr) -> Result<Expr, VirErr> {
     // AssumeExternal
     let expr = match &expr.x {
         // TODO: ConstVar
@@ -18,10 +17,13 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
             post_args,
             body,
         } => {
-            let mut found = functions.contains_key(tgt);
+            let tgt_func = functions.get(tgt);
+            let mut found = tgt_func.is_some();
             match kind {
                 crate::ast::CallTargetKind::DynamicResolved { resolved, .. } => {
-                    found = found && functions.contains_key(resolved);
+                    found = found
+                        && (functions.contains_key(resolved)
+                            || tgt_func.unwrap().x.kind.has_default());
                 }
                 _ => {}
             };
@@ -123,8 +125,8 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
     }
 }
 
-fn simplify_function(
-    func_map: &HashMap<Fun, Function>,
+pub fn resolve_autospec_in_function(
+    func_map: &HashMap<Fun, FunctionStub>,
     function: &Function,
 ) -> Result<Function, VirErr> {
     let mut map: VisitorScopeMap = ScopeMap::new();
@@ -138,50 +140,4 @@ fn simplify_function(
         &|_state, _, place| Ok(place.clone()),
         &|_state, _, pat| Ok(pat.clone()),
     )
-}
-
-pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
-    let KrateX {
-        functions,
-        reveal_groups,
-        datatypes,
-        opaque_types,
-        traits,
-        trait_impls,
-        modules: module_ids,
-        assoc_type_impls,
-        external_fns,
-        external_types,
-        path_as_rust_names,
-        arch,
-    } = &**krate;
-
-    let mut func_map: HashMap<Fun, Function> = HashMap::new();
-    for function in functions.iter() {
-        func_map.insert(function.x.name.clone(), function.clone());
-    }
-
-    let functions = vec_map_result(functions, |f| simplify_function(&func_map, f))?;
-
-    let datatypes = datatypes.clone();
-    let traits = traits.clone();
-    let module_ids = module_ids.clone();
-    let external_fns = external_fns.clone();
-    let external_types = external_types.clone();
-    let krate = Arc::new(KrateX {
-        functions,
-        reveal_groups: reveal_groups.clone(),
-        datatypes,
-        opaque_types: opaque_types.clone(),
-        traits,
-        trait_impls: trait_impls.clone(),
-        assoc_type_impls: assoc_type_impls.clone(),
-        modules: module_ids,
-        external_fns,
-        external_types,
-        path_as_rust_names: path_as_rust_names.clone(),
-        arch: arch.clone(),
-    });
-
-    Ok(krate)
 }

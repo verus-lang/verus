@@ -226,7 +226,7 @@ fn check_timeout(timer: &mut Timer) -> Result<(), VirErr> {
     if timer.timeout_countdown == 0 {
         Err(error(
             &timer.span,
-            "could not infer triggers, because quantifier is too large (use manual #[trigger] instead)",
+            "could not infer triggers, because quantifier is too large (use manual `#[trigger]` instead)",
         ))
     } else {
         timer.timeout_countdown -= 1;
@@ -834,7 +834,7 @@ pub(crate) fn build_triggers(
     } else {
         Err(error(
             span,
-            "Could not automatically infer triggers for this quantifier.  Use #[trigger] annotations to manually mark trigger terms instead.",
+            "could not automatically infer triggers for this quantifier; use `#[trigger]` annotations to manually mark trigger terms instead",
         ))
     }
 }

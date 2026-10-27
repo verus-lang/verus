@@ -1748,6 +1748,8 @@ pub struct FunctionX {
     pub attrs: FunctionAttrs,
     /// Body of the function (may be None for foreign functions or for external_body functions)
     pub body: Option<Expr>,
+    /// Return-position opaque type equalities available while checking the body.
+    pub return_opaque_type_eqs: Arc<Vec<(Typ, Typ)>>,
     /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
@@ -1774,6 +1776,8 @@ pub struct FunctionStubX {
     pub outer_ret: Param,
     pub item_kind: ItemKind,
     pub attrs: FunctionAttrs,
+    pub returns: bool,
+    pub decreases_len: usize,
 }
 
 pub type RevealGroup = Arc<Spanned<RevealGroupX>>;

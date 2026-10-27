@@ -43,7 +43,7 @@ impl crate::messages::CheckAllowForWarning for WarningConfig {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WarningCtx {
     // Map names of FunctionX in this crate (not imported from other crates)
     // to Some CheckAllowForWarning to be used to check that fun,
@@ -729,7 +729,7 @@ impl GlobalCtx {
                             krate.functions.iter().find(|g| Node::Fun(g.x.name.clone()) == g_node);
                         let mut error = crate::messages::error(
                             &f.span,
-                            "found cyclic dependency in decreases_by function",
+                            "found cyclic dependency in `decreases_by` function",
                         );
                         if let Some(g) = g_opt {
                             error = error.secondary_span(&g.span);
@@ -741,7 +741,7 @@ impl GlobalCtx {
             if f.x.attrs.atomic {
                 let fun_node = Node::Fun(f.x.name.clone());
                 if func_call_graph.node_is_in_cycle(&fun_node) {
-                    return Err(error(&f.span, "'atomic' cannot be used on a recursive function"));
+                    return Err(error(&f.span, "`atomic` cannot be used on a recursive function"));
                 }
             }
         }

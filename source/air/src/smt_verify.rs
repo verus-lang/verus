@@ -145,6 +145,14 @@ pub type ReportLongRunning<'a> =
 
 const GET_VERSION_RESPONSE_PREFIX: &str = "(:version";
 
+/// Extracts the version number from a `(get-info :version)` response.
+/// Z3 built with a git hash appends a suffix: `(:version "4.16.0 - build hashcode ...")`
+pub(crate) fn parse_version_response(line: &str) -> Option<&str> {
+    let value = line.strip_prefix(GET_VERSION_RESPONSE_PREFIX)?;
+    let value = value.trim_end().strip_suffix(')').unwrap_or(value);
+    value.trim_matches(&[' ', '"'][..]).split_whitespace().next()
+}
+
 pub(crate) fn smt_check_assertion<'ctx>(
     context: &mut Context,
     diagnostics: &impl Diagnostics,
@@ -184,10 +192,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
     let early_smt_output = context.get_smt_process().send_commands(smt_data);
     context.time_smt_init += smt_init_start_time.elapsed();
     for line in early_smt_output {
-        if line.starts_with(GET_VERSION_RESPONSE_PREFIX) {
+        if let Some(version) = parse_version_response(&line) {
             if let Some(expected_version) = &context.expected_solver_version {
-                let value: &str = &line[GET_VERSION_RESPONSE_PREFIX.len()..line.len() - 1];
-                let version = value.trim_matches(&[' ', '"'][..]);
                 if version != expected_version.as_str() {
                     let solver = context.solver.name();
                     diagnostics.report(&context.message_interface.unexpected_solver_version(

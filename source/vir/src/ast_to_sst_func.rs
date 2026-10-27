@@ -178,7 +178,7 @@ fn func_body_to_sst(
                 match &expr.x {
                     ExprX::Return(_) => Err(error(
                         &expr.span,
-                        "explicit returns are not allowed in decreases_by function",
+                        "explicit returns are not allowed in `decreases_by` function",
                     )),
                     _ => Ok(()),
                 }
@@ -212,6 +212,7 @@ fn func_body_to_sst(
         termination_decls.splice(0..0, local_decls.into_iter());
 
         let termination_check = FuncCheckSst {
+            return_opaque_type_eqs: Arc::new(vec![]),
             post_condition: Arc::new(crate::sst::PostConditionSst {
                 dest: None,
                 kind: if function.x.decrease_by.is_some() {
@@ -232,7 +233,7 @@ fn func_body_to_sst(
         Some(termination_check)
     } else {
         if function.x.decrease.len() > 0 && !is_recursive {
-            let msg = "proof blocks inside spec code is currently supported only for recursion";
+            let msg = "Verus currently supports proof blocks inside spec code only for recursion";
             // TODO: remove this restriction when we generalize ProofInSpec beyond termination
             ast_visitor::expr_visitor_check(&body, &mut |_scope_map, expr| match &expr.x {
                 ExprX::ProofInSpec(_) => Err(error(&expr.span, msg)),
@@ -353,7 +354,7 @@ fn req_ens_to_sst(
 
     let specs = if function.x.attrs.is_async && !pre {
         if !ens_has_return {
-            crate::internal_err!(function.span.clone(), "async function expects ens_has_return");
+            crate::internal_err!(function.span.clone(), "async function expects `ens_has_return`");
         }
         &rewrite_async_ens_vir(function, specs)?
     } else {
@@ -588,34 +589,16 @@ where
         ens_pars: &Pars,
         diagnostics: &'a D,
     ) -> Option<Self> {
-        if let FunctionKind::TraitMethodImpl { method, trait_path, trait_typ_args, .. } =
-            &function.x.kind
-        {
+        if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &function.x.kind {
             // Inherit requires/ensures from trait method declaration
-            let tr = &ctx.trait_map[trait_path];
-            let mut typ_params = vec![crate::def::trait_self_type_param()];
-            for (x, _) in tr.x.typ_params.iter() {
-                typ_params.push(x.clone());
-            }
-            let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
-            assert!(typ_params.len() == trait_typ_args.len());
-            for (x, t) in typ_params.iter().zip(trait_typ_args.iter()) {
-                trait_typ_substs.insert(x.clone(), t.clone());
-            }
-
             let trait_function = ctx.func_map[method].clone();
-
-            // The method's own type params come last in both; the impl may rename them
-            let n_method_typ_params = trait_function.x.typ_params.len() - typ_params.len();
-            let trait_method_typ_params = trait_function.x.typ_params.iter().skip(typ_params.len());
-            let impl_method_typ_params = function
-                .x
-                .typ_params
-                .iter()
-                .skip(function.x.typ_params.len() - n_method_typ_params);
-            for (x, y) in trait_method_typ_params.zip(impl_method_typ_params) {
-                trait_typ_substs.insert(x.clone(), Arc::new(TypX::TypParam(y.clone())));
-            }
+            let typ_args = crate::traits::trait_method_impl_typ_args(
+                &trait_function,
+                trait_typ_args,
+                &function.x.typ_params,
+            );
+            let trait_typ_substs: HashMap<Ident, Typ> =
+                trait_function.x.typ_params.iter().cloned().zip(typ_args.iter().cloned()).collect();
 
             let mut param_renames: HashMap<_, _> = trait_function
                 .x
@@ -1025,6 +1008,11 @@ pub fn func_def_to_sst(
 
     Ok(FuncCheckSst {
         reqs: Arc::new(reqs),
+        return_opaque_type_eqs: if check_api_safety {
+            Arc::new(vec![])
+        } else {
+            function.x.return_opaque_type_eqs.clone()
+        },
         post_condition: Arc::new(PostConditionSst {
             dest,
             ens_exps: Arc::new(enss),

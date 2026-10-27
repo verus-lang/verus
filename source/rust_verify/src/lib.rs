@@ -52,6 +52,7 @@ mod import_export;
 mod observers;
 mod pre_header;
 pub mod profiler;
+mod query;
 mod resolve_traits;
 pub mod reveal_hide;
 mod rust_intrinsics_to_vir;

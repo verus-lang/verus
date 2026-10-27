@@ -61,7 +61,7 @@ pub mod prune;
 mod reachability;
 pub mod recursion;
 pub mod recursive_types;
-mod resolution_inference;
+pub mod resolution_inference;
 mod resolution_types;
 mod resolve_axioms;
 pub mod safe_api;

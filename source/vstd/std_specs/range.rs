@@ -216,9 +216,9 @@ pub open spec fn bound_as_ref<T>(b: &Bound<T>) -> Bound<&T> {
     }
 }
 
-// Per-type specifications for `RangeBounds::start_bound`/`end_bound`, so these
-// methods can also be called directly in exec code (not just via the spec-mode
-// models above). Each spec agrees with the corresponding `RangeBoundsSpecImpl`.
+// Per-type specifications for `RangeBounds::start_bound`/`end_bound`. Each spec
+// agrees with the corresponding `RangeBoundsSpecImpl`, and so with the
+// `ExRangeBounds` ensures below.
 pub assume_specification<'s, T>[ <Range<T> as RangeBounds<T>>::start_bound ](
     range: &'s Range<T>,
 ) -> (result: Bound<&'s T>)
@@ -333,7 +333,9 @@ pub assume_specification<'s, T>[ <(Bound<T>, Bound<T>) as RangeBounds<T>>::end_b
 /// [`spec_end_bound`](RangeBoundsSpec::spec_end_bound) of the trait's
 /// `start_bound`/`end_bound` methods. This mirrors std's normalization of an
 /// arbitrary range into a pair of bounds and is the model used by
-/// `<[T]>::copy_within` (see `vstd::std_specs::slice`).
+/// `<[T]>::copy_within` (see `vstd::std_specs::slice`). Implementations must
+/// return these spec bounds from `start_bound`/`end_bound`, since std's
+/// `copy_within` calls those methods.
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(RangeBoundsSpec via RangeBoundsSpecImpl)]
 pub trait ExRangeBounds<T: ?Sized> {
@@ -343,9 +345,15 @@ pub trait ExRangeBounds<T: ?Sized> {
 
     spec fn spec_end_bound(&self) -> Bound<&T>;
 
-    fn start_bound(&self) -> Bound<&T>;
+    fn start_bound(&self) -> (r: Bound<&T>)
+        ensures
+            r == self.spec_start_bound(),
+    ;
 
-    fn end_bound(&self) -> Bound<&T>;
+    fn end_bound(&self) -> (r: Bound<&T>)
+        ensures
+            r == self.spec_end_bound(),
+    ;
 }
 
 impl<T> RangeBoundsSpecImpl<T> for Range<T> {

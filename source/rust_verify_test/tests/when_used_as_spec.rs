@@ -90,7 +90,7 @@ test_verify_one_file! {
             #[verifier::when_used_as_spec(f)]
             proof fn g(&self, k: u64) -> bool { true }
         }
-    } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec must point from an exec function to a spec function")
+    } => Err(err) => assert_vir_error_msg(err, "`when_used_as_spec` must point from an exec function to a spec function")
 }
 
 test_verify_one_file! {
@@ -103,7 +103,7 @@ test_verify_one_file! {
             #[verifier::when_used_as_spec(f)]
             fn g(&self, k: u64) -> bool { true }
         }
-    } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec must point from an exec function to a spec function")
+    } => Err(err) => assert_vir_error_msg(err, "`when_used_as_spec` must point from an exec function to a spec function")
 }
 
 test_verify_one_file! {
@@ -220,7 +220,7 @@ test_verify_one_file! {
                 !x
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec refers to function which is more private")
+    } => Err(err) => assert_vir_error_msg(err, "`when_used_as_spec` refers to function which is more private")
 }
 
 test_verify_one_file! {
@@ -269,7 +269,7 @@ test_verify_one_file! {
         {
             !a
         }
-    } => Err(err) => assert_vir_error_msg(err, "a function cannot be marked both 'when_used_as_spec' and 'allow_in_spec'")
+    } => Err(err) => assert_vir_error_msg(err, "a function cannot be marked both `when_used_as_spec` and `allow_in_spec`")
 }
 
 test_verify_one_file_with_options! {
@@ -283,5 +283,5 @@ test_verify_one_file_with_options! {
         {
             *a
         }
-    } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec not supported for function with &mut param")
+    } => Err(err) => assert_vir_error_msg(err, "`when_used_as_spec` not supported for function with a mutable reference parameter")
 }
