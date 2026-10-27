@@ -634,11 +634,14 @@ impl Context {
     pub fn evaluate_bool(&mut self, expr: &crate::ast::Expr) -> Option<bool> {
         let printer =
             crate::printer::Printer::new(self.message_interface.clone(), true, self.solver.clone());
-        self.smt_log.log_eval(printer.expr_to_node(expr));
+        let node = printer.expr_to_node(expr);
+        // SMT-LIB `get-value`, which both solvers answer as `((<expr> <value>))`.
+        self.smt_log.log_node(&Node::List(vec![str_to_node("get-value"), Node::List(vec![node])]));
         let smt_data = self.smt_log.take_pipe_data();
-        match self.get_smt_process().send_commands(smt_data).as_slice() {
-            [v] if v == "true" => Some(true),
-            [v] if v == "false" => Some(false),
+        let output = self.get_smt_process().send_commands(smt_data).join(" ");
+        match output.strip_suffix("))").and_then(|s| s.rsplit(' ').next())? {
+            "true" => Some(true),
+            "false" => Some(false),
             _ => None,
         }
     }

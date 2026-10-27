@@ -79,6 +79,7 @@ struct D {
     check_valid_timeout: usize,
     check_valid_invalid_model_size: Vec<usize>,
     eval_expr_results: Vec<Option<bool>>,
+    invalid_error_lines: Vec<u32>,
     binder_decls: Vec<String>,
     breakable_count: usize,
     break_count: usize,
@@ -1428,4 +1429,21 @@ test_verify_one_file_with_options! {
     test_observer_unknown_name ["observer=no-such-observer"] => verus_code! {
         fn f() {}
     } => Err(err) => assert_vir_error_msg(err, "unknown observer `no-such-observer`")
+}
+
+// ── Observers under cvc5 ──
+//
+// cvc5 returns total models, so several assertion labels can be true at once and the failing
+// assertion is confirmed with extra check-sats (#3240). The observer must still be told the
+// assertion that is reported, and evaluate in a live model.
+
+test_verify_one_file_with_options! {
+    // Pins: the evaluator works under cvc5 (it has no `eval`).
+    #[test]
+    test_observer_cvc5_eval ["cvc5", "observer=test"] => verus_code! {
+        proof fn bad() ensures false {}
+    } => Err(err) => {
+        let d = parse(&err);
+        assert_eq!(d.eval_expr_results, vec![Some(true), Some(false), None]);
+    }
 }

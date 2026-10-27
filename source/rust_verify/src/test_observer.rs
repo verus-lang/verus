@@ -67,6 +67,7 @@ pub struct TestObserver {
     pub check_valid_timeout: usize,
     pub check_valid_invalid_model_size: Vec<usize>,
     pub eval_expr_results: Vec<Option<bool>>,
+    pub invalid_error_lines: Vec<u32>,
     pub binder_decls: Vec<String>,
     /// Count of `StmtX::Breakable` in lowered queries (loop encodings without isolation).
     /// Per discharged (Valid) query: how many labeled assertion ids it reported.
@@ -130,6 +131,7 @@ impl TestObserver {
             check_valid_timeout: 0,
             check_valid_invalid_model_size: vec![],
             eval_expr_results: vec![],
+            invalid_error_lines: vec![],
             binder_decls: vec![],
             valid_assert_id_counts: vec![],
             valid_used_axiom_counts: vec![],
@@ -250,9 +252,18 @@ impl air::query_result_observer::QueryResultObserver for TestObserver {
             air::query_result_observer::CheckValidResult::Invalid {
                 model_defs,
                 eval_bool_expr,
+                error,
                 ..
             } => {
                 self.events.push("check_valid:Invalid".to_string());
+                if let Some(line) = (***error)
+                    .downcast_ref::<vir::messages::MessageX>()
+                    .and_then(|m| m.spans.first())
+                    .and_then(|sp| self.span_resolver.as_ref().and_then(|r| r(sp)))
+                    .map(|l| l.line)
+                {
+                    self.invalid_error_lines.push(line);
+                }
                 self.check_valid_invalid_count += 1;
                 self.check_valid_invalid_model_size.push(model_defs.len());
                 // Pin the evaluator's three-way contract: a true boolean, a false boolean,
