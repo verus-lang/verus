@@ -773,14 +773,21 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
 /// then runs every clause expression through this function with
 /// `replacement = __exec_spec_self_view`.
 fn replace_self_tokens(ts: TokenStream2, replacement: &Ident) -> TokenStream2 {
+    replace_ident_tokens(ts, "self", replacement)
+}
+
+/// Replaces every identifier token `target` (recursively) with `replacement`.
+fn replace_ident_tokens(ts: TokenStream2, target: &str, replacement: &Ident) -> TokenStream2 {
     ts.into_iter()
         .map(|tt| match tt {
-            TokenTree::Ident(ident) if ident == "self" => {
+            TokenTree::Ident(ident) if ident == target => {
                 TokenTree::Ident(Ident::new(&replacement.to_string(), ident.span()))
             }
             TokenTree::Group(g) => {
-                let mut new_g =
-                    Group::new(g.delimiter(), replace_self_tokens(g.stream(), replacement));
+                let mut new_g = Group::new(
+                    g.delimiter(),
+                    replace_ident_tokens(g.stream(), target, replacement),
+                );
                 new_g.set_span(g.span());
                 TokenTree::Group(new_g)
             }
@@ -872,7 +879,7 @@ fn compile_sig(
     // Generate a specification stating that
     //   requires <recommends clause of spec_f>
     //   ensures result.deep_view() =~~= spec_f(x1.deep_view(), ..., xn.deep_view())
-    //      (or self.deep_view().spec_f(...) for methods)
+    //      (or T::spec_f(&self.deep_view(), ...) / T::spec_f(...) for impl items)
     //   decreases <decreases clause of spec_f>
 
     // For impl methods: bind `__exec_spec_self_view` to the spec view of self,
@@ -900,7 +907,13 @@ fn compile_sig(
     let rewrite_clause = |expr: &Expr| -> TokenStream2 {
         let raw = quote! { #expr };
         // replace `&self` with `__exec_spec_self_view` throughout the entire expression
-        if has_receiver { replace_self_tokens(raw, &self_view_ident) } else { raw }
+        let raw = if has_receiver { replace_self_tokens(raw, &self_view_ident) } else { raw };
+        // The clauses are emitted inside `impl ExecT { ... }`, where `Self` means `ExecT`;
+        // in the original spec method, `Self` means `T`, so replace it explicitly.
+        match self_ty {
+            Some(self_ty_ident) => replace_ident_tokens(raw, "Self", self_ty_ident),
+            None => raw,
+        }
     };
 
     let span = sig.spec.span();
@@ -957,10 +970,18 @@ fn compile_sig(
 
     let ext_eq = BinOp::ExtDeepEq(Default::default());
 
-    let post_call = if has_receiver {
-        quote! { self.deep_view().#spec_name(#(#args_deep_view),*) }
-    } else {
-        quote! { #spec_name(#(#args_deep_view),*) }
+    // The postcondition must name exactly the spec function being compiled.
+    // For impl items, use a qualified path `T::f(...)`: a bare `f(...)` would resolve
+    // to a module-level function `f` (if any) instead of the associated function `T::f`,
+    // and method-call syntax could pick up a different method (e.g. a by-value trait
+    // method `f(self)` takes precedence over the inherent `f(&self)`).
+    let post_call = match self_ty {
+        Some(self_ty_ident) => {
+            let self_arg = if has_receiver { Some(quote! { &self.deep_view() }) } else { None };
+            let all_args = self_arg.into_iter().chain(args_deep_view);
+            quote! { #self_ty_ident::#spec_name(#(#all_args),*) }
+        }
+        None => quote! { #spec_name(#(#args_deep_view),*) },
     };
 
     // build the full parameter list (receiver first if present)
