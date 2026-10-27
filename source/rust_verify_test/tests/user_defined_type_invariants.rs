@@ -380,14 +380,17 @@ test_verify_one_file! {
             }
         }
 
-        fn test(i: &mut u8) {
+        fn test(i: &mut u8)
+            ensures *final(i) == 3,
+        {
+            *i = 3;
         }
 
         fn test2() {
             let mut x = X { i: 10, j: 8 };
-            test(&mut x.i);
+            test(&mut x.i); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "this function call takes a mutable reference to a field of a datatype with a user-defined type invariant; thus, this function should be marked `no_unwind`")
+    } => Err(err) => assert_fails_type_invariant_unwind_error(err, 1)
 }
 
 test_verify_one_file! {
@@ -408,15 +411,81 @@ test_verify_one_file! {
             }
         }
 
-        fn test(i: &mut u8) -> bool {
+        fn test(i: &mut u8) -> bool
+            ensures *final(i) == 3,
+        {
+            *i = 3;
             true
         }
 
         fn test2() {
             let mut y = Y { x: X { i: 10, j: 8 } };
-            let j = test(&mut y.x.i);
+            let j = test(&mut y.x.i); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "this function call takes a mutable reference to a field of a datatype with a user-defined type invariant; thus, this function should be marked `no_unwind`")
+    } => Err(err) => assert_fails_type_invariant_unwind_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_field_unwind_when verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        fn test(i: &mut u8, b: bool)
+            ensures *final(i) == 3,
+            no_unwind when b
+        {
+            *i = 3;
+        }
+
+        fn test_ok() {
+            let mut x = X { i: 10, j: 8 };
+            test(&mut x.i, true);
+        }
+
+        fn test_fail(b: bool) {
+            let mut x = X { i: 10, j: 8 };
+            test(&mut x.i, b); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_unwind_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_field_unwind_no_unwind_caller verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        fn test(i: &mut u8, b: bool)
+            ensures *final(i) == 3,
+            no_unwind when b
+        {
+            *i = 3;
+        }
+
+        fn test_caller(b: bool)
+            no_unwind when b
+        {
+            let mut x = X { i: 10, j: 8 };
+            test(&mut x.i, b); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_unwind_error(err, 1)
 }
 
 test_verify_one_file! {

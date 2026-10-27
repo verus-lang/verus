@@ -285,6 +285,7 @@ fn stm_assign(
             dest,
             assert_id,
             body,
+            unwind_path,
         } => {
             if let Some(dest) = dest {
                 let var: UniqueIdent = get_loc_var(&dest.dest);
@@ -315,6 +316,10 @@ fn stm_assign(
             let body = body
                 .as_ref()
                 .map(|body_stm| stm_assign(assign_map, declared, assigned, modified, body_stm));
+            // Like DeadEnd
+            let unwind_path = unwind_path
+                .as_ref()
+                .map(|stm| stm_assign(assign_map, declared, assigned, modified, stm));
 
             stm.new_x(StmX::Call {
                 fun: fun.clone(),
@@ -327,6 +332,7 @@ fn stm_assign(
                 dest: dest.clone(),
                 assert_id: assert_id.clone(),
                 body,
+                unwind_path,
             })
         }
         StmX::AssertQuery { mode, typ_inv_exps, typ_inv_vars, body } => {
@@ -512,12 +518,18 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
             dest,
             assert_id,
             body,
+            unwind_path,
         } => {
             if let Some(Dest { is_init: false, dest }) = dest {
                 mutations.insert(dest);
             }
 
             let body = body.as_ref().map(|stm| stm_mutations(param_typs, mutations, stm));
+            // Like DeadEnd
+            let unwind_path = unwind_path.as_ref().map(|stm| {
+                let mut m = mutations.clone();
+                stm_mutations(param_typs, &mut m, stm)
+            });
 
             stm.new_x(StmX::Call {
                 fun: fun.clone(),
@@ -530,6 +542,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
                 dest: dest.clone(),
                 assert_id: assert_id.clone(),
                 body,
+                unwind_path,
             })
         }
         StmX::Assign { lhs, rhs: _ } => {

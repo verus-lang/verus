@@ -863,6 +863,8 @@ struct ReturnedCall {
     obligations: Vec<Obligation>,
     may_unwind: bool,
     body: Option<Stm>,
+    /// Statements for the unwind path (resolutions inserted by resolution_inference)
+    unwind_stms: Vec<Stm>,
 }
 
 fn get_call_args(
@@ -988,7 +990,7 @@ fn expr_get_call(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, Maybe<ReturnedCall>)>, VirErr> {
     match &expr.x {
-        ExprX::Call { target, args, post_args, body } => match target {
+        ExprX::Call { target, args, post_args, body, unwind_path } => match target {
             CallTarget::FnSpec(..) => {
                 panic!("internal error: CallTarget::FnSpec");
             }
@@ -1031,6 +1033,15 @@ fn expr_get_call(
                     return Ok(Some((stms, Maybe::Never)));
                 };
 
+                let unwind_stms = match unwind_path {
+                    Some(expr) => {
+                        let (stms, e) = expr_to_stm_opt(ctx, state, expr)?;
+                        assert!(matches!(e, Maybe::Some(Value::ImplicitUnit(_))));
+                        stms
+                    }
+                    None => vec![],
+                };
+
                 use crate::ast::{CallTargetKind, FunctionKind};
                 let is_trait_default =
                     if let FunctionKind::TraitMethodDecl { has_default: true, .. } =
@@ -1063,6 +1074,7 @@ fn expr_get_call(
                             UnwindSpec::NoUnwind
                         ),
                         body,
+                        unwind_stms,
                     }),
                 )))
             }
@@ -1090,6 +1102,7 @@ fn expr_must_be_call_stm(
             args: _,
             post_args: _,
             body: _,
+            unwind_path: _,
         } if !function_can_be_exp(ctx, state, expr, x, &kind.resolved())? => {
             expr_get_call(ctx, state, disallow_poly_ret, expr)
         }
@@ -1452,6 +1465,7 @@ fn stm_call(
     args: Exps,
     dest: Option<Dest>,
     body: Option<Stm>,
+    unwind_path: Option<Stm>,
 ) -> Result<Stm, VirErr> {
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
@@ -1501,6 +1515,7 @@ fn stm_call(
         dest,
         assert_id: state.next_assert_id(),
         body,
+        unwind_path,
     };
 
     stms.push(Spanned::new(span.clone(), call));
@@ -1730,9 +1745,10 @@ pub(crate) fn expr_to_stm_opt(
 
             Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
-        ExprX::Call { target: CallTarget::FnSpec(e0), args, post_args, body } => {
+        ExprX::Call { target: CallTarget::FnSpec(e0), args, post_args, body, unwind_path } => {
             assert!(post_args.is_none());
             assert!(body.is_none());
+            assert!(unwind_path.is_none());
             let (mut check_stms, e0) = expr_to_pure_exp_check(ctx, state, e0)?;
             let mut arg_exps: Vec<Exp> = Vec::new();
             for arg in args.iter() {
@@ -1748,9 +1764,11 @@ pub(crate) fn expr_to_stm_opt(
             args,
             post_args,
             body,
+            unwind_path,
         } => {
             assert!(post_args.is_none());
             assert!(body.is_none());
+            assert!(unwind_path.is_none());
             let mut check_stms: Vec<Stm> = Vec::new();
             let mut arg_exps: Vec<Exp> = Vec::new();
             for arg in args.iter() {
@@ -1772,7 +1790,7 @@ pub(crate) fn expr_to_stm_opt(
                 )))),
             ))
         }
-        ExprX::Call { target: CallTarget::Fun(..), args: _, post_args: _, body: _ } => {
+        ExprX::Call { target: CallTarget::Fun(..), .. } => {
             match expr_get_call(ctx, state, None, expr)?.expect("Call") {
                 (stms, Maybe::Never) => Ok((stms, Maybe::Never)),
                 (
@@ -1787,6 +1805,7 @@ pub(crate) fn expr_to_stm_opt(
                         obligations,
                         may_unwind,
                         body,
+                        unwind_stms,
                     }),
                 ) => {
                     if function_can_be_exp(ctx, state, expr, &x, &resolved_method)? {
@@ -1805,6 +1824,15 @@ pub(crate) fn expr_to_stm_opt(
                             dest: var_loc_exp(&expr.span, &expr.typ, temp_ident.clone()),
                             is_init: true,
                         };
+                        let unwind_path = call_unwind_path(
+                            ctx,
+                            state,
+                            &expr.span,
+                            &x,
+                            may_unwind,
+                            unwind_stms,
+                            &obligations,
+                        )?;
                         stms.push(stm_call(
                             ctx,
                             state,
@@ -1816,6 +1844,7 @@ pub(crate) fn expr_to_stm_opt(
                             args.clone(),
                             Some(dest),
                             body,
+                            unwind_path,
                         )?);
                         // REVIEW: this emits a StmX::Assign to set the value of the destination when,
                         // in recommends checking, the StmX::Call is used to check its recommends, however
@@ -1839,12 +1868,20 @@ pub(crate) fn expr_to_stm_opt(
                                 stms.push(init_var(&expr.span, &temp_ident, &call));
                             }
                         }
-                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(x) };
-                        typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
+                        typ_inv_obligations(ctx, state, &mut stms, obligations, TypInv::Call(x))?;
                         // tmp
                         Ok((stms, Maybe::Some(Value::Exp(temp_var))))
                     } else {
                         // StmX::Call
+                        let unwind_path = call_unwind_path(
+                            ctx,
+                            state,
+                            &expr.span,
+                            &x,
+                            may_unwind,
+                            unwind_stms,
+                            &obligations,
+                        )?;
                         stms.push(stm_call(
                             ctx,
                             state,
@@ -1856,15 +1893,23 @@ pub(crate) fn expr_to_stm_opt(
                             args,
                             None,
                             body,
+                            unwind_path,
                         )?);
-                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(x) };
-                        typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
+                        typ_inv_obligations(ctx, state, &mut stms, obligations, TypInv::Call(x))?;
                         Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
                     }
                 }
             }
         }
-        ExprX::Call { target: CallTarget::AssumeExternal, args, post_args, body } => {
+        ExprX::Call {
+            target: CallTarget::AssumeExternal,
+            args,
+            post_args,
+            body,
+            unwind_path: _,
+        } => {
+            // Note: we ignore the unwind_path here (it can only contain resolutions,
+            // so it's sound to drop them)
             let (mut stms, all_obligations, exps, body) = get_call_args(
                 ctx,
                 state,
@@ -1897,6 +1942,7 @@ pub(crate) fn expr_to_stm_opt(
                 dest: Some(dest),
                 assert_id: None,
                 body,
+                unwind_path: None,
             };
             stms.push(Spanned::new(expr.span.clone(), call));
             let ti = TypInv::UnwindError; // exec functions are may_unwind = true by default
@@ -3802,6 +3848,7 @@ pub(crate) fn expr_to_stm_opt(
                     args: Arc::new(vec![e.clone()]),
                     post_args: None,
                     body: None,
+                    unwind_path: None,
                 },
             );
             let rewritten = expr_to_stm_opt(ctx, state, &call_expr)?;
@@ -4641,6 +4688,7 @@ fn stmt_to_stm(
                             obligations,
                             may_unwind,
                             body,
+                            unwind_stms,
                         }),
                     )) => {
                         // Special case: convert to a Call
@@ -4649,6 +4697,15 @@ fn stmt_to_stm(
                             dest: var_loc_exp(&pattern.span, &typ, decl.ident.clone()),
                             is_init: true,
                         };
+                        let unwind_path = call_unwind_path(
+                            ctx,
+                            state,
+                            &init.span,
+                            &fun,
+                            may_unwind,
+                            unwind_stms,
+                            &obligations,
+                        )?;
                         stms.push(stm_call(
                             ctx,
                             state,
@@ -4660,6 +4717,7 @@ fn stmt_to_stm(
                             args,
                             Some(dest),
                             body,
+                            unwind_path,
                         )?);
                         // REVIEW: for a similar case in `ExprX::Call` we emit a StmX::Assign to set the
                         // value of the destination when, in recommends checking, the StmX::Call is used
@@ -4669,8 +4727,7 @@ fn stmt_to_stm(
                         // to handle the right-hand-side, if possible.
                         let ret = Maybe::Some(Value::ImplicitUnit(stmt.span.clone()));
 
-                        let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(fun) };
-                        typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
+                        typ_inv_obligations(ctx, state, &mut stms, obligations, TypInv::Call(fun))?;
 
                         return Ok((stms, ret, Some((name.clone(), decl, None))));
                     }
@@ -4854,8 +4911,39 @@ enum TypInv {
     BareMutRefError,
     Assign,
     Call(Fun),
+    /// Checked on the unwind path of a call
+    CallUnwind(Fun),
     Constructed,
     Assume,
+}
+
+/// Build the unwind path for a call to `fun`:
+/// the resolutions inserted by resolution_inference (`unwind_stms`),
+/// followed by the type invariant obligations.
+/// Returns None if the callee cannot unwind or if the unwind path is empty.
+fn call_unwind_path(
+    ctx: &Ctx,
+    state: &mut State,
+    span: &Span,
+    fun: &Fun,
+    may_unwind: bool,
+    unwind_stms: Vec<Stm>,
+    obligations: &Vec<Obligation>,
+) -> Result<Option<Stm>, VirErr> {
+    if !may_unwind {
+        // resolution_inference only creates an unwind path for calls that may unwind
+        assert!(unwind_stms.is_empty());
+        return Ok(None);
+    }
+    let mut stms = unwind_stms;
+    typ_inv_obligations(
+        ctx,
+        state,
+        &mut stms,
+        obligations.clone(),
+        TypInv::CallUnwind(fun.clone()),
+    )?;
+    Ok(stms_to_one_stm_opt(span, stms))
 }
 
 fn typ_inv_obligations(
@@ -4924,6 +5012,8 @@ fn assert_assume_satisfies_user_defined_type_invariant(
                         "constructed value may fail to meet its declared type invariant".to_string(),
                     TypInv::Call(fun) =>
                         format!("value may fail to meet its declared type invariant after mutation (type invariant is checked at end of call to `{:}`)", crate::ast_util::fun_as_friendly_rust_name(fun)),
+                    TypInv::CallUnwind(fun) =>
+                        format!("value may fail to meet its declared type invariant if the call to `{:}` unwinds (type invariant is checked on the unwinding path of the call)", crate::ast_util::fun_as_friendly_rust_name(fun)),
                     TypInv::Assign =>
                         "value may fail to meet its declared type invariant after assignment".to_string(),
                     TypInv::Assume | TypInv::UnwindError | TypInv::BareMutRefError => unreachable!(),

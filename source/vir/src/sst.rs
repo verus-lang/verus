@@ -228,6 +228,9 @@ pub enum StmX {
         /// Code to be executed *inside* the function call,
         /// i.e. emplaced between the pre- and postcondition
         body: Option<Stm>,
+        /// Code to be executed in the case that the call unwinds
+        /// (e.g., resolutions and type invariant obligations)
+        unwind_path: Option<Stm>,
     },
     /// Assertion to be verified by the SMT solver; reports Stm's span on failure plus optional extra info
     Assert(Option<AssertId>, Option<Message>, Exp),

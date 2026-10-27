@@ -484,8 +484,10 @@ enum AstPosition {
     /// For an ExprX::Call node, right after evaluation of the arguments but before the call itself
     AfterArguments(AstId),
     /// Immediately after a call in the 'unwinding' case.
-    /// (Currently this is place is not representable in VIR so we do nothing with these.)
-    OnUnwind(#[allow(dead_code)] AstId),
+    /// For ExprX::Call nodes, this goes in the `unwind_path`.
+    /// (For other nodes, e.g., Await, this is not currently representable in VIR,
+    /// so we do nothing with these.)
+    OnUnwind(AstId),
     /// After the given bool-typed Expr, only when that expression evaluates to the given bool
     AfterBool(AstId, bool),
     /// For a PlaceX::Temporary node, this is right after assignment to that temporary.
@@ -853,8 +855,9 @@ impl<'a> Builder<'a> {
                 Maybe::Some(bb)
             }
 
-            ExprX::Call { target: call_target, args: es, post_args, body } => {
+            ExprX::Call { target: call_target, args: es, post_args, body, unwind_path } => {
                 assert!(post_args.is_none());
+                assert!(unwind_path.is_none());
 
                 // Can skip the expression in CallTarget because
                 // it can only be for FnSpec which is always a pure spec expression
@@ -3708,6 +3711,7 @@ fn apply_resolutions(
             Vec<FlattenedPlace>,
             Vec<FlattenedPlace>,
             Vec<FlattenedPlace>,
+            Vec<FlattenedPlace>,
             bool,
             bool,
         ),
@@ -3723,11 +3727,7 @@ fn apply_resolutions(
             AstPosition::Before(ast_id) => ast_id,
             AstPosition::After(ast_id) => ast_id,
             AstPosition::AfterArguments(ast_id) => ast_id,
-            AstPosition::OnUnwind(_) => {
-                // It might be necessary to do something here for more
-                // advanced unwind-related stuff?
-                continue;
-            }
+            AstPosition::OnUnwind(ast_id) => ast_id,
             AstPosition::MatchIntermediate => {
                 continue;
             }
@@ -3740,7 +3740,7 @@ fn apply_resolutions(
 
         let entry = id_map
             .entry(ast_id)
-            .or_insert_with_key(|_| (vec![], vec![], vec![], vec![], vec![], false, false));
+            .or_insert_with_key(|_| (vec![], vec![], vec![], vec![], vec![], vec![], false, false));
 
         match r.position {
             AstPosition::Before(_ast_id) => {
@@ -3752,7 +3752,9 @@ fn apply_resolutions(
             AstPosition::AfterArguments(_ast_id) => {
                 entry.2.push(r.place);
             }
-            AstPosition::OnUnwind(_) => unreachable!(),
+            AstPosition::OnUnwind(_ast_id) => {
+                entry.5.push(r.place);
+            }
             AstPosition::AfterTempAssignment(_) => unreachable!(),
             AstPosition::MatchIntermediate => unreachable!(),
             AstPosition::AfterBool(_ast_id, false) => {
@@ -3767,9 +3769,9 @@ fn apply_resolutions(
     for ast_id in assigns_to_resolve.into_iter() {
         let entry = id_map
             .entry(ast_id)
-            .or_insert_with_key(|_| (vec![], vec![], vec![], vec![], vec![], false, false));
-        assert!(!entry.5);
-        entry.5 = true;
+            .or_insert_with_key(|_| (vec![], vec![], vec![], vec![], vec![], vec![], false, false));
+        assert!(!entry.6);
+        entry.6 = true;
     }
 
     for (ast_id, fun) in typ_inv_obligations.iter() {
@@ -3803,8 +3805,16 @@ fn apply_resolutions(
                 module,
             )?;
 
-            if let Some((befores, afters, after_args, after_f, after_t, assn, seen_yet)) =
-                id_map.get_mut(&expr.span.id)
+            if let Some((
+                befores,
+                afters,
+                after_args,
+                after_f,
+                after_t,
+                on_unwind,
+                assn,
+                seen_yet,
+            )) = id_map.get_mut(&expr.span.id)
             {
                 if *seen_yet {
                     panic!("Verus internal error: duplicate AstId {:?}", expr.span);
@@ -3817,6 +3827,8 @@ fn apply_resolutions(
                     filter_and_make_assumes(cfg, &expr.span, scope_map, after_args);
                 let after_f_exprs = filter_and_make_assumes(cfg, &expr.span, scope_map, after_f);
                 let after_t_exprs = filter_and_make_assumes(cfg, &expr.span, scope_map, after_t);
+                let on_unwind_exprs =
+                    filter_and_make_assumes(cfg, &expr.span, scope_map, on_unwind);
 
                 let mut e = expr2.clone();
                 if *assn {
@@ -3824,6 +3836,7 @@ fn apply_resolutions(
                 }
 
                 let e = apply_after_args_exprs(e, after_args_exprs);
+                let e = apply_on_unwind_exprs(e, on_unwind_exprs);
                 let e = apply_before_exprs(e, befores_exprs);
                 let e = apply_after_exprs(e, afters_exprs);
                 let e = apply_after_bool_exprs(e, after_f_exprs, after_t_exprs);
@@ -3834,8 +3847,16 @@ fn apply_resolutions(
             }
         },
         &|(id_map, _, _), scope_map, stmt| {
-            if let Some((befores, afters, after_args, after_f, after_t, assn, seen_yet)) =
-                id_map.get_mut(&stmt.span.id)
+            if let Some((
+                befores,
+                afters,
+                after_args,
+                after_f,
+                after_t,
+                on_unwind,
+                assn,
+                seen_yet,
+            )) = id_map.get_mut(&stmt.span.id)
             {
                 if *seen_yet {
                     panic!("Verus internal error: duplicate AstId");
@@ -3847,6 +3868,7 @@ fn apply_resolutions(
                     panic!("Verus internal error: assignment should only apply to exprs");
                 }
                 assert!(after_args.len() == 0);
+                assert!(on_unwind.len() == 0);
                 *seen_yet = true;
 
                 let befores_exprs = filter_and_make_assumes(cfg, &stmt.span, scope_map, befores);
@@ -3907,7 +3929,7 @@ fn apply_resolutions(
 
     let (id_map, temp_map, typ_inv_map) = maps;
 
-    for (_, (_, _, _, _, _, _, found)) in id_map.iter() {
+    for (_, (_, _, _, _, _, _, _, found)) in id_map.iter() {
         if !*found {
             panic!("resolution_inference: bad run for apply_resolutions");
         }
@@ -4114,7 +4136,7 @@ fn apply_after_args_exprs(expr: Expr, exprs: Vec<Expr>) -> Expr {
         return expr;
     }
     match &expr.x {
-        ExprX::Call { target: ct, args, post_args: None, body } => {
+        ExprX::Call { target: ct, args, post_args: None, body, unwind_path } => {
             let mut stmts = vec![];
             for e in exprs.into_iter() {
                 stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
@@ -4129,11 +4151,47 @@ fn apply_after_args_exprs(expr: Expr, exprs: Vec<Expr>) -> Expr {
                     args: args.clone(),
                     post_args: Some(block),
                     body: body.clone(),
+                    unwind_path: unwind_path.clone(),
                 },
             )
         }
         _ => {
             panic!("apply_after_args_exprs expected ExprX::Call");
+        }
+    }
+}
+
+fn apply_on_unwind_exprs(expr: Expr, exprs: Vec<Expr>) -> Expr {
+    if exprs.len() == 0 {
+        return expr;
+    }
+    match &expr.x {
+        ExprX::Call { target: ct, args, post_args, body, unwind_path: None } => {
+            let mut stmts = vec![];
+            for e in exprs.into_iter() {
+                stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
+            }
+            let block =
+                SpannedTyped::new(&expr.span, &unit_typ(), ExprX::Block(Arc::new(stmts), None));
+            SpannedTyped::new(
+                &expr.span,
+                &expr.typ,
+                ExprX::Call {
+                    target: ct.clone(),
+                    args: args.clone(),
+                    post_args: post_args.clone(),
+                    body: body.clone(),
+                    unwind_path: Some(block),
+                },
+            )
+        }
+        ExprX::Await(_) => {
+            // The unwinding (cancellation) path of an Await is not currently
+            // representable in VIR, so we drop these resolutions.
+            expr
+        }
+        _ => {
+            panic!("apply_on_unwind_exprs expected ExprX::Call or ExprX::Await");
         }
     }
 }

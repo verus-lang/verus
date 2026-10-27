@@ -505,6 +505,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         args: _,
                         post_args: _,
                         body: _,
+                        unwind_path: _,
                     } => {
                         // REVIEW: maybe we can be more precise if we use impl_paths here
                         assert!(ctxt.module.is_none() || attrs.autospec == AutospecUsage::Final);
@@ -860,6 +861,7 @@ fn collect_broadcast_triggers(
                     args: _,
                     post_args: _,
                     body: _,
+                    unwind_path: _,
                 } => {
                     for typ in ts.iter() {
                         ft(typ);

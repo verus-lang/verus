@@ -626,6 +626,7 @@ pub(crate) fn expand_call_graph(
                 args: _,
                 post_args: _,
                 body: _,
+                unwind_path: _,
             } => {
                 assert!(attrs.autospec == AutospecUsage::Final);
                 let (callee, ts, impl_paths) = if let CallTargetKind::DynamicResolved {
@@ -676,6 +677,7 @@ pub(crate) fn expand_call_graph(
                 args: _,
                 post_args: _,
                 body: _,
+                unwind_path: _,
             } => {
                 for impl_path in impl_paths.iter() {
                     call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));

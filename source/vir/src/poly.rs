@@ -856,6 +856,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             dest,
             assert_id,
             body,
+            unwind_path,
         } => {
             let (is_polys, function) = if let crate::sst::CallTarget::Fun(fun) = fun {
                 let function = &ctx.func_sst_map[fun].x;
@@ -900,6 +901,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 None
             };
             let body = body.as_ref().map(|stm| visit_stm(ctx, state, stm));
+            let unwind_path = unwind_path.as_ref().map(|stm| visit_stm(ctx, state, stm));
             mk_stm(StmX::Call {
                 fun: fun.clone(),
                 resolved_method: resolved_method.clone(),
@@ -911,6 +913,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 dest,
                 assert_id: assert_id.clone(),
                 body,
+                unwind_path,
             })
         }
         StmX::Assert(id, msg, e1) => {

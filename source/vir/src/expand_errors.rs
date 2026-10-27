@@ -103,9 +103,21 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
         StmX::Assert(assert_id, ..) | StmX::Return { assert_id, .. } => {
             assert_id.as_ref() == Some(a_id)
         }
-        StmX::Call { assert_id, body, .. } => {
-            assert_id.as_ref() == Some(a_id)
+        StmX::Call { assert_id, body, unwind_path, .. } => {
+            if assert_id.as_ref() == Some(a_id)
                 || body.as_ref().is_some_and(|stm| get_fuel_at_id(stm, a_id, fuels))
+            {
+                return true;
+            }
+            if let Some(unwind_path) = unwind_path {
+                // Like DeadEnd
+                let mut inside_fuels = fuels.clone();
+                if get_fuel_at_id(unwind_path, a_id, &mut inside_fuels) {
+                    *fuels = inside_fuels;
+                    return true;
+                }
+            }
+            false
         }
         StmX::AssertBitVector { .. }
         | StmX::AssertCompute(..)
