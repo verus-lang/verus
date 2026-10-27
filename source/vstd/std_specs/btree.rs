@@ -40,17 +40,15 @@ verus! {
 /// See also [`axiom_key_obeys_cmp_spec_meaning`].
 pub uninterp spec fn key_obeys_cmp_spec<Key: ?Sized>() -> bool;
 
-/// For types that are ordered, [`key_obeys_cmp_spec`] is equivalent to [`obeys_cmp`].
+/// For types that are ordered, [`key_obeys_cmp_spec`] is equivalent to [`btree_key_obeys`].
 pub broadcast axiom fn axiom_key_obeys_cmp_spec_meaning<K: Ord>()
     ensures
         #[trigger] key_obeys_cmp_spec::<K>() <==> btree_key_obeys::<K>(),
 ;
 
-/// The keys of a `BTreeMap`/`BTreeSet` are modelled as a `Map`/`Set` over the key values,
-/// which identifies keys by `==`; the implementation identifies them by `cmp`. The two agree
-/// only if `cmp` is a total order whose `Equal` is `==` (#3029: an `Ord` that
-/// ignores a field made `insert` of two such keys a two-entry `Map` but a one-entry tree).
-/// The specifications below hold under this predicate.
+/// The keys define a total order, and `cmp` returns `Equal` exactly when the keys are `==`.
+/// The specifications below hold only for such keys: they model a tree as a `Map`/`Set`,
+/// which tells keys apart by `==`, while the tree tells them apart by `cmp`.
 pub open spec fn btree_key_obeys<K: Ord>() -> bool {
     &&& obeys_cmp::<K>()
     &&& super::super::laws_eq::obeys_concrete_eq::<K>()
@@ -501,8 +499,8 @@ pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Valu
         res == m@.is_empty(),
 ;
 
-// Keys and values are cloned with their `Clone` impls (#3086, as #1835 for `HashMap`): the
-// keys are the same only if `K::clone` returns an equal value, and each value is a clone.
+// Keys and values are cloned with their `Clone` impls: the keys are the same only if
+// `K::clone` returns an equal value, and each value is a clone.
 pub assume_specification<K: Clone, V: Clone, A: Allocator + Clone>[ <BTreeMap::<
     K,
     V,
@@ -1121,7 +1119,7 @@ pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::is_empt
         res == m@.is_empty(),
 ;
 
-// The elements are cloned with `K::clone` (#3086).
+// The elements are cloned with `K::clone`.
 pub assume_specification<K: Clone, A: Allocator + Clone>[ <BTreeSet::<K, A> as Clone>::clone ](
     this: &BTreeSet<K, A>,
 ) -> (other: BTreeSet<K, A>)
