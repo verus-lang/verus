@@ -55,25 +55,70 @@ pub uninterp spec fn global_alloc_id() -> AllocId;
 /// Similarly, we track an `Allocator` instance identifier to ensure that allocations
 /// are deallocated with the same instance used to allocate them,
 /// as per the `Allocator::deallocate` spec.
+pub ghost struct AllocationData {
+    /// The starting address of the allocation.
+    pub start_addr: usize,
+    /// The length of the allocation in bytes.
+    pub alloc_len: nat,
+    /// The alignment of the allocation. Must be a power of 2 bounded by `isize::MAX + 1`.
+    pub alignment: nat,
+    /// The originally requested allocation size.
+    pub orig_size: nat,
+    /// The ID of the `Allocator` instance used to allocate this memory.
+    pub alloc_id: AllocId,
+}
+
+/// The tag a pointer carries in an aliasing model such as Stacked Borrows or Tree Borrows.
+/// Reborrowing a reference, or casting it to a raw pointer, can give the result a fresh tag.
+#[verifier::external_body]
+pub ghost struct Tag {}
+
+/// A pointer's provenance consists of its allocation (the spatial part)
+/// and its tag, if it is not none. 
 #[verifier::external_body]
 pub ghost struct ProvenanceData {}
 
 impl ProvenanceData {
-    // Add tag fn to opaque Tag type and provenance equality fn
+    /// The spatial provenance data which defines its allocation.
+    pub uninterp spec fn spatial_data(&self) -> AllocationData;
+
+    /// The tag of this provenance, which tracks reborrows.
+    pub uninterp spec fn tag(&self) -> Tag;
+
     /// The starting address of the pointer's allocation.
-    pub uninterp spec fn start_addr(&self) -> usize;
+    pub open spec fn start_addr(&self) -> usize {
+        self.spatial_data().start_addr
+    }
 
     /// The length of the pointer's allocation in bytes.
-    pub uninterp spec fn alloc_len(&self) -> nat;
+    pub open spec fn alloc_len(&self) -> nat {
+        self.spatial_data().alloc_len
+    }
 
     /// The alignment of the pointer's allocation. Must be a power of 2 bounded by `isize::MAX + 1`.
-    pub uninterp spec fn alignment(&self) -> nat;
+    pub open spec fn alignment(&self) -> nat {
+        self.spatial_data().alignment
+    }
 
     /// The originally requested allocation size.
-    pub uninterp spec fn orig_size(&self) -> nat;
+    pub open spec fn orig_size(&self) -> nat {
+        self.spatial_data().orig_size
+    }
 
     /// The ID of the `Allocator` instance used to allocate this memory.
-    pub uninterp spec fn alloc_id(&self) -> AllocId;
+    pub open spec fn alloc_id(&self) -> AllocId {
+        self.spatial_data().alloc_id
+    }
+}
+
+/// Two provenances are equal up to their tags:
+/// either both are `None`, or both are `Some` with the same allocation.
+pub open spec fn provenance_eq_up_to_tag(p: Provenance, q: Provenance) -> bool {
+    match (p, q) {
+        (Some(p), Some(q)) => p.spatial_data() == q.spatial_data(),
+        (None, None) => true,
+        _ => false,
+    }
 }
 
 /// Provenance
@@ -117,10 +162,7 @@ pub type Provenance = Option<ProvenanceData>;
 ///   (from the documentation for the `Allocator` trait).
 pub broadcast axiom fn provenance_properties(p: ProvenanceData)
     ensures
-        #![trigger p.start_addr()]
-        #![trigger p.alloc_len()]
-        #![trigger p.alignment()]
-        #![trigger p.orig_size()]
+        #![trigger p.spatial_data()]
         p.start_addr() + p.alloc_len() <= usize::MAX,
         p.alloc_len() <= isize::MAX,
         exists|i: nat|

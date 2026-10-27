@@ -491,6 +491,16 @@ pub axiom fn tracked_mut_ref_slice_idx<T>(
         (*final(mut_ref))@ == (*old(mut_ref))@.update(i, *final(sub_mut_ref)),
 ;
 
+/// Two pointers are equal up to their tags:
+/// they have the same address, metadata, and provenance apart from the tag.
+pub open spec fn ptr_eq_up_to_tag<T: ?Sized>(p: *mut T, q: *mut T) -> bool {
+    &&& p.addr() == q.addr()
+    &&& provenance_eq_up_to_tag(p@.provenance, q@.provenance)
+    &&& p@.metadata == q@.metadata
+}
+
+/// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
+///
 /// Conceptually, turning a mut ref into a ptr is just splitting it into exec and tracked components.
 /// Ideally, we wouldn't need a dedicated function for doing both of these things; we would just
 /// model the exec operation turning a mut ref into a pointer, and then getting the tracked mut ref
@@ -498,16 +508,6 @@ pub axiom fn tracked_mut_ref_slice_idx<T>(
 ///
 /// However, the actual operation still requires a (nondeterministic) retag, so we need one function
 /// that produces both the raw pointer and the permission and ties the fresh pointer values together.
-// TODO: add spatial provenance comparison
-pub open spec fn ptr_eq_up_to_tag<T: ?Sized>(p: *mut T, q: *mut T) -> bool {
-    p.addr() == q.addr() && p@.metadata
-        == q@.metadata
-    // should also compare the spatial elements of provenance, i.e., the non-tag
-    // part of provenance
-
-}
-
-/// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
 #[verifier::external_body]
 pub const fn cast_mut_ref_to_ptr<T>(mut_ref: &mut T) -> ((ptr, perm): (*mut T, Tracked<&mut T>))
     ensures
