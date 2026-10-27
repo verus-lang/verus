@@ -29,11 +29,6 @@ fn free_vars_exp_scope(
             ExpX::Var(x) | ExpX::VarLoc(x) if !scope_map.contains_key(x) => {
                 vars.insert(x.clone(), e.typ.clone());
             }
-            // a binder named `x` should not capture a symbolic free variable the interpreter
-            // didn't introduce (i.e., one from an enclosing scope)
-            ExpX::Interp(crate::interpreter::InterpExp::FreeVar(x)) => {
-                vars.insert(x.clone(), e.typ.clone());
-            }
             ExpX::Unary(UnaryOp::MustBeFinalized, _) if !allow_unfinalized => {
                 // Var won't match binders if we're not finalized
                 // (special case allow_unfinalized = true for type-only substitution)
@@ -313,9 +308,6 @@ fn subst_exp_rec(ctxt: &SubstCtxt, state: &mut SubstState, exp: &Exp) -> Exp {
             }
             mk_exp(ExpX::ArrayLiteral(Arc::new(new_exprs)))
         }
-        // a symbolic free variable the interpreter didn't introduce (one from an enclosing
-        // scope) is not substituted; `free_vars_exp_scope` reports it so binders avoid it
-        ExpX::Interp(crate::interpreter::InterpExp::FreeVar(_)) => exp.clone(),
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }

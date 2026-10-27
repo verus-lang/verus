@@ -50,6 +50,7 @@ const DEPTH_LIMIT_MULTIPLIER: u64 = 500;
 const WARNING_INTERVAL_SECS: u64 = 2;
 
 type Env = ScopeMap<UniqueIdent, Exp>;
+type TypeEnv = ScopeMap<Ident, Typ>;
 
 /// A call's type and value arguments, supporting `Hash` and `Eq`, so that we can use them
 /// as a key when caching the call's result.  Intended to never leave this module.
@@ -954,7 +955,10 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirEr
             segments: strs_to_idents(vec!["array", "array_view"]),
         });
         let fun_view = Arc::new(FunX { path: path_view });
-        let array = cleanup_array(span, inner_typ.clone(), s)?;
+        // Keep hidden variables hidden: this also runs during interpretation (a partially
+        // simplified sequence), where a restored variable could be captured by a callee's
+        // parameter of the same name. The final cleanup_exp restores them.
+        let array = raw_array(span, inner_typ.clone(), s);
         let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(s.len())));
         let array_view = new_seq_exp(ExpX::Call(
             CallFun::Fun(fun_view, None),
@@ -963,6 +967,14 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirEr
         ));
         Ok(array_view)
     }
+}
+
+/// An array literal of the given elements, as they are (no cleanup)
+fn raw_array(span: &Span, inner_typ: Typ, arr: &Vector<Exp>) -> Exp {
+    let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(arr.len())));
+    let arr_typ =
+        Arc::new(TypX::Primitive(Primitive::Array, Arc::new(vec![inner_typ, array_len_typ])));
+    SpannedTyped::new(span, &arr_typ, ExpX::ArrayLiteral(Arc::new(arr.iter().cloned().collect())))
 }
 
 /// Convert an interpreter-internal array representation back into a
@@ -1660,7 +1672,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             BitAnd => int_new(i1 & i2),
                             BitOr => int_new(i1 | i2),
                             Shr => match i2.to_u128() {
-                                None => ok,
+                                None => ok_e2(e2),
                                 Some(i2) => int_new(i1 >> i2),
                             },
                             Shl(w, signed) => {
@@ -1671,10 +1683,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 if i2 >= 128 { 0i128 } else { i1 << i2 };
                                             match i128_to_width(i1_shifted, *w, ctx.arch) {
                                                 Some(i) => int_new(i),
-                                                None => ok,
+                                                None => ok_e2(e2),
                                             }
                                         }
-                                        _ => ok,
+                                        _ => ok_e2(e2),
                                     }
                                 } else {
                                     match (i1.to_u128(), i2.to_u128()) {
@@ -1683,10 +1695,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 if i2 >= 128 { 0u128 } else { i1 << i2 };
                                             match u128_to_width(i1_shifted, *w, ctx.arch) {
                                                 Some(i) => int_new(i),
-                                                None => ok,
+                                                None => ok_e2(e2),
                                             }
                                         }
-                                        _ => ok,
+                                        _ => ok_e2(e2),
                                     }
                                 }
                             }
@@ -1791,34 +1803,35 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 let pars = &func.x.pars;
                                 let spec_axioms = func.x.axioms.spec_axioms.as_ref().unwrap();
                                 state.cache_misses += 1;
-                                // Substitute the actual arguments for the formals and the
-                                // type arguments for the type parameters, then evaluate the
-                                // (now closed) body in an empty environment. `subst_exp` is
-                                // capture-avoiding.
-                                let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
-                                let mut var_substs: HashMap<VarIdent, Exp> = HashMap::new();
+                                let mut env = Env::new();
+                                let mut type_env = TypeEnv::new();
+                                env.push_scope(true);
+                                type_env.push_scope(true);
                                 for (formal, actual) in pars.iter().zip(new_args.iter()) {
-                                    var_substs.insert(formal.x.name.clone(), actual.clone());
+                                    let formal_id = formal.x.name.clone();
+                                    env.insert(formal_id, actual.clone()).unwrap();
                                 }
                                 for (formal, actual) in typ_params.iter().zip(typs.iter()) {
-                                    typ_substs.insert(formal.clone(), actual.clone());
+                                    type_env.insert(formal.clone(), actual.clone()).unwrap();
                                 }
-                                let mut env = Env::new();
-                                env.push_scope(true);
+                                // Proactively apply the type environment to the body.
+                                // We don't do this for the variable environment, since
+                                // the body might locally shadow some of the parameter names.
+                                let empty_substs = HashMap::new();
                                 let prev_env = std::mem::replace(&mut state.env, env);
                                 // The function's definition only holds when its `when` condition
                                 // holds, so only unfold the body if the condition simplifies to true
                                 let when_holds = match &spec_axioms.decrease_when {
                                     None => true,
                                     Some(when) => {
-                                        let when = subst_exp(&typ_substs, &var_substs, when);
+                                        let when = subst_exp(type_env.map(), &empty_substs, when);
                                         let when = eval_expr_internal(ctx, state, &when)?;
                                         matches!(when.x, Const(Constant::Bool(true)))
                                     }
                                 };
                                 let result = if when_holds {
                                     let body = &spec_axioms.body_exp;
-                                    let body = subst_exp(&typ_substs, &var_substs, body);
+                                    let body = subst_exp(type_env.map(), &empty_substs, body);
                                     eval_expr_internal(ctx, state, &body)
                                 } else {
                                     // return unevaluated call
