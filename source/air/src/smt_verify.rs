@@ -454,6 +454,34 @@ pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, Validit
 /// label was merely assigned `true` by the solver without its assertion failing.
 /// Anything else (unknown, timeout, unexpected output) is treated conservatively as
 /// confirmed, so that an error is never suppressed by a solver hiccup.
+fn confirm_label(context: &mut Context, infos: &Vec<AssertionInfo>, i: usize) -> bool {
+    context.smt_log.log_push();
+    for (j, info) in infos.iter().enumerate() {
+        if j != i && !info.disabled {
+            context.smt_log.log_assert(&None, &mk_not(&ident_var(&info.label)));
+        }
+    }
+    if matches!(context.solver, SmtSolver::Z3) {
+        context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
+    }
+    context.smt_log.log_word("check-sat");
+    if matches!(context.solver, SmtSolver::Z3) {
+        context.smt_log.log_set_option("rlimit", "0");
+    }
+    context.smt_log.log_pop();
+    let smt_data = context.smt_log.take_pipe_data();
+    let smt_output = context.get_smt_process().send_commands(smt_data);
+    let mut result = true;
+    for line in smt_output {
+        if line == "unsat" {
+            result = false;
+        } else if line == "sat" {
+            result = true;
+        }
+    }
+    result
+}
+
 /// After `confirm_label` has run `check-sat` in its own scopes, the solver has no model of the
 /// failing query. Re-establish one for the observer: in a scope where every other enabled
 /// label is disabled (a model violating exactly the reported assertion), or, if the labels
@@ -483,34 +511,6 @@ fn restore_model_for_observer(context: &mut Context, infos: &Vec<AssertionInfo>,
     context.smt_log.log_pop();
     check_sat(context);
     false
-}
-
-fn confirm_label(context: &mut Context, infos: &Vec<AssertionInfo>, i: usize) -> bool {
-    context.smt_log.log_push();
-    for (j, info) in infos.iter().enumerate() {
-        if j != i && !info.disabled {
-            context.smt_log.log_assert(&None, &mk_not(&ident_var(&info.label)));
-        }
-    }
-    if matches!(context.solver, SmtSolver::Z3) {
-        context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
-    }
-    context.smt_log.log_word("check-sat");
-    if matches!(context.solver, SmtSolver::Z3) {
-        context.smt_log.log_set_option("rlimit", "0");
-    }
-    context.smt_log.log_pop();
-    let smt_data = context.smt_log.take_pipe_data();
-    let smt_output = context.get_smt_process().send_commands(smt_data);
-    let mut result = true;
-    for line in smt_output {
-        if line == "unsat" {
-            result = false;
-        } else if line == "sat" {
-            result = true;
-        }
-    }
-    result
 }
 
 fn smt_get_model(
