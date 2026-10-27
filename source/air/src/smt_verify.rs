@@ -454,6 +454,37 @@ pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, Validit
 /// label was merely assigned `true` by the solver without its assertion failing.
 /// Anything else (unknown, timeout, unexpected output) is treated conservatively as
 /// confirmed, so that an error is never suppressed by a solver hiccup.
+/// After `confirm_label` has run `check-sat` in its own scopes, the solver has no model of the
+/// failing query. Re-establish one for the observer: in a scope where every other enabled
+/// label is disabled (a model violating exactly the reported assertion), or, if the labels
+/// only fail jointly, for the query as a whole. Returns whether a scope was left open, to be
+/// popped after the observer has run.
+fn restore_model_for_observer(context: &mut Context, infos: &Vec<AssertionInfo>, i: usize) -> bool {
+    fn check_sat(context: &mut Context) -> bool {
+        if matches!(context.solver, SmtSolver::Z3) {
+            context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
+        }
+        context.smt_log.log_word("check-sat");
+        if matches!(context.solver, SmtSolver::Z3) {
+            context.smt_log.log_set_option("rlimit", "0");
+        }
+        let smt_data = context.smt_log.take_pipe_data();
+        context.get_smt_process().send_commands(smt_data).iter().any(|line| line == "sat")
+    }
+    context.smt_log.log_push();
+    for (j, info) in infos.iter().enumerate() {
+        if j != i && !info.disabled {
+            context.smt_log.log_assert(&None, &mk_not(&ident_var(&info.label)));
+        }
+    }
+    if check_sat(context) {
+        return true;
+    }
+    context.smt_log.log_pop();
+    check_sat(context);
+    false
+}
+
 fn confirm_label(context: &mut Context, infos: &Vec<AssertionInfo>, i: usize) -> bool {
     context.smt_log.log_push();
     for (j, info) in infos.iter().enumerate() {
@@ -588,10 +619,14 @@ fn smt_get_model(
     let e = context.message_interface.append_labels(&error, &discovered_additional_info);
 
     // Notify the observer while the solver model is still valid.
-    // `eval_bool_expr` calls `context.evaluate_bool()`, which sends `(eval ...)` to the solver.
+    // `eval_bool_expr` calls `context.evaluate_bool()`, which sends `(get-value ...)` to the solver.
     // This only works before the label is disabled (which invalidates the model).
     // Clone the shared handle so `context` stays free for the eval_bool_expr closure.
     let obs = context.query_result_observer.clone();
+    let scoped = match (&obs, discovered_info_index) {
+        (Some(_), Some(i)) if needs_confirmation => restore_model_for_observer(context, &infos, i),
+        _ => false,
+    };
     if let Some(obs) = &obs {
         let assert_id = discovered_assert_id.clone().unwrap();
         obs.borrow_mut().on_check_valid_result(
@@ -604,6 +639,9 @@ fn smt_get_model(
         );
     }
 
+    if scoped {
+        context.smt_log.log_pop();
+    }
     // Disable the label for subsequent check-sat calls (this invalidates the model).
     if let Some(idx) = discovered_info_index {
         infos[idx].disabled = true;

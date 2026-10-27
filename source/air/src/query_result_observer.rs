@@ -23,7 +23,9 @@ pub enum CheckValidResult<'a> {
         /// Evaluate a boolean AIR expression against the live solver model.
         /// Returns `Some(bool)` for a boolean result, `None` for a non-boolean
         /// expression or one the model cannot evaluate. Valid only during this
-        /// callback (the model is torn down afterward).
+        /// callback (the model is torn down afterward). The model violates the reported
+        /// assertion; when several labels had to be confirmed, it is re-established for
+        /// this callback, so it may differ from `model_defs`.
         eval_bool_expr: &'a mut dyn FnMut(&Expr) -> Option<bool>,
         assert_id: &'a Option<crate::ast::AssertId>,
         error: &'a Message,

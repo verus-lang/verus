@@ -1447,3 +1447,38 @@ test_verify_one_file_with_options! {
         assert_eq!(d.eval_expr_results, vec![Some(true), Some(false), None]);
     }
 }
+/// The lines of the errors Verus reported.
+fn reported_error_lines(err: &TestErr) -> std::collections::BTreeSet<u32> {
+    err.errors.iter().map(|e| relevant_error_span(&e.spans).line_start as u32).collect()
+}
+
+test_verify_one_file_with_options! {
+    // Pins: with confirmation, the observer is told the reported assertion, and its evaluator
+    // answers (a model is re-established after the confirmation scopes).
+    #[test]
+    test_observer_cvc5_confirmed_failures ["cvc5", "observer=test"] => verus_code! {
+        use vstd::prelude::*;
+        fn fails() {
+            let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
+            let mut a = 0;
+            x[0][a] = ({ a = a + 1; 5 });
+            assert(x[0][0] == 0 && x[0][1] == 5 && x[1][0] == 2 && x[1][1] == 3);
+            assert(false); // FAILS
+        }
+        fn fails_assign_op() {
+            let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
+            let mut a = 0;
+            x[0][a] += ({ a = a + 1; 5 });
+            assert(x[0][0] == 0 && x[0][1] == 6 && x[1][0] == 2 && x[1][1] == 3);
+            assert(false); // FAILS
+        }
+    } => Err(err) => {
+        let d = parse(&err);
+        let reported = reported_error_lines(&err);
+        let told: std::collections::BTreeSet<u32> = d.invalid_error_lines.iter().copied().collect();
+        assert_eq!(told, reported, "the observer is told the reported assertions");
+        assert!(d.eval_expr_results.chunks(3).all(|c| c == [Some(true), Some(false), None]),
+            "the evaluator answers in every Invalid callback; got {:?}", d.eval_expr_results);
+        assert_fails(err, 2);
+    }
+}
