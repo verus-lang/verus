@@ -1046,11 +1046,6 @@ fn rewrite_with_expr(
     expr: &mut Expr,
     call_with_spec: verus_syn::WithSpecOnExpr,
 ) -> Vec<verus_syn::Stmt> {
-    // For an assignment `x = rhs`, apply the `with` to `rhs`.
-    if let syn::Expr::Assign(syn::ExprAssign { right, .. }) = expr {
-        return rewrite_with_expr(erase, right, call_with_spec);
-    }
-
     let verus_syn::WithSpecOnExpr { inputs, outputs, follows, erased_fields, .. } = call_with_spec;
 
     if outputs.is_some() || inputs.len() > 0 {

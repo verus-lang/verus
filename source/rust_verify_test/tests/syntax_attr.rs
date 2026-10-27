@@ -1680,33 +1680,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_proof_with_assign code!{
-        use vstd::prelude::*;
-
-        #[verus_spec(ret =>
-            with Tracked(y): Tracked<&mut int>
-            ensures *final(y) == *old(y) + 1, ret == x
-        )]
-        fn incr(x: u32) -> u32 {
-            proof!{ *y = *y + 1; }
-            x
-        }
-
-        #[verus_spec]
-        fn test() {
-            proof_decl!{ let tracked mut y: int = 0; }
-            let mut r = 0;
-            proof_with!(Tracked(&mut y));
-            r = incr(7);
-            proof!{
-                assert(y == 1);
-                assert(r == 7);
-            }
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
     #[test] test_open_invariant_attr code!{
         use vstd::prelude::*;
         use vstd::invariant::*;
@@ -1735,7 +1708,8 @@ test_verify_one_file! {
             open_atomic_invariant_attr!(inv => g => {
                 proof!{ assert(g == 5); }
                 proof_with!(Tracked(&mut g));
-                r = touch();
+                let r0 = touch();
+                r = r0;
             });
             proof!{ assert(r == 3); }
         }
