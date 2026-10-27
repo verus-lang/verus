@@ -33,7 +33,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.98.1
+          toolchain: 1.99.1
 
       - name: setup verusfmt
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
@@ -64,7 +64,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.98.1
+          toolchain: 1.99.1
           components: clippy
 
       - name: clippy check codebase
@@ -130,7 +130,7 @@ jobs:
         if: needs.change_filter.outputs.cargo_verus == 'true'
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.98.1
+          toolchain: 1.99.1
 
       - name: cargo-verus tests
         if: needs.change_filter.outputs.cargo_verus == 'true'
@@ -150,7 +150,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.98.1
+          toolchain: 1.99.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -159,10 +159,13 @@ jobs:
         working-directory: ./source/tools/line_count
         run: cargo nextest run
 
-  # check if it builds and runs on macos, running the full test suite
+  # check if it builds and runs on linux, running the full test suite
   # (in release mode because it makes a huge difference)
   full-test:
-    runs-on: macos-14
+    runs-on: ubuntu-24.04
+
+    env:
+      CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
 
     defaults:
       run:
@@ -187,7 +190,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.98.1
+          toolchain: 1.99.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -196,17 +199,18 @@ jobs:
         working-directory: ./source
         run: |
           cargo clean
-          cargo run --release -p cargo-verus-toolchains --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests
-          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo build --release
-          cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
+          # --bin rather than -p, which would rebuild with different features
+          cargo run --release --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests
+          cargo build --release
+          cargo run --release --bin cargo-verus -- build --release --manifest-path vstd/Cargo.toml
 
       - name: full tests
         working-directory: ./source
         run: |
           # check cvc5
-          cargo run --release -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
-          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo nextest run --release -p air
-          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo nextest run --release -p rust_verify_test
+          cargo run --release --bin rust_verify -- -V cvc5 ../examples/assorted_demo.rs
+          cargo nextest run --release -p air
+          cargo nextest run --release -p rust_verify_test
           # cvc5: multi-error reporting reads the failing assertion labels out of the model;
           # cvc5 returns total models, so these tests exercise label confirmation (run
           # at low parallelism: cvc5's rlimit is sensitive to CPU contention)
@@ -245,7 +249,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.98.1
+          toolchain: 1.99.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -287,7 +291,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.98.1
+          toolchain: 1.99.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -352,10 +356,31 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.98.1
+          toolchain: 1.99.1
 
       - name: build docs
         working-directory: ./source
         run: |
           ./tools/get-z3.sh
-          ./tools/docs-cargo.sh --strict # strict will complain if there are warnings
+          ./tools/docs.sh --strict # strict will complain if there are warnings
+
+      - name: setup mdbook and lychee
+        env:
+          MDBOOK_VERSION: 0.5.2
+          MDBOOK_SHA256: 084e4342ba564db270108763e404a7d1f309d932651a22484e93c0dc1a071f6d
+          LYCHEE_VERSION: 0.24.2
+          LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+        run: |
+          curl -sSfL -o mdbook.tar.gz "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sSfL -o lychee.tar.gz "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${MDBOOK_SHA256}  mdbook.tar.gz" | sha256sum -c
+          echo "${LYCHEE_SHA256}  lychee.tar.gz" | sha256sum -c
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf mdbook.tar.gz -C "$HOME/.local/bin"
+          tar -xzf lychee.tar.gz --strip-components=1 -C "$HOME/.local/bin" lychee-x86_64-unknown-linux-gnu/lychee
+          rm mdbook.tar.gz lychee.tar.gz
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: check doc links
+        working-directory: ./source
+        run: ./tools/check-doc-links.sh

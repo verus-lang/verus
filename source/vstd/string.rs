@@ -13,12 +13,15 @@ use core::slice::SliceIndex;
 use super::prelude::*;
 use super::seq::Seq;
 use super::slice::*;
+#[cfg(all(verus_keep_ghost, feature = "alloc", not(verus_verify_core)))]
+use super::std_specs::fmt::DisplaySpec;
 #[cfg(verus_keep_ghost)]
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 use super::std_specs::iter::IteratorSpec;
 #[cfg(verus_keep_ghost)]
 use super::std_specs::range::{
     ExRange, RangeBoundsSpec, slice_range_end, slice_range_start, slice_range_valid,
+    spec_range_inclusive_slice_bounds,
 };
 use super::utf8::*;
 use super::view::*;
@@ -124,6 +127,8 @@ pub assume_specification[ str::to_owned ](s: &str) -> (res: String)
 pub assume_specification[ str::as_bytes ](s: &str) -> (b: &[u8])
     ensures
         b@ == s.spec_bytes(),
+    opens_invariants none
+    no_unwind
 ;
 
 #[cfg(not(verus_verify_core))]
@@ -131,6 +136,8 @@ pub assume_specification[ str::as_bytes ](s: &str) -> (b: &[u8])
 pub assume_specification[ str::len ](s: &str) -> usize
     returns
         s.spec_bytes().len() as usize,
+    opens_invariants none
+    no_unwind
 ;
 
 #[cfg(not(verus_verify_core))]
@@ -138,6 +145,8 @@ pub assume_specification[ str::len ](s: &str) -> usize
 pub assume_specification[ str::is_empty ](s: &str) -> bool
     returns
         s@.len() == 0,
+    opens_invariants none
+    no_unwind
 ;
 
 #[cfg(not(verus_verify_core))]
@@ -182,6 +191,8 @@ pub broadcast proof fn to_string_from_display_ensures_for_str(t: &str, res: Stri
 pub assume_specification<T: core::fmt::Display + ?Sized>[ <T as ToString>::to_string ](
     t: &T,
 ) -> (res: String)
+    requires
+        forall|f: &core::fmt::Formatter<'_>| t.fmt_req(f),
     ensures
         to_string_from_display_ensures::<T>(t, res),
 ;
@@ -353,6 +364,18 @@ impl DeepView for String {
     }
 }
 
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl PartialEqSpecImpl for String {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &String) -> bool {
+        self@ == other@
+    }
+}
+
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -367,6 +390,8 @@ pub open spec fn string_is_ascii(s: &String) -> bool {
 pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
     ensures
         res@ == s@,
+    opens_invariants none
+    no_unwind
 ;
 
 // same as above
@@ -417,6 +442,8 @@ pub assume_specification[ String::push_str ](s: &mut String, other: &str)
 pub assume_specification[ String::is_empty ](s: &String) -> (res: bool)
     ensures
         res == (s@.len() == 0),
+    opens_invariants none
+    no_unwind
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
@@ -788,11 +815,15 @@ pub assume_specification[ <RangeFull as SliceIndex<str>>::index_mut ](
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for RangeInclusive<usize> {
     open spec fn in_bounds(&self, s: &str) -> bool {
-        str_slice_in_bounds(self, s)
+        str_slice_in_bounds(&spec_range_inclusive_slice_bounds(self), s)
     }
 
     open spec fn index_postcondition(&self, s: &str, r: &str) -> bool {
-        str_slice_index_postcondition(self, s.spec_bytes(), r.spec_bytes())
+        str_slice_index_postcondition(
+            &spec_range_inclusive_slice_bounds(self),
+            s.spec_bytes(),
+            r.spec_bytes(),
+        )
     }
 
     open spec fn index_mut_postcondition(
@@ -803,7 +834,7 @@ impl super::slice::SliceIndexSpecImpl<str> for RangeInclusive<usize> {
         final_output: &str,
     ) -> bool {
         str_slice_index_mut_postcondition(
-            self,
+            &spec_range_inclusive_slice_bounds(self),
             old_slice.spec_bytes(),
             final_slice.spec_bytes(),
             immediate_output.spec_bytes(),

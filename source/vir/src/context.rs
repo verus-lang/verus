@@ -43,7 +43,7 @@ impl crate::messages::CheckAllowForWarning for WarningConfig {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WarningCtx {
     // Map names of FunctionX in this crate (not imported from other crates)
     // to Some CheckAllowForWarning to be used to check that fun,
@@ -133,8 +133,6 @@ pub struct Ctx {
     // is overkill, perhaps this should be revisited.
     pub(crate) string_hashes: RefCell<HashMap<BigUint, Arc<String>>>,
     pub(crate) byte_string_hashes: RefCell<HashMap<BigUint, Arc<Vec<u8>>>>,
-    // proof debug purposes
-    pub debug: bool,
     pub arch_word_bits: ArchWordBits,
 }
 
@@ -703,7 +701,7 @@ impl GlobalCtx {
                             krate.functions.iter().find(|g| Node::Fun(g.x.name.clone()) == g_node);
                         let mut error = crate::messages::error(
                             &f.span,
-                            "found cyclic dependency in decreases_by function",
+                            "found cyclic dependency in `decreases_by` function",
                         );
                         if let Some(g) = g_opt {
                             error = error.secondary_span(&g.span);
@@ -715,7 +713,7 @@ impl GlobalCtx {
             if f.x.attrs.atomic {
                 let fun_node = Node::Fun(f.x.name.clone());
                 if func_call_graph.node_is_in_cycle(&fun_node) {
-                    return Err(error(&f.span, "'atomic' cannot be used on a recursive function"));
+                    return Err(error(&f.span, "`atomic` cannot be used on a recursive function"));
                 }
             }
         }
@@ -811,7 +809,6 @@ impl Ctx {
         used_builtins: crate::prune::UsedBuiltins,
         fndef_types: Vec<Fun>,
         resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
-        debug: bool,
     ) -> Result<Self, VirErr> {
         let name_ctxt = NameCtxt::new();
         let mut datatype_is_transparent: HashMap<Dt, bool> = HashMap::new();
@@ -887,7 +884,6 @@ impl Ctx {
             global,
             string_hashes,
             byte_string_hashes,
-            debug,
             arch_word_bits: krate.arch.word_bits,
             opaque_type_map,
         })

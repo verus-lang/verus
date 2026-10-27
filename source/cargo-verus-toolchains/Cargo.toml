@@ -9,6 +9,10 @@ description = "Data types and utilities for bundling Verus toolchain info into c
 name = "create-manifest"
 path = "src/create_manifest.rs"
 
+[[bin]]
+name = "create-release"
+path = "src/create_release.rs"
+
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
