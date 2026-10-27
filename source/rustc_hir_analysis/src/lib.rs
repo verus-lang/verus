@@ -60,7 +60,6 @@ This API is completely unstable and subject to change.
 #![feature(gen_blocks)]
 #![feature(iter_intersperse)]
 #![feature(never_type)]
-#![feature(option_into_flat_iter)]
 #![feature(slice_partition_dedup)]
 #![feature(try_blocks)]
 #![feature(unwrap_infallible)]
@@ -100,7 +99,6 @@ mod impl_wf_check;
 mod outlives;
 mod variance;
 
-pub use diagnostics::NoVariantNamed;
 use rustc_abi::{CVariadicStatus, ExternAbi};
 use rustc_hir as hir;
 use rustc_hir::def::DefKind;
@@ -108,7 +106,7 @@ use rustc_middle::mir::interpret::GlobalId;
 use rustc_middle::query::Providers;
 use rustc_middle::ty::{Const, Ty, TyCtxt};
 use rustc_middle::{middle, ty};
-use rustc_session::errors::feature_err;
+use rustc_session::diagnostics::feature_err;
 use rustc_span::{ErrorGuaranteed, Span};
 use rustc_trait_selection::traits;
 
@@ -209,7 +207,7 @@ pub fn check_crate(tcx: TyCtxt<'_>) {
         // `feed_anon_const_type`.
         // Also skip items for which typeck forwards to parent typeck.
         if !(def_kind == DefKind::AnonConst
-            || def_kind == DefKind::InlineConst && tcx.is_type_system_inline_const(item_def_id)
+            && tcx.anon_const_kind(item_def_id) != ty::AnonConstKind::NonTypeSystemInline
             || tcx.is_typeck_child(item_def_id.to_def_id()))
         {
             tcx.ensure_ok().typeck(item_def_id);
@@ -227,7 +225,7 @@ pub fn check_crate(tcx: TyCtxt<'_>) {
             variance::dump::variances(tcx);
             collect::dump::generics(tcx);
             collect::dump::opaque_hidden_types(tcx);
-            collect::dump::predicates_and_item_bounds(tcx);
+            collect::dump::clauses_and_item_bounds(tcx);
             collect::dump::def_parents(tcx);
             collect::dump::vtables(tcx);
         });

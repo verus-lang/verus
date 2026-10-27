@@ -48,5 +48,5 @@ There is no widening to an `int` (unlike, say, Verus specification `+`).
 
 In Verus's default prover mode, the definitions of these bitwise operators are not exported.
 To prove nontrivial facts about bitwise operators, use
-[the bit-vector solver](./reference-assert-by-bit-vector.md)
-or the [compute solver](./reference-assert-by-compute.md).
+[the bit-vector solver](./reference-prover-mode-bit-vector.md)
+or the [compute solver](./reference-prover-mode-compute.md).

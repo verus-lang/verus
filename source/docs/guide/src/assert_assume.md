@@ -162,7 +162,7 @@ verification results:: verified: 1 errors: 0
 So we've narrowed in on the problem:
 the intersection of the empty set `s1` with another set should equal the empty set,
 but the verifier doesn't see this automatically.
-And from the previous section's [discussion of equality](spec_lib.md#proving-properties-of-seq-set-map), we can guess why:
+And from the previous section's [discussion of equality](spec_lib.md#proving-properties-of-seq-set-iset-map-and-imap), we can guess why:
 the SMT solver doesn't always automatically prove equalities between collections,
 but instead requires us to assert the equality using extensionality.
 So we can add the extensionality assertion:

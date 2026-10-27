@@ -47,11 +47,33 @@ broadcast use super::super::iset::group_iset_lemmas;
 ///
 /// [VerusSync](https://verus-lang.github.io/verus/state_machines/intro.html) provides a higher-level
 /// "swiss army knife" for building useful ghost resources.
-// Resource must be external_body, otherwise it could be constructed directly
 #[verifier::external_body]
 #[verifier::accept_recursive_types(P)]
 pub tracked struct Resource<P: PCM> {
     p: core::marker::PhantomData<P>,
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::external]
+impl<P: PCM> !Copy for Resource<P> {
+
+}
+
+#[verifier::external_body]
+#[verifier::accept_recursive_types(P)]
+pub tracked struct CopyableResource<P: PCM> {
+    p: core::marker::PhantomData<P>,
+}
+
+impl<P: PCM> Copy for CopyableResource<P> {
+
+}
+
+impl<P: PCM> Clone for CopyableResource<P> {
+    #[verifier::external_body]
+    fn clone(&self) -> Self {
+        CopyableResource { p: core::marker::PhantomData }
+    }
 }
 
 /// A Partial Commutative Monoid is a special type of [`ResourceAlgebra`], where all elements have
@@ -304,6 +326,33 @@ impl<P: PCM> Resource<P> {
         P::commutative(self.value(), unit.value());
         unit.update_with_shared(self, value)
     }
+
+    /// Wrap this resource in a type that implements `Copy`,
+    /// given that the resource is duplicable.
+    pub axiom fn into_copyable(self, p: P) -> (r: CopyableResource<P>)
+        requires
+            P::op(P::op(self.value(), self.value()), p) == self.value(),
+        ensures
+            r.loc() == self.loc(),
+            r.value() == self.value(),
+    ;
+}
+
+/// A variant of [`Resource`] that implements `Copy`.
+///
+/// Use [`Self::into_resource`] to get the underlying resource.
+impl<P: PCM> CopyableResource<P> {
+    /// The underlying value of the resource
+    pub uninterp spec fn value(self) -> P;
+
+    /// The location of the resource
+    pub uninterp spec fn loc(self) -> Loc;
+
+    pub axiom fn into_resource(self) -> (r: Resource<P>)
+        ensures
+            r.loc() == self.loc(),
+            r.value() == self.value(),
+    ;
 }
 
 } // verus!
