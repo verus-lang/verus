@@ -38,17 +38,15 @@ fn thir_body_inner<'tcx>(
 ) -> Result<(Thir<'tcx>, ExprId), ErrorGuaranteed> {
     debug_assert!(!tcx.is_type_const(owner_def.to_def_id()), "thir_body queried for type_const");
 
-    crate::verus::ensure_verus_ctxt_available(tcx, owner_def)?;
+    let is_full_erasure = full_erasure.is_some();
+    if !is_full_erasure {
+        crate::verus::ensure_verus_ctxt_available(tcx, owner_def)?;
+    }
 
     let body = tcx.hir_body_owned_by(owner_def);
-    let is_full_erasure = full_erasure.is_some();
     let mut cx: ThirBuildCx<'tcx> = ThirBuildCx::new(tcx, owner_def, full_erasure);
     if let Some(reported) = cx.typeck_results.tainted_by_errors {
         return Err(reported);
-    }
-
-    if !is_full_erasure {
-        crate::verus::check_this_query_isnt_running_early(owner_def);
     }
 
     let expr = if crate::verus::erase_body(&mut cx, owner_def) {
