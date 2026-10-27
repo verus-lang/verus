@@ -1455,6 +1455,9 @@ impl Visitor {
         // unwrap_ghost_tracked must go first so that unwrapped vars are in scope in other headers
         stmts.splice(0..0, unwrap_ghost_tracked);
         stmts.extend(unimpl);
+        // note: visit_fn processes the signature and attributes, so it intentionally preserves inside_ghost
+        // for the caller to use the appropriate mode during the function's body traversal.
+        // The caller must restore inside_ghost afterwards.
         stmts
     }
 
