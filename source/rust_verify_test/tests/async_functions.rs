@@ -269,3 +269,167 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "return type does not match binder in ensures")
 }
+
+test_verify_one_file! {
+    #[test] hir_typeck_depends_on_borrowck_issue2323 verus_code! {
+        use vstd::prelude::*;
+        use std::future::Future;
+
+        pub fn consumes_opaque<F>(f: F)
+            where
+            F: Future<Output = usize> + Send,
+        {}
+
+        async fn ret42() -> (res: usize)
+        {
+            42
+        }
+        async fn verified_join_set_client() {
+            let f1 = ret42();
+            consumes_opaque(f1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] hir_typeck_depends_on_borrowck_type_error verus_code! {
+        use vstd::prelude::*;
+        use std::future::Future;
+
+        pub fn consumes_opaque<F>(f: F)
+            where
+            F: Future<Output = usize> + Send,
+        {}
+
+        async fn ret42() -> (res: usize)
+        {
+            42u64
+        }
+        async fn verified_join_set_client() {
+            let f1 = ret42();
+            consumes_opaque(f1);
+        }
+    } => Err(err) => {
+        assert!(err.errors.len() == 2);
+        assert!(err.errors[0].message.contains("mismatched types"));
+        assert!(err.errors[1].message.contains("type-checking error"));
+    }
+}
+
+test_verify_one_file! {
+    #[test] hir_typeck_depends_on_borrowck_marker_trait_error verus_code! {
+        use vstd::prelude::*;
+        use std::future::Future;
+        use std::rc::Rc;
+
+        pub fn consumes_opaque<F>(f: F)
+            where
+            F: Future<Output = usize> + Send,
+        {}
+
+        async fn moo() { }
+
+        fn consume(x: Rc<u64>) { }
+
+        async fn ret42() -> (res: usize)
+        {
+            let x = Rc::new(20); // not a Send type
+            moo().await;
+            consume(x);
+            42
+        }
+
+        async fn verified_join_set_client() {
+            let f1 = ret42();
+            consumes_opaque(f1);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "future cannot be sent between threads safely")
+}
+
+test_verify_one_file! {
+    #[test] hir_typeck_depends_on_borrowck_marker_trait_error_tracked verus_code! {
+        use vstd::prelude::*;
+        use std::future::Future;
+        use std::rc::Rc;
+
+        pub fn consumes_opaque<F>(f: F)
+            where
+            F: Future<Output = usize> + Send,
+        {}
+
+        async fn moo() { }
+
+        axiom fn get_rc() -> (tracked r: Rc<u64>);
+        proof fn consume(tracked x: Rc<u64>) { }
+
+        async fn ret42() -> (res: usize)
+        {
+            let tracked x = get_rc(); // not a Send type
+            moo().await;
+            proof { consume(x); }
+            42
+        }
+
+        async fn verified_join_set_client() {
+            let f1 = ret42();
+            consumes_opaque(f1);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "future cannot be sent between threads safely")
+}
+
+test_verify_one_file! {
+    #[test] opaque_type_with_anon_consts verus_code! {
+        use vstd::prelude::*;
+        use std::future::Future;
+
+        pub fn consumes_opaque<'a, F>(f: F)
+            where
+            F: Future<Output = usize> + Send
+        {}
+
+        async fn ret42(r: &usize) -> (res: usize)
+        {
+            *r
+        }
+
+        async fn caller() {
+            let j = 5;
+            let f1 = ret42(&j);
+            // The presence of the anonymous const (the 2 in the array type)
+            // can cause dependency ordering issues if we aren't careful.
+            let r: [u64; 2] = [0, 1];
+            consumes_opaque(f1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] opaque_type_with_anon_consts_fail verus_code! {
+        use vstd::prelude::*;
+        use std::future::Future;
+
+        spec const N: usize = 5;
+
+        pub fn consumes_opaque<'a, F>(f: F)
+            where
+            F: Future<Output = usize> + Send
+        {}
+
+        async fn ret42(r: &usize) -> (res: usize)
+        {
+            *r
+        }
+
+        async fn caller() {
+            let j = 5;
+            let f1 = ret42(&j);
+            // The presence of the anonymous const (the 2 in the array type)
+            // can cause dependency ordering issues if we aren't careful.
+            // The dependency issues are related to this particular mode-checking error,
+            // so this test is here to ensure the mode-checking error still fires
+            // even in the presence of the opaque type dependency scenario.
+            let r = [0u8; core::mem::size_of_val(&N)];
+            consumes_opaque(f1);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+}

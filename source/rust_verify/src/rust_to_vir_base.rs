@@ -1484,7 +1484,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Placeholder(..) => unsupported_err!(span, "placeholder types"),
         TyKind::Infer(..) => unsupported_err!(span, "uninferred types"),
-        TyKind::Error(..) => unsupported_err!(span, "types that failed to type-check"),
+        TyKind::Error(..) => {
+            return err_span(span, "type-checking error");
+        }
         TyKind::CoroutineClosure(_, _) => unsupported_err!(span, "coroutine closure types"),
         TyKind::Pat(_, _) => unsupported_err!(span, "pattern types"),
         TyKind::UnsafeBinder(_) => unsupported_err!(span, "unsafe binder types"),
