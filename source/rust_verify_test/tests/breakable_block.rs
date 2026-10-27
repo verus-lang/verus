@@ -195,3 +195,18 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "breakable block contains `break` statement inside a nested loop with `loop_isolation(true)`")
 }
+
+test_verify_one_file! {
+    #[test] overlapping_labels_between_block_and_loop verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test() {
+            'a: loop
+            {
+                'a: {
+                    break 'a;
+                }
+                assert(false); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

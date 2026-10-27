@@ -1489,21 +1489,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] overlapping_labels_between_block_and_loop verus_code! {
-        #[verifier::exec_allows_no_decreases_clause]
-        fn test() {
-            'a: loop
-            {
-                'a: {
-                    break 'a;
-                }
-                assert(false); // FAILS
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support labeled block expressions")
-}
-
-test_verify_one_file! {
     #[test] tuple_copy_bound_issue2211 verus_code! {
         use vstd::prelude::*;
 
