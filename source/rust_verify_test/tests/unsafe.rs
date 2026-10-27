@@ -24,3 +24,12 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "`unsafe` only makes sense on exec-mode functions")
 }
+
+test_verify_one_file! {
+    #[test] unsafe_attr verus_code! {
+        #[no_mangle]
+        pub extern "C" fn malloc(size: usize) -> usize {
+            4096
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support the `no_mangle` attribute, which is unsafe")
+}
