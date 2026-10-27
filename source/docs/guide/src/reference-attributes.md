@@ -144,7 +144,7 @@ body (absent any loop invariants).
 ## `#[verifier::memoize]`
 
 The attribute `#[verifier::memoize]` can be applied to any _spec-mode_ function to indicate
-that the [`by(compute)` and `by(compute_only)` prover-modes](./reference-assert-by-compute.md)
+that the [`by(compute)` and `by(compute_only)` prover-modes](./reference-prover-mode-compute.md)
 should "memoize" the results of this function.
 
 ## `#[verifier::opaque]`
@@ -284,7 +284,7 @@ Note that the attribute is optional, even when truncation behavior is intended.
 The only effect of the attribute is to silence the recommends-check, which is
 already elided if the enclosing function body has no legitimate verification errors.
 
-**Aside.** When truncation is intended, [the bit-vector solver mode](./reference-assert-by-bit-vector.md) is often useful for writing proofs about truncation.
+**Aside.** When truncation is intended, [the bit-vector solver mode](./reference-prover-mode-bit-vector.md) is often useful for writing proofs about truncation.
 
 ## `#[verifier::type_invariant]`
 

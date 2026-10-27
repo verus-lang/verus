@@ -128,7 +128,7 @@ test_verify_one_file! {
             #[verifier::prophetic]
             spec fn f(&self) -> bool { self.value() }
         }
-    } => Err(err) => assert_vir_error_msg(err, "implementation of trait function cannot be marked prophetic if the trait function is not")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot be marked prophetic if the trait method is not")
 }
 
 test_verify_one_file! {
@@ -294,7 +294,7 @@ test_verify_one_file! {
         {
             test();
         }
-    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'decreases' clause")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -307,7 +307,7 @@ test_verify_one_file! {
         {
             test();
         }
-    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'decreases' clause")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -322,7 +322,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'decreases' clause")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -346,7 +346,7 @@ test_verify_one_file! {
             let x = proph();
             let tracked y = Ghost(x);
         }
-    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'Ghost' wrapper")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for `Ghost` wrapper")
 }
 
 test_verify_one_file! {
@@ -358,7 +358,7 @@ test_verify_one_file! {
             let ghost x = proph();
             let y = Ghost(x);
         }
-    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'Ghost' wrapper")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for `Ghost` wrapper")
 }
 
 test_verify_one_file! {
@@ -371,7 +371,7 @@ test_verify_one_file! {
             let ghost x = false;
             let y = Ghost(x);
         }
-    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for 'Ghost' wrapper")
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for `Ghost` wrapper")
 }
 
 test_verify_one_file! {
@@ -600,7 +600,7 @@ test_verify_one_file! {
                 let A::B = a else { never(); };
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: let-else in spec/proof")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support let-else in spec or proof")
 }
 
 test_verify_one_file! {
@@ -622,7 +622,7 @@ test_verify_one_file! {
                 let A::B = a else { never(); };
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "let-else only work in exec mode")
+    } => Err(err) => assert_vir_error_msg(err, "let-else only works in exec mode")
 }
 
 test_verify_one_file! {
@@ -855,5 +855,5 @@ test_verify_one_file! {
             g() // returning g() should fail, because the result of calling g() is a prophetic int, not an unrestricted int
         }
     //} => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
-    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it as mode 'exec'")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it has mode `exec`")
 }

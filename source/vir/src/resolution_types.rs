@@ -10,12 +10,12 @@ use std::collections::HashMap;
 /// However, if too many types are considered nontrivial, then we end up cluttering the AIR code,
 /// and if too few types are considered nontrivial, there may be completeness issues.
 /// Therefore, we err on the side of considering a type nontrivial if we don't know.
-pub(crate) struct ResolutionTypes {
+pub struct ResolutionTypes {
     paths: HashMap<Path, bool>,
 }
 
 impl ResolutionTypes {
-    pub(crate) fn new(datatypes: &HashMap<Path, Datatype>) -> Self {
+    pub fn new(datatypes: &HashMap<Path, Datatype>) -> Self {
         // We graph dependencies of all datatypes to see which datatypes can "reach"
         // a `&mut T` type
         let mut graph = crate::reachability::Graph::new();

@@ -80,5 +80,5 @@ test_verify_one_file! {
             *x = *x + y;
             *x
         }
-    } => Err(e) => assert_vir_error_msg(e, "allow_in_spec not supported for function with &mut param")
+    } => Err(e) => assert_vir_error_msg(e, "`allow_in_spec` not supported for function with a mutable reference parameter")
 }

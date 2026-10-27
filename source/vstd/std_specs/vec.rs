@@ -250,6 +250,15 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, 
     no_unwind
 ;
 
+pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::convert::AsRef<[T]>>::as_ref ](
+    vec: &Vec<T, A>,
+) -> (slice: &[T])
+    ensures
+        slice@ == vec@,
+    opens_invariants none
+    no_unwind
+;
+
 #[doc(hidden)]
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_slice ](vec: &mut Vec<T, A>) -> (slice: &mut [T])
     ensures
@@ -423,8 +432,8 @@ pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::Int
 ;
 
 impl<T>  FromIteratorSpecImpl<T> for Vec<T> {
-    open spec fn from_iter_ensures(remaining: Seq<T>, s: Self) -> bool {
-        remaining == s@
+    open spec fn from_iter_ensures(remaining: Seq<T>, will_return_none: bool, s: Self) -> bool {
+        will_return_none && remaining == s@
     }
 }
 

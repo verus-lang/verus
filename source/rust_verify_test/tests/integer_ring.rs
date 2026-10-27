@@ -306,8 +306,8 @@ test_verify_one_file! {
         assert_eq!(err.errors.len(), 0);
         dbg!(&err.warnings);
         assert_eq!(err.warnings.len(), 3);
-        assert!(err.warnings[0].message.contains("integer_ring: this precondition is superfluous and has no impact on the integer_ring decision procedure"));
-        assert!(err.warnings[1].message.contains("integer_ring: this lemma should have `d != 0` as a precondition, since this expression is used as a divisor. (This will be a hard error in the future.)"));
+        assert!(err.warnings[0].message.contains("integer_ring: this precondition is superfluous and has no impact on the `integer_ring` decision procedure"));
+        assert!(err.warnings[1].message.contains("integer_ring: this lemma should have `d != 0` as a precondition, since this expression is used as a divisor (this will be a hard error in the future)"));
         assert!(err.warnings[2].message.contains("2 warnings emitted"));
     }
 }
@@ -331,5 +331,44 @@ test_verify_one_file! {
             ensures
                 x * (i8::MIN as int) + 64 * x + 64 * x == 0
         { }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    overflow_bad1_issue3181 verus_code! {
+        #[verifier::integer_ring]
+        proof fn bad()
+            ensures
+                65536int * 65536int == 0, // FAILS
+        {
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    overflow_bad2_issue3181 verus_code! {
+        #[verifier::integer_ring]
+        proof fn bad2(x: int)
+            ensures
+                x * (2147483647int + 1int) == x * (0int - 2147483648int), // FAILS
+        {
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    overflow_good_issue3181 verus_code! {
+        #[verifier::integer_ring]
+        proof fn good()
+            ensures
+                65536int * 65536int == 4294967296,
+        {
+        }
     } => Ok(())
 }

@@ -62,3 +62,14 @@ This has the same meaning as `(a ==> b) && c && (d <==> (e && f))`.
 Verus has `->`, `is`, and `matches` syntax for accessing fields
 of [`struct`](datatypes_struct.md)s
 and matching variants of [`enum`](datatypes_enum.md)s.
+
+### `matches`
+
+The `matches` keyword can be used to destructure datatypes using
+pattern-matching, much like Rust's `match` construct:
+
+```rust
+{{#include ../../../../examples/guide/matches.rs:min}}
+```
+
+See [The `matches` operator](./reference-matches.md) for more detail.

@@ -1455,7 +1455,7 @@ test_verify_one_file_with_options! {
                 let t2 = s;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: let expressions")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `let` expressions in conditions")
 }
 
 test_verify_one_file_with_options! {

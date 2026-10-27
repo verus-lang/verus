@@ -530,7 +530,7 @@ fn output_take_step_fns(
                 }
 
                 // #[cfg(verus_macro_erase_ghost)]
-                use bool as #tr_name;
+                use ::core::primitive::bool as #tr_name;
             });
         }
         if matches!(trans.kind, TransitionKind::Init) {
@@ -570,7 +570,7 @@ fn output_take_step_fns(
                 }
 
                 // #[cfg(verus_macro_erase_ghost)]
-                use bool as #tr_name;
+                use ::core::primitive::bool as #tr_name;
             });
         }
     }
@@ -781,7 +781,7 @@ fn output_step_datatype(
                     }
 
                     // #[cfg(verus_macro_erase_ghost)]
-                    use bool as #tr_name;
+                    use ::core::primitive::bool as #tr_name;
                 });
             } else {
                 let params = pre_post_assoc_params(&super_self_ty, &trans.params);
@@ -798,7 +798,7 @@ fn output_step_datatype(
                     }
 
                     // #[cfg(verus_macro_erase_ghost)]
-                    use bool as #tr_name;
+                    use ::core::primitive::bool as #tr_name;
                 });
             }
         }

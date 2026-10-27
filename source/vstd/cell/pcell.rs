@@ -36,7 +36,7 @@ Despite the fact that it is, in some ways, "like a pointer", note that
 has no concept of a "null ID",
 and has no runtime representation.
 
-### Differences from [`UnsafeCell`](core::cell::UnsafeCell).
+### Differences from [`UnsafeCell`].
 
 Though inspired by `UnsafeCell`, `PCell` is not quite the same thing.
 The differences include:
