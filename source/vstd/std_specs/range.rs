@@ -67,6 +67,11 @@ impl<Idx> View for RangeInclusive<Idx> {
 
 pub uninterp spec fn spec_range_next<A>(a: Range<A>) -> (Range<A>, Option<A>);
 
+/// Whether `A`'s executable stepping, comparison, and cloning obey the model
+/// used by range iterators. The axioms below establish this for primitive
+/// integers only; implementing `StepSpecImpl` alone does not establish it.
+pub uninterp spec fn obeys_range_step_spec<A>() -> bool;
+
 /// Range::contains method is valid and safe to use only when cmp operations are implemented to satisfy
 /// obeys_partial_cmp_spec. Specifically, the comparison must be deterministic, and `lt` (less than)
 /// and `le` (less than or equal to) must define total orders.
@@ -112,7 +117,7 @@ pub assume_specification<Idx>[ RangeInclusive::<Idx>::new ](start: Idx, end: Idx
 
 impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        true
+        obeys_range_step_spec::<A>()
     }
 
     open spec fn remaining(&self) -> Seq<Self::Item> {
@@ -153,7 +158,7 @@ pub open spec fn spec_range_inclusive_len<A: core::iter::Step>(r: &RangeInclusiv
 
 impl<A: core::iter::Step> super::iter::IteratorSpecImpl for RangeInclusive<A> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        true
+        obeys_range_step_spec::<A>()
     }
 
     open spec fn remaining(&self) -> Seq<Self::Item> {
@@ -182,7 +187,7 @@ pub assume_specification<A: core::iter::Step>[ <Range<A> as Iterator>::next ](
     range: &mut Range<A>,
 ) -> (r: Option<A>)
     ensures
-        (*final(range), r) == spec_range_next(*old(range)),
+        obeys_range_step_spec::<A>() ==> (*final(range), r) == spec_range_next(*old(range)),
 ;
 
 #[verifier::external_type_specification]
@@ -211,9 +216,9 @@ pub open spec fn bound_as_ref<T>(b: &Bound<T>) -> Bound<&T> {
     }
 }
 
-// Per-type specifications for `RangeBounds::start_bound`/`end_bound`, so these
-// methods can also be called directly in exec code (not just via the spec-mode
-// models above). Each spec agrees with the corresponding `RangeBoundsSpecImpl`.
+// Per-type specifications for `RangeBounds::start_bound`/`end_bound`. Each spec
+// agrees with the corresponding `RangeBoundsSpecImpl`, and so with the
+// `ExRangeBounds` ensures below.
 pub assume_specification<'s, T>[ <Range<T> as RangeBounds<T>>::start_bound ](
     range: &'s Range<T>,
 ) -> (result: Bound<&'s T>)
@@ -328,7 +333,9 @@ pub assume_specification<'s, T>[ <(Bound<T>, Bound<T>) as RangeBounds<T>>::end_b
 /// [`spec_end_bound`](RangeBoundsSpec::spec_end_bound) of the trait's
 /// `start_bound`/`end_bound` methods. This mirrors std's normalization of an
 /// arbitrary range into a pair of bounds and is the model used by
-/// `<[T]>::copy_within` (see `vstd::std_specs::slice`).
+/// `<[T]>::copy_within` (see `vstd::std_specs::slice`). Implementations must
+/// return these spec bounds from `start_bound`/`end_bound`, since std's
+/// `copy_within` calls those methods.
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(RangeBoundsSpec via RangeBoundsSpecImpl)]
 pub trait ExRangeBounds<T: ?Sized> {
@@ -338,9 +345,15 @@ pub trait ExRangeBounds<T: ?Sized> {
 
     spec fn spec_end_bound(&self) -> Bound<&T>;
 
-    fn start_bound(&self) -> Bound<&T>;
+    fn start_bound(&self) -> (r: Bound<&T>)
+        ensures
+            r == self.spec_start_bound(),
+    ;
 
-    fn end_bound(&self) -> Bound<&T>;
+    fn end_bound(&self) -> (r: Bound<&T>)
+        ensures
+            r == self.spec_end_bound(),
+    ;
 }
 
 impl<T> RangeBoundsSpecImpl<T> for Range<T> {
@@ -523,7 +536,7 @@ pub open spec fn slice_range_valid<R: RangeBoundsSpec<usize>>(range: &R, len: na
 
 } // verus!
 macro_rules! step_specs {
-    ($t: ty, $axiom: ident) => {
+    ($t: ty, $axiom: ident, $step_axiom: ident) => {
         verus! {
         impl StepSpecImpl for $t {
             open spec fn spec_is_lt(self, other: Self) -> bool {
@@ -561,6 +574,13 @@ macro_rules! step_specs {
                 }
             }
         }
+        pub broadcast proof fn $step_axiom()
+            ensures
+                #[trigger] obeys_range_step_spec::<$t>(),
+        {
+            admit();
+        }
+
         // TODO: we might be able to make this generic over A: StepSpec
         // once we settle on a way to connect std traits like Step with spec traits like StepSpec.
         pub broadcast proof fn $axiom(range: Range<$t>)
@@ -581,22 +601,34 @@ macro_rules! step_specs {
     };
 }
 
-step_specs!(u8, axiom_spec_range_next_u8);
-step_specs!(u16, axiom_spec_range_next_u16);
-step_specs!(u32, axiom_spec_range_next_u32);
-step_specs!(u64, axiom_spec_range_next_u64);
-step_specs!(u128, axiom_spec_range_next_u128);
-step_specs!(usize, axiom_spec_range_next_usize);
-step_specs!(i8, axiom_spec_range_next_i8);
-step_specs!(i16, axiom_spec_range_next_i16);
-step_specs!(i32, axiom_spec_range_next_i32);
-step_specs!(i64, axiom_spec_range_next_i64);
-step_specs!(i128, axiom_spec_range_next_i128);
-step_specs!(isize, axiom_spec_range_next_isize);
+step_specs!(u8, axiom_spec_range_next_u8, axiom_u8_obeys_range_step_spec);
+step_specs!(u16, axiom_spec_range_next_u16, axiom_u16_obeys_range_step_spec);
+step_specs!(u32, axiom_spec_range_next_u32, axiom_u32_obeys_range_step_spec);
+step_specs!(u64, axiom_spec_range_next_u64, axiom_u64_obeys_range_step_spec);
+step_specs!(u128, axiom_spec_range_next_u128, axiom_u128_obeys_range_step_spec);
+step_specs!(usize, axiom_spec_range_next_usize, axiom_usize_obeys_range_step_spec);
+step_specs!(i8, axiom_spec_range_next_i8, axiom_i8_obeys_range_step_spec);
+step_specs!(i16, axiom_spec_range_next_i16, axiom_i16_obeys_range_step_spec);
+step_specs!(i32, axiom_spec_range_next_i32, axiom_i32_obeys_range_step_spec);
+step_specs!(i64, axiom_spec_range_next_i64, axiom_i64_obeys_range_step_spec);
+step_specs!(i128, axiom_spec_range_next_i128, axiom_i128_obeys_range_step_spec);
+step_specs!(isize, axiom_spec_range_next_isize, axiom_isize_obeys_range_step_spec);
 
 verus! {
 
 pub broadcast group group_range_axioms {
+    axiom_u8_obeys_range_step_spec,
+    axiom_u16_obeys_range_step_spec,
+    axiom_u32_obeys_range_step_spec,
+    axiom_u64_obeys_range_step_spec,
+    axiom_u128_obeys_range_step_spec,
+    axiom_usize_obeys_range_step_spec,
+    axiom_i8_obeys_range_step_spec,
+    axiom_i16_obeys_range_step_spec,
+    axiom_i32_obeys_range_step_spec,
+    axiom_i64_obeys_range_step_spec,
+    axiom_i128_obeys_range_step_spec,
+    axiom_isize_obeys_range_step_spec,
     axiom_spec_range_next_u8,
     axiom_spec_range_next_u16,
     axiom_spec_range_next_u32,

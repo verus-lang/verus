@@ -615,7 +615,7 @@ test_verify_one_file! {
             let b = a.clone();
             assert(a == b); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: built-in instance")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support this built-in instance")
 }
 
 test_verify_one_file_with_options! {
@@ -1719,7 +1719,7 @@ test_verify_one_file! {
 
         use vstd::prelude::*;
         use vstd::std_specs::nonzero::*;
-        use std::num::{NonZeroU64, NonZeroI32};
+        use std::num::{NonZeroU64, NonZeroI32, NonZeroU128, NonZeroI128};
 
         fn test() {
             let x = NonZeroI32::new(-20).unwrap();
@@ -1751,6 +1751,11 @@ test_verify_one_file! {
             assert(0x1011 == 0x1011 | 0x1000) by (compute_only);
             assert(z1@ == x@);
             assert(z1 == x);
+        }
+
+        fn test_128(x: u128, n: NonZeroU128, m: NonZeroI128) -> u128 {
+            assert(m.get() != 0);
+            x / n.get()
         }
 
     } => Ok(())
@@ -2012,6 +2017,55 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] formatting_callers_require_fmt_req verus_code! {
+        use core::fmt::{Debug, Display, Error, Formatter};
+        use vstd::prelude::*;
+        use vstd::std_specs::fmt::{DebugSpecImpl, DisplaySpecImpl};
+
+        pub struct K {
+            pub a: u8,
+        }
+
+        impl DisplaySpecImpl for K {
+            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
+                false
+            }
+        }
+
+        impl DebugSpecImpl for K {
+            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
+                false
+            }
+        }
+
+        impl Display for K {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+                assert(false);
+                let v: Vec<u8> = Vec::new();
+                let _ = v[0];
+                Ok(())
+            }
+        }
+
+        impl Debug for K {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+                Display::fmt(self, f)
+            }
+        }
+
+        fn main() {
+            let k = K { a: 1 };
+            let _ = k.to_string(); // FAILS
+        }
+
+        fn test_new_argument() {
+            let k = K { a: 1 };
+            let _ = vstd::pervasive::__new_argument(&k); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
     #[test] print_ok verus_code! {
         use vstd::*;
 
@@ -2101,6 +2155,32 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] assert_eq_ok verus_code! {
+        use vstd::*;
+        fn test(x: u64, v: Vec<u8>) requires x < 10, v.len() == 2 {
+            assert_eq!(x + 0, x);
+            assert_ne!(x, x + 1);
+            assert_eq!(v.len(), 2, "len is {}", v.len());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assert_eq_fails verus_code! {
+        use vstd::*;
+        fn test1(x: u64) {
+            assert_eq!(x, 3); // FAILS
+        }
+        fn test2(x: u64) {
+            assert_ne!(x, 3, "x is {}", x); // FAILS
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(err.errors.iter().all(|e| e.rendered.contains("precondition not satisfied")));
+    }
+}
+
+test_verify_one_file! {
     #[test] maybe_uninit_write verus_code! {
         use core::mem::MaybeUninit;
         use vstd::prelude::*;
@@ -2115,6 +2195,44 @@ test_verify_one_file! {
             assert(m.mem_contents().value() == 7);
             let v = unsafe { m.assume_init() };
             assert(v == 7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] slice_unchecked_specs verus_code! {
+        use vstd::prelude::*;
+
+        fn get_usize(s: &[u8], i: usize) requires i < s.len() {
+            let x = unsafe { s.get_unchecked(i) };
+            assert(*x == s@[i as int]);
+        }
+
+        fn get_range(s: &[u8], a: usize, b: usize) requires a <= b <= s.len() {
+            let sub = unsafe { s.get_unchecked(a..b) };
+            assert(sub@ == s@.subrange(a as int, b as int));
+        }
+
+        fn get_mut(s: &mut [u8], i: usize) requires i < old(s).len() {
+            let x = unsafe { s.get_unchecked_mut(i) };
+            assert(*x == old(s)@[i as int]);
+            *x = 7u8;
+            assert(s@ == old(s)@.update(i as int, 7u8));
+        }
+
+        fn split(s: &[u8], mid: usize) requires mid <= s.len() {
+            let (l, r) = unsafe { s.split_at_unchecked(mid) };
+            assert(l@ == s@.subrange(0, mid as int));
+            assert(r@ == s@.subrange(mid as int, s@.len() as int));
+        }
+
+        fn split_mut(s: &mut [u8], mid: usize) requires mid <= old(s).len() {
+            let (l, r) = unsafe { s.split_at_mut_unchecked(mid) };
+            let ghost lv = l@;
+            let ghost rv = r@;
+            assert(lv == old(s)@.subrange(0, mid as int));
+            assert(rv == old(s)@.subrange(mid as int, old(s)@.len() as int));
+            assert(s@ == lv + rv);
         }
     } => Ok(())
 }

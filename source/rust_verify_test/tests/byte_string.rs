@@ -143,7 +143,7 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(
         err,
-        "cannot use reveal_byteslit in exec mode",
+        "cannot use `reveal_byteslit` in exec mode",
     )
 }
 

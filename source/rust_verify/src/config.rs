@@ -103,7 +103,6 @@ pub struct ArgsX {
     pub show_triggers: ShowTriggers,
     pub ignore_unexpected_smt: bool,
     pub allow_inline_air: bool,
-    pub debugger: bool,
     pub profile: bool,
     pub profile_all: bool,
     pub capture_profiles: bool,
@@ -153,7 +152,6 @@ impl ArgsX {
             show_triggers: Default::default(),
             ignore_unexpected_smt: Default::default(),
             allow_inline_air: Default::default(),
-            debugger: Default::default(),
             profile: Default::default(),
             profile_all: Default::default(),
             capture_profiles: Default::default(),
@@ -240,7 +238,7 @@ pub fn enable_default_features_and_verus_attr(
 }
 
 fn error(msg: String) -> ! {
-    eprintln!("Error: {}", msg);
+    eprintln!("error: {}", msg);
     std::process::exit(-1)
 }
 
@@ -253,7 +251,7 @@ fn parse_opts_or_pairs(strs: Vec<String>) -> std::collections::HashMap<String, O
             [opt] => parsed.insert((*opt).to_owned(), None),
             [key, val] => parsed.insert((*key).to_owned(), Some((*val).to_owned())),
             _ => {
-                error(format!("invalid parsed option -V {}", o));
+                error(format!("invalid parsed option `-V {}`", o));
             }
         };
     }
@@ -283,12 +281,12 @@ pub fn parse_cargo_args(_program: &String, args: &mut Vec<String>) -> CargoVerus
                     cargo_verus_args.import_dep_if_present.push(val.to_string());
                 } else {
                     error(format!(
-                        "expected --VIA-CARGO {}=DEP_NAME",
+                        "expected `--VIA-CARGO {}=DEP_NAME`",
                         CARGO_OPT_IMPORT_DEP_IF_PRESENT
                     ));
                 }
             } else {
-                error(format!("unexpected --VIA-CARGO {}", arg));
+                error(format!("unexpected `--VIA-CARGO {}`", arg));
             }
             next_is_via_cargo = false;
             false
@@ -407,7 +405,6 @@ pub fn parse_args_with_imports(
 
     const OPT_EXTENDED_MULTI: &str = "V";
     const EXTENDED_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
-    const EXTENDED_DEBUG: &str = "debug";
     const EXTENDED_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
@@ -420,7 +417,6 @@ pub fn parse_args_with_imports(
     const EXTENDED_NO_BV_SIMPLIFY: &str = "no-bv-simplify";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
-        (EXTENDED_DEBUG, "Enable debugging of proof failures"),
         (
             EXTENDED_NO_SOLVER_VERSION_CHECK,
             "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)",
@@ -458,7 +454,7 @@ pub fn parse_args_with_imports(
         OPT_VERSION,
         "Print version information (add `--output-json` to print as json) ",
     );
-    opts.optopt("", OPT_EXPORT, "Export Verus metadata for library crate", "CRATENAME=PATH");
+    opts.optopt("", OPT_EXPORT, "Export Verus metadata for library crate", "PATH");
     opts.optmulti("", OPT_IMPORT, "Import Verus metadata from library crate", "CRATENAME=PATH");
     opts.optflag("", OPT_VERIFY_ROOT, "Verify just the root module of crate");
     opts.optmulti(
@@ -623,7 +619,7 @@ pub fn parse_args_with_imports(
         if v.len() == 2 {
             (v[0].to_string(), v[1].to_string())
         } else {
-            error("expected option of form option_name=option_value".to_string())
+            error("expected option of form `option_name=option_value`".to_string())
         }
     };
 
@@ -632,7 +628,7 @@ pub fn parse_args_with_imports(
     let is_core = matches.opt_present(OPT_IS_CORE);
     let is_stdlib_outside_of_core = matches.opt_present(OPT_IS_STDLIB_OUTSIDE_OF_CORE);
     if is_vstd && is_core {
-        error("contradictory options --is-core and --is-vstd".to_string());
+        error("contradictory options `--is-core` and `--is-vstd`".to_string());
     }
     let vstd = if is_vstd {
         Vstd::IsVstd
@@ -661,12 +657,12 @@ pub fn parse_args_with_imports(
         let extended_keys_set: HashSet<_> = EXTENDED_KEYS.iter().map(|(k, _)| *k).collect();
         for extended_key in extended.keys() {
             if !extended_keys_set.contains(extended_key.as_str()) {
-                error(format!("unexpected extended option -V {}", extended_key));
+                error(format!("unexpected extended option `-V {}`", extended_key));
             }
         }
     }
     if extended.contains_key(EXTENDED_CVC5) && extended.contains_key(EXTENDED_CVC5_SMTLIB) {
-        error("-V cvc5 and -V cvc5-smtlib are mutually exclusive".to_string());
+        error("`-V cvc5` and `-V cvc5-smtlib` are mutually exclusive".to_string());
     }
     let solver = if extended.contains_key(EXTENDED_CVC5) { SmtSolver::Cvc5 } else { SmtSolver::Z3 };
     let smt_encoding = if extended.contains_key(EXTENDED_CVC5_SMTLIB) {
@@ -684,13 +680,13 @@ pub fn parse_args_with_imports(
         verify_function: {
             if matches.opt_present(OPT_VERIFY_FUNCTION) {
                 if matches.opt_present(OPT_VERIFY_MODULE) {
-                    error("When using --verify-function, use --verify-only-module instead of --verify-module".to_owned())
+                    error("when using `--verify-function`, use `--verify-only-module` instead of `--verify-module`".to_owned())
                 }
                 if !matches.opt_present(OPT_VERIFY_ONLY_MODULE)
                     && !matches.opt_present(OPT_VERIFY_ROOT)
                 {
                     error(
-                        "--verify-function option requires --verify-only-module or --verify-root"
+                        "`--verify-function` option requires `--verify-only-module` or `--verify-root`"
                             .to_owned(),
                     )
                 }
@@ -698,7 +694,7 @@ pub fn parse_args_with_imports(
                     + (if matches.opt_present(OPT_VERIFY_ROOT) { 1 } else { 0 })
                     > 1
                 {
-                    error("Must pass at most one --verify-only-module or --verify-root when using --verify-function".to_string())
+                    error("must pass at most one `--verify-only-module` or `--verify-root` when using `--verify-function`".to_string())
                 }
             }
             matches.opt_str(OPT_VERIFY_FUNCTION)
@@ -727,7 +723,9 @@ pub fn parse_args_with_imports(
                         }
                     })
                 })
-                .unwrap_or_else(|| error("expected number or `infinity` after rlimit".to_string()))
+                .unwrap_or_else(|| {
+                    error("expected number or `infinity` after `--rlimit`".to_string())
+                })
                 .unwrap_or(DEFAULT_RLIMIT_SECS);
             if rlimit == 0.0 {
                 error("rlimit 0 is not allowed".to_string());
@@ -738,7 +736,7 @@ pub fn parse_args_with_imports(
         smt_options: matches.opt_strs(OPT_SMT_OPTION).iter().map(split_pair_eq).collect(),
         multiple_errors: matches
             .opt_get::<u32>(OPT_MULTIPLE_ERRORS)
-            .unwrap_or_else(|_| error("expected integer after multiple-errors".to_string()))
+            .unwrap_or_else(|_| error("expected integer after `--multiple-errors`".to_string()))
             .unwrap_or(2),
         expand_errors: matches.opt_present(OPT_EXPAND_ERRORS),
         log_dir: matches.opt_str(OPT_LOG_DIR),
@@ -751,7 +749,7 @@ pub fn parse_args_with_imports(
             vir_log_option: {
                 if let Some(oo) = log.get(LOG_VIR_OPTION) {
                     let Some(oo) = oo else {
-                        error("expected --log vir-option=OPT1+OPT2+OPT3".to_string())
+                        error("expected `--log vir-option=OPT1+OPT2+OPT3`".to_string())
                     };
                     let vir_opts = oo.split('+').map(|s| s.trim()).collect::<Vec<_>>();
                     if vir_opts.contains(&"compact") {
@@ -780,7 +778,7 @@ pub fn parse_args_with_imports(
         },
         show_triggers: if matches.opt_present(OPT_TRIGGERS) {
             if matches.opt_present(OPT_TRIGGERS_MODE) {
-                error("--triggers and --triggers-mode are mutually exclusive".to_owned())
+                error("`--triggers` and `--triggers-mode` are mutually exclusive".to_owned())
             }
             ShowTriggers::Module
         } else if let Some(triggers_mode) = matches.opt_str(OPT_TRIGGERS_MODE) {
@@ -790,18 +788,17 @@ pub fn parse_args_with_imports(
                 TRIGGERS_MODE_SILENT => ShowTriggers::Silent,
                 TRIGGERS_MODE_VERBOSE_ALL_MODULES => ShowTriggers::VerboseAllModules,
                 TRIGGERS_MODE_VERBOSE => ShowTriggers::Verbose,
-                _ => error(format!("invalid --triggers-mode {triggers_mode}")),
+                _ => error(format!("invalid `--triggers-mode` {triggers_mode}")),
             }
         } else {
             ShowTriggers::default()
         },
         ignore_unexpected_smt: extended.contains_key(EXTENDED_IGNORE_UNEXPECTED_SMT),
         allow_inline_air: extended.contains_key(EXTENDED_ALLOW_INLINE_AIR),
-        debugger: extended.contains_key(EXTENDED_DEBUG),
         profile: {
             if matches.opt_present(OPT_PROFILE) {
                 if matches.opt_present(OPT_PROFILE_ALL) {
-                    error("--profile and --profile-all are mutually exclusive".to_string())
+                    error("`--profile` and `--profile-all` are mutually exclusive".to_string())
                 }
             };
             matches.opt_present(OPT_PROFILE)
@@ -811,19 +808,19 @@ pub fn parse_args_with_imports(
                 if !(matches.opt_present(OPT_VERIFY_ONLY_MODULE)
                     || matches.opt_present(OPT_VERIFY_ROOT))
                 {
-                    error("Must pass --verify-only-module or --verify-root when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
+                    error("must pass `--verify-only-module` or `--verify-root` when using `--profile-all`; to capture a full project's profile, consider `-V capture-profiles`".to_string())
                 }
                 if matches.opt_present(OPT_VERIFY_MODULE) {
-                    error("When using --profile-all, use --verify-only-module instead of --verify-module".to_string())
+                    error("when using `--profile-all`, use `--verify-only-module` instead of `--verify-module`".to_string())
                 }
                 if matches.opt_count(OPT_VERIFY_ONLY_MODULE) > 1 {
                     error(
-                        "Must pass at most one --verify-only-module when using profile-all"
+                        "must pass at most one `--verify-only-module` when using `--profile-all`"
                             .to_string(),
                     )
                 }
                 if matches.opt_present(OPT_PROFILE) {
-                    error("--profile and --profile-all are mutually exclusive".to_string())
+                    error("`--profile` and `--profile-all` are mutually exclusive".to_string())
                 }
             };
             matches.opt_present(OPT_PROFILE_ALL)
@@ -831,7 +828,7 @@ pub fn parse_args_with_imports(
         capture_profiles: {
             if extended.contains_key(EXTENDED_CAPTURE_PROFILES) {
                 if matches.opt_present(OPT_PROFILE) {
-                    error("--profile and --capture-profiles are mutually exclusive".to_string())
+                    error("`--profile` and `--capture-profiles` are mutually exclusive".to_string())
                 }
             };
             extended.contains_key(EXTENDED_CAPTURE_PROFILES)
@@ -843,7 +840,7 @@ pub fn parse_args_with_imports(
         version: matches.opt_present(OPT_VERSION),
         num_threads: matches
             .opt_get::<usize>(OPT_NUM_THREADS)
-            .unwrap_or_else(|_| error("expected integer after num_threads".to_string()))
+            .unwrap_or_else(|_| error("expected integer after `--num-threads`".to_string()))
             .unwrap_or(default_num_threads),
         trace: matches.opt_present(OPT_TRACE),
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
@@ -856,7 +853,7 @@ pub fn parse_args_with_imports(
     };
 
     if args.compile && args.no_erasure_check {
-        error("--compile and --no-erasure-check are mutually exclusive".to_string())
+        error("`--compile` and `--no-erasure-check` are mutually exclusive".to_string())
     }
 
     (Arc::new(args), unmatched)

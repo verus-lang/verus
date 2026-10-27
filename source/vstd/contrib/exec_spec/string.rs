@@ -37,24 +37,15 @@ impl DeepViewClone for String {
     }
 }
 
-impl<'a> ExecSpecEq<'a> for &'a str {
-    type Other = &'a str;
-
-    #[verifier::external_body]
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        this == other
+impl<'a> ObeysDeepEq for &'a str {
+    proof fn lemma_obeys_deep_eq() {
+        reveal(crate::laws_eq::obeys_deep_eq);
     }
 }
 
-/// Required for comparing, e.g., [`Vec<String>`]s.
-impl<'a> ExecSpecEq<'a> for &'a String {
-    type Other = &'a String;
-
-    #[verifier::external_body]
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        this == other
+impl ObeysDeepEq for String {
+    proof fn lemma_obeys_deep_eq() {
+        reveal(crate::laws_eq::obeys_deep_eq);
     }
 }
 
