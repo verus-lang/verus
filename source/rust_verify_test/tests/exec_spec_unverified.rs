@@ -320,3 +320,31 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    /// Explicit discriminants carry over to the exec enum, so the trusted
+    /// `exec_disc` agrees with `disc` at run time.
+    #[test] test_exec_spec_unverified_enum_discriminant IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            #[derive(Clone, Copy)]
+            pub enum E {
+                A = 10,
+                B = 20,
+                C,
+            }
+
+            spec fn disc(e: E) -> u8 {
+                e as u8
+            }
+        }
+
+        fn test() {
+            assert(disc(E::B) == 20);
+            // the exec enum must have the same discriminants as the spec enum
+            let b = ExecE::B as u8;
+            assert(b == 20);
+            let c = ExecE::C as u8;
+            assert(c == 21);
+        }
+    } => Ok(())
+}

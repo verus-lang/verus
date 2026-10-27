@@ -462,6 +462,10 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
         .map(|variant| {
             let name = &variant.ident;
 
+            // Keep explicit discriminants so that `e as T` agrees
+            // between the spec enum and the exec enum
+            let discriminant = variant.discriminant.as_ref().map(|(eq, expr)| quote! { #eq #expr });
+
             Ok(match &variant.fields {
                 Fields::Named(fields_named) => {
                     let span = fields_named.span();
@@ -479,7 +483,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
                     quote_spanned! { span =>
                         #name {
                             #(#fields,)*
-                        }
+                        } #discriminant
                     }
                 }
                 Fields::Unnamed(fields_unnamed) => {
@@ -490,16 +494,19 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
                         .collect::<Result<Vec<_>, Error>>()?;
                     let span = fields_unnamed.span();
                     quote_spanned! { span =>
-                        #name(#(#fields,)*)
+                        #name(#(#fields,)*) #discriminant
                     }
                 }
                 Fields::Unit => {
                     let span = variant.span();
-                    quote_spanned! { span => #name }
+                    quote_spanned! { span => #name #discriminant }
                 }
             })
         })
         .collect::<Result<Vec<_>, Error>>()?;
+
+    // The representation determines the discriminant type, so it must match too
+    let repr_attrs = item_enum.attrs.iter().filter(|attr| attr.path().is_ident("repr"));
 
     // Match arms in the DeepView implementation
     let deep_view_variant_arms = item_enum.variants.iter()
@@ -712,6 +719,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
         #item_enum
 
         #[derive(Eq, Hash)]
+        #(#repr_attrs)*
         #vis enum #exec_name {
             #(#exec_variants,)*
         }

@@ -2261,3 +2261,42 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    /// Explicit discriminants and `#[repr]` carry over to the exec enum,
+    /// so `e as T` agrees between the spec and exec enums.
+    #[test] test_exec_spec_enum_discriminant IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            #[derive(Clone, Copy)]
+            pub enum E {
+                A = 10,
+                B = 20,
+                C,
+            }
+
+            spec fn disc(e: E) -> u8 {
+                e as u8
+            }
+
+            #[repr(u64)]
+            #[derive(Clone, Copy)]
+            pub enum F {
+                X = 0xFFFF_FFFF_FFFF_FFFF,
+                Y = 7,
+            }
+
+            spec fn fdisc(f: F) -> u64 {
+                f as u64
+            }
+        }
+
+        fn test() {
+            let r = exec_disc(&ExecE::B);
+            assert(r == 20);
+            let c = exec_disc(&ExecE::C);
+            assert(c == 21);
+            let x = exec_fdisc(&ExecF::X);
+            assert(x == 0xFFFF_FFFF_FFFF_FFFFu64);
+        }
+    } => Ok(())
+}
