@@ -1217,6 +1217,63 @@ fn eval_array_index(
 
 /// Symbolically execute the expression as far as we can,
 /// stopping when we hit a symbolic control-flow decision
+/// The variables `exp` mentions that are not bound inside it, ignoring triggers (they do not
+/// affect the meaning of an expression, and the interpreter does not evaluate them)
+fn mentioned_vars(exp: &Exp) -> Vec<UniqueIdent> {
+    let no_trigs: Trigs = Arc::new(vec![]);
+    let exp = crate::sst_visitor::map_exp_visitor(exp, &mut |e| match &e.x {
+        ExpX::Bind(bnd, body) => {
+            let x = match &bnd.x {
+                BndX::Quant(q, bs, _, l) => {
+                    BndX::Quant(*q, bs.clone(), no_trigs.clone(), l.clone())
+                }
+                BndX::Lambda(bs, _) => BndX::Lambda(bs.clone(), no_trigs.clone()),
+                BndX::Choose(bs, _, c) => BndX::Choose(bs.clone(), no_trigs.clone(), c.clone()),
+                BndX::Let(_) => return e.clone(),
+            };
+            e.new_x(ExpX::Bind(crate::def::Spanned::new(bnd.span.clone(), x), body.clone()))
+        }
+        _ => e.clone(),
+    });
+    let mut vars = Vec::new();
+    let mut scope_map = crate::sst_visitor::VisitorScopeMap::new();
+    crate::sst_visitor::exp_visitor_dfs::<(), _>(&exp, &mut scope_map, &mut |e, scope_map| {
+        match &e.x {
+            ExpX::Var(x) | ExpX::VarLoc(x) | ExpX::VarAt(x, _) | ExpX::Old(_, x)
+                if !scope_map.contains_key(x) =>
+            {
+                vars.push(x.clone());
+            }
+            _ => {}
+        }
+        crate::sst_visitor::VisitorControlFlow::Recurse
+    });
+    vars
+}
+
+/// Values cross scopes when a call binds its arguments in the callee's environment and when
+/// the callee's result returns to the caller's. Evaluation turns every variable into its value
+/// or a hidden `FreeVar`, so a variable in such a value escaped evaluation: the other scope
+/// would take it to mean its own variable of that name (#3182, #3198). Fail rather than let
+/// it cross.
+fn check_closed(value: &Exp, what: impl Fn() -> String) -> Result<(), VirErr> {
+    match mentioned_vars(value).first() {
+        None => Ok(()),
+        Some(x) => Err(error(
+            &value.span,
+            format!(
+                "internal error in assert_by_compute: the variable `{}` was left unevaluated in {}",
+                x.0,
+                what()
+            ),
+        )),
+    }
+}
+
+fn fname(fun: &Fun) -> String {
+    crate::ast_util::fun_as_friendly_rust_name(fun)
+}
+
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
     state.iterations += 1;
     if state.iterations > ctx.max_iterations {
@@ -1232,7 +1289,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         "\t".repeat(state.depth),
         exp.x.to_user_string(&ctx.global)
     ));
-    let ok = Ok(exp.clone());
+    // No catch-all "return `exp` unchanged": an unevaluated `exp` may mention variables of the
+    // current environment, which mean something else once the result leaves this scope
+    // (#3198). Each arm that returns `exp` as is says why that is safe.
+    let unchanged = || Ok(exp.clone());
     if state.enable_simplified_cache && state.simplified.contains(exp) {
         state.ptr_hits += 1;
         state
@@ -1247,7 +1307,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     let zero = int_new(BigInt::zero());
     use ExpX::*;
     let r = match &exp.x {
-        Const(_) => ok,
+        Const(_) => unchanged(), // closed
         Var(id) => match state.env.get(id) {
             None => {
                 state.log(format!("Failed to find a match for variable {:?}", id));
@@ -1268,9 +1328,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             let clipped =
                                 exp.new_x(Unary(UnaryOp::Clip { range, truncate: false }, value));
                             let value = eval_expr_internal(ctx, state, &clipped)?;
-                            if matches!(&value.x, Const(Constant::Int(_))) { Ok(value) } else { ok }
+                            // a const generic mentions no variables
+                            if matches!(&value.x, Const(Constant::Int(_))) {
+                                Ok(value)
+                            } else {
+                                unchanged()
+                            }
                         }
-                        None => ok,
+                        None => unchanged(),
                     }
                 }
                 TypX::ConstBool(b) => bool_new(*b),
@@ -1278,9 +1343,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     let var_id = VarIdent(id.clone(), VarIdentDisambiguate::TypParamBare);
                     exp_new(Interp(InterpExp::FreeVar(var_id)))
                 }
-                _ => ok,
+                _ => unchanged(), // mentions types only
             },
-            _ => ok,
+            _ => unchanged(), // the other nullary operators mention no variables
         },
         Unary(op, e) => {
             use Constant::*;
@@ -1803,6 +1868,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 let pars = &func.x.pars;
                                 let spec_axioms = func.x.axioms.spec_axioms.as_ref().unwrap();
                                 state.cache_misses += 1;
+                                for a in new_args.iter() {
+                                    check_closed(a, || format!("an argument of `{}`", fname(fun)))?;
+                                }
                                 let mut env = Env::new();
                                 let mut type_env = TypeEnv::new();
                                 env.push_scope(true);
@@ -1842,6 +1910,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     ))
                                 };
                                 state.env = prev_env;
+                                let result = result.and_then(|r| {
+                                    check_closed(&r, || format!("the result of `{}`", fname(fun)))
+                                        .map(|_| r)
+                                });
                                 state.insert_call(fun, &typs, &new_args, &result.clone()?, memoize);
                                 result
                             }
@@ -1858,7 +1930,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
             }
         }
-        Call(CallFun::Recursive(_), _, _) => ok,
+        Call(fun @ CallFun::Recursive(_), typs, args) => {
+            // not unfolded, but the arguments must be evaluated in this environment
+            let new_args: Result<Vec<Exp>, VirErr> =
+                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+            exp_new(Call(fun.clone(), typs.clone(), Arc::new(new_args?)))
+        }
         Call(fun @ CallFun::InternalFun(_), typs, args) => {
             let new_args: Result<Vec<Exp>, VirErr> =
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
@@ -1883,13 +1960,16 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             });
                             env.push_scope(true);
                             for (formal, actual) in bnds.iter().zip(new_args.iter()) {
+                                check_closed(actual, || "an argument of a closure".to_string())?;
                                 let formal_id = formal.name.clone();
                                 env.insert(formal_id, actual.clone()).unwrap();
                             }
                             let prev_env = std::mem::replace(&mut state.env, env);
                             let e = eval_expr_internal(ctx, state, body);
                             state.env = prev_env;
-                            e
+                            let e = e?;
+                            check_closed(&e, || "the result of a closure".to_string())?;
+                            Ok(e)
                         }
                         _ => panic!(
                             "Expected CallLambda's binder to contain a lambda.  Instead found {:?}",
@@ -1972,7 +2052,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             BndX::Choose(..) => {
                 let free_vars = free_vars_exp(exp);
                 if free_vars.is_empty() {
-                    ok
+                    unchanged() // closed
                 } else {
                     let substs: Result<HashMap<UniqueIdent, Exp>, VirErr> = free_vars
                         .keys()
@@ -2015,19 +2095,36 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             exp_new(Interp(InterpExp::Array(im_vec)))
         }
         Interp(e) => match e {
-            InterpExp::FreeVar(_) => ok,
-            InterpExp::Seq(_) => ok,
-            InterpExp::Closure(_, _) => ok,
-            InterpExp::Array(_) => ok,
+            // already evaluated: a hidden variable, or a value whose free variables are hidden
+            // (a closure carries its own environment)
+            InterpExp::FreeVar(_) => unchanged(),
+            InterpExp::Seq(_) => unchanged(),
+            InterpExp::Closure(_, _) => unchanged(),
+            InterpExp::Array(_) => unchanged(),
         },
         WithTriggers(triggers, body) => {
             let body = eval_expr_internal(ctx, state, body)?;
             exp_new(WithTriggers(triggers.clone(), body))
         }
-        // Ignored by the interpreter at present (i.e., treated as symbolic)
-        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | StaticVar(..) => ok,
-        ExecFnByName(_) => ok,
-        FuelConst(_) => ok,
+        // Ignored by the interpreter at present (i.e., treated as symbolic). A static is closed.
+        // The others name a variable; returned as is, it must not be one the environment binds
+        // (a parameter of a function being unfolded, or a bound variable), since it would then
+        // mean something else in the result.
+        StaticVar(..) => unchanged(),
+        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) => {
+            match mentioned_vars(exp).into_iter().find(|x| state.env.get(x).is_some()) {
+                None => unchanged(),
+                Some(x) => Err(error(
+                    &exp.span,
+                    format!(
+                        "assert_by_compute does not support `{}` here (it refers to a variable of a function being evaluated)",
+                        x.0
+                    ),
+                )),
+            }
+        }
+        ExecFnByName(_) => unchanged(), // closed
+        FuelConst(_) => unchanged(),    // closed
     };
     let res = r?;
     state.depth -= 1;
