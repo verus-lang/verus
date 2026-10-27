@@ -217,7 +217,6 @@ pub broadcast proof fn axiom_box_integer_type_obeys_hash_table_key_model<Key: In
     admit();
 }
 
-// (`Hasher` is declared in core.rs, next to `Hash`)
 // Our model for the external trait `BuildHasher` is that for any two
 // `Hasher`s it builds, if they're both given the same write sequence
 // then their states will match and they'll produce the same digest
