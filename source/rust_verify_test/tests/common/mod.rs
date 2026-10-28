@@ -632,6 +632,9 @@ pub fn run_cargo_verus_with_target(
     } else {
         child.current_dir(invocation_dir.path());
     }
+    // Remove RUSTFLAGS (e.g. vargo's cfgs, coverage instrumentation), as in run_cargo_with_target;
+    // they can break builds for a test_target that lacks the needed runtime support
+    child.env_remove("RUSTFLAGS");
     child.env("CARGO_TARGET_DIR", target_dir);
     child.env("CARGO_BUILD_TARGET_DIR", target_dir);
     child.env("CARGO_BUILD_BUILD_DIR", target_dir);

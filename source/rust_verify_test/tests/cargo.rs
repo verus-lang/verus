@@ -59,16 +59,24 @@ fn run_cargo_verus_for_dir(dir: &str) {
         extra_verus_args.extend(args.split(" "));
     }
 
+    // Check for a target triple to verify and build for
+    let mut extra_cargo_args = vec![];
+    if let Some(target) = find_verus_config(&toml_table, "test_target") {
+        extra_cargo_args.extend(["--target", target]);
+    }
+
     // Use a temp dir for the target dir to isolate each test run
     let target_dir = tempdir().expect("Failed to create temporary target directory");
 
     let mut args = vec!["verify"];
+    args.extend(&extra_cargo_args);
     args.push("--");
     args.extend(&extra_verus_args);
     let run = run_cargo_verus_with_target(&args, &test_dir, target_dir.path());
     assert!(run.status.success());
 
     let mut args = vec!["build"];
+    args.extend(&extra_cargo_args);
     args.push("--");
     args.extend(&extra_verus_args);
     let run = run_cargo_verus_with_target(&args, &test_dir, target_dir.path());
