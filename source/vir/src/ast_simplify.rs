@@ -57,6 +57,8 @@ struct State {
     closure_typs: HashMap<usize, ClosureDatatype>,
     // Functions for which the corresponding FnDef type is used
     fndef_typs: HashSet<Fun>,
+    // broadcast_forall functions with no params/typ params (these get no dummy param)
+    zero_arg_broadcast_fns: HashSet<Fun>,
 }
 
 impl State {
@@ -68,6 +70,7 @@ impl State {
             tuple_typs: HashSet::new(),
             closure_typs: HashMap::new(),
             fndef_typs: HashSet::new(),
+            zero_arg_broadcast_fns: HashSet::new(),
         }
     }
 
@@ -409,7 +412,11 @@ fn simplify_one_expr(
                 CallTargetKind::DynamicResolved { .. } => true,
                 CallTargetKind::ExternalTraitDefault => true,
             };
-            let args = if typs.len() == 0 && args.len() == 0 && !is_trait_impl {
+            let args = if typs.len() == 0
+                && args.len() == 0
+                && !is_trait_impl
+                && !state.zero_arg_broadcast_fns.contains(tgt)
+            {
                 // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
                 let typ = Arc::new(TypX::Int(IntRange::Int));
                 use num_traits::Zero;
@@ -1466,6 +1473,11 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         arch,
     } = &**krate;
     let mut state = State::new();
+    for f in functions.iter() {
+        if f.x.attrs.broadcast_forall && f.x.params.len() == 0 && f.x.typ_params.len() == 0 {
+            state.zero_arg_broadcast_fns.insert(f.x.name.clone());
+        }
+    }
 
     // Always add this because unit values might be added later, after ast_simplify.
     state.tuple_type_name(0);

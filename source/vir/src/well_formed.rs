@@ -567,14 +567,6 @@ fn check_one_expr(
                     "cannot call a `decreases_by`/`recommends_by` function directly",
                 ));
             }
-            if f.x.attrs.broadcast_forall && f.x.params.len() == 0 {
-                // REVIEW: this is a rather arbitrary restriction due to ast_simplify's treatment of 0-argument functions.
-                // When we generalize broadcast_forall, this restriction should be removed.
-                return Err(error(
-                    &expr.span,
-                    "cannot call a `broadcast_forall` function with 0 arguments directly",
-                ));
-            }
         }
         ExprX::Ctor(Dt::Path(path), _variant, _fields, _update) => {
             check_datatype_access(
