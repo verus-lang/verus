@@ -1053,7 +1053,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires clauses")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `requires` clauses")
 }
 
 test_verify_one_file! {
@@ -1084,7 +1084,7 @@ test_verify_one_file! {
             let mut h = Bad;
             0u8.hash(&mut h);
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires clauses")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `requires` clauses")
 }
 
 test_verify_one_file! {
@@ -1099,7 +1099,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires clauses")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `requires` clauses")
 }
 
 test_verify_one_file! {
