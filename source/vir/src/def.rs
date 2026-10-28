@@ -105,7 +105,8 @@ const PROJECT_SEPARATOR: &str = "/";
 const MONOTYPE_APP_BEGIN: &str = "<";
 const MONOTYPE_APP_END: &str = ">";
 const MONOTYPE_DECORATE: &str = "$%";
-const TRAIT_DEFAULT_SEPARATOR: &str = "%default%";
+const TRAIT_DEFAULT_PREFIX: &str = "default%";
+const TRAIT_DEFAULT_SEPARATOR: &str = "%%%";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
 const DUMMY_PARAM: &str = "no%param";
@@ -120,7 +121,7 @@ pub const SUFFIX_SNAP_JOIN: &str = "_join";
 pub const SUFFIX_SNAP_WHILE_BEGIN: &str = "_while_begin";
 pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
 
-pub const CLOSURE_RETURN_VALUE_PREFIX: &str = "%closure_return";
+pub const CLOSURE_RETURN_VALUE_NAME: &str = "closure_return%";
 
 pub const AUTOSPEC_FUNC_PREFIX: &str = "returns_clause_autospec%";
 
@@ -136,8 +137,8 @@ pub const FUEL_PARAM: &str = "fuel%";
 pub const FUEL_BOOL: &str = "fuel_bool";
 pub const FUEL_BOOL_DEFAULT: &str = "fuel_bool_default";
 pub const FUEL_DEFAULTS: &str = "fuel_defaults";
-pub const RETURN_VALUE: &str = "%return";
-pub const RETURN_VALUE_ASYNC_FUTURE: &str = "%return_async_future";
+pub const RETURN_VALUE: &str = "return%";
+pub const RETURN_VALUE_ASYNC_FUTURE: &str = "return_async_future%";
 pub const DEFAULT_ENSURES: &str = "default_ensures";
 pub const U_HI: &str = "uHi";
 pub const I_LO: &str = "iLo";
@@ -220,7 +221,7 @@ pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
 pub const CLOSURE_OPENS_INVARIANTS: &str = "closure_opens_invariants";
 pub const DEFAULT_ENS: &str = "default_ens";
-const CLOSURE_PARAM: &str = "closure%";
+const CLOSURE_PARAM: &str = "%closure";
 pub const EXT_EQ: &str = "ext_eq";
 
 pub const BIT_XOR: &str = "bitxor";
@@ -426,7 +427,7 @@ pub(crate) fn trait_default_name(default_fun: &Fun) -> Fun {
     let path = (**default_fun).path.clone();
     let mut segments = (*path.segments).clone();
     let last = segments.last_mut().expect("segment");
-    *last = last.map_name(|x| x.to_string() + TRAIT_DEFAULT_SEPARATOR);
+    *last = last.map_name(|x| TRAIT_DEFAULT_PREFIX.to_string() + x);
     Arc::new(crate::ast::FunX {
         path: Arc::new(crate::ast::PathX {
             krate: path.krate.clone(),
@@ -438,7 +439,10 @@ pub(crate) fn trait_default_name(default_fun: &Fun) -> Fun {
 pub fn trait_inherit_default_name(default_fun: &Fun, impl_path: &Path) -> Fun {
     let path = (**impl_path).clone();
     let mut segments = (*path.segments).clone();
-    let x = segments.last().expect("segment").to_string()
+    let last = segments.last().expect("segment").to_string();
+    assert!(!last.contains(TRAIT_DEFAULT_SEPARATOR));
+    let x = TRAIT_DEFAULT_PREFIX.to_string()
+        + &segments.last().expect("segment").to_string()
         + TRAIT_DEFAULT_SEPARATOR
         + &default_fun.path.segments.last().unwrap().to_string();
     *segments.last_mut().unwrap() = Segment::V(Arc::new(x), 0);

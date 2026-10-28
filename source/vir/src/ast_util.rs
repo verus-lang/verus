@@ -29,7 +29,7 @@ impl Segment {
         match self {
             Segment::V(name, d) => Segment::V(Arc::new(f(name)), *d),
             Segment::T(name, d) => Segment::T(Arc::new(f(name)), *d),
-            _ => Segment::V(Arc::new(f(&self.to_string())), 0),
+            _ => panic!("map name expects segment with a name"),
         }
     }
 

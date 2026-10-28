@@ -159,11 +159,11 @@ impl TestObserver {
 }
 
 fn fun_name(f: &vir::ast::Function) -> String {
-    f.x.name.path.segments.last().map(|s| s.to_string()).unwrap_or_default()
+    f.x.name.path.segments.last().map(|s| s.friendly_name()).unwrap_or_default()
 }
 fn dt_name(d: &vir::ast::Datatype) -> String {
     match &d.x.name {
-        vir::ast::Dt::Path(p) => p.segments.last().map(|s| s.to_string()).unwrap_or_default(),
+        vir::ast::Dt::Path(p) => p.segments.last().map(|s| s.friendly_name()).unwrap_or_default(),
         vir::ast::Dt::Tuple(n) => format!("tuple{}", n),
     }
 }
