@@ -50,6 +50,18 @@ impl<'f> Visitor<'f> {
         }
     }
 
+    fn mark_keeping(
+        &mut self,
+        spanned: &(impl Spanned + Debug),
+        keep: CodeKind,
+        kind: CodeKind,
+        content: LineContent,
+    ) {
+        if self.active() {
+            self.file_stats.mark_keeping(spanned, keep, kind, content);
+        }
+    }
+
     fn mark_with_additional_kind(
         &mut self,
         spanned: &impl Spanned,
@@ -279,8 +291,10 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
     fn visit_block(&mut self, i: &'ast verus_syn::Block) {
         if let Some(content_code_kind) = self.in_body {
             if self.in_proof_directive == 0 {
-                self.mark(
+                // keep the Proof added by a Ghost / Tracked earlier on the same line
+                self.mark_keeping(
                     &i,
+                    CodeKind::Proof,
                     self.mode_or_trusted(content_code_kind),
                     LineContent::Code(content_code_kind),
                 )
@@ -292,8 +306,10 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
     fn visit_expr(&mut self, i: &'ast verus_syn::Expr) {
         if let Some(content_code_kind) = self.in_body {
             if self.in_proof_directive == 0 {
-                self.mark(
+                // keep the Proof added by a Ghost / Tracked earlier on the same line
+                self.mark_keeping(
                     &i,
+                    CodeKind::Proof,
                     self.mode_or_trusted(content_code_kind),
                     LineContent::Code(content_code_kind),
                 );
@@ -594,7 +610,12 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                     _ => None,
                 })
             {
-                self.mark(i, wrapper_code_kind, LineContent::GhostTracked(wrapper_code_kind));
+                // keep the kind of other fields on the same line
+                self.mark_with_additional_kind(
+                    i,
+                    wrapper_code_kind,
+                    LineContent::GhostTracked(wrapper_code_kind),
+                );
                 return;
             }
         }

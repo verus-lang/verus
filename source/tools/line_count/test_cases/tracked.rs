@@ -43,6 +43,18 @@ struct Wrapper {
     x: u32,
 }
 
+// Tracked struct fields sharing a line with exec fields
+struct OneLineWrapper { x: u32, perm: Tracked<PermissionU32> }
+
+struct OneLineWrapperTrackedFirst { perm: Tracked<PermissionU32>, x: u32 }
+
+struct TupleWrapper(Tracked<PermissionU32>, u32);
+
+enum TrackedEnum {
+    A(Tracked<PermissionU32>, u32),
+    B { perm: Tracked<PermissionU32>, x: u32 },
+}
+
 // Tracked return types
 fn ret_named() -> (t: Tracked<PermissionU32>) {
     let (a, Tracked(p)) = PAtomicU32::new(0);

@@ -358,10 +358,10 @@ fn test_tracked() {
                        |                                |
                        |                                | verus! {
                        |                                |
-    Exec               | Code(Exec Signature Body(Exec  | fn foo(Tracked(perm): Tracked<&PermissionU32>, x: u32) {
+    Proof Exec         | Code(Exec Signature Body(Exec  | fn foo(Tracked(perm): Tracked<&PermissionU32>, x: u32) {
     Exec               | Code(Exec) Body(Exec)          | }
                        |                                |
-    Exec               | Code(Exec Signature Body(Exec  | fn bar(x: u32, Tracked(perm): Tracked<&PermissionU32>) {
+    Proof Exec         | Code(Exec Signature Body(Exec  | fn bar(x: u32, Tracked(perm): Tracked<&PermissionU32>) {
     Exec               | Code(Exec) Body(Exec)          | }
                        |                                |
     Exec               | Signature(Exec)                | fn baz(
@@ -375,7 +375,7 @@ fn test_tracked() {
     Exec               | Code(Exec Signature Body(Exec  | fn tracked_args() {
     Exec               | Code(Exec) Body(Exec)          |     let (a, Tracked(p)) = PAtomicU32::new(0);
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let y = a.load(Tracked(&p));
-    Exec               | Code(Exec Body(Exec GhostTrac  |     foo(Tracked(&p), 4);
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     foo(Tracked(&p), 4);
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     bar(4, Tracked(&p));
     Exec               | Code(Exec) Body(Exec)          |     baz(
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |         Tracked(&p),
@@ -394,8 +394,20 @@ fn test_tracked() {
                        |                                |
     Comment            | Comment                        | // Tracked struct fields
     Exec               | DatatypeDecl                   | struct Wrapper {
-    Proof              | DatatypeDecl GhostTracked(P    |     perm: Tracked<PermissionU32>,
+    Proof Exec         | DatatypeDecl GhostTracked(P    |     perm: Tracked<PermissionU32>,
     Exec               | DatatypeDecl                   |     x: u32,
+    Exec               | DatatypeDecl                   | }
+                       |                                |
+    Comment            | Comment                        | // Tracked struct fields sharing a line with exec fields
+    Proof Exec         | DatatypeDecl GhostTracked(P    | struct OneLineWrapper { x: u32, perm: Tracked<PermissionU32> }
+                       |                                |
+    Proof Exec         | DatatypeDecl GhostTracked(P    | struct OneLineWrapperTrackedFirst { perm: Tracked<PermissionU32>, x: u32 }
+                       |                                |
+    Proof Exec         | DatatypeDecl GhostTracked(P    | struct TupleWrapper(Tracked<PermissionU32>, u32);
+                       |                                |
+    Exec               | DatatypeDecl                   | enum TrackedEnum {
+    Proof Exec         | DatatypeDecl GhostTracked(P    |     A(Tracked<PermissionU32>, u32),
+    Proof Exec         | DatatypeDecl GhostTracked(P    |     B { perm: Tracked<PermissionU32>, x: u32 },
     Exec               | DatatypeDecl                   | }
                        |                                |
     Comment            | Comment                        | // Tracked return types
@@ -423,7 +435,7 @@ fn test_tracked() {
     Proof              | Code(Exec Body(Exec GhostTrac  |     let tracked q1 = p1;
     Proof              | Code(Exec Body(Exec GhostTrac  |     let t1 = Tracked(q1);
     Exec               | Code(Exec) Body(Exec)          |     let Tracked(q1) = t1;
-    Exec               | Code(Exec Body(Exec GhostTrac  |     let w = Wrapper { perm: Tracked(q1), x: 1 };
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let w = Wrapper { perm: Tracked(q1), x: 1 };
     Exec               | Code(Exec) Body(Exec)          |     let y = Wrapper {
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |         perm: Tracked(p2),
     Exec               | Code(Exec) Body(Exec)          |         x: 1
@@ -449,8 +461,8 @@ fn test_tracked() {
 
     | file       | Trusted | Spec | Proof | Exec | Proof+Exec | Comment | Layout | unaccounted |
     |------------|---------|------|-------|------|------------|---------|--------|-------------|
-    | tracked.rs |       4 |    2 |     3 |   48 |         11 |       6 |      0 |          19 |
+    | tracked.rs |       4 |    2 |     2 |   46 |         21 |       7 |      0 |          23 |
     |------------|---------|------|-------|------|------------|---------|--------|-------------|
-    | total      |       4 |    2 |     3 |   48 |         11 |       6 |      0 |          19 |
+    | total      |       4 |    2 |     2 |   46 |         21 |       7 |      0 |          23 |
     ");
 }
