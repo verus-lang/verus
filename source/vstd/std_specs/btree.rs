@@ -12,7 +12,7 @@ use super::super::laws_cmp::obeys_cmp;
 use super::super::map::{assert_maps_equal, assert_maps_equal_internal};
 use super::super::prelude::*;
 use super::borrow::BorrowSpec;
-use super::cmp::OrdSpec;
+use super::cmp::{OrdSpec, cmp_matches_deep_equality, cmp_matches_equality};
 use super::iter::IteratorSpec;
 
 use alloc::alloc::Allocator;
@@ -44,18 +44,6 @@ pub broadcast axiom fn axiom_key_obeys_cmp_spec_meaning<K: Ord>()
     ensures
         #[trigger] key_obeys_cmp_spec::<K>() <==> obeys_cmp::<K>(),
 ;
-
-/// Whether the `Key` type's cmp spec matches structural equality, i.e.,
-/// whether `k1.cmp(&k2) is Equal <==> k1 == k2`.
-pub open spec fn cmp_matches_equality<Key: Ord>() -> bool {
-    forall|k1: Key, k2: Key| k1.cmp_spec(&k2) is Equal <==> k1 == k2
-}
-
-/// Whether the `Key` type's cmp spec matches deep-view equality, i.e.,
-/// whether `k1.cmp(&k2) is Equal <==> k1.deep_view() == k2.deep_view()`.
-pub open spec fn cmp_matches_deep_equality<Key: Ord + DeepView>() -> bool {
-    forall|k1: Key, k2: Key| k1.cmp_spec(&k2) is Equal <==> k1.deep_view() == k2.deep_view()
-}
 
 /// Whether a sequence is ordered in increasing order.
 /// This only has meaning if `K: Ord` and [`obeys_cmp::<K>`].

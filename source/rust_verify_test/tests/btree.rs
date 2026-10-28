@@ -54,7 +54,7 @@ test_verify_one_file! {
     #[test] test_btree_map_contains_key_equality verus_code! {
         use std::collections::BTreeMap;
         use vstd::prelude::*;
-        use vstd::std_specs::btree::*;
+        use vstd::std_specs::cmp::{cmp_matches_deep_equality, cmp_matches_equality};
 
         fn test_structural<Key: Ord, Value>(m: &BTreeMap<Key, Value>, k: &Key) -> (result: bool)
             requires
@@ -93,7 +93,7 @@ test_verify_one_file! {
     #[test] test_btree_map_get_equality verus_code! {
         use std::collections::BTreeMap;
         use vstd::prelude::*;
-        use vstd::std_specs::btree::*;
+        use vstd::std_specs::cmp::{cmp_matches_deep_equality, cmp_matches_equality};
 
         fn test_structural<'a, Key: Ord, Value>(
             m: &'a BTreeMap<Key, Value>, k: &Key,
@@ -158,7 +158,7 @@ test_verify_one_file! {
     #[test] test_btree_map_remove_equality verus_code! {
         use std::collections::BTreeMap;
         use vstd::prelude::*;
-        use vstd::std_specs::btree::*;
+        use vstd::std_specs::cmp::{cmp_matches_deep_equality, cmp_matches_equality};
 
         fn test_structural<Key: Ord, Value>(
             m: &mut BTreeMap<Key, Value>, k: &Key,
@@ -274,7 +274,7 @@ test_verify_one_file! {
     #[test] test_btree_map_get_mut_equality verus_code! {
         use std::collections::BTreeMap;
         use vstd::prelude::*;
-        use vstd::std_specs::btree::*;
+        use vstd::std_specs::cmp::{cmp_matches_deep_equality, cmp_matches_equality};
 
         fn test_structural<Key: Ord, Value>(
             m: &mut BTreeMap<Key, Value>, k: &Key, replacement: Value,
@@ -772,7 +772,7 @@ test_verify_one_file! {
         fn test()
         {
             assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());
-            assert(vstd::std_specs::btree::cmp_matches_equality::<MyStruct>()) by {
+            assert(vstd::std_specs::cmp::cmp_matches_equality::<MyStruct>()) by {
                 reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
                 reveal(vstd::laws_cmp::obeys_cmp_ord);
             }
@@ -808,9 +808,8 @@ test_verify_one_file! {
         extern crate alloc;
         use alloc::collections::BTreeSet;
         use vstd::prelude::*;
-        use vstd::std_specs::btree::{
-            btree_set_elements_differ, cmp_matches_deep_equality,
-        };
+        use vstd::std_specs::btree::btree_set_elements_differ;
+        use vstd::std_specs::cmp::cmp_matches_deep_equality;
 
         fn test<Key: Ord + DeepView>(first: Key, equivalent: Key, fresh: Key)
             requires
@@ -845,7 +844,7 @@ test_verify_one_file! {
     #[test] test_btree_set_contains_equality verus_code! {
         use std::collections::BTreeSet;
         use vstd::prelude::*;
-        use vstd::std_specs::btree::*;
+        use vstd::std_specs::cmp::{cmp_matches_deep_equality, cmp_matches_equality};
 
         fn test_structural<Key: Ord>(s: &BTreeSet<Key>, k: &Key) -> (result: bool)
             requires
@@ -884,7 +883,7 @@ test_verify_one_file! {
     #[test] test_btree_set_get_equality verus_code! {
         use std::collections::BTreeSet;
         use vstd::prelude::*;
-        use vstd::std_specs::btree::*;
+        use vstd::std_specs::cmp::{cmp_matches_deep_equality, cmp_matches_equality};
 
         fn test_structural<'a, Key: Ord>(
             s: &'a BTreeSet<Key>, k: &Key,
@@ -946,7 +945,7 @@ test_verify_one_file! {
     #[test] test_btree_set_remove_equality verus_code! {
         use std::collections::BTreeSet;
         use vstd::prelude::*;
-        use vstd::std_specs::btree::*;
+        use vstd::std_specs::cmp::{cmp_matches_deep_equality, cmp_matches_equality};
 
         fn test_structural<Key: Ord>(s: &mut BTreeSet<Key>, k: &Key) -> (result: bool)
             requires
@@ -1026,7 +1025,7 @@ test_verify_one_file! {
         fn test()
         {
             assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());
-            assert(vstd::std_specs::btree::cmp_matches_equality::<MyStruct>()) by {
+            assert(vstd::std_specs::cmp::cmp_matches_equality::<MyStruct>()) by {
                 reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
                 reveal(vstd::laws_cmp::obeys_cmp_ord);
             }

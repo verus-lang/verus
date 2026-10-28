@@ -197,6 +197,18 @@ pub trait ExOrd: Eq + PartialOrd + PointeeSized {
     ;
 }
 
+/// Whether the type's cmp spec matches structural equality, i.e.,
+/// whether `k1.cmp(&k2) is Equal <==> k1 == k2`.
+pub open spec fn cmp_matches_equality<T: Ord>() -> bool {
+    forall|v1: T, v2: T| v1.cmp_spec(&v2) is Equal <==> v1 == v2
+}
+
+/// Whether the type's cmp spec matches deep-view equality, i.e.,
+/// whether `v1.cmp(&v2) is Equal <==> v1.deep_view() == v2.deep_view()`.
+pub open spec fn cmp_matches_deep_equality<T: Ord + DeepView>() -> bool {
+    forall|v1: T, v2: T| v1.cmp_spec(&v2) is Equal <==> v1.deep_view() == v2.deep_view()
+}
+
 pub trait PartialEqIs<Rhs: PointeeSized = Self>: PartialEq<Rhs> + PointeeSized {
     spec fn is_eq(&self, other: &Rhs) -> bool;
 
