@@ -231,6 +231,56 @@ fn translate_assoc_type<'tcx>(
     Ok(ctxt.spanned_new(impl_item_span, assocx))
 }
 
+/// A trait default method declared with `#[verus_spec(with ...)]` becomes two trait methods:
+/// `_VERUS_VERIFIED_f` (verified, called by `proof_with!` in the verification run) and `f`
+/// (called in the compiled program).
+/// An impl that overrides one of them would make the verified and compiled programs
+/// dispatch to different functions, and the generated twins cannot be used as an
+/// override either (the unverified twin has `requires false`), so reject overriding them.
+fn check_verus_spec_with_overrides<'tcx>(
+    ctxt: &Context<'tcx>,
+    impl_def_id: DefId,
+    trait_def_id: DefId,
+) -> Result<(), Vec<VirErr>> {
+    let tcx = ctxt.tcx;
+    // trait item -> overriding impl item
+    let overridden: HashMap<DefId, DefId> = tcx
+        .associated_items(impl_def_id)
+        .in_definition_order()
+        .filter_map(|a| a.trait_item_def_id().map(|t| (t, a.def_id)))
+        .collect();
+    let trait_items = tcx.associated_items(trait_def_id);
+    for verified in trait_items.in_definition_order() {
+        if !matches!(verified.kind, AssocKind::Fn { .. }) {
+            continue;
+        }
+        let verified_name = verified.name();
+        let Some(name) =
+            verified_name.as_str().strip_prefix(crate::rust_to_vir_expr::VERUS_VERIFIED_PREFIX)
+        else {
+            continue;
+        };
+        let Some(compiled) = trait_items
+            .filter_by_name_unhygienic(rustc_span::Symbol::intern(name))
+            .find(|a| matches!(a.kind, AssocKind::Fn { .. }))
+        else {
+            continue;
+        };
+        if let Some(impl_item) =
+            overridden.get(&verified.def_id).or_else(|| overridden.get(&compiled.def_id))
+        {
+            return err_span_vec(
+                tcx.def_span(*impl_item),
+                format!(
+                    "cannot override `{}`: a trait method declared with `#[verus_spec(with ...)]` cannot be overridden",
+                    tcx.def_path_str(compiled.def_id)
+                ),
+            );
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn translate_impl<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
@@ -250,6 +300,8 @@ pub(crate) fn translate_impl<'tcx>(
         impll.of_trait
     {
         let trait_def_id = path.res.def_id();
+
+        check_verus_spec_with_overrides(ctxt, impl_def_id, trait_def_id)?;
 
         let rust_item = verus_items::get_rust_item(ctxt.tcx, trait_def_id);
         if matches!(rust_item, Some(RustItem::Fn | RustItem::FnOnce | RustItem::FnMut)) {

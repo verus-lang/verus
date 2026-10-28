@@ -398,7 +398,11 @@ fn body_to_vir<'tcx>(
 
     bctx.push_body_erasure(
         fun_id.expect_local(),
-        BodyErasure { erase_body: mode == Mode::Spec, ret_spec: ret_mode == Mode::Spec },
+        BodyErasure {
+            erase_body: mode == Mode::Spec,
+            ret_spec: ret_mode == Mode::Spec,
+            erase_absolutely: false,
+        },
     );
 
     // Declarations for the bindings of parameter patterns

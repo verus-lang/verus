@@ -243,6 +243,83 @@ pub fn get_future_output_type<T>(_x: impl Future<Output = T>) -> T {
     unimplemented!()
 }
 
+// Used internally by `proof_with!` on a call to a `#[verus_spec(with ...)]` function.
+// In the verification run, `proof_with!{..} f(args)` becomes
+// `proof_with_callee(_VERUS_VERIFIED_f(args, ghost_args), f(args))`
+// (the first argument may also be wrapped by `=>` outputs and `|=` follows).
+// The second argument is the call as it appears in the compiled program;
+// it is never evaluated or verified, and rust_verify only uses it to check
+// that it resolves to the `f` declared with #[verus_spec(with ...)]
+// together with the verified callee `_VERUS_VERIFIED_f`.
+// The argument types tie the two calls' return types together for type inference.
+// Both traits are sealed, so user impls cannot affect this inference.
+#[cfg(verus_keep_ghost)]
+#[doc(hidden)]
+pub trait ProofWithVerifiedResult<C>: proof_with_sealed::Sealed<C> {}
+
+#[cfg(verus_keep_ghost)]
+mod proof_with_sealed {
+    pub trait Sealed<C> {}
+    pub trait SealedOutput {}
+}
+
+#[cfg(verus_keep_ghost)]
+impl<C> proof_with_sealed::Sealed<C> for C {}
+
+#[cfg(verus_keep_ghost)]
+impl<C> ProofWithVerifiedResult<C> for C {}
+
+// The verified expression has an extra ghost/tracked output (`|=`, or an ignored `->` output)
+#[cfg(verus_keep_ghost)]
+impl<C, O: ProofWithGhostOutput> proof_with_sealed::Sealed<C> for (C, O) {}
+
+#[cfg(verus_keep_ghost)]
+impl<C, O: ProofWithGhostOutput> ProofWithVerifiedResult<C> for (C, O) {}
+
+// Ghost/tracked outputs: Ghost, Tracked, and tuples of them
+#[cfg(verus_keep_ghost)]
+#[doc(hidden)]
+pub trait ProofWithGhostOutput: proof_with_sealed::SealedOutput {}
+
+#[cfg(verus_keep_ghost)]
+impl<T> proof_with_sealed::SealedOutput for Ghost<T> {}
+
+#[cfg(verus_keep_ghost)]
+impl<T> ProofWithGhostOutput for Ghost<T> {}
+
+#[cfg(verus_keep_ghost)]
+impl<T> proof_with_sealed::SealedOutput for Tracked<T> {}
+
+#[cfg(verus_keep_ghost)]
+impl<T> ProofWithGhostOutput for Tracked<T> {}
+
+// Tuples up to arity 12, like impl_structural_tuples! below
+// (not `()`, which would make an exec result `(C, ())` ambiguous)
+macro_rules! impl_proof_with_ghost_output_tuples {
+    () => {};
+    ($T:ident $($U:ident)*) => {
+        #[cfg(verus_keep_ghost)]
+        impl<$T: ProofWithGhostOutput, $($U: ProofWithGhostOutput),*>
+            proof_with_sealed::SealedOutput for ($T, $($U,)*)
+        {
+        }
+        #[cfg(verus_keep_ghost)]
+        impl<$T: ProofWithGhostOutput, $($U: ProofWithGhostOutput),*> ProofWithGhostOutput
+            for ($T, $($U,)*)
+        {
+        }
+        impl_proof_with_ghost_output_tuples!($($U)*);
+    };
+}
+
+impl_proof_with_ghost_output_tuples!(A B C D E F G H I J K L);
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::proof_with_callee"]
+pub fn proof_with_callee<V: ProofWithVerifiedResult<C>, C>(verified: V, _compiled: C) -> V {
+    verified
+}
+
 // example: forall with three triggers [f(x), g(y)], [h(x, y)], [m(y, x)]:
 //   forall(|x: int, y: int| with_triggers!([f(x), g(y)], [h(x, y)], [m(y, x)] => body))
 #[macro_export]
