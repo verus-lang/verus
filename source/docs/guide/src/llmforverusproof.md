@@ -23,7 +23,7 @@ Before you finish, run the cheat checker to make sure you haven't cheated.
 
 ## Use a Coding Agent
 
-**Why a coding agent?** Writing code and writing proofs about code have many similarities. Both require a good understanding of the existing code base and both can beneift from tool support, such as testing tools for code synthesis and verifiers for proof synthesis. Practice has shown that state-of-the-art LLMs work best when they can explore the code base, run tools, and iterate at their own pace, which is well supported by existing coding agents like [GitHub Copilot CLI](https://githubnext.com/projects/copilot-cli).
+**Why a coding agent?** Writing code and writing proofs about code have many similarities. Both require a good understanding of the existing code base and both can benefit from tool support, such as testing tools for code synthesis and verifiers for proof synthesis. Practice has shown that state-of-the-art LLMs work best when they can explore the code base, run tools, and iterate at their own pace, which is well supported by existing coding agents like [GitHub Copilot CLI](https://githubnext.com/projects/copilot-cli).
 
 **Practical tips:**
 - We recommend running the agent in a secure container or sandbox, so that you can safely give it the freedom to run Verus and other available tools, without requiring repeated human intervention, e.g., via `--allow-all-tools` (Copilot CLI) or similar options.

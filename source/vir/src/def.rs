@@ -291,6 +291,7 @@ pub const PERVASIVE_PREFIX: &str = "pervasive::";
 
 pub const RUST_DEF_CTOR: &str = "ctor%";
 pub const RUST_DEF_CLOSURE: &str = "closure%";
+pub const RUST_DEF_ANON_CONST: &str = "anon_const%";
 
 pub const RUST_OPAQUE_TYPE: &str = "opaque";
 

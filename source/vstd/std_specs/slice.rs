@@ -4,6 +4,7 @@ use super::core::IndexSpec;
 use super::iter::IteratorSpec;
 use super::range::{
     ExRange, RangeBoundsSpec, slice_range_end, slice_range_start, slice_range_valid,
+    spec_range_inclusive_slice_bounds,
 };
 
 use core::ops::{
@@ -231,11 +232,11 @@ pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index_mut ](i: Rang
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
     open spec fn in_bounds(&self, slice: &[T]) -> bool {
-        generic_slice_in_bounds(self, slice@)
+        generic_slice_in_bounds(&spec_range_inclusive_slice_bounds(self), slice@)
     }
 
     open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
-        generic_slice_index_postcondition(self, slice@, r@)
+        generic_slice_index_postcondition(&spec_range_inclusive_slice_bounds(self), slice@, r@)
     }
 
     open spec fn index_mut_postcondition(
@@ -245,7 +246,7 @@ impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
         immediate_output: &[T],
         final_output: &[T]
     ) -> bool {
-        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
+        generic_slice_index_mut_postcondition(&spec_range_inclusive_slice_bounds(self), old_slice@, final_slice@, immediate_output@, final_output@)
     }
 }
 
@@ -345,6 +346,28 @@ pub assume_specification<T, I: SliceIndex<[T]>>[ <[T] as IndexMut<I>>::index_mut
         call_ensures(<I as SliceIndex<[T]>>::index_mut, (index, slice), output),
 ;
 
+// `get_unchecked(i)`/`get_unchecked_mut(i)` share the contract of `index`/`index_mut`, with
+// the in-bounds check as a safety precondition (UB if violated) rather than a panic.
+pub assume_specification<T, I>[ <[T]>::get_unchecked::<I> ](
+    slice: &[T],
+    index: I,
+) -> (output: &<I as SliceIndex<[T]>>::Output) where I: SliceIndex<[T]>
+    requires
+        index.in_bounds(slice),
+    ensures
+        index.index_postcondition(slice, output),
+;
+
+pub assume_specification<T, I>[ <[T]>::get_unchecked_mut::<I> ](
+    slice: &mut [T],
+    index: I,
+) -> (output: &mut <I as SliceIndex<[T]>>::Output) where I: SliceIndex<[T]>
+    requires
+        index.in_bounds(&*old(slice)),
+    ensures
+        index.index_mut_postcondition(&*old(slice), &*final(slice), output, &*final(output)),
+;
+
 impl<T, I, const N: usize> super::core::IndexSpecImpl<I> for [T; N]
 where
     [T]: Index<I>,
@@ -417,6 +440,16 @@ pub assume_specification<T>[ <[T]>::reverse ](slice: &mut [T])
         final(slice)@ == old(slice)@.reverse(),
 ;
 
+// swap
+pub assume_specification<T>[ <[T]>::swap ](slice: &mut [T], a: usize, b: usize)
+    requires
+        a < old(slice)@.len(),
+        b < old(slice)@.len(),
+    ensures
+        final(slice)@ == old(slice)@.update(a as int, old(slice)@[b as int]).update(b as int, old(slice)@[a as int]),
+    no_unwind
+;
+
 // The `iter` method of a `<T>` returns an iterator of type `Iter<'_, T>`,
 // so we specify that type here.
 #[verifier::external_type_specification]
@@ -434,7 +467,10 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -479,7 +515,10 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for IterMut<'a, T> {
     #[verifier::prophetic]
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    open spec fn will_return_none(&self) -> bool { true }
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -499,7 +538,7 @@ pub assume_specification<'a, T>[ <[T]>::iter_mut ](slice: &'a mut [T]) -> (iter:
             #![trigger final(slice)@[i]]
             0 <= i < old(slice)@.len() ==> *final(IteratorSpec::remaining(&iter)[i]) == final(slice)@[i],
         IteratorSpec::obeys_prophetic_iter_laws(&iter),
-        IteratorSpec::will_return_none(&iter),
+        IteratorSpec::produces(&iter).all(|p: bool| p),
         IteratorSpec::decrease(&iter) is Some,
 ;
 
@@ -563,6 +602,26 @@ pub assume_specification<T> [ <[T]>::split_at_checked ](slice: &[T], mid: usize)
             && a@ == slice@[..mid]
             && b@ == slice@[mid..]),
         mid > slice.len() ==> ret is None,
+    no_unwind
+;
+
+pub assume_specification<T> [ <[T]>::split_at_unchecked ](slice: &[T], mid: usize) -> (ret: (&[T], &[T]))
+    requires
+        0 <= mid <= slice.len(),
+    ensures
+        ret.0@ == slice@[..mid],
+        ret.1@ == slice@[mid..],
+    no_unwind
+;
+
+#[doc(hidden)]
+pub assume_specification<T> [ <[T]>::split_at_mut_unchecked ](slice: &mut [T], mid: usize) -> (ret: (&mut [T], &mut [T]))
+    requires
+        0 <= mid <= slice.len(),
+    ensures
+        ret.0@ == old(slice)@[..mid],
+        ret.1@ == old(slice)@[mid..],
+        final(slice)@ == final(ret.0)@ + final(ret.1)@,
     no_unwind
 ;
 
@@ -653,7 +712,10 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for Chunks<'a, T> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 

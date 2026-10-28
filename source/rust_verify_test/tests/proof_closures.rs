@@ -59,7 +59,7 @@ test_verify_one_file_with_options! {
                 return y;
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support `return` inside `proof_fn`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `return` inside `proof_fn`")
     // TODO: } => Err(err) => assert_one_fails(err)
 }
 
@@ -214,7 +214,7 @@ test_verify_one_file_with_options! {
                 return 0 as u64;
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support `return` inside `proof_fn`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `return` inside `proof_fn`")
     //TODO } => Err(err) => assert_one_fails(err)
 }
 
@@ -332,7 +332,7 @@ test_verify_one_file_with_options! {
                 return;
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support `return` inside `proof_fn`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `return` inside `proof_fn`")
     //TODO } => Err(err) => assert_one_fails(err)
 }
 
@@ -590,7 +590,7 @@ test_verify_one_file_with_options! {
                 return some_spec_fn();
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support `return` inside `proof_fn`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `return` inside `proof_fn`")
     //TODO } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
 

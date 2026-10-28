@@ -11,7 +11,7 @@ use crate::ast::{
 use crate::concurrency_tokens::output_token_types_and_fns;
 use crate::lemmas::get_transition;
 use crate::parse_token_stream::SMBundle;
-use crate::safety_conditions::{has_any_assert_simpl_vec, safety_condition_body_simpl_vec};
+use crate::safety_conditions::{has_any_assert_simpl_vec, safety_condition_body};
 use crate::simplification::simplify_ops;
 use crate::to_relation::to_relation;
 use proc_macro2::Span;
@@ -421,7 +421,7 @@ pub fn output_primary_stuff(
 
         if has_any_assert_simpl_vec(&simplified_body) {
             assert!(trans.kind != TransitionKind::Init);
-            let b = safety_condition_body_simpl_vec(&simplified_body);
+            let b = safety_condition_body(&simplified_body);
             let name = Ident::new(&(trans.name.to_string() + "_asserts"), trans.name.span());
             let params = pre_assoc_params(&self_ty, &trans.params);
             let b = match b {
@@ -530,7 +530,7 @@ fn output_take_step_fns(
                 }
 
                 // #[cfg(verus_macro_erase_ghost)]
-                use bool as #tr_name;
+                use ::core::primitive::bool as #tr_name;
             });
         }
         if matches!(trans.kind, TransitionKind::Init) {
@@ -570,7 +570,7 @@ fn output_take_step_fns(
                 }
 
                 // #[cfg(verus_macro_erase_ghost)]
-                use bool as #tr_name;
+                use ::core::primitive::bool as #tr_name;
             });
         }
     }
@@ -781,7 +781,7 @@ fn output_step_datatype(
                     }
 
                     // #[cfg(verus_macro_erase_ghost)]
-                    use bool as #tr_name;
+                    use ::core::primitive::bool as #tr_name;
                 });
             } else {
                 let params = pre_post_assoc_params(&super_self_ty, &trans.params);
@@ -798,7 +798,7 @@ fn output_step_datatype(
                     }
 
                     // #[cfg(verus_macro_erase_ghost)]
-                    use bool as #tr_name;
+                    use ::core::primitive::bool as #tr_name;
                 });
             }
         }

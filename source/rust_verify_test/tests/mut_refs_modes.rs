@@ -9,7 +9,7 @@ test_verify_one_file_with_options! {
             let ghost g: u64 = 3;
             let mut_ret = &mut g;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow a ghost-mode place")
 }
 
 test_verify_one_file_with_options! {
@@ -49,7 +49,7 @@ test_verify_one_file_with_options! {
                 let tracked mut_ret = &mut g;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow a ghost-mode place")
 }
 
 test_verify_one_file_with_options! {
@@ -143,7 +143,7 @@ test_verify_one_file_with_options! {
                 let x = &mut a;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "mutable borrow is not allowed in 'assert ... by' statement")
+    } => Err(err) => assert_vir_error_msg(err, "mutable borrow is not allowed in `assert ... by` statement")
 }
 
 test_verify_one_file_with_options! {
@@ -188,7 +188,7 @@ test_verify_one_file_with_options! {
                 mut_ref.y.borrow_mut().0 = false;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "assignment is not allowed in 'assert ... by' statement")
+    } => Err(err) => assert_vir_error_msg(err, "assignment is not allowed in `assert ... by` statement")
 }
 
 test_verify_one_file_with_options! {
@@ -448,7 +448,7 @@ test_verify_one_file_with_options! {
                 let tracked z = &mut mut_ref.y.borrow_mut().0;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow a ghost-mode place")
 }
 
 test_verify_one_file_with_options! {
@@ -1493,7 +1493,7 @@ test_verify_one_file_with_options! {
             let mut x = x;
             proof { let y = &mut *x; }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow a ghost-mode place")
 }
 
 test_verify_one_file_with_options! {
@@ -1653,7 +1653,7 @@ test_verify_one_file_with_options! {
             let mut x = x;
             proof { let y = &mut x.0; }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow a ghost-mode place")
 }
 
 test_verify_one_file_with_options! {
@@ -1717,7 +1717,7 @@ test_verify_one_file_with_options! {
         fn foo(x: Tracked<u64>) {
             let y: &u64 = x.deref();
         }
-    } => Err(err) => assert_vir_error_msg(err, "not supported: using Tracked::deref")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support using `Tracked::deref`")
 }
 
 test_verify_one_file_with_options! {
@@ -1727,7 +1727,7 @@ test_verify_one_file_with_options! {
             let mut x = x;
             let y: &mut u64 = x.deref_mut();
         }
-    } => Err(err) => assert_vir_error_msg(err, "not supported: using Tracked::deref_mut")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support using `Tracked::deref_mut`")
 }
 
 test_verify_one_file_with_options! {

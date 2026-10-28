@@ -40,7 +40,7 @@ If an `enum` field reuses a name, you can qualify the field access:
 ```
 
 For variants like `Shape` declared with round parentheses `()`,
-you can use Verus' `->' tuple-like syntax to access a single field
+you can use Verus's `->` tuple-like syntax to access a single field
 without a match destruction:
 ```rust
 {{#include ../../../../examples/guide/datatypes.rs:rect_height}}
@@ -50,7 +50,7 @@ without a match destruction:
 
 `match` is natural for examining every variant of an `enum`.
 If you'd like to bind the fields while only considering one or two of the
-variants, you can use Verus' `matches` syntax:
+variants, you can use Verus's `matches` syntax:
 ```rust
 {{#include ../../../../examples/guide/datatypes.rs:cuddly}}
 ```
@@ -59,7 +59,7 @@ Because the `matches` syntax binds names in patterns, it has no trouble
 with field names reused across variants, so it may be preferable
 to the (qualified) arrow syntax.
 
-Notice that `l matches Mammal{legs} && legs == 4` is a boolean expression,
+Notice that `l matches Mammal { legs, .. } && legs == 4` is a boolean expression,
 with the special property that `legs` is bound in the remainder of the
 expression after `&&`. That helpful binding also works with `==>`
 and `&&&`:

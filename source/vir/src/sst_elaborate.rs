@@ -94,12 +94,12 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                 let vars = bs.iter().map(|b| b.name.clone()).collect();
                 let trigs = build_triggers(ctx, &exp.span, &vars, &body, true)?;
                 if trigs.len() > 0 {
-                    let msg = "#[trigger] on a spec_fn closure is deprecated - \
-                        generally spec_fn closures don't need triggers because spec_fn \
-                        closures are triggered automatically by calls to to closures. \
-                        If you think you need additional triggers, see the discussion in \
+                    let msg = "`#[trigger]` on a `spec_fn` closure is deprecated; \
+                        generally `spec_fn` closures don't need triggers because `spec_fn` \
+                        closures are triggered automatically by calls to closures; \
+                        if you think you need additional triggers, see the discussion in \
                         https://github.com/verus-lang/verus/pull/331 \
-                        for alternatives.";
+                        for alternatives";
                     ctx.warning_maybe_if_in_local_crate(
                         &exp.span,
                         &WarningAllow::TriggerOnSpecFn,
@@ -212,6 +212,7 @@ impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
 
         let mut def = FuncCheckSst {
             reqs: Arc::new(reqs),
+            return_opaque_type_eqs: def.return_opaque_type_eqs.clone(),
             post_condition: Arc::new(post_condition),
             unwind,
             body,

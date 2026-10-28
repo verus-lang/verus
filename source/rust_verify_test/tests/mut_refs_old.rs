@@ -210,7 +210,7 @@ test_verify_one_file_with_options! {
             ensures *old(final(x)) == 20
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "The result of `final` must be dereferenced")
+    } => Err(err) => assert_vir_error_msg(err, "the result of `final` must be dereferenced")
 }
 
 test_verify_one_file_with_options! {

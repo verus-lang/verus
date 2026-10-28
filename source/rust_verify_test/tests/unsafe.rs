@@ -22,5 +22,5 @@ test_verify_one_file! {
     #[test] unsafe_proof_fn_fail verus_code! {
         unsafe proof fn j() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "'unsafe' only makes sense on exec-mode functions")
+    } => Err(err) => assert_vir_error_msg(err, "`unsafe` only makes sense on exec-mode functions")
 }

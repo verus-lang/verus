@@ -125,7 +125,11 @@ pub trait ExOrd: Eq + PartialOrd + PointeeSized {
 
     fn max(self, other: Self) -> (r: Self)
         ensures
-            Self::obeys_cmp_spec() ==> match other.cmp_spec(&self) {
+            ({
+                &&& Self::obeys_cmp_spec()
+                &&& Self::obeys_partial_cmp_spec()
+                &&& other.partial_cmp_spec(&self) == Some(other.cmp_spec(&self))
+            }) ==> match other.cmp_spec(&self) {
                 Ordering::Less => r == self,
                 Ordering::Equal => r == other,
                 Ordering::Greater => r == other,
@@ -141,7 +145,11 @@ pub trait ExOrd: Eq + PartialOrd + PointeeSized {
 
     fn min(self, other: Self) -> (r: Self)
         ensures
-            Self::obeys_cmp_spec() ==> match other.cmp_spec(&self) {
+            ({
+                &&& Self::obeys_cmp_spec()
+                &&& Self::obeys_partial_cmp_spec()
+                &&& other.partial_cmp_spec(&self) == Some(other.cmp_spec(&self))
+            }) ==> match other.cmp_spec(&self) {
                 Ordering::Less => r == other,
                 Ordering::Equal => r == self,
                 Ordering::Greater => r == self,
@@ -164,7 +172,12 @@ pub trait ExOrd: Eq + PartialOrd + PointeeSized {
                 | Ordering::Equal,
             ),
         ensures
-            Self::obeys_cmp_spec() ==> match (self.cmp_spec(&min), self.cmp_spec(&max)) {
+            ({
+                &&& Self::obeys_cmp_spec()
+                &&& Self::obeys_partial_cmp_spec()
+                &&& self.partial_cmp_spec(&min) == Some(self.cmp_spec(&min))
+                &&& self.partial_cmp_spec(&max) == Some(self.cmp_spec(&max))
+            }) ==> match (self.cmp_spec(&min), self.cmp_spec(&max)) {
                 (Ordering::Less, _) => r == min,
                 (_, Ordering::Greater) => r == max,
                 _ => r == self,
@@ -234,6 +247,86 @@ impl<A: PointeeSized + PartialOrd<Rhs>, Rhs: PointeeSized> PartialOrdIs<Rhs> for
     }
 }
 
+/* min and max */
+
+// `min` and `max` are aliases of `Ord::min` and `Ord::max`.
+pub assume_specification<T: Ord>[ core::cmp::min ](v1: T, v2: T) -> (r: T)
+    ensures
+        call_ensures(T::min, (v1, v2), r),
+;
+
+pub assume_specification<T: Ord>[ core::cmp::max ](v1: T, v2: T) -> (r: T)
+    ensures
+        call_ensures(T::max, (v1, v2), r),
+;
+
+// `min_by` and `max_by` call `compare(&v1, &v2)` once. When it returns `Equal`,
+// `min_by` returns `v1` and `max_by` returns `v2`.
+pub assume_specification<T, F: FnOnce(&T, &T) -> Ordering>[ core::cmp::min_by ](
+    v1: T,
+    v2: T,
+    compare: F,
+) -> (r: T)
+    requires
+        compare.requires((&v1, &v2)),
+    ensures
+        exists|o: Ordering| {
+            &&& #[trigger] compare.ensures((&v1, &v2), o)
+            &&& r == (if o == Ordering::Greater { v2 } else { v1 })
+        },
+;
+
+pub assume_specification<T, F: FnOnce(&T, &T) -> Ordering>[ core::cmp::max_by ](
+    v1: T,
+    v2: T,
+    compare: F,
+) -> (r: T)
+    requires
+        compare.requires((&v1, &v2)),
+    ensures
+        exists|o: Ordering| {
+            &&& #[trigger] compare.ensures((&v1, &v2), o)
+            &&& r == (if o == Ordering::Greater { v1 } else { v2 })
+        },
+;
+
+// `min_by_key` and `max_by_key` compute the keys `f(&v1)` and `f(&v2)` and
+// compare them with `<`. When neither key is less than the other, `min_by_key`
+// returns `v1` and `max_by_key` returns `v2`.
+pub assume_specification<T, F: FnMut(&T) -> K, K: Ord>[ core::cmp::min_by_key ](
+    v1: T,
+    v2: T,
+    f: F,
+) -> (r: T)
+    requires
+        f.requires((&v1,)),
+        f.requires((&v2,)),
+    ensures
+        exists|k1: K, k2: K, lt: bool| {
+            &&& f.ensures((&v1,), k1)
+            &&& f.ensures((&v2,), k2)
+            &&& #[trigger] call_ensures(K::lt, (&k2, &k1), lt)
+            &&& r == (if lt { v2 } else { v1 })
+        },
+;
+
+pub assume_specification<T, F: FnMut(&T) -> K, K: Ord>[ core::cmp::max_by_key ](
+    v1: T,
+    v2: T,
+    f: F,
+) -> (r: T)
+    requires
+        f.requires((&v1,)),
+        f.requires((&v2,)),
+    ensures
+        exists|k1: K, k2: K, lt: bool| {
+            &&& f.ensures((&v1,), k1)
+            &&& f.ensures((&v2,), k2)
+            &&& #[trigger] call_ensures(K::lt, (&k2, &k1), lt)
+            &&& r == (if lt { v1 } else { v2 })
+        },
+;
+
 /* bool */
 
 impl PartialEqSpecImpl for bool {
@@ -249,6 +342,18 @@ impl PartialEqSpecImpl for bool {
 pub assume_specification[ <bool as PartialEq<bool>>::eq ](x: &bool, y: &bool) -> bool;
 
 pub assume_specification[ <bool as PartialEq<bool>>::ne ](x: &bool, y: &bool) -> bool;
+
+/* char */
+
+impl PartialEqSpecImpl for char {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &char) -> bool {
+        *self == *other
+    }
+}
 
 /* floating point */
 

@@ -76,7 +76,7 @@ In the postcondition, we refer to both the input value (via `old`) and the outpu
 ## Returning mutable borrows
 
 Let's do a more complex example, with a function that _returns_ a mutable reference.
-Specifically, let's write a function that takes a `&mut (A, B)` as input and return a mutable
+Specifically, let's write a function that takes a `&mut (A, B)` as input and returns a mutable
 reference to the first field: `&mut A`.
 
 ```rust
@@ -134,7 +134,7 @@ fn get_mut_fst_test() {
 
     *r = 100;
 
-    // Now we we know that:
+    // Now we know that:
     //    *final(r) == 100
     // So:
     //    *final(pair_ref) == (100, 20)
@@ -369,13 +369,13 @@ fn main() {
 To determine where `x_ref` is resolved,
 Verus uses a reachability analysis that considers all program points that assign to `*x_ref`.
 Usually, this works seamlessly under the hood to ensure that data from a mutable reference
-makes it way back to the borrowed-from location. In more advanced situations (especially dealing
+makes its way back to the borrowed-from location. In more advanced situations (especially dealing
 with containers of mutable references, like `(&mut T, &mut T)` or `Vec<&mut T>`), it helps
 to be aware of this concept.
 
 With the `has_resolved` operator introduced, we can fully dissect the above program to understand
 how Verus confirms the assertion `x == 30`.
-First, we need to be be aware that `has_resolved(x_ref) ==> *x_ref == *final(x_ref)`,
+First, we need to be aware that `has_resolved(x_ref) ==> *x_ref == *final(x_ref)`,
 i.e., "if `x_ref` will never be modified after this point, then its current value must equal its final value".
 
 With this, Verus reasons as follows:
@@ -432,7 +432,7 @@ enum List {
     Nil,
 }
 
-fn build_zero_list(len: u64) {
+fn build_zero_list(len: u64) -> List {
     let mut list = List::Nil;
     let mut cur = &mut list;
 
@@ -487,7 +487,7 @@ becomes more and more "concrete".
  * And so on.
 
 <center>
-<img src="graphics/mut-ref-cons-example-2.png" alt="At step 1, we have after_borrow(list) = the unknown final(cur),. At step 2, we have list = Cons, which points to the unknown final(cur). At step 3, we have list = Cons, which points to Cons, which points to the unknown final(cur). And so on.">
+<img src="graphics/mut-ref-cons-example-2.png" alt="At step 1, we have after_borrow(list) = the unknown final(cur). At step 2, we have list = Cons, which points to the unknown final(cur). At step 3, we have list = Cons, which points to Cons, which points to the unknown final(cur). And so on.">
 </center>
 
 Only when the last iteration finishes and `cur` expires for good, do we learn that the
