@@ -30,7 +30,7 @@
 
 ## `#![all_triggers]`
 
-Applied to a quantifier, and instructs Verus to aggressively select trigger groups for
+Applies to a quantifier and instructs Verus to aggressively select trigger groups for
 the quantifier.
 See [the trigger specification procedure](./trigger-annotations.md#selecting-trigger-groups)
 for more information.
@@ -54,7 +54,7 @@ The `allow_complex_invariants` attribute enables this by transforming the invari
 **This attribute only applies when `loop_isolation` is false.** Using it with `loop_isolation(true)`
 (or the default) will produce an error.
 
-## `#![verifier::allow_in_spec]`
+## `#[verifier::allow_in_spec]`
 
 Can be applied to an executable function with a [`returns` clause](./reference-returns.md).
 This allows the function to be used in spec mode, where it is interpreted as equivalent
@@ -74,8 +74,8 @@ This attribute is used by `vstd`'s [trusted atomic types](https://verus-lang.git
 
 ## `#![auto]`
 
-Applied to a quantifier, and indicates intent for Verus to use heuristics to automatically 
-infer 
+Applies to a quantifier and indicates intent for Verus to use heuristics to automatically
+infer triggers.
 Technically has no effect on verification, but may impact verbose trigger logging.
 See [the trigger specification procedure](./trigger-annotations.md#selecting-trigger-groups)
 for more information.
@@ -122,7 +122,7 @@ for more information.
 ## `#[verifier::inline]`
 
 The attribute `#[verifier::inline]` can be applied to any _spec-mode_ function to indicate
-that that Verus should automatically expand its definition in the STM-LIB encoding.
+that Verus should automatically expand its definition in the SMT-LIB encoding.
 
 This has no effect on the semantics of the function but may impact triggering.
 
@@ -136,7 +136,7 @@ body (absent any loop invariants).
 
  * When set to `true`: Verus does not automatically infer anything inside the loop body,
    not even function preconditions.
- * When set the `false`: Verus automatically makes some facts from outside the loop body
+ * When set to `false`: Verus automatically makes some facts from outside the loop body
    available in the loop body. In particular, any assertion outside the loop body
    that depends only on variables not mutated by the loop body will also be available
    inside the loop.
@@ -144,7 +144,7 @@ body (absent any loop invariants).
 ## `#[verifier::memoize]`
 
 The attribute `#[verifier::memoize]` can be applied to any _spec-mode_ function to indicate
-that the [`by(compute)` and `by(compute_only)` prover-modes](./reference-assert-by-compute.md)
+that the [`by(compute)` and `by(compute_only)` prover-modes](./reference-prover-mode-compute.md)
 should "memoize" the results of this function.
 
 ## `#[verifier::opaque]`
@@ -255,7 +255,7 @@ applied to the solver for that function.
 The default `rlimit` is 10. The rlimit is roughly proportional to the amount of time taken
 by the solver before it gives up. The default, 10, is meant to be around 2 seconds.
 
-The rlmit may be set to `infinity` to remove the limit.
+The rlimit may be set to `infinity` to remove the limit.
 
 The rlimit can also be configured with the `--rlimit` command line option.
 
@@ -284,7 +284,7 @@ Note that the attribute is optional, even when truncation behavior is intended.
 The only effect of the attribute is to silence the recommends-check, which is
 already elided if the enclosing function body has no legitimate verification errors.
 
-**Aside.** When truncation is intended, [the bit-vector solver mode](./reference-assert-by-bit-vector.md) is often useful for writing proofs about truncation.
+**Aside.** When truncation is intended, [the bit-vector solver mode](./reference-prover-mode-bit-vector.md) is often useful for writing proofs about truncation.
 
 ## `#[verifier::type_invariant]`
 

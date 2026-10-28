@@ -3,6 +3,7 @@ use crate::thir::cx::ThirBuildCx;
 // use crate::thir::pattern::pat_from_hir;
 use hir::HirId;
 use itertools::Itertools;
+use rustc_errors::ErrorGuaranteed;
 use rustc_hir as hir;
 use rustc_hir::QPath;
 use rustc_hir::def::Res;
@@ -129,14 +130,41 @@ pub struct VerusErasureCtxt {
     pub get_first_fn_def_id: DefId,
 }
 
+// TODO: we can simplify some of this; e.g., return the VerusErasureCtxt through
+// the SetupCallbackFn rather than having it go through another global
+
+pub type SetupCallbackFn = for<'tcx> fn(TyCtxt<'tcx>, LocalDefId) -> Result<(), ErrorGuaranteed>;
+static SETUP_CALLBACK: RwLock<Option<SetupCallbackFn>> = RwLock::new(None);
+
 /// Used to communicate the set of LocalDefIds that may require erasure.
 static VERUS_AWARE_DEF_IDS: RwLock<Option<Arc<HashSet<LocalDefId>>>> = RwLock::new(None);
 
 /// Used to communicate the VerusErasureCtxt
-static VERUS_ERASURE_CTXT: RwLock<Option<Arc<VerusErasureCtxt>>> = RwLock::new(None);
+static VERUS_ERASURE_CTXT: RwLock<Option<HashMap<LocalDefId, Arc<VerusErasureCtxt>>>> =
+    RwLock::new(None);
 
 /// Used to store the ExtraThir so MIR lowering can pick it up
 static EXTRA_THIR: RwLock<Option<HashMap<LocalDefId, Arc<ExtraThir>>>> = RwLock::new(None);
+
+pub fn set_callback_fn(f: SetupCallbackFn) {
+    let v: &mut Option<SetupCallbackFn> = &mut SETUP_CALLBACK.write().unwrap();
+    if v.is_some() {
+        panic!("SETUP_CALLBACK has already been set");
+    }
+    *v = Some(f);
+}
+
+pub fn invoke_callback_fn<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    local_def_id: LocalDefId,
+) -> Result<(), ErrorGuaranteed> {
+    let v: &Option<SetupCallbackFn> = &SETUP_CALLBACK.write().unwrap();
+    if let Some(f) = v {
+        f(tcx, local_def_id)
+    } else {
+        panic!("invoke_callback_fn: SetupCallbackFn has not been set");
+    }
+}
 
 pub fn set_verus_aware_def_ids(ids: Arc<HashSet<LocalDefId>>) {
     let v: &mut Option<Arc<HashSet<LocalDefId>>> = &mut VERUS_AWARE_DEF_IDS.write().unwrap();
@@ -146,25 +174,37 @@ pub fn set_verus_aware_def_ids(ids: Arc<HashSet<LocalDefId>>) {
     *v = Some(ids);
 }
 
-pub fn set_verus_erasure_ctxt(erasure_ctxt: Arc<VerusErasureCtxt>) {
-    let v: &mut Option<Arc<VerusErasureCtxt>> = &mut VERUS_ERASURE_CTXT.write().unwrap();
-    if v.is_some() {
-        panic!("VERUS_ERASURE_CTXT has already been set");
+pub fn set_verus_erasure_ctxt(local_def_id: LocalDefId, erasure_ctxt: Arc<VerusErasureCtxt>) {
+    let v: &mut Option<_> = &mut VERUS_ERASURE_CTXT.write().unwrap();
+    let map = v.get_or_insert_with(|| HashMap::new());
+    match map.entry(local_def_id) {
+        std::collections::hash_map::Entry::Occupied(_) => {
+            panic!("VERUS_ERASURE_CTXT has already been set");
+        }
+        std::collections::hash_map::Entry::Vacant(entry) => {
+            entry.insert(erasure_ctxt);
+        }
     }
-    *v = Some(erasure_ctxt);
 }
 
-fn get_verus_erasure_ctxt() -> Arc<VerusErasureCtxt> {
+fn get_verus_erasure_ctxt(local_def_id: LocalDefId) -> Arc<VerusErasureCtxt> {
     VERUS_ERASURE_CTXT
         .read()
         .unwrap()
         .as_ref()
         .expect("Expected VerusErasureCtxt for THIR modification pass")
+        .get(&local_def_id)
+        .expect("Expected VerusErasureCtxt for THIR modification pass")
         .clone()
 }
 
-pub(crate) fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
-    VERUS_ERASURE_CTXT.read().unwrap().clone()
+pub(crate) fn get_verus_erasure_ctxt_option(
+    local_def_id: LocalDefId,
+) -> Option<Arc<VerusErasureCtxt>> {
+    match &*VERUS_ERASURE_CTXT.read().unwrap() {
+        Some(m) => m.get(&local_def_id).cloned(),
+        None => None,
+    }
 }
 
 pub(crate) fn get_extra_thir(local_def_id: LocalDefId) -> Option<Arc<ExtraThir>> {
@@ -189,25 +229,31 @@ pub(crate) fn get_extra_thir(local_def_id: LocalDefId) -> Option<Arc<ExtraThir>>
 /// As a result, thir_body is able to sanity check we're in a consistent state.
 /// If the VERUS_ERASURE_CTXT hasn't been initialized yet, we check that the given
 /// item is one that doesn't need it.
-pub(crate) fn check_this_query_isnt_running_early(local_def_id: LocalDefId) {
-    if get_verus_erasure_ctxt_option().is_none() {
+pub(crate) fn ensure_verus_ctxt_available<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    local_def_id: LocalDefId,
+) -> Result<(), ErrorGuaranteed> {
+    let fn_local_def_id = enclosing_fn_local_def_id(tcx, local_def_id);
+    if get_verus_erasure_ctxt_option(fn_local_def_id).is_none() {
         match VERUS_AWARE_DEF_IDS.read().unwrap().clone() {
             Some(m) => {
-                if m.contains(&local_def_id) {
-                    panic!(
+                if m.contains(&fn_local_def_id) {
+                    invoke_callback_fn(tcx, fn_local_def_id)?;
+                    /*panic!(
                         "Internal Verus Error: The thir_body query is running for item {:?} which may require erasure, but the VerusErasureCtxt has not been initialized. Please file a github issue for this error and consider using `--no-lifetime` as a temperary measure to work around the issue.",
-                        local_def_id
-                    );
+                        fn_local_def_id
+                    );*/
                 }
             }
             None => {
                 panic!(
                     "Internal Verus Error: The thir_body query is running for item {:?}, but the VerusAwareDefIds map has not been initialized. Please file a github issue for this error and consider using `--no-lifetime` as a temporary measure to work around the issue.",
-                    local_def_id
+                    fn_local_def_id
                 );
             }
         }
     }
+    Ok(())
 }
 
 /// Extra information we'd like to add to THIR so that the MIR builder also has access to it
@@ -234,12 +280,12 @@ impl VerusThirBuildCtxt {
         let fn_local_def_id = enclosing_fn_local_def_id(tcx, local_def_id);
         let verus_aware =
             VERUS_AWARE_DEF_IDS.read().unwrap().clone().unwrap().contains(&fn_local_def_id);
-        let ctxt = get_verus_erasure_ctxt_option();
+        let ctxt = get_verus_erasure_ctxt_option(fn_local_def_id);
 
         let do_time_travel_prevention = verus_aware && ctxt.is_some();
 
         VerusThirBuildCtxt {
-            ctxt: get_verus_erasure_ctxt_option(),
+            ctxt: ctxt,
             closure_overrides: HashMap::new(),
             do_time_travel_prevention,
             guard_pattern_vars: vec![],
@@ -705,7 +751,8 @@ pub(crate) fn some_ghost_value_kind_with_args<'tcx>(
     let arg1 = GenericArg::from(tup_ty);
     let arg2 = GenericArg::from(ty);
     let args = cx.tcx.mk_args(&[arg1, arg2]);
-    let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
+    let fn_ty =
+        cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, rustc_middle::ty::Binder::dummy(args)));
 
     let fun_expr_kind = ExprKind::ZstLiteral { user_ty: None };
     let fun_expr = expr_id_from_kind(cx, fun_expr_kind, hir_id, span, fn_ty);
@@ -729,15 +776,22 @@ pub(crate) fn erase_body<'tcx>(cx: &mut ThirBuildCx<'tcx>, local_def_id: LocalDe
     matches!(erasure_ctxt.bodies.get(&local_def_id), Some(BodyErasure { erase_body: true, .. }))
 }
 
-pub(crate) fn erase_closure_body_for_closure_captures<'tcx>(local_def_id: LocalDefId) -> bool {
-    let erasure_ctxt = get_verus_erasure_ctxt();
+pub(crate) fn erase_closure_body_for_closure_captures<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    local_def_id: LocalDefId,
+) -> bool {
+    let fn_def_id = enclosing_fn_local_def_id(tcx, local_def_id);
+    let erasure_ctxt = get_verus_erasure_ctxt(fn_def_id);
     matches!(erasure_ctxt.bodies.get(&local_def_id), Some(BodyErasure { erase_body: true, .. }))
 }
 
 pub(crate) static ATOMIC_CLOSURE_CAPTURE_SHADOW: AtomicBool = AtomicBool::new(false);
 
-pub(crate) fn erase_var_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
-    let erasure_ctxt = get_verus_erasure_ctxt();
+pub(crate) fn erase_var_for_closure_captures<'tcx>(tcx: TyCtxt<'tcx>, hir_id: HirId) -> bool {
+    let parent_owner_id = tcx.hir_get_parent_item(hir_id);
+    let fn_def_id = parent_owner_id.def_id;
+
+    let erasure_ctxt = get_verus_erasure_ctxt(fn_def_id);
     let capture_shadow = ATOMIC_CLOSURE_CAPTURE_SHADOW.load(Ordering::SeqCst);
     if capture_shadow {
         matches!(erasure_ctxt.locals.get(&hir_id), Some(VarErasure::Erase))
@@ -746,8 +800,11 @@ pub(crate) fn erase_var_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
     }
 }
 
-pub(crate) fn erase_binder_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
-    let erasure_ctxt = get_verus_erasure_ctxt();
+pub(crate) fn erase_binder_for_closure_captures<'tcx>(tcx: TyCtxt<'tcx>, hir_id: HirId) -> bool {
+    let parent_owner_id = tcx.hir_get_parent_item(hir_id);
+    let fn_def_id = parent_owner_id.def_id;
+
+    let erasure_ctxt = get_verus_erasure_ctxt(fn_def_id);
     let capture_shadow = ATOMIC_CLOSURE_CAPTURE_SHADOW.load(Ordering::SeqCst);
     if capture_shadow {
         matches!(erasure_ctxt.binders.get(&hir_id), Some(VarErasure::Erase))
@@ -763,6 +820,23 @@ pub(crate) fn erase_pat<'tcx>(cx: &mut ThirBuildCx<'tcx>, pat: Box<Pat<'tcx>>) -
     };
 
     let mut p = pat;
+    // Only ghost code uses the `__verus_param_N @` the macros add to complex parameter patterns
+    // of functions, so we can strip them.
+    if let PatKind::Binding { var, subpattern: subpattern @ Some(_), .. } = &mut p.kind
+        && is_verus_param_binder(&cx.tcx.hir_ident(var.0))
+        && match cx.tcx.parent_hir_node(var.0) {
+            hir::Node::Param(_) => {
+                matches!(
+                    cx.tcx.def_kind(cx.body_owner),
+                    hir::def::DefKind::Fn | hir::def::DefKind::AssocFn
+                )
+            }
+            hir::Node::LetStmt(local) => matches!(local.source, hir::LocalSource::AsyncFn),
+            _ => false,
+        }
+    {
+        p = subpattern.take().unwrap();
+    }
     erase_pat_rec(&PatBindingEraserMode::EraseGhost(erasure_ctxt), &mut p);
     p
 }
@@ -777,6 +851,14 @@ pub(crate) fn erase_pat_all_binders<'tcx>(pat: Box<Pat<'tcx>>) -> Box<Pat<'tcx>>
 enum PatBindingEraserMode {
     EraseAll,
     EraseGhost(Arc<VerusErasureCtxt>),
+}
+
+/// Prefix used for naming complex parameter patterns
+const VERUS_PARAM: &str = "__verus_param_";
+
+pub fn is_verus_param_binder(ident: &rustc_span::symbol::Ident) -> bool {
+    ident.as_str().starts_with(VERUS_PARAM)
+        && !ident.span.ctxt().normalize_to_macros_2_0().is_root()
 }
 
 fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
@@ -903,7 +985,7 @@ struct VisitTreeForPats<'a, 'tcx> {
 
 impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tcx> {
     // Don't recurse into other items or closure bodies
-    type NestedFilter = rustc_hir::intravisit::nested_filter::None;
+    type NestedFilter = rustc_hir::intravisit::IgnoreNested;
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
         match &expr.kind {

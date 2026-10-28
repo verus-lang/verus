@@ -9,8 +9,8 @@ pub type TypeError = String;
 
 pub type Ident = Arc<String>;
 
-pub(crate) type Snapshot = IndexMap<Ident, u32>;
-pub(crate) type Snapshots = HashMap<Ident, Snapshot>;
+pub type Snapshot = IndexMap<Ident, u32>;
+pub type Snapshots = HashMap<Ident, Snapshot>;
 
 pub type Typ = Arc<TypX>;
 pub type Typs = Arc<Vec<Typ>>;
@@ -73,6 +73,9 @@ pub enum UnaryOp {
     FloatIsNegative,
     FloatIsPositive,
     FloatFromIeeeBits { exp_bits: u32, sig_bits: u32 },
+    // Z3 extension: (_ FloatingPoint eb sb) -> (_ BitVec (+ eb sb))
+    // Printed as `fp.to_ieee_bv`. Canonicalizes SMT's single NaN.
+    FloatToIeeeBits,
     FloatFrom { exp_bits: u32, sig_bits: u32, signed: bool, round: RoundingMode },
     FloatToBitVec { bits: u32, signed: bool, round: RoundingMode },
     FloatToReal,

@@ -230,14 +230,14 @@ test_verify_one_file! {
     #[test] test_proxy_marked_ghost verus_code! {
         #[verifier(external_type_specification)]
         pub ghost struct ExOption<T>(core::option::Option<T>);
-    } => Err(err) => assert_vir_error_msg(err, "external_type_specification can only be used with exec types")
+    } => Err(err) => assert_vir_error_msg(err, "`external_type_specification` can only be used with exec types")
 }
 
 test_verify_one_file! {
     #[test] test_proxy_marked_tracked verus_code! {
         #[verifier(external_type_specification)]
         pub tracked struct ExOption<T>(core::option::Option<T>);
-    } => Err(err) => assert_vir_error_msg(err, "external_type_specification can only be used with exec types")
+    } => Err(err) => assert_vir_error_msg(err, "`external_type_specification` can only be used with exec types")
 }
 
 // Test visibility stuff
@@ -411,7 +411,7 @@ test_verify_one_file! {
         #[verifier(external_type_specification)]
         pub struct ExSomeStruct<U>(SomeStruct<U>);
     } => Err(err) => assert_vir_error_msg(err,
-        "external_type_specification: private fields not supported for transparent datatypes (try 'external_body' instead?)")
+        "external_type_specification: private fields not supported for transparent datatypes (try `external_body` instead?)")
 }
 
 // external_body
@@ -450,7 +450,7 @@ test_verify_one_file! {
         struct Test {
             t: Box<SomeStruct<Test>>,
         }
-    } => Err(err) => assert_vir_error_msg(err, "Type test_crate::Test recursively uses type test_crate::Test in a non-positive position")
+    } => Err(err) => assert_vir_error_msg(err, "type test_crate::Test recursively uses type test_crate::Test in a non-positive position")
 }
 
 test_verify_one_file! {
@@ -458,7 +458,7 @@ test_verify_one_file! {
         #[verifier(external_type_specification)]
         #[verifier(external_body)]
         pub struct ExOption<U>(core::option::Option<U>);
-    } => Err(err) => assert_vir_error_msg(err, "in external_body datatype, each type parameter must be one of: #[verifier::reject_recursive_types], #[verifier::reject_recursive_types_in_ground_variants], #[verifier::accept_recursive_types]")
+    } => Err(err) => assert_vir_error_msg(err, "in `external_body` datatype, each type parameter must be one of: `#[verifier::reject_recursive_types]`, `#[verifier::reject_recursive_types_in_ground_variants]`, `#[verifier::accept_recursive_types]`")
 }
 
 // Other
@@ -475,7 +475,7 @@ test_verify_one_file! {
     #[test] test_apply_to_builtin verus_code! {
         #[verifier(external_type_specification)]
         pub struct Foo(int);
-    } => Err(err) => assert_vir_error_msg(err, "cannot apply `external_type_specification` to Verus verus_builtin types")
+    } => Err(err) => assert_vir_error_msg(err, "cannot apply `external_type_specification` to Verus builtin types")
 }
 
 test_verify_one_file! {

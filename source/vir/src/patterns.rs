@@ -23,7 +23,7 @@ pub fn pattern_to_exprs(
         if has_guard && pbd.mut_ref {
             return Err(error(
                 &pattern.span,
-                "Not yet supported: guard pattern when at least one bound var is mutably borrowed",
+                "Verus does not currently support a match guard when at least one bound variable is mutably borrowed",
             ));
         }
 

@@ -216,9 +216,40 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
     })
 }
 
+/// Generates a verified `PartialEq`, `PartialEqSpecImpl`, and `ObeysDeepEq` impls for an exec type.
+fn compile_partial_eq(exec_name: &Ident, eq_body: TokenStream2) -> TokenStream2 {
+    let span = exec_name.span();
+    quote_spanned! { span =>
+        impl ::core::cmp::PartialEq for #exec_name {
+            #[allow(unreachable_patterns)] // false branch may be unreachable if enum has only one variant
+            fn eq(&self, other: &Self) -> bool {
+                let this = self;
+                #eq_body
+            }
+        }
+
+        #[cfg(verus_keep_ghost)]
+        impl vstd::std_specs::cmp::PartialEqSpecImpl for #exec_name {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &Self) -> bool {
+                self.deep_view() == other.deep_view()
+            }
+        }
+
+        impl vstd::contrib::exec_spec::ObeysDeepEq for #exec_name {
+            proof fn lemma_obeys_deep_eq() {
+                reveal(vstd::laws_eq::obeys_deep_eq);
+            }
+        }
+    }
+}
+
 /// Compiles a struct item.
 fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
-    // note: types of struct fields are effectively constrained to those whose compiled types impl DeepView, DeepViewClone, and ExecSpecEq.
+    // note: types of struct fields are effectively constrained to those whose compiled types impl DeepView, DeepViewClone, and ObeysDeepEq.
     if !item_struct.generics.params.is_empty() {
         return Err(Error::new_spanned(&item_struct.generics, "generics not supported"));
     }
@@ -321,7 +352,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
         }
     };
 
-    // Generate body of the ExecSpecEq impl
+    // Generate body of the PartialEq impl
     let eq_body = match &item_struct.fields {
         Fields::Named(fields_named) => {
             let span = fields_named.span();
@@ -329,7 +360,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
                 let field_name = &field.ident;
                 let field_type = compile_type(&field.ty, TypeKind::Ref)?;
                 let span = field.span();
-                Ok(quote_spanned! { span => <#field_type>::exec_eq(this.#field_name.get_ref(), other.#field_name.get_ref()) })
+                Ok(quote_spanned! { span => vstd::contrib::exec_spec::deep_eq::<#field_type>(this.#field_name.get_ref(), other.#field_name.get_ref()) })
             }).collect::<Result<Vec<_>, Error>>()?;
 
             quote_spanned! { span => #(#field_eq)&&* }
@@ -340,7 +371,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
                 let i = Index::from(i);
                 let field_type = compile_type(&field.ty, TypeKind::Ref)?;
                 let span = field.span();
-                Ok(quote_spanned! { span => <#field_type>::exec_eq(this.#i.get_ref(), other.#i.get_ref()) })
+                Ok(quote_spanned! { span => vstd::contrib::exec_spec::deep_eq::<#field_type>(this.#i.get_ref(), other.#i.get_ref()) })
             }).collect::<Result<Vec<_>, Error>>()?;
 
             quote_spanned! { span => #(#field_eq)&&* }
@@ -369,12 +400,14 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
         quote_spanned! { span => closed }
     };
 
+    let partial_eq = compile_partial_eq(&exec_name, eq_body);
+
     let span = item_struct.span();
     Ok(quote_spanned! { span =>
         #[verifier::ext_equal]
         #item_struct
 
-        #[derive(Eq, Hash, PartialEq)]
+        #[derive(Eq, Hash)]
         #vis struct #exec_name #exec_fields
 
         impl vstd::contrib::exec_spec::ExecSpecType for #spec_name {
@@ -409,13 +442,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
             }
         }
 
-        impl<'a> vstd::contrib::exec_spec::ExecSpecEq<'a> for &'a #exec_name {
-            type Other = &'a #exec_name;
-
-            fn exec_eq(this: Self, other: Self::Other) -> bool {
-                #eq_body
-            }
-        }
+        #partial_eq
     })
 }
 
@@ -558,7 +585,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
             }
         });
 
-    // Match arms in the ExecSpecEq implementation
+    // Match arms in the PartialEq implementation
     let eq_variant_arms = item_enum.variants.iter()
         .map(|variant| {
             let variant_name = &variant.ident;
@@ -580,7 +607,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
                         let field_name_other = &field_names_other[i];
                         let field_type = compile_type(&field.ty, TypeKind::Ref)?;
                         let span = field.span();
-                        Ok(quote_spanned! { span => <#field_type>::exec_eq(#field_name_this.get_ref(), #field_name_other.get_ref()) })
+                        Ok(quote_spanned! { span => vstd::contrib::exec_spec::deep_eq::<#field_type>(#field_name_this.get_ref(), #field_name_other.get_ref()) })
                     }).collect::<Result<Vec<_>, Error>>()?;
 
                     let field_matches_this = fields_named.named.iter().enumerate().map(|(i, field)| {
@@ -613,7 +640,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
                         let field_name_other = &field_names_other[i];
                         let field_type = compile_type(&field.ty, TypeKind::Ref)?;
                         let span = field.span();
-                        Ok(quote_spanned! { span => <#field_type>::exec_eq(#field_name_this.get_ref(), #field_name_other.get_ref()) })
+                        Ok(quote_spanned! { span => vstd::contrib::exec_spec::deep_eq::<#field_type>(#field_name_this.get_ref(), #field_name_other.get_ref()) })
                     }).collect::<Result<Vec<_>, Error>>()?;
 
                     Ok(quote_spanned! { span => (#exec_name::#variant_name ( #(#field_names_this,)* ), #exec_name::#variant_name ( #(#field_names_other,)* )) => #(#field_eqs)&&* })
@@ -669,12 +696,22 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
         quote_spanned! { span => closed }
     };
 
+    let partial_eq = compile_partial_eq(
+        &exec_name,
+        quote! {
+            match (this, other) {
+                #(#eq_variant_arms,)*
+                (_, _) => false
+            }
+        },
+    );
+
     let span = item_enum.span();
     Ok(quote_spanned! { span =>
         #[verifier::ext_equal]
         #item_enum
 
-        #[derive(Eq, Hash, PartialEq)]
+        #[derive(Eq, Hash)]
         #vis enum #exec_name {
             #(#exec_variants,)*
         }
@@ -715,21 +752,11 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
             }
         }
 
-        #[allow(unreachable_patterns)] // false branch may be unreachable if enum has only one variant
-        impl<'a> vstd::contrib::exec_spec::ExecSpecEq<'a> for &'a #exec_name {
-            type Other = &'a #exec_name;
-
-            fn exec_eq(this: Self, other: Self::Other) -> bool {
-                match (this, other) {
-                    #(#eq_variant_arms,)*
-                    (_, _) => false
-                }
-            }
-        }
-
         impl #exec_name {
             #(#is_variant_methods)*
         }
+
+        #partial_eq
     })
 }
 
@@ -2218,13 +2245,13 @@ fn compile_expr(
             BinOp::Eq(..) => {
                 let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, unverified)?;
                 let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, unverified)?;
-                quote! { vstd::contrib::exec_spec::ExecSpecEq::exec_eq(#left, #right) }
+                quote! { vstd::contrib::exec_spec::deep_eq(#left, #right) }
             }
 
             BinOp::Ne(..) => {
                 let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, unverified)?;
                 let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, unverified)?;
-                quote! { !vstd::contrib::exec_spec::ExecSpecEq::exec_eq(#left, #right) }
+                quote! { !vstd::contrib::exec_spec::deep_eq(#left, #right) }
             }
 
             // TODO
@@ -2279,7 +2306,7 @@ fn compile_expr(
             BinOp::Equiv(..) => {
                 let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, unverified)?;
                 let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, unverified)?;
-                quote! { vstd::contrib::exec_spec::ExecSpecEq::exec_eq(#left, #right) }
+                quote! { vstd::contrib::exec_spec::deep_eq(#left, #right) }
             }
 
             // No plan to support

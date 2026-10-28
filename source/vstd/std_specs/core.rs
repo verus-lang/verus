@@ -237,6 +237,23 @@ pub assume_specification [core::panicking::panic_fmt] (s: core::fmt::Arguments<'
         false,
 ;
 
+// Called by `assert_eq!` and `assert_ne!`; not external_body, since the macros construct an `AssertKind`
+#[verifier::external_type_specification]
+pub struct ExAssertKind(core::panicking::AssertKind);
+
+pub assume_specification<T, U>[ core::panicking::assert_failed::<T, U> ](
+    kind: core::panicking::AssertKind,
+    left: &T,
+    right: &U,
+    args: Option<core::fmt::Arguments<'_>>,
+) -> !
+    where
+        T: core::fmt::Debug + ?Sized,
+        U: core::fmt::Debug + ?Sized,
+    requires
+        false,
+;
+
 } // verus!
 
 #[verifier::external_type_specification]
