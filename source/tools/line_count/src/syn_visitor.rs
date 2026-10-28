@@ -195,6 +195,42 @@ impl<'f> Visitor<'f> {
         if self.trusted > 0 { CodeKind::Trusted } else { kind }
     }
 
+    /// The kind of the code wrapped, if `path` is `Ghost` or `Tracked`
+    fn wrapper_code_kind(&self, path: &verus_syn::Path) -> Option<CodeKind> {
+        (path.segments.len() == 1).then(|| path.segments[0].ident.to_string()).and_then(|c| {
+            match c.as_str() {
+                "Ghost" => {
+                    if self.in_body == Some(CodeKind::Spec) {
+                        Some(self.mode_or_trusted(CodeKind::Spec))
+                    } else {
+                        Some(self.mode_or_trusted(CodeKind::Proof))
+                    }
+                }
+                "Tracked" => Some(self.mode_or_trusted(CodeKind::Proof)),
+                _ => None,
+            }
+        })
+    }
+
+    /// The `Ghost<..>` and `Tracked<..>` types anywhere in `ty`, with the kind of the code wrapped
+    fn wrapper_types<'a>(&self, ty: &'a verus_syn::Type) -> Vec<(&'a verus_syn::TypePath, CodeKind)> {
+        struct FindTypePaths<'a>(Vec<&'a verus_syn::TypePath>);
+        impl<'a> verus_syn::visit::Visit<'a> for FindTypePaths<'a> {
+            fn visit_type_path(&mut self, i: &'a verus_syn::TypePath) {
+                self.0.push(i);
+                verus_syn::visit::visit_type_path(self, i);
+            }
+        }
+        let mut paths = FindTypePaths(Vec::new());
+        verus_syn::visit::Visit::visit_type(&mut paths, ty);
+        paths
+            .0
+            .into_iter()
+            .filter(|p| p.qself.is_none())
+            .filter_map(|p| self.wrapper_code_kind(&p.path).map(|kind| (p, kind)))
+            .collect()
+    }
+
     fn handle_signature(
         &mut self,
         content_code_kind: CodeKind,
@@ -225,25 +261,24 @@ impl<'f> Visitor<'f> {
             match &p.kind {
                 verus_syn::FnArgKind::Receiver(_) => (),
                 verus_syn::FnArgKind::Typed(pt) => {
-                    if let verus_syn::Type::Path(path) = &*pt.ty {
-                        if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
-                            .then(|| path.path.segments[0].ident.to_string())
-                            .and_then(|c| match c.as_str() {
-                                "Ghost" => {
-                                    if self.in_body == Some(CodeKind::Spec) {
-                                        Some(self.mode_or_trusted(CodeKind::Spec))
-                                    } else {
-                                        Some(self.mode_or_trusted(CodeKind::Proof))
-                                    }
-                                }
-                                "Tracked" => Some(self.mode_or_trusted(CodeKind::Proof)),
-                                _ => None,
-                            })
-                        {
-                            self.mark_additional_kind(&pt, wrapper_code_kind);
+                    let top_level_wrapper = match &*pt.ty {
+                        verus_syn::Type::Path(path) => self.wrapper_code_kind(&path.path),
+                        _ => None,
+                    };
+                    if let Some(wrapper_code_kind) = top_level_wrapper {
+                        self.mark_additional_kind(&pt, wrapper_code_kind);
+                    } else {
+                        // e.g. Option<Tracked<T>>
+                        for (path, wrapper_code_kind) in self.wrapper_types(&pt.ty) {
+                            self.mark_additional_kind(path, wrapper_code_kind);
                         }
                     }
                 }
+            }
+        }
+        if let verus_syn::ReturnType::Type(_, _, _, ty) = &sig.output {
+            for (path, wrapper_code_kind) in self.wrapper_types(ty) {
+                self.mark_additional_kind(path, wrapper_code_kind);
             }
         }
     }
@@ -347,20 +382,7 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
         }
         // Ghost / Tracked ?
         if let verus_syn::Expr::Path(path) = &*i.func {
-            if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
-                .then(|| path.path.segments[0].ident.to_string())
-                .and_then(|c| match c.as_str() {
-                    "Ghost" => {
-                        if self.in_body == Some(CodeKind::Spec) {
-                            Some(self.mode_or_trusted(CodeKind::Spec))
-                        } else {
-                            Some(self.mode_or_trusted(CodeKind::Proof))
-                        }
-                    }
-                    "Tracked" => Some(self.mode_or_trusted(CodeKind::Proof)),
-                    _ => None,
-                })
-            {
+            if let Some(wrapper_code_kind) = self.wrapper_code_kind(&path.path) {
                 self.mark_with_additional_kind(
                     i,
                     wrapper_code_kind,
@@ -596,20 +618,7 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
 
     fn visit_field(&mut self, i: &'ast verus_syn::Field) {
         if let verus_syn::Type::Path(path) = &i.ty {
-            if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
-                .then(|| path.path.segments[0].ident.to_string())
-                .and_then(|c| match c.as_str() {
-                    "Ghost" => {
-                        if self.in_body == Some(CodeKind::Spec) {
-                            Some(self.mode_or_trusted(CodeKind::Spec))
-                        } else {
-                            Some(self.mode_or_trusted(CodeKind::Proof))
-                        }
-                    }
-                    "Tracked" => Some(self.mode_or_trusted(CodeKind::Proof)),
-                    _ => None,
-                })
-            {
+            if let Some(wrapper_code_kind) = self.wrapper_code_kind(&path.path) {
                 // keep the kind of other fields on the same line
                 self.mark_with_additional_kind(
                     i,
@@ -618,6 +627,14 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                 );
                 return;
             }
+        }
+        // e.g. Option<Tracked<T>>
+        for (path, wrapper_code_kind) in self.wrapper_types(&i.ty) {
+            self.mark_with_additional_kind(
+                path,
+                wrapper_code_kind,
+                LineContent::GhostTracked(wrapper_code_kind),
+            );
         }
         verus_syn::visit::visit_field(self, i);
     }
@@ -968,10 +985,26 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
     }
 
     fn visit_pat_tuple_struct(&mut self, i: &'ast verus_syn::PatTupleStruct) {
+        // e.g. let (a, Tracked(b)) = ...
+        if let Some(wrapper_code_kind) = self.wrapper_code_kind(&i.path) {
+            self.mark_with_additional_kind(
+                i,
+                wrapper_code_kind,
+                LineContent::GhostTracked(wrapper_code_kind),
+            );
+        }
         verus_syn::visit::visit_pat_tuple_struct(self, i);
     }
 
     fn visit_pat_type(&mut self, i: &'ast verus_syn::PatType) {
+        // e.g. let a: Option<Tracked<T>> = ...
+        for (path, wrapper_code_kind) in self.wrapper_types(&i.ty) {
+            self.mark_with_additional_kind(
+                path,
+                wrapper_code_kind,
+                LineContent::GhostTracked(wrapper_code_kind),
+            );
+        }
         verus_syn::visit::visit_pat_type(self, i);
     }
 
@@ -1086,20 +1119,7 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                         verus_syn::Expr::Call(call_expr) => {
                             let verus_syn::ExprCall { func, .. } = &*call_expr;
                             if let verus_syn::Expr::Path(path) = &**func {
-                                if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
-                                    .then(|| path.path.segments[0].ident.to_string())
-                                    .and_then(|c| match c.as_str() {
-                                        "Ghost" => {
-                                            if self.in_body == Some(CodeKind::Spec) {
-                                                Some(self.mode_or_trusted(CodeKind::Spec))
-                                            } else {
-                                                Some(self.mode_or_trusted(CodeKind::Proof))
-                                            }
-                                        }
-                                        "Tracked" => Some(self.mode_or_trusted(CodeKind::Proof)),
-                                        _ => None,
-                                    })
-                                {
+                                if let Some(wrapper_code_kind) = self.wrapper_code_kind(&path.path) {
                                     self.mark(
                                         i,
                                         wrapper_code_kind,

@@ -102,4 +102,13 @@ fn nested_ret() -> (t: Option<Tracked<PermissionU32>>) {
     None
 }
 
+// Tracked in match arm patterns and closure parameters
+fn tracked_patterns(o: Option<Tracked<PermissionU32>>) {
+    match o {
+        Some(Tracked(p)) => {}
+        None => {}
+    }
+    let f = |x: u32, t: Tracked<PermissionU32>| x;
+}
+
 } // verus!
