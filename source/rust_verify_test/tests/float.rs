@@ -162,7 +162,7 @@ test_verify_one_file_with_options! {
                 let y: f16 = n as f16;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `i32` to `f16`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `as` cast from `i32` to `f16`")
 }
 
 test_verify_one_file_with_options! {
@@ -177,7 +177,7 @@ test_verify_one_file_with_options! {
                 let n: i32 = f as i32;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `f16`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `as` cast from `f16`")
 }
 
 test_verify_one_file_with_options! {
@@ -192,7 +192,7 @@ test_verify_one_file_with_options! {
                 let d: f64 = f as f64;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `f16` to `f64`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `as` cast from `f16` to `f64`")
 }
 
 test_verify_one_bv_file! {
@@ -304,7 +304,7 @@ test_verify_one_file! {
             let x2 = &x;
             let y = -x2;
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: unary op negation of floating point")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support unary negation of floating point")
 }
 
 test_verify_one_file! {
@@ -761,4 +761,85 @@ test_verify_one_bv_file_with_options! {
             assert(spec_literal_decimal::<f64>("NaN").ieee_eq(spec_literal_decimal::<f64>("-NaN"))) by(bit_vector); // FAILS
         }
     } => Err(err) => assert_fails(err, 8)
+}
+
+// Floats are encoded as integer bit patterns, and the same bits mean different values in f32
+// and f64, so spec IEEE operations on equal bit patterns of different widths must stay unrelated.
+test_verify_one_file! {
+    #[test] ieee_ops_width_github3073 verus_code! {
+        use vstd::prelude::*;
+        use vstd::float::*;
+
+        // a = b = 1.0f32 (bits 0x3F80_0000), so a + b = 2.0f32 (bits 0x4000_0000).
+        // c = d have the same bits as f64, a subnormal, so c + d = 2c (bits 0x7F00_0000).
+        proof fn conflate_add(a: f32, b: f32, c: f64, d: f64)
+            requires
+                a.to_bits_spec() as int == c.to_bits_spec() as int,
+                b.to_bits_spec() as int == d.to_bits_spec() as int,
+        {
+            assert(a.ieee_add(b).to_bits_spec() as int == c.ieee_add(d).to_bits_spec() as int); // FAILS
+        }
+
+        // Bits 0x7FC0_0000 are NaN as f32 but a subnormal as f64.
+        proof fn conflate_nan(a: f32, c: f64)
+            requires
+                a.to_bits_spec() as int == c.to_bits_spec() as int,
+        {
+            assert(a.ieee_is_nan() == c.ieee_is_nan()); // FAILS
+        }
+
+        proof fn conflate_neg(a: f32, c: f64)
+            requires
+                a.to_bits_spec() as int == c.to_bits_spec() as int,
+        {
+            assert((-a).to_bits_spec() as int == (-c).to_bits_spec() as int); // FAILS
+        }
+
+        proof fn conflate_lt(a: f32, b: f32, c: f64, d: f64)
+            requires
+                a.to_bits_spec() as int == c.to_bits_spec() as int,
+                b.to_bits_spec() as int == d.to_bits_spec() as int,
+        {
+            assert((a < b) == (c < d)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+// 1.0f32 and 5.263544247e-315f64 both have bits 0x3F80_0000: normal as f32, subnormal as f64.
+test_verify_one_file! {
+    #[test] ieee_ops_width_mixed_bv_github3073 verus_code! {
+        proof fn normal_vs_subnormal(a: f32, c: f64)
+            requires
+                a == 1.0f32,
+                c == 5.263544247e-315f64,
+        {
+            assert(a.ieee_is_normal()) by(bit_vector)
+                requires
+                    a == 1.0f32,
+            ;
+            assert(!c.ieee_is_normal()) by(bit_vector)
+                requires
+                    c == 5.263544247e-315f64,
+            ;
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] ieee_unary_op_generic_operand verus_code! {
+        #[verifier::allow(undeclared_external_trait)]
+        proof fn generic_is_nan<T: IeeeFloat>(x: T) {
+            let b = x.ieee_is_nan();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "IEEE floating point operations require f32 or f64 operands (got `T`)")
+}
+
+test_verify_one_file! {
+    #[test] ieee_binary_op_generic_operand verus_code! {
+        #[verifier::allow(undeclared_external_trait)]
+        proof fn generic_add<T: IeeeFloat>(x: T) {
+            let y = x.ieee_add(x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "IEEE floating point operations require f32 or f64 operands (got `T`)")
 }

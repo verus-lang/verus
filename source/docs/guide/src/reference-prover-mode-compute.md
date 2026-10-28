@@ -6,7 +6,7 @@
 ### Methods of invocation
 
 **By assertion.**
-The `nonlinear_arith` solver can be invoked via an [`assert-by` statement](./reference-assert-by-prover.md):
+The `compute` and `compute_only` modes can be invoked via an [`assert-by` statement](./reference-assert-by-prover.md):
 
 ```
 assert(Q) by(compute_only);
@@ -20,7 +20,7 @@ assert(Q) by(compute);
 ```
 
 Proves `Q` by simplifying it via the interpreter to an expression `Q'` and replacing
-the statement with `assert(Q);`.
+the statement with `assert(Q');`.
 
 ### Interpreter operation
 
@@ -42,7 +42,7 @@ to finish the problem through the normal solver. So for example, if after expans
 `P` results in a trivial expression like `a+b == b+a`, then it should be solved
 with `by(compute)`.
 
-### Configurating the evaluation strategy
+### Configuring the evaluation strategy
 
 The [`#[verifier::memoize]` attribute](./reference-attributes.md#verifiermemoize) can be used to mark
 certain functions for [memoizing](https://en.wikipedia.org/wiki/Memoization).

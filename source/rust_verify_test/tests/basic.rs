@@ -831,7 +831,7 @@ test_verify_one_file! {
             let mut b = 0;
             (a, b) = (1, 2);
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: destructuring assignment")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support destructuring assignment")
 }
 
 test_verify_one_file! {

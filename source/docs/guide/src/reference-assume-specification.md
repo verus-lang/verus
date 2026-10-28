@@ -64,7 +64,7 @@ pub assume_specification<T>[Vec::<T>::new]() -> (v: Vec<T>)
         v@ == Seq::<T>::empty();
 ```
 
-To apply to an method of `Vec`:
+To apply to a method of `Vec`:
 
 ```rust
 pub assume_specification<T, A: Allocator>[Vec::<T, A>::clear](vec: &mut Vec<T, A>)

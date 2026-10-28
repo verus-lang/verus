@@ -250,6 +250,15 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, 
     no_unwind
 ;
 
+pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::convert::AsRef<[T]>>::as_ref ](
+    vec: &Vec<T, A>,
+) -> (slice: &[T])
+    ensures
+        slice@ == vec@,
+    opens_invariants none
+    no_unwind
+;
+
 #[doc(hidden)]
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_slice ](vec: &mut Vec<T, A>) -> (slice: &mut [T])
     ensures
@@ -375,7 +384,10 @@ impl <T, A: Allocator> super::iter::IteratorSpecImpl for IntoIter<T, A> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -423,8 +435,10 @@ pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::Int
 ;
 
 impl<T>  FromIteratorSpecImpl<T> for Vec<T> {
-    open spec fn from_iter_ensures(remaining: Seq<T>, s: Self) -> bool {
-        remaining == s@
+    open spec fn from_iter_ensures(remaining: Seq<T>, produces: Seq<bool>, s: Self) -> bool {
+        &&& produces.len() == remaining.len()
+        &&& produces.all(|p: bool| p)
+        &&& remaining == s@
     }
 }
 

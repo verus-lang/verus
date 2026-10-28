@@ -13,6 +13,8 @@ use core::slice::SliceIndex;
 use super::prelude::*;
 use super::seq::Seq;
 use super::slice::*;
+#[cfg(all(verus_keep_ghost, feature = "alloc", not(verus_verify_core)))]
+use super::std_specs::fmt::DisplaySpec;
 #[cfg(verus_keep_ghost)]
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 use super::std_specs::iter::IteratorSpec;
@@ -189,6 +191,8 @@ pub broadcast proof fn to_string_from_display_ensures_for_str(t: &str, res: Stri
 pub assume_specification<T: core::fmt::Display + ?Sized>[ <T as ToString>::to_string ](
     t: &T,
 ) -> (res: String)
+    requires
+        forall|f: &core::fmt::Formatter<'_>| t.fmt_req(f),
     ensures
         to_string_from_display_ensures::<T>(t, res),
 ;
@@ -360,6 +364,18 @@ impl DeepView for String {
     }
 }
 
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl PartialEqSpecImpl for String {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &String) -> bool {
+        self@ == other@
+    }
+}
+
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -524,7 +540,10 @@ impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 

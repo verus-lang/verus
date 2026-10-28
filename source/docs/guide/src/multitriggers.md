@@ -162,7 +162,7 @@ note:   trigger 1 of 1:
 
 (Note: you can use the `--triggers` command-line option to print the message above.)
 
-# Matching loops: what they are and to avoid them
+# Matching loops: what they are and how to avoid them
 
 Suppose we want to specify that a sequence is sorted.
 We can write this in a similar way to the earlier `forall` expression
@@ -220,7 +220,7 @@ For `i = 2`, we'd get:
 0 <= 2 < s.len() - 1 ==> s[2] <= s[3]
 ```
 
-This creates a new expression `s[3]`, which the SMT can then match on with `i = 3`:
+This creates a new expression `s[3]`, which the SMT solver can then match on with `i = 3`:
 
 ```
 0 <= 3 < s.len() - 1 ==> s[3] <= s[4]
