@@ -111,4 +111,46 @@ fn tracked_patterns(o: Option<Tracked<PermissionU32>>) {
     let f = |x: u32, t: Tracked<PermissionU32>| x;
 }
 
+// Lines holding nothing but tracked code
+fn tracked_alone(
+    x: u32,
+    Tracked(perm): Tracked<&PermissionU32>, // the permission
+    g: Ghost<int>,
+) -> (
+    u32,
+    Tracked<PermissionU32>,
+) {
+    let (
+        a,
+        Tracked(p),
+    ) = PAtomicU32::new(0);
+    // method call arguments
+    a.store(
+        Tracked(&mut p),
+        5,
+    );
+    // closing delimiter of the call on the same line: still exec code after erasure
+    foo(
+        Tracked(&p));
+    // inner lines of a multi-line Tracked
+    bar(4, Tracked(
+        &p
+    ));
+    // struct literal with a base expression
+    let w = Wrapper { perm: Tracked(p), x: 1 };
+    let w2 = Wrapper {
+        perm: Tracked(p),
+        ..w
+    };
+    // multi-line struct pattern
+    let Wrapper {
+        perm: Tracked(q),
+        x,
+    } = w2;
+    (
+        x,
+        Tracked(q),
+    )
+}
+
 } // verus!

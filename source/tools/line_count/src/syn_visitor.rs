@@ -1,5 +1,6 @@
 use std::{fmt::Debug, rc::Rc};
 
+use proc_macro2::extra::DelimSpan;
 use verus_syn::{Attribute, File, Meta, Signature, spanned::Spanned};
 
 use crate::attribution::{CodeKind, ItemAttrExit, LineContent, StateMachineCode, ToCodeKind};
@@ -212,6 +213,57 @@ impl<'f> Visitor<'f> {
         })
     }
 
+    /// The kind of the code wrapped, if `expr` is `Ghost(..)` or `Tracked(..)`
+    fn wrapper_expr_code_kind(&self, expr: &verus_syn::Expr) -> Option<CodeKind> {
+        match expr {
+            verus_syn::Expr::Call(call) => match &*call.func {
+                verus_syn::Expr::Path(path) => self.wrapper_code_kind(&path.path),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// The kind of the code wrapped, if `ty` is `Ghost<..>` or `Tracked<..>`
+    fn wrapper_type_code_kind(&self, ty: &verus_syn::Type) -> Option<CodeKind> {
+        match ty {
+            verus_syn::Type::Path(path) => self.wrapper_code_kind(&path.path),
+            _ => None,
+        }
+    }
+
+    /// The kind of the code wrapped, if `pat` is `Ghost(..)` or `Tracked(..)`
+    fn wrapper_pat_code_kind(&self, pat: &verus_syn::Pat) -> Option<CodeKind> {
+        match pat {
+            verus_syn::Pat::TupleStruct(pat) => self.wrapper_code_kind(&pat.path),
+            _ => None,
+        }
+    }
+
+    /// For the elements of a list delimited by `delim`, each with the kind of the code it wraps
+    /// if it is a `Ghost` / `Tracked` wrapper: replace the kind of the lines of the wrappers that
+    /// hold no other code (e.g. a `Tracked(..)` argument on its own line) with the kind wrapped.
+    ///
+    /// To be called after visiting the list, so that the elements are not marked again afterwards.
+    fn mark_wrappers_alone(
+        &mut self,
+        elements: &[(proc_macro2::Span, Option<CodeKind>)],
+        delim: &DelimSpan,
+    ) {
+        for (index, (span, kind)) in elements.iter().enumerate() {
+            let Some(kind) = *kind else { continue };
+            // the lines of the element hold no other code if no neighbor or delimiter is on them
+            let lines = span.start().line..=span.end().line;
+            let prev = index.checked_sub(1).map(|prev| elements[prev].0.end().line);
+            let next = elements.get(index + 1).map(|next| next.0.start().line);
+            let open = Some(delim.open().start().line);
+            let close = Some(delim.close().end().line);
+            if [prev, next, open, close].into_iter().flatten().all(|line| !lines.contains(&line)) {
+                self.mark(span, kind, LineContent::GhostTracked(kind));
+            }
+        }
+    }
+
     /// The `Ghost<..>` and `Tracked<..>` types anywhere in `ty`, with the kind of the code wrapped
     fn wrapper_types<'a>(&self, ty: &'a verus_syn::Type) -> Vec<(&'a verus_syn::TypePath, CodeKind)> {
         struct FindTypePaths<'a>(Vec<&'a verus_syn::TypePath>);
@@ -261,11 +313,7 @@ impl<'f> Visitor<'f> {
             match &p.kind {
                 verus_syn::FnArgKind::Receiver(_) => (),
                 verus_syn::FnArgKind::Typed(pt) => {
-                    let top_level_wrapper = match &*pt.ty {
-                        verus_syn::Type::Path(path) => self.wrapper_code_kind(&path.path),
-                        _ => None,
-                    };
-                    if let Some(wrapper_code_kind) = top_level_wrapper {
+                    if let Some(wrapper_code_kind) = self.wrapper_type_code_kind(&pt.ty) {
                         self.mark_additional_kind(&pt, wrapper_code_kind);
                     } else {
                         // e.g. Option<Tracked<T>>
@@ -276,9 +324,31 @@ impl<'f> Visitor<'f> {
                 }
             }
         }
+        // parameters on their own line, e.g. `Tracked(perm): Tracked<&P>,`
+        let inputs = sig
+            .inputs
+            .iter()
+            .map(|p| {
+                let kind = match &p.kind {
+                    verus_syn::FnArgKind::Typed(pt) => self.wrapper_type_code_kind(&pt.ty),
+                    verus_syn::FnArgKind::Receiver(_) => None,
+                };
+                (p.span(), kind)
+            })
+            .collect::<Vec<_>>();
+        self.mark_wrappers_alone(&inputs, &sig.paren_token.span);
         if let verus_syn::ReturnType::Type(_, _, _, ty) = &sig.output {
             for (path, wrapper_code_kind) in self.wrapper_types(ty) {
                 self.mark_additional_kind(path, wrapper_code_kind);
+            }
+            // tuple elements on their own line, e.g. `-> (\n    u32,\n    Tracked<P>,\n)`
+            if let verus_syn::Type::Tuple(tuple) = &**ty {
+                let elems = tuple
+                    .elems
+                    .iter()
+                    .map(|e| (e.span(), self.wrapper_type_code_kind(e)))
+                    .collect::<Vec<_>>();
+                self.mark_wrappers_alone(&elems, &tuple.paren_token.span);
             }
         }
     }
@@ -336,6 +406,19 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
             }
         }
         verus_syn::visit::visit_block(self, i);
+        // a final value on its own line, e.g. `Tracked(p)`
+        let stmts = i
+            .stmts
+            .iter()
+            .map(|s| {
+                let kind = match s {
+                    verus_syn::Stmt::Expr(e, None) => self.wrapper_expr_code_kind(e),
+                    _ => None,
+                };
+                (s.span(), kind)
+            })
+            .collect::<Vec<_>>();
+        self.mark_wrappers_alone(&stmts, &i.brace_token.span);
     }
 
     fn visit_expr(&mut self, i: &'ast verus_syn::Expr) {
@@ -388,10 +471,48 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                     wrapper_code_kind,
                     LineContent::GhostTracked(wrapper_code_kind),
                 );
+                // the inner lines of a multi-line wrapper, e.g. `Tracked(\n    match .. {\n ..\n    }\n)`
+                let args =
+                    i.args.iter().map(|a| (a.span(), Some(wrapper_code_kind))).collect::<Vec<_>>();
+                self.mark_wrappers_alone(&args, &i.paren_token.span);
                 return;
             }
         }
         verus_syn::visit::visit_expr_call(self, i);
+        // arguments on their own line, e.g. `Tracked(&p),`
+        let args =
+            i.args.iter().map(|a| (a.span(), self.wrapper_expr_code_kind(a))).collect::<Vec<_>>();
+        self.mark_wrappers_alone(&args, &i.paren_token.span);
+    }
+
+    fn visit_expr_method_call(&mut self, i: &'ast verus_syn::ExprMethodCall) {
+        verus_syn::visit::visit_expr_method_call(self, i);
+        // arguments on their own line, e.g. `Tracked(&p),`
+        let args =
+            i.args.iter().map(|a| (a.span(), self.wrapper_expr_code_kind(a))).collect::<Vec<_>>();
+        self.mark_wrappers_alone(&args, &i.paren_token.span);
+    }
+
+    fn visit_expr_tuple(&mut self, i: &'ast verus_syn::ExprTuple) {
+        verus_syn::visit::visit_expr_tuple(self, i);
+        // elements on their own line, e.g. `Tracked(p),`
+        let elems =
+            i.elems.iter().map(|e| (e.span(), self.wrapper_expr_code_kind(e))).collect::<Vec<_>>();
+        self.mark_wrappers_alone(&elems, &i.paren_token.span);
+    }
+
+    fn visit_expr_struct(&mut self, i: &'ast verus_syn::ExprStruct) {
+        verus_syn::visit::visit_expr_struct(self, i);
+        // fields on their own line, e.g. `perm: Tracked(p),`
+        let mut fields = i
+            .fields
+            .iter()
+            .map(|f| (f.span(), self.wrapper_expr_code_kind(&f.expr)))
+            .collect::<Vec<_>>();
+        if let Some(dot2_token) = &i.dot2_token {
+            fields.push((dot2_token.span(), None));
+        }
+        self.mark_wrappers_alone(&fields, &i.brace_token.span);
     }
 
     fn visit_expr_closure(&mut self, i: &'ast verus_syn::ExprClosure) {
@@ -617,16 +738,14 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
     }
 
     fn visit_field(&mut self, i: &'ast verus_syn::Field) {
-        if let verus_syn::Type::Path(path) = &i.ty {
-            if let Some(wrapper_code_kind) = self.wrapper_code_kind(&path.path) {
-                // keep the kind of other fields on the same line
-                self.mark_with_additional_kind(
-                    i,
-                    wrapper_code_kind,
-                    LineContent::GhostTracked(wrapper_code_kind),
-                );
-                return;
-            }
+        if let Some(wrapper_code_kind) = self.wrapper_type_code_kind(&i.ty) {
+            // keep the kind of other fields on the same line
+            self.mark_with_additional_kind(
+                i,
+                wrapper_code_kind,
+                LineContent::GhostTracked(wrapper_code_kind),
+            );
+            return;
         }
         // e.g. Option<Tracked<T>>
         for (path, wrapper_code_kind) in self.wrapper_types(&i.ty) {
@@ -637,6 +756,25 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
             );
         }
         verus_syn::visit::visit_field(self, i);
+    }
+
+    fn visit_fields_named(&mut self, i: &'ast verus_syn::FieldsNamed) {
+        verus_syn::visit::visit_fields_named(self, i);
+        // fields on their own line, e.g. `perm: Tracked<P>,`
+        let fields =
+            i.named.iter().map(|f| (f.span(), self.wrapper_type_code_kind(&f.ty))).collect::<Vec<_>>();
+        self.mark_wrappers_alone(&fields, &i.brace_token.span);
+    }
+
+    fn visit_fields_unnamed(&mut self, i: &'ast verus_syn::FieldsUnnamed) {
+        verus_syn::visit::visit_fields_unnamed(self, i);
+        // fields on their own line, e.g. `Tracked<P>,`
+        let fields = i
+            .unnamed
+            .iter()
+            .map(|f| (f.span(), self.wrapper_type_code_kind(&f.ty)))
+            .collect::<Vec<_>>();
+        self.mark_wrappers_alone(&fields, &i.paren_token.span);
     }
 
     fn visit_item_trait_alias(&mut self, i: &'ast verus_syn::ItemTraitAlias) {
@@ -1021,10 +1159,24 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
 
     fn visit_pat_struct(&mut self, i: &'ast verus_syn::PatStruct) {
         verus_syn::visit::visit_pat_struct(self, i);
+        // fields on their own line, e.g. `perm: Tracked(p),`
+        let mut fields = i
+            .fields
+            .iter()
+            .map(|f| (f.span(), self.wrapper_pat_code_kind(&f.pat)))
+            .collect::<Vec<_>>();
+        if let Some(rest) = &i.rest {
+            fields.push((rest.span(), None));
+        }
+        self.mark_wrappers_alone(&fields, &i.brace_token.span);
     }
 
     fn visit_pat_tuple(&mut self, i: &'ast verus_syn::PatTuple) {
         verus_syn::visit::visit_pat_tuple(self, i);
+        // elements on their own line, e.g. `Tracked(p),`
+        let elems =
+            i.elems.iter().map(|e| (e.span(), self.wrapper_pat_code_kind(e))).collect::<Vec<_>>();
+        self.mark_wrappers_alone(&elems, &i.paren_token.span);
     }
 
     fn visit_pat_tuple_struct(&mut self, i: &'ast verus_syn::PatTupleStruct) {
