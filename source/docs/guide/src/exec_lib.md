@@ -13,7 +13,7 @@ You can allocate `Vec` using `Vec::new` and then push elements into it:
 ```
 
 The code above is able to make assertions directly about the `Vec` value `v`.
-You could also write more compilicated specifications and proofs about `Vec` values.
+You could also write more complicated specifications and proofs about `Vec` values.
 In general, though, Verus encourages programmers to write `spec` functions
 and `proof` functions about mathematical types like `Seq`, `Set`, and `Map` instead
 of hard-wiring the specifications and proofs to particular concrete datatypes like `Vec`.
@@ -39,8 +39,8 @@ when writing specifications about the `Vec` contents.
 
 Verus support for `std::vec::Vec` is currently being expanded. For up-to-date
 documentation, visit [this link](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/vec/index.html).
-Note that these functions provide specifications for `std::vec::Vec` functions. Thus,
-for example, `ex_vec_insert` represents support for the `Vec` function `insert`. Code written 
-in Verus should use `insert` rather than `ex_vec_insert`.
+Note that vstd provides these as [specifications](./reference-assume-specification.md) for
+the ordinary `std::vec::Vec` functions, so code written in Verus simply calls the standard
+`Vec` methods (e.g., `v.insert(i, x)`) directly.
 
 Documentation for `std::vec::Vec` functionality can be found [here](https://doc.rust-lang.org/std/vec/struct.Vec.html).

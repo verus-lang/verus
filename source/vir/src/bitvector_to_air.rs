@@ -107,7 +107,7 @@ fn make_query(
     let mut air_body: Vec<air::ast::Stmt> = Vec::new();
     for (span, ens) in ensures_air.iter() {
         // This error seems to be ignored, the message below is the important one
-        let error = error(span, format!("bitvector assertion not satisfied"));
+        let error = error(span, format!("`bit_vector` assertion not satisfied"));
         let ens_stmt = air::ast::StmtX::Assert(None, error, None, ens.clone());
         air_body.push(Arc::new(ens_stmt));
     }
@@ -118,7 +118,7 @@ fn make_query(
         None => "".to_string(),
         Some(w) => format!(" (with arch-size set to {} bits)", w),
     };
-    let error = format!("bitvector assertion not satisfied{}", special_note);
+    let error = format!("`bit_vector` assertion not satisfied{}", special_note);
 
     (query, error)
 }
@@ -468,19 +468,19 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::IntToReal => {
                 return Err(error(
                     &exp.span,
-                    "int-to-real coercion not supported in bit_vector assert",
+                    "int-to-real coercion not supported in `bit_vector` assert",
                 ));
             }
             UnaryOp::RealToInt => {
                 return Err(error(
                     &exp.span,
-                    "real-to-int coercion not supported in bit_vector assert",
+                    "real-to-int coercion not supported in `bit_vector` assert",
                 ));
             }
             UnaryOp::FloatToBits => {
                 return Err(error(
                     &exp.span,
-                    "float-to-bits coercion not supported in bit_vector assert",
+                    "float-to-bits coercion not supported in `bit_vector` assert",
                 ));
             }
             UnaryOp::HeightTrigger => panic!("internal error: unexpected HeightTrigger"),
@@ -494,13 +494,13 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::NewStrLit => {
                 return Err(error(
                     &exp.span,
-                    "strslice_new_strlit not supported in bit_vector assert",
+                    "`strslice_new_strlit` not supported in `bit_vector` assert",
                 ));
             }
             UnaryOp::StrLen => {
                 return Err(error(
                     &exp.span,
-                    "string slice length not supported in bit_vector assert",
+                    "string slice length not supported in `bit_vector` assert",
                 ));
             }
             UnaryOp::CastToInteger => {
@@ -509,11 +509,11 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefFinal(_) => {
                 return Err(error(
                     &exp.span,
-                    "unsupported for bitvector: this mutable reference operator",
+                    "Verus does not currently support this mutable reference operator in `bit_vector` proofs",
                 ));
             }
             UnaryOp::Length(_) => {
-                panic!("ArrayLength operation not allowed in bitvector query")
+                panic!("array length operation not allowed in `bit_vector` proofs")
             }
         },
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp) => {
@@ -622,7 +622,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 return Err(error(
                     &exp.span,
                     format!(
-                        "not supported: bit-shift with possibly negative shift (If you believe this value is always nonnegative, try casting the RHS to an unsigned type)"
+                        "Verus does not currently support bit-shift with possibly negative shift (if you believe this value is always nonnegative, try casting the RHS to an unsigned type)"
                     ),
                 ));
             }
@@ -653,7 +653,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 return Err(error(
                     &exp.span,
                     format!(
-                        "not supported: bit-shift with possibly negative shift (If you believe this value is always nonnegative, try casting the RHS to an unsigned type)"
+                        "Verus does not currently support bit-shift with possibly negative shift (if you believe this value is always nonnegative, try casting the RHS to an unsigned type)"
                     ),
                 ));
             }
@@ -711,10 +711,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             return do_arith_then_clip(ctx, state, &exp.span, arith_op, lhs, rhs, None);
         }
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {
-            return Err(error(
-                &exp.span,
-                "error: cannot use extensional equality in bit vector proof",
-            ));
+            return Err(error(&exp.span, "cannot use extensional equality in `bit_vector` proofs"));
         }
         ExpX::UnaryOpr(
             crate::ast::UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits),
@@ -798,7 +795,10 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             _ => {
                 return Err(error(
                     &exp.span,
-                    format!("unsupported for bit-vector: bind conversion, {:?} ", exp.x),
+                    format!(
+                        "Verus does not currently support this binding in `bit_vector` proofs: {:?}",
+                        exp.x
+                    ),
                 ));
             }
         },
@@ -808,7 +808,10 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
         _ => {
             return Err(error(
                 &exp.span,
-                format!("unsupported for bit-vector: expression conversion {:?}", exp.x),
+                format!(
+                    "Verus does not currently support this expression in `bit_vector` proofs: {:?}",
+                    exp.x
+                ),
             ));
         }
     }
@@ -824,7 +827,7 @@ fn bitvector_expect_finite(
         Some(w) => Ok(bitwidth_exact(state, *w)),
         None => Err(error(
             span,
-            format!("IntRange error: expected finite-width integer for bit-vector, got {:?}", typ),
+            format!("expected finite-width integer in `bit_vector` proof, got {:?}", typ),
         )),
     }
 }
@@ -835,7 +838,7 @@ fn vir_typ_to_air(state: &mut State, span: &Span, typ: &Typ) -> Result<air::ast:
         TypX::Bool => Ok(bool_typ()),
         TypX::Decorate(_, _, t) => vir_typ_to_air(state, span, t),
         TypX::Boxed(t) => vir_typ_to_air(state, span, t),
-        _ => Err(error(span, format!("unsupported type in bitvector {:?}", typ))),
+        _ => Err(error(span, format!("unsupported type in `bit_vector` proof: {:?}", typ))),
     }
 }
 
@@ -975,21 +978,21 @@ impl BvTyp {
     fn expect_bool(&self, span: &Span) -> Result<(), VirErr> {
         match self {
             BvTyp::Bool => Ok(()),
-            _ => Err(error(span, format!("Verus Internal Error: expect_bool"))),
+            _ => Err(crate::messages::internal_error(span, format!("`expect_bool`"))),
         }
     }
 
     fn expect_bv_signed(&self, span: &Span) -> Result<(), VirErr> {
         match self {
             BvTyp::Bv(_, Extend::Sign) => Ok(()),
-            _ => Err(error(span, format!("Verus Internal Error: expect_bv_signed"))),
+            _ => Err(crate::messages::internal_error(span, format!("`expect_bv_signed`"))),
         }
     }
 
     fn expect_bv(&self, span: &Span) -> Result<(u32, Extend), VirErr> {
         match self {
             BvTyp::Bv(w, extend) => Ok((*w, *extend)),
-            _ => Err(error(span, format!("Verus Internal Error: expect_bv"))),
+            _ => Err(crate::messages::internal_error(span, format!("`expect_bv`"))),
         }
     }
 
@@ -1009,7 +1012,7 @@ fn signedness_of_int_range(span: &Span, range: &IntRange) -> Result<Extend, VirE
     match range {
         IntRange::Int | IntRange::I(_) | IntRange::ISize => Ok(Extend::Sign),
         IntRange::Nat | IntRange::U(_) | IntRange::USize => Ok(Extend::Zero),
-        IntRange::Char => Err(error(span, format!("char not supported in bit-vector query"))),
+        IntRange::Char => Err(error(span, format!("`char` not supported in `bit_vector` proofs"))),
     }
 }
 
@@ -1020,9 +1023,9 @@ fn width_of_int_range(state: &mut State, span: &Span, range: &IntRange) -> Resul
             Ok(bitwidth_exact(state, IntegerTypeBitwidth::ArchWordSize))
         }
         IntRange::Int | IntRange::Nat => {
-            Err(error(span, format!("symbolic int/nat not supported in bit-vector query")))
+            Err(error(span, format!("symbolic `int`/`nat` not supported in `bit_vector` proofs")))
         }
-        IntRange::Char => Err(error(span, format!("char not supported in bit-vector query"))),
+        IntRange::Char => Err(error(span, format!("`char` not supported in `bit_vector` proofs"))),
     }
 }
 
@@ -1062,9 +1065,9 @@ fn bv_typ_for_vir_typ(state: &mut State, span: &Span, typ: &Typ) -> Result<BvTyp
         Err(error(
             span,
             format!(
-                "error: bit_vector prover cannot handle type `{:}`", crate::ast_util::typ_to_diagnostic_str(typ)
+                "`bit_vector` prover cannot handle type `{:}`", crate::ast_util::typ_to_diagnostic_str(typ)
             ),
-        ).help("bit_vector can only handle variables of type `bool`, fixed-width integers, or floating point"))
+        ).help("`bit_vector` can only handle variables of type `bool`, fixed-width integers, or floating point"))
     }
 }
 
@@ -1099,7 +1102,7 @@ fn do_arith_then_clip(
         {
             int_range = None;
         } else {
-            return Err(error(span, format!("not supported: nat cast here")));
+            return Err(error(span, format!("Verus does not currently support a nat cast here")));
         }
     }
 

@@ -2374,7 +2374,7 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is not allowed in spec mode")
+    } => Err(err) => assert_vir_error_msg(err, "a `ref mut` binding in a pattern is not allowed in spec mode")
 }
 
 test_verify_one_file_with_options! {
@@ -2393,7 +2393,7 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is not allowed in spec mode")
+    } => Err(err) => assert_vir_error_msg(err, "a `ref mut` binding in a pattern is not allowed in spec mode")
 }
 
 test_verify_one_file_with_options! {
@@ -2464,7 +2464,7 @@ test_verify_one_file_with_options! {
                 Opt::None => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is not allowed in spec mode")
+    } => Err(err) => assert_vir_error_msg(err, "a `ref mut` binding in a pattern is not allowed in spec mode")
 }
 
 test_verify_one_file_with_options! {
@@ -3325,7 +3325,7 @@ test_verify_one_file_with_options! {
                 _ => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Not supported: match arm containing both a match-guard and a binding by mutable reference")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support a match arm containing both a match guard and a `ref mut` binding")
 }
 
 test_verify_one_file_with_options! {
@@ -3337,7 +3337,7 @@ test_verify_one_file_with_options! {
                 _ => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support a pattern containing both an or-pattern (|) and a `ref mut` binding")
 }
 
 test_verify_one_file_with_options! {
@@ -3347,7 +3347,7 @@ test_verify_one_file_with_options! {
             let x = Some((5, true));
             let Some((ref mut i, true | false)) = x;
         }
-    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support a pattern containing both an or-pattern (|) and a `ref mut` binding")
 }
 
 test_verify_one_file_with_options! {

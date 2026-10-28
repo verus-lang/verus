@@ -2989,7 +2989,7 @@ test_verify_one_file! {
                 // this should derive a contradiction if not for the recursion checking
             }
         }}
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -3021,7 +3021,7 @@ test_verify_one_file! {
             inst.ro(&token);
         }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {

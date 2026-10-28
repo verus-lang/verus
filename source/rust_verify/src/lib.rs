@@ -49,6 +49,7 @@ pub mod file_loader;
 mod fn_call_to_vir;
 mod hir_hide_reveal_rewrite;
 mod import_export;
+mod observers;
 mod pre_header;
 pub mod profiler;
 mod query;
@@ -67,6 +68,7 @@ pub mod rust_to_vir_trait;
 #[cfg(feature = "singular")]
 pub mod singular;
 mod spans;
+pub mod test_observer;
 pub mod trait_check;
 mod trait_check_ast;
 mod trait_check_emit;

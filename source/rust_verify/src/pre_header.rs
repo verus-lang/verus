@@ -69,7 +69,7 @@ fn walk_expr<'tcx>(
                             unwrap_param_extract_idents(ctxt.tcx, vir_params, hir_params, stmt2)?;
                         pre_header.unwrap_parameters.push(u);
                     } else {
-                        internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+                        internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
                     }
                 } else {
                     if check_stmt_for_header(ctxt, stmt, pre_header)? {
@@ -97,56 +97,56 @@ fn unwrap_param_extract_idents<'tcx>(
     stmt: &Stmt,
 ) -> Result<UnwrapParameter, VirErr> {
     let StmtKind::Semi(e) = stmt.kind else {
-        internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+        internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
     let ExprKind::Block(Block { stmts: [], expr: Some(e), .. }, _) = e.kind else {
-        internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+        internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
     let ExprKind::Assign(lhs, rhs, _) = e.kind else {
-        internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+        internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
 
     let ExprKind::Path(lhs_qpath) = lhs.kind else {
-        internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+        internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
     let QPath::Resolved(None, lhs_path) = lhs_qpath else {
-        internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+        internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
     let Res::Local(lhs_hir_id) = lhs_path.res else {
-        internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+        internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
     let Node::Pat(lhs_pat) = tcx.hir_node(lhs_hir_id) else {
-        internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+        internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
     let lhs_name = crate::rust_to_vir_expr::pat_to_var(lhs_pat)?;
 
     let ExprKind::MethodCall(_, receiver, _, _) = rhs.kind else {
-        internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+        internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
     let ExprKind::Path(rhs_qpath) = receiver.kind else {
-        internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+        internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
     let QPath::Resolved(None, rhs_path) = rhs_qpath else {
-        internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+        internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
     let Res::Local(rhs_hir_id) = rhs_path.res else {
-        internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+        internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
     let Node::Pat(rhs_pat) = tcx.hir_node(rhs_hir_id) else {
-        internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+        internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
     let rhs_name = crate::rust_to_vir_expr::pat_to_var(rhs_pat)?;
 
     let idx = hir_params.iter().position(|param| param.pat.hir_id == rhs_pat.hir_id);
     let Some(idx) = idx else {
-        internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+        internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
 
     let mode = match &*vir_params[idx].x.typ {
         TypX::Decorate(TypDecoration::Tracked, _, _) => Mode::Proof,
         TypX::Decorate(TypDecoration::Ghost, _, _) => Mode::Spec,
         _ => {
-            internal_err!(stmt.span, "ill-formed unwrap_parameter header");
+            internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
         }
     };
 
@@ -205,7 +205,7 @@ fn check_stmt_for_header<'tcx>(
                 if pre_header.open_visibility_qualifier.is_some() {
                     return err_span(
                         stmt.span,
-                        "only one open_visibility_qualifier declaration allowed",
+                        "only one `open_visibility_qualifier` declaration allowed",
                     );
                 }
                 pre_header.open_visibility_qualifier = Some(vis);
@@ -346,25 +346,25 @@ pub(crate) fn sanity_check_preheader(
     } = pre_header;
 
     if *no_method_body != header.no_method_body {
-        internal_err!(span, "sanity_check_preheader failed: no_method_body");
+        internal_err!(span, "`sanity_check_preheader` failed: `no_method_body`");
     }
     if *returns != header.returns.is_some() {
-        internal_err!(span, "sanity_check_preheader failed: returns");
+        internal_err!(span, "`sanity_check_preheader` failed: returns");
     }
     if *decreases_len != header.decrease.len() {
-        internal_err!(span, "sanity_check_preheader failed: decreases");
+        internal_err!(span, "`sanity_check_preheader` failed: decreases");
     }
     if *default_ensures != (header.ensure.1.len() > 0) {
-        internal_err!(span, "sanity_check_preheader failed: default_ensures");
+        internal_err!(span, "`sanity_check_preheader` failed: `default_ensures`");
     }
     if *open_visibility_qualifier != header.open_visibility_qualifier {
-        internal_err!(span, "sanity_check_preheader failed: open_visibility_qualifier");
+        internal_err!(span, "`sanity_check_preheader` failed: `open_visibility_qualifier`");
     }
     if *unwrap_parameters != header.unwrap_parameters {
-        internal_err!(span, "sanity_check_preheader failed: unwrap_parameters");
+        internal_err!(span, "`sanity_check_preheader` failed: `unwrap_parameters`");
     }
     if *ensure_id != header.ensure_id_typ.as_ref().map(|(id, _)| id.clone()) {
-        internal_err!(span, "sanity_check_preheader failed: ensure_id");
+        internal_err!(span, "`sanity_check_preheader` failed: `ensure_id`");
     }
     Ok(())
 }

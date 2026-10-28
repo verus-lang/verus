@@ -28,6 +28,6 @@ sometimes useful for readability when the consequent is more naturally written f
 P <==> Q  ≡  P == Q
 ```
 
-Note that `<==>` has the same syntactic [precedence](./spec-operator-precedence.md) as `==>`
-rather than the tighter precedence of `==`, so it can often be used without extra parentheses
+Note that `<==>` has lower syntactic [precedence](./spec-operator-precedence.md) than `==>` and `<==`,
+and much lower precedence than `==`, so it can often be used without extra parentheses
 in contexts where `==` would require them.

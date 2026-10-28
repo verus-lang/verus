@@ -475,7 +475,7 @@ fn req_ens_to_air(
                 } else {
                     return Err(crate::messages::error(
                         &exp.span,
-                        "default_ensures not allowed here",
+                        "`default_ensures` not allowed here",
                     ));
                 }
             }
@@ -728,7 +728,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
         if function.x.has.has_ensures {
             return Err(crate::messages::error(
                 &function.x.outer_ret.span,
-                "ensures clause unsupported on spec function",
+                "`ensures` clause unsupported on spec function",
             ));
         }
     }

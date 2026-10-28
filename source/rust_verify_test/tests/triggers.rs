@@ -164,7 +164,7 @@ test_verify_one_file! {
         proof fn test(x: int) {
             assume(forall|i: int| f(i / 2) == f(i / 2));
         }
-    } => Err(err) => assert_vir_error_msg(err, "Could not automatically infer triggers")
+    } => Err(err) => assert_vir_error_msg(err, "could not automatically infer triggers")
 }
 
 test_verify_one_file! {
@@ -190,7 +190,7 @@ test_verify_one_file! {
         proof fn test(x: int) {
             assume(forall|i: u32| ((i / 2) >> 1) == (i / 2) >> 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "Could not automatically infer triggers")
+    } => Err(err) => assert_vir_error_msg(err, "could not automatically infer triggers")
 }
 
 test_verify_one_file! {
@@ -593,7 +593,7 @@ test_verify_one_file! {
         fn test3() {
             assert(f_quant(Some(2), Some(2)));
         }
-    } => Err(err) => assert_vir_error_msg(err, "Could not automatically infer triggers for this quantifier")
+    } => Err(err) => assert_vir_error_msg(err, "could not automatically infer triggers for this quantifier")
 }
 
 test_verify_one_file! {
@@ -627,9 +627,9 @@ test_verify_one_file! {
         }
     } => Err(err) => {
         assert!(err.warnings.len() == 1);
-        assert!(err.warnings[0].message.contains("#[trigger] on a spec_fn closure is deprecated"));
+        assert!(err.warnings[0].message.contains("`#[trigger]` on a `spec_fn` closure is deprecated"));
         assert!(err.errors.len() == 1);
-        assert!(err.errors[0].message.contains("Could not automatically infer triggers for this quantifier"));
+        assert!(err.errors[0].message.contains("could not automatically infer triggers for this quantifier"));
     }
 }
 

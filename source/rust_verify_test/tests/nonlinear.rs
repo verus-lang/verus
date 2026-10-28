@@ -194,7 +194,7 @@ test_verify_one_file! {
             }
             assert(x * x + x == x * (x + 1));
         }
-    } => Err(err) => assert_vir_error_msg(err, "assert_by_query not allowed in #[verifier::nonlinear] functions")
+    } => Err(err) => assert_vir_error_msg(err, "`assert_by_query` not allowed in `#[verifier::nonlinear]` functions")
 }
 
 test_verify_one_file! {
@@ -219,7 +219,7 @@ test_verify_one_file! {
                 assert(z == 0);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "not mentioned in requires/ensures")
+    } => Err(err) => assert_vir_error_msg(err, "variable z~6 not mentioned in `requires`/`ensures`")
 }
 
 test_verify_one_file! {
@@ -298,5 +298,5 @@ test_verify_one_file! {
                 g = 1;  // only visible to the inner query
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "assignment is not allowed in 'assert ... by' statement")
+    } => Err(err) => assert_vir_error_msg(err, "assignment is not allowed in `assert ... by` statement")
 }

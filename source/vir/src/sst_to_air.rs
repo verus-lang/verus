@@ -1,8 +1,8 @@
 use crate::ast::{
-    ArrayKind, AssertQueryMode, BitwiseOp, CrateId, Dt, FieldOpr, Fun, GenericBoundX, Ident,
-    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Label, Mode, Path,
-    PathX, Primitive, ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX,
-    Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent, VirErr,
+    ArrayKind, AssertQueryMode, BitwiseOp, CrateId, Dt, FieldOpr, Fun, Ident, Idents, InequalityOp,
+    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Label, Mode, Path, PathX, Primitive,
+    ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
+    UnaryOpr, UnwindSpec, VarAt, VarIdent, VirErr,
 };
 use crate::ast_util::{
     LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ,
@@ -38,7 +38,6 @@ use air::ast_util::{
     str_apply, str_ident, str_typ, str_var, string_var,
 };
 use num_bigint::BigInt;
-use std::collections::HashMap;
 use std::mem::swap;
 use std::sync::Arc;
 
@@ -846,7 +845,7 @@ fn clip_bitwise_result(bit_expr: ExprX, exp: &Exp) -> Result<Expr, VirErr> {
     } else {
         return Err(error(
             &exp.span,
-            format!("In translating Bitwise operator, encountered non-integer operand",),
+            format!("in translating bitwise operator, encountered non-integer operand",),
         ));
     }
 }
@@ -1089,9 +1088,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     ExprX::Apply(Arc::new(crate::def::BIT_NOT.to_string()), Arc::new(vec![expr]));
                 if let Some(width) = width_opt {
                     if !check_bitwidth_typ_matches(&e.typ, *width, false) {
-                        return Err(error(
+                        return Err(crate::messages::internal_error(
                             &e.span,
-                            format!("Verus Internal Error: BitNot: type doesn't match"),
+                            format!("BitNot: type doesn't match"),
                         ));
                     }
                     return clip_bitwise_result(bit_expr, e);
@@ -1209,9 +1208,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         ident_apply(&name, &exprs)
                     }
                     _ => {
-                        return Err(error(
+                        return Err(crate::messages::internal_error(
                             &exp.span,
-                            format!("Verus Internal Error: ArrayLength expected Array or Slice"),
+                            format!("ArrayLength expected Array or Slice"),
                         ));
                     }
                 }
@@ -1423,9 +1422,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                             // The clip (below) is based on the type so we need to make
                             // sure that the clip is what we expected based on Shl's arguments
                             if !check_bitwidth_typ_matches(&exp.typ, *width, *signed) {
-                                return Err(error(
+                                return Err(crate::messages::internal_error(
                                     &exp.span,
-                                    format!("Verus Internal Error: BitShl: type doesn't match"),
+                                    format!("BitShl: type doesn't match"),
                                 ));
                             }
                             crate::def::BIT_SHL
@@ -1506,6 +1505,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             BndX::Quant(quant, binders, trigs, _) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
+                for b in binders.iter() {
+                    ctx.notify(|obs| obs.on_quantifier_binder(b, exp));
+                }
                 let mut invs: Vec<Expr> = Vec::new();
                 for binder in binders.iter() {
                     let typ_inv = typ_invariant(ctx, &binder.a, &ident_var(&binder.name.lower()));
@@ -1925,7 +1927,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     UnwindAir::MayUnwind => unreachable!(),
                     UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
                         &stm.span,
-                        "cannot show this call will not unwind, in function marked 'no_unwind'",
+                        "cannot show this call will not unwind, in function marked `no_unwind`",
                         format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
                     ),
                     UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
@@ -1938,19 +1940,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     }
                     UnwindAir::NoUnwindWhen(_e) => error_with_label(
                         &stm.span,
-                        "cannot show this call will not unwind, in function marked 'no_unwind'",
+                        "cannot show this call will not unwind, in function marked `no_unwind`",
                         "this call might unwind",
                     ),
                 };
                 let error = if let UnwindSpec::NoUnwindWhen(e) = &callee_unwind_spec {
                     error.secondary_label(
                         &e.span,
-                        "this conditition needs to hold to show that the callee will not unwind",
+                        "this condition needs to hold to show that the callee will not unwind",
                     )
                 } else {
                     error.secondary_label(
                         &func.span,
-                        "perhaps you need to mark this function as 'no_unwind'?",
+                        "perhaps you need to mark this function as `no_unwind`?",
                     )
                 };
                 let e = mk_implies(&e1, &e2);
@@ -1992,9 +1994,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     if !*is_init {
                         let havoc = StmtX::Havoc(var);
                         stmts.push(Arc::new(havoc));
+                        ctx.notify(|obs| {
+                            obs.on_havoc(stm, &get_loc_var(dest), stmts.last().expect("havoc"))
+                        });
                     }
                 } else {
-                    crate::messages::internal_error(&stm.span, "ens_has_return but no Dest");
+                    crate::messages::internal_error(&stm.span, "`ens_has_return` but no Dest");
                 }
             }
             if let Some(is_trait_default) = is_trait_default {
@@ -2073,26 +2078,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     let ret_exp: &Arc<SpannedTyped<ExpX>> =
                         ret_exp.as_ref().expect("if dest is provided, expr must be provided");
 
-                    let mut stmts =
-                        stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp))?;
-
-                    // if return value exists, check if we need to emit additional assumes for nested opaque types
-                    let ret_op = ctx
-                        .fun
-                        .as_ref()
-                        .and_then(|f| ctx.func_sst_map.get(&f.current_fun))
-                        .map(|fun| fun.x.inner_ret.x.typ.clone());
-                    if let Some(ret) = ret_op {
-                        stmts.extend(opaque_ty_additional_stmts(
-                            ctx,
-                            state,
-                            &ret_exp.span,
-                            &try_reveal_opaque_ty_ctor(ret_exp),
-                            &ret,
-                        )?);
-                    }
-
-                    stmts
+                    stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp))?
                 } else {
                     // If there is no `dest_id`, then the returned expression
                     // gets ignored. This should happen for functions that
@@ -2108,8 +2094,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         stmts.append(&mut new_stmts);
                     }
                 } else {
-                    for (span, ens, proof_note) in
-                        state.post_condition_info.ens_exprs.clone().iter()
+                    for (ens_idx, (span, ens, proof_note)) in
+                        state.post_condition_info.ens_exprs.clone().iter().enumerate()
                     {
                         // The base_error should point to the return-statement or
                         // return-expression. Augment with an additional label pointing
@@ -2151,7 +2137,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             }
                         };
 
-                        let ens_stmt = StmtX::Assert(assert_id.clone(), error, None, ens.clone());
+                        let ens_id = ctx.make_assert_id(
+                            crate::vir_observer::AssertIdKind::Ensures,
+                            ens_idx,
+                            &assert_id,
+                        );
+                        let ens_stmt = StmtX::Assert(ens_id, error, None, ens.clone());
                         stmts.push(Arc::new(ens_stmt));
                     }
                 }
@@ -2222,6 +2213,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
         StmX::Assign { lhs: Dest { dest, is_init: true }, rhs } => {
             let x = loc_is_var(dest).expect("is_init assign dest must be a variable");
+            ctx.notify(|obs| obs.on_variable_def(stm, x));
             stm_to_stmts(ctx, state, &assume_var(&stm.span, x, rhs))?
         }
         StmX::Assign { lhs: Dest { dest, is_init: false }, rhs } => {
@@ -2258,9 +2250,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                                 (crate::def::fn_array_update(), typ_args)
                             }
                             _ => {
-                                return Err(error(
+                                return Err(crate::messages::internal_error(
                                     &stm.span,
-                                    format!("Verus Internal Error: Assign expected Array or Slice"),
+                                    format!("Assign expected Array or Slice"),
                                 ));
                             }
                         };
@@ -2290,6 +2282,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             };
 
             let a = Arc::new(StmtX::Assign(suffix_local_unique_id(&base_var), value));
+            ctx.notify(|obs| obs.on_assign(stm, &base_var, &a));
             stmts.push(a);
             if fields.len() > 0 {
                 let mut var_exp = ident_var(&suffix_local_unique_id(&base_var));
@@ -2334,7 +2327,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 if loop_info.is_for_loop && !*is_break {
                     // At the very least, the syntax macro will need to advance the ghost iterator
                     // at each continue.
-                    return Err(error(&stm.span, "for-loops do not yet support continue"));
+                    return Err(error(
+                        &stm.span,
+                        "Verus does not currently support `continue` in `for` loops",
+                    ));
                 }
                 let invs = if *is_break {
                     loop_info.invs_exit.clone()
@@ -2346,18 +2342,27 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 } else {
                     error_with_label(&stm.span, "loop invariant not satisfied", "at this continue")
                 };
-                for (span, inv, msg, both) in invs.iter() {
+                for (inv_idx, (span, inv, msg, both)) in invs.iter().enumerate() {
                     let mut error = base_error.secondary_label(span, "failed this invariant");
                     if let Some(msg) = msg {
                         error = error.secondary_label(span, &**msg);
                     }
                     if *is_break && *both {
                         let msg = "(hint: if this is not supposed to be true at the break, \
-                            use 'invariant_except_break' for it instead of 'invariant', \
-                            and use 'ensures' for what is true at the break)";
+                            use `invariant_except_break` for it instead of `invariant`, \
+                            and use `ensures` for what is true at the break)";
                         error = error.secondary_label(span, msg);
                     }
-                    stmts.push(Arc::new(StmtX::Assert(None, error, None, inv.clone())));
+                    stmts.push(Arc::new(StmtX::Assert(
+                        ctx.make_assert_id(
+                            crate::vir_observer::AssertIdKind::LoopInvariant,
+                            inv_idx,
+                            &None,
+                        ),
+                        error,
+                        None,
+                        inv.clone(),
+                    )));
                 }
                 let decrease = &loop_info.decrease;
                 if !is_break && decrease.len() > 0 {
@@ -2367,7 +2372,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         }
                         if info.loop_isolation {
                             let s = "decrease checking for labeled continue not supported unless \
-                                loop is marked #[verifier::loop_isolation(false)]";
+                                loop is marked `#[verifier::loop_isolation(false)]`";
                             return Err(error(&stm.span, s));
                         }
                     }
@@ -2380,7 +2385,16 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     )?;
                     let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt)?;
                     let error = error(&stm.span, crate::def::DEC_FAIL_LOOP_CONTINUE);
-                    let dec_stmt = StmtX::Assert(None, error, None, expr);
+                    let dec_stmt = StmtX::Assert(
+                        ctx.make_assert_id(
+                            crate::vir_observer::AssertIdKind::DecreasesCheck,
+                            0,
+                            &None,
+                        ),
+                        error,
+                        None,
+                        expr,
+                    );
                     stmts.push(Arc::new(dec_stmt));
                 }
             }
@@ -2480,6 +2494,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             stmts
         }
         StmX::RevealString(lit) => {
+            ctx.notify(|obs| obs.on_reveal_string(lit));
             let exprs = Arc::new({
                 vec![string_len_to_air(ctx, lit.clone()), string_indices_to_air(ctx, lit.clone())]
             });
@@ -2508,12 +2523,31 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             match stmt {
                 Ok(stmt) => vec![stmt],
                 Err(err) => {
-                    return Err(error(&stm.span, format!("Invalid inline AIR statement: {}", err)));
+                    return Err(error(&stm.span, format!("invalid inline AIR statement: {}", err)));
                 }
             }
         }
     };
     Ok(result)
+}
+
+/// Notify the observer of each loop havoc that `emit_havocs` appended to `emitted`.
+fn notify_emitted_havocs(
+    ctx: &Ctx,
+    stm: &Stm,
+    havocs: &crate::sst_vars::HavocSet,
+    emitted: &[Stmt],
+) {
+    if ctx.observer.is_none() {
+        return;
+    }
+    for s in emitted {
+        if let StmtX::Havoc(uid) = &**s
+            && let Some(var) = havocs.vars.keys().find(|v| &suffix_local_unique_id(v) == uid)
+        {
+            ctx.notify(|obs| obs.on_havoc(stm, var, s));
+        }
+    }
 }
 
 fn loop_to_stmts(
@@ -2544,6 +2578,9 @@ fn loop_to_stmts(
     };
 
     let loop_isolation = *loop_isolation;
+    if *is_for_loop {
+        ctx.notify(|obs| obs.on_for_loop(stm));
+    }
     let (cond_stm, pos_assume, neg_assume) = if let Some((cond_stm, cond_exp)) = cond {
         let pos_cond = exp_to_expr(ctx, &cond_exp, expr_ctxt)?;
         let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
@@ -2644,7 +2681,9 @@ fn loop_to_stmts(
     let mut air_body: Vec<Stmt> = state.static_prelude.clone();
     if !loop_isolation {
         air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
+        let start = air_body.len();
         modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut air_body);
+        notify_emitted_havocs(ctx, stm, modified_vars, &air_body[start..]);
     }
 
     let mut local = state.local_shared.clone();
@@ -2674,21 +2713,27 @@ fn loop_to_stmts(
             // we need to havoc it, in order to create a difference between
             // the "current" value and the "pre-state" value.
             let pre_modified_params_incl = pre_modified_params_incl.as_ref().unwrap();
+            let start = air_body.len();
             pre_modified_params_incl.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
+            notify_emitted_havocs(ctx, stm, pre_modified_params_incl, &air_body[start..]);
         } else {
             // Similar, but this time accounting for isolation boundary
 
             // Havoc vars between beginning of the function and the start of
             // the isolation_boundary
             let pre_modified_params_excl = pre_modified_params_excl.as_ref().unwrap();
+            let start = air_body.len();
             pre_modified_params_excl.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
+            notify_emitted_havocs(ctx, stm, pre_modified_params_excl, &air_body[start..]);
 
             // Execute the code between the isolation boundary and the actual loop start
             air_body.extend(assert_free_pre_stmts);
 
             // Havoc all vars that might be modified during the loop
             air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_BOUNDARY))));
+            let start = air_body.len();
             modified_vars.emit_havocs(ctx, SNAPSHOT_BOUNDARY, &mut air_body);
+            notify_emitted_havocs(ctx, stm, modified_vars, &air_body[start..]);
         }
     }
 
@@ -2740,12 +2785,21 @@ fn loop_to_stmts(
     }
 
     if !ctx.checking_spec_preconditions() {
-        for (span, inv, msg, _) in invs_entry.iter() {
+        for (inv_idx, (span, inv, msg, _)) in invs_entry.iter().enumerate() {
             let mut error = error(span, crate::def::INV_FAIL_LOOP_END);
             if let Some(msg) = msg {
                 error = error.secondary_label(span, &**msg);
             }
-            let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
+            let inv_stmt = StmtX::Assert(
+                ctx.make_assert_id(
+                    crate::vir_observer::AssertIdKind::LoopInvariant,
+                    inv_idx,
+                    &None,
+                ),
+                error,
+                None,
+                inv.clone(),
+            );
             air_body.push(Arc::new(inv_stmt));
         }
         if decrease.len() > 0 {
@@ -2758,7 +2812,12 @@ fn loop_to_stmts(
             )?;
             let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt)?;
             let error = error(&stm.span, crate::def::DEC_FAIL_LOOP_END);
-            let dec_stmt = StmtX::Assert(None, error, None, expr);
+            let dec_stmt = StmtX::Assert(
+                ctx.make_assert_id(crate::vir_observer::AssertIdKind::DecreasesCheck, 0, &None),
+                error,
+                None,
+                expr,
+            );
             air_body.push(Arc::new(dec_stmt));
         }
     }
@@ -2785,12 +2844,21 @@ fn loop_to_stmts(
     // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
     let mut stmts: Vec<Stmt> = Vec::new();
     if !ctx.checking_spec_preconditions() {
-        for (span, inv, msg, _) in invs_entry.iter() {
+        for (inv_idx, (span, inv, msg, _)) in invs_entry.iter().enumerate() {
             let mut error = error(span, crate::def::INV_FAIL_LOOP_FRONT);
             if let Some(msg) = msg {
                 error = error.secondary_label(span, &**msg);
             }
-            let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
+            let inv_stmt = StmtX::Assert(
+                ctx.make_assert_id(
+                    crate::vir_observer::AssertIdKind::LoopInvariant,
+                    inv_idx,
+                    &None,
+                ),
+                error,
+                None,
+                inv.clone(),
+            );
             stmts.push(Arc::new(inv_stmt));
         }
     }
@@ -2801,7 +2869,9 @@ fn loop_to_stmts(
     }
     if loop_isolation {
         stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
+        let start = stmts.len();
         modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut stmts);
+        notify_emitted_havocs(ctx, stm, modified_vars, &stmts[start..]);
         for (_, inv, _, _) in invs_exit.iter() {
             let inv_stmt = StmtX::Assume(inv.clone());
             stmts.push(Arc::new(inv_stmt));
@@ -2952,6 +3022,7 @@ pub(crate) fn body_stm_to_air(
 ) -> Result<Vec<CommandsWithContext>, VirErr> {
     let FuncCheckSst {
         reqs,
+        return_opaque_type_eqs,
         post_condition,
         body: stm,
         local_decls,
@@ -2960,9 +3031,13 @@ pub(crate) fn body_stm_to_air(
         unwind,
     } = func_check_sst;
 
+    // Notify observer that body lowering is starting.
+    // Binders recorded before this point (requires/ensures) should be discarded.
+    ctx.notify(|obs| obs.on_body_lowering_start());
+
     if is_bit_vector_mode {
         if is_integer_ring {
-            panic!("Error: integer_ring and bit_vector should not be used together");
+            panic!("integer_ring and bit_vector should not be used together");
         }
 
         let queries = bv_to_queries(ctx, reqs, &post_condition.ens_exps)?;
@@ -2990,6 +3065,17 @@ pub(crate) fn body_stm_to_air(
     for x in typ_params.iter() {
         for (x, t) in crate::def::suffix_typ_param_ids_types(x) {
             local_shared.push(Arc::new(DeclX::Const(x.lower(), str_typ(t))));
+        }
+    }
+    for (opaque, hidden) in return_opaque_type_eqs.iter() {
+        let opaque_ids = typ_to_ids(ctx, opaque);
+        let hidden_ids = typ_to_ids(ctx, hidden);
+        assert!(opaque_ids.len() == hidden_ids.len());
+        for (opaque_id, hidden_id) in opaque_ids.iter().zip(hidden_ids.iter()) {
+            local_shared.push(Arc::new(DeclX::Axiom(air::ast::Axiom {
+                named: None,
+                expr: mk_eq(opaque_id, hidden_id),
+            })));
         }
     }
     for decl in local_decls.iter() {
@@ -3089,7 +3175,7 @@ pub(crate) fn body_stm_to_air(
             for req in reqs.iter() {
                 let error = error_with_label(
                     &req.span,
-                    "Unspported expression in integer_ring".to_string(),
+                    "unsupported expression in `integer_ring`".to_string(),
                     "at the require clause".to_string(),
                 );
                 let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
@@ -3101,7 +3187,7 @@ pub(crate) fn body_stm_to_air(
             for ens in post_condition.ens_exps.iter() {
                 let error = error_with_label(
                     &ens.span,
-                    "Unspported expression in integer_ring".to_string(),
+                    "unsupported expression in `integer_ring`".to_string(),
                     "at the ensure clause".to_string(),
                 );
                 let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
@@ -3143,158 +3229,16 @@ pub(crate) fn body_stm_to_air(
             is_integer_ring || is_nonlinear,
         ));
     }
+    // Notify observer of binder-originated local declarations (including Skolemized
+    // copies): quantifier binders and choose binders alike.
+    for decl in local_decls.iter() {
+        if matches!(
+            decl.kind,
+            crate::sst::LocalDeclKind::QuantBinder | crate::sst::LocalDeclKind::ChooseBinder
+        ) {
+            ctx.notify(|obs| obs.on_binder_decl(decl));
+        }
+    }
+    ctx.notify(|obs| obs.on_function_lowered());
     Ok(state.commands)
-}
-
-/// At function returns, we need to tell the SMT solver that the
-/// future (impl Future<Output = T>) created by the async function will return the return value of
-/// the function body if await() is called on it.
-// fn async_fn_return_to_stmts(
-//     ctx: &Ctx,
-//     state: &mut State,
-//     expr_ctxt: &ExprCtxt,
-//     ret_op: &mut Option<Arc<TypX>>,
-//     async_rete: &Option<Arc<TypX>>,
-//     ret_exp: &Arc<SpannedTyped<ExpX>>,
-//     stm: &Stm,
-//     dest_id: VarIdent,
-// ) -> Result<Vec<Stmt>, VirErr> {
-//     let ret = ret_op.as_ref().expect("async function has no return type");
-//     let async_rete =
-//         async_rete.as_ref().expect("async function has no return type");
-//     let call = ExpX::Call(
-//         CallFun::Fun(
-//             Arc::new(crate::ast::FunX {
-//                 path: Arc::new(PathX {
-//                     krate: CrateId::Vstd,
-//                     segments: Arc::new(vec![
-//                         Arc::new("future".to_string()),
-//                         Arc::new("FutureAdditionalSpecFns".to_string()),
-//                         Arc::new("view".to_string()),
-//                     ]),
-//                 }),
-//             }),
-//             None,
-//         ),
-//         Arc::new(vec![ret.clone(), ret_exp.typ.clone()]),
-//         Arc::new(vec![SpannedTyped::new(&stm.span, &ret, ExpX::Var(dest_id.clone()))]),
-//     );
-//     let eq = ExprX::Binary(
-//         air::ast::BinaryOp::Eq,
-//         exp_to_expr(ctx, ret_exp, expr_ctxt)?,
-//         exp_to_expr(ctx, &SpannedTyped::new(&stm.span, &ret, call), expr_ctxt)?,
-//     );
-
-//     *ret_op = Some(async_rete.clone());
-//     Ok(vec![Arc::new(StmtX::Assume(eq.into()))])
-// }
-
-fn try_reveal_opaque_ty_ctor(exp: &Exp) -> Typ {
-    match &exp.x {
-        ExpX::Ctor(Dt::Tuple(len), _, items) => Arc::new(TypX::Datatype(
-            Dt::Tuple(*len),
-            Arc::new(items.iter().map(|x| try_reveal_opaque_ty_ctor(&x.a)).collect()),
-            Arc::new(vec![]),
-        )),
-        ExpX::UnaryOpr(_, exp) => try_reveal_opaque_ty_ctor(exp),
-        ExpX::If(_, exp, _) => try_reveal_opaque_ty_ctor(exp),
-        _ => exp.typ.clone(),
-    }
-}
-
-/// At function returns, we need to tell the SMT solver that the newly created opaque type is indeed the same type
-/// as the returned expression.
-fn opaque_ty_additional_stmts(
-    ctx: &Ctx,
-    state: &mut State,
-    span: &Span,
-    ret_exp_typ: &Typ,
-    ret_typ: &Typ,
-) -> Result<Vec<Stmt>, VirErr> {
-    if let TypX::Boxed(typ) = &**ret_exp_typ {
-        return opaque_ty_additional_stmts(ctx, state, span, typ, ret_typ);
-    }
-
-    let mut stmts = vec![];
-    let mut emit_eq_stmts = || {
-        let ret_expr_typs = typ_to_ids(ctx, &ret_exp_typ);
-        let ret_value_typs = typ_to_ids(ctx, &ret_typ);
-        let decr = ExprX::Binary(
-            air::ast::BinaryOp::Eq,
-            ret_expr_typs[0].clone(),
-            ret_value_typs[0].clone(),
-        );
-        let assume_decr = Arc::new(StmtX::Assume(Arc::new(decr)));
-        let typ = ExprX::Binary(
-            air::ast::BinaryOp::Eq,
-            ret_expr_typs[1].clone(),
-            ret_value_typs[1].clone(),
-        );
-        let assume_typ = Arc::new(StmtX::Assume(Arc::new(typ)));
-        stmts.push(assume_decr);
-        stmts.push(assume_typ);
-    };
-    match (&**ret_typ, &**ret_exp_typ) {
-        (
-            TypX::Datatype(dt_ret_typ, items_ret_typ, _impl_paths_ret_typ),
-            TypX::Datatype(dt_ret_exp_typ, items_ret_exp_typ, _impl_paths_ret_exp_typ),
-        ) => {
-            if items_ret_typ.len() != items_ret_exp_typ.len() {
-                crate::messages::internal_error(
-                    span,
-                    "return exp and return value types has different length",
-                );
-            }
-            if dt_ret_exp_typ != dt_ret_typ {
-                crate::messages::internal_error(
-                    span,
-                    "return exp and return value types has different types",
-                );
-            }
-            for (ret_exp_typ, ret_typ) in items_ret_exp_typ.iter().zip(items_ret_typ.iter()) {
-                stmts.extend(opaque_ty_additional_stmts(ctx, state, span, ret_exp_typ, ret_typ)?);
-            }
-        }
-        (
-            TypX::Opaque { def_path: ret_exp_def_path, args: _ret_exp_args },
-            TypX::Opaque { def_path: ret_typ_def_path, args: _ret_typ_args },
-        ) => {
-            emit_eq_stmts();
-            let ret_exp_opaque_typ = &ctx.opaque_type_map[ret_exp_def_path];
-            let ret_typ_opaque_typ = &ctx.opaque_type_map[ret_typ_def_path];
-
-            let mut ret_exp_projection_map = HashMap::new();
-            let mut ret_typ_projection_map = HashMap::new();
-
-            for (ret_exp_bound, ret_typ_bound) in
-                ret_exp_opaque_typ.x.typ_bounds.iter().zip(ret_typ_opaque_typ.x.typ_bounds.iter())
-            {
-                if let GenericBoundX::TypEquality(trait_path, _, id, proj_typ) = &**ret_exp_bound {
-                    ret_exp_projection_map.insert((trait_path.clone(), id.clone()), proj_typ);
-                }
-                if let GenericBoundX::TypEquality(trait_path, _, id, proj_typ) = &**ret_typ_bound {
-                    ret_typ_projection_map.insert((trait_path.clone(), id.clone()), proj_typ);
-                }
-            }
-            for trait_path_id in ret_exp_projection_map.keys() {
-                if ret_typ_projection_map.contains_key(trait_path_id) {
-                    stmts.extend(opaque_ty_additional_stmts(
-                        ctx,
-                        state,
-                        span,
-                        ret_exp_projection_map[trait_path_id],
-                        ret_typ_projection_map[trait_path_id],
-                    )?);
-                }
-            }
-        }
-        (TypX::Opaque { .. }, _) => {
-            emit_eq_stmts();
-        }
-        (_, TypX::Boxed(typ)) => {
-            return opaque_ty_additional_stmts(ctx, state, span, typ, ret_typ);
-        }
-        _ => {}
-    }
-    Ok(stmts)
 }

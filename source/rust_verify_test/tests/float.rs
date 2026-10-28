@@ -162,7 +162,7 @@ test_verify_one_file_with_options! {
                 let y: f16 = n as f16;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `i32` to `f16`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `as` cast from `i32` to `f16`")
 }
 
 test_verify_one_file_with_options! {
@@ -177,7 +177,7 @@ test_verify_one_file_with_options! {
                 let n: i32 = f as i32;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `f16`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `as` cast from `f16`")
 }
 
 test_verify_one_file_with_options! {
@@ -192,7 +192,7 @@ test_verify_one_file_with_options! {
                 let d: f64 = f as f64;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `f16` to `f64`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `as` cast from `f16` to `f64`")
 }
 
 test_verify_one_bv_file! {
@@ -304,7 +304,7 @@ test_verify_one_file! {
             let x2 = &x;
             let y = -x2;
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: unary op negation of floating point")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support unary negation of floating point")
 }
 
 test_verify_one_file! {

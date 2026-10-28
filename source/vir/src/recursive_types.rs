@@ -262,7 +262,7 @@ fn check_positive_uses(
                         return Err(error(
                             &local.span,
                             format!(
-                                "Type {} recursively uses type {} in a non-positive position",
+                                "type {} recursively uses type {} in a non-positive position",
                                 path_as_friendly_rust_name(&local.my_datatype),
                                 path_as_friendly_rust_name(path)
                             ),
@@ -326,7 +326,7 @@ fn check_positive_uses(
                 (true, _) => Err(error(
                     &local.span,
                     format!(
-                        "Type parameter {} of {} must be declared #[verifier::reject_recursive_types] to be used in a non-positive position",
+                        "type parameter {} of {} must be declared `#[verifier::reject_recursive_types]` to be used in a non-positive position",
                         x,
                         dt_as_friendly_rust_name(&datatype.x.name),
                     ),

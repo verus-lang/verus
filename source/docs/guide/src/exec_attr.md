@@ -40,11 +40,11 @@ Use `#[verus_verify(...)]` to provide hints to the verifier to mark a function
 as `external`, `external_body`, `spinoff_prover`, or specify a different
 resource limit via `rlimit(amount)`.
 
-In addition, you can create a dual mode (spec + exec) function the via
+In addition, you can create a dual mode (spec + exec) function via the
 [`verus_verify(dual_spec)`](exec_to_spec.md) attribute, which will attempt to
 generate a spec function from an executable function.
 
-## Adding proofs inside function
+## Adding proofs inside functions
 
 When a function has the `#[verus_spec(...)]` attribute, we can introduce 
 proofs directly inside executable functions using the proof macros described below.
