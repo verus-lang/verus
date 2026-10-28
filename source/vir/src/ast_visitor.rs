@@ -282,9 +282,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let t = self.visit_typ(t)?;
                 R::ret(|| UnaryOpr::HasResolved(R::get(t)))
             }
-            UnaryOpr::ToDyn(t) => {
+            UnaryOpr::ToDyn(t, impl_paths) => {
                 let t = self.visit_typ(t)?;
-                R::ret(|| UnaryOpr::ToDyn(R::get(t)))
+                R::ret(|| UnaryOpr::ToDyn(R::get(t), impl_paths.clone()))
             }
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
@@ -1185,7 +1185,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             params: ps,
             outer_ret: ort,
             inner_ret: irt,
-            ens_has_return,
             require,
             ensure: (ensure0, ensure1),
             returns,
@@ -1199,6 +1198,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             item_kind,
             attrs,
             body,
+            return_opaque_type_eqs,
             extra_dependencies,
             hidden,
         } = &function.x;
@@ -1217,13 +1217,11 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         let require = self.visit_exprs(require)?;
 
         self.push_scope();
-        if function.x.ens_has_return {
-            let r = R::get_or(&iret, irt);
-            let _ = self.insert_binding(
-                &r.x.name.clone(),
-                ScopeEntry::new_outer_param_ret(&r.x.typ, Some(false), true),
-            );
-        }
+        let r = R::get_or(&iret, irt);
+        let _ = self.insert_binding(
+            &r.x.name.clone(),
+            ScopeEntry::new_outer_param_ret(&r.x.typ, Some(false), true),
+        );
         let ensure0 = self.visit_exprs(ensure0)?;
         let ensure1 = self.visit_exprs(ensure1)?;
         self.pop_scope();
@@ -1235,6 +1233,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         let atomic_update = R::map_opt(atomic_update, &mut |exp| self.visit_expr(exp))?;
         let unwind_spec = R::map_opt(unwind_spec, &mut |us| self.visit_unwind_spec(us))?;
         let body = self.visit_opt_expr(body)?;
+        let return_opaque_type_eqs =
+            R::map_vec(return_opaque_type_eqs, &mut |(opaque, hidden)| {
+                let opaque = self.visit_typ(opaque)?;
+                let hidden = self.visit_typ(hidden)?;
+                R::ret(|| (R::get(opaque), R::get(hidden)))
+            })?;
         self.pop_scope();
 
         let fndef_axioms = self.visit_opt_exprs(fndef_axioms)?;
@@ -1253,7 +1257,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 params: R::get_vec_a(params),
                 outer_ret: R::get(oret),
                 inner_ret: R::get(iret),
-                ens_has_return: *ens_has_return,
                 require: R::get_vec_a(require),
                 ensure: (R::get_vec_a(ensure0), R::get_vec_a(ensure1)),
                 returns: R::get_opt(returns),
@@ -1267,6 +1270,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 item_kind: item_kind.clone(),
                 attrs: attrs.clone(),
                 body: R::get_opt(body),
+                return_opaque_type_eqs: R::get_vec_a(return_opaque_type_eqs),
                 extra_dependencies: extra_dependencies.clone(),
                 hidden: hidden.clone(),
             })

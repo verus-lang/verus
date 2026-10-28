@@ -280,7 +280,7 @@ impl<V> PointsTo<V> {
     }
 
     /// "Forgets" about the value stored behind the pointer.
-    /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
+    /// Updates the `PointsTo` value to [`MemContents::Uninit`].
     /// Note that this is a `proof` function, i.e., it is operationally a no-op in executable code.
     pub proof fn leak_contents(tracked &mut self)
         ensures

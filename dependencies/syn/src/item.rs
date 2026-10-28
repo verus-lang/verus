@@ -2381,7 +2381,7 @@ pub(crate) mod parsing {
             let vis = input.parse::<Visibility>()?;
 
             if input.peek(Token![tracked]) || input.peek(Token![ghost]) {
-                return Err(input.error("a 'union' can only be exec-mode"));
+                return Err(input.error("a `union` can only be exec-mode"));
             }
 
             let union_token = input.parse::<Token![union]>()?;

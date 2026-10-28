@@ -173,7 +173,7 @@ fn trusted_clone() -> TokenStream {
         #[verifier::external_body] /* vattr */
         #[verifier::returns(proof)] /* vattr */
         pub fn clone(#[cfg_attr(verus_keep_ghost, verifier::proof)] &self) -> Self {
-            ensures(|s: Self| #vstd::prelude::equal(*self, s));
+            #vstd::prelude::ensures(|s: Self| #vstd::prelude::equal(*self, s));
             ::core::unimplemented!();
         }
     };
@@ -335,7 +335,7 @@ fn const_fn_stream(field: &Field) -> TokenStream {
     return quote! {
         #[cfg_attr(verus_keep_ghost, verifier::spec)]
         #[cfg_attr(verus_keep_ghost, verifier::external_body)]
-        pub fn #fieldname(&self) -> #fieldtype { unimplemented!() }
+        pub fn #fieldname(&self) -> #fieldtype { ::core::unimplemented!() }
     };
 }
 
@@ -358,7 +358,7 @@ pub fn output_token_types_and_fns(
     inst_impl_token_stream.extend(quote_vstd! { vstd =>
         #[cfg_attr(verus_keep_ghost, verifier::spec)]
         #[cfg_attr(verus_keep_ghost, verifier::external_body)]
-        pub fn id(&self) -> #vstd::tokens::InstanceId { unimplemented!() }
+        pub fn id(&self) -> #vstd::tokens::InstanceId { ::core::unimplemented!() }
     });
 
     for field in &bundle.sm.fields {
@@ -1531,7 +1531,7 @@ fn token_trait_impl_main(
         });
     };
     let add_join_split = |ts: &mut TokenStream| {
-        ts.extend(quote! {
+        ts.extend(quote_vstd! { vstd =>
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             fn join(#[cfg_attr(verus_keep_ghost, verifier::proof)] &mut self, #[cfg_attr(verus_keep_ghost, verifier::proof)] other: Self)
@@ -1540,22 +1540,22 @@ fn token_trait_impl_main(
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
-            fn split(#[cfg_attr(verus_keep_ghost, verifier::proof)] &mut self, count: nat) -> Self
+            fn split(#[cfg_attr(verus_keep_ghost, verifier::proof)] &mut self, count: #vstd::prelude::nat) -> Self
             { ::core::unimplemented!(); }
 
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
-            fn weaken_shared(#[cfg_attr(verus_keep_ghost, verifier::proof)] &self, count: nat) -> &Self
+            fn weaken_shared(#[cfg_attr(verus_keep_ghost, verifier::proof)] &self, count: #vstd::prelude::nat) -> &Self
             { ::core::unimplemented!(); }
         });
     };
     let add_weaken = |ts: &mut TokenStream| {
-        ts.extend(quote! {
+        ts.extend(quote_vstd! { vstd =>
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
-            fn weaken(#[cfg_attr(verus_keep_ghost, verifier::proof)] &self, count: nat) -> Self
+            fn weaken(#[cfg_attr(verus_keep_ghost, verifier::proof)] &self, count: #vstd::prelude::nat) -> Self
             { ::core::unimplemented!(); }
         });
     };

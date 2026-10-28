@@ -142,6 +142,14 @@ pub type ReportLongRunning<'a> =
 
 const GET_VERSION_RESPONSE_PREFIX: &str = "(:version";
 
+/// Extracts the version number from a `(get-info :version)` response.
+/// Z3 built with a git hash appends a suffix: `(:version "4.16.0 - build hashcode ...")`
+pub(crate) fn parse_version_response(line: &str) -> Option<&str> {
+    let value = line.strip_prefix(GET_VERSION_RESPONSE_PREFIX)?;
+    let value = value.trim_end().strip_suffix(')').unwrap_or(value);
+    value.trim_matches(&[' ', '"'][..]).split_whitespace().next()
+}
+
 pub(crate) fn smt_check_assertion<'ctx>(
     context: &mut Context,
     diagnostics: &impl Diagnostics,
@@ -181,10 +189,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
     let early_smt_output = context.get_smt_process().send_commands(smt_data);
     context.time_smt_init += smt_init_start_time.elapsed();
     for line in early_smt_output {
-        if line.starts_with(GET_VERSION_RESPONSE_PREFIX) {
+        if let Some(version) = parse_version_response(&line) {
             if let Some(expected_version) = &context.expected_solver_version {
-                let value: &str = &line[GET_VERSION_RESPONSE_PREFIX.len()..line.len() - 1];
-                let version = value.trim_matches(&[' ', '"'][..]);
                 if version != expected_version.as_str() {
                     let solver = context.solver.name();
                     diagnostics.report(&context.message_interface.unexpected_solver_version(
@@ -420,6 +426,40 @@ pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, Validit
     Ok(rlimit_count)
 }
 
+/// Check whether the assertion with label `infos[i].label` is violated on its own:
+/// under `(push)`, disable every other still-enabled label and re-run `check-sat`.
+/// `sat` means the violation is attributable to this assertion; `unsat` means the
+/// label was merely assigned `true` by the solver without its assertion failing.
+/// Anything else (unknown, timeout, unexpected output) is treated conservatively as
+/// confirmed, so that an error is never suppressed by a solver hiccup.
+fn confirm_label(context: &mut Context, infos: &Vec<AssertionInfo>, i: usize) -> bool {
+    context.smt_log.log_push();
+    for (j, info) in infos.iter().enumerate() {
+        if j != i && !info.disabled {
+            context.smt_log.log_assert(&None, &mk_not(&ident_var(&info.label)));
+        }
+    }
+    if matches!(context.solver, SmtSolver::Z3) {
+        context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
+    }
+    context.smt_log.log_word("check-sat");
+    if matches!(context.solver, SmtSolver::Z3) {
+        context.smt_log.log_set_option("rlimit", "0");
+    }
+    context.smt_log.log_pop();
+    let smt_data = context.smt_log.take_pipe_data();
+    let smt_output = context.get_smt_process().send_commands(smt_data);
+    let mut result = true;
+    for line in smt_output {
+        if line == "unsat" {
+            result = false;
+        } else if line == "sat" {
+            result = true;
+        }
+    }
+    result
+}
+
 fn smt_get_model(
     context: &mut Context,
     mut infos: Vec<AssertionInfo>,
@@ -446,22 +486,63 @@ fn smt_get_model(
     for def in model.iter() {
         model_defs.insert(def.name.clone(), def.clone());
     }
-    for info in infos.iter_mut() {
-        if let Some(def) = model_defs.get(&info.label) {
-            if *def.body == "true" {
-                discovered_error = Some(info.clone());
-                discovered_assert_id = Some(info.assert_id.clone());
+    // Each assertion A_i is encoded as (label_i => A_i), so a violated assertion has
+    // label_i = true in the model. The converse does not hold: a label that is
+    // irrelevant to the violation is unconstrained, and the solver is free to assign
+    // it true as well. Z3's (partial) models leave such labels out, but cvc5 assigns a
+    // value to every constant, so several labels can be true at once. When that
+    // happens, confirm a candidate before reporting it: with every other enabled label
+    // disabled, the query must still be satisfiable.
+    let candidates: Vec<usize> = infos
+        .iter()
+        .enumerate()
+        .filter(|(_, info)| {
+            !info.disabled
+                && model_defs.get(&info.label).map(|def| *def.body == "true").unwrap_or(false)
+        })
+        .map(|(i, _)| i)
+        .collect();
+    let needs_confirmation = candidates.len() > 1;
+    let mut spurious: usize = 0;
+    for &i in candidates.iter() {
+        if needs_confirmation && !confirm_label(context, &infos, i) {
+            spurious += 1;
+            continue;
+        }
+        let info = &mut infos[i];
+        discovered_error = Some(info.clone());
+        discovered_assert_id = Some(info.assert_id.clone());
 
-                // Disable this label in subsequent check-sat calls to get additional errors
-                info.disabled = true;
-                let disable_label = mk_not(&ident_var(&info.label));
-                context.smt_log.log_assert(&None, &disable_label);
+        // Disable this label in subsequent check-sat calls to get additional errors
+        info.disabled = true;
+        let disable_label = mk_not(&ident_var(&info.label));
+        context.smt_log.log_assert(&None, &disable_label);
 
-                break;
-            }
+        break;
+    }
+    if context.debug && spurious > 0 {
+        println!("ignored {} spuriously true assertion label(s) in model", spurious);
+    }
+    // If no candidate is confirmed (each isolated re-check can come back `unsat` when the
+    // labels only fail jointly), the query itself was still satisfiable or unknown, so an
+    // error must be reported: blame the first candidate, as without confirmation. This
+    // affects which assertion is blamed, not whether one is.
+    if discovered_error.is_none() {
+        if let Some(&i) = candidates.first() {
+            let info = &mut infos[i];
+            discovered_error = Some(info.clone());
+            discovered_assert_id = Some(info.assert_id.clone());
+            info.disabled = true;
+            let disable_label = mk_not(&ident_var(&info.label));
+            context.smt_log.log_assert(&None, &disable_label);
         }
     }
-    let discovered_error = discovered_error.expect("discovered_error");
+    let Some(discovered_error) = discovered_error else {
+        // no assertion label is true in the model: report the failure without a location,
+        // as when no model is available
+        context.state = ContextState::FoundInvalid(infos, None);
+        return ValidityResult::Invalid(None, None, None);
+    };
     let mut axiom_infos: Vec<Arc<AxiomInfo>> =
         context.axiom_infos.map().values().cloned().collect();
     axiom_infos.sort_by_key(|info| info.label.clone());

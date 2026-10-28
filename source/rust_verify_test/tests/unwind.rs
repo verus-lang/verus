@@ -379,7 +379,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare an unwind specification")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare an `unwind` specification")
 }
 
 test_verify_one_file! {
@@ -388,7 +388,7 @@ test_verify_one_file! {
             no_unwind
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "an 'unwind' specification can only be given on exec functions")
+    } => Err(err) => assert_vir_error_msg(err, "an `unwind` specification can only be given on exec functions")
 }
 
 test_verify_one_file! {
@@ -397,7 +397,7 @@ test_verify_one_file! {
             no_unwind
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "an 'unwind' specification can only be given on exec functions")
+    } => Err(err) => assert_vir_error_msg(err, "an `unwind` specification can only be given on exec functions")
 }
 
 test_verify_one_file! {
@@ -406,7 +406,7 @@ test_verify_one_file! {
             no_unwind when j >= 3
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "an 'unwind' specification can only be given on exec functions")
+    } => Err(err) => assert_vir_error_msg(err, "an `unwind` specification can only be given on exec functions")
 }
 
 test_verify_one_file! {
@@ -614,6 +614,41 @@ test_verify_one_file! {
             let _ = x.checked_div_euclid(y);
             let _ = x.checked_rem(y);
             let _ = x.checked_rem_euclid(y);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] vstd_len_and_view_accessors_no_unwind verus_code! {
+        use vstd::prelude::*;
+
+        fn slice_operations<T>(s: &[T], a: &[T; 4])
+            opens_invariants none
+            no_unwind
+        {
+            let _ = s.len();
+            let _ = s.is_empty();
+            let _ = a.as_slice();
+        }
+
+        fn str_operations(s: &str, t: &String)
+            opens_invariants none
+            no_unwind
+        {
+            let _ = s.len();
+            let _ = s.is_empty();
+            let _ = s.as_bytes();
+            let _ = t.as_str();
+            let _ = t.is_empty();
+        }
+
+        fn vec_operations<T>(v: &mut Vec<T>)
+            opens_invariants none
+            no_unwind
+        {
+            let _ = v.is_empty();
+            let _ = v.as_slice();
+            let _ = v.as_mut_slice();
         }
     } => Ok(())
 }

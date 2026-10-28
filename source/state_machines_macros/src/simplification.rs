@@ -939,8 +939,8 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
         MonoidElt::SingletonKV(key, Some(val)) => Expr::Verbatim(quote! {
             (#cur).contains_pair(#key, #val)
         }),
-        MonoidElt::SingletonMultiset(e) => Expr::Verbatim(quote! {
-            (#cur).count(#e) >= spec_literal_nat("1")
+        MonoidElt::SingletonMultiset(e) => Expr::Verbatim(quote_vstd! { vstd =>
+            (#cur).count(#e) >= #vstd::prelude::spec_literal_nat("1")
         }),
         MonoidElt::SingletonSet(e) => Expr::Verbatim(quote! {
             (#cur).contains(#e)
@@ -1039,8 +1039,8 @@ pub(crate) fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) ->
                 (#cur).difference(#e)
             }),
 
-            ShardableType::Count => Expr::Verbatim(quote! {
-                (((#cur) - (#e)) as nat)
+            ShardableType::Count => Expr::Verbatim(quote_vstd! { vstd =>
+                (((#cur) - (#e)) as #vstd::prelude::nat)
             }),
 
             ShardableType::Bool => Expr::Verbatim(quote! {

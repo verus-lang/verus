@@ -7,11 +7,11 @@ verus! {
 
 // Note: many of the exec translations are currently unverified, even though the exec functions have specs in vstd.
 // This is because HashSet<K>::deep_view() is quite hard to work with.
-// E.g., the correctness of the translations requires reasoning that K::deep_view does not create collisions.
+// They compute with K's Hash/Eq, which agree with K::deep_view() by `K: ObeysDeepEq`.
 broadcast use {crate::group_vstd_default, crate::std_specs::hash::group_hash_axioms};
 
 /// Impls for shared traits
-impl<'a, K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToRef<
+impl<'a, K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToRef<
     &'a HashSet<K>,
 > for &'a HashSet<K> {
     #[inline(always)]
@@ -20,7 +20,7 @@ impl<'a, K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToRef<
     }
 }
 
-impl<'a, K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToOwned<
+impl<'a, K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToOwned<
     HashSet<K>,
 > for &'a HashSet<K> {
     #[verifier::external_body]
@@ -34,7 +34,7 @@ impl<'a, K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToOwned<
     }
 }
 
-impl<K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> DeepViewClone for HashSet<K> {
+impl<K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq> DeepViewClone for HashSet<K> {
     #[verifier::external_body]
     #[inline(always)]
     fn deep_clone(&self) -> Self {
@@ -46,29 +46,33 @@ impl<K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> DeepViewClone
     }
 }
 
-impl<'a, K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecEq<
-    'a,
-> for &'a HashSet<K> where &'a K: ExecSpecEq<'a, Other = &'a K> {
-    type Other = &'a HashSet<K>;
+/// `HashSet`'s `==` compares lengths and then membership,
+/// which is deep-view equality when `T` obeys deep equality.
+#[cfg(verus_keep_ghost)]
+impl<
+    T: ObeysDeepEq + std::hash::Hash + std::cmp::Eq,
+    S: std::hash::BuildHasher,
+    A: core::alloc::Allocator,
+> crate::std_specs::cmp::PartialEqSpecImpl for HashSet<T, S, A> {
+    open spec fn obeys_eq_spec() -> bool {
+        crate::std_specs::hash::builds_valid_hashers::<S>()
+    }
 
-    #[verifier::external_body]
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        if this.len() != other.len() {
-            return false;
-        }
-        for k in this.iter() {
-            if !other.contains(k) {
-                return false;
-            }
-        }
-        true
+    open spec fn eq_spec(&self, other: &Self) -> bool {
+        self.deep_view() == other.deep_view()
     }
 }
 
-impl<'a, K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecLen for &'a HashSet<
-    K,
-> {
+impl<K: ObeysDeepEq + std::hash::Hash + std::cmp::Eq> ObeysDeepEq for HashSet<K> {
+    proof fn lemma_obeys_deep_eq() {
+        reveal(crate::laws_eq::obeys_deep_eq);
+    }
+}
+
+impl<
+    'a,
+    K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+> ExecSpecLen for &'a HashSet<K> {
     #[inline(always)]
     #[verifier::external_body]
     fn exec_len(self) -> (res: usize)
@@ -122,7 +126,7 @@ pub trait ExecSpecSetDifference<'a, Out: Sized + DeepView>: Sized + DeepView + T
 }
 
 /// Impls for executable versions of Map methods
-impl<K: DeepView + std::hash::Hash + std::cmp::Eq> ExecSpecSetEmpty for HashSet<K> {
+impl<K: ObeysDeepEq + std::hash::Hash + std::cmp::Eq> ExecSpecSetEmpty for HashSet<K> {
     #[inline(always)]
     fn exec_empty() -> (res: Self)
         ensures
@@ -132,7 +136,9 @@ impl<K: DeepView + std::hash::Hash + std::cmp::Eq> ExecSpecSetEmpty for HashSet<
     }
 }
 
-impl<'a, K: DeepView + std::hash::Hash + std::cmp::Eq> ExecSpecSetContains<'a> for &'a HashSet<K> {
+impl<'a, K: ObeysDeepEq + std::hash::Hash + std::cmp::Eq> ExecSpecSetContains<'a> for &'a HashSet<
+    K,
+> {
     type Elem = K;
 
     #[verifier::external_body]
@@ -146,7 +152,7 @@ impl<'a, K: DeepView + std::hash::Hash + std::cmp::Eq> ExecSpecSetContains<'a> f
 }
 
 impl<'a, K> ExecSpecSetInsert<'a, HashSet<K>> for &'a HashSet<K> where
-    K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
  {
     type Elem = K;
 
@@ -163,7 +169,7 @@ impl<'a, K> ExecSpecSetInsert<'a, HashSet<K>> for &'a HashSet<K> where
 }
 
 impl<'a, K> ExecSpecSetRemove<'a, HashSet<K>> for &'a HashSet<K> where
-    K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
  {
     type Elem = K;
 
@@ -180,7 +186,7 @@ impl<'a, K> ExecSpecSetRemove<'a, HashSet<K>> for &'a HashSet<K> where
 }
 
 impl<'a, K> ExecSpecSetIntersect<'a, HashSet<K>> for &'a HashSet<K> where
-    K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
  {
     #[verifier::external_body]
     #[inline(always)]
@@ -199,7 +205,7 @@ impl<'a, K> ExecSpecSetIntersect<'a, HashSet<K>> for &'a HashSet<K> where
 }
 
 impl<'a, K> ExecSpecSetUnion<'a, HashSet<K>> for &'a HashSet<K> where
-    K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
  {
     #[verifier::external_body]
     #[inline(always)]
@@ -216,7 +222,7 @@ impl<'a, K> ExecSpecSetUnion<'a, HashSet<K>> for &'a HashSet<K> where
 }
 
 impl<'a, K> ExecSpecSetDifference<'a, HashSet<K>> for &'a HashSet<K> where
-    K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
  {
     #[verifier::external_body]
     #[inline(always)]

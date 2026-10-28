@@ -65,7 +65,7 @@ verification results:: 0 verified, 1 errors
 ## 3. Compile the program
 
 The command above only verifies the code, but does not compile it. If you also want to compile
-it to a binary, you can `verus` with the `--compile` flag.
+it to a binary, you can run `verus` with the `--compile` flag.
 
 If on macOS, Linux, or similar system, run:
 

@@ -11,11 +11,12 @@ use verus_state_machines_macros::tokenized_state_machine;
 #[cfg(verus_verified_tsm)]
 use verus_state_machines_macros::verified_tokenized_state_machine as tokenized_state_machine;
 
+verus! {
 // TODO make T generic
-#[verifier::verify]
 pub struct T {
     t: u8,
 }
+} // verus!
 
 tokenized_state_machine!(RwLock {
     fields {

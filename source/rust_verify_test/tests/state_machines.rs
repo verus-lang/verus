@@ -3185,9 +3185,9 @@ test_verify_tsm! {
                 // this should derive a contradiction if not for the recursion checking
             }
         }}
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
     // The checked macro reports the cycle twice (lemma and its use in a generated proof).
-    ; verified => Err(err) => assert_any_vir_error_msg(err, "recursive function must have a decreases clause")
+    ; verified => Err(err) => assert_any_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_tsm! {
@@ -3219,7 +3219,7 @@ test_verify_tsm! {
             inst.ro(&token);
         }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_tsm! {
@@ -11286,4 +11286,74 @@ test_verify_one_file_with_options! {
             let tracked t = S::local_ready::pick::run(t, 1);
         }
     } => Err(e) => assert_rust_error_msg(e, "cannot find `pick` in `local_ready`")
+}
+
+test_verify_one_file! {
+    #[test] special_op_in_block_issue3197 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Z {
+            fields {
+                #[sharding(variable)] pub fresh: bool,
+                #[sharding(option)] pub opt: Option<u8>,
+            }
+            #[invariant] pub fn inv(&self) -> bool { self.fresh ==> self.opt is None }
+            init!{ initialize() { init fresh = true; init opt = None; } }
+            transition!{ two() {
+                require(pre.fresh);
+                update fresh = false;
+                { let x: u8 = 7; add opt += Some(x); }
+                add opt += Some(8);
+            } }
+            #[inductive(initialize)] fn init_inductive(post: Self) { }
+            #[inductive(two)] fn two_inductive(pre: Self, post: Self) { }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "unable to prove inherent safety condition: to add a value Some(_), field must be None before the update")
+}
+
+test_verify_one_file! {
+    #[test] special_op_in_block2_issue3197 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Z {
+            fields {
+                #[sharding(variable)] pub fresh: bool,
+                #[sharding(map)] pub m: Map<u8, u8>,
+            }
+            #[invariant] pub fn inv(&self) -> bool { self.fresh ==> self.m =~= map![] }
+            init!{ initialize() { init fresh = true; init m = Map::<u8, u8>::empty(); } }
+            transition!{ two() {
+                require(pre.fresh);
+                update fresh = false;
+                { let x: u8 = 7; add m += [0 => 100]; }
+                add m += [0 => 101];
+            } }
+            #[inductive(initialize)] fn init_inductive(post: Self) { }
+            #[inductive(two)] fn two_inductive(pre: Self, post: Self) { }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "unable to prove inherent safety condition: the given key must be absent from the map before the update")
+}
+
+test_verify_one_file! {
+    #[test] special_op_in_block3_issue3197 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Z {
+            fields {
+                #[sharding(variable)] pub fresh: bool,
+                #[sharding(map)] pub m: Map<u8, u8>,
+            }
+            #[invariant] pub fn inv(&self) -> bool { self.fresh ==> self.m =~= map![] }
+            init!{ initialize() { init fresh = true; init m = Map::<u8, u8>::empty(); } }
+            transition!{ two() {
+                require(pre.fresh);
+                update fresh = false;
+                { let x: u8 = 7; add m += [0 => 100]; }
+                add m += [1 => 101];
+            } }
+            #[inductive(initialize)] fn init_inductive(post: Self) { }
+            #[inductive(two)] fn two_inductive(pre: Self, post: Self) { }
+        }}
+        proof fn good() {
+            let tracked (Tracked(inst), Tracked(mut f), Tracked(o)) = Z::Instance::initialize();
+            let tracked (Tracked(a), Tracked(b)) = inst.two(&mut f);
+            assert(a.key() == 0);
+            assert(b.key() == 1);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

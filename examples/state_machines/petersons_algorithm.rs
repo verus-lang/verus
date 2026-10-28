@@ -6,13 +6,14 @@ use verus_state_machines_macros::*;
 use verus_state_machines_macros::verified_tokenized_state_machine as tokenized_state_machine;
 use vstd::prelude::*;
 
-#[verifier::verify]
+verus! {
 pub enum ThreadState {
     Idle,
     SetFlag,
     Waiting,
     Critical,
 }
+} // verus!
 
 tokenized_state_machine! { Petersons<T> {
     fields {

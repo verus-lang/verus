@@ -29,16 +29,11 @@ impl<T: DeepViewClone> DeepViewClone for Option<T> {
     }
 }
 
-impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Option<T> where &'a T: ExecSpecEq<'a, Other = &'a T> {
-    type Other = &'a Option<T>;
+impl<T: ObeysDeepEq> ObeysDeepEq for Option<T> {
+    proof fn lemma_obeys_deep_eq() {
+        broadcast use crate::laws_eq::lemma_option_obeys_deep_eq;
 
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        match (this, other) {
-            (Some(t1), Some(t2)) => <&'a T>::exec_eq(t1, t2),
-            (None, None) => true,
-            _ => false,
-        }
+        T::lemma_obeys_deep_eq();
     }
 }
 

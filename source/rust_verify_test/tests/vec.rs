@@ -66,3 +66,14 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_vec_as_ref verus_code! {
+        use vstd::prelude::*;
+        fn test(v: Vec<u8>) {
+            let s: &[u8] = v.as_ref();
+            assert(s@ == v@);
+            assert(s@.len() == 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

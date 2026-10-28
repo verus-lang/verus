@@ -266,7 +266,7 @@ The analysis is pretty weak right now but could be improved.
 
 use crate::ast::{
     Arm, ArrayKind, BoundsCheck, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
-    FunWithVis, Function, Ident, Label, Mode, ModeWrapperMode, Params, Path, Pattern,
+    FunWithVis, Function, Ident, Krate, Label, Mode, ModeWrapperMode, Params, Path, Pattern,
     PatternBinding, PatternX, Place, PlaceX, Primitive, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
     TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate,
     VariantCheck, VirErr,
@@ -288,29 +288,87 @@ use air::scope_map::ScopeMap;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
+/// Some inputs needed for the resolution analysis
+pub struct ResolutionInfo {
+    pub(crate) read_kind_finals: ReadKindFinals,
+    pub(crate) typ_inv_info: crate::modes::TypeInvInfo,
+    pub(crate) var_modes: HashMap<VarIdent, Mode>,
+    pub(crate) temporary_modes: HashMap<AstId, Mode>,
+    pub(crate) dual_mode: bool,
+}
+
+pub fn krate_infer_resolution(
+    krate: &Krate,
+    infos: &HashMap<Fun, Arc<ResolutionInfo>>,
+) -> Result<Krate, Vec<VirErr>> {
+    let mut datatypes = HashMap::new();
+    for datatype in krate.datatypes.iter() {
+        let Dt::Path(path) = datatype.x.name.clone() else {
+            return Err(vec![crate::messages::internal_error(
+                &datatype.span,
+                "Dt::Tuple in datatypes before `ast_simplify`",
+            )]);
+        };
+        datatypes.insert(path, datatype.clone());
+    }
+    let mut functions = HashMap::new();
+    for function in krate.functions.iter() {
+        functions.insert(function.x.name.clone(), function.clone());
+    }
+    let rtypes = ResolutionTypes::new(&datatypes);
+
+    let mut krate = krate.clone();
+    let mut errors = vec![];
+    for function in &mut Arc::make_mut(&mut krate).functions {
+        if let Some(res_info) = infos.get(&function.x.name) {
+            let new_body = infer_resolution(
+                &function.x.params,
+                &function.x.body.as_ref().unwrap(),
+                res_info,
+                &datatypes,
+                &functions,
+                function.x.owning_module.as_ref().unwrap(),
+                &rtypes,
+            );
+            match new_body {
+                Ok(new_body) => {
+                    Arc::make_mut(function).x.body = Some(new_body);
+                }
+                Err(err) => {
+                    errors.push(err);
+                }
+            }
+        }
+    }
+    if errors.len() > 0 { Err(errors) } else { Ok(krate) }
+}
+
 /// Updates the given function body to include assume(has_resolved(...)) nodes
 /// at the appropriate places.
 /// On the side, also handles some work related to user_defined_type_invariants.
 ///
 /// This relies on the AstIds of the given Expr being unique, but it also destroys this property
 /// in the transformation, returning an Expr that may have duplicate AstIds.
-pub(crate) fn infer_resolution(
+fn infer_resolution(
     params: &Params,
     body: &Expr,
-    read_kind_finals: &ReadKindFinals,
+    info: &ResolutionInfo,
     datatypes: &HashMap<Path, Datatype>,
     functions: &HashMap<Fun, Function>,
-    typ_inv_info: &crate::modes::TypeInvInfo,
     module: &Path,
-    var_modes: &HashMap<VarIdent, Mode>,
-    temporary_modes: &HashMap<AstId, Mode>,
     rtypes: &ResolutionTypes,
-    dual_mode: bool,
 ) -> Result<Expr, VirErr> {
-    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts) =
-        new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes, temporary_modes)?;
+    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts) = new_cfg(
+        params,
+        body,
+        &info.read_kind_finals,
+        datatypes,
+        functions,
+        &info.var_modes,
+        &info.temporary_modes,
+    )?;
     //println!("{:}", pretty_cfg(&cfg));
-    let resolutions = if dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
+    let resolutions = if info.dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
     apply_resolutions(
         &cfg,
         params,
@@ -318,7 +376,7 @@ pub(crate) fn infer_resolution(
         resolutions,
         assigns_to_resolve,
         typ_inv_obligations,
-        typ_inv_info,
+        &info.typ_inv_info,
         module,
     )
 }
@@ -779,10 +837,17 @@ impl<'a> Builder<'a> {
             | ExprX::Nondeterministic => Maybe::Some(bb),
 
             ExprX::AssertAssume { .. }
-            | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
             | ExprX::AssertBy { .. }
             | ExprX::AssertQuery { .. }
             | ExprX::AssertCompute(..) => {
+                let idx = self.basic_blocks[bb].instructions.len();
+                self.asserts.push(((bb, idx), expr.clone()));
+                Maybe::Some(bb)
+            }
+
+            ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: _, expr, fun: _ } => {
+                bb = unwrap!(self.build(expr, bb));
+
                 let idx = self.basic_blocks[bb].instructions.len();
                 self.asserts.push(((bb, idx), expr.clone()));
                 Maybe::Some(bb)
@@ -926,7 +991,7 @@ impl<'a> Builder<'a> {
                 let thn_position = AstPosition::Before(thn.span.id);
                 let els_position = match els {
                     Some(els) => AstPosition::Before(els.span.id),
-                    None => AstPosition::After(span_id),
+                    None => AstPosition::AfterBool(cond.span.id, false),
                 };
                 let join_position = AstPosition::After(span_id);
 
@@ -1305,6 +1370,7 @@ impl<'a> Builder<'a> {
                 Maybe::Some(bb)
             }
             StmtX::Decl { pattern, mode: _, init: Some(init), els, assert_irrefutable: _ } => {
+                check_illegal_muts(pattern, &self.locals.datatypes, &mut self.errors);
                 let tinv = if pattern_has_mut(pattern) { TypInv::PatternError } else { TypInv::No };
                 let (cpt, bb) = unwrap!(self.build_place_typed(init, bb, tinv));
 
@@ -1390,7 +1456,7 @@ impl<'a> Builder<'a> {
                                         self.typ_inv_obligations.push((p.span.id, typ_inv_fun));
                                     }
                                     TypInv::PatternError => {
-                                        self.errors.push(error(&p.span, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant"));
+                                        self.errors.push(error(&p.span, "Verus does not currently support using a pattern to take a mutable reference to a field of a datatype that has a declared type invariant"));
                                     }
                                     TypInv::No => unreachable!(),
                                 }
@@ -1656,6 +1722,9 @@ impl<'a> Builder<'a> {
             unreachable!();
         };
 
+        for arm in arms.iter() {
+            check_illegal_muts(&arm.x.pattern, &self.locals.datatypes, &mut self.errors);
+        }
         let tinv = if arms.iter().any(|arm| pattern_has_mut(&arm.x.pattern)) {
             TypInv::PatternError
         } else {
@@ -1975,7 +2044,8 @@ impl<'a> Builder<'a> {
             TypX::Datatype(dt, ..) => get_typ_inv_fun_dt(&self.locals.datatypes, dt),
             _ => {
                 dbg!(&p.typ);
-                self.errors.push(error(&p.span, "Verus Internal Error: get_typ_inv_fun failed"));
+                self.errors
+                    .push(crate::messages::internal_error(&p.span, "`get_typ_inv_fun` failed"));
                 None
             }
         }
@@ -2001,9 +2071,9 @@ impl<'a> Builder<'a> {
                 ));
             }
             ComputedPlaceTyped::Ghost(_) => {
-                self.errors.push(error(
+                self.errors.push(crate::messages::internal_error(
                     span,
-                    "Verus Internal Error: inconsistent state, move out of ghost place",
+                    "inconsistent state, move out of ghost place",
                 ));
             }
             ComputedPlaceTyped::Exact(_) => unreachable!(),
@@ -2108,28 +2178,38 @@ fn moves_and_muts_for_pattern(
                 }
             }
             PatternX::Constructor(dt, variant, patterns) => {
-                if let Some(_typ_inv_fun) = get_typ_inv_fun_dt(datatypes, dt) {
-                    if let Some(span) = crate::patterns::pattern_find_mut_binding(pattern) {
-                        errors.push(error(&pattern.span, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant").secondary_label(&span, "mutable binding here"));
+                let has_dtor = match dt {
+                    Dt::Tuple(_) => false,
+                    Dt::Path(path) => datatypes[path].x.destructor,
+                };
+
+                if !has_dtor {
+                    for binder in patterns.iter() {
+                        let field_typ = binder.a.typ.clone();
+                        let proj = ProjectionTyped::StructField(
+                            FieldOpr {
+                                datatype: dt.clone(),
+                                variant: variant.clone(),
+                                field: binder.name.clone(),
+                                get_variant: false,
+                                check: crate::ast::VariantCheck::None,
+                            },
+                            field_typ,
+                        );
+
+                        projs.push(proj);
+                        moves_and_muts_for_pattern_rec(
+                            &binder.a, projs, out, datatypes, modes, errors,
+                        );
+                        projs.pop();
                     }
-                }
-
-                for binder in patterns.iter() {
-                    let field_typ = binder.a.typ.clone();
-                    let proj = ProjectionTyped::StructField(
-                        FieldOpr {
-                            datatype: dt.clone(),
-                            variant: variant.clone(),
-                            field: binder.name.clone(),
-                            get_variant: false,
-                            check: crate::ast::VariantCheck::None,
-                        },
-                        field_typ,
-                    );
-
-                    projs.push(proj);
-                    moves_and_muts_for_pattern_rec(&binder.a, projs, out, datatypes, modes, errors);
-                    projs.pop();
+                } else {
+                    // For a struct with a destructor, it's not possible to take moves,
+                    // only mut refs. We also need to handle this as a whole place in our analysis
+                    // so we check if there are any mutations and then stop here.
+                    if pattern_has_mut(pattern) {
+                        out.push((projs.clone(), ByRef::MutRef));
+                    }
                 }
             }
             PatternX::Or(pat1, pat2) => {
@@ -2175,6 +2255,45 @@ fn moves_and_muts_for_pattern(
     let mut out = vec![];
     moves_and_muts_for_pattern_rec(pattern, &mut vec![], &mut out, datatypes, modes, errors);
     out
+}
+
+/// Check for mutable borrows inside datatype structs
+fn check_illegal_muts(
+    pattern: &Pattern,
+    datatypes: &HashMap<Path, Datatype>,
+    errors: &mut Vec<VirErr>,
+) {
+    match &pattern.x {
+        PatternX::Wildcard => {}
+        PatternX::Var(_binding) => {}
+        PatternX::Binding { binding: _, sub_pat } => check_illegal_muts(sub_pat, datatypes, errors),
+        PatternX::Constructor(dt, _variant, patterns) => {
+            if let Some(_typ_inv_fun) = get_typ_inv_fun_dt(datatypes, dt) {
+                if let Some(span) = crate::patterns::pattern_find_mut_binding(pattern) {
+                    errors.push(error(&pattern.span, "Verus does not currently support using a pattern to take a mutable reference to a field of a datatype that has a declared type invariant").secondary_label(&span, "`ref mut` binding here"));
+                }
+                // Can skip recursing; either we already added an error, or there are no
+                // mutable bindings in this node.
+                return;
+            }
+
+            for binder in patterns.iter() {
+                check_illegal_muts(&binder.a, datatypes, errors);
+            }
+        }
+        PatternX::Or(pat1, pat2) => {
+            check_illegal_muts(pat1, datatypes, errors);
+            check_illegal_muts(pat2, datatypes, errors);
+        }
+        PatternX::Expr(_e) => {}
+        PatternX::Range(_lower, _upper) => {}
+        PatternX::ImmutRef(p) | PatternX::MutRef(p) => check_illegal_muts(p, datatypes, errors),
+        PatternX::Slice(pats) => {
+            for p in pats.iter() {
+                check_illegal_muts(p, datatypes, errors);
+            }
+        }
+    }
 }
 
 ////// Place trees
@@ -2273,6 +2392,11 @@ impl<'a> LocalCollection<'a> {
                         }
                         Dt::Path(path) => {
                             let datatype = &datatypes[path];
+
+                            // Sanity check that we haven't been asked to split a datatype
+                            // with a nontrivial destructor.
+                            assert!(!datatype.x.destructor);
+
                             let fields = datatype
                                 .x
                                 .variants

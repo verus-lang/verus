@@ -27,7 +27,7 @@ they're equal.  The last quantifier is manually triggered on `f(x, y)`, but it
 then introduces two more expressions that have a similar shape, namely `f(x +
 1, 2 * y)` and `f(2 * x, y + x)`.  Each of these has new arguments to `f`, so
 this will cause quantifier 3 to trigger again, creating an infinite cycle of
-instantations.  Notice that each such instantiation will also cause quantifier
+instantiations.  Notice that each such instantiation will also cause quantifier
 2 to trigger as well.
 
 If we run Verus on this example, it will quickly time out.  When this happens, you
@@ -94,10 +94,10 @@ another instantiation (of the same or a different quantifier) `n`.  This heurist
 weight on quantifiers whose instantiations themselves cause other expensive instantiations.  By default,
 the profiler will sort by the product of these two metrics.
 
-In the example above, we see that the top quantifier is quantifer 3 in the Verus code, which is indeed the 
+In the example above, we see that the top quantifier is quantifier 3 in the Verus code, which is indeed the 
 troublemaker.  The use of the cost metric elevates it above quantifier 2, which had the same number of 
 instantiations but is really an "innocent bystander" in this scenario.  And both of these quantifiers
-are instantiated vastly more than quantifier 3, indicating that quantifier 3 is not the source of the 
+are instantiated vastly more than quantifier 1, indicating that quantifier 1 is not the source of the 
 problem.  If all of the quantifiers have a small number of instantiations, that may be a sign that 
 quantifier instantiation is not the underlying source of the solver's poor performance.
 

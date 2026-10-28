@@ -9,8 +9,8 @@ use crate::ast::{
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
 use crate::ast_util::{
-    QUANT_FORALL, bitwidth_to_signed_type_string, bool_typ, int_typ, types_equal, undecorate_typ,
-    unit_typ,
+    QUANT_FORALL, bitwidth_to_signed_type_string, bool_typ, int_typ, is_unit, types_equal,
+    undecorate_typ, unit_typ,
 };
 use crate::context::Ctx;
 use crate::def::{self, Spanned};
@@ -543,12 +543,9 @@ impl PreLocalDeclKind {
         match self {
             PreLocalDeclKind::Immutable(Immutable(imm)) => {
                 if let Some(span) = mutbl {
-                    Err(error(
+                    Err(crate::messages::internal_error(
                         span,
-                        format!(
-                            "Verus Internal Error: assignment for immutable decl kind {:?}",
-                            imm
-                        ),
+                        format!("assignment for immutable decl kind {:?}", imm),
                     ))
                 } else {
                     Ok(imm)
@@ -592,6 +589,16 @@ pub(crate) fn get_function_sst(
     match ctx.func_sst_map.get(name) {
         None => Err(error(span, format!("could not find function {:?}", name))),
         Some(func) => Ok(func.clone()),
+    }
+}
+
+pub(crate) fn ens_has_return(ctx: &Ctx, function: &Function) -> bool {
+    match &function.x.kind {
+        crate::ast::FunctionKind::TraitMethodImpl { method, .. } => {
+            let method = &ctx.func_map[method];
+            !is_unit(&undecorate_typ(&method.x.outer_ret.x.typ))
+        }
+        _ => !is_unit(&undecorate_typ(&function.x.outer_ret.x.typ)),
     }
 }
 
@@ -832,7 +839,7 @@ impl Sequencer {
                         if let Some(span) = crate::sst_vars::find_overlapping_assignment(stm, loc) {
                             return Err(error_with_label(
                                 &loc.span,
-                                "Verus doesn't support assigning during mutable borrow like this",
+                                "Verus does not currently support assigning during a mutable borrow like this",
                                 "this borrow",
                             )
                             .secondary_label(&span, "followed by this assignment"));
@@ -990,7 +997,7 @@ fn expr_get_call(
                     return Err(internal_error(&expr.span, "autospec not discharged"));
                 }
                 let function = get_function(ctx, &expr.span, x)?;
-                let has_ret = function.x.ens_has_return;
+                let has_ret = ens_has_return(ctx, &function);
                 if disallow_poly_ret.is_some()
                     && has_ret
                     && crate::poly::ret_needs_native(
@@ -1975,6 +1982,14 @@ pub(crate) fn expr_to_stm_opt(
             }
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ExpX::Unary(*op, exp))))))
         }
+        ExprX::UnaryOpr(UnaryOpr::ToDyn(..), _)
+            if matches!(&*undecorate_typ(&expr.typ), TypX::MutRef(_)) =>
+        {
+            let (mut stms, e) = expr_to_stm_opt_with_delayed_obligations(ctx, state, expr)?;
+            let (e, obligations) = unwrap_or_return_never!(e, stms);
+            typ_inv_obligations(ctx, state, &mut stms, obligations, TypInv::BareMutRefError)?;
+            Ok((stms, Maybe::Some(e)))
+        }
         ExprX::UnaryOpr(op, arg) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, arg)?;
             let exp = to_exp_or_return_never!(exp, stms);
@@ -2207,7 +2222,7 @@ pub(crate) fn expr_to_stm_opt(
                 let e_exists = mk_exp(ExpX::Unary(UnaryOp::MustBeElaborated, e_exists));
                 let error = error(
                     &cond_exp.span,
-                    "recommendation not met: cannot prove that there exists values that satisfy the condition of the choose expression",
+                    "recommendation not met: cannot prove that there exist values that satisfy the condition of the choose expression",
                 );
                 let assertx = StmX::Assert(state.next_assert_id(), Some(error), e_exists);
                 check_stms.push(Spanned::new(cond_exp.span.clone(), assertx));
@@ -2363,7 +2378,7 @@ pub(crate) fn expr_to_stm_opt(
             if let Maybe::Some(Value::Exp(_)) = e {
                 return Err(error(
                     &expr.span,
-                    "'assert ... by' block cannot end with an expression",
+                    "`assert ... by` block cannot end with an expression",
                 ));
             }
             let (require_checks, require_exp) = expr_to_pure_exp_check(ctx, state, &require)?;
@@ -2432,7 +2447,7 @@ pub(crate) fn expr_to_stm_opt(
                     if let Maybe::Some(Value::Exp(_)) = e {
                         return Err(error(
                             &expr.span,
-                            "'assert ... by' block cannot end with an expression",
+                            "`assert ... by` block cannot end with an expression",
                         ));
                     }
                     inner_body.extend(proof_stms);
@@ -2511,12 +2526,14 @@ pub(crate) fn expr_to_stm_opt(
                 AssertQueryMode::BitVector => {
                     // check if assertion block consists only of requires/ensures
                     let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
-                    let proof_block_err =
-                        Err(error(&expr.span, "assert_bitvector_by cannot contain a proof block"));
+                    let proof_block_err = Err(error(
+                        &expr.span,
+                        "`assert ... by(bit_vector)` cannot contain a proof block",
+                    ));
                     if let Maybe::Some(Value::Exp(_)) = e {
                         return Err(error(
                             &expr.span,
-                            "assert_bitvector_by cannot contain a return value",
+                            "`assert ... by(bit_vector)` cannot contain a return value",
                         ));
                     }
                     if proof_stms.len() > 1 {
@@ -2650,9 +2667,9 @@ pub(crate) fn expr_to_stm_opt(
             if produces_value && loop_isolation {
                 return Err(error(
                     &expr.span,
-                    "loops with value-bearing 'break' do not yet support loop isolation",
+                    "Verus does not currently support loop isolation for loops with value-bearing `break`",
                 )
-                .help("add #[verifier::loop_isolation(false)] to this loop"));
+                .help("add `#[verifier::loop_isolation(false)]` to this loop"));
             }
             let allow_complex_invariants = *allow_complex_invariants;
             let id = state.loop_id_counter;
@@ -2680,7 +2697,7 @@ pub(crate) fn expr_to_stm_opt(
                 // in the same query
                 return Err(error(
                     &expr.span,
-                    "loop with loop_isolation=false contains 'break' statement inside a nested loop with loop_isolation=true",
+                    "loop with `loop_isolation(false)` contains `break` statement inside a nested loop with `loop_isolation(true)`",
                 ));
             }
             let has_user_break = num_breaks > if is_for_loop { 1 } else { 0 };
@@ -2715,15 +2732,15 @@ pub(crate) fn expr_to_stm_opt(
             if allow_complex_invariants && loop_isolation && !is_for_loop {
                 return Err(error(
                     &expr.span,
-                    "attribute 'allow_complex_invariants' can only be used with 'loop_isolation(false)'",
+                    "attribute `allow_complex_invariants` can only be used with `loop_isolation(false)`",
                 ));
             }
 
             if !loop_isolation && !simple_invs && !allow_complex_invariants {
                 return Err(error(
                     &expr.span,
-                    "loop invariants with 'loop_isolation(false)' cannot be invariant_except_break \
-                        or ensures, unless #[verifier::allow_complex_invariants] is used",
+                    "loop invariants with `loop_isolation(false)` cannot be `invariant_except_break` \
+                        or `ensures`, unless `#[verifier::allow_complex_invariants]` is used",
                 ));
             }
             let mut cnd = if let Some(cond) = cond {
@@ -2752,8 +2769,8 @@ pub(crate) fn expr_to_stm_opt(
                         && !function.x.attrs.exec_allows_no_decreases_clause
                 })
             {
-                return Err(error(&expr.span, "loop must have a decreases clause")
-                            .help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function"));
+                return Err(error(&expr.span, "loop must have a `decreases` clause")
+                            .help("to disable this check, use `#[verifier::exec_allows_no_decreases_clause]` on the function"));
             }
 
             let mut body_prefix = Vec::new();
@@ -2977,7 +2994,7 @@ pub(crate) fn expr_to_stm_opt(
                 Maybe::Some(_e) => {
                     if !ctx.checking_spec_preconditions() {
                         let error =
-                            error(&expr.span, "Cannot show invariant holds at end of block");
+                            error(&expr.span, "cannot show invariant holds at end of block");
                         // Note, we re-use the `main_inv` exp here, but it contains a mutable
                         stms1.push(Spanned::new(
                             expr.span.clone(),
@@ -3140,7 +3157,7 @@ pub(crate) fn expr_to_stm_opt(
 
                 let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
                 let error =
-                    error(&expr.span, "cannot show atomic postcondition hold at end of block");
+                    error(&expr.span, "cannot show atomic postcondition holds at end of block");
 
                 stms.push(Spanned::new(
                     expr.span.clone(),
@@ -3842,7 +3859,7 @@ pub(crate) fn expr_to_stm_opt(
                 if let Some(span) = crate::sst_vars::find_overlapping_assignment(stm, &loc) {
                     return Err(error(
                         &span,
-                        "Verus doesn't support assigning to scrutinee during match guard",
+                        "Verus does not currently support assigning to the scrutinee during a match guard",
                     ));
                 }
             }
@@ -3886,6 +3903,15 @@ fn expr_to_stm_opt_with_delayed_obligations(
 
             stms.append(&mut stms2);
             Ok((stms, Maybe::Some((exp1, obligations))))
+        }
+        ExprX::UnaryOpr(op @ UnaryOpr::ToDyn(..), e1)
+            if matches!(&*undecorate_typ(&expr.typ), TypX::MutRef(_)) =>
+        {
+            let (mut stms, exp1) = expr_to_stm_opt_with_delayed_obligations(ctx, state, e1)?;
+            let (exp1, obligations) = unwrap_or_return_never!(exp1, stms);
+            let exp1 = exp1.to_exp();
+            let out = mut_ref_to_dyn_sst(state, &expr.span, &mut stms, &exp1, op, &expr.typ);
+            Ok((stms, Maybe::Some((Value::Exp(out), obligations))))
         }
         _ => {
             let (stms, e) = expr_to_stm_opt(ctx, state, expr)?;
@@ -4259,6 +4285,36 @@ fn borrow_mut_to_sst(
     ))
 }
 
+/// Lowers the coercion of `src: &mut T` to `&mut dyn Trait` to a new reference `out` with
+///   mut_ref_current(out) == to_dyn(mut_ref_current(src))
+///   mut_ref_future(out) == to_dyn(mut_ref_future(src))
+fn mut_ref_to_dyn_sst(
+    state: &mut State,
+    span: &Span,
+    stms: &mut Vec<Stm>,
+    src: &Exp,
+    to_dyn_op: &UnaryOpr,
+    out_typ: &Typ,
+) -> Exp {
+    let TypX::MutRef(dyn_typ) = &*undecorate_typ(out_typ) else {
+        panic!("mut_ref_to_dyn_sst expected MutRef type");
+    };
+    let (var_ident, out) = state.declare_temp_var_stm(
+        span,
+        out_typ,
+        PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::BorrowMut)),
+    );
+    stms.push(assume_has_typ(&var_ident, out_typ, span));
+    let to_dyn = |e: Exp| SpannedTyped::new(span, dyn_typ, ExpX::UnaryOpr(to_dyn_op.clone(), e));
+    let cur =
+        sst_equal(span, &sst_mut_ref_current(span, &out), &to_dyn(sst_mut_ref_current(span, src)));
+    let fut =
+        sst_equal(span, &sst_mut_ref_future(span, &out), &to_dyn(sst_mut_ref_future(span, src)));
+    stms.push(Spanned::new(span.clone(), StmX::Assume(cur)));
+    stms.push(Spanned::new(span.clone(), StmX::Assume(fut)));
+    out
+}
+
 #[derive(Clone, Debug)]
 struct Obligation {
     fun: Fun,
@@ -4280,9 +4336,9 @@ fn place_to_exp_for_read(
     let (_lhs, rhs, obligations) = unwrap_or_return_never!(res, stms);
     if obligations.len() > 0 {
         // Shouldn't have these for reads
-        return Err(error(
+        return Err(crate::messages::internal_error(
             &place.span,
-            "Verus internal error: place_to_expr_for_read does not expect any UserDefinedTypInvariantObligation",
+            "`place_to_expr_for_read` does not expect any UserDefinedTypInvariantObligation",
         ));
     }
     Ok((stms, Maybe::Some(rhs)))
@@ -4844,14 +4900,14 @@ fn assert_assume_satisfies_user_defined_type_invariant(
     if typ_inv == TypInv::UnwindError {
         return Err(crate::messages::error_with_label(
             &exp.span,
-            "this function call takes a &mut ref of a field of a datatype with a user-defined type invariant; thus, this function should be marked no_unwind (note: this check is currently implemented overly-conservatively and requires the function to be marked no_unwind in its signature)",
+            "this function call takes a mutable reference to a field of a datatype with a user-defined type invariant; thus, this function should be marked `no_unwind` (note: this check is currently implemented overly-conservatively and requires the function to be marked `no_unwind` in its signature)",
             "mutable reference to this place",
         ).secondary_label(&function.span, "type invariant declared here"));
     }
     if typ_inv == TypInv::BareMutRefError {
         return Err(crate::messages::error_with_label(
             &exp.span,
-            "not supported: taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)",
+            "Verus does not currently support taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)",
             "mutable reference to this place",
         ).secondary_label(&function.span, "type invariant declared here"));
     }

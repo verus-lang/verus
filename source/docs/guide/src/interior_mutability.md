@@ -13,18 +13,18 @@ Here, we will overview the equivalent concepts in Verus.
 To understand the key challenge in verifying these interior mutability patterns,
 recall an important fact of Verus's SMT encoding. Verus assumes that any value of type `&T`,
 for any type `T`, can never change. However, we also know that the contents of a
-`&Cell<V>` might change. After all, that's the whole point of the `Cell<T>` type!
+`&Cell<T>` might change. After all, that's the whole point of the `Cell<T>` type!
 
 The inescapable conclusion, then, is that
-_the value taken by a `Cell<T>` in Verus' SMT encoding must not depend on the cell's contents_.
+_the value taken by a `Cell<T>` in Verus's SMT encoding must not depend on the cell's contents_.
 Instead, the SMT "value" of a `Cell<T>` is nothing more than a unique identifier for the Cell.
 In some regards, it may help to think of `Cell<T>` as similar to a pointer `T*`.
 The value of the `Cell<T>` is _only_ its identifier (its "pointer address") rather than
-its contents ("the thing pointed to be a pointer"). Of course, it's _not_ a pointer, but
+its contents ("the thing pointed to by a pointer"). Of course, it's _not_ a pointer, but
 from the perspective of the encoding, it might as well be.
 
 Note one immediate ramification of this property:
-[Verus' pure equality `===`](./equality.md) on `Cell` types cannot possibly
+[Verus's pure equality `===`](./equality.md) on `Cell` types cannot possibly
 give the same results as Rust's standard `==` (`eq`) on `Cell` types.
 Rust's `==` function actually compares the contents of the cells.
 But pure equality, `===`, which must depend on the SMT encoding values,
@@ -50,7 +50,7 @@ balance of both approaches. We'll introduce both here.
 
 Suppose we have an expensive computation and we want to memoize its value. The first time
 we need to compute the value, we perform the computation and store its value for whenever
-it's needed later. To do this, we'll use a `Cell`, whose interior is intialized to `None`
+it's needed later. To do this, we'll use a `Cell`, whose interior is initialized to `None`
 to store the computed value.
 The memoized compute function will then:
 
@@ -71,9 +71,13 @@ Therefore, we can verify this code by using a cell with a data invariant:
 
 Concretely, the above can be implemented in Verus using
 [`InvCell`](https://verus-lang.github.io/verus/verusdoc/vstd/cell/struct.InvCell.html),
-provided by Verus' standard library, which provides a data-invariant-based specification.
-When constructing a new `InvCell<T>`, the user specifies a data invariant: some boolean predicate
+provided by Verus's standard library, which provides a data-invariant-based specification.
+An `InvCell<T, Pred>` takes a second type parameter `Pred`, which implements the
+[`Predicate<T>`](https://verus-lang.github.io/verus/verusdoc/vstd/predicate/trait.Predicate.html) trait.
+This gives the cell's data invariant: a boolean predicate
 over the type `T` which tells the cell what values are allowed to be stored.
+(When constructing a new `InvCell` with `InvCell::new(val, Ghost(pred))`, the user supplies
+a ghost value `pred` of type `Pred` and must show that the initial value `val` satisfies it.)
 Then, the `InvCell` only has to impose the restriction that whenever the user writes to the cell,
 the value `val` being written has to satisfy the predicate, `cell.inv(val)`.
 In exchange, though, whenever the user _reads_ from the cell, they know the value they
