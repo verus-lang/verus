@@ -155,6 +155,90 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_btree_map_remove_equality verus_code! {
+        use std::collections::BTreeMap;
+        use vstd::prelude::*;
+        use vstd::std_specs::btree::*;
+
+        fn test_structural<Key: Ord, Value>(
+            m: &mut BTreeMap<Key, Value>, k: &Key,
+        ) -> (result: Option<Value>)
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                cmp_matches_equality::<Key>(),
+            ensures
+                final(m)@ == old(m)@.remove(*k),
+                match result {
+                    Some(v) => old(m)@.contains_key(*k) && v == old(m)@[*k],
+                    None => !old(m)@.contains_key(*k),
+                },
+        {
+            m.remove(k)
+        }
+
+        fn test_deep<Key: Ord + DeepView, Value: DeepView>(
+            first: Key, equivalent: Key, fresh: Key, value: Value, other_value: Value,
+        )
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                cmp_matches_deep_equality::<Key>(),
+                first != equivalent,
+                first.deep_view() == equivalent.deep_view(),
+                first.deep_view() != fresh.deep_view(),
+        {
+            let mut m = BTreeMap::<Key, Value>::new();
+            let result = m.remove(&equivalent);
+            assert(result is None);
+            assert(m@ == Map::<Key, Value>::empty());
+
+            let ghost expected = value.deep_view();
+            let ghost expected_other = other_value.deep_view();
+            m.insert(first, value);
+            m.insert(fresh, other_value);
+            assert(!m@.contains_key(equivalent));
+
+            let ghost before = m.deep_view();
+            match m.remove(&equivalent) {
+                Some(v) => assert(v.deep_view() == expected),
+                None => assert(false),
+            }
+            assert(m.deep_view() == before.remove(equivalent.deep_view()));
+            assert(m.deep_view().contains_key(fresh.deep_view()));
+            assert(m.deep_view()[fresh.deep_view()] == expected_other);
+            assert(!m@.contains_key(first));
+            assert(m@.contains_key(fresh));
+
+            let ghost before = m@;
+            let ghost deep_before = m.deep_view();
+            let result = m.remove(&equivalent);
+            assert(result is None);
+            assert(m@ == before);
+            assert(m.deep_view() == deep_before);
+        }
+
+        fn test_borrowed() {
+            let key = 3u32;
+            let other = 4u32;
+            let mut m = BTreeMap::<&u32, u32>::new();
+            m.insert(&key, 7);
+            m.insert(&other, 9);
+            assert(m@.contains_key(&key));
+            match m.remove(&3u32) {
+                Some(v) => assert(v == 7),
+                None => assert(false),
+            }
+            assert(!m@.contains_key(&key));
+            assert(m@.contains_key(&other));
+            assert(m@[&other] == 9);
+            let ghost before = m@;
+            let result = m.remove(&3u32);
+            assert(result is None);
+            assert(m@ == before);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_btree_map_get_mut verus_code! {
         extern crate alloc;
         use alloc::collections::BTreeMap;
@@ -752,6 +836,75 @@ test_verify_one_file! {
             }
             let result = s.get(&4u32);
             assert(result is None);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_btree_set_remove_equality verus_code! {
+        use std::collections::BTreeSet;
+        use vstd::prelude::*;
+        use vstd::std_specs::btree::*;
+
+        fn test_structural<Key: Ord>(s: &mut BTreeSet<Key>, k: &Key) -> (result: bool)
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                cmp_matches_equality::<Key>(),
+            ensures
+                final(s)@ == old(s)@.remove(*k),
+                result == old(s)@.contains(*k),
+        {
+            s.remove(k)
+        }
+
+        fn test_deep<Key: Ord + DeepView>(first: Key, equivalent: Key, fresh: Key)
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                cmp_matches_deep_equality::<Key>(),
+                first != equivalent,
+                first.deep_view() == equivalent.deep_view(),
+                first.deep_view() != fresh.deep_view(),
+        {
+            let mut s = BTreeSet::<Key>::new();
+            let removed = s.remove(&equivalent);
+            assert(!removed);
+            assert(s@ == Set::<Key>::empty());
+
+            s.insert(first);
+            s.insert(fresh);
+            assert(s@ == set![first, fresh]);
+            assert(!s@.contains(equivalent));
+
+            let ghost before = s.deep_view();
+            let removed = s.remove(&equivalent);
+            assert(removed);
+            assert(s.deep_view() == before.remove(equivalent.deep_view()));
+            assert(s@ == set![fresh]);
+            assert(s.deep_view() == set![fresh.deep_view()]);
+
+            let ghost before = s@;
+            let ghost deep_before = s.deep_view();
+            let removed = s.remove(&equivalent);
+            assert(!removed);
+            assert(s@ == before);
+            assert(s.deep_view() == deep_before);
+        }
+
+        fn test_borrowed() {
+            let key = 3u32;
+            let other = 4u32;
+            let mut s = BTreeSet::<&u32>::new();
+            s.insert(&key);
+            s.insert(&other);
+            assert(s@.contains(&key));
+            let removed = s.remove(&3u32);
+            assert(removed);
+            assert(s@ == set![&other]);
+
+            let ghost before = s@;
+            let removed = s.remove(&3u32);
+            assert(!removed);
+            assert(s@ == before);
         }
     } => Ok(())
 }
