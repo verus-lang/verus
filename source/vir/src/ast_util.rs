@@ -44,7 +44,7 @@ impl Segment {
     /// Name without any namespace or disambiguator annotations (for diagnostics)
     pub fn friendly_name(&self) -> String {
         match self {
-            Segment::V(name, 0) | Segment::T(name, 0) => name.to_string(),
+            Segment::V(name, _) | Segment::T(name, _) => name.to_string(),
             _ => self.to_string(),
         }
     }
