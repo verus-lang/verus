@@ -617,6 +617,23 @@ fn test_tracked() {
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let f = |x: u32, t: Tracked<PermissionU32>| x;
     Exec               | Code(Exec) Body(Exec)          | }
                        |                                |
+    Comment            | Comment                        | // References to Tracked, treated the same as Tracked of a reference
+    Exec               | Signature(Exec)                | fn tracked_ref_params(
+    Exec               | Signature(Exec)                |     x: u32,
+    Proof              | Signature(Exec GhostTracked(P  |     a: &Tracked<PermissionU32>,
+    Proof              | Signature(Exec GhostTracked(P  |     b: &mut Tracked<PermissionU32>,
+    Proof              | Signature(Exec GhostTracked(P  |     c: Tracked<&PermissionU32>,
+    Exec               | Code(Exec Signature Body(Exec  | ) {
+    Exec               | Code(Exec) Body(Exec)          | }
+                       |                                |
+    Proof Exec         | Code(Exec Signature Body(Exec  | fn tracked_ref_params_one_line(x: u32, a: &Tracked<PermissionU32>) {
+    Exec               | Code(Exec) Body(Exec)          | }
+                       |                                |
+    Exec               | DatatypeDecl                   | struct TrackedRefWrapper<'a> {
+    Proof              | DatatypeDecl GhostTracked(P    |     perm: &'a Tracked<PermissionU32>,
+    Exec               | DatatypeDecl                   |     x: u32,
+    Exec               | DatatypeDecl                   | }
+                       |                                |
     Comment            | Comment                        | // Lines holding nothing but tracked code
     Exec               | Signature(Exec)                | fn tracked_alone(
     Exec               | Signature(Exec)                |     x: u32,
@@ -663,8 +680,8 @@ fn test_tracked() {
 
     | file       | Trusted | Spec | Proof | Exec | Proof+Exec | Comment | Layout | unaccounted |
     |------------|---------|------|-------|------|------------|---------|--------|-------------|
-    | tracked.rs |       4 |    2 |    18 |   58 |         35 |      14 |      0 |          25 |
+    | tracked.rs |       4 |    2 |    22 |   66 |         36 |      15 |      0 |          28 |
     |------------|---------|------|-------|------|------------|---------|--------|-------------|
-    | total      |       4 |    2 |    18 |   58 |         35 |      14 |      0 |          25 |
+    | total      |       4 |    2 |    22 |   66 |         36 |      15 |      0 |          28 |
     ");
 }

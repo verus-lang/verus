@@ -224,10 +224,12 @@ impl<'f> Visitor<'f> {
         }
     }
 
-    /// The kind of the code wrapped, if `ty` is `Ghost<..>` or `Tracked<..>`
+    /// The kind of the code wrapped, if `ty` is `Ghost<..>` or `Tracked<..>`, or a reference to one
     fn wrapper_type_code_kind(&self, ty: &verus_syn::Type) -> Option<CodeKind> {
         match ty {
             verus_syn::Type::Path(path) => self.wrapper_code_kind(&path.path),
+            // e.g. &Tracked<T>, &mut Tracked<T>
+            verus_syn::Type::Reference(reference) => self.wrapper_type_code_kind(&reference.elem),
             _ => None,
         }
     }
