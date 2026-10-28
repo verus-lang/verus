@@ -2,8 +2,6 @@
 use super::super::prelude::*;
 
 #[cfg(feature = "alloc")]
-use alloc::borrow::Borrow;
-#[cfg(feature = "alloc")]
 use alloc::borrow::Cow;
 #[cfg(feature = "alloc")]
 use alloc::borrow::ToOwned;
@@ -13,10 +11,10 @@ use alloc::boxed::Box;
 use alloc::string::String;
 #[cfg(feature = "alloc")]
 use core::alloc::Allocator;
+use core::borrow::Borrow;
 
 verus! {
 
-#[cfg(feature = "alloc")]
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(BorrowSpec via BorrowSpecImpl)]
 pub trait ExBorrow<Borrowed: ?Sized> {
@@ -122,7 +120,6 @@ impl<'a, T: DeepView + Clone> DeepView for Cow<'a, [T]> {
     }
 }
 
-#[cfg(feature = "alloc")]
 impl<T: ?Sized> BorrowSpecImpl<T> for T {
     open spec fn obeys_borrow_spec() -> bool {
         true
@@ -133,13 +130,11 @@ impl<T: ?Sized> BorrowSpecImpl<T> for T {
     }
 }
 
-#[cfg(feature = "alloc")]
 pub assume_specification<T: ?Sized>[ <T as Borrow<T>>::borrow ](r: &T) -> (result: &T)
     ensures
         result == r,
 ;
 
-#[cfg(feature = "alloc")]
 impl<T: ?Sized> BorrowSpecImpl<T> for &T {
     open spec fn obeys_borrow_spec() -> bool {
         true
@@ -150,7 +145,6 @@ impl<T: ?Sized> BorrowSpecImpl<T> for &T {
     }
 }
 
-#[cfg(feature = "alloc")]
 pub assume_specification<'b, T: ?Sized, 'a>[ <&'b T as Borrow<T>>::borrow ](
     r: &'a &'b T,
 ) -> (result: &'a T)
