@@ -28,7 +28,8 @@ pub trait ExBorrow<Borrowed: ?Sized> {
 
     fn borrow(&self) -> (result: &Borrowed)
         ensures
-            Self::obeys_borrow_spec() ==> result == self.spec_borrow();
+            Self::obeys_borrow_spec() ==> result == self.spec_borrow(),
+    ;
 }
 
 #[cfg(feature = "alloc")]
@@ -150,7 +151,9 @@ impl<T: ?Sized> BorrowSpecImpl<T> for &T {
 }
 
 #[cfg(feature = "alloc")]
-pub assume_specification<'b, T: ?Sized, 'a>[ <&'b T as Borrow<T>>::borrow ](r: &'a &'b T) -> (result: &'a T)
+pub assume_specification<'b, T: ?Sized, 'a>[ <&'b T as Borrow<T>>::borrow ](
+    r: &'a &'b T,
+) -> (result: &'a T)
     ensures
         result == *r,
 ;
@@ -167,7 +170,9 @@ impl<T: ?Sized, A: Allocator> BorrowSpecImpl<T> for Box<T, A> {
 }
 
 #[cfg(feature = "alloc")]
-pub assume_specification<T: ?Sized, A: Allocator>[ <Box<T, A> as Borrow<T>>::borrow ](b: &Box<T, A>) -> (result: &T)
+pub assume_specification<T: ?Sized, A: Allocator>[ <Box<T, A> as Borrow<T>>::borrow ](
+    b: &Box<T, A>,
+) -> (result: &T)
     ensures
         result == &**b,
 ;

@@ -510,11 +510,49 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_btree_set_insert_deep_equality verus_code! {
+        extern crate alloc;
+        use alloc::collections::BTreeSet;
+        use vstd::prelude::*;
+        use vstd::std_specs::btree::{
+            btree_set_elements_differ, cmp_matches_deep_equality,
+        };
+
+        fn test<Key: Ord + DeepView>(first: Key, equivalent: Key, fresh: Key)
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                cmp_matches_deep_equality::<Key>(),
+                first != equivalent,
+                first.deep_view() == equivalent.deep_view(),
+                first.deep_view() != fresh.deep_view(),
+        {
+            let mut s = BTreeSet::<Key>::new();
+            let inserted = s.insert(first);
+            assert(inserted);
+            assert(s@ == set![first]);
+            assert(s.deep_view() == set![first.deep_view()]);
+
+            let inserted = s.insert(equivalent);
+            assert(!inserted);
+            assert(s@ == set![first]);
+            assert(!s@.contains(equivalent));
+            assert(s.deep_view() == set![first.deep_view()]);
+
+            let inserted = s.insert(fresh);
+            assert(inserted);
+            assert(s@ == set![first, fresh]);
+            assert(s.deep_view() == set![first.deep_view(), fresh.deep_view()]);
+            assert(btree_set_elements_differ(&s));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_btree_set_struct verus_code! {
         use std::collections::BTreeSet;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq, PartialOrd, Ord)]
+        #[derive(PartialEq, Eq, PartialOrd, Ord, StructuralEq)]
         struct MyStruct
         {
             pub i: u16,
@@ -524,6 +562,10 @@ test_verify_one_file! {
         fn test()
         {
             assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());
+            assert(vstd::std_specs::btree::cmp_matches_equality::<MyStruct>()) by {
+                reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
+                reveal(vstd::laws_cmp::obeys_cmp_ord);
+            }
 
             let mut m = BTreeSet::<MyStruct>::new();
             assert(m@ == Set::<MyStruct>::empty());
