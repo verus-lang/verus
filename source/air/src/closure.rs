@@ -350,6 +350,9 @@ fn simplify_lambda(
             let closure_fun = Arc::new(name);
             ctxt.lambda_count += 1;
             let _ = ctxt.lambda_map.insert(closure, closure_fun.clone());
+            if let Some(obs) = &ctxt.air_observer {
+                obs.borrow_mut().on_lambda_decl(&closure_fun, binders, &body);
+            }
 
             // f(holes): (Fun (t_params) t_body)
             let decl = Arc::new(DeclX::Fun(closure_fun.clone(), holes.clone(), typ.clone()));
@@ -464,6 +467,9 @@ fn simplify_choose(
             let closure_fun = Arc::new(name);
             ctxt.choose_count += 1;
             let _ = ctxt.choose_map.insert(closure, closure_fun.clone());
+            if let Some(obs) = &ctxt.air_observer {
+                obs.borrow_mut().on_choose_decl(&closure_fun, binders, triggers, &cond, &body);
+            }
 
             // f(holes): typ_body
             let decl = Arc::new(DeclX::Fun(closure_fun.clone(), holes.clone(), typ_body.clone()));
@@ -613,6 +619,12 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                     Arc::new(TypX::Float { exp_bits: *exp_bits, sig_bits: *sig_bits })
                 }
                 UnaryOp::FloatToBitVec { bits, .. } => Arc::new(TypX::BitVec(*bits)),
+                UnaryOp::FloatToIeeeBits => match &*ts[0].0 {
+                    TypX::Float { exp_bits, sig_bits } => {
+                        Arc::new(TypX::BitVec(exp_bits + sig_bits))
+                    }
+                    _ => panic!("internal error during processing float to ieee bits"),
+                },
                 UnaryOp::FloatToReal => Arc::new(TypX::Real),
                 UnaryOp::ToReal => Arc::new(TypX::Real),
                 UnaryOp::RealToInt => Arc::new(TypX::Int),

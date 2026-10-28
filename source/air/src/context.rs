@@ -71,7 +71,7 @@ impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SmtSolver {
     Z3,
     Cvc5,
@@ -91,6 +91,25 @@ impl SmtSolver {
             SmtSolver::Cvc5 => "cvc5",
         }
     }
+
+    pub fn default_encoding(&self) -> SmtEncoding {
+        match self {
+            SmtSolver::Z3 => SmtEncoding::Z3,
+            SmtSolver::Cvc5 => SmtEncoding::Cvc5,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SmtEncoding {
+    Z3,
+    Cvc5,
+}
+
+impl Default for SmtEncoding {
+    fn default() -> Self {
+        SmtEncoding::Z3
+    }
 }
 
 pub struct Context {
@@ -108,6 +127,11 @@ pub struct Context {
     pub(crate) apply_count: u64,
     pub(crate) typing: Typing,
     pub(crate) debug: bool,
+    pub(crate) air_observer:
+        Option<std::rc::Rc<std::cell::RefCell<dyn crate::air_observer::AirObserver>>>,
+    pub(crate) query_result_observer: Option<
+        std::rc::Rc<std::cell::RefCell<dyn crate::query_result_observer::QueryResultObserver>>,
+    >,
     pub(crate) ignore_unexpected_smt: bool,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Emitter,
@@ -125,12 +149,21 @@ pub struct Context {
     pub(crate) usage_info_enabled: bool,
     pub(crate) check_valid_used: bool,
     pub(crate) solver: SmtSolver,
+    pub(crate) smt_encoding: SmtEncoding,
 }
 
 impl Context {
     pub fn new(
         message_interface: Arc<dyn crate::messages::MessageInterface>,
         solver: SmtSolver,
+    ) -> Self {
+        Self::new_with_encoding(message_interface, solver, solver.default_encoding())
+    }
+
+    pub fn new_with_encoding(
+        message_interface: Arc<dyn crate::messages::MessageInterface>,
+        solver: SmtSolver,
+        smt_encoding: SmtEncoding,
     ) -> Self {
         let mut context = Context {
             message_interface: message_interface.clone(),
@@ -151,9 +184,11 @@ impl Context {
                 snapshots: HashSet::new(),
                 break_labels_local: HashSet::new(),
                 break_labels_in_scope: crate::scope_map::ScopeMap::new(),
-                solver: solver.clone(),
+                smt_encoding,
             },
             debug: false,
+            air_observer: None,
+            query_result_observer: None,
             ignore_unexpected_smt: false,
             rlimit: 0,
             air_initial_log: Emitter::new(
@@ -161,23 +196,23 @@ impl Context {
                 false,
                 false,
                 None,
-                solver.clone(),
+                smt_encoding,
             ),
             air_middle_log: Emitter::new(
                 message_interface.clone(),
                 false,
                 false,
                 None,
-                solver.clone(),
+                smt_encoding,
             ),
             air_final_log: Emitter::new(
                 message_interface.clone(),
                 false,
                 false,
                 None,
-                solver.clone(),
+                smt_encoding,
             ),
-            smt_log: Emitter::new(message_interface.clone(), true, true, None, solver.clone()),
+            smt_log: Emitter::new(message_interface.clone(), true, true, None, smt_encoding),
             smt_transcript_log: None,
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
@@ -192,6 +227,7 @@ impl Context {
             usage_info_enabled: false,
             check_valid_used: false,
             solver,
+            smt_encoding,
         };
         context.axiom_infos.push_scope(false);
         context.array_map.push_scope(false);
@@ -210,6 +246,19 @@ impl Context {
             self.smt_process = Some(SmtProcess::launch(&self.solver, transcript_log));
         }
         self.smt_process.as_mut().unwrap()
+    }
+
+    /// Register observers for AIR passes and for solver results. Either may be `None`;
+    /// with none registered every observer hook is a no-op.
+    pub fn set_observers(
+        &mut self,
+        air_observer: Option<std::rc::Rc<std::cell::RefCell<dyn crate::air_observer::AirObserver>>>,
+        query_result_observer: Option<
+            std::rc::Rc<std::cell::RefCell<dyn crate::query_result_observer::QueryResultObserver>>,
+        >,
+    ) {
+        self.air_observer = air_observer;
+        self.query_result_observer = query_result_observer;
     }
 
     pub fn set_air_initial_log(&mut self, writer: Box<dyn std::io::Write>) {
@@ -335,6 +384,9 @@ impl Context {
         write_to_logs: bool,
     ) {
         if option == "air_recommended_options" && value {
+            if matches!(self.smt_encoding, SmtEncoding::Cvc5) {
+                self.smt_log.log_node(&node!((set-logic {str_to_node("ALL")})));
+            }
             match self.solver {
                 SmtSolver::Z3 => {
                     self.set_solver_option_bool("auto_config", false, true);
@@ -348,7 +400,6 @@ impl Context {
                     self.set_solver_option_bool("rewriter.sort_disjunctions", false, true);
                 }
                 SmtSolver::Cvc5 => {
-                    self.smt_log.log_node(&node!((set-logic {str_to_node("ALL")})));
                     self.set_solver_option_bool("incremental", true, true);
                 }
             }
@@ -492,13 +543,26 @@ impl Context {
         query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
         self.ensure_started();
+        if let Some(o) = &self.air_observer {
+            o.borrow_mut().on_query_start(query);
+        }
 
         self.air_initial_log.log_query(query);
         let query = match crate::typecheck::check_query(self, query) {
             Ok(query) => query,
             Err(err) => return ValidityResult::TypeError(err),
         };
-        let (query, snapshots, local_vars) = crate::var_to_const::lower_query(&query);
+        let (query, snapshots, local_vars) = {
+            // Scope the borrow so it is released before `on_query_lowered` below
+            // (both use the same shared observer handle — no reentrant borrow).
+            let mut guard = self.air_observer.as_ref().map(|o| o.borrow_mut());
+            let obs_ref =
+                guard.as_mut().map(|g| &mut **g as &mut dyn crate::air_observer::AirObserver);
+            crate::var_to_const::lower_query(&query, obs_ref)
+        };
+        if let Some(o) = &self.air_observer {
+            o.borrow_mut().on_query_lowered(&query, &snapshots, &local_vars);
+        }
         self.air_middle_log.log_query(&query);
         let query = crate::block_to_assert::lower_query(message_interface, &query);
         self.air_final_log.log_query(&query);
@@ -564,6 +628,22 @@ impl Context {
             panic!("unexpected output from SMT eval {:?}", smt_output);
         }
         smt_output[0].clone()
+    }
+
+    /// Evaluate a boolean AIR expression in the current solver model.
+    pub fn evaluate_bool(&mut self, expr: &crate::ast::Expr) -> Option<bool> {
+        let printer =
+            crate::printer::Printer::new(self.message_interface.clone(), true, self.solver.clone());
+        let node = printer.expr_to_node(expr);
+        // SMT-LIB `get-value`, which both solvers answer as `((<expr> <value>))`.
+        self.smt_log.log_node(&Node::List(vec![str_to_node("get-value"), Node::List(vec![node])]));
+        let smt_data = self.smt_log.take_pipe_data();
+        let output = self.get_smt_process().send_commands(smt_data).join(" ");
+        match output.strip_suffix("))").and_then(|s| s.rsplit(' ').next())? {
+            "true" => Some(true),
+            "false" => Some(false),
+            _ => None,
+        }
     }
 
     pub fn command(

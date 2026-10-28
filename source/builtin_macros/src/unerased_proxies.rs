@@ -270,7 +270,7 @@ impl crate::syntax::Visitor {
                 match mutability {
                     StaticMutability::Mut(_) => {
                         return Item::Verbatim(
-                            quote_spanned!(span => const _: () = { compile_error!("Verus does not support 'static mut'") };),
+                            quote_spanned!(span => const _: () = { ::core::compile_error!("Verus does not support 'static mut'") };),
                         );
                     }
                     _ => {}
@@ -562,7 +562,7 @@ impl crate::syntax::Visitor {
                 if for_trait {
                     let msg = "Verus does not support const items in traits, except for simple expressions and external_body consts (hint: declare an extra non-trait constant `const C: t = ...` and then define the trait constant to be equal to `C`, or make the trait constant external_body)";
                     *impl_items = vec![ImplItem::Verbatim(
-                        quote_spanned!(item.span() => compile_error!(#msg);),
+                        quote_spanned!(item.span() => ::core::compile_error!(#msg);),
                     )];
                     return;
                 }

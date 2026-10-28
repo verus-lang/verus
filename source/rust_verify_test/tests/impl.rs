@@ -209,7 +209,7 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "function for external trait must have mode 'exec'")
+    } => Err(err) => assert_vir_error_msg(err, "function for external trait must have mode `exec`")
 }
 
 test_verify_one_file! {
@@ -221,7 +221,7 @@ test_verify_one_file! {
             type Output = bool;
             fn index(&self, #[verifier::spec]idx: usize) -> &bool { &true }
         }
-    } => Err(err) => assert_vir_error_msg(err, "function for external trait must have all parameters have mode 'exec'")
+    } => Err(err) => assert_vir_error_msg(err, "function for external trait must have all parameters have mode `exec`")
 }
 
 test_verify_one_file! {

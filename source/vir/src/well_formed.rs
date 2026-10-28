@@ -1,60 +1,83 @@
 #![allow(clippy::unnecessary_map_on_constructor)]
 use crate::ast::{
     BodyVisibility, CallTarget, CallTargetKind, Constant, Datatype, DatatypeTransparency, Dt, Expr,
-    ExprX, FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
-    Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypDecoration, TypX, UnaryOp,
-    UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility,
+    ExprX, FieldOpr, Fun, Function, FunctionKind, FunctionStub, Krate, MaskSpec, Mode, MultiOp,
+    Opaqueness, Path, Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypDecoration,
+    TypX, UnaryOp, UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
     ast_expr_get_proof_note, dt_as_friendly_rust_name, fun_as_friendly_rust_name, get_field_or_err,
     get_variant_or_err, is_body_visible_to, is_unit, is_visible_to_opt, path_as_friendly_rust_name,
-    referenced_vars_expr, typ_to_diagnostic_str, types_equal, undecorate_typ,
+    referenced_vars_expr, typ_contains_opaque, typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
 use crate::context::WarningConfig;
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use crate::internal_err;
 use crate::messages::{Message, Span, WarningAllow, error, error_with_label};
+use crate::traits::{DemoteTraitLookup, MergedTraits, method_if_not_demoted};
 use indexmap::IndexMap;
 use indexmap::map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+pub struct WfLookup {
+    pub reveal_groups: HashSet<Fun>,
+    pub dts: Arc<HashMap<Path, Datatype>>,
+    pub merged_traits: MergedTraits,
+}
+
 struct Ctxt<'a> {
-    pub(crate) funs: HashMap<Fun, Function>,
-    pub(crate) reveal_groups: HashSet<Fun>,
-    pub(crate) dts: HashMap<Path, Datatype>,
-    pub(crate) traits: HashMap<Path, Trait>,
+    pub(crate) funs: Arc<HashMap<Fun, FunctionStub>>,
+    pub(crate) lookup: Arc<WfLookup>,
     pub(crate) krate: &'a Krate,
-    unpruned_krate: &'a Krate,
     no_cheating: bool,
 }
 
+pub type DynCompatabilityChecks = Arc<IndexMap<Path, Span>>;
+
+#[derive(Clone)]
+pub struct InitialWfResults {
+    pub lookup: Arc<WfLookup>,
+    pub dyn_compatability_checks: DynCompatabilityChecks,
+}
+
 /// Details from well-formedness checking.
-pub struct CheckDetails {
+pub struct PerFunctionCheckResults {
     /// For each function, collects proof notes that fail due to `--no-cheating`.
-    pub func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
+    pub func_failed_proof_notes: HashSet<String>,
+    pub dyn_compatability_checks: DynCompatabilityChecks,
+}
+
+pub struct WFErr {
+    /// "Normal" errors
+    pub errors: Vec<VirErr>,
+    /// Boundary errors: these need additional processing in the rust_verify crate
+    pub boundary_errors: Vec<(Path, VirErr)>,
+    /// For each function, collects proof notes that fail due to `--no-cheating`.
+    pub func_failed_proof_notes: HashSet<String>,
 }
 
 // REVIEW: why is this a trait?
-trait EmitError {
+pub trait EmitError {
     fn emit(&mut self, err: VirErrAs);
     fn emit_deferred_err(&mut self, err: VirErr);
     fn emit_boundary_err(&mut self, path: Path, err: VirErr);
     fn has_fatal_errors(&self) -> bool;
-    fn record_func_failed_proof_note(&mut self, func: Fun, note: String);
+    fn record_func_failed_proof_note(&mut self, note: String);
 }
 
 struct EmitErrorState {
     /// Errors that need more processing by the caller in rust_verify
     boundary_errors: IndexMap<Path, VirErr>,
-    func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
+    func_failed_proof_notes: HashSet<String>,
     /// Legit errors that nonetheless don't prevent us from proceeding
     /// down the rest of the VC pipeline
     deferred_errors: Vec<VirErr>,
     /// Warnings, notes
     diags: Vec<VirErrAs>,
+    dyn_compatability_checks: IndexMap<Path, Span>,
 }
 
 impl EmitError for EmitErrorState {
@@ -81,17 +104,67 @@ impl EmitError for EmitErrorState {
         self.boundary_errors.len() > 0
     }
 
-    fn record_func_failed_proof_note(&mut self, func: Fun, note: String) {
-        self.func_failed_proof_notes.entry(func).or_default().insert(note);
+    fn record_func_failed_proof_note(&mut self, note: String) {
+        self.func_failed_proof_notes.insert(note);
+    }
+}
+
+/// These checks are delayed because during the initial traversal, the 'dyn_compatible' on the
+/// trait hasn't been computed yet.
+pub fn finish_dyn_compatability_checks(
+    krate: &Krate,
+    checks: Vec<DynCompatabilityChecks>,
+) -> Result<(), Vec<VirErr>> {
+    let mut trait_map = HashMap::new();
+    for traitt in krate.traits.iter() {
+        trait_map.insert(traitt.x.name.clone(), traitt.clone());
+    }
+
+    let mut errors = vec![];
+    for (path, span) in checks.iter().flat_map(|s| s.iter()) {
+        if let Err(err) = dyn_compatability_check(&trait_map, path, span) {
+            errors.push(err);
+        }
+    }
+    if errors.len() > 0 { Err(errors) } else { Ok(()) }
+}
+
+pub fn dyn_compatability_check(
+    trait_map: &HashMap<Path, Trait>,
+    path: &Path,
+    span: &Span,
+) -> Result<(), VirErr> {
+    if let Some(tr) = trait_map.get(path) {
+        use crate::ast::DynCompatible;
+        match &**tr.x.dyn_compatible.as_ref().expect("dyn_compatible should be Some") {
+            DynCompatible::Accept => Ok(()),
+            DynCompatible::Reject { reason } => {
+                let msg = format!("trait is not Verus dyn-compatible: {}", reason);
+                Err(error(span, msg))
+            }
+            DynCompatible::RejectUnsizedBlanketImpl { trait_path } => {
+                let name = path_as_friendly_rust_name(trait_path);
+                let msg = format!(
+                    "Verus disallows dyn for trait {} because it has an unsized blanket impl (see https://github.com/rust-lang/rust/issues/57893 )",
+                    name,
+                );
+                Err(error(span, msg))
+            }
+        }
+    } else {
+        Err(error(
+            span,
+            &format!("trait {} not declared to Verus", path_as_friendly_rust_name(path)),
+        ))
     }
 }
 
 #[warn(unused_must_use)]
-fn check_one_typ<Emit: EmitError>(
+fn check_one_typ(
     ctxt: &Ctxt,
     typ: &Typ,
     span: &crate::messages::Span,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
     match &**typ {
         TypX::Datatype(Dt::Path(path), _, _) => {
@@ -99,23 +172,9 @@ fn check_one_typ<Emit: EmitError>(
             Ok(())
         }
         TypX::Dyn(path, _, _) => {
-            if let Some(tr) = ctxt.traits.get(path) {
-                use crate::ast::DynCompatible;
-                match &**tr.x.dyn_compatible.as_ref().expect("dyn_compatible should be Some") {
-                    DynCompatible::Accept => Ok(()),
-                    DynCompatible::Reject { reason } => {
-                        let msg = format!("Trait is not Verus dyn-compatible: {}", reason);
-                        Err(error(span, msg))
-                    }
-                    DynCompatible::RejectUnsizedBlanketImpl { trait_path } => {
-                        let name = path_as_friendly_rust_name(trait_path);
-                        let msg = format!(
-                            "Verus disallows dyn for trait {} because it has an unsized blanket impl (see https://github.com/rust-lang/rust/issues/57893 )",
-                            name,
-                        );
-                        Err(error(span, msg))
-                    }
-                }
+            if ctxt.lookup.merged_traits.trait_map.contains_key(path) {
+                emit.dyn_compatability_checks.entry(path.clone()).or_insert(span.clone());
+                Ok(())
             } else {
                 Err(error(
                     span,
@@ -124,21 +183,24 @@ fn check_one_typ<Emit: EmitError>(
             }
         }
         TypX::FnDef(fun, _typs, opt_res_fun) => {
-            check_function_access(ctxt, fun, None, span, emit)?;
-            if let Some(res_fun) = opt_res_fun {
+            let f = check_path_and_get_function(ctxt, fun, None, span, emit)?;
+            if let Some(res_fun) = opt_res_fun
+                && let Ok(f) = f
+                && !f.x.kind.has_default()
+            {
                 check_function_access(ctxt, res_fun, None, span, emit)?;
             }
             Ok(())
         }
         TypX::Projection { trait_typ_args: _, trait_path, name } => {
-            if let Some(tr) = ctxt.traits.get(trait_path) {
+            if let Some(tr) = ctxt.lookup.merged_traits.trait_map.get(trait_path) {
                 if tr.x.assoc_typs.iter().any(|n| n == name) {
                     Ok(())
                 } else {
                     Err(error(
                         span,
                         &format!("Verus does not recognize associated type `{}` of trait `{}`", name, path_as_friendly_rust_name(trait_path)),
-                    ).help("If this trait was declared to Verus via `external_trait_specification`, it may need the associated type declared"))
+                    ).help("if this trait was declared to Verus via `external_trait_specification`, it may need the associated type declared"))
                 }
             } else {
                 Err(error(
@@ -155,11 +217,11 @@ fn check_one_typ<Emit: EmitError>(
 }
 
 #[warn(unused_must_use)]
-fn check_typ<Emit: EmitError>(
+fn check_typ(
     ctxt: &Ctxt,
     typ: &Arc<TypX>,
     span: &crate::messages::Span,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
     crate::ast_visitor::typ_visitor_check(typ, &mut |t| check_one_typ(ctxt, t, span, emit))
 }
@@ -170,14 +232,14 @@ fn check_typ<Emit: EmitError>(
 //   but that the caller can proceed with additional checks to try to find additional errors
 // - Err(...) to indicate that the caller should abort entirely
 #[warn(unused_must_use)]
-fn check_path_and_get_datatype<'a, Emit: EmitError>(
+fn check_path_and_get_datatype<'a>(
     ctxt: &'a Ctxt,
     path: &Path,
     span: &crate::messages::Span,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<Result<Datatype, ()>, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Dt> {
-        for dt in &ctxt.unpruned_krate.datatypes {
+        for (_, dt) in ctxt.lookup.dts.iter() {
             match &dt.x.proxy {
                 Some(proxy) => {
                     if &proxy.x == path {
@@ -194,7 +256,7 @@ fn check_path_and_get_datatype<'a, Emit: EmitError>(
         ctxt.krate.external_types.contains(path)
     }
 
-    match ctxt.dts.get(path) {
+    match ctxt.lookup.dts.get(path) {
         Some(dt) => Ok(Ok(dt.clone())),
         None => {
             if let Some(actual_path) = is_proxy(ctxt, path) {
@@ -210,7 +272,7 @@ fn check_path_and_get_datatype<'a, Emit: EmitError>(
                 let path_string = path_as_friendly_rust_name(path);
                 let msg = if is_known_external(ctxt, path) {
                     format!(
-                        "cannot use type `{path_string:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.",
+                        "cannot use type `{path_string:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`",
                     )
                 } else {
                     format!(
@@ -235,16 +297,16 @@ fn check_path_and_get_datatype<'a, Emit: EmitError>(
 // - Ok(Err(())) to indicate that an error was reported via "emit",
 //   but that the caller can proceed with additional checks to try to find additional errors
 // - Err(...) to indicate that the caller should abort entirely
-fn check_path_and_get_function<'a, Emit: EmitError>(
+fn check_path_and_get_function<'a>(
     ctxt: &'a Ctxt,
     x: &Fun,
     disallow_private_access: Option<(&Visibility, &str)>,
     span: &crate::messages::Span,
-    emit: &mut Emit,
-) -> Result<Result<Function, ()>, VirErr> {
+    emit: &mut EmitErrorState,
+) -> Result<Result<FunctionStub, ()>, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
         // Linear scan, but this only happens if this uncommon error message triggers
-        for function in &ctxt.unpruned_krate.functions {
+        for (_, function) in ctxt.funs.iter() {
             match &function.x.proxy {
                 Some(proxy) => {
                     if &proxy.x == path {
@@ -277,7 +339,7 @@ fn check_path_and_get_function<'a, Emit: EmitError>(
                 let path_string = path_as_friendly_rust_name(&x.path);
                 let err_str = if locally_defined {
                     format!(
-                        "cannot use function `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.",
+                        "cannot use function `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`",
                         path_string
                     )
                 } else {
@@ -307,14 +369,14 @@ fn check_path_and_get_function<'a, Emit: EmitError>(
     Ok(f)
 }
 
-fn check_datatype_access<Emit: EmitError>(
+fn check_datatype_access(
     ctxt: &Ctxt,
     path: &Path,
     disallow_private_access: Option<(&Visibility, &str)>,
     my_module: &Option<Path>,
     span: &Span,
     access_type: &str,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
     let dt = check_path_and_get_datatype(ctxt, path, span, emit)?;
     let Ok(dt) = dt else {
@@ -332,7 +394,7 @@ fn check_datatype_access<Emit: EmitError>(
             )
             .secondary_label(
                 &dt.span,
-                "Verus treats this datatype as 'opaque' because it is marked 'external_body'",
+                "Verus treats this datatype as `opaque` because it is marked `external_body`",
             ));
         }
         DatatypeTransparency::WhenVisible(vis) => {
@@ -396,7 +458,7 @@ fn check_datatype_access<Emit: EmitError>(
                     format!("this {:} is disallowed because of datatype opaqueness", access_type),
                 ).secondary_label(
                     &dt.span,
-                    format!("Verus treats this datatype as 'opaque' outside `{:}` (note that Verus always considers the most restrictive field for determining this)",
+                    format!("Verus treats this datatype as `opaque` outside `{:}` (note that Verus always considers the most restrictive field for determining this)",
                             path_as_friendly_rust_name(&transp_module))
                 );
 
@@ -430,24 +492,27 @@ fn check_datatype_access<Emit: EmitError>(
     Ok(())
 }
 
-fn check_function_access<'a, Emit: EmitError>(
+fn check_function_access<'a>(
     ctxt: &'a Ctxt,
     x: &Fun,
     disallow_private_access: Option<(&Visibility, &str)>,
     span: &crate::messages::Span,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
-    let _ = check_path_and_get_function(ctxt, x, disallow_private_access, span, emit)?;
-    Ok(())
+    match check_path_and_get_function(ctxt, x, disallow_private_access, span, emit) {
+        Err(err) => Err(err),
+        // Ok(Err(_)) case means an error was already emitted, so we can continue
+        Ok(Ok(_)) | Ok(Err(_)) => Ok(()),
+    }
 }
 
-fn check_one_expr<Emit: EmitError>(
+fn check_one_expr(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Visibility, &str)>,
     area: Area,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
     warn_config: &Option<WarningConfig>,
 ) -> Result<(), VirErr> {
     match &expr.x {
@@ -464,7 +529,7 @@ fn check_one_expr<Emit: EmitError>(
                 if ctxt.no_cheating {
                     return Err(error(
                         &expr.span,
-                        "call via externals_available_without_declaration not allowed with --no-cheating",
+                        "call via `externals_available_without_declaration` not allowed with `--no-cheating`",
                     ));
                 }
                 // allow missing function via AssumeExternal
@@ -482,13 +547,15 @@ fn check_one_expr<Emit: EmitError>(
                 CallTargetKind::ProofFn(..) => {}
                 CallTargetKind::Dynamic => {}
                 CallTargetKind::DynamicResolved { resolved: resolved_fun, .. } => {
-                    check_function_access(
-                        ctxt,
-                        resolved_fun,
-                        disallow_private_access,
-                        &expr.span,
-                        emit,
-                    )?;
+                    if !f.x.kind.has_default() {
+                        check_function_access(
+                            ctxt,
+                            resolved_fun,
+                            disallow_private_access,
+                            &expr.span,
+                            emit,
+                        )?;
+                    }
                 }
                 CallTargetKind::ExternalTraitDefault => {}
             }
@@ -497,7 +564,7 @@ fn check_one_expr<Emit: EmitError>(
                 // it's just a container for proof code that goes in the corresponding spec function
                 return Err(error(
                     &expr.span,
-                    "cannot call a decreases_by/recommends_by function directly",
+                    "cannot call a `decreases_by`/`recommends_by` function directly",
                 ));
             }
             if f.x.attrs.broadcast_forall && f.x.params.len() == 0 {
@@ -505,7 +572,7 @@ fn check_one_expr<Emit: EmitError>(
                 // When we generalize broadcast_forall, this restriction should be removed.
                 return Err(error(
                     &expr.span,
-                    "cannot call a broadcast_forall function with 0 arguments directly",
+                    "cannot call a `broadcast_forall` function with 0 arguments directly",
                 ));
             }
         }
@@ -555,7 +622,7 @@ fn check_one_expr<Emit: EmitError>(
             if function.x.attrs.nonlinear {
                 return Err(error(
                     &expr.span,
-                    "assert_by_query not allowed in #[verifier::nonlinear] functions",
+                    "`assert_by_query` not allowed in `#[verifier::nonlinear]` functions",
                 ));
             }
 
@@ -575,7 +642,8 @@ fn check_one_expr<Emit: EmitError>(
                     ExprX::Var(x) if !scope_map.contains_key(&x) && !referenced.contains(x) => {
                         Err(error(
                             &e.span,
-                            format!("variable {} not mentioned in requires/ensures", x).as_str(),
+                            format!("variable {} not mentioned in `requires`/`ensures`", x)
+                                .as_str(),
                         ))
                     }
                     _ => Ok(()),
@@ -587,7 +655,8 @@ fn check_one_expr<Emit: EmitError>(
                     PlaceX::Local(x) if !scope_map.contains_key(&x) && !referenced.contains(x) => {
                         Err(error(
                             &p.span,
-                            format!("variable {} not mentioned in requires/ensures", x).as_str(),
+                            format!("variable {} not mentioned in `requires`/`ensures`", x)
+                                .as_str(),
                         ))
                     }
                     _ => Ok(()),
@@ -596,15 +665,13 @@ fn check_one_expr<Emit: EmitError>(
         }
         ExprX::AssertAssume { is_assume, expr: inner_expr, .. } => {
             if ctxt.no_cheating && *is_assume {
-                let mut msg = error(&expr.span, "assume/admit not allowed with --no-cheating");
+                let mut msg =
+                    error(&expr.span, "`assume`/`admit` not allowed with `--no-cheating`");
                 if let Some(label) = ast_expr_get_proof_note(inner_expr) {
                     msg =
                         msg.proof_note_label(&expr.span, label.text.as_str(), label.is_custom_err);
                     if !label.is_custom_err {
-                        emit.record_func_failed_proof_note(
-                            function.x.name.clone(),
-                            label.text.to_string(),
-                        );
+                        emit.record_func_failed_proof_note(label.text.to_string());
                     }
                 }
                 emit.emit_deferred_err(msg);
@@ -619,7 +686,7 @@ fn check_one_expr<Emit: EmitError>(
                         &WarningAllow::AssertForallImplication,
                         || "using ==> in `assert forall` does not currently assume the antecedent in the body; consider using `implies` instead of `==>`",
                         |msg| {
-                            let msg = msg.help("If you didn't mean to assume the antecedent, we're very curious to hear why! To tell us, please open an issue on the Verus issue tracker on github with the title `Don't always make assert forall assume the antecedent`. If no one opens such an issue, we'll soon change the behavior of Verus to always assume the antecedent of the outermost implication");
+                            let msg = msg.help("if you didn't mean to assume the antecedent, we're very curious to hear why! To tell us, please open an issue on the Verus issue tracker on github with the title `Don't always make assert forall assume the antecedent`. If no one opens such an issue, we'll soon change the behavior of Verus to always assume the antecedent of the outermost implication");
                             emit.emit(VirErrAs::Warning(msg));
                         },
                     );
@@ -631,7 +698,7 @@ fn check_one_expr<Emit: EmitError>(
             crate::closures::check_closure_well_formed(expr, proof_fn_modes.is_some())?;
         }
         ExprX::Fuel(f, fuel, is_broadcast_use) => {
-            if ctxt.reveal_groups.contains(f) && *fuel == 1 {
+            if ctxt.lookup.reveal_groups.contains(f) && *fuel == 1 {
                 return Ok(());
             }
             let f = check_path_and_get_function(ctxt, f, None, &expr.span, emit)?;
@@ -657,10 +724,10 @@ fn check_one_expr<Emit: EmitError>(
                         ),
                     ));
                 }
-                if *fuel > 1 && (f.x.mode != Mode::Spec || f.x.decrease.is_empty()) {
+                if *fuel > 1 && (f.x.mode != Mode::Spec || f.x.decreases_len == 0) {
                     return Err(error(
                         &expr.span,
-                        "reveal_with_fuel statements require a spec function with a decreases clause",
+                        "`reveal_with_fuel` statements require a spec function with a `decreases` clause",
                     ));
                 }
                 if let Some(my_module) = &function.x.owning_module {
@@ -668,7 +735,7 @@ fn check_one_expr<Emit: EmitError>(
                         return Err(error(
                             &expr.span,
                             format!(
-                                "reveal/fuel statement is not allowed here because the function `{:}` is marked 'closed' and thus its body is not visible here. (Note: 'reveal' statements are intended for functions that are opaque, not functions that are closed)",
+                                "reveal/fuel statement is not allowed here because the function `{:}` is marked `closed` and thus its body is not visible here (note: `reveal` statements are intended for functions that are opaque, not functions that are closed)",
                                 path_as_friendly_rust_name(&f.x.name.path),
                             ),
                         ));
@@ -697,7 +764,7 @@ fn check_one_expr<Emit: EmitError>(
                 _ => {
                     return Err(error(
                         &expr.span,
-                        "proof blocks inside spec code is currently supported only for spec functions with decreases",
+                        "Verus currently supports proof blocks inside spec code only for spec functions with `decreases`",
                     ));
                 }
             }
@@ -706,7 +773,7 @@ fn check_one_expr<Emit: EmitError>(
             return Err(error(
                 &expr.span,
                 format!(
-                    "This verus_builtin header should go at the {:} (this is probably a Verus bug, unless you are manually writing calls to Verus builtin headers, which is unusual)",
+                    "this Verus builtin header should go at the {:} (this is probably a Verus bug, unless you are manually writing calls to Verus builtin headers, which is unusual)",
                     header.location_for_diagnostic()
                 ),
             ));
@@ -715,9 +782,9 @@ fn check_one_expr<Emit: EmitError>(
             return Err(error(
                 &expr.span,
                 if *migrated {
-                    "This `&mut` parameter must be dereferenced (either explicitly, as in `*x`, or implicitly, as in `x.field`). For more flexible mutable reference support, disable the backwards-compatability (add #[verifier::deprecated_postcondition_mut_ref_style(false)] to the function)"
+                    "this `&mut` parameter must be dereferenced (either explicitly, as in `*x`, or implicitly, as in `x.field`); for more flexible mutable reference support, disable the backwards-compatibility (add `#[verifier::deprecated_postcondition_mut_ref_style(false)]` to the function)"
                 } else {
-                    "The result of `final` must be dereferenced (either explicitly, as in `*final(x)`, or implicitly, as in `final(x).field`)"
+                    "the result of `final` must be dereferenced (either explicitly, as in `*final(x)`, or implicitly, as in `final(x).field`)"
                 },
             ));
         }
@@ -732,7 +799,7 @@ fn check_one_expr<Emit: EmitError>(
                     // This is nontrivial because we might need to evaluate the guard condition more than once
                     return Err(error(
                         &arm.x.pattern.span,
-                        "Not supported: match arm containing both an or-pattern (|) and a match-guard",
+                        "Verus does not currently support a match arm containing both an or-pattern (|) and a match guard",
                     ));
                 }
                 if let Some(span) = has_ref_mut_binding {
@@ -740,7 +807,7 @@ fn check_one_expr<Emit: EmitError>(
                         // This probably isn't that bad to support
                         return Err(error(
                             &span,
-                            "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
+                            "Verus does not currently support a pattern containing both an or-pattern (|) and a `ref mut` binding",
                         ));
                     }
                     if has_guard {
@@ -748,7 +815,7 @@ fn check_one_expr<Emit: EmitError>(
                         // the test condition, but the mutable borrow is immutable until it ends
                         return Err(error(
                             &span,
-                            "Not supported: match arm containing both a match-guard and a binding by mutable reference",
+                            "Verus does not currently support a match arm containing both a match guard and a `ref mut` binding",
                         ));
                     }
                 }
@@ -757,7 +824,7 @@ fn check_one_expr<Emit: EmitError>(
                 if i == arms.len() - 1 && has_guard {
                     return Err(error(
                         &arm.x.guard.span,
-                        "Not supported: match where the last arm has a match guard (this would necessarily mean the entire arm is unreachable)",
+                        "Verus does not currently support a match where the last arm has a match guard (this would necessarily mean the entire arm is unreachable)",
                     ));
                 }
             }
@@ -766,7 +833,7 @@ fn check_one_expr<Emit: EmitError>(
             return Err(error(
                 &expr.span,
                 "`old` is meaningless in spec functions",
-            ).help("You can dereference the mutable reference normally to get the \"current\"/\"old\" value"));
+            ).help("you can dereference the mutable reference normally to get the \"current\"/\"old\" value"));
         }
         ExprX::ShrRefStructWrap(_e1, _e2, t1, t2, variant_ident, field_ident) => {
             let datatype_typ = undecorate_typ(&t2);
@@ -780,7 +847,7 @@ fn check_one_expr<Emit: EmitError>(
                 }
             };
             let Dt::Path(path) = dt else {
-                return Err(error(&expr.span, "shr_ref_struct_wrap not supported for tuples"));
+                return Err(error(&expr.span, "`shr_ref_struct_wrap` not supported for tuples"));
             };
             check_datatype_access(
                 ctxt,
@@ -791,7 +858,7 @@ fn check_one_expr<Emit: EmitError>(
                 "`shr_ref_struct_wrap` operator",
                 emit,
             )?;
-            let datatype = ctxt.dts.get(path).unwrap();
+            let datatype = ctxt.lookup.dts.get(path).unwrap();
             let variant = if datatype.x.variants.len() == 1 && **variant_ident == "" {
                 &datatype.x.variants[0]
             } else {
@@ -817,13 +884,13 @@ fn check_one_expr<Emit: EmitError>(
             if datatype.x.mode == Mode::Spec {
                 return Err(error(
                     &expr.span,
-                    "shr_ref_struct_wrap cannot target ghost-mode datatype",
+                    "`shr_ref_struct_wrap` cannot target ghost-mode datatype",
                 ));
             };
             if field.a.1 == Mode::Spec {
                 return Err(error(
                     &expr.span,
-                    "shr_ref_struct_wrap cannot target ghost-mode field",
+                    "`shr_ref_struct_wrap` cannot target ghost-mode field",
                 ));
             }
             for field in variant.fields.iter() {
@@ -834,7 +901,7 @@ fn check_one_expr<Emit: EmitError>(
                         return Err(error(
                             &expr.span,
                             format!(
-                                "shr_ref_struct_wrap can only be applied when all other fields of the relevant variant are ghost-mode or of type Ghost (field `{:}` does not meet this requirement)",
+                                "`shr_ref_struct_wrap` can only be applied when all other fields of the relevant variant are ghost-mode or of type `Ghost` (field `{:}` does not meet this requirement)",
                                 field.name
                             ),
                         ));
@@ -856,7 +923,7 @@ fn check_one_stmt(_ctxt: &Ctxt, stmt: &Stmt) -> Result<(), VirErr> {
                 if has_or {
                     return Err(error(
                         &span,
-                        "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
+                        "Verus does not currently support a pattern containing both an or-pattern (|) and a `ref mut` binding",
                     ));
                 }
             }
@@ -866,13 +933,13 @@ fn check_one_stmt(_ctxt: &Ctxt, stmt: &Stmt) -> Result<(), VirErr> {
     Ok(())
 }
 
-fn check_one_place<Emit: EmitError>(
+fn check_one_place(
     ctxt: &Ctxt,
     function: &Function,
     place: &Place,
     disallow_private_access: Option<(&Visibility, &str)>,
     _area: Area,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
     match &place.x {
         PlaceX::Field(
@@ -894,12 +961,12 @@ fn check_one_place<Emit: EmitError>(
     Ok(())
 }
 
-fn check_one_pattern<Emit: EmitError>(
+fn check_one_pattern(
     ctxt: &Ctxt,
     function: &Function,
     pattern: &Pattern,
     disallow_private_access: Option<(&Visibility, &str)>,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
     match &pattern.x {
         PatternX::Constructor(Dt::Path(path), _id, _binders) => {
@@ -926,13 +993,13 @@ enum Area {
     Body,
 }
 
-fn check_expr<Emit: EmitError>(
+fn check_expr(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Visibility, &str)>,
     area: Area,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
     warn_config: &Option<WarningConfig>,
 ) -> Result<(), VirErr> {
     let check_result = crate::ast_visitor::ast_visitor_check(
@@ -954,34 +1021,99 @@ fn check_expr<Emit: EmitError>(
     check_result
 }
 
-fn check_function<Emit: EmitError>(
-    ctxt: &Ctxt,
+pub fn check_function(
+    krate: &Krate,
+    funs: Arc<HashMap<Fun, FunctionStub>>,
+    lookup: Arc<WfLookup>,
+    demote_trait_lookup: &DemoteTraitLookup,
     function: &Function,
-    emit: &mut Emit,
-    warn_config: &Option<WarningConfig>,
+    warning_ctx: &crate::context::WarningCtx,
+    no_cheating: bool,
+    no_verify: bool,
+) -> (Result<PerFunctionCheckResults, WFErr>, Vec<VirErr>, Vec<VirErrAs>) {
+    let mut emit = EmitErrorState {
+        boundary_errors: IndexMap::new(),
+        diags: vec![],
+        func_failed_proof_notes: HashSet::new(),
+        deferred_errors: vec![],
+        dyn_compatability_checks: IndexMap::new(),
+    };
+    let wf = check_function_inner(
+        krate,
+        funs,
+        lookup,
+        demote_trait_lookup,
+        function,
+        &mut emit,
+        warning_ctx,
+        no_cheating,
+        no_verify,
+    );
+    let res = match wf {
+        Ok(()) if emit.boundary_errors.len() == 0 => Ok(PerFunctionCheckResults {
+            func_failed_proof_notes: emit.func_failed_proof_notes,
+            dyn_compatability_checks: Arc::new(emit.dyn_compatability_checks),
+        }),
+        _ => Err(WFErr {
+            errors: match wf {
+                Ok(()) => vec![],
+                Err(e) => vec![e],
+            },
+            boundary_errors: emit.boundary_errors.into_iter().collect(),
+            func_failed_proof_notes: emit.func_failed_proof_notes,
+        }),
+    };
+    (res, emit.deferred_errors, emit.diags)
+}
+
+fn check_function_inner(
+    krate: &Krate,
+    funs: Arc<HashMap<Fun, FunctionStub>>,
+    lookup: Arc<WfLookup>,
+    demote_trait_lookup: &DemoteTraitLookup,
+    function: &Function,
+    emit: &mut EmitErrorState,
+    warning_ctx: &crate::context::WarningCtx,
+    no_cheating: bool,
     _no_verify: bool,
 ) -> Result<(), VirErr> {
-    if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
+    let ctxt = Ctxt { funs, lookup, krate, no_cheating };
+
+    // TODO remove once `uninterp` is enforced for uninterpreted functions
+    let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
+        panic!("missing warn_config for function {:?}", function.x.name);
+    };
+
+    if let Some(method) = method_if_not_demoted(demote_trait_lookup, function) {
+        if let FunctionKind::TraitMethodImpl { trait_path, trait_typ_args, .. }
+        | FunctionKind::ForeignTraitMethodImpl { trait_path, trait_typ_args, .. } =
+            &function.x.kind
+        {
+            // trait_method_impl_typ_args relies on trait_typ_args being Self plus the trait generics
+            if let Some(tr) = ctxt.lookup.merged_traits.trait_map.get(trait_path) {
+                assert!(trait_typ_args.len() == tr.x.typ_params.len() + 1);
+            }
+        }
         if function.x.require.len() > 0 {
             return Err(error(
                 &function.span,
-                "trait method implementation cannot declare requires clauses; these can only be inherited from the trait declaration",
+                "trait method implementation cannot declare `requires` clauses; these can only be inherited from the trait declaration",
             ));
         }
         if function.x.mask_spec.is_some() {
             return Err(error(
                 &function.span,
-                "trait method implementation cannot declare an opens_invariants spec; this can only be inherited from the trait declaration",
+                "trait method implementation cannot declare an `opens_invariants` spec; this can only be inherited from the trait declaration",
             ));
         }
         if function.x.unwind_spec.is_some() {
             return Err(error(
                 &function.span,
-                "trait method implementation cannot declare an unwind specification; this can only be inherited from the trait declaration",
+                "trait method implementation cannot declare an `unwind` specification; this can only be inherited from the trait declaration",
             ));
         }
 
-        let orig_decl = ctxt.funs.get(method).ok_or_else(|| {
+        let orig_decl = ctxt.funs.get(&method).ok_or_else(|| {
             error(&function.span, "implementing a trait method that doesn't exist")
         })?;
 
@@ -997,15 +1129,15 @@ fn check_function<Emit: EmitError>(
             if function.x.ensure.0.len() + function.x.ensure.1.len() > 0 {
                 return Err(error(
                     &function.span,
-                    "trait method implementation cannot declare ensures clauses because the trait declaration is marked impls_cannot_extend_spec",
+                    "trait method implementation cannot declare `ensures` clauses because the trait declaration is marked `impls_cannot_extend_spec`",
                 ));
             }
         }
 
-        if orig_decl.x.returns.is_some() && function.x.returns.is_some() {
+        if orig_decl.x.returns && function.x.returns.is_some() {
             return Err(error(
                 &function.span,
-                "a `returns` clause cannot be declared on both a trait method impl and its declaration",
+                "a `returns` clause cannot be declared on both a trait method implementation and its declaration",
             ).secondary_span(&orig_decl.span));
         }
     } else {
@@ -1016,13 +1148,13 @@ fn check_function<Emit: EmitError>(
         {
             return Err(error(
                 &function.span,
-                "only exec trait functions can be marked impls_cannot_extend_spec",
+                "only exec trait methods can be marked `impls_cannot_extend_spec`",
             ));
         }
         if function.x.ensure.1.len() > 0 {
             return Err(error(
                 &function.span,
-                "impls_cannot_extend_spec functions cannot use default_ensures",
+                "`impls_cannot_extend_spec` functions cannot use `default_ensures`",
             ));
         }
     }
@@ -1030,7 +1162,7 @@ fn check_function<Emit: EmitError>(
         if function.x.attrs.exec_allows_no_decreases_clause {
             return Err(error(
                 &function.span,
-                "trait method declaration cannot declare exec_allows_no_decreases_clause",
+                "trait method declaration cannot declare `exec_allows_no_decreases_clause`",
             ));
         }
     }
@@ -1043,54 +1175,52 @@ fn check_function<Emit: EmitError>(
             | FunctionKind::ForeignTraitMethodImpl { .. } => {
                 return Err(error(
                     &function.span,
-                    "decreases_by/recommends_by function cannot be a trait method",
+                    "`decreases_by`/`recommends_by` function cannot be a trait method",
                 ));
             }
         }
         if function.x.mode != Mode::Proof {
             return Err(error(
                 &function.span,
-                "decreases_by/recommends_by function must have mode proof",
+                "`decreases_by`/`recommends_by` function must have mode proof",
             ));
         }
 
-        if function.x.mode != Mode::Exec
-            && matches!(*function.x.outer_ret.x.typ, TypX::Opaque { .. })
-        {
+        if function.x.mode != Mode::Exec && typ_contains_opaque(&function.x.outer_ret.x.typ) {
             return Err(error(
                 &function.x.outer_ret.span,
-                format!("Opaque type is not supported in {} mode", function.x.mode),
+                format!("`impl Trait` types are not supported in {} mode", function.x.mode),
             ));
         }
 
         if function.x.decrease.len() != 0 {
             return Err(error(
                 &function.span,
-                "decreases_by/recommends_by function cannot have its own decreases clause",
+                "`decreases_by`/`recommends_by` function cannot have its own `decreases` clause",
             ));
         }
         if function.x.require.len() != 0 {
             return Err(error(
                 &function.span,
-                "decreases_by/recommends_by function cannot have requires clauses (use decreases_when in the spec function instead)",
+                "`decreases_by`/`recommends_by` function cannot have `requires` clauses (use `decreases ... when` in the spec function instead)",
             ));
         }
         if function.x.ensure.0.len() + function.x.ensure.1.len() != 0 {
             return Err(error(
                 &function.span,
-                "decreases_by/recommends_by function cannot have ensures clauses",
+                "`decreases_by`/`recommends_by` function cannot have `ensures` clauses",
             ));
         }
         if function.x.returns.is_some() {
             return Err(error(
                 &function.span,
-                "decreases_by/recommends_by function cannot have ensures clauses",
+                "`decreases_by`/`recommends_by` function cannot have `returns` clauses",
             ));
         }
         if !is_unit(&function.x.outer_ret.x.typ) {
             return Err(error(
                 &function.span,
-                "decreases_by/recommends_by function cannot have a return value",
+                "`decreases_by`/`recommends_by` function cannot have a return value",
             ));
         }
     }
@@ -1099,7 +1229,7 @@ fn check_function<Emit: EmitError>(
         if function.x.mode != Mode::Spec {
             return Err(error(
                 &function.span,
-                "only spec functions can use decreases_by/recommends_by",
+                "only spec functions can use `decreases_by`/`recommends_by`",
             ));
         }
     }
@@ -1107,7 +1237,7 @@ fn check_function<Emit: EmitError>(
     let outer_ret_name = user_local_name(&function.x.outer_ret.x.name);
     let inner_ret_name = user_local_name(&function.x.inner_ret.x.name);
     for p in function.x.params.iter() {
-        check_typ(ctxt, &p.x.typ, &p.span, emit)?;
+        check_typ(&ctxt, &p.x.typ, &p.span, emit)?;
         let param_name = user_local_name(&p.x.name);
         if param_name == outer_ret_name || param_name == inner_ret_name {
             return Err(error(
@@ -1116,8 +1246,8 @@ fn check_function<Emit: EmitError>(
             ));
         }
     }
-    check_typ(ctxt, &function.x.outer_ret.x.typ, &function.x.outer_ret.span, emit)?;
-    check_typ(ctxt, &function.x.inner_ret.x.typ, &function.x.inner_ret.span, emit)?;
+    check_typ(&ctxt, &function.x.outer_ret.x.typ, &function.x.outer_ret.span, emit)?;
+    check_typ(&ctxt, &function.x.inner_ret.x.typ, &function.x.inner_ret.span, emit)?;
     if !function.x.attrs.is_async {
         assert!(function.x.outer_ret.x.name == function.x.inner_ret.x.name);
         assert!(types_equal(&function.x.outer_ret.x.typ, &function.x.inner_ret.x.typ));
@@ -1127,31 +1257,31 @@ fn check_function<Emit: EmitError>(
 
     if function.x.attrs.inline {
         if function.x.mode != Mode::Spec {
-            return Err(error(&function.span, "'inline' is only allowed for 'spec' functions"));
+            return Err(error(&function.span, "`inline` is only allowed for `spec` functions"));
         }
         // make sure we don't leak private bodies by inlining
         if BodyVisibility::Visibility(function.x.visibility.clone()) != function.x.body_visibility {
             // TODO error message could be improved
             return Err(error(
                 &function.span,
-                "'inline' is only allowed for private or 'open spec' functions",
+                "`inline` is only allowed for private or `open spec` functions",
             ));
         }
         if function.x.decrease.len() != 0 {
-            return Err(error(&function.span, "'inline' functions cannot be recursive"));
+            return Err(error(&function.span, "`inline` functions cannot be recursive"));
         }
         if function.x.body.is_none() {
-            return Err(error(&function.span, "'inline' functions must have a body"));
+            return Err(error(&function.span, "`inline` functions must have a body"));
         }
     }
 
     if function.x.attrs.atomic {
         if function.x.mode != Mode::Exec {
-            return Err(error(&function.span, "'atomic' only makes sense on an 'exec' function"));
+            return Err(error(&function.span, "`atomic` only makes sense on an `exec` function"));
         }
         match function.x.kind {
             FunctionKind::TraitMethodDecl { .. } | FunctionKind::TraitMethodImpl { .. } => {
-                return Err(error(&function.span, "'atomic' not supported for trait functions"));
+                return Err(error(&function.span, "`atomic` not supported for trait methods"));
             }
             FunctionKind::Static | FunctionKind::ForeignTraitMethodImpl { .. } => {
                 // ok
@@ -1164,7 +1294,7 @@ fn check_function<Emit: EmitError>(
     if function.x.unwind_spec.is_some() && function.x.mode != Mode::Exec {
         return Err(error(
             &function.span,
-            "an 'unwind' specification can only be given on exec functions",
+            "an `unwind` specification can only be given on exec functions",
         ));
     }
     if function.x.attrs.broadcast_forall {
@@ -1189,16 +1319,13 @@ fn check_function<Emit: EmitError>(
     {
         return Err(error(
             &function.span,
-            "Select at most one verifier attribute: integer_ring, non_linear, bit_vector",
+            "select at most one verifier attribute: `integer_ring`, `nonlinear`, `bit_vector`",
         ));
     }
 
     if function.x.attrs.bit_vector {
         if function.x.mode != Mode::Proof {
-            return Err(error(
-                &function.span,
-                "bit-vector function mode must be declared as proof",
-            ));
+            return Err(error(&function.span, "`bit_vector` function must be declared as proof"));
         }
         if let Some(body) = &function.x.body {
             crate::ast_visitor::expr_visitor_check(body, &mut |_scope_map, expr| {
@@ -1207,7 +1334,7 @@ fn check_function<Emit: EmitError>(
                     _ => {
                         return Err(error(
                             &function.span,
-                            "bit-vector function mode cannot have a body",
+                            "`bit_vector` function cannot have a body",
                         ));
                     }
                 }
@@ -1220,7 +1347,7 @@ fn check_function<Emit: EmitError>(
                 _ => {
                     return Err(error(
                         &p.span,
-                        "bit-vector function mode cannot have a datatype other than Integer/Boolean",
+                        "`bit_vector` function parameters must have type `bool` or an integer type (e.g., `u64` or `int`)",
                     ));
                 }
             }
@@ -1231,13 +1358,15 @@ fn check_function<Emit: EmitError>(
     if function.x.attrs.integer_ring && !_no_verify {
         return Err(error(
             &function.span,
-            "Please cargo build with `--features singular` to use integer_ring attribute",
+            "please cargo build with `--features singular` to use `integer_ring` attribute",
         ));
     }
 
     if function.x.attrs.exec_assume_termination && ctxt.no_cheating {
-        let msg =
-            error(&function.span, "#[verifier::assume_termination] not allowed with --no-cheating");
+        let msg = error(
+            &function.span,
+            "`#[verifier::assume_termination]` not allowed with `--no-cheating`",
+        );
         emit.emit_deferred_err(msg);
     }
 
@@ -1248,20 +1377,23 @@ fn check_function<Emit: EmitError>(
             Err(_) => {
                 return Err(error(
                     &function.span,
-                    "Please provide VERUS_SINGULAR_PATH to use integer_ring attribute",
+                    "please provide `VERUS_SINGULAR_PATH` to use `integer_ring` attribute",
                 ));
             }
         };
 
         if function.x.mode != Mode::Proof {
-            return Err(error(&function.span, "integer_ring mode must be declared as proof"));
+            return Err(error(&function.span, "`integer_ring` mode must be declared as proof"));
         }
         if let Some(body) = &function.x.body {
             crate::ast_visitor::expr_visitor_check(body, &mut |_scope_map, expr| {
                 match &expr.x {
                     ExprX::Block(_, _) => {}
                     _ => {
-                        return Err(error(&function.span, "integer_ring mode cannot have a body"));
+                        return Err(error(
+                            &function.span,
+                            "`integer_ring` mode cannot have a body",
+                        ));
                     }
                 }
                 Ok(())
@@ -1274,7 +1406,7 @@ fn check_function<Emit: EmitError>(
                 _ => {
                     return Err(error(
                         &p.span,
-                        "integer_ring proof's parameters should all be int type",
+                        "`integer_ring` proof's parameters should all be int type",
                     ));
                 }
             }
@@ -1282,7 +1414,7 @@ fn check_function<Emit: EmitError>(
         if !is_unit(&function.x.outer_ret.x.typ) {
             return Err(error(
                 &function.span,
-                "integer_ring mode function cannot have a return value",
+                "`integer_ring` mode function cannot have a return value",
             ));
         }
         for req in function.x.require.iter() {
@@ -1295,7 +1427,7 @@ fn check_function<Emit: EmitError>(
                         } else {
                             return Err(error(
                                 &req.span,
-                                "integer_ring mode's expressions should be int/bool type",
+                                "`integer_ring` mode's expressions should be `int`/`bool` type",
                             ));
                         }
                     }
@@ -1304,7 +1436,7 @@ fn check_function<Emit: EmitError>(
                     _ => {
                         return Err(error(
                             &req.span,
-                            "integer_ring mode's expressions should be int/bool type",
+                            "`integer_ring` mode's expressions should be `int`/`bool` type",
                         ));
                     }
                 }
@@ -1321,7 +1453,7 @@ fn check_function<Emit: EmitError>(
                         } else {
                             return Err(error(
                                 &ens.span,
-                                "integer_ring mode's expressions should be int/bool type",
+                                "`integer_ring` mode's expressions should be `int`/`bool` type",
                             ));
                         }
                     }
@@ -1330,7 +1462,7 @@ fn check_function<Emit: EmitError>(
                     _ => {
                         return Err(error(
                             &ens.span,
-                            "integer_ring mode's expressions should be int/bool type",
+                            "`integer_ring` mode's expressions should be `int`/`bool` type",
                         ));
                     }
                 }
@@ -1338,12 +1470,12 @@ fn check_function<Emit: EmitError>(
             })?;
         }
         if let Some(r) = &function.x.returns {
-            return Err(error(&r.span, "integer_ring should not have a `returns` clause"));
+            return Err(error(&r.span, "`integer_ring` should not have a `returns` clause"));
         }
     }
 
     if function.x.is_main() && function.x.mode != Mode::Exec {
-        return Err(error(&function.span, "`main` function should be #[verifier::exec]"));
+        return Err(error(&function.span, "`main` function must be `exec`"));
     }
 
     // These should be true by construction in Rust->VIR; sanity check them here.
@@ -1368,10 +1500,10 @@ fn check_function<Emit: EmitError>(
     }
 
     for req in function.x.require.iter() {
-        let msg = "'requires' clause of public function";
+        let msg = "`requires` clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(
-            ctxt,
+            &ctxt,
             function,
             req,
             disallow_private_access,
@@ -1381,10 +1513,10 @@ fn check_function<Emit: EmitError>(
         )?;
     }
     for ens in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
-        let msg = "'ensures' clause of public function";
+        let msg = "`ensures` clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(
-            ctxt,
+            &ctxt,
             function,
             ens,
             disallow_private_access,
@@ -1394,10 +1526,10 @@ fn check_function<Emit: EmitError>(
         )?;
     }
     if let Some(r) = &function.x.returns {
-        if matches!(*function.x.inner_ret.x.typ, TypX::Opaque { .. }) {
+        if typ_contains_opaque(&function.x.inner_ret.x.typ) {
             return Err(error(
                 &r.span,
-                "`returns` clause is not allowed for function that returns opaque type",
+                "`returns` clause is not allowed for function that returns an `impl Trait` type",
             )
             .secondary_label(
                 &function.span,
@@ -1426,10 +1558,10 @@ fn check_function<Emit: EmitError>(
             ));
         }
 
-        let msg = "'requires' clause of public function";
+        let msg = "`requires` clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(
-            ctxt,
+            &ctxt,
             function,
             r,
             disallow_private_access,
@@ -1442,28 +1574,28 @@ fn check_function<Emit: EmitError>(
         None => {}
         Some(MaskSpec::InvariantOpens(_span, es) | MaskSpec::InvariantOpensExcept(_span, es)) => {
             for expr in es.iter() {
-                let msg = "'opens_invariants' clause of public function";
+                let msg = "`opens_invariants` clause of public function";
                 let disallow_private_access = Some((&function.x.visibility, msg));
                 check_expr(
-                    ctxt,
+                    &ctxt,
                     function,
                     expr,
                     disallow_private_access,
-                    Area::PreState("opens_invariants clause"),
+                    Area::PreState("`opens_invariants` clause"),
                     emit,
                     warn_config,
                 )?;
             }
         }
         Some(MaskSpec::InvariantOpensSet(expr)) => {
-            let msg = "'opens_invariants' clause of public function";
+            let msg = "`opens_invariants` clause of public function";
             let disallow_private_access = Some((&function.x.visibility, msg));
             check_expr(
-                ctxt,
+                &ctxt,
                 function,
                 expr,
                 disallow_private_access,
-                Area::PreState("opens_invariants clause"),
+                Area::PreState("`opens_invariants` clause"),
                 emit,
                 warn_config,
             )?
@@ -1472,24 +1604,24 @@ fn check_function<Emit: EmitError>(
     match &function.x.unwind_spec {
         None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind) => {}
         Some(UnwindSpec::NoUnwindWhen(expr)) => {
-            let msg = "unwind clause of public function";
+            let msg = "`unwind` clause of public function";
             let disallow_private_access = Some((&function.x.visibility, msg));
             check_expr(
-                ctxt,
+                &ctxt,
                 function,
                 expr,
                 disallow_private_access,
-                Area::PreState("opens_invariants clause"),
+                Area::PreState("`opens_invariants` clause"),
                 emit,
                 warn_config,
             )?;
         }
     }
     for expr in function.x.decrease.iter() {
-        let msg = "'decreases' clause of public function";
+        let msg = "`decreases` clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(
-            ctxt,
+            &ctxt,
             function,
             expr,
             disallow_private_access,
@@ -1499,22 +1631,22 @@ fn check_function<Emit: EmitError>(
         )?;
     }
     if let Some(expr) = &function.x.decrease_when {
-        let msg = "'when' clause of public function";
+        let msg = "`when` clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
         if function.x.mode != Mode::Spec {
             return Err(error(
                 &function.span,
-                "only spec functions can use decreases_when (use requires for proof/exec functions)",
+                "only spec functions can use `decreases ... when` (use `requires` for proof/exec functions)",
             ));
         }
         if function.x.decrease.len() == 0 {
             return Err(error(
                 &function.span,
-                "decreases_when can only be used when there is a decreases clause (use recommends(...) for nonrecursive functions)",
+                "`decreases ... when` can only be used when there is a `decreases` clause (use `recommends` for nonrecursive functions)",
             ));
         }
         check_expr(
-            ctxt,
+            &ctxt,
             function,
             expr,
             disallow_private_access,
@@ -1533,7 +1665,7 @@ fn check_function<Emit: EmitError>(
             warn_config,
             &function.span,
             &WarningAllow::DecreasesWhenExecAllowsNoDecreasesClause,
-            || "if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops",
+            || "if `exec_allows_no_decreases_clause` is set, decreases checks in exec functions do not guarantee termination of functions with loops",
             |msg| emit.emit(VirErrAs::Warning(msg)),
         );
     }
@@ -1549,26 +1681,26 @@ fn check_function<Emit: EmitError>(
         } else {
             None
         };
-        check_expr(ctxt, function, body, disallow_private_access, Area::Body, emit, warn_config)?;
+        check_expr(&ctxt, function, body, disallow_private_access, Area::Body, emit, warn_config)?;
     }
 
     if function.x.attrs.is_type_invariant_fn {
         if function.x.mode != Mode::Spec {
             return Err(error(
                 &function.span,
-                "#[verifier::type_invariant] function must be `spec`",
+                "`#[verifier::type_invariant]` function must be `spec`",
             ));
         }
         if !matches!(&*function.x.outer_ret.x.typ, TypX::Bool) {
             return Err(error(
                 &function.span,
-                "#[verifier::type_invariant] function must return bool",
+                "`#[verifier::type_invariant]` function must return `bool`",
             ));
         }
         if !matches!(function.x.kind, FunctionKind::Static) {
             return Err(error(
                 &function.span,
-                "#[verifier::type_invariant] function cannot be a trait function",
+                "`#[verifier::type_invariant]` function cannot be a trait method",
             ));
         }
 
@@ -1576,13 +1708,13 @@ fn check_function<Emit: EmitError>(
         if function.x.decrease_when.is_some() {
             return Err(error(
                 &function.span,
-                "#[verifier::type_invariant] function should not have a 'when' clause (consider adding it as a conjunct in the body)",
+                "`#[verifier::type_invariant]` function cannot have a `when` clause (consider adding it as a conjunct in the body)",
             ));
         }
         if function.x.require.len() > 0 {
             return Err(error(
                 &function.span,
-                "#[verifier::type_invariant] function should not have a 'recommends' clause (consider adding it as a conjunct in the body)",
+                "`#[verifier::type_invariant]` function cannot have a `recommends` clause (consider adding it as a conjunct in the body)",
             ));
         }
     }
@@ -1594,7 +1726,7 @@ fn check_function<Emit: EmitError>(
             _ => {
                 let msg = error(
                     &function.span,
-                    "external_body/assume_specification not allowed with --no-cheating",
+                    "`external_body`/`assume_specification` not allowed with `--no-cheating`",
                 );
                 emit.emit_deferred_err(msg);
             }
@@ -1605,20 +1737,20 @@ fn check_function<Emit: EmitError>(
         if !function.x.require.is_empty() {
             return Err(error(
                 &function.span,
-                "requires are not allowed on the implementation for Drop",
+                "`requires` clauses are not allowed on `Drop` implementations",
             ));
         }
         if !matches!(&function.x.mask_spec, Some(crate::ast::MaskSpec::InvariantOpens(_span, es)) if es.len() == 0)
         {
             return Err(error(
                 &function.span,
-                "the implementation for Drop must be marked opens_invariants none",
+                "a `Drop` implementation must be marked `opens_invariants none`",
             ));
         }
         if !matches!(&function.x.unwind_spec, Some(crate::ast::UnwindSpec::NoUnwind)) {
             return Err(error(
                 &function.span,
-                "the implementation for Drop must be marked no_unwind",
+                "a `Drop` implementation must be marked `no_unwind`",
             ));
         }
     }
@@ -1626,11 +1758,7 @@ fn check_function<Emit: EmitError>(
     Ok(())
 }
 
-fn check_datatype<Emit: EmitError>(
-    ctxt: &Ctxt,
-    dt: &Datatype,
-    emit: &mut Emit,
-) -> Result<(), VirErr> {
+fn check_datatype(ctxt: &Ctxt, dt: &Datatype, emit: &mut EmitErrorState) -> Result<(), VirErr> {
     for variant in dt.x.variants.iter() {
         for field in variant.fields.iter() {
             let typ = &field.a.0;
@@ -1642,7 +1770,7 @@ fn check_datatype<Emit: EmitError>(
         if dt.x.proxy.is_some() {
             return Err(error(
                 &dt.span,
-                "#[verifier::type_invariant] cannot be applied to a datatype that uses #[verifier::external_type_specification]",
+                "`#[verifier::type_invariant]` cannot be applied to a datatype that uses `#[verifier::external_type_specification]`",
             ));
         }
         match &dt.x.transparency {
@@ -1651,7 +1779,7 @@ fn check_datatype<Emit: EmitError>(
                 if vis.is_public() {
                     return Err(error(
                         &dt.span,
-                        "#[verifier::type_invariant]: a struct with a type invariant cannot have any fields public to the crate",
+                        "a struct with a `#[verifier::type_invariant]` cannot have any fields public to the crate",
                     ));
                 }
             }
@@ -1763,8 +1891,8 @@ fn check_functions_match(
 ///  (i) an issue with our conversion from rust paths to VIR paths not being injective
 ///  (ii) the user's use of external_fn_specification/assume_specification resulting in overlap
 ///  (iii) an existing issue related to traits
-fn func_conflict_error(function1: &Function, function2: &Function) -> Message {
-    let add_label = |err: Message, function: &Function| match &function.x.proxy {
+pub fn func_conflict_error(function1: &FunctionStub, function2: &FunctionStub) -> Message {
+    let add_label = |err: Message, function: &FunctionStub| match &function.x.proxy {
         Some(proxy) => {
             err.primary_label(&proxy.span, "specification declared via `assume_specification`")
         }
@@ -1815,17 +1943,14 @@ pub(crate) fn trait_conflict_error(tr1: &Trait, tr2: &Trait, msg: &str) -> Messa
     err
 }
 
-// Pre-merge check.
-// TODO: We should probably be doing all the checks on the just the pre-merged crate declarations,
-// even if we need to perform lookups from the merged crate.
-pub fn check_one_crate(krate: &Krate) -> Result<(), VirErr> {
+fn check_broadcast_groups(krate: &Krate) -> Result<(), VirErr> {
     let mut reveal_group_default = None;
     for group in krate.reveal_groups.iter() {
         if group.x.broadcast_use_by_default_when_this_crate_is_imported.is_some() {
             if let Some(prev) = reveal_group_default {
                 let err = error(
                     &group.span,
-                    "only one broadcast_use_by_default_when_this_crate_is_imported is allowed",
+                    "only one `broadcast_use_by_default_when_this_crate_is_imported` is allowed",
                 );
                 let err = err.primary_span(&prev);
                 return Err(err);
@@ -1836,48 +1961,18 @@ pub fn check_one_crate(krate: &Krate) -> Result<(), VirErr> {
     Ok(())
 }
 
-pub struct WFErr {
-    /// "Normal" errors
-    pub errors: Vec<VirErr>,
-    /// Boundary errors: these need additional processing in the rust_verify crate
-    pub boundary_errors: Vec<(Path, VirErr)>,
-    /// Other info that we want to pass back even in error-cases
-    pub check_details: CheckDetails,
-}
-
 fn to_wf(v: VirErr) -> WFErr {
-    WFErr {
-        errors: vec![v],
-        boundary_errors: vec![],
-        check_details: CheckDetails { func_failed_proof_notes: HashMap::new() },
-    }
+    WFErr { errors: vec![v], boundary_errors: vec![], func_failed_proof_notes: HashSet::new() }
 }
 
-/// - diags: for warnings and notes
-/// - deferred_errors: legit errors that nonetheless don't prevent
-///   us from going all the way to VCs
-/// - Err case: normal errors that prevent us from moving onto the next phase
-pub fn check_crate(
+fn check_conflicts(
     krate: &Krate,
-    unpruned_krate: &Krate,
-    diags: &mut Vec<VirErrAs>,
-    deferred_errors: &mut Vec<VirErr>,
-    warning_ctx: &crate::context::WarningCtx,
-    no_verify: bool,
-    no_cheating: bool,
-) -> Result<CheckDetails, WFErr> {
-    let mut funs: HashMap<Fun, Function> = HashMap::new();
-    for function in krate.functions.iter() {
-        match funs.get(&function.x.name) {
-            Some(other_function) => {
-                return Err(func_conflict_error(function, other_function)).map_err(to_wf);
-            }
-            None => {}
-        }
-        funs.insert(function.x.name.clone(), function.clone());
-    }
+    other_crates: &[Krate],
+) -> Result<HashMap<Path, Datatype>, VirErr> {
     let mut dts: HashMap<Path, Datatype> = HashMap::new();
-    for datatype in krate.datatypes.iter() {
+    for datatype in
+        krate.datatypes.iter().chain(other_crates.iter().flat_map(|k| k.datatypes.iter()))
+    {
         let path = match &datatype.x.name {
             Dt::Path(p) => p,
             Dt::Tuple(_) => {
@@ -1886,25 +1981,22 @@ pub fn check_crate(
         };
         match dts.get(path) {
             Some(other_datatype) => {
-                return Err(datatype_conflict_error(datatype, other_datatype)).map_err(to_wf);
+                return Err(datatype_conflict_error(datatype, other_datatype));
             }
             None => {}
         }
         dts.insert(path.clone(), datatype.clone());
     }
-    let mut traits: HashMap<Path, Trait> = HashMap::new();
-    for tr in krate.traits.iter() {
-        match traits.get(&tr.x.name) {
-            Some(other_tr) => {
-                return Err(trait_conflict_error(tr, other_tr, "duplicate specification for"))
-                    .map_err(to_wf);
-            }
-            None => {}
-        }
-        traits.insert(tr.x.name.clone(), tr.clone());
-    }
-    let reveal_groups: HashSet<Fun> =
-        krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
+    Ok(dts)
+}
+
+fn check_decreases_by_consistency(
+    krate: &Krate,
+    diags: &mut Vec<VirErrAs>,
+    warning_ctx: &crate::context::WarningCtx,
+) -> Result<(), VirErr> {
+    let funs: HashMap<Fun, Function> =
+        krate.functions.iter().map(|f| (f.x.name.clone(), f.clone())).collect();
 
     // Check connections between decreases_by specs and proofs
     let mut decreases_by_proof_to_spec: HashMap<Fun, Fun> = HashMap::new();
@@ -1918,41 +2010,37 @@ pub fn check_crate(
             } else {
                 return Err(error(
                     &function.span,
-                    "cannot find function referred to in decreases_by/recommends_by",
-                ))
-                .map_err(to_wf);
+                    "cannot find function referred to in `decreases_by`/`recommends_by`",
+                ));
             };
             if !proof_function.x.attrs.is_decrease_by {
                 return Err(error(
                     &proof_function.span,
-                    "proof function must be marked #[verifier::decreases_by] or #[verifier::recommends_by] to be used as decreases_by/recommends_by",
+                    "proof function must be marked `#[verifier::decreases_by]` or `#[verifier::recommends_by]` to be used as `decreases_by`/`recommends_by`",
                 )
-                .secondary_span(&function.span)).map_err(to_wf);
+                .secondary_span(&function.span));
             }
             if let Some(prev) = decreases_by_proof_to_spec.get(proof_fun) {
                 return Err(error(
                     &proof_function.span,
-                    "same proof function used for two different decreases_by/recommends_by",
+                    "same proof function used for two different `decreases_by`/`recommends_by`",
                 )
                 .secondary_span(&funs[prev].span)
-                .secondary_span(&function.span))
-                .map_err(to_wf);
+                .secondary_span(&function.span));
             }
             if proof_fun.path.pop_segment() != function.x.name.path.pop_segment() {
                 return Err(error(
                     &proof_function.span,
-                    "a decreases_by function must be in the same module as the function definition",
+                    "a `decreases_by` function must be in the same module as the function definition",
                 )
-                .secondary_span(&function.span))
-                .map_err(to_wf);
+                .secondary_span(&function.span));
             }
 
             if proof_function.x.mode != Mode::Proof {
                 return Err(error(
                     &proof_function.span,
-                    "decreases_by/recommends_by function must have mode proof",
-                ))
-                .map_err(to_wf);
+                    "`decreases_by`/`recommends_by` function must have mode proof",
+                ));
             }
 
             decreases_by_proof_to_spec.insert(proof_fun.clone(), function.x.name.clone());
@@ -1963,8 +2051,7 @@ pub fn check_crate(
                 false,
                 &proof_function,
                 &function,
-            )
-            .map_err(to_wf)?;
+            )?;
         }
         if let Some(spec_fun) = &function.x.attrs.autospec {
             let spec_function = if let Some(spec_function) = funs.get(spec_fun) {
@@ -1976,16 +2063,14 @@ pub fn check_crate(
                         "cannot find function referred to in when_used_as_spec: {}",
                         fun_as_friendly_rust_name(spec_fun),
                     ),
-                ))
-                .map_err(to_wf);
+                ));
             };
             if function.x.mode != Mode::Exec || spec_function.x.mode != Mode::Spec {
                 return Err(error(
                     &spec_function.span,
-                    "when_used_as_spec must point from an exec function to a spec function",
+                    "`when_used_as_spec` must point from an exec function to a spec function",
                 )
-                .secondary_span(&function.span))
-                .map_err(to_wf);
+                .secondary_span(&function.span));
             }
             match (&function.x.kind, &spec_function.x.kind) {
                 (
@@ -1995,9 +2080,9 @@ pub fn check_crate(
                 (FunctionKind::TraitMethodDecl { .. }, _) => {
                     return Err(error(
                         &spec_function.span,
-                        "when_used_as_spec on trait declaration must refer to a spec function in the same trait",
+                        "`when_used_as_spec` on trait declaration must refer to a spec function in the same trait",
                     )
-                    .secondary_span(&function.span)).map_err(to_wf);
+                    .secondary_span(&function.span));
                 }
                 (_, FunctionKind::Static) => {}
                 (_, _) => {
@@ -2005,19 +2090,17 @@ pub fn check_crate(
                     // have the corresponding Dynamic info (typs, impl_paths) in general.
                     return Err(error(
                         &spec_function.span,
-                        "when_used_as_spec must point to a non-trait spec function",
+                        "`when_used_as_spec` must point to a non-trait spec function",
                     )
-                    .secondary_span(&function.span))
-                    .map_err(to_wf);
+                    .secondary_span(&function.span));
                 }
             }
             if !is_visible_to_opt(&spec_function.x.visibility, &function.x.visibility.restricted_to)
             {
                 return Err(error(
                     &function.span,
-                    "when_used_as_spec refers to function which is more private",
-                ))
-                .map_err(to_wf);
+                    "`when_used_as_spec` refers to function which is more private",
+                ));
             }
 
             check_functions_match(
@@ -2027,22 +2110,20 @@ pub fn check_crate(
                 true,
                 &spec_function,
                 &function,
-            )
-            .map_err(to_wf)?;
+            )?;
         }
         if function.x.ensure.1.len() > 0
             && !matches!(&function.x.kind, FunctionKind::TraitMethodDecl { .. })
         {
-            return Err(error(&function.span, "default_ensures not allowed here")).map_err(to_wf);
+            return Err(error(&function.span, "`default_ensures` not allowed here"));
         }
         if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
             if function.x.body.is_some() {
                 if function.x.decrease.len() > 0 {
                     return Err(error(
                         &function.span,
-                        "trait default methods do not yet support recursion and decreases",
-                    ))
-                    .map_err(to_wf);
+                        "Verus does not currently support recursion and `decreases` in provided methods",
+                    ));
                 }
             }
         }
@@ -2077,7 +2158,7 @@ pub fn check_crate(
                     warn_config,
                     &function.span,
                     &WarningAllow::BroadcastWithoutTrigger,
-                    || "broadcast functions should have explicit #[trigger] or #![trigger ...]",
+                    || "broadcast functions should have explicit `#[trigger]` or `#![trigger ...]`",
                     |msg| diags.push(VirErrAs::Warning(msg)),
                 );
             }
@@ -2089,15 +2170,29 @@ pub fn check_crate(
         {
             return Err(error(
                 &function.span,
-                "function cannot be marked #[verifier::decreases_by] or #[verifier::recommends_by] unless it is used in some decreases_by/recommends_by",
-            )).map_err(to_wf);
+                "function cannot be marked `#[verifier::decreases_by]` or `#[verifier::recommends_by]` unless it is used in some `decreases_by`/`recommends_by`",
+            ));
         }
     }
+    Ok(())
+}
+
+fn check_reveal_groups(
+    krate: &Krate,
+    other_krates: &[Krate],
+    all_funs: &HashMap<Fun, FunctionStub>,
+) -> Result<HashSet<Fun>, VirErr> {
+    let reveal_groups: HashSet<Fun> = krate
+        .reveal_groups
+        .iter()
+        .chain(other_krates.iter().flat_map(|k| k.reveal_groups.iter()))
+        .map(|g| g.x.name.clone())
+        .collect();
 
     for module in krate.modules.iter() {
         if let Some(reveals) = &module.x.reveals {
             for reveal in reveals.x.iter() {
-                if let Some(function) = funs.get(reveal) {
+                if let Some(function) = all_funs.get(reveal) {
                     if !function.x.attrs.broadcast_forall {
                         return Err(error(
                             &reveals.span,
@@ -2105,8 +2200,7 @@ pub fn check_crate(
                                 "{} is not a broadcast proof fn",
                                 fun_as_friendly_rust_name(reveal)
                             ),
-                        ))
-                        .map_err(to_wf);
+                        ));
                     }
                 } else {
                     assert!(reveal_groups.contains(reveal));
@@ -2117,7 +2211,7 @@ pub fn check_crate(
 
     for reveal_group in krate.reveal_groups.iter() {
         for member in reveal_group.x.members.iter() {
-            if let Some(function) = funs.get(member) {
+            if let Some(function) = all_funs.get(member) {
                 if !function.x.attrs.broadcast_forall {
                     return Err(error(
                         &reveal_group.span,
@@ -2125,32 +2219,36 @@ pub fn check_crate(
                             "{} is not a broadcast proof fn",
                             fun_as_friendly_rust_name(member)
                         ),
-                    ))
-                    .map_err(to_wf);
+                    ));
                 }
             }
         }
     }
 
+    Ok(reveal_groups)
+}
+
+/// Return value:
+/// (Ok | Err, non_blocking_errors, diagnostics)
+/// Err means we should exit
+
+fn check_all_but_functions(
+    krate: &Krate,
+    no_cheating: bool,
+    funs: Arc<HashMap<Fun, FunctionStub>>,
+    lookup: Arc<WfLookup>,
+) -> (Result<InitialWfResults, WFErr>, Vec<VirErr>, Vec<VirErrAs>) {
     let mut emit = EmitErrorState {
         boundary_errors: IndexMap::new(),
         diags: vec![],
-        func_failed_proof_notes: HashMap::new(),
+        func_failed_proof_notes: HashSet::new(),
         deferred_errors: vec![],
+        dyn_compatability_checks: IndexMap::new(),
     };
-    let ctxt = Ctxt { funs, reveal_groups, dts, traits, krate, unpruned_krate, no_cheating };
+    let ctxt = Ctxt { funs, lookup, krate, no_cheating };
 
     let mut errors = vec![];
 
-    // TODO remove once `uninterp` is enforced for uninterpreted functions
-    for function in krate.functions.iter() {
-        let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
-            panic!("missing warn_config for function {:?}", function.x.name);
-        };
-        if let Err(e) = check_function(&ctxt, function, &mut emit, warn_config, no_verify) {
-            errors.push(e);
-        }
-    }
     for dt in krate.datatypes.iter() {
         if let Err(e) = check_datatype(&ctxt, dt, &mut emit) {
             errors.push(e);
@@ -2174,18 +2272,63 @@ pub fn check_crate(
         }
     }
 
-    diags.append(&mut emit.diags);
-    deferred_errors.append(&mut emit.deferred_errors);
-
     if emit.has_fatal_errors() || errors.len() > 0 {
-        return Err(WFErr {
-            errors,
-            boundary_errors: emit.boundary_errors.into_iter().collect(),
-            check_details: CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes },
-        });
+        return (
+            Err(WFErr {
+                errors,
+                boundary_errors: emit.boundary_errors.into_iter().collect(),
+                func_failed_proof_notes: emit.func_failed_proof_notes,
+            }),
+            emit.deferred_errors,
+            emit.diags,
+        );
     }
+    // These only get set during function traversals
+    assert!(emit.func_failed_proof_notes.len() == 0);
 
-    crate::recursive_types::check_recursive_types(krate).map_err(to_wf)?;
+    let res = InitialWfResults {
+        lookup: ctxt.lookup,
+        dyn_compatability_checks: Arc::new(emit.dyn_compatability_checks),
+    };
+    (Ok(res), emit.deferred_errors, emit.diags)
+}
 
-    Ok(CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes })
+pub fn check_crate_initial(
+    krate: &Krate,
+    other_crates: &[Krate],
+    funs: Arc<HashMap<Fun, FunctionStub>>,
+    merged_traits: MergedTraits,
+    no_cheating: bool,
+) -> (Result<InitialWfResults, WFErr>, Vec<VirErr>, Vec<VirErrAs>) {
+    let checks = || {
+        check_broadcast_groups(krate)?;
+        let dts = check_conflicts(krate, other_crates)?;
+        let reveal_groups = check_reveal_groups(krate, other_crates, &funs)?;
+        Ok((dts, reveal_groups))
+    };
+    let (dts, reveal_groups) = match checks() {
+        Err(e) => {
+            return (Err(to_wf(e)), vec![], vec![]);
+        }
+        Ok(x) => x,
+    };
+
+    let lookup = Arc::new(WfLookup { dts: Arc::new(dts), merged_traits, reveal_groups });
+    check_all_but_functions(krate, no_cheating, funs, lookup)
+}
+
+/// Check that krate after all funnctions are computed.
+/// This is the krate that gets exported.
+pub fn check_crate_final(
+    krate: &Krate,
+    warning_ctx: &crate::context::WarningCtx,
+) -> (Result<(), VirErr>, Vec<VirErrAs>) {
+    let mut diags = vec![];
+    let r = check_decreases_by_consistency(krate, &mut diags, warning_ctx);
+    (r, diags)
+}
+
+/// Check the post-merge krate.
+pub fn check_crate_merged(merged_krate: &Krate) -> Result<(), VirErr> {
+    crate::recursive_types::check_recursive_types(merged_krate)
 }

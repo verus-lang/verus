@@ -226,7 +226,7 @@ fn check_timeout(timer: &mut Timer) -> Result<(), VirErr> {
     if timer.timeout_countdown == 0 {
         Err(error(
             &timer.span,
-            "could not infer triggers, because quantifier is too large (use manual #[trigger] instead)",
+            "could not infer triggers, because quantifier is too large (use manual `#[trigger]` instead)",
         ))
     } else {
         timer.timeout_countdown -= 1;
@@ -441,7 +441,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let (is_pure, term1) = gather_terms(ctxt, ctx, e1, depth + 1);
             (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
         }
-        ExpX::UnaryOpr(UnaryOpr::ToDyn(_), e1) => {
+        ExpX::UnaryOpr(UnaryOpr::ToDyn(..), e1) => {
             let (_is_pure, term1) = gather_terms(ctxt, ctx, e1, 1);
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
         }
@@ -834,7 +834,7 @@ pub(crate) fn build_triggers(
     } else {
         Err(error(
             span,
-            "Could not automatically infer triggers for this quantifier.  Use #[trigger] annotations to manually mark trigger terms instead.",
+            "could not automatically infer triggers for this quantifier; use `#[trigger]` annotations to manually mark trigger terms instead",
         ))
     }
 }

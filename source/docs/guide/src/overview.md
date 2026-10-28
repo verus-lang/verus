@@ -21,9 +21,9 @@ for all possible executions of the code.
 
 In more detail, Verus aims to:
 - provide a pure mathematical language for expressing specifications
-  (like Dafny, Creusot, F*, Coq, Isabelle/HOL)
+  (like Dafny, Creusot, F*, Rocq, Isabelle/HOL)
 - provide a mathematical language for expressing proofs
-  (like Dafny, F*, Coq, Isabelle/HOL)
+  (like Dafny, F*, Rocq, Isabelle/HOL)
   based exclusively on classical logic (like Dafny)
 - provide a low-level, imperative language for expressing executable code (like VCC),
   based on Rust (like Prusti, Creusot, and Aeneas)
@@ -49,7 +49,7 @@ and treat the Rust code as if it were code written in a purely functional langua
 which makes verification easier.
 
 At present, we do not intend to:
-- support all Rust features and libraries (instead, we will focus a high-value features and libraries needed to support our users)
+- support all Rust features and libraries (instead, we will focus on high-value features and libraries needed to support our users)
 - verify the verifier itself
 - verify the Rust/LLVM compilers
 

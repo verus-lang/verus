@@ -829,10 +829,10 @@ pub(crate) fn from_diagnostic_items(tcx: TyCtxt) -> VerusItems {
             name_to_id.insert(item.clone(), id.clone());
             let lang_item_name = match item {
                 VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(name)) => {
-                    Some((rustc_hir::LangItem::FormatArgument, name.clone()))
+                    Some((rustc_hir::attrs::lang_items::LangItem::FormatArgument, name.clone()))
                 }
                 VerusItem::RustPrivate(RustPrivate::FormatArgumentsFn(name)) => {
-                    Some((rustc_hir::LangItem::FormatArguments, name.clone()))
+                    Some((rustc_hir::attrs::lang_items::LangItem::FormatArguments, name.clone()))
                 }
                 _ => None,
             };

@@ -1096,7 +1096,7 @@ fn eval_seq(
                                 ctx.warning(
                                     &exp.span,
                                     &WarningAllow::AssertComputeUnsimplified,
-                                    || "Computation tried to index into a sequence using a value that does not fit into usize",
+                                    || "computation tried to index into a sequence using a value that does not fit into usize",
                                     |msg| state.msgs.push(msg),
                                 );
                                 ok_seq(0, &s)
@@ -1108,7 +1108,7 @@ fn eval_seq(
                                     ctx.warning(
                                         &exp.span,
                                         &WarningAllow::AssertComputeUnsimplified,
-                                        || "Computation tried to index past the length of a sequence",
+                                        || "computation tried to index past the length of a sequence",
                                         |msg| state.msgs.push(msg),
                                     );
                                     ok_seq(0, &s)
@@ -1175,7 +1175,7 @@ fn eval_array_index(
                     ctx.warning(
                         &exp.span,
                         &WarningAllow::AssertComputeUnsimplified,
-                        || "Computation tried to index into an array using a value that does not fit into usize",
+                        || "computation tried to index into an array using a value that does not fit into usize",
                         |msg| state.msgs.push(msg),
                     );
                     ok
@@ -1187,7 +1187,7 @@ fn eval_array_index(
                         ctx.warning(
                             &exp.span,
                             &WarningAllow::AssertComputeUnsimplified,
-                            || "Computation tried to index past the length of an array",
+                            || "computation tried to index past the length of an array",
                             |msg| state.msgs.push(msg),
                         );
                         ok
@@ -1209,10 +1209,10 @@ fn eval_array_index(
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
     state.iterations += 1;
     if state.iterations > ctx.max_iterations {
-        return Err(error(&exp.span, "assert_by_compute timed out"));
+        return Err(error(&exp.span, "`assert_by_compute` timed out"));
     }
     if state.depth > ctx.max_depth {
-        return Err(error(&exp.span, "assert_by_compute exceeded maximum recursion depth"));
+        return Err(error(&exp.span, "`assert_by_compute` exceeded maximum recursion depth"));
     }
     state.check_time_warning(ctx);
 
@@ -1324,7 +1324,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     ctx.warning(
                                         &exp.span,
                                         &WarningAllow::AssertComputeUnsimplified,
-                                        || "Computation clipped an integer that was out of range",
+                                        || "computation clipped an integer that was out of range",
                                         |msg| state.msgs.push(msg),
                                     );
                                     ok.clone()
@@ -1339,7 +1339,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     ctx.warning(
                                         &exp.span,
                                         &WarningAllow::AssertComputeUnsimplified,
-                                        || "Computation clipped an integer that was out of range",
+                                        || "computation clipped an integer that was out of range",
                                         |msg| state.msgs.push(msg),
                                     );
                                     ok.clone()
@@ -1377,7 +1377,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 ctx.warning(
                                                     &exp.span,
                                                     &WarningAllow::AssertComputeUnsimplified,
-                                                    || "Computation clipped an arch-dependent integer that was out of range",
+                                                    || "computation clipped an arch-dependent integer that was out of range",
                                                     |msg| state.msgs.push(msg),
                                                 );
                                                 ok.clone()
@@ -1399,7 +1399,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 ctx.warning(
                                                     &exp.span,
                                                     &WarningAllow::AssertComputeUnsimplified,
-                                                    || "Computation clipped an arch-dependent integer that was out of range",
+                                                    || "computation clipped an arch-dependent integer that was out of range",
                                                     |msg| state.msgs.push(msg),
                                                 );
                                                 ok.clone()
@@ -1485,7 +1485,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         _ => ok,
                     }
                 }
-                ToDyn(_) => ok,
+                ToDyn(..) => ok,
                 HasResolved(_) => ok,
                 CustomErr(_) => Ok(e),
                 AutoDecreases => Ok(e),
@@ -1790,7 +1790,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             None => {
                                 let typ_params = &func.x.typ_params;
                                 let pars = &func.x.pars;
-                                let body = &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
+                                let spec_axioms = func.x.axioms.spec_axioms.as_ref().unwrap();
                                 state.cache_misses += 1;
                                 let mut env = Env::new();
                                 let mut type_env = TypeEnv::new();
@@ -1807,9 +1807,29 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 // We don't do this for the variable environment, since
                                 // the body might locally shadow some of the parameter names.
                                 let empty_substs = HashMap::new();
-                                let body = subst_exp(type_env.map(), &empty_substs, body);
                                 let prev_env = std::mem::replace(&mut state.env, env);
-                                let result = eval_expr_internal(ctx, state, &body);
+                                // The function's definition only holds when its `when` condition
+                                // holds, so only unfold the body if the condition simplifies to true
+                                let when_holds = match &spec_axioms.decrease_when {
+                                    None => true,
+                                    Some(when) => {
+                                        let when = subst_exp(type_env.map(), &empty_substs, when);
+                                        let when = eval_expr_internal(ctx, state, &when)?;
+                                        matches!(when.x, Const(Constant::Bool(true)))
+                                    }
+                                };
+                                let result = if when_holds {
+                                    let body = &spec_axioms.body_exp;
+                                    let body = subst_exp(type_env.map(), &empty_substs, body);
+                                    eval_expr_internal(ctx, state, &body)
+                                } else {
+                                    // return unevaluated call
+                                    exp_new(Call(
+                                        CallFun::Fun(fun.clone(), resolved_method.clone()),
+                                        typs.clone(),
+                                        new_args.clone(),
+                                    ))
+                                };
                                 state.env = prev_env;
                                 state.insert_call(fun, &typs, &new_args, &result.clone()?, memoize);
                                 result
@@ -2017,9 +2037,9 @@ fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
             // Convert back to a standard SST representation
             seq_to_sst(span, inner_type.clone(), &cleaned?)
         }
-        _ => Err(error(
+        _ => Err(crate::messages::internal_error(
             &span,
-            format!("Internal error: Expected to find a sequence type but found: {:?}", typ),
+            format!("expected to find a sequence type but found: {:?}", typ),
         )),
     }
 }
@@ -2046,7 +2066,7 @@ fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
         ExpX::Interp(InterpExp::Seq(v)) => cleanup_seq(&e.span, e.typ.clone(), v),
         ExpX::Interp(InterpExp::Closure(..)) => Err(error(
             &e.span,
-            "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
+            "Verus does not currently support proof by computation that includes a closure literal that isn't applied",
         )),
         _ => Ok(e.clone()),
     })
@@ -2203,7 +2223,7 @@ fn eval_expr_launch(
                         &WarningAllow::AssertComputeUnsimplified,
                         || {
                             format!(
-                                "Failed to simplify expression <<{}>> before sending to Z3",
+                                "failed to simplify expression <<{}>> before sending to Z3",
                                 exp.x.to_user_string(&ctx.global),
                             )
                         },
@@ -2218,7 +2238,7 @@ fn eval_expr_launch(
                 Err(error(
                     &exp.span,
                     &format!(
-                        "assert_by_compute_only failed to simplify down to true.  Instead got: {}.",
+                        "`assert_by_compute_only` failed to simplify down to true; instead got: {}",
                         res.x.to_user_string(&ctx.global)
                     )
                     .to_string(),

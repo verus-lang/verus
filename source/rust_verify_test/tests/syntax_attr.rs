@@ -4,6 +4,37 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
+    #[test] param_patterns_named_return ["vstd"] => code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(r => ensures r == s)]
+        fn strings((s, t): (String, String)) -> String {
+            let _ = t;
+            s
+        }
+
+        #[verus_spec(result => ensures result == value)]
+        fn f<T>(_: T, value: u32, _: &mut u64) -> u32 {
+            value
+        }
+
+        #[verus_spec(result => ensures result.1)]
+        fn g(_: impl Sized, _: &impl Sized) -> (impl Sized, bool) {
+            (true, true)
+        }
+
+        #[verus_spec]
+        fn caller() {
+            let mut value = 30u64;
+            let result = f(false, 20, &mut value);
+            proof! { assert(result == 20); }
+            let result = g(true, &false);
+            proof! { assert(result.1); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
     #[test] verus_verify_basic_while ["exec_allows_no_decreases_clause"] =>  code! {
         #[verus_spec]
         fn test1() {
@@ -778,7 +809,7 @@ test_verify_one_file! {
             *x = *x + y;
             *x
         }
-    } => Err(e) => assert_vir_error_msg(e, "when_used_as_spec not supported for function with &mut param")
+    } => Err(e) => assert_vir_error_msg(e, "`when_used_as_spec` not supported for function with a mutable reference parameter")
 }
 
 test_verify_one_file! {
@@ -1769,5 +1800,83 @@ test_verify_one_file! {
     #[test] test_verus_verify_on_static_with_external_body code! {
         #[verus_verify(external_body)]
         static MY_STATIC2: u64 = 0;
-    } => Err(e) => assert_any_vir_error_msg(e, "#[verifier::external_body] doesn't make sense for this item type -- it is only applicable to functions and datatype declarations" )
+    } => Err(e) => assert_any_vir_error_msg(e, "`#[verifier::external_body]` doesn't make sense for this item type -- it is only applicable to functions and datatype declarations" )
+}
+
+test_verify_one_file! {
+    // specifications gated on a cfg (`cfg_attr(verus_only, verus_spec(..))`, for code also built
+    // without Verus) inside an impl marked #[verus_verify]: the impl must not add a second
+    // #[verus_spec] to the method or its loops
+    #[test] test_cfg_attr_verus_spec_in_impl code!{
+        #[verus_verify]
+        struct S { x: u64 }
+
+        #[verus_verify]
+        impl S {
+            #[cfg_attr(verus_only, verus_spec(r =>
+                requires self.x < 100,
+                ensures r == self.x + 1,
+            ))]
+            fn inc(&self) -> u64 {
+                let mut i: u64 = 0;
+                #[cfg_attr(verus_only, verus_spec(invariant i <= self.x, decreases self.x - i))]
+                while i < self.x { i += 1; }
+                i + 1
+            }
+
+            #[cfg_attr(verus_only, verus_spec(r => ensures r == 2))] // FAILS
+            fn two(&self) -> u64 {
+                3
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // as above, but the cfg_attr predicate does not hold (`any()`): the item still needs the
+    // empty #[verus_spec] that #[verus_verify] adds, here for its `for` loop
+    #[test] test_cfg_attr_verus_spec_in_impl_pred_false code!{
+        use vstd::prelude::*;
+        #[verus_verify]
+        struct S { x: u64 }
+
+        #[verus_verify]
+        impl S {
+            #[cfg_attr(any(), verus_spec(r => ensures r == 0))]
+            fn count(&self) -> u64 {
+                let mut n: u64 = 0;
+                for i in 0..10u64 {
+                    n = i;
+                }
+                n
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] verus_verify_external_body_with_spec_with_decreases code! {
+        struct X { }
+
+        #[verus_verify]
+        impl X {
+            #[verus_verify(external_body)]
+            #[verus_spec(ret =>
+                requires true,
+                ensures true,
+                decreases 255 - i,
+            )]
+            fn test(i: u8) -> bool {
+                proof!{
+                    let x = 5int;
+                }
+
+                if i < 255 {
+                    Self::test(i + 1)
+                } else {
+                    true
+                }
+            }
+        }
+    } => Ok(())
 }

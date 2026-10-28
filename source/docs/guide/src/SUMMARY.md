@@ -6,7 +6,7 @@
 
 - [Getting started](./getting_started.md)
   - [... on the command line](./getting_started_cmd_line.md)
-  - [... with VSCode](./getting_started_vscode.md)
+  - [... with VS Code](./getting_started_vscode.md)
 
 # Tutorial: Fundamentals
 

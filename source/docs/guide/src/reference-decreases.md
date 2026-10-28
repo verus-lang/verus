@@ -92,7 +92,7 @@ the recursive call is in the else-block.) Thus we need to show:
 
 Verus cannot prove this automatically. 
 
-#### Writing an proof of termination inside your recursive function
+#### Writing a proof of termination inside your recursive function
 
 For the purposes of termination checking, you can include a `proof {}` block
 in the body of your spec function.  The proof needs to demonstrate that your
@@ -114,7 +114,7 @@ Here we supply the fact Verus was missing using Verus's specialized
 
 To avoid cluttering your recursive spec function with proof material,
 you can add a `via PROOF_FUNCTION_NAME` clause to the spec function.
-`FUNCTION_NAME` must be the name of a `proof` function defined in the same module
+`PROOF_FUNCTION_NAME` must be the name of a `proof` function defined in the same module
 that takes the same arguments as the recursive function.
 This proof function must also be annotated with the `#[via_fn]` attribute.
 
