@@ -984,6 +984,42 @@ pub broadcast proof fn lemma_btree_map_remove_ensures_if_cmp_matches_deep_equali
     );
 }
 
+pub open spec fn btree_map_get_mut_ensures<
+    Key: Borrow<Q> + Ord,
+    Value,
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>(
+    old_m: &BTreeMap<Key, Value, A>,
+    final_m: &BTreeMap<Key, Value, A>,
+    k: &Q,
+    result: Option<(Value, Value)>,
+) -> bool {
+    ({
+        &&& obeys_cmp::<Key>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+    }) ==> {
+        &&& btree_map_keys_differ(old_m)
+        &&& btree_map_keys_differ(final_m)
+        &&& match result {
+            Some((current_value, final_value)) => exists|stored_key: Key|
+                {
+                    &&& #[trigger] old_m@.contains_key(stored_key)
+                    &&& k.cmp_spec(<Key as BorrowSpec<Q>>::spec_borrow(&stored_key)) is Equal
+                    &&& old_m@[stored_key] == current_value
+                    &&& final_m@ == old_m@.insert(stored_key, final_value)
+                },
+            None => {
+                &&& forall|stored_key: Key| #[trigger]
+                    old_m@.contains_key(stored_key) ==> !(k.cmp_spec(
+                        <Key as BorrowSpec<Q>>::spec_borrow(&stored_key),
+                    ) is Equal)
+                &&& final_m@ == old_m@
+            },
+        }
+    }
+}
+
 /// Specification for [`BTreeMap::get_mut`].
 pub assume_specification<
     'a,
@@ -992,29 +1028,109 @@ pub assume_specification<
     A: Allocator + Clone,
     Q: Ord + ?Sized,
 >[ BTreeMap::<Key, Value, A>::get_mut::<Q> ](
-    map: &'a mut BTreeMap<Key, Value, A>,
+    m: &'a mut BTreeMap<Key, Value, A>,
     key: &Q,
 ) -> (result: Option<&'a mut Value>)
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() && <Key as BorrowSpec<Q>>::obeys_borrow_spec() ==> match result {
-            Some(value) => exists|stored_key: Key|
-                {
-                    &&& #[trigger] old(map)@.contains_key(stored_key)
-                    &&& <Key as BorrowSpec<Q>>::spec_borrow(&stored_key) == key
-                    &&& old(map)@[stored_key] == *value
-                    &&& final(map)@ == old(map)@.insert(stored_key, *final(value))
-                },
-            None => {
-                &&& forall|stored_key: Key| #[trigger]
-                    old(map)@.contains_key(stored_key) ==> <Key as BorrowSpec<Q>>::spec_borrow(
-                        &stored_key,
-                    ) != key
-                &&& final(map)@ == old(map)@
-            },
+        match result {
+            Some(value) => btree_map_get_mut_ensures(
+                old(m),
+                final(m),
+                key,
+                Some((*value, *final(value))),
+            ),
+            None => btree_map_get_mut_ensures(old(m), final(m), key, None),
         },
 ;
+
+pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_cmp_matches_equality<
+    Key: Ord,
+    Value,
+    A: Allocator + Clone,
+>(
+    old_m: &BTreeMap<Key, Value, A>,
+    final_m: &BTreeMap<Key, Value, A>,
+    k: &Key,
+    result: Option<(Value, Value)>,
+)
+    requires
+        obeys_cmp::<Key>(),
+        cmp_matches_equality::<Key>(),
+        #[trigger] btree_map_get_mut_ensures(old_m, final_m, k, result),
+    ensures
+        match result {
+            Some((current_value, final_value)) => {
+                &&& old_m@.contains_key(*k)
+                &&& current_value == old_m@[*k]
+                &&& final_m@ == old_m@.insert(*k, final_value)
+            },
+            None => {
+                &&& !old_m@.contains_key(*k)
+                &&& final_m@ == old_m@
+            },
+        },
+{
+}
+
+pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_cmp_matches_deep_equality<
+    Key: Ord + DeepView,
+    Value: DeepView,
+    A: Allocator + Clone,
+>(
+    old_m: &BTreeMap<Key, Value, A>,
+    final_m: &BTreeMap<Key, Value, A>,
+    k: &Key,
+    result: Option<(Value, Value)>,
+)
+    requires
+        obeys_cmp::<Key>(),
+        cmp_matches_deep_equality::<Key>(),
+        #[trigger] btree_map_get_mut_ensures(old_m, final_m, k, result),
+    ensures
+        match result {
+            Some((current_value, final_value)) => {
+                &&& old_m.deep_view().contains_key(k.deep_view())
+                &&& current_value.deep_view() == old_m.deep_view()[k.deep_view()]
+                &&& final_m.deep_view() == old_m.deep_view().insert(
+                    k.deep_view(),
+                    final_value.deep_view(),
+                )
+            },
+            None => {
+                &&& !old_m.deep_view().contains_key(k.deep_view())
+                &&& final_m.deep_view() == old_m.deep_view()
+            },
+        },
+{
+    match result {
+        Some((current_value, final_value)) => {
+            lemma_btree_map_insert_ensures_if_cmp_matches_deep_equality(
+                old_m,
+                final_m,
+                *k,
+                final_value,
+                Some(current_value),
+            );
+        },
+        None => {
+            broadcast use {
+                crate::map::group_map_lemmas,
+                crate::set::group_set_lemmas,
+                Set::lemma_map_contains,
+            };
+
+            reveal(btree_map_deep_view_impl);
+
+            if old_m.deep_view().contains_key(k.deep_view()) {
+                let key = choose|key: Key|
+                    old_m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+                assert(k.cmp_spec(&key) is Equal);
+            }
+        },
+    }
+}
 
 pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::clear ](
     m: &mut BTreeMap<Key, Value, A>,
@@ -1772,6 +1888,8 @@ pub broadcast group group_btree_axioms {
     lemma_btree_map_get_ensures_if_cmp_matches_deep_equality,
     lemma_btree_map_remove_ensures_if_cmp_matches_equality,
     lemma_btree_map_remove_ensures_if_cmp_matches_deep_equality,
+    lemma_btree_map_get_mut_ensures_if_cmp_matches_equality,
+    lemma_btree_map_get_mut_ensures_if_cmp_matches_deep_equality,
     axiom_spec_btree_set_len,
     lemma_btree_set_insert_ensures_if_cmp_matches_equality,
     lemma_btree_set_insert_ensures_if_cmp_matches_deep_equality,

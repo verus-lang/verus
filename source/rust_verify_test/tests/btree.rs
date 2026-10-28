@@ -271,6 +271,108 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_btree_map_get_mut_equality verus_code! {
+        use std::collections::BTreeMap;
+        use vstd::prelude::*;
+        use vstd::std_specs::btree::*;
+
+        fn test_structural<Key: Ord, Value>(
+            m: &mut BTreeMap<Key, Value>, k: &Key, replacement: Value,
+        ) -> (found: bool)
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                cmp_matches_equality::<Key>(),
+            ensures
+                found == old(m)@.contains_key(*k),
+                final(m)@ == if found {
+                    old(m)@.insert(*k, replacement)
+                } else {
+                    old(m)@
+                },
+        {
+            let ghost before = m@;
+            match m.get_mut(k) {
+                Some(value) => {
+                    assert(*value == before[*k]);
+                    *value = replacement;
+                    true
+                },
+                None => false,
+            }
+        }
+
+        fn test_deep<Key: Ord + DeepView, Value: DeepView>(
+            first: Key, equivalent: Key, fresh: Key,
+            value: Value, other_value: Value, replacement: Value,
+        )
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                cmp_matches_deep_equality::<Key>(),
+                first != equivalent,
+                first.deep_view() == equivalent.deep_view(),
+                first.deep_view() != fresh.deep_view(),
+        {
+            let ghost expected = value.deep_view();
+            let ghost expected_other = other_value.deep_view();
+            let ghost updated = replacement.deep_view();
+            let mut m = BTreeMap::<Key, Value>::new();
+            m.insert(first, value);
+
+            let ghost before = m@;
+            let ghost deep_before = m.deep_view();
+            match m.get_mut(&fresh) {
+                Some(_) => assert(false),
+                None => {},
+            }
+            assert(m@ == before);
+            assert(m.deep_view() == deep_before);
+
+            m.insert(fresh, other_value);
+            assert(m@.contains_key(first));
+            assert(!m@.contains_key(equivalent));
+            let ghost before = m.deep_view();
+            match m.get_mut(&equivalent) {
+                Some(value) => {
+                    assert(value.deep_view() == expected);
+                    *value = replacement;
+                },
+                None => assert(false),
+            }
+            assert(m.deep_view() == before.insert(equivalent.deep_view(), updated));
+            assert(m@.contains_key(first));
+            assert(!m@.contains_key(equivalent));
+            assert(m@[first].deep_view() == updated);
+            assert(m.deep_view()[fresh.deep_view()] == expected_other);
+        }
+
+        fn test_borrowed() {
+            let key = 3u32;
+            let other = 4u32;
+            let mut m = BTreeMap::<&u32, u32>::new();
+            m.insert(&key, 7);
+            m.insert(&other, 9);
+            assert(m@.contains_key(&key));
+            match m.get_mut(&3u32) {
+                Some(value) => {
+                    assert(*value == 7);
+                    *value = 8;
+                },
+                None => assert(false),
+            }
+            assert(m@[&key] == 8);
+            assert(m@[&other] == 9);
+
+            let ghost before = m@;
+            match m.get_mut(&5u32) {
+                Some(_) => assert(false),
+                None => {},
+            }
+            assert(m@ == before);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_btree_map_lower_bound_mut verus_code! {
         extern crate alloc;
         use alloc::collections::BTreeMap;
