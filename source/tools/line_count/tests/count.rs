@@ -365,9 +365,9 @@ fn test_tracked() {
     Exec               | Code(Exec) Body(Exec)          | }
                        |                                |
     Exec               | Signature(Exec)                | fn baz(
-    Proof Exec         | Signature(Exec)                |     Tracked(perm1): Tracked<&PermissionU32>,
+    Proof              | Signature(Exec GhostTracked(P  |     Tracked(perm1): Tracked<&PermissionU32>,
     Exec               | Signature(Exec)                |     x: u32,
-    Proof Exec         | Signature(Exec)                |     Tracked(perm2): Tracked<&PermissionU32>,
+    Proof              | Signature(Exec GhostTracked(P  |     Tracked(perm2): Tracked<&PermissionU32>,
     Exec               | Signature(Exec)                |     y: u32,
     Exec               | Code(Exec Signature Body(Exec  | ) {
     Exec               | Code(Exec) Body(Exec)          | }
@@ -378,9 +378,9 @@ fn test_tracked() {
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     foo(Tracked(&p), 4);
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     bar(4, Tracked(&p));
     Exec               | Code(Exec) Body(Exec)          |     baz(
-    Proof Exec         | Code(Exec Body(Exec GhostTrac  |         Tracked(&p),
+    Proof              | Code(Exec Body(Exec GhostTrac  |         Tracked(&p),
     Exec               | Code(Exec) Body(Exec)          |         4,
-    Proof Exec         | Code(Exec Body(Exec GhostTrac  |         Tracked(&p),
+    Proof              | Code(Exec Body(Exec GhostTrac  |         Tracked(&p),
     Exec               | Code(Exec) Body(Exec)          |         y,
     Exec               | Code(Exec) Body(Exec)          |     );
     Exec               | Code(Exec) Body(Exec)          | }
@@ -394,7 +394,7 @@ fn test_tracked() {
                        |                                |
     Comment            | Comment                        | // Tracked struct fields
     Exec               | DatatypeDecl                   | struct Wrapper {
-    Proof Exec         | DatatypeDecl GhostTracked(P    |     perm: Tracked<PermissionU32>,
+    Proof              | DatatypeDecl GhostTracked(P    |     perm: Tracked<PermissionU32>,
     Exec               | DatatypeDecl                   |     x: u32,
     Exec               | DatatypeDecl                   | }
                        |                                |
@@ -413,7 +413,7 @@ fn test_tracked() {
     Comment            | Comment                        | // Tracked return types
     Proof Exec         | Code(Exec Signature Body(Exec  | fn ret_named() -> (t: Tracked<PermissionU32>) {
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let (a, Tracked(p)) = PAtomicU32::new(0);
-    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     Tracked(p)
+    Proof              | Code(Exec Body(Exec GhostTrac  |     Tracked(p)
     Exec               | Code(Exec) Body(Exec)          | }
                        |                                |
     Proof Exec         | Code(Exec Signature Body(Exec  | fn ret_unnamed() -> Tracked<PermissionU32> {
@@ -437,7 +437,7 @@ fn test_tracked() {
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let Tracked(q1) = t1;
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let w = Wrapper { perm: Tracked(q1), x: 1 };
     Exec               | Code(Exec) Body(Exec)          |     let y = Wrapper {
-    Proof Exec         | Code(Exec Body(Exec GhostTrac  |         perm: Tracked(p2),
+    Proof              | Code(Exec Body(Exec GhostTrac  |         perm: Tracked(p2),
     Exec               | Code(Exec) Body(Exec)          |         x: 1
     Exec               | Code(Exec) Body(Exec)          |     };
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let o = Some(Tracked(p3));
@@ -466,12 +466,54 @@ fn test_tracked() {
     Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let f = |x: u32, t: Tracked<PermissionU32>| x;
     Exec               | Code(Exec) Body(Exec)          | }
                        |                                |
+    Comment            | Comment                        | // Lines holding nothing but tracked code
+    Exec               | Signature(Exec)                | fn tracked_alone(
+    Exec               | Signature(Exec)                |     x: u32,
+    Proof              | Signature(Exec GhostTracked(P  |     Tracked(perm): Tracked<&PermissionU32>, // the permission
+    Proof              | Signature(Exec GhostTracked(P  |     g: Ghost<int>,
+    Exec               | Signature(Exec)                | ) -> (
+    Exec               | Signature(Exec)                |     u32,
+    Proof              | Signature(Exec GhostTracked(P  |     Tracked<PermissionU32>,
+    Exec               | Code(Exec Signature Body(Exec  | ) {
+    Exec               | Code(Exec) Body(Exec)          |     let (
+    Exec               | Code(Exec) Body(Exec)          |         a,
+    Proof              | Code(Exec Body(Exec GhostTrac  |         Tracked(p),
+    Exec               | Code(Exec) Body(Exec)          |     ) = PAtomicU32::new(0);
+    Comment            | Comment                        |     // method call arguments
+    Exec               | Code(Exec) Body(Exec)          |     a.store(
+    Proof              | Code(Exec Body(Exec GhostTrac  |         Tracked(&mut p),
+    Exec               | Code(Exec) Body(Exec)          |         5,
+    Exec               | Code(Exec) Body(Exec)          |     );
+    Comment            | Comment                        |     // closing delimiter of the call on the same line: still exec code after erasure
+    Exec               | Code(Exec) Body(Exec)          |     foo(
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |         Tracked(&p));
+    Comment            | Comment                        |     // inner lines of a multi-line Tracked
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     bar(4, Tracked(
+    Proof              | Code(Exec Body(Exec GhostTrac  |         &p
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     ));
+    Comment            | Comment                        |     // struct literal with a base expression
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let w = Wrapper { perm: Tracked(p), x: 1 };
+    Exec               | Code(Exec) Body(Exec)          |     let w2 = Wrapper {
+    Proof              | Code(Exec Body(Exec GhostTrac  |         perm: Tracked(p),
+    Exec               | Code(Exec) Body(Exec)          |         ..w
+    Exec               | Code(Exec) Body(Exec)          |     };
+    Comment            | Comment                        |     // multi-line struct pattern
+    Exec               | Code(Exec) Body(Exec)          |     let Wrapper {
+    Proof              | Code(Exec Body(Exec GhostTrac  |         perm: Tracked(q),
+    Exec               | Code(Exec) Body(Exec)          |         x,
+    Exec               | Code(Exec) Body(Exec)          |     } = w2;
+    Exec               | Code(Exec) Body(Exec)          |     (
+    Exec               | Code(Exec) Body(Exec)          |         x,
+    Proof              | Code(Exec Body(Exec GhostTrac  |         Tracked(q),
+    Exec               | Code(Exec) Body(Exec)          |     )
+    Exec               | Code(Exec) Body(Exec)          | }
+                       |                                |
                        |                                | } // verus!
 
     | file       | Trusted | Spec | Proof | Exec | Proof+Exec | Comment | Layout | unaccounted |
     |------------|---------|------|-------|------|------------|---------|--------|-------------|
-    | tracked.rs |       4 |    2 |     2 |   36 |         38 |       8 |      0 |          24 |
+    | tracked.rs |       4 |    2 |    18 |   58 |         35 |      14 |      0 |          25 |
     |------------|---------|------|-------|------|------------|---------|--------|-------------|
-    | total      |       4 |    2 |     2 |   36 |         38 |       8 |      0 |          24 |
+    | total      |       4 |    2 |    18 |   58 |         35 |      14 |      0 |          25 |
     ");
 }
