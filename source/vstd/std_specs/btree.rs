@@ -640,6 +640,25 @@ pub broadcast proof fn lemma_btree_map_insert_ensures_if_cmp_matches_deep_equali
     );
 }
 
+pub open spec fn btree_map_contains_key_ensures<
+    Key: Borrow<Q> + Ord,
+    Value,
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>(m: &BTreeMap<Key, Value, A>, k: &Q, result: bool) -> bool {
+    ({
+        &&& obeys_cmp::<Key>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+    }) ==> {
+        &&& btree_map_keys_differ(m)
+        &&& result == exists|key: Key|
+            {
+                &&& #[trigger] m@.contains_key(key)
+                &&& <Key as BorrowSpec<Q>>::spec_borrow(&key).cmp_spec(k) is Equal
+            }
+    }
+}
+
 pub assume_specification<
     Key: Borrow<Q> + Ord,
     Value,
@@ -650,12 +669,57 @@ pub assume_specification<
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        ({
-            &&& obeys_cmp::<Key>()
-            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
-        }) ==> result == exists|key: Key| #[trigger]
-            m@.contains_key(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k,
+        btree_map_contains_key_ensures(m, k, result),
 ;
+
+pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_cmp_matches_equality<
+    Key: Ord,
+    Value,
+    A: Allocator + Clone,
+>(m: &BTreeMap<Key, Value, A>, k: &Key, result: bool)
+    requires
+        obeys_cmp::<Key>(),
+        cmp_matches_equality::<Key>(),
+        #[trigger] btree_map_contains_key_ensures(m, k, result),
+    ensures
+        result == m@.contains_key(*k),
+{
+}
+
+pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_cmp_matches_deep_equality<
+    Key: Ord + DeepView,
+    Value: DeepView,
+    A: Allocator + Clone,
+>(m: &BTreeMap<Key, Value, A>, k: &Key, result: bool)
+    requires
+        obeys_cmp::<Key>(),
+        cmp_matches_deep_equality::<Key>(),
+        #[trigger] btree_map_contains_key_ensures(m, k, result),
+    ensures
+        result == m.deep_view().contains_key(k.deep_view()),
+{
+    broadcast use {
+        crate::map::group_map_lemmas,
+        crate::set::group_set_lemmas,
+        Set::lemma_map_contains,
+    };
+
+    reveal(btree_map_deep_view_impl);
+
+    if result {
+        let key = choose|key: Key|
+            {
+                &&& #[trigger] m@.contains_key(key)
+                &&& key.cmp_spec(k) is Equal
+            };
+        assert(m.deep_view().contains_key(key.deep_view()));
+    }
+    if m.deep_view().contains_key(k.deep_view()) {
+        let key = choose|key: Key|
+            m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+        assert(key.cmp_spec(k) is Equal);
+    }
+}
 
 pub assume_specification<
     'a,
@@ -1193,6 +1257,24 @@ pub broadcast proof fn lemma_btree_set_insert_ensures_if_cmp_matches_deep_equali
     assert(final_m.deep_view() =~= old_m.deep_view().insert(k.deep_view()));
 }
 
+pub open spec fn btree_set_contains_ensures<
+    Key: Borrow<Q> + Ord,
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>(m: &BTreeSet<Key, A>, k: &Q, result: bool) -> bool {
+    ({
+        &&& obeys_cmp::<Key>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+    }) ==> {
+        &&& btree_set_elements_differ(m)
+        &&& result == exists|key: Key|
+            {
+                &&& #[trigger] m@.contains(key)
+                &&& <Key as BorrowSpec<Q>>::spec_borrow(&key).cmp_spec(k) is Equal
+            }
+    }
+}
+
 pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?Sized>[ BTreeSet::<
     Key,
     A,
@@ -1200,12 +1282,48 @@ pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?S
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        ({
-            &&& obeys_cmp::<Key>()
-            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
-        }) ==> result == exists|key: Key| #[trigger]
-            m@.contains(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k,
+        btree_set_contains_ensures(m, k, result),
 ;
+
+pub broadcast proof fn lemma_btree_set_contains_ensures_if_cmp_matches_equality<
+    Key: Ord,
+    A: Allocator + Clone,
+>(m: &BTreeSet<Key, A>, k: &Key, result: bool)
+    requires
+        obeys_cmp::<Key>(),
+        cmp_matches_equality::<Key>(),
+        #[trigger] btree_set_contains_ensures(m, k, result),
+    ensures
+        result == m@.contains(*k),
+{
+}
+
+pub broadcast proof fn lemma_btree_set_contains_ensures_if_cmp_matches_deep_equality<
+    Key: Ord + DeepView,
+    A: Allocator + Clone,
+>(m: &BTreeSet<Key, A>, k: &Key, result: bool)
+    requires
+        obeys_cmp::<Key>(),
+        cmp_matches_deep_equality::<Key>(),
+        #[trigger] btree_set_contains_ensures(m, k, result),
+    ensures
+        result == m.deep_view().contains(k.deep_view()),
+{
+    broadcast use {crate::set::group_set_lemmas, Set::lemma_map_contains};
+
+    if result {
+        let key = choose|key: Key|
+            {
+                &&& #[trigger] m@.contains(key)
+                &&& key.cmp_spec(k) is Equal
+            };
+        assert(m.deep_view().contains(key.deep_view()));
+    }
+    if m.deep_view().contains(k.deep_view()) {
+        let key = choose|key: Key| m@.contains(key) && #[trigger] key.deep_view() == k.deep_view();
+        assert(key.cmp_spec(k) is Equal);
+    }
+}
 
 pub assume_specification<
     'a,
@@ -1281,9 +1399,13 @@ pub broadcast group group_btree_axioms {
     axiom_spec_btree_map_len,
     lemma_btree_map_insert_ensures_if_cmp_matches_equality,
     lemma_btree_map_insert_ensures_if_cmp_matches_deep_equality,
+    lemma_btree_map_contains_key_ensures_if_cmp_matches_equality,
+    lemma_btree_map_contains_key_ensures_if_cmp_matches_deep_equality,
     axiom_spec_btree_set_len,
     lemma_btree_set_insert_ensures_if_cmp_matches_equality,
     lemma_btree_set_insert_ensures_if_cmp_matches_deep_equality,
+    lemma_btree_set_contains_ensures_if_cmp_matches_equality,
+    lemma_btree_set_contains_ensures_if_cmp_matches_deep_equality,
     axiom_btree_map_decreases,
     axiom_btree_set_decreases,
     axiom_has_resolved_cursor,
