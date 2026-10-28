@@ -103,6 +103,9 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
             let mut infos: Vec<AssertionInfo> = Vec::new();
             let mut axiom_infos: Vec<AxiomInfo> = Vec::new();
             let labeled_expr = label_asserts(context, &mut infos, &mut axiom_infos, &expr);
+            if let Some(obs) = &context.air_observer {
+                obs.borrow_mut().on_axiom_decl(&labeled_expr);
+            }
             for info in axiom_infos {
                 crate::typecheck::add_decl(context, &info.decl, true).unwrap();
                 context
@@ -331,6 +334,14 @@ pub(crate) fn smt_check_assertion<'ctx>(
             match reason.expect("expected :reason-unknown") {
                 SmtReasonUnknown::Canceled | SmtReasonUnknown::Unknown => {
                     context.state = ContextState::Canceled;
+                    // Notify observer of timeout/cancellation
+                    if let Some(obs) = &context.query_result_observer {
+                        obs.borrow_mut().on_check_valid_result(
+                            &mut crate::query_result_observer::CheckValidResult::Timeout {
+                                assert_id: &None,
+                            },
+                        );
+                    }
                     ResultDetermination::Determined(ValidityResult::Canceled)
                 }
                 SmtReasonUnknown::Incomplete => ResultDetermination::Undetermined(false),
@@ -366,6 +377,17 @@ pub(crate) fn smt_check_assertion<'ctx>(
             } else {
                 crate::context::UsageInfo::None
             };
+
+            if let Some(obs) = &context.query_result_observer {
+                let assert_ids: Vec<Option<crate::ast::AssertId>> =
+                    infos.iter().map(|info| info.assert_id.clone()).collect();
+                obs.borrow_mut().on_check_valid_result(
+                    &mut crate::query_result_observer::CheckValidResult::Valid {
+                        assert_ids: &assert_ids,
+                        usage_info: &usage_info,
+                    },
+                );
+            }
 
             ValidityResult::Valid(usage_info)
         }
@@ -460,6 +482,37 @@ fn confirm_label(context: &mut Context, infos: &Vec<AssertionInfo>, i: usize) ->
     result
 }
 
+/// After `confirm_label` has run `check-sat` in its own scopes, the solver has no model of the
+/// failing query. Re-establish one for the observer: in a scope where every other enabled
+/// label is disabled (a model violating exactly the reported assertion), or, if the labels
+/// only fail jointly, for the query as a whole. Returns whether a scope was left open, to be
+/// popped after the observer has run.
+fn restore_model_for_observer(context: &mut Context, infos: &Vec<AssertionInfo>, i: usize) -> bool {
+    fn check_sat(context: &mut Context) -> bool {
+        if matches!(context.solver, SmtSolver::Z3) {
+            context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
+        }
+        context.smt_log.log_word("check-sat");
+        if matches!(context.solver, SmtSolver::Z3) {
+            context.smt_log.log_set_option("rlimit", "0");
+        }
+        let smt_data = context.smt_log.take_pipe_data();
+        context.get_smt_process().send_commands(smt_data).iter().any(|line| line == "sat")
+    }
+    context.smt_log.log_push();
+    for (j, info) in infos.iter().enumerate() {
+        if j != i && !info.disabled {
+            context.smt_log.log_assert(&None, &mk_not(&ident_var(&info.label)));
+        }
+    }
+    if check_sat(context) {
+        return true;
+    }
+    context.smt_log.log_pop();
+    check_sat(context);
+    false
+}
+
 fn smt_get_model(
     context: &mut Context,
     mut infos: Vec<AssertionInfo>,
@@ -493,6 +546,9 @@ fn smt_get_model(
     // value to every constant, so several labels can be true at once. When that
     // happens, confirm a candidate before reporting it: with every other enabled label
     // disabled, the query must still be satisfiable.
+    //
+    // The chosen label is disabled only after the `QueryResultObserver::Invalid` callback
+    // below, which evaluates expressions in the model (disabling invalidates it).
     let candidates: Vec<usize> = infos
         .iter()
         .enumerate()
@@ -504,20 +560,13 @@ fn smt_get_model(
         .collect();
     let needs_confirmation = candidates.len() > 1;
     let mut spurious: usize = 0;
+    let mut discovered_info_index: Option<usize> = None;
     for &i in candidates.iter() {
         if needs_confirmation && !confirm_label(context, &infos, i) {
             spurious += 1;
             continue;
         }
-        let info = &mut infos[i];
-        discovered_error = Some(info.clone());
-        discovered_assert_id = Some(info.assert_id.clone());
-
-        // Disable this label in subsequent check-sat calls to get additional errors
-        info.disabled = true;
-        let disable_label = mk_not(&ident_var(&info.label));
-        context.smt_log.log_assert(&None, &disable_label);
-
+        discovered_info_index = Some(i);
         break;
     }
     if context.debug && spurious > 0 {
@@ -527,15 +576,12 @@ fn smt_get_model(
     // labels only fail jointly), the query itself was still satisfiable or unknown, so an
     // error must be reported: blame the first candidate, as without confirmation. This
     // affects which assertion is blamed, not whether one is.
-    if discovered_error.is_none() {
-        if let Some(&i) = candidates.first() {
-            let info = &mut infos[i];
-            discovered_error = Some(info.clone());
-            discovered_assert_id = Some(info.assert_id.clone());
-            info.disabled = true;
-            let disable_label = mk_not(&ident_var(&info.label));
-            context.smt_log.log_assert(&None, &disable_label);
-        }
+    if discovered_info_index.is_none() {
+        discovered_info_index = candidates.first().copied();
+    }
+    if let Some(i) = discovered_info_index {
+        discovered_error = Some(infos[i].clone());
+        discovered_assert_id = Some(infos[i].assert_id.clone());
     }
     let Some(discovered_error) = discovered_error else {
         // no assertion label is true in the model: report the failure without a location,
@@ -571,6 +617,38 @@ fn smt_get_model(
 
     let error = discovered_error.error;
     let e = context.message_interface.append_labels(&error, &discovered_additional_info);
+
+    // Notify the observer while the solver model is still valid.
+    // `eval_bool_expr` calls `context.evaluate_bool()`, which sends `get-value` to the solver.
+    // This only works before the label is disabled (which invalidates the model).
+    // Clone the shared handle so `context` stays free for the eval_bool_expr closure.
+    let obs = context.query_result_observer.clone();
+    let scoped = match (&obs, discovered_info_index) {
+        (Some(_), Some(i)) if needs_confirmation => restore_model_for_observer(context, &infos, i),
+        _ => false,
+    };
+    if let Some(obs) = &obs {
+        let assert_id = discovered_assert_id.clone().unwrap();
+        obs.borrow_mut().on_check_valid_result(
+            &mut crate::query_result_observer::CheckValidResult::Invalid {
+                model_defs: &model_defs,
+                eval_bool_expr: &mut |expr| context.evaluate_bool(expr),
+                assert_id: &assert_id,
+                error: &e,
+            },
+        );
+    }
+
+    if scoped {
+        context.smt_log.log_pop();
+    }
+    // Disable the label for subsequent check-sat calls (this invalidates the model).
+    if let Some(idx) = discovered_info_index {
+        infos[idx].disabled = true;
+        let disable_label = mk_not(&ident_var(&infos[idx].label));
+        context.smt_log.log_assert(&None, &disable_label);
+    }
+
     context.state = ContextState::FoundInvalid(infos, Some(air_model.clone()));
     ValidityResult::Invalid(Some(air_model), Some(e), discovered_assert_id.unwrap())
 }

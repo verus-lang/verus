@@ -366,3 +366,55 @@ impl<'tcx> crate::context::BodyCtxt<'tcx> {
         self.ctxt.spanned_typed_new(span, typ, x)
     }
 }
+
+/// A resolver from VIR spans to source locations for observers, which run on worker threads:
+/// it replicates `from_air_span` and the line lookup, which run only on the main thread.
+pub(crate) fn span_resolver(
+    spans: &SpanContext,
+    source_map: &SourceMap,
+) -> vir::vir_observer::SpanResolver {
+    struct File {
+        start: u32,
+        end: u32,
+        name: Arc<String>,
+        line_starts: Vec<u32>,
+    }
+    let mut files: Vec<File> = source_map
+        .files()
+        .iter()
+        .map(|f| File {
+            start: f.start_pos.0,
+            end: f.start_pos.0 + f.normalized_source_len.0,
+            name: Arc::new(f.name.prefer_local_unconditionally().to_string()),
+            line_starts: f.lines().iter().map(|l| f.start_pos.0 + l.0).collect(),
+        })
+        .collect();
+    files.sort_by_key(|f| f.start);
+    let spans = spans.clone();
+    Arc::new(move |span: &vir::messages::Span| {
+        let lo = if let Some(data) =
+            (&(*span.raw_span) as &(dyn std::any::Any + Sync + Send)).downcast_ref::<SpanData>()
+        {
+            data.lo
+        } else if span.data.len() == 2 {
+            let (crate_id, original_lo) = (span.data[0], BytePos((span.data[1] >> 32) as u32));
+            if crate_id == spans.local_crate.as_u64() {
+                original_lo
+            } else {
+                let (original_start, _, start, _) =
+                    spans.pos_to_extern_source_file_resolve(crate_id, original_lo, None)?;
+                // `None` rather than a wrapped position.
+                BytePos(original_lo.0.checked_sub(original_start.0)? + start.0)
+            }
+        } else {
+            return None;
+        };
+        let i = files.partition_point(|f| f.start <= lo.0).checked_sub(1)?;
+        let file = &files[i];
+        if lo.0 > file.end {
+            return None;
+        }
+        let line = file.line_starts.partition_point(|&l| l <= lo.0);
+        Some(vir::vir_observer::SourceLocation { file: file.name.clone(), line: line as u32 })
+    })
+}

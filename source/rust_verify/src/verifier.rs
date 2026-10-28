@@ -31,6 +31,7 @@ use rustc_hir::def::DefKind;
 use rustc_index::bit_set::DenseBitSet;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
+
 use rustc_span::def_id::LOCAL_CRATE;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
@@ -346,6 +347,7 @@ pub struct Verifier {
     vir_crate: Option<Krate>,
     crate_id: Option<CrateId>,
     air_no_span: Option<vir::messages::Span>,
+    span_resolver: Option<vir::vir_observer::SpanResolver>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
     crate_items: Option<Arc<crate::external::CrateItems>>,
     warning_ctx: Option<Arc<vir::context::WarningCtx>>,
@@ -536,6 +538,7 @@ impl Verifier {
             vir_crate: None,
             crate_id: None,
             air_no_span: None,
+            span_resolver: None,
             current_crate_modules: None,
             crate_items: None,
             warning_ctx: None,
@@ -584,6 +587,7 @@ impl Verifier {
             vir_crate: self.vir_crate.clone(),
             crate_id: self.crate_id.clone(),
             air_no_span: self.air_no_span.clone(),
+            span_resolver: self.span_resolver.clone(),
             current_crate_modules: self.current_crate_modules.clone(),
             crate_items: self.crate_items.clone(),
             warning_ctx: self.warning_ctx.clone(),
@@ -1294,6 +1298,9 @@ impl Verifier {
             prover_choice,
         )?;
 
+        // Attach the same shared observer objects to the spinoff context
+        air_context.set_observers(ctx.air_observer.clone(), ctx.query_result_observer.clone());
+
         // Write the span of spun-off query
         air_context.comment(&span.as_string);
         air_context.blank_line();
@@ -1352,6 +1359,13 @@ impl Verifier {
             profile_all_file_name.as_ref(),
             vir::def::ProverChoice::DefaultProver,
         )?;
+
+        // Attach the same shared observer object to air::Context via its per-trait
+        // handles. All views point at one object; the Rc keeps it alive on both
+        // ctx (VIR callbacks during lowering) and air_context (AIR callbacks +
+        // query results during verification).
+        air_context.set_observers(ctx.air_observer.clone(), ctx.query_result_observer.clone());
+
         if self.args.solver_version_check {
             air_context.set_expected_solver_version(match self.args.solver {
                 air::context::SmtSolver::Z3 => {
@@ -1886,6 +1900,16 @@ impl Verifier {
         let (time_smt_init, time_smt_run) = air_context.get_time();
         let rlimit_count = air_context.get_rlimit_count();
 
+        // Emit observer summaries as diagnostic notes. Only one underlying object
+        // exists; try each handle (a single-trait observer populates only one).
+        if let Some(obs_cell) = &ctx.observer {
+            crate::observers::emit_observer_summaries(obs_cell.borrow().as_any(), reporter);
+        } else if let Some(obs_cell) = &ctx.air_observer {
+            crate::observers::emit_observer_summaries(obs_cell.borrow().as_any(), reporter);
+        } else if let Some(obs_cell) = &ctx.query_result_observer {
+            crate::observers::emit_observer_summaries(obs_cell.borrow().as_any(), reporter);
+        }
+
         Ok(VerifyBucketOut {
             time_smt_init: time_smt_init + spunoff_time_smt_init,
             time_smt_run: time_smt_run + spunoff_time_smt_run,
@@ -1950,6 +1974,11 @@ impl Verifier {
             used_builtins,
             fndef_types,
             resolved_typs.unwrap(),
+            vir::vir_observer::Observers {
+                span_resolver: self.span_resolver.clone(),
+                ..crate::observers::create_observer_from_args(self.args.observer.as_deref())
+                    .expect("observer arguments are checked in verify_crate_inner")
+            },
         )?;
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
@@ -2008,6 +2037,12 @@ impl Verifier {
         let time_verify_sequential_start = Instant::now();
 
         let reporter = Reporter::new(spans, compiler);
+        crate::observers::create_observer_from_args(self.args.observer.as_deref())
+            .map_err(|msg| VerifyErr::Vir(vir::messages::error_bare(msg)))?;
+        if self.args.observer.is_some() {
+            self.span_resolver =
+                Some(crate::spans::span_resolver(spans, compiler.sess.source_map()));
+        }
         let krate = self.vir_crate.clone().expect("vir_crate should be initialized");
         let air_no_span = self.air_no_span.clone().expect("air_no_span should be initialized");
 
