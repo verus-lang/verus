@@ -346,3 +346,111 @@ fn test_trusted() {
     | total      |      11 |    0 |     2 |    0 | 0          | 0       | 0      | 13          |
     ");
 }
+
+#[test]
+fn test_tracked() {
+    insta::assert_snapshot!(line_count_file_print_all("tracked.rs"), @r"
+    Category           | Detailed contents              |
+
+    # tracked.rs
+                       |                                | use vstd::prelude::*;
+                       |                                | use vstd::atomic::*;
+                       |                                |
+                       |                                | verus! {
+                       |                                |
+    Exec               | Code(Exec Signature Body(Exec  | fn foo(Tracked(perm): Tracked<&PermissionU32>, x: u32) {
+    Exec               | Code(Exec) Body(Exec)          | }
+                       |                                |
+    Exec               | Code(Exec Signature Body(Exec  | fn bar(x: u32, Tracked(perm): Tracked<&PermissionU32>) {
+    Exec               | Code(Exec) Body(Exec)          | }
+                       |                                |
+    Exec               | Signature(Exec)                | fn baz(
+    Proof Exec         | Signature(Exec)                |     Tracked(perm1): Tracked<&PermissionU32>,
+    Exec               | Signature(Exec)                |     x: u32,
+    Proof Exec         | Signature(Exec)                |     Tracked(perm2): Tracked<&PermissionU32>,
+    Exec               | Signature(Exec)                |     y: u32,
+    Exec               | Code(Exec Signature Body(Exec  | ) {
+    Exec               | Code(Exec) Body(Exec)          | }
+                       |                                |
+    Exec               | Code(Exec Signature Body(Exec  | fn tracked_args() {
+    Exec               | Code(Exec) Body(Exec)          |     let (a, Tracked(p)) = PAtomicU32::new(0);
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let y = a.load(Tracked(&p));
+    Exec               | Code(Exec Body(Exec GhostTrac  |     foo(Tracked(&p), 4);
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     bar(4, Tracked(&p));
+    Exec               | Code(Exec) Body(Exec)          |     baz(
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |         Tracked(&p),
+    Exec               | Code(Exec) Body(Exec)          |         4,
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |         Tracked(&p),
+    Exec               | Code(Exec) Body(Exec)          |         y,
+    Exec               | Code(Exec) Body(Exec)          |     );
+    Exec               | Code(Exec) Body(Exec)          | }
+                       |                                |
+    Comment            | Comment                        | // Tracked parameter, with the body's opening brace on a separate line
+    Proof Exec         | Signature(Exec)                | fn tracked_param_brace_separate(Tracked(perm): Tracked<&PermissionU32>, x: u32)
+    Spec               | Signature(Exec FunctionSpec    |     requires
+    Spec               | Signature(Exec FunctionSpec    |         x > 0,
+    Exec               | Code(Exec) Body(Exec)          | {
+    Exec               | Code(Exec) Body(Exec)          | }
+                       |                                |
+    Comment            | Comment                        | // Tracked struct fields
+    Exec               | DatatypeDecl                   | struct Wrapper {
+    Proof              | DatatypeDecl GhostTracked(P    |     perm: Tracked<PermissionU32>,
+    Exec               | DatatypeDecl                   |     x: u32,
+    Exec               | DatatypeDecl                   | }
+                       |                                |
+    Comment            | Comment                        | // Tracked return types
+    Exec               | Code(Exec Signature Body(Exec  | fn ret_named() -> (t: Tracked<PermissionU32>) {
+    Exec               | Code(Exec) Body(Exec)          |     let (a, Tracked(p)) = PAtomicU32::new(0);
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     Tracked(p)
+    Exec               | Code(Exec) Body(Exec)          | }
+                       |                                |
+    Exec               | Code(Exec Signature Body(Exec  | fn ret_unnamed() -> Tracked<PermissionU32> {
+    Exec               | Code(Exec) Body(Exec)          |     let (a, Tracked(p)) = PAtomicU32::new(0);
+    Comment            | Comment                        |     // below is counted as Proof Exec -- after ghost erasure, would still have return;
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     return Tracked(p);
+    Exec               | Code(Exec) Body(Exec)          | }
+                       |                                |
+    Trusted            | Directive                      | #[verifier::external_body]
+    Trusted            | Code(Exec Signature Body(Exec  | fn ret_tup() -> ((Tracked<PermissionU32>, Tracked<PermissionU32>)) {
+    Trusted            | Code(Exec) Body(Exec)          |     (Tracked::assume_new(), Tracked::assume_new())
+    Trusted            | Code(Exec) Body(Exec)          | }
+                       |                                |
+    Comment            | Comment                        | // Variable bindings with Tracked or tracked
+    Exec               | Code(Exec Signature Body(Exec  | fn tracked_bindings() {
+    Exec               | Code(Exec) Body(Exec)          |     let (a, Tracked(p1)) = PAtomicU32::new(0);
+    Exec               | Code(Exec) Body(Exec)          |     let (b, Tracked(p2)) = PAtomicU32::new(0);
+    Exec               | Code(Exec) Body(Exec)          |     let (c, Tracked(p3)) = PAtomicU32::new(0);
+    Proof              | Code(Exec Body(Exec GhostTrac  |     let tracked q1 = p1;
+    Proof              | Code(Exec Body(Exec GhostTrac  |     let t1 = Tracked(q1);
+    Exec               | Code(Exec) Body(Exec)          |     let Tracked(q1) = t1;
+    Exec               | Code(Exec Body(Exec GhostTrac  |     let w = Wrapper { perm: Tracked(q1), x: 1 };
+    Exec               | Code(Exec) Body(Exec)          |     let y = Wrapper {
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |         perm: Tracked(p2),
+    Exec               | Code(Exec) Body(Exec)          |         x: 1
+    Exec               | Code(Exec) Body(Exec)          |     };
+    Proof Exec         | Code(Exec Body(Exec GhostTrac  |     let o = Some(Tracked(p3));
+    Exec               | Code(Exec) Body(Exec)          |     let (Tracked(v1), Tracked(v2)) = ret_tup();
+    Exec               | Code(Exec) Body(Exec)          | }
+                       |                                |
+    Comment            | Comment                        | // Tracked nested inside other types
+    Exec               | DatatypeDecl                   | struct OptWrapper {
+    Exec               | DatatypeDecl                   |     opt: Option<Tracked<PermissionU32>>,
+    Exec               | DatatypeDecl                   | }
+                       |                                |
+    Exec               | Code(Exec Signature Body(Exec  | fn nested_param(o: Option<Tracked<&PermissionU32>>) {
+    Exec               | Code(Exec) Body(Exec)          | }
+                       |                                |
+    Exec               | Code(Exec Signature Body(Exec  | fn nested_ret() -> (t: Option<Tracked<PermissionU32>>) {
+    Exec               | Code(Exec) Body(Exec)          |     let v: Vec<Tracked<PermissionU32>> = Vec::new();
+    Exec               | Code(Exec) Body(Exec)          |     None
+    Exec               | Code(Exec) Body(Exec)          | }
+                       |                                |
+                       |                                | } // verus!
+
+    | file       | Trusted | Spec | Proof | Exec | Proof+Exec | Comment | Layout | unaccounted |
+    |------------|---------|------|-------|------|------------|---------|--------|-------------|
+    | tracked.rs |       4 |    2 |     3 |   48 |         11 |       6 |      0 |          19 |
+    |------------|---------|------|-------|------|------------|---------|--------|-------------|
+    | total      |       4 |    2 |     3 |   48 |         11 |       6 |      0 |          19 |
+    ");
+}
