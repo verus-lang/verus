@@ -537,6 +537,11 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 let exps = visit_exps_poly(ctx, state, exps);
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), exps))
             }
+            CallFun::InternalFun(InternalFun::ClosureOpensInvariants) => {
+                let exps = visit_exps_poly(ctx, state, exps);
+                let typ = coerce_typ_to_poly(ctx, &exp.typ);
+                mk_exp_typ(&typ, ExpX::Call(call_fun.clone(), typs.clone(), exps))
+            }
             CallFun::InternalFun(InternalFun::CheckDecreaseHeight) => {
                 assert!(exps.len() == 3);
                 let e0 = visit_exp_poly(ctx, state, &exps[0]);
