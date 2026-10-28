@@ -4300,7 +4300,7 @@ impl Visitor {
             let mut auto_ensures: Ensures = parse_quote_spanned_vstd!(vstd, span =>
                 ensures
                     #[verus::internal(auto_loop_ensures)]
-                    #vstd::std_specs::iter::IteratorSpec::produces(&#x_iter_snapshot_arg)
+                    #vstd::std_specs::iter::IteratorSpec::produces(#x_iter_snapshot_arg)
                         .all(#vstd::prelude::closure_to_fn_spec(|p: bool| p)),
                     #[verus::internal(auto_loop_ensures)]
                     #vstd::prelude::spec_eq(#x_iter_name.index.view(), #x_iter_name.seq().len()),
