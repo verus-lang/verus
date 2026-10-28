@@ -155,8 +155,18 @@ fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Option<
 /// `require A` guards the rest of its path (`if A { rest }`) instead of assuming `A`. The
 /// continuation after a split is copied into each branch, so every assertion is checked under
 /// exactly the requirements and branch conditions of its path. Used by the checked model.
+/// As there, the assigned temporaries are declared up front (an `Assign` is an assignment).
 pub fn safety_condition_body_checked(sops: &[SimplStmt]) -> proc_macro2::TokenStream {
-    checked_with(sops, proc_macro2::TokenStream::new())
+    let mut ids = Vec::new();
+    for sop in sops {
+        get_assigns_simpl(sop, &mut ids);
+    }
+    let mut t = proc_macro2::TokenStream::new();
+    for (ident, typ) in ids {
+        t.extend(quote! { #[allow(unused_mut)] let mut #ident: #typ; });
+    }
+    t.extend(checked_with(sops, proc_macro2::TokenStream::new()));
+    t
 }
 
 fn checked_with(sops: &[SimplStmt], cont: proc_macro2::TokenStream) -> proc_macro2::TokenStream {

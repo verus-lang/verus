@@ -909,7 +909,7 @@ pub fn assert_cheating_only_at_user_sites(source: &str, result: Result<TestErr, 
 /// at a user-written assumption of `source`.
 pub fn assert_no_cheating_errors_at_user_sites(source: &str, errors: &[Diagnostic]) {
     let cheating: Vec<_> =
-        errors.iter().filter(|e| e.message.contains("not allowed with --no-cheating")).collect();
+        errors.iter().filter(|e| e.message.contains("not allowed with `--no-cheating`")).collect();
     assert!(
         !cheating.is_empty(),
         "the test opts out of --no-cheating (`verified cheating`), but --no-cheating reports no \
