@@ -439,7 +439,7 @@ test_verify_one_file! {
             let mut x = X { i: 10, j: 8 };
             test(&mut x.j);
         }
-    } => Err(err) => assert_vir_error_msg(err, "this function call takes a &mut ref of a field of a datatype with a user-defined type invariant; thus, this function should be marked no_unwind")
+    } => Err(err) => assert_vir_error_msg(err, "this function call takes a mutable reference to a field of a datatype with a user-defined type invariant; thus, this function should be marked `no_unwind`")
 }
 
 test_verify_one_file! {
@@ -456,7 +456,7 @@ test_verify_one_file! {
         fn test2(e: &mut E) {
             match e { E::B { j } => test(j), _ => {} }
         }
-    } => Err(err) => assert_vir_error_msg(err, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support using a pattern to take a mutable reference to a field of a datatype that has a declared type invariant")
 }
 
 test_verify_one_file! {
@@ -478,7 +478,7 @@ test_verify_one_file! {
             let mut y = Y { x: X { i: 10, j: 8 }, k: 1 };
             test(&mut y.x.i);
         }
-    } => Err(err) => assert_vir_error_msg(err, "this function call takes a &mut ref of a field of a datatype with a user-defined type invariant; thus, this function should be marked no_unwind")
+    } => Err(err) => assert_vir_error_msg(err, "this function call takes a mutable reference to a field of a datatype with a user-defined type invariant; thus, this function should be marked `no_unwind`")
 }
 
 test_verify_one_file! {
