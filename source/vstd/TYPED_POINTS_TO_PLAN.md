@@ -19,7 +19,7 @@ the module layout, all of `points_to_model.rs`'s and `points_to_ops.rs`'s impl b
 and all of `points_to_collections.rs` (`PointsToRaw`, the typed `SeqPointsTo`, and the sequence → slice conversions),
 and rustlib's `str` impls and casts
 are approved and are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md).
-The modified rustlib specs are provisionally accepted.
+The modified rustlib specs are approved, or unchanged (the shared-reference transmutes).
 The `Seq` join axioms (`tracked_add_borrow` / `tracked_add_borrow_mut`, approved by Travis),
 and `PointsToUntyped::join_ref` / `join_mut` proved from them, are approved and in TYPED_POINTS_TO_APPROVED.md.
 The [`inv()` preconditions for `str`](#inv-preconditions-for-str) are approved and implemented.
@@ -315,7 +315,7 @@ pub fn into_non_null_with_allocator_verus(b: Self) -> (out: (NonNull<T>, A, Trac
 
 #### Modified rustlib specs
 
-Provisionally accepted (2026-10-25): used for the rustlib port, and revisited if the port needs changes.
+All approved or unchanged (2026-10-28).
 
 Existing rustlib specs that mention `PointsTo<str>` or `PointsTo<[T]>`,
 restated for the new API
@@ -337,6 +337,7 @@ All four require `self.inv()`; `as_str_ptr_verus` and `as_ptr_verus` ensure the 
 Approved (2026-10-26); in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#rustlib-slice_indexrs-wrappers).
 
 **Shared-reference transmutes** (`proofs/str.rs`).
+Done (2026-10-28; unchanged specs, so nothing to review):
 `transmute_shared_ref_str_u8_slice` and `transmute_shared_ref_u8_slice_str` go back from axioms to proofs, with unchanged specs:
 `SharedReference<str>::points_to`, then `PointsTo<str>::as_bytes`, then `ptr_ref2_slice_ghost`;
 and `SharedReference<[u8]>::points_to`, then `PointsTo<str>::from_bytes_ref`, then `ptr_ref2_str_ghost`
@@ -428,7 +429,7 @@ and the borrowed-assembly axioms (`tracked_slice_index`, `tracked_ref`,
 All in
 [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#new-axioms-and-axioms-with-bigger-changes):
 the shared ones (`tracked_slice_index`, `tracked_ref`, `PointsToUnaligned::from_raw_parts_ref`,
-and `TypedValue::<[T]>::from_elems_ref`, which is waiting on Travis) and the `&mut` ones (M1, M3–M5).
+and `TypedValue::<[T]>::from_elems_ref`, approved by Travis) and the `&mut` ones (M1, M3–M5).
 
 ### Slice reference helpers (phase 4b)
 

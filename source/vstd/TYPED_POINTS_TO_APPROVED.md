@@ -1186,6 +1186,8 @@ Both are proved, with no new axioms:
 the value from rustlib's existing `str::as_bytes_tracked` / `str::from_bytes_tracked` and `TypedValue::valid_ref`
 (an empty value from `&TypedValue::Empty`, a promoted constant),
 and the permission from `from_raw_parts_ref` with the same untyped bytes and metadata.
+`value()` on `PointsTo(Unaligned)<str>` is the string's bytes (`typed_value().value_ref()@`, a `Seq<u8>`, `#[verifier::inline]`),
+as `value()` is the elements for slice permissions.
 
 ```rust
 impl PointsToUnaligned<str> {
@@ -1200,7 +1202,7 @@ impl PointsToUnaligned<str> {
             out.ptr()@.metadata == self.ptr()@.metadata,
             out.bytes() == self.bytes(),
             out.typed_value().is_valid() == self.typed_value().is_valid(),
-            self.typed_value().is_valid() ==> out.value() == self.typed_value().value_ref()@,
+            self.typed_value().is_valid() ==> out.value() == self.value(),
             out.wf(),
     ;
 
@@ -1216,7 +1218,7 @@ impl PointsToUnaligned<str> {
             out.ptr()@.metadata == pt_slice.ptr()@.metadata,
             out.bytes() == pt_slice.bytes(),
             out.typed_value().is_valid() == pt_slice.typed_value().is_valid(),
-            pt_slice.typed_value().is_valid() ==> out.typed_value().value_ref()@ == pt_slice.value(),
+            pt_slice.typed_value().is_valid() ==> out.value() == pt_slice.value(),
             out.wf(),
     ;
 }
@@ -1233,7 +1235,7 @@ impl PointsTo<str> {
             out.ptr()@.metadata == self.ptr()@.metadata,
             out.bytes() == self.bytes(),
             out.typed_value().is_valid() == self.typed_value().is_valid(),
-            self.typed_value().is_valid() ==> out.value() == self.typed_value().value_ref()@,
+            self.typed_value().is_valid() ==> out.value() == self.value(),
             out.wf(),
     ;
 
@@ -1249,7 +1251,7 @@ impl PointsTo<str> {
             out.ptr()@.metadata == pt_slice.ptr()@.metadata,
             out.bytes() == pt_slice.bytes(),
             out.typed_value().is_valid() == pt_slice.typed_value().is_valid(),
-            pt_slice.typed_value().is_valid() ==> out.typed_value().value_ref()@ == pt_slice.value(),
+            pt_slice.typed_value().is_valid() ==> out.value() == pt_slice.value(),
             out.wf(),
     ;
 
@@ -1260,7 +1262,7 @@ impl PointsTo<str> {
             self.wf(),
             start <= end <= self.ptr()@.metadata,
             self.typed_value().is_valid()
-                ==> valid_utf8(self.typed_value().value_ref()@.subrange(start as int, end as int)),
+                ==> valid_utf8(self.value().subrange(start as int, end as int)),
         ensures
             out.ptr() == ptr_mut_from_data::<str>(PtrData {
                 addr: (self.ptr()@.addr + start) as usize,
@@ -1270,7 +1272,7 @@ impl PointsTo<str> {
             out.bytes() == self.bytes().subrange(start as int, end as int),
             self.typed_value().is_valid() ==> {
                 &&& out.typed_value().is_valid()
-                &&& out.typed_value().value_ref()@ == self.typed_value().value_ref()@.subrange(start as int, end as int)
+                &&& out.value() == self.value().subrange(start as int, end as int)
             },
             self.typed_value().is_empty() ==> out.typed_value().is_empty(),
             out.wf(),
@@ -1304,8 +1306,8 @@ pub open spec fn valid_indices_slice_points_to<T>(start: int, end: int, slice: &
 pub open spec fn valid_indices_str_points_to(start: int, end: int, slice: &PointsTo<str>) -> bool {
     &&& 0 <= start <= end <= slice.ptr()@.metadata
     &&& slice.typed_value().is_valid() ==> {
-        &&& is_char_boundary(slice.typed_value().value_ref()@, start)
-        &&& is_char_boundary(slice.typed_value().value_ref()@, end)
+        &&& is_char_boundary(slice.value(), start)
+        &&& is_char_boundary(slice.value(), end)
     }
 }
 
