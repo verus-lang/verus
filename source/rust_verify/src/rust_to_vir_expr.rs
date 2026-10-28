@@ -1872,7 +1872,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                                         "coercing an array to a slice is not supported with `--no-vstd`",
                                     );
                                 }
-                                let fun = vir::fun!(CrateId::Vstd => "raw_ptr", "cast_array_ptr_to_slice_ptr");
+                                let fun = vir::fun!(CrateId::Vstd => "raw_ptr"; "cast_array_ptr_to_slice_ptr");
 
                                 let arg_typ = undecorate_typ(arg.typ());
                                 let array_typ = match &*arg_typ {
@@ -1900,7 +1900,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                         (TyKind::Array(el_ty1, _const_len), TyKind::Slice(el_ty2))
                             if el_ty1 == el_ty2 =>
                         {
-                            let fun = vir::fun!(CrateId::Vstd => "array", "ref_mut_array_unsizing_coercion");
+                            let fun = vir::fun!(CrateId::Vstd => "array"; "ref_mut_array_unsizing_coercion");
                             let array_typ = match &**arg.typ() {
                                 TypX::MutRef(typ) => typ,
                                 _ => crate::internal_err!(expr.span, "expected TypX::MutRef"),
@@ -1928,7 +1928,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                                 }
 
                                 // TODO(mut_refs): likely needs Place considerations
-                                let fun = vir::fun!(CrateId::Vstd => "array", "array_as_slice");
+                                let fun = vir::fun!(CrateId::Vstd => "array"; "array_as_slice");
 
                                 let typ_args = match &*undecorate_typ(arg.typ()) {
                                     TypX::Primitive(Primitive::Array, typs) => typs.clone(),
@@ -2467,7 +2467,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 tcx.type_is_copy_modulo_regions(TypingEnv::post_analysis(tcx, bctx.fun_id), ty);
             if is_copy {
                 let arg_vir = expr_to_vir_consume(bctx, e)?;
-                let fun = vir::fun!(CrateId::Vstd => "array", "array_fill_for_copy_types");
+                let fun = vir::fun!(CrateId::Vstd => "array"; "array_fill_for_copy_types");
                 let array_vir_typ = bctx.mid_ty_to_vir(expr.span, &bctx.types.expr_ty(expr))?;
                 let typ_args = match &*array_vir_typ {
                     TypX::Primitive(Primitive::Array, typs) => typs.clone(),
@@ -2583,7 +2583,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             "float `as` cast is not supported with `--no-vstd`",
                         );
                     }
-                    let fun = vir::fun!(CrateId::Vstd => "float", "float_cast");
+                    let fun = vir::fun!(CrateId::Vstd => "float"; "float_cast");
                     let from_typ = undecorate_typ(source_vir_ty);
                     let to_typ = undecorate_typ(&to_vir_ty);
                     let typ_args = Arc::new(vec![from_typ, to_typ]);
@@ -3511,9 +3511,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
                 let fun_typ_args = if ty_is_vec(bctx.ctxt.tcx, *tgt_ty) && idx_ty.is_usize() {
                     let fun = if mutbl {
-                        vir::fun!(CrateId::Vstd => "std_specs", "vec", "vec_index_mut")
+                        vir::fun!(CrateId::Vstd => "std_specs", "vec"; "vec_index_mut")
                     } else {
-                        vir::fun!(CrateId::Vstd => "std_specs", "vec", "vec_index")
+                        vir::fun!(CrateId::Vstd => "std_specs", "vec"; "vec_index")
                     };
 
                     let typ_args = match &*tgt_typ_vir {
@@ -4539,7 +4539,7 @@ fn is_ptr_cast<'tcx>(
             {
                 let src_ty = bctx.mid_ty_to_vir(span, ty1)?;
                 let dst_ty = bctx.mid_ty_to_vir(span, ty2)?;
-                let fun = vir::fun!(CrateId::Vstd => "raw_ptr", "cast_ptr_to_thin_ptr");
+                let fun = vir::fun!(CrateId::Vstd => "raw_ptr"; "cast_ptr_to_thin_ptr");
                 let typs = Arc::new(vec![src_ty, dst_ty]);
                 return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
             } else {
@@ -4548,21 +4548,21 @@ fn is_ptr_cast<'tcx>(
                         let arg1 = bctx.mid_ty_to_vir(span, s1)?;
                         let arg2 = bctx.mid_ty_to_vir(span, s2)?;
                         let fun =
-                            vir::fun!(CrateId::Vstd => "raw_ptr", "cast_slice_ptr_to_slice_ptr");
+                            vir::fun!(CrateId::Vstd => "raw_ptr"; "cast_slice_ptr_to_slice_ptr");
                         let typs = Arc::new(vec![arg1, arg2]);
                         return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
                     }
                     (TyKind::Slice(s1), TyKind::Str) => {
                         let arg = bctx.mid_ty_to_vir(span, s1)?;
                         let fun =
-                            vir::fun!(CrateId::Vstd => "raw_ptr", "cast_slice_ptr_to_str_ptr");
+                            vir::fun!(CrateId::Vstd => "raw_ptr"; "cast_slice_ptr_to_str_ptr");
                         let typs = Arc::new(vec![arg]);
                         return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
                     }
                     (TyKind::Str, TyKind::Slice(s2)) => {
                         let arg = bctx.mid_ty_to_vir(span, s2)?;
                         let fun =
-                            vir::fun!(CrateId::Vstd => "raw_ptr", "cast_str_ptr_to_slice_ptr");
+                            vir::fun!(CrateId::Vstd => "raw_ptr"; "cast_str_ptr_to_slice_ptr");
                         let typs = Arc::new(vec![arg]);
                         return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
                     }
@@ -4576,7 +4576,7 @@ fn is_ptr_cast<'tcx>(
         {
             let src_ty = bctx.mid_ty_to_vir(span, ty1)?;
             let typs = Arc::new(vec![src_ty]);
-            let fun = vir::fun!(CrateId::Vstd => "raw_ptr", "cast_ptr_to_usize");
+            let fun = vir::fun!(CrateId::Vstd => "raw_ptr"; "cast_ptr_to_usize");
 
             // cast_ptr_to_usize casts to a usize; we might need to do an additional
             // clip afterwards, so return with clip=true

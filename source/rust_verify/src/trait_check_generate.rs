@@ -77,13 +77,13 @@ impl State {
 
     pub(crate) fn trait_name<'tcx>(&mut self, path: &Path) -> Id {
         // the raw id becomes part of a generated Rust identifier, so drop the t% prefix
-        let f = || vir::def::strip_type_ns(path.segments.last().expect("path")).to_string();
+        let f = || path.segments.last().expect("path").friendly_name();
         Self::id(&mut self.rename_count, &mut self.trait_to_name, IdKind::Trait, path, f)
     }
 
     pub(crate) fn datatype_name<'tcx>(&mut self, path: &Path) -> Id {
         // the raw id becomes part of a generated Rust identifier, so drop the t% prefix
-        let f = || vir::def::strip_type_ns(path.segments.last().expect("path")).to_string();
+        let f = || path.segments.last().expect("path").friendly_name();
         Self::id_with_unmangle(
             &mut self.rename_count,
             &mut self.datatype_to_name,

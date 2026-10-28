@@ -17,7 +17,7 @@ pub enum UserFilter {
     Function(ModuleId, String, HashSet<Fun>),
 }
 
-type ModuleId = vir::ast::Idents;
+type ModuleId = vir::ast::Segments;
 
 fn root_module_id() -> ModuleId {
     Arc::new(vec![])
@@ -33,15 +33,9 @@ impl UserFilter {
     }
 
     pub fn from_args(args: &Args, local_krate: &Krate) -> Result<UserFilter, VirErr> {
-        let validate_module_name = |s: &str| -> Result<vir::ast::Idents, VirErr> {
+        let validate_module_name = |s: &str| -> Result<ModuleId, VirErr> {
             let segments = parse_path_segments_from_user_str(s)?;
-            let segments = path_strip_type_ns(&segments);
-            if local_krate
-                .modules
-                .iter()
-                .find(|m| path_strip_type_ns(&m.x.path.segments) == segments)
-                .is_none()
-            {
+            if local_krate.modules.iter().find(|m| m.x.path.segments == segments).is_none() {
                 let mut lines = local_krate
                     .modules
                     .iter()
@@ -92,7 +86,7 @@ impl UserFilter {
                 let mods = local_krate
                     .modules
                     .iter()
-                    .map(|m| path_strip_type_ns(&m.x.path.segments))
+                    .map(|m| m.x.path.segments.clone())
                     .filter(|m_segments| {
                         vir::ast_util::path_segments_match_prefix(m_segments, &arg_segments)
                     })
@@ -135,7 +129,7 @@ impl UserFilter {
             .filter(|m| {
                 // Return true if the ModuleId is in the remaining_modules set,
                 // and if so, remove it from the set.
-                remaining_modules.take(&path_strip_type_ns(&m.x.path.segments)).is_some()
+                remaining_modules.take(&m.x.path.segments).is_some()
             })
             .cloned()
             .collect();
@@ -186,7 +180,7 @@ impl UserFilter {
             .iter()
             .filter(|f| match &f.x.owning_module {
                 None => false,
-                Some(m) => module_id == &path_strip_type_ns(&m.segments),
+                Some(m) => module_id == &m.segments,
             })
             .map(|f| {
                 let name = friendly_fun_name_crate_relative(
@@ -310,8 +304,4 @@ impl UserFilter {
             true
         }
     }
-}
-
-fn path_strip_type_ns(path: &Arc<Vec<Arc<String>>>) -> Arc<Vec<Arc<String>>> {
-    Arc::new(path.iter().map(|s| Arc::new(vir::def::strip_type_ns(s).to_string())).collect())
 }

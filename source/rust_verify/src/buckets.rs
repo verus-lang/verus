@@ -49,12 +49,7 @@ impl BucketId {
             "root module".to_string()
         } else {
             "module ".to_string()
-                + &module
-                    .segments
-                    .iter()
-                    .map(|s| vir::def::strip_type_ns(s).to_string())
-                    .collect::<Vec<_>>()
-                    .join("::")
+                + &module.segments.iter().map(|s| s.friendly_name()).collect::<Vec<_>>().join("::")
         };
         match self {
             BucketId::Module(_) => mstring,

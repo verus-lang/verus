@@ -1,6 +1,6 @@
 use crate::ast::{
-    ArrayKind, AssertQueryMode, BitwiseOp, CrateId, Dt, FieldOpr, Fun, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Label, Mode, Path, PathX, Primitive,
+    ArrayKind, AssertQueryMode, BitwiseOp, Dt, FieldOpr, Fun, Ident, Idents, InequalityOp,
+    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Label, Mode, Path, Primitive,
     ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
     UnaryOpr, UnwindSpec, VarAt, VarIdent, VirErr,
 };
@@ -143,7 +143,7 @@ pub(crate) fn monotyp_to_path(ctx: &Ctx, typ: &MonoTyp) -> Path {
                 .monotyp_decorate2(*dec, &typs.iter().map(|t| monotyp_to_path(ctx, t)).collect());
         }
     };
-    Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![id]) })
+    crate::def::internal_path(id.to_string())
 }
 
 pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {

@@ -6,7 +6,7 @@ use rustc_span::def_id::{CrateNum, DefId};
 use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Arc;
-use vir::ast::{CrateId, Path, PathX};
+use vir::ast::{CrateId, Path, PathX, Segment};
 
 pub(crate) fn def_id_to_friendly<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -100,10 +100,12 @@ fn register_friendly_path_as_rust_name<'tcx>(
     }
 }
 
-fn def_to_friendly_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> vir::ast::Ident {
+fn def_to_friendly_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Segment {
     let def_path = tcx.def_path(def_id);
     match def_path.data.last().expect("unexpected empty impl path").data {
-        rustc_hir::definitions::DefPathData::ValueNs(name) => Arc::new(name.to_string()),
+        rustc_hir::definitions::DefPathData::ValueNs(name) => {
+            Segment::V(Arc::new(name.to_string()), 0)
+        }
         _ => panic!("unexpected name of impl"),
     }
 }
@@ -175,8 +177,19 @@ fn unchecked_def_id_to_vir_path<'tcx>(
     let verus_item = verus_items.id_to_name.get(&def_id);
     if let Some(VerusItem::Vstd(_, Some(fn_name))) = verus_item {
         // interpreter.rs and def.rs refer directly to some impl methods,
-        // so make sure we use the fn_name names from `verus_items`
-        let segments = fn_name.split("::").map(|x| Arc::new(x.to_string())).collect();
+        // so make sure we use the fn_name names from `verus_items`.
+        // All segments but the last are in the type namespace;
+        // the last segment is in the namespace of the item itself.
+        let names: Vec<&str> = fn_name.split("::").collect();
+        let (last, prefix) = names.split_last().expect("fn_name");
+        let mut segments: Vec<Segment> =
+            prefix.iter().map(|x| Segment::T(Arc::new(x.to_string()), 0)).collect();
+        let last = Arc::new(last.to_string());
+        let in_type_ns = matches!(
+            tcx.def_path(def_id).data.last().map(|d| &d.data),
+            Some(rustc_hir::definitions::DefPathData::TypeNs(_))
+        );
+        segments.push(if in_type_ns { Segment::T(last, 0) } else { Segment::V(last, 0) });
         return Some(Arc::new(PathX { krate: CrateId::Vstd, segments: Arc::new(segments) }));
     }
     def_path_to_vir_path(tcx, tcx.def_path(def_id))
@@ -184,51 +197,25 @@ fn unchecked_def_id_to_vir_path<'tcx>(
 
 fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
     let krate = mk_crate_id(tcx, def_path.krate);
-    let mut segments: Vec<vir::ast::Ident> = Vec::new();
+    let mut segments: Vec<Segment> = Vec::new();
     for d in def_path.data.iter() {
         use rustc_hir::definitions::DefPathData;
         let s = match &d.data {
             DefPathData::ValueNs(symbol) => {
-                if d.disambiguator == 0 {
-                    symbol.to_string()
-                } else {
-                    format!(
-                        "{:}{:}%{:}",
-                        vir::def::RUST_DEF_VALUE_NS_DISAMBIGUATED,
-                        d.disambiguator,
-                        symbol.as_str()
-                    )
-                }
+                Segment::V(Arc::new(symbol.to_string()), d.disambiguator)
             }
             DefPathData::TypeNs(symbol) => {
-                if d.disambiguator == 0 {
-                    format!("{:}{:}", vir::def::RUST_DEF_TYPE_NS, symbol.as_str())
-                } else {
-                    format!(
-                        "{:}{:}%{:}",
-                        vir::def::RUST_DEF_TYPE_NS_DISAMBIGUATED,
-                        d.disambiguator,
-                        symbol.as_str()
-                    )
-                }
+                Segment::T(Arc::new(symbol.to_string()), d.disambiguator)
             }
-            DefPathData::Ctor => vir::def::RUST_DEF_CTOR.to_string(),
-            DefPathData::Impl => vir::def::impl_ident(d.disambiguator),
-            DefPathData::ForeignMod => {
-                vir::def::RUST_DEF_FOREIGN_MOD.to_string() + &d.disambiguator.to_string()
-            }
-            DefPathData::OpaqueTy => {
-                vir::def::RUST_DEF_OPAQUE_TYPE.to_string() + &d.disambiguator.to_string()
-            }
-            DefPathData::Closure => {
-                vir::def::RUST_DEF_CLOSURE.to_string() + &d.disambiguator.to_string()
-            }
-            DefPathData::AnonConst => {
-                vir::def::RUST_DEF_ANON_CONST.to_string() + &d.disambiguator.to_string()
-            }
+            DefPathData::Ctor => Segment::Ctor(d.disambiguator),
+            DefPathData::Impl => Segment::Impl(d.disambiguator),
+            DefPathData::ForeignMod => Segment::ForeignMod(d.disambiguator),
+            DefPathData::OpaqueTy => Segment::OpaqueTy(d.disambiguator),
+            DefPathData::Closure => Segment::Closure(d.disambiguator),
+            DefPathData::AnonConst => Segment::AnonConst(d.disambiguator),
             _ => return None,
         };
-        segments.push(Arc::new(s));
+        segments.push(s);
     }
     Some(Arc::new(PathX { krate, segments: Arc::new(segments) }))
 }

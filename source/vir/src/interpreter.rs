@@ -6,9 +6,9 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArchWordBits, ArrayKind, BitwiseOp, ComputeMode, Constant, CrateId, Dt, Fun, FunX, Ident,
-    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, Primitive,
-    SpannedTyped, Typ, TypX, Typs, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
+    ArchWordBits, ArrayKind, BitwiseOp, ComputeMode, Constant, CrateId, Dt, Fun, Ident,
+    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Primitive, SpannedTyped,
+    Typ, TypX, Typs, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{n_types_equal, path_as_vstd_name, types_equal, undecorate_typ};
@@ -901,11 +901,6 @@ pub(crate) fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     }
 }
 
-fn strs_to_idents(s: Vec<&str>) -> Idents {
-    let idents = s.iter().map(|s| Arc::new(s.to_string())).collect();
-    Arc::new(idents)
-}
-
 pub(crate) fn is_seq_to_sst_fun(fun: &Fun) -> bool {
     match is_sequence_fn(fun) {
         Some(SeqFn::Empty | SeqFn::Push) => true,
@@ -927,16 +922,8 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirEr
     let new_seq_exp = |e: ExpX| SpannedTyped::new(span, &seq_typ, e);
     if s.len() <= 1 {
         let typs = Arc::new(vec![inner_typ.clone()]);
-        let path_empty = Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: strs_to_idents(vec!["seq", "Seq", "empty"]),
-        });
-        let path_push = Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: strs_to_idents(vec!["seq", "Seq", "push"]),
-        });
-        let fun_empty = Arc::new(FunX { path: path_empty });
-        let fun_push = Arc::new(FunX { path: path_push });
+        let fun_empty = crate::fun!(CrateId::Vstd => "seq", "Seq"; "empty");
+        let fun_push = crate::fun!(CrateId::Vstd => "seq", "Seq"; "push");
         let empty =
             new_seq_exp(ExpX::Call(CallFun::Fun(fun_empty, None), typs.clone(), Arc::new(vec![])));
         let seq = s.iter().fold(empty, |acc, e| {

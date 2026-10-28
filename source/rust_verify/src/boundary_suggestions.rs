@@ -70,7 +70,7 @@ pub(crate) fn build_external_type_suggestion<'tcx>(
                 Some(_) => "", // This may be the point that it makes sense to check for the type being in a private module or otherwise not visible
             },
             "struct ",
-            "Ex".to_owned() + vir::def::strip_type_ns(&path.last_segment()), // Proxy type name
+            "Ex".to_owned() + &path.last_segment().friendly_name(), // Proxy type name
             if generics.is_empty() {
                 "".to_owned()
             } else {

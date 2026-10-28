@@ -1050,7 +1050,7 @@ fn handle_external_fn<'tcx>(
     match &external_path.krate {
         CrateId::Id(name, _)
             if name.to_string().as_str() == "verus_builtin"
-                && &*external_path.last_segment() != "clone"
+                && !external_path.last_segment().is_name("clone")
                 && !is_builtin_external =>
         {
             return err_span(
@@ -1580,8 +1580,8 @@ pub(crate) fn fixup_unerased_proxy_path(
 ) -> Result<vir::ast::Path, VirErr> {
     let id = path.last_segment();
     let prefix = "VERUS_UNERASED_PROXY__";
-    if id.starts_with(&prefix) {
-        let p = path.pop_segment().push_segment(Arc::new(id[prefix.len()..].to_string()));
+    if id.name().is_some_and(|name| name.starts_with(&prefix)) {
+        let p = path.replace_last(id.map_name(|name| name[prefix.len()..].to_string()));
         Ok(p)
     } else {
         crate::internal_err!(span, "bad use of `unerased_proxy` attribute")
@@ -1696,7 +1696,12 @@ pub(crate) fn check_item_fn<'tcx>(
 ) -> Result<Option<Fun>, VirErr> {
     let mut this_path = ctxt.def_id_to_vir_path(id);
 
-    let is_verus_spec = this_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
+    let is_verus_spec = this_path
+        .segments
+        .last()
+        .expect("segment.last")
+        .name()
+        .is_some_and(|name| name.starts_with(VERUS_SPEC));
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let mode = match &sig.sig {
@@ -1753,8 +1758,8 @@ pub(crate) fn check_item_fn<'tcx>(
         let from_trait_id = ctxt.tcx.parent(id);
         let from_path = ctxt.def_id_to_vir_path(from_trait_id);
         let to_path = ctxt.def_id_to_vir_path(to_trait_id);
-        let to_spec_path =
-            to_spec_name.map(|name| from_path.replace_last(vir::def::in_type_ns(&name)));
+        let to_spec_path = to_spec_name
+            .map(|name| from_path.replace_last(vir::ast::Segment::T(Arc::new(name.clone()), 0)));
         Some((from_path, to_path, to_spec_path))
     } else {
         None

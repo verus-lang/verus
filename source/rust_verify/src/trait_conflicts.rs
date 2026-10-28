@@ -203,7 +203,7 @@ fn gen_generics(
     let mut generic_params: Vec<GenericParam> = Vec::new();
     let mut generic_bounds: Vec<GenericBound> = Vec::new();
     let mut const_typs: HashMap<String, Typ> = HashMap::new();
-    let tuple_trait_path = vir::real_path!(CrateId::Core => "marker", "Tuple");
+    let tuple_trait_path = vir::path!(CrateId::Core => "marker", "Tuple");
     for b in typ_bounds.iter() {
         match &**b {
             GenericBoundX::Trait(TraitId::Path(path), typs) => {
@@ -274,9 +274,9 @@ fn is_option_clone_destruct_bound(
             // is a temporary workaround, it's not worth
             // complicating surrounding code by passing TyCtx
             // to here.
-            let option_path = vir::real_path!(CrateId::Core => "option", "Option");
-            let clone_path = vir::real_path!(CrateId::Core => "clone", "Clone");
-            let destruct_path = vir::real_path!(CrateId::Core => "marker", "Destruct");
+            let option_path = vir::path!(CrateId::Core => "option", "Option");
+            let clone_path = vir::path!(CrateId::Core => "clone", "Clone");
+            let destruct_path = vir::path!(CrateId::Core => "marker", "Destruct");
             // The first type parameter passed to the trait is the implementing
             // type:
             match &*args[0] {
