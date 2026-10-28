@@ -140,6 +140,7 @@ pub broadcast group group_vstd_default {
     std_specs::fmt::group_fmt_axioms,
     std_specs::manually_drop::group_manually_drop_axioms,
     std_specs::iter::group_iter_axioms,
+    std_specs::nonzero::group_nonzero_axioms,
     //
     // std_specs for alloc (with or without std)
     //
@@ -156,11 +157,6 @@ pub broadcast group group_vstd_default {
     std_specs::hash::group_hash_axioms,
     #[cfg(feature = "alloc")]
     std_specs::btree::group_btree_axioms,
-    //
-    // std_specs for nonzero_internals
-    //
-    #[cfg(feature = "nonzero_internals")]
-    std_specs::nonzero::group_nonzero_axioms,
 }
 
 } // verus!

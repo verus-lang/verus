@@ -28,5 +28,5 @@ by marking the function with the `#[verifier::opaque]` attribute.
 The `reveal_with_fuel(f, n)` directive is used for recursive functions.
 The integer `n` indicates how many times Verus should unfold a recursive function.
 Limiting the fuel to a finite amount is necessary to avoid 
-[trigger loops](multitriggers.md#matching-loops-what-they-are-and-to-avoid-them).
+[trigger loops](multitriggers.md#matching-loops-what-they-are-and-how-to-avoid-them).
 The default fuel (absent any `reveal_with_fuel` directive) is 1.

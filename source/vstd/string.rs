@@ -364,6 +364,18 @@ impl DeepView for String {
     }
 }
 
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl PartialEqSpecImpl for String {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &String) -> bool {
+        self@ == other@
+    }
+}
+
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -528,7 +540,10 @@ impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 

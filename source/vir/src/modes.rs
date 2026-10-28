@@ -151,13 +151,13 @@ impl Proph {
             NoProphReason::ProofFnCall => {
                 ("argument to proof-mode function with tracked parameters", "this argument")
             }
-            NoProphReason::DecreasesClause => ("'decreases' clause", "this decreases-measure"),
+            NoProphReason::DecreasesClause => ("`decreases` clause", "this decreases-measure"),
             NoProphReason::NonSpecDecl => ("declaration of non-ghost variables", "this expression"),
             NoProphReason::MutBorrow => ("mutable borrow", "this operand"),
             NoProphReason::Index => ("index into array or slice", "index"),
             NoProphReason::LoopCondition => ("loop condition", "this condition"),
-            NoProphReason::GhostWrap => ("'Ghost' wrapper", "operand of this wrapper"),
-            NoProphReason::TrackedWrap => ("'Tracked' wrapper", "operand of this wrapper"),
+            NoProphReason::GhostWrap => ("`Ghost` wrapper", "operand of this wrapper"),
+            NoProphReason::TrackedWrap => ("`Tracked` wrapper", "operand of this wrapper"),
             NoProphReason::LetElse => ("let-else statement", "this matched expression"),
             NoProphReason::OpenInvariantArg => ("invariant statement", "this operand"),
             NoProphReason::AssignToNonProphPlace => {
@@ -868,7 +868,7 @@ impl AtomicInstCollector {
         if let Some(first_loop) = self.loops.first() {
             return Err(error_with_label(
                 span,
-                format!("{ctx} cannot contain an 'exec' loop"),
+                format!("{ctx} cannot contain an `exec` loop"),
                 "this invariant block contains a loop",
             )
             .secondary_span(first_loop));
@@ -1064,7 +1064,7 @@ fn add_pattern_rec(
 fn check_binding(span: &Span, by_ref: &ByRef, mode: Mode) -> Result<(), VirErr> {
     match (by_ref, mode) {
         (ByRef::MutRef, Mode::Spec) => {
-            Err(error(span, "a 'mut ref' binding in a pattern is not allowed in spec mode"))
+            Err(error(span, "a `ref mut` binding in a pattern is not allowed in spec mode"))
         }
         (ByRef::No | ByRef::ImmutRef, _) => Ok(()),
         (_, Mode::Proof) => Ok(()),
@@ -1085,7 +1085,7 @@ fn check_expr_in_pattern(expr: &Expr) -> Result<(), VirErr> {
             check_expr_in_pattern(expr2)
         }
         ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(..), expr1) => check_expr_in_pattern(expr1),
-        _ => Err(error(&expr.span, "Verus Internal Error: bad PatternX::Expr")),
+        _ => Err(crate::messages::internal_error(&expr.span, "bad PatternX::Expr")),
     }
 }
 
@@ -1203,7 +1203,7 @@ fn check_place(
                     );
                     if let Some(note) = note {
                         e = e.secondary_label(&note.1, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
-                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
+                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type; you can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
                     }
                     return Err(e);
                 }
@@ -1220,9 +1220,9 @@ fn check_place(
         PlaceAccess::MutBorrow(None) => {
             let found = record.mut_bor_place_modes.insert(place.span.id, (place_mode, note));
             if found.is_some() {
-                return Err(error(
+                return Err(crate::messages::internal_error(
                     &place.span,
-                    "Verus Internal Error: duplicate ast id for mut borrow",
+                    "duplicate ast id for mut borrow",
                 ));
             }
 
@@ -1235,9 +1235,9 @@ fn check_place(
             let found =
                 record.mut_bor_place_modes.insert(place.span.id, (place_mode, note.clone()));
             if found.is_some() {
-                return Err(error(
+                return Err(crate::messages::internal_error(
                     &place.span,
-                    "Verus Internal Error: duplicate ast id for mut borrow",
+                    "duplicate ast id for mut borrow",
                 ));
             }
 
@@ -1255,7 +1255,7 @@ fn check_place(
                     );
                     if let Some(note) = note {
                         e = e.secondary_label(&note.1, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
-                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
+                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type; you can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
                     }
                     return Err(e);
                 }
@@ -1355,9 +1355,9 @@ fn check_place_rec_inner(
                 ));
             }
             if *get_variant {
-                return Err(error(
+                return Err(crate::messages::internal_error(
                     &place.span,
-                    "Verus Internal Error: field accesses should be through Expr nodes for builtin spec operators like get_variant_field",
+                    "field accesses should be through Expr nodes for builtin spec operators like `get_variant_field`",
                 ));
             }
 
@@ -1420,9 +1420,9 @@ fn check_place_rec_inner(
                 check_expr(ctxt, record, typing, outer_mode, expect, e, outer_proph)?;
 
             if record.temporary_modes.contains_key(&place.span.id) {
-                return Err(error(
+                return Err(crate::messages::internal_error(
                     &place.span,
-                    &format!("Verus Internal Error: duplicate PlaceX::Temporary ID"),
+                    &format!("duplicate PlaceX::Temporary ID"),
                 ));
             }
             record.temporary_modes.insert(place.span.id, mode);
@@ -1445,17 +1445,15 @@ fn check_place_rec_inner(
             Ok((mode, proph))
         }
         PlaceX::WithExpr(..) => {
-            return Err(error(
+            return Err(crate::messages::internal_error(
                 &place.span,
-                &format!("Verus Internal Error: WithExpr node shouldn't exist yet"),
+                &format!("WithExpr node shouldn't exist yet"),
             ));
         }
         PlaceX::UserDefinedTypInvariantObligation(..) => {
-            return Err(error(
+            return Err(crate::messages::internal_error(
                 &place.span,
-                &format!(
-                    "Verus Internal Error: UserDefinedTypInvariantObligation node shouldn't exist yet"
-                ),
+                &format!("UserDefinedTypInvariantObligation node shouldn't exist yet"),
             ));
         }
         PlaceX::Index(p, idx, _kind, _needs_bounds_check) => {
@@ -1546,7 +1544,7 @@ fn check_tracked_swap(
                     e = error(&arg.span, format!("cannot mutate exec-mode place in ghost code"));
                 }
                 e = e.secondary_label(&note.1, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
-                e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
+                e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type; you can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0)));
             }
             return Err(e);
         }
@@ -1929,7 +1927,7 @@ fn check_expr(
             }
             let mode_error_msg = || {
                 if ctxt.special_paths.is_exec_nonstatic_call_path(&x.path) {
-                    format!("to call a non-static function in ghost code, it must be a spec_fn")
+                    format!("to call a non-static function in ghost code, it must be a `spec_fn`")
                 } else {
                     let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
                     format!("cannot call function `{}` with mode {}", name, function.x.mode)
@@ -2037,7 +2035,7 @@ fn check_expr(
             Ok((Mode::Exec, Proph::No))
         }
         ExprX::Call { post_args: Some(_), .. } => {
-            return Err(error(&expr.span, "ExprX::Call should not have post_args at this point"));
+            return Err(error(&expr.span, "ExprX::Call should not have `post_args` at this point"));
         }
         ExprX::ArrayLiteral(es) => {
             let modes = vec_map_result(es, |e| {
@@ -2245,9 +2243,9 @@ fn check_expr(
             e1,
         ) => {
             if !*get_variant {
-                return Err(error(
+                return Err(crate::messages::internal_error(
                     &expr.span,
-                    "Verus Internal Error: field accesses should be through Place nodes (except for builtin spec operators like get_variant_field)",
+                    "field accesses should be through Place nodes (except for builtin spec operators like `get_variant_field`)",
                 ));
             }
             if *get_variant && ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -2330,7 +2328,7 @@ fn check_expr(
         }
         ExprX::Quant(_, binders, e1) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return Err(error(&expr.span, "cannot use forall/exists in exec mode"));
+                return Err(error(&expr.span, "cannot use `forall`/`exists` in exec mode"));
             }
             let mut typing = typing.push_var_scope();
             for binder in binders.iter() {
@@ -2350,7 +2348,7 @@ fn check_expr(
         }
         ExprX::Closure(params, body) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return Err(error(&expr.span, "cannot use spec_fn closure in 'exec' mode"));
+                return Err(error(&expr.span, "cannot use `spec_fn` closure in `exec` mode"));
             }
             let mut typing = typing.push_var_scope();
             for binder in params.iter() {
@@ -2375,6 +2373,7 @@ fn check_expr(
             ret,
             requires,
             ensures,
+            mask_spec,
             body,
             external_spec,
         } => {
@@ -2391,7 +2390,7 @@ fn check_expr(
             if !is_proof && (typing.block_ghostness != Ghost::Exec || outer_mode != Mode::Exec) {
                 return Err(error(
                     &expr.span,
-                    "closure in ghost code must be marked as a spec_fn by wrapping it in `closure_to_fn_spec` (this should happen automatically in the Verus syntax macro)",
+                    "closure in ghost code must be marked as a `spec_fn` by wrapping it in `closure_to_fn_spec` (this should happen automatically in the Verus syntax macro)",
                 ));
             }
             if is_proof && (typing.block_ghostness == Ghost::Exec || outer_mode != Mode::Proof) {
@@ -2418,6 +2417,20 @@ fn check_expr(
                         Mode::Spec,
                         &Proph::No,
                     )?;
+                }
+
+                if let Some(mask_spec) = &mask_spec {
+                    for expr in mask_spec.exprs().iter() {
+                        check_expr_has_mode(
+                            ctxt,
+                            record,
+                            &mut ghost_typing,
+                            Mode::Spec,
+                            expr,
+                            Mode::Spec,
+                            &Proph::No,
+                        )?;
+                    }
                 }
 
                 let mut ens_typing = ghost_typing.push_var_scope();
@@ -2454,7 +2467,7 @@ fn check_expr(
                 // Could probably support 'proof' functions (in ghost code) as well
                 return Err(error(
                     &expr.span,
-                    "cannot use a function as a value unless it as mode 'exec'",
+                    "cannot use a function as a value unless it has mode `exec`",
                 ));
             }
 
@@ -2519,7 +2532,7 @@ fn check_expr(
             if typing.in_assert_by_body {
                 return Err(error(
                     &expr.span,
-                    "assignment is not allowed in 'assert ... by' statement",
+                    "assignment is not allowed in `assert ... by` statement",
                 ));
             }
             if typing.in_proof_in_spec {
@@ -2600,22 +2613,22 @@ fn check_expr(
         }
         ExprX::Fuel(_, _, _) => {
             if typing.block_ghostness == Ghost::Exec {
-                return Err(error(&expr.span, "cannot use reveal/hide in exec mode")
+                return Err(error(&expr.span, "cannot use `reveal`/`hide` in exec mode")
                     .help("wrap the reveal call in a `proof` block"));
             }
             Ok((outer_mode, Proph::No))
         }
         ExprX::RevealString(_) => {
             if typing.block_ghostness == Ghost::Exec {
-                return Err(error(&expr.span, "cannot use reveal_strlit in exec mode")
-                    .help("wrap the reveal_strlit call in a `proof` block"));
+                return Err(error(&expr.span, "cannot use `reveal_strlit` in exec mode")
+                    .help("wrap the `reveal_strlit` call in a `proof` block"));
             }
             Ok((outer_mode, Proph::No))
         }
         ExprX::RevealByteString(_) => {
             if typing.block_ghostness == Ghost::Exec {
-                return Err(error(&expr.span, "cannot use reveal_byteslit in exec mode")
-                    .help("wrap the reveal_byteslit call in a `proof` block"));
+                return Err(error(&expr.span, "cannot use `reveal_byteslit` in exec mode")
+                    .help("wrap the `reveal_byteslit` call in a `proof` block"));
             }
             Ok((outer_mode, Proph::No))
         }
@@ -2637,7 +2650,7 @@ fn check_expr(
         }
         ExprX::AssertBy { vars, require, ensure, proof } => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return Err(error(&expr.span, "cannot use 'assert ... by' in exec mode")
+                return Err(error(&expr.span, "cannot use `assert ... by` in exec mode")
                     .help("use a `proof` block"));
             }
             // REVIEW: we could allow proof vars when vars.len() == 0,
@@ -2957,7 +2970,7 @@ fn check_expr(
             if typing.in_assert_by_body {
                 return Err(error(
                     &expr.span,
-                    "return is not allowed in 'assert ... by' statements",
+                    "return is not allowed in `assert ... by` statements",
                 ));
             }
             if typing.in_proof_in_spec {
@@ -2995,20 +3008,20 @@ fn check_expr(
             if outer_mode != Mode::Exec && !typing.get_loop(label).ghost_loop {
                 return Err(error(
                     &expr.span,
-                    "break/continue is not allowed outside executable context",
+                    "`break`/`continue` is not allowed outside executable context",
                 ));
             }
             if typing.in_assert_by_body {
                 return Err(error(
                     &expr.span,
-                    "break/continue is not allowed in 'assert ... by' statements",
+                    "`break`/`continue` is not allowed in `assert ... by` statements",
                 ));
             }
             if typing.in_proof_in_spec {
-                return Err(error(&expr.span, "break/continue is not allowed inside spec"));
+                return Err(error(&expr.span, "`break`/`continue` is not allowed inside spec"));
             }
             if typing.in_pure {
-                return Err(error(&expr.span, "break/continue is not allowed in pure context"));
+                return Err(error(&expr.span, "`break`/`continue` is not allowed in pure context"));
             }
             if let Some(value) = value {
                 check_expr_has_mode(
@@ -3045,7 +3058,7 @@ fn check_expr(
                 (Ghost::Ghost, true, _) => {
                     return Err(error(
                         &expr.span,
-                        "Ghost(...) or Tracked(...) can only be used in exec mode",
+                        "`Ghost(...)` or `Tracked(...)` can only be used in exec mode",
                     ));
                 }
             };
@@ -3124,7 +3137,7 @@ fn check_expr(
         }
         ExprX::OpenInvariant(inv, binder, body, atomicity) => {
             if outer_mode == Mode::Spec {
-                return Err(error(&expr.span, "Cannot open invariant in Spec mode."));
+                return Err(error(&expr.span, "cannot open invariant in spec mode"));
             }
 
             record.var_modes.insert(binder.name.clone(), Mode::Proof);
@@ -3143,7 +3156,7 @@ fn check_expr(
             drop(ghost_typing);
 
             if mode1 != Mode::Proof {
-                return Err(error(&inv.span, "Invariant must be Proof mode."));
+                return Err(error(&inv.span, "invariant must be proof mode"));
             }
             let mut typing = typing.push_var_scope();
 
@@ -3393,7 +3406,7 @@ fn check_expr(
         | ExprX::ImplicitReborrowOrSpecRead(place, _, _) => {
             let borrow_mut_tracked = matches!(&expr.x, ExprX::BorrowMutTracked(_));
             if borrow_mut_tracked && typing.block_ghostness != Ghost::Ghost {
-                return Err(error(&expr.span, "mut_ref_tracked not allowed in exec context"));
+                return Err(error(&expr.span, "`mut_ref_tracked` not allowed in exec context"));
             }
             let borrow_mut_tracked_typ = if borrow_mut_tracked {
                 Some(unwrap_mut_ref_tracked_typ(&expr.span, &expr.typ)?)
@@ -3413,7 +3426,7 @@ fn check_expr(
             if typing.in_assert_by_body {
                 return Err(error(
                     &expr.span,
-                    "mutable borrow is not allowed in 'assert ... by' statement",
+                    "mutable borrow is not allowed in `assert ... by` statement",
                 ));
             }
             if typing.in_proof_in_spec || outer_mode == Mode::Spec {
@@ -3440,10 +3453,7 @@ fn check_expr(
                 Mode::Exec => {}
                 Mode::Proof => {}
                 Mode::Spec => {
-                    return Err(error(
-                        &place.span,
-                        "cannot take mutable borrow of ghost-mode place",
-                    ));
+                    return Err(error(&place.span, "cannot mutably borrow a ghost-mode place"));
                 }
             }
             proph.check(&expr.span, NoProphReason::MutBorrow)?;
@@ -3559,7 +3569,7 @@ fn check_expr(
             if typing.in_assert_by_body {
                 return Err(error(
                     &expr.span,
-                    "`shr_ref_struct_wrap` is not allowed in 'assert ... by' statement",
+                    "`shr_ref_struct_wrap` is not allowed in `assert ... by` statement",
                 ));
             }
             if typing.in_proof_in_spec {
@@ -3568,7 +3578,7 @@ fn check_expr(
             if typing.in_pure {
                 return Err(error(
                     &expr.span,
-                    "`str_ref_struct_wrap` is not allowed inside pure context",
+                    "`shr_ref_struct_wrap` is not allowed inside pure context",
                 ));
             }
             let proph1 = check_expr_has_mode(
@@ -3593,11 +3603,15 @@ fn unwrap_mut_ref_tracked_typ(span: &Span, typ: &Typ) -> Result<Typ, VirErr> {
     match &*crate::ast_util::undecorate_typ(typ) {
         TypX::MutRef(t) => match &**t {
             TypX::Decorate(TypDecoration::Tracked, _, t) => Ok(t.clone()),
-            _ => {
-                Err(error(span, "Verus Internal Error: mut_ref_tracked should be &mut Tracked<T>"))
-            }
+            _ => Err(crate::messages::internal_error(
+                span,
+                "`mut_ref_tracked` should be `&mut Tracked<T>`",
+            )),
         },
-        _ => Err(error(span, "Verus Internal Error: mut_ref_tracked should be &mut Tracked<T>")),
+        _ => Err(crate::messages::internal_error(
+            span,
+            "`mut_ref_tracked` should be `&mut Tracked<T>`",
+        )),
     }
 }
 
@@ -3715,7 +3729,7 @@ fn check_stmt(
                 None => {}
                 Some(expr) => {
                     if mode != Mode::Exec {
-                        return Err(error(&stmt.span, "let-else only work in exec mode"));
+                        return Err(error(&stmt.span, "let-else only works in exec mode"));
                     }
                     proph.check(&stmt.span, NoProphReason::LetElse)?;
                     outer_proph.outer_check(&stmt.span, OuterProphReason::LetElse)?;
@@ -3761,7 +3775,7 @@ fn check_function_inner(
         if function.x.mode != Mode::Spec {
             return Err(error(
                 &function.span,
-                "prophetic attribute can only be applied to 'spec' functions",
+                "prophetic attribute can only be applied to `spec` functions",
             ));
         }
     }
@@ -3812,7 +3826,7 @@ fn check_function_inner(
             return Err(error(
                 &function.span,
                 format!(
-                    "implementation of trait function cannot be marked prophetic if the trait function is not"
+                    "trait method implementation cannot be marked prophetic if the trait method is not"
                 ),
             ));
         }

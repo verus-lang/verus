@@ -35,7 +35,7 @@ improve performance and allow hiding where desired.
 requires an inductive invariant, which Z3 cannot in general come up with.
 
 **Extensional equality assertions:** If a theorem requires extensional equality
-(eg, between sequences, maps, or spec functions), this typically requires
+(e.g., between sequences, maps, or spec functions), this typically requires
 additional assertions in the proof. The key challenge is that there are many
 possible sequence expressions (for example) in a program that Z3 could attempt
 to prove are equal. For performance reasons Z3 cannot attempt to prove all
@@ -60,5 +60,5 @@ long. We limit how long Z3 runs (using its resource limit or "rlimit" feature
 so that this limit is independent of how fast the computer is), and consider it
 a failure if Z3 runs into this limit. The philosophy of Verus is that it's
 better to improve solver performance than rely on a slow proof. [Improving SMT
-performance]() talks more about what you can do to diagnose and fix poor
+performance](smt_perf_overview.md) talks more about what you can do to diagnose and fix poor
 verification performance.

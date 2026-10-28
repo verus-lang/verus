@@ -440,6 +440,16 @@ pub assume_specification<T>[ <[T]>::reverse ](slice: &mut [T])
         final(slice)@ == old(slice)@.reverse(),
 ;
 
+// swap
+pub assume_specification<T>[ <[T]>::swap ](slice: &mut [T], a: usize, b: usize)
+    requires
+        a < old(slice)@.len(),
+        b < old(slice)@.len(),
+    ensures
+        final(slice)@ == old(slice)@.update(a as int, old(slice)@[b as int]).update(b as int, old(slice)@[a as int]),
+    no_unwind
+;
+
 // The `iter` method of a `<T>` returns an iterator of type `Iter<'_, T>`,
 // so we specify that type here.
 #[verifier::external_type_specification]
@@ -457,7 +467,10 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -502,7 +515,10 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for IterMut<'a, T> {
     #[verifier::prophetic]
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    open spec fn will_return_none(&self) -> bool { true }
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -522,7 +538,7 @@ pub assume_specification<'a, T>[ <[T]>::iter_mut ](slice: &'a mut [T]) -> (iter:
             #![trigger final(slice)@[i]]
             0 <= i < old(slice)@.len() ==> *final(IteratorSpec::remaining(&iter)[i]) == final(slice)@[i],
         IteratorSpec::obeys_prophetic_iter_laws(&iter),
-        IteratorSpec::will_return_none(&iter),
+        IteratorSpec::produces(&iter).all(|p: bool| p),
         IteratorSpec::decrease(&iter) is Some,
 ;
 
@@ -696,7 +712,10 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for Chunks<'a, T> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 

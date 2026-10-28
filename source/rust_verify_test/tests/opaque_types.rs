@@ -119,7 +119,7 @@ test_verify_one_file! {
     trait DummyTraitB {
         fn foo(&self) -> impl DummyTraitA;
     }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support Opaque types in trait def")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `impl Trait` types in trait definitions")
 }
 
 test_verify_one_file! {
@@ -312,7 +312,7 @@ test_verify_one_file! {
         }
         assume_specification<T> [ return_opaque_variable::<T> ](x:T) -> (ret: impl DummyTrait)
             ensures ret.bar();
-    }  => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
+    }  => Err(err) => assert_vir_error_msg(err, "`assume_specification` requires function type signature to match")
 }
 
 test_verify_one_file! {
@@ -391,7 +391,7 @@ test_verify_one_file! {
         assume_specification [ return_opaque_variable ]() -> (ret: impl DummyTrait<Output = impl DummyTrait>)
             ensures ret.get_self().bar()
             ;
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` requires function type signature to match")
 }
 
 test_verify_one_file! {
@@ -420,7 +420,7 @@ test_verify_one_file! {
         {
             x
         }
-    }  => Err(err) => assert_vir_error_msg(err, "`returns` clause is not allowed for function that returns opaque type")
+    }  => Err(err) => assert_vir_error_msg(err, "`returns` clause is not allowed for function that returns an `impl Trait` type")
 }
 
 test_verify_one_file! {
@@ -616,7 +616,7 @@ test_verify_one_file! {
         spec fn foo() -> impl Tr {
             X{}
         }
-    } => Err(err) => assert_vir_error_msg(err, "impl trait in return position is only supported for 'exec' functions")
+    } => Err(err) => assert_vir_error_msg(err, "impl trait in return position is only supported for `exec` functions")
 }
 
 test_verify_one_file! {
@@ -628,7 +628,7 @@ test_verify_one_file! {
         proof fn foo() -> Option<impl Tr> {
             Some(X{})
         }
-    } => Err(err) => assert_vir_error_msg(err, "impl trait in return position is only supported for 'exec' functions")
+    } => Err(err) => assert_vir_error_msg(err, "impl trait in return position is only supported for `exec` functions")
 }
 
 test_verify_one_file! {
