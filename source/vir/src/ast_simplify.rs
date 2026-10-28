@@ -1649,9 +1649,9 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
 
-        let tuple_path = crate::real_path![CrateId::Core => "marker", "Tuple"];
-        let clone_path = crate::real_path![CrateId::Core => "clone", "Clone"];
-        let copy_path = crate::real_path![CrateId::Core => "marker", "Copy"];
+        let tuple_path = crate::path![CrateId::Core => "marker", "Tuple"];
+        let clone_path = crate::path![CrateId::Core => "clone", "Clone"];
+        let copy_path = crate::path![CrateId::Core => "marker", "Copy"];
         //let send_path = crate::path![CrateId::Core => "marker", "Send"];
         //let sync_path = crate::path![CrateId::Core => "marker", "Sync"];
         //let unpin_path = crate::path![CrateId::Core => "marker", "Unpin"];

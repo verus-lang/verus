@@ -1290,7 +1290,7 @@ impl MaskSpec {
 
 // TODO: remove this inconsistency by properly using the type namespace for verus items
 
-/// Path for any non-function item hardcoded by verus_items.
+/// Path for any non-function item.
 #[macro_export]
 macro_rules! path {
     [ $krate:expr => $( $segment:literal ),* ] => {
@@ -1299,7 +1299,7 @@ macro_rules! path {
             segments: ::std::sync::Arc::new(
                 ::std::vec![
                     $(
-                        ::std::sync::Arc::new($segment.into())
+                        $crate::ast::Segment::T(::std::sync::Arc::new($segment.into()))
                     ),*
                 ],
             ),
@@ -1307,38 +1307,9 @@ macro_rules! path {
     };
 }
 
-/// Path for any non-function item whose path is determined outside of verus_items.
-/// This requires every segment to be in the "type namespace",
-/// which is the namespace where module names, types, and traits, go.
-#[macro_export]
-macro_rules! real_path {
-    [ $krate:expr => $( $segment:literal ),* ] => {
-        ::std::sync::Arc::new($crate::ast::PathX {
-            krate: $krate,
-            segments: ::std::sync::Arc::new(
-                ::std::vec![
-                    $(
-                        $crate::def::in_type_ns($segment)
-                    ),*
-                ],
-            ),
-        })
-    };
-}
-
-/// Path to a function for anything hardcoded by verus_items.
+/// Path for a function item.
 #[macro_export]
 macro_rules! fun {
-    [ $krate:expr => $( $segment:literal ),* ] => {
-        Arc::new($crate::ast::FunX { path: $crate::path!($krate => $($segment),*) })
-    };
-}
-
-/// Path to a function whose path is determined outside of verus_items.
-/// This requires every segment (except the last) to be in the "type namespace",
-/// which is the namespace where module names go.
-#[macro_export]
-macro_rules! real_fun {
     [ $krate:expr => $( $segment:literal ),* ; $name:literal ] => {
         ::std::sync::Arc::new($crate::ast::FunX {
             path: ::std::sync::Arc::new($crate::ast::PathX {
@@ -1346,9 +1317,9 @@ macro_rules! real_fun {
                 segments: ::std::sync::Arc::new(
                     ::std::vec![
                         $(
-                            $crate::def::in_type_ns($segment),
+                            $crate::ast::Segment::T(::std::sync::Arc::new($segment.into())),
                         )*
-                        ::std::sync::Arc::new($name.to_string()),
+                        $crate::ast::Segment::V(::std::sync::Arc::new($name.into()))
                     ],
                 ),
             }),
@@ -1576,9 +1547,9 @@ impl fmt::Display for ClosureKind {
 impl ClosureKind {
     pub(crate) fn trait_path(&self) -> Path {
         match self {
-            ClosureKind::Fn => crate::real_path![CrateId::Core => "ops", "function", "Fn"],
-            ClosureKind::FnMut => crate::real_path![CrateId::Core => "ops", "function", "FnMut"],
-            ClosureKind::FnOnce => crate::real_path![CrateId::Core => "ops", "function", "FnOnce"],
+            ClosureKind::Fn => crate::path![CrateId::Core => "ops", "function", "Fn"],
+            ClosureKind::FnMut => crate::path![CrateId::Core => "ops", "function", "FnMut"],
+            ClosureKind::FnOnce => crate::path![CrateId::Core => "ops", "function", "FnOnce"],
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::ast::{
     ClosureKind, CrateId, Dt, Fun, FunX, InvAtomicity, Path, PathX, UninterpretedFloatBinaryOp,
-    VarIdent,
+    VarIdent, Segment,
 };
 use crate::ast_util::air_unique_var;
 use crate::messages::Span;
@@ -676,12 +676,15 @@ pub fn impl_ident(disambiguator: u32) -> String {
     format!("{}{}", PREFIX_IMPL_IDENT, disambiguator)
 }
 
-pub(crate) fn impl_tuple(trait_suffix: &str, arity: usize) -> Ident {
-    Arc::new(format!("{}{}{}", PREFIX_IMPL_TUPLE, trait_suffix, arity))
+/// tuple impls for marker traits (like `Send`, `Sync`, etc.)
+/// so `trait_suffix` comes from a fixed set of names.
+pub(crate) fn impl_tuple(trait_suffix: &Segment, arity: usize) -> Segment {
+    let Segment::T(name) = trait_suffix;
+    Segment::T(Arc::new(format!("{}{}{}", PREFIX_IMPL_TUPLE, name, arity)))
 }
 
-pub(crate) fn impl_closure(kind: ClosureKind, id: usize) -> Ident {
-    Arc::new(format!("{}{}{}", PREFIX_IMPL_CLOSURE, kind, id))
+pub(crate) fn impl_closure(kind: ClosureKind, id: usize) -> Segment {
+    Segment::T(Arc::new(format!("{}{}{}", PREFIX_IMPL_CLOSURE, kind, id)))
 }
 
 pub(crate) fn impl_fndef_path(fun: &Fun, kind: ClosureKind) -> Path {
@@ -1184,47 +1187,47 @@ pub fn au_type_path() -> Path {
 }
 
 pub fn fn_au_pred() -> Fun {
-    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "pred")
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate"; "pred")
 }
 
 pub fn fn_au_resolves() -> Fun {
-    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "resolves")
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate"; "resolves")
 }
 
 pub fn fn_au_input() -> Fun {
-    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "input")
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate"; "input")
 }
 
 pub fn fn_au_output() -> Fun {
-    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "output")
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate"; "output")
 }
 
 pub fn fn_au_req() -> Fun {
-    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "req")
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate"; "req")
 }
 
 pub fn fn_au_ens() -> Fun {
-    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "ens")
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate"; "ens")
 }
 
 pub fn fn_au_outer_mask() -> Fun {
-    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "outer_mask")
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate"; "outer_mask")
 }
 
 pub fn fn_au_inner_mask() -> Fun {
-    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "inner_mask")
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate"; "inner_mask")
 }
 
 pub fn fn_pred_args() -> Fun {
-    fun!(CrateId::Vstd => "atomic", "pred_args")
+    fun!(CrateId::Vstd => "atomic"; "pred_args")
 }
 
 pub fn fn_branch_bool() -> Fun {
-    fun!(CrateId::Vstd => "atomic", "branch_bool")
+    fun!(CrateId::Vstd => "atomic"; "branch_bool")
 }
 
 pub fn result_type_path() -> Path {
-    crate::real_path!(CrateId::Core => "result", "Result")
+    crate::path!(CrateId::Core => "result", "Result")
 }
 
 pub fn strslice_module_path() -> Path {
@@ -1363,50 +1366,38 @@ pub fn autospec_return_clause_spec_fn_name(path: &Path) -> Fun {
 pub fn fn_fp_postcondition_name(op: UninterpretedFloatBinaryOp) -> Fun {
     match op {
         UninterpretedFloatBinaryOp::Add => {
-            crate::real_fun!(CrateId::Vstd => "std_specs", "ops"; "add_ensures")
+            crate::fun!(CrateId::Vstd => "std_specs", "ops"; "add_ensures")
         }
         UninterpretedFloatBinaryOp::Sub => {
-            crate::real_fun!(CrateId::Vstd => "std_specs", "ops"; "sub_ensures")
+            crate::fun!(CrateId::Vstd => "std_specs", "ops"; "sub_ensures")
         }
         UninterpretedFloatBinaryOp::Mul => {
-            crate::real_fun!(CrateId::Vstd => "std_specs", "ops"; "mul_ensures")
+            crate::fun!(CrateId::Vstd => "std_specs", "ops"; "mul_ensures")
         }
         UninterpretedFloatBinaryOp::Div => {
-            crate::real_fun!(CrateId::Vstd => "std_specs", "ops"; "div_ensures")
+            crate::fun!(CrateId::Vstd => "std_specs", "ops"; "div_ensures")
         }
         UninterpretedFloatBinaryOp::Eq => {
-            crate::real_fun!(CrateId::Vstd => "std_specs", "cmp"; "eq_ensures")
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp"; "eq_ensures")
         }
         UninterpretedFloatBinaryOp::Ne => {
-            crate::real_fun!(CrateId::Vstd => "std_specs", "cmp"; "ne_ensures")
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp"; "ne_ensures")
         }
         UninterpretedFloatBinaryOp::Lt => {
-            crate::real_fun!(CrateId::Vstd => "std_specs", "cmp"; "lt_ensures")
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp"; "lt_ensures")
         }
         UninterpretedFloatBinaryOp::Gt => {
-            crate::real_fun!(CrateId::Vstd => "std_specs", "cmp"; "gt_ensures")
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp"; "gt_ensures")
         }
         UninterpretedFloatBinaryOp::Le => {
-            crate::real_fun!(CrateId::Vstd => "std_specs", "cmp"; "le_ensures")
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp"; "le_ensures")
         }
         UninterpretedFloatBinaryOp::Ge => {
-            crate::real_fun!(CrateId::Vstd => "std_specs", "cmp"; "ge_ensures")
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp"; "ge_ensures")
         }
     }
 }
 
 pub fn is_anon_const(f: &Fun) -> bool {
     f.path.segments.last().is_some_and(|s| s.starts_with(RUST_DEF_ANON_CONST))
-}
-
-pub fn is_anon_const(f: &Fun) -> bool {
-    f.path.segments.last().is_some_and(|s| s.starts_with(RUST_DEF_ANON_CONST))
-}
-
-pub fn in_type_ns(s: &str) -> Ident {
-    Arc::new(RUST_DEF_TYPE_NS.to_string() + s)
-}
-
-pub fn strip_type_ns(s: &str) -> &str {
-    s.strip_prefix(RUST_DEF_TYPE_NS).unwrap_or(s)
 }
