@@ -467,7 +467,10 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -512,7 +515,10 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for IterMut<'a, T> {
     #[verifier::prophetic]
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    open spec fn will_return_none(&self) -> bool { true }
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -532,7 +538,7 @@ pub assume_specification<'a, T>[ <[T]>::iter_mut ](slice: &'a mut [T]) -> (iter:
             #![trigger final(slice)@[i]]
             0 <= i < old(slice)@.len() ==> *final(IteratorSpec::remaining(&iter)[i]) == final(slice)@[i],
         IteratorSpec::obeys_prophetic_iter_laws(&iter),
-        IteratorSpec::will_return_none(&iter),
+        IteratorSpec::produces(&iter).all(|p: bool| p),
         IteratorSpec::decrease(&iter) is Some,
 ;
 
@@ -706,7 +712,10 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for Chunks<'a, T> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
