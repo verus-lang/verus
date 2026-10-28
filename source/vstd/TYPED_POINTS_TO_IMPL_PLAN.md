@@ -66,9 +66,9 @@ If (9) fails, use the fallback in [The generic `PointsTo` impl](TYPED_POINTS_TO_
 
 #### Phase 0 results
 
-The spike is in [source/phase0_spike/](../phase0_spike/),
+The spike (since deleted) was in `source/phase0_spike/`,
 run with `source/tools/verify-spike-all.sh` (each file separately, against the built vstd).
-It uses mock `PointsToUnaligned`/`PointsTo`/`SeqPointsTo` types
+It used mock `PointsToUnaligned`/`PointsTo`/`SeqPointsTo` types
 that implement vstd's real `PTPhys`, `PTProperties` and `FixedSize`,
 with a Sized and a slice `PointsToUnaligned` impl,
 and `PTValueOps`/`PTSizedValue` as in [Traits](TYPED_POINTS_TO_APPROVED.md#trait-definitions).

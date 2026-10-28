@@ -613,9 +613,7 @@ proof fn lemma_bytes_to_endian_digits<B: DecodesToNat>(bytes: Seq<AbstractByte>,
             assert(rest.subrange(i * s, (i + 1) * s) =~= bytes.subrange(j * s, (j + 1) * s));
         }
         lemma_bytes_to_endian_digits(rest, rest_digits);
-        assert(least =~= bytes.subrange(least_i * s, (least_i + 1) * s)) by {
-            assert((k - 1) * s + s == k * s) by (nonlinear_arith);
-        }
+        assert(least =~= bytes.subrange(least_i * s, (least_i + 1) * s));
         B::lemma_abs_decode(least, digits[least_i]);
         bytes_to_endian(least).to_nat_properties();
 
@@ -635,9 +633,7 @@ proof fn lemma_bytes_to_endian_digits<B: DecodesToNat>(bytes: Seq<AbstractByte>,
                 assert(to_endian_from_digits(rest_digits).digits[j] == d.digits[i]);
             }
         }
-        assert(AbstractByte::all_init(bytes)) by {
-            assert(bytes =~= if endianness() is Little { least + rest } else { rest + least });
-        }
+        assert(bytes =~= if endianness() is Little { least + rest } else { rest + least });
     }
 }
 
@@ -660,7 +656,6 @@ pub proof fn lemma_abs_decode_to_big<BIG, B>(bytes: Seq<AbstractByte>, digits: S
     B::lemma_base_size();
     BIG::lemma_base_size();
     B::bits_to_base();
-    B::compatible();
     // `digits` is one digit in base `BIG`
     assert(digits.len() == EndianNat::<B>::exp::<BIG>()) by {
         let k = digits.len() as int;

@@ -916,27 +916,15 @@ impl<T> PTSizedValue for PointsTo<T> {
     proof fn lemma_satisfies_alignment_offset(addr: usize, i: nat) {
         let a = align_of::<T>() as int;
         let s = size_of::<T>() as int;
-        assert(spec_align_of_val::<T>(arbitrary()) == a);
         // `s` is a multiple of `a`, so `i * s` is too
         crate::vstd::arithmetic::div_mod::lemma_fundamental_div_mod(s, a);
-        assert(s == a * (s / a));
         crate::vstd::arithmetic::mul::lemma_mul_is_associative(i as int, s / a, a);
         assert(i * s == (i * (s / a)) * a) by {
             crate::vstd::arithmetic::mul::lemma_mul_is_commutative(a, s / a);
         }
         crate::vstd::arithmetic::div_mod::lemma_mod_multiples_basic(i * (s / a), a);
-        assert((i * s) % a == 0);
         crate::vstd::arithmetic::div_mod::lemma_add_mod_noop(addr as int, i * s, a);
-        let r = (addr + i * Self::size(())) as usize;
-        assert(Self::size(()) == s);
-        assert(addr as int % a == 0);
-        assert((addr + i * s) % a == 0) by {
-            assert(((addr as int % a) + ((i * s) % a)) % a == (addr + i * s) % a);
-            crate::vstd::arithmetic::div_mod::lemma_small_mod(0, a as nat);
-        }
-        assert(r as int == addr + i * s);
-        assert(r as nat % spec_align_of_val::<T>(arbitrary()) == 0);
-        assert(<PointsToUnaligned<T> as PTTypedValue>::satisfies_alignment(r));
+        crate::vstd::arithmetic::div_mod::lemma_small_mod(0, a as nat);
     }
 
     /// Trivial, since `additional_validity_constraints` is `PointsToUnaligned<T>`'s, which is always `true`.
@@ -1444,7 +1432,6 @@ impl<T> PointsTo<[T]> {
         let ghost digits = self.value();
         let ghost k = digits.len() as int;
         let ghost s = size_of::<T>() as int;
-        self.bytes_decode();
         T::lemma_base_size();
         T::bits_to_base();
         V::lemma_base_size();
