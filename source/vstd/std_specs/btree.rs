@@ -531,13 +531,13 @@ pub open spec fn btree_map_insert_ensures<Key: Ord, Value, A: Allocator + Clone>
             Some(old_value) => exists|stored_key: Key|
                 {
                     &&& #[trigger] old_m@.contains_key(stored_key)
-                    &&& stored_key.cmp_spec(&k) is Equal
+                    &&& k.cmp_spec(&stored_key) is Equal
                     &&& old_value == old_m@[stored_key]
                     &&& final_m@ == old_m@.insert(stored_key, v)
                 },
             None => {
                 &&& forall|stored_key: Key| #[trigger]
-                    old_m@.contains_key(stored_key) ==> !(stored_key.cmp_spec(&k) is Equal)
+                    old_m@.contains_key(stored_key) ==> !(k.cmp_spec(&stored_key) is Equal)
                 &&& final_m@ == old_m@.insert(k, v)
             },
         }
@@ -614,7 +614,7 @@ pub broadcast proof fn lemma_btree_map_insert_ensures_if_cmp_matches_deep_equali
         Some(old_value) => choose|stored_key: Key|
             {
                 &&& #[trigger] old_m@.contains_key(stored_key)
-                &&& stored_key.cmp_spec(&k) is Equal
+                &&& k.cmp_spec(&stored_key) is Equal
                 &&& old_value == old_m@[stored_key]
                 &&& final_m@ == old_m@.insert(stored_key, v)
             },
@@ -654,7 +654,7 @@ pub open spec fn btree_map_contains_key_ensures<
         &&& result == exists|key: Key|
             {
                 &&& #[trigger] m@.contains_key(key)
-                &&& <Key as BorrowSpec<Q>>::spec_borrow(&key).cmp_spec(k) is Equal
+                &&& k.cmp_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)) is Equal
             }
     }
 }
@@ -710,14 +710,14 @@ pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_cmp_matches_deep_
         let key = choose|key: Key|
             {
                 &&& #[trigger] m@.contains_key(key)
-                &&& key.cmp_spec(k) is Equal
+                &&& k.cmp_spec(&key) is Equal
             };
         assert(m.deep_view().contains_key(key.deep_view()));
     }
     if m.deep_view().contains_key(k.deep_view()) {
         let key = choose|key: Key|
             m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
-        assert(key.cmp_spec(k) is Equal);
+        assert(k.cmp_spec(&key) is Equal);
     }
 }
 
@@ -1182,11 +1182,11 @@ pub open spec fn btree_set_insert_ensures<Key: Ord, A: Allocator + Clone>(
         &&& btree_set_elements_differ(final_m)
         &&& if result {
             &&& forall|stored_key: Key| #[trigger]
-                old_m@.contains(stored_key) ==> !(stored_key.cmp_spec(&k) is Equal)
+                old_m@.contains(stored_key) ==> !(k.cmp_spec(&stored_key) is Equal)
             &&& final_m@ == old_m@.insert(k)
         } else {
             &&& exists|stored_key: Key| #[trigger]
-                old_m@.contains(stored_key) && stored_key.cmp_spec(&k) is Equal
+                old_m@.contains(stored_key) && k.cmp_spec(&stored_key) is Equal
             &&& final_m@ == old_m@
         }
     }
@@ -1245,12 +1245,12 @@ pub broadcast proof fn lemma_btree_set_insert_ensures_if_cmp_matches_deep_equali
                 let stored_key = choose|stored_key: Key|
                     old_m@.contains(stored_key) && #[trigger] stored_key.deep_view()
                         == k.deep_view();
-                assert(stored_key.cmp_spec(&k) is Equal);
+                assert(k.cmp_spec(&stored_key) is Equal);
             }
         }
     } else {
         let stored_key = choose|stored_key: Key| #[trigger]
-            old_m@.contains(stored_key) && stored_key.cmp_spec(&k) is Equal;
+            old_m@.contains(stored_key) && k.cmp_spec(&stored_key) is Equal;
         assert(stored_key.deep_view() == k.deep_view());
         assert(old_m.deep_view().contains(k.deep_view()));
     }
@@ -1270,7 +1270,7 @@ pub open spec fn btree_set_contains_ensures<
         &&& result == exists|key: Key|
             {
                 &&& #[trigger] m@.contains(key)
-                &&& <Key as BorrowSpec<Q>>::spec_borrow(&key).cmp_spec(k) is Equal
+                &&& k.cmp_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)) is Equal
             }
     }
 }
@@ -1315,13 +1315,13 @@ pub broadcast proof fn lemma_btree_set_contains_ensures_if_cmp_matches_deep_equa
         let key = choose|key: Key|
             {
                 &&& #[trigger] m@.contains(key)
-                &&& key.cmp_spec(k) is Equal
+                &&& k.cmp_spec(&key) is Equal
             };
         assert(m.deep_view().contains(key.deep_view()));
     }
     if m.deep_view().contains(k.deep_view()) {
         let key = choose|key: Key| m@.contains(key) && #[trigger] key.deep_view() == k.deep_view();
-        assert(key.cmp_spec(k) is Equal);
+        assert(k.cmp_spec(&key) is Equal);
     }
 }
 
