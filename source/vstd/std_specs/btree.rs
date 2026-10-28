@@ -721,6 +721,32 @@ pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_cmp_matches_deep_
     }
 }
 
+pub open spec fn btree_map_get_ensures<
+    Key: Borrow<Q> + Ord,
+    Value,
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>(m: &BTreeMap<Key, Value, A>, k: &Q, result: Option<&Value>) -> bool {
+    ({
+        &&& obeys_cmp::<Key>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+    }) ==> {
+        &&& btree_map_keys_differ(m)
+        &&& match result {
+            Some(v) => exists|key: Key|
+                {
+                    &&& #[trigger] m@.contains_key(key)
+                    &&& k.cmp_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)) is Equal
+                    &&& m@[key] == *v
+                },
+            None => forall|key: Key| #[trigger]
+                m@.contains_key(key) ==> !(k.cmp_spec(
+                    <Key as BorrowSpec<Q>>::spec_borrow(&key),
+                ) is Equal),
+        }
+    }
+}
+
 pub assume_specification<
     'a,
     Key: Borrow<Q> + Ord,
@@ -733,14 +759,74 @@ pub assume_specification<
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() && <Key as BorrowSpec<Q>>::obeys_borrow_spec() ==> match result {
-            Some(v) => exists|key: Key| #[trigger]
-                m@.contains_key(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k && m@[key]
-                    == *v,
-            None => forall|key: Key| #[trigger]
-                m@.contains_key(key) ==> <Key as BorrowSpec<Q>>::spec_borrow(&key) != k,
-        },
+        btree_map_get_ensures(m, k, result),
 ;
+
+pub broadcast proof fn lemma_btree_map_get_ensures_if_cmp_matches_equality<
+    Key: Ord,
+    Value,
+    A: Allocator + Clone,
+>(m: &BTreeMap<Key, Value, A>, k: &Key, result: Option<&Value>)
+    requires
+        obeys_cmp::<Key>(),
+        cmp_matches_equality::<Key>(),
+        #[trigger] btree_map_get_ensures(m, k, result),
+    ensures
+        match result {
+            Some(v) => m@.contains_key(*k) && *v == m@[*k],
+            None => !m@.contains_key(*k),
+        },
+{
+}
+
+pub broadcast proof fn lemma_btree_map_get_ensures_if_cmp_matches_deep_equality<
+    Key: Ord + DeepView,
+    Value: DeepView,
+    A: Allocator + Clone,
+>(m: &BTreeMap<Key, Value, A>, k: &Key, result: Option<&Value>)
+    requires
+        obeys_cmp::<Key>(),
+        cmp_matches_deep_equality::<Key>(),
+        #[trigger] btree_map_get_ensures(m, k, result),
+    ensures
+        match result {
+            Some(v) => {
+                &&& m.deep_view().contains_key(k.deep_view())
+                &&& v.deep_view() == m.deep_view()[k.deep_view()]
+            },
+            None => !m.deep_view().contains_key(k.deep_view()),
+        },
+{
+    broadcast use {
+        crate::map::group_map_lemmas,
+        crate::set::group_set_lemmas,
+        Set::lemma_map_contains,
+    };
+
+    reveal(btree_map_deep_view_impl);
+
+    match result {
+        Some(v) => {
+            let stored_key = choose|key: Key|
+                {
+                    &&& #[trigger] m@.contains_key(key)
+                    &&& k.cmp_spec(&key) is Equal
+                    &&& m@[key] == *v
+                };
+            assert(m.deep_view().contains_key(k.deep_view()));
+            let key = choose|key: Key|
+                m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+            assert(key == stored_key);
+        },
+        None => {
+            if m.deep_view().contains_key(k.deep_view()) {
+                let key = choose|key: Key|
+                    m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+                assert(k.cmp_spec(&key) is Equal);
+            }
+        },
+    }
+}
 
 pub assume_specification<
     Key: Borrow<Q> + Ord,
@@ -1325,6 +1411,29 @@ pub broadcast proof fn lemma_btree_set_contains_ensures_if_cmp_matches_deep_equa
     }
 }
 
+pub open spec fn btree_set_get_ensures<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?Sized>(
+    m: &BTreeSet<Key, A>,
+    k: &Q,
+    result: Option<&Key>,
+) -> bool {
+    ({
+        &&& obeys_cmp::<Key>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+    }) ==> {
+        &&& btree_set_elements_differ(m)
+        &&& match result {
+            Some(key) => {
+                &&& m@.contains(*key)
+                &&& k.cmp_spec(<Key as BorrowSpec<Q>>::spec_borrow(key)) is Equal
+            },
+            None => forall|key: Key| #[trigger]
+                m@.contains(key) ==> !(k.cmp_spec(
+                    <Key as BorrowSpec<Q>>::spec_borrow(&key),
+                ) is Equal),
+        }
+    }
+}
+
 pub assume_specification<
     'a,
     Key: Borrow<Q> + Ord,
@@ -1334,15 +1443,58 @@ pub assume_specification<
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        ({
-            &&& obeys_cmp::<Key>()
-            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
-        }) ==> match result {
-            Some(key) => m@.contains(*key) && <Key as BorrowSpec<Q>>::spec_borrow(key) == k,
-            None => forall|key: Key| #[trigger]
-                m@.contains(key) ==> <Key as BorrowSpec<Q>>::spec_borrow(&key) != k,
-        },
+        btree_set_get_ensures(m, k, result),
 ;
+
+pub broadcast proof fn lemma_btree_set_get_ensures_if_cmp_matches_equality<
+    Key: Ord,
+    A: Allocator + Clone,
+>(m: &BTreeSet<Key, A>, k: &Key, result: Option<&Key>)
+    requires
+        obeys_cmp::<Key>(),
+        cmp_matches_equality::<Key>(),
+        #[trigger] btree_set_get_ensures(m, k, result),
+    ensures
+        match result {
+            Some(key) => m@.contains(*key) && *key == *k,
+            None => !m@.contains(*k),
+        },
+{
+}
+
+pub broadcast proof fn lemma_btree_set_get_ensures_if_cmp_matches_deep_equality<
+    Key: Ord + DeepView,
+    A: Allocator + Clone,
+>(m: &BTreeSet<Key, A>, k: &Key, result: Option<&Key>)
+    requires
+        obeys_cmp::<Key>(),
+        cmp_matches_deep_equality::<Key>(),
+        #[trigger] btree_set_get_ensures(m, k, result),
+    ensures
+        match result {
+            Some(key) => {
+                &&& m@.contains(*key)
+                &&& m.deep_view().contains(k.deep_view())
+                &&& key.deep_view() == k.deep_view()
+            },
+            None => !m.deep_view().contains(k.deep_view()),
+        },
+{
+    broadcast use {crate::set::group_set_lemmas, Set::lemma_map_contains};
+
+    match result {
+        Some(key) => {
+            assert(m.deep_view().contains(key.deep_view()));
+        },
+        None => {
+            if m.deep_view().contains(k.deep_view()) {
+                let key = choose|key: Key|
+                    m@.contains(key) && #[trigger] key.deep_view() == k.deep_view();
+                assert(k.cmp_spec(&key) is Equal);
+            }
+        },
+    }
+}
 
 pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?Sized>[ BTreeSet::<
     Key,
@@ -1401,11 +1553,15 @@ pub broadcast group group_btree_axioms {
     lemma_btree_map_insert_ensures_if_cmp_matches_deep_equality,
     lemma_btree_map_contains_key_ensures_if_cmp_matches_equality,
     lemma_btree_map_contains_key_ensures_if_cmp_matches_deep_equality,
+    lemma_btree_map_get_ensures_if_cmp_matches_equality,
+    lemma_btree_map_get_ensures_if_cmp_matches_deep_equality,
     axiom_spec_btree_set_len,
     lemma_btree_set_insert_ensures_if_cmp_matches_equality,
     lemma_btree_set_insert_ensures_if_cmp_matches_deep_equality,
     lemma_btree_set_contains_ensures_if_cmp_matches_equality,
     lemma_btree_set_contains_ensures_if_cmp_matches_deep_equality,
+    lemma_btree_set_get_ensures_if_cmp_matches_equality,
+    lemma_btree_set_get_ensures_if_cmp_matches_deep_equality,
     axiom_btree_map_decreases,
     axiom_btree_set_decreases,
     axiom_has_resolved_cursor,
