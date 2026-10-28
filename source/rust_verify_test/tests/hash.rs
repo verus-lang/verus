@@ -407,6 +407,290 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_structural_equality verus_code! {
+        use core::hash::Hash;
+        use std::collections::{HashMap, HashSet};
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::{PartialEqSpec, eq_matches_equality};
+        use vstd::std_specs::hash::obeys_hash_model;
+
+        fn test_map<Key: Hash + Eq + Copy>(m: &mut HashMap<Key, u32>, key: Key)
+            requires
+                obeys_hash_model::<Key>(),
+                <Key as PartialEqSpec>::obeys_eq_spec(),
+                eq_matches_equality::<Key>(),
+        {
+            let ghost before = m@;
+            let previous = m.insert(key, 42);
+            assert(m@ == before.insert(key, 42));
+            assert(previous == if before.contains_key(key) { Some(before[key]) } else { None });
+            let present = m.contains_key(&key);
+            assert(present);
+            let value = m.get(&key);
+            assert(value == Some(&42u32));
+            let removed = m.remove(&key);
+            assert(removed == Some(42));
+            assert(m@ == before.remove(key));
+            let present = m.contains_key(&key);
+            assert(!present);
+            let value = m.get(&key);
+            assert(value.is_none());
+            let removed = m.remove(&key);
+            assert(removed.is_none());
+            assert(m@ == before.remove(key));
+        }
+
+        fn test_set<Key: Hash + Eq + Copy>(m: &mut HashSet<Key>, key: Key)
+            requires
+                obeys_hash_model::<Key>(),
+                <Key as PartialEqSpec>::obeys_eq_spec(),
+                eq_matches_equality::<Key>(),
+        {
+            let ghost before = m@;
+            let inserted = m.insert(key);
+            assert(inserted == !before.contains(key));
+            assert(m@ == before.insert(key));
+            let inserted = m.insert(key);
+            assert(!inserted);
+            let present = m.contains(&key);
+            assert(present);
+            let stored = m.get(&key);
+            assert(stored == Some(&key));
+            let removed = m.remove(&key);
+            assert(removed);
+            assert(m@ == before.remove(key));
+            let present = m.contains(&key);
+            assert(!present);
+            let stored = m.get(&key);
+            assert(stored.is_none());
+            let removed = m.remove(&key);
+            assert(!removed);
+            assert(m@ == before.remove(key));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_deep_equality verus_code! {
+        use core::hash::Hash;
+        use std::collections::{HashMap, HashSet};
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::{PartialEqSpec, eq_matches_deep_equality};
+        use vstd::std_specs::hash::obeys_hash_model;
+
+        fn test_map<Key: Hash + Eq + Copy + DeepView, Value: DeepView>(
+            key: Key,
+            equivalent: Key,
+            other: Key,
+            initial: Value,
+            replacement: Value,
+            other_value: Value,
+        )
+            requires
+                obeys_hash_model::<Key>(),
+                <Key as PartialEqSpec>::obeys_eq_spec(),
+                eq_matches_deep_equality::<Key>(),
+                key != equivalent,
+                key.deep_view() == equivalent.deep_view(),
+                key.deep_view() != other.deep_view(),
+        {
+            let mut m = HashMap::<Key, Value>::new();
+            let present = m.contains_key(&equivalent);
+            assert(!present);
+            let value = m.get(&equivalent);
+            assert(value.is_none());
+            let removed = m.remove(&equivalent);
+            assert(removed.is_none());
+            assert(m@ == Map::<Key, Value>::empty());
+
+            let previous = m.insert(key, initial);
+            assert(previous.is_none());
+            let previous = m.insert(other, other_value);
+            assert(previous.is_none());
+            assert(m@ == Map::empty().insert(key, initial).insert(other, other_value));
+            let present = m.contains_key(&equivalent);
+            assert(present);
+            let value = m.get(&equivalent);
+            assert(value.is_some());
+            assert(value.unwrap().deep_view() == initial.deep_view());
+
+            let ghost before = m.deep_view();
+            let previous = m.insert(equivalent, replacement);
+            assert(previous.is_some());
+            assert(previous.unwrap().deep_view() == initial.deep_view());
+            assert(m.deep_view() == before.insert(equivalent.deep_view(), replacement.deep_view()));
+            assert(m@ == Map::empty().insert(key, replacement).insert(other, other_value));
+            assert(!m@.contains_key(equivalent));
+            let value = m.get(&equivalent);
+            assert(value.is_some());
+            assert(value.unwrap().deep_view() == replacement.deep_view());
+
+            let ghost before = m.deep_view();
+            let removed = m.remove(&equivalent);
+            assert(removed.is_some());
+            assert(removed.unwrap().deep_view() == replacement.deep_view());
+            assert(m.deep_view() == before.remove(equivalent.deep_view()));
+            assert(m@ == Map::empty().insert(other, other_value));
+            let present = m.contains_key(&equivalent);
+            assert(!present);
+            let value = m.get(&equivalent);
+            assert(value.is_none());
+            let removed = m.remove(&equivalent);
+            assert(removed.is_none());
+            assert(m@ == Map::empty().insert(other, other_value));
+        }
+
+        fn test_set<Key: Hash + Eq + Copy + DeepView>(
+            key: Key,
+            equivalent: Key,
+            other: Key,
+        )
+            requires
+                obeys_hash_model::<Key>(),
+                <Key as PartialEqSpec>::obeys_eq_spec(),
+                eq_matches_deep_equality::<Key>(),
+                key != equivalent,
+                key.deep_view() == equivalent.deep_view(),
+                key.deep_view() != other.deep_view(),
+        {
+            let mut m = HashSet::<Key>::new();
+            let present = m.contains(&equivalent);
+            assert(!present);
+            let stored = m.get(&equivalent);
+            assert(stored.is_none());
+            let removed = m.remove(&equivalent);
+            assert(!removed);
+
+            let inserted = m.insert(key);
+            assert(inserted);
+            let inserted = m.insert(equivalent);
+            assert(!inserted);
+            assert(m@ == Set::empty().insert(key));
+            let inserted = m.insert(other);
+            assert(inserted);
+            assert(m@ == Set::empty().insert(key).insert(other));
+            let present = m.contains(&equivalent);
+            assert(present);
+            let stored = m.get(&equivalent);
+            assert(stored.is_some());
+            assert(*stored.unwrap() == key);
+            assert(*stored.unwrap() != equivalent);
+            assert(stored.unwrap().deep_view() == equivalent.deep_view());
+            assert(m.deep_view().contains(equivalent.deep_view()));
+
+            let ghost before = m.deep_view();
+            let removed = m.remove(&equivalent);
+            assert(removed);
+            assert(m.deep_view() == before.remove(equivalent.deep_view()));
+            assert(m@ == Set::empty().insert(other));
+            let present = m.contains(&equivalent);
+            assert(!present);
+            let stored = m.get(&equivalent);
+            assert(stored.is_none());
+            let removed = m.remove(&equivalent);
+            assert(!removed);
+            assert(m@ == Set::empty().insert(other));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_borrow_equality verus_code! {
+        use core::borrow::Borrow;
+        use core::hash::Hash;
+        use std::collections::{HashMap, HashSet};
+        use vstd::prelude::*;
+        use vstd::std_specs::borrow::BorrowSpec;
+        use vstd::std_specs::cmp::PartialEqSpec;
+        use vstd::std_specs::hash::{borrowed_key_hashing_matches, obeys_hash_model};
+
+        fn test_map<Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized>(
+            key: Key,
+            query: &Q,
+        )
+            requires
+                obeys_hash_model::<Key>(),
+                obeys_hash_model::<Q>(),
+                <Key as PartialEqSpec>::obeys_eq_spec(),
+                <Q as PartialEqSpec>::obeys_eq_spec(),
+                borrowed_key_hashing_matches::<Key, Q>(),
+                <Key as BorrowSpec<Q>>::obeys_borrow_spec(),
+                query.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)),
+        {
+            let mut m = HashMap::<Key, u32>::new();
+            let previous = m.insert(key, 42);
+            assert(previous.is_none());
+            assert(m@.contains_key(key));
+            let present = m.contains_key(query);
+            assert(present);
+            let value = m.get(query);
+            assert(value == Some(&42u32));
+            let removed = m.remove(query);
+            assert(removed == Some(42));
+            assert(m@ == Map::<Key, u32>::empty());
+            let present = m.contains_key(query);
+            assert(!present);
+            let value = m.get(query);
+            assert(value.is_none());
+            let removed = m.remove(query);
+            assert(removed.is_none());
+        }
+
+        fn test_set<Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized>(
+            key: Key,
+            query: &Q,
+        )
+            requires
+                obeys_hash_model::<Key>(),
+                obeys_hash_model::<Q>(),
+                <Key as PartialEqSpec>::obeys_eq_spec(),
+                <Q as PartialEqSpec>::obeys_eq_spec(),
+                borrowed_key_hashing_matches::<Key, Q>(),
+                <Key as BorrowSpec<Q>>::obeys_borrow_spec(),
+                query.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)),
+        {
+            let mut m = HashSet::<Key>::new();
+            let inserted = m.insert(key);
+            assert(inserted);
+            assert(m@.contains(key));
+            let present = m.contains(query);
+            assert(present);
+            let stored = m.get(query);
+            assert(stored == Some(&key));
+            let removed = m.remove(query);
+            assert(removed);
+            assert(m@ == Set::<Key>::empty());
+            let present = m.contains(query);
+            assert(!present);
+            let stored = m.get(query);
+            assert(stored.is_none());
+            let removed = m.remove(query);
+            assert(!removed);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_equality_requires_valid_spec verus_code! {
+        use core::hash::Hash;
+        use std::collections::HashSet;
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::eq_matches_equality;
+        use vstd::std_specs::hash::obeys_hash_model;
+
+        fn test<Key: Hash + Eq>(key: Key)
+            requires
+                obeys_hash_model::<Key>(),
+                eq_matches_equality::<Key>(),
+        {
+            let mut m = HashSet::<Key>::new();
+            let inserted = m.insert(key);
+            assert(inserted); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_hash_borrow verus_code! {
         use core::borrow::Borrow;
         use core::hash::Hash;

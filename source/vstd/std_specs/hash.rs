@@ -1,10 +1,8 @@
 //! This code adds specifications for the standard-library types
 //! `std::collections::HashMap` and `std::collections::HashSet`.
 //!
-//! Most of the specification only applies if you use `HashMap<Key,
-//! Value>` or `HashSet<Key>`. If you use some custom build hasher,
-//! e.g., with`HashMap<Key, Value, CustomBuildHasher>`, the
-//! specification won't specify much.
+//! Specifications require a valid build hasher, as described by
+//! [`builds_valid_hashers`].
 //!
 //! Likewise, the specification is only meaningful when the `Key`
 //! obeys our hash table model, i.e., (1) `Key::hash` is
@@ -18,18 +16,26 @@
 //! the future, we plan to devise a way for you to prove that it does
 //! so, so that you don't have to make such an assumption.
 //!
+//! Insertion and borrowed-key operations also support the weaker
+//! [`obeys_hash_model`] assumption, together with a valid equality spec.
+//! Their contracts use `eq_spec`, without identifying equality with
+//! structural equality. Broadcast lemmas provide structural- and
+//! deep-equality special cases.
+//!
 //! Borrowed-key lookups also require
 //! `borrowed_key_hashing_matches::<Key, Q>()` and use the model in
 //! `BorrowSpec`. Their postconditions additionally require `Q` to obey
-//! the key model. Compatibility is supplied for identity and `Box`
-//! borrowing; for other implementations it must be assumed explicitly.
+//! the hashing and equality models. Compatibility is supplied for identity,
+//! reference, `Box`, and `String` borrowing.
 //!
 //! By default, the Verus standard library brings useful axioms
 //! about the behavior of `HashMap` and `HashSet` into the ambient
 //! reasoning context by broadcasting the group
 //! `vstd::std_specs::hash::group_hash_axioms`.
+use super::super::map::{assert_maps_equal, assert_maps_equal_internal};
 use super::super::prelude::*;
 use super::borrow::BorrowSpec;
+use super::cmp::{PartialEqSpec, eq_matches_deep_equality, eq_matches_equality};
 use super::iter::IteratorSpec;
 
 use core::alloc::Allocator;
@@ -102,6 +108,8 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
 /// executable `Key::clone` function produces a result identical to
 /// its input. Requirement (1) isn't satisfied by having `Key`
 /// implement `Hash`, since this trait doesn't mandate determinism.
+/// For `Eq` types, requirement (2) also requires `PartialEqSpec::eq_spec`
+/// to faithfully model executable equality.
 ///
 /// The standard library has axioms that all primitive types and `Box`es
 /// thereof obey this model. If you want to use some other key
@@ -112,6 +120,26 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
 /// does so, so that you don't have to make such an assumption.
 #[verifier::external_body]
 pub uninterp spec fn obeys_key_model<Key: ?Sized>() -> bool;
+
+/// Whether hashing is deterministic and executable-equal keys hash identically.
+///
+/// Unlike [`obeys_key_model`], this does not require executable equality to
+/// coincide with structural equality. Collection contracts separately require
+/// the equality specification to describe executable equality.
+pub uninterp spec fn obeys_hash_model<Key: ?Sized>() -> bool;
+
+/// The legacy key model supplies both hashing validity and structural equality.
+pub broadcast axiom fn axiom_obeys_key_model<Key: Hash + Eq + ?Sized>()
+    ensures
+        #![trigger obeys_key_model::<Key>()]
+        #![trigger obeys_hash_model::<Key>()]
+        obeys_key_model::<Key>() ==> {
+            &&& obeys_hash_model::<Key>()
+            &&& <Key as PartialEqSpec>::obeys_eq_spec()
+            &&& forall|k1: &Key, k2: &Key| #[trigger]
+                <Key as PartialEqSpec>::eq_spec(k1, k2) <==> k1 == k2
+        },
+;
 
 /// Whether borrowing a key preserves its `Hash` and `Eq` behavior.
 ///
@@ -433,7 +461,9 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
 ///
 /// We model a `HashMap` as having a view of type `Map<Key, Value>`, which reflects the current state of the map.
 ///
-/// These specifications are only meaningful if `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()` hold.
+/// Structural-equality specifications require `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()`.
+/// Insertion, membership, lookup, and removal also support `obeys_hash_model::<Key>()`
+/// together with a valid equality specification, without requiring structural equality.
 /// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
 /// for information on use with primitive types and other types,
 /// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
@@ -657,6 +687,48 @@ pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ H
         final(m)@ == old(m)@,
 ;
 
+pub open spec fn hash_map_keys_differ<Key: Eq + Hash, Value, S, A: Allocator>(
+    m: &HashMap<Key, Value, S, A>,
+) -> bool {
+    forall|k1: Key, k2: Key|
+        {
+            &&& #[trigger] m@.contains_key(k1)
+            &&& #[trigger] m@.contains_key(k2)
+            &&& k1 != k2
+        } ==> !k1.eq_spec(&k2)
+}
+
+pub open spec fn hash_map_insert_ensures<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>(
+    old_m: &HashMap<Key, Value, S, A>,
+    final_m: &HashMap<Key, Value, S, A>,
+    k: Key,
+    v: Value,
+    result: Option<Value>,
+) -> bool {
+    ({
+        &&& obeys_hash_model::<Key>()
+        &&& <Key as PartialEqSpec>::obeys_eq_spec()
+        &&& builds_valid_hashers::<S>()
+    }) ==> {
+        &&& hash_map_keys_differ(old_m)
+        &&& hash_map_keys_differ(final_m)
+        &&& match result {
+            Some(old_value) => exists|stored_key: Key|
+                {
+                    &&& #[trigger] old_m@.contains_key(stored_key)
+                    &&& k.eq_spec(&stored_key)
+                    &&& old_value == old_m@[stored_key]
+                    &&& final_m@ == old_m@.insert(stored_key, v)
+                },
+            None => {
+                &&& forall|stored_key: Key| #[trigger]
+                    old_m@.contains_key(stored_key) ==> !k.eq_spec(&stored_key)
+                &&& final_m@ == old_m@.insert(k, v)
+            },
+        }
+    }
+}
+
 pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ HashMap::<
     Key,
     Value,
@@ -664,14 +736,124 @@ pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ H
     A,
 >::insert ](m: &mut HashMap<Key, Value, S, A>, k: Key, v: Value) -> (result: Option<Value>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& final(m)@ == old(m)@.insert(k, v)
-            &&& match result {
-                Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
-                None => !old(m)@.contains_key(k),
-            }
-        },
+        hash_map_insert_ensures(old(m), final(m), k, v, result),
 ;
+
+pub broadcast proof fn lemma_hash_map_insert_ensures_if_eq_matches_equality<
+    Key: Eq + Hash,
+    Value,
+    S: BuildHasher,
+    A: Allocator,
+>(
+    old_m: &HashMap<Key, Value, S, A>,
+    final_m: &HashMap<Key, Value, S, A>,
+    k: Key,
+    v: Value,
+    result: Option<Value>,
+)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_equality::<Key>(),
+        #[trigger] hash_map_insert_ensures(old_m, final_m, k, v, result),
+    ensures
+        final_m@ == old_m@.insert(k, v),
+        match result {
+            Some(old_value) => old_m@.contains_key(k) && old_value == old_m@[k],
+            None => !old_m@.contains_key(k),
+        },
+{
+}
+
+pub broadcast proof fn lemma_hash_map_insert_ensures_if_eq_matches_deep_equality<
+    Key: Eq + Hash + DeepView,
+    Value: DeepView,
+    S: BuildHasher,
+    A: Allocator,
+>(
+    old_m: &HashMap<Key, Value, S, A>,
+    final_m: &HashMap<Key, Value, S, A>,
+    k: Key,
+    v: Value,
+    result: Option<Value>,
+)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_deep_equality::<Key>(),
+        #[trigger] hash_map_insert_ensures(old_m, final_m, k, v, result),
+    ensures
+        final_m.deep_view() == old_m.deep_view().insert(k.deep_view(), v.deep_view()),
+        match result {
+            Some(old_value) => {
+                &&& old_m.deep_view().contains_key(k.deep_view())
+                &&& old_value.deep_view() == old_m.deep_view()[k.deep_view()]
+            },
+            None => !old_m.deep_view().contains_key(k.deep_view()),
+        },
+{
+    broadcast use {
+        crate::map::group_map_lemmas,
+        crate::set::group_set_lemmas,
+        Set::lemma_map_contains,
+    };
+
+    reveal(hash_map_deep_view_impl);
+
+    let stored_key = match result {
+        Some(old_value) => choose|stored_key: Key|
+            {
+                &&& #[trigger] old_m@.contains_key(stored_key)
+                &&& k.eq_spec(&stored_key)
+                &&& old_value == old_m@[stored_key]
+                &&& final_m@ == old_m@.insert(stored_key, v)
+            },
+        None => k,
+    };
+    assert(final_m@.contains_key(stored_key));
+    assert_maps_equal!(
+        final_m.deep_view(),
+        old_m.deep_view().insert(k.deep_view(), v.deep_view()),
+        kd => {
+            if final_m.deep_view().contains_key(kd) && kd != k.deep_view() {
+                let key = choose|key: Key|
+                    final_m@.contains_key(key) && #[trigger] key.deep_view() == kd;
+                assert(old_m@.contains_key(key));
+            }
+            if old_m.deep_view().contains_key(kd) {
+                let key = choose|key: Key|
+                    old_m@.contains_key(key) && #[trigger] key.deep_view() == kd;
+                assert(final_m@.contains_key(key));
+            }
+        }
+    );
+}
+
+pub open spec fn hash_map_contains_key_ensures<
+    Key: Borrow<Q> + Hash + Eq,
+    Value,
+    S: BuildHasher,
+    A: Allocator,
+    Q: Hash + Eq + ?Sized,
+>(m: &HashMap<Key, Value, S, A>, k: &Q, result: bool) -> bool {
+    ({
+        &&& obeys_hash_model::<Key>()
+        &&& obeys_hash_model::<Q>()
+        &&& <Key as PartialEqSpec>::obeys_eq_spec()
+        &&& <Q as PartialEqSpec>::obeys_eq_spec()
+        &&& builds_valid_hashers::<S>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+    }) ==> {
+        &&& hash_map_keys_differ(m)
+        &&& result == exists|key: Key|
+            {
+                &&& #[trigger] m@.contains_key(key)
+                &&& k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key))
+            }
+    }
+}
 
 pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
@@ -686,14 +868,92 @@ pub assume_specification<
     requires
         borrowed_key_hashing_matches::<Key, Q>(),
     ensures
-        ({
-            &&& obeys_key_model::<Key>()
-            &&& obeys_key_model::<Q>()
-            &&& builds_valid_hashers::<S>()
-            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
-        }) ==> result == exists|key: Key| #[trigger]
-            m@.contains_key(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k,
+        hash_map_contains_key_ensures(m, k, result),
 ;
+
+pub broadcast proof fn lemma_hash_map_contains_key_ensures_if_eq_matches_equality<
+    Key: Eq + Hash,
+    Value,
+    S: BuildHasher,
+    A: Allocator,
+>(m: &HashMap<Key, Value, S, A>, k: &Key, result: bool)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_equality::<Key>(),
+        #[trigger] hash_map_contains_key_ensures(m, k, result),
+    ensures
+        result == m@.contains_key(*k),
+{
+}
+
+pub broadcast proof fn lemma_hash_map_contains_key_ensures_if_eq_matches_deep_equality<
+    Key: Eq + Hash + DeepView,
+    Value: DeepView,
+    S: BuildHasher,
+    A: Allocator,
+>(m: &HashMap<Key, Value, S, A>, k: &Key, result: bool)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_deep_equality::<Key>(),
+        #[trigger] hash_map_contains_key_ensures(m, k, result),
+    ensures
+        result == m.deep_view().contains_key(k.deep_view()),
+{
+    broadcast use {
+        crate::map::group_map_lemmas,
+        crate::set::group_set_lemmas,
+        Set::lemma_map_contains,
+    };
+
+    reveal(hash_map_deep_view_impl);
+
+    if result {
+        let key = choose|key: Key|
+            {
+                &&& #[trigger] m@.contains_key(key)
+                &&& k.eq_spec(&key)
+            };
+        assert(m.deep_view().contains_key(key.deep_view()));
+    }
+    if m.deep_view().contains_key(k.deep_view()) {
+        let key = choose|key: Key|
+            m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+        assert(k.eq_spec(&key));
+    }
+}
+
+pub open spec fn hash_map_get_ensures<
+    Key: Borrow<Q> + Hash + Eq,
+    Value,
+    S: BuildHasher,
+    A: Allocator,
+    Q: Hash + Eq + ?Sized,
+>(m: &HashMap<Key, Value, S, A>, k: &Q, result: Option<&Value>) -> bool {
+    ({
+        &&& obeys_hash_model::<Key>()
+        &&& obeys_hash_model::<Q>()
+        &&& <Key as PartialEqSpec>::obeys_eq_spec()
+        &&& <Q as PartialEqSpec>::obeys_eq_spec()
+        &&& builds_valid_hashers::<S>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+    }) ==> {
+        &&& hash_map_keys_differ(m)
+        &&& match result {
+            Some(v) => exists|key: Key|
+                {
+                    &&& #[trigger] m@.contains_key(key)
+                    &&& k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key))
+                    &&& m@[key] == *v
+                },
+            None => forall|key: Key| #[trigger]
+                m@.contains_key(key) ==> !k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)),
+        }
+    }
+}
 
 pub assume_specification<
     'a,
@@ -707,19 +967,121 @@ pub assume_specification<
     requires
         borrowed_key_hashing_matches::<Key, Q>(),
     ensures
-        ({
-            &&& obeys_key_model::<Key>()
-            &&& obeys_key_model::<Q>()
-            &&& builds_valid_hashers::<S>()
-            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
-        }) ==> match result {
-            Some(v) => exists|key: Key| #[trigger]
-                m@.contains_key(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k && m@[key]
-                    == *v,
-            None => forall|key: Key| #[trigger]
-                m@.contains_key(key) ==> <Key as BorrowSpec<Q>>::spec_borrow(&key) != k,
-        },
+        hash_map_get_ensures(m, k, result),
 ;
+
+pub broadcast proof fn lemma_hash_map_get_ensures_if_eq_matches_equality<
+    Key: Eq + Hash,
+    Value,
+    S: BuildHasher,
+    A: Allocator,
+>(m: &HashMap<Key, Value, S, A>, k: &Key, result: Option<&Value>)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_equality::<Key>(),
+        #[trigger] hash_map_get_ensures(m, k, result),
+    ensures
+        match result {
+            Some(v) => m@.contains_key(*k) && *v == m@[*k],
+            None => !m@.contains_key(*k),
+        },
+{
+}
+
+pub broadcast proof fn lemma_hash_map_get_ensures_if_eq_matches_deep_equality<
+    Key: Eq + Hash + DeepView,
+    Value: DeepView,
+    S: BuildHasher,
+    A: Allocator,
+>(m: &HashMap<Key, Value, S, A>, k: &Key, result: Option<&Value>)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_deep_equality::<Key>(),
+        #[trigger] hash_map_get_ensures(m, k, result),
+    ensures
+        match result {
+            Some(v) => {
+                &&& m.deep_view().contains_key(k.deep_view())
+                &&& v.deep_view() == m.deep_view()[k.deep_view()]
+            },
+            None => !m.deep_view().contains_key(k.deep_view()),
+        },
+{
+    broadcast use {
+        crate::map::group_map_lemmas,
+        crate::set::group_set_lemmas,
+        Set::lemma_map_contains,
+    };
+
+    reveal(hash_map_deep_view_impl);
+
+    match result {
+        Some(v) => {
+            let stored_key = choose|key: Key|
+                {
+                    &&& #[trigger] m@.contains_key(key)
+                    &&& k.eq_spec(&key)
+                    &&& m@[key] == *v
+                };
+            assert(m.deep_view().contains_key(k.deep_view()));
+            let key = choose|key: Key|
+                m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+            assert(key == stored_key);
+        },
+        None => {
+            if m.deep_view().contains_key(k.deep_view()) {
+                let key = choose|key: Key|
+                    m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+                assert(k.eq_spec(&key));
+            }
+        },
+    }
+}
+
+pub open spec fn hash_map_remove_ensures<
+    Key: Borrow<Q> + Hash + Eq,
+    Value,
+    S: BuildHasher,
+    A: Allocator,
+    Q: Hash + Eq + ?Sized,
+>(
+    old_m: &HashMap<Key, Value, S, A>,
+    final_m: &HashMap<Key, Value, S, A>,
+    k: &Q,
+    result: Option<Value>,
+) -> bool {
+    ({
+        &&& obeys_hash_model::<Key>()
+        &&& obeys_hash_model::<Q>()
+        &&& <Key as PartialEqSpec>::obeys_eq_spec()
+        &&& <Q as PartialEqSpec>::obeys_eq_spec()
+        &&& builds_valid_hashers::<S>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+    }) ==> {
+        &&& hash_map_keys_differ(old_m)
+        &&& hash_map_keys_differ(final_m)
+        &&& match result {
+            Some(v) => exists|key: Key|
+                {
+                    &&& #[trigger] old_m@.contains_key(key)
+                    &&& k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key))
+                    &&& old_m@[key] == v
+                    &&& final_m@ == old_m@.remove(key)
+                },
+            None => {
+                &&& forall|key: Key| #[trigger]
+                    old_m@.contains_key(key) ==> !k.eq_spec(
+                        <Key as BorrowSpec<Q>>::spec_borrow(&key),
+                    )
+                &&& final_m@ == old_m@
+            },
+        }
+    }
+}
 
 pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
@@ -732,23 +1094,120 @@ pub assume_specification<
     requires
         borrowed_key_hashing_matches::<Key, Q>(),
     ensures
-        ({
-            &&& obeys_key_model::<Key>()
-            &&& obeys_key_model::<Q>()
-            &&& builds_valid_hashers::<S>()
-            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
-        }) ==> match result {
-            Some(v) => exists|key: Key| #[trigger]
-                old(m)@.contains_key(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k && old(
-                    m,
-                )@[key] == v && final(m)@ == old(m)@.remove(key),
-            None => {
-                &&& forall|key: Key| #[trigger]
-                    old(m)@.contains_key(key) ==> <Key as BorrowSpec<Q>>::spec_borrow(&key) != k
-                &&& final(m)@ == old(m)@
-            },
-        },
+        hash_map_remove_ensures(old(m), final(m), k, result),
 ;
+
+pub broadcast proof fn lemma_hash_map_remove_ensures_if_eq_matches_equality<
+    Key: Eq + Hash,
+    Value,
+    S: BuildHasher,
+    A: Allocator,
+>(
+    old_m: &HashMap<Key, Value, S, A>,
+    final_m: &HashMap<Key, Value, S, A>,
+    k: &Key,
+    result: Option<Value>,
+)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_equality::<Key>(),
+        #[trigger] hash_map_remove_ensures(old_m, final_m, k, result),
+    ensures
+        final_m@ == old_m@.remove(*k),
+        match result {
+            Some(v) => old_m@.contains_key(*k) && v == old_m@[*k],
+            None => !old_m@.contains_key(*k),
+        },
+{
+    broadcast use {crate::map::group_map_lemmas, crate::set::group_set_lemmas};
+
+    if result is None {
+        assert(!old_m@.contains_key(*k));
+        assert(old_m@.remove(*k) =~= old_m@);
+    }
+}
+
+pub broadcast proof fn lemma_hash_map_remove_ensures_if_eq_matches_deep_equality<
+    Key: Eq + Hash + DeepView,
+    Value: DeepView,
+    S: BuildHasher,
+    A: Allocator,
+>(
+    old_m: &HashMap<Key, Value, S, A>,
+    final_m: &HashMap<Key, Value, S, A>,
+    k: &Key,
+    result: Option<Value>,
+)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_deep_equality::<Key>(),
+        #[trigger] hash_map_remove_ensures(old_m, final_m, k, result),
+    ensures
+        final_m.deep_view() == old_m.deep_view().remove(k.deep_view()),
+        match result {
+            Some(v) => {
+                &&& old_m.deep_view().contains_key(k.deep_view())
+                &&& v.deep_view() == old_m.deep_view()[k.deep_view()]
+            },
+            None => !old_m.deep_view().contains_key(k.deep_view()),
+        },
+{
+    broadcast use {
+        crate::map::group_map_lemmas,
+        crate::set::group_set_lemmas,
+        Set::lemma_map_contains,
+    };
+
+    reveal(hash_map_deep_view_impl);
+
+    let stored_key = match result {
+        Some(v) => choose|key: Key|
+            {
+                &&& #[trigger] old_m@.contains_key(key)
+                &&& k.eq_spec(&key)
+                &&& old_m@[key] == v
+                &&& final_m@ == old_m@.remove(key)
+            },
+        None => *k,
+    };
+    match result {
+        Some(v) => {
+            assert(old_m.deep_view().contains_key(k.deep_view()));
+            let key = choose|key: Key|
+                old_m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+            assert(key == stored_key);
+        },
+        None => {
+            if old_m.deep_view().contains_key(k.deep_view()) {
+                let key = choose|key: Key|
+                    old_m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+                assert(k.eq_spec(&key));
+            }
+        },
+    }
+
+    assert_maps_equal!(
+        final_m.deep_view(),
+        old_m.deep_view().remove(k.deep_view()),
+        kd => {
+            if final_m.deep_view().contains_key(kd) {
+                let key = choose|key: Key|
+                    final_m@.contains_key(key) && #[trigger] key.deep_view() == kd;
+                assert(old_m@.contains_key(key));
+                assert(key.deep_view() != k.deep_view());
+            }
+            if old_m.deep_view().contains_key(kd) && kd != k.deep_view() {
+                let key = choose|key: Key|
+                    old_m@.contains_key(key) && #[trigger] key.deep_view() == kd;
+                assert(final_m@.contains_key(key));
+            }
+        }
+    );
+}
 
 pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::clear ](
     m: &mut HashMap<Key, Value, S, A>,
@@ -824,7 +1283,9 @@ impl<'a, K> super::iter::IteratorSpecImpl for hash_set::Iter::<'a, K> {
 ///
 /// We model a `HashSet` as having a view of type `Set<Key>`, which reflects the current state of the set.
 ///
-/// These specifications are only meaningful if `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()` hold.
+/// Structural-equality specifications require `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()`.
+/// Insertion, membership, lookup, and removal also support `obeys_hash_model::<Key>()`
+/// together with a valid equality specification, without requiring structural equality.
 /// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
 /// for information on use with primitive types and custom types,
 /// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
@@ -909,17 +1370,136 @@ pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet:
         final(m)@ == old(m)@,
 ;
 
+pub open spec fn hash_set_elements_differ<Key: Eq + Hash, S, A: Allocator>(
+    m: &HashSet<Key, S, A>,
+) -> bool {
+    forall|k1: Key, k2: Key|
+        {
+            &&& #[trigger] m@.contains(k1)
+            &&& #[trigger] m@.contains(k2)
+            &&& k1 != k2
+        } ==> !k1.eq_spec(&k2)
+}
+
+pub open spec fn hash_set_insert_ensures<Key: Eq + Hash, S: BuildHasher, A: Allocator>(
+    old_m: &HashSet<Key, S, A>,
+    final_m: &HashSet<Key, S, A>,
+    k: Key,
+    result: bool,
+) -> bool {
+    ({
+        &&& obeys_hash_model::<Key>()
+        &&& <Key as PartialEqSpec>::obeys_eq_spec()
+        &&& builds_valid_hashers::<S>()
+    }) ==> {
+        &&& hash_set_elements_differ(old_m)
+        &&& hash_set_elements_differ(final_m)
+        &&& if result {
+            &&& forall|stored_key: Key| #[trigger]
+                old_m@.contains(stored_key) ==> !k.eq_spec(&stored_key)
+            &&& final_m@ == old_m@.insert(k)
+        } else {
+            &&& exists|stored_key: Key| #[trigger]
+                old_m@.contains(stored_key) && k.eq_spec(&stored_key)
+            &&& final_m@ == old_m@
+        }
+    }
+}
+
 pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet::<
     Key,
     S,
     A,
 >::insert ](m: &mut HashSet<Key, S, A>, k: Key) -> (result: bool)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& final(m)@ == old(m)@.insert(k)
-            &&& result == !old(m)@.contains(k)
-        },
+        hash_set_insert_ensures(old(m), final(m), k, result),
 ;
+
+pub broadcast proof fn lemma_hash_set_insert_ensures_if_eq_matches_equality<
+    Key: Eq + Hash,
+    S: BuildHasher,
+    A: Allocator,
+>(old_m: &HashSet<Key, S, A>, final_m: &HashSet<Key, S, A>, k: Key, result: bool)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_equality::<Key>(),
+        #[trigger] hash_set_insert_ensures(old_m, final_m, k, result),
+    ensures
+        final_m@ == old_m@.insert(k),
+        result == !old_m@.contains(k),
+{
+    broadcast use crate::set::group_set_lemmas;
+
+    assert(k.eq_spec(&k));
+    if !result {
+        assert(old_m@.contains(k));
+        assert(old_m@.insert(k) =~= old_m@);
+    }
+}
+
+pub broadcast proof fn lemma_hash_set_insert_ensures_if_eq_matches_deep_equality<
+    Key: Eq + Hash + DeepView,
+    S: BuildHasher,
+    A: Allocator,
+>(old_m: &HashSet<Key, S, A>, final_m: &HashSet<Key, S, A>, k: Key, result: bool)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_deep_equality::<Key>(),
+        #[trigger] hash_set_insert_ensures(old_m, final_m, k, result),
+    ensures
+        final_m.deep_view() == old_m.deep_view().insert(k.deep_view()),
+        result == !old_m.deep_view().contains(k.deep_view()),
+{
+    broadcast use {
+        crate::set::group_set_lemmas,
+        Set::lemma_map_contains,
+        Set::lemma_set_map_insert_commute,
+    };
+
+    if result {
+        assert(!old_m.deep_view().contains(k.deep_view())) by {
+            if old_m.deep_view().contains(k.deep_view()) {
+                let stored_key = choose|stored_key: Key|
+                    old_m@.contains(stored_key) && #[trigger] stored_key.deep_view()
+                        == k.deep_view();
+                assert(k.eq_spec(&stored_key));
+            }
+        }
+    } else {
+        let stored_key = choose|stored_key: Key| #[trigger]
+            old_m@.contains(stored_key) && k.eq_spec(&stored_key);
+        assert(stored_key.deep_view() == k.deep_view());
+        assert(old_m.deep_view().contains(k.deep_view()));
+    }
+    assert(final_m.deep_view() =~= old_m.deep_view().insert(k.deep_view()));
+}
+
+pub open spec fn hash_set_contains_ensures<
+    Key: Borrow<Q> + Hash + Eq,
+    S: BuildHasher,
+    A: Allocator,
+    Q: Hash + Eq + ?Sized,
+>(m: &HashSet<Key, S, A>, k: &Q, result: bool) -> bool {
+    ({
+        &&& obeys_hash_model::<Key>()
+        &&& obeys_hash_model::<Q>()
+        &&& <Key as PartialEqSpec>::obeys_eq_spec()
+        &&& <Q as PartialEqSpec>::obeys_eq_spec()
+        &&& builds_valid_hashers::<S>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+    }) ==> {
+        &&& hash_set_elements_differ(m)
+        &&& result == exists|key: Key|
+            {
+                &&& #[trigger] m@.contains(key)
+                &&& k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key))
+            }
+    }
+}
 
 pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
@@ -930,14 +1510,76 @@ pub assume_specification<
     requires
         borrowed_key_hashing_matches::<Key, Q>(),
     ensures
-        ({
-            &&& obeys_key_model::<Key>()
-            &&& obeys_key_model::<Q>()
-            &&& builds_valid_hashers::<S>()
-            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
-        }) ==> result == exists|key: Key| #[trigger]
-            m@.contains(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k,
+        hash_set_contains_ensures(m, k, result),
 ;
+
+pub broadcast proof fn lemma_hash_set_contains_ensures_if_eq_matches_equality<
+    Key: Eq + Hash,
+    S: BuildHasher,
+    A: Allocator,
+>(m: &HashSet<Key, S, A>, k: &Key, result: bool)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_equality::<Key>(),
+        #[trigger] hash_set_contains_ensures(m, k, result),
+    ensures
+        result == m@.contains(*k),
+{
+}
+
+pub broadcast proof fn lemma_hash_set_contains_ensures_if_eq_matches_deep_equality<
+    Key: Eq + Hash + DeepView,
+    S: BuildHasher,
+    A: Allocator,
+>(m: &HashSet<Key, S, A>, k: &Key, result: bool)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_deep_equality::<Key>(),
+        #[trigger] hash_set_contains_ensures(m, k, result),
+    ensures
+        result == m.deep_view().contains(k.deep_view()),
+{
+    broadcast use {crate::set::group_set_lemmas, Set::lemma_map_contains};
+
+    if result {
+        let key = choose|key: Key| #[trigger] m@.contains(key) && k.eq_spec(&key);
+        assert(m.deep_view().contains(key.deep_view()));
+    }
+    if m.deep_view().contains(k.deep_view()) {
+        let key = choose|key: Key| m@.contains(key) && #[trigger] key.deep_view() == k.deep_view();
+        assert(k.eq_spec(&key));
+    }
+}
+
+pub open spec fn hash_set_get_ensures<
+    Key: Borrow<Q> + Hash + Eq,
+    S: BuildHasher,
+    A: Allocator,
+    Q: Hash + Eq + ?Sized,
+>(m: &HashSet<Key, S, A>, k: &Q, result: Option<&Key>) -> bool {
+    ({
+        &&& obeys_hash_model::<Key>()
+        &&& obeys_hash_model::<Q>()
+        &&& <Key as PartialEqSpec>::obeys_eq_spec()
+        &&& <Q as PartialEqSpec>::obeys_eq_spec()
+        &&& builds_valid_hashers::<S>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+    }) ==> {
+        &&& hash_set_elements_differ(m)
+        &&& match result {
+            Some(key) => {
+                &&& m@.contains(*key)
+                &&& k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(key))
+            },
+            None => forall|key: Key| #[trigger]
+                m@.contains(key) ==> !k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)),
+        }
+    }
+}
 
 pub assume_specification<
     'a,
@@ -949,17 +1591,95 @@ pub assume_specification<
     requires
         borrowed_key_hashing_matches::<Key, Q>(),
     ensures
-        ({
-            &&& obeys_key_model::<Key>()
-            &&& obeys_key_model::<Q>()
-            &&& builds_valid_hashers::<S>()
-            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
-        }) ==> match result {
-            Some(key) => m@.contains(*key) && <Key as BorrowSpec<Q>>::spec_borrow(key) == k,
-            None => forall|key: Key| #[trigger]
-                m@.contains(key) ==> <Key as BorrowSpec<Q>>::spec_borrow(&key) != k,
-        },
+        hash_set_get_ensures(m, k, result),
 ;
+
+pub broadcast proof fn lemma_hash_set_get_ensures_if_eq_matches_equality<
+    Key: Eq + Hash,
+    S: BuildHasher,
+    A: Allocator,
+>(m: &HashSet<Key, S, A>, k: &Key, result: Option<&Key>)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_equality::<Key>(),
+        #[trigger] hash_set_get_ensures(m, k, result),
+    ensures
+        match result {
+            Some(key) => m@.contains(*key) && *key == *k,
+            None => !m@.contains(*k),
+        },
+{
+}
+
+pub broadcast proof fn lemma_hash_set_get_ensures_if_eq_matches_deep_equality<
+    Key: Eq + Hash + DeepView,
+    S: BuildHasher,
+    A: Allocator,
+>(m: &HashSet<Key, S, A>, k: &Key, result: Option<&Key>)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_deep_equality::<Key>(),
+        #[trigger] hash_set_get_ensures(m, k, result),
+    ensures
+        match result {
+            Some(key) => {
+                &&& m@.contains(*key)
+                &&& m.deep_view().contains(k.deep_view())
+                &&& key.deep_view() == k.deep_view()
+            },
+            None => !m.deep_view().contains(k.deep_view()),
+        },
+{
+    broadcast use {crate::set::group_set_lemmas, Set::lemma_map_contains};
+
+    match result {
+        Some(key) => {
+            assert(m.deep_view().contains(key.deep_view()));
+        },
+        None => {
+            if m.deep_view().contains(k.deep_view()) {
+                let key = choose|key: Key|
+                    m@.contains(key) && #[trigger] key.deep_view() == k.deep_view();
+                assert(k.eq_spec(&key));
+            }
+        },
+    }
+}
+
+pub open spec fn hash_set_remove_ensures<
+    Key: Borrow<Q> + Hash + Eq,
+    S: BuildHasher,
+    A: Allocator,
+    Q: Hash + Eq + ?Sized,
+>(old_m: &HashSet<Key, S, A>, final_m: &HashSet<Key, S, A>, k: &Q, result: bool) -> bool {
+    ({
+        &&& obeys_hash_model::<Key>()
+        &&& obeys_hash_model::<Q>()
+        &&& <Key as PartialEqSpec>::obeys_eq_spec()
+        &&& <Q as PartialEqSpec>::obeys_eq_spec()
+        &&& builds_valid_hashers::<S>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+    }) ==> {
+        &&& hash_set_elements_differ(old_m)
+        &&& hash_set_elements_differ(final_m)
+        &&& if result {
+            exists|key: Key|
+                {
+                    &&& #[trigger] old_m@.contains(key)
+                    &&& k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key))
+                    &&& final_m@ == old_m@.remove(key)
+                }
+        } else {
+            &&& forall|key: Key| #[trigger]
+                old_m@.contains(key) ==> !k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key))
+            &&& final_m@ == old_m@
+        }
+    }
+}
 
 pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
@@ -970,23 +1690,84 @@ pub assume_specification<
     requires
         borrowed_key_hashing_matches::<Key, Q>(),
     ensures
-        ({
-            &&& obeys_key_model::<Key>()
-            &&& obeys_key_model::<Q>()
-            &&& builds_valid_hashers::<S>()
-            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
-        }) ==> {
-            if result {
-                exists|key: Key| #[trigger]
-                    old(m)@.contains(key) && <Key as BorrowSpec<Q>>::spec_borrow(&key) == k
-                        && final(m)@ == old(m)@.remove(key)
-            } else {
-                &&& forall|key: Key| #[trigger]
-                    old(m)@.contains(key) ==> <Key as BorrowSpec<Q>>::spec_borrow(&key) != k
-                &&& final(m)@ == old(m)@
-            }
-        },
+        hash_set_remove_ensures(old(m), final(m), k, result),
 ;
+
+pub broadcast proof fn lemma_hash_set_remove_ensures_if_eq_matches_equality<
+    Key: Eq + Hash,
+    S: BuildHasher,
+    A: Allocator,
+>(old_m: &HashSet<Key, S, A>, final_m: &HashSet<Key, S, A>, k: &Key, result: bool)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_equality::<Key>(),
+        #[trigger] hash_set_remove_ensures(old_m, final_m, k, result),
+    ensures
+        final_m@ == old_m@.remove(*k),
+        result == old_m@.contains(*k),
+{
+    broadcast use crate::set::group_set_lemmas;
+
+    if !result {
+        assert(!old_m@.contains(*k));
+        assert(old_m@.remove(*k) =~= old_m@);
+    }
+}
+
+pub broadcast proof fn lemma_hash_set_remove_ensures_if_eq_matches_deep_equality<
+    Key: Eq + Hash + DeepView,
+    S: BuildHasher,
+    A: Allocator,
+>(old_m: &HashSet<Key, S, A>, final_m: &HashSet<Key, S, A>, k: &Key, result: bool)
+    requires
+        obeys_hash_model::<Key>(),
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        builds_valid_hashers::<S>(),
+        eq_matches_deep_equality::<Key>(),
+        #[trigger] hash_set_remove_ensures(old_m, final_m, k, result),
+    ensures
+        final_m.deep_view() == old_m.deep_view().remove(k.deep_view()),
+        result == old_m.deep_view().contains(k.deep_view()),
+{
+    broadcast use {crate::set::group_set_lemmas, Set::lemma_map_contains};
+
+    let stored_key = if result {
+        choose|key: Key|
+            {
+                &&& #[trigger] old_m@.contains(key)
+                &&& k.eq_spec(&key)
+                &&& final_m@ == old_m@.remove(key)
+            }
+    } else {
+        *k
+    };
+    assert(stored_key.deep_view() == k.deep_view());
+
+    if result {
+        assert(old_m.deep_view().contains(k.deep_view()));
+    } else if old_m.deep_view().contains(k.deep_view()) {
+        let key = choose|key: Key|
+            old_m@.contains(key) && #[trigger] key.deep_view() == k.deep_view();
+        assert(k.eq_spec(&key));
+    }
+    assert forall|kd: Key::V| #[trigger]
+        final_m.deep_view().contains(kd) <==> old_m.deep_view().remove(k.deep_view()).contains(
+            kd,
+        ) by {
+        if final_m.deep_view().contains(kd) {
+            let key = choose|key: Key| final_m@.contains(key) && #[trigger] key.deep_view() == kd;
+            assert(old_m@.contains(key));
+            assert(key.deep_view() != k.deep_view());
+        }
+        if old_m.deep_view().contains(kd) && kd != k.deep_view() {
+            let key = choose|key: Key| old_m@.contains(key) && #[trigger] key.deep_view() == kd;
+            assert(final_m@.contains(key));
+        }
+    }
+    assert(final_m.deep_view() =~= old_m.deep_view().remove(k.deep_view()));
+}
 
 pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::clear ](
     m: &mut HashSet<Key, S, A>,
@@ -1292,6 +2073,23 @@ pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::insert_en
 ;
 
 pub broadcast group group_hash_axioms {
+    axiom_obeys_key_model,
+    lemma_hash_map_insert_ensures_if_eq_matches_equality,
+    lemma_hash_map_insert_ensures_if_eq_matches_deep_equality,
+    lemma_hash_map_contains_key_ensures_if_eq_matches_equality,
+    lemma_hash_map_contains_key_ensures_if_eq_matches_deep_equality,
+    lemma_hash_map_get_ensures_if_eq_matches_equality,
+    lemma_hash_map_get_ensures_if_eq_matches_deep_equality,
+    lemma_hash_map_remove_ensures_if_eq_matches_equality,
+    lemma_hash_map_remove_ensures_if_eq_matches_deep_equality,
+    lemma_hash_set_insert_ensures_if_eq_matches_equality,
+    lemma_hash_set_insert_ensures_if_eq_matches_deep_equality,
+    lemma_hash_set_contains_ensures_if_eq_matches_equality,
+    lemma_hash_set_contains_ensures_if_eq_matches_deep_equality,
+    lemma_hash_set_get_ensures_if_eq_matches_equality,
+    lemma_hash_set_get_ensures_if_eq_matches_deep_equality,
+    lemma_hash_set_remove_ensures_if_eq_matches_equality,
+    lemma_hash_set_remove_ensures_if_eq_matches_deep_equality,
     axiom_borrowed_key_hashing_matches_self,
     axiom_borrowed_key_hashing_matches_ref,
     axiom_borrowed_key_hashing_matches_box,
