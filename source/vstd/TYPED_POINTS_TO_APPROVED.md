@@ -187,10 +187,11 @@ it's in [New axioms and axioms with bigger changes](#new-axioms-and-axioms-with-
 | `SharedReference<[T]>::points_to` (restored, phase 4b) | `shared_reference.rs` | Restored from commented-out code; now ensures `pt.wf()`. | the source of valid shared slice permissions |
 | `ptr_ref2_slice_ghost` (restored, phase 4b) | `shared_reference.rs` | Restored from commented-out code; now requires `perm.wf()`. | `SharedReference<[T]>` from a slice permission |
 | `ptr_ref_str` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code; now requires `perm.wf()`. | exec `str` reads |
-| `mut_ref_to_shr_points_to_str` (rustlib) | rustlib | Moved from vstd's commented-out code; now ensures `pt.wf()`. | the source of valid `str` permissions from `&mut str` |
-| `SharedReference<str>::points_to` (rustlib) | rustlib | Moved from vstd's commented-out code; now ensures `pt.wf()`. | the source of valid shared `str` permissions |
+| `mut_ref_to_shr_points_to_str` (rustlib) | rustlib | Moved from vstd's commented-out code; now ensures `pt.wf()`, and requires the `str`'s `inv()`. | the source of valid `str` permissions from `&mut str` |
+| `SharedReference<str>::points_to` (rustlib) | rustlib | Moved from vstd's commented-out code; now ensures `pt.wf()`, and requires the `str`'s `inv()`. | the source of valid shared `str` permissions |
+| `str::as_str_ptr_verus` (`external_body`; rustlib) | rustlib | Existing; now states the permission through `typed_value()` and `is_valid()`, ensures `perm@.wf()`, and requires `self.inv()`. | exec `str` pointers with permissions |
 | `ptr_ref2_str_ghost` (rustlib) | rustlib | Moved from vstd's commented-out code; now requires `perm.wf()`. | `SharedReference<str>` from a `str` permission |
-| `SharedReference<str>::as_str_ptr` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code; the body uses `as_ref()` (the field is private to vstd). | exec `str` pointers (`as_ptr`) |
+| `SharedReference<str>::as_str_ptr` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code; the body uses `as_ref()` (the field is private to vstd); requires the `str`'s `inv()`. | exec `str` pointers (`as_ptr`) |
 
 The restored slice and `str` versions also state the value through `typed_value().value_ref()`
 (with `@` for slices) in place of the old `value()`, which the planned `PointsTo<[T]>` / `PointsTo<str>` don't have.
@@ -349,6 +350,8 @@ rustlib, the `str` versions (moved from vstd's commented-out code):
 impl<'a> SharedReference<'a, str> {
     #[verifier::external_body]
     pub const fn as_str_ptr(self) -> (ptr: *const str)
+        requires
+            self.value().inv(),
         ensures
             ptr == self.ptr(),
     {
@@ -357,6 +360,8 @@ impl<'a> SharedReference<'a, str> {
 
     // commonly used operation: this function's signature corresponds to Rust's `str::as_ptr`
     pub const fn as_ptr(self) -> (ptr: *const u8)
+        requires
+            self.value().inv(),
         ensures
             ptr == self.ptr() as *const u8,
     {
@@ -364,6 +369,8 @@ impl<'a> SharedReference<'a, str> {
     }
 
     pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<str>)
+        requires
+            self.value().inv(),
         ensures
             pt.ptr() == self.ptr(),
             pt.is_valid(),
@@ -404,6 +411,8 @@ pub const fn ptr_ref_str(ptr: *const str, Tracked(perm): Tracked<&PointsTo<str>>
 
 /// Convert from a shared reference to a `&'a mut str` to a `&'a PointsTo<str>`.
 pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) -> (tracked pt: &'a PointsTo<str>)
+    requires
+        mut_ref.inv(),
     ensures
         pt.ptr() == mut_ref_ptr(*mut_ref),
         pt.is_valid(),
@@ -411,6 +420,23 @@ pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) 
         pt.wf(),
         &*final(*mut_ref) == &*old(*mut_ref),
 ;
+
+// In `impl str` (`str/mod.rs`).
+#[verifier::shadow_data]
+#[verifier::external_body] // Ok - cast from `&self` to `*const str`
+// Axiomatizes cast from `&self` to `*const str`, since Verus doesn't support it.
+pub const fn as_str_ptr_verus(&self) -> ((ptr, perm): (*const str, Tracked<&PointsTo<str>>))
+    requires
+        self.inv(),
+    ensures
+        ptr == shared_ref_ptr(shadow_data(self)),
+        perm@.ptr() == shared_ref_ptr(shadow_data(self)),
+        perm@.is_valid(),
+        perm@.typed_value().value_ref() == self,
+        perm@.wf(),
+{
+    (self as *const str, Tracked::assume_new())
+}
 ```
 
 ## New axioms and axioms with bigger changes
@@ -426,7 +452,7 @@ are also trusted (axioms in `points_to_model.rs`), but unchanged
 |---|---|---|---|---|
 | `ptr_mut_ref` (`external_body`; existing, strengthened, already in the code) | `ptr_specs.rs` | Now also ensures `final(perm).wf()`: the final bytes decode to the final value (and requires `old(perm).wf()`). | exec writes through `&mut T` | yes |
 | `ptr_mut_ref_slice` (`external_body`; restored, phase 4b) | `ptr_specs.rs` | Restored from commented-out code, strengthened the same way as `ptr_mut_ref`. | exec writes through `&mut [T]` | yes |
-| `ptr_mut_ref_str` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code, strengthened the same way as `ptr_mut_ref`. | exec writes through `&mut str` | yes |
+| `ptr_mut_ref_str` (`external_body`; rustlib) | rustlib | Moved from vstd's commented-out code, strengthened the same way as `ptr_mut_ref`, with the final `wf()` only if the final `str` is valid UTF-8. | exec writes through `&mut str` | yes |
 | `Seq::tracked_borrow_subrange` (`external_body`; already in the code) | `seq.rs` | Borrows a subrange of a borrowed tracked `Seq`. | `subrange_basic`, `split_ref` | yes |
 | `Seq::tracked_split_borrow_mut` (`external_body`; already in the code) | `seq.rs` | Splits a mutable borrow of a tracked `Seq` in two. | `subrange_mut`, the `&mut` conversions | yes |
 | `Seq::tracked_add_borrow` | `seq.rs` | Two borrowed tracked `Seq`s act as one borrowed concatenation. | `PointsToUntyped::join_ref` | yes |
@@ -517,8 +543,8 @@ pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo
     ensures
         final(perm).ptr() == ptr,
         final(perm).is_valid(),
-        // The final bytes decode to the final value.
-        final(perm).wf(),
+        // The final permission is well-formed if the final str is valid UTF-8.
+        final(v).inv() ==> final(perm).wf(),
         old(perm).typed_value().value_ref() == &*v,
         final(perm).typed_value().value_ref() == &*final(v),
     opens_invariants none
@@ -881,7 +907,7 @@ the bytes' length and each byte's `u8` decoding. UTF-8 validity is not part of d
 Not trusted: the shared `&TypedValue<str>` ↔ `&TypedValue<[u8]>` casts
 (from rustlib's existing `str::as_bytes_tracked` / `str::from_bytes_tracked` axioms and `valid_ref`).
 There are no owned or `&mut` `str` ↔ `[u8]` casts.
-rustlib's existing `str` permission axioms (`as_str_ptr_verus`, `perm_init`, `perm_value_eq`, `perm_ptr`)
+rustlib's existing `str` permission axioms (`perm_init`, `perm_value_eq`, `perm_ptr`)
 are temporary stand-ins until `PointsTo<str>` is ported;
 they're replaced by the above and not part of this design.
 

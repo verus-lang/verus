@@ -22,67 +22,41 @@ are approved and are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.m
 The modified rustlib specs are provisionally accepted.
 The `Seq` join axioms (`tracked_add_borrow` / `tracked_add_borrow_mut`, approved by Travis),
 and `PointsToUntyped::join_ref` / `join_mut` proved from them, are approved and in TYPED_POINTS_TO_APPROVED.md.
-Whether to [remove UTF-8 from `PointsTo<str>`](#plan-remove-utf-8-from-pointstostr) is on hold;
-the approved specs still include it.
+The [`inv()` preconditions for `str`](#inv-preconditions-for-str) are approved and implemented.
 
-## Plan: remove UTF-8 from `PointsTo<str>`
+## `inv()` preconditions for `str`
 
-**On hold.** The approved specs (TYPED_POINTS_TO_APPROVED.md, "rustlib: `str`") still include UTF-8 in `wf`,
-and the rustlib port's other work goes ahead without waiting on this.
-A copy of the current UTF-8 specs is in [POINTS_TO_STR_UTF8_SNAPSHOT.md](POINTS_TO_STR_UTF8_SNAPSHOT.md).
+**Approved (2026-10-28) and implemented**; the trusted specs are in TYPED_POINTS_TO_APPROVED.md, the verified ones in rustlib's code.
+`PointsTo<str>` keeps UTF-8 in `wf` (`additional_validity_constraints` is `value.inv()`).
+`str::inv()` stands in for a type invariant on `str`, which Verus can't express yet,
+so functions that take a `str` require it,
+and a function that gives a `wf` `PointsTo<str>` based on a `&mut str`'s final value ensures `wf` only under that value's `inv()`.
+The trusted functions then carry UTF-8 over from the `str` instead of assuming it.
 
-Per Travis, a `PointsTo<str>` should guarantee only what a `&str` / `&mut str` does,
-and UTF-8 is a library (safety) invariant of `str`, not a validity invariant,
-so `wf` shouldn't include it.
-UTF-8 would then come only from rustlib's `str::inv()` preconditions on `&str`s, as it does for code that doesn't use permissions.
+| Function | Change | Why this form |
+|---|---|---|
+| `SharedReference<'a, str>::points_to` (axiom) | requires `self.value().inv()` | Its callers (`split_at_unchecked`, `transmute_shared_ref_str_u8_slice`) require `inv()`. |
+| `mut_ref_to_shr_points_to_str` (axiom) | requires `mut_ref.inv()` | Its callers (`str::get_unchecked_mut`; `SliceIndex<str>`'s `get_mut` / `index_mut`) require `inv()` (the `SliceIndex` methods through `valid_slice`, which is `inv()` for `str` by `def_valid_slice_str`). |
+| `ptr_mut_ref_str` (`external_body`) | `final(perm).wf()` becomes `final(v).inv() ==> final(perm).wf()` | The final permission is based on the returned `&mut str`, which unsafe code can leave invalid UTF-8 (e.g. through `as_bytes_mut`). It has no callers. |
+| `str::as_str_ptr_verus`, `as_ptr_verus` (`external_body` / verified) | requires `self.inv()` | Its callers (`str::get_unchecked`, `SliceIndex<str>::get`) have `inv()`. |
+| `str::as_str_ptr`, `as_ptr` (verified) | requires `self.inv()` | `as_str_ptr` calls `as_str_ptr_verus`, and `as_ptr` calls `as_str_ptr`. `inv()` stands in for a type invariant on `str` (which Verus can't express yet), so functions taking a `str` require it. `as_ptr` has no callers in rustlib. |
+| `SharedReference<'a, str>::as_str_ptr` (`external_body`), `as_ptr` (verified) | requires `self.value().inv()` | For consistency with `str::as_str_ptr` / `as_ptr`, by the same type-invariant rule (not needed by the bodies). Their caller (`split_at_unchecked`) requires `inv()`. |
 
-**Spec changes** (all to approved rustlib specs in TYPED_POINTS_TO_APPROVED.md, "rustlib: `str`"):
-
-1. `PTTypedValue for PointsToUnaligned<str>`: `additional_validity_constraints` becomes `true`,
-   with the doc "No constraints beyond decoding: UTF-8 is a library invariant of `str`, not part of the permission."
-   (Its length already matches the metadata, as now.)
-   `wf` then means the same for `str` as for `[u8]`.
-2. `from_bytes_ref` (`PointsToUnaligned<str>` and `PointsTo<str>`):
-   drop the requires `pt_slice.typed_value().is_valid() ==> valid_utf8(...)`,
-   and "provided that the byte slice is valid UTF-8" from the doc.
-   It was only there to establish `out.wf()`.
-3. `PointsTo<str>::subrange`: drop the requires `... ==> valid_utf8(...subrange(start, end))`,
-   and "provided that they're valid UTF-8 when the permission is valid" from the doc;
-   its requires become `self.wf()` and `start <= end <= self.ptr()@.metadata`.
-   (It needn't fall on char boundaries either.)
-
-Keeping 2 and 3 instead would break the `SliceIndex<str>` methods in `str/traits.rs` (G2's sites):
-they have no `inv()` requires, so they get the sub-bytes' UTF-8 only from the parent permission's `wf`.
-
-**No longer trusted assumptions.**
-The [trusted UTF-8 assumptions](#trusted-utf-8-assumptions) go away with no text change:
-`SharedReference<str>::points_to`, `mut_ref_to_shr_points_to_str`, `ptr_mut_ref_str` and `str::as_str_ptr_verus`
-still ensure `wf()`, which no longer says anything about UTF-8.
-
-**Callers to update** (rustlib; found by rebuilding after 1–3):
-proofs that read UTF-8 off a permission's `wf`
-(e.g. `split_at_unchecked` calls `valid_utf8_split(perm.value(), mid)`)
-get it from the `&str`'s `inv()` requires instead,
-through the permission's `typed_value().value_ref() == self`.
-Where a function has no `inv()` requires and ensures nothing about UTF-8 (the `SliceIndex<str>` methods),
-nothing replaces it.
-The transmute proofs (`transmute_shared_ref_u8_slice_str`) keep their `valid_utf8` requires, which `from_bytes_ref` no longer needs.
-
-**Docs.** TYPED_POINTS_TO_APPROVED.md's "rustlib: `str`" section and its summary of `str`'s
-`additional_validity_constraints` (in "`PointsToUnaligned`: specs");
-this file's [UTF-8 assumptions](#utf-8-assumptions) and [trusted UTF-8 assumptions](#trusted-utf-8-assumptions) sections (deleted);
-rustlib's RUSTLIB_PORT_PLAN.md, G2 ("The sites check char boundaries, which give the sub-bytes' `valid_utf8`").
-
-Rustlib is the only user of `PointsTo<str>` (the definitions are moving to rustlib),
-so nothing outside rustlib's `str` code is affected.
+Unchanged:
+`ptr_ref_str` and `ptr_ref2_str_ghost` (they take a `wf` permission);
+`as_bytes`, `from_bytes_ref` and `subrange` (they take a permission; `from_bytes_ref` and `subrange` already require UTF-8 of the bytes);
+the transmute proofs (they already require `inv()` / `valid_utf8`);
+`cast_mut_ref_str_to_ptr` (it gives a `&mut str`, not a permission).
+No callers needed changes.
 
 ## TODO: ask Travis
 
 - The [trusted UTF-8 assumptions](#trusted-utf-8-assumptions):
   `SharedReference<str>::points_to`, `mut_ref_to_shr_points_to_str`, `ptr_mut_ref_str` and `str::as_str_ptr_verus`
-  now also assert that the `str` is valid UTF-8, through `wf`.
+  now also assume that the `str` is valid UTF-8, through `wf`.
   - We cannot enforce UTF-8 as an invariant of `PointsTo<str>` - it should only guarantee as much as a `&str` or `&mut str` would guarantee, which doesn't guarantee UTF-8.
-  - On hold: see [Plan: remove UTF-8 from `PointsTo<str>`](#plan-remove-utf-8-from-pointstostr).
+  - Done: UTF-8 stays in `wf`, and these functions take the `str`'s `inv()` as a precondition or antecedent,
+    so they no longer assume it; approved, see [`inv()` preconditions for `str`](#inv-preconditions-for-str).
 - The [trusted `wf` of a `Box`'s permission](#trusted-wf-of-a-boxs-permission):
   rustlib's `Box::into_non_null_with_allocator_verus` now also ensures the permission it returns is `wf`.
   - Yes - a `Box<T>` is just a pointer and `PointsTo<T>`.
@@ -123,67 +97,11 @@ through `PointsToUnaligned<str>`'s `additional_validity_constraints`
     }
 ```
 
-So each `wf()` in these ensures asserts that the `str` is valid UTF-8.
-All four are in rustlib.
-
-```rust
-impl<'a> SharedReference<'a, str> {
-    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<str>)
-        ensures
-            pt.ptr() == self.ptr(),
-            pt.is_valid(),
-            pt.typed_value().value_ref() == self.value(),
-            pt.wf(),
-    ;
-}
-
-/// Convert from a shared reference to a `&'a mut str` to a `&'a PointsTo<str>`.
-pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) -> (tracked pt: &'a PointsTo<str>)
-    ensures
-        pt.ptr() == mut_ref_ptr(*mut_ref),
-        pt.is_valid(),
-        pt.typed_value().value_ref() == &*old(*mut_ref),
-        pt.wf(),
-        &*final(*mut_ref) == &*old(*mut_ref),
-;
-
-/// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
-/// The memory pointed to by `ptr` must be initialized.
-#[inline(always)]
-#[verifier::external_body]
-pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo<str>>) -> (v: &mut str)
-    requires
-        old(perm).ptr() == ptr,
-        old(perm).is_valid(),
-        old(perm).wf(),
-    ensures
-        final(perm).ptr() == ptr,
-        final(perm).is_valid(),
-        // The final bytes decode to the final value.
-        final(perm).wf(),
-        old(perm).typed_value().value_ref() == &*v,
-        final(perm).typed_value().value_ref() == &*final(v),
-    opens_invariants none
-    no_unwind
-{
-    unsafe { &mut *ptr }
-}
-
-// In `impl str` (`str/mod.rs`).
-#[verifier::shadow_data]
-#[verifier::external_body] // Ok - cast from `&self` to `*const str`
-// Axiomatizes cast from `&self` to `*const str`, since Verus doesn't support it.
-pub const fn as_str_ptr_verus(&self) -> ((ptr, perm): (*const str, Tracked<&PointsTo<str>>))
-    ensures
-        ptr == shared_ref_ptr(shadow_data(self)),
-        perm@.ptr() == shared_ref_ptr(shadow_data(self)),
-        perm@.is_valid(),
-        perm@.typed_value().value_ref() == self,
-        perm@.wf(),
-{
-    (self as *const str, Tracked::assume_new())
-}
-```
+So a `wf()` that these functions ensure would assume that the `str` is valid UTF-8,
+except that each gets UTF-8 from the `str`'s `inv()`:
+`SharedReference<str>::points_to`, `mut_ref_to_shr_points_to_str` and `str::as_str_ptr_verus` require it,
+and `ptr_mut_ref_str` ensures `wf()` only under it.
+All four are in rustlib; their specs are approved, in TYPED_POINTS_TO_APPROVED.md ("rustlib, the `str` versions" and `ptr_mut_ref_str`).
 
 ### `TypedValue::<[T]>::from_elems_ref`
 
@@ -353,25 +271,22 @@ see [New rustlib axioms](#new-rustlib-axioms).
 
 #### Trusted UTF-8 assumptions
 
-To review: since UTF-8 validity is now part of a valid `str` permission's `wf`,
-these trusted items now also assert that the `str` is valid UTF-8:
+Approved (see [`inv()` preconditions for `str`](#inv-preconditions-for-str)).
+UTF-8 validity is part of a valid `str` permission's `wf`,
+so these trusted items, which give a `wf` permission based on a `&str` / `&mut str`,
+take UTF-8 from that `str`'s `inv()` instead of assuming it:
 
-- `SharedReference<str>::points_to` (axiom): ensures `pt.wf()`,
-  so the referenced `str` is valid UTF-8.
-- `mut_ref_to_shr_points_to_str` (axiom): ensures `pt.wf()`,
-  so the current value of the `&mut str` is valid UTF-8.
-- `ptr_mut_ref_str` (`external_body`): ensures `final(perm).wf()`,
-  so writes through the returned `&mut str` keep it valid UTF-8.
-- `str::as_str_ptr_verus` (`external_body`, restated in [Modified rustlib specs](#modified-rustlib-specs)):
-  ensures `perm@.wf()`, so `self` is valid UTF-8.
-  (`as_ptr_verus` ensures the same, but is verified from `as_str_ptr_verus`.)
+- `SharedReference<str>::points_to` (axiom): ensures `pt.wf()`, and requires `self.value().inv()`.
+- `mut_ref_to_shr_points_to_str` (axiom): ensures `pt.wf()`, and requires `mut_ref.inv()`.
+- `ptr_mut_ref_str` (`external_body`): ensures `final(v).inv() ==> final(perm).wf()`.
+- `str::as_str_ptr_verus` (`external_body`; see [Modified rustlib specs](#modified-rustlib-specs)):
+  ensures `perm@.wf()`, and requires `self.inv()`.
+  (`as_ptr_verus` has the same spec, but is verified from `as_str_ptr_verus`.)
 
 These are the only ones:
 the other `str` reference helpers (`ptr_ref_str`, `ptr_ref2_str_ghost`) only require `wf`,
 `def_perm_init_str` is a definition,
 and the generic `?Sized` axioms (`from_raw_parts_ref`, `from_raw_parts_mut`, `from_unaligned_mut`) say nothing about `wf`.
-This should be sound, since UTF-8 validity is a library invariant of every `&str` / `&mut str`
-that safe code can't break, but these axioms now state more than before.
 
 #### Trusted `wf` of a `Box`'s permission
 
@@ -410,40 +325,13 @@ The functions that are `external_body` only because these were missing
 and the `SliceIndex<str>` / `SliceIndexVerus<str>` methods in `str/traits.rs`)
 get their verified bodies back, with unchanged specs.
 
-**`str::as_str_ptr_verus` / `as_ptr_verus`** (`str/mod.rs`; `as_ptr_verus` calls `as_str_ptr_verus`).
-Still `external_body`, since Verus doesn't support the `&str` → `*const str` cast.
-The ensures state the permission directly, and add `wf`,
-which `ptr_ref_str` and `ptr_ref2_str_ghost` now require.
+**`str::as_str_ptr_verus` / `as_ptr_verus` / `as_str_ptr` / `as_ptr`** (`str/mod.rs`;
+`as_ptr_verus` and `as_str_ptr` call `as_str_ptr_verus`, and `as_ptr` calls `as_str_ptr`).
+Approved (2026-10-28) and implemented:
+`as_str_ptr_verus` (`external_body`) is in TYPED_POINTS_TO_APPROVED.md ("rustlib, the `str` versions"),
+the other three are in the code.
+All four require `self.inv()`; `as_str_ptr_verus` and `as_ptr_verus` ensure the permission is `wf`.
 `as_ptr_tracked` stays commented out.
-
-```rust
-#[verifier::shadow_data]
-#[verifier::external_body] // Ok - cast from `&self` to `*const str`
-// Axiomatizes cast from `&self` to `*const str`, since Verus doesn't support it.
-pub const fn as_str_ptr_verus(&self) -> ((ptr, perm): (*const str, Tracked<&PointsTo<str>>))
-    ensures
-        ptr == shared_ref_ptr(shadow_data(self)),
-        perm@.ptr() == shared_ref_ptr(shadow_data(self)),
-        perm@.is_valid(),
-        perm@.typed_value().value_ref() == self,
-        perm@.wf(),
-{
-    (self as *const str, Tracked::assume_new())
-}
-
-#[verifier::shadow_data]
-pub const fn as_ptr_verus(&self) -> ((ptr, perm): (*const u8, Tracked<&PointsTo<str>>))
-    ensures
-        ptr == shared_ref_ptr(shadow_data(self)) as *const u8,
-        perm@.ptr() == shared_ref_ptr(shadow_data(self)),
-        perm@.is_valid(),
-        perm@.typed_value().value_ref() == self,
-        perm@.wf(),
-{
-    let (ptr, perm) = self.as_str_ptr_verus();
-    (ptr as *const u8, perm)
-}
-```
 
 **`slice_index.rs` wrappers.**
 Approved (2026-10-26); in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#rustlib-slice_indexrs-wrappers).
