@@ -111,6 +111,23 @@ fn tracked_patterns(o: Option<Tracked<PermissionU32>>) {
     let f = |x: u32, t: Tracked<PermissionU32>| x;
 }
 
+// References to Tracked, treated the same as Tracked of a reference
+fn tracked_ref_params(
+    x: u32,
+    a: &Tracked<PermissionU32>,
+    b: &mut Tracked<PermissionU32>,
+    c: Tracked<&PermissionU32>,
+) {
+}
+
+fn tracked_ref_params_one_line(x: u32, a: &Tracked<PermissionU32>) {
+}
+
+struct TrackedRefWrapper<'a> {
+    perm: &'a Tracked<PermissionU32>,
+    x: u32,
+}
+
 // Lines holding nothing but tracked code
 fn tracked_alone(
     x: u32,
