@@ -165,7 +165,9 @@ pub(crate) fn check_item_struct<'tcx>(
     let path = ctxt.def_id_to_vir_path(def_id);
     let name = path.segments.last().expect("unexpected struct path");
 
-    let variant_name = name.clone();
+    // A variant name is a plain Rust identifier, not a path segment,
+    // so it carries no type-namespace prefix
+    let variant_name = str_ident(&name.friendly_name());
     let (variant, transparency) = if vattrs.external_body {
         let variant = Variant {
             name: variant_name,
@@ -350,7 +352,7 @@ pub(crate) fn check_item_union<'tcx>(
     let (variants, transparency) = if vattrs.external_body {
         let name = path.segments.last().expect("unexpected struct path");
         let variant = Variant {
-            name: name.clone(),
+            name: str_ident(&name.friendly_name()),
             fields: Arc::new(vec![]),
             ctor_style: CtorPrintStyle::Braces,
         };
@@ -673,7 +675,7 @@ pub(crate) fn check_item_external<'tcx>(
 
     if vattrs.external_body {
         let transparency = DatatypeTransparency::Never;
-        let variant_name = name.clone();
+        let variant_name = str_ident(&name.friendly_name());
         let variant = Variant {
             name: variant_name,
             fields: Arc::new(vec![]),
@@ -698,7 +700,7 @@ pub(crate) fn check_item_external<'tcx>(
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     } else if external_adt_def.is_struct() {
-        let variant_name = Arc::new(name.clone());
+        let variant_name = str_ident(&name.friendly_name());
         let (variant, inner_vis) = check_variant_data(
             span,
             ctxt,

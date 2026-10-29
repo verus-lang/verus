@@ -1426,7 +1426,7 @@ test_verify_one_file! {
         {
             while true { }
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot use while in proof or spec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use loop in proof or spec mode")
 }
 
 test_verify_one_file! {

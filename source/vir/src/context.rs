@@ -449,7 +449,7 @@ impl GlobalCtx {
 
         for t in &krate.trait_impls {
             if let Some(last) = &t.x.impl_path.segments.last() {
-                if last.starts_with(crate::def::PREFIX_IMPL_TUPLE) {
+                if crate::def::is_impl_tuple(last) {
                     // Our internally auto-generated tuple impls don't depend on any other impls,
                     // so they can always appear first.
                     // Furthermore, we currently lack the impl_path dependency edges that
