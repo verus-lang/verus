@@ -112,3 +112,50 @@ jobs:
           name: verita-results
           path: ${{ github.workspace }}/tools/verita/${{ steps.output.outputs.dir }}
           retention-days: 90
+
+      - name: build failure message
+        if: failure()
+        id: failure-message
+        working-directory: ./tools/verita
+        env:
+          OUTPUT_DIR: ${{ steps.output.outputs.dir }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          FAILED=""
+          if [ -n "$OUTPUT_DIR" ] && ls "$OUTPUT_DIR"/*.json >/dev/null 2>&1; then
+            FAILED=$(python3 - "$OUTPUT_DIR" <<'PY'
+          import glob, json, sys
+          names = set()
+          for f in glob.glob(sys.argv[1] + "/*.json"):
+              runner = json.load(open(f)).get("runner", {})
+              if runner.get("success") is False:
+                  names.add(runner.get("run_configuration", {}).get("name", f))
+          print("\n".join(sorted(names)))
+          PY
+            )
+          fi
+          {
+            echo 'content<<EOF_MSG'
+            echo "The nightly Verita run failed: $RUN_URL"
+            if [ -n "$FAILED" ]; then
+              echo ''
+              echo "**Failed projects ($(echo "$FAILED" | wc -l | tr -d ' ')):**"
+              echo "$FAILED" | sed 's/^/- /'
+            else
+              echo ''
+              echo 'No per-project failures were recorded; the run likely failed before or outside verification (e.g., during build).'
+            fi
+            echo 'EOF_MSG'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: notify zulip
+        if: failure()
+        uses: zulip/github-actions-zulip/send-message@v1
+        with:
+          api-key: ${{ secrets.ZULIP_API_KEY }}
+          email: "github-notifier-bot@verus-lang.zulipchat.com"
+          organization-url: "https://verus-lang.zulipchat.com"
+          to: "dev"
+          type: "stream"
+          topic: "Verita failure!"
+          content: ${{ steps.failure-message.outputs.content }}
