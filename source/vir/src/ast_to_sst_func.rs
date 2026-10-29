@@ -691,7 +691,7 @@ where
 }
 
 impl MaskSpec {
-    fn map_to_sst(
+    pub(crate) fn map_to_sst(
         &self,
         f: &mut impl FnMut(&Expr) -> Result<Exp, VirErr>,
     ) -> Result<MaskSet, VirErr> {

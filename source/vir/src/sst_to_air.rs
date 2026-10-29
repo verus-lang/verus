@@ -978,7 +978,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             // These functions are special-cased to not take a decoration argument for
             // the first type parameter.
             let skip_first_decoration = match func {
-                InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns => true,
+                InternalFun::ClosureReq
+                | InternalFun::ClosureEns
+                | InternalFun::ClosureOpensInvariants
+                | InternalFun::DefaultEns => true,
                 _ => false,
             };
 
@@ -993,6 +996,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 match func {
                     InternalFun::ClosureReq => str_ident(crate::def::CLOSURE_REQ),
                     InternalFun::ClosureEns => str_ident(crate::def::CLOSURE_ENS),
+                    InternalFun::ClosureOpensInvariants => {
+                        str_ident(crate::def::CLOSURE_OPENS_INVARIANTS)
+                    }
                     InternalFun::DefaultEns => str_ident(crate::def::DEFAULT_ENS),
                     InternalFun::CheckDecreaseHeight => {
                         str_ident(crate::def::CHECK_DECREASE_HEIGHT)

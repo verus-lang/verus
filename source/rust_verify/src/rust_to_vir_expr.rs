@@ -2049,7 +2049,7 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
                 IntTy::I64 => vir::ast_util::const_int_from_i128(val as i64 as i128),
                 IntTy::I128 => vir::ast_util::const_int_from_i128(val as i128),
                 IntTy::Isize => {
-                    let v = val as isize as i128;
+                    let v = tcx.data_layout.pointer_size().sign_extend(val);
                     if !(v >= i32::MIN as i128 && v <= i32::MAX as i128) {
                         unsupported_err!(
                             expr.span,
@@ -4419,7 +4419,7 @@ pub(crate) fn closure_to_vir<'tcx>(
         let mut header =
             vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Closure)?;
         add_param_decls(bctx, closure_expr.span, &mut header, &mut body, pattern_stmts)?;
-        let vir::headers::Header { require, ensure, ensure_id_typ, .. } = header;
+        let vir::headers::Header { require, ensure, ensure_id_typ, invariant_mask, .. } = header;
         assert!(ensure.1.len() == 0);
 
         let exprx = if is_spec_fn {
@@ -4432,6 +4432,11 @@ pub(crate) fn closure_to_vir<'tcx>(
                 );
             }
             ExprX::Closure(Arc::new(params), body)
+        } else if invariant_mask.is_some() && proof_fn_modes.is_none() {
+            return err_span(
+                closure_expr.span,
+                "opens_invariants is not supported for spec or exec closures",
+            );
         } else {
             bctx.push_body_erasure(
                 *def_id,
@@ -4471,6 +4476,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                 body,
                 requires: require,
                 ensures: ensure.0,
+                mask_spec: invariant_mask,
                 ret: ret,
                 external_spec: None, // filled in by ast_simplify
             }

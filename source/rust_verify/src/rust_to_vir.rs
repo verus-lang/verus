@@ -6,6 +6,7 @@ For soundness's sake, be as defensive as possible:
 - explicitly match all fields of the Rust AST so we catch any features added in the future
 */
 
+use crate::attributes::forbid_unsafe_attributes;
 use crate::context::{Context, ContextX};
 use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
 use crate::query::{PreCrate, QueryError};
@@ -607,6 +608,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
     }
     for item in crate::util::iter_crate_free_items(tcx) {
         if let Item { kind: ItemKind::Mod(_ident, _module), owner_id, .. } = item {
+            forbid_unsafe_attributes(tcx, *owner_id, &mut errors);
             let path =
                 def_id_to_vir_path_option(ctxt.tcx, Some(&ctxt.verus_items), owner_id.to_def_id());
             if let Some(path) = path {
@@ -640,6 +642,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
                 external_body: _,
                 external_fn_specification: _,
             } => {
+                forbid_unsafe_attributes(tcx, crate_item.id.owner_id(), &mut errors);
                 match crate_item.id {
                     GeneralItemId::ItemId(item_id) => {
                         let item = ctxt.tcx.hir_item(item_id);

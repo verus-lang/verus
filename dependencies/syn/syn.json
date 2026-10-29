@@ -1,5 +1,5 @@
 {
-  "version": "0.0.0-2026-05-24-0157",
+  "version": "0.0.0-2026-09-06-0133",
   "types": [
     {
       "ident": "Abi",
@@ -1840,6 +1840,13 @@
         "ensures": {
           "option": {
             "syn": "Ensures"
+          }
+        },
+        "invariants": {
+          "option": {
+            "box": {
+              "syn": "SignatureInvariants"
+            }
           }
         },
         "inner_attrs": {
