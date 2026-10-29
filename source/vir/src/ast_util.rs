@@ -24,7 +24,7 @@ impl Segment {
     }
 
     /// Apply f to the name of a V or T segment, keeping the namespace and disambiguator.
-    /// (For other segments, apply f to the segment's string encoding.)
+    /// Panics on other kinds of segments.
     pub fn map_name(&self, f: impl FnOnce(&str) -> String) -> Segment {
         match self {
             Segment::V(name, d) => Segment::V(Arc::new(f(name)), *d),
@@ -35,10 +35,6 @@ impl Segment {
 
     pub fn is_foreign_mod(&self) -> bool {
         matches!(self, Segment::ForeignMod(_))
-    }
-
-    pub fn is_anon_const(&self) -> bool {
-        matches!(self, Segment::AnonConst(_))
     }
 
     /// Name without any namespace or disambiguator annotations (for diagnostics)
@@ -130,7 +126,6 @@ pub fn path_segments_match_prefix(target: &Segments, prefix: &Segments) -> bool 
 }
 
 pub fn parse_path_segments_from_user_str(s: &str) -> Result<Segments, crate::ast::VirErr> {
-    // The user writes a module path, whose segments are all in the type namespace
     let mut arg_segments: Vec<Segment> =
         s.split("::").map(|s| Segment::T(Arc::new(s.to_string()), 0)).collect::<Vec<_>>();
     if arg_segments.first().map(|x| x.is_name("")) == Some(true) {

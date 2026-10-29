@@ -1256,7 +1256,3 @@ pub fn fn_fp_postcondition_name(op: UninterpretedFloatBinaryOp) -> Fun {
         }
     }
 }
-
-pub fn is_anon_const(f: &Fun) -> bool {
-    f.path.segments.last().is_some_and(|s| s.is_anon_const())
-}
