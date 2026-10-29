@@ -739,8 +739,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-test_verify_one_file! {
-    #[test] bare_ops_disallowed verus_code! {
+test_verify_one_file_with_options! {
+    #[test] bare_ops_disallowed ["--allow-hand-written-internal-attrs"] => verus_code! {
         #[verus::internal(verus_macro)]
         #[verus::internal(spec)]
         fn op_minus(x: i8) -> i8 { -x }
