@@ -4,23 +4,22 @@
 //! Specifications require a valid build hasher, as described by
 //! [`builds_valid_hashers`].
 //!
-//! Likewise, the specification is only meaningful when the `Key`
-//! obeys our hash table model, i.e., (1) `Key::hash` is
-//! deterministic, (2) any two `Key`s are identical if and only if the
-//! executable `==` operator considers them equal, and (3)
-//! `Key::clone` produces a result equal to its input. We have an
-//! axiom that all primitive types and `Box`es thereof obey this
-//! model. But if you want to use some other key type `MyKey`, you
-//! need to explicitly state your assumption that it does so with
+//! Likewise, the specification is only meaningful when `eq_spec`
+//! faithfully models executable equality, executable equality is
+//! reflexive, symmetric, and transitive; hashing is
+//! deterministic; executable-equal keys hash identically; and
+//! cloning, when supported, preserves structural identity and
+//! executable equality. We have an axiom that all primitive types and
+//! `Box`es thereof obey this model. But if you want to use some other
+//! key type `MyKey`, you need to explicitly state your assumption
+//! that it does so with
 //! `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>());`. In
 //! the future, we plan to devise a way for you to prove that it does
 //! so, so that you don't have to make such an assumption.
 //!
-//! Insertion and borrowed-key operations also support the weaker
-//! [`obeys_hash_model`] assumption, together with a valid equality spec.
-//! Their contracts use `eq_spec`, without identifying equality with
-//! structural equality. Broadcast lemmas provide structural- and
-//! deep-equality special cases.
+//! Insertion and borrowed-key operations' contracts use `eq_spec`,
+//! without identifying equality with structural equality. Broadcast
+//! lemmas provide structural- and deep-equality special cases.
 //!
 //! Borrowed-key lookups also require
 //! `borrowed_key_hashing_matches::<Key, Q>()` and use the model in
@@ -102,14 +101,15 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
 /// Specifies whether a type `Key` conforms to our requirements to be
 /// a key in our hash table (and hash set) model.
 ///
-/// The three requirements are (1) the hash function is deterministic,
-/// (2) any two keys of type `Key` are identical if and only if they
-/// are considered equal by the executable `==` operator, and (3) the
-/// executable `Key::clone` function produces a result identical to
-/// its input. Requirement (1) isn't satisfied by having `Key`
-/// implement `Hash`, since this trait doesn't mandate determinism.
-/// For `Eq` types, requirement (2) also requires `PartialEqSpec::eq_spec`
-/// to faithfully model executable equality.
+/// These requirements are that (1)
+/// `<Key as PartialEqSpec>::obeys_eq_spec()` is true and executable
+/// equality is reflexive, symmetric, and transitive; (2) the hash
+/// function is deterministic; (3) executable-equal keys have equal
+/// hashes; and (4) if `Key` implements `Clone`, cloning produces a
+/// result structurally identical and executable-equal to its input.
+/// `Key` need not implement `Clone`. Requirement (2) isn't satisfied
+/// by having `Key` implement `Hash`, since this trait doesn't mandate
+/// determinism.
 ///
 /// The standard library has axioms that all primitive types and `Box`es
 /// thereof obey this model. If you want to use some other key
@@ -121,25 +121,28 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
 #[verifier::external_body]
 pub uninterp spec fn obeys_key_model<Key: ?Sized>() -> bool;
 
-/// Whether hashing is deterministic and executable-equal keys hash identically.
-///
-/// Unlike [`obeys_key_model`], this does not require executable equality to
-/// coincide with structural equality. Collection contracts separately require
-/// the equality specification to describe executable equality.
-pub uninterp spec fn obeys_hash_model<Key: ?Sized>() -> bool;
-
-/// The legacy key model supplies both hashing validity and structural equality.
-pub broadcast axiom fn axiom_obeys_key_model<Key: Hash + Eq + ?Sized>()
+/// The key model supplies faithful equality and equivalence laws, including for unsized keys.
+pub broadcast axiom fn axiom_key_model_implies_obeys_eq<Key: Hash + Eq + ?Sized>()
+    requires
+        #[trigger] obeys_key_model::<Key>(),
     ensures
-        #![trigger obeys_key_model::<Key>()]
-        #![trigger obeys_hash_model::<Key>()]
-        obeys_key_model::<Key>() ==> {
-            &&& obeys_hash_model::<Key>()
-            &&& <Key as PartialEqSpec>::obeys_eq_spec()
-            &&& forall|k1: &Key, k2: &Key| #[trigger]
-                <Key as PartialEqSpec>::eq_spec(k1, k2) <==> k1 == k2
-        },
+        <Key as PartialEqSpec>::obeys_eq_spec(),
+        forall|a: &Key| #[trigger] a.eq_spec(a),
+        forall|a: &Key, b: &Key| #[trigger] a.eq_spec(b) <==> b.eq_spec(a),
+        forall|a: &Key, b: &Key, c: &Key|
+            a.eq_spec(b) && #[trigger] b.eq_spec(c) ==> #[trigger] a.eq_spec(c),
 ;
+
+pub broadcast proof fn lemma_key_model_implies_obeys_eq<Key: Hash + Eq>()
+    requires
+        #[trigger] obeys_key_model::<Key>(),
+    ensures
+        crate::laws_eq::obeys_eq::<Key>(),
+{
+    broadcast use axiom_key_model_implies_obeys_eq;
+
+    reveal(crate::laws_eq::obeys_eq_spec_properties);
+}
 
 /// Whether borrowing a key preserves its `Hash` and `Eq` behavior.
 ///
@@ -470,9 +473,7 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
 ///
 /// We model a `HashMap` as having a view of type `Map<Key, Value>`, which reflects the current state of the map.
 ///
-/// Structural-equality specifications require `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()`.
-/// Insertion, membership, lookup, and removal also support `obeys_hash_model::<Key>()`
-/// together with a valid equality specification, without requiring structural equality.
+/// These specifications are only meaningful if `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()` hold.
 /// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
 /// for information on use with primitive types and other types,
 /// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
@@ -715,8 +716,7 @@ pub open spec fn hash_map_insert_ensures<Key: Eq + Hash, Value, S: BuildHasher, 
     result: Option<Value>,
 ) -> bool {
     ({
-        &&& obeys_hash_model::<Key>()
-        &&& <Key as PartialEqSpec>::obeys_eq_spec()
+        &&& obeys_key_model::<Key>()
         &&& builds_valid_hashers::<S>()
     }) ==> {
         &&& hash_map_keys_differ(old_m)
@@ -761,8 +761,7 @@ pub broadcast proof fn lemma_hash_map_insert_ensures_if_eq_matches_equality<
     result: Option<Value>,
 )
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
         #[trigger] hash_map_insert_ensures(old_m, final_m, k, v, result),
@@ -788,8 +787,7 @@ pub broadcast proof fn lemma_hash_map_insert_ensures_if_eq_matches_deep_equality
     result: Option<Value>,
 )
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
         #[trigger] hash_map_insert_ensures(old_m, final_m, k, v, result),
@@ -848,10 +846,8 @@ pub open spec fn hash_map_contains_key_ensures<
     Q: Hash + Eq + ?Sized,
 >(m: &HashMap<Key, Value, S, A>, k: &Q, result: bool) -> bool {
     ({
-        &&& obeys_hash_model::<Key>()
-        &&& obeys_hash_model::<Q>()
-        &&& <Key as PartialEqSpec>::obeys_eq_spec()
-        &&& <Q as PartialEqSpec>::obeys_eq_spec()
+        &&& obeys_key_model::<Key>()
+        &&& obeys_key_model::<Q>()
         &&& builds_valid_hashers::<S>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
     }) ==> {
@@ -887,8 +883,7 @@ pub broadcast proof fn lemma_hash_map_contains_key_ensures_if_eq_matches_equalit
     A: Allocator,
 >(m: &HashMap<Key, Value, S, A>, k: &Key, result: bool)
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
         #[trigger] hash_map_contains_key_ensures(m, k, result),
@@ -904,8 +899,7 @@ pub broadcast proof fn lemma_hash_map_contains_key_ensures_if_eq_matches_deep_eq
     A: Allocator,
 >(m: &HashMap<Key, Value, S, A>, k: &Key, result: bool)
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
         #[trigger] hash_map_contains_key_ensures(m, k, result),
@@ -943,10 +937,8 @@ pub open spec fn hash_map_get_ensures<
     Q: Hash + Eq + ?Sized,
 >(m: &HashMap<Key, Value, S, A>, k: &Q, result: Option<&Value>) -> bool {
     ({
-        &&& obeys_hash_model::<Key>()
-        &&& obeys_hash_model::<Q>()
-        &&& <Key as PartialEqSpec>::obeys_eq_spec()
-        &&& <Q as PartialEqSpec>::obeys_eq_spec()
+        &&& obeys_key_model::<Key>()
+        &&& obeys_key_model::<Q>()
         &&& builds_valid_hashers::<S>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
     }) ==> {
@@ -986,8 +978,7 @@ pub broadcast proof fn lemma_hash_map_get_ensures_if_eq_matches_equality<
     A: Allocator,
 >(m: &HashMap<Key, Value, S, A>, k: &Key, result: Option<&Value>)
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
         #[trigger] hash_map_get_ensures(m, k, result),
@@ -1006,8 +997,7 @@ pub broadcast proof fn lemma_hash_map_get_ensures_if_eq_matches_deep_equality<
     A: Allocator,
 >(m: &HashMap<Key, Value, S, A>, k: &Key, result: Option<&Value>)
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
         #[trigger] hash_map_get_ensures(m, k, result),
@@ -1064,10 +1054,8 @@ pub open spec fn hash_map_remove_ensures<
     result: Option<Value>,
 ) -> bool {
     ({
-        &&& obeys_hash_model::<Key>()
-        &&& obeys_hash_model::<Q>()
-        &&& <Key as PartialEqSpec>::obeys_eq_spec()
-        &&& <Q as PartialEqSpec>::obeys_eq_spec()
+        &&& obeys_key_model::<Key>()
+        &&& obeys_key_model::<Q>()
         &&& builds_valid_hashers::<S>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
     }) ==> {
@@ -1118,8 +1106,7 @@ pub broadcast proof fn lemma_hash_map_remove_ensures_if_eq_matches_equality<
     result: Option<Value>,
 )
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
         #[trigger] hash_map_remove_ensures(old_m, final_m, k, result),
@@ -1150,8 +1137,7 @@ pub broadcast proof fn lemma_hash_map_remove_ensures_if_eq_matches_deep_equality
     result: Option<Value>,
 )
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
         #[trigger] hash_map_remove_ensures(old_m, final_m, k, result),
@@ -1295,9 +1281,7 @@ impl<'a, K> super::iter::IteratorSpecImpl for hash_set::Iter::<'a, K> {
 ///
 /// We model a `HashSet` as having a view of type `Set<Key>`, which reflects the current state of the set.
 ///
-/// Structural-equality specifications require `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()`.
-/// Insertion, membership, lookup, and removal also support `obeys_hash_model::<Key>()`
-/// together with a valid equality specification, without requiring structural equality.
+/// These specifications are only meaningful if `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()` hold.
 /// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
 /// for information on use with primitive types and custom types,
 /// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
@@ -1400,8 +1384,7 @@ pub open spec fn hash_set_insert_ensures<Key: Eq + Hash, S: BuildHasher, A: Allo
     result: bool,
 ) -> bool {
     ({
-        &&& obeys_hash_model::<Key>()
-        &&& <Key as PartialEqSpec>::obeys_eq_spec()
+        &&& obeys_key_model::<Key>()
         &&& builds_valid_hashers::<S>()
     }) ==> {
         &&& hash_set_elements_differ(old_m)
@@ -1433,8 +1416,7 @@ pub broadcast proof fn lemma_hash_set_insert_ensures_if_eq_matches_equality<
     A: Allocator,
 >(old_m: &HashSet<Key, S, A>, final_m: &HashSet<Key, S, A>, k: Key, result: bool)
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
         #[trigger] hash_set_insert_ensures(old_m, final_m, k, result),
@@ -1457,8 +1439,7 @@ pub broadcast proof fn lemma_hash_set_insert_ensures_if_eq_matches_deep_equality
     A: Allocator,
 >(old_m: &HashSet<Key, S, A>, final_m: &HashSet<Key, S, A>, k: Key, result: bool)
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
         #[trigger] hash_set_insert_ensures(old_m, final_m, k, result),
@@ -1497,10 +1478,8 @@ pub open spec fn hash_set_contains_ensures<
     Q: Hash + Eq + ?Sized,
 >(m: &HashSet<Key, S, A>, k: &Q, result: bool) -> bool {
     ({
-        &&& obeys_hash_model::<Key>()
-        &&& obeys_hash_model::<Q>()
-        &&& <Key as PartialEqSpec>::obeys_eq_spec()
-        &&& <Q as PartialEqSpec>::obeys_eq_spec()
+        &&& obeys_key_model::<Key>()
+        &&& obeys_key_model::<Q>()
         &&& builds_valid_hashers::<S>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
     }) ==> {
@@ -1531,8 +1510,7 @@ pub broadcast proof fn lemma_hash_set_contains_ensures_if_eq_matches_equality<
     A: Allocator,
 >(m: &HashSet<Key, S, A>, k: &Key, result: bool)
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
         #[trigger] hash_set_contains_ensures(m, k, result),
@@ -1547,8 +1525,7 @@ pub broadcast proof fn lemma_hash_set_contains_ensures_if_eq_matches_deep_equali
     A: Allocator,
 >(m: &HashSet<Key, S, A>, k: &Key, result: bool)
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
         #[trigger] hash_set_contains_ensures(m, k, result),
@@ -1574,10 +1551,8 @@ pub open spec fn hash_set_get_ensures<
     Q: Hash + Eq + ?Sized,
 >(m: &HashSet<Key, S, A>, k: &Q, result: Option<&Key>) -> bool {
     ({
-        &&& obeys_hash_model::<Key>()
-        &&& obeys_hash_model::<Q>()
-        &&& <Key as PartialEqSpec>::obeys_eq_spec()
-        &&& <Q as PartialEqSpec>::obeys_eq_spec()
+        &&& obeys_key_model::<Key>()
+        &&& obeys_key_model::<Q>()
         &&& builds_valid_hashers::<S>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
     }) ==> {
@@ -1612,8 +1587,7 @@ pub broadcast proof fn lemma_hash_set_get_ensures_if_eq_matches_equality<
     A: Allocator,
 >(m: &HashSet<Key, S, A>, k: &Key, result: Option<&Key>)
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
         #[trigger] hash_set_get_ensures(m, k, result),
@@ -1631,8 +1605,7 @@ pub broadcast proof fn lemma_hash_set_get_ensures_if_eq_matches_deep_equality<
     A: Allocator,
 >(m: &HashSet<Key, S, A>, k: &Key, result: Option<&Key>)
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
         #[trigger] hash_set_get_ensures(m, k, result),
@@ -1669,10 +1642,8 @@ pub open spec fn hash_set_remove_ensures<
     Q: Hash + Eq + ?Sized,
 >(old_m: &HashSet<Key, S, A>, final_m: &HashSet<Key, S, A>, k: &Q, result: bool) -> bool {
     ({
-        &&& obeys_hash_model::<Key>()
-        &&& obeys_hash_model::<Q>()
-        &&& <Key as PartialEqSpec>::obeys_eq_spec()
-        &&& <Q as PartialEqSpec>::obeys_eq_spec()
+        &&& obeys_key_model::<Key>()
+        &&& obeys_key_model::<Q>()
         &&& builds_valid_hashers::<S>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
     }) ==> {
@@ -1711,8 +1682,7 @@ pub broadcast proof fn lemma_hash_set_remove_ensures_if_eq_matches_equality<
     A: Allocator,
 >(old_m: &HashSet<Key, S, A>, final_m: &HashSet<Key, S, A>, k: &Key, result: bool)
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
         #[trigger] hash_set_remove_ensures(old_m, final_m, k, result),
@@ -1734,8 +1704,7 @@ pub broadcast proof fn lemma_hash_set_remove_ensures_if_eq_matches_deep_equality
     A: Allocator,
 >(old_m: &HashSet<Key, S, A>, final_m: &HashSet<Key, S, A>, k: &Key, result: bool)
     requires
-        obeys_hash_model::<Key>(),
-        <Key as PartialEqSpec>::obeys_eq_spec(),
+        obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
         #[trigger] hash_set_remove_ensures(old_m, final_m, k, result),
@@ -1936,8 +1905,9 @@ pub assume_specification<'a, Key: Hash + Eq, Value, S: BuildHasher, A: Allocator
     A,
 >::entry ](m: &'a mut HashMap<Key, Value, S, A>, key: Key) -> (entry: Entry<'a, Key, Value, A>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> (entry.key() == key
-            && entry.value() == old(m)@.get(key) && final(m)@ == (match entry.final_value() {
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() && eq_matches_equality::<Key>()
+            ==> (entry.key() == key && entry.value() == old(m)@.get(key) && final(m)@ == (
+        match entry.final_value() {
             Some(value) => old(m)@.insert(key, value),
             None => old(m)@.remove(key),
         })),
@@ -2085,7 +2055,6 @@ pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::insert_en
 ;
 
 pub broadcast group group_hash_axioms {
-    axiom_obeys_key_model,
     lemma_hash_map_insert_ensures_if_eq_matches_equality,
     lemma_hash_map_insert_ensures_if_eq_matches_deep_equality,
     lemma_hash_map_contains_key_ensures_if_eq_matches_equality,

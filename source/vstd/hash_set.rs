@@ -8,6 +8,8 @@ use super::prelude::*;
 #[allow(unused_imports)]
 use super::set::*;
 #[cfg(verus_keep_ghost)]
+use super::std_specs::cmp::eq_matches_equality;
+#[cfg(verus_keep_ghost)]
 use super::std_specs::hash::obeys_key_model;
 #[allow(unused_imports)]
 use core::hash::Hash;
@@ -16,6 +18,8 @@ use std::collections::HashSet;
 verus! {
 
 /// `HashSetWithView` is a trusted wrapper around `std::collections::HashSet` with `View` implemented for the type `vstd::map::Set<<Key as View>::V>`.
+///
+/// Its constructors require [`eq_matches_equality`] in addition to [`obeys_key_model`].
 ///
 /// See the Rust documentation for [`HashSet`](https://doc.rust-lang.org/std/collections/struct.HashSet.html)
 /// for details about its implementation.
@@ -44,6 +48,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     pub fn new() -> (result: Self)
         requires
             obeys_key_model::<Key>(),
+            eq_matches_equality::<Key>(),
             forall|k1: Key, k2: Key| k1@ == k2@ ==> k1 == k2,
         ensures
             result@ == Set::<<Key as View>::V>::empty(),
@@ -60,6 +65,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     pub fn with_capacity(capacity: usize) -> (result: Self)
         requires
             obeys_key_model::<Key>(),
+            eq_matches_equality::<Key>(),
             forall|k1: Key, k2: Key| k1@ == k2@ ==> k1 == k2,
         ensures
             result@ == Set::<<Key as View>::V>::empty(),

@@ -291,7 +291,7 @@ test_verify_one_file! {
         use std::collections::HashMap;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         struct MyStruct
         {
             pub i: u16,
@@ -346,7 +346,7 @@ test_verify_one_file! {
         use std::collections::HashSet;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         struct MyStruct
         {
             pub i: u16,
@@ -411,13 +411,12 @@ test_verify_one_file! {
         use core::hash::Hash;
         use std::collections::{HashMap, HashSet};
         use vstd::prelude::*;
-        use vstd::std_specs::cmp::{PartialEqSpec, eq_matches_equality};
-        use vstd::std_specs::hash::obeys_hash_model;
+        use vstd::std_specs::cmp::eq_matches_equality;
+        use vstd::std_specs::hash::obeys_key_model;
 
         fn test_map<Key: Hash + Eq + Copy>(m: &mut HashMap<Key, u32>, key: Key)
             requires
-                obeys_hash_model::<Key>(),
-                <Key as PartialEqSpec>::obeys_eq_spec(),
+                obeys_key_model::<Key>(),
                 eq_matches_equality::<Key>(),
         {
             let ghost before = m@;
@@ -442,8 +441,7 @@ test_verify_one_file! {
 
         fn test_set<Key: Hash + Eq + Copy>(m: &mut HashSet<Key>, key: Key)
             requires
-                obeys_hash_model::<Key>(),
-                <Key as PartialEqSpec>::obeys_eq_spec(),
+                obeys_key_model::<Key>(),
                 eq_matches_equality::<Key>(),
         {
             let ghost before = m@;
@@ -475,8 +473,8 @@ test_verify_one_file! {
         use core::hash::Hash;
         use std::collections::{HashMap, HashSet};
         use vstd::prelude::*;
-        use vstd::std_specs::cmp::{PartialEqSpec, eq_matches_deep_equality};
-        use vstd::std_specs::hash::obeys_hash_model;
+        use vstd::std_specs::cmp::eq_matches_deep_equality;
+        use vstd::std_specs::hash::obeys_key_model;
 
         fn test_map<Key: Hash + Eq + Copy + DeepView, Value: DeepView>(
             key: Key,
@@ -487,8 +485,7 @@ test_verify_one_file! {
             other_value: Value,
         )
             requires
-                obeys_hash_model::<Key>(),
-                <Key as PartialEqSpec>::obeys_eq_spec(),
+                obeys_key_model::<Key>(),
                 eq_matches_deep_equality::<Key>(),
                 key != equivalent,
                 key.deep_view() == equivalent.deep_view(),
@@ -546,8 +543,7 @@ test_verify_one_file! {
             other: Key,
         )
             requires
-                obeys_hash_model::<Key>(),
-                <Key as PartialEqSpec>::obeys_eq_spec(),
+                obeys_key_model::<Key>(),
                 eq_matches_deep_equality::<Key>(),
                 key != equivalent,
                 key.deep_view() == equivalent.deep_view(),
@@ -602,17 +598,15 @@ test_verify_one_file! {
         use vstd::prelude::*;
         use vstd::std_specs::borrow::BorrowSpec;
         use vstd::std_specs::cmp::PartialEqSpec;
-        use vstd::std_specs::hash::{borrowed_key_hashing_matches, obeys_hash_model};
+        use vstd::std_specs::hash::{borrowed_key_hashing_matches, obeys_key_model};
 
         fn test_map<Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized>(
             key: Key,
             query: &Q,
         )
             requires
-                obeys_hash_model::<Key>(),
-                obeys_hash_model::<Q>(),
-                <Key as PartialEqSpec>::obeys_eq_spec(),
-                <Q as PartialEqSpec>::obeys_eq_spec(),
+                obeys_key_model::<Key>(),
+                obeys_key_model::<Q>(),
                 borrowed_key_hashing_matches::<Key, Q>(),
                 <Key as BorrowSpec<Q>>::obeys_borrow_spec(),
                 query.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)),
@@ -641,10 +635,8 @@ test_verify_one_file! {
             query: &Q,
         )
             requires
-                obeys_hash_model::<Key>(),
-                obeys_hash_model::<Q>(),
-                <Key as PartialEqSpec>::obeys_eq_spec(),
-                <Q as PartialEqSpec>::obeys_eq_spec(),
+                obeys_key_model::<Key>(),
+                obeys_key_model::<Q>(),
                 borrowed_key_hashing_matches::<Key, Q>(),
                 <Key as BorrowSpec<Q>>::obeys_borrow_spec(),
                 query.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)),
@@ -671,23 +663,98 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_hash_equality_requires_valid_spec verus_code! {
+    #[test] test_hash_key_model_supplies_equality verus_code! {
         use core::hash::Hash;
         use std::collections::HashSet;
         use vstd::prelude::*;
-        use vstd::std_specs::cmp::eq_matches_equality;
-        use vstd::std_specs::hash::obeys_hash_model;
+        use vstd::std_specs::cmp::PartialEqSpec;
+        use vstd::std_specs::hash::obeys_key_model;
 
-        fn test<Key: Hash + Eq>(key: Key)
+        broadcast use {
+            vstd::std_specs::hash::axiom_key_model_implies_obeys_eq,
+            vstd::std_specs::hash::lemma_key_model_implies_obeys_eq,
+        };
+
+        fn test<Key: Hash + Eq + Copy>(key: Key)
             requires
-                obeys_hash_model::<Key>(),
-                eq_matches_equality::<Key>(),
+                obeys_key_model::<Key>(),
+            ensures
+                vstd::laws_eq::obeys_eq::<Key>(),
         {
             let mut m = HashSet::<Key>::new();
             let inserted = m.insert(key);
-            assert(inserted); // FAILS
+            assert(inserted);
+            assert(m@.contains(key));
+            let present = m.contains(&key);
+            assert(present);
+            let stored = m.get(&key);
+            assert(stored == Some(&key));
+            let removed = m.remove(&key);
+            assert(removed);
         }
-    } => Err(err) => assert_one_fails(err)
+
+        proof fn test_unsized<Q: Hash + Eq + ?Sized>(a: &Q, b: &Q, c: &Q)
+            requires
+                obeys_key_model::<Q>(),
+            ensures
+                <Q as PartialEqSpec>::obeys_eq_spec(),
+                a.eq_spec(a),
+                a.eq_spec(b) == b.eq_spec(a),
+                a.eq_spec(b) && b.eq_spec(c) ==> a.eq_spec(c),
+        {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_legacy_requires_structural_equality verus_code! {
+        use core::hash::Hash;
+        use std::collections::HashMap;
+        use vstd::hash_map::HashMapWithView;
+        use vstd::hash_set::HashSetWithView;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::obeys_key_model;
+
+        fn test_entry<Key: Hash + Eq>(m: &mut HashMap<Key, u32>, key: Key)
+            requires
+                obeys_key_model::<Key>(),
+        {
+            let entry = m.entry(key);
+            assert(entry.key() == key); // FAILS
+        }
+
+        fn test_map_new<Key: Hash + Eq + View>()
+            requires
+                obeys_key_model::<Key>(),
+                forall|a: Key, b: Key| a@ == b@ ==> a == b,
+        {
+            let _ = HashMapWithView::<Key, u32>::new(); // FAILS
+        }
+
+        fn test_map_with_capacity<Key: Hash + Eq + View>()
+            requires
+                obeys_key_model::<Key>(),
+                forall|a: Key, b: Key| a@ == b@ ==> a == b,
+        {
+            let _ = HashMapWithView::<Key, u32>::with_capacity(1); // FAILS
+        }
+
+        fn test_set_new<Key: Hash + Eq + View>()
+            requires
+                obeys_key_model::<Key>(),
+                forall|a: Key, b: Key| a@ == b@ ==> a == b,
+        {
+            let _ = HashSetWithView::<Key>::new(); // FAILS
+        }
+
+        fn test_set_with_capacity<Key: Hash + Eq + View>()
+            requires
+                obeys_key_model::<Key>(),
+                forall|a: Key, b: Key| a@ == b@ ==> a == b,
+        {
+            let _ = HashSetWithView::<Key>::with_capacity(1); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
 }
 
 test_verify_one_file! {
@@ -698,6 +765,8 @@ test_verify_one_file! {
         use vstd::prelude::*;
         use vstd::std_specs::borrow::BorrowSpec;
         use vstd::std_specs::hash::{borrowed_key_hashing_matches, obeys_key_model};
+
+        broadcast use vstd::std_specs::hash::axiom_key_model_implies_obeys_eq;
 
         fn test_map<Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized>(key: Key, query: &Q)
             requires
@@ -781,7 +850,7 @@ test_verify_one_file! {
         use std::collections::HashMap;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         struct MyStruct
         {
             pub i: u16,
@@ -820,7 +889,7 @@ test_verify_one_file! {
         use std::collections::HashSet;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         struct MyStruct
         {
             pub i: u16,
@@ -859,7 +928,7 @@ test_verify_one_file! {
         use vstd::hash_map::HashMapWithView;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         pub struct MyStruct
         {
             pub i: u16,
@@ -945,7 +1014,7 @@ test_verify_one_file! {
         use vstd::hash_set::HashSetWithView;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq, Clone)]
+        #[derive(PartialEq, Eq, Clone, StructuralEq)]
         pub struct MyStruct
         {
             pub i: u16,
@@ -1040,7 +1109,7 @@ test_verify_one_file! {
         use vstd::hash_map::HashMapWithView;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         pub struct MyStruct
         {
             pub i: u16,
@@ -1085,7 +1154,7 @@ test_verify_one_file! {
         use vstd::hash_set::HashSetWithView;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         pub struct MyStruct
         {
             pub i: u16,

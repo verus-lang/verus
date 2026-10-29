@@ -6,6 +6,8 @@ use super::map::*;
 use super::pervasive::*;
 use super::prelude::*;
 #[cfg(verus_keep_ghost)]
+use super::std_specs::cmp::eq_matches_equality;
+#[cfg(verus_keep_ghost)]
 use super::std_specs::hash::obeys_key_model;
 #[allow(unused_imports)]
 use core::hash::Hash;
@@ -14,6 +16,8 @@ use std::collections::HashMap;
 verus! {
 
 /// `HashMapWithView` is a trusted wrapper around `std::collections::HashMap` with `View` implemented for the type `vstd::map::Map<<Key as View>::V, Value>`.
+///
+/// Its constructors require [`eq_matches_equality`] in addition to [`obeys_key_model`].
 ///
 /// See the Rust documentation for [`HashMap`](https://doc.rust-lang.org/std/collections/struct.HashMap.html)
 /// for details about its implementation.
@@ -43,6 +47,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     pub fn new() -> (result: Self)
         requires
             obeys_key_model::<Key>(),
+            eq_matches_equality::<Key>(),
             forall|k1: Key, k2: Key| k1@ == k2@ ==> k1 == k2,
         ensures
             result@ == Map::<<Key as View>::V, Value>::empty(),
@@ -59,6 +64,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     pub fn with_capacity(capacity: usize) -> (result: Self)
         requires
             obeys_key_model::<Key>(),
+            eq_matches_equality::<Key>(),
             forall|k1: Key, k2: Key| k1@ == k2@ ==> k1 == k2,
         ensures
             result@ == Map::<<Key as View>::V, Value>::empty(),

@@ -475,6 +475,19 @@ pub assume_specification[ <f64 as PartialOrd<f64>>::ge ](x: &f64, y: &f64) -> (o
         ge_ensures::<f64>(*x, *y, o),
 ;
 
+#[cfg(feature = "alloc")]
+impl<T: PartialEq + ?Sized, A: core::alloc::Allocator> PartialEqSpecImpl
+    for alloc::boxed::Box<T, A>
+{
+    open spec fn obeys_eq_spec() -> bool {
+        T::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &Self) -> bool {
+        <T as PartialEqSpec>::eq_spec(&**self, &**other)
+    }
+}
+
 /* reference types & */
 
 impl<A: PointeeSized, B: PointeeSized> PartialEqSpecImpl<&B> for &A
