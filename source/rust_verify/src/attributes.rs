@@ -518,17 +518,8 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "proof_block" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
                 }
-                AttrTree::Fun(_, arg, None) if arg == "ghost_block_wrapped" => {
-                    v.push(Attr::GhostBlock(GhostBlockAttr::GhostWrapped))
-                }
-                AttrTree::Fun(_, arg, None) if arg == "tracked_block_wrapped" => {
-                    v.push(Attr::GhostBlock(GhostBlockAttr::TrackedWrapped))
-                }
                 AttrTree::Fun(_, arg, None) if arg == "tracked_block" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::Tracked))
-                }
-                AttrTree::Fun(_, arg, None) if arg == "ghost_wrapper" => {
-                    v.push(Attr::GhostBlock(GhostBlockAttr::Wrapper))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "proof_in_spec" => v.push(Attr::ProofInSpec),
                 // TODO: remove maybe_negative, strictly_positive
@@ -831,6 +822,15 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "verify" => v.push(Attr::Verify),
                     AttrTree::Fun(_, arg, None) if arg == "proof_block" => {
                         v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "ghost_block_wrapped" => {
+                        v.push(Attr::GhostBlock(GhostBlockAttr::GhostWrapped))
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "tracked_block_wrapped" => {
+                        v.push(Attr::GhostBlock(GhostBlockAttr::TrackedWrapped))
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "ghost_wrapper" => {
+                        v.push(Attr::GhostBlock(GhostBlockAttr::Wrapper))
                     }
                     AttrTree::Fun(_, arg, None) if arg == "external_body" => {
                         v.push(Attr::ExternalBody)
