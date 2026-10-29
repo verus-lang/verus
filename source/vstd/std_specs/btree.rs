@@ -1171,14 +1171,15 @@ pub assume_specification<
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> {
+        ({
+            &&& obeys_cmp::<Key>()
+            &&& <Q as OrdSpec>::obeys_cmp_spec()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> {
             &&& cursor@.wf()
             &&& cursor@.map == old(map)@
             &&& final(map)@ == cursor.final_map()
-            &&& ({
-                &&& <Q as OrdSpec>::obeys_cmp_spec()
-                &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
-            }) ==> positioned_at_lower_bound(cursor@, bound)
+            &&& positioned_at_lower_bound(cursor@, bound)
         },
 ;
 
@@ -1196,14 +1197,15 @@ pub assume_specification<
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> {
+        ({
+            &&& obeys_cmp::<Key>()
+            &&& <Q as OrdSpec>::obeys_cmp_spec()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> {
             &&& cursor@.wf()
             &&& cursor@.map == old(map)@
             &&& final(map)@ == cursor.final_map()
-            &&& ({
-                &&& <Q as OrdSpec>::obeys_cmp_spec()
-                &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
-            }) ==> positioned_at_upper_bound(cursor@, bound)
+            &&& positioned_at_upper_bound(cursor@, bound)
         },
 ;
 
