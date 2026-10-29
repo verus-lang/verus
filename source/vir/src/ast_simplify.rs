@@ -1236,6 +1236,7 @@ fn add_fndef_axioms_to_function(
                 owning_module: None,
                 auto_imported: true,
                 external_trait_blanket: false,
+                is_unsafe: false,
             };
             trait_impls_out.push(Spanned::new(function.span.clone(), trait_implx));
         }
@@ -1545,6 +1546,7 @@ fn add_tuple_auto_impl(
         owning_module: None,
         auto_imported: true,
         external_trait_blanket: false,
+        is_unsafe: false,
     };
     trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));
 }
@@ -1744,6 +1746,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             owning_module: None,
             auto_imported: true,
             external_trait_blanket: false,
+            is_unsafe: false,
         };
         trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));
 

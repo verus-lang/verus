@@ -738,6 +738,7 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![feature(const_destruct)]
     #![feature(print_internals)]
     #![feature(maybe_uninit_array_assume_init)]
+    #![feature(dropck_eyepatch)]
 };
 
 pub const USE_PRELUDE: &str = crate::common::code_str! {
