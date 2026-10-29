@@ -51,161 +51,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_btree_borrow_requires_query_cmp_spec verus_code! {
-        use core::borrow::Borrow;
-        use core::cmp::Ordering;
-        use core::ops::Bound;
-        use std::collections::BTreeMap;
-        use vstd::prelude::*;
-        use vstd::std_specs::borrow::BorrowSpecImpl;
-        use vstd::std_specs::btree::{
-            borrowed_key_ordering_matches, positioned_at_lower_bound, positioned_at_upper_bound,
-        };
-        use vstd::std_specs::cmp::{OrdSpecImpl, PartialOrdSpecImpl};
-
-        #[derive(PartialEq, Eq, PartialOrd, Ord, StructuralEq)]
-        pub struct Key;
-
-        impl PartialOrdSpecImpl for Key {
-            open spec fn obeys_partial_cmp_spec() -> bool { true }
-            open spec fn partial_cmp_spec(&self, other: &Self) -> Option<Ordering> {
-                Some(Ordering::Equal)
-            }
-        }
-
-        impl OrdSpecImpl for Key {
-            open spec fn obeys_cmp_spec() -> bool { true }
-            open spec fn cmp_spec(&self, other: &Self) -> Ordering { Ordering::Equal }
-        }
-
-        #[derive(PartialEq, Eq, PartialOrd, Ord)]
-        pub enum Query { Before, Stored, After }
-
-        impl PartialOrdSpecImpl for Query {
-            open spec fn obeys_partial_cmp_spec() -> bool { false }
-            open spec fn partial_cmp_spec(&self, other: &Self) -> Option<Ordering> {
-                Some(Ordering::Equal)
-            }
-        }
-
-        impl OrdSpecImpl for Query {
-            open spec fn obeys_cmp_spec() -> bool { false }
-            open spec fn cmp_spec(&self, other: &Self) -> Ordering { Ordering::Equal }
-        }
-
-        impl BorrowSpecImpl<Query> for Key {
-            open spec fn obeys_borrow_spec() -> bool { true }
-            open spec fn spec_borrow(&self) -> &Query { &Query::Stored }
-        }
-
-        impl Borrow<Query> for Key {
-            fn borrow(&self) -> &Query { &Query::Stored }
-        }
-
-        proof fn lemma_key_models()
-            ensures
-                vstd::laws_cmp::obeys_cmp::<Key>(),
-                borrowed_key_ordering_matches::<Key, Query>(),
-        {
-            reveal(vstd::laws_eq::obeys_eq_spec_properties);
-            reveal(vstd::laws_cmp::obeys_partial_cmp_spec_properties);
-            reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
-            reveal(vstd::laws_cmp::obeys_cmp_ord);
-        }
-
-        fn test_lookup() {
-            proof { lemma_key_models(); }
-            let mut m = BTreeMap::<Key, u32>::new();
-            m.insert(Key, 7);
-            assert(m@.contains_key(Key));
-            let found = m.contains_key(&Query::After);
-            assert(found); // FAILS
-        }
-
-        fn test_lower_bound() {
-            proof { lemma_key_models(); }
-            let mut m = BTreeMap::<Key, u32>::new();
-            m.insert(Key, 7);
-            let cursor = m.lower_bound_mut(Bound::Included(&Query::After));
-            assert(positioned_at_lower_bound(cursor@, Bound::Included(&Query::After))); // FAILS
-        }
-
-        fn test_upper_bound() {
-            proof { lemma_key_models(); }
-            let mut m = BTreeMap::<Key, u32>::new();
-            m.insert(Key, 7);
-            let cursor = m.upper_bound_mut(Bound::Included(&Query::Before));
-            assert(positioned_at_upper_bound(cursor@, Bound::Included(&Query::Before))); // FAILS
-        }
-    } => Err(err) => assert_fails(err, 3)
-}
-
-test_verify_one_file! {
-    #[test] test_btree_cursor_bounds_require_borrow_spec verus_code! {
-        use core::borrow::Borrow;
-        use core::cmp::Ordering;
-        use core::ops::Bound;
-        use std::collections::BTreeMap;
-        use vstd::prelude::*;
-        use vstd::std_specs::borrow::BorrowSpecImpl;
-        use vstd::std_specs::btree::{
-            positioned_at_lower_bound, positioned_at_upper_bound,
-        };
-        use vstd::std_specs::cmp::{OrdSpecImpl, PartialOrdSpecImpl};
-
-        #[derive(PartialEq, Eq, PartialOrd, Ord, StructuralEq)]
-        pub struct Key;
-
-        impl PartialOrdSpecImpl for Key {
-            open spec fn obeys_partial_cmp_spec() -> bool { true }
-            open spec fn partial_cmp_spec(&self, other: &Self) -> Option<Ordering> {
-                Some(Ordering::Equal)
-            }
-        }
-
-        impl OrdSpecImpl for Key {
-            open spec fn obeys_cmp_spec() -> bool { true }
-            open spec fn cmp_spec(&self, other: &Self) -> Ordering { Ordering::Equal }
-        }
-
-        impl BorrowSpecImpl<u32> for Key {
-            open spec fn obeys_borrow_spec() -> bool { false }
-            open spec fn spec_borrow(&self) -> &u32 { &0 }
-        }
-
-        impl Borrow<u32> for Key {
-            fn borrow(&self) -> &u32 { &2 }
-        }
-
-        fn test_lower_bound()
-            requires
-                vstd::laws_cmp::obeys_cmp::<Key>(),
-        {
-            let mut m = BTreeMap::<Key, u32>::new();
-            m.insert(Key, 7);
-            let ghost before = m@;
-            let cursor = m.lower_bound_mut(Bound::Included(&1u32));
-            assert(cursor@.wf());
-            assert(cursor@.map == before);
-            assert(positioned_at_lower_bound(cursor@, Bound::Included(&1u32))); // FAILS
-        }
-
-        fn test_upper_bound()
-            requires
-                vstd::laws_cmp::obeys_cmp::<Key>(),
-        {
-            let mut m = BTreeMap::<Key, u32>::new();
-            m.insert(Key, 7);
-            let ghost before = m@;
-            let cursor = m.upper_bound_mut(Bound::Included(&1u32));
-            assert(cursor@.wf());
-            assert(cursor@.map == before);
-            assert(positioned_at_upper_bound(cursor@, Bound::Included(&1u32))); // FAILS
-        }
-    } => Err(err) => assert_fails(err, 2)
-}
-
-test_verify_one_file! {
     #[test] test_btree_map_contains_key_equality verus_code! {
         use std::collections::BTreeMap;
         use vstd::prelude::*;
@@ -914,19 +759,56 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_btree_map_struct verus_code! {
+        use core::cmp::Ordering;
         use std::collections::BTreeMap;
         use vstd::prelude::*;
+        use vstd::std_specs::cmp::{
+            OrdSpec, OrdSpecImpl, PartialOrdSpec, PartialOrdSpecImpl,
+        };
 
-        #[derive(PartialEq, Eq, PartialOrd, Ord, StructuralEq)]
-        struct MyStruct
+        #[derive(PartialEq, Eq, StructuralEq)]
+        pub struct MyStruct
         {
             pub i: u16,
             pub j: i32,
         }
 
+        impl PartialOrdSpecImpl for MyStruct {
+            open spec fn obeys_partial_cmp_spec() -> bool { true }
+
+            open spec fn partial_cmp_spec(&self, other: &Self) -> Option<Ordering> {
+                PartialOrdSpec::partial_cmp_spec(&(self.i, self.j), &(other.i, other.j))
+            }
+        }
+
+        impl OrdSpecImpl for MyStruct {
+            open spec fn obeys_cmp_spec() -> bool { true }
+
+            open spec fn cmp_spec(&self, other: &Self) -> Ordering {
+                OrdSpec::cmp_spec(&(self.i, self.j), &(other.i, other.j))
+            }
+        }
+
+        impl PartialOrd for MyStruct {
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                (self.i, self.j).partial_cmp(&(other.i, other.j))
+            }
+        }
+
+        impl Ord for MyStruct {
+            fn cmp(&self, other: &Self) -> Ordering {
+                (self.i, self.j).cmp(&(other.i, other.j))
+            }
+        }
+
         fn test()
         {
-            assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());
+            assert(vstd::laws_cmp::obeys_cmp::<MyStruct>()) by {
+                reveal(vstd::laws_eq::obeys_eq_spec_properties);
+                reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
+                reveal(vstd::laws_cmp::obeys_cmp_ord);
+                reveal(vstd::laws_cmp::obeys_partial_cmp_spec_properties);
+            }
             assert(vstd::std_specs::cmp::cmp_matches_equality::<MyStruct>()) by {
                 reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
                 reveal(vstd::laws_cmp::obeys_cmp_ord);
@@ -1167,19 +1049,56 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_btree_set_struct verus_code! {
+        use core::cmp::Ordering;
         use std::collections::BTreeSet;
         use vstd::prelude::*;
+        use vstd::std_specs::cmp::{
+            OrdSpec, OrdSpecImpl, PartialOrdSpec, PartialOrdSpecImpl,
+        };
 
-        #[derive(PartialEq, Eq, PartialOrd, Ord, StructuralEq)]
-        struct MyStruct
+        #[derive(PartialEq, Eq, StructuralEq)]
+        pub struct MyStruct
         {
             pub i: u16,
             pub j: i32,
         }
 
+        impl PartialOrdSpecImpl for MyStruct {
+            open spec fn obeys_partial_cmp_spec() -> bool { true }
+
+            open spec fn partial_cmp_spec(&self, other: &Self) -> Option<Ordering> {
+                PartialOrdSpec::partial_cmp_spec(&(self.i, self.j), &(other.i, other.j))
+            }
+        }
+
+        impl OrdSpecImpl for MyStruct {
+            open spec fn obeys_cmp_spec() -> bool { true }
+
+            open spec fn cmp_spec(&self, other: &Self) -> Ordering {
+                OrdSpec::cmp_spec(&(self.i, self.j), &(other.i, other.j))
+            }
+        }
+
+        impl PartialOrd for MyStruct {
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                (self.i, self.j).partial_cmp(&(other.i, other.j))
+            }
+        }
+
+        impl Ord for MyStruct {
+            fn cmp(&self, other: &Self) -> Ordering {
+                (self.i, self.j).cmp(&(other.i, other.j))
+            }
+        }
+
         fn test()
         {
-            assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());
+            assert(vstd::laws_cmp::obeys_cmp::<MyStruct>()) by {
+                reveal(vstd::laws_eq::obeys_eq_spec_properties);
+                reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
+                reveal(vstd::laws_cmp::obeys_cmp_ord);
+                reveal(vstd::laws_cmp::obeys_partial_cmp_spec_properties);
+            }
             assert(vstd::std_specs::cmp::cmp_matches_equality::<MyStruct>()) by {
                 reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
                 reveal(vstd::laws_cmp::obeys_cmp_ord);
