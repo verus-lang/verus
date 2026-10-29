@@ -4,7 +4,7 @@ use crate::context::ContextX;
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
 use crate::query::{Query, QueryError, set_global_query};
-use crate::rust_to_vir_base::mk_crate_id;
+use crate::rust_to_vir_path::mk_crate_id;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
 use crate::util::{HashMapAbsorbWith, error};
@@ -407,7 +407,7 @@ pub(crate) fn io_vir_err(msg: String, err: std::io::Error) -> VirErr {
 }
 
 pub fn module_name(module: &vir::ast::Path) -> String {
-    module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::")
+    module.segments.iter().map(|s| s.friendly_name()).collect::<Vec<_>>().join("::")
 }
 
 mod util {

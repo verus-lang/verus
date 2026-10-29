@@ -10,8 +10,69 @@ use std::fmt;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
+impl Segment {
+    /// The Rust name of the segment, for segments in the value or type namespace
+    pub fn name(&self) -> Option<&Ident> {
+        match self {
+            Segment::V(name, _) | Segment::T(name, _) => Some(name),
+            _ => None,
+        }
+    }
+
+    pub fn is_name(&self, s: &str) -> bool {
+        self.name().is_some_and(|name| **name == s)
+    }
+
+    /// Apply f to the name of a V or T segment, keeping the namespace and disambiguator.
+    /// Panics on other kinds of segments.
+    pub fn map_name(&self, f: impl FnOnce(&str) -> String) -> Segment {
+        match self {
+            Segment::V(name, d) => Segment::V(Arc::new(f(name)), *d),
+            Segment::T(name, d) => Segment::T(Arc::new(f(name)), *d),
+            _ => panic!("map name expects segment with a name"),
+        }
+    }
+
+    pub fn is_foreign_mod(&self) -> bool {
+        matches!(self, Segment::ForeignMod(_))
+    }
+
+    /// Name without any namespace or disambiguator annotations (for diagnostics)
+    pub fn friendly_name(&self) -> String {
+        match self {
+            Segment::V(name, _) | Segment::T(name, _) => name.to_string(),
+            _ => self.to_string(),
+        }
+    }
+}
+
+impl fmt::Display for Segment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use crate::def::*;
+        match self {
+            Segment::V(name, 0) => write!(f, "{}", name),
+            Segment::V(name, d) => write!(f, "{}{}%{}", RUST_DEF_VALUE_NS_DISAMBIGUATED, d, name),
+            Segment::T(name, 0) => write!(f, "{}{}", RUST_DEF_TYPE_NS, name),
+            Segment::T(name, d) => write!(f, "{}{}%{}", RUST_DEF_TYPE_NS_DISAMBIGUATED, d, name),
+            Segment::Ctor(0) => write!(f, "{}", RUST_DEF_CTOR),
+            Segment::Ctor(d) => write!(f, "{}{}", RUST_DEF_CTOR, d),
+            Segment::Impl(d) => write!(f, "{}", impl_ident(*d)),
+            Segment::ForeignMod(d) => write!(f, "{}{}", RUST_DEF_FOREIGN_MOD, d),
+            Segment::OpaqueTy(d) => write!(f, "{}{}", RUST_DEF_OPAQUE_TYPE, d),
+            Segment::Closure(d) => write!(f, "{}{}", RUST_DEF_CLOSURE, d),
+            Segment::AnonConst(d) => write!(f, "{}{}", RUST_DEF_ANON_CONST, d),
+        }
+    }
+}
+
+impl fmt::Debug for Segment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.to_string())
+    }
+}
+
 impl PathX {
-    pub fn last_segment(&self) -> Ident {
+    pub fn last_segment(&self) -> Segment {
         self.segments[self.segments.len() - 1].clone()
     }
 
@@ -21,21 +82,21 @@ impl PathX {
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 
-    pub fn push_segment(&self, ident: Ident) -> Path {
+    pub fn push_segment(&self, segment: Segment) -> Path {
         let mut segments = (*self.segments).clone();
-        segments.push(ident);
+        segments.push(segment);
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 
-    pub fn replace_last(&self, ident: Ident) -> Path {
+    pub fn replace_last(&self, segment: Segment) -> Path {
         let mut segments = (*self.segments).clone();
-        segments[self.segments.len() - 1] = ident;
+        segments[self.segments.len() - 1] = segment;
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 
-    pub fn push_segments(&self, idents: Vec<Ident>) -> Path {
+    pub fn push_segments(&self, new_segments: Vec<Segment>) -> Path {
         let mut segments = (*self.segments).clone();
-        segments.extend(idents);
+        segments.extend(new_segments);
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 
@@ -60,14 +121,14 @@ impl PathX {
     }
 }
 
-pub fn path_segments_match_prefix(target: &Idents, prefix: &Idents) -> bool {
+pub fn path_segments_match_prefix(target: &Segments, prefix: &Segments) -> bool {
     prefix.len() <= target.len() && prefix[..] == target[..prefix.len()]
 }
 
-pub fn parse_path_segments_from_user_str(s: &str) -> Result<Idents, crate::ast::VirErr> {
-    let mut arg_segments: Vec<Ident> =
-        s.split("::").map(|s| Arc::new(s.to_string())).collect::<Vec<_>>();
-    if arg_segments.first().map(|x| **x == "") == Some(true) {
+pub fn parse_path_segments_from_user_str(s: &str) -> Result<Segments, crate::ast::VirErr> {
+    let mut arg_segments: Vec<Segment> =
+        s.split("::").map(|s| Segment::T(Arc::new(s.to_string()), 0)).collect::<Vec<_>>();
+    if arg_segments.first().map(|x| x.is_name("")) == Some(true) {
         arg_segments.remove(0);
     }
     if arg_segments.is_empty() {
@@ -410,7 +471,9 @@ pub(crate) fn path_as_friendly_rust_name_raw(path: &Path) -> String {
     let krate = crate::def::krate_to_string_ignore_stable_id(&path.krate);
     let mut strings: Vec<String> = vec![krate];
     for segment in path.segments.iter() {
-        strings.push(segment.to_string());
+        if !segment.is_foreign_mod() {
+            strings.push(segment.friendly_name());
+        }
     }
     strings.join("::")
 }
@@ -734,7 +797,7 @@ impl crate::ast::CallTargetKind {
 
 impl FunctionX {
     pub fn is_main(&self) -> bool {
-        **self.name.path.segments.last().expect("last segment") == "main"
+        self.name.path.segments.last().expect("last segment").is_name("main")
     }
 
     pub fn mask_spec_or_default(&self, span: &Span) -> MaskSpec {
@@ -1285,6 +1348,9 @@ impl MaskSpec {
     }
 }
 
+// TODO: remove this inconsistency by properly using the type namespace for verus items
+
+/// Path for any non-function item.
 #[macro_export]
 macro_rules! path {
     [ $krate:expr => $( $segment:literal ),* ] => {
@@ -1293,7 +1359,7 @@ macro_rules! path {
             segments: ::std::sync::Arc::new(
                 ::std::vec![
                     $(
-                        ::std::sync::Arc::new($segment.into())
+                        $crate::ast::Segment::T(::std::sync::Arc::new($segment.into()), 0)
                     ),*
                 ],
             ),
@@ -1301,10 +1367,23 @@ macro_rules! path {
     };
 }
 
+/// Path for a function item.
 #[macro_export]
 macro_rules! fun {
-    [ $krate:expr => $( $segment:literal ),* ] => {
-        Arc::new($crate::ast::FunX { path: $crate::path!($krate => $($segment),*) })
+    [ $krate:expr => $( $segment:literal ),* ; $name:literal ] => {
+        ::std::sync::Arc::new($crate::ast::FunX {
+            path: ::std::sync::Arc::new($crate::ast::PathX {
+                krate: $krate,
+                segments: ::std::sync::Arc::new(
+                    ::std::vec![
+                        $(
+                            $crate::ast::Segment::T(::std::sync::Arc::new($segment.into()), 0),
+                        )*
+                        $crate::ast::Segment::V(::std::sync::Arc::new($name.into()), 0)
+                    ],
+                ),
+            }),
+        })
     };
 }
 

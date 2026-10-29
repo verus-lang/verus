@@ -1612,7 +1612,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             mk_expr(ExprX::AssertAssumeUserDefinedTypeInvariant {
                 is_assume: true,
                 expr: exp,
-                fun: vir::fun!(CrateId::Internal => "use_type_invariant_fake_placeholder_fun"),
+                fun: vir::fun!(CrateId::Internal => ; "use_type_invariant_fake_placeholder_fun"),
             })
         }
         VerusItem::WithTriggers => {
