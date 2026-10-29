@@ -1277,9 +1277,7 @@ test_verify_one_file! {
             assert(m@.contains(w));
 
             assert(m@.len() == 1);
-            assert(m.len() == 1) by {
-                vstd::hash_set::axiom_hash_set_with_view_spec_len(&m);
-            }
+            assert(m.len() == 1);
             let n = m.len();
             assert(n == 1);
 
@@ -1309,6 +1307,88 @@ test_verify_one_file! {
             assert(!b);
         }
     } => Ok(_err) => { /* Clone warnings */ }
+}
+
+test_verify_one_file! {
+    #[test] test_hash_set_with_view_equality verus_code! {
+        use core::hash::Hash;
+        use vstd::hash_set::HashSetWithView;
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::eq_matches_view_equality;
+        use vstd::std_specs::hash::obeys_key_model;
+
+        fn test<Key: Hash + Eq + View + Copy>(key: Key, equivalent: Key, other: Key)
+            requires
+                obeys_key_model::<Key>(),
+                eq_matches_view_equality::<Key>(),
+                key != equivalent,
+                key@ == equivalent@,
+                key@ != other@,
+        {
+            let empty = HashSetWithView::<Key>::new();
+            assert(empty.well_formed());
+            assert(empty@ == Set::<Key::V>::empty());
+
+            let mut s = HashSetWithView::<Key>::with_capacity(2);
+            assert(s.well_formed());
+            let is_empty = s.is_empty();
+            assert(is_empty);
+            s.reserve(4);
+            let inserted = s.insert(key);
+            assert(inserted);
+            let inserted = s.insert(equivalent);
+            assert(!inserted);
+            assert(s@ == set![key@]);
+            assert(s.len() == 1);
+            let count = s.len();
+            assert(count == 1);
+            let is_empty = s.is_empty();
+            assert(!is_empty);
+            let present = s.contains(&equivalent);
+            assert(present);
+            match s.get(&equivalent) {
+                Some(stored) => assert(stored@ == key@),
+                None => assert(false),
+            }
+
+            let inserted = s.insert(other);
+            assert(inserted);
+            s.reserve(4);
+            assert(s@ == set![key@, other@]);
+            assert(s.len() == 2);
+            let removed = s.remove(&equivalent);
+            assert(removed);
+            assert(s@ == set![other@]);
+            let removed = s.remove(&key);
+            assert(!removed);
+            let present = s.contains(&key);
+            assert(!present);
+            let value = s.get(&key);
+            assert(value.is_none());
+            s.clear();
+            assert(s.well_formed());
+            assert(s@ == Set::<Key::V>::empty());
+            assert(s.len() == 0);
+            let is_empty = s.is_empty();
+            assert(is_empty);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_set_with_view_requires_well_formed verus_code! {
+        use core::hash::Hash;
+        use vstd::hash_set::HashSetWithView;
+        use vstd::prelude::*;
+
+        fn test_read<Key: Hash + Eq + View>(s: &HashSetWithView<Key>, key: &Key) {
+            let _ = s.get(key); // FAILS
+        }
+
+        fn test_mutate<Key: Hash + Eq + View>(s: &mut HashSetWithView<Key>, key: Key) {
+            s.insert(key); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {
@@ -1584,9 +1664,7 @@ test_verify_one_file! {
             let b = m.contains(three.as_str());
             assert(b);
 
-            assert(m.len() == 2) by {
-                vstd::hash_set::axiom_string_hash_set_spec_len(&m);
-            }
+            assert(m.len() == 2);
             let n = m.len();
             assert(n == 2);
 
@@ -1607,6 +1685,71 @@ test_verify_one_file! {
             assert(!m@.contains(three@));
             let b = m.contains(three.as_str());
             assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_hash_set_verified_operations verus_code! {
+        use vstd::hash_set::StringHashSet;
+        use vstd::prelude::*;
+
+        fn test() {
+            let key = "caf\u{e9}";
+            let other = "";
+            assert(key@ != other@) by {
+                reveal_strlit("caf\u{e9}");
+                reveal_strlit("");
+            }
+            let mut s = StringHashSet::with_capacity(2);
+            assert(s.well_formed());
+            assert(s@ == Set::<Seq<char>>::empty());
+            s.reserve(4);
+            let empty = s.is_empty();
+            assert(empty);
+            let value = s.get(key);
+            assert(value.is_none());
+            let removed = s.remove(key);
+            assert(!removed);
+
+            let inserted = s.insert(key.to_owned());
+            assert(inserted);
+            let inserted = s.insert(key.to_owned());
+            assert(!inserted);
+            let present = s.contains(key);
+            assert(present);
+            let stored = s.get(key).unwrap();
+            assert(stored@ == key@);
+            let count = s.len();
+            assert(count == 1);
+            let inserted = s.insert(other.to_owned());
+            assert(inserted);
+            s.reserve(4);
+            assert(s@ == set![key@, other@]);
+            assert(s.len() == 2);
+            let count = s.len();
+            assert(count == 2);
+
+            let removed = s.remove(key);
+            assert(removed);
+            assert(s@ == set![other@]);
+            let present = s.contains(key);
+            assert(!present);
+            let value = s.get(key);
+            assert(value.is_none());
+            let removed = s.remove(key);
+            assert(!removed);
+            let stored = s.get(other).unwrap();
+            assert(stored@ == other@);
+            s.clear();
+            assert(s.well_formed());
+            assert(s@ == Set::<Seq<char>>::empty());
+            let empty = s.is_empty();
+            assert(empty);
+            let count = s.len();
+            assert(count == 0);
+            let removed = s.remove(other);
+            assert(!removed);
         }
     } => Ok(())
 }

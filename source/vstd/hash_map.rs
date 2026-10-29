@@ -135,7 +135,6 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         requires
             self.well_formed(),
         ensures
-            self.well_formed(),
             result == self@.is_empty(),
     {
         proof {
@@ -155,7 +154,6 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         requires
             self.well_formed(),
         ensures
-            self.well_formed(),
             result == self@.len(),
     {
         proof {
@@ -265,7 +263,6 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         requires
             self.well_formed(),
         ensures
-            self.well_formed(),
             result == self@.contains_key(k@),
     {
         proof {
@@ -281,7 +278,6 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         requires
             self.well_formed(),
         ensures
-            self.well_formed(),
             match result {
                 Some(v) => self@.contains_key(k@) && *v == self@[k@],
                 None => !self@.contains_key(k@),
@@ -473,7 +469,6 @@ impl<Value> StringHashMap<Value> {
         requires
             self.well_formed(),
         ensures
-            self.well_formed(),
             result == self@.is_empty(),
     {
         self.m.is_empty()
@@ -490,7 +485,6 @@ impl<Value> StringHashMap<Value> {
         requires
             self.well_formed(),
         ensures
-            self.well_formed(),
             result == self@.len(),
     {
         self.m.len()
@@ -555,7 +549,6 @@ impl<Value> StringHashMap<Value> {
         requires
             self.well_formed(),
         ensures
-            self.well_formed(),
             result == self@.contains_key(k@),
     {
         self.get(k).is_some()
@@ -568,7 +561,6 @@ impl<Value> StringHashMap<Value> {
         requires
             self.well_formed(),
         ensures
-            self.well_formed(),
             match result {
                 Some(v) => self@.contains_key(k@) && *v == self@[k@],
                 None => !self@.contains_key(k@),
