@@ -1296,6 +1296,146 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file! {
+    #[test] for_loop_continue verus_code! {
+        use vstd::prelude::*;
+
+        fn skips_body() {
+            let mut count: u32 = 0;
+            for i in it: 0u32..3u32
+                invariant
+                    count == it.index() - (if it.index() > 1 { 1int } else { 0int }),
+            {
+                if i == 1 {
+                    continue;
+                }
+                assert(i != 1);
+                count += 1;
+            }
+            assert(count == 2);
+        }
+
+        fn history(v: Vec<u32>) {
+            let mut seen: Vec<u32> = Vec::new();
+            for x in it: v
+                invariant seen@ == it.history(),
+            {
+                assert(seen.len() == it.index());
+                seen.push(x);
+                continue;
+            }
+            assert(seen@ == v@);
+        }
+
+        #[verifier::loop_isolation(false)]
+        fn no_isolation() {
+            let mut count: u32 = 0;
+            for i in 0u32..3u32
+                invariant count == i,
+            {
+                count += 1;
+                if i == 1 {
+                    continue;
+                }
+            }
+            assert(count == 3);
+        }
+
+        fn with_break() {
+            let mut count: u32 = 0;
+            for i in 0u32..5u32
+                invariant_except_break count == i,
+                invariant count <= 3,
+                ensures count == 3,
+            {
+                if i == 3 {
+                    break;
+                }
+                count += 1;
+                continue;
+            }
+            assert(count == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] for_loop_continue_labeled verus_code! {
+        use vstd::prelude::*;
+
+        fn outer() {
+            let mut count: u32 = 0;
+            'outer: for i in 0u32..3u32
+                invariant count == i,
+            {
+                count += 1;
+                // As with other loops, a labeled continue that checks the outer
+                // decreases clause must not cross an isolated inner loop.
+                #[verifier::loop_isolation(false)]
+                for j in inner: 0u32..2u32
+                    invariant inner.index() == 0,
+                {
+                    continue 'outer;
+                }
+                count += 1;
+            }
+            assert(count == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] for_loop_continue_fail verus_code! {
+        use vstd::prelude::*;
+
+        fn invariant_fail() {
+            let mut count: u32 = 0;
+            for i in 0u32..3u32
+                invariant count == i,
+            {
+                if i == 1 {
+                    continue; // FAILS
+                }
+                count += 1;
+            }
+        }
+
+        fn invariant_except_break_fail() {
+            let mut count: u32 = 0;
+            for i in 0u32..3u32
+                invariant_except_break count == i,
+            {
+                if i == 1 {
+                    continue; // FAILS
+                }
+                count += 1;
+            }
+        }
+
+        fn decreases_fail() {
+            for i in 0u32..3u32
+                decreases 0int,
+            {
+                continue; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] for_loop_continue_labeled_fail verus_code! {
+        use vstd::prelude::*;
+
+        fn outer_isolated() {
+            'outer: for i in 0u32..3u32 {
+                for j in 0u32..2u32 {
+                    continue 'outer; // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 test_verify_one_file_with_options! {
     #[test] for_loop1 ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
