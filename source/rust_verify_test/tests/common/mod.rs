@@ -385,6 +385,8 @@ pub fn run_verus(
             // mimic cargo's default for dev builds
             verus_args.push("-C".to_string());
             verus_args.push(format!("incremental={}", test_dir.join("incremental").display()));
+        } else if *option == "--time" {
+            verus_args.push("--time".to_string());
         } else if *option == "vstd" {
             // ignore
         } else if *option == "-V allow-inline-air" {

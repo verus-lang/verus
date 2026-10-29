@@ -330,6 +330,9 @@ pub struct Verifier {
 
     /// Details about each function
     pub func_details: Arc<Mutex<HashMap<Fun, FuncDetails>>>,
+    /// Each local function's path as rustc prints it (`def_path_str`), which, unlike the
+    /// name Verus reports, tells apart e.g. the methods of two impls of one trait for one type
+    pub func_def_paths: HashMap<Fun, String>,
     /// Errors to report after verification has run
     deferred_errors: Arc<Mutex<Vec<VirErr>>>,
 
@@ -525,6 +528,7 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: Arc::new(Mutex::new(HashMap::new())),
+            func_def_paths: HashMap::new(),
             deferred_errors: Arc::new(Mutex::new(Vec::new())),
 
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
@@ -574,6 +578,7 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: Arc::new(Mutex::new(HashMap::new())),
+            func_def_paths: HashMap::new(),
             deferred_errors: Arc::new(Mutex::new(Vec::new())),
 
             via_cargo_args: self.via_cargo_args.clone(),
@@ -2804,6 +2809,17 @@ impl Verifier {
         }
 
         self.vir_crate = Some(merged_crate.clone());
+        if self.args.output_json {
+            let map = ctxt.name_def_id_map.borrow();
+            for function in merged_crate.functions.iter() {
+                let fun = &function.x.name;
+                if let Some(def_id) = map.get(&fun.path) {
+                    if def_id.is_local() {
+                        self.func_def_paths.insert(fun.clone(), tcx.def_path_str(*def_id));
+                    }
+                }
+            }
+        }
         self.warning_ctx = Some(query.get_updated_warning_ctx().map_err(map_query_err)?);
 
         /*if !self.args.no_lifetime {
