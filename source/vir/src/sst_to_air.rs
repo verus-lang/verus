@@ -1617,7 +1617,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
 #[derive(Debug)]
 struct LoopInfo {
     loop_isolation: bool,
-    is_for_loop: bool,
     label: Label,
     loop_id: u64,
     air_break_label: Ident,
@@ -2324,14 +2323,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let is_air_break = *is_break && !loop_info.loop_isolation;
             if !ctx.checking_spec_preconditions() && !is_air_break {
                 assert!(!is_break || !loop_info.some_cond); // AST-to-SST conversion must eliminate the cond
-                if loop_info.is_for_loop && !*is_break {
-                    // At the very least, the syntax macro will need to advance the ghost iterator
-                    // at each continue.
-                    return Err(error(
-                        &stm.span,
-                        "Verus does not currently support `continue` in `for` loops",
-                    ));
-                }
                 let invs = if *is_break {
                     loop_info.invs_exit.clone()
                 } else {
@@ -2758,7 +2749,6 @@ fn loop_to_stmts(
     let air_break_label = crate::def::break_label(*id);
     let loop_info = LoopInfo {
         loop_isolation,
-        is_for_loop: *is_for_loop,
         label: label.clone(),
         loop_id: *id,
         air_break_label: air_break_label.clone(),

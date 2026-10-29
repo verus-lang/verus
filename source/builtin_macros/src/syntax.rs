@@ -4119,8 +4119,6 @@ impl Visitor {
         //      };
         //      VERUS_loop_result
         //  }
-        // Note that "continue" and labels are not yet supported;
-        // continue would also need to call ghost_advance.
         let span = for_loop.span();
 
         let verus_syn::ExprForLoop {
