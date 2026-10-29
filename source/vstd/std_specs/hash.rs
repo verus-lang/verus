@@ -20,9 +20,10 @@
 //! the future, we plan to devise a way for you to prove that it does
 //! so, so that you don't have to make such an assumption.
 //!
-//! Insertion and borrowed-key operations' contracts use `eq_spec`,
-//! without identifying equality with structural equality. Broadcast
-//! lemmas provide structural- and deep-equality special cases.
+//! The assumed specs don't assume that executable equality matches
+//! structural equality, or that executable equality matches deep_view
+//! equality. But we provide broadcast lemmas that derive stronger
+//! properties for when either of those do match.
 //!
 //! Borrowed-key lookups also require
 //! `borrowed_key_hashing_matches::<Key, Q>()` and use the model in
