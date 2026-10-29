@@ -8,6 +8,7 @@
 #![allow(dead_code)]
 #![allow(unused_attributes)]
 #![allow(unused_features)] // silences spurious warnings for features that cause errors when omitted
+#![cfg_attr(verus_keep_ghost, allow(duplicate_features))] // Verus also enables try_trait_v2
 #![allow(rustdoc::invalid_rust_codeblocks)]
 #![cfg_attr(verus_keep_ghost, feature(atomic_internals))]
 #![cfg_attr(verus_keep_ghost, feature(generic_atomic))]
@@ -23,6 +24,7 @@
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
 #![cfg_attr(verus_keep_ghost, feature(nonzero_internals))]
 #![cfg_attr(verus_keep_ghost, feature(iter_advance_by))]
+#![cfg_attr(verus_keep_ghost, feature(try_trait_v2))]
 #![cfg_attr(verus_keep_ghost, feature(try_trait_v2_residual))]
 #![cfg_attr(verus_keep_ghost, feature(hint_must_use))]
 #![cfg_attr(verus_keep_ghost, feature(fmt_internals))]
