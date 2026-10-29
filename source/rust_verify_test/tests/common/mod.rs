@@ -737,6 +737,7 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![feature(btree_cursors)]
     #![feature(const_destruct)]
     #![feature(print_internals)]
+    #![feature(dropck_eyepatch)]
 };
 
 pub const USE_PRELUDE: &str = crate::common::code_str! {

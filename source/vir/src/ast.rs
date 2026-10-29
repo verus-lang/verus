@@ -1985,6 +1985,7 @@ pub struct TraitImplX {
     pub auto_imported: bool,
     // Is a blanket implementation declared by external_trait_extension:
     pub external_trait_blanket: bool,
+    pub is_unsafe: bool,
 }
 
 pub type ModuleReveals = Arc<Spanned<Vec<Fun>>>;
