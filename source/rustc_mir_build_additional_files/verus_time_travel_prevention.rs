@@ -563,7 +563,8 @@ pub(crate) fn let_expr_treat_as_irrefutable<'tcx>(
     pat: &Pat<'tcx>,
     expr_id: ExprId,
 ) -> bool {
-    let Some(erasure_ctxt) = crate::verus::get_verus_erasure_ctxt_option() else {
+    let fn_def_id = crate::verus::enclosing_fn_local_def_id(tcx, local_def_id);
+    let Some(erasure_ctxt) = crate::verus::get_verus_erasure_ctxt_option(fn_def_id) else {
         return false;
     };
 
@@ -1428,10 +1429,13 @@ fn tie_mut_refs<'tcx>(
 }
 
 pub(crate) fn is_two_phase_mutable_reference_tie<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    local_def_id: LocalDefId,
     thir: &Thir<'tcx>,
     expr_id: ExprId,
 ) -> Option<(ExprId, ExprId, ExprId, Ty<'tcx>)> {
-    let Some(erasure_ctxt) = crate::verus::get_verus_erasure_ctxt_option() else {
+    let def_id = crate::verus::enclosing_fn_local_def_id(tcx, local_def_id);
+    let Some(erasure_ctxt) = crate::verus::get_verus_erasure_ctxt_option(def_id) else {
         return None;
     };
     match &thir.exprs[expr_id].kind {

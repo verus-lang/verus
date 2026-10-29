@@ -47,7 +47,7 @@ test_verify_one_file! {
         }
 
         } // verus!
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support renaming a crate to `core`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support renaming a crate to `core`")
 }
 
 test_verify_one_file! {
@@ -56,5 +56,5 @@ test_verify_one_file! {
 
         verus! {
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support renaming a crate to `vstd`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support renaming a crate to `vstd`")
 }

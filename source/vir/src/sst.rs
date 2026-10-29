@@ -51,6 +51,7 @@ pub type UniqueIdent = VarIdent;
 pub enum InternalFun {
     ClosureReq,
     ClosureEns,
+    ClosureOpensInvariants,
     DefaultEns,
     CheckDecreaseHeight,
     OpenInvariantMask(Fun, usize),
@@ -394,6 +395,7 @@ pub struct FuncDeclSst {
 #[derive(Debug, Clone, ToDebugSNode)]
 pub struct FuncCheckSst {
     pub reqs: Exps,
+    pub return_opaque_type_eqs: Arc<Vec<(Typ, Typ)>>,
     pub post_condition: Arc<PostConditionSst>,
     pub unwind: UnwindSst,
     pub body: Stm,

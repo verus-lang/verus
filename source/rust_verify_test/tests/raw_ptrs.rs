@@ -355,7 +355,7 @@ test_verify_one_file! {
         fn test(x: usize) {
             let y = x as *mut u8;
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support this cast")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support this cast")
 }
 
 test_verify_one_file! {
@@ -386,7 +386,7 @@ test_verify_one_file! {
         pub fn run(x: *mut u8) {
             unsafe { let y = *x; }
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dereferencing a raw pointer")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support dereferencing a raw pointer")
 }
 
 test_verify_one_file! {

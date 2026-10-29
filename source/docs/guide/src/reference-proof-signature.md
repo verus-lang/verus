@@ -47,7 +47,7 @@ together form the postcondition.
 
 **The invariants.**
 The V@[invariants_clause] specifies which invariants can be opened by the function.
-For proof functions, the default is `open_invariants none`.
+For proof functions, the default is `opens_invariants none`.
 See [this page](./reference-opens-invariants.md) for more details.
 
 ## Function arguments

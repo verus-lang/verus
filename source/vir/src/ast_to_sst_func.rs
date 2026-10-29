@@ -178,7 +178,7 @@ fn func_body_to_sst(
                 match &expr.x {
                     ExprX::Return(_) => Err(error(
                         &expr.span,
-                        "explicit returns are not allowed in decreases_by function",
+                        "explicit returns are not allowed in `decreases_by` function",
                     )),
                     _ => Ok(()),
                 }
@@ -212,6 +212,7 @@ fn func_body_to_sst(
         termination_decls.splice(0..0, local_decls.into_iter());
 
         let termination_check = FuncCheckSst {
+            return_opaque_type_eqs: Arc::new(vec![]),
             post_condition: Arc::new(crate::sst::PostConditionSst {
                 dest: None,
                 kind: if function.x.decrease_by.is_some() {
@@ -232,7 +233,7 @@ fn func_body_to_sst(
         Some(termination_check)
     } else {
         if function.x.decrease.len() > 0 && !is_recursive {
-            let msg = "proof blocks inside spec code is currently supported only for recursion";
+            let msg = "Verus currently supports proof blocks inside spec code only for recursion";
             // TODO: remove this restriction when we generalize ProofInSpec beyond termination
             ast_visitor::expr_visitor_check(&body, &mut |_scope_map, expr| match &expr.x {
                 ExprX::ProofInSpec(_) => Err(error(&expr.span, msg)),
@@ -353,7 +354,7 @@ fn req_ens_to_sst(
 
     let specs = if function.x.attrs.is_async && !pre {
         if !ens_has_return {
-            crate::internal_err!(function.span.clone(), "async function expects ens_has_return");
+            crate::internal_err!(function.span.clone(), "async function expects `ens_has_return`");
         }
         &rewrite_async_ens_vir(function, specs)?
     } else {
@@ -690,7 +691,7 @@ where
 }
 
 impl MaskSpec {
-    fn map_to_sst(
+    pub(crate) fn map_to_sst(
         &self,
         f: &mut impl FnMut(&Expr) -> Result<Exp, VirErr>,
     ) -> Result<MaskSet, VirErr> {
@@ -1007,6 +1008,11 @@ pub fn func_def_to_sst(
 
     Ok(FuncCheckSst {
         reqs: Arc::new(reqs),
+        return_opaque_type_eqs: if check_api_safety {
+            Arc::new(vec![])
+        } else {
+            function.x.return_opaque_type_eqs.clone()
+        },
         post_condition: Arc::new(PostConditionSst {
             dest,
             ens_exps: Arc::new(enss),

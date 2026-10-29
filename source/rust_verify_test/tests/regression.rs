@@ -322,7 +322,7 @@ test_verify_one_file! {
         proof fn foo() {
             reveal_with_fuel(is_true, 2);
         }
-    } => Err(err) => assert_vir_error_msg(err, "reveal_with_fuel statements require a spec function with a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "`reveal_with_fuel` statements require a spec function with a `decreases` clause")
 }
 
 test_verify_one_file_with_options! {
@@ -1257,7 +1257,7 @@ test_verify_one_file! {
             assume(true);
             hide(foo);
         }
-    } => Err(e) => assert_vir_error_msg(e, "This verus_builtin header should go at the beginning of the function body")
+    } => Err(e) => assert_vir_error_msg(e, "this Verus builtin header should go at the beginning of the function body")
 }
 
 test_verify_one_file! {
@@ -1336,7 +1336,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.")
+    } => Err(err) => assert_vir_error_msg(err, "in order to verify any items of this trait impl, the entire impl must be verified; try wrapping the entire impl in the `verus!` macro")
 }
 
 test_verify_one_file! {
@@ -1500,7 +1500,7 @@ test_verify_one_file! {
                 assert(false); // FAILS
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: block with label")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support labeled block expressions")
 }
 
 test_verify_one_file! {

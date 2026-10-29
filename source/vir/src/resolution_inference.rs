@@ -306,7 +306,7 @@ pub fn krate_infer_resolution(
         let Dt::Path(path) = datatype.x.name.clone() else {
             return Err(vec![crate::messages::internal_error(
                 &datatype.span,
-                "Dt::Tuple in datatypes before ast_simplify",
+                "Dt::Tuple in datatypes before `ast_simplify`",
             )]);
         };
         datatypes.insert(path, datatype.clone());
@@ -1040,6 +1040,7 @@ impl<'a> Builder<'a> {
                 body,
                 requires: _,
                 ensures: _,
+                mask_spec: _,
                 ret: _,
                 external_spec: _,
             } => {
@@ -1456,7 +1457,7 @@ impl<'a> Builder<'a> {
                                         self.typ_inv_obligations.push((p.span.id, typ_inv_fun));
                                     }
                                     TypInv::PatternError => {
-                                        self.errors.push(error(&p.span, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant"));
+                                        self.errors.push(error(&p.span, "Verus does not currently support using a pattern to take a mutable reference to a field of a datatype that has a declared type invariant"));
                                     }
                                     TypInv::No => unreachable!(),
                                 }
@@ -2044,7 +2045,8 @@ impl<'a> Builder<'a> {
             TypX::Datatype(dt, ..) => get_typ_inv_fun_dt(&self.locals.datatypes, dt),
             _ => {
                 dbg!(&p.typ);
-                self.errors.push(error(&p.span, "Verus Internal Error: get_typ_inv_fun failed"));
+                self.errors
+                    .push(crate::messages::internal_error(&p.span, "`get_typ_inv_fun` failed"));
                 None
             }
         }
@@ -2070,9 +2072,9 @@ impl<'a> Builder<'a> {
                 ));
             }
             ComputedPlaceTyped::Ghost(_) => {
-                self.errors.push(error(
+                self.errors.push(crate::messages::internal_error(
                     span,
-                    "Verus Internal Error: inconsistent state, move out of ghost place",
+                    "inconsistent state, move out of ghost place",
                 ));
             }
             ComputedPlaceTyped::Exact(_) => unreachable!(),
@@ -2269,7 +2271,7 @@ fn check_illegal_muts(
         PatternX::Constructor(dt, _variant, patterns) => {
             if let Some(_typ_inv_fun) = get_typ_inv_fun_dt(datatypes, dt) {
                 if let Some(span) = crate::patterns::pattern_find_mut_binding(pattern) {
-                    errors.push(error(&pattern.span, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant").secondary_label(&span, "mutable binding here"));
+                    errors.push(error(&pattern.span, "Verus does not currently support using a pattern to take a mutable reference to a field of a datatype that has a declared type invariant").secondary_label(&span, "`ref mut` binding here"));
                 }
                 // Can skip recursing; either we already added an error, or there are no
                 // mutable bindings in this node.

@@ -543,12 +543,9 @@ impl PreLocalDeclKind {
         match self {
             PreLocalDeclKind::Immutable(Immutable(imm)) => {
                 if let Some(span) = mutbl {
-                    Err(error(
+                    Err(crate::messages::internal_error(
                         span,
-                        format!(
-                            "Verus Internal Error: assignment for immutable decl kind {:?}",
-                            imm
-                        ),
+                        format!("assignment for immutable decl kind {:?}", imm),
                     ))
                 } else {
                     Ok(imm)
@@ -842,7 +839,7 @@ impl Sequencer {
                         if let Some(span) = crate::sst_vars::find_overlapping_assignment(stm, loc) {
                             return Err(error_with_label(
                                 &loc.span,
-                                "Verus doesn't support assigning during mutable borrow like this",
+                                "Verus does not currently support assigning during a mutable borrow like this",
                                 "this borrow",
                             )
                             .secondary_label(&span, "followed by this assignment"));
@@ -1764,6 +1761,7 @@ pub(crate) fn expr_to_stm_opt(
             let f = match bsf {
                 BuiltinSpecFun::ClosureReq => InternalFun::ClosureReq,
                 BuiltinSpecFun::ClosureEns => InternalFun::ClosureEns,
+                BuiltinSpecFun::ClosureOpensInvariants => InternalFun::ClosureOpensInvariants,
                 BuiltinSpecFun::DefaultEns => InternalFun::DefaultEns,
             };
             Ok((
@@ -2142,10 +2140,11 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::NonSpecClosure {
             params,
-            proof_fn_modes: _,
+            proof_fn_modes,
             body,
             requires,
             ensures,
+            mask_spec,
             ret,
             external_spec,
         } => {
@@ -2154,8 +2153,17 @@ pub(crate) fn expr_to_stm_opt(
             // Emit the internals of the closure (ClosureInner behaves like a dead-end)
             // This includes assuming the requires, asserting the ensures, everything else
 
-            let (inner_stms, typ_inv_vars) =
-                exec_closure_body_stms(ctx, state, params, ret, body, requires, ensures)?;
+            let (inner_stms, typ_inv_vars) = exec_closure_body_stms(
+                ctx,
+                state,
+                params,
+                ret,
+                body,
+                requires,
+                ensures,
+                mask_spec,
+                proof_fn_modes.is_some(),
+            )?;
             let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(inner_stms)));
             let clos =
                 Spanned::new(expr.span.clone(), StmX::ClosureInner { body: block, typ_inv_vars });
@@ -2225,7 +2233,7 @@ pub(crate) fn expr_to_stm_opt(
                 let e_exists = mk_exp(ExpX::Unary(UnaryOp::MustBeElaborated, e_exists));
                 let error = error(
                     &cond_exp.span,
-                    "recommendation not met: cannot prove that there exists values that satisfy the condition of the choose expression",
+                    "recommendation not met: cannot prove that there exist values that satisfy the condition of the choose expression",
                 );
                 let assertx = StmX::Assert(state.next_assert_id(), Some(error), e_exists);
                 check_stms.push(Spanned::new(cond_exp.span.clone(), assertx));
@@ -2381,7 +2389,7 @@ pub(crate) fn expr_to_stm_opt(
             if let Maybe::Some(Value::Exp(_)) = e {
                 return Err(error(
                     &expr.span,
-                    "'assert ... by' block cannot end with an expression",
+                    "`assert ... by` block cannot end with an expression",
                 ));
             }
             let (require_checks, require_exp) = expr_to_pure_exp_check(ctx, state, &require)?;
@@ -2450,7 +2458,7 @@ pub(crate) fn expr_to_stm_opt(
                     if let Maybe::Some(Value::Exp(_)) = e {
                         return Err(error(
                             &expr.span,
-                            "'assert ... by' block cannot end with an expression",
+                            "`assert ... by` block cannot end with an expression",
                         ));
                     }
                     inner_body.extend(proof_stms);
@@ -2529,12 +2537,14 @@ pub(crate) fn expr_to_stm_opt(
                 AssertQueryMode::BitVector => {
                     // check if assertion block consists only of requires/ensures
                     let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
-                    let proof_block_err =
-                        Err(error(&expr.span, "assert_bitvector_by cannot contain a proof block"));
+                    let proof_block_err = Err(error(
+                        &expr.span,
+                        "`assert ... by(bit_vector)` cannot contain a proof block",
+                    ));
                     if let Maybe::Some(Value::Exp(_)) = e {
                         return Err(error(
                             &expr.span,
-                            "assert_bitvector_by cannot contain a return value",
+                            "`assert ... by(bit_vector)` cannot contain a return value",
                         ));
                     }
                     if proof_stms.len() > 1 {
@@ -2668,9 +2678,9 @@ pub(crate) fn expr_to_stm_opt(
             if produces_value && loop_isolation {
                 return Err(error(
                     &expr.span,
-                    "loops with value-bearing 'break' do not yet support loop isolation",
+                    "Verus does not currently support loop isolation for loops with value-bearing `break`",
                 )
-                .help("add #[verifier::loop_isolation(false)] to this loop"));
+                .help("add `#[verifier::loop_isolation(false)]` to this loop"));
             }
             let allow_complex_invariants = *allow_complex_invariants;
             let id = state.loop_id_counter;
@@ -2698,7 +2708,7 @@ pub(crate) fn expr_to_stm_opt(
                 // in the same query
                 return Err(error(
                     &expr.span,
-                    "loop with loop_isolation=false contains 'break' statement inside a nested loop with loop_isolation=true",
+                    "loop with `loop_isolation(false)` contains `break` statement inside a nested loop with `loop_isolation(true)`",
                 ));
             }
             let has_user_break = num_breaks > if is_for_loop { 1 } else { 0 };
@@ -2733,15 +2743,15 @@ pub(crate) fn expr_to_stm_opt(
             if allow_complex_invariants && loop_isolation && !is_for_loop {
                 return Err(error(
                     &expr.span,
-                    "attribute 'allow_complex_invariants' can only be used with 'loop_isolation(false)'",
+                    "attribute `allow_complex_invariants` can only be used with `loop_isolation(false)`",
                 ));
             }
 
             if !loop_isolation && !simple_invs && !allow_complex_invariants {
                 return Err(error(
                     &expr.span,
-                    "loop invariants with 'loop_isolation(false)' cannot be invariant_except_break \
-                        or ensures, unless #[verifier::allow_complex_invariants] is used",
+                    "loop invariants with `loop_isolation(false)` cannot be `invariant_except_break` \
+                        or `ensures`, unless `#[verifier::allow_complex_invariants]` is used",
                 ));
             }
             let mut cnd = if let Some(cond) = cond {
@@ -2770,8 +2780,8 @@ pub(crate) fn expr_to_stm_opt(
                         && !function.x.attrs.exec_allows_no_decreases_clause
                 })
             {
-                return Err(error(&expr.span, "loop must have a decreases clause")
-                            .help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function"));
+                return Err(error(&expr.span, "loop must have a `decreases` clause")
+                            .help("to disable this check, use `#[verifier::exec_allows_no_decreases_clause]` on the function"));
             }
 
             let mut body_prefix = Vec::new();
@@ -2995,7 +3005,7 @@ pub(crate) fn expr_to_stm_opt(
                 Maybe::Some(_e) => {
                     if !ctx.checking_spec_preconditions() {
                         let error =
-                            error(&expr.span, "Cannot show invariant holds at end of block");
+                            error(&expr.span, "cannot show invariant holds at end of block");
                         // Note, we re-use the `main_inv` exp here, but it contains a mutable
                         stms1.push(Spanned::new(
                             expr.span.clone(),
@@ -3158,7 +3168,7 @@ pub(crate) fn expr_to_stm_opt(
 
                 let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
                 let error =
-                    error(&expr.span, "cannot show atomic postcondition hold at end of block");
+                    error(&expr.span, "cannot show atomic postcondition holds at end of block");
 
                 stms.push(Spanned::new(
                     expr.span.clone(),
@@ -3860,7 +3870,7 @@ pub(crate) fn expr_to_stm_opt(
                 if let Some(span) = crate::sst_vars::find_overlapping_assignment(stm, &loc) {
                     return Err(error(
                         &span,
-                        "Verus doesn't support assigning to scrutinee during match guard",
+                        "Verus does not currently support assigning to the scrutinee during a match guard",
                     ));
                 }
             }
@@ -4337,9 +4347,9 @@ fn place_to_exp_for_read(
     let (_lhs, rhs, obligations) = unwrap_or_return_never!(res, stms);
     if obligations.len() > 0 {
         // Shouldn't have these for reads
-        return Err(error(
+        return Err(crate::messages::internal_error(
             &place.span,
-            "Verus internal error: place_to_expr_for_read does not expect any UserDefinedTypInvariantObligation",
+            "`place_to_expr_for_read` does not expect any UserDefinedTypInvariantObligation",
         ));
     }
     Ok((stms, Maybe::Some(rhs)))
@@ -4726,15 +4736,12 @@ fn exec_closure_body_stms(
     body: &Expr,
     requires: &Exprs,
     ensures: &Exprs,
+    mask_spec: &Option<MaskSpec>,
+    is_proof: bool,
 ) -> Result<(Vec<Stm>, Arc<Vec<(UniqueIdent, Typ)>>), VirErr> {
     let mut typ_inv_vars = vec![];
 
     state.push_scope();
-
-    // Right now there is no way to specify an invariant mask on a closure function
-    // All closure funcs are assumed to have mask set 'full'
-    let mut mask = Some(MaskSet::full(&body.span));
-    std::mem::swap(&mut state.mask, &mut mask);
 
     let mut param_set = HashSet::<VarIdent>::new();
 
@@ -4754,6 +4761,26 @@ fn exec_closure_body_stms(
         let stm = Spanned::new(req.span.clone(), StmX::Assume(exp));
         stms.push(stm);
     }
+
+    // Inv mask
+    let mut mask = if is_proof {
+        if let Some(mask_spec) = mask_spec {
+            let mask_sst = mask_spec.map_to_sst(&mut |expr| {
+                let (check_stms, exp) = expr_to_pure_exp_check(ctx, state, expr)?;
+                stms.extend(check_stms);
+                Ok(exp)
+            })?;
+            Some(mask_sst)
+        } else {
+            Some(MaskSet::empty(&body.span))
+        }
+    } else {
+        // Right now there is no way to specify an invariant mask on an exec closure function
+        // All exec closure funcs are assumed to have mask set 'full'
+        assert!(mask_spec.is_none());
+        Some(MaskSet::full(&body.span))
+    };
+    std::mem::swap(&mut state.mask, &mut mask);
 
     let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::ExecClosureRet));
     state.declare_var_stm(&ret.name, &ret.a, kind, false);
@@ -4901,14 +4928,14 @@ fn assert_assume_satisfies_user_defined_type_invariant(
     if typ_inv == TypInv::UnwindError {
         return Err(crate::messages::error_with_label(
             &exp.span,
-            "this function call takes a &mut ref of a field of a datatype with a user-defined type invariant; thus, this function should be marked no_unwind (note: this check is currently implemented overly-conservatively and requires the function to be marked no_unwind in its signature)",
+            "this function call takes a mutable reference to a field of a datatype with a user-defined type invariant; thus, this function should be marked `no_unwind` (note: this check is currently implemented overly-conservatively and requires the function to be marked `no_unwind` in its signature)",
             "mutable reference to this place",
         ).secondary_label(&function.span, "type invariant declared here"));
     }
     if typ_inv == TypInv::BareMutRefError {
         return Err(crate::messages::error_with_label(
             &exp.span,
-            "not supported: taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)",
+            "Verus does not currently support taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)",
             "mutable reference to this place",
         ).secondary_label(&function.span, "type invariant declared here"));
     }

@@ -530,7 +530,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare an unwind specification")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare an `unwind` specification")
 }
 
 test_verify_one_file! {
@@ -539,7 +539,7 @@ test_verify_one_file! {
             no_unwind
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "an 'unwind' specification can only be given on exec functions")
+    } => Err(err) => assert_vir_error_msg(err, "an `unwind` specification can only be given on exec functions")
 }
 
 test_verify_one_file! {
@@ -548,7 +548,7 @@ test_verify_one_file! {
             no_unwind
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "an 'unwind' specification can only be given on exec functions")
+    } => Err(err) => assert_vir_error_msg(err, "an `unwind` specification can only be given on exec functions")
 }
 
 test_verify_one_file! {
@@ -557,7 +557,7 @@ test_verify_one_file! {
             no_unwind when j >= 3
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "an 'unwind' specification can only be given on exec functions")
+    } => Err(err) => assert_vir_error_msg(err, "an `unwind` specification can only be given on exec functions")
 }
 
 test_verify_one_file! {

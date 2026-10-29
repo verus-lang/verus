@@ -2165,6 +2165,9 @@ where
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
     }
+    if let Some(it) = &node.invariants {
+        v.visit_signature_invariants(&**it);
+    }
     for it in &node.inner_attrs {
         v.visit_attribute(it);
     }
