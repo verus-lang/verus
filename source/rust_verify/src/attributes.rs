@@ -408,6 +408,7 @@ pub(crate) enum Attr {
     MigratePostconditionsWithMutRefs(bool),
     TrackedSwap,
     TrackedTakeOption,
+    AssumeUnsupportedAttributes,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -781,6 +782,9 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, arg, None) if arg == "tracked_take_option_primitive" => {
                     v.push(Attr::TrackedTakeOption)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "assume_unsupported_attributes" => {
+                    v.push(Attr::AssumeUnsupportedAttributes)
                 }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
@@ -1684,28 +1688,45 @@ pub const RUSTC_ATTRS_OK_TO_IGNORE: &[&str] = &[
 ];
 
 pub(crate) fn forbid_unsafe_attributes<'tcx>(
-    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    ctxt: &crate::context::Context<'tcx>,
     owner_id: rustc_hir::OwnerId,
     errors: &mut Vec<VirErr>,
 ) {
+    let tcx = ctxt.tcx;
     let attrs = tcx.hir_attrs(owner_id.into());
-    for attr in attrs.iter() {
-        match attr {
-            Attribute::Parsed(kind) => {
-                let (unsupported, is_unsafe) = attr_is_unsupported(kind);
-                if let Some(name) = unsupported {
-                    let span = tcx.hir_span(owner_id.into());
-                    errors.push(err_span_bare(
-                        span,
-                        format!(
-                            "Verus does not currently support the `{:}` attribute{:}",
-                            name,
-                            if is_unsafe { ", which is unsafe" } else { "" }
-                        ),
-                    ));
+
+    let allow =
+        parse_attrs_opt(attrs, None).iter().any(|a| matches!(a, Attr::AssumeUnsupportedAttributes));
+
+    if allow && ctxt.cmd_line_args.no_cheating {
+        let span = tcx.hir_span(owner_id.into());
+        errors.push(err_span_bare(
+            span,
+            "`#[verifier::assume_unsupported_attributes]` cannot be used with --no-cheating",
+        ));
+    }
+
+    if !allow {
+        for attr in attrs.iter() {
+            match attr {
+                Attribute::Parsed(kind) => {
+                    let (unsupported, is_unsafe) = attr_is_unsupported(kind);
+                    if let Some(name) = unsupported {
+                        let span = tcx.hir_span(owner_id.into());
+                        errors.push(err_span_bare(
+                            span,
+                            format!(
+                                "Verus does not currently support the `{:}` attribute{:}",
+                                name,
+                                if is_unsafe { ", which is unsafe" } else { "" }
+                            ),
+                        )
+                        .help("you may be able to silence this error with `#[verifier::assume_unsupported_attributes]`, but Verus will not be able to check the attribute is used correctly")
+                        );
+                    }
                 }
+                _ => {}
             }
-            _ => {}
         }
     }
 }
