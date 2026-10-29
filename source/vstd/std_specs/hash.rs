@@ -8,7 +8,7 @@
 //! [`builds_valid_hashers<CustomBuildHasher>()`].
 //!
 //! Likewise, the specification is only meaningful when `eq_spec`
-//! faithfully models executable equality, executable equality is
+//! faithfully models executable equality; executable equality is
 //! reflexive, symmetric, and transitive; hashing is
 //! deterministic; executable-equal keys hash identically; and
 //! cloning, when supported, preserves structural identity and
