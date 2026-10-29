@@ -1987,8 +1987,16 @@ pub(crate) fn shr_ref_struct_wrap<'tcx>(
             .expect("valid signature"),
         },
     ));
-    let mut call =
-        make_fake_call_kind(cx, erasure_ctxt, expr.hir_id, expr.span, fn_ty, args.into_vec());
+    // MIR types must not contain free regions; only the user type annotation keeps them
+    let erased_fn_ty = cx.tcx.erase_and_anonymize_regions(fn_ty);
+    let mut call = make_fake_call_kind(
+        cx,
+        erasure_ctxt,
+        expr.hir_id,
+        expr.span,
+        erased_fn_ty,
+        args.into_vec(),
+    );
     let ExprKind::Call { fun, .. } = &mut call else { unreachable!() };
     // Ascribe the type so MIR borrowck keeps fixed regions (e.g. 'static in the field declaration)
     let user_ty = ty::CanonicalUserType {
@@ -2005,7 +2013,7 @@ pub(crate) fn shr_ref_struct_wrap<'tcx>(
         },
         expr.hir_id,
         expr.span,
-        fn_ty,
+        erased_fn_ty,
     );
     call
 }
