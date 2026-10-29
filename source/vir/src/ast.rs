@@ -37,12 +37,30 @@ pub enum CrateId {
     Id(Ident, u64),
 }
 
+/// Should mirror [`DefPathData`](https://doc.rust-lang.org/beta/nightly-rustc/rustc_hir/definitions/enum.DefPathData.html), plus kinds specific to Verus.
+/// The kinds have no semantic meaning in VIR, they might as well just be random names.
+///
+/// I use `T` and `V` for the type namespace and value namespace, partially for brevity,
+/// and partially because I think the actual names 'type' and 'value' would sometimes be confusing.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Segment {
+    V(Ident, u32),
+    T(Ident, u32),
+    Ctor(u32),
+    Impl(u32),
+    ForeignMod(u32),
+    OpaqueTy(u32),
+    Closure(u32),
+    AnonConst(u32),
+}
+pub type Segments = Arc<Vec<Segment>>;
+
 /// A fully-qualified name, such as a module name, function name, or datatype name
 pub type Path = Arc<PathX>;
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PathX {
     pub krate: CrateId,
-    pub segments: Idents,
+    pub segments: Segments,
 }
 
 #[derive(
@@ -1102,6 +1120,14 @@ pub enum AtomicallyKind {
     Loop,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, Copy, ToDebugSNode)]
+pub enum LoopSource {
+    /// loop, while, or for
+    Loop,
+    /// breakable block
+    BreakableBlock,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -1231,6 +1257,8 @@ pub enum ExprX {
         invs: LoopInvariants,
         decrease: Exprs,
         atomic_call: bool,
+        known_no_back_edge: bool,
+        source: LoopSource,
     },
     /// Open invariant
     OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),

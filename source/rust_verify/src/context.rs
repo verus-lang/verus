@@ -233,7 +233,7 @@ impl<'tcx> ContextX<'tcx> {
     }
 
     pub(crate) fn def_id_to_vir_path(&self, def_id: DefId) -> Path {
-        crate::rust_to_vir_base::def_id_to_vir_path(
+        crate::rust_to_vir_path::def_id_to_vir_path(
             self.tcx,
             &self.verus_items,
             def_id,

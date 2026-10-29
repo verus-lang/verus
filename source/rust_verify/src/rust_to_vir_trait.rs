@@ -99,8 +99,10 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
                             let vattrs = ctxt.get_verifier_attrs(attrs)?;
                             if let Some((spec, imp)) = vattrs.external_trait_extension {
                                 let path = ctxt.def_id_to_vir_path(trait_def_id);
-                                let spec = path.replace_last(Arc::new(spec.clone()));
-                                let imp = path.replace_last(Arc::new(imp.clone()));
+                                let spec = path
+                                    .replace_last(vir::ast::Segment::T(Arc::new(spec.clone()), 0));
+                                let imp = path
+                                    .replace_last(vir::ast::Segment::T(Arc::new(imp.clone()), 0));
                                 let m = &mut external_info.external_trait_extension_impl_map;
                                 assert!(!m.contains_key(&imp));
                                 m.insert(imp, spec);
@@ -333,8 +335,12 @@ pub(crate) fn translate_trait<'tcx>(
         }
 
         let item_path = ctxt.def_id_to_vir_path(owner_id.to_def_id());
-        let is_verus_spec =
-            item_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
+        let is_verus_spec = item_path
+            .segments
+            .last()
+            .expect("segment.last")
+            .name()
+            .is_some_and(|name| name.starts_with(VERUS_SPEC));
         let attrs = tcx.hir_attrs(trait_item.hir_id());
         let ex_item_id_for = if let Some(ex_trait_id_for) = ex_trait_id_for {
             match kind {
@@ -604,8 +610,8 @@ pub(crate) fn translate_trait<'tcx>(
     };
     state.external_info.local_trait_ids.push(target_trait_id);
     let external_trait_extension = if let Some((spec, imp)) = external_trait_extension {
-        let spec = orig_trait_path.replace_last(Arc::new(spec.clone()));
-        let imp = orig_trait_path.replace_last(Arc::new(imp.clone()));
+        let spec = orig_trait_path.replace_last(vir::ast::Segment::T(Arc::new(spec.clone()), 0));
+        let imp = orig_trait_path.replace_last(vir::ast::Segment::T(Arc::new(imp.clone()), 0));
         Some((spec, imp))
     } else {
         None

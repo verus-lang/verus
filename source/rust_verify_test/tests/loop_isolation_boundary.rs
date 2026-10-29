@@ -176,3 +176,86 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_loops_with_no_back_edge verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test_back_edge(a: &mut u64, b: &mut u64) {
+            #[verus::internal(loop_isolation_boundary)]
+            {
+                *b = 20;
+                loop {
+                    assert(*a == *old(a)); // FAILS
+                    *a = 20;
+
+                    if cond() {
+                        continue;
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test_no_back_edge(a: &mut u64, b: &mut u64) {
+            #[verus::internal(loop_isolation_boundary)]
+            {
+                *b = 20;
+                loop {
+                    assert(*a == *old(a));
+                    *a = 20;
+                    break;
+                }
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test_no_back_edge_but_modified_in_preamble(a: &mut u64, b: &mut u64) {
+            #[verus::internal(loop_isolation_boundary)]
+            {
+                *a = 40;
+                loop {
+                    assert(*a == *old(a)); // FAILS
+                    *a = 20;
+                    break;
+                }
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test_no_back_edge_but_modified_before_preamble(a: &mut u64, b: &mut u64) {
+            *a = 40;
+            #[verus::internal(loop_isolation_boundary)]
+            {
+                *b = 20;
+                loop {
+                    assert(*a == *old(a)); // FAILS
+                    *a = 20;
+                    break;
+                }
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test_havoced_post_loop(a: &mut u64, b: &mut u64) {
+            #[verus::internal(loop_isolation_boundary)]
+            {
+                *b = 20;
+                loop {
+                    assert(*a == *old(a));
+                    *a = 20;
+                    break;
+                }
+            }
+            assert(*a == *old(a)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
