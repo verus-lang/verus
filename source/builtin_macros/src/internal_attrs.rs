@@ -77,3 +77,12 @@ pub(crate) fn mark(inputs: &[TokenStream], output: TokenStream) -> TokenStream {
 pub(crate) fn mark(_inputs: &[TokenStream], output: TokenStream) -> TokenStream {
     output
 }
+
+/// `mark(&[input], f(input))`
+pub(crate) fn mark_with(
+    input: TokenStream,
+    f: impl FnOnce(TokenStream) -> TokenStream,
+) -> TokenStream {
+    let output = f(input.clone());
+    mark(&[input], output)
+}

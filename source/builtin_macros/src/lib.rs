@@ -94,55 +94,53 @@ pub fn fndecl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 #[proc_macro]
 pub fn verus_keep_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(&[input.clone()], syntax::rewrite_items(input, EraseGhost::Keep, true))
+    internal_attrs::mark_with(input, |input| syntax::rewrite_items(input, EraseGhost::Keep, true))
 }
 
 #[proc_macro]
 pub fn verus_erase_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(&[input.clone()], syntax::rewrite_items(input, EraseGhost::Erase, true))
+    internal_attrs::mark_with(input, |input| syntax::rewrite_items(input, EraseGhost::Erase, true))
 }
 
 #[proc_macro]
 pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(&[input.clone()], syntax::rewrite_items(input, cfg_erase(), true))
+    internal_attrs::mark_with(input, |input| syntax::rewrite_items(input, cfg_erase(), true))
 }
 
 /// Like verus!, but for use inside a (non-trait) impl
 #[proc_macro]
 pub fn verus_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(
-        &[input.clone()],
-        syntax::rewrite_impl_items(input, cfg_erase(), true, false),
-    )
+    internal_attrs::mark_with(input, |input| {
+        syntax::rewrite_impl_items(input, cfg_erase(), true, false)
+    })
 }
 
 /// Like verus!, but for use inside a trait impl
 #[proc_macro]
 pub fn verus_trait_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(
-        &[input.clone()],
-        syntax::rewrite_impl_items(input, cfg_erase(), true, true),
-    )
+    internal_attrs::mark_with(input, |input| {
+        syntax::rewrite_impl_items(input, cfg_erase(), true, true)
+    })
 }
 
 #[proc_macro]
 pub fn verus_proof_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(&[input.clone()], syntax::rewrite_expr(EraseGhost::Keep, true, input))
+    internal_attrs::mark_with(input, |input| syntax::rewrite_expr(EraseGhost::Keep, true, input))
 }
 
 #[proc_macro]
 pub fn verus_exec_expr_keep_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(&[input.clone()], syntax::rewrite_expr(EraseGhost::Keep, false, input))
+    internal_attrs::mark_with(input, |input| syntax::rewrite_expr(EraseGhost::Keep, false, input))
 }
 
 #[proc_macro]
 pub fn verus_exec_expr_erase_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(&[input.clone()], syntax::rewrite_expr(EraseGhost::Keep, false, input))
+    internal_attrs::mark_with(input, |input| syntax::rewrite_expr(EraseGhost::Keep, false, input))
 }
 
 #[proc_macro]
 pub fn verus_exec_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(&[input.clone()], syntax::rewrite_expr(cfg_erase(), false, input))
+    internal_attrs::mark_with(input, |input| syntax::rewrite_expr(cfg_erase(), false, input))
 }
 
 #[cfg(verus_keep_ghost)]
@@ -286,12 +284,14 @@ fn cfg_no_vstd() -> bool {
 /// where exprs is a sequence of expressions separated by ",", ";", and/or "=>".
 #[proc_macro]
 pub fn verus_proof_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(&[input.clone()], syntax::proof_macro_exprs(EraseGhost::Keep, true, input))
+    internal_attrs::mark_with(input, |input| {
+        syntax::proof_macro_exprs(EraseGhost::Keep, true, input)
+    })
 }
 
 #[proc_macro]
 pub fn verus_exec_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(&[input.clone()], syntax::proof_macro_exprs(cfg_erase(), false, input))
+    internal_attrs::mark_with(input, |input| syntax::proof_macro_exprs(cfg_erase(), false, input))
 }
 
 // This is for expanding the body of an open_*_invariant in exec mode
@@ -299,24 +299,32 @@ pub fn verus_exec_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::Tok
 pub fn verus_exec_inv_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // We pass `treat_elements_as_ghost: false` to treat all elements besides
     // the third ($eexpr) as ghost.
-    internal_attrs::mark(&[input.clone()], syntax::inv_au_macro_exprs(cfg_erase(), false, 1, input))
+    internal_attrs::mark_with(input, |input| {
+        syntax::inv_au_macro_exprs(cfg_erase(), false, 1, input)
+    })
 }
 
 // This is for expanding the body of an open_*_invariant in `proof` mode
 #[proc_macro]
 pub fn verus_ghost_inv_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // We pass `treat_elements_as_ghost: true` to treat all elements as ghost.
-    internal_attrs::mark(&[input.clone()], syntax::inv_au_macro_exprs(cfg_erase(), true, 1, input))
+    internal_attrs::mark_with(input, |input| {
+        syntax::inv_au_macro_exprs(cfg_erase(), true, 1, input)
+    })
 }
 
 #[proc_macro]
 pub fn verus_exec_open_au_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(&[input.clone()], syntax::inv_au_macro_exprs(cfg_erase(), false, 0, input))
+    internal_attrs::mark_with(input, |input| {
+        syntax::inv_au_macro_exprs(cfg_erase(), false, 0, input)
+    })
 }
 
 #[proc_macro]
 pub fn verus_ghost_open_au_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(&[input.clone()], syntax::inv_au_macro_exprs(cfg_erase(), true, 0, input))
+    internal_attrs::mark_with(input, |input| {
+        syntax::inv_au_macro_exprs(cfg_erase(), true, 0, input)
+    })
 }
 
 /// `verus_proof_macro_explicit_exprs!(f!(tts))` applies verus syntax to transform `tts` into
@@ -326,10 +334,9 @@ pub fn verus_ghost_open_au_macro_exprs(input: proc_macro::TokenStream) -> proc_m
 /// your needs.
 #[proc_macro]
 pub fn verus_proof_macro_explicit_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(
-        &[input.clone()],
-        syntax::proof_macro_explicit_exprs(EraseGhost::Keep, true, input),
-    )
+    internal_attrs::mark_with(input, |input| {
+        syntax::proof_macro_explicit_exprs(EraseGhost::Keep, true, input)
+    })
 }
 
 #[proc_macro]
@@ -339,12 +346,12 @@ pub fn struct_with_invariants(input: proc_macro::TokenStream) -> proc_macro::Tok
 
 #[proc_macro]
 pub fn atomic_with_ghost_helper(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    atomic_ghost::atomic_ghost(input)
+    internal_attrs::mark_with(input, atomic_ghost::atomic_ghost)
 }
 
 #[proc_macro]
 pub fn calc_proc_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    calc_macro::calc_macro(input)
+    internal_attrs::mark_with(input, calc_macro::calc_macro)
 }
 
 /*** Verus small macro definition for executable items ***/
@@ -388,10 +395,9 @@ pub fn proof_with(_: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// Add a verus proof block.
 #[proc_macro]
 pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    internal_attrs::mark(
-        &[input.clone()],
-        attr_rewrite::proof_rewrite(cfg_erase(), input.into()).into(),
-    )
+    internal_attrs::mark_with(input, |input| {
+        attr_rewrite::proof_rewrite(cfg_erase(), input.into()).into()
+    })
 }
 
 /// proof_decl add extra stmts that are used only
@@ -403,7 +409,7 @@ pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 pub fn proof_decl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let erase = cfg_erase();
     if erase.keep() {
-        internal_attrs::mark(&[input.clone()], syntax::rewrite_proof_decl(erase, input.into()))
+        internal_attrs::mark_with(input, |input| syntax::rewrite_proof_decl(erase, input.into()))
     } else {
         proc_macro::TokenStream::new()
     }
