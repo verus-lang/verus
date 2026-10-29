@@ -1,7 +1,8 @@
-//! rust_verify only accepts `#[verus::internal(...)]` attributes whose path
-//! comes from a Verus macro expansion, so `mark` re-resolves the paths a macro
-//! generates at `Span::call_site()`, keeping their location. Paths copied from
-//! the macro's input are unchanged.
+//! rust_verify only accepts `#[verus::internal(...)]` attributes whose path span has the
+//! syntax context of a Verus macro expansion (see `check_no_hand_written_internal_attrs`).
+//! Generated attributes often reuse user spans via `quote_spanned!`, which carry the user's
+//! context, so `mark` gives the paths a macro generates the context of the current expansion.
+//! Paths copied unchanged from the macro's input keep the user's context and are rejected.
 
 use proc_macro::TokenStream;
 
@@ -22,6 +23,15 @@ fn path_key(path: &[proc_macro::TokenTree]) -> proc_macro::Span {
     path.last().unwrap().span()
 }
 
+/// Keep `span`'s location, but take the syntax context of the current macro expansion.
+/// rustc computes `Span::call_site()` once per expansion by applying a transparent mark for
+/// that expansion (`ExtCtxt::with_call_site_ctxt`), and `resolved_at` copies the context
+/// (`span.with_ctxt(at.ctxt())`), so the result's `outer_expn_data()` is this macro.
+#[cfg(verus_keep_ghost)]
+fn with_expansion_ctxt(span: proc_macro::Span) -> proc_macro::Span {
+    span.resolved_at(proc_macro::Span::call_site())
+}
+
 #[cfg(verus_keep_ghost)]
 fn input_spans(stream: TokenStream, spans: &mut Vec<proc_macro::Span>) {
     use proc_macro::TokenTree;
@@ -37,7 +47,7 @@ fn input_spans(stream: TokenStream, spans: &mut Vec<proc_macro::Span>) {
 
 #[cfg(verus_keep_ghost)]
 fn mark_generated(stream: TokenStream, input_spans: &[proc_macro::Span]) -> TokenStream {
-    use proc_macro::{Group, Span, TokenTree};
+    use proc_macro::{Group, TokenTree};
     let mut tts: Vec<TokenTree> = stream.into_iter().collect();
     let mut i = 0;
     while i < tts.len() {
@@ -50,9 +60,10 @@ fn mark_generated(stream: TokenStream, input_spans: &[proc_macro::Span]) -> Toke
         } else if let Some(path) = internal_path(&tts[i..]) {
             let key = path_key(path);
             let path = &mut tts[i..i + INTERNAL_PATH.len()];
+            // A generated path never has the exact span of an `internal` token in the input
             if !input_spans.iter().any(|s| s.eq(&key)) {
                 for tt in path {
-                    tt.set_span(tt.span().resolved_at(Span::call_site()));
+                    tt.set_span(with_expansion_ctxt(tt.span()));
                 }
             }
             i += INTERNAL_PATH.len();
