@@ -2049,7 +2049,7 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
                 IntTy::I64 => vir::ast_util::const_int_from_i128(val as i64 as i128),
                 IntTy::I128 => vir::ast_util::const_int_from_i128(val as i128),
                 IntTy::Isize => {
-                    let v = val as isize as i128;
+                    let v = tcx.data_layout.pointer_size().sign_extend(val);
                     if !(v >= i32::MIN as i128 && v <= i32::MAX as i128) {
                         unsupported_err!(
                             expr.span,
