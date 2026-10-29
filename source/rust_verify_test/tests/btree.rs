@@ -141,6 +141,71 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_btree_cursor_bounds_require_borrow_spec verus_code! {
+        use core::borrow::Borrow;
+        use core::cmp::Ordering;
+        use core::ops::Bound;
+        use std::collections::BTreeMap;
+        use vstd::prelude::*;
+        use vstd::std_specs::borrow::BorrowSpecImpl;
+        use vstd::std_specs::btree::{
+            positioned_at_lower_bound, positioned_at_upper_bound,
+        };
+        use vstd::std_specs::cmp::{OrdSpecImpl, PartialOrdSpecImpl};
+
+        #[derive(PartialEq, Eq, PartialOrd, Ord, StructuralEq)]
+        pub struct Key;
+
+        impl PartialOrdSpecImpl for Key {
+            open spec fn obeys_partial_cmp_spec() -> bool { true }
+            open spec fn partial_cmp_spec(&self, other: &Self) -> Option<Ordering> {
+                Some(Ordering::Equal)
+            }
+        }
+
+        impl OrdSpecImpl for Key {
+            open spec fn obeys_cmp_spec() -> bool { true }
+            open spec fn cmp_spec(&self, other: &Self) -> Ordering { Ordering::Equal }
+        }
+
+        impl BorrowSpecImpl<u32> for Key {
+            open spec fn obeys_borrow_spec() -> bool { false }
+            open spec fn spec_borrow(&self) -> &u32 { &0 }
+        }
+
+        impl Borrow<u32> for Key {
+            fn borrow(&self) -> &u32 { &2 }
+        }
+
+        fn test_lower_bound()
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+        {
+            let mut m = BTreeMap::<Key, u32>::new();
+            m.insert(Key, 7);
+            let ghost before = m@;
+            let cursor = m.lower_bound_mut(Bound::Included(&1u32));
+            assert(cursor@.wf());
+            assert(cursor@.map == before);
+            assert(positioned_at_lower_bound(cursor@, Bound::Included(&1u32))); // FAILS
+        }
+
+        fn test_upper_bound()
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+        {
+            let mut m = BTreeMap::<Key, u32>::new();
+            m.insert(Key, 7);
+            let ghost before = m@;
+            let cursor = m.upper_bound_mut(Bound::Included(&1u32));
+            assert(cursor@.wf());
+            assert(cursor@.map == before);
+            assert(positioned_at_upper_bound(cursor@, Bound::Included(&1u32))); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
     #[test] test_btree_map_contains_key_equality verus_code! {
         use std::collections::BTreeMap;
         use vstd::prelude::*;

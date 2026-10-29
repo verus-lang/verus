@@ -4,7 +4,8 @@
 //! The specification is only meaningful when the `Key` obeys our [`Ord`] model,
 //! as specified by [`super::super::laws_cmp::obeys_cmp_spec`].
 //! Borrowed-query comparison guarantees additionally require
-//! `<Q as OrdSpec>::obeys_cmp_spec()`.
+//! `<Q as OrdSpec>::obeys_cmp_spec()` and
+//! `<Key as BorrowSpec<Q>>::obeys_borrow_spec()`.
 //!
 //! By default, the Verus standard library brings useful axioms
 //! about the behavior of `BTreeMap` and `BTreeSet` into the ambient
@@ -1174,7 +1175,10 @@ pub assume_specification<
             &&& cursor@.wf()
             &&& cursor@.map == old(map)@
             &&& final(map)@ == cursor.final_map()
-            &&& <Q as OrdSpec>::obeys_cmp_spec() ==> positioned_at_lower_bound(cursor@, bound)
+            &&& ({
+                &&& <Q as OrdSpec>::obeys_cmp_spec()
+                &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+            }) ==> positioned_at_lower_bound(cursor@, bound)
         },
 ;
 
@@ -1196,7 +1200,10 @@ pub assume_specification<
             &&& cursor@.wf()
             &&& cursor@.map == old(map)@
             &&& final(map)@ == cursor.final_map()
-            &&& <Q as OrdSpec>::obeys_cmp_spec() ==> positioned_at_upper_bound(cursor@, bound)
+            &&& ({
+                &&& <Q as OrdSpec>::obeys_cmp_spec()
+                &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+            }) ==> positioned_at_upper_bound(cursor@, bound)
         },
 ;
 
