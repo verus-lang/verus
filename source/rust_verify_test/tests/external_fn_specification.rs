@@ -1460,8 +1460,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "`assume_specification` for a provided method")
 }
 
-test_verify_one_file! {
-    #[test] module_external code! {
+test_verify_one_file_with_options! {
+    #[test] module_external ["--allow-hand-written-internal-attrs"] => code! {
         #[verifier::external]
         mod moo {
             #[verus::internal(verify)]
