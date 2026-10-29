@@ -304,3 +304,172 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+const ITEM_MACRO_CALL_ERR: &str = "this item is produced by a macro call inside `verus!`";
+
+test_verify_one_file! {
+    #[test] item_macro_call_trait_impl_issue3154 verus_code! {
+        pub trait Small {
+            fn get(&self) -> (r: usize)
+                ensures r < 10;
+        }
+
+        pub struct S;
+
+        macro_rules! mk_impl {
+            ($t:ty) => {
+                impl Small for $t {
+                    fn get(&self) -> usize { 200 }
+                }
+            };
+        }
+
+        mk_impl!(S);
+
+        fn read<T: Small>(t: &T) -> u8 {
+            let a: [u8; 10] = [0; 10];
+            a[t.get()]
+        }
+    } => Err(err) => assert_vir_error_msg(err, ITEM_MACRO_CALL_ERR)
+}
+
+test_verify_one_file! {
+    #[test] item_macro_call_fn_main_issue3154 verus_code! {
+        macro_rules! mk_main {
+            () => {
+                fn main() {
+                    let a: [u8; 10] = [0; 10];
+                    let _ = a[200];
+                }
+            };
+        }
+
+        mk_main!();
+    } => Err(err) => assert_vir_error_msg(err, ITEM_MACRO_CALL_ERR)
+}
+
+test_verify_one_file! {
+    #[test] item_macro_call_item_passthrough_issue3154 verus_code! {
+        pub trait Small {
+            fn get(&self) -> (r: usize)
+                ensures r < 10;
+        }
+
+        pub struct S;
+
+        macro_rules! pass {
+            ($i:item) => { $i };
+        }
+
+        macro_rules! nested {
+            ($i:item) => { pass!($i); };
+        }
+
+        nested!(impl Small for S { fn get(&self) -> usize { 200 } });
+    } => Err(err) => assert_vir_error_msg(err, ITEM_MACRO_CALL_ERR)
+}
+
+test_verify_one_file! {
+    #[test] item_macro_call_macro_defined_outside_issue3154 code! {
+        macro_rules! mk_fn {
+            () => {
+                fn unverified() -> u8 { 200 }
+            };
+        }
+
+        ::verus_builtin_macros::verus! {
+            mk_fn!();
+        }
+    } => Err(err) => assert_vir_error_msg(err, ITEM_MACRO_CALL_ERR)
+}
+
+test_verify_one_file! {
+    #[test] item_macro_call_outside_verus_issue3154 code! {
+        macro_rules! mk_fn {
+            () => {
+                fn unverified() -> u8 { 200 }
+            };
+        }
+
+        mk_fn!();
+
+        ::verus_builtin_macros::verus! {
+            fn verified() {}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] item_macro_call_in_verus_mod_issue3154 verus_code! {
+        mod m {
+            use vstd::prelude::*;
+
+            pub trait Small {
+                fn get(&self) -> (r: usize)
+                    ensures r < 10; // FAILS
+            }
+
+            pub struct S;
+
+            macro_rules! mk_impl {
+                ($t:ty) => {
+                    impl Small for $t {
+                        fn get(&self) -> usize { 200 }
+                    }
+                };
+            }
+
+            mk_impl!(S);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] item_macro_call_output_in_verus_issue3154 verus_code! {
+        pub trait Small {
+            fn get(&self) -> (r: usize)
+                ensures r < 10; // FAILS
+        }
+
+        pub struct S;
+
+        macro_rules! mk_impl {
+            ($t:ty) => {
+                ::verus_builtin_macros::verus! {
+                    impl Small for $t {
+                        fn get(&self) -> usize { 200 }
+                    }
+                }
+            };
+        }
+
+        mk_impl!(S);
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] item_macro_call_harmless_items_issue3154 verus_code! {
+        mod m {
+            pub open spec fn f() -> bool { true }
+        }
+
+        macro_rules! mk_harmless {
+            () => {
+                use m::f as g;
+                macro_rules! helper { () => {} }
+            };
+        }
+
+        mk_harmless!();
+
+        proof fn test() {
+            assert(g());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] item_macro_call_include_issue3154 verus_code! {
+        include!("does_not_matter.rs");
+    } => Err(err) => assert!(err.errors.iter().any(|e| e.message.contains("`include!` in item position is not supported inside `verus!`")))
+}
