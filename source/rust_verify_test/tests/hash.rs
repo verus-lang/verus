@@ -1131,9 +1131,7 @@ test_verify_one_file! {
             assert(m@.contains_key(w));
 
             assert(m@.len() == 1);
-            assert(m.len() == 1) by {
-                vstd::hash_map::axiom_hash_map_with_view_spec_len(&m);
-            }
+            assert(m.len() == 1);
             let n = m.len();
             assert(n == 1);
 
@@ -1155,6 +1153,65 @@ test_verify_one_file! {
             assert(!m@.contains_key(w));
             let b = m.contains_key(&s2);
             assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_map_with_view_equality verus_code! {
+        use core::hash::Hash;
+        use vstd::hash_map::HashMapWithView;
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::eq_matches_view_equality;
+        use vstd::std_specs::hash::obeys_key_model;
+
+        fn test<Key: Hash + Eq + View + Copy>(key: Key, equivalent: Key, other: Key)
+            requires
+                obeys_key_model::<Key>(),
+                eq_matches_view_equality::<Key>(),
+                key != equivalent,
+                key@ == equivalent@,
+                key@ != other@,
+        {
+            let mut m = HashMapWithView::<Key, u32>::with_capacity(2);
+            assert(m@ == Map::<Key::V, u32>::empty());
+            let empty = m.is_empty();
+            assert(empty);
+            m.reserve(4);
+            let previous = m.insert(key, 10);
+            assert(previous.is_none());
+            let previous = m.insert(equivalent, 20);
+            assert(previous == Some(10));
+            assert(m@ == Map::<Key::V, u32>::empty().insert(key@, 20));
+            assert(m.len() == 1);
+            let empty = m.is_empty();
+            assert(!empty);
+            let present = m.contains_key(&key);
+            assert(present);
+            let present = m.contains_key(&equivalent);
+            assert(present);
+            let value = m.get(&equivalent);
+            assert(value == Some(&20u32));
+
+            let mut rhs = HashMapWithView::<Key, u32>::new();
+            rhs.insert(equivalent, 30);
+            let previous = rhs.insert(other, 40);
+            assert(previous.is_none());
+            m.union_prefer_right(rhs);
+            assert(m@ == Map::<Key::V, u32>::empty().insert(key@, 30).insert(other@, 40));
+            assert(m.len() == 2);
+            let removed = m.remove(&equivalent);
+            assert(removed == Some(30));
+            assert(m@ == Map::<Key::V, u32>::empty().insert(other@, 40));
+            let removed = m.remove(&key);
+            assert(removed.is_none());
+            let present = m.contains_key(&key);
+            assert(!present);
+            let value = m.get(&key);
+            assert(value.is_none());
+            m.clear();
+            assert(m@ == Map::<Key::V, u32>::empty());
+            assert(m.len() == 0);
         }
     } => Ok(())
 }
@@ -1358,7 +1415,10 @@ test_verify_one_file! {
 
             let three: String = "three".to_owned();
             let six: String = "six".to_owned();
-            m.insert(three.clone(), 4);
+            let previous = m.insert(three.clone(), 4);
+            assert(previous.is_none());
+            let previous = m.insert("three".to_owned(), 9);
+            assert(previous == Some(4));
 
             let b = m.is_empty();
             assert(!b);
@@ -1368,14 +1428,12 @@ test_verify_one_file! {
                 reveal_strlit("three");
                 reveal_strlit("six");
             }
-            assert(m@[three@] == 4);
+            assert(m@[three@] == 9);
 
             let b = m.contains_key(three.as_str());
             assert(b);
 
-            assert(m.len() == 2) by {
-                vstd::hash_map::axiom_string_hash_map_spec_len(&m);
-            }
+            assert(m.len() == 2);
             let n = m.len();
             assert(n == 2);
 
@@ -1395,6 +1453,83 @@ test_verify_one_file! {
             assert(!b);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_hash_map_verified_operations verus_code! {
+        use vstd::hash_map::StringHashMap;
+        use vstd::prelude::*;
+
+        fn test() {
+            let key = "caf\u{e9}";
+            let other = "tea";
+            assert(key@ != other@) by {
+                reveal_strlit("caf\u{e9}");
+                reveal_strlit("tea");
+            }
+            let mut m = StringHashMap::<Vec<u8>>::with_capacity(2);
+            m.reserve(4);
+            let previous = m.insert(key.to_owned(), vec![1u8]);
+            assert(previous.is_none());
+            let previous = m.insert(key.to_owned(), vec![2u8]);
+            let previous = previous.unwrap();
+            assert(previous@ == seq![1u8]);
+            let value = m.get(key).unwrap();
+            assert(value@ == seq![2u8]);
+            let count = m.len();
+            assert(count == 1);
+
+            let mut rhs = StringHashMap::<Vec<u8>>::new();
+            rhs.insert(key.to_owned(), vec![3u8]);
+            rhs.insert(other.to_owned(), vec![4u8]);
+            m.union_prefer_right(rhs);
+            let value = m.get(key).unwrap();
+            assert(value@ == seq![3u8]);
+            let value = m.get(other).unwrap();
+            assert(value@ == seq![4u8]);
+            assert(m@.dom() =~= set![key@, other@]);
+            let count = m.len();
+            assert(count == 2);
+
+            m.remove(key);
+            let present = m.contains_key(key);
+            assert(!present);
+            let value = m.get(key);
+            assert(value.is_none());
+            let ghost before = m@;
+            m.remove(key);
+            assert(m@ == before);
+            let value = m.get(other).unwrap();
+            assert(value@ == seq![4u8]);
+            m.clear();
+            let empty = m.is_empty();
+            assert(empty);
+            let count = m.len();
+            assert(count == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_hash_map_requires_well_formed verus_code! {
+        use vstd::hash_map::StringHashMap;
+        use vstd::prelude::*;
+
+        fn test_read(m: &StringHashMap<u32>) {
+            let _ = m.get("key"); // FAILS
+        }
+
+        fn test_mutate(m: &mut StringHashMap<u32>, key: String) {
+            m.insert(key, 1); // FAILS
+        }
+
+        fn test_union(m: &mut StringHashMap<u32>, other: StringHashMap<u32>)
+            requires
+                old(m).well_formed(),
+        {
+            m.union_prefer_right(other); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
 }
 
 test_verify_one_file! {

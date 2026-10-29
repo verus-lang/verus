@@ -214,6 +214,11 @@ pub open spec fn eq_matches_equality<T: PartialEq>() -> bool {
     forall|v1: T, v2: T| v1.eq_spec(&v2) <==> v1 == v2
 }
 
+/// Whether the type's equality spec matches view equality.
+pub open spec fn eq_matches_view_equality<T: PartialEq + View>() -> bool {
+    forall|v1: T, v2: T| v1.eq_spec(&v2) <==> v1@ == v2@
+}
+
 /// Whether the type's equality spec matches deep-view equality.
 pub open spec fn eq_matches_deep_equality<T: PartialEq + DeepView>() -> bool {
     forall|v1: T, v2: T| v1.eq_spec(&v2) <==> v1.deep_view() == v2.deep_view()

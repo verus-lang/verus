@@ -115,8 +115,8 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
 /// by having `Key` implement `Hash`, since this trait doesn't mandate
 /// determinism.
 ///
-/// The standard library has axioms that all primitive types and `Box`es
-/// thereof obey this model. If you want to use some other key
+/// The standard library has axioms that all primitive types, `String`, `str`,
+/// and `Box`es of primitive types obey this model. If you want to use some other key
 /// type `MyKey`, you need to explicitly state your assumption that it
 /// does so with
 /// `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>())`.
@@ -176,6 +176,16 @@ pub broadcast axiom fn axiom_borrowed_key_hashing_matches_box<Q: Hash + Eq + ?Si
 pub broadcast axiom fn axiom_borrowed_key_hashing_matches_string()
     ensures
         #[trigger] borrowed_key_hashing_matches::<String, str>(),
+;
+
+pub broadcast axiom fn axiom_string_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<String>(),
+;
+
+pub broadcast axiom fn axiom_str_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<str>(),
 ;
 
 // These axioms state that any primitive type, or `Box` thereof,
@@ -471,6 +481,51 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
             &&& into_iter(iter) == IteratorSpec::remaining(&iter).unref()
             &&& IteratorSpec::decrease(&iter) is Some
         },
+;
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(Key)]
+#[verifier::accept_recursive_types(Value)]
+#[verifier::reject_recursive_types(A)]
+pub struct ExMapIntoIter<Key, Value, A: Allocator>(hash_map::IntoIter<Key, Value, A>);
+
+pub uninterp spec fn into_iter_entries<Key, Value, A: Allocator>(
+    iter: hash_map::IntoIter<Key, Value, A>,
+) -> Seq<(Key, Value)>;
+
+impl<K, V, A: Allocator> super::iter::IteratorSpecImpl for hash_map::IntoIter<K, V, A> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
+    }
+
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_entries(*self).len() {
+            Some(into_iter_entries(*self)[index])
+        } else {
+            None
+        }
+    }
+}
+
+pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::into_iter ](
+    m: HashMap<Key, Value, S, A>,
+) -> (iter: hash_map::IntoIter<Key, Value, A>)
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> IteratorSpec::remaining(
+            &iter,
+        ).to_set() == m@.kv_pairs(),
+        into_iter_entries(iter) == IteratorSpec::remaining(&iter),
+        IteratorSpec::decrease(&iter) is Some,
 ;
 
 /// Specifications for the behavior of [`std::collections::HashMap`](https://doc.rust-lang.org/std/collections/struct.HashMap.html).
@@ -2219,6 +2274,8 @@ pub broadcast group group_hash_axioms {
     axiom_borrowed_key_hashing_matches_ref,
     axiom_borrowed_key_hashing_matches_box,
     axiom_borrowed_key_hashing_matches_string,
+    axiom_string_obeys_hash_table_key_model,
+    axiom_str_obeys_hash_table_key_model,
     axiom_bool_obeys_hash_table_key_model,
     axiom_u8_obeys_hash_table_key_model,
     axiom_u16_obeys_hash_table_key_model,
