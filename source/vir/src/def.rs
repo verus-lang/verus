@@ -218,6 +218,7 @@ pub const HEIGHT_REC_FUN: &str = "fun_from_recursive_field";
 pub const HAS_RESOLVED: &str = "has_resolved";
 pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
+pub const CLOSURE_OPENS_INVARIANTS: &str = "closure_opens_invariants";
 pub const DEFAULT_ENS: &str = "default_ens";
 const CLOSURE_PARAM: &str = "closure%";
 pub const EXT_EQ: &str = "ext_eq";
@@ -290,6 +291,7 @@ pub const PERVASIVE_PREFIX: &str = "pervasive::";
 
 pub const RUST_DEF_CTOR: &str = "ctor%";
 pub const RUST_DEF_CLOSURE: &str = "closure%";
+pub const RUST_DEF_ANON_CONST: &str = "anon_const%";
 
 pub const RUST_OPAQUE_TYPE: &str = "opaque";
 

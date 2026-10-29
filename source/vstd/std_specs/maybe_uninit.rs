@@ -56,4 +56,11 @@ pub assume_specification<T>[ MaybeUninit::<T>::assume_init_mut ](m: &mut MaybeUn
     opens_invariants none
     no_unwind;
 
+pub assume_specification<T>[ MaybeUninit::<T>::write ](m: &mut MaybeUninit<T>, val: T) -> (ret: &mut T)
+    ensures *ret == val,
+        final(m).mem_contents().is_init(),
+        final(m).mem_contents().value() == *final(ret),
+    opens_invariants none
+    no_unwind;
+
 }

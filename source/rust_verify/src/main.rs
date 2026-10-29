@@ -67,13 +67,38 @@ pub fn main() {
     rustc_driver::init_logger(&logger_handler, rustc_log::LoggerConfig::from_env("RUSTVERIFY_LOG"));
 
     if via_cargo != has_rustc {
-        let _ = logger_handler.early_err("Error: VERUS_DRIVER_VIA_CARGO must be 1 if and only if 'rustc' is the first argument to verus");
+        let _ = logger_handler.early_err("`VERUS_DRIVER_VIA_CARGO` must be 1 if and only if `rustc` is the first argument to verus");
         std::process::exit(1);
     }
 
     let mut args = if build_test_mode || via_cargo { internal_args } else { std::env::args() };
     let program =
         if build_test_mode || via_cargo { internal_program } else { args.next().unwrap() };
+
+    let mut args: Vec<String> = args.collect();
+
+    if args.iter().any(|arg| arg == "-vV") {
+        // Intercept invocations with `-vV`, used for e.g. Cargo fingerprinting.
+        // Include Verus details in the output to ensure that fingerprints are accurate.
+        let verus_version = build_info.version;
+        let verus_sha = build_info.sha;
+        println!("verus {verus_version} ({verus_sha})");
+        args.insert(0, program.clone());
+        rust_verify::driver::run_rustc_compiler_directly(&args);
+        return;
+    }
+
+    let is_direct_rustc_call = via_cargo
+        && rust_verify::cargo_verus::extend_args_and_check_is_direct_rustc_call(
+            &mut args,
+            &mut dep_tracker,
+        );
+
+    if is_direct_rustc_call {
+        args.insert(0, program.clone());
+        rust_verify::driver::run_rustc_compiler_directly(&args);
+        return;
+    }
 
     let mut vstd = None;
     let verus_root = if !(build_test_mode || via_cargo_rebuild_verus_libs) {
@@ -86,19 +111,6 @@ pub fn main() {
     } else {
         None
     };
-
-    let mut args: Vec<String> = args.collect();
-    let is_direct_rustc_call = via_cargo
-        && rust_verify::cargo_verus::extend_args_and_check_is_direct_rustc_call(
-            &mut args,
-            &mut dep_tracker,
-        );
-
-    if is_direct_rustc_call {
-        args.insert(0, program.clone());
-        rust_verify::driver::run_rustc_compiler_directly(&args);
-        return;
-    }
 
     let via_cargo = via_cargo.then(|| rust_verify::config::parse_cargo_args(&program, &mut args));
 
@@ -519,7 +531,7 @@ pub fn main() {
     if verifier.args.output_json {
         // Render function verification details as JSON.
         let mut func_details: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
-        for (func, details) in &verifier.func_details {
+        for (func, details) in verifier.func_details.lock().unwrap().iter() {
             let name = vir::ast_util::fun_as_friendly_rust_name(&func);
             func_details.insert(name, details.to_json());
         }

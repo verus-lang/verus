@@ -365,6 +365,7 @@ impl Parser {
                             _ => None,
                         }
                     }
+                    Node::Atom(s) if s == "fp.to_ieee_bv" => Some(UnaryOp::FloatToIeeeBits),
                     Node::Atom(s) if s == "fp.to_real" => Some(UnaryOp::FloatToReal),
                     Node::Atom(s) if s == "to_real" => Some(UnaryOp::ToReal),
                     Node::Atom(s) if s == "to_int" => Some(UnaryOp::RealToInt),

@@ -6,8 +6,10 @@ For soundness's sake, be as defensive as possible:
 - explicitly match all fields of the Rust AST so we catch any features added in the future
 */
 
+use crate::attributes::forbid_unsafe_attributes;
 use crate::context::{Context, ContextX};
 use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
+use crate::query::{PreCrate, QueryError};
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{def_id_to_vir_path_option, mk_visibility};
@@ -16,13 +18,15 @@ use crate::rust_to_vir_func::{
 };
 use crate::rust_to_vir_global::TypIgnoreImplPaths;
 use crate::rust_to_vir_impl::ExternalInfo;
-use crate::util::err_span_vec;
+use crate::util::{err_span, err_span_vec};
 use crate::verus_items::{self, VerusItem};
 use crate::{unsupported_err, unsupported_err_vec, unsupported_err_vec_unless};
+use rustc_hir::def_id::{DefId, LocalDefId};
 use std::collections::HashSet;
 use std::rc::Rc;
 
 use rustc_ast::IsAuto;
+use rustc_hir::def::DefKind;
 use rustc_hir::{
     ConstItemRhs, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId,
     ItemKind, Mutability,
@@ -43,7 +47,7 @@ impl State {
         &mut self,
         ctxt: &Context<'tcx>,
         name: &Fun,
-        id: rustc_span::def_id::DefId,
+        id: DefId,
     ) {
         self.fun_warn_configs
             .insert(name.clone(), crate::attributes::warning_config_walk_parents(ctxt.tcx, id));
@@ -59,13 +63,18 @@ fn check_item<'tcx>(
     id: &ItemId,
     item: &'tcx Item<'tcx>,
     crate_items: &CrateItems,
+    no_erasure_needed: &mut Vec<DefId>,
 ) -> Result<(), Vec<VirErr>> {
+    let def_id = item.owner_id.to_def_id();
+
     let attrs = ctxt.tcx.hir_attrs(item.hir_id());
     let vattrs = ctxt.get_verifier_attrs(attrs).map_err(|e| vec![e])?;
     if vattrs.internal_reveal_fn {
+        no_erasure_needed.push(def_id);
         return Ok(());
     }
     if vattrs.internal_const_body {
+        no_erasure_needed.push(def_id);
         return Ok(());
     }
     if vattrs.external_fn_specification && !matches!(&item.kind, ItemKind::Fn { .. }) {
@@ -90,6 +99,7 @@ fn check_item<'tcx>(
     let mut handle_const_or_static = |body_id: &rustc_hir::BodyId| {
         let def_id = body_id.hir_id.owner.to_def_id();
         if vattrs.size_of_global {
+            no_erasure_needed.push(def_id);
             return Ok(()); // handled earlier
         }
         if vattrs.item_broadcast_use {
@@ -172,13 +182,11 @@ fn check_item<'tcx>(
             }
             *reveals = Some(ctxt.spanned_new(item.span, funs));
 
+            no_erasure_needed.push(def_id);
             return Ok(());
         }
         if vattrs.structural_const_wrapper {
-            ctxt.erasure_info
-                .borrow_mut()
-                .ignored_functions
-                .push((item.owner_id.to_def_id(), item.span.data()));
+            no_erasure_needed.push(def_id);
             return Ok(());
         }
 
@@ -206,8 +214,6 @@ fn check_item<'tcx>(
 
     match &item.kind {
         ItemKind::Fn { sig, generics, body: body_id, .. } => {
-            // let _ =
-            //     check_fn_opaque_ty(ctxt, &mut vir.opaque_types, &item.owner_id.to_def_id()).map_err(|e| vec![e])?;
             check_item_fn(
                 ctxt,
                 state,
@@ -226,6 +232,7 @@ fn check_item<'tcx>(
                 None,
                 None,
                 &mut vir.opaque_types,
+                no_erasure_needed,
             )
             .map_err(|e| vec![e])?;
         }
@@ -308,6 +315,7 @@ fn check_item<'tcx>(
                 module_path.clone(),
                 crate_items,
                 attrs,
+                no_erasure_needed,
             )?;
         }
         ItemKind::Const(_ident, generics, _ty, ConstItemRhs::Body(body_id)) => {
@@ -350,6 +358,7 @@ fn check_item<'tcx>(
                 &vattrs,
                 crate_items,
                 *safety,
+                no_erasure_needed,
             )
             .map_err(|e| vec![e])?;
         }
@@ -363,7 +372,7 @@ fn check_item<'tcx>(
             return Ok(());
         }
         _ => {
-            unsupported_err_vec!(item.span, "unsupported item", item);
+            unsupported_err_vec!(item.span, "this kind of item", item);
         }
     }
     Ok(())
@@ -372,7 +381,7 @@ fn check_item<'tcx>(
 fn check_foreign_item<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
-    vir: &mut KrateX,
+    infos: &mut Vec<FunctionOrConstInfo<'tcx>>,
     _id: &ForeignItemId,
     item: &'tcx ForeignItem<'tcx>,
 ) -> Result<(), VirErr> {
@@ -382,7 +391,7 @@ fn check_foreign_item<'tcx>(
             check_foreign_item_fn(
                 ctxt,
                 state,
-                vir,
+                infos,
                 item.owner_id.to_def_id(),
                 item.span,
                 mk_visibility(ctxt, item.owner_id.to_def_id()),
@@ -393,21 +402,132 @@ fn check_foreign_item<'tcx>(
             )?;
         }
         _ => {
-            unsupported_err!(item.span, "unsupported foreign item", item);
+            unsupported_err!(item.span, "this kind of foreign item", item);
         }
     }
     Ok(())
+}
+
+/// An anonymous constant that needs to be mode-checked.
+pub(crate) struct AnonConstToCheck {
+    /// The anonymous constant itself
+    pub(crate) def_id: LocalDefId,
+    /// The closest enclosing verus-aware item; this needs to be type-checked
+    /// before we can ask for the type of the anonymous constant.
+    pub(crate) owner_def_id: LocalDefId,
+    pub(crate) module_path: Path,
+    /// The VIR name of the function we create for the anonymous constant
+    pub(crate) fun: Fun,
+}
+
+/// Find the anonymous constants that need to be translated to executable VIR bodies
+/// for mode checking.
+///
+/// We only gather the information that can be obtained from HIR here. The
+/// `FunctionOrConstInfo` for each anonymous constant is generated later, on demand,
+/// by the query system (see `Query::get_anon_const_info`), because computing the type
+/// of an anonymous constant requires type-checking its enclosing item, which must not
+/// happen until the query system is available.
+fn collect_anon_consts<'tcx>(
+    ctxt: &Context<'tcx>,
+    state: &mut State,
+    crate_items: &CrateItems,
+) -> Vec<AnonConstToCheck> {
+    let tcx = ctxt.tcx;
+    let mut anon_consts = vec![];
+    for id in tcx.hir_body_owners() {
+        if !matches!(tcx.def_kind(id), DefKind::AnonConst) {
+            continue;
+        }
+        // Integer-literal discriminants cannot refer to ghost code,
+        // and may intentionally wrap (e.g., `A = 255` under `#[repr(i8)]`).
+        let body = tcx.hir_body_owned_by(id);
+        if tcx.opt_parent(id.to_def_id()).is_some_and(|p| tcx.def_kind(p) == DefKind::Variant) {
+            let mut value = body.value;
+            if let rustc_hir::ExprKind::Unary(rustc_hir::UnOp::Neg, e) = value.kind {
+                value = e;
+            }
+            if matches!(value.kind, rustc_hir::ExprKind::Lit(_)) {
+                continue;
+            }
+        }
+        // Only check anonymous constants owned by verified items.
+        // External code is trusted and is not mode-checked.
+        // The erased copy that verus! generates for each const and const fn is external,
+        // but its anonymous constants also appear in the unerased proxy, which is checked here.
+        let mut owner = tcx.opt_parent(id.to_def_id());
+        let owner_and_module_path = loop {
+            let Some(owner_id) = owner else { break None };
+            if let Some(local) = owner_id.as_local() {
+                if let Some(verif) = crate_items.map.get(&rustc_hir::OwnerId { def_id: local }) {
+                    break match verif {
+                        VerifOrExternal::VerusAware { module_path, external_body, .. } => {
+                            // external_body trusts only the body of a function or const;
+                            // its signature is still checked.
+                            let in_body = || {
+                                tcx.hir_maybe_body_owned_by(local).is_none_or(|b| {
+                                    tcx.hir_parent_id_iter(tcx.local_def_id_to_hir_id(id))
+                                        .any(|p| p == b.value.hir_id)
+                                })
+                            };
+                            if *external_body && in_body() {
+                                None
+                            } else {
+                                Some((local, module_path.clone()))
+                            }
+                        }
+                        _ => None,
+                    };
+                }
+            }
+            owner = tcx.opt_parent(owner_id);
+        };
+        let Some((owner_def_id, module_path)) = owner_and_module_path else {
+            continue;
+        };
+
+        // The `Fun` name is needed up front so that the warning config for the anonymous
+        // constant makes it into the `WarningCtx`, which is built before the query system
+        // exists. `Query::get_anon_const_info` asserts that the name computed here agrees
+        // with the name of the `FunctionStub` it eventually builds.
+        let fun = Arc::new(FunX { path: ctxt.def_id_to_vir_path(id.to_def_id()) });
+        state.insert_fun_warn_config(ctxt, &fun, id.to_def_id());
+
+        anon_consts.push(AnonConstToCheck { def_id: id, owner_def_id, module_path, fun });
+    }
+    anon_consts
 }
 
 pub(crate) fn get_root_module_path<'tcx>(ctxt: &ContextX<'tcx>) -> Path {
     ctxt.def_id_to_vir_path(rustc_hir::CRATE_OWNER_ID.to_def_id())
 }
 
-pub fn crate_to_vir<'a, 'tcx>(
+/// The code emitted by the Verus macros refers to these crates by absolute paths
+/// (e.g., `::core::cfg!`, `::vstd::prelude`), so an `extern crate` item must not
+/// make these names refer to a different crate.
+const RESERVED_EXTERN_CRATE_NAMES: &[&str] =
+    &["core", "vstd", "verus_builtin", "verus_builtin_macros"];
+
+fn check_extern_crate_alias<'tcx>(item: &'tcx Item<'tcx>) -> Result<(), VirErr> {
+    if let ItemKind::ExternCrate(Some(orig_name), ident) = &item.kind {
+        let alias = ident.name.as_str();
+        if RESERVED_EXTERN_CRATE_NAMES.contains(&alias) && orig_name.as_str() != alias {
+            return err_span(
+                item.span,
+                format!(
+                    "Verus does not currently support renaming a crate to `{alias}` with `extern crate`"
+                ),
+            );
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn crate_to_vir<'a, 'tcx>(
     mut ctxtx: ContextX<'tcx>,
     imported: &Vec<Krate>,
     crate_items: &CrateItems,
-) -> Result<(Context<'tcx>, WarningCtx, Krate), Vec<VirErr>> {
+) -> Result<PreCrate<'tcx>, (Vec<VirErr>, Option<QueryError>)> {
     let mut vir: KrateX = KrateX {
         functions: Vec::new(),
         reveal_groups: Vec::new(),
@@ -443,6 +563,9 @@ pub fn crate_to_vir<'a, 'tcx>(
 
     let mut typs_sizes_set: HashMap<TypIgnoreImplPaths, u128> = HashMap::new();
     for item in crate::util::iter_crate_free_items(tcx) {
+        if let Err(err) = check_extern_crate_alias(item) {
+            errors.push(err);
+        }
         if let Err(err) =
             crate::rust_to_vir_global::process_const_early(&mut ctxtx, &mut typs_sizes_set, item)
         {
@@ -451,7 +574,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     }
 
     if errors.len() > 0 {
-        return Err(errors);
+        return Err((errors, None));
     }
 
     let arch_word_bits = ctxtx.arch_word_bits.unwrap_or(vir::ast::ArchWordBits::Either32Or64);
@@ -485,6 +608,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     }
     for item in crate::util::iter_crate_free_items(tcx) {
         if let Item { kind: ItemKind::Mod(_ident, _module), owner_id, .. } = item {
+            forbid_unsafe_attributes(tcx, *owner_id, &mut errors);
             let path =
                 def_id_to_vir_path_option(ctxt.tcx, Some(&ctxt.verus_items), owner_id.to_def_id());
             if let Some(path) = path {
@@ -504,7 +628,11 @@ pub fn crate_to_vir<'a, 'tcx>(
         imported,
         &crate_items,
     )
-    .map_err(|e| vec![e])?;
+    .map_err(|e| (vec![e], None))?;
+
+    let mut rust_error = None;
+
+    let mut no_erasure_needed = vec![];
 
     for crate_item in crate_items.items.iter() {
         match &crate_item.verif {
@@ -514,9 +642,22 @@ pub fn crate_to_vir<'a, 'tcx>(
                 external_body: _,
                 external_fn_specification: _,
             } => {
+                forbid_unsafe_attributes(tcx, crate_item.id.owner_id(), &mut errors);
                 match crate_item.id {
                     GeneralItemId::ItemId(item_id) => {
                         let item = ctxt.tcx.hir_item(item_id);
+
+                        if matches!(
+                            &item.kind,
+                            ItemKind::Struct(..) | ItemKind::Union(..) | ItemKind::Enum(..)
+                        ) {
+                            if tcx.check_well_formed(item.owner_id.def_id).is_err() {
+                                rust_error =
+                                    Some(crate::query::QueryError { _i_just_emitted_an_error: () });
+                                continue;
+                            }
+                        }
+
                         if let Err(errs) = check_item(
                             &ctxt,
                             &mut state,
@@ -526,6 +667,7 @@ pub fn crate_to_vir<'a, 'tcx>(
                             &item_id,
                             item,
                             &crate_items,
+                            &mut no_erasure_needed,
                         ) {
                             errors.extend(errs);
                         }
@@ -535,7 +677,7 @@ pub fn crate_to_vir<'a, 'tcx>(
                         if let Err(err) = check_foreign_item(
                             &ctxt,
                             &mut state,
-                            &mut vir,
+                            &mut infos,
                             &foreign_item_id,
                             foreign_item,
                         ) {
@@ -590,31 +732,26 @@ pub fn crate_to_vir<'a, 'tcx>(
         }
     }
 
-    if errors.len() > 0 {
-        return Err(errors);
+    if errors.len() > 0 || rust_error.is_some() {
+        return Err((errors, rust_error));
     }
 
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&CrateId::Vstd);
 
-    for info in infos.into_iter() {
-        if let Err(e) = crate::rust_to_vir_func::finish_item(&ctxt, info, &mut vir.functions) {
-            errors.push(e);
-        }
-    }
-    if errors.len() > 0 {
-        return Err(errors);
-    }
+    let anon_consts = collect_anon_consts(&ctxt, &mut state, crate_items);
 
+    let function_stubs = infos.iter().flat_map(|info| info.iter_stubs()).cloned().collect();
     crate::rust_to_vir_impl::collect_external_trait_impls(
         &ctxt,
         imported,
         &mut vir,
         &mut state.external_info,
+        &function_stubs,
     )
-    .map_err(|e| vec![e])?;
+    .map_err(|e| (vec![e], None))?;
 
-    crate::rust_to_vir_adts::setup_type_invariants(&mut vir).map_err(|e| vec![e])?;
-    vir::traits::set_krate_dyn_compatibility(imported, &mut vir);
+    crate::rust_to_vir_adts::setup_type_invariants(&mut vir, &function_stubs)
+        .map_err(|e| (vec![e], None))?;
 
     let mut fun_warn_configs: HashMap<Fun, Option<WarningConfig>> = HashMap::new();
     for krate in imported {
@@ -627,5 +764,51 @@ pub fn crate_to_vir<'a, 'tcx>(
     }
     let warning_ctx = WarningCtx { fun_warn_configs };
 
-    Ok((ctxt, warning_ctx, Arc::new(vir)))
+    let infos = infos.into_iter().map(|info| Arc::new(info)).collect::<Vec<_>>();
+    let mut fun_name_to_info = HashMap::<Fun, Arc<FunctionOrConstInfo>>::new();
+    for info in infos.iter() {
+        for stub in info.iter_stubs() {
+            fun_name_to_info.insert(stub.x.name.clone(), info.clone());
+        }
+    }
+
+    // Map DefId to the Fun that has the relave ErasureInfo and ErasureModes
+    let mut def_id_to_fun_name_for_erasure = HashMap::<DefId, Option<Fun>>::new();
+    for info in infos.iter() {
+        match &**info {
+            FunctionOrConstInfo::Function(info) => {
+                let f = def_id_to_fun_name_for_erasure
+                    .insert(info.def_id, Some(info.function.x.name.clone()));
+                assert!(f.is_none());
+            }
+            FunctionOrConstInfo::Const(info) => {
+                let f = def_id_to_fun_name_for_erasure
+                    .insert(info.def_id, Some(info.function.x.name.clone()));
+                assert!(f.is_none());
+            }
+            FunctionOrConstInfo::ForeignFunction(_) => {}
+        }
+    }
+    for def_id in no_erasure_needed.iter() {
+        let f = def_id_to_fun_name_for_erasure.insert(*def_id, None);
+        assert!(f.is_none());
+    }
+
+    let anon_consts = anon_consts.into_iter().map(|a| Arc::new(a)).collect::<Vec<_>>();
+    let mut fun_name_to_anon_const = HashMap::<Fun, Arc<AnonConstToCheck>>::new();
+    for anon_const in anon_consts.iter() {
+        let f = fun_name_to_anon_const.insert(anon_const.fun.clone(), anon_const.clone());
+        assert!(f.is_none());
+    }
+
+    Ok(PreCrate {
+        ctxt,
+        warning_ctx: Arc::new(warning_ctx),
+        krate_without_funs: Arc::new(vir),
+        anon_consts,
+        fun_name_to_anon_const,
+        infos: infos,
+        fun_name_to_info,
+        def_id_to_fun_name_for_erasure,
+    })
 }

@@ -54,9 +54,9 @@ Our advice is to be as general as possible by default:
   - Example: the Verus [`Seq::len()` function](https://github.com/verus-lang/verus/blob/main/source/vstd/seq.rs)
     returns a `nat` to represent the length of a sequence.
   - The type `nat` is also handy for proving that recursive definitions terminate;
-    you might to define a recursive `factorial` function to take a parameter of type `nat`,
+    you might want to define a recursive `factorial` function to take a parameter of type `nat`,
     if you don't want to provide a definition of `factorial` for negative integers.
-- Use fixed-width integer types for fixed-with values such as bytes.
+- Use fixed-width integer types for fixed-width values such as bytes.
   - Example: the bytes of a network packet can be represented with type `Seq<u8>`, an arbitrary-length sequence of 8-bit values.
 
 Note that `int` and `nat` are usable only in ghost code;
@@ -98,7 +98,7 @@ Constants with the suffix `int` and `nat` can be arbitrarily large:
 
 ## Integer coercions using "as"
 
-As in ordinary rust, the `as` operator coerces one integer type to another.
+As in ordinary Rust, the `as` operator coerces one integer type to another.
 In ghost code, you can use `as int` or `as nat` to coerce to `int` or `nat`:
 
 ```rust
@@ -106,7 +106,7 @@ In ghost code, you can use `as int` or `as nat` to coerce to `int` or `nat`:
 ```
 
 You can use `as` to coerce a value `v` to a type `t` even if `v` is too small or too large to fit in `t`.
-However, if the value `v` is outside the bounds of type t,
+However, if the value `v` is outside the bounds of type `t`,
 then the expression `v as t` will produce some arbitrary value of type `t`:
 
 ```rust
@@ -136,7 +136,7 @@ Integer arithmetic behaves a bit differently in ghost code than in executable co
 
 In **executable** code, we frequently have to reason about integer overflow,
 and in fact, Verus requires us to prove the absence of overflow.
-The following operation fails because the arithmetic might produce an operation greater
+The following operation fails because the arithmetic might produce a value greater
 than 255:
 
 ```rust
@@ -190,6 +190,6 @@ Here are some more tips to keep in mind:
    (see [Ghost code vs. exec code](./ghost_vs_exec.md) for more detail).
  * The named arithmetic functions, `add(x, y)`, `sub(x, y)`, and `mul(x, y)`, do not perform widening, and thus
     have truncating behavior, even in ghost code. Verus also recognizes some Rust functions like
-    [`wrapped_add`](https://doc.rust-lang.org/std/primitive.u32.html#method.wrapping_add)
+    [`wrapping_add`](https://doc.rust-lang.org/std/primitive.u32.html#method.wrapping_add)
     and [`checked_add`](https://doc.rust-lang.org/std/primitive.u32.html#method.checked_add),
     which may be used in either executable or ghost code.

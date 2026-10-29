@@ -11,5 +11,6 @@ spec_def2 = { path = "../spec_def2", package = "spec_def" }
 
 [package.metadata.verus]
 verify = true
+trusted_crates = ["vstd"]
 
 [workspace]

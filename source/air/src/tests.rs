@@ -2325,3 +2325,15 @@ fn accessor_identifying_2() {
         )
     )
 }
+
+#[test]
+fn parse_solver_version() {
+    use crate::smt_verify::parse_version_response;
+    assert_eq!(parse_version_response("(:version \"4.16.0\")"), Some("4.16.0"));
+    assert_eq!(
+        parse_version_response("(:version \"4.16.0 - build hashcode ddb49568d3520e99\")"),
+        Some("4.16.0")
+    );
+    assert_eq!(parse_version_response("(:version \"1.3.1\")\r"), Some("1.3.1"));
+    assert_eq!(parse_version_response("(:status sat)"), None);
+}

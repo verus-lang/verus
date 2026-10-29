@@ -12,7 +12,6 @@ use super::arithmetic::power2::{
     lemma_pow2_adds,
     lemma_pow2_pos,
     lemma2_to64,
-    lemma2_to64_rest,
     lemma_pow2_strictly_increases,
 };
 #[cfg(verus_keep_ghost)]
@@ -32,6 +31,22 @@ use super::arithmetic::mul::{
 };
 #[cfg(verus_keep_ghost)]
 use super::calc_macro::*;
+
+/// Proof that the max value of each unsigned integer type is 2^BITS - 1.
+pub proof fn lemma_unsigned_int_max_is_pow2_minus_1()
+    ensures
+        (u8::MAX as nat) == pow2(u8::BITS as nat) - 1,
+        (u16::MAX as nat) == pow2(u16::BITS as nat) - 1,
+        (u32::MAX as nat) == pow2(u32::BITS as nat) - 1,
+        (u64::MAX as nat) == pow2(u64::BITS as nat) - 1,
+        (u128::MAX as nat) == pow2(u128::BITS as nat) - 1,
+{
+    assert(0x100 == pow2(8)) by (compute);
+    assert(0x1_0000 == pow2(16)) by (compute);
+    assert(0x1_0000_0000 == pow2(32)) by (compute);
+    assert(0x1_0000_0000_0000_0000 == pow2(64)) by (compute);
+    assert(0x1_0000_0000_0000_0000_0000_0000_0000_0000 == pow2(128)) by (compute);
+}
 
 } // verus!
 // Proofs that shift right is equivalent to division by power of 2.
@@ -114,13 +129,17 @@ macro_rules! lemma_pow2_no_overflow {
                 0 < #[trigger] pow2(n) < <$uN>::MAX,
         {
             lemma_pow2_pos(n);
-            lemma2_to64();
-            lemma2_to64_rest();
+            lemma_unsigned_int_max_is_pow2_minus_1();
+            lemma_pow2_unfold(<$uN>::BITS as nat);
+            if n < <$uN>::BITS - 1 {
+                lemma_pow2_strictly_increases(n, (<$uN>::BITS - 1) as nat);
+            }
         }
         }
     };
 }
 
+lemma_pow2_no_overflow!(lemma_u128_pow2_no_overflow, u128);
 lemma_pow2_no_overflow!(lemma_u64_pow2_no_overflow, u64);
 lemma_pow2_no_overflow!(lemma_u32_pow2_no_overflow, u32);
 lemma_pow2_no_overflow!(lemma_u16_pow2_no_overflow, u16);
@@ -143,49 +162,59 @@ macro_rules! lemma_shl_is_mul {
                 #[trigger] (x << shift) == x * pow2(shift as nat),
             decreases shift,
         {
+            // Step by 4 to reduce the cost of the bit_vector query, as in lemma_shr_is_div.
             $no_overflow(shift as nat);
+            reveal(pow);
             if shift == 0 {
                 assert(x << 0 == x) by (bit_vector);
                 assert(pow2(0) == 1) by (compute_only);
                 super::arithmetic::mul::lemma_mul_basics(x as int);
-                assert((x << shift) == x * pow2(shift as nat));
+            } else if shift == 1 {
+                assert(x << 1 == mul(x, 2)) by (bit_vector);
+                assert(pow2(1) == 2) by (compute_only);
+            } else if shift == 2 {
+                assert(x << 2 == mul(x, 4)) by (bit_vector);
+                assert(pow2(2) == 4) by (compute_only);
+            } else if shift == 3 {
+                assert(x << 3 == mul(x, 8)) by (bit_vector);
+                assert(pow2(3) == 8) by (compute_only);
             } else {
-                assert(x << shift == mul(x << ((sub(shift, 1)) as $uN), 2)) by (bit_vector)
+                assert(x << shift == mul(x << ((sub(shift, 4)) as $uN), 16)) by (bit_vector)
                     requires
-                        0 < shift < <$uN>::BITS,
+                        4 <= shift < <$uN>::BITS,
                 ;
-                assert((x << (sub(shift, 1) as $uN)) == x * pow2(sub(shift, 1) as nat)) by {
-                    lemma_pow2_strictly_increases((shift - 1) as nat, shift as nat);
+                assert(pow2(4) == 16) by (compute_only);
+                assert((x << (sub(shift, 4) as $uN)) == x * pow2(sub(shift, 4) as nat)) by {
+                    lemma_pow2_strictly_increases((shift - 4) as nat, shift as nat);
                     lemma_mul_inequality(
-                        pow2((shift - 1) as nat) as int,
+                        pow2((shift - 4) as nat) as int,
                         pow2(shift as nat) as int,
                         x as int,
                     );
-                    lemma_mul_is_commutative(x as int, pow2((shift - 1) as nat) as int);
+                    lemma_mul_is_commutative(x as int, pow2((shift - 4) as nat) as int);
                     lemma_mul_is_commutative(x as int, pow2(shift as nat) as int);
-                    $name(x, (shift - 1) as $uN);
+                    $name(x, (shift - 4) as $uN);
                 }
                 calc!{ (==)
-                    ((x << (sub(shift, 1) as $uN)) * 2);
+                    ((x << (sub(shift, 4) as $uN)) * 16);
                         {}
-                    ((x * pow2(sub(shift, 1) as nat)) * 2);
+                    ((x * pow2(sub(shift, 4) as nat)) * 16);
                         {
-                            lemma_mul_is_associative(x as int, pow2(sub(shift, 1) as nat) as int, 2);
+                            lemma_mul_is_associative(x as int, pow2(sub(shift, 4) as nat) as int, 16);
                         }
-                    x * ((pow2(sub(shift, 1) as nat)) * 2);
+                    x * ((pow2(sub(shift, 4) as nat)) * 16);
                         {
-                            lemma_pow2_adds((shift - 1) as nat, 1);
-                            lemma2_to64();
+                            lemma_pow2_adds((shift - 4) as nat, 4);
                         }
                     x * pow2(shift as nat);
                 }
-                assert((x << shift) == x * pow2(shift as nat));
             }
         }
         }
     };
 }
 
+lemma_shl_is_mul!(lemma_u128_shl_is_mul, lemma_u128_pow2_no_overflow, u128);
 lemma_shl_is_mul!(lemma_u64_shl_is_mul, lemma_u64_pow2_no_overflow, u64);
 lemma_shl_is_mul!(lemma_u32_shl_is_mul, lemma_u32_pow2_no_overflow, u32);
 lemma_shl_is_mul!(lemma_u16_shl_is_mul, lemma_u16_pow2_no_overflow, u16);
@@ -229,6 +258,11 @@ macro_rules! lemma_mul_pow2_le_max_iff_max_shr {
     };
 }
 
+lemma_mul_pow2_le_max_iff_max_shr!(
+    lemma_u128_mul_pow2_le_max_iff_max_shr,
+    lemma_u128_shr_is_div,
+    u128
+);
 lemma_mul_pow2_le_max_iff_max_shr!(
     lemma_u64_mul_pow2_le_max_iff_max_shr,
     lemma_u64_shr_is_div,
@@ -455,6 +489,12 @@ macro_rules! lemma_low_bits_mask_is_mod {
     };
 }
 
+lemma_low_bits_mask_is_mod!(
+    lemma_u128_low_bits_mask_is_mod,
+    lemma_u128_and_split_low_bit,
+    lemma_u128_pow2_no_overflow,
+    u128
+);
 lemma_low_bits_mask_is_mod!(
     lemma_u64_low_bits_mask_is_mod,
     lemma_u64_and_split_low_bit,

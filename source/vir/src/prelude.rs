@@ -59,6 +59,7 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
     let resolved = str_to_node(HAS_RESOLVED);
     let closure_req = str_to_node(CLOSURE_REQ);
     let closure_ens = str_to_node(CLOSURE_ENS);
+    let closure_opens_invariants = str_to_node(CLOSURE_OPENS_INVARIANTS);
     let default_ens = str_to_node(DEFAULT_ENS);
     #[allow(non_snake_case)]
     let Poly = str_to_node(POLY);
@@ -1032,6 +1033,7 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
 
         (declare-fun [closure_req] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly]) Bool)
         (declare-fun [closure_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
+        (declare-fun [closure_opens_invariants] (/*[decoration] skipped */ [typ] [decoration] [typ] [decoration] [typ] [Poly] [Poly]) Poly)
         (declare-fun [default_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
 
         // Decreases
@@ -1299,30 +1301,32 @@ pub(crate) fn ieee_float_prelude() -> Vec<Node> {
     let ieee_float_lt = str_to_node(IEEE_FLOAT_LT);
     let ieee_float_gt = str_to_node(IEEE_FLOAT_GT);
 
+    // Floats are encoded as Int bit patterns. Each operation also takes its operand's float type,
+    // to distinguish values that have same bits but are of different float type (32 vs. 64).
     nodes_vec!(
         (declare-fun [ieee_float_cast] ([typ] [typ] Poly) Poly)
-        (declare-fun [ieee_float_neg] (Int) Int)
-        (declare-fun [ieee_float_floor] (Int) Int)
-        (declare-fun [ieee_float_ceil] (Int) Int)
-        (declare-fun [ieee_float_round] (Int) Int)
-        (declare-fun [ieee_float_round_ties_even] (Int) Int)
-        (declare-fun [ieee_float_trunc] (Int) Int)
-        (declare-fun [ieee_float_is_normal] (Int) Bool)
-        (declare-fun [ieee_float_is_subnormal] (Int) Bool)
-        (declare-fun [ieee_float_is_zero] (Int) Bool)
-        (declare-fun [ieee_float_is_infinite] (Int) Bool)
-        (declare-fun [ieee_float_is_nan] (Int) Bool)
-        (declare-fun [ieee_float_is_negative] (Int) Bool)
-        (declare-fun [ieee_float_is_positive] (Int) Bool)
-        (declare-fun [ieee_float_add] (Int Int) Int)
-        (declare-fun [ieee_float_sub] (Int Int) Int)
-        (declare-fun [ieee_float_mul] (Int Int) Int)
-        (declare-fun [ieee_float_div] (Int Int) Int)
-        (declare-fun [ieee_float_eq] (Int Int) Bool)
-        (declare-fun [ieee_float_le] (Int Int) Bool)
-        (declare-fun [ieee_float_ge] (Int Int) Bool)
-        (declare-fun [ieee_float_lt] (Int Int) Bool)
-        (declare-fun [ieee_float_gt] (Int Int) Bool)
+        (declare-fun [ieee_float_neg] ([typ] Int) Int)
+        (declare-fun [ieee_float_floor] ([typ] Int) Int)
+        (declare-fun [ieee_float_ceil] ([typ] Int) Int)
+        (declare-fun [ieee_float_round] ([typ] Int) Int)
+        (declare-fun [ieee_float_round_ties_even] ([typ] Int) Int)
+        (declare-fun [ieee_float_trunc] ([typ] Int) Int)
+        (declare-fun [ieee_float_is_normal] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_subnormal] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_zero] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_infinite] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_nan] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_negative] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_positive] ([typ] Int) Bool)
+        (declare-fun [ieee_float_add] ([typ] Int Int) Int)
+        (declare-fun [ieee_float_sub] ([typ] Int Int) Int)
+        (declare-fun [ieee_float_mul] ([typ] Int Int) Int)
+        (declare-fun [ieee_float_div] ([typ] Int Int) Int)
+        (declare-fun [ieee_float_eq] ([typ] Int Int) Bool)
+        (declare-fun [ieee_float_le] ([typ] Int Int) Bool)
+        (declare-fun [ieee_float_ge] ([typ] Int Int) Bool)
+        (declare-fun [ieee_float_lt] ([typ] Int Int) Bool)
+        (declare-fun [ieee_float_gt] ([typ] Int Int) Bool)
     )
 }
 

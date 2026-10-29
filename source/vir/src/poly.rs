@@ -89,6 +89,7 @@ use crate::ast::{
     Primitive, SpannedTyped, Typ, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, VarBinder,
     VarBinderX, VarBinders, VarIdent, Variant,
 };
+use crate::ast_util::typ_contains_opaque;
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::sst::{
@@ -123,8 +124,8 @@ struct State {
     temp_types: HashMap<VarIdent, Typ>,
     is_trait: bool,
     in_exec_closure: bool,
-    // is the function return type an opaque type?
-    is_ret_opaque: bool,
+    // does the function return type contain an opaque type encoded as Poly?
+    is_poly_ret_with_opaque: bool,
 }
 
 fn monotyps_as_mono(typs: &Typs) -> Option<Vec<MonoTyp>> {
@@ -536,6 +537,11 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 let exps = visit_exps_poly(ctx, state, exps);
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), exps))
             }
+            CallFun::InternalFun(InternalFun::ClosureOpensInvariants) => {
+                let exps = visit_exps_poly(ctx, state, exps);
+                let typ = coerce_typ_to_poly(ctx, &exp.typ);
+                mk_exp_typ(&typ, ExpX::Call(call_fun.clone(), typs.clone(), exps))
+            }
             CallFun::InternalFun(InternalFun::CheckDecreaseHeight) => {
                 assert!(exps.len() == 3);
                 let e0 = visit_exp_poly(ctx, state, &exps[0]);
@@ -646,7 +652,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 | UnaryOpr::AutoLoopEnsures => {
                     mk_exp_typ(&e1.typ, ExpX::UnaryOpr(op.clone(), e1.clone()))
                 }
-                UnaryOpr::ToDyn(_) => {
+                UnaryOpr::ToDyn(..) => {
                     let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::UnaryOpr(op.clone(), e1))
                 }
@@ -825,7 +831,7 @@ pub(crate) fn visit_exp_native_for_pure_exp(ctx: &Ctx, exp: &Exp) -> Exp {
         temp_types: HashMap::new(),
         is_trait: false,
         in_exec_closure: false,
-        is_ret_opaque: false,
+        is_poly_ret_with_opaque: false,
     };
     visit_exp_native(ctx, &mut state, exp)
 }
@@ -977,7 +983,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 };
 
                 // opaque type has to be poly
-                if state.is_ret_opaque {
+                if state.is_poly_ret_with_opaque {
                     Some(crate::poly::coerce_exp_to_poly(ctx, &e1))
                 } else {
                     Some(e1)
@@ -1146,6 +1152,7 @@ fn visit_func_check_sst(
 ) -> FuncCheckSst {
     let FuncCheckSst {
         reqs,
+        return_opaque_type_eqs,
         post_condition,
         unwind,
         body,
@@ -1236,6 +1243,7 @@ fn visit_func_check_sst(
 
     FuncCheckSst {
         reqs,
+        return_opaque_type_eqs: return_opaque_type_eqs.clone(),
         post_condition,
         unwind,
         body,
@@ -1290,7 +1298,8 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         is_trait,
         in_exec_closure: false,
         remaining_temps: HashSet::new(),
-        is_ret_opaque: matches!(*inner_ret.x.typ, TypX::Opaque { .. }),
+        is_poly_ret_with_opaque: typ_contains_opaque(&inner_ret.x.typ)
+            && typ_is_poly(ctx, &inner_ret.x.typ),
     };
 
     let decl = Arc::new(visit_func_decl_sst(ctx, &mut state, &poly_pars, decl));
