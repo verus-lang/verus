@@ -1,8 +1,11 @@
 //! This code adds specifications for the standard-library types
 //! `std::collections::HashMap` and `std::collections::HashSet`.
 //!
-//! Specifications require a valid build hasher, as described by
-//! [`builds_valid_hashers`].
+//! Most of the specification only applies if you use `HashMap<Key,
+//! Value>` or `HashSet<Key>`. If you use some custom build hasher,
+//! e.g., with`HashMap<Key, Value, CustomBuildHasher>`, the
+//! specification won't specify much unless you assume
+//! [`builds_valid_hashers<CustomBuildHasher>()`].
 //!
 //! Likewise, the specification is only meaningful when `eq_spec`
 //! faithfully models executable equality, executable equality is
