@@ -1102,6 +1102,14 @@ pub enum AtomicallyKind {
     Loop,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, Copy, ToDebugSNode)]
+pub enum LoopSource {
+    /// loop, while, or for
+    Loop,
+    /// breakable block
+    BreakableBlock,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -1231,6 +1239,8 @@ pub enum ExprX {
         invs: LoopInvariants,
         decrease: Exprs,
         atomic_call: bool,
+        known_no_back_edge: bool,
+        source: LoopSource,
     },
     /// Open invariant
     OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
