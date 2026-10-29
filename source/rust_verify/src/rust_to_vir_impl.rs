@@ -85,6 +85,7 @@ fn trait_impl_to_vir<'tcx>(
     module_path: Path,
     auto_imported: bool,
     external_trait_blanket: bool,
+    is_unsafe: bool,
 ) -> Result<Option<(Path, Typs, TraitImpl)>, VirErr> {
     let trait_polarity = ctxt.tcx.impl_polarity(impl_def_id);
     if trait_polarity == rustc_middle::ty::ImplPolarity::Negative {
@@ -152,6 +153,7 @@ fn trait_impl_to_vir<'tcx>(
         owning_module: Some(module_path),
         auto_imported,
         external_trait_blanket,
+        is_unsafe: is_unsafe,
     };
     let trait_impl = ctxt.spanned_new(span, trait_impl);
     Ok(Some((trait_path, types, trait_impl)))
@@ -314,10 +316,22 @@ pub(crate) fn translate_impl<'tcx>(
 
         if *safety != Safety::Safe {
             if matches!(rust_item, Some(RustItem::Send)) {
-                return err_span_vec(item.span, "unsafe impl for `Send` is not allowed");
+                return err_span_vec(
+                    item.span,
+                    "Verus does not currently support `unsafe impl` for `Send`",
+                );
             }
             if matches!(rust_item, Some(RustItem::Sync)) {
-                return err_span_vec(item.span, "unsafe impl for `Sync` is not allowed");
+                return err_span_vec(
+                    item.span,
+                    "Verus does not currently support `unsafe impl` for `Sync`",
+                );
+            }
+            if matches!(rust_item, Some(RustItem::Drop)) {
+                return err_span_vec(
+                    item.span,
+                    "Verus does not currently support `unsafe impl` for `Drop`",
+                );
             }
         }
 
@@ -434,7 +448,7 @@ pub(crate) fn translate_impl<'tcx>(
             }
             return Ok(());
         } else {
-            /* sealed, `unsafe` */
+            /* sealed */
             // Verus attributes are `Unparsed` where get_all_attrs is acceptable per its
             // deprecation message.
             #[allow(deprecated)]
@@ -453,7 +467,9 @@ pub(crate) fn translate_impl<'tcx>(
 
     let vattrs = ctxt.get_verifier_attrs(attrs).map_err(|e| vec![e])?;
     let trait_path_typ_args =
-        if let Some(TraitImplHeader { trait_ref: TraitRef { path, .. }, .. }) = &impll.of_trait {
+        if let Some(TraitImplHeader { trait_ref: TraitRef { path, .. }, safety, .. }) =
+            &impll.of_trait
+        {
             let impl_def_id = item.owner_id.to_def_id();
             state.external_info.internal_trait_impls.insert(impl_def_id);
             let path_span = path.span.to(impll.self_ty.span);
@@ -467,6 +483,7 @@ pub(crate) fn translate_impl<'tcx>(
                 module_path.clone(),
                 false,
                 vattrs.external_trait_blanket,
+                *safety != Safety::Safe,
             )
             .map_err(|e| vec![e])?
             {
@@ -813,6 +830,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             module_path,
             true,
             false,
+            tcx.trait_def(trait_ref.def_id()).safety != Safety::Safe,
         );
         if let Ok(Some((trait_path, trait_typ_args, trait_impl))) = t_impl_opt {
             let mut assoc_type_impls: Vec<AssocTypeImpl> = Vec::new();
@@ -956,6 +974,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             module_path,
             false,
             false,
+            tcx.trait_def(trait_did).safety != Safety::Safe,
         )? {
             krate.trait_impls.push(trait_impl);
         }
