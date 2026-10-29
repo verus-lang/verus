@@ -409,10 +409,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_hash_structural_equality verus_code! {
         use core::hash::Hash;
-        use std::collections::{HashMap, HashSet};
+        use std::collections::{HashMap, HashSet, hash_map::Entry};
         use vstd::prelude::*;
         use vstd::std_specs::cmp::eq_matches_equality;
-        use vstd::std_specs::hash::obeys_key_model;
+        use vstd::std_specs::hash::{EntrySpecFns, obeys_key_model};
 
         fn test_map<Key: Hash + Eq + Copy>(m: &mut HashMap<Key, u32>, key: Key)
             requires
@@ -436,6 +436,31 @@ test_verify_one_file! {
             assert(value.is_none());
             let removed = m.remove(&key);
             assert(removed.is_none());
+            assert(m@ == before.remove(key));
+        }
+
+        fn test_map_entry<Key: Hash + Eq + Copy>(m: &mut HashMap<Key, u32>, key: Key)
+            requires
+                obeys_key_model::<Key>(),
+                eq_matches_equality::<Key>(),
+        {
+            let ghost before = m@;
+            let entry = m.entry(key);
+            assert(*entry.key() == key);
+            assert(entry.value() == before.get(key));
+            let value = entry.or_insert(42);
+            assert(*value == if before.contains_key(key) { before[key] } else { 42u32 });
+            *value = 43;
+            assert(m@ == before.insert(key, 43));
+
+            match m.entry(key) {
+                Entry::Occupied(entry) => {
+                    let (stored_key, value) = entry.remove_entry();
+                    assert(stored_key == key);
+                    assert(value == 43);
+                },
+                Entry::Vacant(_) => { assert(false); },
+            }
             assert(m@ == before.remove(key));
         }
 
@@ -471,10 +496,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_hash_deep_equality verus_code! {
         use core::hash::Hash;
-        use std::collections::{HashMap, HashSet};
+        use std::collections::{HashMap, HashSet, hash_map::Entry};
         use vstd::prelude::*;
         use vstd::std_specs::cmp::eq_matches_deep_equality;
-        use vstd::std_specs::hash::obeys_key_model;
+        use vstd::std_specs::hash::{EntrySpecFns, obeys_key_model};
 
         fn test_map<Key: Hash + Eq + Copy + DeepView, Value: DeepView>(
             key: Key,
@@ -535,6 +560,48 @@ test_verify_one_file! {
             let removed = m.remove(&equivalent);
             assert(removed.is_none());
             assert(m@ == Map::empty().insert(other, other_value));
+        }
+
+        fn test_map_entry<Key: Hash + Eq + Copy + DeepView, Value: DeepView>(
+            m: &mut HashMap<Key, Value>,
+            key: Key,
+            default: Value,
+            replacement: Value,
+        )
+            requires
+                obeys_key_model::<Key>(),
+                eq_matches_deep_equality::<Key>(),
+        {
+            let ghost before = m.deep_view();
+            let entry = m.entry(key);
+            assert(entry.key().deep_view() == key.deep_view());
+            proof {
+                match entry.value() {
+                    Some(value) => {
+                        assert(before.contains_key(key.deep_view()));
+                        assert(value.deep_view() == before[key.deep_view()]);
+                    },
+                    None => { assert(!before.contains_key(key.deep_view())); },
+                }
+            }
+            let value = entry.or_insert(default);
+            assert(value.deep_view() == if before.contains_key(key.deep_view()) {
+                before[key.deep_view()]
+            } else {
+                default.deep_view()
+            });
+            *value = replacement;
+            assert(m.deep_view() == before.insert(key.deep_view(), replacement.deep_view()));
+
+            match m.entry(key) {
+                Entry::Occupied(entry) => {
+                    let (stored_key, value) = entry.remove_entry();
+                    assert(stored_key.deep_view() == key.deep_view());
+                    assert(value.deep_view() == replacement.deep_view());
+                },
+                Entry::Vacant(_) => { assert(false); },
+            }
+            assert(m.deep_view() == before.remove(key.deep_view()));
         }
 
         fn test_set<Key: Hash + Eq + Copy + DeepView>(
@@ -702,6 +769,90 @@ test_verify_one_file! {
                 a.eq_spec(b) == b.eq_spec(a),
                 a.eq_spec(b) && b.eq_spec(c) ==> a.eq_spec(c),
         {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_map_entry_eq_spec verus_code! {
+        use core::hash::Hash;
+        use std::collections::{HashMap, hash_map::Entry};
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpec;
+        use vstd::std_specs::hash::obeys_key_model;
+
+        fn test_occupied<Key: Hash + Eq + Copy>(stored: Key, query: Key)
+            requires
+                obeys_key_model::<Key>(),
+                stored != query,
+                query.eq_spec(&stored),
+        {
+            let mut m = HashMap::<Key, u32>::new();
+            m.insert(stored, 10);
+            assert(m@.contains_key(stored));
+            let entry = m.entry(query);
+            assert(entry is Occupied);
+            assert(*entry.key() == stored);
+            let value = entry.or_insert(99);
+            assert(*value == 10);
+            *value = 42;
+            assert(m@ == Map::<Key, u32>::empty().insert(stored, 42));
+            assert(!m@.contains_key(query));
+
+            match m.entry(query) {
+                Entry::Occupied(entry) => {
+                    let (key, value) = entry.remove_entry();
+                    assert(key == stored);
+                    assert(value == 42);
+                },
+                Entry::Vacant(_) => { assert(false); },
+            }
+            assert(m@ == Map::<Key, u32>::empty());
+        }
+
+        fn test_vacant<Key: Hash + Eq + Copy>(stored: Key, query: Key)
+            requires
+                obeys_key_model::<Key>(),
+                stored != query,
+                !query.eq_spec(&stored),
+        {
+            let mut m = HashMap::<Key, u32>::new();
+            m.insert(stored, 10);
+            let entry = m.entry(query);
+            assert(entry is Vacant);
+            assert(*entry.key() == query);
+            let value = entry.or_insert(20);
+            assert(*value == 20);
+            assert(m@ == Map::<Key, u32>::empty().insert(stored, 10).insert(query, 20));
+        }
+
+        fn test_occupied_unused<Key: Hash + Eq + Copy>(stored: Key, query: Key)
+            requires
+                obeys_key_model::<Key>(),
+                stored != query,
+                query.eq_spec(&stored),
+        {
+            let mut m = HashMap::<Key, u32>::new();
+            m.insert(stored, 10);
+            let _entry = m.entry(query);
+            assert(m@ == Map::<Key, u32>::empty().insert(stored, 10));
+        }
+
+        fn test_vacant_unused<Key: Hash + Eq + Copy>(key: Key)
+            requires
+                obeys_key_model::<Key>(),
+        {
+            let mut m = HashMap::<Key, u32>::new();
+            let entry = m.entry(key);
+            assert(entry is Vacant);
+            match entry {
+                Entry::Vacant(entry) => {
+                    let returned_key = entry.into_key();
+                    assert(returned_key == key);
+                },
+                Entry::Occupied(_) => { assert(false); },
+            }
+            assert(m@ == Map::<Key, u32>::empty());
         }
     } => Ok(())
 }

@@ -1902,6 +1902,38 @@ pub broadcast proof fn axiom_has_resolved_entry<K, V, A: Allocator>(entry: Entry
 
 }
 
+#[verifier::prophetic]
+pub open spec fn hash_map_entry_ensures<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>(
+    old_m: &HashMap<Key, Value, S, A>,
+    final_m: &HashMap<Key, Value, S, A>,
+    key: Key,
+    entry: Entry<Key, Value, A>,
+) -> bool {
+    ({
+        &&& obeys_key_model::<Key>()
+        &&& builds_valid_hashers::<S>()
+    }) ==> {
+        &&& hash_map_keys_differ(old_m)
+        &&& hash_map_keys_differ(final_m)
+        &&& match entry {
+            Entry::Occupied(occupied_entry) => {
+                &&& old_m@.contains_key(occupied_entry.spec_key())
+                &&& key.eq_spec(&occupied_entry.spec_key())
+                &&& occupied_entry.value() == old_m@[occupied_entry.spec_key()]
+            },
+            Entry::Vacant(vacant_entry) => {
+                &&& vacant_entry.spec_key() == key
+                &&& forall|stored_key: Key| #[trigger]
+                    old_m@.contains_key(stored_key) ==> !key.eq_spec(&stored_key)
+            },
+        }
+        &&& final_m@ == match entry.final_value() {
+            Some(value) => old_m@.insert(entry.spec_key(), value),
+            None => old_m@.remove(entry.spec_key()),
+        }
+    }
+}
+
 pub assume_specification<'a, Key: Hash + Eq, Value, S: BuildHasher, A: Allocator>[ HashMap::<
     Key,
     Value,
@@ -1909,13 +1941,119 @@ pub assume_specification<'a, Key: Hash + Eq, Value, S: BuildHasher, A: Allocator
     A,
 >::entry ](m: &'a mut HashMap<Key, Value, S, A>, key: Key) -> (entry: Entry<'a, Key, Value, A>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() && eq_matches_equality::<Key>()
-            ==> (entry.key() == key && entry.value() == old(m)@.get(key) && final(m)@ == (
-        match entry.final_value() {
-            Some(value) => old(m)@.insert(key, value),
-            None => old(m)@.remove(key),
-        })),
+        hash_map_entry_ensures(old(m), final(m), key, entry),
 ;
+
+pub broadcast proof fn lemma_hash_map_entry_ensures_if_eq_matches_equality<
+    Key: Eq + Hash,
+    Value,
+    S: BuildHasher,
+    A: Allocator,
+>(
+    old_m: &HashMap<Key, Value, S, A>,
+    final_m: &HashMap<Key, Value, S, A>,
+    key: Key,
+    entry: Entry<Key, Value, A>,
+)
+    requires
+        obeys_key_model::<Key>(),
+        builds_valid_hashers::<S>(),
+        eq_matches_equality::<Key>(),
+        #[trigger] hash_map_entry_ensures(old_m, final_m, key, entry),
+    ensures
+        entry.spec_key() == key,
+        entry.value() == old_m@.get(key),
+        final_m@ == match entry.final_value() {
+            Some(value) => old_m@.insert(key, value),
+            None => old_m@.remove(key),
+        },
+{
+}
+
+pub broadcast proof fn lemma_hash_map_entry_ensures_if_eq_matches_deep_equality<
+    Key: Eq + Hash + DeepView,
+    Value: DeepView,
+    S: BuildHasher,
+    A: Allocator,
+>(
+    old_m: &HashMap<Key, Value, S, A>,
+    final_m: &HashMap<Key, Value, S, A>,
+    key: Key,
+    entry: Entry<Key, Value, A>,
+)
+    requires
+        obeys_key_model::<Key>(),
+        builds_valid_hashers::<S>(),
+        eq_matches_deep_equality::<Key>(),
+        #[trigger] hash_map_entry_ensures(old_m, final_m, key, entry),
+    ensures
+        entry.spec_key().deep_view() == key.deep_view(),
+        match entry.value() {
+            Some(value) => {
+                &&& old_m.deep_view().contains_key(key.deep_view())
+                &&& value.deep_view() == old_m.deep_view()[key.deep_view()]
+            },
+            None => !old_m.deep_view().contains_key(key.deep_view()),
+        },
+        final_m.deep_view() == match entry.final_value() {
+            Some(value) => old_m.deep_view().insert(key.deep_view(), value.deep_view()),
+            None => old_m.deep_view().remove(key.deep_view()),
+        },
+{
+    broadcast use {
+        crate::map::group_map_lemmas,
+        crate::set::group_set_lemmas,
+        Set::lemma_map_contains,
+    };
+
+    reveal(hash_map_deep_view_impl);
+
+    let stored_key = entry.spec_key();
+    assert(stored_key.deep_view() == key.deep_view());
+    match entry.value() {
+        Some(value) => {
+            assert(old_m.deep_view().contains_key(key.deep_view()));
+            let k = choose|k: Key|
+                old_m@.contains_key(k) && #[trigger] k.deep_view() == key.deep_view();
+            assert(k == stored_key);
+        },
+        None => {
+            if old_m.deep_view().contains_key(key.deep_view()) {
+                let k = choose|k: Key|
+                    old_m@.contains_key(k) && #[trigger] k.deep_view() == key.deep_view();
+                assert(key.eq_spec(&k));
+            }
+        },
+    }
+
+    if entry.final_value() is Some {
+        assert(final_m@.contains_key(stored_key));
+    }
+    assert_maps_equal!(
+        final_m.deep_view(),
+        match entry.final_value() {
+            Some(value) => old_m.deep_view().insert(key.deep_view(), value.deep_view()),
+            None => old_m.deep_view().remove(key.deep_view()),
+        },
+        kd => {
+            if final_m.deep_view().contains_key(kd) {
+                let k = choose|k: Key|
+                    final_m@.contains_key(k) && #[trigger] k.deep_view() == kd;
+                if entry.final_value() is None {
+                    assert(old_m@.contains_key(k));
+                    assert(k.deep_view() != key.deep_view());
+                } else if kd != key.deep_view() {
+                    assert(old_m@.contains_key(k));
+                }
+            }
+            if old_m.deep_view().contains_key(kd) && kd != key.deep_view() {
+                let k = choose|k: Key|
+                    old_m@.contains_key(k) && #[trigger] k.deep_view() == kd;
+                assert(final_m@.contains_key(k));
+            }
+        }
+    );
+}
 
 //// Entry
 #[verifier::allow_in_spec]
@@ -2067,6 +2205,8 @@ pub broadcast group group_hash_axioms {
     lemma_hash_map_get_ensures_if_eq_matches_deep_equality,
     lemma_hash_map_remove_ensures_if_eq_matches_equality,
     lemma_hash_map_remove_ensures_if_eq_matches_deep_equality,
+    lemma_hash_map_entry_ensures_if_eq_matches_equality,
+    lemma_hash_map_entry_ensures_if_eq_matches_deep_equality,
     lemma_hash_set_insert_ensures_if_eq_matches_equality,
     lemma_hash_set_insert_ensures_if_eq_matches_deep_equality,
     lemma_hash_set_contains_ensures_if_eq_matches_equality,
