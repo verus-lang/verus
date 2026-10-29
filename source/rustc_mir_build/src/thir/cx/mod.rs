@@ -17,18 +17,42 @@ pub(crate) fn thir_body<'tcx>(
     tcx: TyCtxt<'tcx>,
     owner_def: LocalDefId,
 ) -> Result<(&'tcx Steal<Thir<'tcx>>, ExprId), ErrorGuaranteed> {
+    let (thir, expr) = thir_body_inner(tcx, owner_def, None)?;
+    Ok((tcx.alloc_steal_thir(thir), expr))
+}
+
+/// Build the THIR in Verus's "full erasure" mode (see verus.rs).
+/// This does NOT go through the query system.
+pub(crate) fn thir_body_full_erasure<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    owner_def: LocalDefId,
+    full_erasure: std::sync::Arc<crate::verus::FullErasureCtxt>,
+) -> Result<(Thir<'tcx>, ExprId), ErrorGuaranteed> {
+    thir_body_inner(tcx, owner_def, Some(full_erasure))
+}
+
+fn thir_body_inner<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    owner_def: LocalDefId,
+    full_erasure: Option<std::sync::Arc<crate::verus::FullErasureCtxt>>,
+) -> Result<(Thir<'tcx>, ExprId), ErrorGuaranteed> {
     debug_assert!(!tcx.is_type_const(owner_def.to_def_id()), "thir_body queried for type_const");
 
-    crate::verus::ensure_verus_ctxt_available(tcx, owner_def)?;
+    let is_full_erasure = full_erasure.is_some();
+    if !is_full_erasure {
+        crate::verus::ensure_verus_ctxt_available(tcx, owner_def)?;
+    }
 
     let body = tcx.hir_body_owned_by(owner_def);
-    let mut cx: ThirBuildCx<'tcx> = ThirBuildCx::new(tcx, owner_def);
+    let mut cx: ThirBuildCx<'tcx> = ThirBuildCx::new(tcx, owner_def, full_erasure);
     if let Some(reported) = cx.typeck_results.tainted_by_errors {
         return Err(reported);
     }
 
     let expr = if crate::verus::erase_body(&mut cx, owner_def) {
         crate::verus::erase_tree(&mut cx, body.value, crate::verus::TreeErase::IncludeBasicChecks)
+    } else if let Some(e) = crate::verus::full_erasure_erase_body(&mut cx, owner_def, body.value) {
+        e
     } else {
         cx.mirror_expr(body.value)
     };
@@ -61,9 +85,11 @@ pub(crate) fn thir_body<'tcx>(
     //dbg!(cx.thir.stmts.iter().enumerate().collect::<Vec<_>>());
     //dbg!(expr);
 
-    cx.verus_ctxt.finish();
+    if !is_full_erasure {
+        cx.verus_ctxt.finish();
+    }
 
-    Ok((tcx.alloc_steal_thir(cx.thir), expr))
+    Ok((cx.thir, expr))
 }
 
 /// Context for lowering HIR to THIR for a single function body (or other kind of body).
@@ -86,7 +112,11 @@ pub(crate) struct ThirBuildCx<'tcx> {
 }
 
 impl<'tcx> ThirBuildCx<'tcx> {
-    fn new(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Self {
+    fn new(
+        tcx: TyCtxt<'tcx>,
+        def: LocalDefId,
+        full_erasure: Option<std::sync::Arc<crate::verus::FullErasureCtxt>>,
+    ) -> Self {
         let typeck_results = tcx.typeck(def);
         let hir_id = tcx.local_def_id_to_hir_id(def);
 
@@ -122,7 +152,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             typeck_results,
             body_owner: def.to_def_id(),
             apply_adjustments: !find_attr!(tcx, hir_id, CustomMir(..)),
-            verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
+            verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def, full_erasure),
         }
     }
 

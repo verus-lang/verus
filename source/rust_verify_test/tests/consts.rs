@@ -58,7 +58,7 @@ test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
         const C: u64 = S;
         const S: u64 = C;
-    } => Err(err) => assert_rust_error_msg(err, "cycle detected when checking if `C` is a trivial const")
+    } => Err(err) => assert_rust_error_msg(err, "cycle detected when simplifying constant for the type system `C`")
 }
 
 test_verify_one_file! {
@@ -164,7 +164,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] static_mut_unsupported verus_code! {
         static mut x: u64 = 0;
-    } => Err(e) => assert_vir_error_msg(e, "Verus does not support 'static mut'")
+    } => Err(e) => assert_vir_error_msg(e, "Verus does not currently support static mut")
 }
 
 test_verify_one_file! {
@@ -568,10 +568,22 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] const_with_ensures_issue2175 verus_code! {
+    #[test] const_with_ensures_issue2175 code! {
         #[verus_spec(ensures true)]
         pub const C: char = 'x';
-    } => Err(err) => assert_vir_error_msg(err, "a constant item cannot have `ensures` unless it is `exec const`")
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] const_with_ensures_in_verus_macro_issue2175 verus_code! {
+        #[verus_spec(ensures true)]
+        pub const C: char = 'x';
+    } => Err(err) => {
+        assert!(err.warnings.len() == 1);
+        assert!(err.errors.len() == 1);
+        assert!(err.warnings[0].message.contains("#[verus_spec] is likely used inside a verus! block"));
+        assert_vir_error_msg(err, "const is marked `exec` mode but also has an internal `open` attribute (note: this can happen if `#[verus_spec(...)]` is used inside the `verus!` macro)");
+    }
 }
 
 test_verify_one_file! {
@@ -798,4 +810,19 @@ test_verify_one_file! {
             Default::default()
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+}
+
+test_verify_one_file! {
+    #[test] pub_spec_const_with_spec_ops verus_code! {
+        use vstd::prelude::*;
+        pub const W: u64 = 52;
+        pub spec const MAXP: u64 = ((1u64 << W) - 1u64) as u64;
+        pub spec const BIG: nat = 512 * 512 * 4096;
+        pub spec const S: Seq<nat> = seq![1nat, BIG];
+
+        proof fn test() {
+            assert(BIG == 1073741824);
+            assert(S[1] == BIG);
+        }
+    } => Ok(())
 }
