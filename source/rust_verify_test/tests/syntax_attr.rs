@@ -395,6 +395,28 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_proof_decl_reject_macro_assignment code!{
+        macro_rules! bump {
+            ($x:ident) => { $x = 1; };
+        }
+
+        #[verus_spec(r => ensures r == 1)]
+        fn test() -> u32 {
+            let mut x = 0u32;
+            proof_decl! {
+                bump!(x);
+            }
+            x
+        }
+    } => Err(e) => {
+        let primary = e.errors[0].spans.iter().find(|s| s.is_primary).unwrap();
+        assert_eq!(primary.line_start, primary.line_end);
+        assert!(primary.text[0].text.contains("bump!(x)"));
+        assert_vir_error_msg(e, "Macro statements are not supported in proof_decl!");
+    }
+}
+
+test_verify_one_file! {
     #[test] test_with code!{
         #[verus_spec(ret =>
             with
@@ -833,7 +855,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_macro_inside_proof_decl code!{
+    #[test] test_proof_decl_via_macro code!{
         macro_rules! inline_proof {
             ($val: expr => $x: ident, $y: ident) => {
                 proof_decl!{
@@ -844,10 +866,12 @@ test_verify_one_file! {
              }
         }
 
+        #[verus_spec]
         fn test_inline_proof_via_macro() {
-            proof_decl!{
-                inline_proof!(0 => x, y);
+            inline_proof!(0 => x, y);
+            proof!{
                 assert(x == 0);
+                assert(y == 0);
             }
         }
 

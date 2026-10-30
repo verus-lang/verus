@@ -375,7 +375,9 @@ pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// for verification.
 /// For example, declare a ghost/tracked variable.
 /// To avoid confusion, let stmts without ghost/tracked is not supported.
-/// Non-local stmts inside proof_decl! are treated similar to those in proof!
+/// Non-local stmts other than statement macros are treated similar to those in proof!
+/// Statement macros are not supported; invoke declaration macros in the surrounding
+/// scope or use proof! for proof statements.
 #[proc_macro]
 pub fn proof_decl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let erase = cfg_erase();
