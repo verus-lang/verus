@@ -173,6 +173,12 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
                 merged_info.write_file(&path_2).unwrap_or_else(|err| {
                     panic!("failed to write the combined dep-info to `{}`: {err}", path_2.display())
                 });
+                std::fs::remove_file(&path_1).unwrap_or_else(|err| {
+                    eprintln!(
+                        "warning: failed to remove the first-pass dep-info from `{}`: {err}",
+                        path_1.display()
+                    )
+                });
             }
         }
         rustc_driver::Compilation::Continue
