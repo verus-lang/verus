@@ -145,24 +145,34 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
         _compiler: &rustc_interface::interface::Compiler,
         tcx: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
-        // Need to merge the dep-info files from the first (previous) and second (current) passes.
+        // Merge the dep-info files from the first (previous) and second (current) passes.
         rustc_interface::passes::write_dep_info(tcx);
         if tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo) {
-            // Load and merge the dep-info file from the first pass with the output of this pass.
-            if let OutFileName::Real(dep_info_path_d) =
-                tcx.output_filenames(()).path(OutputType::DepInfo)
-            {
-                let dep_info_path_verus_d = dep_info_path_d.with_extension("verus.d");
-                assert!(
-                    dep_info_path_verus_d.is_file(),
-                    "error: missing dep-info file from first pass {}",
-                    dep_info_path_verus_d.display(),
+            // Load and merge the dep-info files.
+            if let OutFileName::Real(path_2) = tcx.output_filenames(()).path(OutputType::DepInfo) {
+                let path_1 = path_2.with_extension("verus.d");
+                let info_1 = rustc_dep_info::Contents::read_file(&path_1).unwrap_or_else(|err| {
+                    panic!(
+                        "failed to read the first-pass dep-info from `{}`: {err}",
+                        path_1.display()
+                    )
+                });
+                let info_2 = rustc_dep_info::Contents::read_file(&path_2).unwrap_or_else(|err| {
+                    panic!(
+                        "failed to read the second-pass dep-info from `{}`: {err}",
+                        path_2.display()
+                    )
+                });
+                let merged_info = info_1.merge(
+                    info_2,
+                    // Second-pass metadata entries have priority.
+                    |metadata_1, metadata_2| metadata_2.or(metadata_1),
+                    // Second-pass env settings have priority.
+                    |env_1, env_2| env_2.or(env_1),
                 );
-                assert!(
-                    dep_info_path_d.is_file(),
-                    "error: missing dep-info file from second pass {}",
-                    dep_info_path_d.display(),
-                );
+                merged_info.write_file(&path_2).unwrap_or_else(|err| {
+                    panic!("failed to write the combined dep-info to `{}`: {err}", path_2.display())
+                });
             }
         }
         rustc_driver::Compilation::Continue
