@@ -1159,6 +1159,11 @@ pub enum ExprX {
         ///
         /// We use this for the `atomically |update| { ... }` block of the atomic function call.
         body: Option<Expr>,
+        /// Executed in the case that the call unwinds, after the call.
+        ///
+        /// This is used for resolutions (inserted by resolution_inference) that apply
+        /// on the unwind path. Must be None prior to resolution_inference.
+        unwind_path: Option<Expr>,
     },
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.

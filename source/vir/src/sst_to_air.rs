@@ -1855,6 +1855,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             dest,
             assert_id,
             body,
+            unwind_path,
         } => {
             // When we emit the VCs for a call to `f`, we might also want these to include
             // the generic conditions
@@ -1908,68 +1909,90 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 stmts.push(Arc::new(StmtX::Assert(assert_id.clone(), error, filter, e_req)));
             }
 
-            let callee_unwind_spec = func.x.unwind_spec_or_default();
-            let callee_never_unwinds = matches!(callee_unwind_spec, UnwindSpec::NoUnwind);
-            if !matches!(state.unwind, UnwindAir::MayUnwind)
-                && !callee_never_unwinds
-                && !ctx.checking_spec_preconditions()
-            {
-                let e1 = match &state.unwind {
-                    UnwindAir::MayUnwind => unreachable!(),
-                    UnwindAir::NoUnwind(_) => Arc::new(ExprX::Const(Constant::Bool(true))),
-                    UnwindAir::NoUnwindWhen(expr) => expr.clone(),
-                };
-                let e2 = match &callee_unwind_spec {
-                    UnwindSpec::MayUnwind => Arc::new(ExprX::Const(Constant::Bool(false))),
-                    UnwindSpec::NoUnwind => unreachable!(),
-                    UnwindSpec::NoUnwindWhen(_) => {
-                        let f_unwind =
-                            prefix_no_unwind_when(&fun_to_air_ident(&ctx.name_ctxt, &func.x.name));
-                        Arc::new(ExprX::Apply(f_unwind, req_args.clone()))
-                    }
-                };
-                let error = match &state.unwind {
-                    UnwindAir::MayUnwind => unreachable!(),
-                    UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
-                        &stm.span,
-                        "cannot show this call will not unwind, in function marked `no_unwind`",
-                        format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
-                    ),
-                    UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
-                        error_with_label(
-                            &stm.span,
-                            "cannot show this call will not unwind",
-                            format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
-                        )
-                        .secondary_label(span, "unwinding is not allowed in this invariant block")
-                    }
-                    UnwindAir::NoUnwindWhen(_e) => error_with_label(
-                        &stm.span,
-                        "cannot show this call will not unwind, in function marked `no_unwind`",
-                        "this call might unwind",
-                    ),
-                };
-                let error = if let UnwindSpec::NoUnwindWhen(e) = &callee_unwind_spec {
-                    error.secondary_label(
-                        &e.span,
-                        "this condition needs to hold to show that the callee will not unwind",
-                    )
-                } else {
-                    error.secondary_label(
-                        &func.span,
-                        "perhaps you need to mark this function as `no_unwind`?",
-                    )
-                };
-                let e = mk_implies(&e1, &e2);
-                stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
-            }
-
             let mut ens_args_wo_typ = Vec::new();
             call_args_to_air(ctx, expr_ctxt, args, dest, &mut ens_args_wo_typ, &mut stmts)?;
 
             if let Some(stm) = body {
                 let stmt = stm_to_stmts(ctx, state, stm)?;
                 stmts.extend(stmt);
+            }
+
+            // Unwind path, emitted as:
+            //   DeadEnd(
+            //     assume(callee unwinds);
+            //     unwind_path (resolutions and type invariant obligations);
+            //     assert(caller is allowed to unwind);
+            //   )
+            let callee_unwind_spec = func.x.unwind_spec_or_default();
+            let callee_never_unwinds = matches!(callee_unwind_spec, UnwindSpec::NoUnwind);
+            if !callee_never_unwinds && !ctx.checking_spec_preconditions() {
+                let mut unwind_stmts: Vec<Stmt> = Vec::new();
+
+                // assume the negation of the callee's no_unwind condition
+                if let UnwindSpec::NoUnwindWhen(_) = &callee_unwind_spec {
+                    let f_unwind =
+                        prefix_no_unwind_when(&fun_to_air_ident(&ctx.name_ctxt, &func.x.name));
+                    let e = Arc::new(ExprX::Apply(f_unwind, req_args.clone()));
+                    unwind_stmts.push(Arc::new(StmtX::Assume(mk_not(&e))));
+                }
+
+                let mut nontrivial = false;
+                if let Some(stm) = unwind_path {
+                    let path_stmts = stm_to_stmts(ctx, state, stm)?;
+                    nontrivial |= path_stmts.len() > 0;
+                    unwind_stmts.extend(path_stmts);
+                }
+
+                // assert the negation of the caller's no_unwind condition
+                if !matches!(state.unwind, UnwindAir::MayUnwind) {
+                    nontrivial = true;
+                    let e = match &state.unwind {
+                        UnwindAir::MayUnwind => unreachable!(),
+                        UnwindAir::NoUnwind(_) => Arc::new(ExprX::Const(Constant::Bool(false))),
+                        UnwindAir::NoUnwindWhen(expr) => mk_not(expr),
+                    };
+                    let error = match &state.unwind {
+                        UnwindAir::MayUnwind => unreachable!(),
+                        UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
+                            &stm.span,
+                            "cannot show this call will not unwind, in function marked `no_unwind`",
+                            format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
+                        ),
+                        UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
+                            error_with_label(
+                                &stm.span,
+                                "cannot show this call will not unwind",
+                                format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
+                            )
+                            .secondary_label(
+                                span,
+                                "unwinding is not allowed in this invariant block",
+                            )
+                        }
+                        UnwindAir::NoUnwindWhen(_e) => error_with_label(
+                            &stm.span,
+                            "cannot show this call will not unwind, in function marked `no_unwind`",
+                            "this call might unwind",
+                        ),
+                    };
+                    let error = if let UnwindSpec::NoUnwindWhen(e) = &callee_unwind_spec {
+                        error.secondary_label(
+                            &e.span,
+                            "this condition needs to hold to show that the callee will not unwind",
+                        )
+                    } else {
+                        error.secondary_label(
+                            &func.span,
+                            "perhaps you need to mark this function as `no_unwind`?",
+                        )
+                    };
+                    unwind_stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
+                }
+
+                if nontrivial {
+                    let block = Arc::new(StmtX::Block(Arc::new(unwind_stmts)));
+                    stmts.push(Arc::new(StmtX::DeadEnd(block)));
+                }
             }
 
             let typ_args: Vec<Expr> = typs.iter().flat_map(typ_to_ids).collect();
