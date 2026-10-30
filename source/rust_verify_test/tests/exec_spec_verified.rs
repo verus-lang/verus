@@ -1869,6 +1869,29 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    /// Associated fn (no receiver) whose name is shared with a module-level spec fn:
+    /// the generated exec fn must be specified (and verified) against `T::f`.
+    #[test] test_exec_spec_impl_assoc_fn_shadowed IMPORTS.to_string() + verus_code_str! {
+        pub open spec fn mk(x: u8) -> u8 { 0 }
+
+        exec_spec_verified! {
+            pub struct Foo { pub a: u8 }
+
+            impl Foo {
+                pub open spec fn mk(x: u8) -> u8 {
+                    x
+                }
+            }
+        }
+
+        fn test() {
+            let r = ExecFoo::exec_mk(5);
+            assert(r == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     /// Inherent impl on an enum: `&self` method using `match self`.
     #[test] test_exec_spec_impl_enum IMPORTS.to_string() + verus_code_str! {
         exec_spec_verified! {
