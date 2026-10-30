@@ -52,6 +52,7 @@ verus! {
 /// Trait used to specify an _invariant predicate_ for
 /// [`LocalInvariant`] and [`AtomicInvariant`].
 pub trait InvariantPredicate<K, V> {
+    #[verifier::prophetic]
     spec fn inv(k: K, v: V) -> bool;
 }
 
@@ -194,6 +195,7 @@ macro_rules! declare_invariant_impl {
             /// This is equivalent to `Pred::inv(self.constant(), v)`.
 
             #[rustc_diagnostic_item = concat!("verus::vstd::invariant::", stringify!($invariant), "::inv")]
+            #[verifier::prophetic]
             pub open spec fn inv(&self, v: V) -> bool {
                 Pred::inv(self.constant(), v)
             }
