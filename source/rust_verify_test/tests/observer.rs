@@ -1316,8 +1316,8 @@ mod correlator {
         let span = vir::messages::Span {
             raw_span: Arc::new(()),
             id: id as u64,
-            data: vec![],
-            as_string: String::new(),
+            data: Arc::new([]),
+            as_string: "".into(),
         };
         vir::def::Spanned::new(span, vir::sst::StmX::Air(Arc::new(String::new())))
     }

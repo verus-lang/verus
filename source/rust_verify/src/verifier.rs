@@ -2673,8 +2673,8 @@ impl Verifier {
             Some(vir::messages::Span {
                 raw_span: crate::spans::to_raw_span(no_span),
                 id: 0,
-                data: vec![],
-                as_string: "no location".to_string(),
+                data: Arc::new([]),
+                as_string: "no location".into(),
             })
         };
 

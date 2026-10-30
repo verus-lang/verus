@@ -34,7 +34,7 @@ pub(crate) fn from_raw_span(raw_span: &vir::messages::RawSpan) -> Option<Span> {
 pub(crate) fn err_air_span(span: Span) -> vir::messages::Span {
     let raw_span = to_raw_span(span);
     let as_string = format!("{:?}", span);
-    vir::messages::Span { raw_span, id: 0, data: vec![], as_string }
+    vir::messages::Span { raw_span, id: 0, data: Arc::new([]), as_string: as_string.into() }
 }
 
 #[derive(Debug, Clone)]
@@ -263,7 +263,7 @@ impl SpanContextX {
         return vec![self.local_crate.as_u64(), lo_hi];
     }
 
-    fn unpack_span(&self, packed: &Vec<u64>, source_map: Option<&SourceMap>) -> Option<Span> {
+    fn unpack_span(&self, packed: &[u64], source_map: Option<&SourceMap>) -> Option<Span> {
         // Encode as [StableCrateId, lo_hi]
         let crate_id = packed[0];
         let original_lo = BytePos((packed[1] >> 32) as u32);
@@ -293,7 +293,7 @@ impl SpanContextX {
         let id = self.get_next_span_id();
         let data = self.pack_span(span);
         let as_string = format!("{:?}", span);
-        vir::messages::Span { raw_span, id, data, as_string }
+        vir::messages::Span { raw_span, id, data: data.into(), as_string: as_string.into() }
     }
 
     pub(crate) fn from_air_span(
