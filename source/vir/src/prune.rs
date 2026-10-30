@@ -521,6 +521,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         }
                         maybe_reach_set_ops_for_call(state, name, &ctxt, function);
                     }
+                    ExprX::NonSpecClosure { proof_fn_modes: Some(_), .. } => {
+                        reach_set_ops(state, ctxt);
+                    }
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce
                         // references to these particular names.
@@ -1111,19 +1114,19 @@ pub fn prune_krate_for_module_or_krate(
                     reach(
                         &mut state.reached_functions,
                         &mut state.worklist_functions,
-                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "view"),
+                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "view"),
                     );
 
                     reach(
                         &mut state.reached_functions,
                         &mut state.worklist_functions,
-                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "awaited"),
+                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "awaited"),
                     );
 
                     reach(
                         &mut state.reached_functions,
                         &mut state.worklist_functions,
-                        &crate::fun!(CrateId::Vstd => "future", "exec_await"),
+                        &crate::fun!(CrateId::Vstd => "future"; "exec_await"),
                     );
                 }
             }

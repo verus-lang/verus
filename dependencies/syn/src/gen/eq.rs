@@ -661,6 +661,7 @@ impl PartialEq for crate::ExprClosure {
             && self.proof_fn == other.proof_fn && self.options == other.options
             && self.inputs == other.inputs && self.output == other.output
             && self.requires == other.requires && self.ensures == other.ensures
+            && self.invariants == other.invariants
             && self.inner_attrs == other.inner_attrs && self.body == other.body
     }
 }

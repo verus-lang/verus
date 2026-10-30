@@ -450,6 +450,15 @@ test_verify_one_file! {
             let _ = &s[1..=3]; // FAILS
         }
 
+        fn range_inclusive_empty(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.is_char_boundary(2),
+        {
+            let _ = &s[2usize..=1usize]; // FAILS
+        }
+
         fn range_to_out_of_bounds(s: &str)
             requires
                 valid_utf8(s.spec_bytes()),
@@ -483,7 +492,7 @@ test_verify_one_file! {
         {
             let _ = &s[..=3]; // FAILS
         }
-    } => Err(err) => assert_fails(err, 14)
+    } => Err(err) => assert_fails(err, 15)
 }
 
 test_verify_one_file! {

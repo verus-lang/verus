@@ -391,6 +391,97 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // a call that may unwind may take `&mut` of a field the invariant does not read: the
+    // invariant still holds if it unwinds, and is checked when it returns
+    #[test] test_mut_ref_unread_field_unwind_ok verus_code! {
+        use vstd::prelude::*;
+        struct X { i: u8, j: u8, v: Vec<u8> }
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool { 0 <= self.i < 15 }
+        }
+        fn test(j: &mut u8) { }
+        fn test2() {
+            let mut x = X { i: 10, j: 8, v: Vec::new() };
+            test(&mut x.j);
+            x.v.push(3);
+        }
+        fn test3(x: &mut X) {
+            proof { use_type_invariant(&*x); }
+            x.v.push(3);
+            test(&mut x.j);
+        }
+        // nested: Y's invariant does not read `x`, X's does read `i`
+        struct Y { x: X, k: u8 }
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn y_inv(&self) -> bool { self.k < 100 }
+        }
+        fn test4() {
+            let mut y = Y { x: X { i: 10, j: 8, v: Vec::new() }, k: 1 };
+            test(&mut y.x.j);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // still rejected: the invariant reads the field (directly, or by using `self` whole)
+    #[test] test_mut_ref_read_field_unwind_fail verus_code! {
+        use vstd::prelude::*;
+        struct X { i: u8, j: u8 }
+        spec fn small(x: &X) -> bool { x.i < 15 }
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool { small(self) }
+        }
+        fn test(j: &mut u8) { }
+        fn test2() {
+            let mut x = X { i: 10, j: 8 };
+            test(&mut x.j);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "this function call takes a mutable reference to a field of a datatype with a user-defined type invariant; thus, this function should be marked `no_unwind`")
+}
+
+test_verify_one_file! {
+    // enums: fields are borrowed through patterns, still unsupported (the relaxation is for
+    // structs only: another variant's accessor reads the whole value)
+    #[test] test_mut_ref_enum_field_unwind_fail verus_code! {
+        use vstd::prelude::*;
+        enum E { A { i: u8 }, B { j: u8 } }
+        impl E {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool { self is A ==> self->i < 15 }
+        }
+        fn test(j: &mut u8) { }
+        fn test2(e: &mut E) {
+            match e { E::B { j } => test(j), _ => {} }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support using a pattern to take a mutable reference to a field of a datatype that has a declared type invariant")
+}
+
+test_verify_one_file! {
+    // nested: the inner invariant reads the borrowed field
+    #[test] test_mut_ref_nested_read_unwind_fail verus_code! {
+        use vstd::prelude::*;
+        struct X { i: u8, j: u8 }
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool { 0 <= self.i < 15 }
+        }
+        struct Y { x: X, k: u8 }
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn y_inv(&self) -> bool { self.k < 100 }
+        }
+        fn test(i: &mut u8) { }
+        fn test4() {
+            let mut y = Y { x: X { i: 10, j: 8 }, k: 1 };
+            test(&mut y.x.i);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "this function call takes a mutable reference to a field of a datatype with a user-defined type invariant; thus, this function should be marked `no_unwind`")
+}
+
+test_verify_one_file! {
     #[test] test_mut_ref_field_nested_unwind_fail verus_code! {
         struct X {
             i: u8,

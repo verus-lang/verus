@@ -411,6 +411,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 body,
                 requires,
                 ensures,
+                mask_spec,
                 ret: r,
                 external_spec,
             } => {
@@ -423,6 +424,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 }
 
                 let requires = self.visit_exprs(requires)?;
+                let mask_spec = R::map_opt(mask_spec, &mut |ms| self.visit_mask_spec(ms))?;
 
                 self.push_scope();
                 let b = R::get_or(&ret, r);
@@ -448,6 +450,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         body: R::get(body),
                         requires: R::get_vec_a(requires),
                         ensures: R::get_vec_a(ensures),
+                        mask_spec: R::get_opt(mask_spec),
                         ret: R::get(ret),
                         external_spec: R::get_opt(external_spec),
                     })
@@ -582,6 +585,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 invs,
                 decrease,
                 atomic_call,
+                known_no_back_edge,
+                source,
             } => {
                 let cond = self.visit_opt_expr(cond)?;
                 let body = self.visit_expr(body)?;
@@ -599,6 +604,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         invs: R::get_vec_a(invs),
                         decrease: R::get_vec_a(decrease),
                         atomic_call: *atomic_call,
+                        known_no_back_edge: *known_no_back_edge,
+                        source: *source,
                     })
                 })
             }
@@ -1792,7 +1799,7 @@ where
 }
 
 /// Walk the AST, visit every Expr
-pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
+pub fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
 where
     MF: FnMut(&VisitorScopeMap, &Expr) -> Result<(), E>,
 {

@@ -1,6 +1,7 @@
-use crate::util::{err_span, vir_err_span_str};
+use crate::util::{err_span, err_span_bare, vir_err_span_str};
 use rustc_ast::token::{LitKind, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
+use rustc_hir::attrs::AttributeKind;
 use rustc_hir::{AttrArgs, Attribute};
 use rustc_span::Span;
 use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr, VirErrAs};
@@ -1681,3 +1682,238 @@ pub const RUSTC_ATTRS_OK_TO_IGNORE: &[&str] = &[
     // Boxes
     "rustc_box",
 ];
+
+pub(crate) fn forbid_unsafe_attributes<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    owner_id: rustc_hir::OwnerId,
+    errors: &mut Vec<VirErr>,
+) {
+    let attrs = tcx.hir_attrs(owner_id.into());
+    for attr in attrs.iter() {
+        match attr {
+            Attribute::Parsed(kind) => {
+                let (unsupported, is_unsafe) = attr_is_unsupported(kind);
+                if let Some(name) = unsupported {
+                    let span = tcx.hir_span(owner_id.into());
+                    errors.push(err_span_bare(
+                        span,
+                        format!(
+                            "Verus does not currently support the `{:}` attribute{:}",
+                            name,
+                            if is_unsafe { ", which is unsafe" } else { "" }
+                        ),
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn attr_is_unsupported(kind: &AttributeKind) -> (Option<&'static str>, bool) {
+    // rustc doesn't expose an easy function to see which attributes are unsafe
+    // so we have to manually check.
+    // Our unsupported set might not line up with Rust's unsafe set anyway
+
+    use AttributeKind::*;
+    match kind {
+        LinkSection { .. } => (Some("link_section"), true),
+        FfiConst => (Some("ffi_const"), true),
+        FfiPure(..) => (Some("ffi_pure"), true),
+        ExportName { .. } => (Some("export_name"), true),
+        Naked(..) => (Some("naked"), true),
+        NoMangle(..) => (Some("no_mangle"), true),
+        TargetFeature { .. } => (Some("force_target_feature"), true),
+
+        // These aren't unsafe, but look scary:
+        DefaultLibAllocator => (Some("default_lib_allocator"), false),
+        EiiDeclaration(..) => (Some("eii_declaration"), false),
+        EiiImpl(..) => (Some("eii_impl"), false),
+        Marker => (Some("marker"), false),
+
+        // safe
+        | AllowInternalUnsafe(..)
+        | AllowInternalUnstable(..)
+        | AutomaticallyDerived
+        | CfgAttrTrace(..)
+        | CfgTrace(..)
+        | CfiEncoding { .. }
+        | Cold
+        | CollapseDebugInfo(..)
+        | CompilerBuiltins
+        | ConstContinue(..)
+        | Coroutine
+        | Coverage(..)
+        | CrateName { .. }
+        | CrateType(..)
+        | CustomMir(..)
+        | DebuggerVisualizer(..)
+        | Deprecated { .. }
+        | DoNotRecommend
+        | Doc(..)
+        | DocComment { .. }
+        | ExportStable
+        | Feature(..)
+        | Fundamental
+        | Ignore { .. }
+        | Inline(..)
+        | InstructionSet(..)
+        | InstrumentFn(..)
+        | Lang(..)
+        | Link(..)
+        | LinkName { .. }
+        | LinkOrdinal { .. }
+        | Linkage(..)
+        | LoopMatch(..)
+        | MacroEscape
+        | MacroExport { .. }
+        | MacroUse { .. }
+        | MayDangle(..)
+        | MoveSizeLimit { .. }
+        | MustNotSupend { .. }
+        | MustUse { .. }
+        | NeedsAllocator
+        | NeedsPanicRuntime
+        | NoBuiltins
+        | NoCore
+        | NoImplicitPrelude
+        | NoLink
+        | NoMain
+        | NoStd
+        | NonExhaustive(..)
+        | OnConst { .. }
+        | OnMove { .. }
+        | OnTypeError { .. }
+        | OnUnimplemented { .. }
+        | OnUnknown { .. }
+        | OnUnmatchedArgs { .. }
+        | Opaque
+        | Optimize(..)
+        | PanicRuntime
+        | PatchableFunctionEntry { .. }
+        | Path(..)
+        | PatternComplexityLimit { .. }
+        | PinV2(..)
+        | PreludeImport
+        | ProcMacro
+        | ProcMacroAttribute
+        | ProcMacroDerive { .. }
+        | ProfilerRuntime
+        | RecursionLimit { .. }
+        | ReexportTestHarnessMain(..)
+        | RegisterTool { .. }
+        | Repr { .. }
+        // rustc attrs are checked separately
+        | RustcAbi { .. }
+        | RustcAlign { .. }
+        | RustcAllocator
+        | RustcAllocatorZeroed
+        | RustcAllocatorZeroedVariant { .. }
+        | RustcAllowConstFnUnstable(..)
+        | RustcAllowIncoherentImpl(..)
+        | RustcAllowLifetimeDependentSpecialization
+        | RustcAsPtr
+        | RustcAutodiff(..)
+        | RustcBodyStability { .. }
+        | RustcBuiltinMacro { .. }
+        | RustcCanonicalSymbol
+        | RustcCaptureAnalysis
+        | RustcCguTestAttr(..)
+        | RustcClean(..)
+        | RustcCoherenceIsCore
+        | RustcCoinductive
+        | RustcComptime(..)
+        | RustcConfusables { .. }
+        | RustcConstStability { .. }
+        | RustcConstStableIndirect
+        | RustcConversionSuggestion
+        | RustcDeallocator
+        | RustcDelayedBugFromInsideQuery
+        | RustcDenyExplicitImpl
+        | RustcDeprecatedSafe2024 { .. }
+        | RustcDiagnosticItem(..)
+        | RustcDoNotConstCheck
+        | RustcDocPrimitive(..)
+        | RustcDummy
+        | RustcDumpDefParents
+        | RustcDumpDefPath(..)
+        | RustcDumpGenerics
+        | RustcDumpHiddenTypeOfOpaques
+        | RustcDumpInferredOutlives
+        | RustcDumpItemBounds
+        | RustcDumpLayout(..)
+        | RustcDumpObjectLifetimeDefaults
+        | RustcDumpPredicates
+        | RustcDumpSymbolName(..)
+        | RustcDumpUserArgs
+        | RustcDumpVariances
+        | RustcDumpVariancesOfOpaques
+        | RustcDumpVtable(..)
+        | RustcDynIncompatibleTrait(..)
+        | RustcEffectiveVisibility
+        | RustcEiiForeignItem
+        | RustcEvaluateWhereClauses
+        | RustcHasIncoherentInherentImpls
+        | RustcIfThisChanged(..)
+        | RustcInheritOverflowChecks
+        | RustcInsignificantDtor
+        | RustcIntrinsic
+        | RustcIntrinsicConstStableIndirect
+        | RustcLegacyConstGenerics { .. }
+        | RustcLintOptDenyFieldAccess { .. }
+        | RustcLintOptTy
+        | RustcLintQueryInstability
+        | RustcLintUntrackedQueryInformation
+        | RustcMacroTransparency(..)
+        | RustcMain
+        | RustcMir(..)
+        | RustcMustImplementOneOf { .. }
+        | RustcMustMatchExhaustively(..)
+        | RustcNeverReturnsNullPtr
+        | RustcNeverTypeOptions { .. }
+        | RustcNoImplicitAutorefs
+        | RustcNoImplicitBounds
+        | RustcNoMirInline
+        | RustcNoWritable
+        | RustcNonConstTraitMethod
+        | RustcNonnullOptimizationGuaranteed
+        | RustcNounwind
+        | RustcObjcClass { .. }
+        | RustcObjcSelector { .. }
+        | RustcOffloadKernel
+        | RustcPanicsWhenZero
+        | RustcParenSugar
+        | RustcPassByValue
+        | RustcPassIndirectlyInNonRusticAbis(..)
+        | RustcPreserveUbChecks
+        | RustcProcMacroDecls
+        | RustcPubTransparent(..)
+        | RustcReallocator
+        | RustcRegions
+        | RustcReservationImpl(..)
+        | RustcScalableVector { .. }
+        | RustcShouldNotBeCalledOnConstItems
+        | RustcSimdMonomorphizeLaneLimit(..)
+        | RustcSkipDuringMethodDispatch { .. }
+        | RustcSpecializationTrait
+        | RustcStdInternalSymbol
+        | RustcStrictCoherence(..)
+        | RustcTestMarker(..)
+        | RustcThenThisWouldNeed(..)
+        | RustcTrivialFieldReads
+        | Sanitize { .. }
+        | ShouldPanic { .. }
+        | Splat(..)
+        | Stability { .. }
+        | TestRunner(..)
+        | ThreadLocal
+        | TrackCaller(..)
+        | TypeLengthLimit { .. }
+        | Unroll(..)
+        | UnstableFeatureBound(..)
+        | UnstableRemoved(..)
+        | Used { .. }
+        | WindowsSubsystem(..)
+        => (None, false),
+    }
+}

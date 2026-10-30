@@ -217,11 +217,6 @@ pub broadcast proof fn axiom_box_integer_type_obeys_hash_table_key_model<Key: In
     admit();
 }
 
-#[verifier::external_trait_specification]
-pub trait ExHasher {
-    type ExternalTraitSpecificationFor: Hasher;
-}
-
 // Our model for the external trait `BuildHasher` is that for any two
 // `Hasher`s it builds, if they're both given the same write sequence
 // then their states will match and they'll produce the same digest
@@ -289,7 +284,10 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -321,7 +319,10 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -355,7 +356,10 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for hash_map::Iter<'a, K, V> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -882,7 +886,10 @@ impl<'a, K> super::iter::IteratorSpecImpl for hash_set::Iter::<'a, K> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 

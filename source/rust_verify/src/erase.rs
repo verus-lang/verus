@@ -179,6 +179,8 @@ fn resolved_call_to_call_erase(
 
             MiscCall::GhostExec => CallErasure::Call(NodeErase::Keep),
 
+            MiscCall::ShrRefStructWrap => CallErasure::ShrRefStructWrap,
+
             MiscCall::Implies
             | MiscCall::RcNew
             | MiscCall::ArcNew
@@ -194,7 +196,6 @@ fn resolved_call_to_call_erase(
             | MiscCall::TrackedBorrowMut
             | MiscCall::GhostBorrowMut
             | MiscCall::MutRefTracked
-            | MiscCall::ShrRefStructWrap
             | MiscCall::UseTypeInvariant => CallErasure::keep_all(),
         },
         ResolvedCall::MiscEraseAbsolutely => CallErasure::EraseTree(TreeErase::EraseAbsolutely),

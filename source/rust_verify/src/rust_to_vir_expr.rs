@@ -1035,6 +1035,125 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
     Ok(pattern)
 }
 
+pub(crate) fn block_expr_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+) -> Result<ExprOrPlace, VirErr> {
+    let ExprKind::Block(body, label) = &expr.kind else { unreachable!() };
+    let label = label.map(|label| bctx.fresh_label(body.hir_id, &Some(label)));
+
+    let e = block_expr_to_vir_inner(bctx, expr)?.expect_expr();
+
+    fn label_is_used(
+        span: Span,
+        e: &vir::ast::Expr,
+        label: &vir::ast::Label,
+    ) -> Result<bool, VirErr> {
+        let mut found = false;
+        vir::ast_visitor::expr_visitor_check::<VirErr, _>(e, &mut |_, e| {
+            if let ExprX::BreakOrContinue { label: l, is_break, .. } = &e.x
+                && l == label
+            {
+                if *is_break {
+                    found = true;
+                } else {
+                    // Unsupported in Rust; this is just a sanity check
+                    crate::internal_err!(span, "unexpected `continue` for labeled block");
+                }
+            }
+            Ok(())
+        })?;
+        Ok(found)
+    }
+
+    if let Some(label) = label
+        && label_is_used(expr.span, &e, &label)?
+    {
+        // Translate 'a: { block } as
+        // 'a: loop { break 'a { block } }
+        let break_expr = bctx.spanned_typed_new(
+            expr.span,
+            &vir::ast_util::unit_typ(),
+            ExprX::BreakOrContinue { label: label.clone(), value: Some(e.clone()), is_break: true },
+        );
+        let loop_expr = bctx.spanned_typed_new(
+            expr.span,
+            &e.typ,
+            ExprX::Loop {
+                loop_isolation: false,
+                allow_complex_invariants: false,
+                is_for_loop: false,
+                assume_termination: true,
+                label: label,
+                cond: None,
+                body: break_expr,
+                invs: Arc::new(vec![]),
+                decrease: Arc::new(vec![]),
+                atomic_call: false,
+                // This should get inferred as 'true' during resolution inference:
+                known_no_back_edge: false,
+                source: vir::ast::LoopSource::BreakableBlock,
+            },
+        );
+        Ok(ExprOrPlace::Expr(loop_expr))
+    } else {
+        Ok(ExprOrPlace::Expr(e))
+    }
+}
+
+pub(crate) fn block_expr_to_vir_inner<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+) -> Result<ExprOrPlace, VirErr> {
+    let ExprKind::Block(body, _label) = &expr.kind else { unreachable!() };
+
+    if is_invariant_block(bctx, expr)? {
+        return invariant_block_to_vir(bctx, expr);
+    }
+
+    if is_open_au_block(bctx, expr)? {
+        return open_au_block_to_vir(bctx, expr);
+    }
+
+    let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id);
+    let mk_expr =
+        move |x: ExprX| Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ()?, x)));
+
+    if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
+        let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
+        let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?)?;
+        let tracked = match g_attr {
+            GhostBlockAttr::Proof => false,
+            GhostBlockAttr::Tracked => true,
+            GhostBlockAttr::GhostWrapped | GhostBlockAttr::TrackedWrapped => {
+                return Ok(ExprOrPlace::Expr(block));
+            }
+            GhostBlockAttr::Wrapper => {
+                return err_span(expr.span, "unexpected ghost block wrapper");
+            }
+        };
+        mk_expr(ExprX::Ghost { alloc_wrapper: false, tracked, expr: block })
+    } else {
+        let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?)?;
+        if crate::attributes::is_proof_in_spec(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
+            mk_expr(ExprX::ProofInSpec(block))
+        } else if crate::attributes::is_loop_isolation_boundary(
+            bctx.ctxt.tcx.hir_attrs(expr.hir_id),
+        ) {
+            let (wrap, loop_label) = loop_isolation_boundary_check(expr.span, &block)?;
+            let block = if wrap {
+                let x = ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(loop_label), block);
+                bctx.spanned_typed_new(expr.span, &expr_typ()?, x)
+            } else {
+                block
+            };
+            Ok(ExprOrPlace::Expr(block))
+        } else {
+            Ok(ExprOrPlace::Expr(block))
+        }
+    }
+}
+
 pub(crate) fn block_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     block: &Block<'tcx>,
@@ -1050,6 +1169,268 @@ pub(crate) fn block_to_vir<'tcx>(
 
     let x = ExprX::Block(Arc::new(vir_stmts), vir_expr);
     Ok(bctx.spanned_typed_new(span.clone(), ty, x))
+}
+
+/// Prefix of the verified twin `_VERUS_VERIFIED_f` of a `#[verus_spec(with ...)]` function `f`
+/// (must match `VERIFIED` in builtin_macros/src/attr_rewrite.rs)
+pub(crate) const VERUS_VERIFIED_PREFIX: &str = "_VERUS_VERIFIED_";
+
+/// The function (and its generic arguments) that a call expression resolves to
+fn resolved_callee<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    call: &Expr<'tcx>,
+) -> Option<(DefId, rustc_middle::ty::GenericArgsRef<'tcx>)> {
+    let types = bctx.types;
+    match &call.kind {
+        ExprKind::Call(fun, _) => {
+            let ExprKind::Path(qpath) = &fun.kind else { return None };
+            match types.qpath_res(qpath, fun.hir_id) {
+                Res::Def(DefKind::Fn | DefKind::AssocFn, id) => {
+                    Some((id, types.node_args(fun.hir_id)))
+                }
+                _ => None,
+            }
+        }
+        ExprKind::MethodCall(..) => {
+            let id = types.type_dependent_def_id(call.hir_id)?;
+            Some((id, types.node_args(call.hir_id)))
+        }
+        _ => None,
+    }
+}
+
+fn is_proof_with_callee<'tcx>(bctx: &BodyCtxt<'tcx>, fun: &Expr<'tcx>) -> bool {
+    let ExprKind::Path(QPath::Resolved(None, path)) = &fun.kind else { return false };
+    let Res::Def(_, fun_id) = path.res else { return false };
+    bctx.ctxt.get_verus_item(fun_id)
+        == Some(&VerusItem::BuiltinFunction(verus_items::BuiltinFunctionItem::ProofWithCallee))
+}
+
+/// The call to `_VERUS_VERIFIED_f` inside the verified argument of `proof_with_callee`,
+/// which must be exactly as generated by `proof_with!`: the call, possibly wrapped by
+/// `{ let (tmp, outputs) = call; proof!{..} tmp }` (for `=>`) and then `(_, follows)` (for `|=`)
+fn proof_with_verified_call<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    e: &'tcx Expr<'tcx>,
+) -> Option<&'tcx Expr<'tcx>> {
+    let e = if let ExprKind::Tup([e, _]) = &e.kind { e } else { e };
+    let e = match &e.kind {
+        ExprKind::Block(
+            Block {
+                stmts:
+                    [
+                        Stmt {
+                            kind:
+                                StmtKind::Let(LetStmt {
+                                    pat,
+                                    ty: None,
+                                    init: Some(init),
+                                    els: None,
+                                    ..
+                                }),
+                            ..
+                        },
+                        proofs @ ..,
+                    ],
+                expr: Some(tail),
+                rules: rustc_hir::BlockCheckMode::DefaultBlock,
+                ..
+            },
+            None,
+        ) => {
+            let PatKind::Tuple([tmp, _], dotdot) = &pat.kind else { return None };
+            let PatKind::Binding(BindingMode::NONE, tmp_id, _, None) = tmp.kind else {
+                return None;
+            };
+            let ExprKind::Path(QPath::Resolved(None, path)) = &tail.kind else { return None };
+            let is_proof = |s: &Stmt| match &s.kind {
+                StmtKind::Expr(b) | StmtKind::Semi(b) => {
+                    matches!(b.kind, ExprKind::Block(..))
+                        && get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(b.hir_id))
+                            == Some(GhostBlockAttr::Proof)
+                }
+                _ => false,
+            };
+            if dotdot.as_opt_usize().is_some()
+                || path.res != Res::Local(tmp_id)
+                || !proofs.iter().all(is_proof)
+            {
+                return None;
+            }
+            init
+        }
+        _ => e,
+    };
+    matches!(e.kind, ExprKind::Call(..) | ExprKind::MethodCall(..)).then_some(e)
+}
+
+/// Closures (and coroutines) in `e`, in visit order, skipping the compiled-program
+/// copies in nested `proof_with_callee` calls
+struct CollectClosures<'a, 'tcx> {
+    bctx: &'a BodyCtxt<'tcx>,
+    closures: Vec<rustc_span::def_id::LocalDefId>,
+}
+
+impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for CollectClosures<'a, 'tcx> {
+    type NestedFilter = rustc_middle::hir::nested_filter::OnlyBodies;
+    fn maybe_tcx(&mut self) -> TyCtxt<'tcx> {
+        self.bctx.ctxt.tcx
+    }
+    fn visit_expr(&mut self, e: &'tcx Expr<'tcx>) {
+        match &e.kind {
+            ExprKind::Call(fun, [verified, _compiled]) if is_proof_with_callee(self.bctx, fun) => {
+                self.visit_expr(verified);
+            }
+            ExprKind::Closure(closure) => {
+                self.closures.push(closure.def_id);
+                rustc_hir::intravisit::walk_expr(self, e);
+            }
+            _ => rustc_hir::intravisit::walk_expr(self, e),
+        }
+    }
+}
+
+/// Replace the types of closures in the compiled-program copy
+/// with the types of the corresponding closures in the verified call
+struct MapClosureTypes<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    map: std::collections::HashMap<DefId, DefId>,
+}
+
+impl<'tcx> rustc_middle::ty::TypeFolder<TyCtxt<'tcx>> for MapClosureTypes<'tcx> {
+    fn cx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+    fn fold_ty(&mut self, t: rustc_middle::ty::Ty<'tcx>) -> rustc_middle::ty::Ty<'tcx> {
+        use rustc_middle::ty::{Ty, TypeSuperFoldable};
+        let t = t.super_fold_with(self);
+        match t.kind() {
+            TyKind::Closure(d, args) if self.map.contains_key(d) => {
+                Ty::new_closure(self.tcx, self.map[d], args)
+            }
+            TyKind::Coroutine(d, args) if self.map.contains_key(d) => {
+                Ty::new_coroutine(self.tcx, self.map[d], args)
+            }
+            TyKind::CoroutineClosure(d, args) if self.map.contains_key(d) => {
+                Ty::new_coroutine_closure(self.tcx, self.map[d], args)
+            }
+            _ => t,
+        }
+    }
+}
+
+/// `proof_with!{..} f(args)` (and `#[verus_spec(with ..)] f(args)`) on a call to a
+/// `#[verus_spec(with ..)]` function expands, in the verification run, to
+/// `verus_builtin::proof_with_callee(_VERUS_VERIFIED_f(args, ghost_args), f(args))`,
+/// while the compiled program contains just `f(args)`.
+/// Rust resolves the names `_VERUS_VERIFIED_f` and `f` independently
+/// (shadowing, glob imports, method lookup order), so check that the copy `f(args)`
+/// resolves to the function generated by the same `#[verus_spec(with ..)]` item as the
+/// `_VERUS_VERIFIED_f` that is verified, with the same generic arguments.
+/// Note that the copy is type-checked with the verification run's (unerased) arguments,
+/// and its return type is unified with the verified call's,
+/// so this does not check that type inference agrees with the compiled program.
+/// The copy is never verified or evaluated, and is erased before borrow checking.
+pub(crate) fn check_proof_with_callee<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    marker: &Expr<'tcx>,
+    verified: &'tcx Expr<'tcx>,
+    compiled_call: &'tcx Expr<'tcx>,
+) -> Result<(), VirErr> {
+    use rustc_hir::intravisit::Visitor;
+    use rustc_middle::ty::TypeFoldable;
+    let tcx = bctx.ctxt.tcx;
+
+    if !matches!(compiled_call.kind, ExprKind::Call(..) | ExprKind::MethodCall(..)) {
+        return err_span(marker.span, "ill-formed `proof_with!` call");
+    }
+    crate::fn_call_to_vir::record_call(bctx, compiled_call, ResolvedCall::MiscEraseAbsolutely);
+    // Closures in the copy (including nested ones) are not translated to VIR,
+    // so there is no erasure information for their variables; erase their bodies completely.
+    struct EraseClosures<'a, 'tcx>(&'a BodyCtxt<'tcx>);
+    impl<'a, 'tcx> Visitor<'tcx> for EraseClosures<'a, 'tcx> {
+        type NestedFilter = rustc_middle::hir::nested_filter::OnlyBodies;
+        fn maybe_tcx(&mut self) -> TyCtxt<'tcx> {
+            self.0.ctxt.tcx
+        }
+        fn visit_expr(&mut self, e: &'tcx Expr<'tcx>) {
+            if let ExprKind::Closure(closure) = &e.kind {
+                self.0.push_body_erasure(
+                    closure.def_id,
+                    BodyErasure { erase_body: true, ret_spec: true, erase_absolutely: true },
+                );
+            }
+            rustc_hir::intravisit::walk_expr(self, e);
+        }
+    }
+    EraseClosures(bctx).visit_expr(compiled_call);
+
+    let Some(verified_call) = proof_with_verified_call(bctx, verified) else {
+        return err_span(verified.span, "ill-formed `proof_with!` call");
+    };
+    let Some((ver_id, ver_args)) = resolved_callee(bctx, verified_call) else {
+        return err_span(verified_call.span, "ill-formed `proof_with!` call");
+    };
+    let ver_name = tcx.item_name(ver_id);
+    let Some(compiled_name) = ver_name.as_str().strip_prefix(VERUS_VERIFIED_PREFIX) else {
+        return err_span(verified_call.span, "ill-formed `proof_with!` call");
+    };
+    // The path of the function `f` generated together with `_VERUS_VERIFIED_f`
+    let expected = {
+        let ver_str = tcx.def_path_str(ver_id);
+        match ver_str.rsplit_once(VERUS_VERIFIED_PREFIX) {
+            Some((prefix, suffix)) => format!("{prefix}{suffix}"),
+            None => ver_str,
+        }
+    };
+    let err = |msg: String| err_span(compiled_call.span, msg);
+    let Some((compiled_id, compiled_args)) = resolved_callee(bctx, compiled_call) else {
+        return err(format!(
+            "in the compiled program, `{compiled_name}` here does not resolve to `{expected}` (declared with `#[verus_spec(with ...)]`)"
+        ));
+    };
+    // `f` and `_VERUS_VERIFIED_f` are generated from the same item,
+    // with the same parent and the same identifier span
+    if tcx.item_name(compiled_id).as_str() != compiled_name
+        || tcx.opt_parent(compiled_id) != tcx.opt_parent(ver_id)
+        || tcx.def_ident_span(compiled_id) != tcx.def_ident_span(ver_id)
+    {
+        return err(format!(
+            "in the compiled program, `{compiled_name}` here resolves to `{}`, not to `{expected}` (declared with `#[verus_spec(with ...)]`)",
+            tcx.def_path_str(compiled_id)
+        ));
+    }
+
+    // The copy's closures are distinct from, but correspond to, the verified call's closures
+    let mut ver_closures = CollectClosures { bctx, closures: vec![] };
+    ver_closures.visit_expr(verified);
+    let mut compiled_closures = CollectClosures { bctx, closures: vec![] };
+    compiled_closures.visit_expr(compiled_call);
+    // The verified call may contain extra closures (in ghost arguments, including those of
+    // nested proof_with! calls), so for each closure of the copy, search forward for the
+    // verified closure at the same source position
+    // (compare source positions only, since macros in the arguments are expanded
+    // separately for the two copies).
+    let mut map = std::collections::HashMap::new();
+    let mut ver_iter = ver_closures.closures.iter();
+    'closures: for c in compiled_closures.closures.iter() {
+        let cs = tcx.def_span(*c);
+        while let Some(v) = ver_iter.next() {
+            let vs = tcx.def_span(*v);
+            if cs.lo() == vs.lo() && cs.hi() == vs.hi() {
+                map.insert(c.to_def_id(), v.to_def_id());
+                continue 'closures;
+            }
+        }
+        break;
+    }
+    let compiled_args = compiled_args.fold_with(&mut MapClosureTypes { tcx, map });
+    if compiled_args != ver_args {
+        return err(format!(
+            "in the compiled program, this call to `{expected}` has different type arguments than in the verified program"
+        ));
+    }
+    Ok(())
 }
 
 /// Check for the #[verifier(invariant_block)] attribute
@@ -1872,7 +2253,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                                         "coercing an array to a slice is not supported with `--no-vstd`",
                                     );
                                 }
-                                let fun = vir::fun!(CrateId::Vstd => "raw_ptr", "cast_array_ptr_to_slice_ptr");
+                                let fun = vir::fun!(CrateId::Vstd => "raw_ptr"; "cast_array_ptr_to_slice_ptr");
 
                                 let arg_typ = undecorate_typ(arg.typ());
                                 let array_typ = match &*arg_typ {
@@ -1900,7 +2281,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                         (TyKind::Array(el_ty1, _const_len), TyKind::Slice(el_ty2))
                             if el_ty1 == el_ty2 =>
                         {
-                            let fun = vir::fun!(CrateId::Vstd => "array", "ref_mut_array_unsizing_coercion");
+                            let fun = vir::fun!(CrateId::Vstd => "array"; "ref_mut_array_unsizing_coercion");
                             let array_typ = match &**arg.typ() {
                                 TypX::MutRef(typ) => typ,
                                 _ => crate::internal_err!(expr.span, "expected TypX::MutRef"),
@@ -1928,7 +2309,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                                 }
 
                                 // TODO(mut_refs): likely needs Place considerations
-                                let fun = vir::fun!(CrateId::Vstd => "array", "array_as_slice");
+                                let fun = vir::fun!(CrateId::Vstd => "array"; "array_as_slice");
 
                                 let typ_args = match &*undecorate_typ(arg.typ()) {
                                     TypX::Primitive(Primitive::Array, typs) => typs.clone(),
@@ -2049,7 +2430,7 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
                 IntTy::I64 => vir::ast_util::const_int_from_i128(val as i64 as i128),
                 IntTy::I128 => vir::ast_util::const_int_from_i128(val as i128),
                 IntTy::Isize => {
-                    let v = val as isize as i128;
+                    let v = tcx.data_layout.pointer_size().sign_extend(val);
                     if !(v >= i32::MIN as i128 && v <= i32::MAX as i128) {
                         unsupported_err!(
                             expr.span,
@@ -2187,50 +2568,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     };
 
     match &expr.kind {
-        ExprKind::Block(body, label) => {
-            unsupported_err_unless!(label.is_none(), expr.span, "labeled block expressions");
-            if is_invariant_block(bctx, expr)? {
-                return invariant_block_to_vir(bctx, expr);
-            }
-
-            if is_open_au_block(bctx, expr)? {
-                return open_au_block_to_vir(bctx, expr);
-            }
-
-            if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
-                let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
-                let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?)?;
-                let tracked = match g_attr {
-                    GhostBlockAttr::Proof => false,
-                    GhostBlockAttr::Tracked => true,
-                    GhostBlockAttr::GhostWrapped | GhostBlockAttr::TrackedWrapped => {
-                        return Ok(ExprOrPlace::Expr(block));
-                    }
-                    GhostBlockAttr::Wrapper => {
-                        return err_span(expr.span, "unexpected ghost block wrapper");
-                    }
-                };
-                mk_expr(ExprX::Ghost { alloc_wrapper: false, tracked, expr: block })
-            } else {
-                let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?)?;
-                if crate::attributes::is_proof_in_spec(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
-                    mk_expr(ExprX::ProofInSpec(block))
-                } else if crate::attributes::is_loop_isolation_boundary(
-                    bctx.ctxt.tcx.hir_attrs(expr.hir_id),
-                ) {
-                    let (wrap, label) = loop_isolation_boundary_check(expr.span, &block)?;
-                    let block = if wrap {
-                        let x = ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(label), block);
-                        bctx.spanned_typed_new(expr.span, &expr_typ()?, x)
-                    } else {
-                        block
-                    };
-                    Ok(ExprOrPlace::Expr(block))
-                } else {
-                    Ok(ExprOrPlace::Expr(block))
-                }
-            }
-        }
+        ExprKind::Block(..) => block_expr_to_vir(bctx, expr),
         ExprKind::Call(fun, args_slice) => {
             let res = match &fun.kind {
                 ExprKind::Path(qpath) => {
@@ -2467,7 +2805,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 tcx.type_is_copy_modulo_regions(TypingEnv::post_analysis(tcx, bctx.fun_id), ty);
             if is_copy {
                 let arg_vir = expr_to_vir_consume(bctx, e)?;
-                let fun = vir::fun!(CrateId::Vstd => "array", "array_fill_for_copy_types");
+                let fun = vir::fun!(CrateId::Vstd => "array"; "array_fill_for_copy_types");
                 let array_vir_typ = bctx.mid_ty_to_vir(expr.span, &bctx.types.expr_ty(expr))?;
                 let typ_args = match &*array_vir_typ {
                     TypX::Primitive(Primitive::Array, typs) => typs.clone(),
@@ -2583,7 +2921,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             "float `as` cast is not supported with `--no-vstd`",
                         );
                     }
-                    let fun = vir::fun!(CrateId::Vstd => "float", "float_cast");
+                    let fun = vir::fun!(CrateId::Vstd => "float"; "float_cast");
                     let from_typ = undecorate_typ(source_vir_ty);
                     let to_typ = undecorate_typ(&to_vir_ty);
                     let typ_args = Arc::new(vec![from_typ, to_typ]);
@@ -3278,6 +3616,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     //invs,
                     decrease,
                     atomic_call: header.atomic_call_loop,
+                    known_no_back_edge: false,
+                    source: vir::ast::LoopSource::Loop,
                 },
             )))
         }
@@ -3372,6 +3712,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     invs: header.loop_invariants(),
                     decrease: header.decrease,
                     atomic_call: header.atomic_call_loop,
+                    known_no_back_edge: false,
+                    source: vir::ast::LoopSource::Loop,
                 },
             )))
         }
@@ -3511,9 +3853,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
                 let fun_typ_args = if ty_is_vec(bctx.ctxt.tcx, *tgt_ty) && idx_ty.is_usize() {
                     let fun = if mutbl {
-                        vir::fun!(CrateId::Vstd => "std_specs", "vec", "vec_index_mut")
+                        vir::fun!(CrateId::Vstd => "std_specs", "vec"; "vec_index_mut")
                     } else {
-                        vir::fun!(CrateId::Vstd => "std_specs", "vec", "vec_index")
+                        vir::fun!(CrateId::Vstd => "std_specs", "vec"; "vec_index")
                     };
 
                     let typ_args = match &*tgt_typ_vir {
@@ -4419,11 +4761,14 @@ pub(crate) fn closure_to_vir<'tcx>(
         let mut header =
             vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Closure)?;
         add_param_decls(bctx, closure_expr.span, &mut header, &mut body, pattern_stmts)?;
-        let vir::headers::Header { require, ensure, ensure_id_typ, .. } = header;
+        let vir::headers::Header { require, ensure, ensure_id_typ, invariant_mask, .. } = header;
         assert!(ensure.1.len() == 0);
 
         let exprx = if is_spec_fn {
-            bctx.push_body_erasure(*def_id, BodyErasure { erase_body: true, ret_spec: true });
+            bctx.push_body_erasure(
+                *def_id,
+                BodyErasure { erase_body: true, ret_spec: true, erase_absolutely: false },
+            );
 
             if require.len() > 0 || ensure.0.len() > 0 {
                 return err_span(
@@ -4432,6 +4777,11 @@ pub(crate) fn closure_to_vir<'tcx>(
                 );
             }
             ExprX::Closure(Arc::new(params), body)
+        } else if invariant_mask.is_some() && proof_fn_modes.is_none() {
+            return err_span(
+                closure_expr.span,
+                "opens_invariants is not supported for spec or exec closures",
+            );
         } else {
             bctx.push_body_erasure(
                 *def_id,
@@ -4441,6 +4791,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                         None => false,
                         Some((_, ret_mode)) => ret_mode == Mode::Spec,
                     },
+                    erase_absolutely: false,
                 },
             );
 
@@ -4458,7 +4809,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                 }
                 Some((id, None)) => id,
                 None => str_unique_var(
-                    vir::def::CLOSURE_RETURN_VALUE_PREFIX,
+                    vir::def::CLOSURE_RETURN_VALUE_NAME,
                     vir::ast::VarIdentDisambiguate::RustcId(body_id.hir_id.local_id.index()),
                 ),
             };
@@ -4471,6 +4822,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                 body,
                 requires: require,
                 ensures: ensure.0,
+                mask_spec: invariant_mask,
                 ret: ret,
                 external_spec: None, // filled in by ast_simplify
             }
@@ -4533,7 +4885,7 @@ fn is_ptr_cast<'tcx>(
             {
                 let src_ty = bctx.mid_ty_to_vir(span, ty1)?;
                 let dst_ty = bctx.mid_ty_to_vir(span, ty2)?;
-                let fun = vir::fun!(CrateId::Vstd => "raw_ptr", "cast_ptr_to_thin_ptr");
+                let fun = vir::fun!(CrateId::Vstd => "raw_ptr"; "cast_ptr_to_thin_ptr");
                 let typs = Arc::new(vec![src_ty, dst_ty]);
                 return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
             } else {
@@ -4542,21 +4894,21 @@ fn is_ptr_cast<'tcx>(
                         let arg1 = bctx.mid_ty_to_vir(span, s1)?;
                         let arg2 = bctx.mid_ty_to_vir(span, s2)?;
                         let fun =
-                            vir::fun!(CrateId::Vstd => "raw_ptr", "cast_slice_ptr_to_slice_ptr");
+                            vir::fun!(CrateId::Vstd => "raw_ptr"; "cast_slice_ptr_to_slice_ptr");
                         let typs = Arc::new(vec![arg1, arg2]);
                         return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
                     }
                     (TyKind::Slice(s1), TyKind::Str) => {
                         let arg = bctx.mid_ty_to_vir(span, s1)?;
                         let fun =
-                            vir::fun!(CrateId::Vstd => "raw_ptr", "cast_slice_ptr_to_str_ptr");
+                            vir::fun!(CrateId::Vstd => "raw_ptr"; "cast_slice_ptr_to_str_ptr");
                         let typs = Arc::new(vec![arg]);
                         return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
                     }
                     (TyKind::Str, TyKind::Slice(s2)) => {
                         let arg = bctx.mid_ty_to_vir(span, s2)?;
                         let fun =
-                            vir::fun!(CrateId::Vstd => "raw_ptr", "cast_str_ptr_to_slice_ptr");
+                            vir::fun!(CrateId::Vstd => "raw_ptr"; "cast_str_ptr_to_slice_ptr");
                         let typs = Arc::new(vec![arg]);
                         return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
                     }
@@ -4570,7 +4922,7 @@ fn is_ptr_cast<'tcx>(
         {
             let src_ty = bctx.mid_ty_to_vir(span, ty1)?;
             let typs = Arc::new(vec![src_ty]);
-            let fun = vir::fun!(CrateId::Vstd => "raw_ptr", "cast_ptr_to_usize");
+            let fun = vir::fun!(CrateId::Vstd => "raw_ptr"; "cast_ptr_to_usize");
 
             // cast_ptr_to_usize casts to a usize; we might need to do an additional
             // clip afterwards, so return with clip=true

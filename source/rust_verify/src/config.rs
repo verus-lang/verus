@@ -120,6 +120,7 @@ pub struct ArgsX {
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
     pub no_bv_simplify: bool,
+    pub observer: Option<String>,
 }
 
 impl ArgsX {
@@ -169,6 +170,7 @@ impl ArgsX {
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
             no_bv_simplify: Default::default(),
+            observer: None,
         }
     }
 }
@@ -415,6 +417,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
     const EXTENDED_NO_BV_SIMPLIFY: &str = "no-bv-simplify";
+    const EXTENDED_OBSERVER: &str = "observer";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (
@@ -442,6 +445,7 @@ pub fn parse_args_with_imports(
             EXTENDED_NO_BV_SIMPLIFY,
             "internal option to disable simplification of bit-vector assertions before sending to the SMT solver",
         ),
+        (EXTENDED_OBSERVER, "Observer to run during verification (e.g., test)"),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -850,6 +854,14 @@ pub fn parse_args_with_imports(
         axiom_usage_info: extended.contains_key(EXTENDED_AXIOM_USAGE_INFO),
         check_api_safety: extended.contains_key(EXTENDED_CHECK_API_SAFETY),
         no_bv_simplify: extended.contains_key(EXTENDED_NO_BV_SIMPLIFY),
+        observer: match extended.get(EXTENDED_OBSERVER) {
+            None => None,
+            Some(Some(name)) => Some(name.clone()),
+            Some(None) => error(format!(
+                "-V {} needs a name, e.g. -V {}=test",
+                EXTENDED_OBSERVER, EXTENDED_OBSERVER
+            )),
+        },
     };
 
     if args.compile && args.no_erasure_check {

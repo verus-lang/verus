@@ -39,7 +39,7 @@ then it's nested items can be marked VerusAware, but if it's External, this this
 use crate::attributes::ExternalAttrs;
 use crate::automatic_derive::AutomaticDeriveAction;
 use crate::context::ContextX;
-use crate::rust_to_vir_base::def_id_to_vir_path_option;
+use crate::rust_to_vir_path::def_id_to_vir_path_option;
 use crate::rustc_hir::intravisit::*;
 use crate::verus_items::get_rust_item;
 use rustc_hir::{
@@ -351,8 +351,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                 return;
             }
         } else {
-            let path_opt =
-                def_id_to_vir_path_option(self.ctxt.tcx, Some(&self.ctxt.verus_items), def_id);
+            let path_opt = def_id_to_vir_path_option(self.ctxt.tcx, &self.ctxt.verus_items, def_id);
             let path_string = match &path_opt {
                 Some(path) => vir::ast_util::path_as_friendly_rust_name(&path),
                 None => format!("{:?}", def_id),
@@ -395,11 +394,8 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         match general_item {
             GeneralItem::Item(item) => match item.kind {
                 ItemKind::Mod(_ident, _module) => {
-                    self.module_path = def_id_to_vir_path_option(
-                        self.ctxt.tcx,
-                        Some(&self.ctxt.verus_items),
-                        def_id,
-                    );
+                    self.module_path =
+                        def_id_to_vir_path_option(self.ctxt.tcx, &self.ctxt.verus_items, def_id);
                 }
                 ItemKind::Impl(impll) => {
                     self.in_impl = Some(InsideImpl {

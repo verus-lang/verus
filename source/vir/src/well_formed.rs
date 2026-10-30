@@ -836,8 +836,9 @@ fn check_one_expr(
             ).help("you can dereference the mutable reference normally to get the \"current\"/\"old\" value"));
         }
         ExprX::ShrRefStructWrap(_e1, _e2, t1, t2, variant_ident, field_ident) => {
-            let datatype_typ = undecorate_typ(&t2);
-            let (dt, typ_args) = match &*datatype_typ {
+            // The target must be the datatype itself (not &X, Box<X>, ...), since lifetime
+            // checking looks up the field on this exact type
+            let (dt, typ_args) = match &**t2 {
                 TypX::Datatype(dt, typ_args, ..) => (dt, typ_args),
                 _ => {
                     return Err(error(

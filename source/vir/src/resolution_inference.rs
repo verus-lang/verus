@@ -285,6 +285,7 @@ use crate::resolution_types::ResolutionTypes;
 use crate::sst_util::subst_typ_for_datatype;
 use air::ast_util::str_ident;
 use air::scope_map::ScopeMap;
+use std::collections::HashSet;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
@@ -358,15 +359,16 @@ fn infer_resolution(
     module: &Path,
     rtypes: &ResolutionTypes,
 ) -> Result<Expr, VirErr> {
-    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts) = new_cfg(
-        params,
-        body,
-        &info.read_kind_finals,
-        datatypes,
-        functions,
-        &info.var_modes,
-        &info.temporary_modes,
-    )?;
+    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts, loops_with_no_back_edges) =
+        new_cfg(
+            params,
+            body,
+            &info.read_kind_finals,
+            datatypes,
+            functions,
+            &info.var_modes,
+            &info.temporary_modes,
+        )?;
     //println!("{:}", pretty_cfg(&cfg));
     let resolutions = if info.dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
     apply_resolutions(
@@ -377,6 +379,7 @@ fn infer_resolution(
         assigns_to_resolve,
         typ_inv_obligations,
         &info.typ_inv_info,
+        loops_with_no_back_edges,
         module,
     )
 }
@@ -557,6 +560,7 @@ struct Builder<'a> {
     assigns_to_resolve: Vec<AstId>,
     typ_inv_obligations: Vec<(AstId, FunWithVis)>,
     asserts: Vec<((BBIndex, usize), Expr)>,
+    loops_with_no_back_edges: HashSet<AstId>,
     errors: Vec<VirErr>,
 
     /// Loop stack, outermost to innermost
@@ -574,6 +578,8 @@ struct LoopEntry {
     break_bb: BBIndex,
     /// BB to jump to on 'continue'
     continue_bb: BBIndex,
+    /// Have we encountered a 'continue' for this loop?
+    continue_taken: bool,
 }
 
 /// Represents the scope for either the top-level fn or for any closure inside it
@@ -625,8 +631,10 @@ fn new_cfg<'a>(
     functions: &'a HashMap<Fun, Function>,
     var_modes: &'a HashMap<VarIdent, Mode>,
     temporary_modes: &'a HashMap<AstId, Mode>,
-) -> Result<(CFG<'a>, Vec<AstId>, Vec<(AstId, FunWithVis)>, Vec<((BBIndex, usize), Expr)>), VirErr>
-{
+) -> Result<
+    (CFG<'a>, Vec<AstId>, Vec<(AstId, FunWithVis)>, Vec<((BBIndex, usize), Expr)>, HashSet<AstId>),
+    VirErr,
+> {
     let mut var_modes = var_modes.clone();
     for p in params.iter() {
         var_modes.insert(p.x.name.clone(), p.x.mode);
@@ -638,6 +646,7 @@ fn new_cfg<'a>(
         fns: vec![],
         assigns_to_resolve: vec![],
         typ_inv_obligations: vec![],
+        loops_with_no_back_edges: HashSet::new(),
         asserts: vec![],
         errors: vec![],
         locals: LocalCollection {
@@ -689,7 +698,13 @@ fn new_cfg<'a>(
     }
 
     let cfg = CFG { basic_blocks: builder.basic_blocks, locals: builder.locals };
-    Ok((cfg, builder.assigns_to_resolve, builder.typ_inv_obligations, builder.asserts))
+    Ok((
+        cfg,
+        builder.assigns_to_resolve,
+        builder.typ_inv_obligations,
+        builder.asserts,
+        builder.loops_with_no_back_edges,
+    ))
 }
 
 macro_rules! unwrap {
@@ -801,10 +816,10 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn get_loop(&self, loop_label: &Label) -> LoopEntry {
-        for l in self.loops.iter().rev() {
+    fn get_loop<'b>(loops: &'b mut Vec<LoopEntry>, loop_label: &Label) -> &'b mut LoopEntry {
+        for l in loops.iter_mut().rev() {
             if &l.label == loop_label {
-                return l.clone();
+                return l;
             }
         }
         panic!("Could not find label {:?}", loop_label);
@@ -1040,6 +1055,7 @@ impl<'a> Builder<'a> {
                 body,
                 requires: _,
                 ensures: _,
+                mask_spec: _,
                 ret: _,
                 external_spec: _,
             } => {
@@ -1078,6 +1094,8 @@ impl<'a> Builder<'a> {
                 invs: _,
                 decrease: _,
                 atomic_call: _,
+                known_no_back_edge: _,
+                source: _,
             } => {
                 let outer_body_bb_pos = match cond {
                     Some(cond) => AstPosition::Before(cond.span.id),
@@ -1091,6 +1109,7 @@ impl<'a> Builder<'a> {
                     label: label.clone(),
                     break_bb: post_bb,
                     continue_bb: outer_body_bb,
+                    continue_taken: false,
                 });
 
                 self.basic_blocks[bb].successors.push(outer_body_bb);
@@ -1135,10 +1154,14 @@ impl<'a> Builder<'a> {
 
                 let end_bb = self.build(body, inner_body_bb);
 
-                let _loop_entry = self.loops.pop().unwrap();
+                let loop_entry = self.loops.pop().unwrap();
 
                 match end_bb {
-                    Maybe::Never => {}
+                    Maybe::Never => {
+                        if !loop_entry.continue_taken {
+                            self.loops_with_no_back_edges.insert(expr.span.id);
+                        }
+                    }
                     Maybe::Some(end_bb) => {
                         self.basic_blocks[end_bb].successors.push(outer_body_bb);
                     }
@@ -1202,11 +1225,12 @@ impl<'a> Builder<'a> {
                 if let Some(value) = value {
                     bb = unwrap!(self.build(value, bb));
                 }
-                let entry = self.get_loop(label);
+                let entry = Self::get_loop(&mut self.loops, label);
                 if *is_break {
                     self.basic_blocks[bb].successors.push(entry.break_bb);
                 } else {
                     self.basic_blocks[bb].successors.push(entry.continue_bb);
+                    entry.continue_taken = true;
                 }
                 Maybe::Never
             }
@@ -3693,6 +3717,7 @@ fn apply_resolutions(
     assigns_to_resolve: Vec<AstId>,
     typ_inv_obligations: Vec<(AstId, FunWithVis)>,
     typ_inv_info: &crate::modes::TypeInvInfo,
+    loops_with_no_back_edges: HashSet<AstId>,
     module: &Path,
 ) -> Result<Expr, VirErr> {
     // All the resolutions that apply to PlaceX::Temporary nodes
@@ -3802,6 +3827,7 @@ fn apply_resolutions(
                 &cfg.locals.datatypes,
                 module,
             )?;
+            let expr2 = maybe_set_loop_no_back_edge(expr2, &loops_with_no_back_edges);
 
             if let Some((befores, afters, after_args, after_f, after_t, assn, seen_yet)) =
                 id_map.get_mut(&expr.span.id)
@@ -4207,4 +4233,17 @@ fn add_decls_for_temps(
         }
     }
     SpannedTyped::new(&expr.span, &expr.typ, ExprX::Block(Arc::new(stmts), Some(expr.clone())))
+}
+
+fn maybe_set_loop_no_back_edge(e: Expr, loops_with_no_back_edges: &HashSet<AstId>) -> Expr {
+    if matches!(&e.x, ExprX::Loop { .. }) && loops_with_no_back_edges.contains(&e.span.id) {
+        let mut e = e;
+        let ExprX::Loop { ref mut known_no_back_edge, .. } = Arc::make_mut(&mut e).x else {
+            unreachable!();
+        };
+        *known_no_back_edge = true;
+        e
+    } else {
+        e
+    }
 }
