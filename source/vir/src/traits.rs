@@ -1745,7 +1745,16 @@ fn compute_dyn_compatibility(
 ) -> Arc<crate::ast::DynCompatible> {
     use crate::ast::DynCompatible;
     if !tr_map.contains_key(tr_path) {
-        panic!("compute_dyn_compatibility: missing trait {:?}", tr_path);
+        // A trait Verus has no declaration for (e.g. a supertrait from a crate that was not
+        // verified, such as `serde::Serialize`). We cannot check its methods, so `dyn` of it,
+        // or of any trait that has it as a supertrait, is rejected. Conservative: this only
+        // matters if such a `dyn` type is used, and then it is an error.
+        return Arc::new(DynCompatible::Reject {
+            reason: format!(
+                "trait {} is not known to Verus",
+                crate::ast_util::path_as_friendly_rust_name(tr_path)
+            ),
+        });
     }
     let tr = &tr_map[tr_path];
     let mut unsized_blanket_super = None;
