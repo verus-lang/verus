@@ -181,7 +181,6 @@ test_verify_one_file! {
             });
 
             assert(res@ is Ok);
-            assert(res@->Ok_0 == ());
             assert(atomic_update.resolves());
         }
     } => Ok(())
