@@ -63,6 +63,10 @@ pub fn to_is_enabled_condition_weak(sops: &Vec<SimplStmt>) -> TokenStream {
     to_relation(&sops, true)
 }
 
+pub fn to_is_enabled_condition_strong(sops: &Vec<SimplStmt>) -> TokenStream {
+    to_relation(&remove_post_conditions_vec(sops), false)
+}
+
 /// Mark each scope-creating node with the assign-vars that need to be extracted
 /// Also, remove any 'assign' that isn't used.
 fn annotate_extractions(sops: &Vec<SimplStmt>) -> Vec<SimplStmt> {
@@ -286,12 +290,29 @@ fn simpl_conjunct_stmt(
                 }
             }
         },
-        SimplStmt::Let(span, pat, ty, e, child, _) => {
-            let x = simpl_conjunct_vec(child, None);
+        SimplStmt::Let(span, pat, ty, e, child, extractions) => {
             let ty_tokens = match ty {
                 None => TokenStream::new(),
                 Some(ty) => quote! { : #ty },
             };
+            // Put the following conjuncts `p` at the end of the binding's scope
+            // when no name bound there (other than the extracted assignments,
+            // whose values at the end of the scope are what the extraction
+            // would compute) is used by `p`. Otherwise the scope would have to
+            // be re-stated as an extraction before `p`, once per nesting
+            // level, which is quadratic in the number of nested bindings.
+            if let Some(q) = &p {
+                if !continuation_captured(pat, child, extractions, q) {
+                    return simpl_conjunct_vec(child, p).map(|r| {
+                        if let_skip_brace {
+                            quote! { let #pat #ty_tokens = #e; #r }
+                        } else {
+                            quote! { { let #pat #ty_tokens = #e; #r } }
+                        }
+                    });
+                }
+            }
+            let x = simpl_conjunct_vec(child, None);
             let t = match x {
                 None => None,
                 Some(r) => {
@@ -451,6 +472,54 @@ fn extr_vec(sops: &Vec<SimplStmt>) -> TokenStream {
 
 // Utils
 
+/// Whether `q`, placed at the end of the scope of `let pat = ..; child`, would
+/// see a different binding than right after that scope (with the extracted
+/// assignments re-bound): some identifier of `q` is bound by a pattern in the
+/// scope or assigned there without being extracted. Conservative: every
+/// identifier of every pattern counts as bound.
+fn continuation_captured(
+    pat: &verus_syn::Pat,
+    child: &Vec<SimplStmt>,
+    extractions: &Vec<Ident>,
+    q: &TokenStream,
+) -> bool {
+    fn bound(sops: &Vec<SimplStmt>, pats: &mut IndexSet<String>, assigned: &mut IndexSet<String>) {
+        for sop in sops {
+            match sop {
+                SimplStmt::Let(_, pat, _, _, child, _) => {
+                    UseGetter { used_ids: pats }.visit_stream(quote! {#pat});
+                    bound(child, pats, assigned);
+                }
+                SimplStmt::Split(_, split_kind, es, _) => {
+                    if let SplitKind::Match(_, arms) = &**split_kind {
+                        for arm in arms {
+                            let p = &arm.pat;
+                            UseGetter { used_ids: pats }.visit_stream(quote! {#p});
+                        }
+                    }
+                    for (_, child) in es {
+                        bound(child, pats, assigned);
+                    }
+                }
+                SimplStmt::Assign(_, id, _, _, _) => {
+                    assigned.insert(id.to_string());
+                }
+                SimplStmt::Require(..) | SimplStmt::PostCondition(..) | SimplStmt::Assert(..) => {}
+            }
+        }
+    }
+    let mut pats = IndexSet::new();
+    let mut assigned = IndexSet::new();
+    UseGetter { used_ids: &mut pats }.visit_stream(quote! {#pat});
+    bound(child, &mut pats, &mut assigned);
+    for x in extractions {
+        assigned.swap_remove(&x.to_string());
+    }
+    let mut used = IndexSet::new();
+    UseGetter { used_ids: &mut used }.visit_stream(q.clone());
+    used.iter().any(|u| pats.contains(u) || assigned.contains(u))
+}
+
 fn prepend_let_stmt(
     span: Span,
     l: Option<TokenStream>,
@@ -463,10 +532,27 @@ fn prepend_let_stmt(
     }
 }
 
+thread_local! {
+    static PLAIN: std::cell::Cell<bool> = std::cell::Cell::new(false);
+}
+
+/// `to_relation` without the per-conjunct error messages, for relations that
+/// only generated proofs establish (the verified backend's strong relations).
+pub fn to_relation_plain(sops: &Vec<SimplStmt>, weak: bool) -> TokenStream {
+    PLAIN.with(|p| p.set(true));
+    let r = to_relation(sops, weak);
+    PLAIN.with(|p| p.set(false));
+    r
+}
+
 fn prepend_conjunct(e: &Expr, p: Option<TokenStream>, msg: &str) -> Option<TokenStream> {
     let msg_lit = Lit::Str(LitStr::new(msg, e.span()));
-    let err_attr = quote_spanned! { e.span() =>
-        #[verifier::custom_err(#msg_lit)] /* vattr */
+    let err_attr = if PLAIN.with(|p| p.get()) {
+        quote! {}
+    } else {
+        quote_spanned! { e.span() =>
+            #[verifier::custom_err(#msg_lit)] /* vattr */
+        }
     };
     match p {
         None => Some(quote_spanned! { e.span() => #err_attr (#e) }),

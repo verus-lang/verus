@@ -162,6 +162,45 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// test_sm with the checked model macro (the original names the trusted macro in its own imports).
+test_verify_one_file! {
+    #[test] test_sm_verified verus_code! {
+        use vstd::*;
+        use verus_state_machines_macros::*;
+
+        pub uninterp spec fn f() -> bool;
+
+        #[verifier::external_body]
+        broadcast proof fn f_is_true()
+            ensures #[trigger] f(),
+        {
+        }
+
+        verified_state_machine_model!{ X {
+            fields {
+                pub a: u8,
+            }
+
+            transition!{
+                stuff() {
+                    update a = 5;
+                }
+            }
+
+            #[invariant]
+            pub spec fn inv(&self) -> bool {
+                true
+            }
+
+            #[inductive(stuff)]
+            fn stuff_inductive(pre: Self, post: Self) {
+                broadcast use f_is_true;
+                assert(f());
+            }
+        }}
+    } => Ok(())
+}
+
 const RING_ALGEBRA: &str = verus_code_str! {
     mod ring {
         use verus_builtin::*;

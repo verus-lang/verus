@@ -555,6 +555,11 @@ mod whitespace;
 
 mod verus;
 pub use crate::verus::rejoin_tokens;
+
+#[cfg(all(feature = "parsing", feature = "full"))]
+mod ghost_bodies;
+#[cfg(all(feature = "parsing", feature = "full"))]
+pub use crate::ghost_bodies::SkipGhostItemBodies;
 pub use crate::verus::{
     Assert, AssertForall, Assume, AssumeSpecification, AtomicSpec, AtomicallyBlock, BigAnd,
     BigAndExpr, BigOr, BigOrExpr, BroadcastUse, Closed, ClosureArg, DataMode, Decreases,

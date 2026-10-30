@@ -883,6 +883,7 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> parse::Result<
 
     replace_self_sm(&mut sm);
     check_transitions(&mut sm)?;
+    crate::transitions::desugar_sub_updates(&mut sm)?;
 
     for inv in invariants.iter() {
         match inv.func.vis {

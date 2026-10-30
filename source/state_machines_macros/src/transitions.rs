@@ -1,7 +1,7 @@
 use crate::ast::INIT_LABEL_TYPE_NAME;
 use crate::ast::TRANSITION_LABEL_TYPE_NAME;
 use crate::ast::{
-    Field, MonoidElt, MonoidStmtType, SM, ShardableType, SpecialOp, SplitKind, Transition,
+    Field, MonoidElt, MonoidStmtType, SM, ShardableType, SpecialOp, SplitKind, SubIdx, Transition,
     TransitionKind, TransitionStmt,
 };
 use crate::check_bind_stmts::check_bind_stmts;
@@ -842,4 +842,185 @@ pub fn check_transition(sm: &SM, tr: &mut Transition) -> parse::Result<()> {
     }
 
     combine_errors_or_ok(errors)
+}
+
+/// The largest number of `update`/sub-update statements of `field` on one
+/// path through `ts`.
+fn max_updates_on_path(field: &Ident, ts: &TransitionStmt) -> usize {
+    match ts {
+        TransitionStmt::Block(_, v) => v.iter().map(|t| max_updates_on_path(field, t)).sum(),
+        TransitionStmt::Split(_, kind, es) => match &**kind {
+            SplitKind::If(..) | SplitKind::Match(..) => {
+                es.iter().map(|t| max_updates_on_path(field, t)).max().unwrap_or(0)
+            }
+            SplitKind::Let(..) | SplitKind::Special(..) => {
+                es.iter().map(|t| max_updates_on_path(field, t)).sum()
+            }
+        },
+        TransitionStmt::Update(_, f, _) | TransitionStmt::SubUpdate(_, f, _, _) => {
+            (f == field) as usize
+        }
+        _ => 0,
+    }
+}
+
+fn sub_updated_fields(ts: &TransitionStmt, out: &mut Vec<Ident>) {
+    match ts {
+        TransitionStmt::Block(_, v) | TransitionStmt::Split(_, _, v) => {
+            v.iter().for_each(|t| sub_updated_fields(t, out))
+        }
+        TransitionStmt::SubUpdate(_, f, _, _) => {
+            if !out.contains(f) {
+                out.push(f.clone());
+            }
+        }
+        _ => {}
+    }
+}
+
+/// `update f<subs> = e` as the whole-field value: `pre.f` updated at `subs`.
+fn sub_update_as_update(
+    fields: &Vec<Field>,
+    span: Span,
+    f: &Ident,
+    subs: &[SubIdx],
+    e: &verus_syn::Expr,
+) -> parse::Result<verus_syn::Expr> {
+    let ty = get_field(fields, f).get_type();
+    let pre = Ident::new("pre", span);
+    let root: verus_syn::Expr = verus_syn::parse2(quote::quote_spanned! { span => #pre.#f })?;
+    let value = crate::simplification::sub_update_expr(&root, Some(&ty), f, subs, e)?;
+    verus_syn::parse2(quote::ToTokens::to_token_stream(&value))
+}
+
+/// Several sub-updates of one field among the statements of one block (and
+/// no other update of it there) compose in order:
+/// `update p.x = a; update p.y = b;` becomes, at the last one,
+/// `update p = Pt { y: b, ..Pt { x: a, ..pre.p } };`.
+/// (Update statements take effect regardless of their position, since `pre`
+/// always denotes the state before the transition.)
+fn merge_sibling_sub_updates(fields: &Vec<Field>, ts: &mut TransitionStmt) -> parse::Result<()> {
+    match ts {
+        TransitionStmt::Split(_, _, v) => {
+            for t in v.iter_mut() {
+                merge_sibling_sub_updates(fields, t)?;
+            }
+        }
+        TransitionStmt::Block(_, v) => {
+            for t in v.iter_mut() {
+                merge_sibling_sub_updates(fields, t)?;
+            }
+            let mut names: Vec<Ident> = Vec::new();
+            for t in v.iter() {
+                if let TransitionStmt::SubUpdate(_, f, _, _) = t {
+                    if !names.contains(f) {
+                        names.push(f.clone());
+                    }
+                }
+            }
+            for f in names {
+                let direct: Vec<usize> = (0..v.len())
+                    .filter(|&i| matches!(&v[i], TransitionStmt::SubUpdate(_, g, _, _) if *g == f))
+                    .collect();
+                let others = (0..v.len())
+                    .filter(|i| !direct.contains(i))
+                    .any(|i| max_updates_on_path(&f, &v[i]) > 0);
+                if direct.len() < 2 || others {
+                    continue;
+                }
+                let ty = get_field(fields, &f).get_type();
+                let mut value: Option<verus_syn::Expr> = None;
+                let mut last_span = None;
+                for &i in &direct {
+                    if let TransitionStmt::SubUpdate(span, _, subs, e) = &v[i] {
+                        let root = match value.take() {
+                            Some(root) => verus_syn::Expr::Verbatim(quote::quote! { (#root) }),
+                            None => {
+                                let pre = Ident::new("pre", *span);
+                                verus_syn::parse2(quote::quote_spanned! { *span => #pre.#f })?
+                            }
+                        };
+                        let next =
+                            crate::simplification::sub_update_expr(&root, Some(&ty), &f, subs, e)?;
+                        value = Some(next);
+                        last_span = Some(*span);
+                    }
+                }
+                let (Some(value), Some(span)) = (value, last_span) else { continue };
+                let value: verus_syn::Expr =
+                    verus_syn::parse2(quote::ToTokens::to_token_stream(&value))?;
+                let last = *direct.last().unwrap_or(&0);
+                v[last] = TransitionStmt::Update(span, f.clone(), value);
+                for &i in direct.iter().rev().skip(1) {
+                    v.remove(i);
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn rewrite_sub_updates(
+    fields: &Vec<Field>,
+    rewrite: &Vec<Ident>,
+    ts: &mut TransitionStmt,
+) -> parse::Result<()> {
+    match ts {
+        TransitionStmt::Block(_, v) | TransitionStmt::Split(_, _, v) => {
+            for t in v.iter_mut() {
+                rewrite_sub_updates(fields, rewrite, t)?;
+            }
+        }
+        TransitionStmt::SubUpdate(span, f, subs, e) if rewrite.contains(f) => {
+            let value = sub_update_as_update(fields, *span, f, subs, e)?;
+            *ts = TransitionStmt::Update(*span, f.clone(), value);
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn check_sub_updates_rec(fields: &Vec<Field>, ts: &TransitionStmt, errors: &mut Vec<Error>) {
+    match ts {
+        TransitionStmt::Block(_, v) | TransitionStmt::Split(_, _, v) => {
+            v.iter().for_each(|t| check_sub_updates_rec(fields, t, errors))
+        }
+        TransitionStmt::SubUpdate(span, f, subs, e) => {
+            if let Err(err) = sub_update_as_update(fields, *span, f, subs, e) {
+                errors.push(err);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Checks that every sub-update (`update f.a[k].b = e`) can be expressed as
+/// a whole-field value (see `simplification::sub_update_expr`).
+///
+/// In tokenized machines, the sub-updates of a field that is updated at most
+/// once on every path become `update f = <pre.f updated at the path>`, which
+/// every token backend supports. Several sub-updates of one field on one path
+/// compose sequentially; `state_machine!` supports them, and tokenized
+/// machines report them.
+pub fn desugar_sub_updates(sm: &mut SM) -> parse::Result<()> {
+    let mut errors = Vec::new();
+    for tr in sm.transitions.iter() {
+        check_sub_updates_rec(&sm.fields, &tr.body, &mut errors);
+    }
+    if errors.len() > 0 || !sm.concurrent {
+        return combine_errors_or_ok(errors);
+    }
+    let fields = sm.fields.clone();
+    for tr in sm.transitions.iter_mut() {
+        merge_sibling_sub_updates(&fields, &mut tr.body)?;
+        let mut candidates = Vec::new();
+        sub_updated_fields(&tr.body, &mut candidates);
+        let rewrite: Vec<Ident> =
+            candidates.into_iter().filter(|f| max_updates_on_path(f, &tr.body) <= 1).collect();
+        if !rewrite.is_empty() {
+            rewrite_sub_updates(&fields, &rewrite, &mut tr.body)?;
+        }
+    }
+    Ok(())
 }

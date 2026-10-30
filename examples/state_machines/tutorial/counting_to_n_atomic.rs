@@ -2,7 +2,10 @@
 #[allow(unused_imports)]
 use verus_builtin::*;
 use verus_builtin_macros::*;
+#[cfg(not(verus_verified_tsm))]
 use verus_state_machines_macros::state_machine;
+#[cfg(verus_verified_tsm)]
+use verus_state_machines_macros::verified_state_machine_model as state_machine;
 use vstd::{pervasive::*, *};
 
 // ANCHOR: main
