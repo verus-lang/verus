@@ -1,7 +1,7 @@
 use super::layout::*;
 use super::prelude::*;
-use super::raw_ptr_new;
-use super::raw_ptr_new::*;
+use super::raw_ptr;
+use super::raw_ptr::*;
 use core::marker::PhantomData;
 
 verus! {
