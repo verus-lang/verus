@@ -259,8 +259,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "async is not supported together with `allow_in_spec`")
 }
 
-test_verify_one_file! {
-    #[test] async_with_mismatch_type code! {
+test_verify_one_file_with_options! {
+    #[test] async_with_mismatch_type ["--allow-hand-written-internal-attrs"] => code! {
         #[verus::internal(verus_macro)]
         async fn foo() -> u64 {
             ::vstd::prelude::ensures(|ret: u32|

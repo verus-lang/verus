@@ -351,6 +351,7 @@ pub fn run_verus(
     let mut no_external_by_default = false;
     let mut is_core = false;
     let mut use_internal_test_mode = true;
+    let mut allow_hand_written_internal_attrs = false;
     let mut crate_name = "test_crate";
 
     for option in options.iter() {
@@ -409,6 +410,8 @@ pub fn run_verus(
             is_core = true;
         } else if *option == "--disable-internal-test-mode" {
             use_internal_test_mode = false;
+        } else if *option == "--allow-hand-written-internal-attrs" {
+            allow_hand_written_internal_attrs = true;
         } else if *option == "no-bv-simplify" {
             verus_args.push("-V".to_string());
             verus_args.push("no-bv-simplify".to_string());
@@ -430,6 +433,9 @@ pub fn run_verus(
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
+    }
+    if allow_hand_written_internal_attrs {
+        verus_args.insert(0, "--internal-test-allow-hand-written-internal-attrs".to_string());
     }
     if use_internal_test_mode {
         verus_args.insert(0, "--internal-test-mode".to_string());

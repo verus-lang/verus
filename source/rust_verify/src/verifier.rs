@@ -340,6 +340,8 @@ pub struct Verifier {
     import_virs_via_cargo: Option<Vec<(String, String)>>,
     export_vir_path_via_cargo: Option<std::path::PathBuf>,
     pub(crate) compile: bool,
+    /// Only set by Verus's own tests (see `--internal-test-mode` in main.rs)
+    pub allow_hand_written_internal_attrs: bool,
 
     // If we've already created the log directory, this is the path to it:
     created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
@@ -532,6 +534,7 @@ impl Verifier {
             import_virs_via_cargo: None,
             export_vir_path_via_cargo: None,
             compile,
+            allow_hand_written_internal_attrs: false,
 
             created_log_dir: Arc::new(std::sync::Mutex::new(None)),
             created_solver_log_dir: Arc::new(std::sync::Mutex::new(None)),
@@ -581,6 +584,7 @@ impl Verifier {
             import_virs_via_cargo: self.import_virs_via_cargo.clone(),
             export_vir_path_via_cargo: self.export_vir_path_via_cargo.clone(),
             compile: self.compile,
+            allow_hand_written_internal_attrs: self.allow_hand_written_internal_attrs,
 
             created_log_dir: self.created_log_dir.clone(),
             created_solver_log_dir: self.created_solver_log_dir.clone(),
@@ -2716,6 +2720,13 @@ impl Verifier {
         };
         let map_errors_query_diagnostics =
             |(es, err)| (es, ctxt_diagnostics.borrow_mut().drain(..).collect(), err);
+
+        if !self.allow_hand_written_internal_attrs
+            && !matches!(self.args.vstd, crate::config::Vstd::IsVstd | crate::config::Vstd::IsCore)
+        {
+            crate::attributes::check_no_hand_written_internal_attrs(ctxtx.tcx)
+                .map_err(map_errs_diagnostics)?;
+        }
 
         let crate_items = crate::external::get_crate_items(&ctxtx).map_err(map_errs_diagnostics)?;
 

@@ -147,8 +147,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] trait_fn_free_fn_expanded_invalid_1 COMMON_TRAIT_AND_TYPE_WITH_GENERIC.to_string() + code_str! {
+test_verify_one_file_with_options! {
+    #[test] trait_fn_free_fn_expanded_invalid_1 ["--allow-hand-written-internal-attrs"] => COMMON_TRAIT_AND_TYPE_WITH_GENERIC.to_string() + code_str! {
         #[verus::internal(verus_macro)]
         fn some_fn_generic<T>(a: A<T>) {
             #[verifier::proof_block]

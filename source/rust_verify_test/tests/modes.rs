@@ -1266,15 +1266,13 @@ test_verify_one_file! {
     #[test] fn_param_wrappers_mut_well_formed1 verus_code! {
         struct S(int);
 
-        fn test1(tmp_g: Ghost<&mut int>) {
-            #[verus::internal(header_unwrap_parameter)] let g;
-            #[verifier(proof_block)] { g = tmp_g.view() };
+        fn test1(Ghost(g): Ghost<&mut int>) {
         }
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] fn_param_wrappers_mut_ill_formed2 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] fn_param_wrappers_mut_ill_formed2 ["--allow-hand-written-internal-attrs"] => verus_code! {
         struct S(int);
 
         fn test1(tmp_g: Ghost<&mut int>, tmp_h: Ghost<&mut int>) {

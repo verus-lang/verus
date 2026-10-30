@@ -1,3 +1,4 @@
+use quote::ToTokens;
 use verus_syn::spanned::Spanned;
 
 pub fn derive_structural_mut(s: &mut synstructure::Structure) -> proc_macro2::TokenStream {
@@ -35,7 +36,8 @@ pub fn derive_structural_mut(s: &mut synstructure::Structure) -> proc_macro2::To
 }
 
 pub fn derive_structural(mut s: synstructure::Structure) -> proc_macro2::TokenStream {
-    derive_structural_mut(&mut s)
+    let output = derive_structural_mut(&mut s);
+    crate::internal_attrs::mark(&[s.ast().to_token_stream().into()], output.into()).into()
 }
 
 pub fn derive_structural_eq(mut s: synstructure::Structure) -> proc_macro2::TokenStream {
@@ -61,5 +63,5 @@ pub fn derive_structural_eq(mut s: synstructure::Structure) -> proc_macro2::Toke
         }
     };
     tokens1.extend(tokens2.into_iter());
-    tokens1
+    crate::internal_attrs::mark(&[s.ast().to_token_stream().into()], tokens1.into()).into()
 }

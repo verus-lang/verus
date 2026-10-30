@@ -1562,3 +1562,38 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::m::g` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
 }
+
+test_verify_one_file! {
+    #[test] hand_written_internal_attrs_issue3216 code! {
+        macro_rules! spec_fn_by_macro {
+            ($name:ident) => {
+                #[verus::internal(spec)]
+                fn $name() -> int { 3 }
+            };
+        }
+
+        #[verus::internal(verify)]
+        fn outside() {}
+
+        verus! {
+            #[verus::internal(spec)]
+            fn f() -> int { 3 }
+
+            #[cfg_attr(verus_keep_ghost, verus::internal(spec))]
+            fn g() -> int { 3 }
+
+            fn h() {
+                #[verus::internal(proof)]
+                let x = 3;
+            }
+
+            spec_fn_by_macro!(k);
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "`#[verus::internal(...)]` attributes must not be used directly",
+        "`#[verus::internal(...)]` attributes must not be used directly",
+        "`#[verus::internal(...)]` attributes must not be used directly",
+        "`#[verus::internal(...)]` attributes must not be used directly",
+        "`#[verus::internal(...)]` attributes must not be used directly",
+    ])
+}
