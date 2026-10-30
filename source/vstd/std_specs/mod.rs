@@ -30,6 +30,9 @@ pub mod result;
 
 pub mod slice;
 
+#[cfg(feature = "std")]
+pub mod thread;
+
 #[cfg(feature = "alloc")]
 pub mod vec;
 
