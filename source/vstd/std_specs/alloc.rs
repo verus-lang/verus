@@ -1,5 +1,5 @@
 use super::super::prelude::*;
-use super::super::raw_ptr_final::TypedValue;
+use super::super::raw_ptr::TypedValue;
 
 verus! {
 

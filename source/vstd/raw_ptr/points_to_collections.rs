@@ -12,7 +12,7 @@ use crate::vstd::type_representation::*;
 verus! {
 
 broadcast use {
-    crate::vstd::raw_ptr_final::ptr_model::group_raw_ptr_axioms,
+    crate::vstd::raw_ptr::ptr_model::group_raw_ptr_axioms,
     layout::group_layout_axioms,
     crate::vstd::seq::group_seq_axioms,
 };

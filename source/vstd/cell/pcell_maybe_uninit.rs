@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use super::super::prelude::*;
-use super::super::raw_ptr_final::TypedValue;
+use super::super::raw_ptr::TypedValue;
 use super::CellId;
 use super::pcell as pc;
 use core::cell::UnsafeCell;
