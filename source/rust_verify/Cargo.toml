@@ -18,6 +18,7 @@ internals_interface = { workspace = true }
 num-bigint = { workspace = true }
 num-format = { workspace = true }
 regex = { workspace = true }
+rustc-dep-info = { workspace = true }
 rustc_mir_build_verus = { workspace = true }
 rustc_hir_analysis_verus = { workspace = true }
 serde_json = { workspace = true }

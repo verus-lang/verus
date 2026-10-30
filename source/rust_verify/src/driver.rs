@@ -5,6 +5,7 @@ use rustc_hir::attrs::AttributeKind;
 use rustc_hir::{Attribute, AttributeMap};
 use rustc_hir::{HirId, ItemKind, OwnerId, OwnerNode};
 use rustc_middle::ty::TyCtxt;
+use rustc_session::config::{OutFileName, OutputType};
 use rustc_span::{Span, sym};
 use std::time::{Duration, Instant};
 
@@ -137,6 +138,50 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
                 };
             });
         }
+    }
+
+    fn after_expansion<'tcx>(
+        &mut self,
+        _compiler: &rustc_interface::interface::Compiler,
+        tcx: TyCtxt<'tcx>,
+    ) -> rustc_driver::Compilation {
+        // Merge the dep-info files from the first (previous) and second (current) passes.
+        rustc_interface::passes::write_dep_info(tcx);
+        if tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo) {
+            // Load and merge the dep-info files.
+            if let OutFileName::Real(path_2) = tcx.output_filenames(()).path(OutputType::DepInfo) {
+                let path_1 = path_2.with_extension("verus.d");
+                let info_1 = rustc_dep_info::Contents::read_file(&path_1).unwrap_or_else(|err| {
+                    panic!(
+                        "failed to read the first-pass dep-info from `{}`: {err}",
+                        path_1.display()
+                    )
+                });
+                let info_2 = rustc_dep_info::Contents::read_file(&path_2).unwrap_or_else(|err| {
+                    panic!(
+                        "failed to read the second-pass dep-info from `{}`: {err}",
+                        path_2.display()
+                    )
+                });
+                let merged_info = info_1.merge(
+                    info_2,
+                    // Second-pass metadata entries have priority.
+                    |metadata_1, metadata_2| metadata_2.or(metadata_1),
+                    // Second-pass env settings have priority.
+                    |env_1, env_2| env_2.or(env_1),
+                );
+                merged_info.write_file(&path_2).unwrap_or_else(|err| {
+                    panic!("failed to write the combined dep-info to `{}`: {err}", path_2.display())
+                });
+                std::fs::remove_file(&path_1).unwrap_or_else(|err| {
+                    eprintln!(
+                        "warning: failed to remove the first-pass dep-info from `{}`: {err}",
+                        path_1.display()
+                    )
+                });
+            }
+        }
+        rustc_driver::Compilation::Continue
     }
 
     fn after_analysis<'tcx>(
@@ -336,13 +381,12 @@ pub fn run(
         );
     }
 
-    let compile_status =
-        if !verifier.compile && (verifier.args.no_erasure_check || verifier.args.no_lifetime) {
-            Ok(())
-        } else {
-            let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
-            run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
-        };
+    let compile_status = if !verifier.has_second_compile_pass() {
+        Ok(())
+    } else {
+        let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
+        run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
+    };
 
     let time2 = Instant::now();
 
