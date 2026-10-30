@@ -1047,6 +1047,100 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] enumerate_works verus_code! {
+        use vstd::prelude::*;
+
+        fn collect_works() {
+            let v: Vec<u32> = vec![10, 20, 30];
+            let w: Vec<(usize, u32)> = v.into_iter().enumerate().collect();
+            assert(w@ == seq![(0usize, 10u32), (1, 20), (2, 30)]);
+        }
+
+        fn for_loop_works(v: &Vec<u32>) {
+            let mut w: Vec<usize> = Vec::new();
+            for (i, x) in it: v.iter().enumerate()
+                invariant
+                    w@.len() == it.index() <= v.len(),
+                    forall|k: int| 0 <= k < it.index() ==> w@[k] == k,
+            {
+                assert(i == it.index());
+                assert(*x == v@[i as int]);
+                w.push(i);
+            }
+            assert(w@.len() == v@.len());
+        }
+
+        fn loop_vars_in_invariant(v: &Vec<u32>) {
+            for (i, x) in it: v.iter().enumerate()
+                invariant
+                    it.index() < v.len() ==> i == it.index() && *x == v@[it.index()],
+            {
+            }
+        }
+
+        // Move-to-front reset
+        fn array_iter_mut_works() {
+            let mut a: [u8; 256] = [0; 256];
+            for (i, x) in it: a.iter_mut().enumerate()
+                invariant
+                    forall|k: int| #![auto] 0 <= k < it.index() ==> *final(it.seq()[k].1) == k as u8,
+            {
+                *x = i as u8;
+            }
+            assert(forall|k: int| 0 <= k < 256 ==> a@[k] == k as u8);
+        }
+
+        fn vec_iter_mut_works(v: &mut Vec<u8>)
+            ensures
+                final(v)@.len() == old(v)@.len(),
+                forall|k: int| 0 <= k < old(v)@.len() ==> final(v)@[k] == k as u8,
+        {
+            let n = v.len();
+            for (i, x) in it: v.iter_mut().enumerate()
+                invariant
+                    n == old(v)@.len(),
+                    forall|k: int| #![auto] 0 <= k < it.index() ==> *final(it.seq()[k].1) == k as u8,
+            {
+                *x = i as u8;
+            }
+        }
+
+        fn wrong_index_fails(v: &Vec<u32>) {
+            for (i, x) in it: v.iter().enumerate() {
+                assert(i == it.index() + 1); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] enumerate_produces verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn diverge() -> u32
+            ensures false,
+        {
+            loop {}
+        }
+
+        fn test(v: &Vec<u32>) {
+            let e = v.iter().enumerate();
+            assert(forall|k: int| 0 <= k < v.len() ==> #[trigger] e.produces()[k]);
+
+            let input = vec![0u32, 1, 2];
+            let inner = input.into_iter().map(|x: u32| -> (out: u32)
+                ensures x > 0 && out == x,
+            { if x == 0 { diverge() } else { x } });
+            let stuck = inner.enumerate();
+            // `enumerate` gets stuck wherever its inner iterator does
+            assert(!stuck.produces()[0]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] zip_works verus_code! {
         use vstd::prelude::*;
 
