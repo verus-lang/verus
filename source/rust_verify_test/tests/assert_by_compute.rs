@@ -4,6 +4,86 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] closed_view_issue1728 verus_code! {
+        use vstd::prelude::*;
+
+        mod a {
+            use vstd::prelude::*;
+
+            pub struct A;
+
+            impl View for A {
+                type V = nat;
+
+                closed spec fn view(&self) -> Self::V { 42 }
+            }
+        }
+
+        proof fn test(a1: a::A, a2: a::A) {
+            assert(a1@ == a2@) by (compute);
+        }
+    } => Ok(err) => {
+        assert_eq!(
+            err.warnings.iter().filter(|w| w.message.contains("failed to simplify expression")).count(),
+            1,
+        );
+    }
+}
+
+test_verify_one_file! {
+    #[test] closed_string_view_compute_fails verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(left: &String, right: &String) {
+            assert(left@ == right@) by (compute); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] closed_string_view_compute_fallback verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(left: &String, right: &String)
+            requires left@ == right@,
+        {
+            assert(left@ == right@) by (compute);
+        }
+    } => Ok(err) => {
+        assert_eq!(
+            err.warnings.iter().filter(|w| w.message.contains("failed to simplify expression")).count(),
+            1,
+        );
+    }
+}
+
+test_verify_one_file! {
+    #[test] closed_generic_method_compute_fallback verus_code! {
+        mod inner {
+            use vstd::prelude::*;
+
+            pub struct S<T> { pub value: T }
+
+            pub trait Identity<A> {
+                spec fn identity<B>(&self, b: B) -> (A, B);
+            }
+
+            impl<T> Identity<T> for S<T> {
+                closed spec fn identity<U>(&self, u: U) -> (T, U) { (self.value, u) }
+            }
+        }
+
+        use inner::*;
+
+        proof fn test(s: &S<u64>, x: u32)
+            requires s.identity(x) == (3u64, x),
+        {
+            assert(s.identity(add(x, 0)) == (3u64, x)) by (compute);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] bit_vectors verus_code! {
 
         spec fn shifter(x: u64, amt: usize) -> u64
