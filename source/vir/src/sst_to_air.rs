@@ -2994,9 +2994,17 @@ fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
 }
 
 fn mk_static_prelude(ctx: &Ctx, statics: &Vec<Fun>) -> Vec<Stmt> {
+    use crate::recursion::Node;
+    let current = ctx.fun.as_ref().map(|f| Node::Fun(f.current_fun.clone()));
+    let graph = &ctx.global.func_call_graph;
     statics
         .iter()
         .filter(|f| ctx.funcs_with_ensure_predicate[&**f])
+        // A static's ensures may not hold yet while proving a function in its own cycle
+        // (e.g. its initializer, under exec_allows_no_decreases_clause)
+        .filter(|f| {
+            current.as_ref().map_or(true, |cur| !graph.in_same_scc(&Node::Fun((*f).clone()), cur))
+        })
         .map(|f| {
             let f_ens = prefix_ensures(&fun_to_air_ident(&ctx.name_ctxt, &f));
             let f_static = string_var(&ctx.name_ctxt.static_name(f));
