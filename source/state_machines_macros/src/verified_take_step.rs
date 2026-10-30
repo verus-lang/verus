@@ -11,24 +11,18 @@ use quote::{format_ident, quote};
 use std::collections::HashSet;
 use verus_syn::{Error, Ident};
 
-/// Adds every identifier in `tokens` to `names`; rejects raw `update_tmp_` identifiers.
-fn reserve(tokens: TokenStream, names: &mut HashSet<String>) -> Result<(), Error> {
+/// Adds every identifier in `tokens` to `names`. (Identifiers starting with `update_tmp_`,
+/// raw ones too, are rejected for every state machine: `ident_visitor::validate_ident`.)
+fn reserve(tokens: TokenStream, names: &mut HashSet<String>) {
     for token in tokens {
         match token {
             TokenTree::Ident(id) => {
-                if id.to_string().starts_with("r#update_tmp_") {
-                    return Err(Error::new(
-                        id.span(),
-                        "raw identifiers starting with 'update_tmp_' are reserved in checked models",
-                    ));
-                }
                 names.insert(id.to_string().trim_start_matches("r#").to_string());
             }
-            TokenTree::Group(group) => reserve(group.stream(), names)?,
+            TokenTree::Group(group) => reserve(group.stream(), names),
             _ => {}
         }
     }
-    Ok(())
 }
 
 /// A fresh `__tsm_checked_take_step_<label>` name, reserved in `names`.
@@ -118,27 +112,27 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     let expr = arguments.as_ref().map(|a| quote! {::<#a>}).unwrap_or_default();
     let mut names = HashSet::new();
     let fields_ast = &sm.fields_named_ast;
-    reserve(quote! {#generics #fields_ast}, &mut names)?;
+    reserve(quote! {#generics #fields_ast}, &mut names);
     for transition in &sm.transitions {
         let name = &transition.name;
-        reserve(quote! {#name}, &mut names)?;
+        reserve(quote! {#name}, &mut names);
         for parameter in &transition.params {
             let name = &parameter.name;
             let ty = &parameter.ty;
-            reserve(quote! {#name #ty}, &mut names)?;
+            reserve(quote! {#name #ty}, &mut names);
         }
         crate::verified_steps::reserve_stmt(&transition.body, &mut names);
     }
     for function in &bundle.normal_fns {
-        reserve(quote! {#function}, &mut names)?;
+        reserve(quote! {#function}, &mut names);
     }
     for invariant in &bundle.extras.invariants {
         let function = &invariant.func;
-        reserve(quote! {#function}, &mut names)?;
+        reserve(quote! {#function}, &mut names);
     }
     for lemma in &bundle.extras.lemmas {
         let function = &lemma.func;
-        reserve(quote! {#function}, &mut names)?;
+        reserve(quote! {#function}, &mut names);
     }
     let mut constructors = Vec::new();
     let mut wrappers = Vec::new();
@@ -202,7 +196,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
         let body = statements(&simplify_ops(sm, &transition.body, transition.kind))?;
         // Inspect the complete emitted expression/pattern/type program, including
         // lowered special operands and subupdate indices, for raw reserved names.
-        reserve(body.clone(), &mut names)?;
+        reserve(body.clone(), &mut names);
         let inductive = bundle
             .extras
             .lemmas

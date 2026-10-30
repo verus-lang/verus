@@ -3878,6 +3878,21 @@ fn rewrite_old(ts: TokenStream, with: &dyn Fn(&str) -> Option<TokenStream>) -> T
                                 }
                                 break;
                             }
+                            // The replacement is the value `*old(p)`: drop a dereference.
+                            let l = out.len();
+                            if l >= 1
+                                && matches!(&out[l - 1], TokenTree::Punct(s) if s.as_char() == '*')
+                                && (l == 1
+                                    || match &out[l - 2] {
+                                        TokenTree::Ident(id) => {
+                                            KEYWORDS.contains(&id.to_string().as_str())
+                                        }
+                                        TokenTree::Literal(_) | TokenTree::Group(_) => false,
+                                        TokenTree::Punct(_) => true,
+                                    })
+                            {
+                                out.pop();
+                            }
                             let g2 =
                                 proc_macro2::Group::new(proc_macro2::Delimiter::Parenthesis, rep);
                             out.push(TokenTree::Group(g2));
@@ -4797,14 +4812,79 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
     };
     let main = finish(quote! {#(#items)*});
     let ops = finish(ops);
-    Ok(crate::hygiene::resolve_reserved_at_call_site(quote! {
-        #main
-        mod __tsm_ops {
-            #[allow(unused_imports)]
-            use super::*;
-            #ops
+    // The token traits whose operations some token type provides as inherent methods
+    // (see `token_traits`).
+    let mut inherent = vec!["CountToken"];
+    if !leaks(sm.generics.is_some()) && store.has_storage() {
+        inherent.push("MonotonicCountToken");
+    }
+    let api = inherent_token_calls(
+        quote! {
+            #main
+            mod __tsm_ops {
+                #[allow(unused_imports)]
+                use super::*;
+                #ops
+            }
+        },
+        &inherent,
+    );
+    Ok(crate::hygiene::resolve_reserved_at_call_site(api))
+}
+
+/// The trusted macro's specifications call token operations by their `vstd::tokens` trait
+/// (`<T as ::vstd::tokens::CountToken>::count(&(t))`), so that no user method can capture
+/// them. The checked `count` tokens (and the `persistent_count` tokens of a machine with
+/// type parameters and storage) provide these operations as inherent methods instead: a
+/// call by one of the `traits` becomes `<T>::count(&(t))`, which the inherent method
+/// resolves (it precedes any trait method).
+fn inherent_token_calls(ts: TokenStream, traits: &[&str]) -> TokenStream {
+    let trees: Vec<TokenTree> = ts.into_iter().collect();
+    let punct = |t: &TokenTree, c: char| matches!(t, TokenTree::Punct(p) if p.as_char() == c);
+    let mut out: Vec<TokenTree> = vec![];
+    let mut i = 0;
+    while i < trees.len() {
+        if punct(&trees[i], '<') {
+            // `< type as path >`, with `as` and `>` at angle depth 0.
+            let (mut depth, mut as_at, mut close) = (0i32, None, None);
+            for (j, t) in trees.iter().enumerate().skip(i + 1) {
+                match t {
+                    TokenTree::Punct(p) if p.as_char() == '<' => depth += 1,
+                    TokenTree::Punct(p) if p.as_char() == '>' && depth > 0 => depth -= 1,
+                    TokenTree::Punct(p) if p.as_char() == '>' => {
+                        close = Some(j);
+                        break;
+                    }
+                    TokenTree::Ident(id) if id == "as" && depth == 0 => as_at = Some(j),
+                    TokenTree::Punct(p) if p.as_char() == ';' => break,
+                    _ => {}
+                }
+            }
+            if let (Some(a), Some(c)) = (as_at, close) {
+                let last = trees[a + 1..c].iter().rev().find_map(|t| match t {
+                    TokenTree::Ident(id) => Some(id.to_string()),
+                    _ => None,
+                });
+                if last.is_some_and(|l| traits.contains(&l.as_str())) {
+                    out.extend(trees[i..a].iter().cloned());
+                    out.push(trees[c].clone());
+                    i = c + 1;
+                    continue;
+                }
+            }
         }
-    }))
+        match &trees[i] {
+            TokenTree::Group(g) => {
+                let mut ng =
+                    proc_macro2::Group::new(g.delimiter(), inherent_token_calls(g.stream(), traits));
+                ng.set_span(g.span());
+                out.push(TokenTree::Group(ng));
+            }
+            t => out.push(t.clone()),
+        }
+        i += 1;
+    }
+    out.into_iter().collect()
 }
 
 /// A consumed token collection: its fragment, observed value, and join statement.
@@ -4974,10 +5054,11 @@ fn instance_method(bundle: &SMBundle, ctx: &Ctx, tr: &Transition) -> Result<Toke
             }
         })
     };
-    // Borrowed inputs are values (not references) in the helper proofs.
+    // Borrowed inputs are values (not references) in the helper proofs, and so are the
+    // `&mut` inputs (their old values; in a requirement `*p` is `*old(p)`).
     let borrowed: HashSet<String> = params
         .iter()
-        .filter(|q| q.p.inout_type == InoutType::BorrowIn)
+        .filter(|q| matches!(q.p.inout_type, InoutType::BorrowIn | InoutType::InOut))
         .map(|q| q.p.name.to_string())
         .collect();
     let in_helper = |ts: TokenStream| -> TokenStream {

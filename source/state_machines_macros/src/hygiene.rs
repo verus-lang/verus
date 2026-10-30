@@ -43,6 +43,7 @@
 //! its helper proofs are named apart from the transition's (`binder`).
 use crate::ast::TransitionParam;
 use proc_macro2::{Group, Ident, Span, TokenStream, TokenTree};
+use verus_syn::ext::IdentExt;
 
 /// The internal binder `name` of the generated items of a transition with the
 /// parameters `params` (see the module documentation).
@@ -148,8 +149,8 @@ pub(crate) fn resolve_reserved_at_call_site(tokens: TokenStream) -> TokenStream 
 }
 
 fn named_apart<'a>(name: &str, params: impl Iterator<Item = &'a Ident> + Clone) -> Ident {
-    let taken: Vec<String> =
-        params.map(|p| p.to_string().trim_start_matches("r#").to_string()).collect();
+    // A raw parameter `r#owned` has the name `owned` (as in `validate_ident`).
+    let taken: Vec<String> = params.map(|p| p.unraw().to_string()).collect();
     let mut candidate = name.to_string();
     while taken.contains(&candidate) {
         candidate.push('_');

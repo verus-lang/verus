@@ -24,8 +24,6 @@ below with the reason.
   the parameter only through a constant).
 * `negative/generic_tokens_multiset_repeated_borrow.rs`: a borrowed multiset part that may
   repeat an element is rejected (shared references do not show distinct resources).
-* `negative/negative_take_step_raw_temporary.rs`: raw identifiers `update_tmp_*` are reserved
-  in checked models.
 * `negative/negative_take_step_weak_to_strong.rs`: checked `take_step` needs the strong
   relation; the weak one does not suffice.
 * `negative/test_double_scoped_updates_if_missing_strong.rs`: the same for nested scoped
@@ -158,6 +156,9 @@ forms and the skipped ones.
 
 * `hygiene_name_capture.rs`: user identifiers named like generated `__tsm_*` helpers, in the
   model, the generic interface and nondeterministic tokenizing (one representative each).
+* `negative/negative_take_step_raw_temporary.rs`: a raw identifier `r#update_tmp_*` in a
+  checked model is rejected like `update_tmp_*` (by every state machine since upstream
+  2a9518d8c; the checked model's own check was removed).
 * `hygiene_binder_names.rs`: transition parameters and user binders named like the
   parameters, binders and return values of the generated operations (`owned`, `h`, `z`,
   `out`, `new`, `shared`, `result`, `outputs`): every name as a parameter of every kind of
