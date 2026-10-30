@@ -827,11 +827,8 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
                 .collect();
             Ok(Arc::new(TypX::Datatype(path, Arc::new(typ_args), Arc::new(vec![]))))
         }
-        TypX::FnDef(fun, _typs, resolved) => {
+        TypX::FnDef(fun, _typs, _resolved) => {
             state.fndef_typs.insert(fun.clone());
-            if let Some(resolved_fun) = resolved {
-                state.fndef_typs.insert(resolved_fun.clone());
-            }
             Ok(typ.clone())
         }
         TypX::TypParam(x) => {
