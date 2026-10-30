@@ -148,6 +148,11 @@ pub fn main() {
 
     // TODO: Audit that the environment access only happens in single-threaded code.
     unsafe { std::env::set_var("RUSTC_BOOTSTRAP", "1") };
+    if via_cargo.is_some() {
+        // cargo-verus passes per-package args (e.g. --no-vstd) via env, so VSTD_KIND (read by
+        // builtin_macros) from the verus binary may be stale
+        unsafe { std::env::set_var("VSTD_KIND", format!("{:?}", our_args.vstd)) };
+    }
 
     let verifier =
         rust_verify::verifier::Verifier::new(our_args, via_cargo, via_cargo_compile, dep_tracker);
