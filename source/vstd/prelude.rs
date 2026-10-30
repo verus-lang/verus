@@ -42,7 +42,10 @@ pub use super::set::{Set, set};
 pub use super::view::*;
 
 #[cfg(verus_keep_ghost)]
-pub use super::pervasive::{affirm, arbitrary, cloned, proof_from_false, spec_affirm, unreached};
+pub use super::pervasive::{
+    affirm, arbitrary, cloned, cloned_from, proof_from_false, spec_affirm, strictly_cloned,
+    strictly_cloned_from, unreached,
+};
 
 pub use super::array::ArrayAdditionalExecFns;
 pub use super::array::ArrayAdditionalSpecFns;

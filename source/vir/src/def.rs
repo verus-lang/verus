@@ -436,6 +436,14 @@ pub(crate) fn trait_default_name(default_fun: &Fun) -> Fun {
     })
 }
 
+/// Extracts the unqualified method name from a name produced by
+/// [`trait_inherit_default_name`].
+pub fn trait_inherit_default_method_name(fun: &Fun) -> Option<String> {
+    let last = fun.path.segments.last()?;
+    let (_, method) = last.split_once(TRAIT_DEFAULT_SEPARATOR)?;
+    if method.is_empty() { None } else { Some(method.to_string()) }
+}
+
 pub fn trait_inherit_default_name(default_fun: &Fun, impl_path: &Path) -> Fun {
     let path = (**impl_path).clone();
     let mut segments = (*path.segments).clone();

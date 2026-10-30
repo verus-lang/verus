@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::alloc::Allocator;
+use core::alloc::{Allocator, AllocatorClone};
 
 verus! {
 
@@ -50,11 +50,36 @@ pub assume_specification<T: core::default::Default>[ <Arc<
         T::default.ensures((), *res),
 ;
 
+// Rc/Arc clones share the source's allocation, and Verus models them by their
+// pointee (the allocator contributes only its type), so the clone equals the source.
+pub assume_specification<T: ?Sized, A: AllocatorClone>[ <Rc<T, A> as Clone>::clone ](
+    source: &Rc<T, A>,
+) -> (res: Rc<T, A>)
+    ensures
+        res == source,
+;
+
+pub assume_specification<T: ?Sized, A: AllocatorClone>[ <Arc<T, A> as Clone>::clone ](
+    source: &Arc<T, A>,
+) -> (res: Arc<T, A>)
+    ensures
+        res == source,
+;
+
 pub assume_specification<T: Clone, A: Allocator + Clone>[ <Box<T, A> as Clone>::clone ](
     b: &Box<T, A>,
 ) -> (res: Box<T, A>)
     ensures
         cloned::<T>(**b, *res),
+;
+
+// Box::clone_from delegates to the pointee's clone_from.
+pub assume_specification<T: Clone, A: Allocator + Clone>[ <Box<T, A> as Clone>::clone_from ](
+    dest: &mut Box<T, A>,
+    source: &Box<T, A>,
+)
+    ensures
+        strictly_cloned_from(**source, **old(dest), **final(dest)),
 ;
 
 pub assume_specification<T, A: Allocator>[ Rc::<T, A>::try_unwrap ](v: Rc<T, A>) -> (result: Result<

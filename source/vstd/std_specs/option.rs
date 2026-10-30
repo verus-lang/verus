@@ -290,6 +290,21 @@ pub assume_specification<T: Clone>[ <Option<T> as Clone>::clone ](opt: &Option<T
         opt.is_some() ==> res.is_some() && cloned::<T>(opt.unwrap(), res.unwrap()),
 ;
 
+// clone_from
+// (Some, Some) updates the payload with T::clone_from; otherwise the source is cloned.
+pub assume_specification<T: Clone>[ <Option<T> as Clone>::clone_from ](
+    opt: &mut Option<T>,
+    source: &Option<T>,
+)
+    ensures
+        match (*old(opt), *source, *final(opt)) {
+            (Some(prev), Some(src), Some(dst)) => strictly_cloned_from(src, prev, dst),
+            (None, Some(src), Some(dst)) => cloned(src, dst),
+            (_, None, None) => true,
+            _ => false,
+        },
+;
+
 // PartialEq and Eq
 impl<T: super::cmp::PartialEqSpec> super::cmp::PartialEqSpecImpl for Option<T> {
     open spec fn obeys_eq_spec() -> bool {

@@ -281,4 +281,32 @@ pub assume_specification<T, E>[ Result::<T, E>::err ](result: Result<T, E>) -> (
     no_unwind
 ;
 
+// clone
+pub assume_specification<T: Clone, E: Clone>[ <Result<T, E> as Clone>::clone ](
+    result: &Result<T, E>,
+) -> (res: Result<T, E>)
+    ensures
+        match (*result, res) {
+            (Ok(src), Ok(dst)) => cloned(src, dst),
+            (Err(src), Err(dst)) => cloned(src, dst),
+            _ => false,
+        },
+;
+
+// clone_from
+// Matching variants update the payload with clone_from; otherwise the source is cloned.
+pub assume_specification<T: Clone, E: Clone>[ <Result<T, E> as Clone>::clone_from ](
+    dest: &mut Result<T, E>,
+    source: &Result<T, E>,
+)
+    ensures
+        match (*old(dest), *source, *final(dest)) {
+            (Ok(prev), Ok(src), Ok(dst)) => strictly_cloned_from(src, prev, dst),
+            (Err(prev), Err(src), Err(dst)) => strictly_cloned_from(src, prev, dst),
+            (Err(_), Ok(src), Ok(dst)) => cloned(src, dst),
+            (Ok(_), Err(src), Err(dst)) => cloned(src, dst),
+            _ => false,
+        },
+;
+
 } // verus!
