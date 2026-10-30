@@ -1,7 +1,7 @@
 use crate::ast::{
     AssertQueryMode, AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail,
     DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, FunctionStub, InvAtomicity,
-    ItemKind, Label, LogicalOp, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName,
+    ItemKind, Label, LogicalOp, LoopSource, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName,
     OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind,
     SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind,
     UnwindSpec, VarIdent, VirErr,
@@ -111,6 +111,7 @@ enum OuterProphReason {
     AssignToNonProphPlace,
     MutBorrow,
     Loop,
+    BreakableBlock,
     Return,
     Break,
     Continue,
@@ -196,6 +197,7 @@ impl Proph {
             OuterProphReason::AssignToNonProphPlace => "assignment to non-prophetic location",
             OuterProphReason::MutBorrow => "mutable borrow",
             OuterProphReason::Loop => "loop",
+            OuterProphReason::BreakableBlock => "breakable block",
             OuterProphReason::Return => "return",
             OuterProphReason::Break => "break",
             OuterProphReason::Continue => "continue",
@@ -292,7 +294,10 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::Await(..)
         => None,
         ExprX::NonSpecClosure { .. } => Some(OuterProphReason::NonSpecClosure),
-        ExprX::Loop { .. } => Some(OuterProphReason::Loop),
+        ExprX::Loop { source, .. } => match source {
+            LoopSource::Loop => Some(OuterProphReason::Loop),
+            LoopSource::BreakableBlock => Some(OuterProphReason::BreakableBlock),
+        },
         ExprX::OpenInvariant { .. } => Some(OuterProphReason::OpenInvariant),
         ExprX::Return(..) => Some(OuterProphReason::Return),
         ExprX::BreakOrContinue { is_break: true, .. } => Some(OuterProphReason::Break),
@@ -2373,6 +2378,7 @@ fn check_expr(
             ret,
             requires,
             ensures,
+            mask_spec,
             body,
             external_spec,
         } => {
@@ -2416,6 +2422,20 @@ fn check_expr(
                         Mode::Spec,
                         &Proph::No,
                     )?;
+                }
+
+                if let Some(mask_spec) = &mask_spec {
+                    for expr in mask_spec.exprs().iter() {
+                        check_expr_has_mode(
+                            ctxt,
+                            record,
+                            &mut ghost_typing,
+                            Mode::Spec,
+                            expr,
+                            Mode::Spec,
+                            &Proph::No,
+                        )?;
+                    }
                 }
 
                 let mut ens_typing = ghost_typing.push_var_scope();
@@ -2866,12 +2886,17 @@ fn check_expr(
             label,
             assume_termination: _,
             atomic_call: _,
+            known_no_back_edge: _,
+            source,
         } => {
             let mut typing = typing.push_loop(label.clone(), Loop { ghost_loop: false });
 
             // We could also allow this for proof, if we check it for termination
             if ctxt.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
-                return Err(error(&expr.span, "cannot use while in proof or spec mode"));
+                return Err(error(
+                    &expr.span,
+                    format!("cannot use {source:#} in proof or spec mode"),
+                ));
             }
             if let Some(collector) = typing.update_atomic_insts() {
                 collector.add_loop(&expr.span)

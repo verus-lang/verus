@@ -453,6 +453,12 @@ fn maybe_reach_set_ops_for_call(
         if !caller_mask.is_all() && !callee_mask.is_none() {
             reach_set_ops(state, ctxt);
         }
+    } else {
+        // A mask can be missing only before trait demotion (the first, whole-crate pruning):
+        // a trait impl function whose trait declaration is not in the map, e.g. an impl of
+        // `Drop` or of an external trait. After trait demotion every trait impl function is
+        // paired with its declaration. The mask check may still need the set operations.
+        reach_set_ops(state, ctxt);
     }
 }
 
@@ -514,6 +520,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                             maybe_reach_set_ops_for_call(state, resolved, &ctxt, function);
                         }
                         maybe_reach_set_ops_for_call(state, name, &ctxt, function);
+                    }
+                    ExprX::NonSpecClosure { proof_fn_modes: Some(_), .. } => {
+                        reach_set_ops(state, ctxt);
                     }
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce
@@ -1105,19 +1114,19 @@ pub fn prune_krate_for_module_or_krate(
                     reach(
                         &mut state.reached_functions,
                         &mut state.worklist_functions,
-                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "view"),
+                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "view"),
                     );
 
                     reach(
                         &mut state.reached_functions,
                         &mut state.worklist_functions,
-                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "awaited"),
+                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "awaited"),
                     );
 
                     reach(
                         &mut state.reached_functions,
                         &mut state.worklist_functions,
-                        &crate::fun!(CrateId::Vstd => "future", "exec_await"),
+                        &crate::fun!(CrateId::Vstd => "future"; "exec_await"),
                     );
                 }
             }

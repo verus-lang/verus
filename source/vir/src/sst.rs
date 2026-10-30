@@ -51,6 +51,7 @@ pub type UniqueIdent = VarIdent;
 pub enum InternalFun {
     ClosureReq,
     ClosureEns,
+    ClosureOpensInvariants,
     DefaultEns,
     CheckDecreaseHeight,
     OpenInvariantMask(Fun, usize),
@@ -296,10 +297,17 @@ pub enum StmX {
         /// Variables potentially modified by the loop body
         modified_vars: Option<Arc<crate::sst_vars::HavocSet>>,
         au_branch_bool: Option<Exp>,
-        /// Params (including closure params) that may be modified _in or before_ this loop body
-        /// but *excluding* their initial assignments.
+        /// Params (including closure params) that may be modified before the beginning
+        /// of any loop iteration, but *excluding* their initial assignments.
         /// This is the same set of variables for which we need to consider different values
         /// for the 'current' and 'pre-state' value of the variable at the beginning of the loop.
+        ///
+        /// Note that "before the beginning of any loop iteration" means that:
+        ///  * If known_no_back_edge=true, then this means we consider any assignment
+        ///    that can occur in the execution of the function up to the entry of the entry
+        ///    of the loop.
+        ///  * If known_no_back_edge=false, then this means we consider any assignment
+        ///    that occur up to function entry or inside the loop itself.
         ///
         /// This is only used when pre_stms is empty.
         pre_modified_params_incl: Option<Arc<crate::sst_vars::HavocSet>>,
@@ -307,6 +315,7 @@ pub enum StmX {
         ///
         /// This is only used when pre_stms is non-empty.
         pre_modified_params_excl: Option<Arc<crate::sst_vars::HavocSet>>,
+        known_no_back_edge: bool,
     },
     /// Atomic invariant opening for concurrent verification
     OpenInvariant(Stm),

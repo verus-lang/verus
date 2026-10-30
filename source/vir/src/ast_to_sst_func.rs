@@ -267,7 +267,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
             ExprX::Call {
                 target: CallTarget::Fun(
                     crate::ast::CallTargetKind::Dynamic,
-                    fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "awaited"),
+                    fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "awaited"),
                     Arc::new(vec![future_typ.clone(), output_typ.clone()]),
                     Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
                         crate::def::prefix_spec_fn_type(0),
@@ -292,7 +292,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                 ExprX::Call {
                     target: CallTarget::Fun(
                         crate::ast::CallTargetKind::Dynamic,
-                        fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "view"),
+                        fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "view"),
                         Arc::new(vec![future_typ.clone(), output_typ.clone()]),
                         Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
                             crate::def::prefix_spec_fn_type(0),
@@ -691,7 +691,7 @@ where
 }
 
 impl MaskSpec {
-    fn map_to_sst(
+    pub(crate) fn map_to_sst(
         &self,
         f: &mut impl FnMut(&Expr) -> Result<Exp, VirErr>,
     ) -> Result<MaskSet, VirErr> {

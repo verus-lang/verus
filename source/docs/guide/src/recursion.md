@@ -10,7 +10,7 @@ To see why termination is important, consider the following nonterminating funct
 ```
 
 Verus rejects this definition because the recursive call loops infinitely, never terminating.
-If Verus accepted the definion, then you could very easily prove false,
+If Verus accepted the definition, then you could very easily prove false,
 because, for example, the definition insists that `bogus(3) == bogus(3) + 1`,
 which implies that `0 == 1`, which is false:
 
@@ -32,7 +32,7 @@ depth of calls that `triangle` can make to itself, ensuring termination.
 
 While Verus can often complete these proofs of termination automatically,
 it sometimes needs additional help with the proof.
-Such a proof can be supplied in a number of sees; see [this page](./reference-decreases.md#helping-verus-prove-termination).
+Such a proof can be supplied in a number of ways; see [this page](./reference-decreases.md#helping-verus-prove-termination).
 
 # Fuel and reasoning about recursive functions
 

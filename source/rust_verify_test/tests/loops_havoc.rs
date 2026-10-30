@@ -599,3 +599,378 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] test_loops_with_no_back_edge_isolation_true verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test_back_edge(a: &mut u64) {
+            loop {
+                assert(*a == *old(a)); // FAILS
+                *a = 20;
+
+                if cond() {
+                    continue;
+                }
+
+                break;
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test2_back_edge(a: &mut u64) {
+            loop {
+                assert(*a == *old(a)); // FAILS
+                *a = 20;
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test_no_back_edge(a: &mut u64) {
+            loop {
+                assert(*a == *old(a));
+                *a = 20;
+                break;
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test2_no_back_edge(a: &mut u64) {
+            loop {
+                assert(*a == *old(a));
+                if cond() {
+                    *a = 20;
+                    break;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test_no_back_edge_but_modified_before_loop(a: &mut u64) {
+            *a = 40;
+            loop {
+                assert(*a == *old(a)); // FAILS
+                *a = 20;
+                break;
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test_havoced_post_loop(a: &mut u64) {
+            loop {
+                assert(*a == *old(a));
+                *a = 20;
+                break;
+            }
+            assert(*a == *old(a)); // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test2_havoced_post_loop(a: &mut u64) {
+            *a = 20;
+            loop {
+                break;
+            }
+            assert(*a == *old(a)); // FAILS
+        }
+
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file! {
+    #[test] test_loops_with_no_back_edge_isolation_false verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test_back_edge(a: &mut u64) {
+            loop {
+                assert(*a == *old(a)); // FAILS
+                *a = 20;
+
+                if cond() {
+                    continue;
+                }
+
+                break;
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test2_back_edge(a: &mut u64) {
+            loop {
+                assert(*a == *old(a)); // FAILS
+                *a = 20;
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test_no_back_edge(a: &mut u64) {
+            loop {
+                assert(*a == *old(a));
+                *a = 20;
+                break;
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test2_no_back_edge(a: &mut u64) {
+            loop {
+                assert(*a == *old(a));
+                if cond() {
+                    *a = 20;
+                    break;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test_no_back_edge_but_modified_before_loop(a: &mut u64) {
+            *a = 40;
+            loop {
+                assert(*a == *old(a)); // FAILS
+                *a = 20;
+                break;
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test_havoced_post_loop(a: &mut u64) {
+            loop {
+                assert(*a == *old(a));
+                *a = 20;
+                break;
+            }
+            assert(*a == *old(a)); // FAILS
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(false)]
+        fn test2_havoced_post_loop(a: &mut u64) {
+            *a = 20;
+            loop {
+                break;
+            }
+            assert(*a == *old(a)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file! {
+    #[test] loop_has_no_back_edge_but_has_unreachable_continue verus_code! {
+        fn cond() -> bool { true }
+
+        #[allow(unreachable_code)]
+        #[verifier::exec_allows_no_decreases_clause]
+        #[verifier::loop_isolation(true)]
+        fn test_no_back_edge(a: &mut u64) {
+            loop {
+                assert(*a == *old(a));
+                *a = 20;
+                if cond() {
+                    loop { }
+                    continue;
+                }
+                break;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] inner_loop_has_no_back_edge verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn inner_loop_has_no_back_edge(a: &mut u64) {
+            loop {
+                loop {
+                    assert(*a == *old(a)); // FAILS
+                    *a = 20;
+                    break;
+                }
+            }
+        }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn inner_loop_has_no_back_edge2(a: &mut u64) {
+            loop {
+                assert(*a == *old(a)); // FAILS
+                loop {
+                    *a = 20;
+                    break;
+                }
+            }
+        }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn inner_loop_has_no_back_edge3(a: &mut u64) {
+            loop {
+                if cond() { break; }
+                loop {
+                    *a = 20;
+                    break;
+                }
+            }
+            assert(*a == *old(a)); // FAILS
+        }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn inner_loop_has_no_back_edge_local() {
+            loop {
+                let mut b = 20;
+                loop {
+                    assert(b == 20);
+                    b = 30;
+                    break;
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] both_loops_have_no_back_edge verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn both_loops_have_no_back_edge(a: &mut u64) {
+            loop {
+                if cond() { break; }
+                assert(*a == *old(a));
+                loop {
+                    if cond() { break; }
+                    assert(*a == *old(a));
+                    *a = 20;
+                    break;
+                }
+                break;
+            }
+        }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn both_loops_have_no_back_edge2(a: &mut u64) {
+            loop {
+                if cond() { break; }
+                loop {
+                    if cond() { break; }
+                    *a = 20;
+                    break;
+                }
+                assert(*a == *old(a)); // FAILS
+                break;
+            }
+        }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn both_loops_have_no_back_edge3(a: &mut u64) {
+            loop {
+                if cond() { break; }
+                loop {
+                    if cond() { break; }
+                    *a = 20;
+                    break;
+                }
+                break;
+            }
+            assert(*a == *old(a)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] outer_loop_has_no_back_edge verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn outer_loop_has_no_back_edge(a: &mut u64) {
+            loop {
+                if cond() { break; }
+                loop {
+                    if cond() { break; }
+                    assert(*a == *old(a)); // FAILS
+                    *a = 20;
+                }
+                break;
+            }
+        }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn outer_loop_has_back_edge(a: &mut u64) {
+            loop {
+                if cond() { break; }
+                loop {
+                    if cond() { break; }
+                    assert(*a == *old(a)); // FAILS
+                    *a = 20;
+                }
+            }
+        }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn outer_loop_has_no_back_edge2(a: &mut u64) {
+            loop {
+                loop {
+                    if cond() { break; }
+                    *a = 20;
+                }
+                assert(*a == *old(a)); // FAILS
+                break;
+            }
+        }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn outer_loop_has_no_back_edge3(a: &mut u64) {
+            loop {
+                loop {
+                    if cond() { break; }
+                    *a = 20;
+                }
+                break;
+            }
+            assert(*a == *old(a)); // FAILS
+        }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn outer_loop_has_no_back_edge4(a: &mut u64) {
+            loop {
+                if cond() { break; }
+                assert(*a == *old(a));
+                loop {
+                    if cond() { break; }
+                    *a = 20;
+                }
+                break;
+            }
+        }
+    } => Err(err) => assert_fails(err, 4)
+}

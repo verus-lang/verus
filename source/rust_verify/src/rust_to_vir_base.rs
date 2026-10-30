@@ -2,11 +2,11 @@ use crate::attributes::get_verifier_attrs;
 use crate::context::{BodyCtxt, Context};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_impl::ExternalInfo;
+use crate::rust_to_vir_path::def_id_to_vir_path;
 use crate::util::err_span;
 use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
 use crate::{internal_err, unsupported_err, unsupported_err_unless};
 use rustc_ast::{BindingMode, ByRef, Mutability};
-use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
@@ -17,7 +17,7 @@ use rustc_middle::ty::{
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
-use rustc_span::def_id::{CrateNum, DefId};
+use rustc_span::def_id::DefId;
 use rustc_span::symbol::{Ident, kw};
 use rustc_trait_selection::infer::InferCtxtExt;
 use rustc_trait_selection::solve::BuiltinImplSource;
@@ -25,189 +25,11 @@ use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use vir::ast::{
-    CrateId, Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, OpaqueType,
-    OpaqueTypeX, OpaqueTypes, Path, PathX, Primitive, Sizedness, TraitId, Typ, TypDecorationArg,
-    TypX, Typs, VarIdent, VirErr, VirErrAs,
+    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, OpaqueType,
+    OpaqueTypeX, OpaqueTypes, Path, Primitive, Sizedness, TraitId, Typ, TypDecorationArg, TypX,
+    Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
-
-pub(crate) fn mk_crate_id<'tcx>(tcx: TyCtxt<'tcx>, krate: CrateNum) -> CrateId {
-    let stable_id = tcx.stable_crate_id(krate).as_u64();
-    let s = tcx.crate_name(krate).to_string();
-    match s.as_str() {
-        "vstd" => CrateId::Vstd,
-        "core" => CrateId::Core,
-        "alloc" => CrateId::Alloc,
-        _ => CrateId::Id(Arc::new(s), stable_id),
-    }
-}
-
-pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
-    let krate = mk_crate_id(tcx, def_path.krate);
-    let mut segments: Vec<vir::ast::Ident> = Vec::new();
-    for d in def_path.data.iter() {
-        use rustc_hir::definitions::DefPathData;
-        match &d.data {
-            DefPathData::ValueNs(symbol) | DefPathData::TypeNs(symbol) => {
-                segments.push(Arc::new(symbol.to_string()));
-            }
-            DefPathData::Ctor => {
-                segments.push(Arc::new(vir::def::RUST_DEF_CTOR.to_string()));
-            }
-            DefPathData::Impl => {
-                segments.push(vir::def::impl_ident(d.disambiguator));
-            }
-            DefPathData::ForeignMod => {
-                // this segment can be ignored
-            }
-            DefPathData::OpaqueTy => {
-                segments.push(Arc::new(
-                    vir::def::RUST_OPAQUE_TYPE.to_string() + &d.disambiguator.to_string(),
-                ));
-            }
-            DefPathData::Closure => {
-                segments.push(Arc::new(
-                    vir::def::RUST_DEF_CLOSURE.to_string() + &d.disambiguator.to_string(),
-                ));
-            }
-            DefPathData::AnonConst => {
-                segments.push(Arc::new(
-                    vir::def::RUST_DEF_ANON_CONST.to_string() + &d.disambiguator.to_string(),
-                ));
-            }
-            _ => return None,
-        }
-    }
-    Some(Arc::new(PathX { krate, segments: Arc::new(segments) }))
-}
-
-pub(crate) fn typ_path_and_ident_to_vir_path<'tcx>(path: &Path, ident: vir::ast::Ident) -> Path {
-    let mut path = (**path).clone();
-    Arc::make_mut(&mut path.segments).push(ident);
-    Arc::new(path)
-}
-
-// Register an alternative "friendly" paths for printing better error messages
-// or for the command-line --verify-function arguments.
-fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, path: &Path) {
-    let hir_id = if let Some(local_id) = def_id.as_local() {
-        tcx.local_def_id_to_hir_id(local_id)
-    } else {
-        return;
-    };
-    let node = tcx.hir_node(hir_id);
-    let is_impl_item_fn = matches!(
-        node,
-        rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
-            kind: rustc_hir::ImplItemKind::Fn(..),
-            ..
-        })
-    );
-    if !is_impl_item_fn {
-        return;
-    }
-    let mut parent_node = tcx.hir_parent_iter(hir_id);
-    let (_, parent_node) = parent_node.next().expect("unexpected empty impl path");
-    let friendly_self_ty = match parent_node {
-        rustc_hir::Node::Item(rustc_hir::Item {
-            kind: rustc_hir::ItemKind::Impl(impll),
-            owner_id,
-            ..
-        }) => match &impll.self_ty.kind {
-            rustc_hir::TyKind::Path(QPath::Resolved(
-                None,
-                rustc_hir::Path { res: rustc_hir::def::Res::Def(_, self_def_id), .. },
-            )) => def_path_to_vir_path(tcx, tcx.def_path(*self_def_id)),
-            _ => {
-                // To handle cases like [T] which are not syntactically datatypes
-                // but converted into VIR datatypes.
-                let self_ty = tcx.type_of(owner_id.to_def_id()).skip_binder();
-                match self_ty.kind() {
-                    TyKind::Slice(_) => Some(vir::def::slice_type()),
-                    _ => None,
-                }
-            }
-        },
-        _ => None,
-    };
-    if let Some(ty_path) = friendly_self_ty {
-        let friendly_path =
-            typ_path_and_ident_to_vir_path(&ty_path, def_to_path_ident(tcx, def_id));
-        vir::ast_util::set_path_as_rust_name(path, &friendly_path);
-    }
-}
-
-fn def_to_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> vir::ast::Ident {
-    let def_path = tcx.def_path(def_id);
-    match def_path.data.last().expect("unexpected empty impl path").data {
-        rustc_hir::definitions::DefPathData::ValueNs(name) => Arc::new(name.to_string()),
-        _ => panic!("unexpected name of impl"),
-    }
-}
-
-pub(crate) fn def_id_to_friendly<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    verus_items: Option<&crate::verus_items::VerusItems>,
-    def_id: DefId,
-) -> String {
-    match def_id_to_vir_path_option(tcx, verus_items, def_id) {
-        None => format!("{:?}", def_id),
-        Some(p) => vir::ast_util::path_as_friendly_rust_name(&p),
-    }
-}
-
-pub(crate) fn def_id_to_vir_path_option<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    verus_items: Option<&crate::verus_items::VerusItems>,
-    def_id: DefId,
-) -> Option<Path> {
-    if let Some(verus_items) = verus_items {
-        use crate::verus_items::RustPrivate;
-        let verus_item = verus_items.id_to_name.get(&def_id);
-        if let Some(VerusItem::Vstd(_, Some(fn_name))) = verus_item {
-            // interpreter.rs and def.rs refer directly to some impl methods,
-            // so make sure we use the fn_name names from `verus_items`
-            let segments = fn_name.split("::").map(|x| Arc::new(x.to_string())).collect();
-            return Some(Arc::new(PathX { krate: CrateId::Vstd, segments: Arc::new(segments) }));
-        }
-        if let Some(VerusItem::RustPrivate(RustPrivate::Path(path))) = verus_item {
-            return Some(path.clone());
-        }
-        if let Some(v @ VerusItem::RustPrivate(_)) = verus_item {
-            if let Some(id) = verus_items.name_to_rust_private_id.get(v) {
-                return def_id_to_vir_path_option(tcx, Some(verus_items), *id);
-            }
-        }
-    }
-    let path = def_path_to_vir_path(tcx, tcx.def_path(def_id));
-    if let Some(path) = &path {
-        register_friendly_path_as_rust_name(tcx, def_id, path);
-    }
-    path
-}
-
-pub(crate) fn def_id_to_vir_path_ignoring_diagnostic_rename<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    def_id: DefId,
-) -> Path {
-    def_id_to_vir_path_option(tcx, None, def_id)
-        .unwrap_or_else(|| panic!("unhandled name {:?}", def_id))
-}
-
-pub(crate) fn def_id_to_vir_path<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    verus_items: &crate::verus_items::VerusItems,
-    def_id: DefId,
-    path_def_id_map: Option<impl DerefMut<Target = HashMap<Path, DefId>>>,
-) -> Path {
-    let result = def_id_to_vir_path_option(tcx, Some(verus_items), def_id)
-        .unwrap_or_else(|| panic!("unhandled name {:?}", def_id));
-    match path_def_id_map {
-        Some(mut map) => map.deref_mut().insert(result.clone(), def_id),
-        None => None,
-    };
-    result
-}
 
 pub(crate) fn def_id_to_datatype<'tcx, 'hir>(
     tcx: TyCtxt<'tcx>,

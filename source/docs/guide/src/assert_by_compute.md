@@ -81,12 +81,12 @@ In the example below,
 ```
 we use `all_spec` to prove that `p` holds for all values between 25 and 100,
 and hence it must hold for a generic value `u` that we know is in that range.
-Note that `all_spec` currently expects to operate over `int`s, so you may need
-add casts as appropriate.  Also, due to some techinical restrictions, at present,
+Note that `all_spec` currently expects to operate over `int`s, so you may need to
+add casts as appropriate.  Also, due to some technical restrictions, at present,
 you can't pass a top-level function like `p` to `all_spec`. Instead, you need
 to wrap it in a closure, as seen in this example.  Finally, the lemmas in `vstd`
-will give you a quantified resulted about the outcome of `all_spec`, so you may
-need to add an additional assertion (in our example, `assert(prop(u))`) to trigger
+will give you a quantified result about the outcome of `all_spec`, so you may
+need to add an additional assertion (in our example, `assert(prop(u as int))`) to trigger
 that quantifier.  This guide provides more detail on [quantifiers and
 triggers](forall.md) in another chapter.
 
@@ -100,7 +100,7 @@ Specifically, the time limit is the number of seconds specified via the
 By default, the interpreter does not cache function call results based on the 
 value of the arguments passed to the function.  Experiments showed this typically
 hurts performance, since it entails traversing the (large) AST nodes representing
-the arguments.  However, some examples need such caching to succceed (e.g., computing
+the arguments.  However, some examples need such caching to succeed (e.g., computing
 with the naive definition of Fibonacci).  Such functions can be annotated with
 `#[verifier::memoize]`, which will cause their results to be cached during computation.
 
@@ -117,4 +117,4 @@ with the naive definition of Fibonacci).  Such functions can be annotated with
 ## See Also
 
 1. The [test suite](https://github.com/verus-lang/verus/blob/main/source/rust_verify_test/tests/assert_by_compute.rs) has a variety of small examples.
-2. We also have several [more complex examples](https://github.com/verus-lang/verus/blob/main/source/../examples/assert_by_compute.rs).
+2. We also have several [more complex examples](https://github.com/verus-lang/verus/blob/main/examples/assert_by_compute.rs).
