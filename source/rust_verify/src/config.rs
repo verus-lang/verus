@@ -493,7 +493,7 @@ pub fn parse_args_with_imports(
     opts.optflag(
         "",
         OPT_NO_CHEATING,
-        "Do not allow assume, admit, verifier::external_body, and assume_specification",
+        "Do not allow assume, admit, verifier::external_body, and assume_specification; also reject options that skip or weaken checks",
     );
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optflag("", OPT_TIME_EXPANDED, "Measure and report time taken with module breakdown");
@@ -863,6 +863,32 @@ pub fn parse_args_with_imports(
             )),
         },
     };
+
+    if args.no_cheating {
+        let disallowed_flags = [
+            OPT_VERIFY_ROOT,
+            OPT_VERIFY_MODULE,
+            OPT_VERIFY_ONLY_MODULE,
+            OPT_VERIFY_FUNCTION,
+            OPT_NO_LIFETIME,
+            OPT_NO_ERASURE_CHECK,
+            OPT_NO_TRAIT_CONFLICTS,
+            OPT_IS_VSTD,
+            OPT_IS_CORE,
+            OPT_IS_STDLIB_OUTSIDE_OF_CORE,
+        ];
+        for flag in disallowed_flags {
+            if matches.opt_present(flag) {
+                error(format!("`--{}` is not allowed with `--{}`", flag, OPT_NO_CHEATING));
+            }
+        }
+        let disallowed_extended = [EXTENDED_ALLOW_INLINE_AIR, EXTENDED_IGNORE_UNEXPECTED_SMT];
+        for key in disallowed_extended {
+            if extended.contains_key(key) {
+                error(format!("`-V {}` is not allowed with `--{}`", key, OPT_NO_CHEATING));
+            }
+        }
+    }
 
     if args.compile && args.no_erasure_check {
         error("`--compile` and `--no-erasure-check` are mutually exclusive".to_string())
