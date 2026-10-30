@@ -80,6 +80,10 @@ struct Ctxt {
     assoc_type_impl_map: HashMap<AssocTypeGroup, Vec<AssocTypeImpl>>,
     // Map (D, T.f) -> D.f if D implements T.f:
     method_map: HashMap<(ReachedType, Fun), Vec<Fun>>,
+    // Indexes of the keys (D, T.f) of method_map by T.f and by D,
+    // so that reaching T.f or D does not need to try every reached type or function:
+    method_map_by_fun: HashMap<Fun, Vec<ReachedType>>,
+    method_map_by_typ: HashMap<ReachedType, Vec<Fun>>,
     // For a broadcast function f with triggers containing functions f0..fn, point f0..fn to f:
     fun_to_trigger_broadcasts: HashMap<Fun, Vec<Fun>>,
     typ_to_trigger_broadcasts: HashMap<ReachedType, Vec<Fun>>,
@@ -326,19 +330,34 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
     }
 }
 
-fn reached_methods<'a, 'b, I>(ctxt: &Ctxt, iter: I) -> Vec<Fun>
-where
-    I: Iterator<Item = (&'a ReachedType, &'b Fun)>,
-{
-    // If:
-    // - we reach both D and T.f
-    // - and D implements T.f with D.f
-    // add D.f
+// If:
+// - we reach both D and T.f
+// - and D implements T.f with D.f
+// add D.f
+// (ReachedType::None counts as always reached for this purpose.)
+
+/// The methods D.f for the newly reached T.f and every reached D
+fn reached_methods_for_fun(ctxt: &Ctxt, state: &State, function: &Fun) -> Vec<Fun> {
     let mut method_impls: Vec<Fun> = Vec::new();
-    for (self_typ, function) in iter {
-        if let Some(ms) = ctxt.method_map.get(&(self_typ.clone(), function.clone())) {
-            for method_impl in ms {
-                method_impls.push(method_impl.clone());
+    if let Some(self_typs) = ctxt.method_map_by_fun.get(function) {
+        for self_typ in self_typs {
+            if *self_typ == ReachedType::None || state.reached_types.contains(self_typ) {
+                let key = (self_typ.clone(), function.clone());
+                method_impls.extend(ctxt.method_map[&key].iter().cloned());
+            }
+        }
+    }
+    method_impls
+}
+
+/// The methods D.f for the newly reached D and every reached T.f
+fn reached_methods_for_typ(ctxt: &Ctxt, state: &State, self_typ: &ReachedType) -> Vec<Fun> {
+    let mut method_impls: Vec<Fun> = Vec::new();
+    if let Some(functions) = ctxt.method_map_by_typ.get(self_typ) {
+        for function in functions {
+            if state.reached_functions.contains(function) {
+                let key = (self_typ.clone(), function.clone());
+                method_impls.extend(ctxt.method_map[&key].iter().cloned());
             }
         }
     }
@@ -632,10 +651,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 &function, &mut map, state, &fe, &fs, &ft, &fpl, &fp,
             )
             .unwrap();
-            let methods = reached_methods(
-                ctxt,
-                state.reached_types.iter().chain([ReachedType::None].iter()).map(|t| (t, &f)),
-            );
+            let methods = reached_methods_for_fun(ctxt, state, &f);
             reach_methods(ctxt, state, methods);
             continue;
         }
@@ -677,7 +693,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     reach_trait_impl(ctxt, state, imp);
                 }
             }
-            let methods = reached_methods(ctxt, state.reached_functions.iter().map(|f| (&t, f)));
+            let methods = reached_methods_for_typ(ctxt, state, &t);
             reach_methods(ctxt, state, methods);
             let assoc_decls: Vec<(Path, Ident)> =
                 state.reached_assoc_type_decls.iter().cloned().collect();
@@ -1193,6 +1209,8 @@ pub fn prune_krate_for_module_or_krate(
     let mut typ_to_trait_impls: HashMap<ReachedType, Vec<ImplName>> = HashMap::new();
     let mut trait_impl_map: HashMap<ImplName, ReachTraitImpl> = HashMap::new();
     let mut method_map: HashMap<(ReachedType, Fun), Vec<Fun>> = HashMap::new();
+    let mut method_map_by_fun: HashMap<Fun, Vec<ReachedType>> = HashMap::new();
+    let mut method_map_by_typ: HashMap<ReachedType, Vec<Fun>> = HashMap::new();
     let mut fun_to_trigger_broadcasts: HashMap<Fun, Vec<Fun>> = HashMap::new();
     let mut typ_to_trigger_broadcasts: HashMap<ReachedType, Vec<Fun>> = HashMap::new();
     let mut fun_revealed_broadcast_map: HashMap<Fun, ReachBroadcastFunction> = HashMap::new();
@@ -1208,6 +1226,8 @@ pub fn prune_krate_for_module_or_krate(
             let key = (typ_to_reached_type(self_typ), method.clone());
             if !method_map.contains_key(&key) {
                 method_map.insert(key.clone(), Vec::new());
+                method_map_by_fun.entry(key.1.clone()).or_default().push(key.0.clone());
+                method_map_by_typ.entry(key.0.clone()).or_default().push(key.1.clone());
             }
             method_map.get_mut(&key).unwrap().push(f.x.name.clone());
         }
@@ -1315,6 +1335,8 @@ pub fn prune_krate_for_module_or_krate(
         trait_impl_map,
         assoc_type_impl_map,
         method_map,
+        method_map_by_fun,
+        method_map_by_typ,
         fun_to_trigger_broadcasts,
         typ_to_trigger_broadcasts,
         fun_revealed_broadcast_map,
