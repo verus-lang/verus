@@ -40,7 +40,7 @@ Our (work-in-progress) documentation resources include:
  * [📖 API documentation for Verus's standard library](https://verus-lang.github.io/verus/verusdoc/vstd/)
  * [📖 Guide for verifying concurrent code](https://verus-lang.github.io/verus/state_machines/)
  * [Contributing to Verus](CONTRIBUTING.md)
- * [Best Practices](best-practices-for-publishing-verusverified-code-on-cratesio) for publishing Verus-related crates on [crates.io](crates.io).
+ * [Best Practices](CONTRIBUTING.md#best-practices-for-publishing-verus-verified-code-on-cratesio) for publishing Verus-related crates on [crates.io](https://crates.io).
  * [Verus License](LICENSE)
  * [Verus Logos](https://verus-lang.github.io/verus/verus/logo.html)
 
