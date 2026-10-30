@@ -1,7 +1,8 @@
 # Migrating from `raw_ptr.rs`
 
-Reference for updating code that used `vstd::raw_ptr` (the `verify-rustlib` branch's `raw_ptr.rs`)
-to the new `vstd::raw_ptr_final`.
+Reference for updating code that used `vstd::raw_ptr` as the `verify-rustlib` branch's `raw_ptr.rs` defined it
+(kept, but not built, as `raw_ptr_popl.rs`)
+to the new `vstd::raw_ptr` (the `raw_ptr/` directory).
 It covers the permissions (`PointsTo`, `PointsToUnaligned`, `SeqPointsTo`, `MemContents`, ...)
 and the rest of `raw_ptr.rs`: the pointer and provenance model, and the trusted specs for exec pointer operations.
 
@@ -11,9 +12,9 @@ This doc is about what changes for callers.
 
 ## 1. Where things live
 
-`vstd::raw_ptr` is no longer built.
-**Replace each `use vstd::raw_ptr::*;` (or `use crate::vstd::raw_ptr::...`) with `use vstd::raw_ptr_final::*;`**.
-`raw_ptr_final/mod.rs` re-exports every module:
+The module path is still `vstd::raw_ptr`, so **`use vstd::raw_ptr::*;` keeps working**;
+imports of single items may need the new names ([section 4](#4-renames)).
+`raw_ptr/mod.rs` re-exports every module:
 
 | What the import was for | Module |
 |---|---|
@@ -28,7 +29,7 @@ This doc is about what changes for callers.
 `mut_ref_ptr` is a builtin and comes from the prelude.
 
 `ptr()`, `wf()`, `typed_value()`, `bytes()`, the pointer lemmas, and most operations are **trait methods**,
-so the traits must be in scope; `use vstd::raw_ptr_final::*;` brings them in.
+so the traits must be in scope; `use vstd::raw_ptr::*;` brings them in.
 Without them, calls like `perm.ptr()` won't resolve.
 
 ## 2. Representation
@@ -362,7 +363,7 @@ See [POINTS_TO_RAW_MIGRATION.md](POINTS_TO_RAW_MIGRATION.md).
 
 ## 11. Checklist
 
-1. Replace `use vstd::raw_ptr::*;` with `use vstd::raw_ptr_final::*;` ([section 1](#1-where-things-live)).
+1. Keep `use vstd::raw_ptr::*;`, and make sure the traits are in scope ([section 1](#1-where-things-live)).
 2. Rename per [section 4](#4-renames).
    Ranges change from `(start, len)` to `(start, end)`, and `SeqPointsTo::ptr()` is now a `*mut [T]` (use `thin_ptr()` for the base).
 3. Replace raw-byte uses of `PointsToUnaligned<[u8]>` / `PointsTo<[u8]>` with `PointsToUntyped`,

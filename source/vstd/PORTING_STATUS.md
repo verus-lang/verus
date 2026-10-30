@@ -13,7 +13,7 @@ representation makes that possible. The new model builds `PointsTo<T>` on top of
 `PointsToUnaligned<T>` (which now directly holds a `TypedValue<T>` — a tracked `Tracked<T>` when valid —
 plus a `PointsToUntyped`), which is built on `PointsToUntyped = SeqPointsTo<[u8],
 PointsToByte>`, bottoming out at `PointsToByte` (the one remaining
-`#[verifier::external_body]` primitive, in `raw_ptr_final/points_to_model.rs`). Because `PointsToUnaligned<T>` is no
+`#[verifier::external_body]` primitive, in `raw_ptr/points_to_model.rs`). Because `PointsToUnaligned<T>` is no
 longer opaque, a lot of what used to require an axiom can now be proved by directly manipulating
 its fields.
 

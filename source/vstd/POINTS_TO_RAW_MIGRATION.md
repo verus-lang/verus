@@ -3,7 +3,7 @@
 For code that used `PointsToRaw`, `Dealloc`, `allocate` or `deallocate` from vstd's original `raw_ptr.rs`
 (kept as `raw_ptr_old.rs`).
 The rest of the permission API is covered in [POINTS_TO_MIGRATION.md](POINTS_TO_MIGRATION.md).
-Everything here is in `vstd::raw_ptr_final` (`PointsToRaw` in `points_to_collections`, `allocate` / `deallocate` in `ptr_specs`).
+Everything here is in the new `vstd::raw_ptr` (`PointsToRaw` in `points_to_collections`, `allocate` / `deallocate` in `ptr_specs`).
 
 ## `PointsToRaw`
 
