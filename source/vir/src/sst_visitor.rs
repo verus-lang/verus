@@ -319,6 +319,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     | UnaryOpr::IntegerTypeBound(..)
                     | UnaryOpr::CustomErr(..)
                     | UnaryOpr::AutoDecreases
+                    | UnaryOpr::AutoRevealLiteral
                     | UnaryOpr::AutoLoopEnsures
                     | UnaryOpr::ProofNote(..)
                     | UnaryOpr::LoopIsolationBoundary(_) => R::ret(|| op.clone()),
