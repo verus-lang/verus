@@ -824,6 +824,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] array_view_symbolic_github3076 verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(a: [int; 3]) {
+            assert(a@.len() == 3) by (compute);
+            assert(a@[1] == a[1]) by (compute);
+        }
+
+        proof fn test_fail(a: [int; 3]) {
+            assert(a@.len() == 4) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] range_all_simple verus_code! {
         use vstd::prelude::*;
         use core::ops::Range;
