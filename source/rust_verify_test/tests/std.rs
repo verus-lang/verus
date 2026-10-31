@@ -2236,3 +2236,75 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] from_le_bytes verus_code! {
+        use vstd::prelude::*;
+        use vstd::bytes::*;
+
+        fn test_u32(b: [u8; 4]) {
+            let x = u32::from_le_bytes(b);
+            assert(x == spec_u32_from_le_bytes(b@));
+            assert(x == u32::from_le_bytes(b));
+            let y = u32_from_le_bytes(b.as_slice());
+            assert(x == y);
+        }
+
+        fn test_u64(b: [u8; 8]) {
+            let x = u64::from_le_bytes(b);
+            assert(x == spec_u64_from_le_bytes(b@));
+            assert(x == u64::from_le_bytes(b));
+            let y = u64_from_le_bytes(b.as_slice());
+            assert(x == y);
+        }
+
+        fn test_round_trip(x: u32, y: u64, bx: [u8; 4], by: [u8; 8])
+            requires
+                bx@ == spec_u32_to_le_bytes(x),
+                by@ == spec_u64_to_le_bytes(y),
+        {
+            proof {
+                lemma_auto_spec_u32_to_from_le_bytes();
+                lemma_auto_spec_u64_to_from_le_bytes();
+                // trigger of the u32 lemma
+                assert(spec_u32_to_le_bytes(x).len() == 4);
+            }
+            assert(u32::from_le_bytes(bx) == x);
+            assert(u64::from_le_bytes(by) == y);
+        }
+
+        fn test_value() {
+            let b: [u8; 8] = [0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01];
+            let x = u64::from_le_bytes(b);
+            proof {
+                let v: u64 = 0x0102_0304_0506_0708;
+                assert({
+                    &&& (v & 0xff) as u8 == 0x08
+                    &&& ((v >> 8) & 0xff) as u8 == 0x07
+                    &&& ((v >> 16) & 0xff) as u8 == 0x06
+                    &&& ((v >> 24) & 0xff) as u8 == 0x05
+                    &&& ((v >> 32) & 0xff) as u8 == 0x04
+                    &&& ((v >> 40) & 0xff) as u8 == 0x03
+                    &&& ((v >> 48) & 0xff) as u8 == 0x02
+                    &&& ((v >> 56) & 0xff) as u8 == 0x01
+                }) by (bit_vector) requires v == 0x0102_0304_0506_0708u64;
+                spec_u64_to_le_bytes_to_open(v);
+                assert(spec_u64_to_le_bytes(v) =~= b@);
+                lemma_auto_spec_u64_to_from_le_bytes();
+            }
+            assert(x == 0x0102_0304_0506_0708u64);
+            assert(x == 0x0807_0605_0403_0201u64); // FAILS
+        }
+
+        fn test_no_unwind(bx: [u8; 4], by: [u8; 8])
+            no_unwind
+        {
+            let _ = u32::from_le_bytes(bx);
+            let _ = u64::from_le_bytes(by);
+        }
+
+        fn test_unknown_bytes(b: [u8; 4]) {
+            assert(u32::from_le_bytes(b) == 0); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
