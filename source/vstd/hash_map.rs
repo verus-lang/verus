@@ -525,7 +525,7 @@ impl<Value> StringHashMap<Value> {
             if out is None && before.contains_key(k@) {
                 let stored = choose|stored: String| #[trigger]
                     old_m.contains_key(stored) && stored@ == k@;
-                assert(k.eq_spec(<String as BorrowSpec<str>>::spec_borrow(&stored)));
+                assert(k.eq_spec(<String as BorrowSpec<str>>::borrow_spec(&stored)));
             }
             assert_maps_equal!(self@, before.remove(k@), view => {
                 if self@.contains_key(view) {
@@ -576,7 +576,7 @@ impl<Value> StringHashMap<Value> {
                     let stored = choose|stored: String|
                         {
                             &&& #[trigger] self.m.m@.contains_key(stored)
-                            &&& k.eq_spec(<String as BorrowSpec<str>>::spec_borrow(&stored))
+                            &&& k.eq_spec(<String as BorrowSpec<str>>::borrow_spec(&stored))
                             &&& self.m.m@[stored] == *value
                         };
                     assert(stored@ == k@);
@@ -585,7 +585,7 @@ impl<Value> StringHashMap<Value> {
                     if self@.contains_key(k@) {
                         let stored = choose|stored: String| #[trigger]
                             self.m.m@.contains_key(stored) && stored@ == k@;
-                        assert(k.eq_spec(<String as BorrowSpec<str>>::spec_borrow(&stored)));
+                        assert(k.eq_spec(<String as BorrowSpec<str>>::borrow_spec(&stored)));
                     }
                 },
             }

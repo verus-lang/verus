@@ -270,8 +270,8 @@ impl<'a, Key, Value, A> CursorMutSpecFns<Key, Value> for CursorMut<'a, Key, Valu
 /// borrowed-key `BTreeMap` operations.
 pub open spec fn borrowed_key_ordering_matches<Key: Borrow<Q> + Ord, Q: Ord + ?Sized>() -> bool {
     forall|k1: Key, k2: Key| #[trigger]
-        k1.cmp_spec(&k2) == <Key as BorrowSpec<Q>>::spec_borrow(&k1).cmp_spec(
-            <Key as BorrowSpec<Q>>::spec_borrow(&k2),
+        k1.cmp_spec(&k2) == <Key as BorrowSpec<Q>>::borrow_spec(&k1).cmp_spec(
+            <Key as BorrowSpec<Q>>::borrow_spec(&k2),
         )
 }
 
@@ -280,7 +280,7 @@ pub open spec fn before_lower_bound<Key: Borrow<Q>, Q: Ord + ?Sized>(
     key: Key,
     bound: Bound<&Q>,
 ) -> bool {
-    let borrowed_key = <Key as BorrowSpec<Q>>::spec_borrow(&key);
+    let borrowed_key = <Key as BorrowSpec<Q>>::borrow_spec(&key);
     match bound {
         Bound::Included(bound_key) => borrowed_key.cmp_spec(bound_key) is Less,
         Bound::Excluded(bound_key) => !(borrowed_key.cmp_spec(bound_key) is Greater),
@@ -293,7 +293,7 @@ pub open spec fn before_upper_bound<Key: Borrow<Q>, Q: Ord + ?Sized>(
     key: Key,
     bound: Bound<&Q>,
 ) -> bool {
-    let borrowed_key = <Key as BorrowSpec<Q>>::spec_borrow(&key);
+    let borrowed_key = <Key as BorrowSpec<Q>>::borrow_spec(&key);
     match bound {
         Bound::Included(bound_key) => !(borrowed_key.cmp_spec(bound_key) is Greater),
         Bound::Excluded(bound_key) => borrowed_key.cmp_spec(bound_key) is Less,
@@ -655,7 +655,7 @@ pub open spec fn btree_map_contains_key_ensures<
         &&& result == exists|key: Key|
             {
                 &&& #[trigger] m@.contains_key(key)
-                &&& k.cmp_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)) is Equal
+                &&& k.cmp_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)) is Equal
             }
     }
 }
@@ -741,12 +741,12 @@ pub open spec fn btree_map_get_ensures<
             Some(v) => exists|key: Key|
                 {
                     &&& #[trigger] m@.contains_key(key)
-                    &&& k.cmp_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)) is Equal
+                    &&& k.cmp_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)) is Equal
                     &&& m@[key] == *v
                 },
             None => forall|key: Key| #[trigger]
                 m@.contains_key(key) ==> !(k.cmp_spec(
-                    <Key as BorrowSpec<Q>>::spec_borrow(&key),
+                    <Key as BorrowSpec<Q>>::borrow_spec(&key),
                 ) is Equal),
         }
     }
@@ -858,14 +858,14 @@ pub open spec fn btree_map_remove_ensures<
             Some(v) => exists|key: Key|
                 {
                     &&& #[trigger] old_m@.contains_key(key)
-                    &&& k.cmp_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)) is Equal
+                    &&& k.cmp_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)) is Equal
                     &&& old_m@[key] == v
                     &&& final_m@ == old_m@.remove(key)
                 },
             None => {
                 &&& forall|key: Key| #[trigger]
                     old_m@.contains_key(key) ==> !(k.cmp_spec(
-                        <Key as BorrowSpec<Q>>::spec_borrow(&key),
+                        <Key as BorrowSpec<Q>>::borrow_spec(&key),
                     ) is Equal)
                 &&& final_m@ == old_m@
             },
@@ -1019,14 +1019,14 @@ pub open spec fn btree_map_get_mut_ensures<
             Some((current_value, final_value)) => exists|stored_key: Key|
                 {
                     &&& #[trigger] old_m@.contains_key(stored_key)
-                    &&& k.cmp_spec(<Key as BorrowSpec<Q>>::spec_borrow(&stored_key)) is Equal
+                    &&& k.cmp_spec(<Key as BorrowSpec<Q>>::borrow_spec(&stored_key)) is Equal
                     &&& old_m@[stored_key] == current_value
                     &&& final_m@ == old_m@.insert(stored_key, final_value)
                 },
             None => {
                 &&& forall|stored_key: Key| #[trigger]
                     old_m@.contains_key(stored_key) ==> !(k.cmp_spec(
-                        <Key as BorrowSpec<Q>>::spec_borrow(&stored_key),
+                        <Key as BorrowSpec<Q>>::borrow_spec(&stored_key),
                     ) is Equal)
                 &&& final_m@ == old_m@
             },
@@ -1632,7 +1632,7 @@ pub open spec fn btree_set_contains_ensures<
         &&& result == exists|key: Key|
             {
                 &&& #[trigger] m@.contains(key)
-                &&& k.cmp_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)) is Equal
+                &&& k.cmp_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)) is Equal
             }
     }
 }
@@ -1705,11 +1705,11 @@ pub open spec fn btree_set_get_ensures<Key: Borrow<Q> + Ord, A: Allocator + Clon
         &&& match result {
             Some(key) => {
                 &&& m@.contains(*key)
-                &&& k.cmp_spec(<Key as BorrowSpec<Q>>::spec_borrow(key)) is Equal
+                &&& k.cmp_spec(<Key as BorrowSpec<Q>>::borrow_spec(key)) is Equal
             },
             None => forall|key: Key| #[trigger]
                 m@.contains(key) ==> !(k.cmp_spec(
-                    <Key as BorrowSpec<Q>>::spec_borrow(&key),
+                    <Key as BorrowSpec<Q>>::borrow_spec(&key),
                 ) is Equal),
         }
     }
@@ -1797,13 +1797,13 @@ pub open spec fn btree_set_remove_ensures<
             exists|key: Key|
                 {
                     &&& #[trigger] old_m@.contains(key)
-                    &&& k.cmp_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)) is Equal
+                    &&& k.cmp_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)) is Equal
                     &&& final_m@ == old_m@.remove(key)
                 }
         } else {
             &&& forall|key: Key| #[trigger]
                 old_m@.contains(key) ==> !(k.cmp_spec(
-                    <Key as BorrowSpec<Q>>::spec_borrow(&key),
+                    <Key as BorrowSpec<Q>>::borrow_spec(&key),
                 ) is Equal)
             &&& final_m@ == old_m@
         }

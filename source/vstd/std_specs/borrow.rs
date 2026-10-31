@@ -22,11 +22,11 @@ pub trait ExBorrow<Borrowed: ?Sized> {
 
     spec fn obeys_borrow_spec() -> bool;
 
-    spec fn spec_borrow(&self) -> &Borrowed;
+    spec fn borrow_spec(&self) -> &Borrowed;
 
     fn borrow(&self) -> (result: &Borrowed)
         ensures
-            Self::obeys_borrow_spec() ==> result == self.spec_borrow(),
+            Self::obeys_borrow_spec() ==> result == self.borrow_spec(),
     ;
 }
 
@@ -125,7 +125,7 @@ impl<T: ?Sized> BorrowSpecImpl<T> for T {
         true
     }
 
-    open spec fn spec_borrow(&self) -> &T {
+    open spec fn borrow_spec(&self) -> &T {
         self
     }
 }
@@ -140,7 +140,7 @@ impl<T: ?Sized> BorrowSpecImpl<T> for &T {
         true
     }
 
-    open spec fn spec_borrow(&self) -> &T {
+    open spec fn borrow_spec(&self) -> &T {
         *self
     }
 }
@@ -158,7 +158,7 @@ impl<T: ?Sized, A: Allocator> BorrowSpecImpl<T> for Box<T, A> {
         true
     }
 
-    open spec fn spec_borrow(&self) -> &T {
+    open spec fn borrow_spec(&self) -> &T {
         &**self
     }
 }
@@ -177,13 +177,13 @@ impl BorrowSpecImpl<str> for String {
         true
     }
 
-    uninterp spec fn spec_borrow(&self) -> &str;
+    uninterp spec fn borrow_spec(&self) -> &str;
 }
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub broadcast axiom fn axiom_string_borrow(s: &String)
     ensures
-        #[trigger] <String as BorrowSpec<str>>::spec_borrow(s)@ == s@,
+        #[trigger] <String as BorrowSpec<str>>::borrow_spec(s)@ == s@,
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]

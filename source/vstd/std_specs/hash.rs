@@ -914,7 +914,7 @@ pub open spec fn hash_map_contains_key_ensures<
         &&& result == exists|key: Key|
             {
                 &&& #[trigger] m@.contains_key(key)
-                &&& k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key))
+                &&& k.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key))
             }
     }
 }
@@ -1006,11 +1006,11 @@ pub open spec fn hash_map_get_ensures<
             Some(v) => exists|key: Key|
                 {
                     &&& #[trigger] m@.contains_key(key)
-                    &&& k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key))
+                    &&& k.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key))
                     &&& m@[key] == *v
                 },
             None => forall|key: Key| #[trigger]
-                m@.contains_key(key) ==> !k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)),
+                m@.contains_key(key) ==> !k.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)),
         }
     }
 }
@@ -1124,14 +1124,14 @@ pub open spec fn hash_map_remove_ensures<
             Some(v) => exists|key: Key|
                 {
                     &&& #[trigger] old_m@.contains_key(key)
-                    &&& k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key))
+                    &&& k.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key))
                     &&& old_m@[key] == v
                     &&& final_m@ == old_m@.remove(key)
                 },
             None => {
                 &&& forall|key: Key| #[trigger]
                     old_m@.contains_key(key) ==> !k.eq_spec(
-                        <Key as BorrowSpec<Q>>::spec_borrow(&key),
+                        <Key as BorrowSpec<Q>>::borrow_spec(&key),
                     )
                 &&& final_m@ == old_m@
             },
@@ -1546,7 +1546,7 @@ pub open spec fn hash_set_contains_ensures<
         &&& result == exists|key: Key|
             {
                 &&& #[trigger] m@.contains(key)
-                &&& k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key))
+                &&& k.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key))
             }
     }
 }
@@ -1619,10 +1619,10 @@ pub open spec fn hash_set_get_ensures<
         &&& match result {
             Some(key) => {
                 &&& m@.contains(*key)
-                &&& k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(key))
+                &&& k.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(key))
             },
             None => forall|key: Key| #[trigger]
-                m@.contains(key) ==> !k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)),
+                m@.contains(key) ==> !k.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)),
         }
     }
 }
@@ -1712,12 +1712,12 @@ pub open spec fn hash_set_remove_ensures<
             exists|key: Key|
                 {
                     &&& #[trigger] old_m@.contains(key)
-                    &&& k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key))
+                    &&& k.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key))
                     &&& final_m@ == old_m@.remove(key)
                 }
         } else {
             &&& forall|key: Key| #[trigger]
-                old_m@.contains(key) ==> !k.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key))
+                old_m@.contains(key) ==> !k.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key))
             &&& final_m@ == old_m@
         }
     }

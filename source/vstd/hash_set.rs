@@ -378,7 +378,7 @@ impl StringHashSet {
             if !result && before.contains(k@) {
                 let stored = choose|stored: String| #[trigger]
                     old_m.contains(stored) && stored@ == k@;
-                assert(k.eq_spec(<String as BorrowSpec<str>>::spec_borrow(&stored)));
+                assert(k.eq_spec(<String as BorrowSpec<str>>::borrow_spec(&stored)));
             }
             assert_sets_equal!(self@, before.remove(k@), view => {
                 if self@.contains(view) {
@@ -433,7 +433,7 @@ impl StringHashSet {
                     if self@.contains(k@) {
                         let stored = choose|stored: String| #[trigger]
                             self.m.m@.contains(stored) && stored@ == k@;
-                        assert(k.eq_spec(<String as BorrowSpec<str>>::spec_borrow(&stored)));
+                        assert(k.eq_spec(<String as BorrowSpec<str>>::borrow_spec(&stored)));
                     }
                 },
             }
