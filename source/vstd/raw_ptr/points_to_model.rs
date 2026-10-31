@@ -4,6 +4,7 @@ use super::ptr_model;
 use super::ptr_model::*;
 use super::super::group_vstd_default;
 use super::super::layout::{self, *};
+#[cfg(verus_keep_ghost)]
 use super::super::modes::tracked_ref;
 use super::super::prelude::*;
 #[cfg(verus_keep_ghost)]

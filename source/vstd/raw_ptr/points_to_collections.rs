@@ -5,6 +5,7 @@ use super::ptr_model::*;
 use crate::vstd::group_vstd_default;
 use crate::vstd::layout::{self, *};
 use crate::vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
 use crate::vstd::set_lib::set_int_range;
 #[cfg(verus_keep_ghost)]
 use crate::vstd::type_representation::*;

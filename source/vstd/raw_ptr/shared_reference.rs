@@ -172,7 +172,7 @@ pub broadcast axiom fn axiom_shared_ref_value_view<'a, T>(shared_ref: SharedRefe
         shared_ref.value()@ == #[trigger] shared_ref@,
 ;
 
-/// Like [`ptr_ref`] but returns a `SharedReference` so it keeps track of the relationship
+/// Like [`ptr_ref`](super::ptr_specs::ptr_ref) but returns a `SharedReference` so it keeps track of the relationship
 /// between the pointers.
 /// Note the resulting reference's pointers does NOT have the same provenance.
 /// This is because in Rust models like Stacked Borrows / Tree Borrows, the pointer

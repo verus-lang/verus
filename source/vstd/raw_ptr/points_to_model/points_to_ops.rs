@@ -1,10 +1,9 @@
 #![allow(unused_imports)]
 
 use super::*;
-use crate::vstd::endian::{
-    to_big_from_digits, to_big_from_digits_single, to_endian_from_digits, BasePow2,
-    CompatibleSmallerBaseFor, EndianNat,
-};
+#[cfg(verus_keep_ghost)]
+use crate::vstd::endian::{to_big_from_digits, to_big_from_digits_single, to_endian_from_digits};
+use crate::vstd::endian::{BasePow2, CompatibleSmallerBaseFor, EndianNat};
 
 verus! {
 
