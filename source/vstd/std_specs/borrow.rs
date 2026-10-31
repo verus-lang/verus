@@ -130,11 +130,6 @@ impl<T: ?Sized> BorrowSpecImpl<T> for T {
     }
 }
 
-pub assume_specification<T: ?Sized>[ <T as Borrow<T>>::borrow ](r: &T) -> (result: &T)
-    ensures
-        result == r,
-;
-
 impl<T: ?Sized> BorrowSpecImpl<T> for &T {
     open spec fn obeys_borrow_spec() -> bool {
         true
@@ -144,13 +139,6 @@ impl<T: ?Sized> BorrowSpecImpl<T> for &T {
         *self
     }
 }
-
-pub assume_specification<'b, T: ?Sized, 'a>[ <&'b T as Borrow<T>>::borrow ](
-    r: &'a &'b T,
-) -> (result: &'a T)
-    ensures
-        result == *r,
-;
 
 #[cfg(feature = "alloc")]
 impl<T: ?Sized, A: Allocator> BorrowSpecImpl<T> for Box<T, A> {
@@ -162,14 +150,6 @@ impl<T: ?Sized, A: Allocator> BorrowSpecImpl<T> for Box<T, A> {
         &**self
     }
 }
-
-#[cfg(feature = "alloc")]
-pub assume_specification<T: ?Sized, A: Allocator>[ <Box<T, A> as Borrow<T>>::borrow ](
-    b: &Box<T, A>,
-) -> (result: &T)
-    ensures
-        result == &**b,
-;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 impl BorrowSpecImpl<str> for String {
@@ -184,12 +164,6 @@ impl BorrowSpecImpl<str> for String {
 pub broadcast axiom fn axiom_string_borrow(s: &String)
     ensures
         #[trigger] <String as BorrowSpec<str>>::borrow_spec(s)@ == s@,
-;
-
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-pub assume_specification[ <String as Borrow<str>>::borrow ](s: &String) -> (result: &str)
-    ensures
-        result@ == s@,
 ;
 
 pub broadcast group group_borrow_axioms {
