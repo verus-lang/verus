@@ -1476,3 +1476,18 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] unsimplified_trait_call_on_slice_and_vec_issue1728_3074 verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test_slice(s: &[int]) {
+            assert(s@.len() >= 0) by (compute);
+            assert(s@.len() == 0) by (compute); // FAILS
+        }
+
+        proof fn test_vec(v: &Vec<u8>) {
+            assert(v@.len() >= 0) by (compute);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
