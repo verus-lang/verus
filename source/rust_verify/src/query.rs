@@ -36,6 +36,8 @@ pub(crate) struct PreCrate<'tcx> {
     /// `FunctionOrConstInfo`s are built on demand (see `Query::get_anon_const_info`).
     pub anon_consts: Vec<Arc<AnonConstToCheck>>,
     pub fun_name_to_anon_const: HashMap<Fun, Arc<AnonConstToCheck>>,
+    /// `unsafe impl Send` and `unsafe impl Sync` impls to be checked
+    pub unsafe_marker_impls: Vec<crate::unsafe_marker_impls::UnsafeMarkerImpl>,
 }
 
 /// Used to guarantee that we emitted an error
@@ -381,6 +383,7 @@ impl<'tcx> Query<'tcx> {
             let mut state = crate::rust_to_vir::State {
                 external_info: crate::rust_to_vir_impl::ExternalInfo::new(),
                 fun_warn_configs: HashMap::new(),
+                unsafe_marker_impls: Vec::new(),
             };
             let mut infos: Vec<FunctionOrConstInfo<'tcx>> = Vec::new();
             let name = crate::rust_to_vir_func::check_item_const_or_static(

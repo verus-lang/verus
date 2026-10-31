@@ -312,13 +312,13 @@ pub(crate) fn translate_impl<'tcx>(
 
         let verus_item = ctxt.verus_items.id_to_name.get(&trait_def_id);
 
-        if *safety != Safety::Safe {
-            if matches!(rust_item, Some(RustItem::Send)) {
-                return err_span_vec(item.span, "unsafe impl for `Send` is not allowed");
-            }
-            if matches!(rust_item, Some(RustItem::Sync)) {
-                return err_span_vec(item.span, "unsafe impl for `Sync` is not allowed");
-            }
+        if *safety != Safety::Safe && matches!(rust_item, Some(RustItem::Send | RustItem::Sync)) {
+            // Checked later by unsafe_marker_impls, once datatype transparency is known
+            state.unsafe_marker_impls.push(crate::unsafe_marker_impls::UnsafeMarkerImpl {
+                impl_def_id: item.owner_id.def_id,
+                module_path: module_path.clone(),
+                span: item.span,
+            });
         }
 
         let ignore = if let Some(VerusItem::Marker(MarkerItem::Structural)) = verus_item {

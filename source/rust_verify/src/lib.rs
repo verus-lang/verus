@@ -75,6 +75,7 @@ mod trait_check_ast;
 mod trait_check_emit;
 mod trait_check_generate;
 mod trait_conflicts;
+mod unsafe_marker_impls;
 mod user_filter;
 pub mod util;
 pub mod verifier;

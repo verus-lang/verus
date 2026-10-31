@@ -316,21 +316,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] unsafe_impl_fail_send verus_code! {
+    #[test] unsafe_impl_send verus_code! {
         struct Foo {
             x: u32,
         }
 
         unsafe impl Send for Foo { }
-    } => Err(e) => assert_vir_error_msg(e, "unsafe impl for `Send` is not allowed")
+    } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] unsafe_impl_fail_sync verus_code! {
+    #[test] unsafe_impl_sync verus_code! {
         struct Foo {
             x: u32,
         }
 
         unsafe impl Sync for Foo { }
-    } => Err(e) => assert_vir_error_msg(e, "unsafe impl for `Sync` is not allowed")
+    } => Ok(())
 }

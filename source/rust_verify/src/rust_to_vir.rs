@@ -41,6 +41,7 @@ use vir::context::{WarningConfig, WarningCtx};
 pub(crate) struct State {
     pub(crate) external_info: ExternalInfo,
     pub(crate) fun_warn_configs: HashMap<Fun, WarningConfig>,
+    pub(crate) unsafe_marker_impls: Vec<crate::unsafe_marker_impls::UnsafeMarkerImpl>,
 }
 
 impl State {
@@ -558,7 +559,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
         .insert(tcx.get_diagnostic_item(rustc_span::sym::Send).expect("send"));
 
     let fun_warn_configs = HashMap::new();
-    let mut state = State { external_info, fun_warn_configs };
+    let mut state = State { external_info, fun_warn_configs, unsafe_marker_impls: Vec::new() };
 
     let mut errors = vec![];
 
@@ -810,5 +811,6 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
         infos: infos,
         fun_name_to_info,
         def_id_to_fun_name_for_erasure,
+        unsafe_marker_impls: state.unsafe_marker_impls,
     })
 }

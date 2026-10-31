@@ -2770,6 +2770,17 @@ impl Verifier {
             return Ok(false);
         }
 
+        {
+            let pre_crate = query.get_pre_crate().map_err(map_query_err)?;
+            let datatypes = query.get_datatypes_map().map_err(map_query_err)?;
+            crate::unsafe_marker_impls::check_unsafe_marker_impls(
+                &pre_crate.ctxt,
+                &datatypes,
+                &pre_crate.unsafe_marker_impls,
+            )
+            .map_err(map_errs_diagnostics)?;
+        }
+
         // Export crate if requested.
         let local_crate = query.get_exportable_crate().map_err(map_query_err)?;
 
