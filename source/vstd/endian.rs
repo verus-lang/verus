@@ -1313,7 +1313,6 @@ impl CompatibleSmallerBaseFor<u128> for u32 {
     }
 }
 
-
 impl CompatibleSmallerBaseFor<u128> for u64 {
     proof fn compatible() {
     }

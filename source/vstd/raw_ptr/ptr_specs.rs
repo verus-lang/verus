@@ -1,9 +1,9 @@
 #![allow(unused_imports)]
 
-use super::points_to_model::*;
-use super::ptr_model::*;
 use super::super::layout::*;
 use super::super::prelude::*;
+use super::points_to_model::*;
+use super::ptr_model::*;
 
 verus! {
 
@@ -312,7 +312,8 @@ pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
-pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v: &mut [T])
+pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v:
+    &mut [T])
     requires
         old(perm).ptr() == ptr,
         old(perm).is_valid(),
@@ -437,8 +438,8 @@ pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
 ;
 
 /// Convert from a shared reference to a `&'a mut [T]` to a `&'a PointsTo<[T]>`.
-pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T])
-    -> (tracked pt: &'a PointsTo<[T]>)
+pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T]) -> (tracked pt:
+    &'a PointsTo<[T]>)
     ensures
         pt.ptr() == mut_ref_ptr(*mut_ref),
         pt.is_valid(),
@@ -577,8 +578,10 @@ pub fn allocate(size: usize, align: usize) -> ((ptr, perm): (*mut u8, Tracked<Po
         ptr@.provenance.unwrap().alloc_len() == size,
         ptr@.provenance.unwrap().orig_size() == size,
         ptr@.provenance.unwrap().alignment() == align,
-        ptr@.provenance.unwrap().alloc_id() == global_alloc_id(),
-        // ptr@.addr % align == 0 and ptr@.addr + size <= usize::MAX follow from provenance_properties.
+        ptr@.provenance.unwrap().alloc_id()
+            == global_alloc_id(),
+// ptr@.addr % align == 0 and ptr@.addr + size <= usize::MAX follow from provenance_properties.
+
     opens_invariants none
 {
     // SAFETY: valid_layout is a precondition

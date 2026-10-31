@@ -1,9 +1,9 @@
 #![allow(unused_imports)]
 
 use super::*;
+use crate::vstd::endian::{BasePow2, CompatibleSmallerBaseFor, EndianNat};
 #[cfg(verus_keep_ghost)]
 use crate::vstd::endian::{to_big_from_digits, to_big_from_digits_single, to_endian_from_digits};
-use crate::vstd::endian::{BasePow2, CompatibleSmallerBaseFor, EndianNat};
 
 verus! {
 
@@ -69,14 +69,21 @@ impl<T, P: PTProperties<A = T>> PTProperties for SeqPointsTo<T, P> {
             // element ends exactly where `self` does, so its disjointness from
             // `other` gives us what we need.
             self.seq_pt.tracked_borrow_mut(len - 1).is_disjoint(other);
-            crate::vstd::arithmetic::mul::lemma_mul_is_distributive_add_other_way(csize, len - 1, 1);
+            crate::vstd::arithmetic::mul::lemma_mul_is_distributive_add_other_way(
+                csize,
+                len - 1,
+                1,
+            );
         } else {
             // `other` starts strictly inside `self`'s range: find the element `k`
             // whose byte range contains `other`'s start address, and derive a
             // contradiction from the fact that it can't possibly be disjoint from
             // `other` (since `other`'s own start address lies within it).
             let k = (other_addr - self_addr) / csize;
-            crate::vstd::arithmetic::div_mod::lemma_fundamental_div_mod(other_addr - self_addr, csize);
+            crate::vstd::arithmetic::div_mod::lemma_fundamental_div_mod(
+                other_addr - self_addr,
+                csize,
+            );
             crate::vstd::arithmetic::div_mod::lemma_remainder(other_addr - self_addr, csize);
             crate::vstd::arithmetic::div_mod::lemma_multiply_divide_lt(
                 other_addr - self_addr,
@@ -99,7 +106,8 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             *ret == old(self)[i],
             final(self).seq_pt() == old(self).seq_pt().update(i, *final(ret)),
             final(self).ptr() == old(self).ptr(),
-            old(self).wf_basic() && P::ptrs_len_same(*ret, *final(ret)) && final(ret).ptr() == ret.ptr() ==> final(self).wf_basic(),
+            old(self).wf_basic() && P::ptrs_len_same(*ret, *final(ret)) && final(ret).ptr()
+                == ret.ptr() ==> final(self).wf_basic(),
     {
         let old_self = *self;
         let tracked ret = self.seq_pt.tracked_borrow_mut(i);
@@ -115,10 +123,11 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
     pub proof fn from_seq(tracked perms: Seq<P>, ptr: *mut T) -> (tracked out: Self)
         requires
             forall|i: int| 0 <= i < perms.len() ==> #[trigger] perms[i].wf_basic(),
-            forall|i: int| 0 <= i < perms.len() ==> {
-                &&& (#[trigger] perms[i]).ptr()@.provenance == ptr@.provenance
-                &&& perms[i].ptr()@.addr == ptr@.addr + i * P::size(())
-            },
+            forall|i: int|
+                0 <= i < perms.len() ==> {
+                    &&& (#[trigger] perms[i]).ptr()@.provenance == ptr@.provenance
+                    &&& perms[i].ptr()@.addr == ptr@.addr + i * P::size(())
+                },
             ptr@.addr != 0,
             ptr_addr_in_bounds(ptr),
             perms.len() <= usize::MAX,
@@ -128,7 +137,11 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             out.wf_basic(),
     {
         let slice_ptr = ptr_mut_from_data::<[T]>(
-            PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: perms.len() as usize },
+            PtrData {
+                addr: ptr@.addr,
+                provenance: ptr@.provenance,
+                metadata: perms.len() as usize,
+            },
         );
         SeqPointsTo { seq_pt: perms, ptr: Ghost(slice_ptr) }
     }
@@ -154,16 +167,20 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
         ensures
             first.seq_pt() == self.seq_pt().take(mid as int),
             second.seq_pt() == self.seq_pt().skip(mid as int),
-            first.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: self.ptr()@.addr,
-                provenance: self.ptr()@.provenance,
-                metadata: mid as usize,
-            }),
-            second.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: (self.ptr()@.addr + mid * P::size(())) as usize,
-                provenance: self.ptr()@.provenance,
-                metadata: (self.len() - mid) as usize,
-            }),
+            first.ptr() == ptr_mut_from_data::<[T]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: mid as usize,
+                },
+            ),
+            second.ptr() == ptr_mut_from_data::<[T]>(
+                PtrData {
+                    addr: (self.ptr()@.addr + mid * P::size(())) as usize,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (self.len() - mid) as usize,
+                },
+            ),
             first.wf_basic(),
             second.wf_basic(),
     {
@@ -220,11 +237,13 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             P::size(()) == 0 ==> self.len() + other.len() <= usize::MAX,
         ensures
             joined.seq_pt() == self.seq_pt() + other.seq_pt(),
-            joined.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: self.ptr()@.addr,
-                provenance: self.ptr()@.provenance,
-                metadata: (self.len() + other.len()) as usize,
-            }),
+            joined.ptr() == ptr_mut_from_data::<[T]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (self.len() + other.len()) as usize,
+                },
+            ),
             joined.wf_basic(),
     {
         let p = ptr_mut_from_data::<[T]>(
@@ -234,7 +253,10 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
                 metadata: (self.len() + other.len()) as usize,
             },
         );
-        self.lemma_join_wf_basic(&other, SeqPointsTo { seq_pt: self.seq_pt + other.seq_pt, ptr: Ghost(p) });
+        self.lemma_join_wf_basic(
+            &other,
+            SeqPointsTo { seq_pt: self.seq_pt + other.seq_pt, ptr: Ghost(p) },
+        );
 
         let tracked mut seq_pt = self.seq_pt;
         seq_pt.tracked_add(other.seq_pt);
@@ -251,11 +273,13 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             other.ptr()@.addr == self.ptr()@.addr + self.len() * P::size(()),
             P::size(()) == 0 ==> self.len() + other.len() <= usize::MAX,
             joined.seq_pt() == self.seq_pt() + other.seq_pt(),
-            joined.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: self.ptr()@.addr,
-                provenance: self.ptr()@.provenance,
-                metadata: (self.len() + other.len()) as usize,
-            }),
+            joined.ptr() == ptr_mut_from_data::<[T]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (self.len() + other.len()) as usize,
+                },
+            ),
         ensures
             joined.wf_basic(),
     {
@@ -277,15 +301,14 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
                     s != 0,
             ;
         }
-
         assert forall|i: int| 0 <= i < joined.len() implies {
             &&& #[trigger] joined[i].ptr()@.provenance == joined.ptr()@.provenance
             &&& joined[i].ptr()@.addr == joined.ptr()@.addr + i * s
             &&& joined[i].wf_basic()
         } by {
             if i >= self.len() {
-                assert(self.ptr()@.addr + self.len() * s + (i - self.len()) * s
-                    == self.ptr()@.addr + i * s) by (nonlinear_arith);
+                assert(self.ptr()@.addr + self.len() * s + (i - self.len()) * s == self.ptr()@.addr
+                    + i * s) by (nonlinear_arith);
             }
         }
     }
@@ -297,11 +320,13 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             start <= end <= self.len(),
         ensures
             sub.seq_pt() == self.seq_pt().subrange(start as int, end as int),
-            sub.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: (self.ptr()@.addr + start * P::size(())) as usize,
-                provenance: self.ptr()@.provenance,
-                metadata: (end - start) as usize,
-            }),
+            sub.ptr() == ptr_mut_from_data::<[T]>(
+                PtrData {
+                    addr: (self.ptr()@.addr + start * P::size(())) as usize,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (end - start) as usize,
+                },
+            ),
             sub.wf_basic(),
     {
         let n = self.len();
@@ -366,7 +391,8 @@ impl PointsToUntyped {
         ensures
             #[trigger] Self::ptrs_len_same(old, new),
     {
-        assert forall|j: int| 0 <= j < new.len() implies #[trigger] new[j].ptr() == old[j].ptr() by {
+        assert forall|j: int| 0 <= j < new.len() implies #[trigger] new[j].ptr()
+            == old[j].ptr() by {
             assert(new[j].ptr()@.addr == old[j].ptr()@.addr);
         }
     }
@@ -401,8 +427,8 @@ impl PointsToUntyped {
             other.wf(),
         ensures
             *old(self) == *final(self),
-            final(self).ptr()@.addr + final(self).len() <= other.ptr()@.addr
-                || other.ptr()@.addr + other.len() <= final(self).ptr()@.addr,
+            final(self).ptr()@.addr + final(self).len() <= other.ptr()@.addr || other.ptr()@.addr
+                + other.len() <= final(self).ptr()@.addr,
     {
         self.is_disjoint(other);
     }
@@ -511,8 +537,10 @@ impl PointsToUntyped {
             final(self).seq_pt() == final(first).seq_pt() + final(second).seq_pt(),
             final(self).bytes() == final(first).bytes() + final(second).bytes(),
             // Criteria necessary for re-establishing invariants
-            Self::ptrs_len_same(*first, *final(first)) && Self::ptrs_len_same(*second, *final(second))
-                ==> final(self).wf(),
+            Self::ptrs_len_same(*first, *final(first)) && Self::ptrs_len_same(
+                *second,
+                *final(second),
+            ) ==> final(self).wf(),
     {
         let old_self = *self;
         if old_self.len() != 0 {
@@ -565,7 +593,8 @@ impl PointsToUntyped {
 
     /// Joins shared borrows of two `PointsToUntyped` permissions into a shared borrow of a
     /// single `PointsToUntyped`, under the same conditions as `join`.
-    pub proof fn join_ref<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked joined: &'a Self)
+    pub proof fn join_ref<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked joined:
+        &'a Self)
         requires
             self.wf(),
             other.wf(),
@@ -642,7 +671,10 @@ impl PointsToUntyped {
                 metadata: (old_self.len() + old_other.len()) as usize,
             },
         );
-        self.lemma_join_wf_basic(other, Self { seq_pt: old_self.seq_pt + old_other.seq_pt, ptr: Ghost(p) });
+        self.lemma_join_wf_basic(
+            other,
+            Self { seq_pt: old_self.seq_pt + old_other.seq_pt, ptr: Ghost(p) },
+        );
 
         let tracked s1 = self.tracked_seq_pt_mut();
         let tracked s2 = other.tracked_seq_pt_mut();
@@ -711,7 +743,6 @@ impl<T> PTProperties for PointsToUnaligned<[T]> {
 
 impl<T> PTValueOps for PointsToUnaligned<T> {
     // zero_sized, borrow, into_untyped, from_untyped: the trait's default bodies.
-
     /// Borrows the `val` field.
     proof fn borrow_typed_value(tracked &self) -> tracked &TypedValue<T> {
         &self.val
@@ -730,7 +761,10 @@ impl<T> PTValueOps for PointsToUnaligned<T> {
     }
 
     /// Splits into well-formed `pt_untyped` and `val` fields.
-    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<T>)) {
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (
+        PointsToUntyped,
+        TypedValue<T>,
+    )) {
         (self.pt_untyped, self.val)
     }
 
@@ -757,7 +791,6 @@ impl<T> PTValueOps for PointsToUnaligned<T> {
 
 impl<T> PTValueOps for PointsToUnaligned<[T]> {
     // zero_sized, borrow, into_untyped, from_untyped: the trait's default bodies.
-
     /// Borrows the `val` field.
     proof fn borrow_typed_value(tracked &self) -> tracked &TypedValue<[T]> {
         &self.val
@@ -776,7 +809,10 @@ impl<T> PTValueOps for PointsToUnaligned<[T]> {
     }
 
     /// Splits into well-formed `pt_untyped` and `val` fields.
-    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<[T]>)) {
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (
+        PointsToUntyped,
+        TypedValue<[T]>,
+    )) {
         (self.pt_untyped, self.val)
     }
 
@@ -803,7 +839,6 @@ impl<T> PTValueOps for PointsToUnaligned<[T]> {
 
 impl<T> PTSizedValue for PointsToUnaligned<T> {
     // take, put, copy, copy_typed_value, from_untyped_with_value: the trait's default bodies.
-
     /// Trivial, since a `PointsToUnaligned` has no alignment requirement.
     proof fn lemma_satisfies_alignment_offset(addr: usize, i: nat) {
     }
@@ -823,8 +858,8 @@ impl<T> PointsToUnaligned<T> {
             other.wf(),
         ensures
             *old(self) == *final(self),
-            final(self).ptr()@.addr + size_of::<T>() <= other.ptr()@.addr
-                || other.ptr()@.addr + size_of::<S>() <= final(self).ptr()@.addr,
+            final(self).ptr()@.addr + size_of::<T>() <= other.ptr()@.addr || other.ptr()@.addr
+                + size_of::<S>() <= final(self).ptr()@.addr,
     {
         self.is_disjoint(other);
     }
@@ -860,7 +895,6 @@ impl<T: ?Sized> PTProperties for PointsTo<T> where PointsToUnaligned<T>: PTValue
 
 impl<T: ?Sized> PTValueOps for PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
     // zero_sized, borrow, into_untyped, from_untyped: the trait's default bodies.
-
     /// Delegates to the underlying `PointsToUnaligned`.
     proof fn borrow_typed_value(tracked &self) -> tracked &TypedValue<T> {
         self.pt_unaligned.borrow_typed_value()
@@ -877,7 +911,10 @@ impl<T: ?Sized> PTValueOps for PointsTo<T> where PointsToUnaligned<T>: PTValueOp
     }
 
     /// Delegates to the underlying `PointsToUnaligned`.
-    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (PointsToUntyped, TypedValue<T>)) {
+    proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, v): (
+        PointsToUntyped,
+        TypedValue<T>,
+    )) {
         self.pt_unaligned.into_untyped_with_typed_value()
     }
 
@@ -909,7 +946,6 @@ impl<T: ?Sized> PTValueOps for PointsTo<T> where PointsToUnaligned<T>: PTValueOp
 
 impl<T> PTSizedValue for PointsTo<T> {
     // take, put, copy, copy_typed_value, from_untyped_with_value: the trait's default bodies.
-
     /// Offsetting a pointer by multiples of `size_of::<T>()` preserves its alignment to `T`,
     /// since `size_of::<T>()` is a multiple of `align_of::<T>()`.
     proof fn lemma_satisfies_alignment_offset(addr: usize, i: nat) {
@@ -950,8 +986,8 @@ impl<T> PointsTo<T> {
             other.wf(),
         ensures
             *old(self) == *final(self),
-            final(self).ptr()@.addr + size_of::<T>() <= other.ptr()@.addr
-                || other.ptr()@.addr + size_of::<S>() <= final(self).ptr()@.addr,
+            final(self).ptr()@.addr + size_of::<T>() <= other.ptr()@.addr || other.ptr()@.addr
+                + size_of::<S>() <= final(self).ptr()@.addr,
     {
         self.is_disjoint(other);
     }
@@ -1007,7 +1043,8 @@ impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = 
             out.pt_unaligned() == *old(self),
             out.wf(),
             *final(self) == final(out).pt_unaligned(),
-            <PointsTo<T> as PTTypedValue>::ptrs_len_same_valid_value(*out, *final(out)) ==> final(self).wf(),
+            <PointsTo<T> as PTTypedValue>::ptrs_len_same_valid_value(*out, *final(out))
+                ==> final(self).wf(),
     {
         let tracked out = PointsTo::from_unaligned_mut(self);
         let out_ref = out;
@@ -1056,8 +1093,10 @@ impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
             *out == old(self).pt_unaligned(),
             out.wf(),
             final(self).pt_unaligned() == *final(out),
-            final(out).ptr() == out.ptr() && PointsToUnaligned::<T>::ptrs_len_same_valid_value(*out, *final(out))
-                ==> final(self).wf(),
+            final(out).ptr() == out.ptr() && PointsToUnaligned::<T>::ptrs_len_same_valid_value(
+                *out,
+                *final(out),
+            ) ==> final(self).wf(),
     {
         let tracked out = &mut self.pt_unaligned;
         let out_ref = out;
@@ -1069,7 +1108,9 @@ impl<T: ?Sized> PointsTo<T> where PointsToUnaligned<T>: PTValueOps<A = T> {
 }
 
 /// Borrows the typed values of elements `[i, j)` of a borrowed slice, in order.
-proof fn tracked_slice_elem_refs<'a, T>(tracked v: &'a [T], i: int, j: int) -> (tracked out: Seq<&'a TypedValue<T>>)
+proof fn tracked_slice_elem_refs<'a, T>(tracked v: &'a [T], i: int, j: int) -> (tracked out: Seq<
+    &'a TypedValue<T>,
+>)
     requires
         0 <= i <= j <= v@.len(),
     ensures
@@ -1113,11 +1154,13 @@ impl<T> PointsToUnaligned<[T]> {
             self.wf(),
             0 <= i < self.len(),
         ensures
-            out.ptr() == ptr_mut_from_data::<T>(PtrData {
-                addr: (self.ptr()@.addr + i * size_of::<T>()) as usize,
-                provenance: self.ptr()@.provenance,
-                metadata: (),
-            }),
+            out.ptr() == ptr_mut_from_data::<T>(
+                PtrData {
+                    addr: (self.ptr()@.addr + i * size_of::<T>()) as usize,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (),
+                },
+            ),
             out.bytes() == self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
             self.typed_value().is_valid() ==> {
                 &&& out.typed_value().is_valid()
@@ -1152,17 +1195,24 @@ impl<T> PointsToUnaligned<[T]> {
 
     /// Borrows the permission to elements `[start, end)`.
     /// If the slice permission is empty, so is the subrange's.
-    pub proof fn subrange(tracked &self, start: nat, end: nat) -> (tracked out: &PointsToUnaligned<[T]>)
+    pub proof fn subrange(tracked &self, start: nat, end: nat) -> (tracked out: &PointsToUnaligned<
+        [T],
+    >)
         requires
             self.wf(),
             start <= end <= self.len(),
         ensures
-            out.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: (self.ptr()@.addr + start * size_of::<T>()) as usize,
-                provenance: self.ptr()@.provenance,
-                metadata: (end - start) as usize,
-            }),
-            out.bytes() == self.bytes().subrange((start * size_of::<T>()) as int, (end * size_of::<T>()) as int),
+            out.ptr() == ptr_mut_from_data::<[T]>(
+                PtrData {
+                    addr: (self.ptr()@.addr + start * size_of::<T>()) as usize,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (end - start) as usize,
+                },
+            ),
+            out.bytes() == self.bytes().subrange(
+                (start * size_of::<T>()) as int,
+                (end * size_of::<T>()) as int,
+            ),
             self.typed_value().is_valid() ==> {
                 &&& out.typed_value().is_valid()
                 &&& out.value() == self.value().subrange(start as int, end as int)
@@ -1194,7 +1244,11 @@ impl<T> PointsToUnaligned<[T]> {
             },
             TypedValue::Empty => &TypedValue::Empty,
         };
-        let tracked out = PointsToUnaligned::<[T]>::from_raw_parts_ref(sub, typed_value, (j - i) as usize);
+        let tracked out = PointsToUnaligned::<[T]>::from_raw_parts_ref(
+            sub,
+            typed_value,
+            (j - i) as usize,
+        );
 
         if self.typed_value().is_valid() {
             let w = out.value();
@@ -1203,14 +1257,18 @@ impl<T> PointsToUnaligned<[T]> {
                 out.bytes().subrange(k * s, (k + 1) * s),
                 &#[trigger] w[k],
             ) by {
-                assert((k + 1) * s == k * s + s && (k + 1) * s <= (j - i) * s && (i + k) * s == i * s + k * s
-                    && (i + k + 1) * s == i * s + (k + 1) * s && (i + k + 1) * s <= n * s) by (nonlinear_arith)
+                assert((k + 1) * s == k * s + s && (k + 1) * s <= (j - i) * s && (i + k) * s == i
+                    * s + k * s && (i + k + 1) * s == i * s + (k + 1) * s && (i + k + 1) * s <= n
+                    * s) by (nonlinear_arith)
                     requires
                         0 <= k < j - i,
                         j <= n,
                         0 <= s,
                 ;
-                assert(out.bytes().subrange(k * s, (k + 1) * s) =~= self.bytes().subrange((i + k) * s, (i + k + 1) * s));
+                assert(out.bytes().subrange(k * s, (k + 1) * s) =~= self.bytes().subrange(
+                    (i + k) * s,
+                    (i + k + 1) * s,
+                ));
             }
         }
         out
@@ -1219,12 +1277,19 @@ impl<T> PointsToUnaligned<[T]> {
     /// Borrows a `&PointsToUntyped` as a `&PointsToUnaligned<[T]>`
     /// with an empty typed value of length `len`,
     /// provided that the length matches the bytes.
-    pub proof fn from_untyped_ref<'a>(tracked pt_untyped: &'a PointsToUntyped, len: usize) -> (tracked out: &'a Self)
+    pub proof fn from_untyped_ref<'a>(
+        tracked pt_untyped: &'a PointsToUntyped,
+        len: usize,
+    ) -> (tracked out: &'a Self)
         requires
             pt_untyped.wf(),
             pt_untyped.len() == len * size_of::<T>(),
         ensures
-            out.ptr()@ == (PtrData { addr: pt_untyped.ptr()@.addr, provenance: pt_untyped.ptr()@.provenance, metadata: len }),
+            out.ptr()@ == (PtrData {
+                addr: pt_untyped.ptr()@.addr,
+                provenance: pt_untyped.ptr()@.provenance,
+                metadata: len,
+            }),
             out.bytes() == pt_untyped.bytes(),
             out.typed_value().is_empty(),
             out.wf(),
@@ -1236,19 +1301,28 @@ impl<T> PointsToUnaligned<[T]> {
     /// Borrows a `&PointsToUntyped` and `tracked &[T]` as a `&PointsToUnaligned<[T]>`
     /// with a valid typed value set to `value`,
     /// provided that the bytes decode to the value.
-    pub proof fn from_untyped_with_value_ref<'a>(tracked pt_untyped: &'a PointsToUntyped, tracked value: &'a [T])
-        -> (tracked out: &'a Self)
+    pub proof fn from_untyped_with_value_ref<'a>(
+        tracked pt_untyped: &'a PointsToUntyped,
+        tracked value: &'a [T],
+    ) -> (tracked out: &'a Self)
         requires
             pt_untyped.wf(),
             abs_decode::<[T]>(pt_untyped.bytes(), value),
         ensures
-            out.ptr()@ == (PtrData { addr: pt_untyped.ptr()@.addr, provenance: pt_untyped.ptr()@.provenance, metadata: value@.len() as usize }),
+            out.ptr()@ == (PtrData {
+                addr: pt_untyped.ptr()@.addr,
+                provenance: pt_untyped.ptr()@.provenance,
+                metadata: value@.len() as usize,
+            }),
             out.bytes() == pt_untyped.bytes(),
             out.typed_value().is_valid(),
             out.typed_value().value_ref() == value,
             out.wf(),
     {
-        broadcast use crate::vstd::slice::group_slice_axioms, crate::vstd::type_representation::abs_decode_slice;
+        broadcast use
+            crate::vstd::slice::group_slice_axioms,
+            crate::vstd::type_representation::abs_decode_slice,
+        ;
 
         assert(value@.len() == crate::vstd::slice::spec_slice_len(value));
         let tracked typed_value = TypedValue::valid_ref(value);
@@ -1281,11 +1355,13 @@ impl<T> PointsTo<[T]> {
             self.wf(),
             0 <= i < self.len(),
         ensures
-            out.ptr() == ptr_mut_from_data::<T>(PtrData {
-                addr: (self.ptr()@.addr + i * size_of::<T>()) as usize,
-                provenance: self.ptr()@.provenance,
-                metadata: (),
-            }),
+            out.ptr() == ptr_mut_from_data::<T>(
+                PtrData {
+                    addr: (self.ptr()@.addr + i * size_of::<T>()) as usize,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (),
+                },
+            ),
             out.bytes() == self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
             self.typed_value().is_valid() ==> {
                 &&& out.typed_value().is_valid()
@@ -1321,12 +1397,17 @@ impl<T> PointsTo<[T]> {
             self.wf(),
             start <= end <= self.len(),
         ensures
-            out.ptr() == ptr_mut_from_data::<[T]>(PtrData {
-                addr: (self.ptr()@.addr + start * size_of::<T>()) as usize,
-                provenance: self.ptr()@.provenance,
-                metadata: (end - start) as usize,
-            }),
-            out.bytes() == self.bytes().subrange((start * size_of::<T>()) as int, (end * size_of::<T>()) as int),
+            out.ptr() == ptr_mut_from_data::<[T]>(
+                PtrData {
+                    addr: (self.ptr()@.addr + start * size_of::<T>()) as usize,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (end - start) as usize,
+                },
+            ),
+            out.bytes() == self.bytes().subrange(
+                (start * size_of::<T>()) as int,
+                (end * size_of::<T>()) as int,
+            ),
             self.typed_value().is_valid() ==> {
                 &&& out.typed_value().is_valid()
                 &&& out.value() == self.value().subrange(start as int, end as int)
@@ -1357,13 +1438,20 @@ impl<T> PointsTo<[T]> {
     /// Borrows a `&PointsToUntyped` as a `&PointsTo<[T]>`
     /// with an empty typed value of length `len`,
     /// provided that the length matches the bytes and the `PointsToUntyped`'s pointer is aligned.
-    pub proof fn from_untyped_ref<'a>(tracked pt_untyped: &'a PointsToUntyped, len: usize) -> (tracked out: &'a Self)
+    pub proof fn from_untyped_ref<'a>(
+        tracked pt_untyped: &'a PointsToUntyped,
+        len: usize,
+    ) -> (tracked out: &'a Self)
         requires
             pt_untyped.wf(),
             pt_untyped.len() == len * size_of::<T>(),
             Self::satisfies_alignment(pt_untyped.ptr()@.addr),
         ensures
-            out.ptr()@ == (PtrData { addr: pt_untyped.ptr()@.addr, provenance: pt_untyped.ptr()@.provenance, metadata: len }),
+            out.ptr()@ == (PtrData {
+                addr: pt_untyped.ptr()@.addr,
+                provenance: pt_untyped.ptr()@.provenance,
+                metadata: len,
+            }),
             out.bytes() == pt_untyped.bytes(),
             out.typed_value().is_empty(),
             out.wf(),
@@ -1374,14 +1462,20 @@ impl<T> PointsTo<[T]> {
     /// Borrows a `&PointsToUntyped` and `tracked &[T]` as a `&PointsTo<[T]>`
     /// with a valid typed value set to `value`,
     /// provided that the bytes decode to the value and the `PointsToUntyped`'s pointer is aligned.
-    pub proof fn from_untyped_with_value_ref<'a>(tracked pt_untyped: &'a PointsToUntyped, tracked value: &'a [T])
-        -> (tracked out: &'a Self)
+    pub proof fn from_untyped_with_value_ref<'a>(
+        tracked pt_untyped: &'a PointsToUntyped,
+        tracked value: &'a [T],
+    ) -> (tracked out: &'a Self)
         requires
             pt_untyped.wf(),
             abs_decode::<[T]>(pt_untyped.bytes(), value),
             Self::satisfies_alignment(pt_untyped.ptr()@.addr),
         ensures
-            out.ptr()@ == (PtrData { addr: pt_untyped.ptr()@.addr, provenance: pt_untyped.ptr()@.provenance, metadata: value@.len() as usize }),
+            out.ptr()@ == (PtrData {
+                addr: pt_untyped.ptr()@.addr,
+                provenance: pt_untyped.ptr()@.provenance,
+                metadata: value@.len() as usize,
+            }),
             out.bytes() == pt_untyped.bytes(),
             out.typed_value().is_valid(),
             out.typed_value().value_ref() == value,
@@ -1409,17 +1503,21 @@ impl<T> PointsTo<[T]> {
     // it isn't stored anywhere that could be borrowed for `self`'s lifetime.
     // This bound is satisfied by all the unsigned primitive integers,
     // which are `vstd`'s only `DecodesToNat` impls.
-    pub proof fn as_big_unaligned<V>(tracked &self) -> (tracked out: &PointsToUnaligned<V>)
-        where
-            T: DecodesToNat + CompatibleSmallerBaseFor<V>,
-            V: crate::vstd::modes::TrivialOwnership + DecodesToNat + 'static,
+    pub proof fn as_big_unaligned<V>(tracked &self) -> (tracked out: &PointsToUnaligned<V>) where
+        T: DecodesToNat + CompatibleSmallerBaseFor<V>,
+        V: crate::vstd::modes::TrivialOwnership + DecodesToNat + 'static,
+
         requires
             self.wf(),
             self.is_valid(),
             self.len() * size_of::<T>() == size_of::<V>(),
         ensures
             out.ptr() == ptr_mut_from_data::<V>(
-                PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: () },
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (),
+                },
             ),
             out.bytes() == self.bytes(),
             out.is_valid(),
@@ -1487,10 +1585,10 @@ impl<T> PointsTo<[T]> {
     /// in this platform's endianness (`to_big_from_digits`),
     /// and the bytes are unchanged.
     // `V: 'static` for the same reason as `as_big_unaligned`.
-    pub proof fn as_big_aligned<V>(tracked &self) -> (tracked out: &PointsTo<V>)
-        where
-            T: DecodesToNat + CompatibleSmallerBaseFor<V>,
-            V: crate::vstd::modes::TrivialOwnership + DecodesToNat + 'static,
+    pub proof fn as_big_aligned<V>(tracked &self) -> (tracked out: &PointsTo<V>) where
+        T: DecodesToNat + CompatibleSmallerBaseFor<V>,
+        V: crate::vstd::modes::TrivialOwnership + DecodesToNat + 'static,
+
         requires
             self.wf(),
             self.is_valid(),
@@ -1498,7 +1596,11 @@ impl<T> PointsTo<[T]> {
             self.ptr()@.addr as int % align_of::<V>() as int == 0,
         ensures
             out.ptr() == ptr_mut_from_data::<V>(
-                PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: () },
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (),
+                },
             ),
             out.bytes() == self.bytes(),
             out.is_valid(),

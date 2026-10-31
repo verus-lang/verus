@@ -1,8 +1,8 @@
+use super::super::group_vstd_default;
+use super::super::prelude::*;
 use super::points_to_model::PTPhys;
 use super::points_to_model::PTTypedValue;
 use super::points_to_model::PointsTo;
-use super::super::prelude::*;
-use super::super::group_vstd_default;
 
 verus! {
 
@@ -143,7 +143,6 @@ impl<'a, T> SharedReference<'a, [T]> {
 //     {
 //         self.0 as *const str
 //     }
-
 //     // commonly used operation: this function's signature corresponds to Rust's `str::as_ptr`
 //     pub const fn as_ptr(self) -> (ptr: *const u8)
 //         ensures
@@ -151,7 +150,6 @@ impl<'a, T> SharedReference<'a, [T]> {
 //     {
 //         self.as_str_ptr() as *const u8
 //     }
-
 //     pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<str>)
 //         ensures
 //             pt.ptr() == self.ptr(),
@@ -159,7 +157,6 @@ impl<'a, T> SharedReference<'a, [T]> {
 //             pt.value() == self.value(),
 //     ;
 // }
-
 impl<'a, T> View for SharedReference<'a, [T]> {
     type V = Seq<T>;
 
@@ -222,12 +219,13 @@ pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) ->
 //         v.value() == perm.value(),
 //         v.ptr() == ptr,
 // ;
-
 /// The ghost version of `ptr_ref2` for slices.
 /// Because this doesn't constitute a retag,
 /// the returned value's pointer has the same provenance as the original pointer.
-pub axiom fn ptr_ref2_slice_ghost<'a, T>(ptr: *const [T], tracked perm: &PointsTo<[T]>)
-    -> (tracked v: SharedReference<'a, [T]>)
+pub axiom fn ptr_ref2_slice_ghost<'a, T>(
+    ptr: *const [T],
+    tracked perm: &PointsTo<[T]>,
+) -> (tracked v: SharedReference<'a, [T]>)
     requires
         perm.ptr() == ptr,
         perm.is_valid(),
@@ -237,4 +235,4 @@ pub axiom fn ptr_ref2_slice_ghost<'a, T>(ptr: *const [T], tracked perm: &PointsT
         v.ptr() == ptr,
 ;
 
-}
+} // verus!

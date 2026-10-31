@@ -74,7 +74,7 @@ pub ghost struct AllocationData {
 pub ghost struct Tag {}
 
 /// A pointer's provenance consists of its allocation (the spatial part)
-/// and its tag, if it is not none. 
+/// and its tag, if it is not none.
 #[verifier::external_body]
 pub ghost struct ProvenanceData {}
 

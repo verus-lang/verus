@@ -270,8 +270,10 @@ impl<A> Seq<A> {
     /// (the inverse of `tracked_split_borrow_mut`).
     /// If the concatenation keeps its length,
     /// its final value splits back into `self`'s and `other`'s at `self`'s length.
-    pub axiom fn tracked_add_borrow_mut<'a>(tracked &'a mut self, tracked other: &'a mut Self) -> (tracked ret:
-        &'a mut Self)
+    pub axiom fn tracked_add_borrow_mut<'a>(
+        tracked &'a mut self,
+        tracked other: &'a mut Self,
+    ) -> (tracked ret: &'a mut Self)
         ensures
             *ret == *old(self) + *old(other),
             final(ret).len() == ret.len() ==> {
