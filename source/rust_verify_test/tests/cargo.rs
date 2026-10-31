@@ -157,6 +157,20 @@ fn cargo_new_builds() {
     assert!(run.status.success());
 }
 
+#[test]
+fn cargo_focus_lib_ignores_same_named_aliased_dependency() {
+    let test_dir =
+        compute_test_dir("rust_verify_test/tests/cargo-tests/verified/same_named_dependency");
+    let target_dir = tempdir().expect("Failed to create temporary target directory");
+
+    // A package with a non-lib target asks Cargo-Verus to import its own lib for
+    // that target. While checking the lib itself, that import is absent from
+    // `--extern` and must not resolve to an aliased dependency whose underlying
+    // crate happens to have the same name.
+    let run = run_cargo_verus_with_target(&["focus", "--lib"], &test_dir, target_dir.path());
+    assert!(run.status.success());
+}
+
 // Tests that run `cargo verus {verify, build}` on each crate in the cargo-tests/verified directory
 cargo_examples!(true);
 
