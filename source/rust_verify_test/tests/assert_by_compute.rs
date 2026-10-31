@@ -1546,3 +1546,26 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3078
+    #[test] depth_limit_on_symbolic_recursion verus_code! {
+        use vstd::prelude::*;
+
+        spec fn count(s: Seq<int>) -> int
+            decreases s.len(),
+        {
+            if s.len() == 0 { 0 } else { count(s.drop_first()) + 1 }
+        }
+
+        uninterp spec fn p(x: int) -> bool;
+
+        proof fn test(s: Seq<int>) {
+            // `s` is symbolic, so `count` unfolds until the interpreter's limit
+            assert(p(count(s))) by (compute);
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        assert!(err.errors[0].rendered.contains("`assert_by_compute` exceeded maximum recursion depth"));
+    }
+}
