@@ -180,6 +180,9 @@ pub type Args = Arc<ArgsX>;
 pub struct CargoVerusArgsX {
     pub compile_when_primary_package: bool,
     pub compile_when_not_primary_package: bool,
+    /// Optional direct externs that must never fall back to a transitive crate with
+    /// the same library name. Cargo-Verus uses this for a package's own library.
+    pub import_direct_dep_if_present: Vec<String>,
     pub import_dep_if_present: Vec<String>,
 }
 
@@ -188,6 +191,7 @@ impl CargoVerusArgsX {
         Self {
             compile_when_primary_package: false,
             compile_when_not_primary_package: false,
+            import_direct_dep_if_present: Default::default(),
             import_dep_if_present: Default::default(),
         }
     }
@@ -265,6 +269,7 @@ pub fn parse_cargo_args(_program: &String, args: &mut Vec<String>) -> CargoVerus
 
     const CARGO_OPT_COMPILE_WHEN_PRIMARY: &str = "compile-when-primary-package";
     const CARGO_OPT_COMPILE_WHEN_NOT_PRIMARY: &str = "compile-when-not-primary-package";
+    const CARGO_OPT_IMPORT_DIRECT_DEP_IF_PRESENT: &str = "import-direct-dep-if-present";
     const CARGO_OPT_IMPORT_DEP_IF_PRESENT: &str = "import-dep-if-present";
 
     let mut next_is_via_cargo = false;
@@ -277,6 +282,16 @@ pub fn parse_cargo_args(_program: &String, args: &mut Vec<String>) -> CargoVerus
                 cargo_verus_args.compile_when_primary_package = true;
             } else if arg == CARGO_OPT_COMPILE_WHEN_NOT_PRIMARY {
                 cargo_verus_args.compile_when_not_primary_package = true;
+            } else if arg.starts_with(CARGO_OPT_IMPORT_DIRECT_DEP_IF_PRESENT) {
+                let oo: Vec<_> = arg.split("=").collect();
+                if let [_, val] = &oo[..] {
+                    cargo_verus_args.import_direct_dep_if_present.push(val.to_string());
+                } else {
+                    error(format!(
+                        "expected `--VIA-CARGO {}=DEP_NAME`",
+                        CARGO_OPT_IMPORT_DIRECT_DEP_IF_PRESENT
+                    ));
+                }
             } else if arg.starts_with(CARGO_OPT_IMPORT_DEP_IF_PRESENT) {
                 let oo: Vec<_> = arg.split("=").collect();
                 if let [_, val] = &oo[..] {
