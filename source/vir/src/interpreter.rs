@@ -1733,8 +1733,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
             }
         }
-        Call(CallFun::Fun(fun, resolved_method), typs, args) => {
-            let (fun, typs) = resolve_call(fun, resolved_method, typs);
+        Call(CallFun::Fun(orig_fun, resolved_method), orig_typs, args) => {
+            let (fun, typs) = resolve_call(orig_fun, resolved_method, orig_typs);
             if state.perf {
                 // Record the call for later performance analysis
                 match state.fun_calls.get_mut(fun) {
@@ -1804,8 +1804,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 } else {
                                     // return unevaluated call
                                     exp_new(Call(
-                                        CallFun::Fun(fun.clone(), resolved_method.clone()),
-                                        typs.clone(),
+                                        CallFun::Fun(orig_fun.clone(), resolved_method.clone()),
+                                        orig_typs.clone(),
                                         new_args.clone(),
                                     ))
                                 };
@@ -1816,10 +1816,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                     }
                     _ => {
-                        // We don't have the body for this function, so we can't simplify further
+                        // We don't have the body for this function, so we can't simplify further.
+                        // Keep the unresolved call, since the resolved function may not be declared.
                         exp_new(Call(
-                            CallFun::Fun(fun.clone(), resolved_method.clone()),
-                            typs.clone(),
+                            CallFun::Fun(orig_fun.clone(), resolved_method.clone()),
+                            orig_typs.clone(),
                             new_args.clone(),
                         ))
                     }
