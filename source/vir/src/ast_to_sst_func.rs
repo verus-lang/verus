@@ -229,6 +229,7 @@ fn func_body_to_sst(
             statics: Arc::new(vec![]),
             reqs: Arc::new(vec![]),
             unwind: UnwindSst::NoUnwind,
+            unwind_ens: Arc::new(vec![]),
         };
         Some(termination_check)
     } else {
@@ -422,6 +423,8 @@ pub fn func_decl_to_sst(
             Some(exps[0].clone())
         }
     };
+    let (_pars, unwind_ensures) =
+        req_ens_to_sst(ctx, diagnostics, function, &function.x.unwind_ensure, true)?;
 
     let mut fndef_axiom_exps: Vec<Exp> = Vec::new();
     if crate::ast_simplify::need_fndef_axiom(&ctx.fndef_type_set, function) {
@@ -490,6 +493,7 @@ pub fn func_decl_to_sst(
         enss: (Arc::new(enss0), Arc::new(enss1)),
         inv_masks: Arc::new(inv_masks),
         unwind_condition,
+        unwind_ensures: Arc::new(unwind_ensures),
         fndef_axioms: Arc::new(fndef_axiom_exps),
     })
 }
@@ -935,6 +939,11 @@ pub fn func_def_to_sst(
     let unwind_ast = specs_function.x.unwind_spec_or_default();
     let unwind_sst = unwind_ast
         .map_to_sst(&mut |expr| lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms))?;
+    // Unwind ensures: take from trait method if it exists
+    let mut unwind_ens: Vec<Exp> = Vec::new();
+    for expr in specs_function.x.unwind_ensure.iter() {
+        unwind_ens.push(lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms)?);
+    }
 
     // Decreases: add recommends if necessary; otherwise nothing to do
     if ctx.checking_spec_preconditions() {
@@ -1004,6 +1013,13 @@ pub fn func_def_to_sst(
         .collect();
     let ens_spec_precondition_stms = ens_spec_precondition_stms?;
     let unwind_sst = unwind_sst.map(&|e| Ok(exp_pre(&state.finalize_exp(&ctx, e)?)))?;
+    let unwind_ens = if ctx.checking_spec_preconditions() || check_api_safety {
+        vec![]
+    } else {
+        let unwind_ens: Result<Vec<_>, VirErr> =
+            unwind_ens.iter().map(|e| Ok(exp_pre(&state.finalize_exp(&ctx, e)?))).collect();
+        unwind_ens?
+    };
 
     // For `requires[no_unwind exact]`, the function must unwind when the condition fails,
     // so a normal return must establish the condition
@@ -1061,6 +1077,7 @@ pub fn func_def_to_sst(
             },
         }),
         unwind: unwind_sst,
+        unwind_ens: Arc::new(unwind_ens),
         body: stm,
         local_decls: Arc::new(local_decls),
         local_decls_decreases_init,

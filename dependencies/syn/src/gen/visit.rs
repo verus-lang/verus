@@ -1121,6 +1121,9 @@ pub trait Visit<'ast> {
     fn visit_uninterp(&mut self, i: &'ast crate::Uninterp) {
         visit_uninterp(self, i);
     }
+    fn visit_unwind_ensures(&mut self, i: &'ast crate::UnwindEnsures) {
+        visit_unwind_ensures(self, i);
+    }
     fn visit_unwind_requires(&mut self, i: &'ast crate::UnwindRequires) {
         visit_unwind_requires(self, i);
     }
@@ -1356,6 +1359,9 @@ where
     }
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
+    }
+    if let Some(it) = &node.unwind_ensures {
+        v.visit_unwind_ensures(it);
     }
     if let Some(it) = &node.default_ensures {
         v.visit_default_ensures(it);
@@ -4664,6 +4670,9 @@ where
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
     }
+    if let Some(it) = &node.unwind_ensures {
+        v.visit_unwind_ensures(it);
+    }
     if let Some(it) = &node.default_ensures {
         v.visit_default_ensures(it);
     }
@@ -5215,6 +5224,16 @@ where
     V: Visit<'ast> + ?Sized,
 {
     skip!(node.token);
+}
+pub fn visit_unwind_ensures<'ast, V>(v: &mut V, node: &'ast crate::UnwindEnsures)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+    skip!(node.bracket_token);
+    v.visit_ident(&node.on_token);
+    v.visit_ident(&node.unwind_token);
+    v.visit_specification(&node.exprs);
 }
 pub fn visit_unwind_requires<'ast, V>(v: &mut V, node: &'ast crate::UnwindRequires)
 where

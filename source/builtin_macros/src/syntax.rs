@@ -41,8 +41,8 @@ use verus_syn::{
     PatIdent, PatType, Path, PathArguments, Publish, Receiver, Recommends, Requires, ReturnType,
     Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr,
     SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath,
-    TypeReference, UnOp, UnwindRequires, Visibility, braced, bracketed, parenthesized,
-    parse_macro_input,
+    TypeReference, UnOp, UnwindEnsures, UnwindRequires, Visibility, braced, bracketed,
+    parenthesized, parse_macro_input,
 };
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -989,6 +989,7 @@ impl Visitor {
         let unwind_requires = self.take_ghost(&mut spec.unwind_requires);
         let recommends = self.take_ghost(&mut spec.recommends);
         let ensures = self.take_ghost(&mut spec.ensures);
+        let unwind_ensures = self.take_ghost(&mut spec.unwind_ensures);
         let default_ensures = self.take_ghost(&mut spec.default_ensures);
         let returns = self.take_ghost(&mut spec.returns);
         let decreases = self.take_ghost(&mut spec.decreases);
@@ -1077,6 +1078,19 @@ impl Visitor {
                 };
                 spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(quote_spanned!(token.span => #f([#exprs]))),
+                    Some(Semi { spans: [token.span] }),
+                ));
+            }
+        }
+        if let Some(UnwindEnsures { token, mut exprs, .. }) = unwind_ensures {
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                spec_stmts.push(Stmt::Expr(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::unwind_ensures([#exprs])),
+                    ),
                     Some(Semi { spans: [token.span] }),
                 ));
             }
@@ -2257,6 +2271,7 @@ impl Visitor {
             requires,
             unwind_requires,
             ensures,
+            unwind_ensures,
             default_ensures,
             returns,
             invariants,
@@ -2292,6 +2307,7 @@ impl Visitor {
                 unwind_requires,
                 recommends: None,
                 ensures: ensures,
+                unwind_ensures,
                 default_ensures,
                 returns: returns,
                 decreases: None,

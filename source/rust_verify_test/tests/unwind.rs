@@ -1190,3 +1190,385 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "an `unwind` specification can only be given on exec functions")
 }
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind verus_code! {
+        use vstd::prelude::*;
+
+        fn may_unwind() {
+        }
+
+        fn f(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+            if i >= 10 {
+                may_unwind();
+            }
+        }
+
+        fn f_fail(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+            may_unwind(); // FAILS
+        }
+
+        // the callee's ensures[on unwind] can be assumed on its unwind path
+        fn g(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+            f(i);
+        }
+
+        fn g_fail(i: u8)
+            ensures[on unwind]
+                i >= 11,
+        {
+            f(i); // FAILS
+        }
+
+        // ensures[on unwind] is not a precondition
+        fn h() {
+            f(3);
+        }
+
+        // multiple clauses are all checked
+        fn multi(i: u8, j: u8)
+            ensures[on unwind]
+                i >= 10,
+                j >= 10,
+        {
+            if i >= 10 {
+                may_unwind(); // FAILS
+            }
+        }
+
+        fn multi2(i: u8, j: u8)
+            ensures[on unwind]
+                i >= 10,
+                j >= 10,
+        {
+            if i >= 10 && j >= 10 {
+                may_unwind();
+            }
+            if j >= 10 {
+                f(i);
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_syntax verus_code! {
+        use vstd::prelude::*;
+
+        fn may_unwind() {
+        }
+
+        fn f1(i: u8) -> (r: u8)
+            requires
+                i < 100,
+            ensures
+                r == i + 1,
+            ensures[on unwind]
+                i >= 10,
+        {
+            if i >= 10 {
+                may_unwind();
+            }
+            i + 1
+        }
+
+        fn f2(i: u8) -> (r: u8)
+            requires
+                i < 100,
+            ensures[on unwind]
+                i >= 10,
+            ensures
+                r == i + 1,
+        {
+            if i >= 10 {
+                may_unwind();
+            }
+            i + 1
+        }
+
+        fn test() {
+            let r = f1(5);
+            assert(r == 6);
+            let r = f2(5);
+            assert(r == 6);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_with_no_unwind_when verus_code! {
+        use vstd::prelude::*;
+
+        fn may_unwind() {
+        }
+
+        fn nu(i: u8)
+            no_unwind when i < 10
+        {
+            if i >= 10 {
+                may_unwind();
+            }
+        }
+
+        // the callee only unwinds when i >= 10
+        fn f(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+            nu(i);
+        }
+
+        // the endpoint of the unwind path checks both the legacy `no_unwind when`
+        // and `ensures[on unwind]`
+        fn g(i: u8, j: u8)
+            ensures[on unwind]
+                j == 0,
+            no_unwind when i < 10
+        {
+            if i >= 10 && j == 0 {
+                may_unwind();
+            }
+            if i >= 10 {
+                may_unwind(); // FAILS
+            }
+        }
+
+        fn g2(i: u8, j: u8)
+            ensures[on unwind]
+                j == 0,
+            no_unwind when i < 10
+        {
+            if j == 0 {
+                may_unwind(); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_with_requires_no_unwind verus_code! {
+        use vstd::prelude::*;
+
+        fn may_unwind() {
+        }
+
+        fn r(i: u8)
+            requires[no_unwind]
+                i < 10,
+        {
+            if i >= 10 {
+                may_unwind();
+            }
+        }
+
+        // unwinding of r implies !(i < 10)
+        #[verifier::restrict_unwind(false)]
+        fn f(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+            r(i);
+        }
+
+        #[verifier::restrict_unwind(false)]
+        fn f_fail(i: u8)
+            ensures[on unwind]
+                i >= 11,
+        {
+            r(i); // FAILS
+        }
+
+        // the endpoint of the unwind path checks the negation of requires[no_unwind]
+        // and the ensures[on unwind] conditions
+        fn g(i: u8, j: u8)
+            requires[no_unwind]
+                i < 10,
+            ensures[on unwind]
+                j == 0,
+        {
+            if i >= 10 && j == 0 {
+                may_unwind();
+            }
+        }
+
+        fn g_fail1(i: u8, j: u8)
+            requires[no_unwind]
+                i < 10,
+            ensures[on unwind]
+                j == 0,
+        {
+            if j == 0 {
+                may_unwind(); // FAILS
+            }
+        }
+
+        fn g_fail2(i: u8, j: u8)
+            requires[no_unwind]
+                i < 10,
+            ensures[on unwind]
+                j == 0,
+        {
+            if i >= 10 {
+                may_unwind(); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_closure verus_code! {
+        use vstd::prelude::*;
+
+        fn may_unwind() {
+        }
+
+        // closure bodies are checked separately (closures may always unwind)
+        fn f(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+            let c = || { may_unwind(); };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_trait verus_code! {
+        use vstd::prelude::*;
+
+        fn may_unwind() {
+        }
+
+        trait T {
+            fn m(&self, i: u8)
+                ensures[on unwind]
+                    i >= 5;
+        }
+
+        struct S;
+
+        impl T for S {
+            fn m(&self, i: u8) {
+                if i >= 5 {
+                    may_unwind();
+                }
+            }
+        }
+
+        struct S2;
+
+        impl T for S2 {
+            fn m(&self, i: u8) {
+                may_unwind(); // FAILS
+            }
+        }
+
+        fn test1<A: T>(a: &A, i: u8)
+            ensures[on unwind]
+                i >= 5,
+        {
+            a.m(i);
+        }
+
+        fn test2(s: &S, i: u8)
+            ensures[on unwind]
+                i >= 6,
+        {
+            s.m(i); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_trait_impl_not_allowed verus_code! {
+        trait T {
+            fn m(&self, i: u8);
+        }
+
+        struct S;
+
+        impl T for S {
+            fn m(&self, i: u8)
+                ensures[on unwind]
+                    i >= 5,
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `ensures[on unwind]` clauses")
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_assume_specification verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        fn ext(i: u8) -> u8 {
+            if i == 0 { panic!() }
+            i
+        }
+
+        pub assume_specification[ext](i: u8) -> (r: u8)
+            ensures
+                r == i,
+            ensures[on unwind]
+                i == 0;
+
+        fn test1(i: u8)
+            ensures[on unwind]
+                i == 0,
+        {
+            let r = ext(i);
+            assert(r == i);
+        }
+
+        fn test2(i: u8)
+            ensures[on unwind]
+                i == 1,
+        {
+            let r = ext(i); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_bad_syntax verus_code! {
+        fn f(i: u8)
+            ensures[on bogus]
+                i >= 5,
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected `unwind`")
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_proof_fn verus_code! {
+        proof fn f(i: u8)
+            ensures[on unwind]
+                i >= 5,
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`ensures[on unwind]` clauses can only be given on exec functions")
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_private_field verus_code! {
+        mod m {
+            pub struct S { x: u8 }
+
+            pub fn f(s: &S)
+                ensures[on unwind]
+                    s.x == 0,
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: field expression for an opaque datatype")
+}

@@ -114,6 +114,7 @@ pub(crate) enum SpecItem {
     NoUnwindWhen,
     NoUnwindRequires,
     NoUnwindRequiresExact,
+    UnwindEnsures,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -534,6 +535,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::no_unwind_when",          VerusItem::Spec(SpecItem::NoUnwindWhen)),
         ("verus::verus_builtin::no_unwind_requires",      VerusItem::Spec(SpecItem::NoUnwindRequires)),
         ("verus::verus_builtin::no_unwind_requires_exact", VerusItem::Spec(SpecItem::NoUnwindRequiresExact)),
+        ("verus::verus_builtin::unwind_ensures",          VerusItem::Spec(SpecItem::UnwindEnsures)),
 
         ("verus::verus_builtin::forall",                  VerusItem::Quant(QuantItem::Forall)),
         ("verus::verus_builtin::exists",                  VerusItem::Quant(QuantItem::Exists)),

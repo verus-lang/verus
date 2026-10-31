@@ -74,6 +74,27 @@ A function may use either `requires[no_unwind]`, `requires[no_unwind exact]`,
 or `no_unwind`/`no_unwind when`, but not more than one of these.
 `requires[no_unwind ...]` can be combined with an ordinary `requires` clause.
 
+## `ensures[on unwind]`
+
+A function can specify conditions that hold if it unwinds:
+
+```rust
+fn f(i: u8)
+    ensures[on unwind]
+        i >= 10,
+```
+
+This means that if the function unwinds, then `i >= 10`.
+Like `requires[no_unwind]` and `no_unwind when`, the conditions may only refer to the
+function's arguments (in their state at the call).
+Unlike `requires[no_unwind]`, `ensures[on unwind]` is never checked at call sites;
+instead, callers may assume the conditions if the call unwinds.
+
+Verus checks the `ensures[on unwind]` conditions at every point where the function
+might unwind, along with the negation of the function's `requires[no_unwind]` or `no_unwind when`
+conditions (if any).
+`ensures[on unwind]` can be combined with `ensures` and with any of the unwind specifications above.
+
 ## Restrictions with invariants
 
 You cannot unwind when an [invariant](https://verus-lang.github.io/verus/verusdoc/vstd/macro.open_local_invariant.html) is open.

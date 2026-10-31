@@ -178,6 +178,14 @@ pub fn no_unwind_requires_exact<A>(_a: A) {
     unimplemented!();
 }
 
+// Can only appear at beginning of function body
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::unwind_ensures"]
+#[verifier::proof]
+pub fn unwind_ensures<A>(_a: A) {
+    unimplemented!();
+}
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::reveal_hide"]
 #[verifier::proof]

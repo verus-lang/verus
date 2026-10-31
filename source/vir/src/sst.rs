@@ -403,6 +403,8 @@ pub struct FuncDeclSst {
     pub enss: (Exps, Exps),
     pub inv_masks: Arc<Vec<Exps>>,
     pub unwind_condition: Option<Exp>,
+    /// `ensures[on unwind]` conditions (functions of the arguments' pre-state)
+    pub unwind_ensures: Exps,
     pub fndef_axioms: Exps,
 }
 
@@ -412,6 +414,8 @@ pub struct FuncCheckSst {
     pub return_opaque_type_eqs: Arc<Vec<(Typ, Typ)>>,
     pub post_condition: Arc<PostConditionSst>,
     pub unwind: UnwindSst,
+    /// `ensures[on unwind]` conditions, checked at the end of each unwind path
+    pub unwind_ens: Exps,
     pub body: Stm,
     pub local_decls: Arc<Vec<LocalDecl>>,
     /// LocalDeclKind::Decreases have an assignment that must be carried into loop_isolation(false):

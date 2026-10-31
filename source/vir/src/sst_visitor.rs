@@ -682,6 +682,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         }
         let unwind_condition: <R as Returner>::Opt<Arc<SpannedTyped<ExpX>>> =
             R::map_opt(&func_decl.unwind_condition, &mut |exp| self.visit_exp(exp))?;
+        let unwind_ensures = self.visit_exps(&func_decl.unwind_ensures)?;
 
         R::ret(|| FuncDeclSst {
             req_inv_pars: R::get_vec_a(req_inv_pars),
@@ -690,6 +691,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             enss: (R::get_vec_a(enss0), R::get_vec_a(enss1)),
             inv_masks: R::get_vec_a(inv_masks),
             unwind_condition: R::get_opt(unwind_condition),
+            unwind_ensures: R::get_vec_a(unwind_ensures),
             fndef_axioms: R::get_vec_a(fndef_axioms),
         })
     }
@@ -717,12 +719,14 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let local_decls = R::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
         let local_decls_decreases_init = self.visit_stms(&def.local_decls_decreases_init)?;
         let unwind = self.visit_unwind(&def.unwind)?;
+        let unwind_ens = self.visit_exps(&def.unwind_ens)?;
 
         R::ret(|| FuncCheckSst {
             reqs: R::get_vec_a(reqs),
             return_opaque_type_eqs: R::get_vec_a(return_opaque_type_eqs),
             post_condition: Arc::new(R::get(post_condition)),
             unwind: R::get(unwind),
+            unwind_ens: R::get_vec_a(unwind_ens),
             body: R::get(body),
             local_decls: R::get_vec_a(local_decls),
             local_decls_decreases_init: R::get_vec_a(local_decls_decreases_init),

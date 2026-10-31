@@ -4175,6 +4175,19 @@ fn check_function_inner(
             )?;
         }
     }
+    for expr in function.x.unwind_ensure.iter() {
+        let mut unw_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+        let mut unw_typing = unw_typing.push_in_pure(true);
+        check_expr_has_mode(
+            ctxt,
+            record,
+            &mut unw_typing,
+            Mode::Spec,
+            expr,
+            Mode::Spec,
+            &Proph::No,
+        )?;
+    }
 
     let ret_mode = if !is_unit(&function.x.outer_ret.x.typ) {
         let ret_mode = function.x.outer_ret.x.mode;

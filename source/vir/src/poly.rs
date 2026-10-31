@@ -1103,6 +1103,7 @@ fn visit_func_decl_sst(
         enss: (enss0, enss1),
         inv_masks,
         unwind_condition,
+        unwind_ensures,
         fndef_axioms,
     } = function;
 
@@ -1112,6 +1113,7 @@ fn visit_func_decl_sst(
     let inv_masks =
         Arc::new(inv_masks.iter().map(|es| visit_exps_native(ctx, state, es)).collect());
     let unwind_condition = unwind_condition.as_ref().map(|e| visit_exp_native(ctx, state, e));
+    let unwind_ensures = visit_exps_native(ctx, state, unwind_ensures);
     state.types.pop_scope();
 
     state.types.push_scope(true);
@@ -1128,6 +1130,7 @@ fn visit_func_decl_sst(
         enss: (enss0, enss1),
         inv_masks,
         unwind_condition,
+        unwind_ensures,
         fndef_axioms,
     }
 }
@@ -1161,6 +1164,7 @@ fn visit_func_check_sst(
         return_opaque_type_eqs,
         post_condition,
         unwind,
+        unwind_ens,
         body,
         local_decls,
         local_decls_decreases_init,
@@ -1178,6 +1182,7 @@ fn visit_func_check_sst(
             UnwindSst::NoUnwindWhen(e)
         }
     };
+    let unwind_ens = visit_exps_native(ctx, state, unwind_ens);
 
     state.types.push_scope(true);
     let mut locals: Vec<LocalDecl> = Vec::new();
@@ -1252,6 +1257,7 @@ fn visit_func_check_sst(
         return_opaque_type_eqs: return_opaque_type_eqs.clone(),
         post_condition,
         unwind,
+        unwind_ens,
         body,
         local_decls: Arc::new(locals),
         local_decls_decreases_init,

@@ -865,6 +865,8 @@ pub enum HeaderExprX {
     /// `requires[no_unwind exact]`: same as NoUnwindRequires, but additionally
     /// the function unwinds if the conditions do not hold
     NoUnwindRequiresExact(Exprs),
+    /// `ensures[on unwind]`: the conditions hold if the function unwinds
+    UnwindEnsures(Exprs),
     /// The visibility used in, e.g., `open(crate)`
     OpenVisibilityQualifier(Visibility),
 }
@@ -1823,6 +1825,9 @@ pub struct FunctionX {
     pub atomic_update: Option<Expr>,
     /// UnwindSpec that specifies if the function is allowed to unwind
     pub unwind_spec: Option<UnwindSpec>,
+    /// `ensures[on unwind]` conditions that hold if the function unwinds
+    /// (functions of the arguments' pre-state, like the UnwindSpec conditions)
+    pub unwind_ensure: Exprs,
     /// Allows the item to be a const declaration or static
     pub item_kind: ItemKind,
     /// Various attributes

@@ -15,8 +15,8 @@ use crate::def::{
     ProverChoice, SNAPSHOT_BOUNDARY, SNAPSHOT_CALL, SNAPSHOT_LOOP, SNAPSHOT_PRE, STRSLICE_GET_CHAR,
     STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, Spanned, U_HI, encode_dt_as_path, new_internal_qid,
     new_user_qid_name, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv,
-    prefix_pre_var, prefix_requires, prefix_spec_fn_type, snapshot_ident, suffix_global_id,
-    suffix_local_unique_id, suffix_typ_param_ids,
+    prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unwind_ensures, snapshot_ident,
+    suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
 };
 use crate::messages::{Span, error, error_with_label};
 use crate::poly::{MonoTyp, MonoTypX, MonoTyps, typ_as_mono, typ_is_poly};
@@ -1650,6 +1650,8 @@ struct State {
     local_decls_decreases_init: Stms,
     commands: Vec<CommandsWithContext>,
     unwind: UnwindAir,
+    /// `ensures[on unwind]` conditions that must hold at the end of each unwind path
+    unwind_ens: Arc<Vec<(Span, Expr)>>,
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
     static_prelude: Vec<Stmt>,
@@ -1958,6 +1960,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 if let UnwindSpec::NoUnwindWhen(..) = &callee_unwind_spec {
                     unwind_stmts.push(Arc::new(StmtX::Assume(mk_not(&callee_no_unwind_when()))));
                 }
+                // assume the callee's `ensures[on unwind]` conditions
+                if func.x.unwind_ensure.len() > 0 {
+                    let f_unwind_ens =
+                        prefix_unwind_ensures(&fun_to_air_ident(&ctx.name_ctxt, &func.x.name));
+                    let e = Arc::new(ExprX::Apply(f_unwind_ens, req_args.clone()));
+                    unwind_stmts.push(Arc::new(StmtX::Assume(e)));
+                }
 
                 let mut nontrivial = false;
                 if let Some(stm) = unwind_path {
@@ -2010,6 +2019,18 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         )
                     };
                     unwind_stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
+                }
+
+                // assert the caller's `ensures[on unwind]` conditions
+                for (span, e) in state.unwind_ens.iter() {
+                    nontrivial = true;
+                    let error = error_with_label(
+                        &stm.span,
+                        "`ensures[on unwind]` condition may not hold if this call unwinds",
+                        format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
+                    )
+                    .secondary_label(span, "failed this `ensures[on unwind]` condition");
+                    unwind_stmts.push(Arc::new(StmtX::Assert(None, error, None, e.clone())));
                 }
 
                 if nontrivial {
@@ -2469,10 +2490,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             // Right now all closures are assumed to unwind
             let mut unwind = UnwindAir::MayUnwind;
+            let mut unwind_ens = Arc::new(vec![]);
             std::mem::swap(&mut state.unwind, &mut unwind);
+            std::mem::swap(&mut state.unwind_ens, &mut unwind_ens);
 
             let mut body_stmts = stm_to_stmts(ctx, state, body)?;
             std::mem::swap(&mut state.unwind, &mut unwind);
+            std::mem::swap(&mut state.unwind_ens, &mut unwind_ens);
 
             stmts.append(&mut body_stmts);
 
@@ -3084,6 +3108,7 @@ pub(crate) fn body_stm_to_air(
         local_decls_decreases_init,
         statics,
         unwind,
+        unwind_ens,
     } = func_check_sst;
 
     // Notify observer that body lowering is starting.
@@ -3160,6 +3185,11 @@ pub(crate) fn body_stm_to_air(
             UnwindAir::NoUnwindWhen(e)
         }
     };
+    let mut unwind_ens_air: Vec<(Span, Expr)> = Vec::new();
+    for exp in unwind_ens.iter() {
+        let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+        unwind_ens_air.push((exp.span.clone(), exp_to_expr(ctx, &exp, expr_ctxt)?));
+    }
 
     for e in crate::traits::trait_bounds_to_air(ctx, typ_bounds) {
         // The outer query already has this in reqs, but inner queries need it separately:
@@ -3173,6 +3203,7 @@ pub(crate) fn body_stm_to_air(
         local_decls_decreases_init: local_decls_decreases_init.clone(),
         commands: Vec::new(),
         unwind: unwind_air,
+        unwind_ens: Arc::new(unwind_ens_air),
         post_condition_info: PostConditionInfo {
             dest: post_condition.dest.clone(),
             ens_exprs,

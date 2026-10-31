@@ -285,6 +285,20 @@ impl Debug for Lite<syn::AssumeSpecification> {
             }
             formatter.field("ensures", Print::ref_cast(val));
         }
+        if let Some(val) = &self.value.unwind_ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::UnwindEnsures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("unwind_ensures", Print::ref_cast(val));
+        }
         if let Some(val) = &self.value.default_ensures {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -6292,6 +6306,20 @@ impl Debug for Lite<syn::SignatureSpec> {
             }
             formatter.field("ensures", Print::ref_cast(val));
         }
+        if let Some(val) = &self.value.unwind_ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::UnwindEnsures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("unwind_ensures", Print::ref_cast(val));
+        }
         if let Some(val) = &self.value.default_ensures {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -7340,6 +7368,15 @@ impl Debug for Lite<syn::UnOp> {
 impl Debug for Lite<syn::Uninterp> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Uninterp");
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::UnwindEnsures> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("UnwindEnsures");
+        formatter.field("on_token", Lite(&self.value.on_token));
+        formatter.field("unwind_token", Lite(&self.value.unwind_token));
+        formatter.field("exprs", Lite(&self.value.exprs));
         formatter.finish()
     }
 }

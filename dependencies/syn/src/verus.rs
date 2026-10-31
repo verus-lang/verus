@@ -177,6 +177,17 @@ ast_struct! {
 }
 
 ast_struct! {
+    /// `ensures[on unwind] exprs`
+    pub struct UnwindEnsures {
+        pub token: Token![ensures],
+        pub bracket_token: token::Bracket,
+        pub on_token: Ident,
+        pub unwind_token: Ident,
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
     pub struct DefaultEnsures {
         pub token: Token![default_ensures],
         pub exprs: Specification,
@@ -312,6 +323,7 @@ ast_struct! {
         pub unwind_requires: Option<UnwindRequires>,
         pub recommends: Option<Recommends>,
         pub ensures: Option<Ensures>,
+        pub unwind_ensures: Option<UnwindEnsures>,
         pub default_ensures: Option<DefaultEnsures>,
         pub returns: Option<Returns>,
         pub decreases: Option<SignatureDecreases>,
@@ -329,6 +341,7 @@ impl SignatureSpec {
         self.unwind_requires = None;
         self.recommends = None;
         self.ensures = None;
+        self.unwind_ensures = None;
         self.default_ensures = None;
         self.returns = None;
         self.decreases = None;
@@ -431,6 +444,7 @@ ast_struct! {
         pub requires: Option<Requires>,
         pub unwind_requires: Option<UnwindRequires>,
         pub ensures: Option<Ensures>,
+        pub unwind_ensures: Option<UnwindEnsures>,
         pub default_ensures: Option<DefaultEnsures>,
         pub returns: Option<Returns>,
         pub invariants: Option<SignatureInvariants>,
@@ -1146,7 +1160,50 @@ pub mod parsing {
 
         /// Parse an optional `ensures` clause group in a given context.
         pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
-            if input.peek(Token![ensures]) {
+            if input.peek(Token![ensures]) && !UnwindEnsures::peek(input) {
+                Self::parse_in(ctx, input).map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl UnwindEnsures {
+        /// Check for `ensures[...]`
+        pub fn peek(input: ParseStream) -> bool {
+            input.peek(Token![ensures]) && input.peek2(token::Bracket)
+        }
+
+        /// Parse an `ensures[on unwind]` clause group in a given context.
+        pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
+            let token = input.parse()?;
+            let content;
+            let bracket_token = bracketed!(content in input);
+            let on_token: Ident = content.parse()?;
+            if on_token != "on" {
+                return Err(Error::new(on_token.span(), "expected `on unwind`"));
+            }
+            let unwind_token: Ident = content.parse()?;
+            if unwind_token != "unwind" {
+                return Err(Error::new(unwind_token.span(), "expected `unwind`"));
+            }
+            if !content.is_empty() {
+                return Err(content.error("unexpected token in `ensures[...]`"));
+            }
+            let exprs = Specification::parse_in(ctx, input)?;
+            Ok(UnwindEnsures {
+                token,
+                bracket_token,
+                on_token,
+                unwind_token,
+                exprs,
+            })
+        }
+
+        /// Parse an optional `ensures[on unwind]` clause group in a given context.
+        pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
+            if Self::peek(input) {
                 Self::parse_in(ctx, input).map(Some)
             } else {
                 Ok(None)
@@ -1493,7 +1550,13 @@ pub mod parsing {
                 requires = Requires::parse_optional_in(Context::Item, input)?;
             }
             let recommends: Option<Recommends> = input.parse()?;
-            let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Item, input)?;
+            // ensures and ensures[on unwind] may appear in either order
+            let mut ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Item, input)?;
+            let unwind_ensures: Option<UnwindEnsures> =
+                UnwindEnsures::parse_optional_in(Context::Item, input)?;
+            if ensures.is_none() {
+                ensures = Ensures::parse_optional_in(Context::Item, input)?;
+            }
             let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let decreases: Option<SignatureDecreases> = input.parse()?;
@@ -1507,6 +1570,7 @@ pub mod parsing {
                 unwind_requires,
                 recommends,
                 ensures,
+                unwind_ensures,
                 default_ensures,
                 returns,
                 decreases,
@@ -1807,7 +1871,13 @@ pub mod parsing {
             if requires.is_none() {
                 requires = Requires::parse_optional_in(Context::Item, input)?;
             }
-            let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Item, input)?;
+            // ensures and ensures[on unwind] may appear in either order
+            let mut ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Item, input)?;
+            let unwind_ensures: Option<UnwindEnsures> =
+                UnwindEnsures::parse_optional_in(Context::Item, input)?;
+            if ensures.is_none() {
+                ensures = Ensures::parse_optional_in(Context::Item, input)?;
+            }
             let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
@@ -1828,6 +1898,7 @@ pub mod parsing {
                 requires,
                 unwind_requires,
                 ensures,
+                unwind_ensures,
                 default_ensures,
                 returns,
                 invariants,
@@ -2341,6 +2412,18 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for UnwindEnsures {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.bracket_token.surround(tokens, |tokens| {
+                self.on_token.to_tokens(tokens);
+                self.unwind_token.to_tokens(tokens);
+            });
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Recommends {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
@@ -2488,6 +2571,7 @@ mod printing {
             self.unwind_requires.to_tokens(tokens);
             self.recommends.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
+            self.unwind_ensures.to_tokens(tokens);
             self.default_ensures.to_tokens(tokens);
             self.returns.to_tokens(tokens);
             self.decreases.to_tokens(tokens);
@@ -2847,6 +2931,7 @@ mod printing {
             self.requires.to_tokens(tokens);
             self.unwind_requires.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
+            self.unwind_ensures.to_tokens(tokens);
             self.default_ensures.to_tokens(tokens);
             self.returns.to_tokens(tokens);
             self.invariants.to_tokens(tokens);

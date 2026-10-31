@@ -121,6 +121,7 @@ impl Clone for crate::AssumeSpecification {
             requires: self.requires.clone(),
             unwind_requires: self.unwind_requires.clone(),
             ensures: self.ensures.clone(),
+            unwind_ensures: self.unwind_ensures.clone(),
             default_ensures: self.default_ensures.clone(),
             returns: self.returns.clone(),
             invariants: self.invariants.clone(),
@@ -2636,6 +2637,7 @@ impl Clone for crate::SignatureSpec {
             unwind_requires: self.unwind_requires.clone(),
             recommends: self.recommends.clone(),
             ensures: self.ensures.clone(),
+            unwind_ensures: self.unwind_ensures.clone(),
             default_ensures: self.default_ensures.clone(),
             returns: self.returns.clone(),
             decreases: self.decreases.clone(),
@@ -3045,6 +3047,18 @@ impl Clone for crate::Uninterp {
     fn clone(&self) -> Self {
         crate::Uninterp {
             token: self.token.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::UnwindEnsures {
+    fn clone(&self) -> Self {
+        crate::UnwindEnsures {
+            token: self.token.clone(),
+            bracket_token: self.bracket_token.clone(),
+            on_token: self.on_token.clone(),
+            unwind_token: self.unwind_token.clone(),
+            exprs: self.exprs.clone(),
         }
     }
 }

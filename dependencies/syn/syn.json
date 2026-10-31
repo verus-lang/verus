@@ -348,6 +348,11 @@
             "syn": "Ensures"
           }
         },
+        "unwind_ensures": {
+          "option": {
+            "syn": "UnwindEnsures"
+          }
+        },
         "default_ensures": {
           "option": {
             "syn": "DefaultEnsures"
@@ -6640,6 +6645,11 @@
             "syn": "Ensures"
           }
         },
+        "unwind_ensures": {
+          "option": {
+            "syn": "UnwindEnsures"
+          }
+        },
         "default_ensures": {
           "option": {
             "syn": "DefaultEnsures"
@@ -7653,6 +7663,29 @@
       "fields": {
         "token": {
           "token": "Uninterp"
+        }
+      }
+    },
+    {
+      "ident": "UnwindEnsures",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Ensures"
+        },
+        "bracket_token": {
+          "group": "Bracket"
+        },
+        "on_token": {
+          "proc_macro2": "Ident"
+        },
+        "unwind_token": {
+          "proc_macro2": "Ident"
+        },
+        "exprs": {
+          "syn": "Specification"
         }
       }
     },

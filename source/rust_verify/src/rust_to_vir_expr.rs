@@ -386,6 +386,7 @@ pub(crate) fn add_param_decls<'tcx>(
         invariant_mask,
         atomic_update,
         unwind_spec,
+        unwind_ensure,
         invariant_except_break: _,
         invariant: _,
         atomic_call_loop: _,
@@ -424,6 +425,7 @@ pub(crate) fn add_param_decls<'tcx>(
         UnwindSpec::NoUnwindWhen(e, k) => UnwindSpec::NoUnwindWhen(wrap(e), *k),
         UnwindSpec::MayUnwind => UnwindSpec::MayUnwind,
     });
+    *unwind_ensure = wrap_all(unwind_ensure);
     *body = bctx.ctxt.spanned_typed_new_vir(
         &body.span,
         &body.typ,

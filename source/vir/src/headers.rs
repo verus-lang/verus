@@ -85,6 +85,7 @@ pub struct Header {
     pub atomic_update: Option<Expr>,
     pub atomic_call_loop: bool,
     pub unwind_spec: Option<UnwindSpec>,
+    pub unwind_ensure: Exprs,
     pub extra_dependencies: Vec<Fun>,
     pub open_visibility_qualifier: Option<Visibility>,
 }
@@ -106,6 +107,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
     let mut atomic_update: Option<Expr> = None;
     let mut atomic_call_loop = false;
     let mut unwind_spec: Option<UnwindSpec> = None;
+    let mut unwind_ensure: Option<Exprs> = None;
     let mut open_visibility_qualifier: Option<Visibility> = None;
     let mut n = 0;
     let mut unwrap_parameter_allowed = true;
@@ -270,6 +272,15 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                             _ => unreachable!(),
                         };
                     }
+                    HeaderExprX::UnwindEnsures(es) => {
+                        if unwind_ensure.is_some() {
+                            return Err(error(
+                                &stmt.span,
+                                "only one `ensures[on unwind]` clause allowed",
+                            ));
+                        }
+                        unwind_ensure = Some(es.clone());
+                    }
                     HeaderExprX::OpenVisibilityQualifier(v) => {
                         match open_visibility_qualifier {
                             None => {}
@@ -305,6 +316,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
     let invariant_except_break = invariant_except_break.unwrap_or(Arc::new(vec![]));
     let invariant = invariant.unwrap_or(Arc::new(vec![]));
     let decrease = decrease.unwrap_or(Arc::new(vec![]));
+    let unwind_ensure = unwind_ensure.unwrap_or(Arc::new(vec![]));
     Ok(Header {
         unwrap_parameters,
         no_method_body: false,
@@ -323,6 +335,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
         atomic_update,
         atomic_call_loop,
         unwind_spec,
+        unwind_ensure,
         extra_dependencies,
         open_visibility_qualifier,
     })

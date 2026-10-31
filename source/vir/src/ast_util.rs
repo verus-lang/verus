@@ -1422,7 +1422,8 @@ impl HeaderExprX {
             | HeaderExprX::NoUnwind
             | HeaderExprX::NoUnwindWhen(_)
             | HeaderExprX::NoUnwindRequires(_)
-            | HeaderExprX::NoUnwindRequiresExact(_) => "beginning of the function body",
+            | HeaderExprX::NoUnwindRequiresExact(_)
+            | HeaderExprX::UnwindEnsures(_) => "beginning of the function body",
 
             HeaderExprX::InvariantExceptBreak(_)
             | HeaderExprX::Invariant(_)

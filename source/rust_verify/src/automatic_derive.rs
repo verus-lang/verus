@@ -569,6 +569,7 @@ fn stub_to_spec_function(stub: &FunctionStub, body: Option<Expr>) -> Function {
             fndef_axioms: None,
             mask_spec: None,
             unwind_spec: None,
+            unwind_ensure: Arc::new(vec![]),
             item_kind,
             attrs,
             body: body,

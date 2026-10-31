@@ -1268,6 +1268,9 @@ pub trait Fold {
     fn fold_uninterp(&mut self, i: crate::Uninterp) -> crate::Uninterp {
         fold_uninterp(self, i)
     }
+    fn fold_unwind_ensures(&mut self, i: crate::UnwindEnsures) -> crate::UnwindEnsures {
+        fold_unwind_ensures(self, i)
+    }
     fn fold_unwind_requires(
         &mut self,
         i: crate::UnwindRequires,
@@ -1482,6 +1485,7 @@ where
         requires: (node.requires).map(|it| f.fold_requires(it)),
         unwind_requires: (node.unwind_requires).map(|it| f.fold_unwind_requires(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        unwind_ensures: (node.unwind_ensures).map(|it| f.fold_unwind_ensures(it)),
         default_ensures: (node.default_ensures).map(|it| f.fold_default_ensures(it)),
         returns: (node.returns).map(|it| f.fold_returns(it)),
         invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),
@@ -4618,6 +4622,7 @@ where
         unwind_requires: (node.unwind_requires).map(|it| f.fold_unwind_requires(it)),
         recommends: (node.recommends).map(|it| f.fold_recommends(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        unwind_ensures: (node.unwind_ensures).map(|it| f.fold_unwind_ensures(it)),
         default_ensures: (node.default_ensures).map(|it| f.fold_default_ensures(it)),
         returns: (node.returns).map(|it| f.fold_returns(it)),
         decreases: (node.decreases).map(|it| f.fold_signature_decreases(it)),
@@ -5151,6 +5156,21 @@ where
 {
     crate::Uninterp {
         token: node.token,
+    }
+}
+pub fn fold_unwind_ensures<F>(
+    f: &mut F,
+    node: crate::UnwindEnsures,
+) -> crate::UnwindEnsures
+where
+    F: Fold + ?Sized,
+{
+    crate::UnwindEnsures {
+        token: node.token,
+        bracket_token: node.bracket_token,
+        on_token: f.fold_ident(node.on_token),
+        unwind_token: f.fold_ident(node.unwind_token),
+        exprs: f.fold_specification(node.exprs),
     }
 }
 pub fn fold_unwind_requires<F>(

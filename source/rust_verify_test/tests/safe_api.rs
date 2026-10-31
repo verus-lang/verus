@@ -97,6 +97,15 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] trait_fn_unwind_ensures_fail ["-V check-api-safety"] => verus_code! {
+        pub trait Foo {
+            fn test(x: u8) -> (y: u8)
+                ensures[on unwind] x > 0;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "safe API violation: `ensures[on unwind]` clause is nontrivial")
+}
+
+test_verify_one_file_with_options! {
     #[test] trait_fn_mask_fail ["-V check-api-safety"] => verus_code! {
         pub trait Foo {
             fn test(x: u8) -> (y: u8)
