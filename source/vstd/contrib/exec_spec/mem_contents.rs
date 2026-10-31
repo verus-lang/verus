@@ -107,18 +107,20 @@ impl<T: DeepViewClone> DeepViewClone for ExecMemContents<T> {
     }
 }
 
-impl<'a, T: DeepView> ExecSpecEq<'a> for &'a ExecMemContents<T> where
-    &'a T: ExecSpecEq<'a, Other = &'a T>,
- {
-    type Other = &'a ExecMemContents<T>;
+#[cfg(verus_keep_ghost)]
+impl<T: ObeysDeepEq> crate::std_specs::cmp::PartialEqSpecImpl for ExecMemContents<T> {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
 
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        match (this, other) {
-            (ExecMemContents::Init(t1), ExecMemContents::Init(t2)) => <&'a T>::exec_eq(t1, t2),
-            (ExecMemContents::Uninit, ExecMemContents::Uninit) => true,
-            _ => false,
-        }
+    open spec fn eq_spec(&self, other: &Self) -> bool {
+        self.deep_view() == other.deep_view()
+    }
+}
+
+impl<T: ObeysDeepEq> ObeysDeepEq for ExecMemContents<T> {
+    proof fn lemma_obeys_deep_eq() {
+        reveal(crate::laws_eq::obeys_deep_eq);
     }
 }
 

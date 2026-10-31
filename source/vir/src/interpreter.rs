@@ -6,9 +6,9 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArchWordBits, ArrayKind, BitwiseOp, ComputeMode, Constant, CrateId, Dt, Fun, FunX, Ident,
-    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, Primitive,
-    SpannedTyped, Typ, TypX, Typs, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
+    ArchWordBits, ArrayKind, BitwiseOp, ComputeMode, Constant, CrateId, Dt, Fun, Ident,
+    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Primitive, SpannedTyped,
+    Typ, TypX, Typs, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{n_types_equal, path_as_vstd_name, types_equal, undecorate_typ};
@@ -841,10 +841,7 @@ fn eval_array(
                                     array_exp.typ
                                 ),
                             };
-                            let seq_type_path = Arc::new(PathX {
-                                krate: CrateId::Vstd,
-                                segments: strs_to_idents(vec!["seq", "Seq"]),
-                            });
+                            let seq_type_path = crate::path!(CrateId::Vstd => "seq", "Seq");
                             let seq_typ = Arc::new(TypX::Datatype(
                                 Dt::Path(seq_type_path),
                                 Arc::new(vec![inner_typ]),
@@ -904,11 +901,6 @@ pub(crate) fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     }
 }
 
-fn strs_to_idents(s: Vec<&str>) -> Idents {
-    let idents = s.iter().map(|s| Arc::new(s.to_string())).collect();
-    Arc::new(idents)
-}
-
 pub(crate) fn is_seq_to_sst_fun(fun: &Fun) -> bool {
     match is_sequence_fn(fun) {
         Some(SeqFn::Empty | SeqFn::Push) => true,
@@ -921,8 +913,7 @@ pub(crate) fn is_seq_to_sst_fun(fun: &Fun) -> bool {
 /// macro definition in vstd's seq.rs.
 // TODO: More robust way of pointing to vstd's sequence functions
 fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirErr> {
-    let seq_type_path =
-        Arc::new(PathX { krate: CrateId::Vstd, segments: strs_to_idents(vec!["seq", "Seq"]) });
+    let seq_type_path = crate::path!(CrateId::Vstd => "seq", "Seq");
     let seq_typ = Arc::new(TypX::Datatype(
         Dt::Path(seq_type_path),
         Arc::new(vec![inner_typ.clone()]),
@@ -931,16 +922,8 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirEr
     let new_seq_exp = |e: ExpX| SpannedTyped::new(span, &seq_typ, e);
     if s.len() <= 1 {
         let typs = Arc::new(vec![inner_typ.clone()]);
-        let path_empty = Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: strs_to_idents(vec!["seq", "Seq", "empty"]),
-        });
-        let path_push = Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: strs_to_idents(vec!["seq", "Seq", "push"]),
-        });
-        let fun_empty = Arc::new(FunX { path: path_empty });
-        let fun_push = Arc::new(FunX { path: path_push });
+        let fun_empty = crate::fun!(CrateId::Vstd => "seq", "Seq"; "empty");
+        let fun_push = crate::fun!(CrateId::Vstd => "seq", "Seq"; "push");
         let empty =
             new_seq_exp(ExpX::Call(CallFun::Fun(fun_empty, None), typs.clone(), Arc::new(vec![])));
         let seq = s.iter().fold(empty, |acc, e| {
@@ -950,11 +933,7 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirEr
         Ok(seq)
     } else {
         // Describe the sequence in terms of a view on an array literal
-        let path_view = Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: strs_to_idents(vec!["array", "array_view"]),
-        });
-        let fun_view = Arc::new(FunX { path: path_view });
+        let fun_view = crate::fun!(CrateId::Vstd => "array"; "array_view");
         let array = cleanup_array(span, inner_typ.clone(), s)?;
         let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(s.len())));
         let array_view = new_seq_exp(ExpX::Call(
@@ -1096,7 +1075,7 @@ fn eval_seq(
                                 ctx.warning(
                                     &exp.span,
                                     &WarningAllow::AssertComputeUnsimplified,
-                                    || "Computation tried to index into a sequence using a value that does not fit into usize",
+                                    || "computation tried to index into a sequence using a value that does not fit into usize",
                                     |msg| state.msgs.push(msg),
                                 );
                                 ok_seq(0, &s)
@@ -1108,7 +1087,7 @@ fn eval_seq(
                                     ctx.warning(
                                         &exp.span,
                                         &WarningAllow::AssertComputeUnsimplified,
-                                        || "Computation tried to index past the length of a sequence",
+                                        || "computation tried to index past the length of a sequence",
                                         |msg| state.msgs.push(msg),
                                     );
                                     ok_seq(0, &s)
@@ -1175,7 +1154,7 @@ fn eval_array_index(
                     ctx.warning(
                         &exp.span,
                         &WarningAllow::AssertComputeUnsimplified,
-                        || "Computation tried to index into an array using a value that does not fit into usize",
+                        || "computation tried to index into an array using a value that does not fit into usize",
                         |msg| state.msgs.push(msg),
                     );
                     ok
@@ -1187,7 +1166,7 @@ fn eval_array_index(
                         ctx.warning(
                             &exp.span,
                             &WarningAllow::AssertComputeUnsimplified,
-                            || "Computation tried to index past the length of an array",
+                            || "computation tried to index past the length of an array",
                             |msg| state.msgs.push(msg),
                         );
                         ok
@@ -1209,10 +1188,10 @@ fn eval_array_index(
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
     state.iterations += 1;
     if state.iterations > ctx.max_iterations {
-        return Err(error(&exp.span, "assert_by_compute timed out"));
+        return Err(error(&exp.span, "`assert_by_compute` timed out"));
     }
     if state.depth > ctx.max_depth {
-        return Err(error(&exp.span, "assert_by_compute exceeded maximum recursion depth"));
+        return Err(error(&exp.span, "`assert_by_compute` exceeded maximum recursion depth"));
     }
     state.check_time_warning(ctx);
 
@@ -1324,7 +1303,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     ctx.warning(
                                         &exp.span,
                                         &WarningAllow::AssertComputeUnsimplified,
-                                        || "Computation clipped an integer that was out of range",
+                                        || "computation clipped an integer that was out of range",
                                         |msg| state.msgs.push(msg),
                                     );
                                     ok.clone()
@@ -1339,7 +1318,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     ctx.warning(
                                         &exp.span,
                                         &WarningAllow::AssertComputeUnsimplified,
-                                        || "Computation clipped an integer that was out of range",
+                                        || "computation clipped an integer that was out of range",
                                         |msg| state.msgs.push(msg),
                                     );
                                     ok.clone()
@@ -1377,7 +1356,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 ctx.warning(
                                                     &exp.span,
                                                     &WarningAllow::AssertComputeUnsimplified,
-                                                    || "Computation clipped an arch-dependent integer that was out of range",
+                                                    || "computation clipped an arch-dependent integer that was out of range",
                                                     |msg| state.msgs.push(msg),
                                                 );
                                                 ok.clone()
@@ -1399,7 +1378,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 ctx.warning(
                                                     &exp.span,
                                                     &WarningAllow::AssertComputeUnsimplified,
-                                                    || "Computation clipped an arch-dependent integer that was out of range",
+                                                    || "computation clipped an arch-dependent integer that was out of range",
                                                     |msg| state.msgs.push(msg),
                                                 );
                                                 ok.clone()
@@ -2037,9 +2016,9 @@ fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
             // Convert back to a standard SST representation
             seq_to_sst(span, inner_type.clone(), &cleaned?)
         }
-        _ => Err(error(
+        _ => Err(crate::messages::internal_error(
             &span,
-            format!("Internal error: Expected to find a sequence type but found: {:?}", typ),
+            format!("expected to find a sequence type but found: {:?}", typ),
         )),
     }
 }
@@ -2066,7 +2045,7 @@ fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
         ExpX::Interp(InterpExp::Seq(v)) => cleanup_seq(&e.span, e.typ.clone(), v),
         ExpX::Interp(InterpExp::Closure(..)) => Err(error(
             &e.span,
-            "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
+            "Verus does not currently support proof by computation that includes a closure literal that isn't applied",
         )),
         _ => Ok(e.clone()),
     })
@@ -2223,7 +2202,7 @@ fn eval_expr_launch(
                         &WarningAllow::AssertComputeUnsimplified,
                         || {
                             format!(
-                                "Failed to simplify expression <<{}>> before sending to Z3",
+                                "failed to simplify expression <<{}>> before sending to Z3",
                                 exp.x.to_user_string(&ctx.global),
                             )
                         },
@@ -2238,7 +2217,7 @@ fn eval_expr_launch(
                 Err(error(
                     &exp.span,
                     &format!(
-                        "assert_by_compute_only failed to simplify down to true.  Instead got: {}.",
+                        "`assert_by_compute_only` failed to simplify down to true; instead got: {}",
                         res.x.to_user_string(&ctx.global)
                     )
                     .to_string(),

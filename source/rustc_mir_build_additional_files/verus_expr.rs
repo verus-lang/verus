@@ -105,6 +105,9 @@ pub(crate) fn mirror_expr_post<'tcx>(
                     cx.verus_ctxt.extra_thir.force_treat_inhabited.insert(fun);
                 }
             }
+            if let CallErasure::ShrRefStructWrap = call_erasure {
+                return crate::verus::shr_ref_struct_wrap(cx, &erasure_ctxt, expr, kind);
+            }
             if call_erasure.should_erase() { erase_node_unadjusted(cx, expr, kind) } else { kind }
         }
         ExprKind::Field(..) | ExprKind::AddrOf(..) => {

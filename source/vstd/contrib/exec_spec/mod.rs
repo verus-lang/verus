@@ -70,14 +70,33 @@ pub trait ExecSpecType where
     type ExecRefType<'a>: DeepView<V = Self>;
 }
 
-/// Spec for the executable version of equality.
-pub trait ExecSpecEq<'a>: DeepView + Sized {
-    type Other: DeepView<V = Self::V>;
-
-    fn exec_eq(this: Self, other: Self::Other) -> (res: bool)
+/// Types whose Rust equality (`==`) decides deep-view equality.
+pub trait ObeysDeepEq: Sized + PartialEq + DeepView {
+    proof fn lemma_obeys_deep_eq()
         ensures
-            res == (this.deep_view() =~~= other.deep_view()),
+            crate::laws_eq::obeys_deep_eq::<Self>(),
     ;
+}
+
+/// Executable deep-view equality, i.e., `==` on a type that [`ObeysDeepEq`].
+#[inline(always)]
+pub fn deep_eq<T: ObeysDeepEq>(x: T, y: T) -> (res: bool)
+    ensures
+        res == (x.deep_view() =~~= y.deep_view()),
+{
+    proof {
+        T::lemma_obeys_deep_eq();
+        reveal(crate::laws_eq::obeys_deep_eq);
+    }
+    x.eq(&y)
+}
+
+impl<'a, T: ObeysDeepEq> ObeysDeepEq for &'a T {
+    proof fn lemma_obeys_deep_eq() {
+        broadcast use crate::laws_eq::lemma_ref_obeys_deep_eq;
+
+        T::lemma_obeys_deep_eq();
+    }
 }
 
 /// Spec for executable version of [`Seq`] and [`str`] indexing.
@@ -126,22 +145,9 @@ macro_rules! impl_primitives {
                 }
             }
 
-            impl<'a> ExecSpecEq<'a> for $t {
-                type Other = $t;
-
-                #[inline(always)]
-                fn exec_eq(this: Self, other: Self::Other) -> bool {
-                    this == other
-                }
-            }
-
-            // For cases like comparing Seq<u32> and Seq<u32>
-            impl<'a> ExecSpecEq<'a> for &'a $t {
-                type Other = &'a $t;
-
-                #[inline(always)]
-                fn exec_eq(this: Self, other: Self::Other) -> bool {
-                    this == other
+            impl ObeysDeepEq for $t {
+                proof fn lemma_obeys_deep_eq() {
+                    reveal(crate::laws_eq::obeys_deep_eq);
                 }
             }
         }
@@ -186,16 +192,10 @@ macro_rules! impl_exec_spec_tuple {
                 }
             }
 
-            impl<'a, $($T: DeepView),*> ExecSpecEq<'a> for &'a ($($T,)*)
-            where
-                $( &'a $T: ExecSpecEq<'a, Other = &'a $T>, )*
-            {
-                type Other = &'a ($($T,)*);
-
-                #[inline(always)]
-                #[allow(non_snake_case)]
-                fn exec_eq(this: Self, other: Self::Other) -> bool {
-                    $( <&$T>::exec_eq(&this.$n, &other.$n) )&&*
+            impl<$($T: ObeysDeepEq),*> ObeysDeepEq for ($($T,)*) {
+                proof fn lemma_obeys_deep_eq() {
+                    broadcast use crate::laws_eq::group_laws_eq;
+                    $( $T::lemma_obeys_deep_eq(); )*
                 }
             }
 

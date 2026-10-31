@@ -5,7 +5,7 @@ it's difficult to specify a single value that decreases
 in each recursive call.
 For example, the [Ackermann function](https://en.wikipedia.org/wiki/Ackermann_function)
 has two parameters `m` and `n`,
-and neither `m` nor `n` decrease in all 3 of the recursive calls:
+and neither `m` nor `n` decreases in all 3 of the recursive calls:
 
 ```rust
 {{#include ../../../../examples/guide/recursion.rs:ackermann}}

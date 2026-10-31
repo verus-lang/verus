@@ -290,7 +290,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is not allowed in spec mode")
+    } => Err(err) => assert_vir_error_msg(err, "a `ref mut` binding in a pattern is not allowed in spec mode")
 }
 
 test_verify_one_file! {

@@ -226,7 +226,7 @@ fn check_timeout(timer: &mut Timer) -> Result<(), VirErr> {
     if timer.timeout_countdown == 0 {
         Err(error(
             &timer.span,
-            "could not infer triggers, because quantifier is too large (use manual #[trigger] instead)",
+            "could not infer triggers, because quantifier is too large (use manual `#[trigger]` instead)",
         ))
     } else {
         timer.timeout_countdown -= 1;
@@ -346,7 +346,10 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 },
                 CallFun::Recursive(_) => panic!("internal error: CheckTermination"),
                 CallFun::InternalFun(
-                    InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns,
+                    InternalFun::ClosureReq
+                    | InternalFun::ClosureEns
+                    | InternalFun::ClosureOpensInvariants
+                    | InternalFun::DefaultEns,
                 ) => (is_pure, Arc::new(TermX::App(App::ClosureSpec, Arc::new(all_terms)))),
                 CallFun::InternalFun(
                     InternalFun::CheckDecreaseHeight | InternalFun::OpenInvariantMask(..),
@@ -834,7 +837,7 @@ pub(crate) fn build_triggers(
     } else {
         Err(error(
             span,
-            "Could not automatically infer triggers for this quantifier.  Use #[trigger] annotations to manually mark trigger terms instead.",
+            "could not automatically infer triggers for this quantifier; use `#[trigger]` annotations to manually mark trigger terms instead",
         ))
     }
 }

@@ -718,21 +718,241 @@ test_verify_one_file! {
             }
 
             spec fn update_eq(s1: Seq<u8>, i: usize, x: u8, s2: Seq<u8>) -> bool
+                recommends
+                    0 <= i < s1.len()
             {
                 s1.update(i as int, x) == s2
             }
 
             spec fn update_nested(s1: Seq<Seq<u8>>, i: usize, x: Seq<u8>, s2: Seq<Seq<u8>>) -> bool
+                recommends
+                    0 <= i < s1.len()
             {
                 s1.update(i as int, x) == s2
             }
 
             spec fn update_struct(s1: Seq<Data>, i: usize, x: Data, s2: Seq<Data>) -> bool
+                recommends
+                    0 <= i < s1.len()
             {
                 s1.update(i as int, x) == s2
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_seq_update IMPORTS.to_string() + verus_code_str! {
+        fn test_update() {
+            let v = vec![1u8];
+            let updated = v.as_slice().exec_update(0, 2);
+            assert(updated.deep_view() =~= seq![2u8]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_seq_update_requires IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            spec fn update_at(s: Seq<u8>, i: usize, x: u8) -> Seq<u8> {
+                s.update(i as int, x) // FAILS
+            }
+        }
+
+        fn test_update() {
+            let v = vec![1u8];
+            let _ = v.as_slice().exec_update(1, 2); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    /// A key whose deep view forgets data that `Eq` compares cannot be used
+    /// with the hash-based translations.
+    #[test] test_exec_spec_lossy_key_rejected IMPORTS.to_string() + verus_code_str! {
+        #[derive(PartialEq, Eq, Hash)]
+        pub struct K(pub u64);
+
+        impl DeepView for K {
+            type V = ();
+            open spec fn deep_view(&self) -> () { () }
+        }
+
+        impl DeepViewClone for K {
+            fn deep_clone(&self) -> (res: Self) { K(self.0) }
+        }
+
+        fn insert(m: &HashMap<K, u64>) -> HashMap<K, u64> {
+            <&HashMap<K, u64> as ExecSpecMapInsert<HashMap<K, u64>>>::exec_insert(m, K(1), 7u64)
+        }
+    } => Err(err) => assert_rust_error_msg(err, "ObeysDeepEq")
+}
+
+test_verify_one_file! {
+    /// ... and such a key cannot prove that it obeys deep equality.
+    #[test] test_exec_spec_lossy_key_law_fails IMPORTS.to_string() + verus_code_str! {
+        #[derive(PartialEq, Eq, StructuralEq)]
+        pub struct K(pub u64);
+
+        impl DeepView for K {
+            type V = ();
+            open spec fn deep_view(&self) -> () { () }
+        }
+
+        impl ObeysDeepEq for K {
+            proof fn lemma_obeys_deep_eq() {
+                reveal(vstd::laws_eq::obeys_deep_eq);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "postcondition not satisfied")
+}
+
+test_verify_one_file! {
+    /// The generated `PartialEq` of exec types decides deep-view equality.
+    #[test] test_exec_spec_generated_obeys_deep_eq IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct Data {
+                pub x: u8,
+                pub s: Seq<u8>,
+            }
+
+            pub enum Shape {
+                Dot,
+                Line(u8, u8),
+                Named { name: SpecString, n: Option<u32> },
+            }
+        }
+
+        fn data_eq(a: &ExecData, b: &ExecData) -> (r: bool)
+            ensures r == (a.deep_view() == b.deep_view()),
+        {
+            a == b
+        }
+
+        fn shape_eq(a: &ExecShape, b: &ExecShape) -> (r: bool)
+            ensures r == (a.deep_view() == b.deep_view()),
+        {
+            a == b
+        }
+
+        proof fn key_laws() {
+            <(ExecShape, Vec<ExecData>) as ObeysDeepEq>::lemma_obeys_deep_eq();
+            assert(vstd::laws_eq::obeys_deep_eq::<(ExecShape, Vec<ExecData>)>());
+        }
+    } => Ok(())
+}
+
+/// Runs the compiled translations whose results depend on `==`.
+#[test]
+fn test_exec_spec_deep_eq_runtime() {
+    let source = code_str! {
+        use vstd::prelude::*;
+        use vstd::contrib::exec_spec::*;
+        use vstd::multiset::*;
+        use std::collections::{HashMap, HashSet};
+
+        verus! {
+            // The deep view forgets all but the parity, and so does `==`.
+            pub struct K(pub u8);
+
+            impl DeepView for K {
+                type V = bool;
+                open spec fn deep_view(&self) -> bool { self.0 % 2 == 0 }
+            }
+
+            impl PartialEq for K {
+                fn eq(&self, other: &K) -> bool {
+                    self.0 % 2 == other.0 % 2
+                }
+            }
+
+            impl vstd::std_specs::cmp::PartialEqSpecImpl for K {
+                open spec fn obeys_eq_spec() -> bool { true }
+                open spec fn eq_spec(&self, other: &K) -> bool { self.deep_view() == other.deep_view() }
+            }
+
+            impl ObeysDeepEq for K {
+                proof fn lemma_obeys_deep_eq() {
+                    reveal(vstd::laws_eq::obeys_deep_eq);
+                }
+            }
+
+            fn contains_other() -> (b: bool)
+                ensures b,
+            {
+                let values = vec![K(2)];
+                let s = values.as_slice();
+                assert(s.deep_view() =~= seq![true]);
+                assert(s.deep_view()[0]);
+                s.exec_contains(K(4))
+            }
+
+            exec_spec_verified! {
+                pub struct Data {
+                    pub x: u8,
+                    pub s: Seq<u8>,
+                }
+
+                spec fn data_set_len(m: Set<Data>, k: Data) -> usize
+                    recommends m.len() < usize::MAX
+                {
+                    m.insert(k).len() as usize
+                }
+
+                spec fn multiset_eq(a: Multiset<u8>, b: Multiset<u8>) -> bool {
+                    a == b
+                }
+            }
+
+            // A count of 0 is the same as an absent element.
+            fn zero_count_is_empty() -> (b: bool)
+                ensures b,
+            {
+                let mut m = HashMap::new();
+                m.insert(1u8, 0usize);
+                let a = ExecMultiset { m };
+                let e = ExecMultiset { m: HashMap::new() };
+                proof {
+                    broadcast use vstd::std_specs::hash::group_hash_axioms;
+                    broadcast use vstd::std_specs::hash::lemma_hashmap_deepview_properties;
+                    assert(a.deep_view() =~= Multiset::<u8>::empty());
+                    assert(e.deep_view() =~= Multiset::<u8>::empty());
+                }
+                exec_multiset_eq(&a, &e)
+            }
+        }
+
+        fn main() {
+            assert!(contains_other());
+            let values = [K(1), K(2), K(4)];
+            let s = values.as_slice();
+            assert!(s.exec_contains(K(6)));
+            assert_eq!(s.exec_index_of(K(6)), 1);
+            assert_eq!(s.exec_index_of_first(K(6)), Some(1));
+            assert_eq!(s.exec_index_of_last(K(6)), Some(2));
+            let values = [K(1), K(3)];
+            let s = values.as_slice();
+            assert!(!s.exec_contains(K(2)));
+            assert_eq!(s.exec_index_of(K(2)), 2);
+            assert_eq!(s.exec_index_of_first(K(2)), None);
+            assert_eq!(s.exec_index_of_last(K(2)), None);
+
+            let mut set = HashSet::new();
+            set.insert(ExecData { x: 1, s: vec![1, 2] });
+            assert_eq!(exec_data_set_len(&set, &ExecData { x: 1, s: vec![1, 2] }), 1);
+            assert_eq!(exec_data_set_len(&set, &ExecData { x: 1, s: vec![] }), 2);
+
+            assert!(zero_count_is_empty());
+        }
+    };
+    let tempdir = tempfile::tempdir().unwrap();
+    let entry_file = tempdir.path().join("deep_eq.rs");
+    std::fs::write(&entry_file, format!("{FEATURE_PRELUDE}\n{USE_PRELUDE}\n{source}")).unwrap();
+    let output = run_verus_raw(&["--compile", entry_file.to_str().unwrap()], tempdir.path());
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let binary = tempdir.path().join(if cfg!(windows) { "deep_eq.exe" } else { "deep_eq" });
+    let output = std::process::Command::new(binary).output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
 }
 
 test_verify_one_file! {
@@ -1649,6 +1869,29 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    /// Associated fn (no receiver) whose name is shared with a module-level spec fn:
+    /// the generated exec fn must be specified (and verified) against `T::f`.
+    #[test] test_exec_spec_impl_assoc_fn_shadowed IMPORTS.to_string() + verus_code_str! {
+        pub open spec fn mk(x: u8) -> u8 { 0 }
+
+        exec_spec_verified! {
+            pub struct Foo { pub a: u8 }
+
+            impl Foo {
+                pub open spec fn mk(x: u8) -> u8 {
+                    x
+                }
+            }
+        }
+
+        fn test() {
+            let r = ExecFoo::exec_mk(5);
+            assert(r == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     /// Inherent impl on an enum: `&self` method using `match self`.
     #[test] test_exec_spec_impl_enum IMPORTS.to_string() + verus_code_str! {
         exec_spec_verified! {
@@ -2553,6 +2796,45 @@ test_verify_one_file! {
             };
             let res: exec_spec_type!(Result<u32, bool>) = exec_sum_if_bounded(&init_view, 100);
             assert(res.deep_view() === Ok(30u32));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Explicit discriminants and `#[repr]` carry over to the exec enum,
+    /// so `e as T` agrees between the spec and exec enums.
+    #[test] test_exec_spec_enum_discriminant IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            #[derive(Clone, Copy)]
+            pub enum E {
+                A = 10,
+                B = 20,
+                C,
+            }
+
+            spec fn disc(e: E) -> u8 {
+                e as u8
+            }
+
+            #[repr(u64)]
+            #[derive(Clone, Copy)]
+            pub enum F {
+                X = 0xFFFF_FFFF_FFFF_FFFF,
+                Y = 7,
+            }
+
+            spec fn fdisc(f: F) -> u64 {
+                f as u64
+            }
+        }
+
+        fn test() {
+            let r = exec_disc(&ExecE::B);
+            assert(r == 20);
+            let c = exec_disc(&ExecE::C);
+            assert(c == 21);
+            let x = exec_fdisc(&ExecF::X);
+            assert(x == 0xFFFF_FFFF_FFFF_FFFFu64);
         }
     } => Ok(())
 }

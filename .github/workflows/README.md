@@ -38,7 +38,7 @@ and publishing for the Verus project.
 1. **`basic-test`** (macOs x64, Windows x64, and Linux x64)
    - Runs basic tests only
 
-1. **`smoke-test`** (macOs ARM64)
+1. **`smoke-test`** (Linux x64)
    - Checks that `verus` builds with esoteric configurations
    - Runs minimal tests relevant to the configuration
 
@@ -69,7 +69,7 @@ the commit via `ci.yml`.
 
 **Jobs:**
 
-1. **`build`** (macOS ARM64, macOS x64, Windows x64, Linux x64)
+1. **`build`** (macOS ARM64, macOS x64, Windows x64, Windows ARM64, Linux x64, Linux ARM64)
    - Builds release binary artifacts for every supported platform
    - Uploads `verus-<arch>-<os>.zip` artifacts
 

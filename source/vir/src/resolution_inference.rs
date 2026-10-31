@@ -266,7 +266,7 @@ The analysis is pretty weak right now but could be improved.
 
 use crate::ast::{
     Arm, ArrayKind, BoundsCheck, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
-    FunWithVis, Function, Ident, Label, Mode, ModeWrapperMode, Params, Path, Pattern,
+    FunWithVis, Function, Ident, Krate, Label, Mode, ModeWrapperMode, Params, Path, Pattern,
     PatternBinding, PatternX, Place, PlaceX, Primitive, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
     TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate,
     VariantCheck, VirErr,
@@ -285,8 +285,64 @@ use crate::resolution_types::ResolutionTypes;
 use crate::sst_util::subst_typ_for_datatype;
 use air::ast_util::str_ident;
 use air::scope_map::ScopeMap;
+use std::collections::HashSet;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
+
+/// Some inputs needed for the resolution analysis
+pub struct ResolutionInfo {
+    pub(crate) read_kind_finals: ReadKindFinals,
+    pub(crate) typ_inv_info: crate::modes::TypeInvInfo,
+    pub(crate) var_modes: HashMap<VarIdent, Mode>,
+    pub(crate) temporary_modes: HashMap<AstId, Mode>,
+    pub(crate) dual_mode: bool,
+}
+
+pub fn krate_infer_resolution(
+    krate: &Krate,
+    infos: &HashMap<Fun, Arc<ResolutionInfo>>,
+) -> Result<Krate, Vec<VirErr>> {
+    let mut datatypes = HashMap::new();
+    for datatype in krate.datatypes.iter() {
+        let Dt::Path(path) = datatype.x.name.clone() else {
+            return Err(vec![crate::messages::internal_error(
+                &datatype.span,
+                "Dt::Tuple in datatypes before `ast_simplify`",
+            )]);
+        };
+        datatypes.insert(path, datatype.clone());
+    }
+    let mut functions = HashMap::new();
+    for function in krate.functions.iter() {
+        functions.insert(function.x.name.clone(), function.clone());
+    }
+    let rtypes = ResolutionTypes::new(&datatypes);
+
+    let mut krate = krate.clone();
+    let mut errors = vec![];
+    for function in &mut Arc::make_mut(&mut krate).functions {
+        if let Some(res_info) = infos.get(&function.x.name) {
+            let new_body = infer_resolution(
+                &function.x.params,
+                &function.x.body.as_ref().unwrap(),
+                res_info,
+                &datatypes,
+                &functions,
+                function.x.owning_module.as_ref().unwrap(),
+                &rtypes,
+            );
+            match new_body {
+                Ok(new_body) => {
+                    Arc::make_mut(function).x.body = Some(new_body);
+                }
+                Err(err) => {
+                    errors.push(err);
+                }
+            }
+        }
+    }
+    if errors.len() > 0 { Err(errors) } else { Ok(krate) }
+}
 
 /// Updates the given function body to include assume(has_resolved(...)) nodes
 /// at the appropriate places.
@@ -294,23 +350,27 @@ use std::sync::Arc;
 ///
 /// This relies on the AstIds of the given Expr being unique, but it also destroys this property
 /// in the transformation, returning an Expr that may have duplicate AstIds.
-pub(crate) fn infer_resolution(
+fn infer_resolution(
     params: &Params,
     body: &Expr,
-    read_kind_finals: &ReadKindFinals,
+    info: &ResolutionInfo,
     datatypes: &HashMap<Path, Datatype>,
     functions: &HashMap<Fun, Function>,
-    typ_inv_info: &crate::modes::TypeInvInfo,
     module: &Path,
-    var_modes: &HashMap<VarIdent, Mode>,
-    temporary_modes: &HashMap<AstId, Mode>,
     rtypes: &ResolutionTypes,
-    dual_mode: bool,
 ) -> Result<Expr, VirErr> {
-    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts) =
-        new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes, temporary_modes)?;
+    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts, loops_with_no_back_edges) =
+        new_cfg(
+            params,
+            body,
+            &info.read_kind_finals,
+            datatypes,
+            functions,
+            &info.var_modes,
+            &info.temporary_modes,
+        )?;
     //println!("{:}", pretty_cfg(&cfg));
-    let resolutions = if dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
+    let resolutions = if info.dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
     apply_resolutions(
         &cfg,
         params,
@@ -318,7 +378,8 @@ pub(crate) fn infer_resolution(
         resolutions,
         assigns_to_resolve,
         typ_inv_obligations,
-        typ_inv_info,
+        &info.typ_inv_info,
+        loops_with_no_back_edges,
         module,
     )
 }
@@ -499,6 +560,7 @@ struct Builder<'a> {
     assigns_to_resolve: Vec<AstId>,
     typ_inv_obligations: Vec<(AstId, FunWithVis)>,
     asserts: Vec<((BBIndex, usize), Expr)>,
+    loops_with_no_back_edges: HashSet<AstId>,
     errors: Vec<VirErr>,
 
     /// Loop stack, outermost to innermost
@@ -516,6 +578,8 @@ struct LoopEntry {
     break_bb: BBIndex,
     /// BB to jump to on 'continue'
     continue_bb: BBIndex,
+    /// Have we encountered a 'continue' for this loop?
+    continue_taken: bool,
 }
 
 /// Represents the scope for either the top-level fn or for any closure inside it
@@ -567,8 +631,10 @@ fn new_cfg<'a>(
     functions: &'a HashMap<Fun, Function>,
     var_modes: &'a HashMap<VarIdent, Mode>,
     temporary_modes: &'a HashMap<AstId, Mode>,
-) -> Result<(CFG<'a>, Vec<AstId>, Vec<(AstId, FunWithVis)>, Vec<((BBIndex, usize), Expr)>), VirErr>
-{
+) -> Result<
+    (CFG<'a>, Vec<AstId>, Vec<(AstId, FunWithVis)>, Vec<((BBIndex, usize), Expr)>, HashSet<AstId>),
+    VirErr,
+> {
     let mut var_modes = var_modes.clone();
     for p in params.iter() {
         var_modes.insert(p.x.name.clone(), p.x.mode);
@@ -580,6 +646,7 @@ fn new_cfg<'a>(
         fns: vec![],
         assigns_to_resolve: vec![],
         typ_inv_obligations: vec![],
+        loops_with_no_back_edges: HashSet::new(),
         asserts: vec![],
         errors: vec![],
         locals: LocalCollection {
@@ -631,7 +698,13 @@ fn new_cfg<'a>(
     }
 
     let cfg = CFG { basic_blocks: builder.basic_blocks, locals: builder.locals };
-    Ok((cfg, builder.assigns_to_resolve, builder.typ_inv_obligations, builder.asserts))
+    Ok((
+        cfg,
+        builder.assigns_to_resolve,
+        builder.typ_inv_obligations,
+        builder.asserts,
+        builder.loops_with_no_back_edges,
+    ))
 }
 
 macro_rules! unwrap {
@@ -743,10 +816,10 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn get_loop(&self, loop_label: &Label) -> LoopEntry {
-        for l in self.loops.iter().rev() {
+    fn get_loop<'b>(loops: &'b mut Vec<LoopEntry>, loop_label: &Label) -> &'b mut LoopEntry {
+        for l in loops.iter_mut().rev() {
             if &l.label == loop_label {
-                return l.clone();
+                return l;
             }
         }
         panic!("Could not find label {:?}", loop_label);
@@ -982,6 +1055,7 @@ impl<'a> Builder<'a> {
                 body,
                 requires: _,
                 ensures: _,
+                mask_spec: _,
                 ret: _,
                 external_spec: _,
             } => {
@@ -1020,6 +1094,8 @@ impl<'a> Builder<'a> {
                 invs: _,
                 decrease: _,
                 atomic_call: _,
+                known_no_back_edge: _,
+                source: _,
             } => {
                 let outer_body_bb_pos = match cond {
                     Some(cond) => AstPosition::Before(cond.span.id),
@@ -1033,6 +1109,7 @@ impl<'a> Builder<'a> {
                     label: label.clone(),
                     break_bb: post_bb,
                     continue_bb: outer_body_bb,
+                    continue_taken: false,
                 });
 
                 self.basic_blocks[bb].successors.push(outer_body_bb);
@@ -1077,10 +1154,14 @@ impl<'a> Builder<'a> {
 
                 let end_bb = self.build(body, inner_body_bb);
 
-                let _loop_entry = self.loops.pop().unwrap();
+                let loop_entry = self.loops.pop().unwrap();
 
                 match end_bb {
-                    Maybe::Never => {}
+                    Maybe::Never => {
+                        if !loop_entry.continue_taken {
+                            self.loops_with_no_back_edges.insert(expr.span.id);
+                        }
+                    }
                     Maybe::Some(end_bb) => {
                         self.basic_blocks[end_bb].successors.push(outer_body_bb);
                     }
@@ -1144,11 +1225,12 @@ impl<'a> Builder<'a> {
                 if let Some(value) = value {
                     bb = unwrap!(self.build(value, bb));
                 }
-                let entry = self.get_loop(label);
+                let entry = Self::get_loop(&mut self.loops, label);
                 if *is_break {
                     self.basic_blocks[bb].successors.push(entry.break_bb);
                 } else {
                     self.basic_blocks[bb].successors.push(entry.continue_bb);
+                    entry.continue_taken = true;
                 }
                 Maybe::Never
             }
@@ -1398,7 +1480,7 @@ impl<'a> Builder<'a> {
                                         self.typ_inv_obligations.push((p.span.id, typ_inv_fun));
                                     }
                                     TypInv::PatternError => {
-                                        self.errors.push(error(&p.span, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant"));
+                                        self.errors.push(error(&p.span, "Verus does not currently support using a pattern to take a mutable reference to a field of a datatype that has a declared type invariant"));
                                     }
                                     TypInv::No => unreachable!(),
                                 }
@@ -1986,7 +2068,8 @@ impl<'a> Builder<'a> {
             TypX::Datatype(dt, ..) => get_typ_inv_fun_dt(&self.locals.datatypes, dt),
             _ => {
                 dbg!(&p.typ);
-                self.errors.push(error(&p.span, "Verus Internal Error: get_typ_inv_fun failed"));
+                self.errors
+                    .push(crate::messages::internal_error(&p.span, "`get_typ_inv_fun` failed"));
                 None
             }
         }
@@ -2012,9 +2095,9 @@ impl<'a> Builder<'a> {
                 ));
             }
             ComputedPlaceTyped::Ghost(_) => {
-                self.errors.push(error(
+                self.errors.push(crate::messages::internal_error(
                     span,
-                    "Verus Internal Error: inconsistent state, move out of ghost place",
+                    "inconsistent state, move out of ghost place",
                 ));
             }
             ComputedPlaceTyped::Exact(_) => unreachable!(),
@@ -2211,7 +2294,7 @@ fn check_illegal_muts(
         PatternX::Constructor(dt, _variant, patterns) => {
             if let Some(_typ_inv_fun) = get_typ_inv_fun_dt(datatypes, dt) {
                 if let Some(span) = crate::patterns::pattern_find_mut_binding(pattern) {
-                    errors.push(error(&pattern.span, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant").secondary_label(&span, "mutable binding here"));
+                    errors.push(error(&pattern.span, "Verus does not currently support using a pattern to take a mutable reference to a field of a datatype that has a declared type invariant").secondary_label(&span, "`ref mut` binding here"));
                 }
                 // Can skip recursing; either we already added an error, or there are no
                 // mutable bindings in this node.
@@ -3634,6 +3717,7 @@ fn apply_resolutions(
     assigns_to_resolve: Vec<AstId>,
     typ_inv_obligations: Vec<(AstId, FunWithVis)>,
     typ_inv_info: &crate::modes::TypeInvInfo,
+    loops_with_no_back_edges: HashSet<AstId>,
     module: &Path,
 ) -> Result<Expr, VirErr> {
     // All the resolutions that apply to PlaceX::Temporary nodes
@@ -3743,6 +3827,7 @@ fn apply_resolutions(
                 &cfg.locals.datatypes,
                 module,
             )?;
+            let expr2 = maybe_set_loop_no_back_edge(expr2, &loops_with_no_back_edges);
 
             if let Some((befores, afters, after_args, after_f, after_t, assn, seen_yet)) =
                 id_map.get_mut(&expr.span.id)
@@ -4148,4 +4233,17 @@ fn add_decls_for_temps(
         }
     }
     SpannedTyped::new(&expr.span, &expr.typ, ExprX::Block(Arc::new(stmts), Some(expr.clone())))
+}
+
+fn maybe_set_loop_no_back_edge(e: Expr, loops_with_no_back_edges: &HashSet<AstId>) -> Expr {
+    if matches!(&e.x, ExprX::Loop { .. }) && loops_with_no_back_edges.contains(&e.span.id) {
+        let mut e = e;
+        let ExprX::Loop { ref mut known_no_back_edge, .. } = Arc::make_mut(&mut e).x else {
+            unreachable!();
+        };
+        *known_no_back_edge = true;
+        e
+    } else {
+        e
+    }
 }

@@ -706,7 +706,7 @@ test_verify_one_file_with_options! {
                 break 5u64;
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "loops with value-bearing 'break' do not yet support loop isolation")
+    } => Err(err) => assert_vir_error_msg(err, "loops with value-bearing `break`")
 }
 
 test_verify_one_file_with_options! {
@@ -1296,6 +1296,146 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file! {
+    #[test] for_loop_continue verus_code! {
+        use vstd::prelude::*;
+
+        fn skips_body() {
+            let mut count: u32 = 0;
+            for i in it: 0u32..3u32
+                invariant
+                    count == it.index() - (if it.index() > 1 { 1int } else { 0int }),
+            {
+                if i == 1 {
+                    continue;
+                }
+                assert(i != 1);
+                count += 1;
+            }
+            assert(count == 2);
+        }
+
+        fn history(v: Vec<u32>) {
+            let mut seen: Vec<u32> = Vec::new();
+            for x in it: v
+                invariant seen@ == it.history(),
+            {
+                assert(seen.len() == it.index());
+                seen.push(x);
+                continue;
+            }
+            assert(seen@ == v@);
+        }
+
+        #[verifier::loop_isolation(false)]
+        fn no_isolation() {
+            let mut count: u32 = 0;
+            for i in 0u32..3u32
+                invariant count == i,
+            {
+                count += 1;
+                if i == 1 {
+                    continue;
+                }
+            }
+            assert(count == 3);
+        }
+
+        fn with_break() {
+            let mut count: u32 = 0;
+            for i in 0u32..5u32
+                invariant_except_break count == i,
+                invariant count <= 3,
+                ensures count == 3,
+            {
+                if i == 3 {
+                    break;
+                }
+                count += 1;
+                continue;
+            }
+            assert(count == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] for_loop_continue_labeled verus_code! {
+        use vstd::prelude::*;
+
+        fn outer() {
+            let mut count: u32 = 0;
+            'outer: for i in 0u32..3u32
+                invariant count == i,
+            {
+                count += 1;
+                // As with other loops, a labeled continue that checks the outer
+                // decreases clause must not cross an isolated inner loop.
+                #[verifier::loop_isolation(false)]
+                for j in inner: 0u32..2u32
+                    invariant inner.index() == 0,
+                {
+                    continue 'outer;
+                }
+                count += 1;
+            }
+            assert(count == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] for_loop_continue_fail verus_code! {
+        use vstd::prelude::*;
+
+        fn invariant_fail() {
+            let mut count: u32 = 0;
+            for i in 0u32..3u32
+                invariant count == i,
+            {
+                if i == 1 {
+                    continue; // FAILS
+                }
+                count += 1;
+            }
+        }
+
+        fn invariant_except_break_fail() {
+            let mut count: u32 = 0;
+            for i in 0u32..3u32
+                invariant_except_break count == i,
+            {
+                if i == 1 {
+                    continue; // FAILS
+                }
+                count += 1;
+            }
+        }
+
+        fn decreases_fail() {
+            for i in 0u32..3u32
+                decreases 0int,
+            {
+                continue; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] for_loop_continue_labeled_fail verus_code! {
+        use vstd::prelude::*;
+
+        fn outer_isolated() {
+            'outer: for i in 0u32..3u32 {
+                for j in 0u32..2u32 {
+                    continue 'outer; // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 test_verify_one_file_with_options! {
     #[test] for_loop1 ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
@@ -1669,7 +1809,7 @@ test_verify_one_file! {
                 i = i + 1;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "loop invariants with 'loop_isolation(false)' cannot be invariant_except_break or ensures, unless #[verifier::allow_complex_invariants] is used")
+    } => Err(err) => assert_vir_error_msg(err, "loop invariants with `loop_isolation(false)` cannot be `invariant_except_break` or `ensures`, unless `#[verifier::allow_complex_invariants]` is used")
 }
 
 test_verify_one_file! {
@@ -2072,4 +2212,104 @@ test_verify_one_file! {
             m!();
         }
     } => Err(err) => assert_vir_error_msg(err, "`for` loops produced by a macro expansion")
+}
+
+test_verify_one_file! {
+    // The locals introduced by the for-loop desugaring must not capture user names
+    // (the compiled code keeps the plain Rust `for` loop, where they don't exist).
+    #[test] for_loop_desugar_no_capture_loop_next_issue3172 verus_code! {
+        use vstd::prelude::*;
+        #[allow(non_snake_case)]
+        fn f() -> (r: u32)
+            ensures r == 0
+        {
+            let VERUS_loop_next: u32 = 100;
+            let mut s: u32 = 0;
+            for x in 0..1u32
+                invariant s == 0, // FAILS
+            {
+                s = VERUS_loop_next;
+            }
+            s
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] for_loop_desugar_no_capture_iter_init_issue3172 verus_code! {
+        use vstd::prelude::*;
+        #[allow(non_snake_case)]
+        fn g(s: &[u32]) -> (r: usize)
+            requires s@.len() == 3,
+            ensures r == 3
+        {
+            let VERUS_iter_init: &[u32] = &[];
+            let mut n: usize = 3;
+            for x in s
+                invariant n == 3, s@.len() == 3, // FAILS
+            {
+                n = VERUS_iter_init.len();
+            }
+            n
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // User locals named like the generated ones stay visible and are not shadowed.
+    #[test] for_loop_desugar_user_names_visible_issue3172 verus_code! {
+        use vstd::prelude::*;
+        #[allow(non_snake_case)]
+        fn h(v: &Vec<u32>) {
+            let VERUS_iter_init: u32 = 1;
+            let VERUS_iter: u32 = 2;
+            let VERUS_ghost_iter: u32 = 3;
+            let VERUS_old_snap: u32 = 4;
+            let VERUS_old_iter: u32 = 5;
+            let VERUS_loop_next: u32 = 6;
+            let VERUS_loop_val: u32 = 7;
+            let VERUS_loop_result: u32 = 8;
+            let VERUS_exec_iter: u32 = 9;
+            for x in v
+                invariant
+                    VERUS_iter_init == 1, VERUS_iter == 2, VERUS_ghost_iter == 3,
+                    VERUS_old_snap == 4, VERUS_old_iter == 5, VERUS_loop_next == 6,
+                    VERUS_loop_val == 7, VERUS_loop_result == 8, VERUS_exec_iter == 9,
+            {
+                assert(VERUS_iter_init == 1);
+                assert(VERUS_iter == 2);
+                assert(VERUS_ghost_iter == 3);
+                assert(VERUS_old_snap == 4);
+                assert(VERUS_old_iter == 5);
+                assert(VERUS_loop_next == 6);
+                assert(VERUS_loop_val == 7);
+                assert(VERUS_loop_result == 8);
+                assert(VERUS_exec_iter == 9);
+            }
+            for x in it: v
+                invariant VERUS_loop_next == 6, it.index() <= v.len(),
+            {
+                assert(VERUS_loop_next == 6);
+            }
+            assert(VERUS_loop_result == 8);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Hygienic generated locals must not move the "not an iterator" error to the whole
+    // verus! block or duplicate it.
+    #[test] for_loop_not_iterator_error_span_issue3172 verus_code! {
+        use vstd::prelude::*;
+        fn f() {
+            for x in 5u32 {}
+        }
+    } => Err(err) => {
+        let errs: Vec<_> =
+            err.errors.iter().filter(|e| e.message.contains("is not an iterator")).collect();
+        assert_eq!(errs.len(), 1);
+        let primary = errs[0].spans.iter().find(|s| s.is_primary).unwrap();
+        assert_eq!(primary.line_start, primary.line_end);
+        assert!(primary.text[0].text.contains("for x in 5u32"));
+    }
 }

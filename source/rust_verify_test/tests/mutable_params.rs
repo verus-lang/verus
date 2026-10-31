@@ -40,7 +40,7 @@ test_verify_one_file_with_options! {
             loop {
                 let z = x;
                 x = 5;
-                return z; // FAILS (requires invariant relating x to old(x))
+                return z;
             }
         }
 
@@ -81,7 +81,7 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_fails(err, 5)
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file_with_options! {
@@ -123,7 +123,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         fn test_loop_fails0() {
             let r = |mut x: u64| -> (y: u64)
-                ensures x == y // FAILS (requires invariant relating x to old(x))
+                ensures x == y
             {
                 loop {
                     let z = x;
@@ -176,7 +176,7 @@ test_verify_one_file_with_options! {
                 }
             };
         }
-    } => Err(err) => assert_fails(err, 5)
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file_with_options! {
@@ -296,7 +296,7 @@ test_verify_one_file_with_options! {
             loop {
                 let z = x;
                 x = 5;
-                return z; // FAILS (requires invariant relating x to old(x))
+                return z;
             }
         }
 
@@ -337,7 +337,7 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_fails(err, 5)
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file_with_options! {
@@ -379,7 +379,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         fn test_loop_fails0() {
             let r = |mut x: u64| -> (y: u64)
-                ensures x == y // FAILS (requires invariant relating x to old(x))
+                ensures x == y
             {
                 loop {
                     let z = x;
@@ -432,7 +432,7 @@ test_verify_one_file_with_options! {
                 }
             };
         }
-    } => Err(err) => assert_fails(err, 5)
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file_with_options! {
@@ -590,14 +590,14 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] patterns_in_param_position_without_macro [] => code! {
-        #[verifier::verify]
+        #[verus::internal(verify)]
         fn add_pair((a, b): (i32, i32)) -> i32 {
             requires(a == 1 && b == 2);
             ensures(|result: i32| [result == a + b]);
             a + b
         }
 
-        #[verifier::verify]
+        #[verus::internal(verify)]
         fn ignore_arg(_: bool, value: i32, _: u64) -> i32 {
             ensures(|result: i32| [result == value]);
             value
@@ -844,7 +844,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] wildcard_params_in_trait_methods [] => code! {
-        #[verifier::verify]
+        #[verus::internal(verify)]
         trait Plain {
             fn m(&self, _: u32, _: u32);
         }
@@ -957,7 +957,7 @@ test_verify_one_file_with_options! {
         fn g((x, y): &mut (u64, u64)) {}
     } => Err(err) => assert_vir_error_msgs(err, &[
         "patterns in ghost or tracked parameters of exec functions are not supported",
-        "mutable-reference bindings in parameters are not supported",
+        "Verus does not currently support `ref mut` bindings in parameters",
     ])
 }
 

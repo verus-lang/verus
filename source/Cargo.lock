@@ -48,6 +48,7 @@ dependencies = [
  "indexmap 2.14.0",
  "petgraph 0.6.5",
  "serde",
+ "serde_json",
  "sise",
  "smt-scope",
  "win32job",
@@ -3252,7 +3253,7 @@ version = "0.0.0-2026-10-11-0230"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-10-18-0147"
+version = "0.0.0-2026-10-25-0158"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -3273,7 +3274,7 @@ dependencies = [
 
 [[package]]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-10-18-0147"
+version = "0.0.0-2026-10-25-0158"
 dependencies = [
  "indexmap 2.14.0",
  "proc-macro2",

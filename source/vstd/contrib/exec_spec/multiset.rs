@@ -7,6 +7,7 @@ verus! {
 
 // Note: all of the exec translations are currently unverified.
 // Some will require axiomatization because their corresponding specs are uninterp.
+// They compute with T's Hash/Eq, which agree with T::deep_view() by `T: ObeysDeepEq`.
 broadcast use {
     crate::group_vstd_default,
     crate::std_specs::hash::group_hash_axioms,
@@ -14,9 +15,39 @@ broadcast use {
 };
 
 /// `Multiset<T>` is compiled to `ExecMultiset<T>`.
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, Debug)]
 pub struct ExecMultiset<T: std::hash::Hash + std::cmp::Eq> {
     pub m: HashMap<T, usize>,
+}
+
+/// Compares multiplicities, where an absent element has multiplicity 0 (as in the deep view).
+impl<T: std::hash::Hash + std::cmp::Eq> PartialEq for ExecMultiset<T> {
+    #[verifier::external_body]
+    fn eq(&self, other: &Self) -> bool {
+        let count = |m: &HashMap<T, usize>, k: &T| m.get(k).copied().unwrap_or(0);
+        self.m.iter().all(|(k, v)| count(&other.m, k) == *v) && other.m.iter().all(
+            |(k, v)| count(&self.m, k) == *v,
+        )
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+impl<
+    T: ObeysDeepEq + std::hash::Hash + std::cmp::Eq,
+> crate::std_specs::cmp::PartialEqSpecImpl for ExecMultiset<T> {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &Self) -> bool {
+        self.deep_view() == other.deep_view()
+    }
+}
+
+impl<T: ObeysDeepEq + std::hash::Hash + std::cmp::Eq> ObeysDeepEq for ExecMultiset<T> {
+    proof fn lemma_obeys_deep_eq() {
+        reveal(crate::laws_eq::obeys_deep_eq);
+    }
 }
 
 /// Implementations for shared traits
@@ -35,7 +66,7 @@ impl<T: DeepView + std::hash::Hash + std::cmp::Eq> DeepView for ExecMultiset<T> 
     }
 }
 
-impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToRef<
+impl<'a, T: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToRef<
     &'a ExecMultiset<T>,
 > for &'a ExecMultiset<T> {
     #[inline(always)]
@@ -44,7 +75,7 @@ impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToRef<
     }
 }
 
-impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToOwned<
+impl<'a, T: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToOwned<
     ExecMultiset<T>,
 > for &'a ExecMultiset<T> {
     #[verifier::external_body]
@@ -58,9 +89,9 @@ impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ToOwned<
     }
 }
 
-impl<T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> DeepViewClone for ExecMultiset<
-    T,
-> {
+impl<
+    T: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+> DeepViewClone for ExecMultiset<T> {
     #[verifier::external_body]
     #[inline(always)]
     fn deep_clone(&self) -> Self {
@@ -72,38 +103,9 @@ impl<T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> DeepViewClone
     }
 }
 
-impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecEq<
-    'a,
-> for &'a ExecMultiset<T> where &'a T: ExecSpecEq<'a, Other = &'a T> {
-    type Other = &'a ExecMultiset<T>;
-
-    #[verifier::external_body]
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        for (k, v) in this.m.iter() {
-            match other.m.get(k) {
-                Some(ov) => {
-                    if !<&'a usize>::exec_eq(v, ov) {
-                        return false;
-                    }
-                },
-                None => if *v != 0 {
-                    return false;
-                },
-            }
-        }
-        for (k, v) in other.m.iter() {
-            if !this.m.contains_key(k) && *v != 0 {
-                return false;
-            }
-        }
-        true
-    }
-}
-
 impl<
     'a,
-    T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    T: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
 > ExecSpecLen for &'a ExecMultiset<T> {
     #[inline(always)]
     #[verifier::external_body]
@@ -156,7 +158,7 @@ pub trait ExecSpecMultisetSub<'a, Out: Sized + DeepView>: Sized + DeepView + ToO
 //
 impl<
     'a,
-    T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    T: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
 > ExecSpecMultisetCount for &'a ExecMultiset<T> {
     type Elem = T;
 
@@ -173,7 +175,7 @@ impl<
     }
 }
 
-impl<T: DeepView + std::hash::Hash + std::cmp::Eq> ExecSpecMultisetEmpty for ExecMultiset<T> {
+impl<T: ObeysDeepEq + std::hash::Hash + std::cmp::Eq> ExecSpecMultisetEmpty for ExecMultiset<T> {
     #[verifier::external_body]
     #[inline(always)]
     fn exec_empty() -> (res: Self)
@@ -185,7 +187,7 @@ impl<T: DeepView + std::hash::Hash + std::cmp::Eq> ExecSpecMultisetEmpty for Exe
 }
 
 impl<
-    T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    T: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
 > ExecSpecMultisetSingleton for ExecMultiset<T> {
     type Elem = T;
 
@@ -202,7 +204,7 @@ impl<
 }
 
 impl<'a, T> ExecSpecMultisetAdd<'a, ExecMultiset<T>> for &'a ExecMultiset<T> where
-    T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    T: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
  {
     #[verifier::external_body]
     #[inline(always)]
@@ -224,7 +226,7 @@ impl<'a, T> ExecSpecMultisetAdd<'a, ExecMultiset<T>> for &'a ExecMultiset<T> whe
 }
 
 impl<'a, T> ExecSpecMultisetSub<'a, ExecMultiset<T>> for &'a ExecMultiset<T> where
-    T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    T: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
  {
     #[verifier::external_body]
     #[inline(always)]

@@ -1266,7 +1266,7 @@ test_verify_one_file! {
             };
         }
     //} => Err(err) => assert_one_fails(err)
-    } => Err(err) => assert_vir_error_msg(err, "Not supported: match arm containing both an or-pattern (|) and a match-guard")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support a match arm containing both an or-pattern (|) and a match guard")
 }
 
 test_verify_one_file! {
@@ -1681,8 +1681,8 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msgs(err, &[
-        "equality-testing this type in pattern: f64",
-        "equality-testing this type in pattern: f64",
-        "equality-testing this type in pattern: f64",
+        "equality-testing this type in a pattern: f64",
+        "equality-testing this type in a pattern: f64",
+        "equality-testing this type in a pattern: f64",
     ])
 }

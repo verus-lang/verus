@@ -29,19 +29,20 @@ impl<T: DeepViewClone, E: DeepViewClone> DeepViewClone for Result<T, E> {
     }
 }
 
-impl<'a, T: DeepView, E: DeepView> ExecSpecEq<'a> for &'a Result<T, E> where
-    &'a T: ExecSpecEq<'a, Other = &'a T>,
-    &'a E: ExecSpecEq<'a, Other = &'a E>,
- {
-    type Other = &'a Result<T, E>;
+#[cfg(verus_keep_ghost)]
+impl<T: ObeysDeepEq, E: ObeysDeepEq> crate::std_specs::cmp::PartialEqSpecImpl for Result<T, E> {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
 
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        match (this, other) {
-            (Ok(t1), Ok(t2)) => <&'a T>::exec_eq(t1, t2),
-            (Err(e1), Err(e2)) => <&'a E>::exec_eq(e1, e2),
-            _ => false,
-        }
+    open spec fn eq_spec(&self, other: &Self) -> bool {
+        self.deep_view() == other.deep_view()
+    }
+}
+
+impl<T: ObeysDeepEq, E: ObeysDeepEq> ObeysDeepEq for Result<T, E> {
+    proof fn lemma_obeys_deep_eq() {
+        reveal(crate::laws_eq::obeys_deep_eq);
     }
 }
 

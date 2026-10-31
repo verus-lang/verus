@@ -66,6 +66,64 @@ pub fn verify_files(
 use std::{cell::RefCell, path};
 thread_local! {
     pub static THREAD_LOCAL_TEST_NAME: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// Directory that the next run_verus call on this thread should write its logs to
+    pub static THREAD_LOCAL_TEST_LOG_DIR: RefCell<Option<std::path::PathBuf>> =
+        const { RefCell::new(None) };
+}
+
+/// If VERUS_TEST_LOG_DIR is set, record the test's source files under
+/// `$VERUS_TEST_LOG_DIR/<test binary>/<test name>/src` and arrange for the next run_verus call
+/// on this thread to write its SST and AIR logs to `$VERUS_TEST_LOG_DIR/<test binary>/<test name>/log`.
+/// Unlike VERUS_EXTRA_ARGS="--log-all", this works when many tests run at once.
+/// Only the first run of a test is recorded (some tests run Verus more than once).
+pub fn prepare_test_log_dir(
+    test_binary: &str,
+    test_name: &str,
+    entry_file: &str,
+    files: &[(String, String)],
+    options: &[&str],
+) {
+    let Ok(root) = std::env::var("VERUS_TEST_LOG_DIR") else {
+        return;
+    };
+    // test binaries are named <test file>-<hash>
+    let test_binary = match test_binary.rsplit_once('-') {
+        Some((stem, hash)) if hash.chars().all(|c| c.is_ascii_hexdigit()) => stem,
+        _ => test_binary,
+    };
+    let test_dir = std::path::PathBuf::from(root).join(test_binary).join(test_name);
+    if std::fs::create_dir_all(test_dir.parent().unwrap()).is_err()
+        || std::fs::create_dir(&test_dir).is_err()
+    {
+        return;
+    }
+    let src_dir = test_dir.join("src");
+    std::fs::create_dir(&src_dir).expect("failed to create test log src directory");
+    for (file_name, file_contents) in files {
+        std::fs::write(src_dir.join(file_name), file_contents)
+            .expect("failed to write test log source file");
+    }
+    let meta = serde_json::json!({
+        "test_binary": test_binary,
+        "test_name": test_name,
+        "entry_file": entry_file,
+        "options": options,
+    });
+    std::fs::write(test_dir.join("meta.json"), meta.to_string())
+        .expect("failed to write test log meta.json");
+    THREAD_LOCAL_TEST_LOG_DIR.with(|d| *d.borrow_mut() = Some(test_dir.join("log")));
+}
+
+/// Record the outcome of the Verus run whose logs were requested by prepare_test_log_dir
+fn record_test_log_result(log_dir: &std::path::Path, run: &std::process::Output) {
+    let test_dir = log_dir.parent().unwrap();
+    let result = serde_json::json!({
+        "exit_code": run.status.code(),
+        "stdout": String::from_utf8_lossy(&run.stdout),
+        "stderr": String::from_utf8_lossy(&run.stderr),
+    });
+    std::fs::write(test_dir.join("verus_result.json"), result.to_string())
+        .expect("failed to write test log verus_result.json");
 }
 
 pub fn verify_files_vstd(
@@ -130,6 +188,8 @@ pub fn verify_files_vstd_all_diags(
     if keep_test_dir {
         print_input_dir_rerun_info(&test_input_dir, options, &entry_file);
     }
+
+    prepare_test_log_dir(&test_binary, &test_name, &entry_file, &files, options);
 
     for (file_name, file_contents) in files {
         use std::io::Write;
@@ -329,6 +389,9 @@ pub fn run_verus(
         } else if *option == "-V check-api-safety" {
             verus_args.push("-V".to_string());
             verus_args.push("check-api-safety".to_string());
+        } else if *option == "-V axiom-usage-info" {
+            verus_args.push("-V".to_string());
+            verus_args.push("axiom-usage-info".to_string());
         } else if *option == "-V spinoff-all" {
             verus_args.push("-V".to_string());
             verus_args.push("spinoff-all".to_string());
@@ -352,6 +415,12 @@ pub fn run_verus(
         } else if *option == "--edition 2024" {
             verus_args.push("--edition".to_string());
             verus_args.push("2024".to_string());
+        } else if *option == "cvc5" {
+            verus_args.push("-V".to_string());
+            verus_args.push("cvc5".to_string());
+        } else if option.starts_with("observer=") {
+            verus_args.push("-V".to_string());
+            verus_args.push(option.to_string());
         } else if *option == "--edition 2021" {
             verus_args.push("--edition".to_string());
             verus_args.push("2021".to_string());
@@ -419,6 +488,14 @@ pub fn run_verus(
 
     verus_args.extend(extra_args.into_iter());
 
+    let test_log_dir = THREAD_LOCAL_TEST_LOG_DIR.with(|d| d.take());
+    if let Some(log_dir) = &test_log_dir {
+        verus_args.extend(
+            ["--log-dir", log_dir.to_str().unwrap(), "--log", "vir-sst", "--log", "air"]
+                .map(|x| x.to_string()),
+        );
+    }
+
     verus_args.push(entry_file.to_str().unwrap().to_string());
 
     if import_vstd && !is_core && use_internal_test_mode {
@@ -463,6 +540,9 @@ pub fn run_verus(
         .spawn()
         .expect("could not execute test rustc process");
     let run = child.wait_with_output().expect("lifetime rustc wait failed");
+    if let Some(log_dir) = &test_log_dir {
+        record_test_log_result(log_dir, &run);
+    }
     run
 }
 
@@ -958,6 +1038,13 @@ pub fn assert_rust_error_msg_any(err: TestErr, expected_msg: &str) {
         }
     }
     assert!(found);
+}
+
+pub fn assert_error_msgs(err: TestErr, expected_msgs: &[&str]) {
+    assert_eq!(err.errors.len(), expected_msgs.len());
+    for (error, expected_msg) in err.errors.iter().zip(expected_msgs.iter()) {
+        assert!(error.message.contains(expected_msg));
+    }
 }
 
 pub fn assert_spans_contain(err: &Diagnostic, needle: &str) {

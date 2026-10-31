@@ -395,6 +395,28 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_proof_decl_reject_macro_assignment code!{
+        macro_rules! bump {
+            ($x:ident) => { $x = 1; };
+        }
+
+        #[verus_spec(r => ensures r == 1)]
+        fn test() -> u32 {
+            let mut x = 0u32;
+            proof_decl! {
+                bump!(x);
+            }
+            x
+        }
+    } => Err(e) => {
+        let primary = e.errors[0].spans.iter().find(|s| s.is_primary).unwrap();
+        assert_eq!(primary.line_start, primary.line_end);
+        assert!(primary.text[0].text.contains("bump!(x)"));
+        assert_vir_error_msg(e, "Macro statements are not supported in proof_decl!");
+    }
+}
+
+test_verify_one_file! {
     #[test] test_with code!{
         #[verus_spec(ret =>
             with
@@ -620,6 +642,189 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_proof_with_callee_accepted code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(r => with Ghost(g): Ghost<u8> ensures r == x)]
+        pub fn f(x: u8) -> u8 { x }
+
+        pub mod m {
+            use vstd::prelude::*;
+            #[verus_spec(r => with Ghost(g): Ghost<u8> ensures r == x)]
+            pub fn h(x: u8) -> u8 { x }
+        }
+
+        #[verus_spec(r => with Ghost(g): Ghost<u8> ensures r.is_none())]
+        pub fn none<T>() -> Option<T> { None }
+
+        #[verus_spec(r => with Ghost(g): Ghost<u8>)]
+        pub fn mk<T: Copy>(x: T) -> T { x }
+
+        #[verus_spec(r => with Ghost(g): Ghost<u8>)]
+        pub fn run<F: Fn(u8) -> u8>(cl: F) -> u8 { 0 }
+
+        #[verus_spec(r =>
+            with Ghost(g): Ghost<u8> -> out: (Ghost<u8>, Ghost<u8>)
+            ensures r == x, out.0@ == g
+        )]
+        pub fn two(x: u8) -> u8 { proof_with!{|= (Ghost(g), Ghost(g))} x }
+
+        #[verus_verify]
+        pub trait Tr {
+            #[verus_spec(r => with Ghost(g): Ghost<u8> ensures r == 1)]
+            fn t(&self) -> u8 { 1 }
+        }
+
+        #[verus_verify]
+        pub struct A;
+
+        #[verus_verify]
+        impl Tr for A {}
+
+        #[verus_spec]
+        pub fn call(a: A) {
+            proof_with!{Ghost(0u8)}
+            let x = m::h(1);
+            // generic argument inferred from the expected type
+            let n: Option<u32> = {
+                proof_with!{Ghost(0u8)}
+                none()
+            };
+            // exec result that is itself a tuple
+            let p: (u8, u16) = {
+                proof_with!{Ghost(0u8)}
+                mk((1, 2))
+            };
+            // closures in the arguments
+            proof_with!{Ghost(0u8)}
+            let q = run(|x: u8| { let k = |y: u8| y; k(x) });
+            // nested proof_with!
+            proof_with!{Ghost(0u8)}
+            let r = f({ proof_with!{Ghost(1u8)} f(2) });
+            // ghost outputs bound and ignored
+            proof_with!{Ghost(5u8) => (Ghost(o1), Ghost(o2))}
+            let s = two(9);
+            proof_with!{Ghost(5u8)}
+            two(9);
+            // trait default method
+            proof_with!{Ghost(0u8)}
+            let t = a.t();
+            proof!{ assert(x == 1 && n.is_none() && r == 2 && s == 9 && o1 == 5 && t == 1); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_callee_shadowed_by_local_fn code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(r =>
+            with Ghost(g): Ghost<u8>
+            ensures r == 1
+        )]
+        pub fn f(x: u8) -> u8 { 1 }
+
+        #[verus_spec(r => ensures r == 1)]
+        pub fn call() -> u8 {
+            // The compiled call `f(7)` resolves to this `f`, but `_VERUS_VERIFIED_f` does not.
+            #[verus_spec(r => ensures r == 0)]
+            fn f(x: u8) -> u8 { 0 }
+
+            proof_with!{Ghost(0u8)}
+            f(7)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in the compiled program, `f` here resolves to `call::f`, not to `f` (declared with `#[verus_spec(with ...)]`)")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_callee_ghost_arg_fixes_generic code!{
+        use vstd::prelude::*;
+
+        verus! {
+        pub trait Tr { spec fn sv() -> u8; fn v() -> (r: u8) ensures r == Self::sv(); }
+        impl Tr for u64 { open spec fn sv() -> u8 { 1 } fn v() -> u8 { 1 } }
+        impl Tr for i32 { open spec fn sv() -> u8 { 0 } fn v() -> u8 { 0 } }
+        }
+
+        #[verus_spec(r =>
+            with Ghost(g): Ghost<T>
+            ensures r == T::sv()
+        )]
+        pub fn h<T: Tr>(x: T) -> u8 { T::v() }
+
+        #[verus_spec(r => ensures r == 1)]
+        pub fn call() -> u8 {
+            // the verified call infers T = u64 from the ghost argument,
+            // the compiled call `h(3)` infers T = i32
+            proof_with!{Ghost(5u64)}
+            h(3)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in the compiled program, this call to `h` has different type arguments than in the verified program")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_trait_default_method_overridden code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        pub trait Tr {
+            #[verus_spec(r =>
+                with Ghost(g): Ghost<u8>
+                ensures r == 1
+            )]
+            fn f(&self) -> u8 { 1 }
+        }
+
+        #[verus_verify]
+        pub struct A;
+
+        #[verus_verify]
+        impl Tr for A {
+            // `f` is called by the compiled program, `_VERUS_VERIFIED_f` by the verified one
+            fn f(&self) -> u8 { 0 }
+        }
+
+        #[verus_spec(r => ensures r == 1)]
+        pub fn call<X: Tr>(a: X) -> u8 {
+            proof_with!{Ghost(0u8)}
+            a.f()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot override `Tr::f`: a trait method declared with `#[verus_spec(with ...)]` cannot be overridden")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_callee_handwritten_extra_stmt code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(r =>
+            with -> out: Ghost<u8>
+            ensures r == 1
+        )]
+        pub fn g(x: u8) -> u8 { proof_with!{|= Ghost(0u8)} 1 }
+
+        #[verus_spec(r => ensures r == 0)]
+        pub fn other(x: u8) -> u8 { 0 }
+
+        #[verus_spec]
+        pub fn call() {
+            let r = verus_builtin::proof_with_callee(
+                { let (tmp, o) = _VERUS_VERIFIED_g(7); other(1); tmp },
+                g(7),
+            );
+        }
+    } => Err(err) => assert_vir_error_msg(err, "ill-formed `proof_with!` call")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_ghost_output_sealed code!{
+        use vstd::prelude::*;
+
+        pub struct S;
+        impl verus_builtin::ProofWithGhostOutput for S {}
+    } => Err(err) => assert_rust_error_msg(err, "the trait bound `S: verus_builtin::proof_with_sealed::SealedOutput` is not satisfied")
+}
+
+test_verify_one_file! {
     #[test] test_proof_with_err code!{
         #[verus_spec]
         fn test_mut_tracked(x: u32) -> u32 {
@@ -809,7 +1014,7 @@ test_verify_one_file! {
             *x = *x + y;
             *x
         }
-    } => Err(e) => assert_vir_error_msg(e, "when_used_as_spec not supported for function with &mut param")
+    } => Err(e) => assert_vir_error_msg(e, "`when_used_as_spec` not supported for function with a mutable reference parameter")
 }
 
 test_verify_one_file! {
@@ -833,7 +1038,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_macro_inside_proof_decl code!{
+    #[test] test_proof_decl_via_macro code!{
         macro_rules! inline_proof {
             ($val: expr => $x: ident, $y: ident) => {
                 proof_decl!{
@@ -844,10 +1049,12 @@ test_verify_one_file! {
              }
         }
 
+        #[verus_spec]
         fn test_inline_proof_via_macro() {
-            proof_decl!{
-                inline_proof!(0 => x, y);
+            inline_proof!(0 => x, y);
+            proof!{
                 assert(x == 0);
+                assert(y == 0);
             }
         }
 
@@ -1800,7 +2007,7 @@ test_verify_one_file! {
     #[test] test_verus_verify_on_static_with_external_body code! {
         #[verus_verify(external_body)]
         static MY_STATIC2: u64 = 0;
-    } => Err(e) => assert_any_vir_error_msg(e, "#[verifier::external_body] doesn't make sense for this item type -- it is only applicable to functions and datatype declarations" )
+    } => Err(e) => assert_any_vir_error_msg(e, "`#[verifier::external_body]` doesn't make sense for this item type -- it is only applicable to functions and datatype declarations" )
 }
 
 test_verify_one_file! {
@@ -1849,6 +2056,33 @@ test_verify_one_file! {
                     n = i;
                 }
                 n
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] verus_verify_external_body_with_spec_with_decreases code! {
+        struct X { }
+
+        #[verus_verify]
+        impl X {
+            #[verus_verify(external_body)]
+            #[verus_spec(ret =>
+                requires true,
+                ensures true,
+                decreases 255 - i,
+            )]
+            fn test(i: u8) -> bool {
+                proof!{
+                    let x = 5int;
+                }
+
+                if i < 255 {
+                    Self::test(i + 1)
+                } else {
+                    true
+                }
             }
         }
     } => Ok(())

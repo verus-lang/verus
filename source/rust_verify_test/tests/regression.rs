@@ -322,7 +322,7 @@ test_verify_one_file! {
         proof fn foo() {
             reveal_with_fuel(is_true, 2);
         }
-    } => Err(err) => assert_vir_error_msg(err, "reveal_with_fuel statements require a spec function with a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "`reveal_with_fuel` statements require a spec function with a `decreases` clause")
 }
 
 test_verify_one_file_with_options! {
@@ -1257,7 +1257,7 @@ test_verify_one_file! {
             assume(true);
             hide(foo);
         }
-    } => Err(e) => assert_vir_error_msg(e, "This verus_builtin header should go at the beginning of the function body")
+    } => Err(e) => assert_vir_error_msg(e, "this Verus builtin header should go at the beginning of the function body")
 }
 
 test_verify_one_file! {
@@ -1336,7 +1336,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.")
+    } => Err(err) => assert_vir_error_msg(err, "in order to verify any items of this trait impl, the entire impl must be verified; try wrapping the entire impl in the `verus!` macro")
 }
 
 test_verify_one_file! {
@@ -1489,21 +1489,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] overlapping_labels_between_block_and_loop verus_code! {
-        #[verifier::exec_allows_no_decreases_clause]
-        fn test() {
-            'a: loop
-            {
-                'a: {
-                    break 'a;
-                }
-                assert(false); // FAILS
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: block with label")
-}
-
-test_verify_one_file! {
     #[test] tuple_copy_bound_issue2211 verus_code! {
         use vstd::prelude::*;
 
@@ -1548,4 +1533,32 @@ test_verify_one_file_with_options! {
     #[test] no_verify_build_sst_no_buckets ["--no-verify", "--build-sst"] => verus_code! {
         pub struct X { pub a: u8 }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] path_collision_issue3144 verus_code! {
+        use vstd::prelude::*;
+
+        mod m {
+            #[verifier::external]
+            pub fn g() -> u8 {
+                2
+            }
+        }
+
+        // A function named like the module, with a nested function named like the module's function.
+        fn m() {
+            fn g() -> (r: u8)
+                ensures
+                    r == 1,
+            {
+                1
+            }
+        }
+
+        fn main() {
+            // rustc resolves `m::g` to the function in the module.
+            let x = m::g();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::m::g` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
 }

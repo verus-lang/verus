@@ -421,8 +421,10 @@ pub(crate) enum BuiltinTraitItem {
 pub(crate) enum BuiltinFunctionItem {
     CallRequires,
     CallEnsures,
+    CallOpensInvariants,
     ConstrainType,
     GetFutureOutputType,
+    ProofWithCallee,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -437,9 +439,10 @@ pub(crate) enum ExternalItem {
     FOpts,
     FnProofReq,
     FnProofEns,
-    ProofFnOnce,
-    ProofFnMut,
-    ProofFn,
+    ProofFnOnceOpens,
+    ProofFnMutOpens,
+    ProofFnOpens,
+    ProofFnNoOpens,
     Trk,
     RqEn,
 }
@@ -779,10 +782,12 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::Chainable",               VerusItem::BuiltinTrait(BuiltinTraitItem::Chainable)),
         ("verus::verus_builtin::private::Sealed",         VerusItem::BuiltinTrait(BuiltinTraitItem::Sealed)),
 
-        ("verus::verus_builtin::call_requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::CallRequires)),
-        ("verus::verus_builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
+        ("verus::verus_builtin::call_requires",           VerusItem::BuiltinFunction(BuiltinFunctionItem::CallRequires)),
+        ("verus::verus_builtin::call_ensures",            VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
+        ("verus::verus_builtin::call_opens_invariants",   VerusItem::BuiltinFunction(BuiltinFunctionItem::CallOpensInvariants)),
         ("verus::verus_builtin::constrain_type",          VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)),
-        ("verus::verus_builtin::get_future_output_type",          VerusItem::BuiltinFunction(BuiltinFunctionItem::GetFutureOutputType)),
+        ("verus::verus_builtin::get_future_output_type",  VerusItem::BuiltinFunction(BuiltinFunctionItem::GetFutureOutputType)),
+        ("verus::verus_builtin::proof_with_callee",       VerusItem::BuiltinFunction(BuiltinFunctionItem::ProofWithCallee)),
 
         ("verus::verus_builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
 
@@ -790,9 +795,10 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::FOpts",   VerusItem::External(ExternalItem::FOpts)),
         ("verus::verus_builtin::ProofFnReqEnsDef::req", VerusItem::External(ExternalItem::FnProofReq)),
         ("verus::verus_builtin::ProofFnReqEnsDef::ens", VerusItem::External(ExternalItem::FnProofEns)),
-        ("verus::verus_builtin::ProofFnOnce",      VerusItem::External(ExternalItem::ProofFnOnce)),
-        ("verus::verus_builtin::ProofFnMut",       VerusItem::External(ExternalItem::ProofFnMut)),
-        ("verus::verus_builtin::ProofFn",          VerusItem::External(ExternalItem::ProofFn)),
+        ("verus::verus_builtin::ProofFnOnceOpens",      VerusItem::External(ExternalItem::ProofFnOnceOpens)),
+        ("verus::verus_builtin::ProofFnMutOpens",       VerusItem::External(ExternalItem::ProofFnMutOpens)),
+        ("verus::verus_builtin::ProofFnOpens",          VerusItem::External(ExternalItem::ProofFnOpens)),
+        ("verus::verus_builtin::ProofFnNoOpens", VerusItem::External(ExternalItem::ProofFnNoOpens)),
         ("verus::verus_builtin::Trk",              VerusItem::External(ExternalItem::Trk)),
         ("verus::verus_builtin::RqEn",             VerusItem::External(ExternalItem::RqEn)),
         ("verus::verus_builtin::has_resolved",     VerusItem::HasResolved),

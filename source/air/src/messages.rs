@@ -9,6 +9,10 @@ pub trait MessageInterface {
     fn empty(&self) -> ArcDynMessage;
     fn message_label_from_air_span(&self, air_span: &str, note: &str) -> ArcDynMessage;
     fn all_msgs(&self, message: &ArcDynMessage) -> Vec<String>;
+    /// Like all_msgs, but paired with each note's span (if any), for logging
+    fn all_msgs_with_spans(&self, message: &ArcDynMessage) -> Vec<(String, Option<String>)> {
+        self.all_msgs(message).into_iter().map(|note| (note, None)).collect()
+    }
     fn bare(&self, level: MessageLevel, notes: &str) -> ArcDynMessage;
     fn unexpected_solver_version(&self, solver: &str, expected: &str, found: &str)
     -> ArcDynMessage;
@@ -88,6 +92,14 @@ impl MessageInterface for AirMessageInterface {
         Some(message.note.clone())
             .into_iter()
             .chain(message.labels.iter().map(|l| l.note.clone()))
+            .collect()
+    }
+
+    fn all_msgs_with_spans(&self, message: &ArcDynMessage) -> Vec<(String, Option<String>)> {
+        let message = message.downcast_ref::<AirMessage>().unwrap();
+        Some((message.note.clone(), message.span.as_ref().map(|s| s.as_string.clone())))
+            .into_iter()
+            .chain(message.labels.iter().map(|l| (l.note.clone(), Some(l.span.as_string.clone()))))
             .collect()
     }
 

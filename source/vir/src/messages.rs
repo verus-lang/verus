@@ -175,6 +175,15 @@ impl air::messages::MessageInterface for VirMessageInterface {
             .collect()
     }
 
+    fn all_msgs_with_spans(&self, message: &ArcDynMessage) -> Vec<(String, Option<String>)> {
+        let message: &MessageX =
+            message.downcast_ref().expect("unexpected value in Any -> Message conversion");
+        Some((message.note.clone(), message.spans.first().map(|s| s.as_string.clone())))
+            .into_iter()
+            .chain(message.labels.iter().map(|l| (l.note.clone(), Some(l.span.as_string.clone()))))
+            .collect()
+    }
+
     fn bare(&self, level: MessageLevel, note: &str) -> ArcDynMessage {
         Arc::new(MessageX {
             level,
@@ -431,11 +440,15 @@ pub fn multiple_errors<'a, S: Into<String>>(
     multiple_message(MessageLevel::Error, note, spans)
 }
 
-/// Prepend the error with "Verus Internal Error"
+/// Prepend the error with "Verus internal error"
 /// Helpful for distinguishing user errors from Verus bugs.
 pub fn internal_error<S: Into<String>>(span: &Span, note: S) -> Message {
-    let msg = format!("Verus Internal Error: {:}", note.into());
-    message(MessageLevel::Error, msg, span)
+    let msg = format!("Verus internal error: {:}", note.into());
+    let e = message(MessageLevel::Error, msg, span);
+    match crate::util::get_verus_github_bug_report_url() {
+        Some(url) => e.help(format!("this is a bug in the verifier; please report it at {}", url)),
+        None => e,
+    }
 }
 
 /// Error message with a span to be highlighted with ^^^^^^, and a label for that span

@@ -105,7 +105,9 @@ pub exec fn slice_to_vec<T: Copy>(slice: &[T]) -> (out: alloc::vec::Vec<T>)
     ensures
         out@ == slice@,
 {
-    slice.to_vec()
+    // Not `slice.to_vec()`: since Rust 1.93, `to_vec` copies bitwise only for `TrivialClone`
+    // types and calls `Clone::clone` for a `Copy` type with a hand-written `Clone`.
+    slice.iter().copied().collect()
 }
 
 #[verifier::external_body]

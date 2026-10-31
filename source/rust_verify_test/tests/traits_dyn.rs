@@ -243,6 +243,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] dyn_compatability_error_when_dyn_only_appears_in_struct verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            proof fn bogus(&self)
+                ensures
+                    false;
+        }
+        struct X<'a> {
+            x: &'a dyn T,
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not Verus dyn-compatible")
+}
+
+test_verify_one_file! {
     #[test] dyn_proof_must_be_inhabited1b verus_code! {
         trait T {
             spec fn f(&self) -> nat;
@@ -340,7 +354,7 @@ test_verify_one_file! {
             assert(false);
         }
         // Note: when we allow spec ensures, this should become a "not Verus dyn-compatible" error
-    } => Err(err) => assert_vir_error_msg(err, "spec functions cannot have requires/ensures")
+    } => Err(err) => assert_vir_error_msg(err, "spec functions cannot have `requires`/`ensures`")
 }
 
 test_verify_one_file! {
@@ -575,7 +589,7 @@ test_verify_one_file! {
         trait T {}
         fn test(d: &(dyn T + Send)) {
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dyn with more that one trait")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support dyn with more than one trait")
 }
 
 test_verify_one_file! {
@@ -583,7 +597,7 @@ test_verify_one_file! {
         trait T {}
         fn test(d: &dyn Fn() -> ()) {
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dyn with more that one trait")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support dyn with more than one trait")
 }
 
 test_verify_one_file! {
@@ -727,4 +741,20 @@ test_verify_one_file! {
             set_dyn(&mut b.x, 11); // FAILS
         }
     } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] dyn_spec_fn_method_generics verus_code! {
+        trait T {
+            spec fn f<C>(&self, c: C) -> int where Self: Sized;
+        }
+
+        struct S;
+
+        impl T for S {
+            spec fn f<C>(&self, c: C) -> int { 5 }
+        }
+
+        fn test(x: &dyn T) {}
+    } => Ok(())
 }

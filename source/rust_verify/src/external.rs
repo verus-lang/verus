@@ -39,7 +39,7 @@ then it's nested items can be marked VerusAware, but if it's External, this this
 use crate::attributes::ExternalAttrs;
 use crate::automatic_derive::AutomaticDeriveAction;
 use crate::context::ContextX;
-use crate::rust_to_vir_base::def_id_to_vir_path_option;
+use crate::rust_to_vir_path::def_id_to_vir_path_option;
 use crate::rustc_hir::intravisit::*;
 use crate::verus_items::get_rust_item;
 use rustc_hir::{
@@ -296,9 +296,9 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         };
 
         if matches!(general_item, GeneralItem::ImplItem(_)) && self.in_impl.is_none() {
-            self.errors.push(crate::util::err_span_bare(
-                span,
-                "Verus internal error: expected ImplItem to be child of Impl",
+            self.errors.push(vir::messages::internal_error(
+                &crate::spans::err_air_span(span),
+                "expected ImplItem to be child of Impl",
             ));
             return;
         }
@@ -312,7 +312,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         {
             self.errors.push(crate::util::err_span_bare(
                 span,
-                "An individual item of a trait impl cannot be marked external. Perhaps you meant to mark the entire trait impl external, or you meant to mark this item as `external_body`?",
+                "an individual item of a trait impl cannot be marked external; perhaps you meant to mark the entire trait impl external, or you meant to mark this item as `external_body`?",
               ));
             return;
         }
@@ -322,7 +322,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         {
             self.errors.push(crate::util::err_span_bare(
                 span,
-                "An individual item of a trait cannot be marked external. Perhaps you meant to mark the entire trait external?",
+                "an individual item of a trait cannot be marked external; perhaps you meant to mark the entire trait external?",
               ));
             return;
         }
@@ -351,8 +351,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                 return;
             }
         } else {
-            let path_opt =
-                def_id_to_vir_path_option(self.ctxt.tcx, Some(&self.ctxt.verus_items), def_id);
+            let path_opt = def_id_to_vir_path_option(self.ctxt.tcx, &self.ctxt.verus_items, def_id);
             let path_string = match &path_opt {
                 Some(path) => vir::ast_util::path_as_friendly_rust_name(&path),
                 None => format!("{:?}", def_id),
@@ -373,7 +372,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
             if !general_item.may_have_external_body() {
                 self.errors.push(crate::util::err_span_bare(
                     span,
-                    "#[verifier::external_body] doesn't make sense for this item type -- it is only applicable to functions and datatype declarations",
+                    "`#[verifier::external_body]` doesn't make sense for this item type -- it is only applicable to functions and datatype declarations",
                   ));
                 return;
             }
@@ -395,11 +394,8 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         match general_item {
             GeneralItem::Item(item) => match item.kind {
                 ItemKind::Mod(_ident, _module) => {
-                    self.module_path = def_id_to_vir_path_option(
-                        self.ctxt.tcx,
-                        Some(&self.ctxt.verus_items),
-                        def_id,
-                    );
+                    self.module_path =
+                        def_id_to_vir_path_option(self.ctxt.tcx, &self.ctxt.verus_items, def_id);
                 }
                 ItemKind::Impl(impll) => {
                     self.in_impl = Some(InsideImpl {
@@ -443,7 +439,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                 if in_impl.is_trait {
                     self.errors.push(crate::util::err_span_bare(
                         span,
-                    "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.",
+                    "in order to verify any items of this trait impl, the entire impl must be verified; try wrapping the entire impl in the `verus!` macro",
                     ));
                 } else {
                     if let Some(module_path) = self.module_path.clone() {
@@ -505,13 +501,13 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
         if eattrs.external_body {
             diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                 span,
-                format!("#[verifier::external_body] has no effect because item is already marked external"),
+                format!("`#[verifier::external_body]` has no effect because item is already marked external"),
             )));
         } else if eattrs.verify {
             diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                 span,
                 format!(
-                    "#[verifier::verify] has no effect because item is already marked external"
+                    "`#[verus::internal(verify)]` has no effect because item is already marked external"
                 ),
             )));
         } else if eattrs.external_fn_specification {
@@ -528,7 +524,7 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
         } else if eattrs.external_type_specification {
             diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                 span,
-                format!("#[verifier::external_type_specification] has no effect because item is already marked external"),
+                format!("`#[verifier::external_type_specification]` has no effect because item is already marked external"),
             )));
             if eattrs.external {
                 errors.push(crate::util::err_span_bare(
@@ -541,7 +537,7 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
         } else if eattrs.external_trait_specification {
             diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                 span,
-                format!("#[verifier::external_trait_specification] has no effect because item is already marked external"),
+                format!("`#[verifier::external_trait_specification]` has no effect because item is already marked external"),
             )));
             if eattrs.external {
                 errors.push(crate::util::err_span_bare(
@@ -573,10 +569,15 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
 
     if state == VerifState::Default && !opts_in_to_verus(&eattrs) {
         if eattrs.any_other_verus_specific_attribute && !general_item.is_module() {
-            diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
-                span,
-                format!("verus-related attribute has no effect because Verus is already ignoring this item. You may need to mark it as `#[verifier::verify]`."),
-            )));
+            diagnostics.push(VirErrAs::Warning(
+                crate::util::err_span_bare(
+                    span,
+                    "verus-related attribute has no effect because Verus is ignoring this item",
+                )
+                .help(
+                    "either wrap it in the `verus!` macro or apply the `#[verus_spec(...)]` attribute"
+                )
+            ));
         }
     }
 }

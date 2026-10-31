@@ -19,9 +19,9 @@ Most code relies on low-level utilities that can only be implemented with unsafe
 including many from the standard library (e.g., `Arc`, `RefCell`, and so on), but also
 from user-provided crates. In any case, the Rust philosophy is that the providers of these
 low-level utilities should meet a standard of "unsafe encapsulation."
-A programmer interacting using the library only through its safe API (and also not using
+A programmer interacting with the library only through its safe API (and also not using
 `unsafe` code anywhere else) should not be able to exhibit undefined behavior,
-_not even by writing buggy code or using the API is an unintended way_.
+_not even by writing buggy code or using the API in an unintended way_.
 As such, the library implementors need to code defensively against all possible ways the
 client might use the safe API.
 When they are successful in this, the clients once again gain the guarantee that they

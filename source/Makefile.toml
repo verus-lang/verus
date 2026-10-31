@@ -73,13 +73,14 @@ args = ["install", "--path", "rust_verify"]
 dependencies = ["build-exclude-vstd", "build-vstd"]
 
 [tasks.build-exclude-vstd]
-dependencies = ["build-cargo-verus"]
+command = "cargo"
+args = ["build", "--release", "${@}"]
 
 [tasks.build-vstd]
 command = "cargo-verus"
 install_crate = false
-args = ["build", "--manifest-path", "vstd/Cargo.toml", "${@}"]
-dependencies = ["install-cargo-verus"]
+args = ["build", "--release", "--manifest-path", "vstd/Cargo.toml", "${@}"]
+dependencies = ["install"]
 
 [tasks.build-cargo-verus]
 command = "cargo"
@@ -94,3 +95,17 @@ dependencies = ["build-rust-verify"]
 [tasks.build-rust-verify]
 command = "cargo"
 args = ["build", "--release", "-p", "rust_verify", "${@}"]
+
+[tasks.release-archive]
+description = "Stage release artifacts from `target-verus/release` into `release-archive`."
+command = "cargo"
+args = [
+    "run",
+    "-p",
+    "cargo-verus-toolchains",
+    "--bin",
+    "create-release",
+    "--",
+    "${@}",
+]
+dependencies = ["build"]

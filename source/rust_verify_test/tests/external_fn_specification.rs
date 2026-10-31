@@ -325,7 +325,7 @@ test_verify_one_file! {
                 !b
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "in 'requires' clause of public function, cannot refer to private function")
+    } => Err(err) => assert_vir_error_msg(err, "in `requires` clause of public function, cannot refer to private function")
 }
 
 test_verify_one_file! {
@@ -357,7 +357,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] const_wrong_type verus_code! {
         assume_specification[char::REPLACEMENT_CHARACTER] -> u8;
-    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
+    } => Err(err) => assert_error_msgs(err, &[
+        "mismatched types",
+        "`assume_specification` requires function type signature to match `core::char::methods::impl&%0::REPLACEMENT_CHARACTER` exactly"
+    ])
 }
 
 test_verify_one_file! {
@@ -478,7 +481,7 @@ test_verify_one_file! {
             #[verifier::external_fn_specification]
             fn stuff();
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification not supported here")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` not supported here")
 }
 
 // Mismatched type signatures
@@ -495,7 +498,7 @@ test_verify_one_file! {
         {
             x(b)
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` requires function type signature to match")
 }
 
 test_verify_one_file! {
@@ -510,7 +513,7 @@ test_verify_one_file! {
         {
             x(false)
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` requires function type signature to match")
 }
 
 test_verify_one_file! {
@@ -525,7 +528,7 @@ test_verify_one_file! {
         {
             x(b)
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` requires function type signature to match")
 }
 
 test_verify_one_file! {
@@ -539,7 +542,7 @@ test_verify_one_file! {
         {
             x(t, s)
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` requires function type signature to match")
 }
 
 test_verify_one_file! {
@@ -553,7 +556,7 @@ test_verify_one_file! {
         fn y<'a, 'b>(u: &'b u8, v: &'a u8) -> &'a u8 {
             x(v, u)
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` requires function type signature to match")
 }
 
 test_verify_one_file! {
@@ -563,7 +566,7 @@ test_verify_one_file! {
         {
             core::mem::swap(a, b)
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -577,7 +580,7 @@ test_verify_one_file! {
         {
             sw(a, b)
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -597,7 +600,7 @@ test_verify_one_file! {
         {
             x::<Stuff>()
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -651,7 +654,7 @@ test_verify_one_file! {
         {
             f1(y, x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -667,7 +670,7 @@ test_verify_one_file! {
         {
             f1::<S, T>()
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` trait bound mismatch")
 }
 
 // Lifetime checking
@@ -714,7 +717,7 @@ test_verify_one_file! {
         fn ex_f<T: Tr>() {
             T::f()
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification cannot be used to specify generic specifications of trait methods; consider using external_trait_specification instead")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` cannot be used to specify generic specifications of trait methods; consider using `external_trait_specification` instead")
 }
 
 // Other
@@ -749,7 +752,7 @@ test_verify_one_file! {
         pub fn x() {
             admit()
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot apply `assume_specification` to Verus verus_builtin functions")
+    } => Err(err) => assert_vir_error_msg(err, "cannot apply `assume_specification` to Verus builtin functions")
 }
 
 // Associated functions
@@ -835,7 +838,7 @@ test_verify_one_file! {
         {
             X::<T>::new(a)
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` trait bound mismatch")
 }
 
 // Methods
@@ -925,7 +928,7 @@ test_verify_one_file! {
         {
             x.swap()
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` trait bound mismatch")
 }
 
 // allow_in_spec
@@ -1062,6 +1065,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] when_used_as_spec_more_private verus_code! {
+        use vstd::prelude::*;
+
         spec fn stuff() {
         }
 
@@ -1071,7 +1076,7 @@ test_verify_one_file! {
         {
             std::intrinsics::likely(x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec refers to function which is more private")
+    } => Err(err) => assert_vir_error_msg(err, "`when_used_as_spec` refers to function which is more private")
 }
 
 // Specifying impls of foreign traits
@@ -1383,7 +1388,7 @@ test_verify_one_file! {
             #[verifier::external]
             fn foo(&self);
         }
-    } => Err(err) => assert_vir_error_msg(err, "a trait item cannot be marked 'external'")
+    } => Err(err) => assert_vir_error_msg(err, "a trait item cannot be marked `external`")
 }
 
 test_verify_one_file! {
@@ -1452,21 +1457,21 @@ test_verify_one_file! {
                 p.foo()
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification for a provided trait method")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` for a provided method")
 }
 
 test_verify_one_file! {
     #[test] module_external code! {
         #[verifier::external]
         mod moo {
-            #[verifier::verify]
+            #[verus::internal(verify)]
             fn stuff() {
                 verus_builtin::assert_(false);
             }
         }
     } => Ok(err) => {
         assert!(err.warnings.len() == 2);
-        assert!(err.warnings[0].message.contains("#[verifier::verify] has no effect because item is already marked external"));
+        assert!(err.warnings[0].message.contains("`#[verus::internal(verify)]` has no effect because item is already marked external"));
     }
 }
 
@@ -1519,7 +1524,7 @@ test_verify_one_file! {
         use std::fmt::Display;
         // This is missing the ?Sized bound:
         pub assume_specification<T: Display>[ T::to_string ](this: &T) -> (other: String);
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -1657,4 +1662,23 @@ test_verify_one_file! {
             &**x
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3171 shape 3
+    #[test] test_no_verifier_verify_attribute1 code! {
+        verus! {
+        pub spec const C: bool = (-7i8 % 2i8) == 1i8;
+        fn g(y: u8) -> (r: u8) requires y == 1 ensures r == 1 { y }
+        }
+        #[verifier::verify]
+        fn f() -> u8 {
+            let y: u8 = if C { 1 } else { 2 };
+            g(y)
+        }
+    } => Ok(err) => {
+        assert_eq!(err.errors.len(), 0);
+        assert_eq!(err.warnings.len(), 2);
+        assert!(err.warnings[0].message.contains("`#[verifier(verifier::verify)]` is deprecated"));
+    }
 }

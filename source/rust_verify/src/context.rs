@@ -1,4 +1,5 @@
 use crate::{erase::ResolvedCall, verus_items::VerusItems};
+use air::messages::MessageLevel;
 use rustc_hir::Attribute;
 use rustc_hir::HirId;
 use rustc_hir::def_id::LocalDefId;
@@ -14,8 +15,9 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::mpsc::Sender;
 use vir::ast::{CrateId, Mode, Path, Pattern, VirErr};
-use vir::messages::{AstId, WarningAllow};
+use vir::messages::{AstId, ToAny, WarningAllow};
 
+#[derive(Clone)]
 pub struct ErasureInfo {
     /// Connect every PlaceX::Local, ExprX::Var, and ExprX::VarAt node to its
     /// HirId (an ExprKind::Path node that resolves to Local).
@@ -37,8 +39,6 @@ pub struct ErasureInfo {
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
     /// Modes specified directly during rust_to_vir
     pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
-    /// List of function spans ignored by the verifier. These should not be erased
-    pub(crate) ignored_functions: Vec<(DefId, SpanData)>,
     pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
     pub(crate) shadow_check: Vec<HirId>,
     /// Extra nodes to erase, use this when a VIR tree gets dropped without getting to
@@ -53,15 +53,64 @@ pub type Context<'tcx> = Rc<ContextX<'tcx>>;
 pub struct ContextX<'tcx> {
     pub(crate) cmd_line_args: crate::config::Args,
     pub(crate) tcx: TyCtxt<'tcx>,
-    pub(crate) erasure_info: ErasureInfoRef,
     pub(crate) spans: crate::spans::SpanContext,
     pub(crate) verus_items: Arc<VerusItems>,
-    pub(crate) diagnostics: Rc<RefCell<Vec<vir::ast::VirErrAs>>>,
+    pub(crate) diagnostics: Rc<PendingDiagnostics>,
     pub(crate) no_vstd: bool,
     pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
     pub(crate) crate_name: CrateId,
     pub(crate) name_def_id_map: Rc<RefCell<HashMap<Path, DefId>>>,
     pub(crate) next_read_kind_id: AtomicU64,
+}
+
+/// Warnings and notes collected while translating HIR to VIR, waiting to be reported.
+/// Dropping it with diagnostics still pending means a flush was forgotten.
+pub(crate) struct PendingDiagnostics(RefCell<Vec<vir::ast::VirErrAs>>);
+
+impl PendingDiagnostics {
+    fn flush(&self, reporter: &dyn air::messages::Diagnostics) {
+        for diag in self.0.borrow_mut().drain(..) {
+            match diag {
+                vir::ast::VirErrAs::Warning(err) => {
+                    reporter.report_as(&err.to_any(), MessageLevel::Warning)
+                }
+                vir::ast::VirErrAs::Note(err) => {
+                    reporter.report_as(&err.to_any(), MessageLevel::Note)
+                }
+            }
+        }
+    }
+}
+
+impl std::ops::Deref for PendingDiagnostics {
+    type Target = RefCell<Vec<vir::ast::VirErrAs>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Drop for PendingDiagnostics {
+    fn drop(&mut self) {
+        debug_assert!(
+            std::thread::panicking() || self.0.get_mut().is_empty(),
+            "diagnostics were never reported; use flush_diagnostics or flush_diagnostics_on_drop"
+        );
+    }
+}
+
+pub(crate) struct FlushDiagnosticsOnDrop<'r> {
+    diagnostics: Rc<PendingDiagnostics>,
+    reporter: &'r dyn air::messages::Diagnostics,
+}
+
+impl Drop for FlushDiagnosticsOnDrop<'_> {
+    fn drop(&mut self) {
+        // Reporting while unwinding could panic again and abort
+        if !std::thread::panicking() {
+            self.diagnostics.flush(self.reporter);
+        }
+    }
 }
 
 /// The context in which a given header node might be interpretted
@@ -105,6 +154,7 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) external_opaque_type_map: Option<HashMap<Path, Path>>,
     /// Mapping for HirId found in an HIR Destination to the corresponding VIR Label.
     pub(crate) label_map: Rc<RefCell<(HashMap<HirId, vir::ast::Label>, usize)>>,
+    pub(crate) erasure_info: ErasureInfoRef,
 }
 
 pub(crate) struct AtomicallyCtxt {
@@ -116,7 +166,6 @@ impl<'tcx> ContextX<'tcx> {
     pub(crate) fn new(
         cmd_line_args: crate::config::Args,
         tcx: TyCtxt<'tcx>,
-        erasure_info: ErasureInfoRef,
         spans: crate::spans::SpanContext,
         verus_items: Arc<VerusItems>,
         no_vstd: bool,
@@ -125,16 +174,28 @@ impl<'tcx> ContextX<'tcx> {
         ContextX {
             cmd_line_args,
             tcx,
-            erasure_info,
             spans,
             verus_items,
-            diagnostics: Rc::new(RefCell::new(Vec::new())),
+            diagnostics: Rc::new(PendingDiagnostics(RefCell::new(Vec::new()))),
             no_vstd,
             arch_word_bits: None,
             crate_name,
             name_def_id_map: Rc::new(RefCell::new(HashMap::new())),
             next_read_kind_id: AtomicU64::new(0),
         }
+    }
+
+    pub(crate) fn flush_diagnostics(&self, reporter: &dyn air::messages::Diagnostics) {
+        self.diagnostics.flush(reporter);
+    }
+
+    /// Returns a guard that reports the pending diagnostics when it is dropped,
+    /// so they are reported on every exit path, including early returns
+    pub(crate) fn flush_diagnostics_on_drop<'r>(
+        &self,
+        reporter: &'r dyn air::messages::Diagnostics,
+    ) -> FlushDiagnosticsOnDrop<'r> {
+        FlushDiagnosticsOnDrop { diagnostics: self.diagnostics.clone(), reporter }
     }
 
     pub(crate) fn get_verus_item(&self, def_id: DefId) -> Option<&crate::verus_items::VerusItem> {
@@ -165,11 +226,6 @@ impl<'tcx> ContextX<'tcx> {
         crate::attributes::get_external_attrs(attrs, Some(&mut *self.diagnostics.borrow_mut()))
     }
 
-    pub(crate) fn push_body_erasure(&self, local_def_id: LocalDefId, c: BodyErasure) {
-        let mut r = self.erasure_info.borrow_mut();
-        r.bodies.push((local_def_id, c));
-    }
-
     pub(crate) fn path_def_id_ref(
         &self,
     ) -> Option<impl DerefMut<Target = HashMap<Path, DefId>> + use<'_>> {
@@ -177,7 +233,7 @@ impl<'tcx> ContextX<'tcx> {
     }
 
     pub(crate) fn def_id_to_vir_path(&self, def_id: DefId) -> Path {
-        crate::rust_to_vir_base::def_id_to_vir_path(
+        crate::rust_to_vir_path::def_id_to_vir_path(
             self.tcx,
             &self.verus_items,
             def_id,
@@ -286,6 +342,28 @@ impl<'tcx> BodyCtxt<'tcx> {
                 // This should have already been reported by rustc
                 crate::internal_err!(span, "unresolved loop label");
             }
+        }
+    }
+
+    pub(crate) fn push_body_erasure(&self, local_def_id: LocalDefId, c: BodyErasure) {
+        let mut r = self.erasure_info.borrow_mut();
+        r.bodies.push((local_def_id, c));
+    }
+}
+
+impl ErasureInfo {
+    pub fn new() -> Self {
+        ErasureInfo {
+            local_hir_vir_ids: vec![],
+            binder_hir_vir_ids: vec![],
+            ctor_hir_vir_ids: vec![],
+            resolved_calls: vec![],
+            resolved_pats: vec![],
+            direct_var_modes: vec![],
+            bodies: vec![],
+            shadow_check: vec![],
+            extra_erase_ast_ids: vec![],
+            local_invariant_bodies: vec![],
         }
     }
 }

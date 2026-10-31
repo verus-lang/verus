@@ -3,14 +3,15 @@ use vir::messages::AstId;
 use rustc_hir::HirId;
 
 use crate::context::ErasureInfo;
-use vir::ast::{Datatype, Dt, Fun, Function, Krate, Mode, Path};
+use vir::ast::{Datatype, Fun, FunctionStub, Mode, Path};
 use vir::modes::ErasureModes;
 
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
-use rustc_hir::def_id::LocalDefId;
+use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_middle::ty::TyCtxt;
 use rustc_mir_build_verus::verus::{
     BodyErasure, CallErasure, LoopErasure, LoopSpecEvaluationLocation, NodeErase, TreeErase,
-    VarErasure, VerusErasureCtxt, set_verus_aware_def_ids, set_verus_erasure_ctxt,
+    VarErasure, VerusErasureCtxt, set_callback_fn, set_verus_aware_def_ids, set_verus_erasure_ctxt,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
@@ -132,7 +133,7 @@ fn mode_to_var_erase(var_mode: Mode, mode: Mode, shadow_check: bool) -> VarErasu
 /// traversal generate CallErasure values.
 fn resolved_call_to_call_erase(
     _span: Span,
-    functions: &HashMap<Fun, Function>,
+    functions: &HashMap<Fun, FunctionStub>,
     _datatypes: &HashMap<Path, Datatype>,
     resolved_call: &ResolvedCall,
     ctor_mode: Option<Mode>,
@@ -178,6 +179,8 @@ fn resolved_call_to_call_erase(
 
             MiscCall::GhostExec => CallErasure::Call(NodeErase::Keep),
 
+            MiscCall::ShrRefStructWrap => CallErasure::ShrRefStructWrap,
+
             MiscCall::Implies
             | MiscCall::RcNew
             | MiscCall::ArcNew
@@ -193,7 +196,6 @@ fn resolved_call_to_call_erase(
             | MiscCall::TrackedBorrowMut
             | MiscCall::GhostBorrowMut
             | MiscCall::MutRefTracked
-            | MiscCall::ShrRefStructWrap
             | MiscCall::UseTypeInvariant => CallErasure::keep_all(),
         },
         ResolvedCall::MiscEraseAbsolutely => CallErasure::EraseTree(TreeErase::EraseAbsolutely),
@@ -217,7 +219,7 @@ fn resolved_call_to_call_erase(
 }
 
 fn get_binder_hir_id<'tcx>(
-    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    tcx: TyCtxt<'tcx>,
     hir_id: HirId,
 ) -> Option<(Span, rustc_span::Ident, HirId)> {
     let rustc_hir::Node::Expr(expr) = tcx.hir_node(hir_id) else {
@@ -236,11 +238,13 @@ fn get_binder_hir_id<'tcx>(
 }
 
 pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
-    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    tcx: TyCtxt<'tcx>,
     verus_items: &VerusItems,
-    vir_crate: &Krate,
+    datatypes: &HashMap<Path, Datatype>,
+    functions: &HashMap<Fun, FunctionStub>,
     erasure_hints: &ErasureInfo,
     erasure_modes: &ErasureModes,
+    local_def_id: LocalDefId,
 ) -> Result<(), VirErr> {
     let mut local_id_to_hir: HashMap<AstId, Vec<HirId>> = HashMap::new();
     for (hir_id, vir_id) in &erasure_hints.local_hir_vir_ids {
@@ -278,9 +282,9 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         if !local_id_to_hir.contains_key(&span.id) {
             dbg!(span);
             dbg!(mode);
-            return Err(vir::messages::error(
+            return Err(vir::messages::internal_error(
                 span,
-                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, var lookup failed",
+                "`setup_verus_ctxt_for_thir_erasure` failed, var lookup failed",
             ));
         }
         for hir_id in &local_id_to_hir[&span.id] {
@@ -299,9 +303,9 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         if !binder_id_to_hir.contains_key(&span.id) {
             dbg!(span);
             dbg!(mode);
-            return Err(vir::messages::error(
+            return Err(vir::messages::internal_error(
                 span,
-                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, binder lookup failed",
+                "`setup_verus_ctxt_for_thir_erasure` failed, binder lookup failed",
             ));
         }
         for hir_id in &binder_id_to_hir[&span.id] {
@@ -335,10 +339,10 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         if let Some((span, name, binder_hir_id)) = get_binder_hir_id(tcx, *hir_id) {
             if let Some(binder_mode) = binders.get(&binder_hir_id) {
                 if matches!(binder_mode, VarErasure::Erase) && !matches!(mode, VarErasure::Erase) {
-                    return crate::util::err_span(
+                    return crate::util::internal_err_span(
                         span,
                         format!(
-                            "Verus Internal Error: inconsistent erasure modes: var `{:}` is {mode:?} but the binder is Erase",
+                            "inconsistent erasure modes: var `{:}` is {mode:?} but the binder is Erase",
                             name.as_str()
                         ),
                     );
@@ -355,25 +359,13 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         if !ctor_id_to_hir.contains_key(&span.id) {
             dbg!(span);
             dbg!(mode);
-            return Err(vir::messages::error(
+            return Err(vir::messages::internal_error(
                 span,
-                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, ctor lookup failed",
+                "`setup_verus_ctxt_for_thir_erasure` failed, ctor lookup failed",
             ));
         }
         for hir_id in &ctor_id_to_hir[&span.id] {
             ctor_modes.insert(*hir_id, *mode);
-        }
-    }
-
-    let mut functions = HashMap::<Fun, Function>::new();
-    for f in &vir_crate.functions {
-        functions.insert(f.x.name.clone(), f.clone()).map(|_| panic!("{:?}", f.x.name));
-    }
-
-    let mut datatypes = HashMap::<Path, Datatype>::new();
-    for d in &vir_crate.datatypes {
-        if let Dt::Path(path) = &d.x.name {
-            datatypes.insert(path.clone(), d.clone()).map(|_| panic!("{:?}", path));
         }
     }
 
@@ -385,7 +377,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         let (call_erasure, force_treat_as_inhabited) = resolved_call_to_call_erase(
             span,
             &functions,
-            &datatypes,
+            datatypes,
             resolved_call,
             ctor_mode,
             *in_ghost,
@@ -443,7 +435,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             .unwrap(),
         get_first_fn_def_id: *verus_items.name_to_id.get(&VerusItem::GetFirst).unwrap(),
     };
-    set_verus_erasure_ctxt(Arc::new(verus_erasure_ctxt));
+    set_verus_erasure_ctxt(local_def_id, Arc::new(verus_erasure_ctxt));
 
     Ok(())
 }
@@ -451,34 +443,36 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
 /// Set all IDs in this tree to VarErasure::Erase. Useful if a VIR node gets dropped
 /// before it reaches mode-checking.
 pub(crate) fn mark_tree_for_erasure<'tcx>(
-    context: &crate::context::Context<'tcx>,
+    bctx: &crate::context::BodyCtxt<'tcx>,
     expr: &vir::ast::Expr,
 ) {
     vir::ast_visitor::ast_visitor_check::<(), _, _, _, _, _, _>(
         expr,
         &mut (),
         &mut |_, _scope_map, expr: &vir::ast::Expr| {
-            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(expr.span.clone());
+            bctx.erasure_info.borrow_mut().extra_erase_ast_ids.push(expr.span.clone());
             Ok(())
         },
         &mut |_, _scope_map, stmt| {
-            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(stmt.span.clone());
+            bctx.erasure_info.borrow_mut().extra_erase_ast_ids.push(stmt.span.clone());
             Ok(())
         },
         &mut |_, _scope_map, pattern: &vir::ast::Pattern| {
-            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(pattern.span.clone());
+            bctx.erasure_info.borrow_mut().extra_erase_ast_ids.push(pattern.span.clone());
             Ok(())
         },
         &mut |_, _scope_map, _typ, _span| Ok(()),
         &mut |_, _scope_map, place| {
-            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(place.span.clone());
+            bctx.erasure_info.borrow_mut().extra_erase_ast_ids.push(place.span.clone());
             Ok(())
         },
     )
     .unwrap();
 }
 
-pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
+pub(crate) fn setup_verus_aware_ids(
+    crate_items: &crate::external::CrateItems,
+) -> Arc<HashSet<LocalDefId>> {
     // Requirements:
     //  - If a function requires Verus-erasure, then it MUST be in the set
     //  - If a function has special properties (e.g., being const), that may cause Rust
@@ -492,17 +486,93 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
     for item in crate_items.items.iter() {
         match item.verif {
             crate::external::VerifOrExternal::VerusAware {
+                module_path: _,
                 const_directive,
-                external_body,
-                external_fn_specification,
-                ..
+                external_body: _,
+                external_fn_specification: _,
             } => {
-                if !const_directive && !external_body && !external_fn_specification {
+                if !const_directive {
                     s.insert(item.id.owner_id().def_id);
                 }
             }
             crate::external::VerifOrExternal::External { .. } => {}
         }
     }
-    set_verus_aware_def_ids(Arc::new(s));
+    let verus_aware_ids = Arc::new(s);
+    set_verus_aware_def_ids(verus_aware_ids.clone());
+    set_callback_fn(prepare_local_def_id);
+    verus_aware_ids
+}
+
+/// Check that every "verus-aware" definition is recorded in the
+/// `def_id_to_fun_name_for_erasure` map, either:
+///  - By the `Fun` whose mode-checking results are used as input to erasure
+///  - As `None`, indicating the item doesn't need erasure
+///    (e.g., because it's some special synthetic item)
+/// This makes sure we properly categorize every item and prevents panicking
+/// in `prepare_local_def_id`.
+pub(crate) fn check_verus_aware_ids<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    span: &vir::messages::Span,
+    verus_aware_ids: Arc<HashSet<LocalDefId>>,
+    def_id_to_fun_name_for_erasure: &HashMap<DefId, Option<Fun>>,
+) -> Result<(), VirErr> {
+    for id in verus_aware_ids.iter() {
+        let has_body = tcx.hir_node_by_def_id(*id).associated_body().is_some();
+        if has_body && !def_id_to_fun_name_for_erasure.contains_key(&(*id).into()) {
+            vir::internal_err!(
+                span.clone(),
+                format!("erasure setup not properly handled for {:?}", id)
+            )
+        }
+    }
+    Ok(())
+}
+
+/// This is called when thir_body is called on the given item or some closure within it.
+/// (The given `LocalDefId` should be the top-level function.)
+///
+/// This function queries for the mode-checking results and sets up the VerusErasureCtxt
+/// for the item. If the mode-checking results are unavailable, we return an error so that
+/// `thir_body` will return an error, which in turn prevents all downstream checks.
+pub(crate) fn prepare_local_def_id<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    local_def_id: LocalDefId,
+) -> Result<(), rustc_errors::ErrorGuaranteed> {
+    let Some(query) = crate::query::get_global_query(tcx) else {
+        panic!(
+            "Internal Verus Error: The thir_body query is running for item {:?}, but the Verus `Query` system has not been initialized. Please file a github issue for this error and consider using `--no-lifetime` as a temporary measure to work around the issue.",
+            local_def_id
+        );
+    };
+
+    #[allow(deprecated)]
+    let map_query_err = |_err: crate::query::QueryError| {
+        rustc_errors::ErrorGuaranteed::unchecked_error_guaranteed()
+    };
+
+    let pre_crate = query.get_pre_crate().map_err(map_query_err)?;
+    let datatypes = query.get_datatypes_map().map_err(map_query_err)?;
+    let functions = query.get_all_function_stubs().map_err(map_query_err)?;
+    let Some((erasure_info, erasure_modes)) =
+        query.get_erasure_modes_for_def_id(local_def_id.into()).map_err(map_query_err)?
+    else {
+        return Ok(());
+    };
+
+    let ctxt = &pre_crate.ctxt;
+
+    let e = setup_verus_ctxt_for_thir_erasure(
+        tcx,
+        &ctxt.verus_items,
+        &datatypes,
+        &functions,
+        &erasure_info,
+        &erasure_modes,
+        local_def_id,
+    );
+    match e {
+        Ok(()) => Ok(()),
+        Err(vir_err) => Err(map_query_err(query.emit_error(vir_err))),
+    }
 }

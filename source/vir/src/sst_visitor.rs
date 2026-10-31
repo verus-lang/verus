@@ -515,6 +515,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 au_branch_bool,
                 pre_modified_params_incl,
                 pre_modified_params_excl,
+                known_no_back_edge,
             } => {
                 let pre_stms = self.visit_stms(pre_stms)?;
                 let cond = R::map_opt(cond, &mut |(cond_stm, cond_exp)| {
@@ -551,6 +552,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         au_branch_bool: R::get_opt(au_branch_bool),
                         pre_modified_params_incl: R::get_opt(pre_modified_params_incl),
                         pre_modified_params_excl: R::get_opt(pre_modified_params_excl),
+                        known_no_back_edge: *known_no_back_edge,
                     })
                 })
             }
@@ -699,6 +701,12 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
 
     fn visit_func_check(&mut self, def: &FuncCheckSst) -> Result<R::Ret<FuncCheckSst>, Err> {
         let reqs = self.visit_exps(&def.reqs)?;
+        let return_opaque_type_eqs =
+            R::map_vec(&def.return_opaque_type_eqs, &mut |(opaque, hidden)| {
+                let opaque = self.visit_typ(opaque)?;
+                let hidden = self.visit_typ(hidden)?;
+                R::ret(|| (R::get(opaque), R::get(hidden)))
+            })?;
         let post_condition = self.visit_postcondition(&def.post_condition)?;
         let body = self.visit_stm(&def.body)?;
         let local_decls = R::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
@@ -707,6 +715,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
 
         R::ret(|| FuncCheckSst {
             reqs: R::get_vec_a(reqs),
+            return_opaque_type_eqs: R::get_vec_a(return_opaque_type_eqs),
             post_condition: Arc::new(R::get(post_condition)),
             unwind: R::get(unwind),
             body: R::get(body),

@@ -301,6 +301,97 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    /// Tests that the postcondition of an associated fn (no receiver) refers to `T::f`,
+    /// not to a module-level spec fn of the same name.
+    #[test] test_exec_spec_unverified_impl_assoc_fn_shadowed IMPORTS.to_string() + verus_code_str! {
+        spec fn mk(x: u8) -> u8 { 0 }
+
+        exec_spec_unverified! {
+            pub struct Foo { pub a: u8 }
+
+            impl Foo {
+                spec fn mk(x: u8) -> u8 {
+                    x
+                }
+            }
+        }
+
+        fn test_ok() {
+            let r = ExecFoo::exec_mk(5);
+            assert(r == Foo::mk(5));
+            assert(r == 5);
+        }
+
+        fn test_fail() {
+            let r = ExecFoo::exec_mk(5);
+            assert(r == 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    /// Tests that the postcondition of a `&self` method refers to the inherent method `T::f`,
+    /// not to a by-value trait method `f(self)` that method-call syntax would prefer.
+    #[test] test_exec_spec_unverified_impl_method_shadowed_by_trait IMPORTS.to_string() + verus_code_str! {
+        trait Tr {
+            spec fn get(self) -> u8;
+        }
+
+        impl Tr for Foo {
+            spec fn get(self) -> u8 { 0 }
+        }
+
+        exec_spec_unverified! {
+            pub struct Foo { pub a: u8 }
+
+            impl Foo {
+                spec fn get(&self) -> u8 {
+                    self.a
+                }
+            }
+        }
+
+        fn test_ok() {
+            let f = ExecFoo { a: 5 };
+            let r = f.exec_get();
+            assert(r == 5);
+        }
+
+        fn test_fail() {
+            let f = ExecFoo { a: 5 };
+            let r = f.exec_get();
+            assert(r == 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    /// Tests that `Self` in the clauses of an impl method refers to the spec type.
+    #[test] test_exec_spec_unverified_impl_self_in_clauses IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            struct Foo { a: u8 }
+
+            impl Foo {
+                spec fn small(x: u8) -> bool {
+                    x < 100
+                }
+
+                spec fn inc(x: u8) -> u8
+                    recommends Self::small(x)
+                {
+                    (x + 1) as u8
+                }
+            }
+        }
+
+        fn test() {
+            let r = ExecFoo::exec_inc(5);
+            assert(r == 6);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     /// Tests that trait impls are still rejected in unverified mode.
     #[test] test_exec_spec_unverified_impl_trait_rejected IMPORTS.to_string() + verus_code_str! {
         exec_spec_unverified! {
@@ -367,6 +458,34 @@ test_verify_one_file! {
             {
                 r->Ok_0
             }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Explicit discriminants carry over to the exec enum, so the trusted
+    /// `exec_disc` agrees with `disc` at run time.
+    #[test] test_exec_spec_unverified_enum_discriminant IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            #[derive(Clone, Copy)]
+            pub enum E {
+                A = 10,
+                B = 20,
+                C,
+            }
+
+            spec fn disc(e: E) -> u8 {
+                e as u8
+            }
+        }
+
+        fn test() {
+            assert(disc(E::B) == 20);
+            // the exec enum must have the same discriminants as the spec enum
+            let b = ExecE::B as u8;
+            assert(b == 20);
+            let c = ExecE::C as u8;
+            assert(c == 21);
         }
     } => Ok(())
 }

@@ -13,6 +13,63 @@ pub fn str_to_node(s: &str) -> Node {
     Node::Atom(s.to_string())
 }
 
+pub fn escape(s: &str) -> String {
+    let mut res = "".to_string();
+    for c in s.chars() {
+        if c == '\\' {
+            res += "\\\\";
+        } else if c.is_ascii_graphic() && c != '"' {
+            res.push(c);
+        } else if c == ' ' {
+            res.push(c);
+        } else if c == '\n' {
+            res += "\\n";
+        } else {
+            res += "\\u{";
+            res += &format!("{:x}", c as u32);
+            res += "}";
+        }
+    }
+    res
+}
+
+/// The inverse of `escape`. Returns `None` if `s` contains an escape sequence
+/// that `escape` never produces.
+pub fn unescape(s: &str) -> Option<String> {
+    let mut res = "".to_string();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            res.push(c);
+            continue;
+        }
+        match chars.next()? {
+            '\\' => res.push('\\'),
+            'n' => res.push('\n'),
+            'u' => {
+                if chars.next()? != '{' {
+                    return None;
+                }
+                let mut hex = "".to_string();
+                loop {
+                    match chars.next()? {
+                        '}' => break,
+                        d => hex.push(d),
+                    }
+                }
+                res.push(char::from_u32(u32::from_str_radix(&hex, 16).ok()?)?);
+            }
+            _ => return None,
+        }
+    }
+    Some(res)
+}
+
+/// A string atom; characters that sise cannot print in a string are replaced
+fn quoted_atom(s: &str) -> Node {
+    Node::Atom(format!("\"{}\"", escape(s)))
+}
+
 pub fn macro_push_node(nodes: &mut Vec<Node>, node: Node) {
     // turn a - b into a-b
     let len = nodes.len();
@@ -446,7 +503,7 @@ impl Printer {
             }
             ExprX::LabeledAxiom(labels, filter, expr) => {
                 let spans = vec_map(labels, |s| {
-                    Node::Atom(format!("\"{}\"", self.message_interface.get_message_label_note(s)))
+                    quoted_atom(self.message_interface.get_message_label_note(s))
                 });
                 if spans.len() == 0 && filter.is_none() {
                     self.expr_to_node(expr)
@@ -456,9 +513,7 @@ impl Printer {
                 }
             }
             ExprX::LabeledAssertion(_, error, filter, expr) => {
-                let spans = vec_map(&self.message_interface.all_msgs(error), |s| {
-                    Node::Atom(format!("\"{}\"", s))
-                });
+                let spans = self.msgs_to_nodes(error);
                 if spans.len() == 0 && filter.is_none() {
                     self.expr_to_node(expr)
                 } else {
@@ -467,6 +522,14 @@ impl Printer {
                 }
             }
         }
+    }
+
+    /// Each note is printed as "note", or as ("note" "span") when the note has a span
+    fn msgs_to_nodes(&self, error: &crate::messages::ArcDynMessage) -> Vec<Node> {
+        vec_map(&self.message_interface.all_msgs_with_spans(error), |(note, span)| match span {
+            Some(span) if span.len() > 0 => Node::List(vec![quoted_atom(note), quoted_atom(span)]),
+            _ => quoted_atom(note),
+        })
     }
 
     pub fn exprs_to_node(&self, exprs: &Exprs) -> Node {
@@ -559,9 +622,7 @@ impl Printer {
         match &**stmt {
             StmtX::Assume(expr) => nodes!(assume {self.expr_to_node(expr)}),
             StmtX::Assert(_, labels, filter, expr) => {
-                let spans = vec_map(&self.message_interface.all_msgs(labels), |s| {
-                    Node::Atom(format!("\"{}\"", s))
-                });
+                let spans = self.msgs_to_nodes(labels);
                 if spans.len() == 0 && filter.is_none() {
                     nodes!(assert {self.expr_to_node(expr)})
                 } else {
