@@ -1195,11 +1195,15 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     }
     state.check_time_warning(ctx);
 
-    state.log(format!(
-        "{}Evaluating {:}",
-        "\t".repeat(state.depth),
-        exp.x.to_user_string(&ctx.global)
-    ));
+    // Only render expressions when logging: they can grow large, and rendering isn't counted
+    // towards the interpreter's limits
+    if state.log.is_some() {
+        state.log(format!(
+            "{}Evaluating {:}",
+            "\t".repeat(state.depth),
+            exp.x.to_user_string(&ctx.global)
+        ));
+    }
     let ok = Ok(exp.clone());
     if state.enable_simplified_cache && state.simplified.contains(exp) {
         state.ptr_hits += 1;
@@ -1999,7 +2003,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     };
     let res = r?;
     state.depth -= 1;
-    state.log(format!("{}=> {:}", "\t".repeat(state.depth), res.x.to_user_string(&ctx.global)));
+    if state.log.is_some() {
+        state.log(format!("{}=> {:}", "\t".repeat(state.depth), res.x.to_user_string(&ctx.global)));
+    }
     if state.enable_simplified_cache {
         state.simplified.insert(&res);
     }
