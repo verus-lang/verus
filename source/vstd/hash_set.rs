@@ -14,7 +14,7 @@ use super::std_specs::borrow::BorrowSpec;
 #[cfg(verus_keep_ghost)]
 use super::std_specs::cmp::{PartialEqSpec, eq_matches_view_equality};
 #[cfg(verus_keep_ghost)]
-use super::std_specs::hash::{hash_set_elements_differ, obeys_key_model};
+use super::std_specs::hash::{hash_set_inv, obeys_key_model};
 #[allow(unused_imports)]
 use core::hash::Hash;
 use std::collections::HashSet;
@@ -57,7 +57,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     pub closed spec fn well_formed(&self) -> bool {
         &&& obeys_key_model::<Key>()
         &&& eq_matches_view_equality::<Key>()
-        &&& hash_set_elements_differ(&self.m)
+        &&& hash_set_inv(&self.m)
     }
 
     proof fn lemma_view(&self)

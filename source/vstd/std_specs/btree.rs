@@ -460,7 +460,7 @@ pub broadcast proof fn lemma_btree_map_deepview_values<K: DeepView, V: DeepView>
     }
 }
 
-pub open spec fn btree_map_keys_differ<Key: Ord, Value, A: Allocator + Clone>(
+pub open spec fn btree_map_inv<Key: Ord, Value, A: Allocator + Clone>(
     m: &BTreeMap<Key, Value, A>,
 ) -> bool {
     forall|k1: Key, k2: Key|
@@ -524,9 +524,8 @@ pub open spec fn btree_map_insert_ensures<Key: Ord, Value, A: Allocator + Clone>
     v: Value,
     result: Option<Value>,
 ) -> bool {
-    obeys_cmp::<Key>() ==> {
-        &&& btree_map_keys_differ(old_m)
-        &&& btree_map_keys_differ(final_m)
+    obeys_cmp::<Key>() && btree_map_inv(old_m) ==> {
+        &&& btree_map_inv(final_m)
         &&& match result {
             Some(old_value) => exists|stored_key: Key|
                 {
@@ -591,6 +590,7 @@ pub broadcast proof fn lemma_btree_map_insert_ensures_if_cmp_matches_deep_equali
     requires
         obeys_cmp::<Key>(),
         cmp_matches_deep_equality::<Key>(),
+        btree_map_inv(old_m),
         #[trigger] btree_map_insert_ensures::<Key, Value, A>(old_m, final_m, k, v, result),
     ensures
         final_m.deep_view() == old_m.deep_view().insert(k.deep_view(), v.deep_view()),
@@ -650,8 +650,8 @@ pub open spec fn btree_map_contains_key_ensures<
         &&& obeys_cmp::<Key>()
         &&& <Q as OrdSpec>::obeys_cmp_spec()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& btree_map_inv(m)
     }) ==> {
-        &&& btree_map_keys_differ(m)
         &&& result == exists|key: Key|
             {
                 &&& #[trigger] m@.contains_key(key)
@@ -681,6 +681,7 @@ pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_cmp_matches_equal
     requires
         obeys_cmp::<Key>(),
         cmp_matches_equality::<Key>(),
+        btree_map_inv(m),
         #[trigger] btree_map_contains_key_ensures(m, k, result),
     ensures
         result == m@.contains_key(*k),
@@ -696,6 +697,7 @@ pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_cmp_matches_deep_
     requires
         obeys_cmp::<Key>(),
         cmp_matches_deep_equality::<Key>(),
+        btree_map_inv(m),
         #[trigger] btree_map_contains_key_ensures(m, k, result),
     ensures
         Key::obeys_cmp_spec(),
@@ -735,9 +737,9 @@ pub open spec fn btree_map_get_ensures<
         &&& obeys_cmp::<Key>()
         &&& <Q as OrdSpec>::obeys_cmp_spec()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& btree_map_inv(m)
     }) ==> {
-        &&& btree_map_keys_differ(m)
-        &&& match result {
+        match result {
             Some(v) => exists|key: Key|
                 {
                     &&& #[trigger] m@.contains_key(key)
@@ -775,6 +777,7 @@ pub broadcast proof fn lemma_btree_map_get_ensures_if_cmp_matches_equality<
     requires
         obeys_cmp::<Key>(),
         cmp_matches_equality::<Key>(),
+        btree_map_inv(m),
         #[trigger] btree_map_get_ensures(m, k, result),
     ensures
         match result {
@@ -793,6 +796,7 @@ pub broadcast proof fn lemma_btree_map_get_ensures_if_cmp_matches_deep_equality<
     requires
         obeys_cmp::<Key>(),
         cmp_matches_deep_equality::<Key>(),
+        btree_map_inv(m),
         #[trigger] btree_map_get_ensures(m, k, result),
     ensures
         Key::obeys_cmp_spec(),
@@ -851,9 +855,9 @@ pub open spec fn btree_map_remove_ensures<
         &&& obeys_cmp::<Key>()
         &&& <Q as OrdSpec>::obeys_cmp_spec()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& btree_map_inv(old_m)
     }) ==> {
-        &&& btree_map_keys_differ(old_m)
-        &&& btree_map_keys_differ(final_m)
+        &&& btree_map_inv(final_m)
         &&& match result {
             Some(v) => exists|key: Key|
                 {
@@ -899,6 +903,7 @@ pub broadcast proof fn lemma_btree_map_remove_ensures_if_cmp_matches_equality<
     requires
         obeys_cmp::<Key>(),
         cmp_matches_equality::<Key>(),
+        btree_map_inv(old_m),
         #[trigger] btree_map_remove_ensures(old_m, final_m, k, result),
     ensures
         final_m@ == old_m@.remove(*k),
@@ -930,6 +935,7 @@ pub broadcast proof fn lemma_btree_map_remove_ensures_if_cmp_matches_deep_equali
     requires
         obeys_cmp::<Key>(),
         cmp_matches_deep_equality::<Key>(),
+        btree_map_inv(old_m),
         #[trigger] btree_map_remove_ensures(old_m, final_m, k, result),
     ensures
         Key::obeys_cmp_spec(),
@@ -1012,9 +1018,9 @@ pub open spec fn btree_map_get_mut_ensures<
         &&& obeys_cmp::<Key>()
         &&& <Q as OrdSpec>::obeys_cmp_spec()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& btree_map_inv(old_m)
     }) ==> {
-        &&& btree_map_keys_differ(old_m)
-        &&& btree_map_keys_differ(final_m)
+        &&& btree_map_inv(final_m)
         &&& match result {
             Some((current_value, final_value)) => exists|stored_key: Key|
                 {
@@ -1072,6 +1078,7 @@ pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_cmp_matches_equality<
     requires
         obeys_cmp::<Key>(),
         cmp_matches_equality::<Key>(),
+        btree_map_inv(old_m),
         #[trigger] btree_map_get_mut_ensures(old_m, final_m, k, result),
     ensures
         match result {
@@ -1102,6 +1109,7 @@ pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_cmp_matches_deep_equal
     requires
         obeys_cmp::<Key>(),
         cmp_matches_deep_equality::<Key>(),
+        btree_map_inv(old_m),
         #[trigger] btree_map_get_mut_ensures(old_m, final_m, k, result),
     ensures
         Key::obeys_cmp_spec(),
@@ -1480,9 +1488,7 @@ impl<Key: DeepView, A: Allocator + Clone> DeepView for BTreeSet<Key, A> {
     }
 }
 
-pub open spec fn btree_set_elements_differ<Key: Ord, A: Allocator + Clone>(
-    m: &BTreeSet<Key, A>,
-) -> bool {
+pub open spec fn btree_set_inv<Key: Ord, A: Allocator + Clone>(m: &BTreeSet<Key, A>) -> bool {
     forall|k1: Key, k2: Key|
         {
             &&& #[trigger] m@.contains(k1)
@@ -1538,9 +1544,8 @@ pub open spec fn btree_set_insert_ensures<Key: Ord, A: Allocator + Clone>(
     k: Key,
     result: bool,
 ) -> bool {
-    obeys_cmp::<Key>() ==> {
-        &&& btree_set_elements_differ(old_m)
-        &&& btree_set_elements_differ(final_m)
+    obeys_cmp::<Key>() && btree_set_inv(old_m) ==> {
+        &&& btree_set_inv(final_m)
         &&& if result {
             &&& forall|stored_key: Key| #[trigger]
                 old_m@.contains(stored_key) ==> !(k.cmp_spec(&stored_key) is Equal)
@@ -1568,6 +1573,7 @@ pub broadcast proof fn lemma_btree_set_insert_ensures_if_cmp_matches_equality<
     requires
         obeys_cmp::<Key>(),
         cmp_matches_equality::<Key>(),
+        btree_set_inv(old_m),
         #[trigger] btree_set_insert_ensures::<Key, A>(old_m, final_m, k, result),
     ensures
         final_m@ == old_m@.insert(k),
@@ -1589,6 +1595,7 @@ pub broadcast proof fn lemma_btree_set_insert_ensures_if_cmp_matches_deep_equali
     requires
         obeys_cmp::<Key>(),
         cmp_matches_deep_equality::<Key>(),
+        btree_set_inv(old_m),
         #[trigger] btree_set_insert_ensures::<Key, A>(old_m, final_m, k, result),
     ensures
         final_m.deep_view() == old_m.deep_view().insert(k.deep_view()),
@@ -1627,8 +1634,8 @@ pub open spec fn btree_set_contains_ensures<
         &&& obeys_cmp::<Key>()
         &&& <Q as OrdSpec>::obeys_cmp_spec()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& btree_set_inv(m)
     }) ==> {
-        &&& btree_set_elements_differ(m)
         &&& result == exists|key: Key|
             {
                 &&& #[trigger] m@.contains(key)
@@ -1654,6 +1661,7 @@ pub broadcast proof fn lemma_btree_set_contains_ensures_if_cmp_matches_equality<
     requires
         obeys_cmp::<Key>(),
         cmp_matches_equality::<Key>(),
+        btree_set_inv(m),
         #[trigger] btree_set_contains_ensures(m, k, result),
     ensures
         result == m@.contains(*k),
@@ -1668,6 +1676,7 @@ pub broadcast proof fn lemma_btree_set_contains_ensures_if_cmp_matches_deep_equa
     requires
         obeys_cmp::<Key>(),
         cmp_matches_deep_equality::<Key>(),
+        btree_set_inv(m),
         #[trigger] btree_set_contains_ensures(m, k, result),
     ensures
         Key::obeys_cmp_spec(),
@@ -1700,8 +1709,8 @@ pub open spec fn btree_set_get_ensures<Key: Borrow<Q> + Ord, A: Allocator + Clon
         &&& obeys_cmp::<Key>()
         &&& <Q as OrdSpec>::obeys_cmp_spec()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& btree_set_inv(m)
     }) ==> {
-        &&& btree_set_elements_differ(m)
         &&& match result {
             Some(key) => {
                 &&& m@.contains(*key)
@@ -1734,6 +1743,7 @@ pub broadcast proof fn lemma_btree_set_get_ensures_if_cmp_matches_equality<
     requires
         obeys_cmp::<Key>(),
         cmp_matches_equality::<Key>(),
+        btree_set_inv(m),
         #[trigger] btree_set_get_ensures(m, k, result),
     ensures
         match result {
@@ -1751,6 +1761,7 @@ pub broadcast proof fn lemma_btree_set_get_ensures_if_cmp_matches_deep_equality<
     requires
         obeys_cmp::<Key>(),
         cmp_matches_deep_equality::<Key>(),
+        btree_set_inv(m),
         #[trigger] btree_set_get_ensures(m, k, result),
     ensures
         Key::obeys_cmp_spec(),
@@ -1790,9 +1801,9 @@ pub open spec fn btree_set_remove_ensures<
         &&& obeys_cmp::<Key>()
         &&& <Q as OrdSpec>::obeys_cmp_spec()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& btree_set_inv(old_m)
     }) ==> {
-        &&& btree_set_elements_differ(old_m)
-        &&& btree_set_elements_differ(final_m)
+        &&& btree_set_inv(final_m)
         &&& if result {
             exists|key: Key|
                 {
@@ -1827,6 +1838,7 @@ pub broadcast proof fn lemma_btree_set_remove_ensures_if_cmp_matches_equality<
     requires
         obeys_cmp::<Key>(),
         cmp_matches_equality::<Key>(),
+        btree_set_inv(old_m),
         #[trigger] btree_set_remove_ensures(old_m, final_m, k, result),
     ensures
         final_m@ == old_m@.remove(*k),
@@ -1849,6 +1861,7 @@ pub broadcast proof fn lemma_btree_set_remove_ensures_if_cmp_matches_deep_equali
     requires
         obeys_cmp::<Key>(),
         cmp_matches_deep_equality::<Key>(),
+        btree_set_inv(old_m),
         #[trigger] btree_set_remove_ensures(old_m, final_m, k, result),
     ensures
         Key::obeys_cmp_spec(),

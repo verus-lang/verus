@@ -756,7 +756,7 @@ pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ H
         final(m)@ == old(m)@,
 ;
 
-pub open spec fn hash_map_keys_differ<Key: Eq + Hash, Value, S, A: Allocator>(
+pub open spec fn hash_map_inv<Key: Eq + Hash, Value, S, A: Allocator>(
     m: &HashMap<Key, Value, S, A>,
 ) -> bool {
     forall|k1: Key, k2: Key|
@@ -777,9 +777,9 @@ pub open spec fn hash_map_insert_ensures<Key: Eq + Hash, Value, S: BuildHasher, 
     ({
         &&& obeys_key_model::<Key>()
         &&& builds_valid_hashers::<S>()
+        &&& hash_map_inv(old_m)
     }) ==> {
-        &&& hash_map_keys_differ(old_m)
-        &&& hash_map_keys_differ(final_m)
+        &&& hash_map_inv(final_m)
         &&& match result {
             Some(old_value) => exists|stored_key: Key|
                 {
@@ -823,6 +823,7 @@ pub broadcast proof fn lemma_hash_map_insert_ensures_if_eq_matches_equality<
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
+        hash_map_inv(old_m),
         #[trigger] hash_map_insert_ensures(old_m, final_m, k, v, result),
     ensures
         final_m@ == old_m@.insert(k, v),
@@ -849,6 +850,7 @@ pub broadcast proof fn lemma_hash_map_insert_ensures_if_eq_matches_deep_equality
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
+        hash_map_inv(old_m),
         #[trigger] hash_map_insert_ensures(old_m, final_m, k, v, result),
     ensures
         final_m.deep_view() == old_m.deep_view().insert(k.deep_view(), v.deep_view()),
@@ -909,9 +911,9 @@ pub open spec fn hash_map_contains_key_ensures<
         &&& obeys_key_model::<Q>()
         &&& builds_valid_hashers::<S>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& hash_map_inv(m)
     }) ==> {
-        &&& hash_map_keys_differ(m)
-        &&& result == exists|key: Key|
+        result == exists|key: Key|
             {
                 &&& #[trigger] m@.contains_key(key)
                 &&& k.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key))
@@ -945,6 +947,7 @@ pub broadcast proof fn lemma_hash_map_contains_key_ensures_if_eq_matches_equalit
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
+        hash_map_inv(m),
         #[trigger] hash_map_contains_key_ensures(m, k, result),
     ensures
         result == m@.contains_key(*k),
@@ -961,6 +964,7 @@ pub broadcast proof fn lemma_hash_map_contains_key_ensures_if_eq_matches_deep_eq
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
+        hash_map_inv(m),
         #[trigger] hash_map_contains_key_ensures(m, k, result),
     ensures
         result == m.deep_view().contains_key(k.deep_view()),
@@ -1000,9 +1004,9 @@ pub open spec fn hash_map_get_ensures<
         &&& obeys_key_model::<Q>()
         &&& builds_valid_hashers::<S>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& hash_map_inv(m)
     }) ==> {
-        &&& hash_map_keys_differ(m)
-        &&& match result {
+        match result {
             Some(v) => exists|key: Key|
                 {
                     &&& #[trigger] m@.contains_key(key)
@@ -1040,6 +1044,7 @@ pub broadcast proof fn lemma_hash_map_get_ensures_if_eq_matches_equality<
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
+        hash_map_inv(m),
         #[trigger] hash_map_get_ensures(m, k, result),
     ensures
         match result {
@@ -1059,6 +1064,7 @@ pub broadcast proof fn lemma_hash_map_get_ensures_if_eq_matches_deep_equality<
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
+        hash_map_inv(m),
         #[trigger] hash_map_get_ensures(m, k, result),
     ensures
         match result {
@@ -1117,9 +1123,9 @@ pub open spec fn hash_map_remove_ensures<
         &&& obeys_key_model::<Q>()
         &&& builds_valid_hashers::<S>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& hash_map_inv(old_m)
     }) ==> {
-        &&& hash_map_keys_differ(old_m)
-        &&& hash_map_keys_differ(final_m)
+        &&& hash_map_inv(final_m)
         &&& match result {
             Some(v) => exists|key: Key|
                 {
@@ -1168,6 +1174,7 @@ pub broadcast proof fn lemma_hash_map_remove_ensures_if_eq_matches_equality<
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
+        hash_map_inv(old_m),
         #[trigger] hash_map_remove_ensures(old_m, final_m, k, result),
     ensures
         final_m@ == old_m@.remove(*k),
@@ -1199,6 +1206,7 @@ pub broadcast proof fn lemma_hash_map_remove_ensures_if_eq_matches_deep_equality
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
+        hash_map_inv(old_m),
         #[trigger] hash_map_remove_ensures(old_m, final_m, k, result),
     ensures
         final_m.deep_view() == old_m.deep_view().remove(k.deep_view()),
@@ -1425,9 +1433,7 @@ pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet:
         final(m)@ == old(m)@,
 ;
 
-pub open spec fn hash_set_elements_differ<Key: Eq + Hash, S, A: Allocator>(
-    m: &HashSet<Key, S, A>,
-) -> bool {
+pub open spec fn hash_set_inv<Key: Eq + Hash, S, A: Allocator>(m: &HashSet<Key, S, A>) -> bool {
     forall|k1: Key, k2: Key|
         {
             &&& #[trigger] m@.contains(k1)
@@ -1445,9 +1451,9 @@ pub open spec fn hash_set_insert_ensures<Key: Eq + Hash, S: BuildHasher, A: Allo
     ({
         &&& obeys_key_model::<Key>()
         &&& builds_valid_hashers::<S>()
+        &&& hash_set_inv(old_m)
     }) ==> {
-        &&& hash_set_elements_differ(old_m)
-        &&& hash_set_elements_differ(final_m)
+        &&& hash_set_inv(final_m)
         &&& if result {
             &&& forall|stored_key: Key| #[trigger]
                 old_m@.contains(stored_key) ==> !k.eq_spec(&stored_key)
@@ -1478,6 +1484,7 @@ pub broadcast proof fn lemma_hash_set_insert_ensures_if_eq_matches_equality<
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
+        hash_set_inv(old_m),
         #[trigger] hash_set_insert_ensures(old_m, final_m, k, result),
     ensures
         final_m@ == old_m@.insert(k),
@@ -1501,6 +1508,7 @@ pub broadcast proof fn lemma_hash_set_insert_ensures_if_eq_matches_deep_equality
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
+        hash_set_inv(old_m),
         #[trigger] hash_set_insert_ensures(old_m, final_m, k, result),
     ensures
         final_m.deep_view() == old_m.deep_view().insert(k.deep_view()),
@@ -1541,9 +1549,9 @@ pub open spec fn hash_set_contains_ensures<
         &&& obeys_key_model::<Q>()
         &&& builds_valid_hashers::<S>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& hash_set_inv(m)
     }) ==> {
-        &&& hash_set_elements_differ(m)
-        &&& result == exists|key: Key|
+        result == exists|key: Key|
             {
                 &&& #[trigger] m@.contains(key)
                 &&& k.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key))
@@ -1572,6 +1580,7 @@ pub broadcast proof fn lemma_hash_set_contains_ensures_if_eq_matches_equality<
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
+        hash_set_inv(m),
         #[trigger] hash_set_contains_ensures(m, k, result),
     ensures
         result == m@.contains(*k),
@@ -1587,6 +1596,7 @@ pub broadcast proof fn lemma_hash_set_contains_ensures_if_eq_matches_deep_equali
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
+        hash_set_inv(m),
         #[trigger] hash_set_contains_ensures(m, k, result),
     ensures
         result == m.deep_view().contains(k.deep_view()),
@@ -1614,9 +1624,9 @@ pub open spec fn hash_set_get_ensures<
         &&& obeys_key_model::<Q>()
         &&& builds_valid_hashers::<S>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& hash_set_inv(m)
     }) ==> {
-        &&& hash_set_elements_differ(m)
-        &&& match result {
+        match result {
             Some(key) => {
                 &&& m@.contains(*key)
                 &&& k.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(key))
@@ -1649,6 +1659,7 @@ pub broadcast proof fn lemma_hash_set_get_ensures_if_eq_matches_equality<
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
+        hash_set_inv(m),
         #[trigger] hash_set_get_ensures(m, k, result),
     ensures
         match result {
@@ -1667,6 +1678,7 @@ pub broadcast proof fn lemma_hash_set_get_ensures_if_eq_matches_deep_equality<
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
+        hash_set_inv(m),
         #[trigger] hash_set_get_ensures(m, k, result),
     ensures
         match result {
@@ -1705,9 +1717,9 @@ pub open spec fn hash_set_remove_ensures<
         &&& obeys_key_model::<Q>()
         &&& builds_valid_hashers::<S>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& hash_set_inv(old_m)
     }) ==> {
-        &&& hash_set_elements_differ(old_m)
-        &&& hash_set_elements_differ(final_m)
+        &&& hash_set_inv(final_m)
         &&& if result {
             exists|key: Key|
                 {
@@ -1744,6 +1756,7 @@ pub broadcast proof fn lemma_hash_set_remove_ensures_if_eq_matches_equality<
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_equality::<Key>(),
+        hash_set_inv(old_m),
         #[trigger] hash_set_remove_ensures(old_m, final_m, k, result),
     ensures
         final_m@ == old_m@.remove(*k),
@@ -1766,6 +1779,7 @@ pub broadcast proof fn lemma_hash_set_remove_ensures_if_eq_matches_deep_equality
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
+        hash_set_inv(old_m),
         #[trigger] hash_set_remove_ensures(old_m, final_m, k, result),
     ensures
         final_m.deep_view() == old_m.deep_view().remove(k.deep_view()),
@@ -1967,9 +1981,9 @@ pub open spec fn hash_map_entry_ensures<Key: Eq + Hash, Value, S: BuildHasher, A
     ({
         &&& obeys_key_model::<Key>()
         &&& builds_valid_hashers::<S>()
+        &&& hash_map_inv(old_m)
     }) ==> {
-        &&& hash_map_keys_differ(old_m)
-        &&& hash_map_keys_differ(final_m)
+        &&& hash_map_inv(final_m)
         &&& match entry {
             Entry::Occupied(occupied_entry) => {
                 &&& old_m@.contains_key(occupied_entry.spec_key())
@@ -2040,6 +2054,7 @@ pub broadcast proof fn lemma_hash_map_entry_ensures_if_eq_matches_deep_equality<
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         eq_matches_deep_equality::<Key>(),
+        hash_map_inv(old_m),
         #[trigger] hash_map_entry_ensures(old_m, final_m, key, entry),
     ensures
         entry.spec_key().deep_view() == key.deep_view(),

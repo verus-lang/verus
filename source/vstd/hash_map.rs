@@ -8,7 +8,7 @@ use super::std_specs::borrow::BorrowSpec;
 #[cfg(verus_keep_ghost)]
 use super::std_specs::cmp::{PartialEqSpec, eq_matches_view_equality};
 #[cfg(verus_keep_ghost)]
-use super::std_specs::hash::{hash_map_keys_differ, obeys_key_model};
+use super::std_specs::hash::{hash_map_inv, obeys_key_model};
 #[cfg(verus_keep_ghost)]
 use super::std_specs::iter::IteratorSpec;
 #[allow(unused_imports)]
@@ -60,7 +60,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     pub closed spec fn well_formed(&self) -> bool {
         &&& obeys_key_model::<Key>()
         &&& eq_matches_view_equality::<Key>()
-        &&& hash_map_keys_differ(&self.m)
+        &&& hash_map_inv(&self.m)
     }
 
     proof fn lemma_view(&self)
