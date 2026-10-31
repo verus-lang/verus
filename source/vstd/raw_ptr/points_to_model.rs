@@ -968,7 +968,7 @@ impl<T> TypedValue<[T]> {
 pub tracked struct PointsToUnaligned<T: ?Sized> {
     val: TypedValue<T>,
     pt_untyped: PointsToUntyped,
-    metadata: Ghost<Metadata<T>>,
+    metadata: Ghost<CovariantMetadata<T>>,
 }
 
 /// The interface for a `PointsToUnaligned` or `PointsTo` permission,
@@ -1018,7 +1018,7 @@ impl<T: ?Sized> PointsToUnaligned<T> {
 
     /// The metadata of the `*mut T` pointer this permission is for.
     pub closed spec fn metadata(self) -> Metadata<T> {
-        self.metadata@
+        self.metadata@.metadata()
     }
 
     /// The contiguous sequence of bytes that this permission tracks.
@@ -1088,7 +1088,11 @@ impl<T: ?Sized> PointsToUnaligned<T> {
             out.typed_value() == typed_value,
             out.metadata() == metadata,
     {
-        PointsToUnaligned { val: typed_value, pt_untyped, metadata: Ghost(metadata) }
+        PointsToUnaligned {
+            val: typed_value,
+            pt_untyped,
+            metadata: Ghost(CovariantMetadata::from_metadata(metadata)),
+        }
     }
 
     /// Mutably borrows the untyped bytes and the typed value separately

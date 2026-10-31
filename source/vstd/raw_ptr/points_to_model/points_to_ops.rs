@@ -774,7 +774,11 @@ impl<T> PTValueOps for PointsToUnaligned<T> {
         tracked typed_value: TypedValue<T>,
         metadata: (),
     ) -> (tracked out: Self) {
-        PointsToUnaligned { val: typed_value, pt_untyped, metadata: Ghost(metadata) }
+        PointsToUnaligned {
+            val: typed_value,
+            pt_untyped,
+            metadata: Ghost(CovariantMetadata::from_metadata(metadata)),
+        }
     }
 
     /// Borrows the `pt_untyped` field.
@@ -822,7 +826,11 @@ impl<T> PTValueOps for PointsToUnaligned<[T]> {
         tracked typed_value: TypedValue<[T]>,
         metadata: usize,
     ) -> (tracked out: Self) {
-        PointsToUnaligned { val: typed_value, pt_untyped, metadata: Ghost(metadata) }
+        PointsToUnaligned {
+            val: typed_value,
+            pt_untyped,
+            metadata: Ghost(CovariantMetadata::from_metadata(metadata)),
+        }
     }
 
     /// Borrows the `pt_untyped` field.
