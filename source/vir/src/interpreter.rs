@@ -11,7 +11,7 @@ use crate::ast::{
     Typ, TypX, Typs, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::SstMap;
-use crate::ast_util::{n_types_equal, path_as_vstd_name, types_equal, undecorate_typ};
+use crate::ast_util::{int_typ, n_types_equal, path_as_vstd_name, types_equal, undecorate_typ};
 use crate::context::GlobalCtx;
 use crate::messages::{Message, Span, ToAny, WarningAllow, error};
 use crate::sst::{
@@ -934,8 +934,12 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirEr
     } else {
         // Describe the sequence in terms of a view on an array literal
         let fun_view = crate::fun!(CrateId::Vstd => "array"; "array_view");
-        let array = cleanup_array(span, inner_typ.clone(), s)?;
         let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(s.len())));
+        let array_typ = Arc::new(TypX::Primitive(
+            Primitive::Array,
+            Arc::new(vec![inner_typ.clone(), array_len_typ.clone()]),
+        ));
+        let array = cleanup_array(span, array_typ, s)?;
         let array_view = new_seq_exp(ExpX::Call(
             CallFun::Fun(fun_view, None),
             Arc::new(vec![inner_typ.clone(), array_len_typ]),
@@ -947,16 +951,7 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirEr
 
 /// Convert an interpreter-internal array representation back into a
 /// representation we can pass to AIR
-fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Result<Exp, VirErr> {
-    let arr_typ = if !matches!(*typ, TypX::Primitive(Primitive::Array, _)) {
-        // We only have the inner type for the array, so we need to construct the rest
-        let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(arr.len())));
-        let array_typs = Arc::new(vec![typ, array_len_typ]);
-        let array_typ = Arc::new(TypX::Primitive(Primitive::Array, array_typs));
-        array_typ
-    } else {
-        typ
-    };
+fn array_to_sst(span: &Span, arr_typ: Typ, arr: &Vector<Exp>) -> Result<Exp, VirErr> {
     let exp_new = |e: ExpX| SpannedTyped::new(span, &arr_typ, e);
     let exps: Result<Vec<Exp>, VirErr> = arr.iter().map(|e| cleanup_exp(e)).collect();
     let exps = Arc::new(exps?);
@@ -1011,9 +1006,17 @@ fn eval_seq(
                             // Apply the lambda to each index of the new sequence
                             let vec: Result<Vec<Exp>, VirErr> = (0..len)
                                 .map(|i| {
-                                    let int_i = exp_new(Const(Constant::Int(BigInt::from(i))));
+                                    let int_i = SpannedTyped::new(
+                                        &exp.span,
+                                        &int_typ(),
+                                        Const(Constant::Int(BigInt::from(i))),
+                                    );
                                     let args = Arc::new(vec![int_i]);
-                                    let call = exp_new(CallLambda(lambda.clone(), args));
+                                    let call = SpannedTyped::new(
+                                        &exp.span,
+                                        &typs[0],
+                                        CallLambda(lambda.clone(), args),
+                                    );
                                     eval_expr_internal(ctx, state, &call)
                                 })
                                 .collect();
@@ -1102,8 +1105,8 @@ fn eval_seq(
                     (Interp(Seq(l)), Interp(Seq(r))) => match l.syntactic_eq(r) {
                         None => {
                             let new_args = vec![
-                                seq_to_sst(&args[0].span, args[0].typ.clone(), &l)?,
-                                seq_to_sst(&args[1].span, args[1].typ.clone(), &r)?,
+                                seq_to_sst(&args[0].span, typs[0].clone(), &l)?,
+                                seq_to_sst(&args[1].span, typs[0].clone(), &r)?,
                             ];
                             let new_args = Arc::new(new_args);
                             Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
