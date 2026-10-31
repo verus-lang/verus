@@ -1894,6 +1894,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             if b.name.0.ends_with("$compute") {
                                 return b.clone();
                             }
+                            // Binders may share a name (macro hygiene), so number each one
+                            state.iterations += 1;
                             let id = VarIdent(
                                 Arc::new(format!("{}$compute", b.name.0)),
                                 VarIdentDisambiguate::VirSubst(state.iterations),
