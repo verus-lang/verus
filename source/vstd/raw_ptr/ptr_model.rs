@@ -74,7 +74,7 @@ pub ghost struct AllocationData {
 pub ghost struct Tag {}
 
 /// A pointer's provenance consists of its allocation (the spatial part)
-/// and its tag, if it is not none. 
+/// and its tag, if it is not none.
 #[verifier::external_body]
 pub ghost struct ProvenanceData {}
 
@@ -200,6 +200,36 @@ pub struct FakeMetadata<T: ?Sized> {
 #[cfg(not(verus_keep_ghost))]
 pub type Metadata<T> = FakeMetadata<T>;
 
+/// A `Metadata<T>` value held in a type that is covariant in `T`.
+/// `Metadata<T>` is a projection, so a type containing it is invariant in `T`;
+/// a permission stores its pointer metadata as a `CovariantMetadata<T>` instead
+/// so that the permission stays covariant in `T`.
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct CovariantMetadata<T: ?Sized> {
+    phantom: core::marker::PhantomData<T>,
+}
+
+impl<T: ?Sized> CovariantMetadata<T> {
+    /// The metadata this value holds.
+    pub uninterp spec fn metadata(self) -> Metadata<T>;
+
+    /// The value holding the given metadata.
+    pub uninterp spec fn from_metadata(metadata: Metadata<T>) -> Self;
+}
+
+/// `from_metadata` and `metadata` are inverses.
+pub broadcast axiom fn axiom_covariant_metadata_from_metadata<T: ?Sized>(metadata: Metadata<T>)
+    ensures
+        (#[trigger] CovariantMetadata::<T>::from_metadata(metadata)).metadata() == metadata,
+;
+
+/// `from_metadata` and `metadata` are inverses, so values with the same metadata are equal.
+pub broadcast axiom fn axiom_covariant_metadata_eq<T: ?Sized>(m: CovariantMetadata<T>)
+    ensures
+        CovariantMetadata::<T>::from_metadata(#[trigger] m.metadata()) == m,
+;
+
 /// Model of a pointer `*mut T` or `*const T` in Rust's abstract machine.
 /// In addition to the address, each pointer has its corresponding provenance and metadata.
 #[cfg(verus_keep_ghost)]
@@ -286,6 +316,8 @@ pub broadcast group group_raw_ptr_axioms {
     ptrs_mut_eq,
     ptrs_mut_eq_sized,
     provenance_properties,
+    axiom_covariant_metadata_from_metadata,
+    axiom_covariant_metadata_eq,
 }
 
 } // verus!

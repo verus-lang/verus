@@ -175,7 +175,8 @@ pub axiom fn tracked_slice_index<'a, T>(tracked s: &'a [T], i: int) -> (tracked 
 ;
 
 /// Borrows elements `[i, j)` of a borrowed slice.
-pub axiom fn tracked_slice_subrange<'a, T>(tracked s: &'a [T], i: int, j: int) -> (tracked out: &'a [T])
+pub axiom fn tracked_slice_subrange<'a, T>(tracked s: &'a [T], i: int, j: int) -> (tracked out:
+    &'a [T])
     requires
         0 <= i <= j <= s@.len(),
     ensures

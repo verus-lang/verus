@@ -350,7 +350,6 @@ pub broadcast proof fn endian_to_bytes_to_endian(n: nat, len: nat, prov: Option<
         }),
 {
     broadcast use group_vstd_default;
-
     broadcast use EndianNat::from_nat_properties;
 
     let endian = EndianNat::<u8>::from_nat(n, len);
@@ -481,10 +480,10 @@ unsigned_int_encoding! {
 verus! {
 
 /// Types where every initialized byte sequence of length `size_of::<Self>()` decodes to a valid value of that type.
-/// This value is given by the natural number represented by the byte values 
+/// This value is given by the natural number represented by the byte values
 /// (with respect to the endianness of the platform),
 /// regardless of any provenance the bytes carry.
-/// 
+///
 /// Implemented by the unsigned primitive integers: `u8`, `u16`, `u32`, `u64`, `u128` and `usize`.
 /// Note that raw pointers are *not* included, since their bytes do carry provenance;
 /// similarly, signed integers are also excluded, since they are represented using two's complement.
@@ -526,7 +525,9 @@ pub trait DecodesToNat: AbstractByteRepresentation + BasePow2 + Integer {
     ;
 }
 
-} // verus!
+}  // verus!
+
+
 macro_rules! decodes_to_nat {
     ($($uint:ty),+) => {$(
         verus! {
@@ -676,7 +677,8 @@ pub proof fn lemma_abs_decode_to_big<BIG, B>(bytes: Seq<AbstractByte>, digits: S
     BIG::lemma_abs_decode(bytes, v);
 }
 
-} // verus!
+}  // verus!
+
 
 /// When x is negative, the bitwise result of this function is equivalent
 /// to the two's complement representation of x in the given base.
@@ -1186,7 +1188,6 @@ impl<T: PointeeSized> AbstractByteEncoding<*mut T> for RawPtrRepresentation<T> {
 
     proof fn encoding_exists(tracked v: *mut T) -> (b: Seq<AbstractByte>) {
         broadcast use group_vstd_default;
-
         broadcast use endian_to_bytes_to_endian;
 
         unsigned_int_max_values();
@@ -1353,7 +1354,6 @@ impl<'a, T: ?Sized> AbstractByteRepresentation for SharedReference<'a, T> {
 
     proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
         broadcast use group_vstd_default;
-
         broadcast use endian_to_bytes_to_endian;
 
         unsigned_int_max_values();
@@ -1580,7 +1580,6 @@ impl AbstractByteRepresentationUnsized<[u8]> for EncodingU8Slice {
 
     proof fn encoding_exists(tracked v: &[u8]) -> (b: Seq<AbstractByte>) {
         broadcast use group_vstd_default;
-
         broadcast use endian_to_bytes_to_endian, EndianNat::from_nat_to_nat;
 
         unsigned_int_max_values();
@@ -1609,40 +1608,31 @@ impl AbstractByteRepresentationUnsized<[u8]> for EncodingU8Slice {
 
 // /// The abstract encoding for a `[T]` maps each value in the slice to a corresponding abtract byte with no provenance.
 // pub struct EncodingSlice;
-
 // impl<T: AbstractByteRepresentation> AbstractByteRepresentationUnsized<[T]> for EncodingSlice {
 //     open spec fn can_be_encoded() -> bool {
 //         true
 //     }
-
 //     open spec fn encode(value: &[T], bytes: Seq<AbstractByte>) -> bool {
 //         &&& value@.len() * size_of::<T>() == bytes.len()
 //         &&& forall|i| 0 <= i < value@.len() ==> T::encode(#[trigger] value@[i], bytes.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()))
 //     }
-
 //     open spec fn decode(bytes: Seq<AbstractByte>, value: &[T]) -> bool {
 //         &&& value@.len() * size_of::<T>() == bytes.len()
 //         &&& forall|i: int| 0 <= i < value@.len() ==> T::decode(bytes.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()), #[trigger] value@[i])
 //     }
-
 //     proof fn encoding_size(v: &[T], b: Seq<AbstractByte>) {
 //     }
-
 //     proof fn encoding_exists(tracked v: &[T]) -> (b: Seq<AbstractByte>) {
 //         v@.map_values(|val: T| T::encoding_exists(val)).fold_left(Seq::<AbstractByte>::empty(), |s1: Seq<AbstractByte>, s2: Seq<AbstractByte>| s1.add(s2))
 //     }
-
 //     proof fn encoding_invertible(v: &[T], b: Seq<AbstractByte>) {
 //         assert forall|i: int| 0 <= i < v@.len() implies T::decode(b.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()), #[trigger] v@[i]) by {
 //             T::encoding_invertible(v@[i], b.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()));
 //         }
 //     }
-
 //     axiom fn abs_encode_impl(v: &[T], b: Seq<AbstractByte>);
-
 //     axiom fn abs_can_be_encoded_impl();
 // }
-
 pub broadcast group group_type_representation_axioms {
     u8_encode,
     u16_encode,
