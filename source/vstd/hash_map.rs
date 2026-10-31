@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::laws_eq::obeys_view_eq;
 #[allow(unused_imports)]
 use super::map::*;
 #[allow(unused_imports)]
@@ -6,7 +8,7 @@ use super::prelude::*;
 #[cfg(verus_keep_ghost)]
 use super::std_specs::borrow::BorrowSpec;
 #[cfg(verus_keep_ghost)]
-use super::std_specs::cmp::{PartialEqSpec, eq_matches_view_equality};
+use super::std_specs::cmp::PartialEqSpec;
 #[cfg(verus_keep_ghost)]
 use super::std_specs::hash::{hash_map_inv, obeys_key_model};
 #[cfg(verus_keep_ghost)]
@@ -30,7 +32,7 @@ broadcast use {
 
 /// `HashMapWithView` is a verified wrapper around `std::collections::HashMap` with `View` implemented for the type `vstd::map::Map<<Key as View>::V, Value>`.
 ///
-/// Its constructors require [`eq_matches_view_equality`] in addition to [`obeys_key_model`].
+/// Its constructors require [`obeys_view_eq`] in addition to [`obeys_key_model`].
 /// Constructors establish [`Self::well_formed`], which all other operations require and preserve.
 ///
 /// See the Rust documentation for [`HashMap`](https://doc.rust-lang.org/std/collections/struct.HashMap.html)
@@ -59,7 +61,7 @@ impl<Key, Value> View for HashMapWithView<Key, Value> where Key: View + Eq + Has
 impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     pub closed spec fn well_formed(&self) -> bool {
         &&& obeys_key_model::<Key>()
-        &&& eq_matches_view_equality::<Key>()
+        &&& obeys_view_eq::<Key>()
         &&& hash_map_inv(&self.m)
     }
 
@@ -74,6 +76,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
                 self@.contains_key(view) ==> exists|k: Key| #[trigger]
                     self.m@.contains_key(k) && k@ == view,
     {
+        reveal(obeys_view_eq);
         broadcast use {crate::map::group_map_lemmas, crate::set::group_set_lemmas};
 
         assert(self.m@.dom().injective_on(|k: Key| k@));
@@ -93,7 +96,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     pub fn new() -> (result: Self)
         requires
             obeys_key_model::<Key>(),
-            eq_matches_view_equality::<Key>(),
+            obeys_view_eq::<Key>(),
         ensures
             result.well_formed(),
             result@ == Map::<<Key as View>::V, Value>::empty(),
@@ -109,7 +112,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     pub fn with_capacity(capacity: usize) -> (result: Self)
         requires
             obeys_key_model::<Key>(),
-            eq_matches_view_equality::<Key>(),
+            obeys_view_eq::<Key>(),
         ensures
             result.well_formed(),
             result@ == Map::<<Key as View>::V, Value>::empty(),
@@ -174,6 +177,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
             previous == old(self)@.get(k@),
     {
         proof {
+            reveal(obeys_view_eq);
             self.lemma_view();
         }
         let ghost before = self@;
@@ -231,6 +235,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
             },
     {
         proof {
+            reveal(obeys_view_eq);
             self.lemma_view();
         }
         let ghost before = self@;
@@ -266,6 +271,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
             result == self@.contains_key(k@),
     {
         proof {
+            reveal(obeys_view_eq);
             self.lemma_view();
         }
         self.m.contains_key(k)
@@ -284,6 +290,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
             },
     {
         proof {
+            reveal(obeys_view_eq);
             self.lemma_view();
         }
         self.m.get(k)
@@ -437,6 +444,9 @@ impl<Value> StringHashMap<Value> {
             result.well_formed(),
             result@ == Map::<Seq<char>, Value>::empty(),
     {
+        proof {
+            reveal(obeys_view_eq);
+        }
         Self { m: HashMapWithView::new() }
     }
 
@@ -448,6 +458,9 @@ impl<Value> StringHashMap<Value> {
             result.well_formed(),
             result@ == Map::<Seq<char>, Value>::empty(),
     {
+        proof {
+            reveal(obeys_view_eq);
+        }
         Self { m: HashMapWithView::with_capacity(capacity) }
     }
 

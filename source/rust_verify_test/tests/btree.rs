@@ -54,12 +54,12 @@ test_verify_one_file! {
     #[test] test_btree_map_contains_key_equality verus_code! {
         use std::collections::BTreeMap;
         use vstd::prelude::*;
-        use vstd::std_specs::cmp::{cmp_matches_deep_equality, cmp_matches_equality};
+        use vstd::laws_cmp::{obeys_cmp_deep_eq, obeys_cmp_concrete_eq};
 
         fn test_structural<Key: Ord, Value>(m: &BTreeMap<Key, Value>, k: &Key) -> (result: bool)
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_equality::<Key>(),
+                obeys_cmp_concrete_eq::<Key>(),
             ensures
                 result == m@.contains_key(*k),
         {
@@ -69,7 +69,7 @@ test_verify_one_file! {
         fn test_deep<Key: Ord + DeepView>(first: Key, equivalent: Key, fresh: Key)
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_deep_equality::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
                 first != equivalent,
                 first.deep_view() == equivalent.deep_view(),
                 first.deep_view() != fresh.deep_view(),
@@ -93,14 +93,14 @@ test_verify_one_file! {
     #[test] test_btree_map_get_equality verus_code! {
         use std::collections::BTreeMap;
         use vstd::prelude::*;
-        use vstd::std_specs::cmp::{cmp_matches_deep_equality, cmp_matches_equality};
+        use vstd::laws_cmp::{obeys_cmp_deep_eq, obeys_cmp_concrete_eq};
 
         fn test_structural<'a, Key: Ord, Value>(
             m: &'a BTreeMap<Key, Value>, k: &Key,
         ) -> (result: Option<&'a Value>)
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_equality::<Key>(),
+                obeys_cmp_concrete_eq::<Key>(),
             ensures
                 match result {
                     Some(v) => m@.contains_key(*k) && *v == m@[*k],
@@ -115,7 +115,7 @@ test_verify_one_file! {
         )
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_deep_equality::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
                 first != equivalent,
                 first.deep_view() == equivalent.deep_view(),
                 first.deep_view() != fresh.deep_view(),
@@ -158,14 +158,14 @@ test_verify_one_file! {
     #[test] test_btree_map_remove_equality verus_code! {
         use std::collections::BTreeMap;
         use vstd::prelude::*;
-        use vstd::std_specs::cmp::{cmp_matches_deep_equality, cmp_matches_equality};
+        use vstd::laws_cmp::{obeys_cmp_deep_eq, obeys_cmp_concrete_eq};
 
         fn test_structural<Key: Ord, Value>(
             m: &mut BTreeMap<Key, Value>, k: &Key,
         ) -> (result: Option<Value>)
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_equality::<Key>(),
+                obeys_cmp_concrete_eq::<Key>(),
             ensures
                 final(m)@ == old(m)@.remove(*k),
                 match result {
@@ -181,7 +181,7 @@ test_verify_one_file! {
         )
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_deep_equality::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
                 first != equivalent,
                 first.deep_view() == equivalent.deep_view(),
                 first.deep_view() != fresh.deep_view(),
@@ -274,14 +274,14 @@ test_verify_one_file! {
     #[test] test_btree_map_get_mut_equality verus_code! {
         use std::collections::BTreeMap;
         use vstd::prelude::*;
-        use vstd::std_specs::cmp::{cmp_matches_deep_equality, cmp_matches_equality};
+        use vstd::laws_cmp::{obeys_cmp_deep_eq, obeys_cmp_concrete_eq};
 
         fn test_structural<Key: Ord, Value>(
             m: &mut BTreeMap<Key, Value>, k: &Key, replacement: Value,
         ) -> (found: bool)
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_equality::<Key>(),
+                obeys_cmp_concrete_eq::<Key>(),
             ensures
                 found == old(m)@.contains_key(*k),
                 final(m)@ == if found {
@@ -307,7 +307,7 @@ test_verify_one_file! {
         )
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_deep_equality::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
                 first != equivalent,
                 first.deep_view() == equivalent.deep_view(),
                 first.deep_view() != fresh.deep_view(),
@@ -809,7 +809,7 @@ test_verify_one_file! {
                 reveal(vstd::laws_cmp::obeys_cmp_ord);
                 reveal(vstd::laws_cmp::obeys_partial_cmp_spec_properties);
             }
-            assert(vstd::std_specs::cmp::cmp_matches_equality::<MyStruct>()) by {
+            assert(vstd::laws_cmp::obeys_cmp_concrete_eq::<MyStruct>()) by {
                 reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
                 reveal(vstd::laws_cmp::obeys_cmp_ord);
             }
@@ -845,13 +845,13 @@ test_verify_one_file! {
         extern crate alloc;
         use alloc::collections::BTreeSet;
         use vstd::prelude::*;
-        use vstd::std_specs::btree::btree_set_elements_differ;
-        use vstd::std_specs::cmp::cmp_matches_deep_equality;
+        use vstd::std_specs::btree::btree_set_inv;
+        use vstd::laws_cmp::obeys_cmp_deep_eq;
 
         fn test<Key: Ord + DeepView>(first: Key, equivalent: Key, fresh: Key)
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_deep_equality::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
                 first != equivalent,
                 first.deep_view() == equivalent.deep_view(),
                 first.deep_view() != fresh.deep_view(),
@@ -872,7 +872,7 @@ test_verify_one_file! {
             assert(inserted);
             assert(s@ == set![first, fresh]);
             assert(s.deep_view() == set![first.deep_view(), fresh.deep_view()]);
-            assert(btree_set_elements_differ(&s));
+            assert(btree_set_inv(&s));
         }
     } => Ok(())
 }
@@ -881,12 +881,12 @@ test_verify_one_file! {
     #[test] test_btree_set_contains_equality verus_code! {
         use std::collections::BTreeSet;
         use vstd::prelude::*;
-        use vstd::std_specs::cmp::{cmp_matches_deep_equality, cmp_matches_equality};
+        use vstd::laws_cmp::{obeys_cmp_deep_eq, obeys_cmp_concrete_eq};
 
         fn test_structural<Key: Ord>(s: &BTreeSet<Key>, k: &Key) -> (result: bool)
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_equality::<Key>(),
+                obeys_cmp_concrete_eq::<Key>(),
             ensures
                 result == s@.contains(*k),
         {
@@ -896,7 +896,7 @@ test_verify_one_file! {
         fn test_deep<Key: Ord + DeepView>(first: Key, equivalent: Key, fresh: Key)
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_deep_equality::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
                 first != equivalent,
                 first.deep_view() == equivalent.deep_view(),
                 first.deep_view() != fresh.deep_view(),
@@ -920,14 +920,14 @@ test_verify_one_file! {
     #[test] test_btree_set_get_equality verus_code! {
         use std::collections::BTreeSet;
         use vstd::prelude::*;
-        use vstd::std_specs::cmp::{cmp_matches_deep_equality, cmp_matches_equality};
+        use vstd::laws_cmp::{obeys_cmp_deep_eq, obeys_cmp_concrete_eq};
 
         fn test_structural<'a, Key: Ord>(
             s: &'a BTreeSet<Key>, k: &Key,
         ) -> (result: Option<&'a Key>)
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_equality::<Key>(),
+                obeys_cmp_concrete_eq::<Key>(),
             ensures
                 match result {
                     Some(key) => s@.contains(*key) && *key == *k,
@@ -940,7 +940,7 @@ test_verify_one_file! {
         fn test_deep<Key: Ord + DeepView>(first: Key, equivalent: Key, fresh: Key)
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_deep_equality::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
                 first != equivalent,
                 first.deep_view() == equivalent.deep_view(),
                 first.deep_view() != fresh.deep_view(),
@@ -982,12 +982,12 @@ test_verify_one_file! {
     #[test] test_btree_set_remove_equality verus_code! {
         use std::collections::BTreeSet;
         use vstd::prelude::*;
-        use vstd::std_specs::cmp::{cmp_matches_deep_equality, cmp_matches_equality};
+        use vstd::laws_cmp::{obeys_cmp_deep_eq, obeys_cmp_concrete_eq};
 
         fn test_structural<Key: Ord>(s: &mut BTreeSet<Key>, k: &Key) -> (result: bool)
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_equality::<Key>(),
+                obeys_cmp_concrete_eq::<Key>(),
             ensures
                 final(s)@ == old(s)@.remove(*k),
                 result == old(s)@.contains(*k),
@@ -998,7 +998,7 @@ test_verify_one_file! {
         fn test_deep<Key: Ord + DeepView>(first: Key, equivalent: Key, fresh: Key)
             requires
                 vstd::laws_cmp::obeys_cmp::<Key>(),
-                cmp_matches_deep_equality::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
                 first != equivalent,
                 first.deep_view() == equivalent.deep_view(),
                 first.deep_view() != fresh.deep_view(),
@@ -1099,7 +1099,7 @@ test_verify_one_file! {
                 reveal(vstd::laws_cmp::obeys_cmp_ord);
                 reveal(vstd::laws_cmp::obeys_partial_cmp_spec_properties);
             }
-            assert(vstd::std_specs::cmp::cmp_matches_equality::<MyStruct>()) by {
+            assert(vstd::laws_cmp::obeys_cmp_concrete_eq::<MyStruct>()) by {
                 reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
                 reveal(vstd::laws_cmp::obeys_cmp_ord);
             }

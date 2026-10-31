@@ -246,6 +246,7 @@ test_verify_one_file! {
 
         fn test()
         {
+            reveal(vstd::laws_eq::obeys_concrete_eq);
             let mut m = HashSet::<Box<u32>>::new();
             assert(m@ == Set::<Box<u32>>::empty());
 
@@ -411,14 +412,15 @@ test_verify_one_file! {
         use core::hash::Hash;
         use std::collections::{HashMap, HashSet, hash_map::Entry};
         use vstd::prelude::*;
-        use vstd::std_specs::cmp::eq_matches_equality;
+        use vstd::laws_eq::obeys_concrete_eq;
         use vstd::std_specs::hash::{EntrySpecFns, obeys_key_model};
 
         fn test_map<Key: Hash + Eq + Copy>(m: &mut HashMap<Key, u32>, key: Key)
             requires
                 obeys_key_model::<Key>(),
-                eq_matches_equality::<Key>(),
+                obeys_concrete_eq::<Key>(),
         {
+            reveal(obeys_concrete_eq);
             let ghost before = m@;
             let previous = m.insert(key, 42);
             assert(m@ == before.insert(key, 42));
@@ -442,8 +444,9 @@ test_verify_one_file! {
         fn test_map_entry<Key: Hash + Eq + Copy>(m: &mut HashMap<Key, u32>, key: Key)
             requires
                 obeys_key_model::<Key>(),
-                eq_matches_equality::<Key>(),
+                obeys_concrete_eq::<Key>(),
         {
+            reveal(obeys_concrete_eq);
             let ghost before = m@;
             let entry = m.entry(key);
             assert(*entry.key() == key);
@@ -467,8 +470,9 @@ test_verify_one_file! {
         fn test_set<Key: Hash + Eq + Copy>(m: &mut HashSet<Key>, key: Key)
             requires
                 obeys_key_model::<Key>(),
-                eq_matches_equality::<Key>(),
+                obeys_concrete_eq::<Key>(),
         {
+            reveal(obeys_concrete_eq);
             let ghost before = m@;
             let inserted = m.insert(key);
             assert(inserted == !before.contains(key));
@@ -498,7 +502,7 @@ test_verify_one_file! {
         use core::hash::Hash;
         use std::collections::{HashMap, HashSet, hash_map::Entry};
         use vstd::prelude::*;
-        use vstd::std_specs::cmp::eq_matches_deep_equality;
+        use vstd::laws_eq::obeys_deep_eq;
         use vstd::std_specs::hash::{EntrySpecFns, obeys_key_model};
 
         fn test_map<Key: Hash + Eq + Copy + DeepView, Value: DeepView>(
@@ -511,11 +515,12 @@ test_verify_one_file! {
         )
             requires
                 obeys_key_model::<Key>(),
-                eq_matches_deep_equality::<Key>(),
+                obeys_deep_eq::<Key>(),
                 key != equivalent,
                 key.deep_view() == equivalent.deep_view(),
                 key.deep_view() != other.deep_view(),
         {
+            reveal(obeys_deep_eq);
             let mut m = HashMap::<Key, Value>::new();
             let present = m.contains_key(&equivalent);
             assert(!present);
@@ -570,8 +575,10 @@ test_verify_one_file! {
         )
             requires
                 obeys_key_model::<Key>(),
-                eq_matches_deep_equality::<Key>(),
+                obeys_deep_eq::<Key>(),
+                vstd::std_specs::hash::hash_map_inv(old(m)),
         {
+            reveal(obeys_deep_eq);
             let ghost before = m.deep_view();
             let entry = m.entry(key);
             assert(entry.key().deep_view() == key.deep_view());
@@ -611,11 +618,12 @@ test_verify_one_file! {
         )
             requires
                 obeys_key_model::<Key>(),
-                eq_matches_deep_equality::<Key>(),
+                obeys_deep_eq::<Key>(),
                 key != equivalent,
                 key.deep_view() == equivalent.deep_view(),
                 key.deep_view() != other.deep_view(),
         {
+            reveal(obeys_deep_eq);
             let mut m = HashSet::<Key>::new();
             let present = m.contains(&equivalent);
             assert(!present);
@@ -676,7 +684,7 @@ test_verify_one_file! {
                 obeys_key_model::<Q>(),
                 borrowed_key_hashing_matches::<Key, Q>(),
                 <Key as BorrowSpec<Q>>::obeys_borrow_spec(),
-                query.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)),
+                query.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)),
         {
             let mut m = HashMap::<Key, u32>::new();
             let previous = m.insert(key, 42);
@@ -706,7 +714,7 @@ test_verify_one_file! {
                 obeys_key_model::<Q>(),
                 borrowed_key_hashing_matches::<Key, Q>(),
                 <Key as BorrowSpec<Q>>::obeys_borrow_spec(),
-                query.eq_spec(<Key as BorrowSpec<Q>>::spec_borrow(&key)),
+                query.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)),
         {
             let mut m = HashSet::<Key>::new();
             let inserted = m.insert(key);
@@ -925,7 +933,7 @@ test_verify_one_file! {
                 obeys_key_model::<Q>(),
                 borrowed_key_hashing_matches::<Key, Q>(),
                 <Key as BorrowSpec<Q>>::obeys_borrow_spec(),
-                <Key as BorrowSpec<Q>>::spec_borrow(&key) == query,
+                <Key as BorrowSpec<Q>>::borrow_spec(&key) == query,
         {
             let mut m = HashMap::<Key, u32>::new();
             m.insert(key, 42);
@@ -954,7 +962,7 @@ test_verify_one_file! {
                 obeys_key_model::<Q>(),
                 borrowed_key_hashing_matches::<Key, Q>(),
                 <Key as BorrowSpec<Q>>::obeys_borrow_spec(),
-                <Key as BorrowSpec<Q>>::spec_borrow(&key) == query,
+                <Key as BorrowSpec<Q>>::borrow_spec(&key) == query,
         {
             let mut m = HashSet::<Key>::new();
             m.insert(key);
@@ -1111,6 +1119,7 @@ test_verify_one_file! {
         {
             assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
 
+            reveal(vstd::laws_eq::obeys_view_eq);
             let mut m = HashMapWithView::<MyStruct, u32>::new();
             assert(m@ == Map::<(MyStruct, int), u32>::empty());
 
@@ -1162,13 +1171,13 @@ test_verify_one_file! {
         use core::hash::Hash;
         use vstd::hash_map::HashMapWithView;
         use vstd::prelude::*;
-        use vstd::std_specs::cmp::eq_matches_view_equality;
+        use vstd::laws_eq::obeys_view_eq;
         use vstd::std_specs::hash::obeys_key_model;
 
         fn test<Key: Hash + Eq + View + Copy>(key: Key, equivalent: Key, other: Key)
             requires
                 obeys_key_model::<Key>(),
-                eq_matches_view_equality::<Key>(),
+                obeys_view_eq::<Key>(),
                 key != equivalent,
                 key@ == equivalent@,
                 key@ != other@,
@@ -1254,6 +1263,7 @@ test_verify_one_file! {
         {
             assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
 
+            reveal(vstd::laws_eq::obeys_view_eq);
             let mut m = HashSetWithView::<MyStruct>::new();
             assert(m@ == Set::<(MyStruct, int)>::empty());
 
@@ -1314,13 +1324,13 @@ test_verify_one_file! {
         use core::hash::Hash;
         use vstd::hash_set::HashSetWithView;
         use vstd::prelude::*;
-        use vstd::std_specs::cmp::eq_matches_view_equality;
+        use vstd::laws_eq::obeys_view_eq;
         use vstd::std_specs::hash::obeys_key_model;
 
         fn test<Key: Hash + Eq + View + Copy>(key: Key, equivalent: Key, other: Key)
             requires
                 obeys_key_model::<Key>(),
-                eq_matches_view_equality::<Key>(),
+                obeys_view_eq::<Key>(),
                 key != equivalent,
                 key@ == equivalent@,
                 key@ != other@,
@@ -1429,6 +1439,7 @@ test_verify_one_file! {
         {
             // Missing assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
 
+            reveal(vstd::laws_eq::obeys_view_eq);
             let mut m = HashMapWithView::<MyStruct, u32>::new(); // FAILS
             let s = MyStruct{ i: 3, j: 7 };
             m.insert(s, 4);
@@ -1474,6 +1485,7 @@ test_verify_one_file! {
         {
             // Missing assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
 
+            reveal(vstd::laws_eq::obeys_view_eq);
             let mut m = HashSetWithView::<MyStruct>::new(); // FAILS
             let s = MyStruct{ i: 3, j: 7 };
             m.insert(s);

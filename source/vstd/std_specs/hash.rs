@@ -35,10 +35,11 @@
 //! about the behavior of `HashMap` and `HashSet` into the ambient
 //! reasoning context by broadcasting the group
 //! `vstd::std_specs::hash::group_hash_axioms`.
+use super::super::laws_eq::{obeys_concrete_eq, obeys_deep_eq};
 use super::super::map::{assert_maps_equal, assert_maps_equal_internal};
 use super::super::prelude::*;
 use super::borrow::BorrowSpec;
-use super::cmp::{PartialEqSpec, eq_matches_deep_equality, eq_matches_equality};
+use super::cmp::PartialEqSpec;
 use super::iter::IteratorSpec;
 
 use core::alloc::Allocator;
@@ -807,7 +808,7 @@ pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ H
         hash_map_insert_ensures(old(m), final(m), k, v, result),
 ;
 
-pub broadcast proof fn lemma_hash_map_insert_ensures_if_eq_matches_equality<
+pub broadcast proof fn lemma_hash_map_insert_ensures_if_obeys_concrete_eq<
     Key: Eq + Hash,
     Value,
     S: BuildHasher,
@@ -822,7 +823,7 @@ pub broadcast proof fn lemma_hash_map_insert_ensures_if_eq_matches_equality<
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_equality::<Key>(),
+        obeys_concrete_eq::<Key>(),
         hash_map_inv(old_m),
         #[trigger] hash_map_insert_ensures(old_m, final_m, k, v, result),
     ensures
@@ -832,9 +833,10 @@ pub broadcast proof fn lemma_hash_map_insert_ensures_if_eq_matches_equality<
             None => !old_m@.contains_key(k),
         },
 {
+    reveal(obeys_concrete_eq);
 }
 
-pub broadcast proof fn lemma_hash_map_insert_ensures_if_eq_matches_deep_equality<
+pub broadcast proof fn lemma_hash_map_insert_ensures_if_obeys_deep_eq<
     Key: Eq + Hash + DeepView,
     Value: DeepView,
     S: BuildHasher,
@@ -849,7 +851,7 @@ pub broadcast proof fn lemma_hash_map_insert_ensures_if_eq_matches_deep_equality
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_deep_equality::<Key>(),
+        obeys_deep_eq::<Key>(),
         hash_map_inv(old_m),
         #[trigger] hash_map_insert_ensures(old_m, final_m, k, v, result),
     ensures
@@ -862,6 +864,7 @@ pub broadcast proof fn lemma_hash_map_insert_ensures_if_eq_matches_deep_equality
             None => !old_m.deep_view().contains_key(k.deep_view()),
         },
 {
+    reveal(obeys_deep_eq);
     broadcast use {
         crate::map::group_map_lemmas,
         crate::set::group_set_lemmas,
@@ -937,7 +940,7 @@ pub assume_specification<
         hash_map_contains_key_ensures(m, k, result),
 ;
 
-pub broadcast proof fn lemma_hash_map_contains_key_ensures_if_eq_matches_equality<
+pub broadcast proof fn lemma_hash_map_contains_key_ensures_if_obeys_concrete_eq<
     Key: Eq + Hash,
     Value,
     S: BuildHasher,
@@ -946,15 +949,16 @@ pub broadcast proof fn lemma_hash_map_contains_key_ensures_if_eq_matches_equalit
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_equality::<Key>(),
+        obeys_concrete_eq::<Key>(),
         hash_map_inv(m),
         #[trigger] hash_map_contains_key_ensures(m, k, result),
     ensures
         result == m@.contains_key(*k),
 {
+    reveal(obeys_concrete_eq);
 }
 
-pub broadcast proof fn lemma_hash_map_contains_key_ensures_if_eq_matches_deep_equality<
+pub broadcast proof fn lemma_hash_map_contains_key_ensures_if_obeys_deep_eq<
     Key: Eq + Hash + DeepView,
     Value: DeepView,
     S: BuildHasher,
@@ -963,12 +967,13 @@ pub broadcast proof fn lemma_hash_map_contains_key_ensures_if_eq_matches_deep_eq
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_deep_equality::<Key>(),
+        obeys_deep_eq::<Key>(),
         hash_map_inv(m),
         #[trigger] hash_map_contains_key_ensures(m, k, result),
     ensures
         result == m.deep_view().contains_key(k.deep_view()),
 {
+    reveal(obeys_deep_eq);
     broadcast use {
         crate::map::group_map_lemmas,
         crate::set::group_set_lemmas,
@@ -1034,7 +1039,7 @@ pub assume_specification<
         hash_map_get_ensures(m, k, result),
 ;
 
-pub broadcast proof fn lemma_hash_map_get_ensures_if_eq_matches_equality<
+pub broadcast proof fn lemma_hash_map_get_ensures_if_obeys_concrete_eq<
     Key: Eq + Hash,
     Value,
     S: BuildHasher,
@@ -1043,7 +1048,7 @@ pub broadcast proof fn lemma_hash_map_get_ensures_if_eq_matches_equality<
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_equality::<Key>(),
+        obeys_concrete_eq::<Key>(),
         hash_map_inv(m),
         #[trigger] hash_map_get_ensures(m, k, result),
     ensures
@@ -1052,9 +1057,10 @@ pub broadcast proof fn lemma_hash_map_get_ensures_if_eq_matches_equality<
             None => !m@.contains_key(*k),
         },
 {
+    reveal(obeys_concrete_eq);
 }
 
-pub broadcast proof fn lemma_hash_map_get_ensures_if_eq_matches_deep_equality<
+pub broadcast proof fn lemma_hash_map_get_ensures_if_obeys_deep_eq<
     Key: Eq + Hash + DeepView,
     Value: DeepView,
     S: BuildHasher,
@@ -1063,7 +1069,7 @@ pub broadcast proof fn lemma_hash_map_get_ensures_if_eq_matches_deep_equality<
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_deep_equality::<Key>(),
+        obeys_deep_eq::<Key>(),
         hash_map_inv(m),
         #[trigger] hash_map_get_ensures(m, k, result),
     ensures
@@ -1075,6 +1081,7 @@ pub broadcast proof fn lemma_hash_map_get_ensures_if_eq_matches_deep_equality<
             None => !m.deep_view().contains_key(k.deep_view()),
         },
 {
+    reveal(obeys_deep_eq);
     broadcast use {
         crate::map::group_map_lemmas,
         crate::set::group_set_lemmas,
@@ -1159,7 +1166,7 @@ pub assume_specification<
         hash_map_remove_ensures(old(m), final(m), k, result),
 ;
 
-pub broadcast proof fn lemma_hash_map_remove_ensures_if_eq_matches_equality<
+pub broadcast proof fn lemma_hash_map_remove_ensures_if_obeys_concrete_eq<
     Key: Eq + Hash,
     Value,
     S: BuildHasher,
@@ -1173,7 +1180,7 @@ pub broadcast proof fn lemma_hash_map_remove_ensures_if_eq_matches_equality<
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_equality::<Key>(),
+        obeys_concrete_eq::<Key>(),
         hash_map_inv(old_m),
         #[trigger] hash_map_remove_ensures(old_m, final_m, k, result),
     ensures
@@ -1183,6 +1190,7 @@ pub broadcast proof fn lemma_hash_map_remove_ensures_if_eq_matches_equality<
             None => !old_m@.contains_key(*k),
         },
 {
+    reveal(obeys_concrete_eq);
     broadcast use {crate::map::group_map_lemmas, crate::set::group_set_lemmas};
 
     if result is None {
@@ -1191,7 +1199,7 @@ pub broadcast proof fn lemma_hash_map_remove_ensures_if_eq_matches_equality<
     }
 }
 
-pub broadcast proof fn lemma_hash_map_remove_ensures_if_eq_matches_deep_equality<
+pub broadcast proof fn lemma_hash_map_remove_ensures_if_obeys_deep_eq<
     Key: Eq + Hash + DeepView,
     Value: DeepView,
     S: BuildHasher,
@@ -1205,7 +1213,7 @@ pub broadcast proof fn lemma_hash_map_remove_ensures_if_eq_matches_deep_equality
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_deep_equality::<Key>(),
+        obeys_deep_eq::<Key>(),
         hash_map_inv(old_m),
         #[trigger] hash_map_remove_ensures(old_m, final_m, k, result),
     ensures
@@ -1218,6 +1226,7 @@ pub broadcast proof fn lemma_hash_map_remove_ensures_if_eq_matches_deep_equality
             None => !old_m.deep_view().contains_key(k.deep_view()),
         },
 {
+    reveal(obeys_deep_eq);
     broadcast use {
         crate::map::group_map_lemmas,
         crate::set::group_set_lemmas,
@@ -1475,7 +1484,7 @@ pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet:
         hash_set_insert_ensures(old(m), final(m), k, result),
 ;
 
-pub broadcast proof fn lemma_hash_set_insert_ensures_if_eq_matches_equality<
+pub broadcast proof fn lemma_hash_set_insert_ensures_if_obeys_concrete_eq<
     Key: Eq + Hash,
     S: BuildHasher,
     A: Allocator,
@@ -1483,13 +1492,14 @@ pub broadcast proof fn lemma_hash_set_insert_ensures_if_eq_matches_equality<
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_equality::<Key>(),
+        obeys_concrete_eq::<Key>(),
         hash_set_inv(old_m),
         #[trigger] hash_set_insert_ensures(old_m, final_m, k, result),
     ensures
         final_m@ == old_m@.insert(k),
         result == !old_m@.contains(k),
 {
+    reveal(obeys_concrete_eq);
     broadcast use crate::set::group_set_lemmas;
 
     assert(k.eq_spec(&k));
@@ -1499,7 +1509,7 @@ pub broadcast proof fn lemma_hash_set_insert_ensures_if_eq_matches_equality<
     }
 }
 
-pub broadcast proof fn lemma_hash_set_insert_ensures_if_eq_matches_deep_equality<
+pub broadcast proof fn lemma_hash_set_insert_ensures_if_obeys_deep_eq<
     Key: Eq + Hash + DeepView,
     S: BuildHasher,
     A: Allocator,
@@ -1507,13 +1517,14 @@ pub broadcast proof fn lemma_hash_set_insert_ensures_if_eq_matches_deep_equality
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_deep_equality::<Key>(),
+        obeys_deep_eq::<Key>(),
         hash_set_inv(old_m),
         #[trigger] hash_set_insert_ensures(old_m, final_m, k, result),
     ensures
         final_m.deep_view() == old_m.deep_view().insert(k.deep_view()),
         result == !old_m.deep_view().contains(k.deep_view()),
 {
+    reveal(obeys_deep_eq);
     broadcast use {
         crate::set::group_set_lemmas,
         Set::lemma_map_contains,
@@ -1571,7 +1582,7 @@ pub assume_specification<
         hash_set_contains_ensures(m, k, result),
 ;
 
-pub broadcast proof fn lemma_hash_set_contains_ensures_if_eq_matches_equality<
+pub broadcast proof fn lemma_hash_set_contains_ensures_if_obeys_concrete_eq<
     Key: Eq + Hash,
     S: BuildHasher,
     A: Allocator,
@@ -1579,15 +1590,16 @@ pub broadcast proof fn lemma_hash_set_contains_ensures_if_eq_matches_equality<
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_equality::<Key>(),
+        obeys_concrete_eq::<Key>(),
         hash_set_inv(m),
         #[trigger] hash_set_contains_ensures(m, k, result),
     ensures
         result == m@.contains(*k),
 {
+    reveal(obeys_concrete_eq);
 }
 
-pub broadcast proof fn lemma_hash_set_contains_ensures_if_eq_matches_deep_equality<
+pub broadcast proof fn lemma_hash_set_contains_ensures_if_obeys_deep_eq<
     Key: Eq + Hash + DeepView,
     S: BuildHasher,
     A: Allocator,
@@ -1595,12 +1607,13 @@ pub broadcast proof fn lemma_hash_set_contains_ensures_if_eq_matches_deep_equali
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_deep_equality::<Key>(),
+        obeys_deep_eq::<Key>(),
         hash_set_inv(m),
         #[trigger] hash_set_contains_ensures(m, k, result),
     ensures
         result == m.deep_view().contains(k.deep_view()),
 {
+    reveal(obeys_deep_eq);
     broadcast use {crate::set::group_set_lemmas, Set::lemma_map_contains};
 
     if result {
@@ -1650,7 +1663,7 @@ pub assume_specification<
         hash_set_get_ensures(m, k, result),
 ;
 
-pub broadcast proof fn lemma_hash_set_get_ensures_if_eq_matches_equality<
+pub broadcast proof fn lemma_hash_set_get_ensures_if_obeys_concrete_eq<
     Key: Eq + Hash,
     S: BuildHasher,
     A: Allocator,
@@ -1658,7 +1671,7 @@ pub broadcast proof fn lemma_hash_set_get_ensures_if_eq_matches_equality<
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_equality::<Key>(),
+        obeys_concrete_eq::<Key>(),
         hash_set_inv(m),
         #[trigger] hash_set_get_ensures(m, k, result),
     ensures
@@ -1667,9 +1680,10 @@ pub broadcast proof fn lemma_hash_set_get_ensures_if_eq_matches_equality<
             None => !m@.contains(*k),
         },
 {
+    reveal(obeys_concrete_eq);
 }
 
-pub broadcast proof fn lemma_hash_set_get_ensures_if_eq_matches_deep_equality<
+pub broadcast proof fn lemma_hash_set_get_ensures_if_obeys_deep_eq<
     Key: Eq + Hash + DeepView,
     S: BuildHasher,
     A: Allocator,
@@ -1677,7 +1691,7 @@ pub broadcast proof fn lemma_hash_set_get_ensures_if_eq_matches_deep_equality<
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_deep_equality::<Key>(),
+        obeys_deep_eq::<Key>(),
         hash_set_inv(m),
         #[trigger] hash_set_get_ensures(m, k, result),
     ensures
@@ -1690,6 +1704,7 @@ pub broadcast proof fn lemma_hash_set_get_ensures_if_eq_matches_deep_equality<
             None => !m.deep_view().contains(k.deep_view()),
         },
 {
+    reveal(obeys_deep_eq);
     broadcast use {crate::set::group_set_lemmas, Set::lemma_map_contains};
 
     match result {
@@ -1747,7 +1762,7 @@ pub assume_specification<
         hash_set_remove_ensures(old(m), final(m), k, result),
 ;
 
-pub broadcast proof fn lemma_hash_set_remove_ensures_if_eq_matches_equality<
+pub broadcast proof fn lemma_hash_set_remove_ensures_if_obeys_concrete_eq<
     Key: Eq + Hash,
     S: BuildHasher,
     A: Allocator,
@@ -1755,13 +1770,14 @@ pub broadcast proof fn lemma_hash_set_remove_ensures_if_eq_matches_equality<
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_equality::<Key>(),
+        obeys_concrete_eq::<Key>(),
         hash_set_inv(old_m),
         #[trigger] hash_set_remove_ensures(old_m, final_m, k, result),
     ensures
         final_m@ == old_m@.remove(*k),
         result == old_m@.contains(*k),
 {
+    reveal(obeys_concrete_eq);
     broadcast use crate::set::group_set_lemmas;
 
     if !result {
@@ -1770,7 +1786,7 @@ pub broadcast proof fn lemma_hash_set_remove_ensures_if_eq_matches_equality<
     }
 }
 
-pub broadcast proof fn lemma_hash_set_remove_ensures_if_eq_matches_deep_equality<
+pub broadcast proof fn lemma_hash_set_remove_ensures_if_obeys_deep_eq<
     Key: Eq + Hash + DeepView,
     S: BuildHasher,
     A: Allocator,
@@ -1778,13 +1794,14 @@ pub broadcast proof fn lemma_hash_set_remove_ensures_if_eq_matches_deep_equality
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_deep_equality::<Key>(),
+        obeys_deep_eq::<Key>(),
         hash_set_inv(old_m),
         #[trigger] hash_set_remove_ensures(old_m, final_m, k, result),
     ensures
         final_m.deep_view() == old_m.deep_view().remove(k.deep_view()),
         result == old_m.deep_view().contains(k.deep_view()),
 {
+    reveal(obeys_deep_eq);
     broadcast use {crate::set::group_set_lemmas, Set::lemma_map_contains};
 
     let stored_key = if result {
@@ -2013,7 +2030,7 @@ pub assume_specification<'a, Key: Hash + Eq, Value, S: BuildHasher, A: Allocator
         hash_map_entry_ensures(old(m), final(m), key, entry),
 ;
 
-pub broadcast proof fn lemma_hash_map_entry_ensures_if_eq_matches_equality<
+pub broadcast proof fn lemma_hash_map_entry_ensures_if_obeys_concrete_eq<
     Key: Eq + Hash,
     Value,
     S: BuildHasher,
@@ -2027,7 +2044,7 @@ pub broadcast proof fn lemma_hash_map_entry_ensures_if_eq_matches_equality<
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_equality::<Key>(),
+        obeys_concrete_eq::<Key>(),
         #[trigger] hash_map_entry_ensures(old_m, final_m, key, entry),
     ensures
         entry.spec_key() == key,
@@ -2037,9 +2054,10 @@ pub broadcast proof fn lemma_hash_map_entry_ensures_if_eq_matches_equality<
             None => old_m@.remove(key),
         },
 {
+    reveal(obeys_concrete_eq);
 }
 
-pub broadcast proof fn lemma_hash_map_entry_ensures_if_eq_matches_deep_equality<
+pub broadcast proof fn lemma_hash_map_entry_ensures_if_obeys_deep_eq<
     Key: Eq + Hash + DeepView,
     Value: DeepView,
     S: BuildHasher,
@@ -2053,7 +2071,7 @@ pub broadcast proof fn lemma_hash_map_entry_ensures_if_eq_matches_deep_equality<
     requires
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
-        eq_matches_deep_equality::<Key>(),
+        obeys_deep_eq::<Key>(),
         hash_map_inv(old_m),
         #[trigger] hash_map_entry_ensures(old_m, final_m, key, entry),
     ensures
@@ -2070,6 +2088,7 @@ pub broadcast proof fn lemma_hash_map_entry_ensures_if_eq_matches_deep_equality<
             None => old_m.deep_view().remove(key.deep_view()),
         },
 {
+    reveal(obeys_deep_eq);
     broadcast use {
         crate::map::group_map_lemmas,
         crate::set::group_set_lemmas,
@@ -2267,24 +2286,24 @@ pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::insert_en
 ;
 
 pub broadcast group group_hash_axioms {
-    lemma_hash_map_insert_ensures_if_eq_matches_equality,
-    lemma_hash_map_insert_ensures_if_eq_matches_deep_equality,
-    lemma_hash_map_contains_key_ensures_if_eq_matches_equality,
-    lemma_hash_map_contains_key_ensures_if_eq_matches_deep_equality,
-    lemma_hash_map_get_ensures_if_eq_matches_equality,
-    lemma_hash_map_get_ensures_if_eq_matches_deep_equality,
-    lemma_hash_map_remove_ensures_if_eq_matches_equality,
-    lemma_hash_map_remove_ensures_if_eq_matches_deep_equality,
-    lemma_hash_map_entry_ensures_if_eq_matches_equality,
-    lemma_hash_map_entry_ensures_if_eq_matches_deep_equality,
-    lemma_hash_set_insert_ensures_if_eq_matches_equality,
-    lemma_hash_set_insert_ensures_if_eq_matches_deep_equality,
-    lemma_hash_set_contains_ensures_if_eq_matches_equality,
-    lemma_hash_set_contains_ensures_if_eq_matches_deep_equality,
-    lemma_hash_set_get_ensures_if_eq_matches_equality,
-    lemma_hash_set_get_ensures_if_eq_matches_deep_equality,
-    lemma_hash_set_remove_ensures_if_eq_matches_equality,
-    lemma_hash_set_remove_ensures_if_eq_matches_deep_equality,
+    lemma_hash_map_insert_ensures_if_obeys_concrete_eq,
+    lemma_hash_map_insert_ensures_if_obeys_deep_eq,
+    lemma_hash_map_contains_key_ensures_if_obeys_concrete_eq,
+    lemma_hash_map_contains_key_ensures_if_obeys_deep_eq,
+    lemma_hash_map_get_ensures_if_obeys_concrete_eq,
+    lemma_hash_map_get_ensures_if_obeys_deep_eq,
+    lemma_hash_map_remove_ensures_if_obeys_concrete_eq,
+    lemma_hash_map_remove_ensures_if_obeys_deep_eq,
+    lemma_hash_map_entry_ensures_if_obeys_concrete_eq,
+    lemma_hash_map_entry_ensures_if_obeys_deep_eq,
+    lemma_hash_set_insert_ensures_if_obeys_concrete_eq,
+    lemma_hash_set_insert_ensures_if_obeys_deep_eq,
+    lemma_hash_set_contains_ensures_if_obeys_concrete_eq,
+    lemma_hash_set_contains_ensures_if_obeys_deep_eq,
+    lemma_hash_set_get_ensures_if_obeys_concrete_eq,
+    lemma_hash_set_get_ensures_if_obeys_deep_eq,
+    lemma_hash_set_remove_ensures_if_obeys_concrete_eq,
+    lemma_hash_set_remove_ensures_if_obeys_deep_eq,
     axiom_borrowed_key_hashing_matches_self,
     axiom_borrowed_key_hashing_matches_ref,
     axiom_borrowed_key_hashing_matches_box,

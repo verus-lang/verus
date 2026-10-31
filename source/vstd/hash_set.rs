@@ -2,6 +2,8 @@
 use core::marker;
 use std::borrow::Borrow;
 
+#[cfg(verus_keep_ghost)]
+use super::laws_eq::obeys_view_eq;
 #[allow(unused_imports)]
 use super::pervasive::*;
 use super::prelude::*;
@@ -12,7 +14,7 @@ use super::set_lib::assert_sets_equal;
 #[cfg(verus_keep_ghost)]
 use super::std_specs::borrow::BorrowSpec;
 #[cfg(verus_keep_ghost)]
-use super::std_specs::cmp::{PartialEqSpec, eq_matches_view_equality};
+use super::std_specs::cmp::PartialEqSpec;
 #[cfg(verus_keep_ghost)]
 use super::std_specs::hash::{hash_set_inv, obeys_key_model};
 #[allow(unused_imports)]
@@ -31,7 +33,7 @@ broadcast use {
 
 /// `HashSetWithView` is a verified wrapper around `std::collections::HashSet` with `View` implemented for the type `vstd::set::Set<<Key as View>::V>`.
 ///
-/// Its constructors require [`eq_matches_view_equality`] in addition to [`obeys_key_model`].
+/// Its constructors require [`obeys_view_eq`] in addition to [`obeys_key_model`].
 /// Constructors establish [`Self::well_formed`], which all other operations require and preserve.
 ///
 /// See the Rust documentation for [`HashSet`](https://doc.rust-lang.org/std/collections/struct.HashSet.html)
@@ -56,7 +58,7 @@ impl<Key> View for HashSetWithView<Key> where Key: View + Eq + Hash {
 impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     pub closed spec fn well_formed(&self) -> bool {
         &&& obeys_key_model::<Key>()
-        &&& eq_matches_view_equality::<Key>()
+        &&& obeys_view_eq::<Key>()
         &&& hash_set_inv(&self.m)
     }
 
@@ -70,6 +72,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
                 self@.contains(view) ==> exists|k: Key| #[trigger]
                     self.m@.contains(k) && k@ == view,
     {
+        reveal(obeys_view_eq);
         assert(self.m@.injective_on(|k: Key| k@));
         crate::set_lib::lemma_map_size(self.m@, self@, |k: Key| k@);
     }
@@ -82,7 +85,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     pub fn new() -> (result: Self)
         requires
             obeys_key_model::<Key>(),
-            eq_matches_view_equality::<Key>(),
+            obeys_view_eq::<Key>(),
         ensures
             result.well_formed(),
             result@ == Set::<<Key as View>::V>::empty(),
@@ -98,7 +101,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     pub fn with_capacity(capacity: usize) -> (result: Self)
         requires
             obeys_key_model::<Key>(),
-            eq_matches_view_equality::<Key>(),
+            obeys_view_eq::<Key>(),
         ensures
             result.well_formed(),
             result@ == Set::<<Key as View>::V>::empty(),
@@ -162,6 +165,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
             final(self)@ == old(self)@.insert(k@) && result == !old(self)@.contains(k@),
     {
         proof {
+            reveal(obeys_view_eq);
             self.lemma_view();
         }
         let result = self.m.insert(k);
@@ -182,6 +186,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
             final(self)@ == old(self)@.remove(k@) && result == old(self)@.contains(k@),
     {
         proof {
+            reveal(obeys_view_eq);
             self.lemma_view();
         }
         let ghost before = self@;
@@ -217,6 +222,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
             result == self@.contains(k@),
     {
         proof {
+            reveal(obeys_view_eq);
             self.lemma_view();
         }
         self.m.contains(k)
@@ -235,6 +241,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
             },
     {
         proof {
+            reveal(obeys_view_eq);
             self.lemma_view();
         }
         self.m.get(k)
@@ -291,6 +298,9 @@ impl StringHashSet {
             result.well_formed(),
             result@ == Set::<Seq<char>>::empty(),
     {
+        proof {
+            reveal(obeys_view_eq);
+        }
         Self { m: HashSetWithView::new() }
     }
 
@@ -302,6 +312,9 @@ impl StringHashSet {
             result.well_formed(),
             result@ == Set::<Seq<char>>::empty(),
     {
+        proof {
+            reveal(obeys_view_eq);
+        }
         Self { m: HashSetWithView::with_capacity(capacity) }
     }
 

@@ -11,11 +11,11 @@
 //! about the behavior of `BTreeMap` and `BTreeSet` into the ambient
 //! reasoning context by broadcasting the group
 //! `vstd::std_specs::btree::group_btree_axioms`.
-use super::super::laws_cmp::obeys_cmp;
+use super::super::laws_cmp::{obeys_cmp, obeys_cmp_concrete_eq, obeys_cmp_deep_eq};
 use super::super::map::{assert_maps_equal, assert_maps_equal_internal};
 use super::super::prelude::*;
 use super::borrow::BorrowSpec;
-use super::cmp::{OrdSpec, cmp_matches_deep_equality, cmp_matches_equality};
+use super::cmp::OrdSpec;
 use super::iter::IteratorSpec;
 
 use alloc::alloc::Allocator;
@@ -552,7 +552,7 @@ pub assume_specification<Key: Ord, Value, A: Allocator + Clone>[ BTreeMap::<
         btree_map_insert_ensures(old(m), final(m), k, v, result),
 ;
 
-pub broadcast proof fn lemma_btree_map_insert_ensures_if_cmp_matches_equality<
+pub broadcast proof fn lemma_btree_map_insert_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
     Value,
     A: Allocator + Clone,
@@ -565,7 +565,7 @@ pub broadcast proof fn lemma_btree_map_insert_ensures_if_cmp_matches_equality<
 )
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_equality::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
         #[trigger] btree_map_insert_ensures::<Key, Value, A>(old_m, final_m, k, v, result),
     ensures
         final_m@ == old_m@.insert(k, v),
@@ -576,7 +576,7 @@ pub broadcast proof fn lemma_btree_map_insert_ensures_if_cmp_matches_equality<
 {
 }
 
-pub broadcast proof fn lemma_btree_map_insert_ensures_if_cmp_matches_deep_equality<
+pub broadcast proof fn lemma_btree_map_insert_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
     Value: DeepView,
     A: Allocator + Clone,
@@ -589,7 +589,7 @@ pub broadcast proof fn lemma_btree_map_insert_ensures_if_cmp_matches_deep_equali
 )
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_deep_equality::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
         btree_map_inv(old_m),
         #[trigger] btree_map_insert_ensures::<Key, Value, A>(old_m, final_m, k, v, result),
     ensures
@@ -673,14 +673,14 @@ pub assume_specification<
         btree_map_contains_key_ensures(m, k, result),
 ;
 
-pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_cmp_matches_equality<
+pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
     Value,
     A: Allocator + Clone,
 >(m: &BTreeMap<Key, Value, A>, k: &Key, result: bool)
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_equality::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
         btree_map_inv(m),
         #[trigger] btree_map_contains_key_ensures(m, k, result),
     ensures
@@ -689,14 +689,14 @@ pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_cmp_matches_equal
     reveal(crate::laws_cmp::obeys_cmp_ord);
 }
 
-pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_cmp_matches_deep_equality<
+pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
     Value: DeepView,
     A: Allocator + Clone,
 >(m: &BTreeMap<Key, Value, A>, k: &Key, result: bool)
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_deep_equality::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
         btree_map_inv(m),
         #[trigger] btree_map_contains_key_ensures(m, k, result),
     ensures
@@ -769,14 +769,14 @@ pub assume_specification<
         btree_map_get_ensures(m, k, result),
 ;
 
-pub broadcast proof fn lemma_btree_map_get_ensures_if_cmp_matches_equality<
+pub broadcast proof fn lemma_btree_map_get_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
     Value,
     A: Allocator + Clone,
 >(m: &BTreeMap<Key, Value, A>, k: &Key, result: Option<&Value>)
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_equality::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
         btree_map_inv(m),
         #[trigger] btree_map_get_ensures(m, k, result),
     ensures
@@ -788,14 +788,14 @@ pub broadcast proof fn lemma_btree_map_get_ensures_if_cmp_matches_equality<
     reveal(crate::laws_cmp::obeys_cmp_ord);
 }
 
-pub broadcast proof fn lemma_btree_map_get_ensures_if_cmp_matches_deep_equality<
+pub broadcast proof fn lemma_btree_map_get_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
     Value: DeepView,
     A: Allocator + Clone,
 >(m: &BTreeMap<Key, Value, A>, k: &Key, result: Option<&Value>)
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_deep_equality::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
         btree_map_inv(m),
         #[trigger] btree_map_get_ensures(m, k, result),
     ensures
@@ -890,7 +890,7 @@ pub assume_specification<
         btree_map_remove_ensures(old(m), final(m), k, result),
 ;
 
-pub broadcast proof fn lemma_btree_map_remove_ensures_if_cmp_matches_equality<
+pub broadcast proof fn lemma_btree_map_remove_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
     Value,
     A: Allocator + Clone,
@@ -902,7 +902,7 @@ pub broadcast proof fn lemma_btree_map_remove_ensures_if_cmp_matches_equality<
 )
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_equality::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
         btree_map_inv(old_m),
         #[trigger] btree_map_remove_ensures(old_m, final_m, k, result),
     ensures
@@ -922,7 +922,7 @@ pub broadcast proof fn lemma_btree_map_remove_ensures_if_cmp_matches_equality<
     }
 }
 
-pub broadcast proof fn lemma_btree_map_remove_ensures_if_cmp_matches_deep_equality<
+pub broadcast proof fn lemma_btree_map_remove_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
     Value: DeepView,
     A: Allocator + Clone,
@@ -934,7 +934,7 @@ pub broadcast proof fn lemma_btree_map_remove_ensures_if_cmp_matches_deep_equali
 )
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_deep_equality::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
         btree_map_inv(old_m),
         #[trigger] btree_map_remove_ensures(old_m, final_m, k, result),
     ensures
@@ -1065,7 +1065,7 @@ pub assume_specification<
         },
 ;
 
-pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_cmp_matches_equality<
+pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
     Value,
     A: Allocator + Clone,
@@ -1077,7 +1077,7 @@ pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_cmp_matches_equality<
 )
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_equality::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
         btree_map_inv(old_m),
         #[trigger] btree_map_get_mut_ensures(old_m, final_m, k, result),
     ensures
@@ -1096,7 +1096,7 @@ pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_cmp_matches_equality<
     reveal(crate::laws_cmp::obeys_cmp_ord);
 }
 
-pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_cmp_matches_deep_equality<
+pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
     Value: DeepView,
     A: Allocator + Clone,
@@ -1108,7 +1108,7 @@ pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_cmp_matches_deep_equal
 )
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_deep_equality::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
         btree_map_inv(old_m),
         #[trigger] btree_map_get_mut_ensures(old_m, final_m, k, result),
     ensures
@@ -1132,7 +1132,7 @@ pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_cmp_matches_deep_equal
 
     match result {
         Some((current_value, final_value)) => {
-            lemma_btree_map_insert_ensures_if_cmp_matches_deep_equality(
+            lemma_btree_map_insert_ensures_if_obeys_cmp_deep_eq(
                 old_m,
                 final_m,
                 *k,
@@ -1566,13 +1566,13 @@ pub assume_specification<Key: Ord, A: Allocator + Clone>[ BTreeSet::<Key, A>::in
         btree_set_insert_ensures(old(m), final(m), k, result),
 ;
 
-pub broadcast proof fn lemma_btree_set_insert_ensures_if_cmp_matches_equality<
+pub broadcast proof fn lemma_btree_set_insert_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
     A: Allocator + Clone,
 >(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: Key, result: bool)
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_equality::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
         btree_set_inv(old_m),
         #[trigger] btree_set_insert_ensures::<Key, A>(old_m, final_m, k, result),
     ensures
@@ -1588,13 +1588,13 @@ pub broadcast proof fn lemma_btree_set_insert_ensures_if_cmp_matches_equality<
     }
 }
 
-pub broadcast proof fn lemma_btree_set_insert_ensures_if_cmp_matches_deep_equality<
+pub broadcast proof fn lemma_btree_set_insert_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
     A: Allocator + Clone,
 >(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: Key, result: bool)
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_deep_equality::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
         btree_set_inv(old_m),
         #[trigger] btree_set_insert_ensures::<Key, A>(old_m, final_m, k, result),
     ensures
@@ -1654,13 +1654,13 @@ pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?S
         btree_set_contains_ensures(m, k, result),
 ;
 
-pub broadcast proof fn lemma_btree_set_contains_ensures_if_cmp_matches_equality<
+pub broadcast proof fn lemma_btree_set_contains_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
     A: Allocator + Clone,
 >(m: &BTreeSet<Key, A>, k: &Key, result: bool)
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_equality::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
         btree_set_inv(m),
         #[trigger] btree_set_contains_ensures(m, k, result),
     ensures
@@ -1669,13 +1669,13 @@ pub broadcast proof fn lemma_btree_set_contains_ensures_if_cmp_matches_equality<
     reveal(crate::laws_cmp::obeys_cmp_ord);
 }
 
-pub broadcast proof fn lemma_btree_set_contains_ensures_if_cmp_matches_deep_equality<
+pub broadcast proof fn lemma_btree_set_contains_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
     A: Allocator + Clone,
 >(m: &BTreeSet<Key, A>, k: &Key, result: bool)
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_deep_equality::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
         btree_set_inv(m),
         #[trigger] btree_set_contains_ensures(m, k, result),
     ensures
@@ -1736,13 +1736,13 @@ pub assume_specification<
         btree_set_get_ensures(m, k, result),
 ;
 
-pub broadcast proof fn lemma_btree_set_get_ensures_if_cmp_matches_equality<
+pub broadcast proof fn lemma_btree_set_get_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
     A: Allocator + Clone,
 >(m: &BTreeSet<Key, A>, k: &Key, result: Option<&Key>)
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_equality::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
         btree_set_inv(m),
         #[trigger] btree_set_get_ensures(m, k, result),
     ensures
@@ -1754,13 +1754,13 @@ pub broadcast proof fn lemma_btree_set_get_ensures_if_cmp_matches_equality<
     reveal(crate::laws_cmp::obeys_cmp_ord);
 }
 
-pub broadcast proof fn lemma_btree_set_get_ensures_if_cmp_matches_deep_equality<
+pub broadcast proof fn lemma_btree_set_get_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
     A: Allocator + Clone,
 >(m: &BTreeSet<Key, A>, k: &Key, result: Option<&Key>)
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_deep_equality::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
         btree_set_inv(m),
         #[trigger] btree_set_get_ensures(m, k, result),
     ensures
@@ -1831,13 +1831,13 @@ pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?S
         btree_set_remove_ensures(old(m), final(m), k, result),
 ;
 
-pub broadcast proof fn lemma_btree_set_remove_ensures_if_cmp_matches_equality<
+pub broadcast proof fn lemma_btree_set_remove_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
     A: Allocator + Clone,
 >(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: &Key, result: bool)
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_equality::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
         btree_set_inv(old_m),
         #[trigger] btree_set_remove_ensures(old_m, final_m, k, result),
     ensures
@@ -1854,13 +1854,13 @@ pub broadcast proof fn lemma_btree_set_remove_ensures_if_cmp_matches_equality<
     }
 }
 
-pub broadcast proof fn lemma_btree_set_remove_ensures_if_cmp_matches_deep_equality<
+pub broadcast proof fn lemma_btree_set_remove_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
     A: Allocator + Clone,
 >(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: &Key, result: bool)
     requires
         obeys_cmp::<Key>(),
-        cmp_matches_deep_equality::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
         btree_set_inv(old_m),
         #[trigger] btree_set_remove_ensures(old_m, final_m, k, result),
     ensures
@@ -1938,25 +1938,25 @@ pub broadcast group group_btree_axioms {
     axiom_key_obeys_cmp_spec_meaning,
     axiom_increasing_seq_meaning,
     axiom_spec_btree_map_len,
-    lemma_btree_map_insert_ensures_if_cmp_matches_equality,
-    lemma_btree_map_insert_ensures_if_cmp_matches_deep_equality,
-    lemma_btree_map_contains_key_ensures_if_cmp_matches_equality,
-    lemma_btree_map_contains_key_ensures_if_cmp_matches_deep_equality,
-    lemma_btree_map_get_ensures_if_cmp_matches_equality,
-    lemma_btree_map_get_ensures_if_cmp_matches_deep_equality,
-    lemma_btree_map_remove_ensures_if_cmp_matches_equality,
-    lemma_btree_map_remove_ensures_if_cmp_matches_deep_equality,
-    lemma_btree_map_get_mut_ensures_if_cmp_matches_equality,
-    lemma_btree_map_get_mut_ensures_if_cmp_matches_deep_equality,
+    lemma_btree_map_insert_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_map_insert_ensures_if_obeys_cmp_deep_eq,
+    lemma_btree_map_contains_key_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_map_contains_key_ensures_if_obeys_cmp_deep_eq,
+    lemma_btree_map_get_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_map_get_ensures_if_obeys_cmp_deep_eq,
+    lemma_btree_map_remove_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_map_remove_ensures_if_obeys_cmp_deep_eq,
+    lemma_btree_map_get_mut_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_map_get_mut_ensures_if_obeys_cmp_deep_eq,
     axiom_spec_btree_set_len,
-    lemma_btree_set_insert_ensures_if_cmp_matches_equality,
-    lemma_btree_set_insert_ensures_if_cmp_matches_deep_equality,
-    lemma_btree_set_contains_ensures_if_cmp_matches_equality,
-    lemma_btree_set_contains_ensures_if_cmp_matches_deep_equality,
-    lemma_btree_set_get_ensures_if_cmp_matches_equality,
-    lemma_btree_set_get_ensures_if_cmp_matches_deep_equality,
-    lemma_btree_set_remove_ensures_if_cmp_matches_equality,
-    lemma_btree_set_remove_ensures_if_cmp_matches_deep_equality,
+    lemma_btree_set_insert_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_set_insert_ensures_if_obeys_cmp_deep_eq,
+    lemma_btree_set_contains_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_set_contains_ensures_if_obeys_cmp_deep_eq,
+    lemma_btree_set_get_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_set_get_ensures_if_obeys_cmp_deep_eq,
+    lemma_btree_set_remove_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_set_remove_ensures_if_obeys_cmp_deep_eq,
     axiom_btree_map_decreases,
     axiom_btree_set_decreases,
     axiom_has_resolved_cursor,

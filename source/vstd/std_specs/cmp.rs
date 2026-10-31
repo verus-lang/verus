@@ -197,33 +197,6 @@ pub trait ExOrd: Eq + PartialOrd + PointeeSized {
     ;
 }
 
-/// Whether the type's cmp spec matches structural equality, i.e.,
-/// whether `v1.cmp(&v2) is Equal <==> v1 == v2`.
-pub open spec fn cmp_matches_equality<T: Ord>() -> bool {
-    forall|v1: T, v2: T| v1.cmp_spec(&v2) is Equal <==> v1 == v2
-}
-
-/// Whether the type's cmp spec matches deep-view equality, i.e.,
-/// whether `v1.cmp(&v2) is Equal <==> v1.deep_view() == v2.deep_view()`.
-pub open spec fn cmp_matches_deep_equality<T: Ord + DeepView>() -> bool {
-    forall|v1: T, v2: T| v1.cmp_spec(&v2) is Equal <==> v1.deep_view() == v2.deep_view()
-}
-
-/// Whether the type's equality spec matches structural equality.
-pub open spec fn eq_matches_equality<T: PartialEq>() -> bool {
-    forall|v1: T, v2: T| v1.eq_spec(&v2) <==> v1 == v2
-}
-
-/// Whether the type's equality spec matches view equality.
-pub open spec fn eq_matches_view_equality<T: PartialEq + View>() -> bool {
-    forall|v1: T, v2: T| v1.eq_spec(&v2) <==> v1@ == v2@
-}
-
-/// Whether the type's equality spec matches deep-view equality.
-pub open spec fn eq_matches_deep_equality<T: PartialEq + DeepView>() -> bool {
-    forall|v1: T, v2: T| v1.eq_spec(&v2) <==> v1.deep_view() == v2.deep_view()
-}
-
 pub trait PartialEqIs<Rhs: PointeeSized = Self>: PartialEq<Rhs> + PointeeSized {
     spec fn is_eq(&self, other: &Rhs) -> bool;
 
