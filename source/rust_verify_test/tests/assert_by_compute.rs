@@ -1435,3 +1435,23 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] str_literal_view_regression_3078 verus_code! {
+        use vstd::prelude::*;
+
+        // GitHub issue 3078: string literals used to stay symbolic, so `str::len`'s
+        // recursive spec over the literal's view unfolded forever
+        proof fn test() {
+            assert("abc".len() == 3) by (compute);
+            assert("héllo".len() == 6) by (compute);
+            assert("abc"@ =~= seq!['a', 'b', 'c']) by (compute_only);
+            assert("héllo"@[1] == 'é') by (compute_only);
+            assert(""@.len() == 0) by (compute_only);
+        }
+
+        proof fn bad() {
+            assert("abc".len() == 4) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
