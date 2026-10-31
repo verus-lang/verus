@@ -663,13 +663,14 @@ fn make_cargo_plan(
             }
 
             // If the package has a lib target *and* a non-lib target, like a test or example,
-            // add the lib as a dependency so the auxiliary target can see it. This adds the lib
-            // as a dep to itself, but it will not be present in the externs, so will be ignored.
+            // add the lib as a dependency so the auxiliary target can see it. During the lib's
+            // own compilation it is absent from the direct externs and must be ignored rather
+            // than resolved to an unrelated transitive crate with the same library name.
             if let Some(lib_target) = package.targets.iter().find(|t| t.is_lib()) {
                 if package.targets.iter().any(|t| !t.is_lib()) {
                     verus_driver_args_for_package.extend_from_slice(&[
                         "--VIA-CARGO".to_owned(),
-                        format!("import-dep-if-present={}", lib_target.name),
+                        format!("import-direct-dep-if-present={}", lib_target.name),
                     ])
                 }
             }

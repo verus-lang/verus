@@ -3004,11 +3004,33 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 .import_dep_if_present;
             let mut import_deps_if_present: HashSet<String> =
                 import_dep_if_present.iter().cloned().collect();
-            let success = crate::cargo_verus::handle_externs(
-                &config.opts.externs,
-                &mut import_deps_if_present,
-                &mut dep_tracker,
-            );
+            let mut import_direct_deps_if_present: HashSet<String> = self
+                .verifier
+                .via_cargo_args
+                .as_ref()
+                .expect("dep_tracker is present, so via_cargo_args must be Some")
+                .import_direct_dep_if_present
+                .iter()
+                .cloned()
+                .collect();
+            let success: Result<Vec<(String, String)>, String> = (|| {
+                let mut imports = crate::cargo_verus::handle_externs(
+                    &config.opts.externs,
+                    &mut import_direct_deps_if_present,
+                    &mut dep_tracker,
+                )?;
+                // A name requested through both routes was already resolved as a
+                // direct extern and must not be imported twice.
+                for (name, _) in &imports {
+                    import_deps_if_present.remove(name);
+                }
+                imports.extend(crate::cargo_verus::handle_externs(
+                    &config.opts.externs,
+                    &mut import_deps_if_present,
+                    &mut dep_tracker,
+                )?);
+                Ok(imports)
+            })();
             match success {
                 Ok(imports) => {
                     self.verifier.import_virs_via_cargo = Some(imports);
