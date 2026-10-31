@@ -1864,9 +1864,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 
         self.is_disjoint(other);
     }
-}
 
-impl<T> SeqPointsTo<T, PointsTo<T>> {
     /// A `PointsTo<[T]>` is all valid or all empty,
     /// so a sequence with any empty element gives an empty slice permission.
     pub proof fn as_slice_pt(tracked &self) -> (tracked out: &PointsTo<[T]>)
