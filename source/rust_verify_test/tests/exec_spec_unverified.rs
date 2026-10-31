@@ -413,6 +413,56 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_exec_spec_unverified_misc_forms IMPORTS.to_string() + verus_code_str! {
+        use vstd::raw_ptr::MemContents;
+
+        exec_spec_unverified! {
+            enum E {
+                A(u32),
+                B { x: u32 },
+            }
+
+            spec fn guarded(x: Option<u32>) -> u32 {
+                match x {
+                    Some(v) if v > 3 => v,
+                    _ => 0,
+                }
+            }
+
+            spec fn arrow(e: E) -> u32
+                recommends e is A,
+            {
+                e->A_0
+            }
+
+            spec fn ext_eq(a: Seq<u8>, b: Seq<u8>) -> bool {
+                a =~= b
+            }
+
+            spec fn is_a(e: E) -> bool {
+                is_variant(e, "A")
+            }
+
+            spec fn wrap(a: u8, b: u8) -> u8 {
+                sub(add(a, b), mul(a, b))
+            }
+
+            spec fn init_value(m: MemContents<u32>) -> u32
+                recommends m is Init,
+            {
+                m.value()
+            }
+
+            spec fn ok_val(r: Result<u32, bool>) -> u32
+                recommends r is Ok,
+            {
+                r->Ok_0
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     /// Explicit discriminants carry over to the exec enum, so the trusted
     /// `exec_disc` agrees with `disc` at run time.
     #[test] test_exec_spec_unverified_enum_discriminant IMPORTS.to_string() + verus_code_str! {
