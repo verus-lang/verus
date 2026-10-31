@@ -72,6 +72,9 @@ pub enum CallErasure {
 pub struct BodyErasure {
     pub erase_body: bool,
     pub ret_spec: bool,
+    /// If erase_body, erase with TreeErase::EraseAbsolutely rather than IncludeBasicChecks
+    /// (used for bodies that rust_verify does not translate, and so has no var erasure info for)
+    pub erase_absolutely: bool,
 }
 
 /// Set of program locations relative to a Loop expressions.
@@ -775,11 +778,22 @@ pub(crate) fn some_ghost_value_kind_with_args<'tcx>(
     }
 }
 
-pub(crate) fn erase_body<'tcx>(cx: &mut ThirBuildCx<'tcx>, local_def_id: LocalDefId) -> bool {
+pub(crate) fn erase_body<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    local_def_id: LocalDefId,
+) -> Option<TreeErase> {
     let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
-        return false;
+        return None;
     };
-    matches!(erasure_ctxt.bodies.get(&local_def_id), Some(BodyErasure { erase_body: true, .. }))
+    match erasure_ctxt.bodies.get(&local_def_id) {
+        Some(BodyErasure { erase_body: true, erase_absolutely: false, .. }) => {
+            Some(TreeErase::IncludeBasicChecks)
+        }
+        Some(BodyErasure { erase_body: true, erase_absolutely: true, .. }) => {
+            Some(TreeErase::EraseAbsolutely)
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn erase_closure_body_for_closure_captures<'tcx>(

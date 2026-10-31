@@ -67,6 +67,12 @@ ghost/tracked variables, as shown in this example:
 {{#include ../../../../examples/guide/exec_attr.rs:proof}}
 ```
 
+Statement-position macro invocations inside `proof_decl!` are not supported:
+their output could execute during verification and be erased during compilation.
+Call macros that expand to `proof_decl!` directly in the surrounding scope,
+and place macros that expand to proof statements inside `proof!`.
+Macro expressions in ghost/tracked initializers remain supported.
+
 ### Adding ghost/tracked variables to executable function calls
 
 * `#[verus_spec(with ...)]`: Adds tracked or ghost variables as parameters or
