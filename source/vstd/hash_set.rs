@@ -2,20 +2,39 @@
 use core::marker;
 use std::borrow::Borrow;
 
+#[cfg(verus_keep_ghost)]
+use super::laws_eq::obeys_view_eq;
 #[allow(unused_imports)]
 use super::pervasive::*;
 use super::prelude::*;
 #[allow(unused_imports)]
 use super::set::*;
 #[cfg(verus_keep_ghost)]
-use super::std_specs::hash::obeys_key_model;
+use super::set_lib::assert_sets_equal;
+#[cfg(verus_keep_ghost)]
+use super::std_specs::borrow::BorrowSpec;
+#[cfg(verus_keep_ghost)]
+use super::std_specs::cmp::PartialEqSpec;
+#[cfg(verus_keep_ghost)]
+use super::std_specs::hash::{hash_set_inv, obeys_key_model};
 #[allow(unused_imports)]
 use core::hash::Hash;
 use std::collections::HashSet;
 
 verus! {
 
-/// `HashSetWithView` is a trusted wrapper around `std::collections::HashSet` with `View` implemented for the type `vstd::map::Set<<Key as View>::V>`.
+broadcast use {
+    crate::set::group_set_lemmas,
+    crate::set::Set::lemma_map_contains,
+    crate::set::Set::lemma_set_map_insert_commute,
+    crate::std_specs::hash::group_hash_axioms,
+    crate::std_specs::borrow::group_borrow_axioms,
+};
+
+/// `HashSetWithView` is a verified wrapper around `std::collections::HashSet` with `View` implemented for the type `vstd::set::Set<<Key as View>::V>`.
+///
+/// Its constructors require [`obeys_view_eq`] in addition to [`obeys_key_model`].
+/// Constructors establish [`Self::well_formed`], which all other operations require and preserve.
 ///
 /// See the Rust documentation for [`HashSet`](https://doc.rust-lang.org/std/collections/struct.HashSet.html)
 /// for details about its implementation.
@@ -31,21 +50,44 @@ pub struct HashSetWithView<Key> where Key: View + Eq + Hash {
 impl<Key> View for HashSetWithView<Key> where Key: View + Eq + Hash {
     type V = Set<<Key as View>::V>;
 
-    uninterp spec fn view(&self) -> Self::V;
+    closed spec fn view(&self) -> Self::V {
+        self.m@.map(|k: Key| k@)
+    }
 }
 
 impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
-    /// Creates an empty `HashSetWithView` with capacity 0.
+    pub closed spec fn well_formed(&self) -> bool {
+        &&& obeys_key_model::<Key>()
+        &&& obeys_view_eq::<Key>()
+        &&& hash_set_inv(&self.m)
+    }
+
+    proof fn lemma_view(&self)
+        requires
+            self.well_formed(),
+        ensures
+            self@.len() == self.m@.len(),
+            forall|k: Key| #[trigger] self.m@.contains(k) ==> self@.contains(k@),
+            forall|view: Key::V| #[trigger]
+                self@.contains(view) ==> exists|k: Key| #[trigger]
+                    self.m@.contains(k) && k@ == view,
+    {
+        reveal(obeys_view_eq);
+        assert(self.m@.injective_on(|k: Key| k@));
+        crate::set_lib::lemma_map_size(self.m@, self@, |k: Key| k@);
+    }
+
+    /// Creates an empty `HashSetWithView`.
     ///
     /// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
     /// for information on use with primitive types and other types.
     /// See Rust's [`HashSet::new()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.new) for implementation details.
-    #[verifier::external_body]
     pub fn new() -> (result: Self)
         requires
             obeys_key_model::<Key>(),
-            forall|k1: Key, k2: Key| k1@ == k2@ ==> k1 == k2,
+            obeys_view_eq::<Key>(),
         ensures
+            result.well_formed(),
             result@ == Set::<<Key as View>::V>::empty(),
     {
         Self { m: HashSet::new() }
@@ -56,12 +98,12 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     /// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
     /// for information on use with primitive types and other types.
     /// See Rust's [`HashSet::with_capacity()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.with_capacity) for implementation details.
-    #[verifier::external_body]
     pub fn with_capacity(capacity: usize) -> (result: Self)
         requires
             obeys_key_model::<Key>(),
-            forall|k1: Key, k2: Key| k1@ == k2@ ==> k1 == k2,
+            obeys_view_eq::<Key>(),
         ensures
+            result.well_formed(),
             result@ == Set::<<Key as View>::V>::empty(),
     {
         Self { m: HashSet::with_capacity(capacity) }
@@ -70,106 +112,160 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     /// Reserves capacity for at least `additional` number of elements in the set.
     ///
     /// See Rust's [`HashSet::reserve()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.reserve) for implementation details.
-    #[verifier::external_body]
     pub fn reserve(&mut self, additional: usize)
+        requires
+            old(self).well_formed(),
         ensures
+            final(self).well_formed(),
             final(self)@ == old(self)@,
     {
         self.m.reserve(additional);
     }
 
     /// Returns the number of elements in the set.
-    pub uninterp spec fn spec_len(&self) -> usize;
+    pub open spec fn spec_len(&self) -> usize {
+        self@.len() as usize
+    }
 
     /// Returns the number of elements in the set.
-    #[verifier::external_body]
     #[verifier::when_used_as_spec(spec_len)]
     pub fn len(&self) -> (result: usize)
+        requires
+            self.well_formed(),
         ensures
             result == self@.len(),
     {
+        proof {
+            self.lemma_view();
+        }
         self.m.len()
     }
 
     /// Returns true if the set is empty.
-    #[verifier::external_body]
     pub fn is_empty(&self) -> (result: bool)
+        requires
+            self.well_formed(),
         ensures
             result == self@.is_empty(),
     {
+        proof {
+            self.lemma_view();
+        }
         self.m.is_empty()
     }
 
     /// Inserts the given value into the set. Returns true if the value was not previously in the set, false otherwise.
     ///
     /// See Rust's [`HashSet::insert()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.insert) for implementation details.
-    #[verifier::external_body]
     pub fn insert(&mut self, k: Key) -> (result: bool)
+        requires
+            old(self).well_formed(),
         ensures
+            final(self).well_formed(),
             final(self)@ == old(self)@.insert(k@) && result == !old(self)@.contains(k@),
     {
-        self.m.insert(k)
+        proof {
+            reveal(obeys_view_eq);
+            self.lemma_view();
+        }
+        let result = self.m.insert(k);
+        proof {
+            self.lemma_view();
+        }
+        result
     }
 
     /// Removes the given value from the set. Returns true if the value was previously in the set, false otherwise.
     ///
     /// See Rust's [`HashSet::remove()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.remove) for implementation details.
-    #[verifier::external_body]
     pub fn remove(&mut self, k: &Key) -> (result: bool)
+        requires
+            old(self).well_formed(),
         ensures
+            final(self).well_formed(),
             final(self)@ == old(self)@.remove(k@) && result == old(self)@.contains(k@),
     {
-        self.m.remove(k)
+        proof {
+            reveal(obeys_view_eq);
+            self.lemma_view();
+        }
+        let ghost before = self@;
+        let ghost old_m = self.m@;
+        let result = self.m.remove(k);
+        proof {
+            self.lemma_view();
+            if result {
+                assert_sets_equal!(self@, before.remove(k@), view => {
+                    if self@.contains(view) {
+                        let stored = choose|stored: Key|
+                            #[trigger] self.m@.contains(stored) && stored@ == view;
+                        assert(view != k@);
+                    }
+                    if before.contains(view) && view != k@ {
+                        let stored = choose|stored: Key|
+                            #[trigger] old_m.contains(stored) && stored@ == view;
+                        assert(self.m@.contains(stored));
+                    }
+                });
+            }
+        }
+        result
     }
 
     /// Returns true if the set contains the given value.
     ///
     /// See Rust's [`HashSet::contains()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.contains) for implementation details.
-    #[verifier::external_body]
     pub fn contains(&self, k: &Key) -> (result: bool)
+        requires
+            self.well_formed(),
         ensures
             result == self@.contains(k@),
     {
+        proof {
+            reveal(obeys_view_eq);
+            self.lemma_view();
+        }
         self.m.contains(k)
     }
 
     /// Returns a reference to the value in the set that is equal to the given value. If the value is not present in the set, returns `None`.
     ///
     /// See Rust's [`HashSet::get()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.get) for implementation details.
-    #[verifier::external_body]
     pub fn get<'a>(&'a self, k: &Key) -> (result: Option<&'a Key>)
+        requires
+            self.well_formed(),
         ensures
             match result {
-                Some(v) => self@.contains(k@) && v == &k,
+                Some(v) => self@.contains(k@) && v@ == k@,
                 None => !self@.contains(k@),
             },
     {
+        proof {
+            reveal(obeys_view_eq);
+            self.lemma_view();
+        }
         self.m.get(k)
     }
 
     /// Clears all values from the set.
     ///
     /// See Rust's [`HashSet::clear()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.clear) for implementation details.
-    #[verifier::external_body]
     pub fn clear(&mut self)
+        requires
+            old(self).well_formed(),
         ensures
+            final(self).well_formed(),
             final(self)@ == Set::<<Key as View>::V>::empty(),
     {
         self.m.clear()
     }
 }
 
-pub broadcast axiom fn axiom_hash_set_with_view_spec_len<Key>(m: &HashSetWithView<Key>) where
-    Key: View + Eq + Hash,
-
-    ensures
-        #[trigger] m.spec_len() == m@.len(),
-;
-
-/// `StringHashSet` is a trusted wrapper around `std::collections::HashSet<String>` with `View` implemented for the type `vstd::map::Set<Seq<char>>`.
+/// `StringHashSet` is a verified wrapper around `std::collections::HashSet<String>` with `View` implemented for the type `vstd::set::Set<Seq<char>>`.
 ///
 /// This type was created for ease of use with `String` as it uses `&str` instead of `&String` for methods that require shared references.
-/// Also, it assumes that [`obeys_key_model::<String>()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html) holds.
+/// Constructors establish [`Self::well_formed`], which all other operations require and preserve.
+/// Standard-library axioms provide the key models for `String` and `str`.
 ///
 /// See the Rust documentation for [`HashSet`](https://doc.rust-lang.org/std/collections/struct.HashSet.html)
 /// for details about its implementation.
@@ -178,52 +274,67 @@ pub broadcast axiom fn axiom_hash_set_with_view_spec_len<Key>(m: &HashSetWithVie
 /// for information on the Verus specifications for this type.
 #[verifier::ext_equal]
 pub struct StringHashSet {
-    m: HashSet<String>,
+    m: HashSetWithView<String>,
 }
 
 impl View for StringHashSet {
     type V = Set<Seq<char>>;
 
-    uninterp spec fn view(&self) -> Self::V;
+    closed spec fn view(&self) -> Self::V {
+        self.m@
+    }
 }
 
 impl StringHashSet {
-    /// Creates an empty `StringHashSet` with capacity 0.
+    pub closed spec fn well_formed(&self) -> bool {
+        self.m.well_formed()
+    }
+
+    /// Creates an empty `StringHashSet`.
     ///
     /// See Rust's [`HashSet::new()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.new) for implementation details.
-    #[verifier::external_body]
     pub fn new() -> (result: Self)
         ensures
+            result.well_formed(),
             result@ == Set::<Seq<char>>::empty(),
     {
-        Self { m: HashSet::new() }
+        proof {
+            reveal(obeys_view_eq);
+        }
+        Self { m: HashSetWithView::new() }
     }
 
     /// Creates an empty `StringHashSet` with at least capacity for the specified number of elements.
     ///
     /// See Rust's [`HashSet::with_capacity()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.with_capacity) for implementation details.
-    #[verifier::external_body]
     pub fn with_capacity(capacity: usize) -> (result: Self)
         ensures
+            result.well_formed(),
             result@ == Set::<Seq<char>>::empty(),
     {
-        Self { m: HashSet::with_capacity(capacity) }
+        proof {
+            reveal(obeys_view_eq);
+        }
+        Self { m: HashSetWithView::with_capacity(capacity) }
     }
 
     /// Reserves capacity for at least `additional` number of elements in the set.
     ///
     /// See Rust's [`HashSet::reserve()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.reserve) for implementation details.
-    #[verifier::external_body]
     pub fn reserve(&mut self, additional: usize)
+        requires
+            old(self).well_formed(),
         ensures
+            final(self).well_formed(),
             final(self)@ == old(self)@,
     {
         self.m.reserve(additional);
     }
 
     /// Returns true if the set is empty.
-    #[verifier::external_body]
     pub fn is_empty(&self) -> (result: bool)
+        requires
+            self.well_formed(),
         ensures
             result == self@.is_empty(),
     {
@@ -231,12 +342,15 @@ impl StringHashSet {
     }
 
     /// Returns the number of elements in the set.
-    pub uninterp spec fn spec_len(&self) -> usize;
+    pub open spec fn spec_len(&self) -> usize {
+        self@.len() as usize
+    }
 
     /// Returns the number of elements in the set.
-    #[verifier::external_body]
     #[verifier::when_used_as_spec(spec_len)]
     pub fn len(&self) -> (result: usize)
+        requires
+            self.well_formed(),
         ensures
             result == self@.len(),
     {
@@ -246,9 +360,11 @@ impl StringHashSet {
     /// Inserts the given value into the set. Returns true if the value was not previously in the set, false otherwise.
     ///
     /// See Rust's [`HashSet::insert()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.insert) for implementation details.
-    #[verifier::external_body]
     pub fn insert(&mut self, k: String) -> (result: bool)
+        requires
+            old(self).well_formed(),
         ensures
+            final(self).well_formed(),
             final(self)@ == old(self)@.insert(k@) && result == !old(self)@.contains(k@),
     {
         self.m.insert(k)
@@ -257,59 +373,99 @@ impl StringHashSet {
     /// Removes the given value from the set. Returns true if the value was previously in the set, false otherwise.
     ///
     /// See Rust's [`HashSet::remove()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.remove) for implementation details.
-    #[verifier::external_body]
     pub fn remove(&mut self, k: &str) -> (result: bool)
+        requires
+            old(self).well_formed(),
         ensures
+            final(self).well_formed(),
             final(self)@ == old(self)@.remove(k@) && result == old(self)@.contains(k@),
     {
-        self.m.remove(k)
+        proof {
+            self.m.lemma_view();
+        }
+        let ghost before = self@;
+        let ghost old_m = self.m.m@;
+        let result = self.m.m.remove(k);
+        proof {
+            self.m.lemma_view();
+            if !result && before.contains(k@) {
+                let stored = choose|stored: String| #[trigger]
+                    old_m.contains(stored) && stored@ == k@;
+                assert(k.eq_spec(<String as BorrowSpec<str>>::borrow_spec(&stored)));
+            }
+            assert_sets_equal!(self@, before.remove(k@), view => {
+                if self@.contains(view) {
+                    let stored = choose|stored: String| #[trigger]
+                        self.m.m@.contains(stored) && stored@ == view;
+                    assert(view != k@);
+                }
+                if before.contains(view) && view != k@ {
+                    let stored = choose|stored: String| #[trigger]
+                        old_m.contains(stored) && stored@ == view;
+                    assert(self.m.m@.contains(stored));
+                }
+            });
+        }
+        result
     }
 
     /// Returns true if the set contains the given value.
     ///
     /// See Rust's [`HashSet::contains()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.contains) for implementation details.
-    #[verifier::external_body]
     pub fn contains(&self, k: &str) -> (result: bool)
+        requires
+            self.well_formed(),
         ensures
             result == self@.contains(k@),
     {
-        self.m.contains(k)
+        self.get(k).is_some()
     }
 
     /// Returns a reference to the value in the set that is equal to the given value. If the value is not present in the set, returns `None`.
     ///
     /// See Rust's [`HashSet::get()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.get) for implementation details.
-    #[verifier::external_body]
     pub fn get<'a>(&'a self, k: &str) -> (result: Option<&'a String>)
+        requires
+            self.well_formed(),
         ensures
             match result {
                 Some(v) => self@.contains(k@) && v@ == k@,
                 None => !self@.contains(k@),
             },
     {
-        self.m.get(k)
+        proof {
+            self.m.lemma_view();
+        }
+        let result = self.m.m.get(k);
+        proof {
+            match result {
+                Some(stored) => {
+                    assert(stored@ == k@);
+                },
+                None => {
+                    if self@.contains(k@) {
+                        let stored = choose|stored: String| #[trigger]
+                            self.m.m@.contains(stored) && stored@ == k@;
+                        assert(k.eq_spec(<String as BorrowSpec<str>>::borrow_spec(&stored)));
+                    }
+                },
+            }
+        }
+        result
     }
 
     /// Clears all values from the set.
     ///
     /// See Rust's [`HashSet::clear()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.clear) for implementation details.
-    #[verifier::external_body]
     pub fn clear(&mut self)
+        requires
+            old(self).well_formed(),
         ensures
+            final(self).well_formed(),
             final(self)@ == Set::<Seq<char>>::empty(),
     {
         self.m.clear()
     }
-}
-
-pub broadcast axiom fn axiom_string_hash_set_spec_len(m: &StringHashSet)
-    ensures
-        #[trigger] m.spec_len() == m@.len(),
-;
-
-pub broadcast group group_hash_set_axioms {
-    axiom_hash_set_with_view_spec_len,
-    axiom_string_hash_set_spec_len,
 }
 
 } // verus!

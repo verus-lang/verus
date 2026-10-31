@@ -56,6 +56,8 @@ test_verify_one_file! {
 
             m.insert(6, -8);
             assert(m@[3] == 4);
+            assert(m@.contains_key(3));
+            assert(m@.contains_key(6));
 
             let b = m.contains_key(&3);
             assert(b);
@@ -123,6 +125,8 @@ test_verify_one_file! {
 
             let res = m.insert(3);
             assert(!res);
+            assert(m@.contains(3));
+            assert(m@.contains(6));
 
             let b = m.contains(&3);
             assert(b);
@@ -212,6 +216,8 @@ test_verify_one_file! {
             let six = Box::<u32>::new(6);
             m.insert(three, 4);
             m.insert(six, -8);
+            assert(m@.contains_key(three));
+            assert(m@.contains_key(six));
 
             let b = m.contains_key(&3);
             assert(b);
@@ -240,6 +246,7 @@ test_verify_one_file! {
 
         fn test()
         {
+            reveal(vstd::laws_eq::obeys_concrete_eq);
             let mut m = HashSet::<Box<u32>>::new();
             assert(m@ == Set::<Box<u32>>::empty());
 
@@ -253,6 +260,8 @@ test_verify_one_file! {
 
             let res = m.insert(Box::<u32>::new(3));
             assert(!res);
+            assert(m@.contains(three));
+            assert(m@.contains(six));
 
             let b = m.contains(&3);
             assert(b);
@@ -283,7 +292,7 @@ test_verify_one_file! {
         use std::collections::HashMap;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         struct MyStruct
         {
             pub i: u16,
@@ -338,7 +347,7 @@ test_verify_one_file! {
         use std::collections::HashSet;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         struct MyStruct
         {
             pub i: u16,
@@ -384,6 +393,7 @@ test_verify_one_file! {
             let s3 = MyStruct { i: 9, j: 9 };
 
             m.insert(MyStruct { i: 9, j: 9 });
+            assert(m@.contains(s3));
             let res = m.remove(&s3);
             assert(res);
             let res = m.remove(&s3);
@@ -398,12 +408,608 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_structural_equality verus_code! {
+        use core::hash::Hash;
+        use std::collections::{HashMap, HashSet, hash_map::Entry};
+        use vstd::prelude::*;
+        use vstd::laws_eq::obeys_concrete_eq;
+        use vstd::std_specs::hash::{EntrySpecFns, obeys_key_model};
+
+        fn test_map<Key: Hash + Eq + Copy>(m: &mut HashMap<Key, u32>, key: Key)
+            requires
+                obeys_key_model::<Key>(),
+                obeys_concrete_eq::<Key>(),
+        {
+            reveal(obeys_concrete_eq);
+            let ghost before = m@;
+            let previous = m.insert(key, 42);
+            assert(m@ == before.insert(key, 42));
+            assert(previous == if before.contains_key(key) { Some(before[key]) } else { None });
+            let present = m.contains_key(&key);
+            assert(present);
+            let value = m.get(&key);
+            assert(value == Some(&42u32));
+            let removed = m.remove(&key);
+            assert(removed == Some(42));
+            assert(m@ == before.remove(key));
+            let present = m.contains_key(&key);
+            assert(!present);
+            let value = m.get(&key);
+            assert(value.is_none());
+            let removed = m.remove(&key);
+            assert(removed.is_none());
+            assert(m@ == before.remove(key));
+        }
+
+        fn test_map_entry<Key: Hash + Eq + Copy>(m: &mut HashMap<Key, u32>, key: Key)
+            requires
+                obeys_key_model::<Key>(),
+                obeys_concrete_eq::<Key>(),
+        {
+            reveal(obeys_concrete_eq);
+            let ghost before = m@;
+            let entry = m.entry(key);
+            assert(*entry.key() == key);
+            assert(entry.value() == before.get(key));
+            let value = entry.or_insert(42);
+            assert(*value == if before.contains_key(key) { before[key] } else { 42u32 });
+            *value = 43;
+            assert(m@ == before.insert(key, 43));
+
+            match m.entry(key) {
+                Entry::Occupied(entry) => {
+                    let (stored_key, value) = entry.remove_entry();
+                    assert(stored_key == key);
+                    assert(value == 43);
+                },
+                Entry::Vacant(_) => { assert(false); },
+            }
+            assert(m@ == before.remove(key));
+        }
+
+        fn test_set<Key: Hash + Eq + Copy>(m: &mut HashSet<Key>, key: Key)
+            requires
+                obeys_key_model::<Key>(),
+                obeys_concrete_eq::<Key>(),
+        {
+            reveal(obeys_concrete_eq);
+            let ghost before = m@;
+            let inserted = m.insert(key);
+            assert(inserted == !before.contains(key));
+            assert(m@ == before.insert(key));
+            let inserted = m.insert(key);
+            assert(!inserted);
+            let present = m.contains(&key);
+            assert(present);
+            let stored = m.get(&key);
+            assert(stored == Some(&key));
+            let removed = m.remove(&key);
+            assert(removed);
+            assert(m@ == before.remove(key));
+            let present = m.contains(&key);
+            assert(!present);
+            let stored = m.get(&key);
+            assert(stored.is_none());
+            let removed = m.remove(&key);
+            assert(!removed);
+            assert(m@ == before.remove(key));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_deep_equality verus_code! {
+        use core::hash::Hash;
+        use std::collections::{HashMap, HashSet, hash_map::Entry};
+        use vstd::prelude::*;
+        use vstd::laws_eq::obeys_deep_eq;
+        use vstd::std_specs::hash::{EntrySpecFns, obeys_key_model};
+
+        fn test_map<Key: Hash + Eq + Copy + DeepView, Value: DeepView>(
+            key: Key,
+            equivalent: Key,
+            other: Key,
+            initial: Value,
+            replacement: Value,
+            other_value: Value,
+        )
+            requires
+                obeys_key_model::<Key>(),
+                obeys_deep_eq::<Key>(),
+                key != equivalent,
+                key.deep_view() == equivalent.deep_view(),
+                key.deep_view() != other.deep_view(),
+        {
+            reveal(obeys_deep_eq);
+            let mut m = HashMap::<Key, Value>::new();
+            let present = m.contains_key(&equivalent);
+            assert(!present);
+            let value = m.get(&equivalent);
+            assert(value.is_none());
+            let removed = m.remove(&equivalent);
+            assert(removed.is_none());
+            assert(m@ == Map::<Key, Value>::empty());
+
+            let previous = m.insert(key, initial);
+            assert(previous.is_none());
+            let previous = m.insert(other, other_value);
+            assert(previous.is_none());
+            assert(m@ == Map::empty().insert(key, initial).insert(other, other_value));
+            let present = m.contains_key(&equivalent);
+            assert(present);
+            let value = m.get(&equivalent);
+            assert(value.is_some());
+            assert(value.unwrap().deep_view() == initial.deep_view());
+
+            let ghost before = m.deep_view();
+            let previous = m.insert(equivalent, replacement);
+            assert(previous.is_some());
+            assert(previous.unwrap().deep_view() == initial.deep_view());
+            assert(m.deep_view() == before.insert(equivalent.deep_view(), replacement.deep_view()));
+            assert(m@ == Map::empty().insert(key, replacement).insert(other, other_value));
+            assert(!m@.contains_key(equivalent));
+            let value = m.get(&equivalent);
+            assert(value.is_some());
+            assert(value.unwrap().deep_view() == replacement.deep_view());
+
+            let ghost before = m.deep_view();
+            let removed = m.remove(&equivalent);
+            assert(removed.is_some());
+            assert(removed.unwrap().deep_view() == replacement.deep_view());
+            assert(m.deep_view() == before.remove(equivalent.deep_view()));
+            assert(m@ == Map::empty().insert(other, other_value));
+            let present = m.contains_key(&equivalent);
+            assert(!present);
+            let value = m.get(&equivalent);
+            assert(value.is_none());
+            let removed = m.remove(&equivalent);
+            assert(removed.is_none());
+            assert(m@ == Map::empty().insert(other, other_value));
+        }
+
+        fn test_map_entry<Key: Hash + Eq + Copy + DeepView, Value: DeepView>(
+            m: &mut HashMap<Key, Value>,
+            key: Key,
+            default: Value,
+            replacement: Value,
+        )
+            requires
+                obeys_key_model::<Key>(),
+                obeys_deep_eq::<Key>(),
+                vstd::std_specs::hash::hash_map_inv(old(m)),
+        {
+            reveal(obeys_deep_eq);
+            let ghost before = m.deep_view();
+            let entry = m.entry(key);
+            assert(entry.key().deep_view() == key.deep_view());
+            proof {
+                match entry.value() {
+                    Some(value) => {
+                        assert(before.contains_key(key.deep_view()));
+                        assert(value.deep_view() == before[key.deep_view()]);
+                    },
+                    None => { assert(!before.contains_key(key.deep_view())); },
+                }
+            }
+            let value = entry.or_insert(default);
+            assert(value.deep_view() == if before.contains_key(key.deep_view()) {
+                before[key.deep_view()]
+            } else {
+                default.deep_view()
+            });
+            *value = replacement;
+            assert(m.deep_view() == before.insert(key.deep_view(), replacement.deep_view()));
+
+            match m.entry(key) {
+                Entry::Occupied(entry) => {
+                    let (stored_key, value) = entry.remove_entry();
+                    assert(stored_key.deep_view() == key.deep_view());
+                    assert(value.deep_view() == replacement.deep_view());
+                },
+                Entry::Vacant(_) => { assert(false); },
+            }
+            assert(m.deep_view() == before.remove(key.deep_view()));
+        }
+
+        fn test_set<Key: Hash + Eq + Copy + DeepView>(
+            key: Key,
+            equivalent: Key,
+            other: Key,
+        )
+            requires
+                obeys_key_model::<Key>(),
+                obeys_deep_eq::<Key>(),
+                key != equivalent,
+                key.deep_view() == equivalent.deep_view(),
+                key.deep_view() != other.deep_view(),
+        {
+            reveal(obeys_deep_eq);
+            let mut m = HashSet::<Key>::new();
+            let present = m.contains(&equivalent);
+            assert(!present);
+            let stored = m.get(&equivalent);
+            assert(stored.is_none());
+            let removed = m.remove(&equivalent);
+            assert(!removed);
+
+            let inserted = m.insert(key);
+            assert(inserted);
+            let inserted = m.insert(equivalent);
+            assert(!inserted);
+            assert(m@ == Set::empty().insert(key));
+            let inserted = m.insert(other);
+            assert(inserted);
+            assert(m@ == Set::empty().insert(key).insert(other));
+            let present = m.contains(&equivalent);
+            assert(present);
+            let stored = m.get(&equivalent);
+            assert(stored.is_some());
+            assert(*stored.unwrap() == key);
+            assert(*stored.unwrap() != equivalent);
+            assert(stored.unwrap().deep_view() == equivalent.deep_view());
+            assert(m.deep_view().contains(equivalent.deep_view()));
+
+            let ghost before = m.deep_view();
+            let removed = m.remove(&equivalent);
+            assert(removed);
+            assert(m.deep_view() == before.remove(equivalent.deep_view()));
+            assert(m@ == Set::empty().insert(other));
+            let present = m.contains(&equivalent);
+            assert(!present);
+            let stored = m.get(&equivalent);
+            assert(stored.is_none());
+            let removed = m.remove(&equivalent);
+            assert(!removed);
+            assert(m@ == Set::empty().insert(other));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_borrow_equality verus_code! {
+        use core::borrow::Borrow;
+        use core::hash::Hash;
+        use std::collections::{HashMap, HashSet};
+        use vstd::prelude::*;
+        use vstd::std_specs::borrow::BorrowSpec;
+        use vstd::std_specs::cmp::PartialEqSpec;
+        use vstd::std_specs::hash::{borrowed_key_hashing_matches, obeys_key_model};
+
+        fn test_map<Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized>(
+            key: Key,
+            query: &Q,
+        )
+            requires
+                obeys_key_model::<Key>(),
+                obeys_key_model::<Q>(),
+                borrowed_key_hashing_matches::<Key, Q>(),
+                <Key as BorrowSpec<Q>>::obeys_borrow_spec(),
+                query.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)),
+        {
+            let mut m = HashMap::<Key, u32>::new();
+            let previous = m.insert(key, 42);
+            assert(previous.is_none());
+            assert(m@.contains_key(key));
+            let present = m.contains_key(query);
+            assert(present);
+            let value = m.get(query);
+            assert(value == Some(&42u32));
+            let removed = m.remove(query);
+            assert(removed == Some(42));
+            assert(m@ == Map::<Key, u32>::empty());
+            let present = m.contains_key(query);
+            assert(!present);
+            let value = m.get(query);
+            assert(value.is_none());
+            let removed = m.remove(query);
+            assert(removed.is_none());
+        }
+
+        fn test_set<Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized>(
+            key: Key,
+            query: &Q,
+        )
+            requires
+                obeys_key_model::<Key>(),
+                obeys_key_model::<Q>(),
+                borrowed_key_hashing_matches::<Key, Q>(),
+                <Key as BorrowSpec<Q>>::obeys_borrow_spec(),
+                query.eq_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)),
+        {
+            let mut m = HashSet::<Key>::new();
+            let inserted = m.insert(key);
+            assert(inserted);
+            assert(m@.contains(key));
+            let present = m.contains(query);
+            assert(present);
+            let stored = m.get(query);
+            assert(stored == Some(&key));
+            let removed = m.remove(query);
+            assert(removed);
+            assert(m@ == Set::<Key>::empty());
+            let present = m.contains(query);
+            assert(!present);
+            let stored = m.get(query);
+            assert(stored.is_none());
+            let removed = m.remove(query);
+            assert(!removed);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_key_model_supplies_equality verus_code! {
+        use core::hash::Hash;
+        use std::collections::HashSet;
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpec;
+        use vstd::std_specs::hash::obeys_key_model;
+
+        broadcast use {
+            vstd::std_specs::hash::axiom_key_model_implies_obeys_eq,
+            vstd::std_specs::hash::lemma_key_model_implies_obeys_eq,
+        };
+
+        fn test<Key: Hash + Eq + Copy>(key: Key)
+            requires
+                obeys_key_model::<Key>(),
+            ensures
+                vstd::laws_eq::obeys_eq::<Key>(),
+        {
+            let mut m = HashSet::<Key>::new();
+            let inserted = m.insert(key);
+            assert(inserted);
+            assert(m@.contains(key));
+            let present = m.contains(&key);
+            assert(present);
+            let stored = m.get(&key);
+            assert(stored == Some(&key));
+            let removed = m.remove(&key);
+            assert(removed);
+        }
+
+        proof fn test_unsized<Q: Hash + Eq + ?Sized>(a: &Q, b: &Q, c: &Q)
+            requires
+                obeys_key_model::<Q>(),
+            ensures
+                <Q as PartialEqSpec>::obeys_eq_spec(),
+                a.eq_spec(a),
+                a.eq_spec(b) == b.eq_spec(a),
+                a.eq_spec(b) && b.eq_spec(c) ==> a.eq_spec(c),
+        {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_map_entry_eq_spec verus_code! {
+        use core::hash::Hash;
+        use std::collections::{HashMap, hash_map::Entry};
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpec;
+        use vstd::std_specs::hash::obeys_key_model;
+
+        fn test_occupied<Key: Hash + Eq + Copy>(stored: Key, query: Key)
+            requires
+                obeys_key_model::<Key>(),
+                stored != query,
+                query.eq_spec(&stored),
+        {
+            let mut m = HashMap::<Key, u32>::new();
+            m.insert(stored, 10);
+            assert(m@.contains_key(stored));
+            let entry = m.entry(query);
+            assert(entry is Occupied);
+            assert(*entry.key() == stored);
+            let value = entry.or_insert(99);
+            assert(*value == 10);
+            *value = 42;
+            assert(m@ == Map::<Key, u32>::empty().insert(stored, 42));
+            assert(!m@.contains_key(query));
+
+            match m.entry(query) {
+                Entry::Occupied(entry) => {
+                    let (key, value) = entry.remove_entry();
+                    assert(key == stored);
+                    assert(value == 42);
+                },
+                Entry::Vacant(_) => { assert(false); },
+            }
+            assert(m@ == Map::<Key, u32>::empty());
+        }
+
+        fn test_vacant<Key: Hash + Eq + Copy>(stored: Key, query: Key)
+            requires
+                obeys_key_model::<Key>(),
+                stored != query,
+                !query.eq_spec(&stored),
+        {
+            let mut m = HashMap::<Key, u32>::new();
+            m.insert(stored, 10);
+            let entry = m.entry(query);
+            assert(entry is Vacant);
+            assert(*entry.key() == query);
+            let value = entry.or_insert(20);
+            assert(*value == 20);
+            assert(m@ == Map::<Key, u32>::empty().insert(stored, 10).insert(query, 20));
+        }
+
+        fn test_occupied_unused<Key: Hash + Eq + Copy>(stored: Key, query: Key)
+            requires
+                obeys_key_model::<Key>(),
+                stored != query,
+                query.eq_spec(&stored),
+        {
+            let mut m = HashMap::<Key, u32>::new();
+            m.insert(stored, 10);
+            let _entry = m.entry(query);
+            assert(m@ == Map::<Key, u32>::empty().insert(stored, 10));
+        }
+
+        fn test_vacant_unused<Key: Hash + Eq + Copy>(key: Key)
+            requires
+                obeys_key_model::<Key>(),
+        {
+            let mut m = HashMap::<Key, u32>::new();
+            let entry = m.entry(key);
+            assert(entry is Vacant);
+            match entry {
+                Entry::Vacant(entry) => {
+                    let returned_key = entry.into_key();
+                    assert(returned_key == key);
+                },
+                Entry::Occupied(_) => { assert(false); },
+            }
+            assert(m@ == Map::<Key, u32>::empty());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_legacy_requires_structural_equality verus_code! {
+        use core::hash::Hash;
+        use std::collections::HashMap;
+        use vstd::hash_map::HashMapWithView;
+        use vstd::hash_set::HashSetWithView;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::obeys_key_model;
+
+        fn test_entry<Key: Hash + Eq>(m: &mut HashMap<Key, u32>, key: Key)
+            requires
+                obeys_key_model::<Key>(),
+        {
+            let entry = m.entry(key);
+            assert(entry.key() == key); // FAILS
+        }
+
+        fn test_map_new<Key: Hash + Eq + View>()
+            requires
+                obeys_key_model::<Key>(),
+                forall|a: Key, b: Key| a@ == b@ ==> a == b,
+        {
+            let _ = HashMapWithView::<Key, u32>::new(); // FAILS
+        }
+
+        fn test_map_with_capacity<Key: Hash + Eq + View>()
+            requires
+                obeys_key_model::<Key>(),
+                forall|a: Key, b: Key| a@ == b@ ==> a == b,
+        {
+            let _ = HashMapWithView::<Key, u32>::with_capacity(1); // FAILS
+        }
+
+        fn test_set_new<Key: Hash + Eq + View>()
+            requires
+                obeys_key_model::<Key>(),
+                forall|a: Key, b: Key| a@ == b@ ==> a == b,
+        {
+            let _ = HashSetWithView::<Key>::new(); // FAILS
+        }
+
+        fn test_set_with_capacity<Key: Hash + Eq + View>()
+            requires
+                obeys_key_model::<Key>(),
+                forall|a: Key, b: Key| a@ == b@ ==> a == b,
+        {
+            let _ = HashSetWithView::<Key>::with_capacity(1); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file! {
+    #[test] test_hash_borrow verus_code! {
+        use core::borrow::Borrow;
+        use core::hash::Hash;
+        use std::collections::{HashMap, HashSet};
+        use vstd::prelude::*;
+        use vstd::std_specs::borrow::BorrowSpec;
+        use vstd::std_specs::hash::{borrowed_key_hashing_matches, obeys_key_model};
+
+        broadcast use vstd::std_specs::hash::axiom_key_model_implies_obeys_eq;
+
+        fn test_map<Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized>(key: Key, query: &Q)
+            requires
+                obeys_key_model::<Key>(),
+                obeys_key_model::<Q>(),
+                borrowed_key_hashing_matches::<Key, Q>(),
+                <Key as BorrowSpec<Q>>::obeys_borrow_spec(),
+                <Key as BorrowSpec<Q>>::borrow_spec(&key) == query,
+        {
+            let mut m = HashMap::<Key, u32>::new();
+            m.insert(key, 42);
+            assert(m@.contains_key(key));
+
+            let present = m.contains_key(query);
+            assert(present);
+            let value = m.get(query);
+            assert(value == Some(&42u32));
+            let removed = m.remove(query);
+            assert(removed == Some(42));
+            assert(m@ == Map::<Key, u32>::empty());
+
+            let present = m.contains_key(query);
+            assert(!present);
+            let value = m.get(query);
+            assert(value.is_none());
+            let removed = m.remove(query);
+            assert(removed.is_none());
+            assert(m@ == Map::<Key, u32>::empty());
+        }
+
+        fn test_set<Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized>(key: Key, query: &Q)
+            requires
+                obeys_key_model::<Key>(),
+                obeys_key_model::<Q>(),
+                borrowed_key_hashing_matches::<Key, Q>(),
+                <Key as BorrowSpec<Q>>::obeys_borrow_spec(),
+                <Key as BorrowSpec<Q>>::borrow_spec(&key) == query,
+        {
+            let mut m = HashSet::<Key>::new();
+            m.insert(key);
+            assert(m@.contains(key));
+
+            let present = m.contains(query);
+            assert(present);
+            let value = m.get(query);
+            assert(value == Some(&key));
+            let removed = m.remove(query);
+            assert(removed);
+            assert(m@ == Set::<Key>::empty());
+
+            let present = m.contains(query);
+            assert(!present);
+            let value = m.get(query);
+            assert(value.is_none());
+            let removed = m.remove(query);
+            assert(!removed);
+            assert(m@ == Set::<Key>::empty());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_borrow_requires_compatibility verus_code! {
+        use core::borrow::Borrow;
+        use core::hash::Hash;
+        use std::collections::HashMap;
+        use vstd::prelude::*;
+
+        fn test<Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized>(
+            m: &HashMap<Key, u32>,
+            query: &Q,
+        ) {
+            let _ = m.contains_key(query); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_hash_map_struct_fails verus_code! {
         use core::hash::{Hash, Hasher};
         use std::collections::HashMap;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         struct MyStruct
         {
             pub i: u16,
@@ -442,7 +1048,7 @@ test_verify_one_file! {
         use std::collections::HashSet;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         struct MyStruct
         {
             pub i: u16,
@@ -481,7 +1087,7 @@ test_verify_one_file! {
         use vstd::hash_map::HashMapWithView;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         pub struct MyStruct
         {
             pub i: u16,
@@ -513,6 +1119,7 @@ test_verify_one_file! {
         {
             assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
 
+            reveal(vstd::laws_eq::obeys_view_eq);
             let mut m = HashMapWithView::<MyStruct, u32>::new();
             assert(m@ == Map::<(MyStruct, int), u32>::empty());
 
@@ -533,9 +1140,7 @@ test_verify_one_file! {
             assert(m@.contains_key(w));
 
             assert(m@.len() == 1);
-            assert(m.len() == 1) by {
-                vstd::hash_map::axiom_hash_map_with_view_spec_len(&m);
-            }
+            assert(m.len() == 1);
             let n = m.len();
             assert(n == 1);
 
@@ -562,12 +1167,71 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_map_with_view_equality verus_code! {
+        use core::hash::Hash;
+        use vstd::hash_map::HashMapWithView;
+        use vstd::prelude::*;
+        use vstd::laws_eq::obeys_view_eq;
+        use vstd::std_specs::hash::obeys_key_model;
+
+        fn test<Key: Hash + Eq + View + Copy>(key: Key, equivalent: Key, other: Key)
+            requires
+                obeys_key_model::<Key>(),
+                obeys_view_eq::<Key>(),
+                key != equivalent,
+                key@ == equivalent@,
+                key@ != other@,
+        {
+            let mut m = HashMapWithView::<Key, u32>::with_capacity(2);
+            assert(m@ == Map::<Key::V, u32>::empty());
+            let empty = m.is_empty();
+            assert(empty);
+            m.reserve(4);
+            let previous = m.insert(key, 10);
+            assert(previous.is_none());
+            let previous = m.insert(equivalent, 20);
+            assert(previous == Some(10));
+            assert(m@ == Map::<Key::V, u32>::empty().insert(key@, 20));
+            assert(m.len() == 1);
+            let empty = m.is_empty();
+            assert(!empty);
+            let present = m.contains_key(&key);
+            assert(present);
+            let present = m.contains_key(&equivalent);
+            assert(present);
+            let value = m.get(&equivalent);
+            assert(value == Some(&20u32));
+
+            let mut rhs = HashMapWithView::<Key, u32>::new();
+            rhs.insert(equivalent, 30);
+            let previous = rhs.insert(other, 40);
+            assert(previous.is_none());
+            m.union_prefer_right(rhs);
+            assert(m@ == Map::<Key::V, u32>::empty().insert(key@, 30).insert(other@, 40));
+            assert(m.len() == 2);
+            let removed = m.remove(&equivalent);
+            assert(removed == Some(30));
+            assert(m@ == Map::<Key::V, u32>::empty().insert(other@, 40));
+            let removed = m.remove(&key);
+            assert(removed.is_none());
+            let present = m.contains_key(&key);
+            assert(!present);
+            let value = m.get(&key);
+            assert(value.is_none());
+            m.clear();
+            assert(m@ == Map::<Key::V, u32>::empty());
+            assert(m.len() == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_hash_set_with_view verus_code! {
         use core::hash::{Hash, Hasher};
         use vstd::hash_set::HashSetWithView;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq, Clone)]
+        #[derive(PartialEq, Eq, Clone, StructuralEq)]
         pub struct MyStruct
         {
             pub i: u16,
@@ -599,6 +1263,7 @@ test_verify_one_file! {
         {
             assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
 
+            reveal(vstd::laws_eq::obeys_view_eq);
             let mut m = HashSetWithView::<MyStruct>::new();
             assert(m@ == Set::<(MyStruct, int)>::empty());
 
@@ -622,9 +1287,7 @@ test_verify_one_file! {
             assert(m@.contains(w));
 
             assert(m@.len() == 1);
-            assert(m.len() == 1) by {
-                vstd::hash_set::axiom_hash_set_with_view_spec_len(&m);
-            }
+            assert(m.len() == 1);
             let n = m.len();
             assert(n == 1);
 
@@ -657,12 +1320,94 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_set_with_view_equality verus_code! {
+        use core::hash::Hash;
+        use vstd::hash_set::HashSetWithView;
+        use vstd::prelude::*;
+        use vstd::laws_eq::obeys_view_eq;
+        use vstd::std_specs::hash::obeys_key_model;
+
+        fn test<Key: Hash + Eq + View + Copy>(key: Key, equivalent: Key, other: Key)
+            requires
+                obeys_key_model::<Key>(),
+                obeys_view_eq::<Key>(),
+                key != equivalent,
+                key@ == equivalent@,
+                key@ != other@,
+        {
+            let empty = HashSetWithView::<Key>::new();
+            assert(empty.well_formed());
+            assert(empty@ == Set::<Key::V>::empty());
+
+            let mut s = HashSetWithView::<Key>::with_capacity(2);
+            assert(s.well_formed());
+            let is_empty = s.is_empty();
+            assert(is_empty);
+            s.reserve(4);
+            let inserted = s.insert(key);
+            assert(inserted);
+            let inserted = s.insert(equivalent);
+            assert(!inserted);
+            assert(s@ == set![key@]);
+            assert(s.len() == 1);
+            let count = s.len();
+            assert(count == 1);
+            let is_empty = s.is_empty();
+            assert(!is_empty);
+            let present = s.contains(&equivalent);
+            assert(present);
+            match s.get(&equivalent) {
+                Some(stored) => assert(stored@ == key@),
+                None => assert(false),
+            }
+
+            let inserted = s.insert(other);
+            assert(inserted);
+            s.reserve(4);
+            assert(s@ == set![key@, other@]);
+            assert(s.len() == 2);
+            let removed = s.remove(&equivalent);
+            assert(removed);
+            assert(s@ == set![other@]);
+            let removed = s.remove(&key);
+            assert(!removed);
+            let present = s.contains(&key);
+            assert(!present);
+            let value = s.get(&key);
+            assert(value.is_none());
+            s.clear();
+            assert(s.well_formed());
+            assert(s@ == Set::<Key::V>::empty());
+            assert(s.len() == 0);
+            let is_empty = s.is_empty();
+            assert(is_empty);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_set_with_view_requires_well_formed verus_code! {
+        use core::hash::Hash;
+        use vstd::hash_set::HashSetWithView;
+        use vstd::prelude::*;
+
+        fn test_read<Key: Hash + Eq + View>(s: &HashSetWithView<Key>, key: &Key) {
+            let _ = s.get(key); // FAILS
+        }
+
+        fn test_mutate<Key: Hash + Eq + View>(s: &mut HashSetWithView<Key>, key: Key) {
+            s.insert(key); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
     #[test] test_hash_map_with_view_fails verus_code! {
         use core::hash::{Hash, Hasher};
         use vstd::hash_map::HashMapWithView;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         pub struct MyStruct
         {
             pub i: u16,
@@ -694,6 +1439,7 @@ test_verify_one_file! {
         {
             // Missing assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
 
+            reveal(vstd::laws_eq::obeys_view_eq);
             let mut m = HashMapWithView::<MyStruct, u32>::new(); // FAILS
             let s = MyStruct{ i: 3, j: 7 };
             m.insert(s, 4);
@@ -707,7 +1453,7 @@ test_verify_one_file! {
         use vstd::hash_set::HashSetWithView;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         pub struct MyStruct
         {
             pub i: u16,
@@ -739,6 +1485,7 @@ test_verify_one_file! {
         {
             // Missing assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
 
+            reveal(vstd::laws_eq::obeys_view_eq);
             let mut m = HashSetWithView::<MyStruct>::new(); // FAILS
             let s = MyStruct{ i: 3, j: 7 };
             m.insert(s);
@@ -760,7 +1507,10 @@ test_verify_one_file! {
 
             let three: String = "three".to_owned();
             let six: String = "six".to_owned();
-            m.insert(three.clone(), 4);
+            let previous = m.insert(three.clone(), 4);
+            assert(previous.is_none());
+            let previous = m.insert("three".to_owned(), 9);
+            assert(previous == Some(4));
 
             let b = m.is_empty();
             assert(!b);
@@ -770,14 +1520,12 @@ test_verify_one_file! {
                 reveal_strlit("three");
                 reveal_strlit("six");
             }
-            assert(m@[three@] == 4);
+            assert(m@[three@] == 9);
 
             let b = m.contains_key(three.as_str());
             assert(b);
 
-            assert(m.len() == 2) by {
-                vstd::hash_map::axiom_string_hash_map_spec_len(&m);
-            }
+            assert(m.len() == 2);
             let n = m.len();
             assert(n == 2);
 
@@ -797,6 +1545,83 @@ test_verify_one_file! {
             assert(!b);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_hash_map_verified_operations verus_code! {
+        use vstd::hash_map::StringHashMap;
+        use vstd::prelude::*;
+
+        fn test() {
+            let key = "caf\u{e9}";
+            let other = "tea";
+            assert(key@ != other@) by {
+                reveal_strlit("caf\u{e9}");
+                reveal_strlit("tea");
+            }
+            let mut m = StringHashMap::<Vec<u8>>::with_capacity(2);
+            m.reserve(4);
+            let previous = m.insert(key.to_owned(), vec![1u8]);
+            assert(previous.is_none());
+            let previous = m.insert(key.to_owned(), vec![2u8]);
+            let previous = previous.unwrap();
+            assert(previous@ == seq![1u8]);
+            let value = m.get(key).unwrap();
+            assert(value@ == seq![2u8]);
+            let count = m.len();
+            assert(count == 1);
+
+            let mut rhs = StringHashMap::<Vec<u8>>::new();
+            rhs.insert(key.to_owned(), vec![3u8]);
+            rhs.insert(other.to_owned(), vec![4u8]);
+            m.union_prefer_right(rhs);
+            let value = m.get(key).unwrap();
+            assert(value@ == seq![3u8]);
+            let value = m.get(other).unwrap();
+            assert(value@ == seq![4u8]);
+            assert(m@.dom() =~= set![key@, other@]);
+            let count = m.len();
+            assert(count == 2);
+
+            m.remove(key);
+            let present = m.contains_key(key);
+            assert(!present);
+            let value = m.get(key);
+            assert(value.is_none());
+            let ghost before = m@;
+            m.remove(key);
+            assert(m@ == before);
+            let value = m.get(other).unwrap();
+            assert(value@ == seq![4u8]);
+            m.clear();
+            let empty = m.is_empty();
+            assert(empty);
+            let count = m.len();
+            assert(count == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_hash_map_requires_well_formed verus_code! {
+        use vstd::hash_map::StringHashMap;
+        use vstd::prelude::*;
+
+        fn test_read(m: &StringHashMap<u32>) {
+            let _ = m.get("key"); // FAILS
+        }
+
+        fn test_mutate(m: &mut StringHashMap<u32>, key: String) {
+            m.insert(key, 1); // FAILS
+        }
+
+        fn test_union(m: &mut StringHashMap<u32>, other: StringHashMap<u32>)
+            requires
+                old(m).well_formed(),
+        {
+            m.union_prefer_right(other); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
 }
 
 test_verify_one_file! {
@@ -851,9 +1676,7 @@ test_verify_one_file! {
             let b = m.contains(three.as_str());
             assert(b);
 
-            assert(m.len() == 2) by {
-                vstd::hash_set::axiom_string_hash_set_spec_len(&m);
-            }
+            assert(m.len() == 2);
             let n = m.len();
             assert(n == 2);
 
@@ -874,6 +1697,71 @@ test_verify_one_file! {
             assert(!m@.contains(three@));
             let b = m.contains(three.as_str());
             assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_hash_set_verified_operations verus_code! {
+        use vstd::hash_set::StringHashSet;
+        use vstd::prelude::*;
+
+        fn test() {
+            let key = "caf\u{e9}";
+            let other = "";
+            assert(key@ != other@) by {
+                reveal_strlit("caf\u{e9}");
+                reveal_strlit("");
+            }
+            let mut s = StringHashSet::with_capacity(2);
+            assert(s.well_formed());
+            assert(s@ == Set::<Seq<char>>::empty());
+            s.reserve(4);
+            let empty = s.is_empty();
+            assert(empty);
+            let value = s.get(key);
+            assert(value.is_none());
+            let removed = s.remove(key);
+            assert(!removed);
+
+            let inserted = s.insert(key.to_owned());
+            assert(inserted);
+            let inserted = s.insert(key.to_owned());
+            assert(!inserted);
+            let present = s.contains(key);
+            assert(present);
+            let stored = s.get(key).unwrap();
+            assert(stored@ == key@);
+            let count = s.len();
+            assert(count == 1);
+            let inserted = s.insert(other.to_owned());
+            assert(inserted);
+            s.reserve(4);
+            assert(s@ == set![key@, other@]);
+            assert(s.len() == 2);
+            let count = s.len();
+            assert(count == 2);
+
+            let removed = s.remove(key);
+            assert(removed);
+            assert(s@ == set![other@]);
+            let present = s.contains(key);
+            assert(!present);
+            let value = s.get(key);
+            assert(value.is_none());
+            let removed = s.remove(key);
+            assert(!removed);
+            let stored = s.get(other).unwrap();
+            assert(stored@ == other@);
+            s.clear();
+            assert(s.well_formed());
+            assert(s@ == Set::<Seq<char>>::empty());
+            let empty = s.is_empty();
+            assert(empty);
+            let count = s.len();
+            assert(count == 0);
+            let removed = s.remove(other);
+            assert(!removed);
         }
     } => Ok(())
 }
