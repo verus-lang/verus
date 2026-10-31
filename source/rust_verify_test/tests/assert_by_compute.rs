@@ -1546,3 +1546,21 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] seq_to_sst_array_view_not_pruned_regression_3074 verus_code! {
+        use vstd::prelude::*;
+
+        uninterp spec fn p(s: Seq<int>) -> bool;
+
+        spec fn mk(n: nat) -> Seq<int>
+            decreases n,
+        {
+            if n == 0 { Seq::empty() } else { mk((n - 1) as nat).push(n as int) }
+        }
+
+        proof fn test() {
+            assert(p(mk(4))) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
