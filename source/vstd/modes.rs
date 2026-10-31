@@ -12,6 +12,12 @@ pub axiom fn tracked_swap<V>(tracked a: &mut V, tracked b: &mut V)
         *final(b) == *old(a),
 ;
 
+/// Converts a borrowed value to a borrowed `Tracked` of that value.
+pub axiom fn tracked_ref<'a, T: ?Sized>(tracked t: &'a T) -> (tracked out: &'a Tracked<T>)
+    ensures
+        &**out == t,
+;
+
 /// Make any tracked object permanently shared and get a reference to it.
 ///
 /// Tip: If you try to use this and run into problems relating to the introduction
@@ -28,5 +34,23 @@ pub axiom fn tracked_static_mut_ref<V>(tracked v: V) -> (tracked res: &'static m
     ensures
         *res == v,
 ;
+
+/// Types whose values own no resources (no permissions, tokens or other tracked data),
+/// so any spec value can be used as a tracked one.
+pub trait TrivialOwnership: Sized {
+    /// Makes a spec value tracked.
+    proof fn tracked_from_spec(v: Self) -> (tracked out: Self)
+        ensures
+            out == v,
+    ;
+}
+
+impl TrivialOwnership for u32 {
+    axiom fn tracked_from_spec(v: Self) -> (tracked out: Self);
+}
+
+impl TrivialOwnership for usize {
+    axiom fn tracked_from_spec(v: Self) -> (tracked out: Self);
+}
 
 } // verus!

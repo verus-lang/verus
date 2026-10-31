@@ -42,7 +42,7 @@ verus! {
 
 // https://github.com/minirust/minirust/blob/master/spec/mem/interface.md#abstract-bytes
 // https://github.com/minirust/minirust/blob/master/spec/lang/representation.md
-broadcast use {group_layout_axioms, group_vstd_default};
+broadcast use {group_layout_axioms, super::seq::group_seq_axioms};
 
 /// Memory is represented as a sequence of abstract bytes. Each byte is uninitialized or initialized.
 /// An initialized byte may optionally have a provenance.
@@ -129,6 +129,22 @@ pub broadcast axiom fn encode_decode_len<T>(value: T, bytes: Seq<AbstractByte>)
 pub axiom fn encode_decode_inverse<T>(tracked value: &T)
     ensures
         forall|bytes| #[trigger] abs_encode::<T>(value, bytes) ==> abs_decode::<T>(bytes, value),
+;
+
+/// The bytes decode to a slice exactly when there is one `size_of::<T>()`-byte slot per element,
+/// and each slot decodes to its element.
+/// This follows the same pattern as the `[u8]` encoding (`EncodingU8Slice`).
+pub broadcast axiom fn abs_decode_slice<T>(bytes: Seq<AbstractByte>, v: &[T])
+    ensures
+        #[trigger] abs_decode::<[T]>(bytes, v) <==> {
+            &&& bytes.len() == v@.len() * size_of::<T>()
+            &&& forall|i: int|
+                #![trigger v@[i]]
+                0 <= i < v@.len() ==> abs_decode::<T>(
+                    bytes.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+                    &v@[i],
+                )
+        },
 ;
 
 /// This trait defines the concrete specification for the given type's `AbstractByte` encoding.
@@ -333,6 +349,7 @@ pub broadcast proof fn endian_to_bytes_to_endian(n: nat, len: nat, prov: Option<
             &&& endian.wf()
         }),
 {
+    broadcast use group_vstd_default;
     broadcast use EndianNat::from_nat_properties;
 
     let endian = EndianNat::<u8>::from_nat(n, len);
@@ -349,6 +366,8 @@ pub broadcast proof fn endian_to_bytes_shared_provenance(endian: EndianNat<u8>, 
         #[trigger] AbstractByte::shared_provenance(endian_to_bytes(endian, Some(prov))) == prov,
     decreases endian.len(),
 {
+    broadcast use group_vstd_default;
+
     if endian.len() == 1 {
     } else {
         let bytes = endian_to_bytes(endian, Some(prov));
@@ -366,6 +385,8 @@ pub broadcast proof fn endian_to_bytes_shared_provenance_none(endian: EndianNat<
             == Provenance::None,
     decreases endian.len(),
 {
+    broadcast use group_vstd_default;
+
     if endian.len() == 1 {
     } else {
         let bytes = endian_to_bytes(endian, None);
@@ -438,6 +459,7 @@ macro_rules! unsigned_int_encoding {
                     bytes_to_endian(bytes).to_nat() as $int == v,
                     bytes_to_endian(bytes).wf(),
             {
+                broadcast use group_vstd_default;
                 broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
                 unsigned_int_max_values();
@@ -454,6 +476,209 @@ unsigned_int_encoding! {
     (u128, u128_encode);
     (usize, usize_encode);
 }
+
+verus! {
+
+/// Types where every initialized byte sequence of length `size_of::<Self>()` decodes to a valid value of that type.
+/// This value is given by the natural number represented by the byte values
+/// (with respect to the endianness of the platform),
+/// regardless of any provenance the bytes carry.
+///
+/// Implemented by the unsigned primitive integers: `u8`, `u16`, `u32`, `u64`, `u128` and `usize`.
+/// Note that raw pointers are *not* included, since their bytes do carry provenance;
+/// similarly, signed integers are also excluded, since they are represented using two's complement.
+pub trait DecodesToNat: AbstractByteRepresentation + BasePow2 + Integer {
+    /// Constructs a `Self` from a natural number `n`, for `n` below `Self::base()`.
+    // Needed so `lemma_from_nat` can name the value:
+    // `exists|v: Self| v as int == n` has no valid trigger.
+    spec fn from_nat(n: nat) -> Self
+        recommends
+            n < Self::base(),
+    ;
+
+    /// The bytes decode to `v` exactly when they are `size_of::<Self>()` initialized bytes
+    /// whose `EndianNat` is `v`.
+    proof fn lemma_abs_decode(bytes: Seq<AbstractByte>, v: Self)
+        ensures
+            abs_decode::<Self>(bytes, &v) <==> {
+                &&& bytes.len() == size_of::<Self>()
+                &&& AbstractByte::all_init(bytes)
+                &&& bytes_to_endian(bytes).wf()
+                &&& bytes_to_endian(bytes).to_nat() == v as int
+            },
+    ;
+
+    /// A value fills its `size_of::<Self>()` bytes:
+    /// it has 8 bits per byte, so its base is 256 to the power of its size.
+    proof fn lemma_base_size()
+        ensures
+            Self::bits() == 8 * size_of::<Self>(),
+            Self::base() == pow(u8::base() as int, size_of::<Self>()),
+    ;
+
+    /// Every natural number below `Self::base()` is the value of some `Self`.
+    proof fn lemma_from_nat(n: nat)
+        requires
+            n < Self::base(),
+        ensures
+            Self::from_nat(n) as int == n,
+    ;
+}
+
+}  // verus!
+
+
+macro_rules! decodes_to_nat {
+    ($($uint:ty),+) => {$(
+        verus! {
+            impl DecodesToNat for $uint {
+                proof fn lemma_abs_decode(bytes: Seq<AbstractByte>, v: Self) {
+                    broadcast use layout_of_primitives;
+
+                    <$uint as AbstractByteRepresentation>::abs_encode_impl(v, bytes);
+                    unsigned_int_max_values();
+                    let endian = bytes_to_endian(bytes);
+                    if bytes.len() == size_of::<$uint>() && endian.wf() {
+                        endian.to_nat_properties();
+                    }
+                }
+
+                proof fn lemma_base_size() {
+                    broadcast use layout_of_primitives;
+
+                    unsigned_int_max_values();
+                }
+
+                open spec fn from_nat(n: nat) -> Self {
+                    n as $uint
+                }
+
+                proof fn lemma_from_nat(n: nat) {
+                }
+            }
+        }
+    )+};
+}
+
+decodes_to_nat!(u8, u16, u32, u64, u128, usize);
+
+verus! {
+
+/// The bytes of `digits.len()` consecutive `B`s, each decoding to its digit,
+/// are initialized, and their `EndianNat` is the digits' `EndianNat` in base `B`.
+proof fn lemma_bytes_to_endian_digits<B: DecodesToNat>(bytes: Seq<AbstractByte>, digits: Seq<B>)
+    requires
+        bytes.len() == digits.len() * size_of::<B>(),
+        forall|i: int| 0 <= i < digits.len() ==> #[trigger] abs_decode::<B>(
+            bytes.subrange(i * size_of::<B>(), (i + 1) * size_of::<B>()),
+            &digits[i],
+        ),
+    ensures
+        AbstractByte::all_init(bytes),
+        EndianNat::<B>::in_bounds(digits.map(|i, d| d as int)),
+        bytes_to_endian(bytes).to_nat() == to_endian_from_digits(digits).to_nat(),
+    decreases digits.len(),
+{
+    reveal(EndianNat::to_nat);
+    let s = size_of::<B>() as int;
+    let k = digits.len() as int;
+    B::lemma_base_size();
+    if k == 0 {
+        assert(bytes.len() == 0) by (nonlinear_arith)
+            requires
+                bytes.len() == k * s,
+                k == 0,
+        ;
+    } else {
+        assert(0 <= s <= k * s && (k - 1) * s == k * s - s) by (nonlinear_arith)
+            requires
+                k > 0,
+                s >= 0,
+        ;
+        // The chunk of the least significant digit, and the rest
+        let (least_i, least, rest, rest_digits) = match endianness() {
+            Endian::Little => (0int, bytes.subrange(0, s), bytes.subrange(s, k * s), digits.skip(1)),
+            Endian::Big => (k - 1, bytes.subrange(k * s - s, k * s), bytes.subrange(0, k * s - s), digits.drop_last()),
+        };
+        assert forall|i: int| 0 <= i < k - 1 implies #[trigger] abs_decode::<B>(
+            rest.subrange(i * s, (i + 1) * s),
+            &rest_digits[i],
+        ) by {
+            assert((i + 1) * s == i * s + s && (i + 2) * s == (i + 1) * s + s && 0 <= i * s
+                && (i + 2) * s <= k * s) by (nonlinear_arith)
+                requires
+                    0 <= i < k - 1,
+                    s >= 0,
+            ;
+            let j = if endianness() is Little { i + 1 } else { i };
+            assert(rest.subrange(i * s, (i + 1) * s) =~= bytes.subrange(j * s, (j + 1) * s));
+        }
+        lemma_bytes_to_endian_digits(rest, rest_digits);
+        assert(least =~= bytes.subrange(least_i * s, (least_i + 1) * s));
+        B::lemma_abs_decode(least, digits[least_i]);
+        bytes_to_endian(least).to_nat_properties();
+
+        // The bytes are the rest's bytes with the least chunk appended in the least significant position
+        let e = bytes_to_endian(bytes);
+        let e_rest = bytes_to_endian(rest);
+        let e_least = bytes_to_endian(least);
+        assert(e =~= e_rest.append_least(e_least));
+        EndianNat::<u8>::to_nat_append_least(e_rest, e_least);
+
+        // The digits are the rest's digits with the least digit in the least significant position
+        let d = to_endian_from_digits(digits);
+        assert(d.drop_least() =~= to_endian_from_digits(rest_digits));
+        assert forall|i: int| 0 <= i < k implies 0 <= #[trigger] d.digits[i] < B::base() by {
+            if i != least_i {
+                let j = if endianness() is Little { i - 1 } else { i };
+                assert(to_endian_from_digits(rest_digits).digits[j] == d.digits[i]);
+            }
+        }
+        assert(bytes =~= if endianness() is Little { least + rest } else { rest + least });
+    }
+}
+
+/// If the bytes decode to `digits` (one `B` per `size_of::<B>()` bytes),
+/// they decode to the `BIG` whose digits are `digits`.
+pub proof fn lemma_abs_decode_to_big<BIG, B>(bytes: Seq<AbstractByte>, digits: Seq<B>, v: BIG)
+    where BIG: DecodesToNat, B: DecodesToNat + CompatibleSmallerBaseFor<BIG>
+    requires
+        digits.len() * size_of::<B>() == size_of::<BIG>(),
+        bytes.len() == size_of::<BIG>(),
+        forall|i: int| 0 <= i < digits.len() ==> #[trigger] abs_decode::<B>(
+            bytes.subrange(i * size_of::<B>(), (i + 1) * size_of::<B>()),
+            &digits[i],
+        ),
+        v as int == to_big_from_digits::<BIG, B>(digits).index(0),
+    ensures
+        abs_decode::<BIG>(bytes, &v),
+{
+    lemma_bytes_to_endian_digits(bytes, digits);
+    B::lemma_base_size();
+    BIG::lemma_base_size();
+    B::bits_to_base();
+    // `digits` is one digit in base `BIG`
+    assert(digits.len() == EndianNat::<B>::exp::<BIG>()) by {
+        let k = digits.len() as int;
+        let s = size_of::<B>() as int;
+        assert(s > 0) by (nonlinear_arith)
+            requires
+                B::bits() == 8 * s,
+                B::bits() > 1,
+        ;
+        assert((8 * (k * s)) / (8 * s) == k) by (nonlinear_arith)
+            requires
+                s > 0,
+        ;
+    }
+    broadcast use EndianNat::exp_properties;
+
+    to_big_from_digits_single::<BIG, B>(digits);
+    BIG::lemma_abs_decode(bytes, v);
+}
+
+}  // verus!
+
 
 /// When x is negative, the bitwise result of this function is equivalent
 /// to the two's complement representation of x in the given base.
@@ -537,6 +762,7 @@ macro_rules! signed_int_encoding {
                     bytes_to_endian(bytes).to_nat() == signed_to_unsigned(v as int, size_of::<$int>()),
                     bytes_to_endian(bytes).wf(),
             {
+                broadcast use group_vstd_default;
                 broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
                 unsigned_int_max_values()
@@ -719,6 +945,8 @@ impl<T: ZeroSizedRepresentation> AbstractByteEncoding<T> for ZeroSizedRepresenta
     }
 
     proof fn encoding_size(v: T, b: Seq<AbstractByte>) {
+        broadcast use group_vstd_default;
+
         T::layout_of_zero_sized_repr();
     }
 
@@ -959,6 +1187,7 @@ impl<T: PointeeSized> AbstractByteEncoding<*mut T> for RawPtrRepresentation<T> {
     }
 
     proof fn encoding_exists(tracked v: *mut T) -> (b: Seq<AbstractByte>) {
+        broadcast use group_vstd_default;
         broadcast use endian_to_bytes_to_endian;
 
         unsigned_int_max_values();
@@ -1124,6 +1353,7 @@ impl<'a, T: ?Sized> AbstractByteRepresentation for SharedReference<'a, T> {
     axiom fn encoding_size(v: Self, b: Seq<AbstractByte>);
 
     proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
+        broadcast use group_vstd_default;
         broadcast use endian_to_bytes_to_endian;
 
         unsigned_int_max_values();
@@ -1349,6 +1579,7 @@ impl AbstractByteRepresentationUnsized<[u8]> for EncodingU8Slice {
     }
 
     proof fn encoding_exists(tracked v: &[u8]) -> (b: Seq<AbstractByte>) {
+        broadcast use group_vstd_default;
         broadcast use endian_to_bytes_to_endian, EndianNat::from_nat_to_nat;
 
         unsigned_int_max_values();
@@ -1375,6 +1606,33 @@ impl AbstractByteRepresentationUnsized<[u8]> for EncodingU8Slice {
     axiom fn abs_can_be_encoded_impl();
 }
 
+// /// The abstract encoding for a `[T]` maps each value in the slice to a corresponding abtract byte with no provenance.
+// pub struct EncodingSlice;
+// impl<T: AbstractByteRepresentation> AbstractByteRepresentationUnsized<[T]> for EncodingSlice {
+//     open spec fn can_be_encoded() -> bool {
+//         true
+//     }
+//     open spec fn encode(value: &[T], bytes: Seq<AbstractByte>) -> bool {
+//         &&& value@.len() * size_of::<T>() == bytes.len()
+//         &&& forall|i| 0 <= i < value@.len() ==> T::encode(#[trigger] value@[i], bytes.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()))
+//     }
+//     open spec fn decode(bytes: Seq<AbstractByte>, value: &[T]) -> bool {
+//         &&& value@.len() * size_of::<T>() == bytes.len()
+//         &&& forall|i: int| 0 <= i < value@.len() ==> T::decode(bytes.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()), #[trigger] value@[i])
+//     }
+//     proof fn encoding_size(v: &[T], b: Seq<AbstractByte>) {
+//     }
+//     proof fn encoding_exists(tracked v: &[T]) -> (b: Seq<AbstractByte>) {
+//         v@.map_values(|val: T| T::encoding_exists(val)).fold_left(Seq::<AbstractByte>::empty(), |s1: Seq<AbstractByte>, s2: Seq<AbstractByte>| s1.add(s2))
+//     }
+//     proof fn encoding_invertible(v: &[T], b: Seq<AbstractByte>) {
+//         assert forall|i: int| 0 <= i < v@.len() implies T::decode(b.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()), #[trigger] v@[i]) by {
+//             T::encoding_invertible(v@[i], b.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()));
+//         }
+//     }
+//     axiom fn abs_encode_impl(v: &[T], b: Seq<AbstractByte>);
+//     axiom fn abs_can_be_encoded_impl();
+// }
 pub broadcast group group_type_representation_axioms {
     u8_encode,
     u16_encode,
@@ -1402,6 +1660,7 @@ pub broadcast group group_type_representation_axioms {
     ptr_metadata_encoding_well_defined_slices,
     ptr_metadata_encoding_well_defined_str,
     shared_ref_cannot_be_encoded,
+    abs_decode_slice,
 }
 
 } // verus!
