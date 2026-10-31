@@ -682,6 +682,41 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+test_verify_one_file! {
+    #[test] quantifier_trigger_uses_param_regression_1277 verus_code! {
+        #[allow(unused_imports)]
+        use vstd::seq::*;
+
+        uninterp spec fn h(i: int) -> bool;
+        uninterp spec fn g(n: int, i: int, j: int) -> int;
+
+        // GitHub issue 1277: triggers that mention a parameter must be
+        // evaluated in the same environment as the quantifier body
+        spec fn comm(n: int) -> bool {
+            forall|i: int| #[trigger] (n + i) == i + n
+        }
+
+        spec fn nested(n: int) -> bool {
+            forall|i: int| #[trigger] h(i) ==> forall|j: int| #[trigger] g(n, i, j) == g(n, i, j)
+        }
+
+        spec fn all_nonneg(s: Seq<int>) -> bool {
+            forall|i: int| 0 <= i < s.len() ==> #[trigger] s[i] >= 0
+        }
+
+        spec fn wrong(n: int) -> bool {
+            forall|i: int| #[trigger] (n + i) == i + n + 1
+        }
+
+        proof fn test() {
+            assert(comm(3)) by (compute);
+            assert(nested(3)) by (compute);
+            assert(all_nonneg(seq![1, 2, 3])) by (compute);
+            assert(wrong(3)) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 test_verify_one_file_with_options! {
     #[test] shift_regression_928_1 ["vstd"] => verus_code! {
         pub spec fn id(x:int) -> int;
