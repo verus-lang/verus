@@ -1435,3 +1435,44 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] closed_trait_impl_in_another_module_issue1728 verus_code! {
+        mod a {
+            use vstd::prelude::*;
+            pub struct A { pub x: u8 }
+            impl View for A {
+                type V = nat;
+                closed spec fn view(&self) -> nat { 42 }
+            }
+        }
+
+        use vstd::prelude::View;
+
+        proof fn test(a1: a::A, a2: a::A) {
+            assert(a1@ == a1@) by (compute);
+            assert(a1@ == a2@) by (compute); // FAILS
+            assert(a1@ == 42) by (compute); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] open_trait_impl_in_another_module_issue1728 verus_code! {
+        mod a {
+            use vstd::prelude::*;
+            pub struct A { pub x: u8 }
+            impl View for A {
+                type V = nat;
+                open spec fn view(&self) -> nat { 42 }
+            }
+        }
+
+        use vstd::prelude::View;
+
+        proof fn test(a1: a::A, a2: a::A) {
+            assert(a1@ == a2@) by (compute_only);
+            assert(a1@ == 42) by (compute_only);
+        }
+    } => Ok(())
+}
