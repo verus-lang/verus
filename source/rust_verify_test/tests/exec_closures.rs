@@ -212,7 +212,7 @@ test_verify_one_file_with_options! {
             };
         }
     } => Err(err) => assert_vir_error_msg(err,
-        "mutable-reference bindings in closure parameters are not supported")
+        "`ref mut` bindings in parameters")
 }
 
 test_verify_one_file_with_options! {
@@ -221,7 +221,7 @@ test_verify_one_file_with_options! {
             let f = |ref mut x: u64| {};
         }
     } => Err(err) => assert_vir_error_msg(err,
-        "mutable-reference bindings in closure parameters are not supported")
+        "`ref mut` bindings in parameters")
 }
 
 test_verify_one_file_with_options! {
@@ -232,7 +232,7 @@ test_verify_one_file_with_options! {
             let f = |Pair { values: (x, ref mut y) }: Pair| {};
         }
     } => Err(err) => assert_vir_error_msg(err,
-        "mutable-reference bindings in closure parameters are not supported")
+        "`ref mut` bindings in parameters")
 }
 
 test_verify_one_file_with_options! {
@@ -723,7 +723,7 @@ test_verify_one_file_with_options! {
             let f = || true;
             f()
         }
-    }).to_string() => Err(err) => assert_vir_error_msg(err, "closure in ghost code must be marked as a spec_fn")
+    }).to_string() => Err(err) => assert_vir_error_msg(err, "closure in ghost code must be marked as a `spec_fn`")
 }
 
 test_verify_one_file_with_options! {
@@ -733,7 +733,7 @@ test_verify_one_file_with_options! {
         #[verifier::spec] fn foo<F: Fn(u64) -> u64>(f: F) -> u64 {
             f(5)
         }
-    } => Err(err) => assert_vir_error_msg(err, "to call a non-static function in ghost code, it must be a spec_fn")
+    } => Err(err) => assert_vir_error_msg(err, "to call a non-static function in ghost code, it must be a `spec_fn`")
 }
 
 test_verify_one_file_with_options! {
@@ -1610,7 +1610,7 @@ test_verify_one_file! {
                 0
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support implementing this trait")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support implementing this trait")
 }
 
 test_verify_one_file! {
@@ -1630,7 +1630,7 @@ test_verify_one_file! {
                 0
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support implementing this trait")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support implementing this trait")
 }
 
 test_verify_one_file! {
@@ -1657,7 +1657,7 @@ test_verify_one_file! {
                 0
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support implementing this trait")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support implementing this trait")
 }
 
 test_verify_one_file! {
@@ -1756,7 +1756,7 @@ test_verify_one_file! {
 
         struct Pred<T> { t: T }
         impl<T> InvariantPredicate<(), T> for Pred<T> {
-            spec fn inv(k: (), v: T) -> bool { true }
+            open spec fn inv(k: (), v: T) -> bool { true }
         }
 
         struct X { }
@@ -1779,7 +1779,7 @@ test_verify_one_file! {
 
         struct Pred<T> { t: T }
         impl<T> InvariantPredicate<(), T> for Pred<T> {
-            spec fn inv(k: (), v: T) -> bool { true }
+            open spec fn inv(k: (), v: T) -> bool { true }
         }
 
         struct X { }
@@ -2172,4 +2172,82 @@ test_verify_one_file! {
             assert(z == 42);
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_edition2018 ["--edition 2018"] => verus_code! {
+        use vstd::prelude::*;
+        pub fn ghost_capture_panics2() {
+            let ghost expected = 1u64;
+
+            let _closure = || -> (result: u64) ensures result == expected { { 1 } };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_edition2021 ["--edition 2021"] => verus_code! {
+        use vstd::prelude::*;
+        pub fn ghost_capture_panics2() {
+            let ghost expected = 1u64;
+
+            let _closure = || -> (result: u64) ensures result == expected { { 1 } };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_verus_spec_attr_edition2018 ["--edition 2018"] => code! {
+        use vstd::prelude::*;
+        #[verus_spec]
+        pub fn ghost_capture_panics() {
+            proof_decl! {
+                let ghost expected = 1u64;
+            }
+
+            let _closure = #[verus_spec(result: u64 =>
+                ensures
+                    result == expected,
+            )]
+            || 1;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_verus_spec_attr_edition2021 ["--edition 2021"] => code! {
+        use vstd::prelude::*;
+        #[verus_spec]
+        pub fn ghost_capture_panics() {
+            proof_decl! {
+                let ghost expected = 1u64;
+            }
+
+            let _closure = #[verus_spec(result: u64 =>
+                ensures
+                    result == expected,
+            )]
+            || 1;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_edition2018_fail_tracked_var ["--edition 2018"] => verus_code! {
+        use vstd::prelude::*;
+        tracked struct X { }
+        pub fn ghost_capture_panics2() {
+            let ghost expected = 1u64;
+
+            let tracked x = X{};
+
+            let closure = || -> (result: u64) ensures result == expected {
+                let tracked x1 = x;
+                0
+            };
+
+            let tracked y = x;
+            closure();
+        }
+    } => Err(e) => assert_rust_error_msg(e, "use of moved value: `x`")
 }

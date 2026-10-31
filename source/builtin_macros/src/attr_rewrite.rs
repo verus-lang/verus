@@ -48,6 +48,7 @@ use crate::{
     unerased_proxies::VERUS_UNERASED_PROXY,
 };
 
+// rust_verify relies on this name (see VERUS_VERIFIED_PREFIX in rust_verify/src/rust_to_vir_expr.rs)
 pub const VERIFIED: &str = "_VERUS_VERIFIED";
 
 pub const DUAL_SPEC_PREFIX: &str = "__VERUS_SPEC";
@@ -182,7 +183,7 @@ pub(crate) fn rewrite_verus_attribute(
         } else {
             let span = arg.span();
             return proc_macro::TokenStream::from(quote_spanned!(span =>
-                compile_error!("unsupported parameters {:?} in #[verus_verify(...)]", arg);
+                ::core::compile_error!("unsupported parameters {:?} in #[verus_verify(...)]", arg);
             ));
         }
     }
@@ -191,16 +192,16 @@ pub(crate) fn rewrite_verus_attribute(
     } else if let Some(attr) = spec_fn_attrs.first() {
         let span = attr.span();
         return proc_macro::TokenStream::from(quote_spanned!(span =>
-            compile_error!("publish modifiers in #[verus_verify(...)] require `dual_spec`");
+            ::core::compile_error!("publish modifiers in #[verus_verify(...)] require `dual_spec`");
         ));
     }
     if contains_external && contains_non_external {
         return proc_macro::TokenStream::from(quote_spanned!(args.span() =>
-            compile_error!("conflict parameters in #[verus_verify(...)]");
+            ::core::compile_error!("conflict parameters in #[verus_verify(...)]");
         ));
     }
     if !contains_external {
-        attributes.push(quote_spanned!(item.span() => #[verifier::verify]));
+        attributes.push(quote_spanned!(item.span() => #[verus::internal(verify)]));
     }
 
     // Inject #[verus_spec] where missing and stamp impl methods with the sentinel marker.
@@ -234,11 +235,9 @@ impl VisitMut for ExecReplacer {
                 // the use of panic_fmt takes Argument and Argument is created via Arguments::new_v1
                 // with a private struct rt::Argument.
                 // Directly replacing panic macro is the simpliest solution.
-                // Build the full path: std::prelude::vpanic
-                let mut segments = syn::punctuated::Punctuated::new();
-                segments.push(syn::Ident::new("vstd", x.span()).into());
-                segments.push(syn::Ident::new("vpanic", x.span()).into());
-                mac.path = syn::Path { leading_colon: None, segments };
+                // Build the full path: vstd::vpanic
+                let vstd = crate::syntax::Vstd(x.span());
+                mac.path = syn::parse_quote_spanned!(x.span() => #vstd::vpanic);
             }
         }
     }
@@ -365,13 +364,13 @@ fn check_misuse_verus_spec(
     for attr in attrs {
         if let Some(ident) = attr.path().get_ident() {
             if ident == VERUS_SPEC {
-                return Err(quote_spanned! { attr_span.into() => compile_error!(
+                return Err(quote_spanned! { attr_span.into() => ::core::compile_error!(
                     "Multiple #[verus_spec] attributes are not allowed.
                     This may be caused by incorrect usage or a bug in builtin_macros");
                 }
                 .into());
             } else if ident == "verus_verify" {
-                return Err(quote_spanned! { attr_span.into() => compile_error!(
+                return Err(quote_spanned! { attr_span.into() => ::core::compile_error!(
                     "#[verus_verify] attributes should be applied before #[verus_spec].");
                 }
                 .into());
@@ -380,7 +379,7 @@ fn check_misuse_verus_spec(
         if is_verus_macro_applied(&attr) {
             verus_macro_applied = true;
             if !allow_verus_macro {
-                return Err(quote_spanned! { attr_span.into() => compile_error!(
+                return Err(quote_spanned! { attr_span.into() => ::core::compile_error!(
                     "verus! macro is already applied.");
                 }
                 .into());
@@ -407,9 +406,14 @@ fn check_misuse_verus_spec(
 /// The source of #[verus_spec] is ruled out if it is applied in `verus_spec`
 /// rewriting and after `check_misuse_verus_spec` has been executed.
 fn is_verus_macro_applied(attrs: &syn::Attribute) -> bool {
+    let expected_internal = |args: &syn::Meta| match args {
+        syn::Meta::List(meta_list) if meta_list.tokens.to_string() == "verify" => true,
+        _ => false,
+    };
     attrs.path().segments.len() == 2
         && attrs.path().segments[0].ident == "verus"
         && attrs.path().segments[1].ident == "internal"
+        && !expected_internal(&attrs.meta)
 }
 
 /// Adds a `#[verus_spec]` attribute to the given attributes if it's not already present.
@@ -420,7 +424,42 @@ fn add_verus_spec_if_needed(attrs: &mut Vec<syn::Attribute>, span: proc_macro2::
     if attrs.iter().any(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC)) {
         return;
     }
+    // `#[cfg_attr(pred, verus_spec(..))]` is expanded after this attribute (code that is also
+    // built without Verus gates its specifications this way). An unconditional
+    // `#[verus_spec]` would make two when `pred` holds, so the empty one is added only where
+    // none of the predicates hold: `#[cfg_attr(not(any(pred, ..)), verus_spec)]`.
+    let preds: Vec<TokenStream> = attrs.iter().filter_map(cfg_attr_verus_spec_pred).collect();
+    if !preds.is_empty() {
+        attrs.push(crate::syntax::mk_rust_attr_syn(
+            span,
+            "cfg_attr",
+            quote_spanned! { span => not(any(#(#preds),*)), verus_spec },
+        ));
+        return;
+    }
     attrs.push(crate::syntax::mk_rust_attr_syn(span, VERUS_SPEC, TokenStream::new()));
+}
+
+/// The predicate of `#[cfg_attr(pred, .., verus_spec(..), ..)]`
+fn cfg_attr_verus_spec_pred(attr: &syn::Attribute) -> Option<TokenStream> {
+    if !attr.path().is_ident("cfg_attr") {
+        return None;
+    }
+    let syn::Meta::List(list) = &attr.meta else { return None };
+    // the predicate is everything before the first top-level `,`; the attributes follow, and a
+    // top-level identifier `verus_spec` there is the attribute (nested groups such as
+    // `verus_spec(..)` or `all(..)` are single token trees)
+    let mut pred = TokenStream::new();
+    let mut after_pred = false;
+    for tt in list.tokens.clone() {
+        match tt {
+            proc_macro2::TokenTree::Punct(p) if p.as_char() == ',' => after_pred = true,
+            proc_macro2::TokenTree::Ident(i) if after_pred && i == VERUS_SPEC => return Some(pred),
+            tt if !after_pred => pred.extend(std::iter::once(tt)),
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Prepares items under `#[verus_verify]` for subsequent `#[verus_spec]` expansion.
@@ -525,7 +564,7 @@ pub(crate) fn rewrite_verus_spec(
             // (In the normal case, this results in a redundant extra error message after
             // the normal Rust syntax error, but it's a reasonable looking error message.)
             return proc_macro::TokenStream::from(
-                quote_spanned!(err.span() => compile_error!("Misuse of #[verus_spec]");),
+                quote_spanned!(err.span() => ::core::compile_error!("Misuse of #[verus_spec]");),
             );
         }
     };
@@ -818,7 +857,7 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             let mut spec_attr =
                 verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::SignatureSpecAttr);
             if let Some(_) = &spec_attr.spec.with {
-                return quote_spanned! {spec_attr.span() => compile_error!("`with` does not support closure")}.into();
+                return quote_spanned! {spec_attr.span() => ::core::compile_error!("`with` does not support closure")}.into();
             }
             if let Some((verus_syn::Pat::Type(pat_ty), ar)) = spec_attr.ret_pat {
                 spec_attr.ret_pat = Some((*pat_ty.pat.clone(), ar));
@@ -829,18 +868,34 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             }
             if matches!(closure.output, syn::ReturnType::Default) {
                 return quote_spanned! {closure.span() =>
-                    compile_error!("Closure must have a return type, or add `$ret: $type =>` in verus_spec");
+                    ::core::compile_error!("Closure must have a return type, or add `$ret: $type =>` in verus_spec");
                 }.into();
             }
             let mut signature = closure_to_fn_sig(&closure);
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut signature, false, true);
             let body = &closure.body;
+            let dcc = if erase.keep() {
+                Some(stmt_with_semi!(builtin, closure.span() =>
+                    #builtin::dummy_capture_consume(_verus_internal_identifier_for_closures)
+                ))
+            } else {
+                None
+            };
             let new_body = quote_spanned!(closure.body.span() =>
+                #dcc
                 #(#spec_stmts)*
                 {#body}
             );
             *closure.body = Expr::Verbatim(new_body);
-            closure.to_token_stream().into()
+            let toks = closure.to_token_stream();
+            let toks = if erase.keep() {
+                quote_spanned_builtin!(builtin, closure.span() =>
+                    { let _verus_internal_identifier_for_closures = #builtin::dummy_capture_new(); #toks }
+                )
+            } else {
+                toks
+            };
+            toks.into()
         }
         AnyFnOrLoop::TraitMethod(mut method) => {
             // Note: default trait methods appear in the AnyFnOrLoop::Fn case, not here
@@ -857,13 +912,17 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 // let unverified_method = rewrite_unverified_func(&mut method, with.with.span());
                 // unverified_method.to_tokens(&mut new_stream);
                 return proc_macro::TokenStream::from(
-                    quote_spanned!(with.with.span() => compile_error!("`with` does not support trait");),
+                    quote_spanned!(with.with.span() => ::core::compile_error!("`with` does not support trait");),
                 );
             }
 
+            let inputs = method.sig.inputs.clone();
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut method.sig, true, false);
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
             let mut spec_fun_opt = syntax_trait::split_trait_method_syn(&method, erase.erase());
+            // restore the original args in the trait method, since Rust rejects
+            // patterns like `__verus_param_N @ p` in methods without bodies
+            method.sig.inputs = inputs;
             let spec_fun = spec_fun_opt.as_mut().unwrap_or(&mut method);
             let _ = spec_fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
             method.attrs.push(mk_verus_attr_syn(method.span(), quote! { verus_macro }));
@@ -977,7 +1036,7 @@ fn rewrite_verus_spec_on_expr_local(
                 }
             } else {
                 proc_macro2::TokenStream::from(quote_spanned!(local.span() =>
-                    compile_error!("with attribute cannot be applied to a local without init");
+                    ::core::compile_error!("with attribute cannot be applied to a local without init");
                 ))
             }
         }
@@ -1020,7 +1079,7 @@ fn apply_erased_fields<'a>(
         // If there's no struct constructor, we cannot apply ghost/tracked fields.
         if let Some(field) = erased_fields.last() {
             *expr = syn::Expr::Verbatim(quote_spanned! {field.span() =>
-                compile_error!("Ghost/tracked fields can only be applied to struct constructors.")
+                ::core::compile_error!("Ghost/tracked fields can only be applied to struct constructors.")
             });
             return Err(());
         }
@@ -1032,13 +1091,13 @@ fn apply_erased_fields<'a>(
             syntax::rewrite_expr(erase.clone(), false, field.expr.to_token_stream().into());
         let verus_syn::Member::Named(field_name) = &field.member else {
             *expr = syn::Expr::Verbatim(quote_spanned! {field.member.span() =>
-                compile_error!("A ghost/tracked field must be a named field.")
+                ::core::compile_error!("A ghost/tracked field must be a named field.")
             });
             return Err(());
         };
         if !is_tracked_ghost_expr(&field.expr) {
             *expr = syn::Expr::Verbatim(quote_spanned! {field.expr.span() =>
-                compile_error!("A ghost/tracked field must be a tracked/ghost expression. If you want to add ghost/tracked fields to a struct constructor, you should use $ident: Tracked/Ghost($ident).")
+                ::core::compile_error!("A ghost/tracked field must be a tracked/ghost expression. If you want to add ghost/tracked fields to a struct constructor, you should use $ident: Tracked/Ghost($ident).")
             });
             return Err(());
         }
@@ -1063,18 +1122,28 @@ fn rewrite_with_expr(
 ) -> Vec<verus_syn::Stmt> {
     let verus_syn::WithSpecOnExpr { inputs, outputs, follows, erased_fields, .. } = call_with_spec;
 
+    // The call as it appears in the compiled program (where it is not renamed).
+    // rust_verify checks that it resolves to the twin of the renamed verified callee.
+    let mut compiled_call: Option<Expr> = None;
     if outputs.is_some() || inputs.len() > 0 {
+        let mut original = expr.clone();
+        // Nested proof_with! calls in the arguments were already rewritten;
+        // use their compiled-program versions in the copy.
+        StripProofWithCallee { func: proof_with_callee_path(expr.span()).to_string() }
+            .visit_expr_mut(&mut original);
         match expr {
             syn::Expr::Call(syn::ExprCall { func, .. }) => {
                 if let Expr::Path(path) = func.as_mut() {
                     let x = &path.path.segments.last().unwrap().ident;
                     path.path.segments.last_mut().unwrap().ident =
                         syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
+                    compiled_call = Some(original);
                 }
             }
             syn::Expr::MethodCall(syn::ExprMethodCall { method, .. }) => {
                 let x = &method;
                 *method = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
+                compiled_call = Some(original);
             }
             syn::Expr::Try(syn::ExprTry { expr, .. }) => {
                 let call_with_spec = verus_syn::WithSpecOnExpr {
@@ -1088,7 +1157,7 @@ fn rewrite_with_expr(
             }
             _ => {
                 *expr = Expr::Verbatim(quote_spanned!(expr.span() =>
-                    compile_error!("with ghost inputs/outputs cannot be applied to a non-call expression. You may want to use proof_with!(|= var) to append a ghost var to the expr.")
+                    ::core::compile_error!("with ghost inputs/outputs cannot be applied to a non-call expression. You may want to use proof_with!(|= var) to append a ghost var to the expr.")
                 ));
                 return vec![];
             }
@@ -1124,14 +1193,16 @@ fn rewrite_with_expr(
             elems,
         });
         let (x_declares, x_assigns) = syntax::rewrite_exe_pat(&mut pat);
-        *expr = syn::Expr::Verbatim(quote_spanned! {expr.span() => {
-            let #pat = #expr;
-            proof!{
-                #(#x_assigns)*
+        *expr = syn::Expr::Verbatim(
+            quote_spanned_builtin_builtin_macros! { _verus_builtin, verus_builtin_macros, expr.span() => {
+                let #pat = #expr;
+                #verus_builtin_macros::proof!{
+                    #(#x_assigns)*
+                }
+                #tmp_pat
             }
-            #tmp_pat
-        }
-        });
+            },
+        );
         x_declares
     } else {
         vec![]
@@ -1139,7 +1210,47 @@ fn rewrite_with_expr(
     if let Some((_, follow)) = follows {
         apply_follows(&erase, expr, follow.into_token_stream());
     }
+    if let Some(compiled_call) = compiled_call {
+        // `proof_with_callee(verified_expr, compiled_call)`, where verified_expr is the call
+        // to `_VERUS_VERIFIED_f`, possibly wrapped by the `=>` outputs block and `|=` tuple.
+        // This is a syn node (not Verbatim), so that an enclosing proof_with! can find it.
+        let span = expr.span();
+        let func: syn::ExprPath = syn::parse2(proof_with_callee_path(span)).unwrap();
+        let mut args = syn::punctuated::Punctuated::new();
+        args.push(expr.clone());
+        args.push(compiled_call);
+        *expr = Expr::Call(syn::ExprCall {
+            attrs: vec![],
+            func: Box::new(Expr::Path(func)),
+            paren_token: syn::token::Paren(span),
+            args,
+        });
+    }
     x_declares
+}
+
+fn proof_with_callee_path(span: proc_macro2::Span) -> TokenStream {
+    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::proof_with_callee)
+}
+
+/// Replace `proof_with_callee(verified_expr, compiled_call)` (as emitted above,
+/// `func` is the emitted path) by `compiled_call`
+struct StripProofWithCallee {
+    func: String,
+}
+
+impl VisitMut for StripProofWithCallee {
+    fn visit_expr_mut(&mut self, e: &mut Expr) {
+        if let Expr::Call(syn::ExprCall { func, args, .. }) = e {
+            if let Expr::Path(path) = func.as_ref() {
+                if args.len() == 2 && path.to_token_stream().to_string() == self.func {
+                    *e = args[1].clone();
+                    return;
+                }
+            }
+        }
+        syn::visit_mut::visit_expr_mut(self, e);
+    }
 }
 
 /// Rewrite the const function and return a proxy function.
@@ -1182,7 +1293,7 @@ fn rewrite_unverified_func(
         unverified_fun = proxy;
     }
     let unimplemented = syn::Stmt::Expr(
-        syn::Expr::Verbatim(quote_spanned! {span => unimplemented!()}),
+        syn::Expr::Verbatim(quote_spanned! {span => ::core::unimplemented!()}),
         Some(syn::token::Semi { spans: [span] }),
     );
     let precondition_false = syn::Stmt::Expr(

@@ -1,7 +1,7 @@
 use crate::ast::{
     Axiom, BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl,
     DeclX, Decls, Expr, ExprX, Exprs, Ident, MultiOp, Qid, Quant, QueryX, Relation, RoundingMode,
-    Stmt, StmtX, Stmts, Trigger, Triggers, Typ, TypX, UnaryOp,
+    Stmt, StmtX, Stmts, Trigger, Triggers, Typ, TypX, UnaryOp, WrapLambda,
 };
 use crate::def::mk_skolem_id;
 use crate::messages::ArcDynMessageLabel;
@@ -114,7 +114,7 @@ where
 enum QuantOrChooseOrLambda {
     Quant(Quant),
     Choose(Expr),
-    Lambda,
+    Lambda(Option<WrapLambda>, Option<Expr>),
 }
 
 pub struct Parser {
@@ -164,6 +164,17 @@ impl Parser {
                     let label =
                         self.message_interface.message_label_from_air_span(&as_string, &as_string);
                     labels.push(label);
+                }
+                // ("note" "span"), as printed for notes that carry a span
+                Node::List(pair) if is_quoted_pair(pair) => {
+                    let (Node::Atom(note), Node::Atom(span)) = (&pair[0], &pair[1]) else {
+                        unreachable!()
+                    };
+                    let note = crate::printer::unescape(&note[1..note.len() - 1])
+                        .ok_or("bad string literal")?;
+                    let span = crate::printer::unescape(&span[1..span.len() - 1])
+                        .ok_or("bad string literal")?;
+                    labels.push(self.message_interface.message_label_from_air_span(&span, &note));
                 }
                 _ => {
                     return Err(format!("expected quoted string, found: {}", node_to_string(node)));
@@ -234,9 +245,34 @@ impl Parser {
                         let quantchooselambda = QuantOrChooseOrLambda::Quant(Quant::Exists);
                         return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, e);
                     }
-                    [Node::Atom(s), Node::List(binders), e] if s == "lambda" => {
-                        let quantchooselambda = QuantOrChooseOrLambda::Lambda;
-                        return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, e);
+                    // Note: (lambda list ...) distinguishes wrap = None
+                    // Note: (lambda atom ...) distinguishes wrap = Some(WrapLambda)
+                    [Node::Atom(s), Node::List(binders), body] if s == "lambda" => {
+                        let quantchooselambda = QuantOrChooseOrLambda::Lambda(None, None);
+                        return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, body);
+                    }
+                    [Node::Atom(s), Node::List(binders), cond, body] if s == "lambda" => {
+                        let cond = self.node_to_expr(cond)?;
+                        let quantchooselambda = QuantOrChooseOrLambda::Lambda(None, Some(cond));
+                        return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, body);
+                    }
+                    [Node::Atom(s), Node::Atom(wrap), id, Node::List(binders), body]
+                        if s == "lambda" =>
+                    {
+                        let id = self.node_to_expr(id)?;
+                        let wrap = WrapLambda { wrap: Arc::new(wrap.clone()), id };
+                        let quantchooselambda = QuantOrChooseOrLambda::Lambda(Some(wrap), None);
+                        return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, body);
+                    }
+                    [Node::Atom(s), Node::Atom(wrap), id, Node::List(binders), cond, body]
+                        if s == "lambda" =>
+                    {
+                        let id = self.node_to_expr(id)?;
+                        let wrap = WrapLambda { wrap: Arc::new(wrap.clone()), id };
+                        let cond = self.node_to_expr(cond)?;
+                        let quantchooselambda =
+                            QuantOrChooseOrLambda::Lambda(Some(wrap), Some(cond));
+                        return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, body);
                     }
                     [Node::Atom(s), Node::List(binders), e1, e2] if s == "choose" => {
                         let quantchooselambda =
@@ -340,6 +376,7 @@ impl Parser {
                             _ => None,
                         }
                     }
+                    Node::Atom(s) if s == "fp.to_ieee_bv" => Some(UnaryOp::FloatToIeeeBits),
                     Node::Atom(s) if s == "fp.to_real" => Some(UnaryOp::FloatToReal),
                     Node::Atom(s) if s == "to_real" => Some(UnaryOp::ToReal),
                     Node::Atom(s) if s == "to_int" => Some(UnaryOp::RealToInt),
@@ -398,11 +435,18 @@ impl Parser {
                     Node::Atom(s) if s == "bvmul" => Some(BinaryOp::BitMul),
                     Node::Atom(s) if s == "bvudiv" => Some(BinaryOp::BitUDiv),
                     Node::Atom(s) if s == "bvurem" => Some(BinaryOp::BitURem),
+                    Node::Atom(s) if s == "bvsdiv" => Some(BinaryOp::BitSDiv),
+                    Node::Atom(s) if s == "bvsrem" => Some(BinaryOp::BitSRem),
                     Node::Atom(s) if s == "bvult" => Some(BinaryOp::BitULt),
                     Node::Atom(s) if s == "bvugt" => Some(BinaryOp::BitUGt),
                     Node::Atom(s) if s == "bvule" => Some(BinaryOp::BitULe),
                     Node::Atom(s) if s == "bvuge" => Some(BinaryOp::BitUGe),
+                    Node::Atom(s) if s == "bvslt" => Some(BinaryOp::BitSLt),
+                    Node::Atom(s) if s == "bvsgt" => Some(BinaryOp::BitSGt),
+                    Node::Atom(s) if s == "bvsle" => Some(BinaryOp::BitSLe),
+                    Node::Atom(s) if s == "bvsge" => Some(BinaryOp::BitSGe),
                     Node::Atom(s) if s == "bvlshr" => Some(BinaryOp::LShr),
+                    Node::Atom(s) if s == "bvashr" => Some(BinaryOp::AShr),
                     Node::Atom(s) if s == "bvshl" => Some(BinaryOp::Shl),
                     Node::Atom(s) if s == "concat" => Some(BinaryOp::BitConcat),
                     Node::Atom(s) if s == "fp.add" => Some(BinaryOp::FloatAdd(round(&mut args)?)),
@@ -645,7 +689,9 @@ impl Parser {
             QuantOrChooseOrLambda::Choose(body) => {
                 (body, BindX::Choose(binders, triggers, qid, expr))
             }
-            QuantOrChooseOrLambda::Lambda => (expr, BindX::Lambda(binders, triggers, qid)),
+            QuantOrChooseOrLambda::Lambda(wrap, cond) => {
+                (expr, BindX::Lambda(binders, triggers, qid, wrap, cond))
+            }
         };
         Ok(Arc::new(ExprX::Bind(Arc::new(bind), body)))
     }
@@ -887,4 +933,9 @@ pub(crate) fn parse_sexpression(lines: &Vec<String>) -> Node {
     let mut parser = sise::Parser::new(expr.as_str());
     let node = sise::parse_tree(&mut parser).unwrap();
     node
+}
+
+fn is_quoted_pair(nodes: &[Node]) -> bool {
+    let is_quoted = |s: &str| s.len() >= 2 && s.starts_with("\"") && s.ends_with("\"");
+    matches!(nodes, [Node::Atom(n), Node::Atom(s)] if is_quoted(n) && is_quoted(s))
 }

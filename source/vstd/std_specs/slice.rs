@@ -4,12 +4,13 @@ use super::core::IndexSpec;
 use super::iter::IteratorSpec;
 use super::range::{
     ExRange, RangeBoundsSpec, slice_range_end, slice_range_start, slice_range_valid,
+    spec_range_inclusive_is_empty,
 };
 
 use core::ops::{
     Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
 };
-use core::slice::{Iter, IterMut, SliceIndex};
+use core::slice::{Chunks, Iter, IterMut, SliceIndex};
 
 use verus as verus_skip_verusfmt;
 verus_skip_verusfmt! {
@@ -229,13 +230,28 @@ pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::get_mut ](i: RangeF
 pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index_mut ](i: RangeFull, slice: &mut [T]) -> (r: &mut [T])
 ;
 
+// Indexing with an empty range doesn't verify, since std doesn't say whether it
+// panics. `get` still verifies and returns `None` or an empty slice.
+pub uninterp spec fn spec_range_inclusive_unspecified_slice_in_bounds<T>(
+    range: &RangeInclusive<usize>,
+    slice: &[T],
+) -> bool;
+
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
     open spec fn in_bounds(&self, slice: &[T]) -> bool {
-        generic_slice_in_bounds(self, slice@)
+        if spec_range_inclusive_is_empty(self) {
+            spec_range_inclusive_unspecified_slice_in_bounds(self, slice)
+        } else {
+            generic_slice_in_bounds(self, slice@)
+        }
     }
 
     open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
-        generic_slice_index_postcondition(self, slice@, r@)
+        if spec_range_inclusive_is_empty(self) {
+            r@.len() == 0
+        } else {
+            generic_slice_index_postcondition(self, slice@, r@)
+        }
     }
 
     open spec fn index_mut_postcondition(
@@ -245,7 +261,12 @@ impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
         immediate_output: &[T],
         final_output: &[T]
     ) -> bool {
-        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
+        if spec_range_inclusive_is_empty(self) {
+            &&& immediate_output@.len() == 0
+            &&& final_slice@ == old_slice@
+        } else {
+            generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
+        }
     }
 }
 
@@ -260,13 +281,14 @@ pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::index_m
 ;
 
 // starts_with
+// Rust compares `needle == &slice[..needle.len()]`
 pub open spec fn spec_slice_starts_with<T: PartialEq>(slice: &[T], needle: &[T]) -> bool {
     &&& needle@.len() <= slice@.len()
     &&& forall|i: int| #![auto]
         0 <= i < needle@.len() ==>
             <T as super::cmp::PartialEqSpec<T>>::eq_spec(
-                &slice@[i],
                 &needle@[i],
+                &slice@[i],
             )
 }
 
@@ -284,13 +306,14 @@ pub assume_specification<T: PartialEq>[ <[T]>::starts_with ](
 ;
 
 // ends_with
+// Rust compares `needle == &slice[slice.len() - needle.len()..]`.
 pub open spec fn spec_slice_ends_with<T: PartialEq>(slice: &[T], needle: &[T]) -> bool {
     &&& needle@.len() <= slice@.len()
     &&& forall|i: int| #![auto]
         0 <= i < needle@.len() ==>
             <T as super::cmp::PartialEqSpec<T>>::eq_spec(
-                &slice@[slice@.len() - needle@.len() + i],
                 &needle@[i],
+                &slice@[slice@.len() - needle@.len() + i],
             )
 }
 
@@ -341,6 +364,28 @@ pub assume_specification<T, I: SliceIndex<[T]>>[ <[T] as IndexMut<I>>::index_mut
 ) -> (output: &mut <I as SliceIndex<[T]>>::Output)
     ensures
         call_ensures(<I as SliceIndex<[T]>>::index_mut, (index, slice), output),
+;
+
+// `get_unchecked(i)`/`get_unchecked_mut(i)` share the contract of `index`/`index_mut`, with
+// the in-bounds check as a safety precondition (UB if violated) rather than a panic.
+pub assume_specification<T, I>[ <[T]>::get_unchecked::<I> ](
+    slice: &[T],
+    index: I,
+) -> (output: &<I as SliceIndex<[T]>>::Output) where I: SliceIndex<[T]>
+    requires
+        index.in_bounds(slice),
+    ensures
+        index.index_postcondition(slice, output),
+;
+
+pub assume_specification<T, I>[ <[T]>::get_unchecked_mut::<I> ](
+    slice: &mut [T],
+    index: I,
+) -> (output: &mut <I as SliceIndex<[T]>>::Output) where I: SliceIndex<[T]>
+    requires
+        index.in_bounds(&*old(slice)),
+    ensures
+        index.index_mut_postcondition(&*old(slice), &*final(slice), output, &*final(output)),
 ;
 
 impl<T, I, const N: usize> super::core::IndexSpecImpl<I> for [T; N]
@@ -395,6 +440,36 @@ impl<T, U> super::cmp::PartialEqSpecImpl<[U]> for [T] where T: PartialEq<U> + su
     }
 }
 
+// contains
+pub open spec fn spec_slice_contains<T: PartialEq<T>>(slice: &[T], value: &T) -> bool {
+    exists |i: int| #![auto] 0 <= i < slice@.len()
+        && <T as super::cmp::PartialEqSpec<T>>::eq_spec(&slice[i], value)
+}
+
+#[verifier::when_used_as_spec(spec_slice_contains)]
+pub assume_specification<T>[ <[T]>::contains ] (slice: &[T], value: &T) -> (result: bool)
+    where
+        T: PartialEq<T>,
+        ensures
+            <T as super::cmp::PartialEqSpec<T>>::obeys_eq_spec() ==> result == spec_slice_contains(slice, value),
+;
+
+// reverse
+pub assume_specification<T>[ <[T]>::reverse ](slice: &mut [T])
+    ensures
+        final(slice)@ == old(slice)@.reverse(),
+;
+
+// swap
+pub assume_specification<T>[ <[T]>::swap ](slice: &mut [T], a: usize, b: usize)
+    requires
+        a < old(slice)@.len(),
+        b < old(slice)@.len(),
+    ensures
+        final(slice)@ == old(slice)@.update(a as int, old(slice)@[b as int]).update(b as int, old(slice)@[a as int]),
+    no_unwind
+;
+
 // The `iter` method of a `<T>` returns an iterator of type `Iter<'_, T>`,
 // so we specify that type here.
 #[verifier::external_type_specification]
@@ -412,7 +487,10 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -457,7 +535,10 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for IterMut<'a, T> {
     #[verifier::prophetic]
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    open spec fn will_return_none(&self) -> bool { true }
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -477,7 +558,7 @@ pub assume_specification<'a, T>[ <[T]>::iter_mut ](slice: &'a mut [T]) -> (iter:
             #![trigger final(slice)@[i]]
             0 <= i < old(slice)@.len() ==> *final(IteratorSpec::remaining(&iter)[i]) == final(slice)@[i],
         IteratorSpec::obeys_prophetic_iter_laws(&iter),
-        IteratorSpec::will_return_none(&iter),
+        IteratorSpec::produces(&iter).all(|p: bool| p),
         IteratorSpec::decrease(&iter) is Some,
 ;
 
@@ -541,6 +622,26 @@ pub assume_specification<T> [ <[T]>::split_at_checked ](slice: &[T], mid: usize)
             && a@ == slice@[..mid]
             && b@ == slice@[mid..]),
         mid > slice.len() ==> ret is None,
+    no_unwind
+;
+
+pub assume_specification<T> [ <[T]>::split_at_unchecked ](slice: &[T], mid: usize) -> (ret: (&[T], &[T]))
+    requires
+        0 <= mid <= slice.len(),
+    ensures
+        ret.0@ == slice@[..mid],
+        ret.1@ == slice@[mid..],
+    no_unwind
+;
+
+#[doc(hidden)]
+pub assume_specification<T> [ <[T]>::split_at_mut_unchecked ](slice: &mut [T], mid: usize) -> (ret: (&mut [T], &mut [T]))
+    requires
+        0 <= mid <= slice.len(),
+    ensures
+        ret.0@ == old(slice)@[..mid],
+        ret.1@ == old(slice)@[mid..],
+        final(slice)@ == final(ret.0)@ + final(ret.1)@,
     no_unwind
 ;
 
@@ -610,6 +711,66 @@ pub assume_specification<T: Copy, R: core::ops::RangeBounds<usize>>[ <[T]>::copy
             slice_range_end(&src, old(slice)@.len()),
             dest as int,
         ),
+;
+
+// The `chunks` method of a `[T]` returns an iterator of type `Chunks<'_, T>`,
+// so we specify that type here.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct ExChunks<'a, T: 'a>(Chunks<'a, T>);
+
+// To allow reasoning about the "chunks" of the slice iterator, without using
+// a prophecy, we need a function that gives us the the sequence of chunk slices
+// remaining in the iterator.
+pub uninterp spec fn after_chunks_elts<'a, T: 'a>(i: Chunks<'a, T>) -> Seq<&'a [T]>;
+
+impl<'a, T: 'a> super::iter::IteratorSpecImpl for Chunks<'a, T> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
+    }
+
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < after_chunks_elts(*self).len() {
+            Some(after_chunks_elts(*self)[index])
+        } else {
+            None
+        }
+    }
+}
+
+pub assume_specification<'a, T>[ <[T]>::chunks ](s: &'a [T], chunk_size: usize) -> (iter: Chunks<
+    'a,
+    T,
+>)
+    requires
+        chunk_size > 0,
+    ensures
+        IteratorSpec::remaining(&iter) == after_chunks_elts(iter),
+        IteratorSpec::remaining(&iter).len() == (s@.len() + chunk_size as int - 1) / (
+        chunk_size as int),
+        forall|i: int|
+            #![trigger IteratorSpec::remaining(&iter)[i]]
+            0 <= i < IteratorSpec::remaining(&iter).len() ==> {
+                let start = i * chunk_size as int;
+                let end = if start + chunk_size as int <= s@.len() {
+                    start + chunk_size as int
+                } else {
+                    s@.len() as int
+                };
+
+                IteratorSpec::remaining(&iter)[i]@ == s@.subrange(start, end)
+            },
+        IteratorSpec::decrease(&iter) is Some,
 ;
 
 } // verus!

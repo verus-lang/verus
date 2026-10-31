@@ -20,7 +20,7 @@ use crate::token_transition_checks::{check_ordering_remove_have_add, check_unsup
 use crate::util::{combine_errors_or_ok, is_definitely_irrefutable};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned};
+use quote::{ToTokens, quote, quote_spanned};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use verus_syn::parse;
@@ -173,7 +173,7 @@ fn trusted_clone() -> TokenStream {
         #[verifier::external_body] /* vattr */
         #[verifier::returns(proof)] /* vattr */
         pub fn clone(#[cfg_attr(verus_keep_ghost, verifier::proof)] &self) -> Self {
-            ensures(|s: Self| #vstd::prelude::equal(*self, s));
+            #vstd::prelude::ensures(|s: Self| #vstd::prelude::equal(*self, s));
             ::core::unimplemented!();
         }
     };
@@ -335,7 +335,7 @@ fn const_fn_stream(field: &Field) -> TokenStream {
     return quote! {
         #[cfg_attr(verus_keep_ghost, verifier::spec)]
         #[cfg_attr(verus_keep_ghost, verifier::external_body)]
-        pub fn #fieldname(&self) -> #fieldtype { unimplemented!() }
+        pub fn #fieldname(&self) -> #fieldtype { ::core::unimplemented!() }
     };
 }
 
@@ -358,7 +358,7 @@ pub fn output_token_types_and_fns(
     inst_impl_token_stream.extend(quote_vstd! { vstd =>
         #[cfg_attr(verus_keep_ghost, verifier::spec)]
         #[cfg_attr(verus_keep_ghost, verifier::external_body)]
-        pub fn id(&self) -> #vstd::tokens::InstanceId { unimplemented!() }
+        pub fn id(&self) -> #vstd::tokens::InstanceId { ::core::unimplemented!() }
     });
 
     for field in &bundle.sm.fields {
@@ -748,6 +748,7 @@ pub fn exchange_stream(
                     &mut out_params,
                     &mut inst_eq_enss,
                     &mut inst_eq_reqs,
+                    field,
                     &arg_name,
                     &init_input_token_type,
                     InoutType::In,
@@ -775,6 +776,7 @@ pub fn exchange_stream(
                     &mut out_params,
                     &mut inst_eq_enss,
                     &mut inst_eq_reqs,
+                    field,
                     &arg_name,
                     &init_output_token_type,
                     InoutType::Out,
@@ -869,6 +871,7 @@ pub fn exchange_stream(
                             &mut out_params,
                             &mut inst_eq_enss,
                             &mut inst_eq_reqs,
+                            field,
                             &transition_arg_name(field),
                             &field_token_type(&sm, field),
                             if is_written { InoutType::InOut } else { InoutType::BorrowIn },
@@ -885,7 +888,7 @@ pub fn exchange_stream(
 
                         let e_opt = get_post_value_for_variable(&ctxt, &tr.body, field);
                         let e = e_opt.expect("get_post_value_for_variable");
-                        let lhs = get_new_field_value(field);
+                        let lhs = get_new_field_value(sm, field);
                         ctxt.ensures.push(mk_eq(lhs.span(), &lhs, &e));
                     }
                 }
@@ -924,6 +927,7 @@ pub fn exchange_stream(
                             &mut out_params,
                             &mut inst_eq_enss,
                             &mut inst_eq_reqs,
+                            field,
                             &p.name,
                             &p.ty,
                             p.inout_type,
@@ -1155,19 +1159,23 @@ fn add_initialization_output_conditions(
 ) {
     match &field.stype {
         ShardableType::Variable(_) => {
+            let id = token_trait_call(sm, field, "instance_id", &param_value, Span::call_site());
+            let value = token_trait_call(sm, field, "value", &param_value, Span::call_site());
             inst_eq_enss.push(Expr::Verbatim(quote_vstd! { vstd =>
-                #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
+                #vstd::prelude::equal(#id, #inst_value)
             }));
             ensures.push(Expr::Verbatim(quote_vstd! { vstd =>
-                #vstd::prelude::equal(#param_value.value(), #init_value)
+                #vstd::prelude::equal(#value, #init_value)
             }));
         }
         ShardableType::Count | ShardableType::PersistentCount => {
+            let id = token_trait_call(sm, field, "instance_id", &param_value, Span::call_site());
+            let count = token_trait_call(sm, field, "count", &param_value, Span::call_site());
             inst_eq_enss.push(Expr::Verbatim(quote_vstd! { vstd =>
-                #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
+                #vstd::prelude::equal(#id, #inst_value)
             }));
             ensures.push(Expr::Verbatim(quote_vstd! { vstd =>
-                #vstd::prelude::equal(#param_value.count(), #init_value)
+                #vstd::prelude::equal(#count, #init_value)
             }));
         }
         ShardableType::Option(_)
@@ -1297,77 +1305,20 @@ fn relation_for_collection_of_internal_tokens(
 /// Add some helper functions that are useful to call from other
 /// generated conditions (e.g., see `add_initialization_output_conditions`)
 fn traits_stream(sm: &SM, field: &Field) -> TokenStream {
-    match &field.stype {
-        ShardableType::Variable(ty)
-        | ShardableType::Option(ty)
-        | ShardableType::PersistentOption(ty) => {
-            let token_ty = field_token_type(sm, field);
-            token_trait_impls(
-                &token_ty,
-                &sm.generics,
-                MainTrait::Value(ty),
-                matches!(&field.stype, ShardableType::Option(_) | ShardableType::Variable(_)),
-            )
-        }
-        ShardableType::Set(ty) | ShardableType::PersistentSet(ty) => {
-            let token_ty = field_token_type(sm, field);
-            token_trait_impls(
-                &token_ty,
-                &sm.generics,
-                MainTrait::Element(ty),
-                matches!(&field.stype, ShardableType::Set(_)),
-            )
-        }
-        ShardableType::ISet(ty) | ShardableType::PersistentISet(ty) => {
-            let token_ty = field_token_type(sm, field);
-            token_trait_impls(
-                &token_ty,
-                &sm.generics,
-                MainTrait::Element(ty),
-                matches!(&field.stype, ShardableType::ISet(_)),
-            )
-        }
-        ShardableType::Bool | ShardableType::PersistentBool => {
-            let token_ty = field_token_type(sm, field);
-            token_trait_impls(
-                &token_ty,
-                &sm.generics,
-                MainTrait::Simple,
-                matches!(&field.stype, ShardableType::Bool),
-            )
-        }
-        ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
-            let token_ty = field_token_type(sm, field);
-            token_trait_impls(
-                &token_ty,
-                &sm.generics,
-                MainTrait::KeyValue(key, val),
-                matches!(&field.stype, ShardableType::Map(_, _)),
-            )
-        }
-        ShardableType::IMap(key, val) | ShardableType::PersistentIMap(key, val) => {
-            let token_ty = field_token_type(sm, field);
-            token_trait_impls(
-                &token_ty,
-                &sm.generics,
-                MainTrait::KeyValue(key, val),
-                matches!(&field.stype, ShardableType::IMap(_, _)),
-            )
-        }
-        ShardableType::Multiset(ty) => {
-            let token_ty = field_token_type(sm, field);
-            token_trait_impls(&token_ty, &sm.generics, MainTrait::Element(ty), false)
-        }
-        ShardableType::Count => {
-            let token_ty = field_token_type(sm, field);
-            token_trait_impls(&token_ty, &sm.generics, MainTrait::Count, false)
-        }
-        ShardableType::PersistentCount => {
-            let token_ty = field_token_type(sm, field);
-            token_trait_impls(&token_ty, &sm.generics, MainTrait::MonotonicCount, false)
-        }
-        _ => TokenStream::new(),
-    }
+    let Some(main_trait) = field_main_trait(field) else {
+        return TokenStream::new();
+    };
+    let unique = matches!(
+        &field.stype,
+        ShardableType::Variable(_)
+            | ShardableType::Option(_)
+            | ShardableType::Set(_)
+            | ShardableType::ISet(_)
+            | ShardableType::Bool
+            | ShardableType::Map(_, _)
+            | ShardableType::IMap(_, _)
+    );
+    token_trait_impls(&field_token_type(sm, field), &sm.generics, main_trait, unique)
 }
 
 enum MainTrait<'a> {
@@ -1377,6 +1328,48 @@ enum MainTrait<'a> {
     Element(&'a Type),
     Count,
     MonotonicCount,
+}
+
+fn field_main_trait(field: &Field) -> Option<MainTrait<'_>> {
+    match &field.stype {
+        ShardableType::Variable(ty)
+        | ShardableType::Option(ty)
+        | ShardableType::PersistentOption(ty) => Some(MainTrait::Value(ty)),
+        ShardableType::Set(ty)
+        | ShardableType::PersistentSet(ty)
+        | ShardableType::ISet(ty)
+        | ShardableType::PersistentISet(ty)
+        | ShardableType::Multiset(ty) => Some(MainTrait::Element(ty)),
+        ShardableType::Bool | ShardableType::PersistentBool => Some(MainTrait::Simple),
+        ShardableType::Map(key, val)
+        | ShardableType::PersistentMap(key, val)
+        | ShardableType::IMap(key, val)
+        | ShardableType::PersistentIMap(key, val) => Some(MainTrait::KeyValue(key, val)),
+        ShardableType::Count => Some(MainTrait::Count),
+        ShardableType::PersistentCount => Some(MainTrait::MonotonicCount),
+        _ => None,
+    }
+}
+
+fn main_trait_path(main_trait: &MainTrait) -> TokenStream {
+    match main_trait {
+        MainTrait::Simple => quote_vstd! { vstd => #vstd::tokens::SimpleToken },
+        MainTrait::Value(t) => quote_vstd! { vstd => #vstd::tokens::ValueToken<#t> },
+        MainTrait::KeyValue(k, v) => quote_vstd! { vstd => #vstd::tokens::KeyValueToken<#k, #v> },
+        MainTrait::Element(e) => quote_vstd! { vstd => #vstd::tokens::ElementToken<#e> },
+        MainTrait::Count => quote_vstd! { vstd => #vstd::tokens::CountToken },
+        MainTrait::MonotonicCount => quote_vstd! { vstd => #vstd::tokens::MonotonicCountToken },
+    }
+}
+
+/// Calls the token trait method `method` on `arg`, a place of the field's token type.
+/// We use fully qualified syntax because the token type is local to the user's crate,
+/// so an inherent method of the same name would take precedence in `arg.method()`.
+fn token_trait_call(sm: &SM, field: &Field, method: &str, arg: impl ToTokens, span: Span) -> Expr {
+    let token_ty = field_token_type(sm, field);
+    let trait_path = main_trait_path(&field_main_trait(field).expect("field_main_trait"));
+    let method = Ident::new(method, span);
+    Expr::Verbatim(quote_spanned! { span => <#token_ty as #trait_path>::#method(&(#arg)) })
 }
 
 fn token_trait_impls(
@@ -1426,20 +1419,7 @@ fn token_trait_impl_main(
     generics: &Option<Generics>,
     main_trait: &MainTrait,
 ) -> TokenStream {
-    let impl_decl = impl_decl_stream_for(
-        token_ty,
-        generics,
-        match main_trait {
-            MainTrait::Simple => quote_vstd! { vstd => #vstd::tokens::SimpleToken },
-            MainTrait::Value(t) => quote_vstd! { vstd => #vstd::tokens::ValueToken<#t> },
-            MainTrait::KeyValue(k, v) => {
-                quote_vstd! { vstd => #vstd::tokens::KeyValueToken<#k, #v> }
-            }
-            MainTrait::Element(e) => quote_vstd! { vstd => #vstd::tokens::ElementToken<#e> },
-            MainTrait::Count => quote_vstd! { vstd => #vstd::tokens::CountToken },
-            MainTrait::MonotonicCount => quote_vstd! { vstd => #vstd::tokens::MonotonicCountToken },
-        },
-    );
+    let impl_decl = impl_decl_stream_for(token_ty, generics, main_trait_path(main_trait));
 
     let add_spec_fn = |ts: &mut TokenStream, name: &str, ty: &Type| {
         let name = Ident::new(name, token_ty.span());
@@ -1460,7 +1440,7 @@ fn token_trait_impl_main(
         });
     };
     let add_join_split = |ts: &mut TokenStream| {
-        ts.extend(quote! {
+        ts.extend(quote_vstd! { vstd =>
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             fn join(#[cfg_attr(verus_keep_ghost, verifier::proof)] &mut self, #[cfg_attr(verus_keep_ghost, verifier::proof)] other: Self)
@@ -1469,22 +1449,22 @@ fn token_trait_impl_main(
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
-            fn split(#[cfg_attr(verus_keep_ghost, verifier::proof)] &mut self, count: nat) -> Self
+            fn split(#[cfg_attr(verus_keep_ghost, verifier::proof)] &mut self, count: #vstd::prelude::nat) -> Self
             { ::core::unimplemented!(); }
 
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
-            fn weaken_shared(#[cfg_attr(verus_keep_ghost, verifier::proof)] &self, count: nat) -> &Self
+            fn weaken_shared(#[cfg_attr(verus_keep_ghost, verifier::proof)] &self, count: #vstd::prelude::nat) -> &Self
             { ::core::unimplemented!(); }
         });
     };
     let add_weaken = |ts: &mut TokenStream| {
-        ts.extend(quote! {
+        ts.extend(quote_vstd! { vstd =>
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
-            fn weaken(#[cfg_attr(verus_keep_ghost, verifier::proof)] &self, count: nat) -> Self
+            fn weaken(#[cfg_attr(verus_keep_ghost, verifier::proof)] &self, count: #vstd::prelude::nat) -> Self
             { ::core::unimplemented!(); }
         });
     };
@@ -1554,6 +1534,7 @@ fn add_token_param_in_out(
     inst_eq_enss: &mut Vec<Expr>,
     inst_eq_reqs: &mut Vec<Expr>,
 
+    field: &Field,
     param_name: &Ident,
     param_type: &Type,
     inout_type: InoutType,
@@ -1604,19 +1585,24 @@ fn add_token_param_in_out(
 
     if apply_instance_condition {
         let inst = get_inst_value(&ctxt);
+        let is_ref = !matches!(inout_type, InoutType::In | InoutType::Out);
+        let param = if is_ref {
+            quote! { *#param_name }
+        } else {
+            quote! { #param_name }
+        };
         if is_output {
-            let lhs = Expr::Verbatim(quote! { #param_name.instance_id() });
+            let lhs = token_trait_call(&ctxt.sm, field, "instance_id", &param, Span::call_site());
             inst_eq_enss.push(Expr::Verbatim(quote_vstd! { vstd =>
                 #vstd::prelude::equal(#lhs, #inst)
             }));
         }
         if is_input {
             let lhs = if is_output {
-                Expr::Verbatim(
-                    quote_vstd! { vstd => #vstd::prelude::old(#param_name).instance_id() },
-                )
+                let old = quote_vstd! { vstd => *#vstd::prelude::old(#param_name) };
+                token_trait_call(&ctxt.sm, field, "instance_id", old, Span::call_site())
             } else {
-                Expr::Verbatim(quote! { #param_name.instance_id() })
+                token_trait_call(&ctxt.sm, field, "instance_id", &param, Span::call_site())
             };
             inst_eq_reqs.push(Expr::Verbatim(quote_vstd! { vstd =>
                 #vstd::prelude::equal(#lhs, #inst)
@@ -1783,7 +1769,7 @@ fn translate_transition(
                         let param_vec = &ctxt.params[&field.name.to_string()];
                         let param = &param_vec[param_vec.len() - 1];
 
-                        Some(translate_special_assignment(op, &param))
+                        Some(translate_special_assignment(&ctxt.sm, &field, op, &param))
                     } else {
                         None
                     };
@@ -1966,6 +1952,12 @@ fn token_matches_elt(
     field: &Field,
     output: bool,
 ) -> Expr {
+    let token = if token_is_ref {
+        quote_spanned! { span => *#token_name }
+    } else {
+        quote_spanned! { span => #token_name }
+    };
+    let call = |method| token_trait_call(&ctxt.sm, field, method, &token, span);
     match elt {
         MonoidElt::OptionSome(None) => {
             let pat = pat_opt.as_ref().expect("pat should exist for a pattern-binding case");
@@ -1973,8 +1965,9 @@ fn token_matches_elt(
                 // TODO for cleaner output, avoid emitting anything here
                 Expr::Verbatim(quote_spanned! { span => true })
             } else {
+                let value = call("value");
                 Expr::Verbatim(quote_spanned! { span =>
-                    match #token_name.value() {
+                    match #value {
                         #pat => true,
                         #[allow(unreachable_patterns)]
                         _ => false,
@@ -1982,22 +1975,18 @@ fn token_matches_elt(
                 })
             }
         }
-        MonoidElt::OptionSome(Some(e)) => {
-            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.value()}), &e)
-        }
-        MonoidElt::SingletonMultiset(e) => {
-            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.element()}), &e)
-        }
+        MonoidElt::OptionSome(Some(e)) => mk_eq(span, &call("value"), &e),
+        MonoidElt::SingletonMultiset(e) => mk_eq(span, &call("element"), &e),
         MonoidElt::SingletonKV(key, None) => {
-            let e1 =
-                mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.key()}), &key);
+            let e1 = mk_eq(span, &call("key"), &key);
 
             let pat = pat_opt.as_ref().expect("pat should exist for a pattern-binding case");
             if is_definitely_irrefutable(pat) {
                 e1
             } else {
+                let value = call("value");
                 let e2 = Expr::Verbatim(quote_spanned! { span =>
-                    match #token_name.value() {
+                    match #value {
                         #pat => true,
                         #[allow(unreachable_patterns)]
                         _ => false,
@@ -2006,25 +1995,17 @@ fn token_matches_elt(
                 mk_and(span, e1, e2)
             }
         }
-        MonoidElt::SingletonKV(key, Some(val)) => mk_and(
-            span,
-            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.key()}), &key),
-            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.value()}), &val),
-        ),
-        MonoidElt::SingletonSet(e) => {
-            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.element() }), &e)
+        MonoidElt::SingletonKV(key, Some(val)) => {
+            mk_and(span, mk_eq(span, &call("key"), &key), mk_eq(span, &call("value"), &val))
         }
+        MonoidElt::SingletonSet(e) => mk_eq(span, &call("element"), &e),
         MonoidElt::True => Expr::Verbatim(quote_spanned! { span => true }),
         MonoidElt::General(e) => match &field.stype {
             ShardableType::Count | ShardableType::PersistentCount => {
-                mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.count()}), &e)
+                mk_eq(span, &call("count"), &e)
             }
             _ => {
-                let token_value = if token_is_ref {
-                    Expr::Verbatim(quote_spanned! { span => *#token_name })
-                } else {
-                    Expr::Verbatim(quote_spanned! { span => #token_name })
-                };
+                let token_value = Expr::Verbatim(token.clone());
                 relation_for_collection_of_internal_tokens(
                     &ctxt.sm,
                     field,
@@ -2209,17 +2190,22 @@ fn translate_special_condition(
     }
 }
 
-fn translate_special_assignment(op: &SpecialOp, param: &TokenParam) -> Expr {
+fn translate_special_assignment(
+    sm: &SM,
+    field: &Field,
+    op: &SpecialOp,
+    param: &TokenParam,
+) -> Expr {
     let name = &param.name;
 
     match op.stmt {
         MonoidStmtType::Have => {
             assert!(param.inout_type == InoutType::BorrowIn);
-            Expr::Verbatim(quote! { #name.value() })
+            token_trait_call(sm, field, "value", quote! { *#name }, Span::call_site())
         }
         MonoidStmtType::Remove => {
             assert!(param.inout_type == InoutType::In);
-            Expr::Verbatim(quote! { #name.value() })
+            token_trait_call(sm, field, "value", name, Span::call_site())
         }
         MonoidStmtType::Withdraw => {
             assert!(param.inout_type == InoutType::Out);
@@ -2368,18 +2354,21 @@ fn get_inst_object_value(ctxt: &Ctxt) -> Expr {
     }
 }
 
+// We call Instance methods with path syntax (e.g., `Self::id(self)`) since a method from
+// a user trait could take precedence over the inherent method in `self.id()`.
+
 fn get_inst_value(ctxt: &Ctxt) -> Expr {
     if ctxt.is_init {
-        Expr::Verbatim(quote! { instance.id() })
+        Expr::Verbatim(quote! { Self::id(&instance) })
     } else {
-        Expr::Verbatim(quote! { (*self).id() })
+        Expr::Verbatim(quote! { Self::id(self) })
     }
 }
 
 fn get_const_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let inst = get_inst_object_value(ctxt);
     let field_name = &field.name;
-    Expr::Verbatim(quote_spanned! { span => (#inst).#field_name() })
+    Expr::Verbatim(quote_spanned! { span => Self::#field_name(&#inst) })
 }
 
 fn get_nondeterministic_out_value(_ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
@@ -2390,15 +2379,16 @@ fn get_nondeterministic_out_value(_ctxt: &Ctxt, field: &Field, span: Span) -> Ex
 fn get_old_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let arg = transition_arg_name(&field);
     if ctxt.fields_written.contains(&field.name.to_string()) {
-        Expr::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::prelude::old(#arg).value() })
+        let old = quote_spanned_vstd! { vstd, span => *#vstd::prelude::old(#arg) };
+        token_trait_call(&ctxt.sm, field, "value", old, span)
     } else {
-        Expr::Verbatim(quote_spanned! { span => #arg.value() })
+        token_trait_call(&ctxt.sm, field, "value", quote! { *#arg }, span)
     }
 }
 
-fn get_new_field_value(field: &Field) -> Expr {
+fn get_new_field_value(sm: &SM, field: &Field) -> Expr {
     let arg = transition_arg_name(&field);
-    Expr::Verbatim(quote! { #arg.value() })
+    token_trait_call(sm, field, "value", quote! { *#arg }, Span::call_site())
 }
 
 // Collect requires and ensures. Updates `ctxt.requires` and `ctxt.ensures`

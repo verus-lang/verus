@@ -11,8 +11,7 @@ use crate::vstd::layout;
 use crate::vstd::prelude::*;
 use core::marker::PhantomData;
 
-use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
-verus_skip_verusfmt! {
+verus! {
 
 broadcast use group_vstd_default;
 

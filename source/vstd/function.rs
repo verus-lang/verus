@@ -21,13 +21,15 @@ pub struct ExFnProof<'a, Options, ArgModes, OutMode, Args, Output>(
 #[verifier::reject_recursive_types(COPY)]
 #[verifier::reject_recursive_types(SEND)]
 #[verifier::reject_recursive_types(SYNC)]
+#[verifier::reject_recursive_types(OPENS)]
 pub struct ExFnProofOptions<
     const USAGE: u8,
     ReqEns,
     const COPY: u8,
     const SEND: u8,
     const SYNC: u8,
->(FOpts<USAGE, ReqEns, COPY, SEND, SYNC>);
+    const OPENS: u8,
+>(FOpts<USAGE, ReqEns, COPY, SEND, SYNC, OPENS>);
 
 #[verifier::external_trait_specification]
 pub trait ExProofFnSpecification<Args, Output> {
@@ -50,17 +52,37 @@ pub struct ExFnProofOptionReqEns<R>(RqEn<R>);
 pub struct ExFnProofOptionTracked(Trk);
 
 #[verifier::external_trait_specification]
-pub trait ExProofFnOnce {
+pub trait ExProofFnNoOpens {
+    type ExternalTraitSpecificationFor: ProofFnNoOpens;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExProofFnOnceOpens {
+    type ExternalTraitSpecificationFor: ProofFnOnceOpens;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExProofFnMutOpens: ProofFnOnceOpens {
+    type ExternalTraitSpecificationFor: ProofFnMutOpens;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExProofFnOpens: ProofFnMutOpens {
+    type ExternalTraitSpecificationFor: ProofFnOpens;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExProofFnOnce: ProofFnOnceOpens + ProofFnNoOpens {
     type ExternalTraitSpecificationFor: ProofFnOnce;
 }
 
 #[verifier::external_trait_specification]
-pub trait ExProofFnMut: ProofFnOnce {
+pub trait ExProofFnMut: ProofFnOnce + ProofFnMutOpens + ProofFnNoOpens {
     type ExternalTraitSpecificationFor: ProofFnMut;
 }
 
 #[verifier::external_trait_specification]
-pub trait ExProofFn: ProofFnMut {
+pub trait ExProofFn: ProofFnMut + ProofFnOpens + ProofFnNoOpens {
     type ExternalTraitSpecificationFor: ProofFn;
 }
 
@@ -84,7 +106,7 @@ pub broadcast axiom fn axiom_proof_fn_requires<
     Args: core::marker::Tuple,
     Output,
 >(f: FnProof<F, ArgModes, OutMode, Args, Output>, args: Args) where
-    F: ProofFnOnce,
+    F: ProofFnOnceOpens,
     F: ProofFnReqEnsAssoc,
     <F as ProofFnReqEnsAssoc>::ReqEns: ProofFnReqEnsDef<Args, Output>,
 
@@ -100,7 +122,7 @@ pub broadcast axiom fn axiom_proof_fn_ensures<
     Args: core::marker::Tuple,
     Output,
 >(f: FnProof<F, ArgModes, OutMode, Args, Output>, args: Args, output: Output) where
-    F: ProofFnOnce,
+    F: ProofFnOnceOpens,
     F: ProofFnReqEnsAssoc,
     <F as ProofFnReqEnsAssoc>::ReqEns: ProofFnReqEnsDef<Args, Output>,
 
@@ -111,6 +133,21 @@ pub broadcast axiom fn axiom_proof_fn_ensures<
         ),
 ;
 
+#[doc(hidden)]
+pub broadcast axiom fn axiom_proof_fn_no_opens_invariants<
+    F,
+    ArgModes,
+    OutMode,
+    Args: core::marker::Tuple,
+    Output,
+>(f: FnProof<F, ArgModes, OutMode, Args, Output>, args: Args) where
+    F: ProofFnOnceOpens,
+    F: ProofFnNoOpens,
+
+    ensures
+        #[trigger] call_opens_invariants::<_, _, ISet<int>>(f, args) == ISet::empty(),
+;
+
 /// Retype a proof_fn, introducing `ReqEns<R>`
 pub axiom fn proof_fn_as_req_ens<
     R: ProofFnReqEnsDef<Args, Output>,
@@ -119,13 +156,26 @@ pub axiom fn proof_fn_as_req_ens<
     const COPY: u8,
     const SEND: u8,
     const SYNC: u8,
+    const OPENS: u8,
     ArgModes,
     OutMode,
     Args: core::marker::Tuple,
     Output,
 >(
-    tracked f: FnProof<FOpts<USAGE, ReqEns, COPY, SEND, SYNC>, ArgModes, OutMode, Args, Output>,
-) -> tracked FnProof<FOpts<USAGE, RqEn<R>, COPY, SEND, SYNC>, ArgModes, OutMode, Args, Output>
+    tracked f: FnProof<
+        FOpts<USAGE, ReqEns, COPY, SEND, SYNC, OPENS>,
+        ArgModes,
+        OutMode,
+        Args,
+        Output,
+    >,
+) -> tracked FnProof<
+    FOpts<USAGE, RqEn<R>, COPY, SEND, SYNC, OPENS>,
+    ArgModes,
+    OutMode,
+    Args,
+    Output,
+>
     requires
         forall|args: Args| #[trigger] R::req(args) ==> f.requires(args),
         forall|args: Args, output: Output|
@@ -142,6 +192,8 @@ pub broadcast axiom fn axiom_fn_mut_call_requires<Args: core::marker::Tuple, F: 
         #[trigger] call_requires::<Args, &mut F>(f, args),
 ;
 
+// The output contract concerns the callable's current value. The reference may
+// outlive the call and be used to replace the callable, so its future is unconstrained.
 pub broadcast axiom fn axiom_fn_mut_call_ensures<Args: core::marker::Tuple, F: FnMut<Args>>(
     f: &mut F,
     args: Args,
@@ -151,14 +203,28 @@ pub broadcast axiom fn axiom_fn_mut_call_ensures<Args: core::marker::Tuple, F: F
         #[trigger] call_ensures::<Args, &mut F>(f, args, output),
     ensures
         call_ensures::<Args, F>(mut_ref_current(f), args, output),
-        mut_ref_current(f) == mut_ref_future(f),
+;
+
+pub broadcast axiom fn axiom_fn_mut_call_opens_invariants<
+    Args: core::marker::Tuple,
+    F: FnMut<Args>,
+    I,
+>(f: &mut F, args: Args)
+    ensures
+        #[trigger] call_opens_invariants::<Args, &mut F, I>(f, args) == call_opens_invariants::<
+            Args,
+            F,
+            I,
+        >(mut_ref_current(f), args),
 ;
 
 pub broadcast group group_function_axioms {
     axiom_proof_fn_requires,
     axiom_proof_fn_ensures,
+    axiom_proof_fn_no_opens_invariants,
     axiom_fn_mut_call_requires,
     axiom_fn_mut_call_ensures,
+    axiom_fn_mut_call_opens_invariants,
 }
 
 } // verus!

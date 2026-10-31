@@ -1,6 +1,7 @@
-use crate::util::{err_span, vir_err_span_str};
+use crate::util::{err_span, err_span_bare, vir_err_span_str};
 use rustc_ast::token::{LitKind, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
+use rustc_hir::attrs::AttributeKind;
 use rustc_hir::{AttrArgs, Attribute};
 use rustc_span::Span;
 use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr, VirErrAs};
@@ -187,7 +188,7 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
             {
                 return err_span(
                     attr.span(),
-                    "attributes spec, proof, exec are not supported anymore; use the verus! macro instead",
+                    "attributes spec, proof, exec are not supported anymore; use the `verus!` macro instead",
                 );
             }
             [segment] if segment.as_str().starts_with("rustc_") => {
@@ -443,12 +444,14 @@ pub(crate) fn parse_attrs(
 ) -> Result<Vec<Attr>, VirErr> {
     let diagnostics = &mut diagnostics;
     let mut v: Vec<Attr> = Vec::new();
+    let mut mode = None;
     for (prefix, span, attr) in attrs_to_trees(attrs)? {
+        let prev_len = v.len();
         let mut report_deprecated = |attr_name: &str, msg: &str| {
             if let Some(diagnostics) = diagnostics {
                 diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                     span,
-                    format!("#[verifier({attr_name})] is deprecated, {msg}"),
+                    format!("`#[verifier({attr_name})]` is deprecated, {msg}"),
                 )));
             }
         };
@@ -489,7 +492,7 @@ pub(crate) fn parse_attrs(
                     if groups.len() == 0 {
                         return err_span(
                             *span,
-                            "expected either #[trigger] or non-empty #[trigger(...)]",
+                            "expected either `#[trigger]` or non-empty `#[trigger(...)]`",
                         );
                     }
                     v.push(Attr::Trigger(Some(groups)));
@@ -499,7 +502,13 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
                 AttrTree::Fun(_, arg, None) if arg == "external_body" => v.push(Attr::ExternalBody),
                 AttrTree::Fun(_, arg, None) if arg == "external" => v.push(Attr::External),
-                AttrTree::Fun(_, arg, None) if arg == "verify" => v.push(Attr::Verify),
+                AttrTree::Fun(_, arg, None) if arg == "verify" => {
+                    report_deprecated(
+                        "verifier::verify",
+                        "use `verus! { ... }` or `#[verus_spec(...)]` or `#[verus_verify(...)]` instead",
+                    );
+                    v.push(Attr::Verify)
+                }
                 AttrTree::Fun(_, arg, None) if arg == "opaque" => v.push(Attr::Opaque),
                 AttrTree::Fun(_, arg, None) if arg == "opaque_outside_module" => {
                     v.push(Attr::OpaqueOutsideModule)
@@ -666,7 +675,7 @@ pub(crate) fn parse_attrs(
                         }
                         return err_span(
                             *span,
-                            "expected `assert`, `assert_by`, and/or `ensures` for auto_ext_equal",
+                            "expected `assert`, `assert_by`, and/or `ensures` for `auto_ext_equal`",
                         );
                     }
                     v.push(Attr::AutoExtEqual(auto_ext_equal))
@@ -745,7 +754,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "invalid_trigger_attribute" => {
                     return err_span(
                         span,
-                        "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute",
+                        "invalid trigger attribute: to provide a trigger expression, use the `#![trigger <expr>]` attribute",
                     );
                 }
                 AttrTree::Fun(_, arg, None) if arg == "impls_cannot_extend_spec" => {
@@ -807,7 +816,7 @@ pub(crate) fn parse_attrs(
                         if groups.len() == 0 {
                             return err_span(
                                 *span,
-                                "expected either #[trigger] or non-empty #[trigger(...)]",
+                                "expected either `#[trigger]` or non-empty `#[trigger(...)]`",
                             );
                         }
                         v.push(Attr::Trigger(Some(groups)));
@@ -819,6 +828,7 @@ pub(crate) fn parse_attrs(
                         v.push(Attr::AllTriggers)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
+                    AttrTree::Fun(_, arg, None) if arg == "verify" => v.push(Attr::Verify),
                     AttrTree::Fun(_, arg, None) if arg == "proof_block" => {
                         v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
                     }
@@ -940,6 +950,20 @@ pub(crate) fn parse_attrs(
                 if let AttrTree::Fun(span, name, _) = &attr {
                     v.push(Attr::UnsupportedRustcAttr(name.clone(), *span));
                 }
+            }
+        }
+        // Conflicting modes can make verification and ghost erasure disagree.
+        for attr in &v[prev_len..] {
+            if let Attr::Mode(m) = attr {
+                if let Some(mode) = mode {
+                    if mode != *m {
+                        return err_span(
+                            span,
+                            format!("conflicting mode attributes: `{mode}` and `{m}`"),
+                        );
+                    }
+                }
+                mode = Some(*m);
             }
         }
     }
@@ -1239,7 +1263,7 @@ pub(crate) struct ExternalAttrs {
     pub(crate) structural_const_wrapper: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct VerifierAttrs {
     pub(crate) verus_macro: bool,
     pub(crate) external_body: bool,
@@ -1592,7 +1616,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
     }
     if do_check {
         if let Some((rustc_attr, span)) = unsupported_rustc_attr {
-            return err_span(span, format!("The attribute `{rustc_attr:}` is not supported"));
+            return err_span(span, format!("the attribute `{rustc_attr:}` is not supported"));
         }
     }
     Ok(vs)
@@ -1658,3 +1682,238 @@ pub const RUSTC_ATTRS_OK_TO_IGNORE: &[&str] = &[
     // Boxes
     "rustc_box",
 ];
+
+pub(crate) fn forbid_unsafe_attributes<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    owner_id: rustc_hir::OwnerId,
+    errors: &mut Vec<VirErr>,
+) {
+    let attrs = tcx.hir_attrs(owner_id.into());
+    for attr in attrs.iter() {
+        match attr {
+            Attribute::Parsed(kind) => {
+                let (unsupported, is_unsafe) = attr_is_unsupported(kind);
+                if let Some(name) = unsupported {
+                    let span = tcx.hir_span(owner_id.into());
+                    errors.push(err_span_bare(
+                        span,
+                        format!(
+                            "Verus does not currently support the `{:}` attribute{:}",
+                            name,
+                            if is_unsafe { ", which is unsafe" } else { "" }
+                        ),
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn attr_is_unsupported(kind: &AttributeKind) -> (Option<&'static str>, bool) {
+    // rustc doesn't expose an easy function to see which attributes are unsafe
+    // so we have to manually check.
+    // Our unsupported set might not line up with Rust's unsafe set anyway
+
+    use AttributeKind::*;
+    match kind {
+        LinkSection { .. } => (Some("link_section"), true),
+        FfiConst => (Some("ffi_const"), true),
+        FfiPure(..) => (Some("ffi_pure"), true),
+        ExportName { .. } => (Some("export_name"), true),
+        Naked(..) => (Some("naked"), true),
+        NoMangle(..) => (Some("no_mangle"), true),
+        TargetFeature { .. } => (Some("force_target_feature"), true),
+
+        // These aren't unsafe, but look scary:
+        DefaultLibAllocator => (Some("default_lib_allocator"), false),
+        EiiDeclaration(..) => (Some("eii_declaration"), false),
+        EiiImpl(..) => (Some("eii_impl"), false),
+        Marker => (Some("marker"), false),
+
+        // safe
+        | AllowInternalUnsafe(..)
+        | AllowInternalUnstable(..)
+        | AutomaticallyDerived
+        | CfgAttrTrace(..)
+        | CfgTrace(..)
+        | CfiEncoding { .. }
+        | Cold
+        | CollapseDebugInfo(..)
+        | CompilerBuiltins
+        | ConstContinue(..)
+        | Coroutine
+        | Coverage(..)
+        | CrateName { .. }
+        | CrateType(..)
+        | CustomMir(..)
+        | DebuggerVisualizer(..)
+        | Deprecated { .. }
+        | DoNotRecommend
+        | Doc(..)
+        | DocComment { .. }
+        | ExportStable
+        | Feature(..)
+        | Fundamental
+        | Ignore { .. }
+        | Inline(..)
+        | InstructionSet(..)
+        | InstrumentFn(..)
+        | Lang(..)
+        | Link(..)
+        | LinkName { .. }
+        | LinkOrdinal { .. }
+        | Linkage(..)
+        | LoopMatch(..)
+        | MacroEscape
+        | MacroExport { .. }
+        | MacroUse { .. }
+        | MayDangle(..)
+        | MoveSizeLimit { .. }
+        | MustNotSupend { .. }
+        | MustUse { .. }
+        | NeedsAllocator
+        | NeedsPanicRuntime
+        | NoBuiltins
+        | NoCore
+        | NoImplicitPrelude
+        | NoLink
+        | NoMain
+        | NoStd
+        | NonExhaustive(..)
+        | OnConst { .. }
+        | OnMove { .. }
+        | OnTypeError { .. }
+        | OnUnimplemented { .. }
+        | OnUnknown { .. }
+        | OnUnmatchedArgs { .. }
+        | Opaque
+        | Optimize(..)
+        | PanicRuntime
+        | PatchableFunctionEntry { .. }
+        | Path(..)
+        | PatternComplexityLimit { .. }
+        | PinV2(..)
+        | PreludeImport
+        | ProcMacro
+        | ProcMacroAttribute
+        | ProcMacroDerive { .. }
+        | ProfilerRuntime
+        | RecursionLimit { .. }
+        | ReexportTestHarnessMain(..)
+        | RegisterTool { .. }
+        | Repr { .. }
+        // rustc attrs are checked separately
+        | RustcAbi { .. }
+        | RustcAlign { .. }
+        | RustcAllocator
+        | RustcAllocatorZeroed
+        | RustcAllocatorZeroedVariant { .. }
+        | RustcAllowConstFnUnstable(..)
+        | RustcAllowIncoherentImpl(..)
+        | RustcAllowLifetimeDependentSpecialization
+        | RustcAsPtr
+        | RustcAutodiff(..)
+        | RustcBodyStability { .. }
+        | RustcBuiltinMacro { .. }
+        | RustcCanonicalSymbol
+        | RustcCaptureAnalysis
+        | RustcCguTestAttr(..)
+        | RustcClean(..)
+        | RustcCoherenceIsCore
+        | RustcCoinductive
+        | RustcComptime(..)
+        | RustcConfusables { .. }
+        | RustcConstStability { .. }
+        | RustcConstStableIndirect
+        | RustcConversionSuggestion
+        | RustcDeallocator
+        | RustcDelayedBugFromInsideQuery
+        | RustcDenyExplicitImpl
+        | RustcDeprecatedSafe2024 { .. }
+        | RustcDiagnosticItem(..)
+        | RustcDoNotConstCheck
+        | RustcDocPrimitive(..)
+        | RustcDummy
+        | RustcDumpDefParents
+        | RustcDumpDefPath(..)
+        | RustcDumpGenerics
+        | RustcDumpHiddenTypeOfOpaques
+        | RustcDumpInferredOutlives
+        | RustcDumpItemBounds
+        | RustcDumpLayout(..)
+        | RustcDumpObjectLifetimeDefaults
+        | RustcDumpPredicates
+        | RustcDumpSymbolName(..)
+        | RustcDumpUserArgs
+        | RustcDumpVariances
+        | RustcDumpVariancesOfOpaques
+        | RustcDumpVtable(..)
+        | RustcDynIncompatibleTrait(..)
+        | RustcEffectiveVisibility
+        | RustcEiiForeignItem
+        | RustcEvaluateWhereClauses
+        | RustcHasIncoherentInherentImpls
+        | RustcIfThisChanged(..)
+        | RustcInheritOverflowChecks
+        | RustcInsignificantDtor
+        | RustcIntrinsic
+        | RustcIntrinsicConstStableIndirect
+        | RustcLegacyConstGenerics { .. }
+        | RustcLintOptDenyFieldAccess { .. }
+        | RustcLintOptTy
+        | RustcLintQueryInstability
+        | RustcLintUntrackedQueryInformation
+        | RustcMacroTransparency(..)
+        | RustcMain
+        | RustcMir(..)
+        | RustcMustImplementOneOf { .. }
+        | RustcMustMatchExhaustively(..)
+        | RustcNeverReturnsNullPtr
+        | RustcNeverTypeOptions { .. }
+        | RustcNoImplicitAutorefs
+        | RustcNoImplicitBounds
+        | RustcNoMirInline
+        | RustcNoWritable
+        | RustcNonConstTraitMethod
+        | RustcNonnullOptimizationGuaranteed
+        | RustcNounwind
+        | RustcObjcClass { .. }
+        | RustcObjcSelector { .. }
+        | RustcOffloadKernel
+        | RustcPanicsWhenZero
+        | RustcParenSugar
+        | RustcPassByValue
+        | RustcPassIndirectlyInNonRusticAbis(..)
+        | RustcPreserveUbChecks
+        | RustcProcMacroDecls
+        | RustcPubTransparent(..)
+        | RustcReallocator
+        | RustcRegions
+        | RustcReservationImpl(..)
+        | RustcScalableVector { .. }
+        | RustcShouldNotBeCalledOnConstItems
+        | RustcSimdMonomorphizeLaneLimit(..)
+        | RustcSkipDuringMethodDispatch { .. }
+        | RustcSpecializationTrait
+        | RustcStdInternalSymbol
+        | RustcStrictCoherence(..)
+        | RustcTestMarker(..)
+        | RustcThenThisWouldNeed(..)
+        | RustcTrivialFieldReads
+        | Sanitize { .. }
+        | ShouldPanic { .. }
+        | Splat(..)
+        | Stability { .. }
+        | TestRunner(..)
+        | ThreadLocal
+        | TrackCaller(..)
+        | TypeLengthLimit { .. }
+        | Unroll(..)
+        | UnstableFeatureBound(..)
+        | UnstableRemoved(..)
+        | Used { .. }
+        | WindowsSubsystem(..)
+        => (None, false),
+    }
+}

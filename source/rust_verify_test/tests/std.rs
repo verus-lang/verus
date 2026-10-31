@@ -42,6 +42,18 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] try_from_self verus_code! {
+        use vstd::prelude::*;
+
+        fn main() {
+            let n: i64 = 42;
+            let m: i64 = n.try_into().unwrap();
+            assert(m == 42);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] external_clone_fail verus_code! {
         // Make sure the support for &X clone doesn't mistakenly trigger in other situations
 
@@ -335,6 +347,43 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file! {
+    #[test] question_mark_result_uses_from_spec verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::convert::FromSpecImpl;
+
+        pub struct ConvertedError {
+            pub code: u16,
+            pub converted: bool,
+        }
+
+        impl From<u8> for ConvertedError {
+            fn from(value: u8) -> Self {
+                ConvertedError { code: value as u16, converted: true }
+            }
+        }
+
+        impl FromSpecImpl<u8> for ConvertedError {
+            open spec fn obeys_from_spec() -> bool {
+                true
+            }
+
+            open spec fn from_spec(value: u8) -> Self {
+                ConvertedError { code: value as u16, converted: true }
+            }
+        }
+
+        fn test(value: u8) -> (res: Result<(), ConvertedError>)
+            ensures
+                res == Err(ConvertedError { code: value as u16, converted: true }),
+        {
+            let input: Result<(), u8> = Err(value);
+            input?;
+            Ok(())
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] clone_for_std_types verus_code! {
         use vstd::*;
         use vstd::prelude::*;
@@ -541,6 +590,23 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 3)
 }
 
+test_verify_one_file_with_options! {
+    #[test] derived_unit_clone ["--no-external-by-default"] => verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Clone)]
+        #[verifier::allow(autoderive_clone_without_spec)]
+        struct Token {
+            _priv: (),
+        }
+
+        fn demo() {
+            let token = Token { _priv: () };
+            let _copy = token.clone();
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] tuple_clone_not_supported verus_code! {
         use vstd::*;
@@ -549,7 +615,7 @@ test_verify_one_file! {
             let b = a.clone();
             assert(a == b); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: built-in instance")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support this built-in instance")
 }
 
 test_verify_one_file_with_options! {
@@ -1653,7 +1719,7 @@ test_verify_one_file! {
 
         use vstd::prelude::*;
         use vstd::std_specs::nonzero::*;
-        use std::num::{NonZeroU64, NonZeroI32};
+        use std::num::{NonZeroU64, NonZeroI32, NonZeroU128, NonZeroI128};
 
         fn test() {
             let x = NonZeroI32::new(-20).unwrap();
@@ -1685,6 +1751,11 @@ test_verify_one_file! {
             assert(0x1011 == 0x1011 | 0x1000) by (compute_only);
             assert(z1@ == x@);
             assert(z1 == x);
+        }
+
+        fn test_128(x: u128, n: NonZeroU128, m: NonZeroI128) -> u128 {
+            assert(m.get() != 0);
+            x / n.get()
         }
 
     } => Ok(())
@@ -1835,6 +1906,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] binary_op_of_refs verus_code! {
+        fn test_bitwise(x: u32, y: i32, b: bool) {
+            let y1 = &x & 0x7f;
+            let y2 = 0x7f | &x;
+            let y3 = &y ^ &y;
+            assert(y1 == x & 0x7f);
+            assert(y2 == 0x7f | x);
+            assert(y3 == y ^ y);
+
+            let b1 = &b & true;
+            let b2 = false | &b;
+            let b3 = &b ^ &b;
+            assert(b1 == b);
+            assert(b2 == b);
+            assert(b3 == false);
+        }
+
+        fn test_shift(x: u8, s: u32)
+            requires s < 8
+        {
+            let y1 = &x << s;
+            let y2 = x >> &s;
+            assert(y1 == x << s);
+            assert(y2 == x >> s);
+        }
+
+        fn test_shift_fails(x: u8, s: u32)
+            requires s < 32
+        {
+            let y = &x << s; // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file! {
     #[test] format_ok verus_code! {
         use vstd::*;
         fn test() {
@@ -1845,8 +1951,44 @@ test_verify_one_file! {
             let x = format!("ok {:04}!", &(2 + 2));
             let u = 5usize + 5usize;
             let x = format!("ok {} then {} then {} and {}", &(2 + 2), true, x, u);
+
+            let w: usize = 65535;
+            let x = 5u8;
+            let _ = format!("{:1$}", x, w);
+            let _ = format!("{:width$}", x, width = w);
+            let _ = format!("{x:w$}");
+            let _ = format!("{:.1$}", x, w);
+            let _ = format!("{:.*}", w, x);
+            let _ = format!("{:.prec$}", x, prec = w);
+            let _ = format_args!("{:1$}", x, w);
+            let _ = format!("{:5}", x);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] format_count_out_of_range verus_code! {
+        use vstd::*;
+
+        fn width() {
+            let w: usize = 65536;
+            let _ = format!("{:1$}", 5u8, w); // FAILS
+        }
+
+        fn precision() {
+            let p: usize = 65536;
+            let _ = format!("{:.*}", p, 5u8); // FAILS
+        }
+
+        fn format_args_width() {
+            let w: usize = 65536;
+            let _ = format_args!("{:1$}", 5u8, w); // FAILS
+        }
+    } => Err(err) => {
+        assert_vir_error_msgs(err.clone(), &["precondition not satisfied"; 3]);
+        assert_help_error_msg(err.clone(), "*x <= u16::MAX");
+        assert_fails(err, 3);
+    }
 }
 
 test_verify_one_file! {
@@ -1872,6 +2014,55 @@ test_verify_one_file! {
             let x = format!("{}", s); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] formatting_callers_require_fmt_req verus_code! {
+        use core::fmt::{Debug, Display, Error, Formatter};
+        use vstd::prelude::*;
+        use vstd::std_specs::fmt::{DebugSpecImpl, DisplaySpecImpl};
+
+        pub struct K {
+            pub a: u8,
+        }
+
+        impl DisplaySpecImpl for K {
+            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
+                false
+            }
+        }
+
+        impl DebugSpecImpl for K {
+            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
+                false
+            }
+        }
+
+        impl Display for K {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+                assert(false);
+                let v: Vec<u8> = Vec::new();
+                let _ = v[0];
+                Ok(())
+            }
+        }
+
+        impl Debug for K {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+                Display::fmt(self, f)
+            }
+        }
+
+        fn main() {
+            let k = K { a: 1 };
+            let _ = k.to_string(); // FAILS
+        }
+
+        fn test_new_argument() {
+            let k = K { a: 1 };
+            let _ = vstd::pervasive::__new_argument(&k); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {
@@ -1921,4 +2112,127 @@ test_verify_one_file! {
         assert_eq!(err.errors.len(), 3);
         assert!(err.errors.iter().all(|e| e.rendered.contains("precondition not satisfied")));
     }
+}
+
+test_verify_one_file! {
+    // `Drop::drop` is not in the function map, so pruning could not determine its mask and
+    // dropped the invariant-mask set operations that the mask check below still uses (crash
+    // "unknown function: vstd::iset::ISet::subset_of" instead of this error)
+    #[test] drop_opens_invariants_none_calls_fn_with_default_mask verus_code! {
+        use vstd::prelude::*;
+        fn f() no_unwind {}
+        pub struct S;
+        impl Drop for S {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            {
+                f(); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // as above, for an impl of an external trait (also not in the function map)
+    #[test] external_trait_impl_opens_invariants_none_calls_fn_with_default_mask verus_code! {
+        use vstd::prelude::*;
+        #[verifier::external]
+        trait MyTrait {
+            fn foo();
+        }
+        fn f() no_unwind {}
+        pub struct S;
+        impl MyTrait for S {
+            fn foo()
+                opens_invariants none
+                no_unwind
+            {
+                f(); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] assert_eq_ok verus_code! {
+        use vstd::*;
+        fn test(x: u64, v: Vec<u8>) requires x < 10, v.len() == 2 {
+            assert_eq!(x + 0, x);
+            assert_ne!(x, x + 1);
+            assert_eq!(v.len(), 2, "len is {}", v.len());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assert_eq_fails verus_code! {
+        use vstd::*;
+        fn test1(x: u64) {
+            assert_eq!(x, 3); // FAILS
+        }
+        fn test2(x: u64) {
+            assert_ne!(x, 3, "x is {}", x); // FAILS
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(err.errors.iter().all(|e| e.rendered.contains("precondition not satisfied")));
+    }
+}
+
+test_verify_one_file! {
+    #[test] maybe_uninit_write verus_code! {
+        use core::mem::MaybeUninit;
+        use vstd::prelude::*;
+        use vstd::std_specs::maybe_uninit::MaybeUninitAdditionalSpecFns;
+
+        fn test() {
+            let mut m: MaybeUninit<u8> = MaybeUninit::uninit();
+            let r = m.write(5);
+            assert(*r == 5);
+            *r = 7;
+            assert(m.mem_contents().is_init());
+            assert(m.mem_contents().value() == 7);
+            let v = unsafe { m.assume_init() };
+            assert(v == 7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] slice_unchecked_specs verus_code! {
+        use vstd::prelude::*;
+
+        fn get_usize(s: &[u8], i: usize) requires i < s.len() {
+            let x = unsafe { s.get_unchecked(i) };
+            assert(*x == s@[i as int]);
+        }
+
+        fn get_range(s: &[u8], a: usize, b: usize) requires a <= b <= s.len() {
+            let sub = unsafe { s.get_unchecked(a..b) };
+            assert(sub@ == s@.subrange(a as int, b as int));
+        }
+
+        fn get_mut(s: &mut [u8], i: usize) requires i < old(s).len() {
+            let x = unsafe { s.get_unchecked_mut(i) };
+            assert(*x == old(s)@[i as int]);
+            *x = 7u8;
+            assert(s@ == old(s)@.update(i as int, 7u8));
+        }
+
+        fn split(s: &[u8], mid: usize) requires mid <= s.len() {
+            let (l, r) = unsafe { s.split_at_unchecked(mid) };
+            assert(l@ == s@.subrange(0, mid as int));
+            assert(r@ == s@.subrange(mid as int, s@.len() as int));
+        }
+
+        fn split_mut(s: &mut [u8], mid: usize) requires mid <= old(s).len() {
+            let (l, r) = unsafe { s.split_at_mut_unchecked(mid) };
+            let ghost lv = l@;
+            let ghost rv = r@;
+            assert(lv == old(s)@.subrange(0, mid as int));
+            assert(rv == old(s)@.subrange(mid as int, old(s)@.len() as int));
+            assert(s@ == lv + rv);
+        }
+    } => Ok(())
 }

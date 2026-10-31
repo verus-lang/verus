@@ -133,6 +133,22 @@ fn target_output_suffix(target: &str) -> String {
     }
 }
 
+fn get_stderr_string(output: &std::process::Output) -> std::borrow::Cow<'_, str> {
+    let s = String::from_utf8_lossy(&output.stderr);
+    let max_len = 64 * 1024;
+    if s.len() > max_len {
+        // GitHub rejects summaries larger than 1MB, so truncate any large stderr logs
+        let mut s: Vec<char> = s.chars().collect();
+        s.splice(
+            max_len / 2..(s.len() - max_len / 2),
+            "... [omitted from stderr] ...".chars(),
+        );
+        String::from_iter(s).into()
+    } else {
+        s
+    }
+}
+
 /// Process a single crate root target within a project.
 /// Returns (summary, verus_failed, warnings) or an error.
 fn process_target(
@@ -256,7 +272,7 @@ fn process_target(
 
     let verus_failed = !output.status.success();
     if verus_failed {
-        let stderr_str = String::from_utf8_lossy(&output.stderr);
+        let stderr_str = get_stderr_string(&output);
         warn!(
             "Verus exited non-zero for {} target {} \
              (may not have reached verification)",
@@ -340,7 +356,7 @@ fn process_target(
                         "cannot parse verus json output for {}: {}",
                         &project.name, e
                     );
-                    let stderr_str = String::from_utf8_lossy(&output.stderr);
+                    let stderr_str = get_stderr_string(&output);
                     if !stderr_str.trim().is_empty() {
                         error!("Verus stderr: {}", stderr_str.trim_end());
                     }
@@ -354,7 +370,7 @@ fn process_target(
         );
         output_json["runner"] = serde_json::json!({
             "success": output.status.success(),
-            "stderr": String::from_utf8_lossy(&output.stderr),
+            "stderr": get_stderr_string(&output),
             "verus_git_url": ctx.run_configuration.verus_git_url,
             "verus_refspec": ctx.run_configuration.verus_refspec,
             "run_configuration": project,
@@ -375,7 +391,7 @@ fn process_target(
             serde_json::json!({
                 "runner": {
                     "success": output.status.success(),
-                    "stderr": String::from_utf8_lossy(&output.stderr),
+                    "stderr": get_stderr_string(&output),
                     "invalid_output_json": true,
                 }
             }),

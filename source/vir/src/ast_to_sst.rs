@@ -1,13 +1,17 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
     BoundsCheck, ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr,
-    Fun, Function, Ident, IntRange, InvAtomicity, Label, LogicalOp, LoopInvariantKind, MaskSpec,
-    Mode, OverflowBehavior, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
-    Typ, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders,
+    Fun, Function, Ident, IntRange, IntegerTypeBoundKind, InvAtomicity, Label, LogicalOp,
+    LoopInvariantKind, LoopSource, MaskSpec, Mode, OverflowBehavior, PatternBinding, PatternX,
+    Place, PlaceX, SignedDivEdgeCaseBehavior, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, UninterpretedFloatBinaryOp, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders,
     VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
-use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_typ};
+use crate::ast_util::{
+    QUANT_FORALL, bitwidth_to_signed_type_string, bool_typ, int_typ, is_unit, types_equal,
+    undecorate_typ, unit_typ,
+};
 use crate::context::Ctx;
 use crate::def::{self, Spanned};
 use crate::fun;
@@ -22,9 +26,10 @@ use crate::sst::{
     Pars, Stm, StmX, Stms, UniqueIdent,
 };
 use crate::sst_util::{
-    exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_exp_get_proof_note,
-    sst_int_literal, sst_le, sst_lt, sst_mut_ref_current, sst_unit_value,
-    stm_with_vars_at_pre_state, subst_exp, subst_pre_local_decl, subst_stm, subst_typ,
+    exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_disjoin, sst_equal,
+    sst_exp_get_proof_note, sst_int_literal, sst_le, sst_lt, sst_mut_ref_current,
+    sst_mut_ref_future, sst_unit_value, stm_with_vars_at_pre_state, subst_exp,
+    subst_pre_local_decl, subst_stm, subst_typ,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor, stm_visitor_check};
 use crate::util::vec_map_result;
@@ -109,6 +114,7 @@ pub(crate) struct State<'a> {
     statics: IndexSet<Fun>,
     pub assert_id_counter: u64,
     loop_id_counter: u64,
+    loop_result_dests: HashMap<Label, VarIdent>,
 
     pub mask: Option<MaskSet>,
 
@@ -255,6 +261,7 @@ impl<'a> State<'a> {
             statics: IndexSet::new(),
             assert_id_counter: 0,
             loop_id_counter: 0,
+            loop_result_dests: HashMap::new(),
             mask: None,
             au_pred_args: Vec::new(),
             au_var_exp_to_resolve: None,
@@ -536,12 +543,9 @@ impl PreLocalDeclKind {
         match self {
             PreLocalDeclKind::Immutable(Immutable(imm)) => {
                 if let Some(span) = mutbl {
-                    Err(error(
+                    Err(crate::messages::internal_error(
                         span,
-                        format!(
-                            "Verus Internal Error: assignment for immutable decl kind {:?}",
-                            imm
-                        ),
+                        format!("assignment for immutable decl kind {:?}", imm),
                     ))
                 } else {
                     Ok(imm)
@@ -588,6 +592,16 @@ pub(crate) fn get_function_sst(
     }
 }
 
+pub(crate) fn ens_has_return(ctx: &Ctx, function: &Function) -> bool {
+    match &function.x.kind {
+        crate::ast::FunctionKind::TraitMethodImpl { method, .. } => {
+            let method = &ctx.func_map[method];
+            !is_unit(&undecorate_typ(&method.x.outer_ret.x.typ))
+        }
+        _ => !is_unit(&undecorate_typ(&function.x.outer_ret.x.typ)),
+    }
+}
+
 fn function_can_be_exp(
     ctx: &Ctx,
     state: &State,
@@ -611,8 +625,7 @@ pub fn assume_false(span: &Span) -> Stm {
 
 pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
     let xvarx = ExpX::Var(x.clone());
-    // TODO: Bool is wrong here
-    let xvar = SpannedTyped::new(span, &Arc::new(TypX::Bool), xvarx);
+    let xvar = SpannedTyped::new(span, typ, xvarx);
     let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(typ.clone()), xvar);
     let has_typ = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_typx);
     Spanned::new(span.clone(), StmX::Assume(has_typ))
@@ -630,7 +643,7 @@ fn loop_body_find_breaks(
             loop_body_find_breaks(loop_label, num_breaks, num_isolated_breaks, true, expr);
             VisitorControlFlow::Return
         }
-        ExprX::BreakOrContinue { label: break_label, is_break: true } => {
+        ExprX::BreakOrContinue { label: break_label, is_break: true, .. } => {
             if break_label == loop_label {
                 *num_breaks += 1;
                 if in_isolated {
@@ -826,7 +839,7 @@ impl Sequencer {
                         if let Some(span) = crate::sst_vars::find_overlapping_assignment(stm, loc) {
                             return Err(error_with_label(
                                 &loc.span,
-                                "Verus doesn't support assigning during mutable borrow like this",
+                                "Verus does not currently support assigning during a mutable borrow like this",
                                 "this borrow",
                             )
                             .secondary_label(&span, "followed by this assignment"));
@@ -984,13 +997,13 @@ fn expr_get_call(
                     return Err(internal_error(&expr.span, "autospec not discharged"));
                 }
                 let function = get_function(ctx, &expr.span, x)?;
-                let has_ret = function.x.ens_has_return;
+                let has_ret = ens_has_return(ctx, &function);
                 if disallow_poly_ret.is_some()
                     && has_ret
                     && crate::poly::ret_needs_native(
                         ctx,
                         &function.x.kind,
-                        &function.x.ret.x.typ,
+                        &function.x.outer_ret.x.typ,
                         disallow_poly_ret.unwrap(),
                     )
                 {
@@ -1478,12 +1491,12 @@ fn stm_call(
     }
 
     let call = StmX::Call {
-        fun: crate::sst::CallTarget::Fun(name),
+        fun: crate::sst::CallTarget::Fun(name.clone()),
         resolved_method,
         mode: fun.x.mode,
         is_trait_default,
         typ_args: typs,
-        args: small_args,
+        args: small_args.clone(),
         split: None,
         dest,
         assert_id: state.next_assert_id(),
@@ -1491,6 +1504,18 @@ fn stm_call(
     };
 
     stms.push(Spanned::new(span.clone(), call));
+    if (name == def::nonstatic_call_fun(false) || name == def::nonstatic_call_fun(true))
+        && matches!(&*small_args[0].typ, TypX::MutRef(_))
+    {
+        // Supported closures cannot mutate their captures, so a FnMut call preserves
+        // the callable during its call reborrow. This does not constrain the final
+        // value of a longer-lived reference passed through a generic FnOnce argument.
+        let f = &small_args[0];
+        let current = sst_mut_ref_current(span, f);
+        let future = sst_mut_ref_future(span, f);
+        let equal = sst_equal(span, &current, &future);
+        stms.push(Spanned::new(span.clone(), StmX::Assume(equal)));
+    }
     Ok(stms_to_one_stm(span, stms))
 }
 
@@ -1736,6 +1761,7 @@ pub(crate) fn expr_to_stm_opt(
             let f = match bsf {
                 BuiltinSpecFun::ClosureReq => InternalFun::ClosureReq,
                 BuiltinSpecFun::ClosureEns => InternalFun::ClosureEns,
+                BuiltinSpecFun::ClosureOpensInvariants => InternalFun::ClosureOpensInvariants,
                 BuiltinSpecFun::DefaultEns => InternalFun::DefaultEns,
             };
             Ok((
@@ -1957,6 +1983,14 @@ pub(crate) fn expr_to_stm_opt(
             }
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ExpX::Unary(*op, exp))))))
         }
+        ExprX::UnaryOpr(UnaryOpr::ToDyn(..), _)
+            if matches!(&*undecorate_typ(&expr.typ), TypX::MutRef(_)) =>
+        {
+            let (mut stms, e) = expr_to_stm_opt_with_delayed_obligations(ctx, state, expr)?;
+            let (e, obligations) = unwrap_or_return_never!(e, stms);
+            typ_inv_obligations(ctx, state, &mut stms, obligations, TypInv::BareMutRefError)?;
+            Ok((stms, Maybe::Some(e)))
+        }
         ExprX::UnaryOpr(op, arg) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, arg)?;
             let exp = to_exp_or_return_never!(exp, stms);
@@ -2106,10 +2140,11 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::NonSpecClosure {
             params,
-            proof_fn_modes: _,
+            proof_fn_modes,
             body,
             requires,
             ensures,
+            mask_spec,
             ret,
             external_spec,
         } => {
@@ -2118,8 +2153,17 @@ pub(crate) fn expr_to_stm_opt(
             // Emit the internals of the closure (ClosureInner behaves like a dead-end)
             // This includes assuming the requires, asserting the ensures, everything else
 
-            let (inner_stms, typ_inv_vars) =
-                exec_closure_body_stms(ctx, state, params, ret, body, requires, ensures)?;
+            let (inner_stms, typ_inv_vars) = exec_closure_body_stms(
+                ctx,
+                state,
+                params,
+                ret,
+                body,
+                requires,
+                ensures,
+                mask_spec,
+                proof_fn_modes.is_some(),
+            )?;
             let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(inner_stms)));
             let clos =
                 Spanned::new(expr.span.clone(), StmX::ClosureInner { body: block, typ_inv_vars });
@@ -2189,7 +2233,7 @@ pub(crate) fn expr_to_stm_opt(
                 let e_exists = mk_exp(ExpX::Unary(UnaryOp::MustBeElaborated, e_exists));
                 let error = error(
                     &cond_exp.span,
-                    "recommendation not met: cannot prove that there exists values that satisfy the condition of the choose expression",
+                    "recommendation not met: cannot prove that there exist values that satisfy the condition of the choose expression",
                 );
                 let assertx = StmX::Assert(state.next_assert_id(), Some(error), e_exists);
                 check_stms.push(Spanned::new(cond_exp.span.clone(), assertx));
@@ -2345,7 +2389,7 @@ pub(crate) fn expr_to_stm_opt(
             if let Maybe::Some(Value::Exp(_)) = e {
                 return Err(error(
                     &expr.span,
-                    "'assert ... by' block cannot end with an expression",
+                    "`assert ... by` block cannot end with an expression",
                 ));
             }
             let (require_checks, require_exp) = expr_to_pure_exp_check(ctx, state, &require)?;
@@ -2414,7 +2458,7 @@ pub(crate) fn expr_to_stm_opt(
                     if let Maybe::Some(Value::Exp(_)) = e {
                         return Err(error(
                             &expr.span,
-                            "'assert ... by' block cannot end with an expression",
+                            "`assert ... by` block cannot end with an expression",
                         ));
                     }
                     inner_body.extend(proof_stms);
@@ -2493,12 +2537,14 @@ pub(crate) fn expr_to_stm_opt(
                 AssertQueryMode::BitVector => {
                     // check if assertion block consists only of requires/ensures
                     let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
-                    let proof_block_err =
-                        Err(error(&expr.span, "assert_bitvector_by cannot contain a proof block"));
+                    let proof_block_err = Err(error(
+                        &expr.span,
+                        "`assert ... by(bit_vector)` cannot contain a proof block",
+                    ));
                     if let Maybe::Some(Value::Exp(_)) = e {
                         return Err(error(
                             &expr.span,
-                            "assert_bitvector_by cannot contain a return value",
+                            "`assert ... by(bit_vector)` cannot contain a return value",
                         ));
                     }
                     if proof_stms.len() > 1 {
@@ -2624,9 +2670,20 @@ pub(crate) fn expr_to_stm_opt(
             invs,
             decrease,
             atomic_call,
+            known_no_back_edge,
+            source,
         } => {
             let is_for_loop = *is_for_loop;
+            let produces_value =
+                !crate::ast_util::is_unit(&expr.typ) && !crate::ast_util::is_never(&expr.typ);
             let loop_isolation = *loop_isolation;
+            if produces_value && loop_isolation {
+                return Err(error(
+                    &expr.span,
+                    "Verus does not currently support loop isolation for loops with value-bearing `break`",
+                )
+                .help("add `#[verifier::loop_isolation(false)]` to this loop"));
+            }
             let allow_complex_invariants = *allow_complex_invariants;
             let id = state.loop_id_counter;
             state.loop_id_counter += 1;
@@ -2653,7 +2710,13 @@ pub(crate) fn expr_to_stm_opt(
                 // in the same query
                 return Err(error(
                     &expr.span,
-                    "loop with loop_isolation=false contains 'break' statement inside a nested loop with loop_isolation=true",
+                    format!(
+                        "{:} contains `break` statement inside a nested loop with `loop_isolation(true)`",
+                        match source {
+                            LoopSource::Loop => "loop with `loop_isolation(false)`",
+                            LoopSource::BreakableBlock => "breakable block",
+                        }
+                    ),
                 ));
             }
             let has_user_break = num_breaks > if is_for_loop { 1 } else { 0 };
@@ -2688,15 +2751,15 @@ pub(crate) fn expr_to_stm_opt(
             if allow_complex_invariants && loop_isolation && !is_for_loop {
                 return Err(error(
                     &expr.span,
-                    "attribute 'allow_complex_invariants' can only be used with 'loop_isolation(false)'",
+                    "attribute `allow_complex_invariants` can only be used with `loop_isolation(false)`",
                 ));
             }
 
             if !loop_isolation && !simple_invs && !allow_complex_invariants {
                 return Err(error(
                     &expr.span,
-                    "loop invariants with 'loop_isolation(false)' cannot be invariant_except_break \
-                        or ensures, unless #[verifier::allow_complex_invariants] is used",
+                    "loop invariants with `loop_isolation(false)` cannot be `invariant_except_break` \
+                        or `ensures`, unless `#[verifier::allow_complex_invariants]` is used",
                 ));
             }
             let mut cnd = if let Some(cond) = cond {
@@ -2725,8 +2788,8 @@ pub(crate) fn expr_to_stm_opt(
                         && !function.x.attrs.exec_allows_no_decreases_clause
                 })
             {
-                return Err(error(&expr.span, "loop must have a decreases clause")
-                            .help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function"));
+                return Err(error(&expr.span, "loop must have a `decreases` clause")
+                            .help("to disable this check, use `#[verifier::exec_allows_no_decreases_clause]` on the function"));
             }
 
             let mut body_prefix = Vec::new();
@@ -2743,7 +2806,24 @@ pub(crate) fn expr_to_stm_opt(
                 state.branch_bool_var = Some((var_id, var_exp));
             }
 
+            let loop_result = if !produces_value {
+                None
+            } else {
+                let (dest, result) = state.declare_temp_var_stm(
+                    &expr.span,
+                    &expr.typ,
+                    PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::LoopBreakValue)),
+                );
+                let previous = state.loop_result_dests.insert(label.clone(), dest);
+                assert!(previous.is_none());
+                Some(result)
+            };
+
             let (mut body_stms, _val) = expr_to_stm_opt(ctx, state, body)?;
+            if loop_result.is_some() {
+                let removed = state.loop_result_dests.remove(label);
+                assert!(removed.is_some());
+            }
             state.branch_bool_var = None;
 
             let mut check_recommends: Vec<Stm> = Vec::new();
@@ -2828,11 +2908,15 @@ pub(crate) fn expr_to_stm_opt(
                     modified_vars: None,
                     pre_modified_params_incl: None,
                     pre_modified_params_excl: None,
+                    known_no_back_edge: *known_no_back_edge,
                 },
             );
 
             if can_control_flow_reach_after_loop(expr) {
-                let ret = Maybe::Some(Value::ImplicitUnit(expr.span.clone()));
+                let ret = Maybe::Some(match loop_result {
+                    Some(result) => Value::Exp(result),
+                    None => Value::ImplicitUnit(expr.span.clone()),
+                });
                 Ok((vec![while_stm], ret))
             } else {
                 // If it's an infinite loop, add 'assume(false)' and return Never.
@@ -2930,7 +3014,7 @@ pub(crate) fn expr_to_stm_opt(
                 Maybe::Some(_e) => {
                     if !ctx.checking_spec_preconditions() {
                         let error =
-                            error(&expr.span, "Cannot show invariant holds at end of block");
+                            error(&expr.span, "cannot show invariant holds at end of block");
                         // Note, we re-use the `main_inv` exp here, but it contains a mutable
                         stms1.push(Spanned::new(
                             expr.span.clone(),
@@ -3093,7 +3177,7 @@ pub(crate) fn expr_to_stm_opt(
 
                 let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
                 let error =
-                    error(&expr.span, "cannot show atomic postcondition hold at end of block");
+                    error(&expr.span, "cannot show atomic postcondition holds at end of block");
 
                 stms.push(Spanned::new(
                     expr.span.clone(),
@@ -3589,10 +3673,25 @@ pub(crate) fn expr_to_stm_opt(
             stms.push(assume_false(&expr.span));
             Ok((stms, Maybe::Never))
         }
-        ExprX::BreakOrContinue { label, is_break } => {
+        ExprX::BreakOrContinue { label, is_break, value } => {
+            let mut stms = Vec::new();
+            if let Some(value) = value {
+                assert!(*is_break);
+                let (mut value_stms, value) = expr_to_stm_opt(ctx, state, value)?;
+                stms.append(&mut value_stms);
+                let value = match value {
+                    Maybe::Some(value) => value.to_exp(),
+                    Maybe::Never => return Ok((stms, Maybe::Never)),
+                };
+                // Unit-typed loops do not have a result destination.
+                if let Some(dest) = state.loop_result_dests.get(label) {
+                    stms.push(init_var(&expr.span, dest, &value));
+                }
+            }
             let stmx = StmX::BreakOrContinue { label: label.clone(), is_break: *is_break };
             let stm = Spanned::new(expr.span.clone(), stmx);
-            Ok((vec![stm], Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
+            stms.push(stm);
+            Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
         ExprX::NeverToAny(e) => {
             let (mut stms, _e) = expr_to_stm_opt(ctx, state, e)?;
@@ -3715,7 +3814,7 @@ pub(crate) fn expr_to_stm_opt(
                 ExprX::Call {
                     target: CallTarget::Fun(
                         crate::ast::CallTargetKind::Static,
-                        fun!(CrateId::Vstd => "future", "exec_await"),
+                        fun!(CrateId::Vstd => "future"; "exec_await"),
                         Arc::new(vec![e.typ.clone()]),
                         Arc::new(vec![]),
                         attrs,
@@ -3780,7 +3879,7 @@ pub(crate) fn expr_to_stm_opt(
                 if let Some(span) = crate::sst_vars::find_overlapping_assignment(stm, &loc) {
                     return Err(error(
                         &span,
-                        "Verus doesn't support assigning to scrutinee during match guard",
+                        "Verus does not currently support assigning to the scrutinee during a match guard",
                     ));
                 }
             }
@@ -3824,6 +3923,15 @@ fn expr_to_stm_opt_with_delayed_obligations(
 
             stms.append(&mut stms2);
             Ok((stms, Maybe::Some((exp1, obligations))))
+        }
+        ExprX::UnaryOpr(op @ UnaryOpr::ToDyn(..), e1)
+            if matches!(&*undecorate_typ(&expr.typ), TypX::MutRef(_)) =>
+        {
+            let (mut stms, exp1) = expr_to_stm_opt_with_delayed_obligations(ctx, state, e1)?;
+            let (exp1, obligations) = unwrap_or_return_never!(exp1, stms);
+            let exp1 = exp1.to_exp();
+            let out = mut_ref_to_dyn_sst(state, &expr.span, &mut stms, &exp1, op, &expr.typ);
+            Ok((stms, Maybe::Some((Value::Exp(out), obligations))))
         }
         _ => {
             let (stms, e) = expr_to_stm_opt(ctx, state, expr)?;
@@ -3881,58 +3989,134 @@ fn binary_op_exp(
     e1: &Exp,
     e2: &Exp,
 ) -> (Vec<Stm>, Exp) {
-    let pure_op = match op {
-        // Ops with side-effects are turned into sst ops without side-effects
-        BinaryOp::Arith(ArithOp::Add(_)) => sst::BinaryOp::Arith(sst::ArithOp::Add),
-        BinaryOp::Arith(ArithOp::Sub(_)) => sst::BinaryOp::Arith(sst::ArithOp::Sub),
-        BinaryOp::Arith(ArithOp::Mul(_)) => sst::BinaryOp::Arith(sst::ArithOp::Mul),
-        BinaryOp::Arith(ArithOp::EuclideanDiv(_)) => {
-            sst::BinaryOp::Arith(sst::ArithOp::EuclideanDiv)
-        }
-        BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
-            sst::BinaryOp::Arith(sst::ArithOp::EuclideanMod)
-        }
-        BinaryOp::Bitwise(op, _) => sst::BinaryOp::Bitwise(op),
-        BinaryOp::Index(kind, _) => sst::BinaryOp::Index(kind),
+    let bin = if matches!(
+        op,
+        BinaryOp::Arith(ArithOp::TruncatingDiv(_, _))
+            | BinaryOp::Arith(ArithOp::TruncatingMod(_, _))
+    ) {
+        let f = match op {
+            BinaryOp::Arith(ArithOp::TruncatingDiv(_, _)) => crate::def::fn_truncating_div(),
+            BinaryOp::Arith(ArithOp::TruncatingMod(_, _)) => crate::def::fn_truncating_mod(),
+            _ => unreachable!(),
+        };
+        let call_fun = CallFun::Fun(f, None);
+        let expx = ExpX::Call(call_fun, Arc::new(vec![]), Arc::new(vec![e1.clone(), e2.clone()]));
+        SpannedTyped::new(span, typ, expx)
+    } else if let BinaryOp::UninterpretedFloat(op) = op {
+        let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic));
+        let (var_ident, exp) = state.declare_temp_var_stm(span, typ, kind);
+        let stms = vec![
+            assume_has_typ(&var_ident, typ, span),
+            assume_fp_postcondition(&var_ident, e1, e2, op, &e1.typ, typ, span),
+        ];
+        return (stms, exp);
+    } else {
+        let pure_op = match op {
+            // Ops with side-effects are turned into sst ops without side-effects
+            BinaryOp::Arith(ArithOp::Add(_)) => sst::BinaryOp::Arith(sst::ArithOp::Add),
+            BinaryOp::Arith(ArithOp::Sub(_)) => sst::BinaryOp::Arith(sst::ArithOp::Sub),
+            BinaryOp::Arith(ArithOp::Mul(_)) => sst::BinaryOp::Arith(sst::ArithOp::Mul),
+            BinaryOp::Arith(ArithOp::EuclideanDiv(_)) => {
+                sst::BinaryOp::Arith(sst::ArithOp::EuclideanDiv)
+            }
+            BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
+                sst::BinaryOp::Arith(sst::ArithOp::EuclideanMod)
+            }
+            BinaryOp::Bitwise(op, _) => sst::BinaryOp::Bitwise(op),
+            BinaryOp::Index(kind, _) => sst::BinaryOp::Index(kind),
 
-        // Pure ops
-        BinaryOp::Xor => sst::BinaryOp::Xor,
-        BinaryOp::HeightCompare { strictly_lt, recursive_function_field } => {
-            sst::BinaryOp::HeightCompare { strictly_lt, recursive_function_field }
-        }
-        BinaryOp::Eq(_) => sst::BinaryOp::Eq,
-        BinaryOp::Ne => sst::BinaryOp::Ne,
-        BinaryOp::Inequality(op) => sst::BinaryOp::Inequality(op),
-        BinaryOp::RealArith(op) => sst::BinaryOp::RealArith(op),
-        BinaryOp::IeeeFloat(op) => sst::BinaryOp::IeeeFloat(op),
-        BinaryOp::StrGetChar => sst::BinaryOp::StrGetChar,
+            // Handled in earlier case
+            BinaryOp::Arith(ArithOp::TruncatingMod(_, _)) => unreachable!(),
+            BinaryOp::Arith(ArithOp::TruncatingDiv(_, _)) => unreachable!(),
+            BinaryOp::UninterpretedFloat(..) => unreachable!(),
+
+            // Pure ops
+            BinaryOp::BoolOrNoSC => sst::BinaryOp::Or,
+            BinaryOp::BoolAndNoSC => sst::BinaryOp::And,
+            BinaryOp::BoolXor => sst::BinaryOp::Xor,
+            BinaryOp::HeightCompare { strictly_lt, recursive_function_field } => {
+                sst::BinaryOp::HeightCompare { strictly_lt, recursive_function_field }
+            }
+            BinaryOp::Eq(_) => sst::BinaryOp::Eq,
+            BinaryOp::Ne => sst::BinaryOp::Ne,
+            BinaryOp::Inequality(op) => sst::BinaryOp::Inequality(op),
+            BinaryOp::RealArith(op) => sst::BinaryOp::RealArith(op),
+            BinaryOp::IeeeFloat(op) => sst::BinaryOp::IeeeFloat(op),
+            BinaryOp::StrGetChar => sst::BinaryOp::StrGetChar,
+        };
+        SpannedTyped::new(span, typ, ExpX::Binary(pure_op, e1.clone(), e2.clone()))
     };
-    let bin = SpannedTyped::new(span, typ, ExpX::Binary(pure_op, e1.clone(), e2.clone()));
 
     // Insert bounds check
-    let check = match op {
-        _ if state.view_as_spec => None,
-        BinaryOp::Arith(arith) => match arith {
-            ArithOp::Add(ob) | ArithOp::Sub(ob) | ArithOp::Mul(ob) => match ob {
-                OverflowBehavior::Allow => None,
-                OverflowBehavior::Truncate(_) => None,
-                OverflowBehavior::Error(range) => {
-                    let unary = UnaryOpr::HasType(Arc::new(TypX::Int(range)));
-                    let has_type = ExpX::UnaryOpr(unary, bin.clone());
-                    let has_type = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_type);
-                    Some((has_type, error(span, "possible arithmetic underflow/overflow")))
-                }
-            },
-            ArithOp::EuclideanDiv(d0b) | ArithOp::EuclideanMod(d0b) => match d0b {
-                Div0Behavior::Allow => None,
-                Div0Behavior::Error => {
-                    let zero = ExpX::Const(Constant::Int(BigInt::zero()));
-                    let ne = ExpX::Binary(sst::BinaryOp::Ne, e2.clone(), e2.new_x(zero));
-                    let ne = SpannedTyped::new(span, &Arc::new(TypX::Bool), ne);
-                    Some((ne, error(span, "possible division by zero")))
-                }
-            },
-        },
+    let checks = match op {
+        _ if state.view_as_spec => [None, None],
+        BinaryOp::Arith(arith) => {
+            let c1 = match arith {
+                ArithOp::Add(ob) | ArithOp::Sub(ob) | ArithOp::Mul(ob) => match ob {
+                    OverflowBehavior::Allow => None,
+                    OverflowBehavior::Truncate(_) => None,
+                    OverflowBehavior::Error(range) => {
+                        let unary = UnaryOpr::HasType(Arc::new(TypX::Int(range)));
+                        let has_type = ExpX::UnaryOpr(unary, bin.clone());
+                        let has_type = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_type);
+                        Some((has_type, error(span, "possible arithmetic underflow/overflow")))
+                    }
+                },
+                ArithOp::TruncatingDiv(_, sb) | ArithOp::TruncatingMod(_, sb) => match sb {
+                    SignedDivEdgeCaseBehavior::Allow => None,
+                    SignedDivEdgeCaseBehavior::Error(bitwidth) => {
+                        let signed_type_min_x = ExpX::UnaryOpr(
+                            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::SignedMin),
+                            sst_bitwidth(span, &bitwidth, &ctx.global.arch),
+                        );
+                        let signed_type_min =
+                            SpannedTyped::new(span, &int_typ(), signed_type_min_x);
+                        let ne1x = ExpX::Binary(sst::BinaryOp::Ne, e1.clone(), signed_type_min);
+                        let ne1 = SpannedTyped::new(span, &bool_typ(), ne1x);
+
+                        let negative1_const = crate::ast_util::const_int_from_i128(-1);
+                        let negative1_x = ExpX::Const(negative1_const);
+                        let negative1 = SpannedTyped::new(span, &int_typ(), negative1_x);
+                        let ne2x = ExpX::Binary(sst::BinaryOp::Ne, e2.clone(), negative1);
+                        let ne2 = SpannedTyped::new(span, &bool_typ(), ne2x);
+
+                        let cond = sst_disjoin(span, &[ne1, ne2]);
+                        Some((
+                            cond,
+                            error(
+                                span,
+                                format!(
+                                    "possible overflow case for signed {:}: cannot prove that (lhs, rhs) != ({:}::MIN, -1)",
+                                    match arith {
+                                        ArithOp::TruncatingDiv(..) => "division",
+                                        ArithOp::TruncatingMod(..) => "remainder",
+                                        _ => unreachable!(),
+                                    },
+                                    bitwidth_to_signed_type_string(&bitwidth)
+                                ),
+                            ),
+                        ))
+                    }
+                },
+                _ => None,
+            };
+            let c2 = match arith {
+                ArithOp::EuclideanDiv(d0b)
+                | ArithOp::EuclideanMod(d0b)
+                | ArithOp::TruncatingDiv(d0b, _)
+                | ArithOp::TruncatingMod(d0b, _) => match d0b {
+                    Div0Behavior::Allow => None,
+                    Div0Behavior::Error => {
+                        let zero = ExpX::Const(Constant::Int(BigInt::zero()));
+                        let ne = ExpX::Binary(sst::BinaryOp::Ne, e2.clone(), e2.new_x(zero));
+                        let ne = SpannedTyped::new(span, &Arc::new(TypX::Bool), ne);
+                        Some((ne, error(span, "possible division by zero")))
+                    }
+                },
+                _ => None,
+            };
+            [c1, c2]
+        }
         BinaryOp::Bitwise(bitwise, mode) => {
             match (mode, bitwise) {
                 (BitshiftBehavior::Error(w), BitwiseOp::Shr | BitwiseOp::Shl(_, _)) => {
@@ -3952,27 +4136,27 @@ fn binary_op_exp(
                     );
 
                     let msg = "possible bit shift underflow/overflow";
-                    Some((assert_exp, error(span, msg)))
+                    [Some((assert_exp, error(span, msg))), None]
                 }
-                (BitshiftBehavior::Allow, BitwiseOp::Shr | BitwiseOp::Shl(..)) => None,
+                (BitshiftBehavior::Allow, BitwiseOp::Shr | BitwiseOp::Shl(..)) => [None, None],
                 (_, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
                     // no overflow check needed
-                    None
+                    [None, None]
                 }
             }
         }
         BinaryOp::Index(kind, bounds_check) => match bounds_check {
-            BoundsCheck::Allow => None,
+            BoundsCheck::Allow => [None, None],
             BoundsCheck::Error => {
-                Some(crate::place_preconditions::sst_index_bound(span, e1, e2, kind))
+                [Some(crate::place_preconditions::sst_index_bound(span, e1, e2, kind)), None]
             }
         },
-        _ => None,
+        _ => [None, None],
     };
 
     let mut stms = vec![];
 
-    if let Some((assert_exp, msg)) = check {
+    for (assert_exp, msg) in checks.into_iter().flatten() {
         if !state.checking_spec_preconditions(ctx) {
             let assert = StmX::Assert(state.next_assert_id(), Some(msg), assert_exp.clone());
             let assert = Spanned::new(span.clone(), assert);
@@ -4009,6 +4193,29 @@ fn binary_op_exp(
     };
 
     (stms, bin)
+}
+
+/// assume(add_ensures(e1, e2, x)); (specific function depends on the op)
+pub(crate) fn assume_fp_postcondition(
+    x: &UniqueIdent,
+    e1: &Exp,
+    e2: &Exp,
+    op: UninterpretedFloatBinaryOp,
+    float_typ: &Typ,
+    out_typ: &Typ,
+    span: &Span,
+) -> Stm {
+    let float_typ = undecorate_typ(float_typ);
+    assert!(matches!(*float_typ, TypX::Float(..)));
+
+    let xvarx = ExpX::Var(x.clone());
+    let xvar = SpannedTyped::new(span, out_typ, xvarx);
+    let name = def::fn_fp_postcondition_name(op);
+    let call_fun = CallFun::Fun(name, None);
+    let typ_args = Arc::new(vec![float_typ.clone()]);
+    let expx = ExpX::Call(call_fun, typ_args, Arc::new(vec![e1.clone(), e2.clone(), xvar.clone()]));
+    let exp = SpannedTyped::new(span, &Arc::new(TypX::Bool), expx);
+    Spanned::new(span.clone(), StmX::Assume(exp))
 }
 
 /// Stms and Exps needed to execute a 2-phase borrow.
@@ -4098,10 +4305,43 @@ fn borrow_mut_to_sst(
     ))
 }
 
+/// Lowers the coercion of `src: &mut T` to `&mut dyn Trait` to a new reference `out` with
+///   mut_ref_current(out) == to_dyn(mut_ref_current(src))
+///   mut_ref_future(out) == to_dyn(mut_ref_future(src))
+fn mut_ref_to_dyn_sst(
+    state: &mut State,
+    span: &Span,
+    stms: &mut Vec<Stm>,
+    src: &Exp,
+    to_dyn_op: &UnaryOpr,
+    out_typ: &Typ,
+) -> Exp {
+    let TypX::MutRef(dyn_typ) = &*undecorate_typ(out_typ) else {
+        panic!("mut_ref_to_dyn_sst expected MutRef type");
+    };
+    let (var_ident, out) = state.declare_temp_var_stm(
+        span,
+        out_typ,
+        PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::BorrowMut)),
+    );
+    stms.push(assume_has_typ(&var_ident, out_typ, span));
+    let to_dyn = |e: Exp| SpannedTyped::new(span, dyn_typ, ExpX::UnaryOpr(to_dyn_op.clone(), e));
+    let cur =
+        sst_equal(span, &sst_mut_ref_current(span, &out), &to_dyn(sst_mut_ref_current(span, src)));
+    let fut =
+        sst_equal(span, &sst_mut_ref_future(span, &out), &to_dyn(sst_mut_ref_future(span, src)));
+    stms.push(Spanned::new(span.clone(), StmX::Assume(cur)));
+    stms.push(Spanned::new(span.clone(), StmX::Assume(fut)));
+    out
+}
+
 #[derive(Clone, Debug)]
 struct Obligation {
     fun: Fun,
     exp: Exp,
+    /// The field of `exp` the mutable reference goes into, if it is a field of a struct
+    /// (one-variant datatype): `field` of `exp`, with nothing else of `exp` borrowed
+    field: Option<FieldOpr>,
 }
 
 /// Compute the place expression and read from the place
@@ -4119,9 +4359,9 @@ fn place_to_exp_for_read(
     let (_lhs, rhs, obligations) = unwrap_or_return_never!(res, stms);
     if obligations.len() > 0 {
         // Shouldn't have these for reads
-        return Err(error(
+        return Err(crate::messages::internal_error(
             &place.span,
-            "Verus internal error: place_to_expr_for_read does not expect any UserDefinedTypInvariantObligation",
+            "`place_to_expr_for_read` does not expect any UserDefinedTypInvariantObligation",
         ));
     }
     Ok((stms, Maybe::Some(rhs)))
@@ -4243,7 +4483,13 @@ fn place_to_exp_pair_rec(
     match &place.x {
         PlaceX::Field(field_opr, p) => {
             let (stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
-            let (e1, e2, obligations, mut wf) = unwrap_or_return_never!(exps, stms);
+            let (e1, e2, mut obligations, mut wf) = unwrap_or_return_never!(exps, stms);
+            if matches!(&p.x, PlaceX::UserDefinedTypInvariantObligation(..)) {
+                // the obligation `p` pushed last is about the datatype this field belongs to
+                if let Some(o) = obligations.last_mut() {
+                    o.field = Some(field_opr.clone());
+                }
+            }
 
             let check = match field_opr.check {
                 VariantCheck::Union => {
@@ -4359,7 +4605,7 @@ fn place_to_exp_pair_rec(
         PlaceX::UserDefinedTypInvariantObligation(p, fun) => {
             let (stms, mut exps) = place_to_exp_pair_rec(ctx, state, p)?;
             if let Maybe::Some((_e1, e2, obligations, _wf)) = &mut exps {
-                obligations.push(Obligation { fun: fun.clone(), exp: e2.clone() });
+                obligations.push(Obligation { fun: fun.clone(), exp: e2.clone(), field: None });
             }
             Ok((stms, exps))
         }
@@ -4508,15 +4754,12 @@ fn exec_closure_body_stms(
     body: &Expr,
     requires: &Exprs,
     ensures: &Exprs,
+    mask_spec: &Option<MaskSpec>,
+    is_proof: bool,
 ) -> Result<(Vec<Stm>, Arc<Vec<(UniqueIdent, Typ)>>), VirErr> {
     let mut typ_inv_vars = vec![];
 
     state.push_scope();
-
-    // Right now there is no way to specify an invariant mask on a closure function
-    // All closure funcs are assumed to have mask set 'full'
-    let mut mask = Some(MaskSet::full(&body.span));
-    std::mem::swap(&mut state.mask, &mut mask);
 
     let mut param_set = HashSet::<VarIdent>::new();
 
@@ -4536,6 +4779,26 @@ fn exec_closure_body_stms(
         let stm = Spanned::new(req.span.clone(), StmX::Assume(exp));
         stms.push(stm);
     }
+
+    // Inv mask
+    let mut mask = if is_proof {
+        if let Some(mask_spec) = mask_spec {
+            let mask_sst = mask_spec.map_to_sst(&mut |expr| {
+                let (check_stms, exp) = expr_to_pure_exp_check(ctx, state, expr)?;
+                stms.extend(check_stms);
+                Ok(exp)
+            })?;
+            Some(mask_sst)
+        } else {
+            Some(MaskSet::empty(&body.span))
+        }
+    } else {
+        // Right now there is no way to specify an invariant mask on an exec closure function
+        // All exec closure funcs are assumed to have mask set 'full'
+        assert!(mask_spec.is_none());
+        Some(MaskSet::full(&body.span))
+    };
+    std::mem::swap(&mut state.mask, &mut mask);
 
     let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::ExecClosureRet));
     state.declare_var_stm(&ret.name, &ret.a, kind, false);
@@ -4631,6 +4894,56 @@ fn call_namespace(_ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicit
     SpannedTyped::new(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
 }
 
+/// Whether the type invariant `inv` may depend on field `f` of its argument: false only if the
+/// datatype is a struct (one variant) and every use of the parameter in the invariant's body is
+/// a read of another field of it (so a call that passes the parameter on, matches on it or
+/// reads it whole counts as a read of every field). Conservatively true without a body.
+fn typ_inv_may_read_field(ctx: &Ctx, inv: &Fun, f: &FieldOpr) -> bool {
+    let one_variant = ctx.datatype_map.get(&f.datatype).map_or(false, |d| d.x.variants.len() == 1);
+    let Some(function) = ctx.func_map.get(inv) else { return true };
+    let (Some(body), Some(param)) = (&function.x.body, function.x.params.first()) else {
+        return true;
+    };
+    if !one_variant {
+        return true;
+    }
+    let param = param.x.name.clone();
+    let other_field = |opr: &FieldOpr| opr.datatype == f.datatype && opr.field != f.field;
+    let mut counts = (0usize, 0usize); // (uses of the parameter, reads of other fields)
+    let _ = crate::ast_visitor::ast_visitor_check::<(), _, _, _, _, _, _>(
+        body,
+        &mut counts,
+        &mut |c: &mut (usize, usize), _, e: &Expr| {
+            match &e.x {
+                ExprX::Var(x) if *x == param => c.0 += 1,
+                ExprX::UnaryOpr(crate::ast::UnaryOpr::Field(opr), inner)
+                    if matches!(&inner.x, ExprX::Var(x) if *x == param) && other_field(opr) =>
+                {
+                    c.1 += 1
+                }
+                _ => {}
+            }
+            Ok(())
+        },
+        &mut |_, _, _| Ok(()),
+        &mut |_, _, _| Ok(()),
+        &mut |_, _, _, _| Ok(()),
+        &mut |c: &mut (usize, usize), _, pl: &Place| {
+            match &pl.x {
+                PlaceX::Local(x) if *x == param => c.0 += 1,
+                PlaceX::Field(opr, inner)
+                    if matches!(&inner.x, PlaceX::Local(x) if *x == param) && other_field(opr) =>
+                {
+                    c.1 += 1
+                }
+                _ => {}
+            }
+            Ok(())
+        },
+    );
+    counts.0 != counts.1
+}
+
 #[derive(PartialEq, Eq, Clone)]
 enum TypInv {
     UnwindError,
@@ -4649,7 +4962,15 @@ fn typ_inv_obligations(
     typ_inv: TypInv,
 ) -> Result<(), VirErr> {
     for obligation in obligations.into_iter().rev() {
-        let Obligation { fun, exp } = obligation;
+        let Obligation { fun, exp, field } = obligation;
+        // A call that may unwind leaves the datatype with whatever the callee wrote into the
+        // borrowed field. When the invariant cannot read that field, the rest of the value is
+        // unchanged and the invariant still holds, so there is nothing to check.
+        if typ_inv == TypInv::UnwindError
+            && field.as_ref().is_some_and(|f| !typ_inv_may_read_field(ctx, &fun, f))
+        {
+            continue;
+        }
         assert_assume_satisfies_user_defined_type_invariant(
             ctx,
             state,
@@ -4683,14 +5004,14 @@ fn assert_assume_satisfies_user_defined_type_invariant(
     if typ_inv == TypInv::UnwindError {
         return Err(crate::messages::error_with_label(
             &exp.span,
-            "this function call takes a &mut ref of a field of a datatype with a user-defined type invariant; thus, this function should be marked no_unwind (note: this check is currently implemented overly-conservatively and requires the function to be marked no_unwind in its signature)",
+            "this function call takes a mutable reference to a field of a datatype with a user-defined type invariant; thus, this function should be marked `no_unwind` (note: this check is currently implemented overly-conservatively and requires the function to be marked `no_unwind` in its signature)",
             "mutable reference to this place",
         ).secondary_label(&function.span, "type invariant declared here"));
     }
     if typ_inv == TypInv::BareMutRefError {
         return Err(crate::messages::error_with_label(
             &exp.span,
-            "not supported: taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)",
+            "Verus does not currently support taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)",
             "mutable reference to this place",
         ).secondary_label(&function.span, "type invariant declared here"));
     }

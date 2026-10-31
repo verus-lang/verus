@@ -550,7 +550,7 @@ impl ExpX {
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;
                 match op {
-                    Box(_) | Unbox(_) | ToDyn(_) => {
+                    Box(_) | Unbox(_) | ToDyn(..) => {
                         return exp.x.to_string_prec(global, precedence);
                     }
                     HasType(t) => {
@@ -947,6 +947,10 @@ pub fn sst_conjoin(span: &Span, exps: &Vec<Exp>) -> Exp {
     chain_binary(span, BinaryOp::And, &sst_bool(span, true), exps)
 }
 
+pub fn sst_disjoin(span: &Span, exps: &[Exp]) -> Exp {
+    chain_binary(span, BinaryOp::Or, &sst_bool(span, false), exps)
+}
+
 pub fn sst_and(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     let op = BinaryOp::And;
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
@@ -1046,6 +1050,7 @@ impl LocalDeclKind {
             | LocalDeclKind::ExecClosureRet
             | LocalDeclKind::Nondeterministic
             | LocalDeclKind::OpenInvariantInnerTemp
+            | LocalDeclKind::LoopBreakValue
             | LocalDeclKind::BorrowMut => false,
         }
     }

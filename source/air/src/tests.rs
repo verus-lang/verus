@@ -1819,6 +1819,56 @@ fn no_lambda6() {
 }
 
 #[test]
+fn yes_lambda_wrap() {
+    yes!(
+        (declare-fun mk_fun (Int Fun) Fun)
+        (declare-const a Fun)
+        (axiom (= a (lambda mk_fun 3 ((x Int)) (+ x 1))))
+        (declare-const b Fun)
+        (axiom (= b (lambda mk_fun 3 ((x Int)) (+ x 1))))
+        (check-valid
+            (assert (= a b))
+        )
+    )
+}
+
+#[test]
+fn no_lambda_wrap() {
+    no!(
+        (declare-fun mk_fun (Int Fun) Fun)
+        (declare-const a Fun)
+        (axiom (= a (lambda mk_fun 3 ((x Int)) (+ x 1))))
+        (declare-const b Fun)
+        (axiom (= b (lambda mk_fun 4 ((x Int)) (+ x 1))))
+        (check-valid
+            (assert (= a b))
+        )
+    )
+}
+
+#[test]
+fn yes_lambda_cond() {
+    yes!(
+        (declare-const f Fun)
+        (axiom (= f (lambda ((x Int)) (<= 10 x) (+ x 1))))
+        (check-valid
+            (assert (= (apply Int f 20) 21))
+        )
+    )
+}
+
+#[test]
+fn no_lambda_cond() {
+    no!(
+        (declare-const f Fun)
+        (axiom (= f (lambda ((x Int)) (<= 30 x) (+ x 1))))
+        (check-valid
+            (assert (= (apply Int f 20) 21))
+        )
+    )
+}
+
+#[test]
 fn yes_lambda_trigger1() {
     yes!(
         (declare-fun f (Int) Bool)
@@ -2274,4 +2324,16 @@ fn accessor_identifying_2() {
             )
         )
     )
+}
+
+#[test]
+fn parse_solver_version() {
+    use crate::smt_verify::parse_version_response;
+    assert_eq!(parse_version_response("(:version \"4.16.0\")"), Some("4.16.0"));
+    assert_eq!(
+        parse_version_response("(:version \"4.16.0 - build hashcode ddb49568d3520e99\")"),
+        Some("4.16.0")
+    );
+    assert_eq!(parse_version_response("(:version \"1.3.1\")\r"), Some("1.3.1"));
+    assert_eq!(parse_version_response("(:status sat)"), None);
 }

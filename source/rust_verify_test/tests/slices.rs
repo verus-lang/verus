@@ -151,6 +151,43 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_slice_chunks verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(slice: &[u8])
+            requires
+                slice@ == seq![
+                    0u8, 1u8, 2u8, 3u8,
+                    4u8, 5u8, 6u8, 7u8,
+                    8u8, 9u8,
+                ],
+        {
+            let mut iter = slice.chunks(4);
+            assert(IteratorSpec::remaining(&iter).len() == 3);
+            assert(IteratorSpec::remaining(&iter)[0]@ == seq![0u8, 1u8, 2u8, 3u8]);
+            assert(IteratorSpec::remaining(&iter)[1]@ == seq![4u8, 5u8, 6u8, 7u8]);
+            assert(IteratorSpec::remaining(&iter)[2]@ == seq![8u8, 9u8]);
+
+            let first = iter.next().unwrap();
+            assert(first@ == seq![0u8, 1u8, 2u8, 3u8]);
+            assert(IteratorSpec::remaining(&iter).len() == 2);
+
+            let second = iter.next().unwrap();
+            assert(second@ == seq![4u8, 5u8, 6u8, 7u8]);
+            assert(IteratorSpec::remaining(&iter).len() == 1);
+
+            let third = iter.next().unwrap();
+            assert(third@ == seq![8u8, 9u8]);
+            assert(IteratorSpec::remaining(&iter).len() == 0);
+
+            let last = iter.next();
+            assert(last.is_none());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_slices_arrays_extensionality verus_code! {
         use vstd::prelude::*;
 
@@ -879,6 +916,73 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_copy_within_user_range_bounds_3176 verus_code! {
+        use vstd::prelude::*;
+        use core::ops::{Bound, RangeBounds};
+        use vstd::std_specs::range::RangeBoundsSpecImpl;
+
+        pub struct R;
+
+        impl RangeBounds<usize> for R {
+            fn start_bound(&self) -> Bound<&usize> { Bound::Included(&1) } // FAILS
+            fn end_bound(&self) -> Bound<&usize> { Bound::Excluded(&2) } // FAILS
+        }
+
+        impl RangeBoundsSpecImpl<usize> for R {
+            open spec fn spec_start_bound(&self) -> Bound<&usize> { Bound::Included(&0) }
+            open spec fn spec_end_bound(&self) -> Bound<&usize> { Bound::Excluded(&1) }
+        }
+
+        fn test() -> (r: u8)
+            ensures r == 10
+        {
+            let mut a: [u8; 3] = [10, 20, 30];
+            let s: &mut [u8] = &mut a;
+            s.copy_within(R, 2);
+            s[2]
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(err.errors.iter().all(|e| e.message == "postcondition not satisfied"));
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_copy_within_user_range_bounds_ok_3176 verus_code! {
+        use vstd::prelude::*;
+        use core::ops::{Bound, RangeBounds};
+        use vstd::std_specs::range::{RangeBoundsSpec, RangeBoundsSpecImpl};
+
+        pub struct R;
+
+        impl RangeBounds<usize> for R {
+            fn start_bound(&self) -> Bound<&usize> { Bound::Included(&1) }
+            fn end_bound(&self) -> Bound<&usize> { Bound::Excluded(&2) }
+        }
+
+        impl RangeBoundsSpecImpl<usize> for R {
+            open spec fn spec_start_bound(&self) -> Bound<&usize> { Bound::Included(&1) }
+            open spec fn spec_end_bound(&self) -> Bound<&usize> { Bound::Excluded(&2) }
+        }
+
+        fn test() -> (r: u8)
+            ensures r == 20
+        {
+            let mut a: [u8; 3] = [10, 20, 30];
+            let s: &mut [u8] = &mut a;
+            s.copy_within(R, 2);
+            s[2]
+        }
+
+        fn start<B: RangeBounds<usize>>(b: &B) -> (r: Bound<&usize>)
+            ensures r == b.spec_start_bound()
+        {
+            b.start_bound()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_range_start_end_bound verus_code! {
         use vstd::prelude::*;
         use std::ops::{Bound, RangeBounds};
@@ -892,8 +996,6 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// verus-lang/verus#2674: a fresh range's end bound is still Included, but an
-// exhausted one is not - both directions in one file (one expected failure).
 test_verify_one_file! {
     #[test] test_range_inclusive_end_bound_exhausted verus_code! {
         use vstd::prelude::*;
@@ -920,32 +1022,21 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-// Same fact one level down: `slice_range_end` (used by `copy_within`) treats
-// an exhausted range's end as excluded, not included.
 test_verify_one_file! {
-    #[test] test_slice_range_end_treats_exhausted_range_as_excluded verus_code! {
+    #[test] test_slice_range_end_unspecified_when_empty verus_code! {
         use std::ops::RangeInclusive;
         use vstd::prelude::*;
         use vstd::std_specs::range::{slice_range_end, RangeInclusiveView};
 
-        proof fn correct(r: RangeInclusive<usize>)
+        proof fn rejects_start(r: RangeInclusive<usize>)
             requires
-                r@ == (RangeInclusiveView { start: 2, end: 2, exhausted: true }),
+                r@ == (RangeInclusiveView { start: 0, end: usize::MAX, exhausted: true }),
         {
-            assert(slice_range_end(&r, 5) == 2);
-        }
-
-        proof fn rejects_included(r: RangeInclusive<usize>)
-            requires
-                r@ == (RangeInclusiveView { start: 2, end: 2, exhausted: true }),
-        {
-            assert(slice_range_end(&r, 5) == 3); // FAILS
+            assert(slice_range_end(&r, 5) == 0); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
 
-// `is_empty()`: not empty fresh, empty once exhausted - even though
-// `start <= end` alone (1 <= 1) would wrongly say otherwise.
 test_verify_one_file! {
     #[test] test_range_inclusive_is_empty verus_code! {
         use vstd::prelude::*;
@@ -961,7 +1052,7 @@ test_verify_one_file! {
             let _ = r.next();
             let empty = r.is_empty();
             assert(empty);
-            assert(!empty); // FAILS: exhausted despite start <= end
+            assert(!empty); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -1063,6 +1154,53 @@ test_verify_one_bv_file! {
     } => Ok(())
 }
 
+test_verify_one_file! {
+    #[test] test_slice_starts_with_asymmetric_eq verus_code! {
+        // Expected results checked by executing these cases with Rust 1.98.1.
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpecImpl;
+
+        pub struct S(pub u8);
+
+        // Deliberately asymmetric so reversing the eq arguments changes the result.
+        impl PartialEq for S {
+            fn eq(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        impl PartialEqSpecImpl for S {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        fn test_equal_length() {
+            let slice: &[S] = &[S(0), S(0)];
+            let needle: &[S] = &[S(1), S(1)];
+            let cmp01 = slice.starts_with(needle);
+            let cmp10 = needle.starts_with(slice);
+
+            // needle == slice
+            assert(!cmp01);
+            assert(cmp10);
+        }
+
+        fn test_shorter_prefix() {
+            let slice: &[S] = &[S(2), S(3), S(0)];
+            let matches = slice.starts_with(&[S(1), S(2)]);
+            let mismatches = slice.starts_with(&[S(1), S(4)]);
+
+            assert(matches);
+            assert(!mismatches);
+        }
+    } => Ok(())
+}
+
 test_verify_one_bv_file! {
     #[test] test_slice_ends_with verus_code! {
         use vstd::prelude::*;
@@ -1092,6 +1230,53 @@ test_verify_one_bv_file! {
         fn test_empty_slice_ends_with_empty() {
             let v: &[u8] = &[];
             assert(v.ends_with(&[]));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_ends_with_asymmetric_eq verus_code! {
+        // Expected results checked by executing these cases with Rust 1.98.1.
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpecImpl;
+
+        pub struct S(pub u8);
+
+        // Deliberately asymmetric so reversing the eq arguments changes the result.
+        impl PartialEq for S {
+            fn eq(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        impl PartialEqSpecImpl for S {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        fn test_equal_length() {
+            let slice: &[S] = &[S(0), S(0)];
+            let needle: &[S] = &[S(1), S(1)];
+            let cmp01 = slice.ends_with(needle);
+            let cmp10 = needle.ends_with(slice);
+
+            // needle == slice
+            assert(!cmp01);
+            assert(cmp10);
+        }
+
+        fn test_shorter_suffix() {
+            let slice: &[S] = &[S(0), S(2), S(3)];
+            let matches = slice.ends_with(&[S(1), S(2)]);
+            let mismatches = slice.ends_with(&[S(1), S(4)]);
+
+            assert(matches);
+            assert(!mismatches);
         }
     } => Ok(())
 }
@@ -1157,4 +1342,254 @@ test_verify_one_file! {
             left == right
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_contains verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let values: &[u8] = &[1, 2, 3];
+
+            assert(values.contains(&2));
+            assert(!values.contains(&4));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_reverse verus_code! {
+        use vstd::prelude::*;
+
+        fn test(s: &mut [u8])
+            requires
+                old(s)@ == seq![1u8, 2, 3],
+        {
+            s.reverse();
+            assert(s@ == seq![3u8, 2, 1]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_swap verus_code! {
+        use vstd::prelude::*;
+
+        fn test_slice(s: &mut [u8])
+            requires
+                old(s)@ == seq![1u8, 2, 3],
+        {
+            s.swap(0, 2);
+            assert(s@ == seq![3u8, 2, 1]);
+            s.swap(1, 1);
+            assert(s@ == seq![3u8, 2, 1]);
+        }
+
+        fn test_array() {
+            let mut a: [u16; 4] = [10, 20, 30, 40];
+            a.swap(1, 3);
+            assert(a@ == seq![10u16, 40, 30, 20]);
+        }
+
+        fn test_vec() {
+            let mut v: Vec<u32> = vec![1, 2];
+            v.swap(0, 1);
+            assert(v@ == seq![2u32, 1]);
+        }
+
+        fn test_generic<T>(s: &mut [T], i: usize, j: usize)
+            requires
+                i < old(s)@.len(),
+                j < old(s)@.len(),
+            ensures
+                final(s)@.len() == old(s)@.len(),
+                final(s)@[i as int] == old(s)@[j as int],
+                final(s)@[j as int] == old(s)@[i as int],
+                forall|k: int| 0 <= k < old(s)@.len() && k != i && k != j ==> final(s)@[k] == old(s)@[k],
+            no_unwind
+        {
+            s.swap(i, j);
+        }
+
+        fn test_out_of_bounds(s: &mut [u8]) {
+            s.swap(0, 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // GitHub issue #2968
+    #[test] test_range_inclusive_exhausted_iter verus_code! {
+        use core::ops::{Bound, RangeBounds};
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn demo() -> (s: u8)
+            ensures s >= 1, // FAILS
+        {
+            let mut rng = 0u8..=0u8;
+            assert(rng.remaining().len() == 1);
+            let _ = rng.next();
+            assert(rng.remaining().len() == 0);
+            match rng.start_bound() {
+                Bound::Included(s) => *s,
+                _ => 0,
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // GitHub issue #3145
+    #[test] test_slice_index_exhausted_range_inclusive verus_code! {
+        use core::ops::{Bound, RangeBounds};
+        use vstd::prelude::*;
+
+        fn advance<I: Iterator<Item = usize>>(it: &mut I) {
+            let _ = it.next();
+        }
+
+        fn test_get() {
+            let v: Vec<u8> = vec![10, 20];
+            let mut r = 2usize..=2usize;
+            advance(&mut r);
+            let exhausted_at_2 = match (r.start_bound(), r.end_bound()) {
+                (Bound::Included(a), Bound::Excluded(b)) => *a == 2 && *b == 2,
+                _ => false,
+            };
+            if exhausted_at_2 {
+                let t = v.as_slice().get(r);
+                assert(t is Some); // FAILS
+            }
+        }
+
+        fn test_index() {
+            let v: Vec<u8> = vec![10, 20, 30];
+            let mut r = 2usize..=2usize;
+            advance(&mut r);
+            let exhausted_at_2 = match (r.start_bound(), r.end_bound()) {
+                (Bound::Included(a), Bound::Excluded(b)) => *a == 2 && *b == 2,
+                _ => false,
+            };
+            if exhausted_at_2 {
+                let _ = &v.as_slice()[r]; // FAILS
+            }
+        }
+
+        fn test_index_oob() {
+            let v: Vec<u8> = vec![10, 20];
+            let mut r = 2usize..=2usize;
+            advance(&mut r);
+            let exhausted_at_2 = match (r.start_bound(), r.end_bound()) {
+                (Bound::Included(a), Bound::Excluded(b)) => *a == 2 && *b == 2,
+                _ => false,
+            };
+            if exhausted_at_2 {
+                let _ = &v.as_slice()[r]; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] test_range_inclusive_overflow_end_bound_index verus_code! {
+        use core::ops::{Bound, RangeBounds};
+        use vstd::prelude::*;
+
+        fn test() {
+            let v: Vec<u8> = vec![7];
+            let mut r = 0usize..=0usize;
+            let _ = r.next_back();
+            match r.end_bound() {
+                Bound::Excluded(e) => {
+                    if *e == 0 {
+                        let _ = &v[r]; // FAILS
+                    }
+                }
+                _ => {}
+            }
+        }
+    } => Err(err) => {
+        assert!(err.errors[0].message.contains("precondition not satisfied"));
+        assert_one_fails(err);
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_range_inclusive_empty verus_code! {
+        use core::ops::{Bound, RangeBounds, RangeInclusive};
+        use vstd::prelude::*;
+        use vstd::std_specs::range::spec_range_inclusive_is_empty;
+
+        fn empty(r: RangeInclusive<usize>, slice: &mut [u8])
+            requires
+                spec_range_inclusive_is_empty(&r),
+            ensures
+                final(slice)@ == old(slice)@,
+        {
+            let contains_zero = r.contains(&0usize);
+            assert(!contains_zero);
+            if let Some(piece) = slice.get_mut(r) {
+                assert(piece@.len() == 0);
+            }
+        }
+
+        fn overflowed_and_reversed(slice: &mut [u8])
+            ensures
+                final(slice)@ == old(slice)@,
+        {
+            let mut overflowed = 0usize..=0usize;
+            let _ = overflowed.next_back();
+            empty(overflowed, slice);
+            empty(2usize..=1usize, slice);
+            if let Some(piece) = slice.get(2usize..=1usize) {
+                assert(piece@.len() == 0);
+            }
+        }
+
+        fn reversed_tuple() {
+            let r = (1u8, 0u8)..=(0u8, 0u8);
+            let contained = r.contains(&(0u8, 5u8));
+            assert(!contained);
+        }
+
+        fn nonempty() {
+            let r = 1usize..=3usize;
+            let start = r.start_bound();
+            let end = r.end_bound();
+            let first = r.contains(&1usize);
+            let outside = r.contains(&4usize);
+            assert(start == Bound::Included(&1usize) && end == Bound::Included(&3usize));
+            assert(first && !outside);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_range_inclusive_empty_unspecified verus_code! {
+        use core::ops::RangeInclusive;
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialOrdSpec;
+
+        fn reversed_index() {
+            let values = [7u8, 9];
+            let _ = &values[2usize..=1usize]; // FAILS
+        }
+
+        fn reversed_copy() {
+            let mut values = [7u8, 9];
+            values.copy_within(2usize..=1usize, 0); // FAILS
+        }
+
+        fn mixed_contains<U: ?Sized + PartialOrd<usize>>(r: RangeInclusive<usize>, item: &U)
+            where usize: PartialOrd<U>
+            requires
+                r@.exhausted,
+                U::obeys_partial_cmp_spec(),
+                <usize as PartialOrdSpec<U>>::obeys_partial_cmp_spec(),
+        {
+            let contained = r.contains(item);
+            assert(!contained); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
 }

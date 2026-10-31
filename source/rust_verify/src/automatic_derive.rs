@@ -1,6 +1,5 @@
-use crate::context::Context;
+use crate::context::BodyCtxt;
 use crate::verus_items::RustItem;
-use rustc_hir::HirId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
@@ -16,7 +15,7 @@ pub enum SpecialTrait {
 }
 
 /// What to do for a given automatically-derived trait impl
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum AutomaticDeriveAction {
     Special(SpecialTrait),
     VerifyAsIs,
@@ -62,12 +61,11 @@ pub fn is_automatically_derived(attrs: &[rustc_hir::Attribute]) -> bool {
 }
 
 pub fn modify_derived_item<'tcx>(
-    ctxt: &Context<'tcx>,
+    bctx: &BodyCtxt<'tcx>,
     id: rustc_span::def_id::DefId,
     inputs: &Vec<rustc_middle::ty::Ty>,
     span: Span,
-    hir_id: HirId,
-    action: &AutomaticDeriveAction,
+    action: AutomaticDeriveAction,
     function: &mut FunctionX,
 ) -> Result<(), VirErr> {
     let AutomaticDeriveAction::Special(special) = action else {
@@ -75,8 +73,8 @@ pub fn modify_derived_item<'tcx>(
     };
     match special {
         SpecialTrait::Clone => {
-            if &*function.name.path.last_segment() == "clone" {
-                return clone_add_post_condition(ctxt, id, inputs, span, hir_id, function);
+            if function.name.path.last_segment().is_name("clone") {
+                return clone_add_post_condition(bctx, id, inputs, span, function);
             }
         }
     }
@@ -84,11 +82,10 @@ pub fn modify_derived_item<'tcx>(
 }
 
 fn clone_add_post_condition<'tcx>(
-    ctxt: &Context<'tcx>,
+    bctx: &BodyCtxt<'tcx>,
     mut id: rustc_span::def_id::DefId,
     inputs: &Vec<rustc_middle::ty::Ty>,
     span: Span,
-    hir_id: HirId,
     functionx: &mut FunctionX,
 ) -> Result<(), VirErr> {
     if inputs.len() >= 1 {
@@ -102,12 +99,12 @@ fn clone_add_post_condition<'tcx>(
     }
     let warn = |msg: &str| {
         crate::attributes::warning_maybe(
-            ctxt.tcx,
+            bctx.ctxt.tcx,
             id,
             span,
             &WarningAllow::AutoderiveCloneWithoutSpec,
             || msg,
-            |msg| ctxt.diagnostics.borrow_mut().push(VirErrAs::Warning(msg)),
+            |msg| bctx.ctxt.diagnostics.borrow_mut().push(VirErrAs::Warning(msg)),
         );
     };
     let warn_unexpected = || {
@@ -117,7 +114,7 @@ fn clone_add_post_condition<'tcx>(
     };
     let warn_unsupported = || {
         warn(
-            "Verus does not (yet) support autoderive Clone impl when the clone is not a copy; continuing, but without adding a specification for the derived Clone impl",
+            "Verus does not currently support autoderive Clone impl when the clone is not a copy; continuing, but without adding a specification for the derived Clone impl",
         )
     };
 
@@ -166,7 +163,7 @@ fn clone_add_post_condition<'tcx>(
         let ret_var = SpannedTyped::new(
             &self_var.span,
             &self_var.typ,
-            ExprX::Var(functionx.ret.x.name.clone()),
+            ExprX::Var(functionx.inner_ret.x.name.clone()),
         );
         let eq_expr = SpannedTyped::new(
             &self_var.span,
@@ -174,7 +171,7 @@ fn clone_add_post_condition<'tcx>(
             ExprX::Binary(BinaryOp::Eq(Mode::Spec), ret_var.clone(), self_var.clone()),
         );
 
-        let eq_expr = cleanup_span_ids(ctxt, span, hir_id, &eq_expr);
+        let eq_expr = cleanup_span_ids(bctx, span, &eq_expr);
         functionx.ensure.0 = Arc::new(vec![eq_expr]);
     } else {
         warn_unsupported();
@@ -183,20 +180,25 @@ fn clone_add_post_condition<'tcx>(
     Ok(())
 }
 
-// TODO better place for this
-fn cleanup_span_ids<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId, expr: &Expr) -> Expr {
+/// Give each node a unique ID. This inserts 'None' for every var into the local_hir_vir_ids
+/// list, so it's only safe for pure expressions (e.g., in asserts or signatures).
+fn cleanup_span_ids<'tcx>(bctx: &BodyCtxt<'tcx>, span: Span, expr: &Expr) -> Expr {
     vir::ast_visitor::map_expr_place_visitor(
         expr,
         &|e: &Expr| {
-            let e = ctxt.spans.spanned_typed_new(span, &e.typ, e.x.clone());
-            let mut erasure_info = ctxt.erasure_info.borrow_mut();
-            erasure_info.hir_vir_ids.push((Some(hir_id), e.span.id));
+            let e = bctx.ctxt.spans.spanned_typed_new(span, &e.typ, e.x.clone());
+            if matches!(&e.x, ExprX::Var(..) | ExprX::VarAt(..)) {
+                let mut erasure_info = bctx.erasure_info.borrow_mut();
+                erasure_info.local_hir_vir_ids.push((None, e.span.id));
+            }
             Ok(e)
         },
         &|p: &Place| {
-            let p = ctxt.spans.spanned_typed_new(span, &p.typ, p.x.clone());
-            let mut erasure_info = ctxt.erasure_info.borrow_mut();
-            erasure_info.hir_vir_ids.push((Some(hir_id), p.span.id));
+            let p = bctx.ctxt.spans.spanned_typed_new(span, &p.typ, p.x.clone());
+            if matches!(&p.x, PlaceX::Local(..)) {
+                let mut erasure_info = bctx.erasure_info.borrow_mut();
+                erasure_info.local_hir_vir_ids.push((None, p.span.id));
+            }
             Ok(p)
         },
     )

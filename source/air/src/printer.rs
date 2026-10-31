@@ -3,7 +3,7 @@ use crate::ast::{
     Ident, MultiOp, Qid, Quant, Query, QueryX, RoundingMode, Stmt, StmtX, Triggers, Typ, TypX,
     Typs, UnaryOp,
 };
-use crate::context::SmtSolver;
+use crate::context::{SmtEncoding, SmtSolver};
 use crate::def::mk_skolem_id;
 use crate::util::vec_map;
 use sise::TreeNode as Node;
@@ -11,6 +11,63 @@ use std::sync::Arc;
 
 pub fn str_to_node(s: &str) -> Node {
     Node::Atom(s.to_string())
+}
+
+pub fn escape(s: &str) -> String {
+    let mut res = "".to_string();
+    for c in s.chars() {
+        if c == '\\' {
+            res += "\\\\";
+        } else if c.is_ascii_graphic() && c != '"' {
+            res.push(c);
+        } else if c == ' ' {
+            res.push(c);
+        } else if c == '\n' {
+            res += "\\n";
+        } else {
+            res += "\\u{";
+            res += &format!("{:x}", c as u32);
+            res += "}";
+        }
+    }
+    res
+}
+
+/// The inverse of `escape`. Returns `None` if `s` contains an escape sequence
+/// that `escape` never produces.
+pub fn unescape(s: &str) -> Option<String> {
+    let mut res = "".to_string();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            res.push(c);
+            continue;
+        }
+        match chars.next()? {
+            '\\' => res.push('\\'),
+            'n' => res.push('\n'),
+            'u' => {
+                if chars.next()? != '{' {
+                    return None;
+                }
+                let mut hex = "".to_string();
+                loop {
+                    match chars.next()? {
+                        '}' => break,
+                        d => hex.push(d),
+                    }
+                }
+                res.push(char::from_u32(u32::from_str_radix(&hex, 16).ok()?)?);
+            }
+            _ => return None,
+        }
+    }
+    Some(res)
+}
+
+/// A string atom; characters that sise cannot print in a string are replaced
+fn quoted_atom(s: &str) -> Node {
+    Node::Atom(format!("\"{}\"", escape(s)))
 }
 
 pub fn macro_push_node(nodes: &mut Vec<Node>, node: Node) {
@@ -79,7 +136,7 @@ pub struct Printer {
     message_interface: Arc<dyn crate::messages::MessageInterface>,
     // print as SMT, not as AIR
     print_as_smt: bool,
-    solver: SmtSolver,
+    smt_encoding: SmtEncoding,
 }
 
 impl Printer {
@@ -88,7 +145,15 @@ impl Printer {
         print_as_smt: bool,
         solver: SmtSolver,
     ) -> Self {
-        Printer { message_interface, print_as_smt, solver }
+        Self::new_with_encoding(message_interface, print_as_smt, solver.default_encoding())
+    }
+
+    pub fn new_with_encoding(
+        message_interface: Arc<dyn crate::messages::MessageInterface>,
+        print_as_smt: bool,
+        smt_encoding: SmtEncoding,
+    ) -> Self {
+        Printer { message_interface, print_as_smt, smt_encoding }
     }
 
     pub(crate) fn typ_to_node(&self, typ: &Typ) -> Node {
@@ -191,6 +256,7 @@ impl Printer {
                     UnaryOp::FloatIsNegative => "fp.isNegative",
                     UnaryOp::FloatIsPositive => "fp.isPositive",
                     UnaryOp::FloatFromIeeeBits { .. } => "to_fp",
+                    UnaryOp::FloatToIeeeBits => "fp.to_ieee_bv",
                     UnaryOp::FloatFrom { signed: false, .. } => "to_fp_unsigned",
                     UnaryOp::FloatFrom { signed: true, .. } => "to_fp",
                     UnaryOp::FloatToBitVec { signed: false, .. } => "fp.to_ubv",
@@ -379,7 +445,7 @@ impl Printer {
                         if let Some(s) = qid {
                             nodes.push(str_to_node(":qid"));
                             nodes.push(str_to_node(s));
-                            if matches!(self.solver, SmtSolver::Z3) {
+                            if matches!(self.smt_encoding, SmtEncoding::Z3) {
                                 nodes.push(str_to_node(":skolemid"));
                                 nodes.push(str_to_node(&mk_skolem_id(s)));
                             }
@@ -401,9 +467,31 @@ impl Printer {
                         let body = with_triggers(expr, triggers, qid);
                         nodes!({str_to_node(s_quant)} {s_binders} {body})
                     }
-                    BindX::Lambda(binders, triggers, qid) => {
+                    BindX::Lambda(binders, triggers, qid, None, None) => {
+                        let s_binders = self.binders_to_node(binders, &|t| self.typ_to_node(t));
                         let body = with_triggers(expr, triggers, qid);
-                        nodes!(lambda {self.binders_to_node(binders, &|t| self.typ_to_node(t))} {body})
+                        nodes!(lambda {s_binders} {body})
+                    }
+                    BindX::Lambda(binders, triggers, qid, None, Some(expr_cond)) => {
+                        let s_binders = self.binders_to_node(binders, &|t| self.typ_to_node(t));
+                        let cond = self.expr_to_node(expr_cond);
+                        let body = with_triggers(expr, triggers, qid);
+                        nodes!(lambda {s_binders} {cond} {body})
+                    }
+                    BindX::Lambda(binders, triggers, qid, Some(wrap), None) => {
+                        let s_binders = self.binders_to_node(binders, &|t| self.typ_to_node(t));
+                        let w = Node::Atom(wrap.wrap.to_string());
+                        let id = self.expr_to_node(&wrap.id);
+                        let body = with_triggers(expr, triggers, qid);
+                        nodes!(lambda {w} {id} {s_binders} {body})
+                    }
+                    BindX::Lambda(binders, triggers, qid, Some(wrap), Some(expr_cond)) => {
+                        let s_binders = self.binders_to_node(binders, &|t| self.typ_to_node(t));
+                        let w = Node::Atom(wrap.wrap.to_string());
+                        let id = self.expr_to_node(&wrap.id);
+                        let cond = self.expr_to_node(expr_cond);
+                        let body = with_triggers(expr, triggers, qid);
+                        nodes!(lambda {w} {id} {s_binders} {cond} {body})
                     }
                     BindX::Choose(binders, triggers, qid, expr_cond) => {
                         let s_binders = self.binders_to_node(binders, &|t| self.typ_to_node(t));
@@ -415,7 +503,7 @@ impl Printer {
             }
             ExprX::LabeledAxiom(labels, filter, expr) => {
                 let spans = vec_map(labels, |s| {
-                    Node::Atom(format!("\"{}\"", self.message_interface.get_message_label_note(s)))
+                    quoted_atom(self.message_interface.get_message_label_note(s))
                 });
                 if spans.len() == 0 && filter.is_none() {
                     self.expr_to_node(expr)
@@ -425,9 +513,7 @@ impl Printer {
                 }
             }
             ExprX::LabeledAssertion(_, error, filter, expr) => {
-                let spans = vec_map(&self.message_interface.all_msgs(error), |s| {
-                    Node::Atom(format!("\"{}\"", s))
-                });
+                let spans = self.msgs_to_nodes(error);
                 if spans.len() == 0 && filter.is_none() {
                     self.expr_to_node(expr)
                 } else {
@@ -436,6 +522,14 @@ impl Printer {
                 }
             }
         }
+    }
+
+    /// Each note is printed as "note", or as ("note" "span") when the note has a span
+    fn msgs_to_nodes(&self, error: &crate::messages::ArcDynMessage) -> Vec<Node> {
+        vec_map(&self.message_interface.all_msgs_with_spans(error), |(note, span)| match span {
+            Some(span) if span.len() > 0 => Node::List(vec![quoted_atom(note), quoted_atom(span)]),
+            _ => quoted_atom(note),
+        })
     }
 
     pub fn exprs_to_node(&self, exprs: &Exprs) -> Node {
@@ -528,9 +622,7 @@ impl Printer {
         match &**stmt {
             StmtX::Assume(expr) => nodes!(assume {self.expr_to_node(expr)}),
             StmtX::Assert(_, labels, filter, expr) => {
-                let spans = vec_map(&self.message_interface.all_msgs(labels), |s| {
-                    Node::Atom(format!("\"{}\"", s))
-                });
+                let spans = self.msgs_to_nodes(labels);
                 if spans.len() == 0 && filter.is_none() {
                     nodes!(assert {self.expr_to_node(expr)})
                 } else {

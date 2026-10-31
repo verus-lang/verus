@@ -231,9 +231,28 @@ impl<T: DeepView> DeepView for Option<T> {
     }
 }
 
+impl<T, E> View for Result<T, E> {
+    type V = Result<T, E>;
+
+    open spec fn view(&self) -> Result<T, E> {
+        *self
+    }
+}
+
+impl<T: DeepView, E: DeepView> DeepView for Result<T, E> {
+    type V = Result<T::V, E::V>;
+
+    open spec fn deep_view(&self) -> Result<T::V, E::V> {
+        match self {
+            Ok(t) => Ok(t.deep_view()),
+            Err(e) => Err(e.deep_view()),
+        }
+    }
+}
+
 macro_rules! declare_identity_view {
     ($t:ty) => {
-        #[cfg_attr(verus_keep_ghost, verifier::verify)]
+        #[cfg_attr(verus_keep_ghost, verus::internal(verify))]
         impl View for $t {
             type V = $t;
 
@@ -246,7 +265,7 @@ macro_rules! declare_identity_view {
             }
         }
 
-        #[cfg_attr(verus_keep_ghost, verifier::verify)]
+        #[cfg_attr(verus_keep_ghost, verus::internal(verify))]
         impl DeepView for $t {
             type V = $t;
 
@@ -293,7 +312,7 @@ declare_identity_view!(char);
 
 macro_rules! declare_tuple_view {
     ([$($n:tt)*], [$($a:ident)*]) => {
-        #[cfg_attr(verus_keep_ghost, verifier::verify)]
+        #[cfg_attr(verus_keep_ghost, verus::internal(verify))]
         impl<$($a: View, )*> View for ($($a, )*) {
             type V = ($($a::V, )*);
             #[cfg(verus_keep_ghost)]
@@ -304,7 +323,7 @@ macro_rules! declare_tuple_view {
             }
         }
 
-        #[cfg_attr(verus_keep_ghost, verifier::verify)]
+        #[cfg_attr(verus_keep_ghost, verus::internal(verify))]
         impl<$($a: DeepView, )*> DeepView for ($($a, )*) {
             type V = ($($a::V, )*);
             #[cfg(verus_keep_ghost)]

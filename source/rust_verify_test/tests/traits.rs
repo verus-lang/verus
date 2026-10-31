@@ -108,7 +108,20 @@ test_verify_one_file_with_options! {
                 no_method_body()
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
+    } => Err(err) => assert_vir_error_msg(err, "trait declaration with `no_method_body()` should start with VERUS_SPEC__")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_2 ["--no-external-by-default"] => code! {
+        trait T1 {
+            fn f(&self);
+
+            fn VERUS_SPEC__f(&self) {
+                no_method_body();
+                let b = true; // no code after no_method_body
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`no_method_body()` must be a method's final expression, with no semicolon")
 }
 
 test_verify_one_file_with_options! {
@@ -118,7 +131,7 @@ test_verify_one_file_with_options! {
                 no_method_body(); // no semicolon allowed
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body() must be a method's final expression, with no semicolon")
+    } => Err(err) => assert_vir_error_msg(err, "trait declaration with `no_method_body()` should start with VERUS_SPEC__")
 }
 
 test_verify_one_file_with_options! {
@@ -129,18 +142,21 @@ test_verify_one_file_with_options! {
                 no_method_body() // can't appear after header
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no statements are allowed before no_method_body()")
+    } => Err(err) => assert_vir_error_msg(err, "no statements are allowed before `no_method_body()`")
 }
 
 test_verify_one_file_with_options! {
     #[test] test_ill_formed_5 ["--no-external-by-default"] => code! {
         trait T1 {
             fn f(&self) {
+            }
+
+            fn VERUS_SPEC__f(&self) {
                 no_method_body();
                 let b = true; // no code after no_method_body
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body() must be a method's final expression, with no semicolon")
+    } => Err(err) => assert_vir_error_msg(err, "a `VERUS_SPEC` function should be paired with a function that has no body")
 }
 
 test_verify_one_file_with_options! {
@@ -148,7 +164,7 @@ test_verify_one_file_with_options! {
         fn f() {
             no_method_body() // can't appear in static function
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
+    } => Err(err) => assert_vir_error_msg(err, "`no_method_body` can only appear in trait method declarations")
 }
 
 test_verify_one_file_with_options! {
@@ -165,8 +181,8 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_vir_error_msgs(err, &[
-        "no_method_body can only appear in trait method declarations",
-        "no_method_body can only appear in trait method declarations",
+        "trait declaration with `no_method_body()` should start with VERUS_SPEC__",
+        "`no_method_body` can only appear in trait method declarations",
     ])
 }
 
@@ -182,7 +198,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `requires`")
 }
 
 test_verify_one_file_with_options! {
@@ -199,7 +215,7 @@ test_verify_one_file_with_options! {
             fn VERUS_SPEC__f(&self) { }
             fn f(&self);
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method declaration body must end with call to no_method_body()")
+    } => Err(err) => assert_vir_error_msg(err, "trait method declaration body must start with call to `no_method_body()`")
 }
 
 test_verify_one_file_with_options! {
@@ -445,7 +461,7 @@ test_verify_one_file! {
                 self.f()
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file_with_options! {
@@ -465,7 +481,7 @@ test_verify_one_file_with_options! {
             }
         }
     } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
+        assert!(err.warnings.iter().find(|x| x.message.contains("if `exec_allows_no_decreases_clause` is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
     }
 }
 
@@ -915,7 +931,7 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => {
-        assert_vir_error_msg(err, "recursive function must have a decreases clause")
+        assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
     }
 }
 
@@ -1013,6 +1029,41 @@ test_verify_one_file! {
         struct S(spec_fn(Q<R>) -> int);
         impl Z for S {
             type Y = S;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_assoc_bounds_proof_cycle verus_code! {
+        trait U { proof fn lem() ensures false; }
+        trait T { type X: U; }
+
+        proof fn p<Y: T>() ensures false { <Y::X as U>::lem() }
+
+        struct S;
+        struct R;
+        impl T for S { type X = R; }
+        impl U for R { proof fn lem() ensures false { p::<S>() } }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_assoc_bounds_generic_spec_cycle verus_code! {
+        trait W { spec fn value() -> int; }
+        trait U { spec fn f() -> int; }
+        trait T { type X: U; }
+
+        struct Wrap<A>(A);
+        impl<A: W> U for Wrap<A> {
+            spec fn f() -> int { A::value() }
+        }
+        spec fn g<Y: T>() -> int { <Y::X as U>::f() }
+
+        struct S;
+        struct R;
+        impl T for S { type X = Wrap<R>; }
+        impl W for R {
+            spec fn value() -> int { g::<S>() + 1 }
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
@@ -1170,6 +1221,42 @@ test_verify_one_file! {
 
         fn test2() {
             assert(<R<S<int>> as U<int>>::f() == 8); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_assoc_bounds_holes_method_generics verus_code! {
+        // tests "holes" generated by vir::traits::hide_projections
+        // when the trait method has its own generics
+        trait T {
+            type X;
+        }
+
+        impl T for u8 {
+            type X = u16;
+        }
+
+        trait U<A> {
+            spec fn f<C>(c: C) -> C;
+
+            spec fn g<C>(c: C) -> C {
+                c
+            }
+        }
+
+        struct S<B>(B);
+
+        impl<B: T> U<B::X> for S<B> {
+            spec fn f<C>(c: C) -> C {
+                c
+            }
+        }
+
+        proof fn test() {
+            assert(<S<u8> as U<u16>>::f(true));
+            assert(<S<u8> as U<u16>>::g(true));
+            assert(!<S<u8> as U<u16>>::f(true)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -1996,9 +2083,9 @@ test_verify_one_file_with_options! {
             // stops us from saying f::<ty>(x) for ty that doesn't implement T.
 
             // So we manually emit the AIR that corresponds to the f::<B>(x) call.
-            inline_air_stmt("(assume (tr_bound%test_crate!T. $ TYPE%test_crate!B.))");
-            inline_air_stmt("(assert (= (test_crate!f.? $ TYPE%test_crate!B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!B. (I (Sub i! 0))))))");
-            inline_air_stmt("(assume (= (test_crate!f.? $ TYPE%test_crate!B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!B. (I (Sub i! 0))))))");
+            inline_air_stmt("(assume (tr_bound%test_crate!t%T. $ TYPE%test_crate!t%B.))");
+            inline_air_stmt("(assert (= (test_crate!f.? $ TYPE%test_crate!t%B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!t%B. (I (Sub i! 0))))))");
+            inline_air_stmt("(assume (= (test_crate!f.? $ TYPE%test_crate!t%B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!t%B. (I (Sub i! 0))))))");
             assert(false);
         }
     } => Ok(())
@@ -2017,8 +2104,8 @@ test_verify_one_file_with_options! {
             // stops us from saying f::<ty>(x) for ty that doesn't implement T.
 
             // So we manually emit the AIR that corresponds to the f::<B>(x) call.
-            // inline_air_stmt("(assume (tr_bound%test_crate!T. $ TYPE%test_crate!B.))");
-            inline_air_stmt("(assert (= (test_crate!f.? $ TYPE%test_crate!B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!B. (I (Sub i! 0))))))");
+            // inline_air_stmt("(assume (tr_bound%test_crate!t%T. $ TYPE%test_crate!t%B.))");
+            inline_air_stmt("(assert (= (test_crate!f.? $ TYPE%test_crate!t%B. (I i!)) (not (test_crate!f.? $ TYPE%test_crate!t%B. (I (Sub i! 0))))))");
         }
     } => Err(err) => { assert!(err.errors.len() == 1); }
 }
@@ -2787,8 +2874,7 @@ test_verify_one_file_with_options! {
         }
         }
     } => Err(err) => assert_vir_error_msgs(err, &[
-        "The verifier does not yet support the following Rust feature: foreign types",
-        "The verifier does not yet support the following Rust feature: foreign types",
+        "Verus does not currently support foreign types",
     ])
 }
 
@@ -2928,7 +3014,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "requires are not allowed on the implementation for Drop")
+    } => Err(err) => assert_vir_error_msg(err, "`requires` clauses are not allowed on `Drop` implementations")
 }
 
 test_verify_one_file! {
@@ -2955,7 +3041,7 @@ test_verify_one_file! {
                 let x = 1 / 0;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "An individual item of a trait impl cannot be marked external")
+    } => Err(err) => assert_vir_error_msg(err, "an individual item of a trait impl cannot be marked external")
 }
 
 test_verify_one_file! {
@@ -2985,7 +3071,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "requires are not allowed on the implementation for Drop")
+    } => Err(err) => assert_vir_error_msg(err, "`requires` clauses are not allowed on `Drop` implementations")
 }
 
 test_verify_one_file! {
@@ -2998,7 +3084,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "the implementation for Drop must be marked opens_invariants none")
+    } => Err(err) => assert_vir_error_msg(err, "a `Drop` implementation must be marked `opens_invariants none`")
 }
 
 test_verify_one_file! {
@@ -3011,7 +3097,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "the implementation for Drop must be marked no_unwind")
+    } => Err(err) => assert_vir_error_msg(err, "a `Drop` implementation must be marked `no_unwind`")
 }
 
 test_verify_one_file! {
@@ -3128,7 +3214,7 @@ test_verify_one_file! {
         pub trait SomeTrait {
             open spec fn foo(&self) -> bool;
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait function declarations cannot be open or closed, as they don't have a body")
+    } => Err(err) => assert_vir_error_msg(err, "trait method declarations cannot be open or closed, as they don't have a body")
 }
 
 test_verify_one_file! {
@@ -3550,7 +3636,7 @@ test_verify_one_file! {
         }
         struct S;
         impl T for S { spec fn f() -> int { Self::g() } }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -3561,7 +3647,7 @@ test_verify_one_file! {
         }
         struct S;
         impl T for S { spec fn f(i: int) -> int decreases i { Self::g(i) } }
-    } => Err(err) => assert_vir_error_msg(err, "trait default methods do not yet support recursion and decreases")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support recursion and `decreases`")
 }
 
 test_verify_one_file! {
@@ -3665,7 +3751,7 @@ test_verify_one_file! {
         impl T for bool {
             proof fn f() { h(); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -3682,7 +3768,7 @@ test_verify_one_file! {
         impl T for bool {
             proof fn g() { h(); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -3699,7 +3785,7 @@ test_verify_one_file! {
         impl T for bool {
             proof fn g() { h(); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -3716,7 +3802,7 @@ test_verify_one_file! {
         impl T for bool {
             proof fn g<A>() { h(); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -3843,7 +3929,7 @@ test_verify_one_file! {
             proof fn f() ensures false { Self::g(); }
             proof fn g() ensures false { Self::f(); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -4836,4 +4922,120 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "Call to non-static function fails to satisfy `callee.requires(args)`")
+}
+
+test_verify_one_file! {
+    // `-> impl Trait` in a trait: rustc's synthesized associated type has no name, which used
+    // to panic in the projection conversion; now it is reported as unsupported
+    // a trait outside verus! with `-> Option<impl Iterator>`, used from verified code: an
+    // ordinary error (undeclared trait), no panic
+    #[test] test_rpitit_unsupported_no_panic code! {
+        use vstd::prelude::*;
+        pub trait T {
+            fn it(&self) -> Option<impl Iterator<Item = u8>>;
+        }
+        fn take<A>(a: A) {}
+        verus! {
+            #[verifier::external_body]
+            fn take_v<A>(a: A) {}
+            fn g<X: T>(x: &X) {
+                take_v(x.it());
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "return-position `impl Trait` in a trait")
+}
+
+test_verify_one_file! {
+    #[test] renamed_method_typ_param_issue3117 verus_code! {
+        trait Tag {
+            spec fn tag() -> int;
+        }
+
+        trait One: Tag {
+            proof fn one()
+                ensures Self::tag() == 1;
+        }
+
+        impl Tag for u8 {
+            spec fn tag() -> int { 1 }
+        }
+
+        impl One for u8 {
+            proof fn one() {}
+        }
+
+        impl Tag for u16 {
+            spec fn tag() -> int { 2 }
+        }
+
+        trait T {
+            proof fn f<A: Tag>()
+                ensures A::tag() == 1; // FAILS
+        }
+
+        struct S<A>(A);
+
+        impl<A: One> T for S<A> {
+            proof fn f<B: Tag>() {
+                A::one();
+            }
+        }
+
+        proof fn contradiction()
+            ensures false,
+        {
+            <S<u8> as T>::f::<u16>();
+            assert(<u16 as Tag>::tag() == 2);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] renamed_method_typ_param_ok_issue3117 verus_code! {
+        trait One {
+            spec fn tag() -> int;
+
+            proof fn one()
+                ensures Self::tag() == 1;
+        }
+
+        trait T {
+            proof fn f<A: One>(x: int)
+                requires x == A::tag(),
+                ensures x == 1;
+        }
+
+        struct S<A>(A);
+
+        impl<A> T for S<A> {
+            proof fn f<B: One>(x: int) {
+                B::one();
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] swapped_method_typ_params_issue3117 verus_code! {
+        trait Tag {
+            spec fn tag() -> int;
+        }
+
+        trait Swap {
+            proof fn f<A: Tag, B: Tag>(x: int, y: int)
+                requires x == A::tag(), y == B::tag();
+        }
+
+        impl Swap for u8 {
+            proof fn f<B: Tag, A: Tag>(x: int, y: int) {
+                assert(x == B::tag() && y == A::tag());
+            }
+        }
+
+        impl Swap for u16 {
+            proof fn f<B: Tag, A: Tag>(x: int, y: int) {
+                assert(x == A::tag()); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
 }

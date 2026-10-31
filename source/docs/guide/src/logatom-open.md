@@ -26,11 +26,11 @@ Initially, the value of `au.resolves()` is unknown;
 when the atomic update is resolved by the `try_open_atomic_update!` macro, the value of `au.resolves()` becomes `true`.
 The user must then prove that `au.resolves()` when the function returns.
 
-Besides `au.resolves()`, there are two more prophecies we set when the atomic update is committed: `au.input()` and `au.ouput()`.
+Besides `au.resolves()`, there are two more prophecies we set when the atomic update is committed: `au.input()` and `au.output()`.
 These store the final value of `ax` and `ay` respectively.
 We use them internally to give the function postcondition access to the input and output resources of the atomic update.
 
-For more complicate data structures where the resolution of the atomic update is non-trivial (such as those that [exhibit "helping"](logatom.html#notes-on-helping)), it may be necessary to assert the value of these prophecy variables manually after the AU has been committed.
+For more complicated data structures where the resolution of the atomic update is non-trivial (such as those that [exhibit "helping"](logatom.html#notes-on-helping)), it may be necessary to assert the value of these prophecy variables manually after the AU has been committed.
 
 ## Invariant masks
 

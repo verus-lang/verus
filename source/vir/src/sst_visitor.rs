@@ -310,9 +310,9 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         let t = self.visit_typ(t)?;
                         R::ret(|| UnaryOpr::HasResolved(R::get(t)))
                     }
-                    UnaryOpr::ToDyn(t) => {
+                    UnaryOpr::ToDyn(t, impl_paths) => {
                         let t = self.visit_typ(t)?;
-                        R::ret(|| UnaryOpr::ToDyn(R::get(t)))
+                        R::ret(|| UnaryOpr::ToDyn(R::get(t), impl_paths.clone()))
                     }
                     UnaryOpr::IsVariant { .. }
                     | UnaryOpr::Field { .. }
@@ -515,6 +515,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 au_branch_bool,
                 pre_modified_params_incl,
                 pre_modified_params_excl,
+                known_no_back_edge,
             } => {
                 let pre_stms = self.visit_stms(pre_stms)?;
                 let cond = R::map_opt(cond, &mut |(cond_stm, cond_exp)| {
@@ -551,6 +552,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         au_branch_bool: R::get_opt(au_branch_bool),
                         pre_modified_params_incl: R::get_opt(pre_modified_params_incl),
                         pre_modified_params_excl: R::get_opt(pre_modified_params_excl),
+                        known_no_back_edge: *known_no_back_edge,
                     })
                 })
             }
@@ -699,6 +701,12 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
 
     fn visit_func_check(&mut self, def: &FuncCheckSst) -> Result<R::Ret<FuncCheckSst>, Err> {
         let reqs = self.visit_exps(&def.reqs)?;
+        let return_opaque_type_eqs =
+            R::map_vec(&def.return_opaque_type_eqs, &mut |(opaque, hidden)| {
+                let opaque = self.visit_typ(opaque)?;
+                let hidden = self.visit_typ(hidden)?;
+                R::ret(|| (R::get(opaque), R::get(hidden)))
+            })?;
         let post_condition = self.visit_postcondition(&def.post_condition)?;
         let body = self.visit_stm(&def.body)?;
         let local_decls = R::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
@@ -707,6 +715,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
 
         R::ret(|| FuncCheckSst {
             reqs: R::get_vec_a(reqs),
+            return_opaque_type_eqs: R::get_vec_a(return_opaque_type_eqs),
             post_condition: Arc::new(R::get(post_condition)),
             unwind: R::get(unwind),
             body: R::get(body),
@@ -746,7 +755,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
     fn visit_function(&mut self, f: &FunctionSst) -> Result<R::Ret<FunctionSst>, Err> {
         let typ_bounds = self.visit_generic_bounds(&f.x.typ_bounds)?;
         let pars = self.visit_pars(&f.x.pars)?;
-        let ret = self.visit_par(&f.x.ret)?;
+        let inner_ret = self.visit_par(&f.x.inner_ret)?;
+        let outer_ret = self.visit_par(&f.x.outer_ret)?;
         let decl = self.visit_func_decl(&f.x.decl)?;
         let axioms = self.visit_func_axioms(&f.x.axioms)?;
         let exec_proof_check =
@@ -754,7 +764,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let recommends_check =
             R::map_opt(&f.x.recommends_check, &mut |c| self.visit_func_check(c))?;
         let safe_api_check = R::map_opt(&f.x.safe_api_check, &mut |c| self.visit_func_check(c))?;
-        let async_ret = R::map_opt(&f.x.async_ret, &mut |c| self.visit_par(c))?;
         R::ret(|| {
             Spanned::new(
                 f.span.clone(),
@@ -768,7 +777,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     typ_params: f.x.typ_params.clone(),
                     typ_bounds: R::get_vec_a(typ_bounds),
                     pars: R::get_vec_a(pars),
-                    ret: R::get(ret),
+                    inner_ret: R::get(inner_ret),
+                    outer_ret: R::get(outer_ret),
                     ens_has_return: f.x.ens_has_return,
                     item_kind: f.x.item_kind,
                     attrs: f.x.attrs.clone(),
@@ -778,7 +788,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     exec_proof_check: R::get_opt(exec_proof_check).map(|c| Arc::new(c)),
                     recommends_check: R::get_opt(recommends_check).map(|c| Arc::new(c)),
                     safe_api_check: R::get_opt(safe_api_check).map(|c| Arc::new(c)),
-                    async_ret: R::get_opt(async_ret),
+                    hidden: f.x.hidden.clone(),
                 },
             )
         })

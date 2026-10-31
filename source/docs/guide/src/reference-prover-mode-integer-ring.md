@@ -9,23 +9,23 @@
 ### Methods of invocation
 
 **As a proof function.**
-The `nonlinear_arith` solver can be invoked with a `by(nonlinear_arith)` on a [proof function](./reference-proof-signature.md).
+The `integer_ring` solver can be invoked with a `by(integer_ring)` on a [proof function](./reference-proof-signature.md).
 
 ```
-proof fn example(...) by(nonlinear_arith)
+proof fn example(...) by(integer_ring)
     requires P
     ensures Q
 { }
 ```
 
-This proves `P ==> Q` via the `bit_vector` solver.
+This proves `P ==> Q` via the `integer_ring` solver.
 
 ### Supported predicates
 
-The `integer_ring` mode only supports basic arithmetic: `+`, `-`, `*`, `%`, and `/`, `==`,
-and `!=`.
+The `integer_ring` mode only supports basic arithmetic (`+`, `-`, `*`, `%`, and `/`)
+and the comparisons `==` and `!=`.
 
-Verus checks that the `requires` clause include terms that all divisors are nonzero.
+Verus checks that the `requires` clauses state that all divisors are nonzero.
 
 ### Solver operation
 

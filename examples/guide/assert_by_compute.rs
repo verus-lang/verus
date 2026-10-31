@@ -80,9 +80,9 @@ proof fn range_property(u: usize)
     requires 25 <= u < 100,
     ensures p(u),
 {
-    assert((25..100int).all_spec(|x| p(x as usize))) by (compute_only);
-    let prop = |x| p(x as usize);
-    assert(prop(u));
+    assert((25..100int).all_spec(|x: int| p(x as usize))) by (compute_only);
+    let prop = |x: int| p(x as usize);
+    assert(prop(u as int));
 }
 // ANCHOR_END: all_spec
 

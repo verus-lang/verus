@@ -2,20 +2,14 @@
 
 #[allow(unused_imports)]
 use super::prelude::*;
+#[cfg(all(verus_keep_ghost, feature = "alloc"))]
+use super::std_specs::fmt::DebugSpec;
 
 #[cfg(not(feature = "std"))]
 macro_rules! println {
     ($($arg:tt)*) => {};
 }
 verus! {
-
-// TODO: remove this
-pub proof fn assume(b: bool)
-    ensures
-        b,
-{
-    admit();
-}
 
 // TODO: remove this
 pub proof fn assert(b: bool)
@@ -94,6 +88,8 @@ pub trait FnWithRequiresEnsures<Args, Output>: Sized {
     spec fn requires(self, args: Args) -> bool;
 
     spec fn ensures(self, args: Args, output: Output) -> bool;
+
+    spec fn opens_invariants(self, args: Args) -> ISet<int>;
 }
 
 #[cfg(verus_keep_ghost)]
@@ -109,6 +105,11 @@ impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output = Output>> FnWith
     #[verifier::inline]
     open spec fn ensures(self, args: Args, output: Output) -> bool {
         call_ensures(self, args, output)
+    }
+
+    #[verifier::inline]
+    open spec fn opens_invariants(self, args: Args) -> ISet<int> {
+        call_opens_invariants(self, args)
     }
 }
 
@@ -145,6 +146,7 @@ proof fn proof_nonstatic_call<Args: core::marker::Tuple, Output, F>(
         call_requires(f, args),
     ensures
         call_ensures(f, args, output),
+    opens_invariants call_opens_invariants(f, args)
 {
     unimplemented!();
 }
@@ -451,7 +453,10 @@ pub fn __call_panic(out: &[&str]) -> !
 #[cfg(feature = "alloc")]
 #[doc(hidden)]
 #[verifier(external_body)]
-pub fn __new_argument<T: core::fmt::Debug>(v: &T) -> alloc::string::String {
+pub fn __new_argument<T: core::fmt::Debug>(v: &T) -> alloc::string::String
+    requires
+        forall|f: &core::fmt::Formatter<'_>| v.fmt_req(f),
+{
     alloc::format!("{:?}", v)
 }
 

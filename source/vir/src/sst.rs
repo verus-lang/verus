@@ -51,6 +51,7 @@ pub type UniqueIdent = VarIdent;
 pub enum InternalFun {
     ClosureReq,
     ClosureEns,
+    ClosureOpensInvariants,
     DefaultEns,
     CheckDecreaseHeight,
     OpenInvariantMask(Fun, usize),
@@ -73,9 +74,9 @@ pub enum ArithOp {
     Sub,
     /// IntRange::Int *
     Mul,
-    /// IntRange::Int / defined as Euclidean (round towards -infinity, not round-towards zero)
+    /// IntRange::Int / defined as Euclidean (round towards -infinity)
     EuclideanDiv,
-    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
+    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative dividend)
     EuclideanMod,
 }
 
@@ -296,10 +297,17 @@ pub enum StmX {
         /// Variables potentially modified by the loop body
         modified_vars: Option<Arc<crate::sst_vars::HavocSet>>,
         au_branch_bool: Option<Exp>,
-        /// Params (including closure params) that may be modified _in or before_ this loop body
-        /// but *excluding* their initial assignments.
+        /// Params (including closure params) that may be modified before the beginning
+        /// of any loop iteration, but *excluding* their initial assignments.
         /// This is the same set of variables for which we need to consider different values
         /// for the 'current' and 'pre-state' value of the variable at the beginning of the loop.
+        ///
+        /// Note that "before the beginning of any loop iteration" means that:
+        ///  * If known_no_back_edge=true, then this means we consider any assignment
+        ///    that can occur in the execution of the function up to the entry of the entry
+        ///    of the loop.
+        ///  * If known_no_back_edge=false, then this means we consider any assignment
+        ///    that occur up to function entry or inside the loop itself.
         ///
         /// This is only used when pre_stms is empty.
         pre_modified_params_incl: Option<Arc<crate::sst_vars::HavocSet>>,
@@ -307,6 +315,7 @@ pub enum StmX {
         ///
         /// This is only used when pre_stms is non-empty.
         pre_modified_params_excl: Option<Arc<crate::sst_vars::HavocSet>>,
+        known_no_back_edge: bool,
     },
     /// Atomic invariant opening for concurrent verification
     OpenInvariant(Stm),
@@ -340,6 +349,7 @@ pub enum LocalDeclKind {
     Nondeterministic,
     OpenInvariantInnerTemp,
     BorrowMut,
+    LoopBreakValue,
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;
@@ -393,6 +403,7 @@ pub struct FuncDeclSst {
 #[derive(Debug, Clone, ToDebugSNode)]
 pub struct FuncCheckSst {
     pub reqs: Exps,
+    pub return_opaque_type_eqs: Arc<Vec<(Typ, Typ)>>,
     pub post_condition: Arc<PostConditionSst>,
     pub unwind: UnwindSst,
     pub body: Stm,
@@ -438,7 +449,12 @@ pub struct FunctionSstX {
     pub typ_params: crate::ast::Idents,
     pub typ_bounds: crate::ast::GenericBounds,
     pub pars: Pars,
-    pub ret: Par,
+    /// Return value from the external perspective.
+    /// Callers of this function see this as the return value, and should apply it as the
+    /// last argument to ensures.
+    pub outer_ret: Par,
+    /// Return value from the internal perspective, used primarily by the `FuncCheckSst`.
+    pub inner_ret: Par,
     pub ens_has_return: bool,
     pub item_kind: crate::ast::ItemKind,
     pub attrs: crate::ast::FunctionAttrs,
@@ -448,7 +464,7 @@ pub struct FunctionSstX {
     pub exec_proof_check: Option<Arc<FuncCheckSst>>,
     pub recommends_check: Option<Arc<FuncCheckSst>>,
     pub safe_api_check: Option<Arc<FuncCheckSst>>,
-    pub async_ret: Option<Par>,
+    pub hidden: Arc<Vec<Fun>>,
 }
 
 pub type KrateSst = Arc<KrateSstX>;

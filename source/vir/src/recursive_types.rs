@@ -1,12 +1,13 @@
 use crate::ast::{
     AcceptRecursiveType, Datatype, Dt, FunctionKind, GenericBound, GenericBoundX, Ident, Idents,
-    ImplPath, Krate, Path, Trait, TraitId, Typ, TypX, VirErr,
+    ImplPath, Krate, Path, Primitive, Trait, TraitId, Typ, TypX, VirErr,
 };
 use crate::ast_util::{dt_as_friendly_rust_name, path_as_friendly_rust_name};
 use crate::context::{GlobalCtx, GraphBuilder};
 use crate::messages::{Span, error};
 use crate::recursion::Node;
 use crate::scc::Graph;
+use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 
 // To enable decreases clauses on datatypes while treating the datatypes as inhabited in specs,
@@ -55,7 +56,22 @@ fn check_well_founded_typ(
 ) -> bool {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::Real | TypX::Float(_) => true,
-        TypX::ConstInt(_) | TypX::ConstBool(_) | TypX::Primitive(_, _) => true,
+        TypX::ConstInt(_) | TypX::ConstBool(_) => true,
+        TypX::Primitive(Primitive::Array, typs) => {
+            // Only an empty array can be a base case without a well-founded element type.
+            // An unknown length may be nonzero, so it also requires checking the element type.
+            matches!(&*typs[1], TypX::ConstInt(n) if n.is_zero())
+                || check_well_founded_typ(
+                    datatypes,
+                    datatypes_well_founded,
+                    typ_param_accept,
+                    &typs[0],
+                )
+        }
+        TypX::Primitive(
+            Primitive::Slice | Primitive::StrSlice | Primitive::Ptr | Primitive::Global,
+            _,
+        ) => true,
         TypX::Boxed(_) | TypX::TypeId | TypX::Air(_) => {
             panic!("internal error: unexpected type in check_well_founded_typ")
         }
@@ -246,7 +262,7 @@ fn check_positive_uses(
                         return Err(error(
                             &local.span,
                             format!(
-                                "Type {} recursively uses type {} in a non-positive position",
+                                "type {} recursively uses type {} in a non-positive position",
                                 path_as_friendly_rust_name(&local.my_datatype),
                                 path_as_friendly_rust_name(path)
                             ),
@@ -285,7 +301,14 @@ fn check_positive_uses(
             Ok(())
         }
         TypX::Decorate(_, _, t) => check_positive_uses(datatype, global, local, polarity, t),
-        TypX::Primitive(_, ts) => {
+        TypX::Primitive(
+            Primitive::Array
+            | Primitive::Slice
+            | Primitive::StrSlice
+            | Primitive::Ptr
+            | Primitive::Global,
+            ts,
+        ) => {
             for t in ts.iter() {
                 check_positive_uses(datatype, global, local, polarity, t)?;
             }
@@ -303,7 +326,7 @@ fn check_positive_uses(
                 (true, _) => Err(error(
                     &local.span,
                     format!(
-                        "Type parameter {} of {} must be declared #[verifier::reject_recursive_types] to be used in a non-positive position",
+                        "type parameter {} of {} must be declared `#[verifier::reject_recursive_types]` to be used in a non-positive position",
                         x,
                         dt_as_friendly_rust_name(&datatype.x.name),
                     ),
@@ -817,6 +840,29 @@ pub(crate) fn add_trait_impl_to_graph(
     }
     // Add impl_T_for_* --> T
     call_graph.add_edge(src_node, Node::Trait(t.x.trait_path.clone()));
+}
+
+pub(crate) fn add_assoc_type_impl_to_graph(
+    span_infos: &mut Vec<Span>,
+    call_graph: &mut GraphBuilder<Node>,
+    a: &crate::ast::AssocTypeImpl,
+) {
+    let impl_path = ImplPath::TraitImplPath(a.x.impl_path.clone());
+    let src_node = new_span_info_node(
+        span_infos,
+        a.span.clone(),
+        ": associated type definition, which may depend on other trait implementations \
+            to satisfy type bounds"
+            .to_string(),
+    );
+    call_graph.add_edge(Node::TraitImpl(impl_path.clone()), src_node.clone());
+    for imp in a.x.impl_paths.iter() {
+        call_graph.add_edge(src_node.clone(), Node::TraitImpl(imp.clone()));
+        call_graph.add_edge(
+            Node::TraitReqEns(impl_path.clone(), false),
+            Node::TraitReqEns(imp.clone(), true),
+        );
+    }
 }
 
 // Check for cycles in traits

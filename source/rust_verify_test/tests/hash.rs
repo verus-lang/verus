@@ -82,6 +82,27 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_map_capacity_with_hasher verus_code! {
+        use std::collections::HashMap;
+        use std::collections::hash_map::RandomState;
+        use vstd::prelude::*;
+        fn test()
+        {
+            let mut m = HashMap::<u32, i8>::new();
+            let cap = m.capacity();
+            assert(cap >= m@.len());
+
+            m.insert(3, 4);
+            let cap = m.capacity();
+            assert(cap >= m@.len());
+
+            let m2: HashMap<u32, i8, RandomState> = HashMap::with_hasher(RandomState::default());
+            assert(m2@ == Map::<u32, i8>::empty());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_hash_set verus_code! {
         use std::collections::HashSet;
         use vstd::prelude::*;
@@ -126,6 +147,53 @@ test_verify_one_file! {
             assert(!m@.contains(3));
             let b = m.contains(&3);
             assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_set_with_hasher verus_code! {
+        use std::collections::HashSet;
+        use std::collections::hash_map::RandomState;
+        use vstd::prelude::*;
+
+        fn test(hasher: RandomState) {
+            let m: HashSet<u32> = HashSet::with_hasher(hasher);
+            assert(m@ == Set::<u32>::empty());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_set_custom_hasher verus_code! {
+        use std::collections::HashSet;
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::BuildHasher;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::builds_valid_hashers;
+
+        struct MyBuilder;
+
+        #[verifier::external]
+        impl BuildHasher for MyBuilder {
+            type Hasher = DefaultHasher;
+            fn build_hasher(&self) -> DefaultHasher {
+                DefaultHasher::new()
+            }
+        }
+
+        fn test()
+            requires
+                builds_valid_hashers::<MyBuilder>(),
+        {
+            broadcast use vstd::std_specs::hash::group_hash_axioms;
+            let mut s: HashSet<u32, MyBuilder> = HashSet::with_hasher(MyBuilder);
+            assert(s@ == Set::<u32>::empty());
+            s.insert(3);
+            assert(s@.contains(3));
+
+            let t: HashSet<u32, MyBuilder> = HashSet::with_capacity_and_hasher(10, MyBuilder);
+            assert(t@ == Set::<u32>::empty());
         }
     } => Ok(())
 }
@@ -967,6 +1035,86 @@ test_verify_one_file_with_options! {
                     bs.values().all(|b| b)
                 }
             }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3139: an impl of `Hash::hash` cannot add a
+    // precondition that std's callers (`HashMap::insert`) do not establish
+    #[test] hash_impl_requires_rejected_issue3139 verus_code! {
+        use vstd::prelude::*;
+        use core::hash::{Hash, Hasher};
+        #[derive(PartialEq, Eq)]
+        pub struct K { pub a: u8 }
+        impl Hash for K {
+            fn hash<H: Hasher>(&self, state: &mut H)
+                requires false,
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `requires` clauses")
+}
+
+test_verify_one_file! {
+    #[test] hash_callable_on_generic_key verus_code! {
+        use vstd::prelude::*;
+        use core::hash::{Hash, Hasher};
+        fn h<K: Hash, H: Hasher>(k: &K, state: &mut H) {
+            k.hash(state);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // a `Hasher` impl cannot add a precondition that std's `Hash` impls do not establish
+    #[test] hasher_impl_requires_rejected verus_code! {
+        use vstd::prelude::*;
+        use core::hash::{Hash, Hasher};
+        pub struct Bad;
+        impl Hasher for Bad {
+            fn finish(&self) -> u64 { 0 }
+            fn write(&mut self, bytes: &[u8]) { }
+            fn write_u8(&mut self, i: u8)
+                requires false,
+            {
+            }
+        }
+        fn test() {
+            let mut h = Bad;
+            0u8.hash(&mut h);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `requires` clauses")
+}
+
+test_verify_one_file! {
+    #[test] hash_slice_impl_requires_rejected verus_code! {
+        use vstd::prelude::*;
+        use core::hash::{Hash, Hasher};
+        pub struct S;
+        impl Hash for S {
+            fn hash<H: Hasher>(&self, state: &mut H) { }
+            fn hash_slice<H: Hasher>(data: &[Self], state: &mut H)
+                requires false,
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `requires` clauses")
+}
+
+test_verify_one_file! {
+    #[test] custom_hasher_ok verus_code! {
+        use vstd::prelude::*;
+        use core::hash::{Hash, Hasher};
+        pub struct Sum { pub s: u64 }
+        impl Hasher for Sum {
+            fn finish(&self) -> u64 { self.s }
+            fn write(&mut self, bytes: &[u8]) { }
+        }
+        fn test() {
+            let mut h = Sum { s: 0 };
+            0u8.hash(&mut h);
+            let _ = h.finish();
         }
     } => Ok(())
 }

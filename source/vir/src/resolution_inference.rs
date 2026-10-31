@@ -127,6 +127,38 @@ of these fields are considered "conditionally initialized"
 Thus, we can compute the "conditionally initialized" places with a straightforward
 analysis that treats enums like normal structs.
 
+### Working with arrays
+
+For an array of some known (i.e., non-generic) size `k`, we can treat it as a struct
+with `k` fields for the purposes of this analysis.
+
+There is a big difference between fields and indices:
+you can move out of a field by with a field expression `a.f`,
+but you can't move out of an array with an index expression `a[0]`.
+The only situation where Rust allows a "partial move" from an array
+is via an array pattern:
+
+```rust
+let [x, _] = a; // moves from a[0] but not from a[1]
+```
+
+And again, this requires a known, non-generic array size. Therefore:
+
+ * When processing an index expressions `a[e]`, we don't need to construct a place
+   more granular than `a`.
+ * When processing an array pattern, we need to split the place `a` into its subplaces
+   and analyze each individually, like for structs.
+
+One snag here is that, while structs are generally limited to a reasonable size,
+an array could be arbitrarily large, which could cause the analysis to hang.
+Fortunately, this issue is ameliorated by the fact that we only split the array
+when an array pattern appears, and the array pattern length is limited by the length
+of the source code.
+
+However, when we support `..` in array patterns, we will need to revisit this
+and optimize the analysis.
+
+
 ### Notes about scopes
 
 For the most part, we ignore the concept of a scope entirely in our CFG, so we don't
@@ -233,13 +265,16 @@ The analysis is pretty weak right now but could be improved.
 */
 
 use crate::ast::{
-    Arm, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, FunWithVis, Function,
-    Ident, Label, Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place,
-    PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr,
-    UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
+    Arm, ArrayKind, BoundsCheck, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
+    FunWithVis, Function, Ident, Krate, Label, Mode, ModeWrapperMode, Params, Path, Pattern,
+    PatternBinding, PatternX, Place, PlaceX, Primitive, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
+    TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate,
+    VariantCheck, VirErr,
 };
 use crate::ast_to_sst::Maybe;
-use crate::ast_util::{bool_typ, mk_bool, typ_to_diagnostic_str, undecorate_typ, unit_typ};
+use crate::ast_util::{
+    bool_typ, mk_bool, mk_int_lit_from_usize, typ_to_diagnostic_str, undecorate_typ, unit_typ,
+};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::def::Spanned;
 use crate::messages::error;
@@ -250,8 +285,64 @@ use crate::resolution_types::ResolutionTypes;
 use crate::sst_util::subst_typ_for_datatype;
 use air::ast_util::str_ident;
 use air::scope_map::ScopeMap;
+use std::collections::HashSet;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
+
+/// Some inputs needed for the resolution analysis
+pub struct ResolutionInfo {
+    pub(crate) read_kind_finals: ReadKindFinals,
+    pub(crate) typ_inv_info: crate::modes::TypeInvInfo,
+    pub(crate) var_modes: HashMap<VarIdent, Mode>,
+    pub(crate) temporary_modes: HashMap<AstId, Mode>,
+    pub(crate) dual_mode: bool,
+}
+
+pub fn krate_infer_resolution(
+    krate: &Krate,
+    infos: &HashMap<Fun, Arc<ResolutionInfo>>,
+) -> Result<Krate, Vec<VirErr>> {
+    let mut datatypes = HashMap::new();
+    for datatype in krate.datatypes.iter() {
+        let Dt::Path(path) = datatype.x.name.clone() else {
+            return Err(vec![crate::messages::internal_error(
+                &datatype.span,
+                "Dt::Tuple in datatypes before `ast_simplify`",
+            )]);
+        };
+        datatypes.insert(path, datatype.clone());
+    }
+    let mut functions = HashMap::new();
+    for function in krate.functions.iter() {
+        functions.insert(function.x.name.clone(), function.clone());
+    }
+    let rtypes = ResolutionTypes::new(&datatypes);
+
+    let mut krate = krate.clone();
+    let mut errors = vec![];
+    for function in &mut Arc::make_mut(&mut krate).functions {
+        if let Some(res_info) = infos.get(&function.x.name) {
+            let new_body = infer_resolution(
+                &function.x.params,
+                &function.x.body.as_ref().unwrap(),
+                res_info,
+                &datatypes,
+                &functions,
+                function.x.owning_module.as_ref().unwrap(),
+                &rtypes,
+            );
+            match new_body {
+                Ok(new_body) => {
+                    Arc::make_mut(function).x.body = Some(new_body);
+                }
+                Err(err) => {
+                    errors.push(err);
+                }
+            }
+        }
+    }
+    if errors.len() > 0 { Err(errors) } else { Ok(krate) }
+}
 
 /// Updates the given function body to include assume(has_resolved(...)) nodes
 /// at the appropriate places.
@@ -259,23 +350,27 @@ use std::sync::Arc;
 ///
 /// This relies on the AstIds of the given Expr being unique, but it also destroys this property
 /// in the transformation, returning an Expr that may have duplicate AstIds.
-pub(crate) fn infer_resolution(
+fn infer_resolution(
     params: &Params,
     body: &Expr,
-    read_kind_finals: &ReadKindFinals,
+    info: &ResolutionInfo,
     datatypes: &HashMap<Path, Datatype>,
     functions: &HashMap<Fun, Function>,
-    typ_inv_info: &crate::modes::TypeInvInfo,
     module: &Path,
-    var_modes: &HashMap<VarIdent, Mode>,
-    temporary_modes: &HashMap<AstId, Mode>,
     rtypes: &ResolutionTypes,
-    dual_mode: bool,
 ) -> Result<Expr, VirErr> {
-    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts) =
-        new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes, temporary_modes)?;
+    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts, loops_with_no_back_edges) =
+        new_cfg(
+            params,
+            body,
+            &info.read_kind_finals,
+            datatypes,
+            functions,
+            &info.var_modes,
+            &info.temporary_modes,
+        )?;
     //println!("{:}", pretty_cfg(&cfg));
-    let resolutions = if dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
+    let resolutions = if info.dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
     apply_resolutions(
         &cfg,
         params,
@@ -283,13 +378,14 @@ pub(crate) fn infer_resolution(
         resolutions,
         assigns_to_resolve,
         typ_inv_obligations,
-        typ_inv_info,
+        &info.typ_inv_info,
+        loops_with_no_back_edges,
         module,
     )
 }
 
 /// Represents the tree structure of "places" under consideration.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum PlaceTree {
     Leaf(Typ),
     /// We have 1 child for every non-ghost field. Use None in place of the ghost fields.
@@ -297,6 +393,8 @@ enum PlaceTree {
     /// Use the same ordering as on the datatype.
     Struct(Typ, Dt, Vec<Vec<Option<PlaceTree>>>),
     MutRef(Typ, Box<PlaceTree>),
+    /// We only handle arrays of known fixed length (i.e., non-generic length)
+    Array(Typ, Vec<PlaceTree>),
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -345,6 +443,7 @@ struct LocalCollection<'a> {
 pub(crate) enum ProjectionTyped {
     StructField(FieldOpr, Typ),
     DerefMut(Typ),
+    Index(usize, Typ),
 }
 
 /// "Flattened" form of the vir::ast::Place type.
@@ -361,6 +460,7 @@ struct FlattenedPlaceTyped {
 enum Projection {
     StructField((usize, usize)),
     DerefMut,
+    Index(usize),
 }
 
 // note: sort_and_remove_redundant relies on sorting order
@@ -460,6 +560,7 @@ struct Builder<'a> {
     assigns_to_resolve: Vec<AstId>,
     typ_inv_obligations: Vec<(AstId, FunWithVis)>,
     asserts: Vec<((BBIndex, usize), Expr)>,
+    loops_with_no_back_edges: HashSet<AstId>,
     errors: Vec<VirErr>,
 
     /// Loop stack, outermost to innermost
@@ -477,6 +578,8 @@ struct LoopEntry {
     break_bb: BBIndex,
     /// BB to jump to on 'continue'
     continue_bb: BBIndex,
+    /// Have we encountered a 'continue' for this loop?
+    continue_taken: bool,
 }
 
 /// Represents the scope for either the top-level fn or for any closure inside it
@@ -528,8 +631,10 @@ fn new_cfg<'a>(
     functions: &'a HashMap<Fun, Function>,
     var_modes: &'a HashMap<VarIdent, Mode>,
     temporary_modes: &'a HashMap<AstId, Mode>,
-) -> Result<(CFG<'a>, Vec<AstId>, Vec<(AstId, FunWithVis)>, Vec<((BBIndex, usize), Expr)>), VirErr>
-{
+) -> Result<
+    (CFG<'a>, Vec<AstId>, Vec<(AstId, FunWithVis)>, Vec<((BBIndex, usize), Expr)>, HashSet<AstId>),
+    VirErr,
+> {
     let mut var_modes = var_modes.clone();
     for p in params.iter() {
         var_modes.insert(p.x.name.clone(), p.x.mode);
@@ -541,6 +646,7 @@ fn new_cfg<'a>(
         fns: vec![],
         assigns_to_resolve: vec![],
         typ_inv_obligations: vec![],
+        loops_with_no_back_edges: HashSet::new(),
         asserts: vec![],
         errors: vec![],
         locals: LocalCollection {
@@ -592,7 +698,13 @@ fn new_cfg<'a>(
     }
 
     let cfg = CFG { basic_blocks: builder.basic_blocks, locals: builder.locals };
-    Ok((cfg, builder.assigns_to_resolve, builder.typ_inv_obligations, builder.asserts))
+    Ok((
+        cfg,
+        builder.assigns_to_resolve,
+        builder.typ_inv_obligations,
+        builder.asserts,
+        builder.loops_with_no_back_edges,
+    ))
 }
 
 macro_rules! unwrap {
@@ -704,10 +816,10 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn get_loop(&self, loop_label: &Label) -> LoopEntry {
-        for l in self.loops.iter().rev() {
+    fn get_loop<'b>(loops: &'b mut Vec<LoopEntry>, loop_label: &Label) -> &'b mut LoopEntry {
+        for l in loops.iter_mut().rev() {
             if &l.label == loop_label {
-                return l.clone();
+                return l;
             }
         }
         panic!("Could not find label {:?}", loop_label);
@@ -740,10 +852,17 @@ impl<'a> Builder<'a> {
             | ExprX::Nondeterministic => Maybe::Some(bb),
 
             ExprX::AssertAssume { .. }
-            | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
             | ExprX::AssertBy { .. }
             | ExprX::AssertQuery { .. }
             | ExprX::AssertCompute(..) => {
+                let idx = self.basic_blocks[bb].instructions.len();
+                self.asserts.push(((bb, idx), expr.clone()));
+                Maybe::Some(bb)
+            }
+
+            ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: _, expr, fun: _ } => {
+                bb = unwrap!(self.build(expr, bb));
+
                 let idx = self.basic_blocks[bb].instructions.len();
                 self.asserts.push(((bb, idx), expr.clone()));
                 Maybe::Some(bb)
@@ -887,7 +1006,7 @@ impl<'a> Builder<'a> {
                 let thn_position = AstPosition::Before(thn.span.id);
                 let els_position = match els {
                     Some(els) => AstPosition::Before(els.span.id),
-                    None => AstPosition::After(span_id),
+                    None => AstPosition::AfterBool(cond.span.id, false),
                 };
                 let join_position = AstPosition::After(span_id);
 
@@ -936,6 +1055,7 @@ impl<'a> Builder<'a> {
                 body,
                 requires: _,
                 ensures: _,
+                mask_spec: _,
                 ret: _,
                 external_spec: _,
             } => {
@@ -974,6 +1094,8 @@ impl<'a> Builder<'a> {
                 invs: _,
                 decrease: _,
                 atomic_call: _,
+                known_no_back_edge: _,
+                source: _,
             } => {
                 let outer_body_bb_pos = match cond {
                     Some(cond) => AstPosition::Before(cond.span.id),
@@ -987,6 +1109,7 @@ impl<'a> Builder<'a> {
                     label: label.clone(),
                     break_bb: post_bb,
                     continue_bb: outer_body_bb,
+                    continue_taken: false,
                 });
 
                 self.basic_blocks[bb].successors.push(outer_body_bb);
@@ -1031,10 +1154,14 @@ impl<'a> Builder<'a> {
 
                 let end_bb = self.build(body, inner_body_bb);
 
-                let _loop_entry = self.loops.pop().unwrap();
+                let loop_entry = self.loops.pop().unwrap();
 
                 match end_bb {
-                    Maybe::Never => {}
+                    Maybe::Never => {
+                        if !loop_entry.continue_taken {
+                            self.loops_with_no_back_edges.insert(expr.span.id);
+                        }
+                    }
                     Maybe::Some(end_bb) => {
                         self.basic_blocks[end_bb].successors.push(outer_body_bb);
                     }
@@ -1094,12 +1221,16 @@ impl<'a> Builder<'a> {
                 self.basic_blocks[bb].is_exit = true;
                 Maybe::Never
             }
-            ExprX::BreakOrContinue { label, is_break } => {
-                let entry = self.get_loop(label);
+            ExprX::BreakOrContinue { label, is_break, value } => {
+                if let Some(value) = value {
+                    bb = unwrap!(self.build(value, bb));
+                }
+                let entry = Self::get_loop(&mut self.loops, label);
                 if *is_break {
                     self.basic_blocks[bb].successors.push(entry.break_bb);
                 } else {
                     self.basic_blocks[bb].successors.push(entry.continue_bb);
+                    entry.continue_taken = true;
                 }
                 Maybe::Never
             }
@@ -1263,6 +1394,7 @@ impl<'a> Builder<'a> {
                 Maybe::Some(bb)
             }
             StmtX::Decl { pattern, mode: _, init: Some(init), els, assert_irrefutable: _ } => {
+                check_illegal_muts(pattern, &self.locals.datatypes, &mut self.errors);
                 let tinv = if pattern_has_mut(pattern) { TypInv::PatternError } else { TypInv::No };
                 let (cpt, bb) = unwrap!(self.build_place_typed(init, bb, tinv));
 
@@ -1348,7 +1480,7 @@ impl<'a> Builder<'a> {
                                         self.typ_inv_obligations.push((p.span.id, typ_inv_fun));
                                     }
                                     TypInv::PatternError => {
-                                        self.errors.push(error(&p.span, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant"));
+                                        self.errors.push(error(&p.span, "Verus does not currently support using a pattern to take a mutable reference to a field of a datatype that has a declared type invariant"));
                                     }
                                     TypInv::No => unreachable!(),
                                 }
@@ -1614,6 +1746,9 @@ impl<'a> Builder<'a> {
             unreachable!();
         };
 
+        for arm in arms.iter() {
+            check_illegal_muts(&arm.x.pattern, &self.locals.datatypes, &mut self.errors);
+        }
         let tinv = if arms.iter().any(|arm| pattern_has_mut(&arm.x.pattern)) {
             TypInv::PatternError
         } else {
@@ -1904,6 +2039,11 @@ impl<'a> Builder<'a> {
             PatternX::Or(sub_pat, _) | PatternX::ImmutRef(sub_pat) | PatternX::MutRef(sub_pat) => {
                 self.scope_insert_pattern(sub_pat);
             }
+            PatternX::Slice(patterns) => {
+                for p in patterns.iter() {
+                    self.scope_insert_pattern(p);
+                }
+            }
         }
     }
 
@@ -1928,7 +2068,8 @@ impl<'a> Builder<'a> {
             TypX::Datatype(dt, ..) => get_typ_inv_fun_dt(&self.locals.datatypes, dt),
             _ => {
                 dbg!(&p.typ);
-                self.errors.push(error(&p.span, "Verus Internal Error: get_typ_inv_fun failed"));
+                self.errors
+                    .push(crate::messages::internal_error(&p.span, "`get_typ_inv_fun` failed"));
                 None
             }
         }
@@ -1954,9 +2095,9 @@ impl<'a> Builder<'a> {
                 ));
             }
             ComputedPlaceTyped::Ghost(_) => {
-                self.errors.push(error(
+                self.errors.push(crate::messages::internal_error(
                     span,
-                    "Verus Internal Error: inconsistent state, move out of ghost place",
+                    "inconsistent state, move out of ghost place",
                 ));
             }
             ComputedPlaceTyped::Exact(_) => unreachable!(),
@@ -2020,6 +2161,11 @@ pub fn pattern_all_bound_vars_with_ownership(
             }
             PatternX::Expr(_) => {}
             PatternX::Range(_, _) => {}
+            PatternX::Slice(patterns) => {
+                for p in patterns.iter() {
+                    pattern_all_bound_vars_rec(p, out, modes);
+                }
+            }
         }
     }
 
@@ -2056,28 +2202,38 @@ fn moves_and_muts_for_pattern(
                 }
             }
             PatternX::Constructor(dt, variant, patterns) => {
-                if let Some(_typ_inv_fun) = get_typ_inv_fun_dt(datatypes, dt) {
-                    if let Some(span) = crate::patterns::pattern_find_mut_binding(pattern) {
-                        errors.push(error(&pattern.span, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant").secondary_label(&span, "mutable binding here"));
+                let has_dtor = match dt {
+                    Dt::Tuple(_) => false,
+                    Dt::Path(path) => datatypes[path].x.destructor,
+                };
+
+                if !has_dtor {
+                    for binder in patterns.iter() {
+                        let field_typ = binder.a.typ.clone();
+                        let proj = ProjectionTyped::StructField(
+                            FieldOpr {
+                                datatype: dt.clone(),
+                                variant: variant.clone(),
+                                field: binder.name.clone(),
+                                get_variant: false,
+                                check: crate::ast::VariantCheck::None,
+                            },
+                            field_typ,
+                        );
+
+                        projs.push(proj);
+                        moves_and_muts_for_pattern_rec(
+                            &binder.a, projs, out, datatypes, modes, errors,
+                        );
+                        projs.pop();
                     }
-                }
-
-                for binder in patterns.iter() {
-                    let field_typ = binder.a.typ.clone();
-                    let proj = ProjectionTyped::StructField(
-                        FieldOpr {
-                            datatype: dt.clone(),
-                            variant: variant.clone(),
-                            field: binder.name.clone(),
-                            get_variant: false,
-                            check: crate::ast::VariantCheck::None,
-                        },
-                        field_typ,
-                    );
-
-                    projs.push(proj);
-                    moves_and_muts_for_pattern_rec(&binder.a, projs, out, datatypes, modes, errors);
-                    projs.pop();
+                } else {
+                    // For a struct with a destructor, it's not possible to take moves,
+                    // only mut refs. We also need to handle this as a whole place in our analysis
+                    // so we check if there are any mutations and then stop here.
+                    if pattern_has_mut(pattern) {
+                        out.push((projs.clone(), ByRef::MutRef));
+                    }
                 }
             }
             PatternX::Or(pat1, pat2) => {
@@ -2095,12 +2251,73 @@ fn moves_and_muts_for_pattern(
                 moves_and_muts_for_pattern_rec(sub_pat, projs, out, datatypes, modes, errors);
                 projs.pop();
             }
+            PatternX::Slice(sub_patterns) => {
+                let (kind, elem_typ) = crate::ast_util::array_kind_of_typ(&pattern.typ);
+                match kind {
+                    ArrayKind::Array => {
+                        for (i, sub_pat) in sub_patterns.iter().enumerate() {
+                            let proj = ProjectionTyped::Index(i, elem_typ.clone());
+                            projs.push(proj);
+                            moves_and_muts_for_pattern_rec(
+                                sub_pat, projs, out, datatypes, modes, errors,
+                            );
+                            projs.pop();
+                        }
+                    }
+                    ArrayKind::Slice => {
+                        // We can assume there are no moves out of a slice pattern
+                        // TODO: would be good to sanity check anyway
+                        if pattern_has_mut(pattern) {
+                            out.push((projs.clone(), ByRef::MutRef));
+                        }
+                    }
+                }
+            }
         }
     }
 
     let mut out = vec![];
     moves_and_muts_for_pattern_rec(pattern, &mut vec![], &mut out, datatypes, modes, errors);
     out
+}
+
+/// Check for mutable borrows inside datatype structs
+fn check_illegal_muts(
+    pattern: &Pattern,
+    datatypes: &HashMap<Path, Datatype>,
+    errors: &mut Vec<VirErr>,
+) {
+    match &pattern.x {
+        PatternX::Wildcard => {}
+        PatternX::Var(_binding) => {}
+        PatternX::Binding { binding: _, sub_pat } => check_illegal_muts(sub_pat, datatypes, errors),
+        PatternX::Constructor(dt, _variant, patterns) => {
+            if let Some(_typ_inv_fun) = get_typ_inv_fun_dt(datatypes, dt) {
+                if let Some(span) = crate::patterns::pattern_find_mut_binding(pattern) {
+                    errors.push(error(&pattern.span, "Verus does not currently support using a pattern to take a mutable reference to a field of a datatype that has a declared type invariant").secondary_label(&span, "`ref mut` binding here"));
+                }
+                // Can skip recursing; either we already added an error, or there are no
+                // mutable bindings in this node.
+                return;
+            }
+
+            for binder in patterns.iter() {
+                check_illegal_muts(&binder.a, datatypes, errors);
+            }
+        }
+        PatternX::Or(pat1, pat2) => {
+            check_illegal_muts(pat1, datatypes, errors);
+            check_illegal_muts(pat2, datatypes, errors);
+        }
+        PatternX::Expr(_e) => {}
+        PatternX::Range(_lower, _upper) => {}
+        PatternX::ImmutRef(p) | PatternX::MutRef(p) => check_illegal_muts(p, datatypes, errors),
+        PatternX::Slice(pats) => {
+            for p in pats.iter() {
+                check_illegal_muts(p, datatypes, errors);
+            }
+        }
+    }
 }
 
 ////// Place trees
@@ -2199,6 +2416,11 @@ impl<'a> LocalCollection<'a> {
                         }
                         Dt::Path(path) => {
                             let datatype = &datatypes[path];
+
+                            // Sanity check that we haven't been asked to split a datatype
+                            // with a nontrivial destructor.
+                            assert!(!datatype.x.destructor);
+
                             let fields = datatype
                                 .x
                                 .variants
@@ -2224,6 +2446,18 @@ impl<'a> LocalCollection<'a> {
                             *tree = PlaceTree::Struct(typ.clone(), dt.clone(), fields);
                         }
                     },
+                    TypX::Primitive(Primitive::Array, typs) => {
+                        assert!(typs.len() == 2);
+                        let len: usize = match &*typs[1] {
+                            TypX::ConstInt(n) => n.try_into().unwrap(),
+                            _ => {
+                                panic!("Verus internal error: expected array to have fixed length")
+                            }
+                        };
+                        let children = std::iter::repeat_n(PlaceTree::Leaf(typs[0].clone()), len)
+                            .collect::<Vec<PlaceTree>>();
+                        *tree = PlaceTree::Array(typ.clone(), children);
+                    }
                     _ => {
                         panic!("Verus internal error: unexpected type from projections")
                     }
@@ -2235,6 +2469,7 @@ impl<'a> LocalCollection<'a> {
                     Projection::StructField(field_opr_to_indices(field_opr, datatypes))
                 }
                 ProjectionTyped::DerefMut(_typ) => Projection::DerefMut,
+                ProjectionTyped::Index(idx, _typ) => Projection::Index(*idx),
             };
             output_projections.push(projection);
 
@@ -2246,7 +2481,7 @@ impl<'a> LocalCollection<'a> {
                         // manipulate a ghost place
                         tree = subtrees[*variant_idx][*field_idx].as_mut().unwrap();
                     }
-                    PlaceTree::MutRef(..) => {
+                    PlaceTree::MutRef(..) | PlaceTree::Array(..) => {
                         panic!(
                             "Verus internal error: extend_tree failed, conflicting projection type"
                         );
@@ -2254,13 +2489,24 @@ impl<'a> LocalCollection<'a> {
                 },
                 Projection::DerefMut => match tree {
                     PlaceTree::Leaf(_) => unreachable!(),
-                    PlaceTree::Struct(..) => {
+                    PlaceTree::Struct(..) | PlaceTree::Array(..) => {
                         panic!(
                             "Verus internal error: extend_tree failed, conflicting projection type"
                         );
                     }
                     PlaceTree::MutRef(_, inner) => {
                         tree = &mut *inner;
+                    }
+                },
+                Projection::Index(idx) => match tree {
+                    PlaceTree::Leaf(_) => unreachable!(),
+                    PlaceTree::Array(_, subtrees) => {
+                        tree = &mut subtrees[*idx];
+                    }
+                    PlaceTree::Struct(..) | PlaceTree::MutRef(..) => {
+                        panic!(
+                            "Verus internal error: extend_tree failed, conflicting projection type"
+                        );
                     }
                 },
             }
@@ -2288,6 +2534,13 @@ impl<'a> LocalCollection<'a> {
                         _ => unreachable!(),
                     };
                     tree = &inner_tree;
+                }
+                Projection::Index(idx) => {
+                    let inner_trees = match tree {
+                        PlaceTree::Array(_ty, inner_trees) => inner_trees,
+                        _ => unreachable!(),
+                    };
+                    tree = &inner_trees[*idx];
                 }
             }
         }
@@ -2343,6 +2596,24 @@ impl<'a> LocalCollection<'a> {
                         SpannedTyped::new(span, inner_tree.typ(), PlaceX::DerefMut(ast_place));
                     tree = &inner_tree;
                 }
+                Projection::Index(idx) => {
+                    let inner_trees = match tree {
+                        PlaceTree::Array(_ty, inner_trees) => inner_trees,
+                        _ => unreachable!(),
+                    };
+                    let inner_tree = &inner_trees[*idx];
+                    ast_place = SpannedTyped::new(
+                        span,
+                        inner_tree.typ(),
+                        PlaceX::Index(
+                            ast_place,
+                            mk_int_lit_from_usize(span, *idx),
+                            ArrayKind::Array,
+                            BoundsCheck::Allow,
+                        ),
+                    );
+                    tree = inner_tree;
+                }
             }
         }
         ast_place
@@ -2394,6 +2665,13 @@ impl<'a> LocalCollection<'a> {
                     cur.projections.pop();
                 }
             }
+            PlaceTree::Array(_t, children) => {
+                for (i, child) in children.iter().enumerate() {
+                    cur.projections.push(Projection::Index(i));
+                    Self::traverse_rec(child, cur, output, go_inside_muts);
+                    cur.projections.pop();
+                }
+            }
         }
     }
 
@@ -2422,6 +2700,9 @@ impl<'a> LocalCollection<'a> {
                     Some(PlaceTree::Struct(..)) => {
                         panic!("Verus Internal Error: unexpected PlaceTree::Struct")
                     }
+                    Some(PlaceTree::Array(..)) => {
+                        panic!("Verus Internal Error: unexpected PlaceTree::Array")
+                    }
                     Some(PlaceTree::MutRef(_, child)) => {
                         fp.projections.push(Projection::DerefMut);
                         let child: &PlaceTree = &child;
@@ -2435,7 +2716,10 @@ impl<'a> LocalCollection<'a> {
                     None => (fp, None),
                     Some(PlaceTree::Leaf(_)) => (fp, None),
                     Some(PlaceTree::MutRef(..)) => {
-                        panic!("Verus Internal Error: unexpected PlaceTree::Struct")
+                        panic!("Verus Internal Error: unexpected PlaceTree::MutRef")
+                    }
+                    Some(PlaceTree::Array(..)) => {
+                        panic!("Verus Internal Error: unexpected PlaceTree::Array")
                     }
                     Some(PlaceTree::Struct(_, _, variants)) => {
                         let indices = field_opr_to_indices(field_opr, &self.datatypes);
@@ -2451,9 +2735,28 @@ impl<'a> LocalCollection<'a> {
             PlaceX::WithExpr(..) | PlaceX::UserDefinedTypInvariantObligation(..) => {
                 panic!("Verus Internal Error: unexpected place");
             }
-            PlaceX::Index(p, ..) => {
+            PlaceX::Index(p, idx_expr, ..) => {
                 let m = self.try_get_flattened_place_rec(p);
-                m.map(|(fp, _tree)| (fp, None))
+                m.map(|(mut fp, tree)| match tree {
+                    None => (fp, None),
+                    Some(PlaceTree::Leaf(_)) => (fp, None),
+                    Some(PlaceTree::Struct(..)) => {
+                        panic!("Verus Internal Error: unexpected PlaceTree::Struct")
+                    }
+                    Some(PlaceTree::MutRef(..)) => {
+                        panic!("Verus Internal Error: unexpected PlaceTree::MutRef")
+                    }
+                    Some(PlaceTree::Array(_, children)) => {
+                        match crate::ast_util::const_usize_of_expr(idx_expr) {
+                            Some(i) if i < children.len() => {
+                                fp.projections.push(Projection::Index(i));
+                                let child: &PlaceTree = &children[i];
+                                (fp, Some(child))
+                            }
+                            _ => (fp, None),
+                        }
+                    }
+                })
             }
         }
     }
@@ -2511,6 +2814,7 @@ impl PlaceTree {
             PlaceTree::Leaf(t) => t,
             PlaceTree::Struct(t, _, _) => t,
             PlaceTree::MutRef(t, _) => t,
+            PlaceTree::Array(t, _) => t,
         }
     }
 }
@@ -2661,6 +2965,7 @@ impl ProjectionTyped {
         match self {
             ProjectionTyped::StructField(_, typ) => typ.clone(),
             ProjectionTyped::DerefMut(typ) => typ.clone(),
+            ProjectionTyped::Index(_, typ) => typ.clone(),
         }
     }
 }
@@ -2937,6 +3242,13 @@ fn pretty_tree(pt: &PlaceTree, datatypes: &HashMap<Path, Datatype>) -> String {
             }
             format!(".{{{:}}}", v.join(", "))
         }
+        PlaceTree::Array(_, children) => {
+            let mut v = vec![];
+            for (i, child) in children.iter().enumerate() {
+                v.push(format!("{:}{:}", i, pretty_tree(child, datatypes)));
+            }
+            format!(".[{:}]", v.join(", "))
+        }
     }
 }
 
@@ -3037,6 +3349,14 @@ fn pretty_flattened_place(locals: &LocalCollection, fp: &FlattenedPlace) -> Stri
                 let x = pretty_field_name(dt, *variant_idx, *field_idx, &locals.datatypes);
                 let x = format!(".{:}", x);
                 (x, inner_tree.as_ref().unwrap())
+            }
+            Projection::Index(idx) => {
+                let inner_tree = match tree {
+                    PlaceTree::Array(_, trees) => &trees[*idx],
+                    _ => unreachable!(),
+                };
+                let x = format!("[{:}]", idx);
+                (x, inner_tree)
             }
         };
         s += &x;
@@ -3397,6 +3717,7 @@ fn apply_resolutions(
     assigns_to_resolve: Vec<AstId>,
     typ_inv_obligations: Vec<(AstId, FunWithVis)>,
     typ_inv_info: &crate::modes::TypeInvInfo,
+    loops_with_no_back_edges: HashSet<AstId>,
     module: &Path,
 ) -> Result<Expr, VirErr> {
     // All the resolutions that apply to PlaceX::Temporary nodes
@@ -3506,6 +3827,7 @@ fn apply_resolutions(
                 &cfg.locals.datatypes,
                 module,
             )?;
+            let expr2 = maybe_set_loop_no_back_edge(expr2, &loops_with_no_back_edges);
 
             if let Some((befores, afters, after_args, after_f, after_t, assn, seen_yet)) =
                 id_map.get_mut(&expr.span.id)
@@ -3712,6 +4034,9 @@ fn condition_on_enum_variants(
     match &place.x {
         PlaceX::Local(_l) => bool_expr.clone(),
         PlaceX::DerefMut(p) => condition_on_enum_variants(bool_expr, p, datatypes),
+        PlaceX::Index(p, _, ArrayKind::Array, _) => {
+            condition_on_enum_variants(bool_expr, p, datatypes)
+        }
         PlaceX::Field(field_opr, p) => {
             let is_irref = match &field_opr.datatype {
                 Dt::Tuple(_) => true,
@@ -3908,4 +4233,17 @@ fn add_decls_for_temps(
         }
     }
     SpannedTyped::new(&expr.span, &expr.typ, ExprX::Block(Arc::new(stmts), Some(expr.clone())))
+}
+
+fn maybe_set_loop_no_back_edge(e: Expr, loops_with_no_back_edges: &HashSet<AstId>) -> Expr {
+    if matches!(&e.x, ExprX::Loop { .. }) && loops_with_no_back_edges.contains(&e.span.id) {
+        let mut e = e;
+        let ExprX::Loop { ref mut known_no_back_edge, .. } = Arc::make_mut(&mut e).x else {
+            unreachable!();
+        };
+        *known_no_back_edge = true;
+        e
+    } else {
+        e
+    }
 }

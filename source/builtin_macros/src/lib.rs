@@ -2,7 +2,8 @@
     verus_keep_ghost,
     feature(proc_macro_tracked_env),
     feature(proc_macro_expand),
-    feature(proc_macro_diagnostic)
+    feature(proc_macro_diagnostic),
+    feature(proc_macro_def_site)
 )]
 
 use std::sync::OnceLock;
@@ -336,7 +337,7 @@ pub fn calc_proc_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 
 // If no #[verus_verify] on the item, it is verifier::external by default.
 // When compiling code with verus:
-// #[verus_verify] annotates the item with verifier::verify
+// #[verus_verify] annotates the item with verus::internal(verify)
 // #[verus_verify(external_body)] annotates the item with verifier::external_body
 // When compiling code with standard rust tool, the item has no verifier annotation.
 #[proc_macro_attribute]
@@ -374,7 +375,9 @@ pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// for verification.
 /// For example, declare a ghost/tracked variable.
 /// To avoid confusion, let stmts without ghost/tracked is not supported.
-/// Non-local stmts inside proof_decl! are treated similar to those in proof!
+/// Non-local stmts other than statement macros are treated similar to those in proof!
+/// Statement macros are not supported; invoke declaration macros in the surrounding
+/// scope or use proof! for proof statements.
 #[proc_macro]
 pub fn proof_decl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let erase = cfg_erase();

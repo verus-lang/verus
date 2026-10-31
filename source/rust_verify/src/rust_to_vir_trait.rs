@@ -3,19 +3,70 @@ use crate::context::Context;
 use crate::external::CrateItems;
 use crate::rust_to_vir::State;
 use crate::rust_to_vir_base::{check_generics_bounds_with_polarity, process_predicate_bounds};
-use crate::rust_to_vir_func::{CheckItemFnEither, check_item_fn};
+use crate::rust_to_vir_func::{
+    CheckItemFnEither, FunctionInfo, FunctionOrConstInfo, check_item_fn,
+};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
 use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemId, TraitItemKind};
-use rustc_middle::ty::{ClauseKind, TraitPredicate, TraitRef, TyCtxt, TypingEnv};
+use rustc_middle::ty::{
+    AliasTyKind, ClauseKind, TraitPredicate, TraitRef, Ty, TyCtxt, TyKind, TypeFoldable,
+    TypeFolder, TypeSuperFoldable, TypingEnv,
+};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
+use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{
-    Fun, Function, FunctionKind, GenericBound, Ident, KrateX, TraitX, VirErr, Visibility,
-};
+use vir::ast::{Fun, FunctionKind, GenericBound, Ident, KrateX, TraitX, VirErr, Visibility};
+use vir::ast_util::params_equal_opt;
 use vir::def::VERUS_SPEC;
+use vir::messages::error;
+
+// The proxy and the target declare distinct associated types in Rust. Rewrite
+// only projections from this proxy to the matching target member so that their
+// trait bounds can be compared using the same associated-type identities.
+// The marker stands in for Self in both predicate lists and must not be mapped,
+// even when the target declares an associated type with the same name.
+struct ExternalTraitProjectionRewriter<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    proxy_trait_id: DefId,
+    target_trait_id: DefId,
+    marker_type_id: DefId,
+}
+
+impl<'tcx> TypeFolder<TyCtxt<'tcx>> for ExternalTraitProjectionRewriter<'tcx> {
+    fn cx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+
+    fn fold_ty(&mut self, ty: Ty<'tcx>) -> Ty<'tcx> {
+        let ty = ty.super_fold_with(self);
+        if let TyKind::Alias(rigid, alias_ty) = *ty.kind()
+            && let AliasTyKind::Projection { def_id } = alias_ty.kind
+            && self.tcx.parent(def_id) == self.proxy_trait_id
+            && def_id != self.marker_type_id
+        {
+            let proxy_item = self.tcx.associated_item(def_id);
+            let target_item =
+                self.tcx.associated_items(self.target_trait_id).find_by_ident_and_kind(
+                    self.tcx,
+                    proxy_item.ident(self.tcx),
+                    proxy_item.tag(),
+                    self.target_trait_id,
+                );
+            if let Some(target_item) = target_item {
+                let alias_ty = rustc_middle::ty::AliasTy::new(
+                    self.tcx,
+                    AliasTyKind::Projection { def_id: target_item.def_id },
+                    alias_ty.args,
+                );
+                return self.tcx.mk_ty_from_kind(TyKind::Alias(rigid, alias_ty));
+            }
+        }
+        ty
+    }
+}
 
 pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
     ctxt: &Context<'tcx>,
@@ -48,8 +99,10 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
                             let vattrs = ctxt.get_verifier_attrs(attrs)?;
                             if let Some((spec, imp)) = vattrs.external_trait_extension {
                                 let path = ctxt.def_id_to_vir_path(trait_def_id);
-                                let spec = path.replace_last(Arc::new(spec.clone()));
-                                let imp = path.replace_last(Arc::new(imp.clone()));
+                                let spec = path
+                                    .replace_last(vir::ast::Segment::T(Arc::new(spec.clone()), 0));
+                                let imp = path
+                                    .replace_last(vir::ast::Segment::T(Arc::new(imp.clone()), 0));
                                 let m = &mut external_info.external_trait_extension_impl_map;
                                 assert!(!m.contains_key(&imp));
                                 m.insert(imp, spec);
@@ -119,6 +172,7 @@ pub(crate) fn translate_trait<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
     vir: &mut KrateX,
+    infos: &mut Vec<FunctionOrConstInfo<'tcx>>,
     trait_span: Span,
     trait_def_id: DefId,
     visibility: Visibility,
@@ -128,6 +182,7 @@ pub(crate) fn translate_trait<'tcx>(
     trait_vattrs: &VerifierAttrs,
     crate_items: &CrateItems,
     safety: Safety,
+    no_erasure_needed: &mut Vec<DefId>,
 ) -> Result<(), VirErr> {
     let tcx = ctxt.tcx;
     let orig_trait_path = ctxt.def_id_to_vir_path(trait_def_id);
@@ -148,7 +203,7 @@ pub(crate) fn translate_trait<'tcx>(
     };
     let mut assoc_typs: Vec<Ident> = Vec::new();
     let mut assoc_typs_bounds: Vec<GenericBound> = Vec::new();
-    let mut methods: Vec<Function> = Vec::new();
+    let mut methods: Vec<FunctionOrConstInfo> = Vec::new();
     let mut method_names: Vec<Fun> = Vec::new();
     let ex_trait_ref_for = external_trait_specification_of(tcx, trait_items, trait_vattrs)?;
     let external_trait_extension = &trait_vattrs.external_trait_extension;
@@ -171,22 +226,36 @@ pub(crate) fn translate_trait<'tcx>(
             true,
             trait_generics.span,
         )?;
-        let external_predicates = tcx.predicates_of(ex_trait_ref_for.def_id);
-        let proxy_predicates = tcx.predicates_of(trait_def_id);
+        let external_predicates = tcx.clauses_of(ex_trait_ref_for.def_id);
+        let proxy_predicates = tcx.clauses_of(trait_def_id);
         let mut preds1 = external_predicates
             .instantiate(tcx, ex_trait_ref_for.args)
-            .predicates
+            .clauses
             .into_iter()
             .map(|clause| {
                 tcx.try_normalize_erasing_regions(typing_env, clause)
                     .unwrap_or_else(|_| clause.skip_norm_wip())
             })
             .collect();
+        let marker_type_id = if let TyKind::Alias(_, marker_ty) = *ex_trait_ref_for.self_ty().kind()
+            && let AliasTyKind::Projection { def_id } = marker_ty.kind
+        {
+            def_id
+        } else {
+            unreachable!("external trait specification Self must be the marker projection")
+        };
+        let mut projection_rewriter = ExternalTraitProjectionRewriter {
+            tcx,
+            proxy_trait_id: trait_def_id,
+            target_trait_id: ex_trait_ref_for.def_id,
+            marker_type_id,
+        };
         let mut preds2 = proxy_predicates
             .instantiate(tcx, ex_trait_ref_for.args)
-            .predicates
+            .clauses
             .into_iter()
             .map(|clause| {
+                let clause = clause.fold_with(&mut projection_rewriter);
                 tcx.try_normalize_erasing_regions(typing_env, clause)
                     .unwrap_or_else(|_| clause.skip_norm_wip())
             })
@@ -213,16 +282,16 @@ pub(crate) fn translate_trait<'tcx>(
             return err_span(
                 trait_span,
                 format!(
-                    "external_trait_private_bound {:?} is not a private non-local bound for this trait",
+                    "`external_trait_private_bound` {:?} is not a private non-local bound for this trait",
                     bound,
                 ),
             );
         }
         if !crate::rust_to_vir_func::predicates_match(ctxt.tcx, &preds1, &preds2) {
             let err =
-                err_span_bare(trait_span, "external_trait_specification trait bound mismatch")
+                err_span_bare(trait_span, "`external_trait_specification` trait bound mismatch")
                     .help(format!(
-                        "external_trait_specification requires trait bounds to match exactly \
+                        "`external_trait_specification` requires trait bounds to match exactly \
                     but the proxy's trait bounds are:\n{}\nthe external trait bounds are:\n{}",
                         preds2.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n"),
                         preds1.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n")
@@ -261,13 +330,17 @@ pub(crate) fn translate_trait<'tcx>(
         if crate_items.is_trait_item_external(*trait_item_id) {
             return err_span(
                 *span,
-                "a trait item cannot be marked 'external' - perhaps you meant to mark the entire trait external?",
+                "a trait item cannot be marked `external` - perhaps you meant to mark the entire trait external?",
             );
         }
 
         let item_path = ctxt.def_id_to_vir_path(owner_id.to_def_id());
-        let is_verus_spec =
-            item_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
+        let is_verus_spec = item_path
+            .segments
+            .last()
+            .expect("segment.last")
+            .name()
+            .is_some_and(|name| name.starts_with(VERUS_SPEC));
         let attrs = tcx.hir_attrs(trait_item.hir_id());
         let ex_item_id_for = if let Some(ex_trait_id_for) = ex_trait_id_for {
             match kind {
@@ -294,13 +367,14 @@ pub(crate) fn translate_trait<'tcx>(
                         if !is_verus_spec {
                             return err_span(
                                 *span,
-                                "feature not yet supported: external spec extensions cannot yet provide default bodies",
+                                "Verus does not currently support default bodies in external spec extensions",
                             );
                         }
                         // TODO: support defaults
                         // (they would currently just get dropped here if we didn't return an error)
                     }
                     // spec functions live in extension trait, not in our trait
+                    no_erasure_needed.push(owner_id.to_def_id());
                     continue;
                 } else if !is_verus_spec && ex_assoc_item.is_none() {
                     return err_span(
@@ -363,6 +437,7 @@ pub(crate) fn translate_trait<'tcx>(
                     ex_item_id_for,
                     None,
                     &mut vir.opaque_types,
+                    no_erasure_needed,
                 )?;
                 if let Some(fun) = fun {
                     method_names.push(fun);
@@ -381,7 +456,10 @@ pub(crate) fn translate_trait<'tcx>(
                         (CheckItemFnEither::BodyId(body_id), true)
                     }
                     Some(_) => {
-                        crate::unsupported_err!(trait_span, "non-expression trait const default")
+                        crate::unsupported_err!(
+                            trait_span,
+                            "non-expression default values for associated constants"
+                        )
                     }
                     None => (CheckItemFnEither::ParamNames(param_names.as_slice()), false),
                 };
@@ -405,6 +483,7 @@ pub(crate) fn translate_trait<'tcx>(
                     ex_item_id_for,
                     None,
                     &mut vir.opaque_types,
+                    no_erasure_needed,
                 )?;
                 if let Some(fun) = fun {
                     method_names.push(fun);
@@ -413,7 +492,7 @@ pub(crate) fn translate_trait<'tcx>(
             TraitItemKind::Type(_, Some(_)) => {
                 return err_span(
                     trait_span,
-                    "Verus does not yet support associated types with a concrete type",
+                    "Verus does not currently support associated types with a concrete type",
                 );
             }
             TraitItemKind::Type(_generic_bounds, None) => {
@@ -457,7 +536,7 @@ pub(crate) fn translate_trait<'tcx>(
 
                     if preds1.len() != preds2.len() {
                         let mut t = format!(
-                            "Mismatched bounds on associated type ({} != {})\n",
+                            "mismatched bounds on associated type ({} != {})\n",
                             preds1.len(),
                             preds2.len(),
                         );
@@ -479,7 +558,7 @@ pub(crate) fn translate_trait<'tcx>(
                                     return err_span(
                                         trait_span,
                                         format!(
-                                            "Mismatched bounds on associated type ({} != {})",
+                                            "mismatched bounds on associated type ({} != {})",
                                             p1, p2
                                         ),
                                     );
@@ -492,7 +571,7 @@ pub(crate) fn translate_trait<'tcx>(
                                     return err_span(
                                         trait_span,
                                         format!(
-                                            "Mismatched projection bounds on associated type ({} != {})",
+                                            "mismatched projection bounds on associated type ({} != {})",
                                             p1, p2
                                         ),
                                     );
@@ -508,7 +587,7 @@ pub(crate) fn translate_trait<'tcx>(
                             _ => {
                                 return err_span(
                                     trait_span,
-                                    "Verus does not yet support this bound on external specs",
+                                    "Verus does not currently support this bound on external specs",
                                 );
                             }
                         }
@@ -517,8 +596,8 @@ pub(crate) fn translate_trait<'tcx>(
             }
         }
     }
-    let mut methods = vir::headers::make_trait_decls(methods)?;
-    vir.functions.append(&mut methods);
+    let mut methods = make_trait_decls(methods)?;
+    infos.append(&mut methods);
     let mut assoc_typs_bounds = Arc::new(assoc_typs_bounds);
     let target_trait_id = if let Some(target_trait_id) = ex_trait_id_for {
         typ_bounds =
@@ -531,8 +610,8 @@ pub(crate) fn translate_trait<'tcx>(
     };
     state.external_info.local_trait_ids.push(target_trait_id);
     let external_trait_extension = if let Some((spec, imp)) = external_trait_extension {
-        let spec = orig_trait_path.replace_last(Arc::new(spec.clone()));
-        let imp = orig_trait_path.replace_last(Arc::new(imp.clone()));
+        let spec = orig_trait_path.replace_last(vir::ast::Segment::T(Arc::new(spec.clone()), 0));
+        let imp = orig_trait_path.replace_last(vir::ast::Segment::T(Arc::new(imp.clone()), 0));
         Some((spec, imp))
     } else {
         None
@@ -555,4 +634,196 @@ pub(crate) fn translate_trait<'tcx>(
     };
     vir.traits.push(ctxt.spanned_new(trait_span, traitx));
     Ok(())
+}
+
+// Each trait method declaration is encoded as a pair of methods:
+//   fn VERUS_SPEC__f() { requires(x); ... }
+//   fn f();
+// This is done to preserve f's lack of a body,
+// so that Rust's type checker can check that implementations of f provide a body.
+// When generating VIR, merge the methods back into a single method:
+//   fn f() requires x;
+fn make_trait_decls(methods: Vec<FunctionOrConstInfo>) -> Result<Vec<FunctionOrConstInfo>, VirErr> {
+    let mut decls: Vec<FunctionOrConstInfo> = Vec::new();
+    let mut specs: HashMap<String, FunctionInfo> = HashMap::new();
+    for method in methods.into_iter() {
+        if let FunctionOrConstInfo::Function(f) = method {
+            let mut name =
+                f.function.x.name.path.segments.last().expect("method name last").to_string();
+            if name.starts_with(VERUS_SPEC) {
+                let name = name.split_off(VERUS_SPEC.len());
+                specs.insert(name, f);
+            } else {
+                decls.push(FunctionOrConstInfo::Function(f));
+            }
+        } else {
+            decls.push(method);
+        }
+    }
+    for method in decls.iter_mut() {
+        if let FunctionOrConstInfo::Function(f) = method {
+            let name =
+                f.function.x.name.path.segments.last().expect("method name last").to_string();
+            // Note: None case means no specification method, which means no requires, ensures, etc.
+            if let Some(spec_method) = specs.remove(&name) {
+                *method = FunctionOrConstInfo::Function(make_trait_decl(f, &spec_method)?);
+            }
+        }
+    }
+    if specs.is_empty() {
+        Ok(decls)
+    } else {
+        Err(vir::messages::multiple_errors(
+            specs.values().map(|spec| &spec.function.span),
+            format!(
+                "no matching method found for method specification{}",
+                if specs.len() > 1 { "s" } else { "" },
+            ),
+        ))
+    }
+}
+
+fn make_trait_decl<'tcx>(
+    method_info: &FunctionInfo<'tcx>,
+    spec_method_info: &FunctionInfo<'tcx>,
+) -> Result<FunctionInfo<'tcx>, VirErr> {
+    let method = &method_info.function;
+    let spec_method = &spec_method_info.function;
+
+    let vir::ast::FunctionStubX {
+        name: _,
+        proxy: _,
+        kind: _,
+        visibility: _,
+        body_visibility: _,
+        opaqueness,
+        owning_module: _,
+        mode: _,
+        typ_params,
+        mut typ_bounds,
+        params,
+        outer_ret,
+        item_kind: _,
+        attrs,
+        returns,
+        decreases_len,
+    } = spec_method.x.clone();
+    let mut methodx = method.x.clone();
+    if methodx.attrs.is_async != attrs.is_async {
+        return Err(error(
+            &spec_method.span,
+            "method specification has different async-ness from method",
+        ));
+    }
+    while typ_bounds.len() > methodx.typ_bounds.len() {
+        // The syntax macro may add Sized bounds to spec_method so that Rust accepts the function.
+        // Remove these added Sized bounds so that we can match the remaining bounds.
+        use vir::ast::{GenericBoundX, TraitId};
+        if let GenericBoundX::Trait(TraitId::Sizedness(vir::ast::Sizedness::Sized), _) =
+            &**typ_bounds.last().unwrap()
+        {
+            Arc::make_mut(&mut typ_bounds).pop();
+        }
+    }
+    if methodx.typ_params.len() != typ_params.len() {
+        return Err(error(
+            &spec_method.span,
+            "method specification has different number of type parameters from method",
+        ));
+    }
+    if methodx.typ_bounds.len() != typ_bounds.len() {
+        return Err(error(
+            &spec_method.span,
+            "method specification has different number of type bounds from method",
+        ));
+    }
+    for (x1, x2) in methodx.typ_params.iter().zip(typ_params.iter()) {
+        if x1 != x2 {
+            return Err(error(
+                &spec_method.span,
+                "method specification has different type parameters from method",
+            ));
+        }
+    }
+    for (b1, b2) in methodx.typ_bounds.iter().zip(typ_bounds.iter()) {
+        if !vir::ast_util::generic_bounds_equal(b1, b2) {
+            return Err(error(
+                &spec_method.span,
+                "method specification has different type parameters or bounds from method",
+            ));
+        }
+    }
+    if methodx.params.len() != params.len() {
+        return Err(error(
+            &spec_method.span,
+            "method specification has different number of parameters from method",
+        ));
+    }
+    for (p1, p2) in methodx.params.iter().zip(params.iter()) {
+        if !params_equal_opt(p1, p2, false, false) {
+            return Err(error(
+                &spec_method.span,
+                "method specification has different parameters from method",
+            ));
+        }
+    }
+    if !params_equal_opt(&methodx.outer_ret, &outer_ret, false, false) {
+        return Err(error(
+            &spec_method.span,
+            "method specification has a different return from method",
+        ));
+    }
+
+    let has_default_ensures = spec_method_info.pre_header.default_ensures;
+    match &mut methodx.kind {
+        vir::ast::FunctionKind::TraitMethodDecl { trait_path: _, has_default }
+            if methodx.proxy.is_some() && has_default_ensures =>
+        {
+            // We use an external trait function default only if the spec mentions it:
+            *has_default = true;
+        }
+        _ => {}
+    };
+
+    if spec_method_info.function_for_autospec.is_some()
+        || method_info.function_for_autospec.is_some()
+    {
+        return Err(error(
+            &spec_method.span,
+            "Verus does not currently support autospec on traits",
+        ));
+    }
+
+    methodx.opaqueness = opaqueness;
+    methodx.params = params; // this is important; the correct parameter modes are in spec_method
+    methodx.outer_ret = outer_ret;
+    methodx.decreases_len = decreases_len;
+    methodx.returns = returns;
+    assert!(matches!(spec_method_info.body_id, CheckItemFnEither::BodyId(_)));
+    if !matches!(method_info.body_id, CheckItemFnEither::ParamNames(_)) {
+        return Err(error(
+            &spec_method.span,
+            "a `VERUS_SPEC` function should be paired with a function that has no body",
+        ));
+    }
+
+    Ok(FunctionInfo {
+        function: vir::def::Spanned::new(method.span.clone(), methodx),
+        function_for_autospec: None,
+        pre_header: spec_method_info.pre_header.clone(),
+        def_id: spec_method_info.def_id,
+        body_id: spec_method_info.body_id.clone(),
+        sig: spec_method_info.sig.clone(),
+        vattrs: spec_method_info.vattrs.clone(),
+        external_trait_from_to: spec_method_info.external_trait_from_to.clone(),
+        migrate_postcondition_vars: spec_method_info.migrate_postcondition_vars.clone(),
+        assume_specification_opaque_type_map: spec_method_info
+            .assume_specification_opaque_type_map
+            .clone(),
+        ret_typ_mode: spec_method_info.ret_typ_mode.clone(),
+        autoderive_action: None,
+        is_external_const: false,
+        has_opaque_types: spec_method_info.has_opaque_types,
+        external_id: spec_method_info.external_id,
+    })
 }
