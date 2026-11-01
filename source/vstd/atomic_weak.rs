@@ -289,6 +289,46 @@ pub open spec fn load_relaxed<T>(
     &&& acquire_view.contains(message_view)
 }
 
+pub open spec fn load_update_acquire<T>(
+    pt: AtomicPointsTo<T>,
+    old_view: ThreadView,
+    int_view: ThreadView,
+    new_view: ThreadView,
+    val: T,
+    timestamp: nat,
+    load_message_view: ThreadView,
+    store_message_view: ThreadView,
+) -> bool {
+    &&& load_timestamp_in_view(pt, old_view, int_view, timestamp)
+    &&& load_reads_from_history(pt.hist(), val, timestamp, load_message_view)
+    &&& int_view.contains(
+        old_view,
+    )
+    // because this is an acquire load in an update, the store message view is joined to the thread's current view
+    // note that because this is an update, we also have store_message_view.contains_strict(load_message_view)
+    &&& new_view.contains(store_message_view)
+}
+
+pub open spec fn load_update_relaxed<T>(
+    pt: AtomicPointsTo<T>,
+    old_view: ThreadView,
+    int_view: ThreadView,
+    acquire_view: ThreadView,
+    val: T,
+    timestamp: nat,
+    load_message_view: ThreadView,
+    store_message_view: ThreadView
+) -> bool {
+    &&& load_timestamp_in_view(pt, old_view, int_view, timestamp)
+    &&& load_reads_from_history(pt.hist(), val, timestamp, load_message_view)
+    &&& int_view.contains(
+        old_view,
+    )
+    // because this is a relaxed load in an update, the store message view is joined to the thread's acquire view
+    // note that because this is an update, we also have store_message_view.contains_strict(load_message_view)
+    &&& acquire_view.contains(store_message_view)
+}
+
 /// On a store, the store's timestamp must be greater than that in the thread's old view.
 /// After a store, the thread's new view will contain the timestamp of the store.
 /// The message view for the store will also contain the timestamp of the store.
@@ -418,6 +458,50 @@ pub open spec fn store_mut_relaxed<T>(
     &&& new_view.contains(message_view)
 }
 
+pub open spec fn store_update_release<T>(
+    old_pt: AtomicPointsTo<T>,
+    new_pt: AtomicPointsTo<T>,
+    old_view: ThreadView,
+    new_view: ThreadView,
+    val: T,
+    timestamp: nat,
+    message_view: ThreadView,
+) -> bool {
+    &&& store_timestamp_in_view(old_pt, new_pt, old_view, new_view, message_view, timestamp)
+    &&& store_insert_history(old_pt, new_pt, val, timestamp, message_view)
+    &&& new_view.contains_strict(
+        old_view,
+    )
+    // in case of a relaxed load, we cannot acquire the store message view into current view, because in an update,
+    // the store message view contains the load message view.
+    // note that in case of an acquire load, we will also have that the current view contains the store message view.
+    &&& message_view.contains(new_view)
+}
+
+pub open spec fn store_update_relaxed<T>(
+    old_pt: AtomicPointsTo<T>,
+    new_pt: AtomicPointsTo<T>,
+    old_view: ThreadView,
+    new_view: ThreadView,
+    release_view: ThreadView,
+    val: T,
+    timestamp: nat,
+    message_view: ThreadView,
+) -> bool {
+    &&& store_timestamp_in_view(old_pt, new_pt, old_view, new_view, message_view, timestamp)
+    &&& store_insert_history(old_pt, new_pt, val, timestamp, message_view)
+    &&& new_view.contains_strict(
+        old_view,
+    )
+    // because this is a relaxed store, the message view contains the release view
+    &&& message_view.contains(
+        release_view,
+    )
+    // in case of a relaxed load, we cannot acquire the store message view into current view, because in an update,
+    // the store message view contains the load message view.
+    // note that in case of an acquire load, we will have that the current view contains the store message view.
+}
+
 /// A successful update is modeled as a load followed by a store, using the specified ordering.
 pub open spec fn update_success<T>(
     old_pt: AtomicPointsTo<T>,
@@ -434,15 +518,17 @@ pub open spec fn update_success<T>(
     &&& up.store_message_view.contains_strict(up.load_message_view)
     &&& match order {
         Ordering::AcqRel => {
-            &&& load_acquire(
+            &&& load_update_acquire(
                 old_pt,
                 old_view,
                 up.intermediate_thread_view,
+                new_view,
                 load_val,
                 up.load_timestamp,
                 up.load_message_view,
+                up.store_message_view,
             )
-            &&& store_release(
+            &&& store_update_release(
                 old_pt,
                 new_pt,
                 up.intermediate_thread_view,
@@ -453,15 +539,17 @@ pub open spec fn update_success<T>(
             )
         },
         Ordering::Acquire => {
-            &&& load_acquire(
+            &&& load_update_acquire(
                 old_pt,
                 old_view,
                 up.intermediate_thread_view,
+                new_view,
                 load_val,
                 up.load_timestamp,
                 up.load_message_view,
+                up.store_message_view,
             )
-            &&& store_relaxed(
+            &&& store_update_relaxed(
                 old_pt,
                 new_pt,
                 up.intermediate_thread_view,
@@ -473,7 +561,7 @@ pub open spec fn update_success<T>(
             )
         },
         Ordering::Release => {
-            &&& load_relaxed(
+            &&& load_update_relaxed(
                 old_pt,
                 old_view,
                 up.intermediate_thread_view,
@@ -481,8 +569,9 @@ pub open spec fn update_success<T>(
                 load_val,
                 up.load_timestamp,
                 up.load_message_view,
+                up.store_message_view,
             )
-            &&& store_release(
+            &&& store_update_release(
                 old_pt,
                 new_pt,
                 up.intermediate_thread_view,
@@ -493,7 +582,7 @@ pub open spec fn update_success<T>(
             )
         },
         Ordering::Relaxed => {
-            &&& load_relaxed(
+            &&& load_update_relaxed(
                 old_pt,
                 old_view,
                 up.intermediate_thread_view,
@@ -501,8 +590,9 @@ pub open spec fn update_success<T>(
                 load_val,
                 up.load_timestamp,
                 up.load_message_view,
+                up.store_message_view,
             )
-            &&& store_relaxed(
+            &&& store_update_relaxed(
                 old_pt,
                 new_pt,
                 up.intermediate_thread_view,
