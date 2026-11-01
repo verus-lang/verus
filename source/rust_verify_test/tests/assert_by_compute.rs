@@ -1435,3 +1435,39 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] seq_new_index_type_regression_3075 verus_code! {
+        use vstd::seq::*;
+
+        uninterp spec fn p(s: Seq<int>) -> bool;
+
+        // Keeps `array_view` from being pruned (#3074)
+        spec fn keep_array_view_reachable() -> Seq<int> {
+            seq![1int, 2int, 3int]
+        }
+
+        proof fn test()
+            requires
+                p(seq![0int, 1, 2]),
+        {
+            assert(p(Seq::new(3, |i: int| i))) by (compute);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] seq_of_arrays_type_regression_3075 verus_code! {
+        use vstd::seq::*;
+
+        uninterp spec fn r(b: [u8; 2]) -> bool;
+
+        proof fn test(i: int)
+            requires
+                0 <= i < 3,
+                forall|a: [u8; 2]| r(a),
+        {
+            assert(r(Seq::empty().push([1u8, 2]).push([3u8, 4]).push([5u8, 6])[i])) by (compute);
+        }
+    } => Ok(())
+}
