@@ -538,6 +538,7 @@ impl GlobalCtx {
                 &trait_map,
                 &trait_impl_map,
                 &trait_impl_from_extension,
+                &trait_impl_to_extensions,
                 &reveal_group_set,
                 &mut func_call_graph,
                 &mut span_infos,
