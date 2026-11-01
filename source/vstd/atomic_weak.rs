@@ -117,6 +117,7 @@ impl<T> AtomicHistory<T> {
     {
     }
 
+    
     pub open spec fn is_singleton(&self, timestamp: nat, val: (T, ThreadView)) -> bool {
         &&& self.contains_timestamp(timestamp)
         &&& forall|ts| #[trigger]

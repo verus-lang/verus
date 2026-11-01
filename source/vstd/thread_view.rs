@@ -59,7 +59,7 @@ impl ThreadView {
             #[trigger] v1.contains(v2),
             #[trigger] v2.contains(v3),
         ensures
-            #[trigger] v1.contains(v3),
+            v1.contains(v3),
     ;
 
     pub broadcast axiom fn contains_strict_contains(v1: Self, v2: Self)
@@ -90,7 +90,9 @@ impl ThreadView {
     /// The result of joining a view with another view contains the original view.
     pub broadcast axiom fn join_contains(v1: Self, v2: Self)
         ensures
-            #[trigger] v1.join(v2).contains(v1),
+            #![trigger v1.join(v2)]
+            v1.join(v2).contains(v1),
+            v1.join(v2).contains(v2)
     ;
 }
 
