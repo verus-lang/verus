@@ -268,6 +268,33 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3179
+    #[test] statics_cycle_no_own_ensures verus_code! {
+        use vstd::prelude::*;
+
+        pub struct S { pub inner: Option<&'static S> }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        exec static A: S ensures false { // FAILS
+            let r: &'static S = &A;
+            S { inner: Some(r) }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        exec static B: S ensures false { // FAILS
+            let r: &'static S = &C;
+            S { inner: Some(r) }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        exec static C: S ensures false { // FAILS
+            let r: &'static S = &B;
+            S { inner: Some(r) }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
     #[test] const_recurse2 verus_code! {
         exec const D: u64 = 1;
         exec const E: u64 ensures false {
