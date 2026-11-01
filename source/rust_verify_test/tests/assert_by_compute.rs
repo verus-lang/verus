@@ -1435,3 +1435,34 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] quantifier_binders_share_name_regression_3200 verus_code! {
+        // Macro hygiene allows two binders named `x`
+        macro_rules! swap {
+            ($v:ident) => {
+                ::verus_builtin::forall(|$v: int, x: int| ::verus_builtin::imply(p($v, x), p(x, $v))) // FAILS
+            };
+        }
+
+        macro_rules! diff {
+            ($v:ident) => {
+                ::verus_builtin::forall(|$v: int, x: int| ::verus_builtin::equal(d($v, x), $v - x))
+            };
+        }
+
+        uninterp spec fn p(a: int, b: int) -> bool;
+
+        spec fn d(a: int, b: int) -> int {
+            a - b
+        }
+
+        proof fn good() {
+            assert(diff!(x)) by (compute);
+        }
+
+        proof fn bad() {
+            assert(swap!(x)) by (compute);
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
