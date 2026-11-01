@@ -3039,23 +3039,25 @@ pub(crate) fn expr_to_stm_opt(
             // let au = $au_expr;
             // let x = new existential;
             //
-            // assume(req(au, x));
-            // assert(outer_mask(au) ⊆ state.mask);
+            // assume(au.req(x));
+            // assert(au.outer_mask() ⊆ state.mask);
             //
             // let y;
-            // with state.mask = inner_mask(au) {
+            // with state.mask = au.inner_mask() {
             //     let $mut $x = x;
             //     y = $body;
             // }
             //
-            // assert(ens(au, x, y));
+            // assert(au.ens(x, y));
             //
             // if branch_bool(y) {
-            //     assume(input(au, x));
-            //     assume(output(au, y));
-            //     assume(resolves(au));
+            //     assume(au.input() == x);
+            //     assume(au.output() == y);
+            //     assume(au.resolves());
             //
-            //     Ok(())
+            //     let resolution = new existential;
+            //     assume(resolution.atomic_update() == au);
+            //     Ok(resolution)
             // } else {
             //     Err(au)
             // }
@@ -3187,7 +3189,15 @@ pub(crate) fn expr_to_stm_opt(
 
             // generate condition
 
-            let res_dt = Dt::Path(def::result_type_path());
+            let expr_typ = undecorate_typ(&expr.typ);
+            let TypX::Datatype(res_dt, res_ty_args, _) = expr_typ.as_ref() else {
+                panic!("Result should be a datatype");
+            };
+
+            let [resolution_typ, _au_typ] = res_ty_args.as_slice() else {
+                panic!("Result should have two type arguments");
+            };
+
             let ok_variant = Arc::new("Ok".to_owned());
             let err_variant = Arc::new("Err".to_owned());
             let variant_field = Arc::new("0".to_owned());
@@ -3216,14 +3226,29 @@ pub(crate) fn expr_to_stm_opt(
                     &mut stms,
                 );
 
-                let unit_typ = crate::ast_util::mk_tuple_typ(&Default::default());
-                let (unit_var_id, unit_var_exp) = state.declare_temp_var_stm(
+                let (resolution_var_id, resolution_var_exp) = state.declare_temp_var_stm(
                     &expr.span,
-                    &unit_typ,
+                    &resolution_typ,
                     PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)),
                 );
 
-                stms.push(assume_has_typ(&unit_var_id, &unit_typ, &expr.span));
+                stms.push(assume_has_typ(&resolution_var_id, &resolution_typ, &expr.span));
+                stms.push(Spanned::new(
+                    expr.span.clone(),
+                    StmX::Assume(sst_equal(
+                        &expr.span,
+                        &SpannedTyped::new(
+                            &expr.span,
+                            &au_typ,
+                            ExpX::Call(
+                                CallFun::Fun(def::fn_resolution_atomic_update(), None),
+                                typ_args.clone(),
+                                Arc::new(vec![resolution_var_exp.clone()]),
+                            ),
+                        ),
+                        &au_var_exp,
+                    )),
+                ));
 
                 let out_exp = SpannedTyped::new(
                     &expr.span,
@@ -3233,7 +3258,7 @@ pub(crate) fn expr_to_stm_opt(
                         ok_variant.clone(),
                         Arc::new(vec![Arc::new(BinderX {
                             name: variant_field.clone(),
-                            a: unit_var_exp,
+                            a: resolution_var_exp,
                         })]),
                     ),
                 );
