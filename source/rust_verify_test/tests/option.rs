@@ -102,6 +102,76 @@ test_verify_one_file! {
             let res: Option<u32> = opt.cloned();
             assert(res.is_none());
         }
+
+        fn clone_from_transitions() {
+            let mut dest: Option<u64> = None;
+            dest.clone_from(&None);
+            assert(dest == None::<u64>);
+            dest.clone_from(&Some(7));
+            assert(dest == Some(7u64));
+            <Option<u64> as Clone>::clone_from(&mut dest, &Some(9));
+            assert(dest == Some(9u64));
+            dest.clone_from(&None);
+            assert(dest == None::<u64>);
+        }
+
+        proof fn clone_from_contract(dest: &mut Option<u64>, source: &Option<u64>)
+            requires call_ensures(Option::<u64>::clone_from, (dest, source), ()),
+            ensures *final(dest) == *source,
+        {}
+
+        fn clone_from_nested_vec_box() {
+            let source: Option<Vec<Box<u64>>> = Some(vec![Box::new(7)]);
+            let mut dest: Option<Vec<Box<u64>>> = Some(vec![Box::new(1), Box::new(2)]);
+            dest.clone_from(&source);
+            let v = dest.unwrap();
+            assert(v@.len() == 1);
+            assert(*v@[0] == 7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] clone_from_uses_previous_destination verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Toggle { pub bit: bool }
+        impl Clone for Toggle {
+            fn clone(&self) -> (result: Self)
+                ensures result.bit == self.bit,
+            {
+                Toggle { bit: self.bit }
+            }
+
+            fn clone_from(&mut self, source: &Self)
+                ensures final(self).bit == (old(self).bit != source.bit),
+            {
+                self.bit = self.bit != source.bit;
+            }
+        }
+
+        proof fn strictly_cloned_from_uses_previous_value(source: Toggle, previous: Toggle, result: Toggle)
+            requires strictly_cloned_from(source, previous, result),
+            ensures result.bit == (previous.bit != source.bit),
+        {}
+
+        proof fn cloned_from_allows_copy(source: Toggle, previous: Toggle, result: Toggle)
+            requires cloned_from(source, previous, result),
+            ensures result.bit == (previous.bit != source.bit) || result.bit == source.bit,
+        {}
+
+        fn option() {
+            let source = Some(Toggle { bit: true });
+            let mut dest = Some(Toggle { bit: true });
+            dest.clone_from(&source);
+            assert(!dest.unwrap().bit);
+            dest.clone_from(&source);
+            assert(dest.unwrap().bit);
+
+            let mut fresh: Option<Toggle> = None;
+            fresh.clone_from(&source);
+            assert(fresh.unwrap().bit);
+        }
     } => Ok(())
 }
 

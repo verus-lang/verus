@@ -427,6 +427,9 @@ pub fn run_verus(
         } else if *option == "--edition 2018" {
             verus_args.push("--edition".to_string());
             verus_args.push("2018".to_string());
+        } else if option.starts_with("-Zcrate-attr=") {
+            // e.g. to enable a feature gate for the generated crate
+            verus_args.push(option.to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }

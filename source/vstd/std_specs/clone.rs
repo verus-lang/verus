@@ -8,20 +8,17 @@ pub trait ExClone: Sized {
     type ExternalTraitSpecificationFor: core::clone::Clone;
 
     fn clone(&self) -> Self;
+
+    fn clone_from(&mut self, source: &Self)
+        default_ensures
+            call_ensures(Self::clone, (source,), *final(self)),
+    ;
 }
 
 #[verifier::external_trait_specification]
 pub trait ExCopy: Clone {
     type ExternalTraitSpecificationFor: core::marker::Copy;
 }
-
-/*
-#[verifier::external_fn_specification]
-pub fn ex_clone_clone_from<T: Clone>(a: &mut T, b: &T)
-{
-    a.clone_from(b)
-}
-*/
 
 pub assume_specification[ <bool as Clone>::clone ](b: &bool) -> (res: bool)
     returns
@@ -48,14 +45,18 @@ pub assume_specification<T: Clone, const N: usize>[ <[T; N] as Clone>::clone ](a
         a@ =~= res@ ==> a@ == res@,
 ;
 
-/*
-#[verifier::external_fn_specification]
-pub fn ex_bool_clone_from(dest: &mut bool, source: &bool)
-    ensures *dest == source,
-{
-    dest.clone_from(source)
-}
-*/
+// Elements are updated with T::clone_from, or copied when T: TrivialClone,
+// so only the non-strict relation holds.
+pub assume_specification<T: Clone, const N: usize>[ <[T; N] as Clone>::clone_from ](
+    dest: &mut [T; N],
+    source: &[T; N],
+)
+    ensures
+        forall|i|
+            #![all_triggers]
+            0 <= i < N ==> cloned_from::<T>(source@[i], old(dest)@[i], final(dest)@[i]),
+        source@ =~= final(dest)@ ==> source@ == final(dest)@,
+;
 
 // Cloning a Tracked copies the underlying ghost T
 pub assume_specification<T: Copy>[ <Tracked<T> as Clone>::clone ](b: &Tracked<T>) -> (res: Tracked<

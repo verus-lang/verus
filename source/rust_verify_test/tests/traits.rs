@@ -3983,6 +3983,54 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // A call to a trait default method through an impl Verus knows nothing about
+    // (external, no assume_specification) reports a targeted diagnostic instead of
+    // a mangled internal path.
+    #[test] unregistered_external_impl_default_call code! {
+        use vstd::prelude::*;
+
+        verus! {
+        pub trait Tr {
+            fn req(&self) -> u64;
+            fn g(&self) -> u64 { self.req() }
+        }
+
+        pub struct S;
+        } // verus!
+
+        impl Tr for S {
+            fn req(&self) -> u64 { 7 }
+        }
+
+        verus! {
+        fn call_it(s: &S) -> u64 { s.g() }
+
+        fn main() {}
+        } // verus!
+    } => Err(err) => assert_vir_error_msg(err, "cannot use the default implementation of trait method")
+}
+
+// Item-level `default fn` lets another impl specialize the method away, so the
+// body Verus checks may not be the one that runs; reject it like `default impl`.
+#[test]
+fn default_fn_items_rejected() {
+    let result = verify_one_file(
+        "default_fn_items_rejected",
+        verus_code! {
+            pub trait T {
+                fn f(&self) -> u64;
+            }
+            pub struct S<A>(pub A);
+            impl<A> T for S<A> {
+                default fn f(&self) -> u64 { 1 }
+            }
+        },
+        &["-Zcrate-attr=feature(specialization)", "-Zcrate-attr=allow(incomplete_features)"],
+    );
+    assert_vir_error_msg(result.unwrap_err(), "Verus does not support `default` items");
+}
+
+test_verify_one_file! {
     #[ignore] #[test] associated_type_bound_lifetime_regression_955 verus_code! {
         use vstd::prelude::View;
 
