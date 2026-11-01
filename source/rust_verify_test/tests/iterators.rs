@@ -4,6 +4,476 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] advance_back_by_and_nth_back_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test() {
+            let mut iter = vec![1u32, 2, 3, 4].into_iter();
+            let ghost initial = iter;
+            let result = iter.advance_back_by(0);
+            assert(result == Ok(()));
+            assert(iter.remaining() == initial.remaining());
+            assert(iter.produces() == initial.produces());
+            let result = iter.next();
+            assert(result == Some(1));
+            let result = iter.advance_back_by(1);
+            assert(result == Ok(()));
+            assert(iter.remaining() =~= seq![2u32, 3]);
+            assert(iter.produces() =~= seq![true, true]);
+            let result = iter.nth_back(0);
+            assert(result == Some(3));
+            assert(iter.remaining() =~= seq![2u32]);
+            let result = iter.next();
+            assert(result == Some(2));
+
+            let mut iter = vec![1u32, 2, 3].into_iter();
+            let result = iter.advance_back_by(5);
+            assert(result is Err && result->Err_0@ == 2);
+            assert(iter.remaining().len() == 0);
+            assert(iter.produces().len() == 0);
+
+            let mut iter = vec![1u32, 2, 3].into_iter();
+            let result = iter.nth_back(1);
+            assert(result == Some(2));
+            let result = iter.next_back();
+            assert(result == Some(1));
+            let result = iter.nth_back(usize::MAX);
+            assert(result == None);
+            assert(iter.produces().len() == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] rfind_preserves_unconsumed_prefix verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test() {
+            let mut iter = vec![1u32, 2, 3].into_iter();
+            let result = iter.rfind(|x: &u32| -> (ret: bool)
+                ensures ret == (*x <= 2),
+            { *x <= 2 });
+            assert(result == Some(2));
+            assert(iter.remaining() =~= seq![1u32]);
+            assert(iter.produces() =~= seq![true]);
+            let result = iter.next();
+            assert(result == Some(1));
+
+            let mut iter = vec![1u32, 2].into_iter();
+            let result = iter.rfind(|x: &u32| -> (ret: bool)
+                ensures !ret,
+            { false });
+            assert(result == None);
+            assert(iter.remaining().len() == 0);
+            assert(iter.produces().len() == 0);
+
+            let mut iter = Vec::<u32>::new().into_iter();
+            let result = iter.rfind(|x: &u32| -> bool requires false, { false });
+            assert(result == None);
+        }
+
+        fn before_stuck_slot<I: DoubleEndedIterator<Item = u32>>(mut iter: I)
+            requires
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![false, true],
+        {
+            let result = iter.rfind(|x: &u32| -> (ret: bool)
+                requires *x == 2,
+                ensures ret,
+            { true });
+            assert(result == Some(2));
+            assert(iter.remaining() =~= seq![1u32]);
+            assert(iter.produces() =~= seq![false]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] rfold_callback_preconditions_and_order verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test() {
+            let result = Vec::<u32>::new().into_iter().rfold(7u32,
+                |acc: u32, x: u32| -> u32 requires false, { 0 });
+            assert(result == 7);
+            let iter = vec![1u32, 2].into_iter();
+            assert(iter.remaining().reverse() =~= seq![2u32, 1]);
+            let result = iter.rfold(0u32,
+                |acc: u32, x: u32| -> (ret: u32)
+                    requires (acc == 0 && x == 2) || (acc == 2 && x == 1),
+                    ensures ret == acc * 10 + x,
+                { acc * 10 + x });
+            assert(result == 21);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] reverse_folds_do_not_require_unreachable_front verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn rfold_test<I: DoubleEndedIterator<Item = u32>>(iter: I)
+            requires
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![true, false],
+            ensures
+                false,
+        {
+            assert forall |k: int| 0 < k <= 2 implies
+                !(#[trigger] iter.produces().reverse().take(k)).all(|p: bool| p) by {
+                assert(iter.produces().reverse().take(k)[0] == false);
+            }
+            // Rear traversal gets stuck on 2 before it can reach the rejected input 1.
+            let _ = iter.rfold(0u32,
+                |acc: u32, x: u32| -> (ret: u32)
+                    requires x == 2,
+                    ensures ret == acc,
+                { acc });
+        }
+
+        fn try_rfold_test<I: DoubleEndedIterator<Item = u32>>(mut iter: I)
+            requires
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![true, false],
+            ensures
+                false,
+        {
+            assert forall |k: int| 0 < k <= 2 implies
+                !(#[trigger] iter.produces().reverse().take(k)).all(|p: bool| p) by {
+                assert(iter.produces().reverse().take(k)[0] == false);
+            }
+            let _: Result<u32, u32> = iter.try_rfold(0u32,
+                |acc: u32, x: u32| -> (ret: Result<u32, u32>)
+                    requires x == 2,
+                    ensures ret == Ok(acc),
+                { Ok(acc) });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] try_rfold_short_circuits_and_preserves_prefix verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+        use core::ops::ControlFlow;
+
+        fn test() {
+            let mut iter = vec![1u32, 2, 3].into_iter();
+            let ghost initial = iter;
+            assert(iter.remaining().reverse() =~= seq![3u32, 2, 1]);
+            let result = iter.try_rfold(7u32,
+                |acc: u32, x: u32| -> (ret: Result<u32, u32>)
+                    requires acc == 7 && x == 3,
+                    ensures ret == Err(9),
+                { Err(9) });
+            assert(result == Err(9));
+            assert(iter.remaining() =~= seq![1u32, 2]);
+            assert(iter.produces().reverse() == initial.produces().reverse().skip(1));
+            assert(iter.produces() =~= seq![true, true]);
+            let next = iter.next_back();
+            assert(next == Some(2));
+
+            let mut iter = Vec::<u32>::new().into_iter();
+            let result = iter.try_rfold(7u32,
+                |acc: u32, x: u32| -> Option<u32> requires false, { None });
+            assert(result == Some(7));
+
+            let mut iter = vec![1u32].into_iter();
+            assert(iter.remaining().reverse()[0] == 1);
+            let result = iter.try_rfold(7u32,
+                |acc: u32, x: u32| -> (ret: ControlFlow<u32, u32>)
+                    requires acc == 7 && x == 1,
+                    ensures ret == ControlFlow::Continue(8),
+                { ControlFlow::Continue(8) });
+            assert(result == ControlFlow::Continue(8));
+            assert(iter.remaining().len() == 0);
+            assert(iter.produces().len() == 0);
+        }
+
+        fn before_stuck_slot<I: DoubleEndedIterator<Item = u32>>(mut iter: I)
+            requires
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![false, true],
+        {
+            let result = iter.try_rfold(7u32,
+                |acc: u32, x: u32| -> (ret: Result<u32, u32>)
+                    requires acc == 7 && x == 2,
+                    ensures ret == Err(9),
+                { Err(9) });
+            assert(result == Err(9));
+            assert(iter.remaining() =~= seq![1u32]);
+            assert(iter.produces() =~= seq![false]) by {
+                assert(iter.produces().reverse().reverse() =~= iter.produces());
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] rfind_override_without_laws_does_not_assume_predicate verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        struct It;
+
+        impl Iterator for It {
+            type Item = u32;
+
+            fn next(&mut self) -> Option<u32> { None }
+        }
+
+        impl DoubleEndedIterator for It {
+            fn next_back(&mut self) -> Option<u32> { None }
+
+            fn rfind<P>(&mut self, predicate: P) -> (ret: Option<u32>)
+                where P: FnMut(&u32) -> bool,
+                ensures ret == Some(7),
+            {
+                Some(7)
+            }
+        }
+
+        impl IteratorSpecImpl for It {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool { false }
+            #[verifier::prophetic]
+            open spec fn remaining(&self) -> Seq<u32> { Seq::empty() }
+            #[verifier::prophetic]
+            open spec fn produces(&self) -> Seq<bool> { Seq::empty() }
+            open spec fn decrease(&self) -> Option<nat> { None }
+            open spec fn peek(&self, index: int) -> Option<u32> { None }
+        }
+
+        impl DoubleEndedIteratorSpecImpl for It {
+            open spec fn peek_back(&self, index: int) -> Option<u32> { None }
+        }
+
+        fn test() {
+            let mut iter = It;
+            let result = iter.rfind(|x: &u32| -> (ret: bool)
+                ensures !ret,
+            { false });
+            assert(result == Some(7));
+            assert(false); // FAILS: the override need not call the predicate.
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] backward_discard_does_not_imply_production verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn advance_back_by_test<I: DoubleEndedIterator<Item = u32>>(mut iter: I)
+            requires
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![false, false],
+        {
+            let result = iter.advance_back_by(2);
+            assert(result == Ok(()));
+            assert(iter.produces().len() == 0);
+            assert(false); // FAILS: discarded items need not have been produced.
+        }
+
+        fn nth_back_test<I: DoubleEndedIterator<Item = u32>>(mut iter: I)
+            requires
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![true, false],
+        {
+            let result = iter.nth_back(1);
+            assert(result == Some(1));
+            assert(iter.produces().len() == 0);
+            assert(false); // FAILS: only the returned item must have been produced.
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] reverse_callbacks_require_universal_inputs_without_laws verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn bad_rfind<I: DoubleEndedIterator<Item = u32>>(mut iter: I)
+            requires !iter.obeys_prophetic_iter_laws(),
+        {
+            let _ = iter.rfind(|x: &u32| -> bool requires false, { false }); // FAILS
+        }
+
+        fn bad_rfold<I: DoubleEndedIterator<Item = u32>>(iter: I)
+            requires !iter.obeys_prophetic_iter_laws(),
+        {
+            let _ = iter.rfold(0u32,
+                |acc: u32, x: u32| -> u32 requires false, { 0 }); // FAILS
+        }
+
+        fn bad_try_rfold<I: DoubleEndedIterator<Item = u32>>(mut iter: I)
+            requires !iter.obeys_prophetic_iter_laws(),
+        {
+            let _ = iter.try_rfold(0u32,
+                |acc: u32, x: u32| -> Option<u32> requires false, { None }); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] advance_by_and_nth_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test() {
+            let mut iter = vec![1u32, 2, 3].into_iter();
+            let ghost initial = iter;
+            let result = iter.advance_by(0);
+            assert(result == Ok(()));
+            assert(iter.remaining() == initial.remaining());
+            assert(iter.produces() == initial.produces());
+            let result = iter.advance_by(1);
+            assert(result == Ok(()));
+            assert(iter.remaining() =~= seq![2u32, 3]);
+            assert(iter.produces() == initial.produces().skip(1));
+            let result = iter.nth(0);
+            assert(result == Some(2));
+            assert(iter.remaining() =~= seq![3u32]);
+            assert(iter.produces() == initial.produces().skip(2));
+            let result = iter.advance_by(3);
+            assert(result is Err && result->Err_0@ == 2);
+            assert(iter.remaining().len() == 0);
+            assert(iter.produces().len() == 0);
+
+            let mut iter = vec![1u32, 2, 3].into_iter();
+            let result = iter.nth(1);
+            assert(result == Some(2));
+            let result = iter.next();
+            assert(result == Some(3));
+            let result = iter.nth(usize::MAX);
+            assert(result == None);
+            assert(iter.produces().len() == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] fold_and_for_each_callback_preconditions verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let result = Vec::<u32>::new().into_iter().fold(7u32,
+                |acc: u32, x: u32| -> u32 requires false, { 0 });
+            assert(result == 7);
+            let result = vec![1u32].into_iter().fold(7u32,
+                |acc: u32, x: u32| -> (ret: u32)
+                    requires acc == 7 && x == 1,
+                    ensures ret == 8,
+                { 8 });
+            assert(result == 8);
+            vec![1u32].into_iter().for_each(
+                |x: u32| requires x == 1, {});
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] fold_callback_does_not_require_unreachable_tail verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test<I: Iterator<Item = u32>>(iter: I)
+            requires
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![false, true],
+            ensures
+                false,
+        {
+            assert forall |k: int| 0 < k <= 2 implies
+                !(#[trigger] iter.produces().take(k)).all(|p: bool| p) by {
+                assert(iter.produces().take(k)[0] == false);
+            }
+            // The callback rejects the second item, which forward traversal cannot reach.
+            let _ = iter.fold(0u32,
+                |acc: u32, x: u32| -> (ret: u32)
+                    requires x == 1,
+                    ensures ret == acc,
+                { acc });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] try_fold_callback_does_not_require_unreachable_tail verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test<I: Iterator<Item = u32>>(mut iter: I)
+            requires
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![false, true],
+            ensures
+                false,
+        {
+            assert forall |k: int| 0 < k <= 2 implies
+                !(#[trigger] iter.produces().take(k)).all(|p: bool| p) by {
+                assert(iter.produces().take(k)[0] == false);
+            }
+            // The callback rejects the second item, which forward traversal cannot reach.
+            let _: Result<u32, u32> = iter.try_fold(0u32,
+                |acc: u32, x: u32| -> (ret: Result<u32, u32>)
+                    requires x == 1,
+                    ensures ret == Ok(acc),
+                { Ok(acc) });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] try_fold_short_circuits_and_preserves_tail verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+        use core::ops::ControlFlow;
+
+        fn test() {
+            let mut iter = vec![1u32, 2].into_iter();
+            let ghost initial = iter;
+            let result = iter.try_fold(7u32,
+                |acc: u32, x: u32| -> (ret: Result<u32, u32>)
+                    requires acc == 7 && x == 1,
+                    ensures ret == Err(9),
+                { Err(9) });
+            assert(result == Err(9));
+            assert(iter.remaining() =~= seq![2u32]);
+            assert(iter.produces() == initial.produces().skip(1));
+            let next = iter.next();
+            assert(next == Some(2));
+
+            let mut iter = Vec::<u32>::new().into_iter();
+            let result = iter.try_fold(7u32,
+                |acc: u32, x: u32| -> Option<u32> requires false, { None });
+            assert(result == Some(7));
+
+            let mut iter = vec![1u32].into_iter();
+            let result = iter.try_fold(7u32,
+                |acc: u32, x: u32| -> (ret: ControlFlow<u32, u32>)
+                    requires acc == 7 && x == 1,
+                    ensures ret == ControlFlow::Continue(8),
+                { ControlFlow::Continue(8) });
+            assert(result == ControlFlow::Continue(8));
+            assert(iter.remaining().len() == 0);
+            assert(iter.produces().len() == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] all_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
@@ -284,6 +754,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] collect_overridden_fold_does_not_imply_none
+    // The early-returning override also violates the provided-method contract.
     INFINITE_COLLECT_COMMON.to_string() + verus_code_str! {
         use std::collections::HashSet;
 
@@ -299,7 +770,7 @@ test_verify_one_file! {
             fn fold<B, F>(self, init: B, f: F) -> B
                 where F: FnMut(B, Self::Item) -> B,
             {
-                init
+                init // FAILS: the override does not fold over the remaining items
             }
         }
 
@@ -326,7 +797,11 @@ test_verify_one_file! {
             let s: HashSet<u64> = it.collect();
             assert(false); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(err.errors.iter().any(|e| e.message.contains("postcondition not satisfied")));
+        assert!(err.errors.iter().any(|e| e.message.contains("assertion failed")));
+    }
 }
 
 test_verify_one_file! {
