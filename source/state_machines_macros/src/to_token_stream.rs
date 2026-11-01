@@ -300,14 +300,18 @@ pub fn output_primary_stuff(
         .collect();
 
     let attrs = &bundle.sm.attrs;
-    let code: TokenStream = quote_spanned! { sm.fields_named_ast.span() =>
+    // Use quote! (not quote_spanned!) for verus::internal, so that rust_verify recognizes it as
+    // macro-generated (see builtin_macros/src/internal_attrs.rs)
+    let mut code: TokenStream = quote! {
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+    };
+    code.extend(quote_spanned! { sm.fields_named_ast.span() =>
         #[cfg_attr(verus_keep_ghost, verifier::ext_equal)]
         #(#attrs)*
         pub struct State #gen {
             #(#fields),*
         }
-    };
+    });
     root_stream.extend(code);
 
     let self_ty = get_self_ty(&sm);
