@@ -25,9 +25,17 @@ jobs:
 
     strategy:
       matrix:
-        build: [macos, macos-x86_64, linux, linux-arm64, windows, windows-arm64]
+        build:
+          [
+            macos-arm64,
+            macos-x86_64,
+            linux,
+            linux-arm64,
+            windows,
+            windows-arm64,
+          ]
         include:
-          - build: macos
+          - build: macos-arm64
             os: macos-14
             release_name: verus-arm64-macos
           - build: macos-x86_64
@@ -99,7 +107,7 @@ jobs:
       - name: stage release artifacts
         working-directory: ./source
         run: |
-          if [[ "${{ matrix.build }}" == "macos" || "${{ matrix.build }}" == "macos-x86_64" ]]; then
+          if [[ "${{ matrix.build }}" == macos* ]]; then
             FOR_MAC="--for-macos"
           else
             FOR_MAC=""
