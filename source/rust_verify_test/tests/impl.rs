@@ -322,7 +322,7 @@ test_verify_one_file! {
         }
 
         unsafe impl Send for Foo { }
-    } => Err(e) => assert_vir_error_msg(e, "unsafe impl for `Send` is not allowed")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `unsafe impl` for `Send`")
 }
 
 test_verify_one_file! {
@@ -332,5 +332,35 @@ test_verify_one_file! {
         }
 
         unsafe impl Sync for Foo { }
-    } => Err(e) => assert_vir_error_msg(e, "unsafe impl for `Sync` is not allowed")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `unsafe impl` for `Sync`")
+}
+
+test_verify_one_file! {
+    #[test] unsafe_drop verus_code! {
+        pub struct S<'a> { pub r: &'a u64, pub out: u64 }
+        unsafe impl<#[may_dangle] 'a> Drop for S<'a> {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            {
+                self.out = *self.r;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `unsafe impl` for `Drop`")
+}
+
+test_verify_one_file! {
+    #[test] no_demoting_for_unsafe_impl code! {
+        unsafe trait Tr {
+            fn foo(&self);
+        }
+
+        verus!{
+            struct X {}
+
+            unsafe impl Tr for X {
+                fn foo(&self) { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`unsafe impl` of trait `test_crate::Tr` which is unknown to Verus")
 }
