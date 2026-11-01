@@ -145,9 +145,12 @@ pub(crate) fn get_crate_items<'tcx>(ctxt: &ContextX<'tcx>) -> Result<CrateItems,
     let root_module = ctxt.tcx.hir_root_module();
     let root_module_path = crate::rust_to_vir::get_root_module_path(ctxt);
 
+    let item_macro_calls = get_item_macro_call_markers(ctxt);
+
     let mut visitor = VisitMod {
         items: vec![],
         ctxt: ctxt,
+        item_macro_calls,
         state: default_state,
         module_path: Some(root_module_path),
         errors: vec![],
@@ -192,6 +195,8 @@ struct InsideImpl {
 struct VisitMod<'a, 'tcx> {
     items: Vec<CrateItem>,
     ctxt: &'a ContextX<'tcx>,
+    /// Spans of the markers that verus! emits for macro calls in item position
+    item_macro_calls: Vec<Span>,
     errors: Vec<VirErr>,
 
     state: VerifState,
@@ -235,7 +240,49 @@ fn opts_in_to_verus(eattrs: &ExternalAttrs) -> bool {
         || eattrs.size_of_global
 }
 
+/// Collect the spans of the markers that the verus! macro emits after
+/// each macro call in item position (see item_macro_call_marker in builtin_macros)
+fn get_item_macro_call_markers<'tcx>(ctxt: &ContextX<'tcx>) -> Vec<Span> {
+    crate::util::iter_crate_free_items(ctxt.tcx)
+        .filter(|item| matches!(item.kind, ItemKind::Const(..)))
+        .filter(|item| {
+            let attrs = ctxt.tcx.hir_attrs(item.hir_id());
+            match crate::attributes::get_external_attrs(attrs, None) {
+                Ok(eattrs) => eattrs.item_macro_call,
+                Err(_) => false,
+            }
+        })
+        .map(|item| item.span)
+        .collect()
+}
+
 impl<'a, 'tcx> VisitMod<'a, 'tcx> {
+    /// If the item at `span` was produced by a macro call that appeared in item position
+    /// inside verus!, return the span of that call's marker.
+    /// The item may come from the macro's definition (so that one of the item's
+    /// expansion call sites lies within the call) or from the call's arguments
+    /// (so that the item itself lies within the call).
+    fn get_enclosing_item_macro_call(&self, span: Span) -> Option<Span> {
+        if self.item_macro_calls.is_empty() {
+            return None;
+        }
+        let mut span = span;
+        loop {
+            for marker in self.item_macro_calls.iter() {
+                if marker.ctxt() == span.ctxt()
+                    && marker.lo() <= span.lo()
+                    && span.hi() <= marker.hi()
+                {
+                    return Some(*marker);
+                }
+            }
+            if !span.from_expansion() {
+                return None;
+            }
+            span = span.ctxt().outer_expn_data().call_site;
+        }
+    }
+
     fn visit_general(&mut self, general_item: GeneralItem<'tcx>, hir_id: HirId, span: Span) {
         let attrs = self.ctxt.tcx.hir_attrs(hir_id);
 
@@ -294,6 +341,38 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
             }
             VerifState::External => VerifState::External,
         };
+
+        // verus! cannot see the output of macro calls in item position,
+        // so any item they produce lacks the verus_macro attribute.
+        // Error rather than silently ignore such items.
+        if state_for_this_item == VerifState::Default {
+            if let GeneralItem::Item(item) = general_item {
+                // Items that contain no code (and that verus! itself leaves unmarked),
+                // or that are containers whose contents are visited separately
+                let harmless = matches!(
+                    item.kind,
+                    ItemKind::Macro(..)
+                        | ItemKind::Use(..)
+                        | ItemKind::ExternCrate(..)
+                        | ItemKind::TyAlias(..)
+                        | ItemKind::Mod(..)
+                        | ItemKind::ForeignMod { .. }
+                );
+                if !harmless {
+                    if let Some(call_site) = self.get_enclosing_item_macro_call(span) {
+                        self.errors.push(
+                            crate::util::err_span_bare(
+                                span,
+                                "this item is produced by a macro call inside `verus!`, but Verus would not verify it",
+                            )
+                            .secondary_label(&crate::spans::err_air_span(call_site), "macro call here")
+                            .help("move the macro call outside of `verus!` to make it explicitly unverified, wrap the macro's output in `verus! { ... }`, or place the call inside a module declared in `verus!`"),
+                        );
+                        return;
+                    }
+                }
+            }
+        }
 
         if matches!(general_item, GeneralItem::ImplItem(_)) && self.in_impl.is_none() {
             self.errors.push(vir::messages::internal_error(

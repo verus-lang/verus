@@ -5582,10 +5582,69 @@ pub(crate) fn rewrite_items_inner(
     }
     visitor.visit_items_post(items);
     let mut new_stream = TokenStream::new();
-    for item in items {
+    for item in items.iter() {
+        if visitor.erase_ghost.keep() {
+            if let Item::Macro(item_macro) = item {
+                if item_macro.ident.is_none() {
+                    if is_include_macro(&item_macro.mac.path) {
+                        // The items produced by include! cannot be traced back
+                        // to the call by their spans, so reject the call outright
+                        let span = item_macro.mac.path.span();
+                        new_stream.extend(quote_spanned! { span =>
+                            ::core::compile_error!("`include!` in item position is not supported inside `verus!`, since Verus would not verify the included items; wrap the included file's contents in `verus! { ... }` and move the `include!` outside of `verus!`");
+                        });
+                        continue;
+                    }
+                    item.to_tokens(&mut new_stream);
+                    new_stream.extend(item_macro_call_marker(item_macro));
+                    continue;
+                }
+            }
+        }
         item.to_tokens(&mut new_stream);
     }
     proc_macro::TokenStream::from(new_stream)
+}
+
+fn is_include_macro(path: &verus_syn::Path) -> bool {
+    let segments: Vec<String> = path.segments.iter().map(|s| s.ident.to_string()).collect();
+    match segments.iter().map(|s| s.as_str()).collect::<Vec<_>>().as_slice() {
+        ["include"] => path.leading_colon.is_none(),
+        ["core" | "std", "include"] => true,
+        _ => false,
+    }
+}
+
+/// The verus! macro cannot see the expansion of a macro call in item position,
+/// so the items produced by the call do not get the verus_macro attribute.
+/// Emit a marker spanning the call so that rust_verify can recognize
+/// (and reject) such items, rather than silently treating them as external.
+/// The marker's first token is spanned at the start of the call and its last
+/// token at the end of the call, so that the marker item's span covers the call
+/// (including any items passed as arguments, e.g., via `$i:item`).
+fn item_macro_call_marker(item_macro: &verus_syn::ItemMacro) -> TokenStream {
+    let start = match &item_macro.mac.path.leading_colon {
+        Some(colon) => colon.spans[0],
+        None => match item_macro.mac.path.segments.first() {
+            Some(segment) => segment.ident.span(),
+            None => item_macro.mac.path.span(),
+        },
+    };
+    let end = match &item_macro.semi_token {
+        Some(semi) => semi.span,
+        None => match &item_macro.mac.delimiter {
+            verus_syn::MacroDelimiter::Paren(p) => p.span.close(),
+            verus_syn::MacroDelimiter::Brace(b) => b.span.close(),
+            verus_syn::MacroDelimiter::Bracket(b) => b.span.close(),
+        },
+    };
+    let mut marker = quote_spanned! { start =>
+        #[verus::internal(item_macro_call)]
+        #[verifier::external]
+        const _: () = ()
+    };
+    marker.extend(quote_spanned! { end => ; });
+    marker
 }
 
 pub(crate) fn rewrite_impl_items(
