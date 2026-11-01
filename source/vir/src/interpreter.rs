@@ -1734,6 +1734,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(CallFun::Fun(fun, resolved_method), typs, args) => {
+            // Resolve the implementation for evaluation, but preserve the original trait call
+            // when returning a partially evaluated expression. AIR uses the trait declaration's
+            // name and type arguments, not a separate function for the implementation.
+            let original_fun = fun;
+            let original_typs = typs;
             let (fun, typs) = resolve_call(fun, resolved_method, typs);
             if state.perf {
                 // Record the call for later performance analysis
@@ -1804,8 +1809,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 } else {
                                     // return unevaluated call
                                     exp_new(Call(
-                                        CallFun::Fun(fun.clone(), resolved_method.clone()),
-                                        typs.clone(),
+                                        CallFun::Fun(original_fun.clone(), resolved_method.clone()),
+                                        original_typs.clone(),
                                         new_args.clone(),
                                     ))
                                 };
@@ -1818,8 +1823,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     _ => {
                         // We don't have the body for this function, so we can't simplify further
                         exp_new(Call(
-                            CallFun::Fun(fun.clone(), resolved_method.clone()),
-                            typs.clone(),
+                            CallFun::Fun(original_fun.clone(), resolved_method.clone()),
+                            original_typs.clone(),
                             new_args.clone(),
                         ))
                     }
