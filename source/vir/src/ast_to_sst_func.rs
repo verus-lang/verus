@@ -116,6 +116,42 @@ pub(crate) fn params_to_pre_post_pars(params: &Params) -> Pars {
     )
 }
 
+// Explicit decreases_by proofs belong to their owning verification bucket.
+// Non-owning buckets may export the implicit termination check only.
+fn include_termination_check(
+    is_recursive: bool,
+    verifying_owning_bucket: bool,
+    has_explicit_decreases_by: bool,
+) -> bool {
+    is_recursive && (verifying_owning_bucket || !has_explicit_decreases_by)
+}
+
+#[cfg(test)]
+mod termination_export_tests {
+    use super::include_termination_check;
+
+    #[test]
+    fn only_implicit_nonowning_termination_is_exported() {
+        let cases = [
+            (false, false, false, false),
+            (false, false, true, false),
+            (false, true, false, false),
+            (false, true, true, false),
+            (true, false, false, true),
+            (true, false, true, false),
+            (true, true, false, true),
+            (true, true, true, true),
+        ];
+        for (recursive, owning, explicit, expected) in cases {
+            assert_eq!(
+                include_termination_check(recursive, owning, explicit),
+                expected,
+                "recursive={recursive} owning={owning} explicit_decreases_by={explicit}",
+            );
+        }
+    }
+}
+
 fn func_body_to_sst(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,
@@ -171,9 +207,18 @@ fn func_body_to_sst(
     };
     if let Some(fun) = &function.x.decrease_by {
         check_state.view_as_spec = false;
-        if let Some(decrease_by_fun) = ctx.func_map.get(fun) {
-            let decrease_by_fun_body =
-                decrease_by_fun.x.body.as_ref().expect("decreases_by has body").clone();
+        // Only the owning bucket translates the explicit decreases_by proof.
+        // Non-owning buckets must not export a private helper body, even if
+        // the function map happens to contain one.
+        if verifying_owning_bucket {
+            let decrease_by_fun_body = ctx
+                .func_map
+                .get(fun)
+                .and_then(|decrease_by_fun| decrease_by_fun.x.body.as_ref())
+                .ok_or_else(|| {
+                    error(&function.span, "decreases_by proof body missing in owning bucket")
+                })?
+                .clone();
             ast_visitor::expr_visitor_check(&decrease_by_fun_body, &mut |_scope_map, expr| {
                 match &expr.x {
                     ExprX::Return(_) => Err(error(
@@ -184,8 +229,6 @@ fn func_body_to_sst(
                 }
             })?;
             proof_body.push(decrease_by_fun_body);
-        } else {
-            assert!(!verifying_owning_bucket);
         }
     }
     let mut proof_body_stms: Vec<Stm> = Vec::new();
@@ -199,7 +242,13 @@ fn func_body_to_sst(
     let FinalState { local_decls, statics: _ } = check_state.finalize()?;
 
     let is_recursive = crate::recursion::fun_is_recursive(ctx, function);
-    let termination_check = if is_recursive && verifying_owning_bucket {
+    // Export the implicit termination check for accessible recursive spec bodies.
+    // Keep explicit decreases_by helpers confined to their owning bucket.
+    let termination_check = if include_termination_check(
+        is_recursive,
+        verifying_owning_bucket,
+        function.x.decrease_by.is_some(),
+    ) {
         let (mut termination_decls, termination_inits, termination_stm) =
             crate::recursion::check_termination_stm(
                 ctx,
@@ -243,7 +292,12 @@ fn func_body_to_sst(
         None
     };
 
-    Ok(FuncSpecBodySst { decrease_when, termination_check, body_exp })
+    Ok(FuncSpecBodySst {
+        decrease_when,
+        termination_check,
+        verify_termination_in_this_bucket: verifying_owning_bucket,
+        body_exp,
+    })
 }
 
 fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<Expr>, VirErr> {

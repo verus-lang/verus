@@ -733,6 +733,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         R::ret(|| FuncSpecBodySst {
             decrease_when: R::get_opt(decrease_when),
             termination_check: R::get_opt(termination_check),
+            verify_termination_in_this_bucket: spec.verify_termination_in_this_bucket,
             body_exp: R::get(body_exp),
         })
     }
