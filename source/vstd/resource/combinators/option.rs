@@ -7,6 +7,7 @@ verus! {
 
 impl<RA: ResourceAlgebra> ResourceAlgebra for Option<RA> {
     /// Whether an element is valid
+    #[verifier::prophetic]
     open spec fn valid(self) -> bool {
         match self {
             Some(v) => v.valid(),
