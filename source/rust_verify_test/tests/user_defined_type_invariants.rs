@@ -380,14 +380,17 @@ test_verify_one_file! {
             }
         }
 
-        fn test(i: &mut u8) {
+        fn test(i: &mut u8)
+            ensures *final(i) == 3,
+        {
+            *i = 3;
         }
 
         fn test2() {
             let mut x = X { i: 10, j: 8 };
-            test(&mut x.i);
+            test(&mut x.i); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "this function call takes a mutable reference to a field of a datatype with a user-defined type invariant; thus, this function should be marked `no_unwind`")
+    } => Err(err) => assert_fails_type_invariant_unwind_error(err, 1)
 }
 
 test_verify_one_file! {
@@ -499,15 +502,81 @@ test_verify_one_file! {
             }
         }
 
-        fn test(i: &mut u8) -> bool {
+        fn test(i: &mut u8) -> bool
+            ensures *final(i) == 3,
+        {
+            *i = 3;
             true
         }
 
         fn test2() {
             let mut y = Y { x: X { i: 10, j: 8 } };
-            let j = test(&mut y.x.i);
+            let j = test(&mut y.x.i); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "this function call takes a mutable reference to a field of a datatype with a user-defined type invariant; thus, this function should be marked `no_unwind`")
+    } => Err(err) => assert_fails_type_invariant_unwind_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_field_unwind_when verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        fn test(i: &mut u8, b: bool)
+            ensures *final(i) == 3,
+            no_unwind when b
+        {
+            *i = 3;
+        }
+
+        fn test_ok() {
+            let mut x = X { i: 10, j: 8 };
+            test(&mut x.i, true);
+        }
+
+        fn test_fail(b: bool) {
+            let mut x = X { i: 10, j: 8 };
+            test(&mut x.i, b); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_unwind_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_field_unwind_no_unwind_caller verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        fn test(i: &mut u8, b: bool)
+            ensures *final(i) == 3,
+            no_unwind when b
+        {
+            *i = 3;
+        }
+
+        fn test_caller(b: bool)
+            no_unwind when b
+        {
+            let mut x = X { i: 10, j: 8 };
+            test(&mut x.i, b); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_unwind_error(err, 1)
 }
 
 test_verify_one_file! {
@@ -2922,7 +2991,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] atmoic_invariant_early_exit_issue3137 verus_code! {
+    #[test] atomic_invariant_early_exit_issue3137 verus_code! {
         use vstd::prelude::*;
         use vstd::invariant::*;
 
@@ -2951,4 +3020,95 @@ test_verify_one_file! {
             });
         }
     } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_unwinding verus_code! {
+        struct X { i: u64 }
+
+        #[verifier::type_invariant]
+        spec fn the_inv(x: X) -> bool { x.i == 0 }
+
+        fn c(a: &mut u64, b1: bool, b2: bool)
+            ensures b1 ==> *final(a) == 0,
+            no_unwind when !(b2 ==> *final(a) == 0)
+        {
+            assume(false);
+        }
+
+        fn test1() {
+            let mut x = X { i: 0 };
+            c(&mut x.i, false, false); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "value may fail to meet its declared type invariant if the call to `test_crate::c` unwinds (type invariant is checked on the unwinding path of the call)",
+        "value may fail to meet its declared type invariant after mutation (type invariant is checked at end of call to `test_crate::c`)",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_unwinding2 verus_code! {
+        struct X { i: u64 }
+
+        #[verifier::type_invariant]
+        spec fn the_inv(x: X) -> bool { x.i == 0 }
+
+        fn c(a: &mut u64, b1: bool, b2: bool)
+            ensures b1 ==> *final(a) == 0,
+            no_unwind when !(b2 ==> *final(a) == 0)
+        {
+            assume(false);
+        }
+
+        fn test2() {
+            let mut x = X { i: 0 };
+            c(&mut x.i, false, true); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "value may fail to meet its declared type invariant after mutation (type invariant is checked at end of call to `test_crate::c`)",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_unwinding3 verus_code! {
+        struct X { i: u64 }
+
+        #[verifier::type_invariant]
+        spec fn the_inv(x: X) -> bool { x.i == 0 }
+
+        fn c(a: &mut u64, b1: bool, b2: bool)
+            ensures b1 ==> *final(a) == 0,
+            no_unwind when !(b2 ==> *final(a) == 0)
+        {
+            assume(false);
+        }
+
+        fn test3() {
+            let mut x = X { i: 0 };
+            c(&mut x.i, true, false); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "value may fail to meet its declared type invariant if the call to `test_crate::c` unwinds (type invariant is checked on the unwinding path of the call)",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_unwinding4 verus_code! {
+        struct X { i: u64 }
+
+        #[verifier::type_invariant]
+        spec fn the_inv(x: X) -> bool { x.i == 0 }
+
+        fn c(a: &mut u64, b1: bool, b2: bool)
+            ensures b1 ==> *final(a) == 0,
+            no_unwind when !(b2 ==> *final(a) == 0)
+        {
+            assume(false);
+        }
+
+        fn test4() {
+            let mut x = X { i: 0 };
+            c(&mut x.i, true, true);
+        }
+    } => Ok(())
 }

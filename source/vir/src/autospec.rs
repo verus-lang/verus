@@ -16,6 +16,7 @@ fn simplify_one_expr(functions: &HashMap<Fun, FunctionStub>, expr: &Expr) -> Res
             args,
             post_args,
             body,
+            unwind_path,
         } => {
             let tgt_func = functions.get(tgt);
             let mut found = tgt_func.is_some();
@@ -36,6 +37,7 @@ fn simplify_one_expr(functions: &HashMap<Fun, FunctionStub>, expr: &Expr) -> Res
                     args: args.clone(),
                     post_args: post_args.clone(),
                     body: body.clone(),
+                    unwind_path: unwind_path.clone(),
                 })
             } else {
                 // should have been flagged by well_formed before reaching here
@@ -64,6 +66,7 @@ fn simplify_one_expr(functions: &HashMap<Fun, FunctionStub>, expr: &Expr) -> Res
             args,
             post_args,
             body,
+            unwind_path,
         } => {
             use crate::ast::CallTargetKind;
             let autospec_usage = attrs.autospec;
@@ -118,6 +121,7 @@ fn simplify_one_expr(functions: &HashMap<Fun, FunctionStub>, expr: &Expr) -> Res
                 args: args.clone(),
                 post_args: post_args.clone(),
                 body: body.clone(),
+                unwind_path: unwind_path.clone(),
             };
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }

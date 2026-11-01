@@ -2344,7 +2344,13 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 );
                 let arg = arg.consume(bctx, get_inner_ty());
                 let args = Arc::new(vec![arg.clone()]);
-                let x = ExprX::Call { target: call_target, args, post_args: None, body: None };
+                let x = ExprX::Call {
+                    target: call_target,
+                    args,
+                    post_args: None,
+                    body: None,
+                    unwind_path: None,
+                };
                 let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2)?;
                 Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ, x)))
             } else {
@@ -2778,6 +2784,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             args: Arc::new(vir_args),
                             post_args: None,
                             body: None,
+                            unwind_path: None,
                         },
                     )))
                 }
@@ -2828,7 +2835,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     call_target_attrs,
                 );
                 let args = Arc::new(vec![arg_vir.clone()]);
-                mk_expr(ExprX::Call { target: call_target, args, post_args: None, body: None })
+                mk_expr(ExprX::Call {
+                    target: call_target,
+                    args,
+                    post_args: None,
+                    body: None,
+                    unwind_path: None,
+                })
             } else {
                 // Could be a const. In this case the array needs to be translated like:
                 //    forall |i| array[i] satisfies post-condition of const
@@ -2940,7 +2953,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         call_target_attrs,
                     );
                     let args = Arc::new(vec![source_vir_expr.clone()]);
-                    mk_expr(ExprX::Call { target: call_target, args, post_args: None, body: None })
+                    mk_expr(ExprX::Call {
+                        target: call_target,
+                        args,
+                        post_args: None,
+                        body: None,
+                        unwind_path: None,
+                    })
                 }
                 _ => {
                     let to_ty = bctx.types.expr_ty(expr);
@@ -3898,6 +3917,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         args: args,
                         post_args: None,
                         body: None,
+                        unwind_path: None,
                     };
                     bctx.spanned_typed_new(expr.span, &call_ret_typ, x)
                 } else {
@@ -4960,7 +4980,13 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
                 call_target_attrs,
             );
             let args = Arc::new(vec![src_vir.clone()]);
-            let x = ExprX::Call { target: call_target, args, post_args: None, body: None };
+            let x = ExprX::Call {
+                target: call_target,
+                args,
+                post_args: None,
+                body: None,
+                unwind_path: None,
+            };
             let expr_typ = typ_of_node_unadjusted(bctx, dst_expr.span, &dst_expr.hir_id)?;
 
             if clip {

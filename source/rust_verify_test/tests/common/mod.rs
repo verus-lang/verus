@@ -1095,6 +1095,13 @@ pub fn assert_has_recommends_failure(err: TestErr) {
     assert!(found_rec_failure);
 }
 
+pub fn assert_fails_type_invariant_unwind_error(err: TestErr, count: usize) {
+    for e in err.errors.iter() {
+        assert!(e.message.contains("unwinds"), "{}", e.message);
+    }
+    assert_fails_type_invariant_error(err, count);
+}
+
 pub fn assert_fails_type_invariant_error(err: TestErr, count: usize) {
     assert_eq!(err.errors.len(), count);
     for c in 0..count {
