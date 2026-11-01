@@ -1,5 +1,5 @@
 use crate::trait_check_ast::*;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use vir::ast::Path;
 
 pub(crate) struct State {
@@ -11,6 +11,7 @@ pub(crate) struct State {
     pub(crate) trait_decls: Vec<TraitDecl>,
     pub(crate) datatype_decls: Vec<DatatypeDecl>,
     pub(crate) trait_impls: Vec<TraitImpl>,
+    pub(crate) tuple_arities: BTreeSet<usize>,
 }
 
 impl State {
@@ -24,6 +25,7 @@ impl State {
             trait_decls: Vec::new(),
             datatype_decls: Vec::new(),
             trait_impls: Vec::new(),
+            tuple_arities: BTreeSet::from([0]),
         }
     }
 
