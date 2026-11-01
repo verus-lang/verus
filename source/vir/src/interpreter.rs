@@ -17,7 +17,7 @@ use crate::messages::{Message, Span, ToAny, WarningAllow, error};
 use crate::sst::{
     ArithOp, BinaryOp, Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent,
 };
-use crate::sst_util::{free_vars_exp, subst_exp};
+use crate::sst_util::{free_vars_exp, free_vars_exps, subst_exp};
 use crate::unicode::valid_unicode_scalar_bigint;
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
@@ -1906,12 +1906,28 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 );
                 let empty_substs = HashMap::new();
                 let e = subst_exp(&empty_substs, &substs, e);
+                state.env.push_scope(true);
+                for b in bnds.iter() {
+                    let id = b.name.clone();
+                    let val =
+                        SpannedTyped::new(&e.span, &b.a, Interp(InterpExp::FreeVar(id.clone())));
+                    state.env.insert(id, val).unwrap();
+                }
+                // The body is evaluated in the current environment, so the triggers must be too
                 let triggers = Arc::new(
                     triggers
                         .iter()
                         .map(|trig| {
+                            let trig: Vec<Exp> =
+                                trig.iter().map(|e| subst_exp(&empty_substs, &substs, e)).collect();
+                            let env_substs = free_vars_exps(&trig)
+                                .into_keys()
+                                .filter_map(|id| state.env.get(&id).map(|v| (id, v.clone())))
+                                .collect();
                             Arc::new(
-                                trig.iter().map(|e| subst_exp(&empty_substs, &substs, e)).collect(),
+                                trig.iter()
+                                    .map(|e| subst_exp(&empty_substs, &env_substs, e))
+                                    .collect(),
                             )
                         })
                         .collect(),
@@ -1920,13 +1936,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     bnd.span.clone(),
                     BndX::Quant(*quant_type, bnds.clone(), triggers, by_locals.clone()),
                 );
-                state.env.push_scope(true);
-                for b in bnds.iter() {
-                    let id = b.name.clone();
-                    let val =
-                        SpannedTyped::new(&e.span, &b.a, Interp(InterpExp::FreeVar(id.clone())));
-                    state.env.insert(id, val).unwrap();
-                }
                 let e = eval_expr_internal(ctx, state, &e)?;
                 state.env.pop_scope();
                 if let ExpX::Const(Constant::Bool(_)) = e.x {
