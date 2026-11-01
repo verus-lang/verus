@@ -5,7 +5,7 @@ use crate::ast::{
 use crate::ast_util::{dt_as_friendly_rust_name, path_as_friendly_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
 use crate::messages::{Span, error};
-use crate::sst::{BinaryOp, CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
+use crate::sst::{BinaryOp, BndX, CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -206,6 +206,10 @@ struct Ctxt {
     next_id: u64,
     // gather for all_triggers (include ExtEq)
     gather_for_all_triggers: bool,
+    // look inside nested quantifiers/lambdas/chooses (only if nothing is found otherwise)
+    descend_binders: bool,
+    // vars bound by a nested binder; terms using them can't be triggers
+    blocked_vars: HashSet<VarIdent>,
 }
 
 impl Ctxt {
@@ -315,7 +319,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
 
     let (is_pure, term) = match &exp.x {
         ExpX::Const(c) => (true, Arc::new(TermX::App(App::Const(c.clone()), Arc::new(vec![])))),
-        ExpX::Var(x) => (true, Arc::new(TermX::Var(x.clone()))),
+        ExpX::Var(x) => (!ctxt.blocked_vars.contains(x), Arc::new(TermX::Var(x.clone()))),
         ExpX::VarLoc(..) | ExpX::Loc(..) => panic!("unexpected Loc/VarLoc in quantifier"),
         ExpX::VarAt(x, _) => {
             (true, Arc::new(TermX::App(App::VarAt(x.clone(), VarAt::Pre), Arc::new(vec![]))))
@@ -511,11 +515,36 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let (_, term3) = gather_terms(ctxt, ctx, e3, depth);
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2, term3]))))
         }
+        // a nested binder's manual triggers
+        ExpX::WithTriggers(_, body) if ctxt.descend_binders => {
+            return gather_terms(ctxt, ctx, body, depth);
+        }
         ExpX::WithTriggers(..) => {
             panic!("shouldn't be inferring triggers for WithTriggers expression")
         }
-        ExpX::Bind(_, _) => {
-            // REVIEW: we could at least look for matching loops here
+        ExpX::Bind(bnd, e1) => {
+            // Terms inside a nested binder can trigger the outer quantifier
+            // if they don't use the nested binder's vars
+            // REVIEW: for let, we could at least look for matching loops here
+            let (bs, sub_exps) = match &bnd.x {
+                _ if !ctxt.descend_binders => (None, vec![]),
+                BndX::Quant(_, bs, _, _) | BndX::Lambda(bs, _) => (Some(bs), vec![e1]),
+                BndX::Choose(bs, _, cond) => (Some(bs), vec![cond, e1]),
+                BndX::Let(_) => (None, vec![]),
+            };
+            let mut newly_blocked: Vec<VarIdent> = Vec::new();
+            for b in bs.into_iter().flat_map(|bs| bs.iter()) {
+                // inlining can nest binders with the same name
+                if ctxt.blocked_vars.insert(b.name.clone()) {
+                    newly_blocked.push(b.name.clone());
+                }
+            }
+            for sub_exp in sub_exps {
+                gather_terms(ctxt, ctx, sub_exp, depth + 1);
+            }
+            for x in &newly_blocked {
+                ctxt.blocked_vars.remove(x);
+            }
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
         }
         ExpX::ArrayLiteral(es) => {
@@ -743,13 +772,14 @@ fn compute_triggers(
     Ok(())
 }
 
-pub(crate) fn build_triggers(
+fn choose_triggers(
     ctx: &Ctx,
     span: &Span,
     vars: &Vec<VarIdent>,
     exp: &Exp,
-    auto_trigger: AutoType,
-) -> Result<Trigs, VirErr> {
+    auto_trigger: &AutoType,
+    descend_binders: bool,
+) -> Result<(Ctxt, State), VirErr> {
     let mut ctxt = Ctxt {
         trigger_vars: vars.iter().cloned().collect(),
         all_terms: HashMap::new(),
@@ -758,7 +788,9 @@ pub(crate) fn build_triggers(
         pure_terms_by_var: HashMap::new(),
         pure_best_scores: HashMap::new(),
         next_id: 0,
-        gather_for_all_triggers: auto_trigger == AutoType::All,
+        gather_for_all_triggers: *auto_trigger == AutoType::All,
+        descend_binders,
+        blocked_vars: HashSet::new(),
     };
     for x in vars {
         ctxt.pure_terms_by_var.insert(x.clone(), HashMap::new());
@@ -798,7 +830,23 @@ pub(crate) fn build_triggers(
         chosen_triggers: Vec::new(),
         low_confidence: false,
     };
-    compute_triggers(&ctxt, &mut state, &mut timer, auto_trigger == AutoType::All)?;
+    compute_triggers(&ctxt, &mut state, &mut timer, *auto_trigger == AutoType::All)?;
+    Ok((ctxt, state))
+}
+
+pub(crate) fn build_triggers(
+    ctx: &Ctx,
+    span: &Span,
+    vars: &Vec<VarIdent>,
+    exp: &Exp,
+    auto_trigger: AutoType,
+) -> Result<Trigs, VirErr> {
+    let (mut ctxt, mut state) = choose_triggers(ctx, span, vars, exp, &auto_trigger, false)?;
+    if state.chosen_triggers.is_empty() {
+        if let Ok((c, s)) = choose_triggers(ctx, span, vars, exp, &auto_trigger, true) {
+            (ctxt, state) = (c, s);
+        }
+    }
 
     // To stabilize the order of the chosen triggers,
     // sort the triggers by the position of their terms in exp

@@ -432,6 +432,74 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_auto_trigger_descends_into_nested_quantifier_issue717 verus_code! {
+        uninterp spec fn f(x: int) -> bool;
+        uninterp spec fn g(y: int) -> bool;
+
+        proof fn test() {
+            // f(x) inside the `exists` is the trigger for the outer forall
+            assume(forall|x: int| exists|y: int| f(x) && g(y));
+
+            assume(f(3));
+            assert(exists|y: int| f(3) && g(y));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_auto_trigger_nested_quantifier_inner_var_issue717 verus_code! {
+        uninterp spec fn g(y: int) -> bool;
+
+        proof fn test() {
+            // g(y) uses only the inner variable, so it can't trigger the outer forall
+            assume(forall|x: int| exists|y: int| g(y) && x < y);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Could not automatically infer triggers for this quantifier")
+}
+
+test_verify_one_file! {
+    #[test] test_auto_trigger_nested_quantifier_fallback_issue717 verus_code! {
+        uninterp spec fn f(x: int) -> bool;
+        uninterp spec fn g(x: int, y: int) -> bool;
+        uninterp spec fn h(x: int) -> int;
+
+        proof fn keeps_outer_trigger() {
+            // h(x) is found without looking inside the exists, so it stays the trigger
+            assume(forall|x: int| h(x) > 0 ==> exists|y: int| g(x, y) && f(x));
+            assume(h(5) > 0);
+            assert(exists|y: int| g(5, y));
+        }
+
+        proof fn manual_inner_trigger() {
+            assume(forall|x: int| exists|y: int| #![trigger g(x, y)] g(x, y) && f(x));
+            assume(f(3));
+            assert(exists|y: int| g(3, y));
+        }
+
+        proof fn manual_inner_trigger_nested() {
+            assume(forall|x: int| exists|y: int| g(x, y) && with_triggers(((g(x, y),),), f(x)));
+            assume(f(3));
+            assert(exists|y: int| g(3, y));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_auto_trigger_nested_quantifier_inline_issue717 verus_code! {
+        uninterp spec fn f(x: int, y: int) -> bool;
+        uninterp spec fn g(x: int, y: int) -> bool;
+
+        #[verifier::inline]
+        spec fn p(a: int) -> bool { exists|y: int| g(a, y) }
+
+        proof fn test() {
+            // inlining p nests a second binder named y; f(x, y) must still be rejected
+            assume(forall|x: int| exists|y: int| p(x) && f(x, y));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Could not automatically infer triggers for this quantifier")
+}
+
+test_verify_one_file! {
     #[test] test_self_in_trigger_in_clone_issue1347 verus_code! {
         use vstd::*;
         use vstd::prelude::*;
