@@ -2236,3 +2236,57 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] reverse_bits verus_code! {
+        use vstd::prelude::*;
+
+        fn test_spec_and_involution(a: u8, b: u16, c: u32, d: u64) {
+            let ra = a.reverse_bits();
+            let rb = b.reverse_bits();
+            let rc = c.reverse_bits();
+            let rd = d.reverse_bits();
+            assert(ra == a.reverse_bits());
+            assert(ra.reverse_bits() == a);
+            assert(rb.reverse_bits() == b);
+            assert(rc.reverse_bits() == c);
+            assert(rd.reverse_bits() == d);
+        }
+
+        fn test_bits(x: u32) {
+            let r = x.reverse_bits();
+            assert((r >> 31u32) & 1u32 == (x >> sub(31u32, 31u32)) & 1u32);
+            assert((r >> 0u32) & 1u32 == (x >> sub(31u32, 0u32)) & 1u32);
+            assert((x >> sub(31u32, 31u32)) & 1u32 == x & 1u32) by (bit_vector);
+            assert((r >> 31u32) & 1u32 == x & 1u32);
+        }
+
+        fn test_value() {
+            let r = 6u8.reverse_bits();
+            assert(r == 0x60u8) by (bit_vector)
+                requires
+                    (r >> 0u8) & 1u8 == (6u8 >> 7u8) & 1u8,
+                    (r >> 1u8) & 1u8 == (6u8 >> 6u8) & 1u8,
+                    (r >> 2u8) & 1u8 == (6u8 >> 5u8) & 1u8,
+                    (r >> 3u8) & 1u8 == (6u8 >> 4u8) & 1u8,
+                    (r >> 4u8) & 1u8 == (6u8 >> 3u8) & 1u8,
+                    (r >> 5u8) & 1u8 == (6u8 >> 2u8) & 1u8,
+                    (r >> 6u8) & 1u8 == (6u8 >> 1u8) & 1u8,
+                    (r >> 7u8) & 1u8 == (6u8 >> 0u8) & 1u8,
+            ;
+        }
+
+        fn test_no_unwind(a: u8, b: u16, c: u32, d: u64)
+            no_unwind
+        {
+            let _ = a.reverse_bits();
+            let _ = b.reverse_bits();
+            let _ = c.reverse_bits();
+            let _ = d.reverse_bits();
+        }
+
+        fn test_fails(x: u32) {
+            assert(x.reverse_bits() == x); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
