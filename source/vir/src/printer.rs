@@ -130,15 +130,21 @@ impl<A: ToDebugSNode> ToDebugSNode for Vec<A> {
     }
 }
 
-impl<A: ToDebugSNode> ToDebugSNode for std::sync::Arc<A> {
+impl<A: ?Sized + ToDebugSNode> ToDebugSNode for std::sync::Arc<A> {
     fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         (**self).to_node(opts)
     }
 }
 
-impl ToDebugSNode for String {
+impl ToDebugSNode for str {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
-        Node::Atom(format!("\"{}\"", escape(&self)))
+        Node::Atom(format!("\"{}\"", escape(self)))
+    }
+}
+
+impl ToDebugSNode for String {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+        self.as_str().to_node(opts)
     }
 }
 
