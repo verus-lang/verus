@@ -1763,7 +1763,12 @@ pub(crate) mod parsing {
             let content;
             let brace_token = braced!(content in input);
             attr::parsing::parse_inner(&content, &mut attrs)?;
-            let stmts = content.call(Block::parse_within)?;
+            let stmts = if crate::ghost_bodies::skip_body(&sig.mode) {
+                crate::ghost_bodies::skip_rest(&content)?;
+                Vec::new()
+            } else {
+                content.call(Block::parse_within)?
+            };
             (brace_token, stmts, None)
         };
 
@@ -3099,10 +3104,13 @@ pub(crate) mod parsing {
             let content;
             let brace_token = braced!(content in input);
             attrs.extend(content.call(Attribute::parse_inner)?);
-            let block = Block {
-                brace_token,
-                stmts: content.call(Block::parse_within)?,
+            let stmts = if crate::ghost_bodies::skip_body(&sig.mode) {
+                crate::ghost_bodies::skip_rest(&content)?;
+                Vec::new()
+            } else {
+                content.call(Block::parse_within)?
             };
+            let block = Block { brace_token, stmts };
             (block, None)
         };
 

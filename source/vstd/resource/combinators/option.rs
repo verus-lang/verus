@@ -16,10 +16,13 @@ impl<RA: ResourceAlgebra> ResourceAlgebra for Option<RA> {
 
     /// Compose two elements
     open spec fn op(a: Self, b: Self) -> Self {
-        match (a, b) {
-            (Some(a), Some(b)) => Some(RA::op(a, b)),
-            (None, _) => b,
-            (_, None) => a,
+        // Avoid matching on `(a, b)`: each unfolding would build a tuple term.
+        match a {
+            None => b,
+            Some(x) => match b {
+                None => a,
+                Some(y) => Some(RA::op(x, y)),
+            },
         }
     }
 

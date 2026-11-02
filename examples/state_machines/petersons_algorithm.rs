@@ -2,6 +2,8 @@
 use verus_builtin::*;
 use verus_builtin_macros::*;
 use verus_state_machines_macros::*;
+#[cfg(verus_verified_tsm)]
+use verus_state_machines_macros::verified_tokenized_state_machine as tokenized_state_machine;
 use vstd::prelude::*;
 
 verus! {

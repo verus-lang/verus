@@ -18,7 +18,10 @@ use vstd::{pervasive::*, prelude::*, *};
 
 verus! {
 
+#[cfg(not(verus_verified_tsm))]
 use verus_state_machines_macros::tokenized_state_machine;
+#[cfg(verus_verified_tsm)]
+use verus_state_machines_macros::verified_tokenized_state_machine as tokenized_state_machine;
 
 // ANCHOR: enum_state
 #[is_variant]

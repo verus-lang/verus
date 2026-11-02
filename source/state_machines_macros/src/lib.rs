@@ -11,6 +11,7 @@ mod check_bind_stmts;
 mod check_birds_eye;
 mod concurrency_tokens;
 mod field_access_visitor;
+mod hygiene;
 mod ident_visitor;
 mod inherent_safety_conditions;
 mod lemmas;
@@ -23,8 +24,23 @@ mod simplify_asserts;
 mod to_relation;
 mod to_token_stream;
 mod token_transition_checks;
+mod token_trees;
 mod transitions;
 mod util;
+mod verified_chain;
+mod verified_ergonomics;
+mod verified_general;
+mod verified_generic_tokens;
+mod verified_model;
+mod verified_monoids;
+mod verified_operations;
+mod verified_ownership;
+mod verified_readiness;
+mod verified_state_relations;
+mod verified_steps;
+mod verified_storage_tagged;
+mod verified_take_step;
+mod verified_tokens;
 
 use case_macro::case_on;
 use lemmas::check_lemmas;
@@ -73,6 +89,34 @@ pub fn tokenized_state_machine(input: TokenStream) -> TokenStream {
     crate::vstd_path::set_is_vstd(false);
     crate::vstd_path::set_is_core(cfg_verify_core());
     construct_state_machine(input, true)
+}
+
+/// Emits frame-preserving protocol proofs and, by default, the trusted
+/// `tokenized_state_machine!` interface (per-field tokens and `Instance`
+/// methods), each method proved by a call to the raw operation
+/// (`#[verified_generic_tokens]` may be written explicitly). Use
+/// `#[verified_raw_tokens]` inside the machine to request the raw resource
+/// interface instead, with a local-ready API (`M::local_ready::t`) for each
+/// transition, readonly transition and property whose form supports it.
+#[proc_macro]
+pub fn verified_tokenized_state_machine(input: TokenStream) -> TokenStream {
+    crate::vstd_path::set_is_vstd(false);
+    crate::vstd_path::set_is_core(cfg_verify_core());
+    let pr: ParseResult = parse_macro_input!(input as ParseResult);
+    let result = verified_readiness::construct(pr);
+    match result {
+        Ok(output) => output.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+/// Defines exact pure weak/strong state relations without resource APIs or
+/// generated safety assumptions. Induction hooks remain checked proofs.
+#[proc_macro]
+pub fn verified_state_machine_model(input: TokenStream) -> TokenStream {
+    crate::vstd_path::set_is_vstd(false);
+    crate::vstd_path::set_is_core(cfg_verify_core());
+    verified_model::construct(input)
 }
 
 #[proc_macro]

@@ -161,11 +161,15 @@ pub open spec fn set_op<K, V, P: Protocol<K, V>>(s: ISet<(P, IMap<K, V>)>, t: P)
     s.map(|q: (P, IMap<K, V>)| (P::op(q.0, t), q.1))
 }
 
-impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
+// The observers carry no trait bound, so a spec function that only reads a
+// resource's value or location does not depend on the protocol implementation.
+impl<K, V, P> StorageResource<K, V, P> {
     pub uninterp spec fn value(self) -> P;
 
     pub uninterp spec fn loc(self) -> Loc;
+}
 
+impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     pub axiom fn alloc(p: P, tracked s: IMap<K, V>) -> (tracked out: Self)
         requires
             P::rel(p, s),

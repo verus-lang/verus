@@ -427,12 +427,21 @@ pub fn run_verus(
         } else if *option == "--edition 2018" {
             verus_args.push("--edition".to_string());
             verus_args.push("2018".to_string());
+        } else if *option == TSM_VERIFIED_OPTION {
+            verus_args.push("--cfg".to_string());
+            verus_args.push(TSM_VERIFIED_CFG.to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
     }
     if use_internal_test_mode {
         verus_args.insert(0, "--internal-test-mode".to_string());
+    }
+    // VERUS_TSM=verified selects the checked macro for every test of this run (including
+    // tests and examples not written with `test_verify_tsm!`); see `tsm_verified_forced`.
+    if tsm_verified_forced() && !options.contains(&TSM_VERIFIED_OPTION) {
+        verus_args.push("--cfg".to_string());
+        verus_args.push(TSM_VERIFIED_CFG.to_string());
     }
     if no_external_by_default {
         verus_args.push("--no-external-by-default".to_string());
@@ -823,6 +832,221 @@ macro_rules! test_verify_one_file {
     };
 }
 
+/// Test option selecting the checked `verified_tokenized_state_machine!`: the verifier gets
+/// `--cfg verus_verified_tsm`, under which the test prelude (and example files) import
+/// `verified_tokenized_state_machine as tokenized_state_machine` and
+/// `verified_state_machine_model as state_machine`.
+pub const TSM_VERIFIED_OPTION: &str = "--verified-tsm";
+pub const TSM_VERIFIED_CFG: &str = "verus_verified_tsm";
+
+/// `VERUS_TSM=verified` forces the checked macro for every test and example of the run.
+pub fn tsm_verified_forced() -> bool {
+    std::env::var("VERUS_TSM").map(|v| v == "verified").unwrap_or(false)
+}
+
+/// The options of a run with the checked state-machine macro: `options` plus
+/// `TSM_VERIFIED_OPTION`, and `--no-cheating` unless the test opts out
+/// (`; verified cheating "<reason>"`), so that a verified run also checks that the checked
+/// macro introduces no `assume`/`admit`/`external_body`.
+pub fn with_tsm_verified<'a>(options: &[&'a str], no_cheating: bool) -> Vec<&'a str> {
+    let mut options = options.to_vec();
+    options.push(TSM_VERIFIED_OPTION);
+    if no_cheating && !options.contains(&"--no-cheating") {
+        options.push("--no-cheating");
+    }
+    options
+}
+
+/// The words of the user-written assumptions that `--no-cheating` rejects.
+pub const CHEATING_MARKERS: &[&str] = &[
+    "assume",
+    "admit",
+    "external_body",
+    "assume_specification",
+    "assume_termination",
+    "externals_available_without_declaration",
+];
+
+/// Whether a `--no-cheating` error points at a user-written assumption: the highlighted
+/// source of a primary span, or an attribute line directly above it (such as
+/// `#[verifier::external_body]` above a function), contains one of `CHEATING_MARKERS`.
+fn no_cheating_error_at_user_site(source: &str, err: &Diagnostic) -> bool {
+    let lines: Vec<&str> = source.lines().collect();
+    let primary: Vec<_> = err.spans.iter().filter(|s| s.is_primary).collect();
+    !primary.is_empty()
+        && primary.iter().all(|s| {
+            let highlighted = s.text.iter().any(|t| {
+                let start = t.highlight_start.saturating_sub(1).min(t.text.len());
+                let end = t.highlight_end.saturating_sub(1).clamp(start, t.text.len());
+                let h = t.text.get(start..end).unwrap_or(&t.text);
+                CHEATING_MARKERS.iter().any(|m| h.contains(m))
+            });
+            // the attribute lines directly above the span, in `source` (1-based lines; checked
+            // to be the file of the span by comparing the span's first line)
+            let in_source = s.line_start >= 1
+                && s.text
+                    .first()
+                    .is_some_and(|t| lines.get(s.line_start - 1) == Some(&t.text.as_str()));
+            let attribute_above = in_source
+                && lines[..s.line_start - 1]
+                    .iter()
+                    .rev()
+                    .take_while(|l| l.trim_start().starts_with("#["))
+                    .any(|l| CHEATING_MARKERS.iter().any(|m| l.contains(m)));
+            highlighted || attribute_above
+        })
+}
+
+/// For a verified run that opted out of `--no-cheating` (`; verified cheating "<reason>"`):
+/// checks the run with `--no-cheating` is rejected only for the test's own assumptions, i.e.
+/// that there is a `--no-cheating` error and every one points at a user-written
+/// `assume`/`admit`/`external_body` (see `no_cheating_error_at_user_site`). Verus reports the
+/// first `--no-cheating` error of each function, so a macro-introduced assumption in a
+/// function that also contains a user assumption is not seen.
+pub fn assert_cheating_only_at_user_sites(source: &str, result: Result<TestErr, TestErr>) {
+    let err = match result {
+        Err(err) => err,
+        Ok(_) => panic!(
+            "the test opts out of --no-cheating (`verified cheating`), but it verifies with \
+             --no-cheating: remove the opt-out"
+        ),
+    };
+    assert_no_cheating_errors_at_user_sites(source, &err.errors);
+}
+
+/// `errors` (of a run with `--no-cheating`) contain a `--no-cheating` error, and each points
+/// at a user-written assumption of `source`.
+pub fn assert_no_cheating_errors_at_user_sites(source: &str, errors: &[Diagnostic]) {
+    let cheating: Vec<_> =
+        errors.iter().filter(|e| e.message.contains("not allowed with `--no-cheating`")).collect();
+    assert!(
+        !cheating.is_empty(),
+        "the test opts out of --no-cheating (`verified cheating`), but --no-cheating reports no \
+         assumption: {:#?}",
+        errors
+    );
+    for e in cheating {
+        assert!(
+            no_cheating_error_at_user_site(source, e),
+            "--no-cheating error outside a user-written assumption (macro-generated?):\n{}",
+            e.rendered
+        );
+    }
+}
+
+/// Runs one test for both state-machine macros: generates `mod <name> { fn trusted; fn verified }`.
+///
+/// ```ignore
+/// test_verify_tsm! { #[test] name IMPORTS.to_string() + verus_code_str!{..} => Ok(()) }
+/// test_verify_tsm! { #[test] name [options] BODY => Err(e) => assert_vir_error_msg(e, "x") }
+/// // per-macro expectation for the checked macro:
+/// test_verify_tsm! { #[test] name BODY => Ok(()) ; verified => Err(e) => assert_fails(e, 1) }
+/// // case not (yet) supported by the checked macro (reported as an ignored test):
+/// test_verify_tsm! { #[test] name BODY => Ok(()) ; verified ignore "reason" }
+/// // case only meaningful for the trusted macro (no checked test is generated):
+/// test_verify_tsm! { #[test] name BODY => Ok(()) ; trusted_only "reason" }
+/// // the verified run uses --no-cheating unless the test's source contains an assumption:
+/// test_verify_tsm! { #[test] name BODY => Ok(()) ; verified cheating "test contains assume(false)" }
+/// ```
+#[macro_export]
+macro_rules! test_verify_tsm {
+    ($(#[$attrs:meta])* $name:ident $([$($opt:expr),* $(,)?])? $body:expr => Ok(()) $(; $($v:tt)*)?) => {
+        $crate::test_verify_tsm!(@mod [$(#[$attrs])*] $name [$($($opt),*)?] [$body]
+            [Ok(())] [] [$($($v)*)?]);
+    };
+    ($(#[$attrs:meta])* $name:ident $([$($opt:expr),* $(,)?])? $body:expr => $result:pat => $assertions:expr $(; $($v:tt)*)?) => {
+        $crate::test_verify_tsm!(@mod [$(#[$attrs])*] $name [$($($opt),*)?] [$body]
+            [$result] [$assertions] [$($($v)*)?]);
+    };
+    (@mod [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($tr:tt)*] [$($ta:tt)*] [$($v:tt)*]) => {
+        mod $name {
+            #[allow(unused_imports)]
+            use super::*;
+            $($attrs)*
+            fn trusted() {
+                let result = verify_one_file(::std::stringify!($name), $body, &[$($opt),*]);
+                $crate::test_verify_tsm!(@check result [$($tr)*] [$($ta)*]);
+            }
+            $crate::test_verify_tsm!(@verified [$($attrs)*] $name [$($opt),*] [$body] [$($tr)*] [$($ta)*] [] $($v)*);
+        }
+    };
+    // The clauses after the trusted expectation, separated by `;`, in any order. `[$($c)*]`
+    // is the `verified cheating` reason (empty: the verified run uses `--no-cheating`).
+    (@verified [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($tr:tt)*] [$($ta:tt)*] [$($c:tt)*]) => {
+        $crate::test_verify_tsm!(@verified_fn [$($attrs)*] $name [$($opt),*] [$body] [$($tr)*] [$($ta)*] [$($c)*]);
+    };
+    (@verified [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($tr:tt)*] [$($ta:tt)*] [$($c:tt)*] verified cheating $reason:literal $(; $($rest:tt)*)?) => {
+        $crate::test_verify_tsm!(@verified [$($attrs)*] $name [$($opt),*] [$body] [$($tr)*] [$($ta)*] [$reason] $($($rest)*)?);
+    };
+    (@verified [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($tr:tt)*] [$($ta:tt)*] [$($c:tt)*] verified => Ok(()) $(; $($rest:tt)*)?) => {
+        $crate::test_verify_tsm!(@verified [$($attrs)*] $name [$($opt),*] [$body] [Ok(())] [] [$($c)*] $($($rest)*)?);
+    };
+    (@verified [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($tr:tt)*] [$($ta:tt)*] [$($c:tt)*] verified => $vr:pat => $va:expr $(; $($rest:tt)*)?) => {
+        $crate::test_verify_tsm!(@verified [$($attrs)*] $name [$($opt),*] [$body] [$vr] [$va] [$($c)*] $($($rest)*)?);
+    };
+    (@verified [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($tr:tt)*] [$($ta:tt)*] [$($c:tt)*] verified ignore $reason:literal $(; $($rest:tt)*)?) => {
+        $crate::test_verify_tsm!(@verified [$($attrs)* #[ignore = $reason]] $name [$($opt),*] [$body] [$($tr)*] [$($ta)*] [$($c)*] $($($rest)*)?);
+    };
+    (@verified [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($tr:tt)*] [$($ta:tt)*] [$($c:tt)*] trusted_only $reason:literal) => {
+        const _: &str = $reason;
+    };
+    (@verified_fn [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($vr:tt)*] [$($va:tt)*] []) => {
+        $($attrs)*
+        fn verified() {
+            let options = with_tsm_verified(&[$($opt),*], true);
+            let result = verify_one_file(
+                &::std::format!("{}__verified", ::std::stringify!($name)), $body, &options);
+            $crate::test_verify_tsm!(@check result [$($vr)*] [$($va)*]);
+        }
+    };
+    // `verified cheating "<reason>"`: the test's own source contains an assumption, so the
+    // verified run is without `--no-cheating`; a second run with `--no-cheating` checks that
+    // it is rejected only at the user's assumptions.
+    (@verified_fn [$($attrs:tt)*] $name:ident [$($opt:expr),*] [$body:expr] [$($vr:tt)*] [$($va:tt)*] [$reason:literal]) => {
+        $($attrs)*
+        fn verified() {
+            const _: &str = $reason;
+            let body: String = $body;
+            let options = with_tsm_verified(&[$($opt),*], false);
+            let result = verify_one_file(
+                &::std::format!("{}__verified", ::std::stringify!($name)), body.clone(), &options);
+            $crate::test_verify_tsm!(@check result [$($vr)*] [$($va)*]);
+            let options = with_tsm_verified(&[$($opt),*], true);
+            let result = verify_one_file(
+                &::std::format!("{}__verified_no_cheating", ::std::stringify!($name)),
+                body.clone(), &options);
+            assert_cheating_only_at_user_sites(&body, result);
+        }
+    };
+    (@check $result:ident [Ok(())] []) => {
+        match $result {
+            Ok(err) => assert_eq!(err.warnings.len(), 0),
+            Err(err) => assert!(false, "expected Ok(()), got {:?}", err),
+        }
+    };
+    (@check $result:ident [$p:pat] [$a:expr]) => {
+        #[allow(irrefutable_let_patterns)]
+        if let $p = $result {
+            $a
+        } else {
+            assert!(false, "result does not match the expected pattern");
+        }
+    };
+}
+
+/// `test_verify_one_file_with_options!` syntax for `test_verify_tsm!`.
+#[macro_export]
+macro_rules! test_verify_tsm_with_options {
+    ($(#[$attrs:meta])* $name:ident [$($opt:expr),* $(,)?] => $body:expr => Ok(()) $(; $($v:tt)*)?) => {
+        $crate::test_verify_tsm!(@mod [$(#[$attrs])*] $name [$($opt),*] [$body]
+            [Ok(())] [] [$($($v)*)?]);
+    };
+    ($(#[$attrs:meta])* $name:ident [$($opt:expr),* $(,)?] => $body:expr => $result:pat => $assertions:expr $(; $($v:tt)*)?) => {
+        $crate::test_verify_tsm!(@mod [$(#[$attrs])*] $name [$($opt),*] [$body]
+            [$result] [$assertions] [$($($v)*)?]);
+    };
+}
+
 // We run the bit-vector tests twice; once with interpreter-based simplification on
 // (to mirror what the end-user sees) and once with it off (to check that our SMT encoding
 // of bit-vector operations is correct).
@@ -945,6 +1169,19 @@ pub fn assert_fails(err: TestErr, count: usize) {
                 .iter()
                 .find(|x| x.text.contains("FAILS"))
                 .is_some()
+        );
+    }
+}
+
+/// Assert `count` verification failures, wherever reported (for the checked state-machine
+/// macro, whose generated safety-condition proofs report at the macro invocation).
+pub fn assert_fails_anywhere(err: TestErr, count: usize) {
+    assert_eq!(err.errors.len(), count, "errors: {:?}", err.errors);
+    for e in &err.errors {
+        assert!(
+            e.code.is_none(),
+            "expected a verification failure, got rustc error: {}",
+            e.message
         );
     }
 }
