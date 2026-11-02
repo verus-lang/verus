@@ -1345,17 +1345,6 @@ impl<T> PointsTo<[T]> {
         self.ptr()@.metadata as nat
     }
 
-    /// If the permission's associated memory is valid,
-    /// returns the slice's elements.
-    /// Otherwise, the result is meaningless.
-    #[verifier::inline]
-    pub open spec fn value(&self) -> Seq<T>
-        recommends
-            self.is_valid(),
-    {
-        self.typed_value().value_ref()@
-    }
-
     /// Borrows the permission to the element at index `i`.
     /// If the slice permission is empty, so is the element's.
     pub proof fn borrow_index(tracked &self, i: int) -> (tracked out: &PointsTo<T>)

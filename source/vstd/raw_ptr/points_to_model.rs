@@ -1485,6 +1485,39 @@ impl<T> PointsTo<T> {
     ;
 }
 
+impl<T> PointsTo<[T]> {
+    /// If the permission's associated memory is valid,
+    /// returns the slice's elements.
+    /// Otherwise, the result is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> Seq<T>
+        recommends
+            self.is_valid(),
+    {
+        self.typed_value().value_ref()@
+    }
+
+    /// This takes a mutable borrow of the `[T]` from a mutable borrow of a `PointsTo<[T]>`.
+    /// The pointer of this borrow matches the permission's pointer.
+    ///
+    /// Writing through the reference updates both the elements and the underlying bytes,
+    /// so `final(self)` is well-formed with bytes that decode to the final elements.
+    // This is an axiom because the bytes live in separate ghost state from the `TypedValue<[T]>`,
+    // so they can't be updated through a borrow of the value alone.
+    pub axiom fn borrow_mut(tracked &mut self) -> (tracked val: &mut [T])
+        requires
+            self.wf(),
+            self.is_valid(),
+        ensures
+            val@ == old(self).value(),
+            mut_ref_ptr(val) == old(self).ptr(),
+            final(self).is_valid(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).value() == final(val)@,
+            final(self).wf(),
+    ;
+}
+
 impl<T: ?Sized> PTPhysSealed for PointsTo<T> {
 
 }
