@@ -910,9 +910,10 @@ fn add_pattern(
     mode: Mode,
     proph_var: Option<ProphVar>,
     pattern: &Pattern,
+    scrutinee_exec: bool,
 ) -> Result<(), VirErr> {
     let mut decls = vec![];
-    add_pattern_rec(ctxt, record, typing, &mut decls, outer_mode, mode, pattern)?;
+    add_pattern_rec(ctxt, record, typing, &mut decls, outer_mode, mode, pattern, scrutinee_exec)?;
     for decl in decls {
         let PatternBoundDecl { span: _, name, mode } = decl;
         typing.insert(&name, mode, proph_var.clone());
@@ -935,6 +936,7 @@ fn add_pattern_rec(
     outer_mode: Mode,
     mode: Mode,
     pattern: &Pattern,
+    scrutinee_exec: bool,
 ) -> Result<(), VirErr> {
     if matches!(&pattern.x, PatternX::Var(..) | PatternX::Binding { .. }) {
         record.erasure_modes.binder_modes.push((pattern.span.clone(), mode));
@@ -967,6 +969,7 @@ fn add_pattern_rec(
                 *copy,
                 *move_exec_to_proof_okay,
                 typing.block_ghostness,
+                scrutinee_exec,
             )?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
@@ -983,8 +986,18 @@ fn add_pattern_rec(
                 *copy,
                 *move_exec_to_proof_okay,
                 typing.block_ghostness,
+                scrutinee_exec,
             )?;
-            add_pattern_rec(ctxt, record, typing, decls, outer_mode, mode, sub_pat)?;
+            add_pattern_rec(
+                ctxt,
+                record,
+                typing,
+                decls,
+                outer_mode,
+                mode,
+                sub_pat,
+                scrutinee_exec,
+            )?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
@@ -1020,6 +1033,7 @@ fn add_pattern_rec(
                     outer_mode,
                     mode_join(field_mode, mode),
                     &binder.a,
+                    scrutinee_exec,
                 )?;
             }
             Ok(())
@@ -1027,8 +1041,26 @@ fn add_pattern_rec(
         PatternX::Or(pat1, pat2) => {
             let mut decls1 = vec![];
             let mut decls2 = vec![];
-            add_pattern_rec(ctxt, record, typing, &mut decls1, outer_mode, mode, pat1)?;
-            add_pattern_rec(ctxt, record, typing, &mut decls2, outer_mode, mode, pat2)?;
+            add_pattern_rec(
+                ctxt,
+                record,
+                typing,
+                &mut decls1,
+                outer_mode,
+                mode,
+                pat1,
+                scrutinee_exec,
+            )?;
+            add_pattern_rec(
+                ctxt,
+                record,
+                typing,
+                &mut decls2,
+                outer_mode,
+                mode,
+                pat2,
+                scrutinee_exec,
+            )?;
 
             // Rust type-checking should have made sure that both sides
             // of the pattern bound the same variables with the same types.
@@ -1075,15 +1107,24 @@ fn add_pattern_rec(
             Ok(())
         }
         PatternX::ImmutRef(sub_pat) => {
-            add_pattern_rec(ctxt, record, typing, decls, outer_mode, mode, sub_pat)
+            add_pattern_rec(ctxt, record, typing, decls, outer_mode, mode, sub_pat, scrutinee_exec)
         }
         PatternX::MutRef(sub_pat) => {
-            add_pattern_rec(ctxt, record, typing, decls, outer_mode, mode, sub_pat)
+            add_pattern_rec(ctxt, record, typing, decls, outer_mode, mode, sub_pat, scrutinee_exec)
         }
         PatternX::Slice(pats) => {
             check_match_allowed()?;
             for pat in pats.iter() {
-                add_pattern_rec(ctxt, record, typing, decls, outer_mode, mode, pat)?;
+                add_pattern_rec(
+                    ctxt,
+                    record,
+                    typing,
+                    decls,
+                    outer_mode,
+                    mode,
+                    pat,
+                    scrutinee_exec,
+                )?;
             }
             Ok(())
         }
@@ -1097,11 +1138,12 @@ fn check_binding(
     copy: bool,
     move_exec_to_proof_okay: MoveExecToProofOkay,
     block_ghostness: Ghost,
+    scrutinee_exec: bool,
 ) -> Result<(), VirErr> {
     if *by_ref == ByRef::No
         && !copy
         && matches!(move_exec_to_proof_okay, MoveExecToProofOkay::No)
-        && mode == Mode::Exec
+        && (mode == Mode::Exec || (scrutinee_exec && mode != Mode::Spec))
         && block_ghostness == Ghost::Ghost
     {
         return Err(move_exec_to_proof_error(span, "at this binding"));
@@ -1142,7 +1184,7 @@ fn check_place_has_mode(
     expected: Mode,
     access: PlaceAccess,
     outer_proph: &Proph,
-) -> Result<Proph, VirErr> {
+) -> Result<(Mode, Proph), VirErr> {
     let (mode, p) = check_place(
         ctxt,
         record,
@@ -1154,17 +1196,21 @@ fn check_place_has_mode(
         outer_proph,
     )?;
     if is_unit(&place.typ) {
-        return Ok(Proph::No);
+        return Ok((expected, Proph::No));
     }
     if !mode_le(mode, expected) {
         Err(error(&place.span, format!("expression has mode {}, expected mode {}", mode, expected)))
     } else {
-        Ok(p)
+        Ok((mode, p))
     }
 }
 
 #[derive(Clone)]
 enum PlaceAccess {
+    // FIXME: Read is currently used for patterns. This seems to be okay since ghost-mode mutable
+    // borrows off patterns are disallowed, so if being in the Read state causes us to
+    // perform an eager coercion to spec, then we know it really *is* Read.
+    // Nonetheless, this is confusing and should be fixed.
     Read,
     MutAssign(Typ),
     MutBorrow(Option<Typ>),
@@ -1217,7 +1263,16 @@ fn check_place(
             // We also apply coerce to the "expected mode" here in order to compute the optimal
             // mode to put into local_modes (see below)
 
-            let mut coerced_mode = mode_join(place_mode, expect.0);
+            // Be careful though:
+            // Coercing exec to proof is not always okay, so don't do it yet, we must let the
+            // caller decide this. This fortunately doesn't impact erasure, since there the
+            // only difference is Spec vs Proof/Exec.
+
+            let mut coerced_mode = if place_mode == Mode::Exec && expect.0 == Mode::Proof {
+                Mode::Exec
+            } else {
+                mode_join(place_mode, expect.0)
+            };
             if typing.in_assert_by_body || typing.in_proof_in_spec || typing.in_pure {
                 coerced_mode = Mode::Spec;
             }
@@ -1460,8 +1515,11 @@ fn check_place_rec_inner(
             Ok((mode, proph))
         }
         PlaceX::Temporary(e) => {
-            let (mode, proph) =
+            let (mut mode, proph) =
                 check_expr(ctxt, record, typing, outer_mode, expect, e, outer_proph)?;
+            if typing.block_ghostness == Ghost::Ghost && mode == Mode::Exec {
+                mode = Mode::Proof;
+            }
 
             if record.temporary_modes.contains_key(&place.span.id) {
                 return Err(crate::messages::internal_error(
@@ -2893,6 +2951,7 @@ fn check_expr(
                     mode1,
                     Some(proph_for_binders.clone()),
                     &arm.x.pattern,
+                    mode1 == Mode::Exec,
                 )?;
                 let arm_outer_mode = match (outer_mode, mode1) {
                     (Mode::Exec, Mode::Spec | Mode::Proof) => Mode::Proof,
@@ -3766,8 +3825,8 @@ fn check_stmt(
             if !mode_le(outer_mode, mode) {
                 return Err(error(&stmt.span, format!("pattern cannot have mode {}", mode)));
             }
-            let proph = match init.as_ref() {
-                None => Proph::No,
+            let (scrutinee_mode, proph) = match init.as_ref() {
+                None => (Mode::Spec, Proph::No),
                 Some(place) => check_place_has_mode(
                     ctxt,
                     record,
@@ -3799,7 +3858,16 @@ fn check_stmt(
                     Some(ProphVar::Yes(ProphVarReason::Explicit(stmt.span.clone())))
                 }
             };
-            add_pattern(ctxt, record, typing, outer_mode, mode, proph_var, pattern)?;
+            add_pattern(
+                ctxt,
+                record,
+                typing,
+                outer_mode,
+                mode,
+                proph_var,
+                pattern,
+                scrutinee_mode == Mode::Exec,
+            )?;
             match els.as_ref() {
                 None => {}
                 Some(expr) => {

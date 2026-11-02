@@ -1987,3 +1987,92 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot match on ghost value in exec context")
 }
+
+test_verify_one_file! {
+    #[test] move_exec_to_proof_okay verus_code! {
+        struct X { }
+
+        proof fn consume<T>(tracked t: T) { }
+
+        fn test_tracked(t: Tracked<X>) {
+            proof {
+                consume(t);
+            }
+        }
+
+        fn test_mut_ref(r: &mut X) {
+            proof {
+                consume(r);
+            }
+        }
+
+        fn test_tuple(p: (Tracked<X>, &mut X)) {
+            proof {
+                consume(p);
+            }
+        }
+
+        fn test_nested_tuple(p: ((Tracked<X>, &mut X), Tracked<X>)) {
+            proof {
+                consume(p);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] move_exec_to_proof_fail verus_code! {
+        struct X { }
+
+        proof fn consume(tracked x: X) { }
+
+        fn test(x: X) {
+            proof {
+                consume(x);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move from exec place (`x`) in non-executable context")
+}
+
+test_verify_one_file! {
+    #[test] move_exec_to_proof_ctor_tail_fail verus_code! {
+        struct X { }
+
+        struct S {
+            a: u64,
+            x: X,
+        }
+
+        fn test(s: S) {
+            proof {
+                let tracked t = S { a: 5, ..s };
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move from exec place (field `x` from the constructor tail) in non-executable context")
+}
+
+test_verify_one_file! {
+    #[test] move_exec_to_proof_let_fail verus_code! {
+        struct X { }
+
+        fn test(x: X) {
+            proof {
+                let tracked y = x;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move from exec place at this binding in non-executable context")
+}
+
+test_verify_one_file! {
+    #[test] move_exec_to_proof_match_fail verus_code! {
+        struct X { }
+
+        fn test(p: (X, u64)) {
+            proof {
+                match p {
+                    (x, _) => { }
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move from exec place at this binding in non-executable context")
+}
