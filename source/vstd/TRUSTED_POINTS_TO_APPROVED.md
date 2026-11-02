@@ -30,17 +30,23 @@ These stay trusted, with their specs unchanged:
 
 ## Well-formed parts (approved 2026-11-02)
 
-Trusted spec fns. `pt_parts_wf` and `pt_parts_wf_slice` are in vstd's trusted core; `pt_parts_wf_str` is in rustlib's `proofs/str.rs`.
+Trusted spec fns. `pt_unaligned_parts_wf`, `pt_parts_wf` and `pt_parts_wf_slice` are in vstd's trusted core;
+`pt_parts_wf_str` is in rustlib's `proofs/str.rs`.
 
 ```rust
-/// `pt_untyped` and `typed_value` are the parts of a well-formed `PointsTo<T>` for a pointer with view `ptr`.
-pub open spec fn pt_parts_wf<T>(ptr: PtrData<T>, pt_untyped: PointsToUntyped, typed_value: TypedValue<T>) -> bool {
+/// `pt_untyped` and `typed_value` are the parts of a well-formed `PointsToUnaligned<T>` for a pointer with view `ptr`.
+pub open spec fn pt_unaligned_parts_wf<T>(ptr: PtrData<T>, pt_untyped: PointsToUntyped, typed_value: TypedValue<T>) -> bool {
     &&& pt_untyped.wf()
     &&& pt_untyped.ptr()@.addr == ptr.addr
     &&& pt_untyped.ptr()@.provenance == ptr.provenance
     &&& pt_untyped.len() == size_of::<T>()
-    &&& ptr.addr as nat % align_of::<T>() == 0
     &&& typed_value.is_valid() ==> abs_decode(pt_untyped.bytes(), typed_value.value_ref())
+}
+
+/// `pt_untyped` and `typed_value` are the parts of a well-formed `PointsTo<T>` for a pointer with view `ptr`.
+pub open spec fn pt_parts_wf<T>(ptr: PtrData<T>, pt_untyped: PointsToUntyped, typed_value: TypedValue<T>) -> bool {
+    &&& pt_unaligned_parts_wf(ptr, pt_untyped, typed_value)
+    &&& ptr.addr as nat % align_of::<T>() == 0
 }
 
 /// `pt_untyped` and `typed_value` are the parts of a well-formed `PointsTo<[T]>` for a pointer with view `ptr`.
