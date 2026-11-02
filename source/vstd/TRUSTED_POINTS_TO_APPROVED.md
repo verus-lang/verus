@@ -87,99 +87,35 @@ Functions that give a permission return `(&'a PointsToUntyped, &'a TypedValue<T>
 The `borrow_mut` versions are free functions that take `ptr`.
 The current `PointsTo` versions keep their names and specs, as verified wrappers.
 
+The shared-reference rows are superseded (2026-11-02) by [TRACKED_REF_APPROVED.md](TRACKED_REF_APPROVED.md):
+their trusted versions are replaced by `ptr_shr_ref`, A (`untyped_with_typed_value_ref`), B (`ref_untyped_with_typed_value`) and C (`mut_ref_as_shr_ref`),
+and `SharedReference` is removed.
+
 | Current (verified wrapper) | Trusted version | Kind |
 |---|---|---|
-| `ptr_ref` | `ptr_ref_untyped_with_typed_value` | exec |
-| `ptr_ref_slice` | `ptr_ref_slice_untyped_with_typed_value` | exec |
-| `ptr_ref2` | `ptr_ref2_untyped_with_typed_value` | exec |
-| `ptr_ref2_ghost` | `ptr_ref2_ghost_untyped_with_typed_value` | axiom |
-| `ptr_ref2_slice_ghost` | `ptr_ref2_slice_ghost_untyped_with_typed_value` | axiom |
-| `SharedReference<T>::points_to` | `SharedReference<T>::untyped_with_typed_value` | axiom |
-| `SharedReference<[T]>::points_to` | `SharedReference<[T]>::untyped_with_typed_value` | axiom |
-| `mut_ref_to_shr_points_to` | `mut_ref_to_shr_untyped_with_typed_value` | axiom |
-| `mut_ref_to_shr_points_to_slice` | `mut_ref_to_shr_untyped_with_typed_value_slice` | axiom |
+| `ptr_ref` | ~~`ptr_ref_untyped_with_typed_value`~~ superseded: wrapper over A and `ptr_shr_ref` | exec |
+| `ptr_ref_slice` | ~~`ptr_ref_slice_untyped_with_typed_value`~~ superseded: wrapper over A and `ptr_shr_ref` | exec |
+| ~~`ptr_ref2`~~ | ~~`ptr_ref2_untyped_with_typed_value`~~ superseded: removed (`SharedReference`) | exec |
+| `ptr_ref2_ghost` | ~~`ptr_ref2_ghost_untyped_with_typed_value`~~ superseded: wrapper over A | axiom |
+| `ptr_ref2_slice_ghost` | ~~`ptr_ref2_slice_ghost_untyped_with_typed_value`~~ superseded: wrapper over A | axiom |
+| ~~`SharedReference<T>::points_to`~~ | ~~`SharedReference<T>::untyped_with_typed_value`~~ superseded: B | axiom |
+| ~~`SharedReference<[T]>::points_to`~~ | ~~`SharedReference<[T]>::untyped_with_typed_value`~~ superseded: B | axiom |
+| ~~`mut_ref_to_shr_points_to`~~ | ~~`mut_ref_to_shr_untyped_with_typed_value`~~ superseded: C | axiom |
+| ~~`mut_ref_to_shr_points_to_slice`~~ | ~~`mut_ref_to_shr_untyped_with_typed_value_slice`~~ superseded: C | axiom |
 | `PointsTo<T>::borrow_mut` | `borrow_mut_untyped_with_typed_value` | axiom |
 | `PointsTo<[T]>::borrow_mut` | `borrow_mut_slice_untyped_with_typed_value` | axiom |
-| rustlib `ptr_ref_str` | `ptr_ref_str_untyped_with_typed_value` | exec |
-| rustlib `ptr_ref2_str_ghost` | `ptr_ref2_str_ghost_untyped_with_typed_value` | axiom |
-| rustlib `SharedReference<str>::points_to` | `SharedReference<str>::untyped_with_typed_value` | axiom |
-| rustlib `mut_ref_to_shr_points_to_str` | `mut_ref_to_shr_untyped_with_typed_value_str` | axiom |
+| rustlib `ptr_ref_str` | ~~`ptr_ref_str_untyped_with_typed_value`~~ superseded: wrapper over A and `ptr_shr_ref` | exec |
+| rustlib `ptr_ref2_str_ghost` | ~~`ptr_ref2_str_ghost_untyped_with_typed_value`~~ superseded: wrapper over A | axiom |
+| ~~rustlib `SharedReference<str>::points_to`~~ | ~~`SharedReference<str>::untyped_with_typed_value`~~ superseded: B | axiom |
+| ~~rustlib `mut_ref_to_shr_points_to_str`~~ | ~~`mut_ref_to_shr_untyped_with_typed_value_str`~~ superseded: C | axiom |
 | rustlib `PointsTo<str>::borrow_mut` | `borrow_mut_str_untyped_with_typed_value` | axiom |
 
-The `str` versions keep their `inv()` conditions:
-`SharedReference<str>::untyped_with_typed_value` requires `self.value().inv()`,
-`mut_ref_to_shr_untyped_with_typed_value_str` requires `mut_ref.inv()`,
-and `borrow_mut_str_untyped_with_typed_value` ensures the final `pt_parts_wf_str` under `final(val).inv()`.
+`borrow_mut_str_untyped_with_typed_value` keeps its `inv()` condition:
+it ensures the final `pt_parts_wf_str` under `final(val).inv()`.
 
-Specs, one per family (the others follow the rules above):
+Specs of the remaining trusted versions:
 
 ```rust
-pub const fn ptr_ref_untyped_with_typed_value<T>(
-    ptr: *const T,
-    Tracked(pt_untyped): Tracked<&PointsToUntyped>,
-    Tracked(typed_value): Tracked<&TypedValue<T>>,
-) -> (v: &T)
-    requires
-        pt_parts_wf(ptr@, *pt_untyped, *typed_value),
-        typed_value.is_valid(),
-    ensures
-        v == typed_value.value(),
-    opens_invariants none
-    no_unwind
-;
-
-pub fn ptr_ref2_untyped_with_typed_value<'a, T>(
-    ptr: *const T,
-    Tracked(pt_untyped): Tracked<&PointsToUntyped>,
-    Tracked(typed_value): Tracked<&TypedValue<T>>,
-) -> (v: SharedReference<'a, T>)
-    requires
-        pt_parts_wf(ptr@, *pt_untyped, *typed_value),
-        typed_value.is_valid(),
-    ensures
-        v.value() == typed_value.value(),
-        v.ptr().addr() == ptr.addr(),
-        v.ptr()@.metadata == ptr@.metadata,
-    opens_invariants none
-    no_unwind
-;
-
-pub axiom fn ptr_ref2_ghost_untyped_with_typed_value<'a, T>(
-    ptr: *const T,
-    tracked pt_untyped: &PointsToUntyped,
-    tracked typed_value: &TypedValue<T>,
-) -> (tracked v: SharedReference<'a, T>)
-    requires
-        pt_parts_wf(ptr@, *pt_untyped, *typed_value),
-        typed_value.is_valid(),
-    ensures
-        v.value() == typed_value.value(),
-        v.ptr() == ptr,
-;
-
-impl<'a, T> SharedReference<'a, T> {
-    pub axiom fn untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, typed_value): (
-        &'a PointsToUntyped,
-        &'a TypedValue<T>,
-    ))
-        ensures
-            pt_parts_wf(self.ptr()@, *pt_untyped, *typed_value),
-            typed_value.is_valid(),
-            typed_value.value() == self.value(),
-    ;
-}
-
-pub axiom fn mut_ref_to_shr_untyped_with_typed_value<'a, T>(tracked mut_ref: &'a &'a mut T) -> (tracked (
-    pt_untyped,
-    typed_value,
-): (&'a PointsToUntyped, &'a TypedValue<T>))
-    ensures
-        pt_parts_wf(mut_ref_ptr(*mut_ref)@, *pt_untyped, *typed_value),
-        typed_value.is_valid(),
-        typed_value.value() == *old(*mut_ref),
-        *final(*mut_ref) == *old(*mut_ref),
-;
-
 pub axiom fn borrow_mut_untyped_with_typed_value<T>(
     ptr: *mut T,
     tracked pt_untyped: &mut PointsToUntyped,
@@ -251,33 +187,10 @@ pub fn into_non_null_with_allocator_untyped_with_typed_value(b: Self) -> ((ptr, 
         typed_value@.value() == *b,
         alloc.alloc_id() == b.alloc_id(),
         ptr@@.provenance.unwrap().alloc_id() == alloc.alloc_id()
-
-// core/src/slice/mod.rs, impl<T> [T]
-pub const fn as_slice_ptr_untyped_with_typed_value(&self) -> ((ptr, pt_untyped, typed_value): (
-    *const [T],
-    Tracked<&PointsToUntyped>,
-    Tracked<&TypedValue<[T]>>,
-))
-    ensures
-        ptr == shared_ref_ptr(shadow_data(self)),
-        pt_parts_wf_slice(ptr@, *pt_untyped@, *typed_value@),
-        typed_value@.is_valid(),
-        typed_value@.value_ref() == self,
-
-// core/src/str/mod.rs, impl str
-pub const fn as_str_ptr_untyped_with_typed_value(&self) -> ((ptr, pt_untyped, typed_value): (
-    *const str,
-    Tracked<&PointsToUntyped>,
-    Tracked<&TypedValue<str>>,
-))
-    requires
-        self.inv(),
-    ensures
-        ptr == shared_ref_ptr(shadow_data(self)),
-        pt_parts_wf_str(ptr@, *pt_untyped@, *typed_value@),
-        typed_value@.is_valid(),
-        typed_value@.value_ref() == self,
 ```
+
+The casts `as_slice_ptr_untyped_with_typed_value` / `as_str_ptr_untyped_with_typed_value` are superseded (2026-11-02)
+by the `as_slice_ptr` / `as_str_ptr` casts and B in [TRACKED_REF_APPROVED.md](TRACKED_REF_APPROVED.md).
 
 ## Field-access primitives (approved 2026-11-02)
 
@@ -329,8 +242,9 @@ keep their specs and move to `points_to_ops.rs`.
 - **`points_to_ops.rs` (verified, a sibling, not a child of either):**
   the `PTTypedValue` / `PTValueOps` / `PTSizedValue` traits,
   and every other `SeqPointsTo` / `PointsToByte` / `PointsToUnaligned` / `PointsTo` impl, with specs unchanged.
-- **`ptr_specs.rs`, `shared_reference.rs` (trusted only):** the trusted permission functions and the other existing trusted specs.
-- **`ptr_verified_specs.rs` (new, verified):** the `PointsTo` versions of the trusted permission functions, including `SharedReference::points_to`.
+- **`ptr_specs.rs` (trusted only):** the trusted permission functions and the other existing trusted specs.
+  (`shared_reference.rs` is removed, superseded by [TRACKED_REF_APPROVED.md](TRACKED_REF_APPROVED.md).)
+- **`ptr_verified_specs.rs` (new, verified):** the `PointsTo` versions of the trusted permission functions.
 - **`points_to_collections.rs`:** unchanged.
 
 `mod.rs` re-exports everything with globs.
