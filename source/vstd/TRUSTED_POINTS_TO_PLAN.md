@@ -51,73 +51,8 @@ The other trusted items in rustlib that use `PointsTo` / `PointsToUnaligned`.
 
 ### New trusted specs
 
-Attributes (`#[verifier::external_body]`, `#[verifier::shadow_data]`, `const`, `no_unwind`, ...) and bodies are the current ones.
-
-**`Box`** (`alloc/src/boxed.rs`):
-
-```rust
-pub unsafe fn from_raw_in_untyped_with_typed_value(
-    raw: *mut T,
-    alloc: A,
-    Tracked(pt_untyped): Tracked<PointsToUntyped>,
-    Tracked(typed_value): Tracked<TypedValue<T>>,
-) -> (out: Self)
-    where T: Sized
-    requires
-        pt_parts_wf(raw@, pt_untyped, typed_value),
-        typed_value.is_valid(),
-        raw@.provenance.unwrap().alloc_id() == alloc.alloc_id(),
-    ensures
-        typed_value.value() == *out,
-        out.alloc_id() == raw@.provenance.unwrap().alloc_id()
-    no_unwind
-
-pub fn into_non_null_with_allocator_untyped_with_typed_value(b: Self) -> ((ptr, alloc, pt_untyped, typed_value): (
-    NonNull<T>,
-    A,
-    Tracked<PointsToUntyped>,
-    Tracked<TypedValue<T>>,
-))
-    where T: Sized
-    ensures
-        pt_parts_wf(ptr@@, pt_untyped@, typed_value@),
-        typed_value@.is_valid(),
-        typed_value@.value() == *b,
-        alloc.alloc_id() == b.alloc_id(),
-        ptr@@.provenance.unwrap().alloc_id() == alloc.alloc_id()
-```
-
-**Casts from `&self`** (`core/src/slice/mod.rs`, `core/src/str/mod.rs`):
-
-```rust
-// impl<T> [T]
-pub const fn as_slice_ptr_untyped_with_typed_value(&self) -> ((ptr, pt_untyped, typed_value): (
-    *const [T],
-    Tracked<&PointsToUntyped>,
-    Tracked<&TypedValue<[T]>>,
-))
-    ensures
-        ptr == shared_ref_ptr(shadow_data(self)),
-        pt_parts_wf_slice(ptr@, *pt_untyped@, *typed_value@),
-        typed_value@.is_valid(),
-        typed_value@.value_ref() == self,
-
-// impl str
-pub const fn as_str_ptr_untyped_with_typed_value(&self) -> ((ptr, pt_untyped, typed_value): (
-    *const str,
-    Tracked<&PointsToUntyped>,
-    Tracked<&TypedValue<str>>,
-))
-    requires
-        self.inv(),
-    ensures
-        ptr == shared_ref_ptr(shadow_data(self)),
-        pt_parts_wf_str(ptr@, *pt_untyped@, *typed_value@),
-        typed_value@.is_valid(),
-        typed_value@.value_ref() == self,
-```
-
-`perm@.ptr() == shared_ref_ptr(..)` and `perm@.wf()` become `pt_parts_wf_*(ptr@, ..)`, since `ptr` is that pointer.
+The `Box` and cast specs are approved and in [TRUSTED_POINTS_TO_APPROVED.md](TRUSTED_POINTS_TO_APPROVED.md#rustlib-box-and-casts-approved-2026-11-02).
+Attributes (`#[verifier::external_body]`, `const`, ...) and bodies are the current ones.
 
 **`read_unaligned`** (`core/src/ptr/mod.rs`).
 Exec code can't branch on which variant a tracked argument is,

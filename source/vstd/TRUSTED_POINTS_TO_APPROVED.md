@@ -215,6 +215,70 @@ pub axiom fn borrow_mut_slice_untyped_with_typed_value<T>(
 ;
 ```
 
+## rustlib `Box` and casts (approved 2026-11-02)
+
+Attributes and bodies are the current ones.
+The current functions keep their names and specs, as verified wrappers.
+
+```rust
+// alloc/src/boxed.rs
+pub unsafe fn from_raw_in_untyped_with_typed_value(
+    raw: *mut T,
+    alloc: A,
+    Tracked(pt_untyped): Tracked<PointsToUntyped>,
+    Tracked(typed_value): Tracked<TypedValue<T>>,
+) -> (out: Self)
+    where T: Sized
+    requires
+        pt_parts_wf(raw@, pt_untyped, typed_value),
+        typed_value.is_valid(),
+        raw@.provenance.unwrap().alloc_id() == alloc.alloc_id(),
+    ensures
+        typed_value.value() == *out,
+        out.alloc_id() == raw@.provenance.unwrap().alloc_id()
+    no_unwind
+
+pub fn into_non_null_with_allocator_untyped_with_typed_value(b: Self) -> ((ptr, alloc, pt_untyped, typed_value): (
+    NonNull<T>,
+    A,
+    Tracked<PointsToUntyped>,
+    Tracked<TypedValue<T>>,
+))
+    where T: Sized
+    ensures
+        pt_parts_wf(ptr@@, pt_untyped@, typed_value@),
+        typed_value@.is_valid(),
+        typed_value@.value() == *b,
+        alloc.alloc_id() == b.alloc_id(),
+        ptr@@.provenance.unwrap().alloc_id() == alloc.alloc_id()
+
+// core/src/slice/mod.rs, impl<T> [T]
+pub const fn as_slice_ptr_untyped_with_typed_value(&self) -> ((ptr, pt_untyped, typed_value): (
+    *const [T],
+    Tracked<&PointsToUntyped>,
+    Tracked<&TypedValue<[T]>>,
+))
+    ensures
+        ptr == shared_ref_ptr(shadow_data(self)),
+        pt_parts_wf_slice(ptr@, *pt_untyped@, *typed_value@),
+        typed_value@.is_valid(),
+        typed_value@.value_ref() == self,
+
+// core/src/str/mod.rs, impl str
+pub const fn as_str_ptr_untyped_with_typed_value(&self) -> ((ptr, pt_untyped, typed_value): (
+    *const str,
+    Tracked<&PointsToUntyped>,
+    Tracked<&TypedValue<str>>,
+))
+    requires
+        self.inv(),
+    ensures
+        ptr == shared_ref_ptr(shadow_data(self)),
+        pt_parts_wf_str(ptr@, *pt_untyped@, *typed_value@),
+        typed_value@.is_valid(),
+        typed_value@.value_ref() == self,
+```
+
 ## Field-access primitives (approved 2026-11-02)
 
 None of them requires or ensures `wf()`.
