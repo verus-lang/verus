@@ -87,7 +87,7 @@ Functions that give a permission return `(&'a PointsToUntyped, &'a TypedValue<T>
 The `borrow_mut` versions are free functions that take `ptr`.
 The current `PointsTo` versions keep their names and specs, as verified wrappers.
 
-The shared-reference rows are superseded (2026-11-02) by [TRACKED_REF_APPROVED.md](TRACKED_REF_APPROVED.md):
+The shared-reference rows are superseded (2026-11-02) by [TRACKED_REF_TRUSTED_REVIEW.md](TRACKED_REF_TRUSTED_REVIEW.md):
 their trusted versions are replaced by `ptr_shr_ref`, A (`untyped_with_typed_value_ref`), B (`ref_untyped_with_typed_value`) and C (`mut_ref_as_shr_ref`),
 and `SharedReference` is removed.
 
@@ -190,7 +190,7 @@ pub fn into_non_null_with_allocator_untyped_with_typed_value(b: Self) -> ((ptr, 
 ```
 
 The casts `as_slice_ptr_untyped_with_typed_value` / `as_str_ptr_untyped_with_typed_value` are superseded (2026-11-02)
-by the `as_slice_ptr` / `as_str_ptr` casts and B in [TRACKED_REF_APPROVED.md](TRACKED_REF_APPROVED.md).
+by the `as_slice_ptr` / `as_str_ptr` casts and B in [TRACKED_REF_TRUSTED_REVIEW.md](TRACKED_REF_TRUSTED_REVIEW.md).
 
 ## Field-access primitives (approved 2026-11-02)
 
@@ -243,7 +243,8 @@ keep their specs and move to `points_to_ops.rs`.
   the `PTTypedValue` / `PTValueOps` / `PTSizedValue` traits,
   and every other `SeqPointsTo` / `PointsToByte` / `PointsToUnaligned` / `PointsTo` impl, with specs unchanged.
 - **`ptr_specs.rs` (trusted only):** the trusted permission functions and the other existing trusted specs.
-  (`shared_reference.rs` is removed, superseded by [TRACKED_REF_APPROVED.md](TRACKED_REF_APPROVED.md).)
+  (`shared_reference.rs`'s trusted items are superseded by [TRACKED_REF_TRUSTED_REVIEW.md](TRACKED_REF_TRUSTED_REVIEW.md),
+  except `SharedReference` itself, which stays for now.)
 - **`ptr_verified_specs.rs` (new, verified):** the `PointsTo` versions of the trusted permission functions.
 - **`points_to_collections.rs`:** unchanged.
 
