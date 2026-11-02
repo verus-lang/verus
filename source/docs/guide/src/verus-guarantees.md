@@ -3,7 +3,7 @@
 When Verus successfully runs on your program without reporting an error, what does that tell you?
 First, note that Verus only examines Rust code that the developer explicitly indicates
 should be verified, either by wrapping it in the [`verus!` macro](verus_macro_intro.md),
-or by adding the [`#[verus_spec]` attribute](exec_attr.md).  Verus does not
+or by adding the [`#[verus_spec]`](exec_attr.md) or [`#[verus_verify]`](exec_attr.md) attributes.  Verus does not
 inspect and hence cannot provide any guarantees for code that hasn't opted into
 verification.
 
@@ -28,10 +28,16 @@ Equally important are the properties that Verus does not guarantee, even when it
    that your executable code will terminate.  While Verus verifies 
    [decreases clauses](recursion.md#recursive-functions-decreases-fuel), 
    this only provides lightweight termination checking, not a guarantee of
-   program termination.  For example, a call into a Rust standard library
-   function might never return.  In general, proving termination for
-   concurrent programs is a truly complex undertaking that still requires
-   significant research and development.
+   program termination.  
+
+   Proving termination of Rust programs is quite challenging.
+   Even single-threaded programs may not terminate if 
+   they happen to a call into a Rust standard library
+   function that never returns.  Single-threaded programs 
+   can also encode recursion (e.g., [via `Rc` and interior mutability](https://stackoverflow.com/questions/78094196/how-to-implement-landins-knot-in-rust-with-closures)),
+   without explicit recursive calls.
+   Proving termination for concurrent programs is even more complex 
+   and still requires significant research and development.
 
 The guarantees Verus does provide are contingent on the following:
 1. The invocation of Verus is trusted.  Verus supports flags like
