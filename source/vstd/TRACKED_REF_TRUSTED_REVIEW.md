@@ -1,5 +1,7 @@
 # Trusted-code changes: `Tracked<&T>` with shadow data in place of `&PointsTo<T>`
 
+All the specs below are approved (2026-11-02; B as a proof axiom).
+
 ## New trusted items
 
 ### vstd, `source/vstd/raw_ptr/ptr_specs.rs`
