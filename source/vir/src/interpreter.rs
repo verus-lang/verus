@@ -1737,14 +1737,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             // Resolve the implementation for evaluation, but preserve the original trait call
             // when returning a partially evaluated expression. AIR uses the trait declaration's
             // name and type arguments, not a separate function for the implementation.
-            let original_fun = fun;
-            let original_typs = typs;
-            let (fun, typs) = resolve_call(fun, resolved_method, typs);
+            let (reduced_fun, reduced_typs) = resolve_call(fun, resolved_method, typs);
             if state.perf {
                 // Record the call for later performance analysis
-                match state.fun_calls.get_mut(fun) {
+                match state.fun_calls.get_mut(reduced_fun) {
                     None => {
-                        state.fun_calls.insert(fun.clone(), 1);
+                        state.fun_calls.insert(reduced_fun.clone(), 1);
                     }
                     Some(count) => {
                         *count += 1;
@@ -1755,18 +1753,18 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             let new_args: Result<Vec<Exp>, VirErr> =
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
             let new_args = Arc::new(new_args?);
-            if let Some(array_fn) = is_array_fn(&fun) {
+            if let Some(array_fn) = is_array_fn(&reduced_fun) {
                 eval_array(ctx, state, array_fn, exp, &new_args)
-            } else if let Some(seq_fn) = is_sequence_fn(&fun) {
+            } else if let Some(seq_fn) = is_sequence_fn(&reduced_fun) {
                 eval_seq(ctx, state, seq_fn, exp, &new_args)
             } else {
                 // Try to find the function's body
-                match ctx.fun_ssts.get(fun) {
+                match ctx.fun_ssts.get(reduced_fun) {
                     Some(func)
                         if func.x.axioms.spec_axioms.is_some() && func.x.kind.inline_okay() =>
                     {
                         let memoize = func.x.attrs.memoize;
-                        match state.lookup_call(&fun, &typs, &new_args, memoize) {
+                        match state.lookup_call(&reduced_fun, &reduced_typs, &new_args, memoize) {
                             Some(prev_result) => {
                                 state.cache_hits += 1;
                                 Ok(prev_result)
@@ -1784,7 +1782,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     let formal_id = formal.x.name.clone();
                                     env.insert(formal_id, actual.clone()).unwrap();
                                 }
-                                for (formal, actual) in typ_params.iter().zip(typs.iter()) {
+                                for (formal, actual) in typ_params.iter().zip(reduced_typs.iter()) {
                                     type_env.insert(formal.clone(), actual.clone()).unwrap();
                                 }
                                 // Proactively apply the type environment to the body.
@@ -1809,13 +1807,19 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 } else {
                                     // return unevaluated call
                                     exp_new(Call(
-                                        CallFun::Fun(original_fun.clone(), resolved_method.clone()),
-                                        original_typs.clone(),
+                                        CallFun::Fun(fun.clone(), resolved_method.clone()),
+                                        typs.clone(),
                                         new_args.clone(),
                                     ))
                                 };
                                 state.env = prev_env;
-                                state.insert_call(fun, &typs, &new_args, &result.clone()?, memoize);
+                                state.insert_call(
+                                    reduced_fun,
+                                    &reduced_typs,
+                                    &new_args,
+                                    &result.clone()?,
+                                    memoize,
+                                );
                                 result
                             }
                         }
@@ -1823,8 +1827,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     _ => {
                         // We don't have the body for this function, so we can't simplify further
                         exp_new(Call(
-                            CallFun::Fun(original_fun.clone(), resolved_method.clone()),
-                            original_typs.clone(),
+                            CallFun::Fun(fun.clone(), resolved_method.clone()),
+                            typs.clone(),
                             new_args.clone(),
                         ))
                     }
