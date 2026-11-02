@@ -1,5 +1,5 @@
 use crate::ast::*;
-use air::printer::macro_push_node;
+use air::printer::{escape, macro_push_node};
 use air::{node, nodes};
 use sise::TreeNode as Node;
 
@@ -134,26 +134,6 @@ impl<A: ToDebugSNode> ToDebugSNode for std::sync::Arc<A> {
     fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         (**self).to_node(opts)
     }
-}
-
-fn escape(s: &str) -> String {
-    let mut res = "".to_string();
-    for c in s.chars() {
-        if c == '\\' {
-            res += "\\\\";
-        } else if c.is_ascii_graphic() && c != '"' {
-            res.push(c);
-        } else if c == ' ' {
-            res.push(c);
-        } else if c == '\n' {
-            res += "\\n";
-        } else {
-            res += "\\u{";
-            res += &format!("{:x}", c as u32);
-            res += "}";
-        }
-    }
-    res
 }
 
 impl ToDebugSNode for String {

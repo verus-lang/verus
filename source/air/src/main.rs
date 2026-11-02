@@ -40,6 +40,17 @@ pub fn main() {
     opts.optopt("", "log-smt-transcript", "Log complete SMT transcript", "FILENAME");
     opts.optflag("", "ignore-unexpected-smt", "Ignore unexpected SMT output");
     opts.optflag("d", "debug", "Debug verification failures");
+    opts.optopt(
+        "",
+        "multiple-errors",
+        "After the first error in a query, look for up to this many more (default: 0)",
+        "INTEGER",
+    );
+    opts.optflag(
+        "",
+        "output-json",
+        "Print the result of each check-valid query, in order, as a JSON array on stdout",
+    );
     opts.optflag(
         "p",
         "profile",
@@ -137,61 +148,119 @@ pub fn main() {
         air_context.set_smt_transcript_log(Box::new(file));
     }
 
+    let multiple_errors: u32 = matches
+        .opt_str("multiple-errors")
+        .map(|n| n.parse().unwrap_or_else(|_| panic!("expected integer for --multiple-errors")))
+        .unwrap_or(0);
+    let output_json = matches.opt_present("output-json");
+
     // Send commands
     let mut count_errors = 0;
     let mut count_verified = 0;
+    let mut json_results: Vec<serde_json::Value> = Vec::new();
     let reporter = Reporter {};
     for command in commands.iter() {
-        let result =
+        let is_check_valid = matches!(**command, CommandX::CheckValid(..));
+        let mut result =
             air_context.command(&*message_interface, &reporter, &command, Default::default());
-        match result {
-            ValidityResult::Valid(usage_info) => {
-                if let CommandX::CheckValid(_) = &**command {
-                    count_verified += 1;
+        let mut is_first_check = true;
+        let mut checks_remaining = multiple_errors;
+        let mut only_check_earlier = false;
+        let mut json_status = "valid";
+        let mut json_errors: Vec<serde_json::Value> = Vec::new();
+        loop {
+            match result {
+                ValidityResult::Valid(usage_info) => {
+                    if is_check_valid && is_first_check {
+                        count_verified += 1;
 
-                    if let UsageInfo::UsedAxioms(axioms) = usage_info {
-                        println!(
-                            "Query used named axioms: {}",
-                            axioms
-                                .iter()
-                                .map(|x| (**x).clone())
-                                .collect::<Vec<String>>()
-                                .join(", ")
-                        )
+                        if let UsageInfo::UsedAxioms(axioms) = usage_info {
+                            println!(
+                                "Query used named axioms: {}",
+                                axioms
+                                    .iter()
+                                    .map(|x| (**x).clone())
+                                    .collect::<Vec<String>>()
+                                    .join(", ")
+                            )
+                        }
                     }
                 }
-            }
-            ValidityResult::TypeError(err) => {
-                panic!("Type error: {}", err);
-            }
-            ValidityResult::Invalid(_m, None, _assert_id) => {
-                count_errors += 1;
-                println!("Error at unknown location");
-            }
-            ValidityResult::Invalid(_m, Some(err), _assert_id) => {
-                count_errors += 1;
-                let err: &AirMessage =
-                    err.downcast_ref().expect("unexpected value in Any -> Message conversion");
-                println!("Error at {}", err.note);
-                for AirMessageLabel { note, .. } in &err.labels {
-                    println!("Additional error detail at {}", note);
+                ValidityResult::TypeError(err) => {
+                    panic!("Type error: {}", err);
+                }
+                ValidityResult::Invalid(_m, None, _assert_id) => {
+                    if is_first_check {
+                        count_errors += 1;
+                    }
+                    json_status = "invalid";
+                    json_errors
+                        .push(serde_json::json!({ "note": null, "span": null, "labels": [] }));
+                    println!("Error at unknown location");
+                }
+                ValidityResult::Invalid(m, Some(err), _assert_id) => {
+                    if is_first_check {
+                        count_errors += 1;
+                    }
+                    json_status = "invalid";
+                    let err: &AirMessage =
+                        err.downcast_ref().expect("unexpected value in Any -> Message conversion");
+                    println!("Error at {}", err.note);
+                    for AirMessageLabel { note, .. } in &err.labels {
+                        println!("Additional error detail at {}", note);
+                    }
+                    json_errors.push(serde_json::json!({
+                        "note": err.note,
+                        "span": err.span.as_ref().map(|s| s.as_string.clone()),
+                        "labels": err.labels.iter().map(|l| serde_json::json!({
+                            "note": l.note,
+                            "span": l.span.as_string,
+                        })).collect::<Vec<_>>(),
+                    }));
+                    if m.is_some() && checks_remaining > 0 {
+                        // Like Verus's --multiple-errors: disable the failed assertion and retry
+                        is_first_check = false;
+                        if !only_check_earlier {
+                            checks_remaining -= 1;
+                            if checks_remaining == 0 {
+                                only_check_earlier = true;
+                            }
+                        }
+                        result = air_context.check_valid_again(
+                            &reporter,
+                            only_check_earlier,
+                            Default::default(),
+                        );
+                        continue;
+                    }
+                }
+                ValidityResult::Canceled => {
+                    if is_first_check {
+                        count_errors += 1;
+                    }
+                    if json_status == "valid" {
+                        json_status = "canceled";
+                    }
+                    if !profile_all {
+                        println!(
+                            "Resource limit (rlimit) exceeded; consider rerunning with --profile for more details"
+                        );
+                    } else {
+                        println!("Resource limit (rlimit) exceeded");
+                    }
+                }
+                ValidityResult::UnexpectedOutput(err) => {
+                    panic!("Unexpected output from solver: {}", err);
                 }
             }
-            ValidityResult::Canceled => {
-                count_errors += 1;
-                if !profile_all {
-                    println!(
-                        "Resource limit (rlimit) exceeded; consider rerunning with --profile for more details"
-                    );
-                } else {
-                    println!("Resource limit (rlimit) exceeded");
-                }
-            }
-            ValidityResult::UnexpectedOutput(err) => {
-                panic!("Unexpected output from solver: {}", err);
-            }
+            break;
         }
-        if matches!(**command, CommandX::CheckValid(..)) {
+        if is_check_valid {
+            json_results.push(serde_json::json!({
+                "query": json_results.len(),
+                "result": json_status,
+                "errors": json_errors,
+            }));
             air_context.finish_query();
         }
     }
@@ -207,4 +276,7 @@ pub fn main() {
         }
     }
     println!("Verification results:: {} verified, {} errors", count_verified, count_errors);
+    if output_json {
+        println!("{}", serde_json::Value::Array(json_results));
+    }
 }

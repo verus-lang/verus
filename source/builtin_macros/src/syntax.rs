@@ -5696,14 +5696,14 @@ pub(crate) fn rewrite_proof_decl(
                     ss.to_tokens(&mut new_stream);
                 }
             }
-            Stmt::Macro(mut mac) => {
-                // Due to the difference between function-like macro vs proceudure macro,
-                // Macros used inside proof block need to explicitly call proof or proof_decl.
-                // We should avoid entering proof mode if calling a macro.
-                visitor.visit_macro_mut(&mut mac.mac);
-                mac.to_tokens(&mut new_stream);
+            Stmt::Macro(mac) => {
+                // The expansion could introduce exec code or bindings into this scope,
+                // but proof_decl erases all of its output during compilation.
+                return quote_spanned!(mac.mac.span() => ::core::compile_error!(
+                    "Macro statements are not supported in proof_decl!; invoke declaration macros in the surrounding scope or use proof! for proof statements"
+                )).into();
             }
-            _ => {
+            Stmt::Item(_) | Stmt::Expr(_, _) => {
                 let span = ss.span();
                 let mut proof_expr = Expr::Unary(ExprUnary {
                     attrs: vec![],
