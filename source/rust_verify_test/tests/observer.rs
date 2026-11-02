@@ -1138,13 +1138,16 @@ test_verify_one_file_with_options! {
 // ---- Version provenance --------------------------------------------------------------------
 //
 // One function lowers to several queries; each version must be paired with its statement in that
-// query. Lines are positions in the generated test file.
+// query. Expected lines are relative to the contents of `verus_code!`.
 
 fn first_pass(d: &D, var: &str, n: usize) -> Vec<(String, u32, String)> {
     d.version_correlations.iter().filter(|(v, _, _)| v.starts_with(var)).take(n).cloned().collect()
 }
 fn vc(v: &str, line: u32, k: &str) -> (String, u32, String) {
-    (v.to_string(), line, k.to_string())
+    // `verify_one_file` adds both preludes and a blank line; `verus_code!` adds the
+    // opening `verus!` line.
+    let offset = FEATURE_PRELUDE.lines().count() + USE_PRELUDE.lines().count() + 2;
+    (v.to_string(), line + offset as u32, k.to_string())
 }
 
 test_verify_one_file_with_options! {
@@ -1169,9 +1172,9 @@ test_verify_one_file_with_options! {
         let d = parse(&err);
         assert_eq!(first_pass(&d, "x@", 4), vec![
             // loop query: the two body assignments
-            vc("x@1", 33, "Assign"), vc("x@2", 34, "Assign"),
+            vc("x@1", 9, "Assign"), vc("x@2", 10, "Assign"),
             // function query: the assignment before the loop, then the loop-entry havoc
-            vc("x@1", 27, "Assign"), vc("x@2", 29, "Havoc"),
+            vc("x@1", 3, "Assign"), vc("x@2", 5, "Havoc"),
         ]);
     }
 }
@@ -1193,8 +1196,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => {
         let d = parse(&err);
         assert_eq!(first_pass(&d, "x@", 4), vec![
-            vc("x@1", 29, "Havoc"), vc("x@2", 32, "Assign"),
-            vc("x@1", 28, "Assign"), vc("x@2", 29, "Havoc"),
+            vc("x@1", 5, "Havoc"), vc("x@2", 8, "Assign"),
+            vc("x@1", 4, "Assign"), vc("x@2", 5, "Havoc"),
         ]);
     }
 }
@@ -1219,7 +1222,7 @@ test_verify_one_file_with_options! {
         let got: std::collections::BTreeSet<_> =
             d.version_correlations.iter().filter(|(v, _, _)| v.starts_with("x@")).cloned().collect();
         let want: std::collections::BTreeSet<_> =
-            [vc("x@1", 28, "Assign"), vc("x@2", 29, "Assign"), vc("x@1", 31, "Assign")].into();
+            [vc("x@1", 4, "Assign"), vc("x@2", 5, "Assign"), vc("x@1", 7, "Assign")].into();
         assert_eq!(got, want);
     }
 }
