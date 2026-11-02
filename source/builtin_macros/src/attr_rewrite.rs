@@ -48,6 +48,7 @@ use crate::{
     unerased_proxies::VERUS_UNERASED_PROXY,
 };
 
+// rust_verify relies on this name (see VERUS_VERIFIED_PREFIX in rust_verify/src/rust_to_vir_expr.rs)
 pub const VERIFIED: &str = "_VERUS_VERIFIED";
 
 pub const DUAL_SPEC_PREFIX: &str = "__VERUS_SPEC";
@@ -1121,18 +1122,28 @@ fn rewrite_with_expr(
 ) -> Vec<verus_syn::Stmt> {
     let verus_syn::WithSpecOnExpr { inputs, outputs, follows, erased_fields, .. } = call_with_spec;
 
+    // The call as it appears in the compiled program (where it is not renamed).
+    // rust_verify checks that it resolves to the twin of the renamed verified callee.
+    let mut compiled_call: Option<Expr> = None;
     if outputs.is_some() || inputs.len() > 0 {
+        let mut original = expr.clone();
+        // Nested proof_with! calls in the arguments were already rewritten;
+        // use their compiled-program versions in the copy.
+        StripProofWithCallee { func: proof_with_callee_path(expr.span()).to_string() }
+            .visit_expr_mut(&mut original);
         match expr {
             syn::Expr::Call(syn::ExprCall { func, .. }) => {
                 if let Expr::Path(path) = func.as_mut() {
                     let x = &path.path.segments.last().unwrap().ident;
                     path.path.segments.last_mut().unwrap().ident =
                         syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
+                    compiled_call = Some(original);
                 }
             }
             syn::Expr::MethodCall(syn::ExprMethodCall { method, .. }) => {
                 let x = &method;
                 *method = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
+                compiled_call = Some(original);
             }
             syn::Expr::Try(syn::ExprTry { expr, .. }) => {
                 let call_with_spec = verus_syn::WithSpecOnExpr {
@@ -1199,7 +1210,47 @@ fn rewrite_with_expr(
     if let Some((_, follow)) = follows {
         apply_follows(&erase, expr, follow.into_token_stream());
     }
+    if let Some(compiled_call) = compiled_call {
+        // `proof_with_callee(verified_expr, compiled_call)`, where verified_expr is the call
+        // to `_VERUS_VERIFIED_f`, possibly wrapped by the `=>` outputs block and `|=` tuple.
+        // This is a syn node (not Verbatim), so that an enclosing proof_with! can find it.
+        let span = expr.span();
+        let func: syn::ExprPath = syn::parse2(proof_with_callee_path(span)).unwrap();
+        let mut args = syn::punctuated::Punctuated::new();
+        args.push(expr.clone());
+        args.push(compiled_call);
+        *expr = Expr::Call(syn::ExprCall {
+            attrs: vec![],
+            func: Box::new(Expr::Path(func)),
+            paren_token: syn::token::Paren(span),
+            args,
+        });
+    }
     x_declares
+}
+
+fn proof_with_callee_path(span: proc_macro2::Span) -> TokenStream {
+    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::proof_with_callee)
+}
+
+/// Replace `proof_with_callee(verified_expr, compiled_call)` (as emitted above,
+/// `func` is the emitted path) by `compiled_call`
+struct StripProofWithCallee {
+    func: String,
+}
+
+impl VisitMut for StripProofWithCallee {
+    fn visit_expr_mut(&mut self, e: &mut Expr) {
+        if let Expr::Call(syn::ExprCall { func, args, .. }) = e {
+            if let Expr::Path(path) = func.as_ref() {
+                if args.len() == 2 && path.to_token_stream().to_string() == self.func {
+                    *e = args[1].clone();
+                    return;
+                }
+            }
+        }
+        syn::visit_mut::visit_expr_mut(self, e);
+    }
 }
 
 /// Rewrite the const function and return a proxy function.

@@ -7,10 +7,33 @@ layout: default
         <h1>Overview</h1>
     </div>-->
     <div class="main relative card header">
-      Please see below for <a href="#publications">research publications</a> about and using Verus, 
+      Please see below for <a href="#news">news coverage</a> of Verus,
+      <a href="#publications">research publications</a> about and using Verus, 
       as well as <a href="#projects">projects</a> built using Verus.
       To add your work here, please open a pull request that adds a new file to the 
       <a href="https://github.com/verus-lang/verus/tree/main/source/docs/publications-and-projects">'source/docs/publications-and-projects' directory</a>.
+    </div>
+
+    <div class="main relative card header">
+        <h1>Verus — In the News</h1><a name="news"/>
+    </div>
+    <div class="main relative card header">
+        <ul class="publication">
+
+        {% assign news = site.projects | where: "type", "news" | sort: "date" | reverse %}
+        {% for item in news %}
+            <li>
+                <div>
+                  <a href="{{ item.link }}" class="paper-title">{{ item.title }}</a>
+                </div>
+                <div style="display: inline-block" class="publication-location">
+                  {{ item.source }},
+                </div>
+                {{ item.date | date: "%B %-d, %Y" }}
+            </li>
+        {% endfor %}
+
+        </ul>
     </div>
 
     <div class="main relative card header">
