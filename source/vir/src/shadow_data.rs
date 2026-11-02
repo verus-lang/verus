@@ -114,7 +114,8 @@ fn shadow_data_stm(ctxt: &Ctxt, state: &mut State, stm: &Stm) -> Stm {
             }
         }
         StmX::Assign { lhs, rhs } => {
-            if let ExpX::VarLoc(lhs_x) = &lhs.dest.x {
+            let lhs_dest = if let ExpX::Loc(loc) = &lhs.dest.x { loc } else { &lhs.dest };
+            if let ExpX::VarLoc(lhs_x) = &lhs_dest.x {
                 if let Some(lhs_shadow) = ctxt.shadows.get(lhs_x) {
                     if let ExpX::Var(rhs_x) = &rhs.x {
                         if let Some(rhs_shadow) = ctxt.shadows.get(rhs_x) {
