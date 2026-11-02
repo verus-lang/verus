@@ -1,7 +1,7 @@
 # Approved: no trusted specs over `PointsTo` / `PointsToUnaligned`
 
 Approved specs from [TRUSTED_POINTS_TO_PLAN.md](TRUSTED_POINTS_TO_PLAN.md).
-Names are provisional ([Names](TRUSTED_POINTS_TO_PLAN.md#names)).
+Names are provisional ([For review](TRUSTED_POINTS_TO_PLAN.md#for-review)).
 
 ## `is_disjoint` (approved 2026-11-02)
 
