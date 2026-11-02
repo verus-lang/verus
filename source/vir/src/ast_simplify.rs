@@ -741,7 +741,7 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
                     user_mut: _,
                     typ: _,
                     copy: _,
-                    move_exec_to_proof_okay: crate::ast::MoveExecToProofOkay::Yes,
+                    move_exec_to_proof_okay: _,
                 }) => Ok(vec![stmt.clone()]),
                 _ => {
                     let mut stmts: Vec<Stmt> = Vec::new();
@@ -765,7 +765,7 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
                     user_mut: _,
                     typ: _,
                     copy: _,
-                    move_exec_to_proof_okay: crate::ast::MoveExecToProofOkay::Yes,
+                    move_exec_to_proof_okay: _,
                 })
             ) =>
         {
