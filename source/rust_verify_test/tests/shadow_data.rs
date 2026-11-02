@@ -101,17 +101,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_exec_only1 verus_code! {
-        #[verifier::shadow_data]
-        proof fn test() {}
-    } => Err(err) => assert_vir_error_msg(err, "shadow_data only allowed for exec functions")
-}
-
-test_verify_one_file! {
     #[test] test_exec_only2 verus_code! {
         #[verifier::shadow_data]
         spec fn test() -> int { 5 }
-    } => Err(err) => assert_vir_error_msg(err, "shadow_data only allowed for exec functions")
+    } => Err(err) => assert_vir_error_msg(err, "shadow_data only allowed for exec and proof functions")
 }
 
 test_verify_one_file! {
