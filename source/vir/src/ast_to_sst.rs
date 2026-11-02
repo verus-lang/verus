@@ -4661,6 +4661,7 @@ fn stmt_to_stm(
                     by_ref: ByRef::No,
                     typ,
                     copy: _,
+                    move_exec_to_proof_okay: _,
                 }) => (name, typ),
                 _ => panic!("internal error: Decl should have been simplified by ast_simplify"),
             };

@@ -210,7 +210,7 @@ impl ExprOrPlace {
                 let rk = if bctx.is_copy(ty) {
                     vir::ast::ReadKind::Copy
                 } else {
-                    vir::ast::ReadKind::Move
+                    vir::ast::ReadKind::Move(bctx.is_proof_to_exec_move_okay(ty))
                 };
                 let rk = UnfinalizedReadKind {
                     preliminary_kind: rk,
@@ -847,12 +847,14 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
             pat_typ = actual_pat_typ;
 
             let name = local_to_var(x, canonical.local_id);
+            let node_type = bctx.types.node_type(pat.hir_id);
             let binding = vir::ast::PatternBinding {
                 name,
                 user_mut: Some(mutable),
                 by_ref: vir_by_ref,
                 typ: var_typ.clone(),
-                copy: bctx.is_copy(bctx.types.node_type(pat.hir_id)),
+                copy: bctx.is_copy(node_type),
+                move_exec_to_proof_okay: bctx.is_proof_to_exec_move_okay(node_type),
             };
             match subpat {
                 None => PatternX::Var(binding),
@@ -5246,7 +5248,11 @@ fn ctor_tail_get_taken_fields<'tcx>(
             TypingEnv::post_analysis(bctx.ctxt.tcx, bctx.fun_id),
             field_def.ty(bctx.ctxt.tcx, args),
         );
-        let rk = if bctx.is_copy(ty) { vir::ast::ReadKind::Copy } else { vir::ast::ReadKind::Move };
+        let rk = if bctx.is_copy(ty) {
+            vir::ast::ReadKind::Copy
+        } else {
+            vir::ast::ReadKind::Move(bctx.is_proof_to_exec_move_okay(ty))
+        };
         let rk = UnfinalizedReadKind { preliminary_kind: rk, id: bctx.ctxt.unique_read_kind_id() };
         let ident = field_ident_from_rust(field_def.name.as_str());
         taken_fields.push((ident, rk));

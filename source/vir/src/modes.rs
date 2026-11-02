@@ -1,12 +1,14 @@
 use crate::ast::{
     AssertQueryMode, AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail,
     DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, FunctionStub, InvAtomicity,
-    ItemKind, Label, LogicalOp, LoopSource, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName,
-    OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind,
-    SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind,
-    UnwindSpec, VarIdent, VirErr,
+    ItemKind, Label, LogicalOp, LoopSource, Mode, ModeCoercion, MoveExecToProofOkay, MultiOp,
+    MutRefFutureSourceName, OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place,
+    PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr,
+    UnfinalizedReadKind, UnwindSpec, VarIdent, VirErr,
 };
-use crate::ast_util::{get_field, is_unit, path_as_vstd_name, typ_to_diagnostic_str};
+use crate::ast_util::{
+    get_field, is_unit, path_as_vstd_name, place_to_friendly_string, typ_to_diagnostic_str,
+};
 use crate::def::{Spanned, user_local_name};
 use crate::messages::{Span, error, internal_error};
 use crate::messages::{error_bare, error_with_label};
@@ -950,16 +952,38 @@ fn add_pattern_rec(
 
     match &pattern.x {
         PatternX::Wildcard => Ok(()),
-        PatternX::Var(PatternBinding { name: x, user_mut: _, by_ref, typ: _, copy: _ }) => {
-            check_binding(&pattern.span, by_ref, mode)?;
+        PatternX::Var(PatternBinding {
+            name: x,
+            user_mut: _,
+            by_ref,
+            typ: _,
+            copy,
+            move_exec_to_proof_okay,
+        }) => {
+            check_binding(
+                &pattern.span,
+                by_ref,
+                mode,
+                *copy,
+                *move_exec_to_proof_okay,
+                typing.block_ghostness,
+            )?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
         PatternX::Binding {
-            binding: PatternBinding { name: x, user_mut: _, by_ref, typ: _, copy: _ },
+            binding:
+                PatternBinding { name: x, user_mut: _, by_ref, typ: _, copy, move_exec_to_proof_okay },
             sub_pat,
         } => {
-            check_binding(&pattern.span, by_ref, mode)?;
+            check_binding(
+                &pattern.span,
+                by_ref,
+                mode,
+                *copy,
+                *move_exec_to_proof_okay,
+                typing.block_ghostness,
+            )?;
             add_pattern_rec(ctxt, record, typing, decls, outer_mode, mode, sub_pat)?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
@@ -1066,7 +1090,22 @@ fn add_pattern_rec(
     }
 }
 
-fn check_binding(span: &Span, by_ref: &ByRef, mode: Mode) -> Result<(), VirErr> {
+fn check_binding(
+    span: &Span,
+    by_ref: &ByRef,
+    mode: Mode,
+    copy: bool,
+    move_exec_to_proof_okay: MoveExecToProofOkay,
+    block_ghostness: Ghost,
+) -> Result<(), VirErr> {
+    if *by_ref == ByRef::No
+        && !copy
+        && matches!(move_exec_to_proof_okay, MoveExecToProofOkay::No)
+        && mode == Mode::Exec
+        && block_ghostness == Ghost::Ghost
+    {
+        return Err(move_exec_to_proof_error(span, "at this binding"));
+    }
     match (by_ref, mode) {
         (ByRef::MutRef, Mode::Spec) => {
             Err(error(span, "a `ref mut` binding in a pattern is not allowed in spec mode"))
@@ -1686,6 +1725,11 @@ fn type_is_non_exec(ctxt: &Ctxt, typ: &Typ) -> bool {
     }
 }
 
+fn move_exec_to_proof_error(span: &Span, s: &str) -> VirErr {
+    error(span, format!("cannot move from exec place {s:} in non-executable context"))
+        .help("consider using `vstd::modes::forget`")
+}
+
 fn check_expr_has_mode(
     ctxt: &Ctxt,
     record: &mut Record,
@@ -2139,6 +2183,16 @@ fn check_expr(
                         _ => read_kind.preliminary_kind,
                     };
                     record.read_kind_finals.insert(read_kind.id, final_read_kind);
+
+                    if arg_mode == Mode::Exec
+                        && typing.block_ghostness == Ghost::Ghost
+                        && matches!(final_read_kind, ReadKind::Move(MoveExecToProofOkay::No))
+                    {
+                        return Err(move_exec_to_proof_error(
+                            &expr.span,
+                            &format!("(field `{taken_field:}` from the constructor tail)"),
+                        ));
+                    }
                 }
             }
 
@@ -3512,6 +3566,16 @@ fn check_expr(
             };
             record.read_kind_finals.insert(read_kind.id, final_read_kind);
 
+            if mode == Mode::Exec
+                && typing.block_ghostness == Ghost::Ghost
+                && matches!(final_read_kind, ReadKind::Move(MoveExecToProofOkay::No))
+            {
+                return Err(move_exec_to_proof_error(
+                    &expr.span,
+                    &format!("(`{:}`)", place_to_friendly_string(place)),
+                ));
+            }
+
             let p = if matches!(read_kind.preliminary_kind, ReadKind::SpecAfterBorrow) {
                 Proph::Yes(ProphReason {
                     span: expr.span.clone(),
@@ -3662,6 +3726,7 @@ fn check_stmt(
                         by_ref: _,
                         typ: _,
                         copy: _,
+                        move_exec_to_proof_okay: _,
                     }),
                     None,
                 ) => {
