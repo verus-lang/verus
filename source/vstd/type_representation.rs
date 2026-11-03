@@ -101,12 +101,6 @@ impl AbstractByte {
 /// (2) Any `tracked` value of the type has at least one abstract byte sequence satisfying `encode`. 
 /// This requirement is on `tracked` values only because this restricts lemma to values satisfying the type invariant.
 /// (3) Any abstract byte sequence that encodes a value of the type must decode into the same value.
-/// Note on definition ordering: the `requires`/`ensures` of the proof functions below are stated in the trait,
-/// so Verus does not record that an implementation's proof functions depend on that implementation's own
-/// spec functions (including inherited defaults such as `encode`/`decode`). Depending on the rest of the crate,
-/// the spec function definitions may then be emitted after the proofs that need them.
-/// As a workaround, implementations restate their postconditions in terms of `Self::encode`/`Self::decode`
-/// in the proof bodies, which records the dependency.
 pub trait TypeRepresentation where Self: MetaSized {
     /// Is encoding allowed for this type?
     /// Because `can_be_encoded` is a precondition for `abs_encode_impl` and `abs_can_be_encoded_impl`,
@@ -236,9 +230,6 @@ impl TypeRepresentation for bool {
     }
 
     proof fn encoding_size(v: &bool, shadow_data: ShadowData<bool>, b: Seq<AbstractByte>) {
-        // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-        assert(Self::encode(v, shadow_data, b) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
-        assert(Self::decode(b, v, shadow_data) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
     }
 
     proof fn encoding_independent_of_shadow_data(
@@ -247,9 +238,6 @@ impl TypeRepresentation for bool {
         shadow_data2: ShadowData<Self>,
         b: Seq<AbstractByte>,
     ) {
-        // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-        assert(Self::encode(v, shadow_data1, b) == Self::encode(v, shadow_data2, b));
-        assert(Self::decode(b, v, shadow_data1) == Self::decode(b, v, shadow_data2));
     }
 
     proof fn encoding_exists(tracked v: &bool, shadow_data: ShadowData<bool>) -> (b: Seq<AbstractByte>) {
@@ -263,14 +251,10 @@ impl TypeRepresentation for bool {
                 None,
             ),
         ];
-        // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-        assert(Self::encode(v, shadow_data, b));
         b
     }
 
     proof fn encoding_invertible(v: &bool, shadow_data: ShadowData<bool>, b: Seq<AbstractByte>) {
-        // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-        assert(Self::decode(b, v, shadow_data));
     }
 }
 
@@ -402,9 +386,6 @@ macro_rules! unsigned_int_encoding {
                     broadcast use endian_to_bytes_to_endian;
 
                     unsigned_int_max_values();
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data, b) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
-                    assert(Self::decode(b, v, shadow_data) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
                 }
 
                 proof fn encoding_independent_of_shadow_data(
@@ -413,24 +394,16 @@ macro_rules! unsigned_int_encoding {
                     shadow_data2: ShadowData<Self>,
                     b: Seq<AbstractByte>,
                 ) {
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data1, b) == Self::encode(v, shadow_data2, b));
-                    assert(Self::decode(b, v, shadow_data1) == Self::decode(b, v, shadow_data2));
                 }
 
                 proof fn encoding_exists(tracked v: &$int, shadow_data: ShadowData<$int>) -> (b: Seq<AbstractByte>) {
-                    let b = endian_to_bytes(EndianNat::<u8>::from_nat(v as nat, size_of::<$int>()), None);
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data, b));
-                    b
+                    endian_to_bytes(EndianNat::<u8>::from_nat(v as nat, size_of::<$int>()), None)
                 }
 
                 proof fn encoding_invertible(v: &$int, shadow_data: ShadowData<$int>, b: Seq<AbstractByte>) {
                     broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
                     unsigned_int_max_values();
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::decode(b, v, shadow_data));
                 }
             }
 
@@ -729,9 +702,6 @@ macro_rules! signed_int_encoding {
                     broadcast use endian_to_bytes_to_endian;
 
                     unsigned_int_max_values();
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data, b) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
-                    assert(Self::decode(b, v, shadow_data) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
                 }
 
                 proof fn encoding_independent_of_shadow_data(
@@ -740,24 +710,16 @@ macro_rules! signed_int_encoding {
                     shadow_data2: ShadowData<Self>,
                     b: Seq<AbstractByte>,
                 ) {
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data1, b) == Self::encode(v, shadow_data2, b));
-                    assert(Self::decode(b, v, shadow_data1) == Self::decode(b, v, shadow_data2));
                 }
 
                 proof fn encoding_exists(tracked v: &$int, shadow_data: ShadowData<$int>) -> (b: Seq<AbstractByte>) {
-                    let b = endian_to_bytes(EndianNat::<u8>::from_nat(signed_to_unsigned(v as int, size_of::<$int>()), size_of::<$int>()), None);
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data, b));
-                    b
+                    endian_to_bytes(EndianNat::<u8>::from_nat(signed_to_unsigned(v as int, size_of::<$int>()), size_of::<$int>()), None)
                 }
 
                 proof fn encoding_invertible(v: &$int, shadow_data: ShadowData<$int>, b: Seq<AbstractByte>) {
                     broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
                     unsigned_int_max_values();
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::decode(b, v, shadow_data));
                 }
             }
 
@@ -882,9 +844,6 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                 }
 
                 proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data, b) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
-                    assert(Self::decode(b, v, shadow_data) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
                 }
 
                 proof fn encoding_independent_of_shadow_data(
@@ -893,9 +852,6 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                     shadow_data2: ShadowData<Self>,
                     b: Seq<AbstractByte>,
                 ) {
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data1, b) == Self::encode(v, shadow_data2, b));
-                    assert(Self::decode(b, v, shadow_data1) == Self::decode(b, v, shadow_data2));
                 }
 
                 proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
@@ -921,8 +877,6 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                     let b = prefix.add(suffix);
                     assert(b.subrange(0, size_of::<usize>() as int) == prefix);
                     assert(b.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int) == suffix);
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data, b));
                     b
                 }
 
@@ -939,8 +893,6 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                         arbitrary(),
                         b.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int),
                     );
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::decode(b, v, shadow_data));
                 }
             }
 
@@ -1077,9 +1029,6 @@ impl<T: ?Sized> TypeRepresentation for &T
     }
 
     proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-        // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-        assert(Self::encode(v, shadow_data, b) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
-        assert(Self::decode(b, v, shadow_data) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
     }
 
     proof fn encoding_independent_of_shadow_data(
@@ -1088,9 +1037,6 @@ impl<T: ?Sized> TypeRepresentation for &T
         shadow_data2: ShadowData<Self>,
         b: Seq<AbstractByte>,
     ) {
-        // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-        assert(Self::encode(v, shadow_data1, b) == Self::encode(v, shadow_data2, b));
-        assert(Self::decode(b, v, shadow_data1) == Self::decode(b, v, shadow_data2));
     }
 
     proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
@@ -1114,15 +1060,11 @@ impl<T: ?Sized> TypeRepresentation for &T
         let b = prefix.add(suffix);
         assert(b.subrange(0, size_of::<usize>() as int) == prefix);
         assert(b.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int) == suffix);
-        // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-        assert(Self::encode(v, shadow_data, b));
         b
     }
 
     proof fn encoding_invertible(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
         <*const T as TypeRepresentation>::encoding_invertible(&shared_ref_ptr(shadow_data), arbitrary(), b);
-        // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-        assert(Self::decode(b, v, shadow_data));
     }
 }
 
@@ -1169,9 +1111,6 @@ macro_rules! impl_type_representation_for_zero_sized_type {
 
                 proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
                     <Self as ZeroSizedTypeRepresentation>::layout_of_zero_sized_repr();
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data, b) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
-                    assert(Self::decode(b, v, shadow_data) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
                 }
 
                 proof fn encoding_independent_of_shadow_data(
@@ -1180,21 +1119,13 @@ macro_rules! impl_type_representation_for_zero_sized_type {
                     shadow_data2: ShadowData<Self>,
                     b: Seq<AbstractByte>,
                 ) {
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data1, b) == Self::encode(v, shadow_data2, b));
-                    assert(Self::decode(b, v, shadow_data1) == Self::decode(b, v, shadow_data2));
                 }
 
                 proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
-                    let b = Seq::<AbstractByte>::empty();
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data, b));
-                    b
+                    Seq::<AbstractByte>::empty()
                 }
 
                 proof fn encoding_invertible(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::decode(b, v, shadow_data));
                 }
             }
         }
@@ -1265,16 +1196,11 @@ macro_rules! impl_type_representation_for_primitive_repr {
 
                 proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
                     let tracked p = <$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive_tracked(v);
-                    let b = <$primitive as TypeRepresentation>::encoding_exists(&p, arbitrary());
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data, b));
-                    b
+                    <$primitive as TypeRepresentation>::encoding_exists(&p, arbitrary())
                 }
 
                 proof fn encoding_invertible(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
                     <$primitive as TypeRepresentation>::encoding_invertible(&<$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive(*v), arbitrary(), b);
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::decode(b, v, shadow_data));
                 }
 
                 $spec_mod spec fn encode_no_shadow_data(value: &Self, bytes: Seq<AbstractByte>) -> bool {
@@ -1288,9 +1214,6 @@ macro_rules! impl_type_representation_for_primitive_repr {
                 proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
                     <$name as PrimitiveTypeRepresentation<$primitive>>::layout_of_primitive_repr();
                     <$primitive as TypeRepresentation>::encoding_size(&<$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive(*v), arbitrary(), b);
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data, b) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
-                    assert(Self::decode(b, v, shadow_data) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
                 }
 
                 proof fn encoding_independent_of_shadow_data(
@@ -1299,9 +1222,6 @@ macro_rules! impl_type_representation_for_primitive_repr {
                     shadow_data2: ShadowData<Self>,
                     b: Seq<AbstractByte>,
                 ) {
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data1, b) == Self::encode(v, shadow_data2, b));
-                    assert(Self::decode(b, v, shadow_data1) == Self::decode(b, v, shadow_data2));
                 }
             }
         }
@@ -1368,16 +1288,11 @@ macro_rules! impl_type_representation_for_transparent_repr {
 
                 proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
                     let tracked i = <$name as TransparentTypeRepresentation<$inner>>::to_inner_tracked(v);
-                    let b = <$inner as TypeRepresentation>::encoding_exists(&i, arbitrary());
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data, b));
-                    b
+                    <$inner as TypeRepresentation>::encoding_exists(&i, arbitrary())
                 }
 
                 proof fn encoding_invertible(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
                     <$inner as TypeRepresentation>::encoding_invertible(&<$name as TransparentTypeRepresentation<$inner>>::to_inner(*v), arbitrary(), b);
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::decode(b, v, shadow_data));
                 }
 
                 $spec_mod spec fn encode_no_shadow_data(value: &Self, bytes: Seq<AbstractByte>) -> bool {
@@ -1391,9 +1306,6 @@ macro_rules! impl_type_representation_for_transparent_repr {
                 proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
                     <$name as TransparentTypeRepresentation<$inner>>::layout_of_transparent_repr();
                     <$inner as TypeRepresentation>::encoding_size(&<$name as TransparentTypeRepresentation<$inner>>::to_inner(*v), arbitrary(), b);
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data, b) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
-                    assert(Self::decode(b, v, shadow_data) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
                 }
 
                 proof fn encoding_independent_of_shadow_data(
@@ -1402,9 +1314,6 @@ macro_rules! impl_type_representation_for_transparent_repr {
                     shadow_data2: ShadowData<Self>,
                     b: Seq<AbstractByte>,
                 ) {
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data1, b) == Self::encode(v, shadow_data2, b));
-                    assert(Self::decode(b, v, shadow_data1) == Self::decode(b, v, shadow_data2));
                 }
             }
         }
@@ -1472,16 +1381,11 @@ macro_rules! impl_type_representation_for_scalar_range_repr {
                 proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
                     <$name as ScalarRangeTypeRepresentation<$inner>>::valid_scalar_range_repr(v);
                     let tracked i = <$name as TransparentTypeRepresentation<$inner>>::to_inner_tracked(v);
-                    let b = <$inner as TypeRepresentation>::encoding_exists(&i, arbitrary());
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data, b));
-                    b
+                    <$inner as TypeRepresentation>::encoding_exists(&i, arbitrary())
                 }
 
                 proof fn encoding_invertible(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
                     <$inner as TypeRepresentation>::encoding_invertible(&<$name as TransparentTypeRepresentation<$inner>>::to_inner(*v), arbitrary(), b);
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::decode(b, v, shadow_data));
                 }
 
                 $spec_mod spec fn encode_no_shadow_data(value: &Self, bytes: Seq<AbstractByte>) -> bool {
@@ -1499,9 +1403,6 @@ macro_rules! impl_type_representation_for_scalar_range_repr {
                 proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
                     <$name as TransparentTypeRepresentation<$inner>>::layout_of_transparent_repr();
                     <$inner as TypeRepresentation>::encoding_size(&<$name as TransparentTypeRepresentation<$inner>>::to_inner(*v), arbitrary(), b);
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data, b) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
-                    assert(Self::decode(b, v, shadow_data) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
                 }
 
                 proof fn encoding_independent_of_shadow_data(
@@ -1510,9 +1411,6 @@ macro_rules! impl_type_representation_for_scalar_range_repr {
                     shadow_data2: ShadowData<Self>,
                     b: Seq<AbstractByte>,
                 ) {
-                    // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-                    assert(Self::encode(v, shadow_data1, b) == Self::encode(v, shadow_data2, b));
-                    assert(Self::decode(b, v, shadow_data1) == Self::decode(b, v, shadow_data2));
                 }
             }
         }
@@ -1572,24 +1470,15 @@ impl<T: TypeRepresentation> TypeRepresentation for [T] {
         shadow_data2: ShadowData<[T]>,
         b: Seq<AbstractByte>,
     ) {
-        // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-        assert(Self::encode(v, shadow_data1, b) == Self::encode(v, shadow_data2, b));
-        assert(Self::decode(b, v, shadow_data1) == Self::decode(b, v, shadow_data2));
     }
 
     proof fn encoding_size(v: &[T], shadow_data: ShadowData<[T]>, b: Seq<AbstractByte>) {
         broadcast use layout_of_slices;
 
-        // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-        assert(Self::encode(v, shadow_data, b) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
-        assert(Self::decode(b, v, shadow_data) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
     }
 
     proof fn encoding_exists(tracked v: &[T], shadow_data: ShadowData<[T]>) -> (b: Seq<AbstractByte>) {
-        let b = slice_encoding_exists_prefix(v, v@.len() as int);
-        // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-        assert(Self::encode(v, shadow_data, b));
-        b
+        slice_encoding_exists_prefix(v, v@.len() as int)
     }
 
     proof fn encoding_invertible(v: &[T], shadow_data: ShadowData<[T]>, b: Seq<AbstractByte>) {
@@ -1601,8 +1490,6 @@ impl<T: TypeRepresentation> TypeRepresentation for [T] {
         ) by {
             T::encoding_invertible(&v@[i], arbitrary(), b.subrange(i * s, (i + 1) * s));
         }
-        // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
-        assert(Self::decode(b, v, shadow_data));
     }
 }
 
