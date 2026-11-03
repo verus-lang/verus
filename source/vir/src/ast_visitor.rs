@@ -331,17 +331,19 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             }
             ExprX::AirStmt(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Nondeterministic => R::ret(|| expr_new(expr.x.clone())),
-            ExprX::Call { target, args, post_args, body } => {
+            ExprX::Call { target, args, post_args, body, unwind_path } => {
                 let ct = self.visit_call_target(target)?;
                 let es = self.visit_exprs(args)?;
                 let pa = self.visit_opt_expr(post_args)?;
                 let bd = self.visit_opt_expr(body)?;
+                let up = self.visit_opt_expr(unwind_path)?;
                 R::ret(|| {
                     expr_new(ExprX::Call {
                         target: R::get(ct),
                         args: R::get_vec_a(es),
                         post_args: R::get_opt(pa),
                         body: R::get_opt(bd),
+                        unwind_path: R::get_opt(up),
                     })
                 })
             }

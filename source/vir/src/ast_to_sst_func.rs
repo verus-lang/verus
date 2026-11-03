@@ -281,6 +281,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                 )]),
                 post_args: None,
                 body: None,
+                unwind_path: None,
             },
         );
         let view_call = SpannedTyped::new(
@@ -306,6 +307,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                     )]),
                     post_args: None,
                     body: None,
+                    unwind_path: None,
                 },
             )),
         );

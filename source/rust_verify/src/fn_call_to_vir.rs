@@ -357,7 +357,13 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
     Ok(bctx.spanned_typed_new(
         expr.span,
         &expr_typ()?,
-        ExprX::Call { target, args: Arc::new(vir_args), post_args: None, body: call_body },
+        ExprX::Call {
+            target,
+            args: Arc::new(vir_args),
+            post_args: None,
+            body: call_body,
+            unwind_path: None,
+        },
     ))
 }
 
@@ -501,7 +507,8 @@ pub(crate) fn call_overloaded_method<'tcx>(
     };
     let call_target =
         CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, call_target_attrs);
-    let x = ExprX::Call { target: call_target, args, post_args: None, body: None };
+    let x =
+        ExprX::Call { target: call_target, args, post_args: None, body: None, unwind_path: None };
 
     Ok(bctx.spanned_typed_new(span, &expr_typ, x))
 }
@@ -2321,6 +2328,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 args: Arc::new(vir_args),
                 post_args: None,
                 body: None,
+                unwind_path: None,
             });
         }
         VerusItem::ErasedGhostValue
