@@ -253,6 +253,20 @@ pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> 
     unsafe { &*ptr }
 }
 
+/// Ghost equivalent of `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+/// Because this doesn't constitute a retag, the returned reference's pointer is `ptr` itself.
+#[verifier::shadow_data]
+pub axiom fn ptr_ref_tracked<'a, T>(ptr: *const T, tracked perm: &'a PointsTo<T>) -> (tracked v: &'a T)
+    requires
+        perm.ptr() == ptr,
+        perm.is_valid(),
+        perm.wf(),
+    ensures
+        v == perm.value(),
+        shared_ref_ptr(shadow_data(v)) == ptr,
+;
+
 // /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 // /// The memory pointed to by `ptr` must be initialized.
 // TODO: move to rustlib
@@ -285,6 +299,20 @@ pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<
 {
     unsafe { &*ptr }
 }
+
+/// Ghost equivalent of `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+/// Because this doesn't constitute a retag, the returned reference's pointer is `ptr` itself.
+#[verifier::shadow_data]
+pub axiom fn ptr_ref_tracked_slice<'a, T>(ptr: *const [T], tracked perm: &'a PointsTo<[T]>) -> (tracked v: &'a [T])
+    requires
+        perm.ptr() == ptr,
+        perm.is_valid(),
+        perm.wf(),
+    ensures
+        v@ == perm.value(),
+        shared_ref_ptr(shadow_data(v)) == ptr,
+;
 
 /// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
