@@ -3,7 +3,7 @@
 use super::prelude::*;
 use super::type_representation::*;
 use crate::vstd::group_vstd_default;
-use crate::raw_ptr::shared_ref_ptr;
+use super::raw_ptr::shared_ref_ptr;
 use core::marker::MetaSized;
 
 verus! {

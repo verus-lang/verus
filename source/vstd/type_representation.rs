@@ -382,6 +382,22 @@ macro_rules! unsigned_int_encoding {
                     }
                 }
 
+                open spec fn encode(value: &Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                    if Self::encoding_depends_on_shadow_data() {
+                        Self::encode_with_shadow_data(value, shadow_data, bytes)
+                    } else {
+                        Self::encode_no_shadow_data(value, bytes)
+                    }
+                }
+
+                open spec fn decode(bytes: Seq<AbstractByte>, value: &Self, shadow_data: ShadowData<Self>) -> bool {
+                    if Self::encoding_depends_on_shadow_data() {
+                        Self::decode_with_shadow_data(bytes, value, shadow_data)
+                    } else {
+                        Self::decode_no_shadow_data(bytes, value)
+                    }
+                }
+
                 proof fn encoding_size(v: &$int, shadow_data: ShadowData<$int>, b: Seq<AbstractByte>) {
                     broadcast use endian_to_bytes_to_endian;
 
@@ -698,6 +714,22 @@ macro_rules! signed_int_encoding {
                     }
                 }
 
+                open spec fn encode(value: &Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                    if Self::encoding_depends_on_shadow_data() {
+                        Self::encode_with_shadow_data(value, shadow_data, bytes)
+                    } else {
+                        Self::encode_no_shadow_data(value, bytes)
+                    }
+                }
+
+                open spec fn decode(bytes: Seq<AbstractByte>, value: &Self, shadow_data: ShadowData<Self>) -> bool {
+                    if Self::encoding_depends_on_shadow_data() {
+                        Self::decode_with_shadow_data(bytes, value, shadow_data)
+                    } else {
+                        Self::decode_no_shadow_data(bytes, value)
+                    }
+                }
+
                 proof fn encoding_size(v: &$int, shadow_data: ShadowData<$int>, b: Seq<AbstractByte>) {
                     broadcast use endian_to_bytes_to_endian;
 
@@ -841,6 +873,22 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                         &&& value@.provenance == prov
                     }
                     &&& <<T as core::ptr::Pointee>::Metadata>::decode(suffix, &value@.metadata, arbitrary())
+                }
+
+                open spec fn encode(value: &Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                    if Self::encoding_depends_on_shadow_data() {
+                        Self::encode_with_shadow_data(value, shadow_data, bytes)
+                    } else {
+                        Self::encode_no_shadow_data(value, bytes)
+                    }
+                }
+
+                open spec fn decode(bytes: Seq<AbstractByte>, value: &Self, shadow_data: ShadowData<Self>) -> bool {
+                    if Self::encoding_depends_on_shadow_data() {
+                        Self::decode_with_shadow_data(bytes, value, shadow_data)
+                    } else {
+                        Self::decode_no_shadow_data(bytes, value)
+                    }
                 }
 
                 proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
@@ -1107,6 +1155,22 @@ macro_rules! impl_type_representation_for_zero_sized_type {
 
                 $spec_mod spec fn decode_with_shadow_data(bytes: Seq<AbstractByte>, value: &Self, shadow_data: ShadowData<Self>) -> bool {
                     arbitrary()
+                }
+
+                open spec fn encode(value: &Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                    if Self::encoding_depends_on_shadow_data() {
+                        Self::encode_with_shadow_data(value, shadow_data, bytes)
+                    } else {
+                        Self::encode_no_shadow_data(value, bytes)
+                    }
+                }
+
+                open spec fn decode(bytes: Seq<AbstractByte>, value: &Self, shadow_data: ShadowData<Self>) -> bool {
+                    if Self::encoding_depends_on_shadow_data() {
+                        Self::decode_with_shadow_data(bytes, value, shadow_data)
+                    } else {
+                        Self::decode_no_shadow_data(bytes, value)
+                    }
                 }
 
                 proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
@@ -1513,6 +1577,7 @@ proof fn slice_encoding_exists_prefix<T: TypeRepresentation>(tracked v: &[T], n:
     broadcast use layout_of_sized;
 
     let s = size_of::<T>() as int;
+    lemma_mul_basics(s);
     if n == 0 {
         Seq::empty()
     } else {
@@ -1523,7 +1588,6 @@ proof fn slice_encoding_exists_prefix<T: TypeRepresentation>(tracked v: &[T], n:
         assert(e_bytes.len() == s);
         let b = prev + e_bytes;
         lemma_mul_is_distributive_add_other_way(s, n - 1, 1);
-        lemma_mul_basics(s);
         assert(b.len() == n * s);
         assert forall|i: int| #![trigger v@[i]] 0 <= i < n implies T::encode(
             &v@[i],
