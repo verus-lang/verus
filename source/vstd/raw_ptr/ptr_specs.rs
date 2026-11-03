@@ -540,7 +540,8 @@ pub open spec fn ptr_eq_up_to_tag<T: ?Sized>(p: *const T, q: *const T) -> bool {
     ptr_mut_eq_up_to_tag(p as *mut T, q as *mut T)
 }
 
-/// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
+/// Convert a mutable reference into a raw pointer and
+/// an accompanying tracked mutable reference at that pointer.
 ///
 /// Conceptually, turning a mut ref into a ptr is just splitting it into exec and tracked components.
 /// Ideally, we wouldn't need a dedicated function for doing both of these things; we would just
@@ -560,7 +561,8 @@ pub const fn cast_mut_ref_to_ptr<T>(mut_ref: &mut T) -> ((ptr, perm): (*mut T, T
     (mut_ref as *mut T, Tracked::assume_new())
 }
 
-/// Convert a mutable reference to a slice into a raw pointer and accompanying `PointsTo` permission.
+/// Convert a mutable reference to a slice into a raw pointer and
+/// an accompanying tracked mutable reference at that pointer.
 #[verifier::external_body]
 pub const fn cast_mut_ref_slice_to_ptr<T>(mut_ref: &mut [T]) -> ((ptr, perm): (
     *mut [T],
@@ -575,7 +577,8 @@ pub const fn cast_mut_ref_slice_to_ptr<T>(mut_ref: &mut [T]) -> ((ptr, perm): (
     (mut_ref as *mut [T], Tracked::assume_new())
 }
 
-/// Convert a mutable reference to a `str` into a raw pointer and accompanying `PointsTo` permission.
+/// Convert a mutable reference to a `str` into a raw pointer and
+/// an accompanying tracked mutable reference at that pointer.
 #[verifier::external_body]
 pub const fn cast_mut_ref_str_to_ptr(mut_ref: &mut str) -> ((ptr, perm): (
     *mut str,
