@@ -2,50 +2,6 @@
 
 The trusted specs are in [TRUSTED_REVIEW.md](TRUSTED_REVIEW.md).
 
-## For review
-
-Implemented in vstd and rustlib (both build with 0 errors); not yet reviewed:
-
-1. `SeqPointsTo::from_seq` is named `from_raw_parts`.
-2. New verified primitive `SeqPointsTo::from_seq_ref`.
-3. The verified lemmas are `PointsTo<T>` / `PointsTo<[T]>` / `PointsTo<str>::lemma_pt_parts_wf`.
-4. `PointsTo::from_unaligned_mut`'s doc comment wording.
-5. rustlib's `proofs/str.rs` (approved file) gains `PointsToUnaligned<str>::borrow_byte`, `pt_parts_wf_str` and `lemma_pt_parts_wf`,
-   and `PointsTo<str>::borrow_mut` becomes a verified wrapper.
-6. Names: `*_untyped_with_typed_value` (the `SharedReference` and `Box` items),
-   and `pt_unaligned_parts_wf` / `pt_parts_wf` / `pt_parts_wf_slice` / `pt_parts_wf_str`.
-7. `mut_ref_to_shr_points_to` (+ slice, `str`) are kept as verified proof wrappers (`mut_ref_as_shr_ref`, then `ref_to_parts*`), specs unchanged.
-8. `as_slice_ptr_verus`, `as_str_ptr_verus` and the two `as_ptr_verus` are deleted;
-   callers use the casts and the new verified `shr_ref_points_to` (+ slice, `str`).
-9. `#[verifier::shadow_data]` is added to `ptr_ref` / `ptr_ref_slice` / `ptr_ref_str`, `<[T]>::get_unchecked_verus`, `str::get_unchecked`,
-   and `ExSliceIndex::get` / `index` (so they lose their `call_requires` / `call_ensures` axioms).
-
-## After review
-
-- **Rename `ptr_eq_up_to_tag`** (`*mut`) to `ptr_mut_eq_up_to_tag`
-  (4 uses: `ptr_mut_ref_join` and the three `cast_mut_ref*_to_ptr`),
-  and `const_ptr_eq_up_to_tag` (`*const`) to `ptr_eq_up_to_tag`, still defined through the `*mut` one.
-  This follows `ptr_null` / `ptr_null_mut` and `ptr_from_data` / `ptr_mut_from_data` (plain is `*const`, `_mut` is `*mut`).
-- **Rename `SeqPointsTo::from_raw_parts`** (`*mut [T]`, no `wf_basic()`) to `from_seq`,
-  and the existing `from_seq` (thin `*mut T`, ensures `wf_basic()`) to `from_seq_pt`
-  (5 uses of `from_raw_parts` in `points_to_ops.rs`, besides `from_seq`'s own body;
-  `from_seq` is used by `empty` and 4 times in `points_to_collections.rs`, not in rustlib).
-  `TYPED_POINTS_TO_APPROVED.md` and `POINTS_TO_MIGRATION.md` mention the current `from_seq`.
-- **Consistent names in `points_to_structs.rs`:** the field primitives use `raw_parts`
-  (`into_raw_parts`, `from_raw_parts`, `from_raw_parts_ref`, `as_raw_parts_mut`, and `PointsToUnaligned::from_raw_parts_mut`),
-  except the axiom `PointsTo::from_unaligned_mut`, which is the `&mut` counterpart of `PointsTo::from_raw_parts_ref`.
-  Rename it to `PointsTo::from_raw_parts_mut` (1 use, in `as_aligned_mut` in `points_to_ops.rs`;
-  also in `TRUSTED_REVIEW.md`, `TYPED_POINTS_TO_APPROVED.md`, and item 4 under "For review").
-- **Merge duplicate inherent impls in `points_to_ops.rs`** (no spec changes):
-  the spec-only blocks moved from `points_to_model.rs` repeat the headers of later proof blocks.
-  Merge each pair into one block: `impl<T: ?Sized> PointsToUnaligned<T>` (`bytes`, `is_valid`, `is_empty` / `lemma_eq_from_raw_parts`),
-  `impl<T> PointsToUnaligned<T>` (`value` / `is_disjoint_unaligned`),
-  `impl<T> PointsTo<T>` (`value` / `is_aligned`, `is_disjoint_pointsto`, `lemma_pt_parts_wf`, `borrow_mut`),
-  `impl<T> PointsTo<[T]>` (`value` / `len`, `borrow_index`, `subrange`, ...).
-  `PointsToUnaligned<[T]>` already has `value` with `len` and `borrow_index`.
-- **Stale doc link** in `shared_reference.rs` (on `ptr_ref2_untyped_with_typed_value`):
-  it links to `ptr_ref_untyped_with_typed_value`, which no longer exists.
-
 ## Later
 
 - **Remove `SharedReference`** and its trusted items once the `str` ↔ `[u8]` reference transmutes

@@ -86,15 +86,16 @@ pub const fn ptr_shr_ref<'a, T: ?Sized>(ptr: *const T, Tracked(r): Tracked<&'a T
         shared_ref_ptr(shadow_data(r)) == ptr,
     ensures
         v == r,
-        const_ptr_eq_up_to_tag(ptr, shared_ref_ptr(shadow_data(v))),
+        ptr_eq_up_to_tag(ptr, shared_ref_ptr(shadow_data(v))),
     opens_invariants none
     no_unwind
 {
     unsafe { &*ptr }
 }
 
-// `const_ptr_eq_up_to_tag(p, q)` is `ptr_eq_up_to_tag(p as *mut T, q as *mut T)` (`#[verifier::inline]`):
+// `ptr_eq_up_to_tag(p, q)` (`*const`) is `ptr_mut_eq_up_to_tag(p as *mut T, q as *mut T)` (`#[verifier::inline]`):
 // the same address, metadata, and provenance apart from the tag.
+// They were `const_ptr_eq_up_to_tag` and `ptr_eq_up_to_tag`, renamed to follow `ptr_null` / `ptr_null_mut`.
 ```
 
 **`ref_to_parts`** and `ref_to_parts_slice` (with `pt_parts_wf_slice`):
@@ -242,7 +243,8 @@ pub axiom fn is_disjoint_byte(tracked &mut self, tracked other: &Self)
 `PointsToByte`'s `PTPhys::ptr` is now `open`, defined as `byte_ptr` (it was `uninterp`).
 
 **Structural axioms**, specs unchanged, moved to `points_to_structs.rs`:
-`PointsToUnaligned::from_raw_parts_ref`, `PointsToUnaligned::from_raw_parts_mut`, `PointsTo::from_unaligned_mut`.
+`PointsToUnaligned::from_raw_parts_ref`, `PointsToUnaligned::from_raw_parts_mut`,
+`PointsTo::from_raw_parts_mut` (renamed from `from_unaligned_mut`, to match the other field primitives).
 None requires or ensures `wf()`.
 `SeqPointsTo::from_seq_mut` and `TypedValue::from_elems_ref` / `from_elems_mut` are unchanged.
 
@@ -278,7 +280,7 @@ pub fn ptr_ref2_untyped_with_typed_value<'a, T>(
         typed_value.is_valid(),
     ensures
         v.value() == typed_value.value(),
-        const_ptr_eq_up_to_tag(v.ptr(), ptr),
+        ptr_eq_up_to_tag(v.ptr(), ptr),
     opens_invariants none
     no_unwind
 {
@@ -304,7 +306,7 @@ pub axiom fn ptr_ref2_ghost_untyped_with_typed_value<'a, T>(
 ```
 
 **Spec change:** `ptr_ref2`'s ensures was `v.ptr().addr() == ptr.addr()` and `v.ptr()@.metadata == ptr@.metadata`;
-it is now `const_ptr_eq_up_to_tag(v.ptr(), ptr)`, which also gives the provenance apart from the tag, as `ptr_shr_ref` does.
+it is now `ptr_eq_up_to_tag(v.ptr(), ptr)`, which also gives the provenance apart from the tag, as `ptr_shr_ref` does.
 
 ## rustlib
 

@@ -124,9 +124,9 @@ and nothing in the trusted files depends on them.
 | `ptr_model.rs` | the module docs and model notes, `AllocId` and `global_alloc_id`, `ProvenanceData`, `provenance_properties`, `ptr_addr_in_bounds`, `Metadata`, `CovariantMetadata`, `PtrData`, the `View` impls for `*mut T` / `*const T`; the inverse functions (`ptr_mut_from_data`, `tracked_ptr_mut_from_data`, `ptr_from_data`, `axiom_ptr_mut_from_data`, `view_reverse_for_eq`, `ptrs_mut_eq`, `ptrs_mut_eq_sized`); `group_raw_ptr_axioms` |
 | `ptr_specs.rs` | the pointer `==` `assume_specification`s, null pointers, casts, `addr` / `with_addr`; the reference specs (`ptr_shr_ref`, `ref_to_parts*`, `ref_from_parts*`, `mut_ref_as_shr_ref`, `mut_ref_from_parts*`, `ptr_mut_ref_join`, …); `cast_mut_ref_*`; `allocate` / `deallocate` |
 | `shared_reference.rs` | `SharedReference` and its items over a permission's parts (`pt_untyped_and_typed_value`, `ptr_ref2*_untyped_with_typed_value`) |
-| `points_to_model.rs` | the `PTPhys` and `PTProperties` traits (`PTPhys` sealed by `PTPhysSealed`); `PointsToByte` with its `PTPhys` / `PTProperties` impls (its axioms) and `View`; `SeqPointsTo`: the struct, its `PTPhys` impl, closed accessors, field primitives (`tracked_seq_pt`, `tracked_seq_pt_mut`, `into_seq`, `from_raw_parts`, `from_seq_ref`) and M5; `PointsToUntyped`'s `View`, `bytes` and `wf`; `TypedValue`, with `tracked_copy`, `valid_ref`, `from_elems_ref` and M1; `pt_unaligned_parts_wf`, `pt_parts_wf`, `pt_parts_wf_slice` |
+| `points_to_model.rs` | the `PTPhys` and `PTProperties` traits (`PTPhys` sealed by `PTPhysSealed`); `PointsToByte` with its `PTPhys` / `PTProperties` impls (its axioms) and `View`; `SeqPointsTo`: the struct, its `PTPhys` impl, closed accessors, field primitives (`tracked_seq_pt`, `tracked_seq_pt_mut`, `into_seq`, `from_seq`, `from_seq_ref`) and M5; `PointsToUntyped`'s `View`, `bytes` and `wf`; `TypedValue`, with `tracked_copy`, `valid_ref`, `from_elems_ref` and M1; `pt_unaligned_parts_wf`, `pt_parts_wf`, `pt_parts_wf_slice` |
 | `points_to_structs.rs` | the `PointsToUnaligned` and `PointsTo` structs: their `PTPhysSealed` impls, closed accessors, field primitives, which say nothing about `wf` (`tracked_pt_untyped`, `tracked_typed_value`, `tracked_pt_unaligned`, `into_raw_parts`, `from_raw_parts`, `from_raw_parts_ref`, `as_raw_parts_mut`, `lemma_ext`), and M3, M4 |
-| `points_to_ops.rs` | the `PTTypedValue`, `PTValueOps` and `PTSizedValue` traits, with their default bodies; `SeqPointsTo`'s `PTProperties` impl and structural operations (`index_mut`, `from_seq`, `empty`, `split_basic`, `join_basic`, `subrange_basic`); `PointsToUntyped`'s proofs; `PointsToUnaligned`'s and `PointsTo`'s `View`, inherent spec fns (`bytes`, `is_valid`, `value`, …) and all their trait impls; the aligned/unaligned conversions; the slice permissions' `len`, `borrow_index`, `subrange` and borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`); `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`, `lemma_pt_parts_wf`, `borrow_mut`; `group_points_to_lemmas` |
+| `points_to_ops.rs` | the `PTTypedValue`, `PTValueOps` and `PTSizedValue` traits, with their default bodies; `SeqPointsTo`'s `PTProperties` impl and structural operations (`index_mut`, `from_seq_pt`, `empty`, `split_basic`, `join_basic`, `subrange_basic`); `PointsToUntyped`'s proofs; `PointsToUnaligned`'s and `PointsTo`'s `View`, inherent spec fns (`bytes`, `is_valid`, `value`, …) and all their trait impls; the aligned/unaligned conversions; the slice permissions' `len`, `borrow_index`, `subrange` and borrowed constructors (`from_untyped_ref`, `from_untyped_with_value_ref`); `is_aligned`, `is_disjoint_pointsto`, `is_disjoint_unaligned`, `lemma_pt_parts_wf`, `borrow_mut`; `group_points_to_lemmas` |
 | `ptr_verified_specs.rs` | the `PointsTo` versions of the trusted functions over a permission's parts: `ptr_ref`, `ptr_ref_slice`, `ptr_mut_ref`, `ptr_mut_ref_slice`, `ptr_ref2`, `ptr_ref2_ghost`, `ptr_ref2_slice_ghost`, `SharedReference::points_to`, `shr_ref_points_to*`, `mut_ref_to_shr_points_to*` |
 | `points_to_collections.rs` | `PointsToRaw` (all of it); the typed `SeqPointsTo` impl (`impl<T> SeqPointsTo<T, PointsTo<T>>`), including its `wf`, and its `View`; the sequence → slice conversions (`as_slice_pt`, `as_slice_pt_mut`); `group_points_to_collections_lemmas`. Nothing else depends on it. |
 
@@ -171,7 +171,7 @@ the pointer `==` and `addr` `assume_specification`s and the `cast_*` functions;
 `pt_unaligned_parts_wf`, `pt_parts_wf`, `pt_parts_wf_slice`.
 
 **vstd `raw_ptr/points_to_structs.rs`:**
-`PointsToUnaligned::from_raw_parts_ref`, `from_raw_parts_mut` (M3); `PointsTo::from_unaligned_mut` (M4).
+`PointsToUnaligned::from_raw_parts_ref`, `from_raw_parts_mut` (M3); `PointsTo::from_raw_parts_mut` (M4).
 
 **Elsewhere in vstd:**
 `seq.rs`: the `Seq` tracked operations, including `tracked_borrow_subrange`, `tracked_split_borrow_mut`, `tracked_add_borrow`, `tracked_add_borrow_mut`;
@@ -256,7 +256,7 @@ so with the default, `self.wf()` doesn't give `pt_unaligned.wf()`, which every d
 ([phase 0, item 17](TYPED_POINTS_TO_IMPL_PLAN.md#phase-0-pending-checks)).
 
 Approved; the code is in `points_to_model.rs`.
-Axioms: `PointsTo::from_unaligned_mut` (M4).
+Axioms: `PointsTo::from_raw_parts_mut` (M4).
 
 ### `points_to_ops.rs`: `SeqPointsTo`'s `PTProperties` and structural operations (phase 1b)
 
@@ -301,7 +301,7 @@ Approved; the code is in `points_to_collections.rs`.
 
 ### `points_to_collections.rs`: typed `SeqPointsTo` (phase 1b)
 
-`from_seq`, `empty`, `into_seq`, `tracked_seq_pt(_mut)` and `index_mut` have no typed versions.
+`from_seq_pt`, `empty`, `into_seq`, `tracked_seq_pt(_mut)` and `index_mut` have no typed versions.
 There is no `SeqPointsTo<T, PointsToUnaligned<T>>`,
 so there are no sequence aligned/unaligned conversions.
 

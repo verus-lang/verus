@@ -265,7 +265,7 @@ call `provenance_not_none` and `ptr_bounds` for them.
 
 | Function | Notes |
 |---|---|
-| `from_seq(perms, ptr)`, `into_seq`, `empty(ptr)` | `from_seq` takes the base `*mut T` and ensures `wf_basic()`; requires `ptr_addr_in_bounds(ptr)` |
+| `from_seq_pt(perms, ptr)` (was `from_seq`), `into_seq`, `empty(ptr)` | `from_seq_pt` takes the base `*mut T` and ensures `wf_basic()`; requires `ptr_addr_in_bounds(ptr)`. `from_seq(perms, ptr)` takes the whole `*mut [T]` and says nothing about `wf_basic()` |
 | `tracked_seq_pt`, `tracked_seq_pt_mut`, `index_mut(i)` | the `&mut` ones give `final(self).wf_basic()` conditionally (not `wf()`): re-establish each element's `wf()` with `stays_wf` |
 | `zero_sized(ptr, length)` | ensures `wf()` |
 | `split(mid)`, `join(other)` | ensure `wf()` and relate the bytes |
