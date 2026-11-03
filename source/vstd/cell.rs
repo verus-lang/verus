@@ -9,7 +9,7 @@ use super::invariant::*;
 use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
-pub use super::raw_ptr::MemContents;
+pub use super::raw_ptr::TypedValue;
 use super::set::*;
 use super::*;
 
@@ -93,7 +93,7 @@ pub tracked struct PointsTo<V> {
 
 pub ghost struct PointsToData<V> {
     pub pcell: CellId,
-    pub mem_contents: MemContents<V>,
+    pub mem_contents: TypedValue<V>,
 }
 
 #[doc(hidden)]
@@ -129,7 +129,7 @@ impl<V> PointsTo<V> {
     pub uninterp spec fn id(&self) -> CellId;
 
     /// The contents of the cell, either unitialized or initialized to some `V`.
-    pub uninterp spec fn mem_contents(&self) -> MemContents<V>;
+    pub uninterp spec fn mem_contents(&self) -> TypedValue<V>;
 
     pub open spec fn view(self) -> PointsToData<V> {
         PointsToData { pcell: self.id(), mem_contents: self.mem_contents() }
@@ -138,13 +138,13 @@ impl<V> PointsTo<V> {
     /// Is this cell initialized?
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
-        self.mem_contents().is_init()
+        self.mem_contents().is_valid()
     }
 
     /// Is this cell uninitialized?
     #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
-        self.mem_contents().is_uninit()
+        self.mem_contents().is_empty()
     }
 
     /// Value of the cell (if initialized)
@@ -167,7 +167,7 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub const fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
-            pt.1@@ == pcell_points![ pt.0.id() => MemContents::Uninit ],
+            pt.1@@ == pcell_points![ pt.0.id() => TypedValue::Empty ],
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
         (p, Tracked::assume_new())
@@ -177,7 +177,9 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
-            pt.1@@ == pcell_points! [ pt.0.id() => MemContents::Init(v) ],
+            pt.1@@.pcell == pt.0.id(),
+            pt.1@@.mem_contents.is_valid(),
+            pt.1@@.mem_contents.value() == v,
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::new(v)) };
         (p, Tracked::assume_new())
@@ -187,9 +189,11 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
-            old(perm)@ == pcell_points![ self.id() => MemContents::Uninit ],
+            old(perm)@ == pcell_points![ self.id() => TypedValue::Empty ],
         ensures
-            final(perm)@ == pcell_points![ self.id() => MemContents::Init(v) ],
+            final(perm)@.pcell == self.id(),
+            final(perm)@.mem_contents.is_valid(),
+            final(perm)@.mem_contents.value() == v,
         opens_invariants none
         no_unwind
     {
@@ -206,7 +210,7 @@ impl<V> PCell<V> {
             old(perm).is_init(),
         ensures
             final(perm).id() == old(perm)@.pcell,
-            final(perm).mem_contents() == MemContents::Uninit,
+            final(perm).mem_contents() == TypedValue::Empty,
             v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -226,7 +230,8 @@ impl<V> PCell<V> {
             old(perm).is_init(),
         ensures
             final(perm).id() == old(perm)@.pcell,
-            final(perm).mem_contents() == MemContents::Init(in_v),
+            final(perm).mem_contents().is_valid(),
+            final(perm).mem_contents().value() == in_v,
             out_v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -300,7 +305,8 @@ impl<V: Copy> PCell<V> {
             old(perm).is_init(),
         ensures
             final(perm).id() == old(perm)@.pcell,
-            final(perm).mem_contents() == MemContents::Init(in_v),
+            final(perm).mem_contents().is_valid(),
+            final(perm).mem_contents().value() == in_v,
         opens_invariants none
         no_unwind
     {

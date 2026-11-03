@@ -217,21 +217,19 @@ impl<A> Seq<A> {
         unimplemented!()
     }
 
+    /// Take a tracked subrange of a sequence.
     #[verifier(external_body)]
-    pub proof fn tracked_mut_borrow(tracked &mut self, i: int) -> (tracked ret: &mut A)
+    pub proof fn tracked_borrow_subrange(tracked &self, i: int, j: int) -> (tracked ret: &Self)
         requires
-            0 <= i < self.len(),
+            0 <= i <= j <= self.len(),
         ensures
-            *ret == old(self)[i],
-            final(self)[i] == *final(ret),
-            final(self).len() == old(self).len(),
-            forall|j: int| 0 <= j < final(self).len() && j != i ==> final(self)[j] == old(self)[j],
+            *ret == self.subrange(i, j),
     {
         unimplemented!()
     }
 
     #[verifier(external_body)]
-    pub proof fn tracked_mut_borrow_subrange(tracked &mut self, i: int, j: int) -> (tracked ret:
+    pub proof fn tracked_borrow_subrange_mut(tracked &mut self, i: int, j: int) -> (tracked ret:
         &mut Self)
         requires
             0 <= i <= j <= self.len(),
@@ -244,6 +242,45 @@ impl<A> Seq<A> {
     {
         unimplemented!()
     }
+
+    /// Split a tracked mutable borrow of a sequence into two at index `mid`.
+    #[verifier(external_body)]
+    pub proof fn tracked_split_borrow_mut(tracked &mut self, mid: int) -> (tracked (s1, s2): (
+        &mut Self,
+        &mut Self,
+    ))
+        requires
+            0 <= mid <= self.len(),
+        ensures
+            *s1 == old(self).take(mid),
+            *s2 == old(self).skip(mid),
+            *final(self) == *final(s1) + *final(s2),
+    {
+        unimplemented!()
+    }
+
+    /// Combine tracked borrows of two sequences into one borrow of their concatenation.
+    pub axiom fn tracked_add_borrow<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked ret:
+        &'a Self)
+        ensures
+            *ret == *self + *other,
+    ;
+
+    /// Combine tracked mutable borrows of two sequences into one mutable borrow of their concatenation
+    /// (the inverse of `tracked_split_borrow_mut`).
+    /// If the concatenation keeps its length,
+    /// its final value splits back into `self`'s and `other`'s at `self`'s length.
+    pub axiom fn tracked_add_borrow_mut<'a>(
+        tracked &'a mut self,
+        tracked other: &'a mut Self,
+    ) -> (tracked ret: &'a mut Self)
+        ensures
+            *ret == *old(self) + *old(other),
+            final(ret).len() == ret.len() ==> {
+                &&& *final(self) == final(ret).take(old(self).len() as int)
+                &&& *final(other) == final(ret).skip(old(self).len() as int)
+            },
+    ;
 
     pub proof fn tracked_push(tracked &mut self, tracked v: A)
         ensures

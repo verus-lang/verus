@@ -27,6 +27,8 @@ use super::layout::*;
 use super::prelude::*;
 use super::set::group_set_axioms;
 #[cfg(verus_keep_ghost)]
+use super::transmute::{group_transmute_axioms, transmute_post, transmute_pre_points_to};
+#[cfg(verus_keep_ghost)]
 use super::type_representation::*;
 use crate::vstd::endian::*;
 use crate::vstd::group_vstd_default;
@@ -274,65 +276,6 @@ pub tracked enum MemContents<T> {
     /// Represents initialized memory with the given value of type `T`.
     Init(T),
 }
-
-/// Can the given value be encoded into the abstract bytes?
-pub uninterp spec fn abstract_bytes_encode<T: ?Sized>(value: &T, bytes: Seq<AbstractByte>) -> bool;
-
-// TODO - explain how related to type representation
-/// Can the given abstract bytes be decoded to the given value?
-pub uninterp spec fn abstract_bytes_decode<T: ?Sized>(bytes: Seq<AbstractByte>, value: &T) -> bool;
-
-/// For any type `T`, the abstract byte encoding must match the size of the type.
-pub broadcast axiom fn abstract_bytes_encode_decode_len<T: ?Sized>(value: &T, bytes: Seq<AbstractByte>)
-    ensures
-        #![trigger abstract_bytes_encode::<T>(value, bytes)]
-        #![trigger abstract_bytes_decode::<T>(bytes, value)]
-        abstract_bytes_encode::<T>(&value, bytes) ==> bytes.len() == spec_size_of_val::<T>(value),
-        abstract_bytes_decode::<T>(bytes, &value) ==> bytes.len() == spec_size_of_val::<T>(value),
-;
-
-// TODO
-// does this need a tracked input?
-pub axiom fn encode_decode_inverse<T: ?Sized>(tracked value: &T)
-    ensures
-        forall|bytes| #[trigger] abstract_bytes_encode::<T>(value, bytes) ==> abstract_bytes_decode::<T>(bytes, value),
-;
-
-
-// TODO - how to tie abstract_bytes_decode to TypeRepresentation?
-// note: currently not supported = types whose encoding depends on shadow data. This includes &T
-// PointsTo<&T> 
-// &&T
-// *const &T
-
-// &T -> *const T, &PointsTo<T>
-// &PointsTo<str> -> &PointsToUntyped -> &PointsTo<[u8]>
-// PointsTo<&str> -> PointsToUntyped -> PointsTo<&[u8]>
-
-// PointsTo<&u8> -> PointsTo<&bool>
-// PointsTo<&u8> -> PointsToUntyped + Tracked<&u8>
-// PointsToUntyped + Tracked<&bool> -> PointsTo<&bool>
-
-// &str -> &[u8]
-// - encode ptr (shadow data)
-// - encode the str (pointed-to data)
-
-// &3 -> &bool
-// UB: when trying to deref the &bool
-// &T represented as T
-
-// PointsTo<T> where T: TypeRepresentation
-pub broadcast axiom fn type_representation_implements_encode_decode<T: ?Sized + TypeRepresentation>(value: &T, bytes: Seq<AbstractByte>)
-    requires
-        !T::encoding_depends_on_shadow_data()
-    ensures
-        #![trigger abstract_bytes_encode::<T>(value, bytes)]
-        #![trigger abstract_bytes_decode::<T>(bytes, value)]
-        #![trigger T::encode(value, arbitrary(), bytes)]
-        #![trigger T::decode(bytes, value, arbitrary())]
-        abstract_bytes_encode::<T>(value, bytes) <==> T::encode(value, arbitrary(), bytes),
-        abstract_bytes_decode::<T>(bytes, value) <==> T::decode(bytes, value, arbitrary())
-    ;
 
 /// Data associated with a `PointsTo` permission.
 /// We keep track of both the pointer, the (potentially uninitialized) value
@@ -602,7 +545,7 @@ impl<T> PointsTo<T> {
     /// If the memory is uninitialized, then the bytes can be anything.
     pub broadcast proof fn abstract_bytes_decode(&self)
         ensures
-            self.is_init() ==> #[trigger] abstract_bytes_decode::<T>(self.abstract_bytes(), &self.value()),
+            self.is_init() ==> #[trigger] abs_decode::<T>(self.abstract_bytes(), &self.value()),
             self.is_uninit() ==> self.abstract_bytes().len() == size_of::<T>(),
     {
         self.inner.abstract_bytes_decode();
@@ -735,7 +678,7 @@ impl<T> PointsTo<T> {
     // Consumes the `T` and puts it in the `MemContents<T>` for `self`.
     pub axiom fn put(tracked &mut self, tracked val: T)
         requires
-            abstract_bytes_decode::<T>(self.abstract_bytes(), &val),
+            abs_decode::<T>(self.abstract_bytes(), &val),
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).abstract_bytes() == old(self).abstract_bytes(),
@@ -821,7 +764,7 @@ impl<T> PointsToUnaligned<T> {
     /// Invariant: The abstract bytes must decode into the value in memory.
     pub broadcast axiom fn abstract_bytes_decode(&self)
         ensures
-            self.is_init() ==> #[trigger] abstract_bytes_decode::<T>(self.abstract_bytes(), &self.value()),
+            self.is_init() ==> #[trigger] abs_decode::<T>(self.abstract_bytes(), &self.value()),
             self.is_uninit() ==> self.abstract_bytes().len() == size_of::<T>(),
     ;
 
@@ -1219,7 +1162,7 @@ impl<T> PointsTo<[T]> {
         ensures
             forall|i: int|
                 0 <= i < self.mem_contents_seq().len() ==> {
-                    &&& (#[trigger] self.mem_contents_seq()[i]).is_init() ==> abstract_bytes_decode::<T>(
+                    &&& (#[trigger] self.mem_contents_seq()[i]).is_init() ==> abs_decode::<T>(
                         self.abstract_bytes().subrange(
                             i * layout::size_of::<T>(),
                             (i + 1) * layout::size_of::<T>(),
@@ -1371,7 +1314,7 @@ impl<T> PointsTo<[T]> {
             0 <= start <= start + val.len() <= old(self).mem_contents_seq().len(),
             forall|i|
                 0 <= i < val.len() ==> {
-                    (#[trigger] val[i]).is_init() ==> abstract_bytes_decode::<T>(
+                    (#[trigger] val[i]).is_init() ==> abs_decode::<T>(
                         old(self).abstract_bytes().subrange(
                             (start + i) * layout::size_of::<T>(),
                             (start + i + 1) * layout::size_of::<T>(),
@@ -1412,7 +1355,7 @@ impl<T> PointsTo<[T]> {
             0 <= start <= start + val.len() <= old(self).mem_contents_seq().len(),
             forall|i|
                 0 <= i < val.len() ==> {
-                    abstract_bytes_decode::<T>(
+                    abs_decode::<T>(
                         old(self).abstract_bytes().subrange(
                             (start + i) * layout::size_of::<T>(),
                             (start + i + 1) * layout::size_of::<T>(),
@@ -1439,7 +1382,7 @@ impl<T> PointsTo<[T]> {
             0 <= start <= start + val.len() <= old(self).mem_contents_seq().len(),
             forall|i|
                 0 <= i < val.len() ==> {
-                    (#[trigger] val[i]).is_init() ==> abstract_bytes_decode::<T>(
+                    (#[trigger] val[i]).is_init() ==> abs_decode::<T>(
                         old(self).abstract_bytes().subrange(
                             (start + i) * layout::size_of::<T>(),
                             (start + i + 1) * layout::size_of::<T>(),
@@ -1470,7 +1413,7 @@ impl PointsTo<[u8]> {
         T,
     >)
         requires
-            abstract_bytes_decode::<T>(self.abstract_bytes(), &typed_value),
+            abs_decode::<T>(self.abstract_bytes(), &typed_value),
             layout::size_of::<T>() == self.ptr()@.metadata,
             self.ptr()@.addr as int % layout::align_of::<T>() as int == 0,
         ensures
@@ -1506,7 +1449,61 @@ impl PointsTo<[u8]> {
         PointsTo::<T>::from_untyped(self.inner)
     }
 
-    // `cast_to_str_shared` and `cast_to_str_shared_inner` live in rustlib, since they rely on the `TypeRepresentation` for `str`
+    /// Casts an initialized `&PointsTo<[u8]>` to an initialized `&PointsTo<str>`,
+    /// where the resulting permission will take on the given `target` value in memory.
+    /// Requires that it is possible to transmute between the pointed-to value of `self` and the provided value `target`.
+    pub proof fn cast_to_str_shared<'a>(
+        tracked &'a self,
+        value: &[u8],
+        tracked target: &str,
+    ) -> (tracked ret: &'a PointsTo<str>)
+        requires
+            transmute_pre_points_to::<[u8], str>(value, target),
+            self.is_init(),
+            //require a separate argument for value since transmute_pre_points_to expects a &[u8] instead of a Seq<u8>
+            self.value() == value@,
+        ensures
+            ret.is_init(),
+            ret.value() == target,
+            ret.ptr() == self.ptr() as *mut str,
+    {
+        broadcast use group_vstd_default, group_transmute_axioms, layout_of_slices, layout_of_str;
+
+        use_type_invariant(self);
+
+        self.abstract_bytes_decode();
+        assert(value@.len() == self.abstract_bytes().len());
+        assert forall|i: int| 0 <= i < self.mem_contents_seq().len() implies #[trigger] u8::decode(
+            seq![self.abstract_bytes()[i]],
+            value[i],
+        ) by {
+            assert(self.abstract_bytes().subrange(i * size_of::<u8>(), (i + 1) * size_of::<u8>())
+                == seq![self.abstract_bytes()[i]]);
+        }
+        assert(EncodingU8Slice::decode(self.abstract_bytes(), value));
+        assert(abs_decode::<[u8]>(self.abstract_bytes(), value));
+        self.cast_to_str_shared_inner(value, target)
+    }
+
+    /// An initialized `&PointsTo<[u8]>` can always be cast to an initialized `&PointsTo<str>` provided that the resulting
+    /// `str` value in memory can be decoded from the original permission's abstract bytes.
+    /// The abstract bytes remain unchanged in the resulting permission.
+    axiom fn cast_to_str_shared_inner<'a>(
+        tracked &'a self,
+        value: &[u8],
+        tracked target: &str,
+    ) -> (tracked ret: &'a PointsTo<str>)
+        requires
+            abs_decode::<str>(self.abstract_bytes(), target),
+            self.is_init(),
+            self.value() == value@,
+            self.ptr()@.addr as int % layout::spec_align_of_val(value) as int == 0,
+        ensures
+            ret.is_init(),
+            ret.value() == target,
+            ret.ptr() == self.ptr() as *mut str,
+            ret.abstract_bytes() == self.abstract_bytes(),
+    ;
 }
 
 // PointsToUnaligned<[T]>: the unaligned slice permission that PointsTo<[T]> delegates to.
@@ -1857,14 +1854,48 @@ impl PointsTo<str> {
     /// Invariant: The corresponding abstract bytes must decode into the value in memory.
     pub axiom fn abstract_bytes_decode(&self)
         ensures
-            self.is_init() ==> abstract_bytes_decode::<str>(self.abstract_bytes(), self.value()),
+            self.is_init() ==> abs_decode::<str>(self.abstract_bytes(), self.value()),
             !self.is_init() ==> self.abstract_bytes().len() == size_of::<u8>() * spec_size_of_val::<
                 str,
             >(self.value()),
     ;
 
-    // `cast_to_u8_shared` and `cast_to_u8_shared_inner` live in rustlib, since they rely on the `TypeRepresentation` for `str`
+    /// Casts an initialized `&PointsTo<str>` to an initialized `&PointsTo<[u8]>`,
+    /// where the resulting permission will take on the given `target` value in memory.
+    /// Requires that it is possible to transmute between the pointed-to value of `self` and the provided value `target`.
+    pub proof fn cast_to_u8_shared<'a>(tracked &'a self, tracked target: &[u8]) -> (tracked ret:
+        &'a PointsTo<[u8]>)
+        requires
+            transmute_pre_points_to::<str, [u8]>(self.value(), target),
+            self.is_init(),
+        ensures
+            ret.is_init(),
+            ret.value() == target@,
+            ret.ptr() == self.ptr() as *mut [u8],
+    {
+        broadcast use group_transmute_axioms, layout_of_slices, layout_of_str;
 
+        use_type_invariant(self);
+
+        self.abstract_bytes_decode();
+        self.cast_to_u8_shared_inner(target)
+    }
+
+    /// An initialized `&PointsTo<str>` can always be cast to an initialized `&PointsTo<[u8]>` provided that the resulting
+    /// `[u8]` value in memory can be decoded from the original permission's abstract bytes.
+    /// The abstract bytes remain unchanged in the resulting permission.
+    axiom fn cast_to_u8_shared_inner<'a>(tracked &'a self, tracked target: &[u8]) -> (tracked ret:
+        &'a PointsTo<[u8]>)
+        requires
+            abs_decode::<[u8]>(self.abstract_bytes(), target),
+            self.is_init(),
+            self.ptr()@.addr as int % layout::spec_align_of_val::<[u8]>(target) as int == 0,
+        ensures
+            ret.is_init(),
+            ret.value() == target@,
+            ret.ptr() == self.ptr() as *mut [u8],
+            ret.abstract_bytes() == self.abstract_bytes(),
+    ;
 
     /// Creates a reference to a `PointsToUnaligned<[u8]>` from a reference to a `PointsTo<str>` with the same provenance
     /// and a range corresponding to the address of the `PointsTo<str>`, size of the `str`, and length.
@@ -2218,15 +2249,12 @@ impl<T> SeqPointsTo<T> {
     {
         broadcast use
             crate::vstd::seq::group_seq_axioms,
-            abstract_bytes_encode_decode_len,
+            crate::vstd::type_representation::encode_decode_len,
         ;
 
         if perms.len() > 0 {
             Self::abstract_bytes_len_helper(perms.drop_last());
             perms.last().abstract_bytes_decode();
-            // `T: Sized`, so the value-dependent size from `abstract_bytes_encode_decode_len`
-            // is the type size
-            layout_of_sized::<T>(&perms.last().value());
             assert((perms.len() - 1) * layout::size_of::<T>() + layout::size_of::<T>()
                 == perms.len() * layout::size_of::<T>()) by (nonlinear_arith);
         }
@@ -2343,7 +2371,7 @@ impl<T> SeqPointsTo<T> {
         ensures
             forall|i: int|
                 0 <= i < len ==> {
-                    &&& (#[trigger] self.mem_contents()[i]).is_init() ==> abstract_bytes_decode::<T>(
+                    &&& (#[trigger] self.mem_contents()[i]).is_init() ==> abs_decode::<T>(
                         self.seq_perm()[i].abstract_bytes(),
                         &self.mem_contents()[i].value(),
                     )
@@ -2368,7 +2396,7 @@ impl<T> SeqPointsTo<T> {
         ensures
             forall|i: int|
                 0 <= i < self.len() ==> {
-                    &&& (#[trigger] self.mem_contents()[i]).is_init() ==> abstract_bytes_decode::<T>(
+                    &&& (#[trigger] self.mem_contents()[i]).is_init() ==> abs_decode::<T>(
                         self.abstract_bytes().subrange(
                             i * layout::size_of::<T>(),
                             (i + 1) * layout::size_of::<T>(),
@@ -2669,7 +2697,7 @@ impl SeqPointsTo<u8> {
             self.len() == capacity * layout::size_of::<T>(),
             typed_value.len() <= capacity,
             forall|i: int|
-                0 <= i < typed_value.len() && typed_value[i].is_some() ==> #[trigger] abstract_bytes_decode::<
+                0 <= i < typed_value.len() && typed_value[i].is_some() ==> #[trigger] abs_decode::<
                     T,
                 >(
                     self.abstract_bytes().subrange(

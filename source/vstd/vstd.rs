@@ -118,6 +118,7 @@ pub broadcast group group_vstd_default {
     #[cfg(not(verus_verify_core))]
     string::group_string_axioms,
     raw_ptr::group_raw_ptr_axioms,
+    raw_ptr::group_points_to_lemmas,
     layout::group_layout_axioms,
     //
     // core std_specs
