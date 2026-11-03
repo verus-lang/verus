@@ -24,29 +24,6 @@ The trusted specs are in [TRUSTED_REVIEW.md](TRUSTED_REVIEW.md).
   (`mut_ref_as_shr_ref` covers `&mut` → `&`; exec conversions between reference types such as `str::as_bytes`
   need shadow-data ensures wherever a pointer has to flow across them).
 
-## For review (uncommitted, rustlib)
-
-- **`SliceIndexVerus`** (its three methods and 21 impls) and **`get_offset_len_noubcheck_verus` / `get_offset_len_mut_noubcheck_verus`**
-  (`slice/index.rs`) take a `Tracked(r): Tracked<&T>` in place of a `&PointsTo<T>`,
-  with `shared_ref_ptr(shadow_data(r)) == <the pointer>` in place of the permission's `ptr`, `wf` and value requires.
-  `output_ptr_ref`, `get_unchecked_verus` and `get_unchecked_mut_verus` also require `valid_slice(r)`
-  (for `str`, `r.inv()`, which `ref_to_parts_str` needs; always true for `&[T]`).
-- **`#[verifier::shadow_data]` on `ExSliceIndex::get_mut` and `index_mut`**,
-  so every core `SliceIndex` impl of those methods is a shadow-data function
-  (`str`'s `Range`, `RangeTo` and `RangeFrom` impls relate a pointer to `shadow_data(r)`).
-- **`NonNull::as_mut_verus`** takes a `Tracked<&'a mut T>` in place of a `&'a mut PointsTo<T>`,
-  and its bound is `T: MetaSized` (was `T: Sized`):
-  ```rust
-  pub const unsafe fn as_mut_verus<'a>(&mut self, Tracked(perm): Tracked<&'a mut T>) -> (v: &'a mut T)
-      where T: MetaSized
-      requires
-          mut_ref_ptr(perm) == old(self)@,
-      ensures
-          old(self)@ == final(self)@,
-          &*v == &*old(perm),
-          &*final(v) == &*final(perm),
-  ```
-
 ## Remaining `PointsTo` uses
 
 **Trusted specs over `PointsTo` / `PointsToUnaligned`:**
