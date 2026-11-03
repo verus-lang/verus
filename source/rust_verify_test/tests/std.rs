@@ -2454,3 +2454,61 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] autoderive_partialeq_issue3178 verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(PartialEq)]
+        pub struct W { x: u8 }
+
+        impl vstd::std_specs::cmp::PartialEqSpecImpl for W {
+            open spec fn obeys_eq_spec() -> bool { true }
+            open spec fn eq_spec(&self, other: &Self) -> bool { false }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "postcondition not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] autoderive_partialeq_with_user_provided_spec verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(PartialEq)]
+        pub struct W { pub x: u8 }
+
+        impl vstd::std_specs::cmp::PartialEqSpecImpl for W {
+            open spec fn obeys_eq_spec() -> bool { true }
+            open spec fn eq_spec(&self, other: &Self) -> bool { self.x == other.x }
+        }
+
+        fn test() {
+            let w1 = W { x: 0 };
+            let w2 = W { x: 0 };
+            let w3 = W { x: 4 };
+
+            let x = w1 == w2;
+            assert(x);
+
+            let x = w1 == w3;
+            assert(!x);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] autoderive_partialeq_with_no_user_provided_spec verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(PartialEq)]
+        pub struct W { pub x: u8 }
+
+        fn test() {
+            let w1 = W { x: 0 };
+            let w2 = W { x: 0 };
+            let w3 = W { x: 4 };
+
+            let x = w1 == w2;
+            assert(x); // FAIL
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

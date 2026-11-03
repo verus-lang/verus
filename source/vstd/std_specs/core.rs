@@ -211,6 +211,11 @@ pub assume_specification[ core::intrinsics::unlikely ](b: bool) -> (c: bool)
         c == b,
 ;
 
+pub assume_specification[ core::intrinsics::unreachable ]() -> !
+    requires
+        false,
+;
+
 pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (ret: Option<T>)
     requires
         b ==> f.requires(()),

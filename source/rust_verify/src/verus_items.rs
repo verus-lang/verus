@@ -927,6 +927,7 @@ pub(crate) enum RustItem {
     SliceSealed,
     Vec,
     Thin,
+    IntrinsicDiscriminantValue,
 }
 
 fn get_rust_int_intrinsic<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustIntIntrinsicItem> {
@@ -1085,6 +1086,9 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     }
     if rust_path == Some("core::any::Any") {
         return Some(RustItem::Any);
+    }
+    if rust_path == Some("core::intrinsics::discriminant_value") {
+        return Some(RustItem::IntrinsicDiscriminantValue);
     }
 
     None

@@ -598,7 +598,7 @@ test_verify_one_file! {
         ensures
             v as int == 0,
         {}
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support casting an enum whose variants have fields")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -614,7 +614,7 @@ test_verify_one_file! {
         ensures
             E::A(false) as int == 0,
         {}
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support casting an enum whose variants have fields")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -744,4 +744,78 @@ test_verify_one_file! {
         "discriminants that do not fit in 32 bits when isize is used",
         "discriminants that do not fit in 32 bits when usize is used",
     ])
+}
+
+test_verify_one_file! {
+    #[test] test_enums_with_signed_representations_intrinsic verus_code! {
+        #[derive(Copy, Clone)] #[repr(i8)] enum E8 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(i16)] enum E16 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(i32)] enum E32 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(i64)] enum E64 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(i128)] enum E128 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(isize)] enum ESized { A = -1, B = 0, C = 1 }
+
+        fn test() {
+            let x = std::intrinsics::discriminant_value(&E8::A); assert(x as int == -1);
+            let x = std::intrinsics::discriminant_value(&E8::B); assert(x as int == 0);
+            let x = std::intrinsics::discriminant_value(&E8::C); assert(x as int == 1);
+
+            let x = std::intrinsics::discriminant_value(&E16::A); assert(x as int == -1);
+            let x = std::intrinsics::discriminant_value(&E16::B); assert(x as int == 0);
+            let x = std::intrinsics::discriminant_value(&E16::C); assert(x as int == 1);
+
+            let x = std::intrinsics::discriminant_value(&E32::A); assert(x as int == -1);
+            let x = std::intrinsics::discriminant_value(&E32::B); assert(x as int == 0);
+            let x = std::intrinsics::discriminant_value(&E32::C); assert(x as int == 1);
+
+            let x = std::intrinsics::discriminant_value(&E64::A); assert(x as int == -1);
+            let x = std::intrinsics::discriminant_value(&E64::B); assert(x as int == 0);
+            let x = std::intrinsics::discriminant_value(&E64::C); assert(x as int == 1);
+
+            let x = std::intrinsics::discriminant_value(&E128::A); assert(x as int == -1);
+            let x = std::intrinsics::discriminant_value(&E128::B); assert(x as int == 0);
+            let x = std::intrinsics::discriminant_value(&E128::C); assert(x as int == 1);
+
+            let x = std::intrinsics::discriminant_value(&ESized::A); assert(x as int == -1);
+            let x = std::intrinsics::discriminant_value(&ESized::B); assert(x as int == 0);
+            let x = std::intrinsics::discriminant_value(&ESized::C); assert(x as int == 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_enums_with_unsigned_representations_intrinsic verus_code! {
+        #[derive(Copy, Clone)] #[repr(u8)] enum E8 { A = 0xff, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(u16)] enum E16 { A = 0xffff, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(u32)] enum E32 { A = 0xffff_ffff, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(u64)] enum E64 { A = 0xffff_ffff_ffff_ffff, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(u128)] enum E128 { A = 0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff,  B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(usize)] enum ESized { A = 0xffff_ffff, B = 0, C = 1 }
+
+        fn test() {
+            let x = std::intrinsics::discriminant_value(&E8::A); assert(x as int == 0xff);
+            let x = std::intrinsics::discriminant_value(&E8::B); assert(x as int == 0);
+            let x = std::intrinsics::discriminant_value(&E8::C); assert(x as int == 1);
+
+            let x = std::intrinsics::discriminant_value(&E16::A); assert(x as int == 0xffff);
+            let x = std::intrinsics::discriminant_value(&E16::B); assert(x as int == 0);
+            let x = std::intrinsics::discriminant_value(&E16::C); assert(x as int == 1);
+
+            let x = std::intrinsics::discriminant_value(&E32::A); assert(x as int == 0xffff_ffff);
+            let x = std::intrinsics::discriminant_value(&E32::B); assert(x as int == 0);
+            let x = std::intrinsics::discriminant_value(&E32::C); assert(x as int == 1);
+
+            let x = std::intrinsics::discriminant_value(&E64::A); assert(x as int == 0xffff_ffff_ffff_ffff);
+            let x = std::intrinsics::discriminant_value(&E64::B); assert(x as int == 0);
+            let x = std::intrinsics::discriminant_value(&E64::C); assert(x as int == 1);
+
+            let x = std::intrinsics::discriminant_value(&E128::A); assert(x as int == 0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff);
+            let x = std::intrinsics::discriminant_value(&E128::B); assert(x as int == 0);
+            let x = std::intrinsics::discriminant_value(&E128::C); assert(x as int == 1);
+
+            let x = std::intrinsics::discriminant_value(&ESized::A); assert(x as int == 0xffff_ffff);
+            let x = std::intrinsics::discriminant_value(&ESized::B); assert(x as int == 0);
+            let x = std::intrinsics::discriminant_value(&ESized::C); assert(x as int == 1);
+        }
+    } => Ok(())
 }
