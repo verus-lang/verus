@@ -4,6 +4,8 @@ use super::*;
 use crate::vstd::endian::{BasePow2, CompatibleSmallerBaseFor, EndianNat};
 #[cfg(verus_keep_ghost)]
 use crate::vstd::endian::{to_big_from_digits, to_big_from_digits_single, to_endian_from_digits};
+#[cfg(verus_keep_ghost)]
+use crate::vstd::modes::tracked_from_spec;
 
 verus! {
 
@@ -1519,6 +1521,7 @@ impl<T> PointsTo<[T]> {
             self.wf(),
             self.is_valid(),
             self.len() * size_of::<T>() == size_of::<V>(),
+            forall|v: V| v.type_inv()
         ensures
             out.ptr() == ptr_mut_from_data::<V>(
                 PtrData {
@@ -1577,7 +1580,7 @@ impl<T> PointsTo<[T]> {
         type_representation_implements_encode_decode::<V>(&v, self.bytes());
 
         let tracked typed_value: &TypedValue<V> = crate::vstd::modes::tracked_static_ref(
-            TypedValue::Valid(Tracked(V::tracked_from_spec(v))),
+            TypedValue::Valid(Tracked(tracked_from_spec(v))),
         );
         PointsToUnaligned::<V>::from_raw_parts_ref(self.as_untyped(), typed_value, ())
     }
@@ -1608,6 +1611,7 @@ impl<T> PointsTo<[T]> {
             self.is_valid(),
             self.len() * size_of::<T>() == size_of::<V>(),
             self.ptr()@.addr as int % align_of::<V>() as int == 0,
+            forall|v: V| v.type_inv()
         ensures
             out.ptr() == ptr_mut_from_data::<V>(
                 PtrData {
