@@ -901,11 +901,10 @@ pub(crate) fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     }
 }
 
+/// Functions that seq_to_sst may introduce, which pruning must keep
 pub(crate) fn is_seq_to_sst_fun(fun: &Fun) -> bool {
-    match is_sequence_fn(fun) {
-        Some(SeqFn::Empty | SeqFn::Push) => true,
-        _ => false,
-    }
+    matches!(is_sequence_fn(fun), Some(SeqFn::Empty | SeqFn::Push))
+        || matches!(is_array_fn(fun), Some(ArrayFn::View))
 }
 
 /// Convert an interpreter-internal sequence representation back into a
