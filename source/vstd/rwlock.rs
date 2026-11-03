@@ -15,6 +15,8 @@ use verus_state_machines_macros::tokenized_state_machine_vstd;
 
 tokenized_state_machine_vstd!(
 RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
+    #![verifier::prophetic]
+
     fields {
         #[sharding(constant)]
         pub k: K,

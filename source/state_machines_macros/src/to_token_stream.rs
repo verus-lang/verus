@@ -84,6 +84,16 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
     return Ok(final_code);
 }
 
+/// Returns `#[verifier::prophetic]` if the user marked the state machine with
+/// `#![verifier::prophetic]`, and nothing otherwise.
+fn prophetic_attr(sm: &SM) -> TokenStream {
+    if sm.prophetic {
+        quote! { #[verifier::prophetic] }
+    } else {
+        TokenStream::new()
+    }
+}
+
 pub fn get_self_ty(sm: &SM) -> Type {
     let name = Ident::new("State", sm.name.span());
     name_with_type_args(&name, sm)
@@ -282,6 +292,7 @@ pub fn output_primary_stuff(
     bundle: &SMBundle,
 ) -> HashMap<String, Ident> {
     let sm = &bundle.sm;
+    let prophetic_attr = prophetic_attr(sm);
     let gen = match &sm.generics {
         Some(gen) => quote! { #gen },
         None => TokenStream::new(),
@@ -336,7 +347,7 @@ pub fn output_primary_stuff(
                     #[verus::internal(verus_macro)]
                     #[verifier::spec]
                     #[verus::internal(open)] /* vattr */
-                    #[verifier::prophetic]
+                    #prophetic_attr
                     pub fn #name (#args) -> ::core::primitive::bool {
                         #vstd::prelude::verus_proof_expr!({ #f })
                     }
@@ -348,7 +359,7 @@ pub fn output_primary_stuff(
                     #[verus::internal(verus_macro)]
                     #[verifier::spec]
                     #[verus::internal(open)] /* vattr */
-                    #[verifier::prophetic]
+                    #prophetic_attr
                     pub fn #name (#args) -> ::core::primitive::bool {
                         #vstd::prelude::verus_proof_expr!({ #f })
                     }
@@ -372,7 +383,7 @@ pub fn output_primary_stuff(
                 #[verus::internal(verus_macro)]
                 #[verifier::spec]
                 #[verus::internal(open)] /* vattr */
-                #[verifier::prophetic]
+                #prophetic_attr
                 pub fn #name (#params) -> ::core::primitive::bool {
                     #vstd::prelude::verus_proof_expr!({ #f })
                 }
@@ -393,7 +404,7 @@ pub fn output_primary_stuff(
                 #[verus::internal(verus_macro)]
                 #[verifier::spec]
                 #[verus::internal(open)] /* vattr */
-                #[verifier::prophetic]
+                #prophetic_attr
                 pub fn #name (#params) -> ::core::primitive::bool {
                     #vstd::prelude::verus_proof_expr!({ #f })
                 }
@@ -411,7 +422,7 @@ pub fn output_primary_stuff(
                 #[verus::internal(verus_macro)]
                 #[verifier::spec]
                 #[verus::internal(open)] /* vattr */
-                #[verifier::prophetic]
+                #prophetic_attr
                 pub fn #name (#params) -> ::core::primitive::bool {
                     #vstd::prelude::verus_proof_expr!({ #f })
                 }
@@ -588,6 +599,7 @@ fn output_step_datatype(
     sm: &SM,
     is_init: bool,
 ) {
+    let prophetic_attr = prophetic_attr(sm);
     let filter_fn = |t: &Transition| {
         if is_init {
             t.kind == TransitionKind::Init
@@ -673,7 +685,7 @@ fn output_step_datatype(
             #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
-            #[verifier::prophetic]
+            #prophetic_attr
             pub fn init_by(post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms)*
@@ -687,7 +699,7 @@ fn output_step_datatype(
             #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
-            #[verifier::prophetic]
+            #prophetic_attr
             pub fn init(post: #self_ty, #label_param) -> ::core::primitive::bool {
                 #vstd::prelude::exists(|step: #step_ty| Self::init_by(post, #label_arg step))
             }
@@ -719,7 +731,7 @@ fn output_step_datatype(
             #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
-            #[verifier::prophetic]
+            #prophetic_attr
             pub fn next_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms)*
@@ -732,7 +744,7 @@ fn output_step_datatype(
             #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
-            #[verifier::prophetic]
+            #prophetic_attr
             pub fn next(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
                 #vstd::prelude::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
             }
@@ -742,7 +754,7 @@ fn output_step_datatype(
             #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
-            #[verifier::prophetic]
+            #prophetic_attr
             pub fn next_strong_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms_strong)*
@@ -755,7 +767,7 @@ fn output_step_datatype(
             #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
-            #[verifier::prophetic]
+            #prophetic_attr
             pub fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
                 #vstd::prelude::exists(|step: #step_ty| Self::next_strong_by(pre, post, #label_arg step))
             }
@@ -1096,6 +1108,7 @@ fn output_other_fns(
     lemmas: &Vec<Lemma>,
     normal_fns: &Vec<ImplItemFn>,
 ) {
+    let prophetic_attr = prophetic_attr(&bundle.sm);
     let inv_names = invariants.iter().map(|i| &i.func.sig.ident);
     let conj = if inv_names.len() == 0 {
         quote! { true }
@@ -1107,7 +1120,7 @@ fn output_other_fns(
         #[verifier::spec]
         #[verus::internal(verus_macro)]
         #[verus::internal(open)] /* vattr */
-        #[verifier::prophetic]
+        #prophetic_attr
         pub fn invariant(&self) -> ::core::primitive::bool {
             #conj
         }
