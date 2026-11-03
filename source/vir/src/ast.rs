@@ -1247,6 +1247,7 @@ pub enum ExprX {
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
+    /// bool param = assert_irrefutable
     Match(Place, Arms, bool),
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {

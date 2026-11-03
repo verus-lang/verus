@@ -2649,14 +2649,18 @@ pub(crate) fn finish_function<'tcx>(
             };
 
             let bctx = bctx.as_ref().unwrap();
-            crate::automatic_derive::modify_derived_item(
+            let aux_function = crate::automatic_derive::modify_derived_item(
                 bctx,
                 def_id,
                 &inputs,
                 sig.span,
                 action,
                 &mut functionx,
+                def_id,
             )?;
+            if let Some(aux_function) = aux_function {
+                functions.push((aux_function, ErasureInfo::new()));
+            }
         }
     }
 

@@ -125,7 +125,7 @@ pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
 pub const CLOSURE_RETURN_VALUE_NAME: &str = "closure_return%";
 
 pub const AUTOSPEC_FUNC_PREFIX: &str = "returns_clause_autospec%";
-pub const CLONE_FUNC_SUFFIX: &str = "clone_clause_autoderived%";
+pub const CLONE_FUNC_PREFIX: &str = "clone_clause_autoderived%";
 
 pub const FNDEF_TYPE: &str = "fndef";
 pub const FNDEF_SINGLETON: &str = "fndef_singleton";
@@ -1276,6 +1276,8 @@ pub fn fn_fp_postcondition_name(op: UninterpretedFloatBinaryOp) -> Fun {
 
 pub fn clone_spec_fn_name(path: &Path) -> Fun {
     let name = path.last_segment();
-    let p = path.pop_segment().push_segment(Arc::new(format!("{}{}", name, CLONE_FUNC_SUFFIX)));
+    let Segment::Impl(d) = name else { panic!("clone_spec_fn_name") };
+    let name = Segment::V(Arc::new(CLONE_FUNC_PREFIX.to_string()), d);
+    let p = path.pop_segment().push_segment(name);
     Arc::new(FunX { path: p })
 }
