@@ -1687,7 +1687,23 @@ impl<T: ?Sized> PTTypedValue for PointsTo<T> where PointsToUnaligned<T>: PTValue
     }
 
     proof fn bytes_decode(&self) {
-        self.pt_unaligned().bytes_decode();
+        let pt_unaligned = self.pt_unaligned();
+        pt_unaligned.bytes_decode();
+        // Unfold the delegations explicitly:
+        // without these, the proof fails in some contexts (e.g. rustlib).
+        assert(<Self as PTPhys>::ptr(*self) == <PointsToUnaligned<T> as PTPhys>::ptr(pt_unaligned));
+        assert(<Self as PTTypedValue>::bytes(*self) == <PointsToUnaligned<
+            T,
+        > as PTTypedValue>::bytes(pt_unaligned));
+        assert(<Self as PTTypedValue>::typed_value(*self) == <PointsToUnaligned<
+            T,
+        > as PTTypedValue>::typed_value(pt_unaligned));
+        let value = <Self as PTTypedValue>::typed_value(*self).value_ref();
+        assert(Self::additional_validity_constraints(value, self.ptr()@.metadata)
+            == <PointsToUnaligned<T> as PTTypedValue>::additional_validity_constraints(
+            value,
+            self.ptr()@.metadata,
+        ));
     }
 
     proof fn satisfies_alignment_of_wf(&self) {
