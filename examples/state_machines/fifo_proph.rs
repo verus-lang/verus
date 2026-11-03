@@ -1,4 +1,4 @@
-// rust_verify/tests/example.rs expect-warnings
+// rust_verify/tests/example.rs
 #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 #![allow(unused_imports)]
 #![allow(deprecated)]
@@ -28,13 +28,11 @@ verus! {
 use verus_state_machines_macros::tokenized_state_machine;
 
 // ANCHOR: enum_state
-#[is_variant]
 pub enum ProducerState {
     Idle(nat),  // local copy of tail
     Producing(nat),
 }
 
-#[is_variant]
 pub enum ConsumerState {
     Idle(nat),  // local copy of head
     Consuming(nat),
@@ -262,11 +260,11 @@ tokenized_state_machine!{FifoQueue<T> {
     transition!{
         produce_start() {
             // In order to begin, we have to be in ProducerState::Idle.
-            require(pre.producer.is_Idle());
+            require(pre.producer is Idle);
 
             // We'll be comparing the producer's _local_ copy of the tail
             // with the _shared_ version of the head.
-            let tail = pre.producer.get_Idle_0();
+            let tail = pre.producer->Idle_0;
             let head = pre.head;
 
             assert(0 <= tail && tail < pre.backing_cells.len());
@@ -312,8 +310,8 @@ tokenized_state_machine!{FifoQueue<T> {
         produce_end(perm: cell::PointsTo<T>) {
             // In order to complete the produce step,
             // we have to be in ProducerState::Producing.
-            require(pre.producer.is_Producing());
-            let tail = pre.producer.get_Producing_0();
+            require(pre.producer is Producing);
+            let tail = pre.producer->Producing_0;
 
             assert(0 <= tail && tail < pre.backing_cells.len());
 
@@ -351,11 +349,11 @@ tokenized_state_machine!{FifoQueue<T> {
     transition!{
         consume_start() {
             // In order to begin, we have to be in ConsumerState::Idle.
-            require(pre.consumer.is_Idle());
+            require(pre.consumer is Idle);
 
             // We'll be comparing the consumer's _local_ copy of the head
             // with the _shared_ version of the tail.
-            let head = pre.consumer.get_Idle_0();
+            let head = pre.consumer->Idle_0;
             let tail = pre.tail;
 
             assert(0 <= head && head < pre.backing_cells.len());
@@ -389,8 +387,8 @@ tokenized_state_machine!{FifoQueue<T> {
 
     transition!{
         consume_end(perm: cell::PointsTo<T>) {
-            require(pre.consumer.is_Consuming());
-            let head = pre.consumer.get_Consuming_0();
+            require(pre.consumer is Consuming);
+            let head = pre.consumer->Consuming_0;
 
             assert(0 <= head && head < pre.backing_cells.len());
             let next_head = Self::inc_wrap(head, pre.backing_cells.len());
@@ -427,7 +425,7 @@ tokenized_state_machine!{FifoQueue<T> {
 
     #[inductive(produce_start)]
     fn produce_start_inductive(pre: Self, post: Self) {
-        let tail = pre.producer.get_Idle_0();
+        let tail = pre.producer->Idle_0;
         assert(!pre.in_active_range(tail));
         match (post.producer, post.consumer) {
             (ProducerState::Producing(tail), ConsumerState::Idle(head)) => {
@@ -478,7 +476,7 @@ tokenized_state_machine!{FifoQueue<T> {
 
     #[inductive(consume_end)]
     fn consume_end_inductive(pre: Self, post: Self, perm: cell::PointsTo<T>) {
-        let head = pre.consumer.get_Consuming_0();
+        let head = pre.consumer->Consuming_0;
         assert(post.storage.dom().contains(head));
         assert(
                 post.storage.index(head).id() ==
@@ -528,13 +526,14 @@ struct_with_invariants!{
         history: Tracked<AtomicInvariant<_, (FifoQueue::history<T>, ProphecySeq<T>), _>>,
     }
 
+    #[verifier::prophetic]
     pub closed spec fn wf(&self) -> bool {
         predicate {
             // The Cell IDs in the instance protocol match the cell IDs in the actual vector:
             &&& self.history.namespace() == 1
             &&& self.instance@.backing_cells().len() == self.buffer@.len()
             &&& forall|i: int| 0 <= i && i < self.buffer@.len() as int ==>
-                self.instance@.backing_cells().index(i) ==
+                #[trigger] self.instance@.backing_cells().index(i) ==
                     self.buffer@.index(i).id()
         }
 
@@ -565,6 +564,7 @@ pub struct Producer<T> {
 }
 
 impl<T> Producer<T> {
+    #[verifier::prophetic]
     pub closed spec fn wf(&self) -> bool {
         (*self.queue).wf()
             && self.producer@.instance_id() == (*self.queue).instance@.id()
@@ -591,6 +591,7 @@ pub struct Consumer<T> {
 }
 
 impl<T> Consumer<T> {
+    #[verifier::prophetic]
     pub closed spec fn wf(&self) -> bool {
         (*self.queue).wf()
             && self.consumer@.instance_id() == (*self.queue).instance@.id()
