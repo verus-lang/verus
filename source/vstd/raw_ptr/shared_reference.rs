@@ -2,7 +2,7 @@ use super::super::group_vstd_default;
 use super::super::prelude::*;
 use super::points_to_model::*;
 use super::ptr_model::*;
-use super::ptr_specs::const_ptr_eq_up_to_tag;
+use super::ptr_specs::ptr_eq_up_to_tag;
 
 verus! {
 
@@ -174,8 +174,9 @@ pub broadcast axiom fn axiom_shared_ref_value_view<'a, T>(shared_ref: SharedRefe
         shared_ref.value()@ == #[trigger] shared_ref@,
 ;
 
-/// Like [`ptr_ref_untyped_with_typed_value`](super::ptr_specs::ptr_ref_untyped_with_typed_value)
-/// but returns a `SharedReference` so it keeps track of the relationship
+/// Like [`ptr_ref`](super::ptr_verified_specs::ptr_ref),
+/// but takes the parts of the permission (`pt_untyped` and `typed_value`)
+/// and returns a `SharedReference` so it keeps track of the relationship
 /// between the pointers.
 /// Note the resulting reference's pointers does NOT have the same provenance.
 /// This is because in Rust models like Stacked Borrows / Tree Borrows, the pointer
@@ -192,7 +193,7 @@ pub fn ptr_ref2_untyped_with_typed_value<'a, T>(
         typed_value.is_valid(),
     ensures
         v.value() == typed_value.value(),
-        const_ptr_eq_up_to_tag(v.ptr(), ptr),
+        ptr_eq_up_to_tag(v.ptr(), ptr),
     opens_invariants none
     no_unwind
 {

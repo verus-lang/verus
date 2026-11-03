@@ -409,7 +409,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
     /// Creates a `SeqPointsTo` from a sequence of permissions and a pointer to the whole region.
     /// The inverse of `into_seq`.
     /// It says nothing about `wf_basic()`: callers prove it from the parts.
-    pub proof fn from_raw_parts(tracked s: Seq<P>, ptr: *mut [T]) -> (tracked out: Self)
+    pub proof fn from_seq(tracked s: Seq<P>, ptr: *mut [T]) -> (tracked out: Self)
         ensures
             out.seq_pt() == s,
             out.ptr() == ptr,

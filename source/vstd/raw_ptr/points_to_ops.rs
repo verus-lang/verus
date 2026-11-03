@@ -571,7 +571,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
     }
 
     /// Creates a `SeqPointsTo` from a sequence of permissions at consecutive offsets from `ptr`.
-    pub proof fn from_seq(tracked perms: Seq<P>, ptr: *mut T) -> (tracked out: Self)
+    pub proof fn from_seq_pt(tracked perms: Seq<P>, ptr: *mut T) -> (tracked out: Self)
         requires
             forall|i: int| 0 <= i < perms.len() ==> #[trigger] perms[i].wf_basic(),
             forall|i: int|
@@ -594,7 +594,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
                 metadata: perms.len() as usize,
             },
         );
-        Self::from_raw_parts(perms, slice_ptr)
+        Self::from_seq(perms, slice_ptr)
     }
 
     /// Creates an empty sequence at `ptr`.
@@ -607,7 +607,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             out.ptr() as *mut T == ptr,
             out.wf_basic(),
     {
-        Self::from_seq(Seq::tracked_empty(), ptr)
+        Self::from_seq_pt(Seq::tracked_empty(), ptr)
     }
 
     /// Splits into the first `mid` permissions and the rest.
@@ -663,8 +663,8 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
 
         let tracked mut seq_pt = self.into_seq();
         let tracked other = seq_pt.tracked_skip(mid as int);
-        let tracked first = Self::from_raw_parts(seq_pt, p1);
-        let tracked second = Self::from_raw_parts(other, p2);
+        let tracked first = Self::from_seq(seq_pt, p1);
+        let tracked second = Self::from_seq(other, p2);
 
         assert forall|i: int| 0 <= i < second.len() implies {
             &&& #[trigger] second[i].ptr()@.provenance == second.ptr()@.provenance
@@ -710,7 +710,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
 
         let tracked mut seq_pt = self.into_seq();
         seq_pt.tracked_add(other.into_seq());
-        let tracked joined = Self::from_raw_parts(seq_pt, p);
+        let tracked joined = Self::from_seq(seq_pt, p);
         Self::lemma_join_wf_basic(old_self, old_other, joined);
         joined
     }
@@ -876,7 +876,7 @@ impl PointsToUntyped {
         let byte_ptr: *mut [u8] = ptr_mut_from_data(
             PtrData::<[u8]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: 0 },
         );
-        Self::from_raw_parts(Seq::tracked_empty(), byte_ptr)
+        Self::from_seq(Seq::tracked_empty(), byte_ptr)
     }
 
     /// Specializes `is_disjoint` to the case when the other permission is a `PointsToUntyped`.
@@ -1170,39 +1170,6 @@ impl<T: ?Sized> View for PointsToUnaligned<T> where PointsToUnaligned<T>: PTType
             value: <Self as PTTypedValue>::typed_value(*self),
             bytes: <Self as PTTypedValue>::bytes(*self),
         }
-    }
-}
-
-impl<T: ?Sized> PointsToUnaligned<T> {
-    /// The contiguous sequence of bytes that this permission tracks.
-    #[verifier::inline]
-    pub open spec fn bytes(self) -> Seq<AbstractByte> {
-        self.pt_untyped().bytes()
-    }
-
-    /// Returns `true` if the permission's associated memory is valid for the type `T`.
-    #[verifier::inline]
-    pub open spec fn is_valid(&self) -> bool {
-        self.typed_value().is_valid()
-    }
-
-    /// Returns `true` if the permission's associated memory is not valid for the type `T`.
-    #[verifier::inline]
-    pub open spec fn is_empty(&self) -> bool {
-        self.typed_value().is_empty()
-    }
-}
-
-impl<T> PointsToUnaligned<T> {
-    /// If the permission's associated memory is valid,
-    /// returns the value that the pointer points to.
-    /// Otherwise, the result is meaningless.
-    #[verifier::inline]
-    pub open spec fn value(&self) -> T
-        recommends
-            self.is_valid(),
-    {
-        self.typed_value().value()
     }
 }
 
@@ -1580,6 +1547,17 @@ impl<T> PTSizedValue for PointsToUnaligned<T> {
 }
 
 impl<T> PointsToUnaligned<T> {
+    /// If the permission's associated memory is valid,
+    /// returns the value that the pointer points to.
+    /// Otherwise, the result is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> T
+        recommends
+            self.is_valid(),
+    {
+        self.typed_value().value()
+    }
+
     /// Specializes `is_disjoint` to the case when the other permission is a `PointsToUnaligned<S>`.
     pub proof fn is_disjoint_unaligned<S>(tracked &mut self, tracked other: &PointsToUnaligned<S>)
         requires
@@ -1636,32 +1614,6 @@ impl<T: ?Sized> PointsTo<T> {
     #[verifier::inline]
     pub open spec fn is_empty(&self) -> bool {
         self.typed_value().is_empty()
-    }
-}
-
-impl<T> PointsTo<T> {
-    /// If the permission's associated memory is valid,
-    /// returns the value that the pointer points to.
-    /// Otherwise, the result is meaningless.
-    #[verifier::inline]
-    pub open spec fn value(&self) -> T
-        recommends
-            self.is_valid(),
-    {
-        self.typed_value().value()
-    }
-}
-
-impl<T> PointsTo<[T]> {
-    /// If the permission's associated memory is valid,
-    /// returns the slice's elements.
-    /// Otherwise, the result is meaningless.
-    #[verifier::inline]
-    pub open spec fn value(&self) -> Seq<T>
-        recommends
-            self.is_valid(),
-    {
-        self.typed_value().value_ref()@
     }
 }
 
@@ -1882,6 +1834,17 @@ impl<T> PTSizedValue for PointsTo<T> {
 }
 
 impl<T> PointsTo<T> {
+    /// If the permission's associated memory is valid,
+    /// returns the value that the pointer points to.
+    /// Otherwise, the result is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> T
+        recommends
+            self.is_valid(),
+    {
+        self.typed_value().value()
+    }
+
     /// A `PointsTo<T>` is always aligned.
     pub proof fn is_aligned(tracked &self)
         requires
@@ -1949,6 +1912,24 @@ impl<T> PointsTo<T> {
 }
 
 impl<T: ?Sized> PointsToUnaligned<T> {
+    /// The contiguous sequence of bytes that this permission tracks.
+    #[verifier::inline]
+    pub open spec fn bytes(self) -> Seq<AbstractByte> {
+        self.pt_untyped().bytes()
+    }
+
+    /// Returns `true` if the permission's associated memory is valid for the type `T`.
+    #[verifier::inline]
+    pub open spec fn is_valid(&self) -> bool {
+        self.typed_value().is_valid()
+    }
+
+    /// Returns `true` if the permission's associated memory is not valid for the type `T`.
+    #[verifier::inline]
+    pub open spec fn is_empty(&self) -> bool {
+        self.typed_value().is_empty()
+    }
+
     /// Permissions with the same untyped permission, typed value and metadata are equal.
     pub proof fn lemma_eq_from_raw_parts(a: Self, b: Self)
         requires
@@ -2002,7 +1983,7 @@ impl<T: ?Sized> PointsToUnaligned<T> where PointsToUnaligned<T>: PTValueOps<A = 
             <PointsTo<T> as PTTypedValue>::ptrs_len_same_valid_value(*out, *final(out))
                 ==> final(self).wf(),
     {
-        let tracked out = PointsTo::from_unaligned_mut(self);
+        let tracked out = PointsTo::from_raw_parts_mut(self);
         let out_ref = out;
         if <PointsTo<T> as PTTypedValue>::ptrs_len_same_valid_value(*out_ref, *final(out_ref)) {
             <PointsToUnaligned<T> as PTTypedValue>::stays_wf(
@@ -2287,6 +2268,17 @@ impl<T> PointsToUnaligned<[T]> {
 }
 
 impl<T> PointsTo<[T]> {
+    /// If the permission's associated memory is valid,
+    /// returns the slice's elements.
+    /// Otherwise, the result is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> Seq<T>
+        recommends
+            self.is_valid(),
+    {
+        self.typed_value().value_ref()@
+    }
+
     /// The number of elements in the slice (the pointer's metadata).
     #[verifier::inline]
     pub open spec fn len(self) -> nat {

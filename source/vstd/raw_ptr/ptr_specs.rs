@@ -247,7 +247,7 @@ pub const fn ptr_shr_ref<'a, T: ?Sized>(ptr: *const T, Tracked(r): Tracked<&'a T
         shared_ref_ptr(shadow_data(r)) == ptr,
     ensures
         v == r,
-        const_ptr_eq_up_to_tag(ptr, shared_ref_ptr(shadow_data(v))),
+        ptr_eq_up_to_tag(ptr, shared_ref_ptr(shadow_data(v))),
     opens_invariants none
     no_unwind
 {
@@ -413,7 +413,7 @@ pub const fn ptr_mut_ref_join<T: ?Sized>(ptr: *mut T, Tracked(perm): Tracked<&mu
     ensures
         &*v == &*old(perm),
         &*final(v) == &*final(perm),
-        ptr_eq_up_to_tag(ptr, mut_ref_ptr(v)),
+        ptr_mut_eq_up_to_tag(ptr, mut_ref_ptr(v)),
     opens_invariants none
     no_unwind
 {
@@ -526,7 +526,7 @@ pub axiom fn tracked_mut_ref_slice_idx<T>(
 
 /// Two pointers are equal up to their tags:
 /// they have the same address, metadata, and provenance apart from the tag.
-pub open spec fn ptr_eq_up_to_tag<T: ?Sized>(p: *mut T, q: *mut T) -> bool {
+pub open spec fn ptr_mut_eq_up_to_tag<T: ?Sized>(p: *mut T, q: *mut T) -> bool {
     &&& p.addr() == q.addr()
     &&& provenance_eq_up_to_tag(p@.provenance, q@.provenance)
     &&& p@.metadata == q@.metadata
@@ -536,8 +536,8 @@ pub open spec fn ptr_eq_up_to_tag<T: ?Sized>(p: *mut T, q: *mut T) -> bool {
 /// Since `*mut T` and `*const T` are [semantically the same](https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html#pointer-model),
 /// we can define this operation in terms of the operation on `*mut T`.
 #[verifier::inline]
-pub open spec fn const_ptr_eq_up_to_tag<T: ?Sized>(p: *const T, q: *const T) -> bool {
-    ptr_eq_up_to_tag(p as *mut T, q as *mut T)
+pub open spec fn ptr_eq_up_to_tag<T: ?Sized>(p: *const T, q: *const T) -> bool {
+    ptr_mut_eq_up_to_tag(p as *mut T, q as *mut T)
 }
 
 /// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
@@ -552,7 +552,7 @@ pub open spec fn const_ptr_eq_up_to_tag<T: ?Sized>(p: *const T, q: *const T) -> 
 #[verifier::external_body]
 pub const fn cast_mut_ref_to_ptr<T>(mut_ref: &mut T) -> ((ptr, perm): (*mut T, Tracked<&mut T>))
     ensures
-        ptr_eq_up_to_tag(ptr, mut_ref_ptr(mut_ref)),
+        ptr_mut_eq_up_to_tag(ptr, mut_ref_ptr(mut_ref)),
         mut_ref_ptr(perm@) == ptr,
         &**perm == &*old(mut_ref),
         &*final(perm@) == &*final(mut_ref),
@@ -567,7 +567,7 @@ pub const fn cast_mut_ref_slice_to_ptr<T>(mut_ref: &mut [T]) -> ((ptr, perm): (
     Tracked<&mut [T]>,
 ))
     ensures
-        ptr_eq_up_to_tag(ptr, mut_ref_ptr(mut_ref)),
+        ptr_mut_eq_up_to_tag(ptr, mut_ref_ptr(mut_ref)),
         mut_ref_ptr(perm@) == ptr,
         &**perm == &*old(mut_ref),
         &*final(perm@) == &*final(mut_ref),
@@ -582,7 +582,7 @@ pub const fn cast_mut_ref_str_to_ptr(mut_ref: &mut str) -> ((ptr, perm): (
     Tracked<&mut str>,
 ))
     ensures
-        ptr_eq_up_to_tag(ptr, mut_ref_ptr(mut_ref)),
+        ptr_mut_eq_up_to_tag(ptr, mut_ref_ptr(mut_ref)),
         mut_ref_ptr(perm@) == ptr,
         &**perm == &*old(mut_ref),
         &*final(perm@) == &*final(mut_ref),

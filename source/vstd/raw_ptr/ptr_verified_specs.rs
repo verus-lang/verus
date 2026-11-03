@@ -176,7 +176,7 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
         perm.wf(),
     ensures
         v.value() == perm.value(),
-        const_ptr_eq_up_to_tag(v.ptr(), ptr),
+        ptr_eq_up_to_tag(v.ptr(), ptr),
     opens_invariants none
     no_unwind
 {

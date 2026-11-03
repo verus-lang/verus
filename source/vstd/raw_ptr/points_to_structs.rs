@@ -270,7 +270,7 @@ impl<T: ?Sized> PointsTo<T> {
 
     /// A mutably borrowed `PointsToUnaligned<T>` acts as a mutably borrowed `PointsTo<T>`
     /// (the `&mut` counterpart of `from_raw_parts_ref`).
-    pub axiom fn from_unaligned_mut<'a>(tracked pt_unaligned: &'a mut PointsToUnaligned<T>) -> (tracked out:
+    pub axiom fn from_raw_parts_mut<'a>(tracked pt_unaligned: &'a mut PointsToUnaligned<T>) -> (tracked out:
         &'a mut Self)
         ensures
             out.pt_unaligned() == *old(pt_unaligned),
