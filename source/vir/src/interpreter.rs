@@ -17,7 +17,7 @@ use crate::messages::{Message, Span, ToAny, WarningAllow, error};
 use crate::sst::{
     ArithOp, BinaryOp, Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent,
 };
-use crate::sst_util::{free_vars_exp, subst_exp};
+use crate::sst_util::{free_vars_exp, free_vars_exps, subst_exp};
 use crate::unicode::valid_unicode_scalar_bigint;
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
@@ -386,6 +386,16 @@ impl SyntacticEquality for Binders<Typ> {
 }
 
 // Constructor fields may appear in any source order. Use the same order for equality and hashing.
+/// Trigger terms are evaluated in the same environment as the body they belong to,
+/// so a free variable bound there (e.g. a function parameter) is replaced by its value
+fn subst_env_into_trigger(env: &Env, trig: &[Exp]) -> Exps {
+    let env_substs = free_vars_exps(trig)
+        .into_keys()
+        .filter_map(|id| env.get(&id).map(|v| (id, v.clone())))
+        .collect();
+    Arc::new(trig.iter().map(|e| subst_exp(&HashMap::new(), &env_substs, e)).collect())
+}
+
 fn sorted_ctor_fields(fields: &Binders<Exp>) -> Vec<&Binder<Exp>> {
     let mut fields: Vec<_> = fields.iter().collect();
     fields.sort_unstable_by(|l, r| l.name.cmp(&r.name));
@@ -1917,20 +1927,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 );
                 let empty_substs = HashMap::new();
                 let e = subst_exp(&empty_substs, &substs, e);
-                let triggers = Arc::new(
-                    triggers
-                        .iter()
-                        .map(|trig| {
-                            Arc::new(
-                                trig.iter().map(|e| subst_exp(&empty_substs, &substs, e)).collect(),
-                            )
-                        })
-                        .collect(),
-                );
-                let bnd = crate::def::Spanned::new(
-                    bnd.span.clone(),
-                    BndX::Quant(*quant_type, bnds.clone(), triggers, by_locals.clone()),
-                );
                 state.env.push_scope(true);
                 for b in bnds.iter() {
                     let id = b.name.clone();
@@ -1938,6 +1934,20 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         SpannedTyped::new(&e.span, &b.a, Interp(InterpExp::FreeVar(id.clone())));
                     state.env.insert(id, val).unwrap();
                 }
+                let triggers = Arc::new(
+                    triggers
+                        .iter()
+                        .map(|trig| {
+                            let trig: Vec<Exp> =
+                                trig.iter().map(|e| subst_exp(&empty_substs, &substs, e)).collect();
+                            subst_env_into_trigger(&state.env, &trig)
+                        })
+                        .collect(),
+                );
+                let bnd = crate::def::Spanned::new(
+                    bnd.span.clone(),
+                    BndX::Quant(*quant_type, bnds.clone(), triggers, by_locals.clone()),
+                );
                 let e = eval_expr_internal(ctx, state, &e)?;
                 state.env.pop_scope();
                 if let ExpX::Const(Constant::Bool(_)) = e.x {
@@ -2000,8 +2010,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             InterpExp::Array(_) => ok,
         },
         WithTriggers(triggers, body) => {
+            let triggers = Arc::new(
+                triggers.iter().map(|trig| subst_env_into_trigger(&state.env, trig)).collect(),
+            );
             let body = eval_expr_internal(ctx, state, body)?;
-            exp_new(WithTriggers(triggers.clone(), body))
+            exp_new(WithTriggers(triggers, body))
         }
         // Ignored by the interpreter at present (i.e., treated as symbolic)
         VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | StaticVar(..) => ok,
