@@ -1,6 +1,8 @@
 #![allow(unused_imports)]
 
 use super::points_to_model::*;
+use super::points_to_ops::*;
+use super::points_to_structs::*;
 use super::ptr_model::*;
 use crate::vstd::group_vstd_default;
 use crate::vstd::layout::{self, *};
