@@ -10,6 +10,24 @@ verus! {
 
 broadcast use {group_vstd_default};
 
+
+/// True when all `AbstractByte` encodings of `src` and `src_shadow_data` can be decoded to `dst` and `dst_shadow_data`.
+pub open spec fn encode_decode<T: ?Sized + TypeRepresentation, U: ?Sized + TypeRepresentation>(src: &T, src_shadow_data: ShadowData<T>, dst: &U, dst_shadow_data: ShadowData<U>) -> bool {
+    &&& forall|bytes|
+        #![trigger <T as TypeRepresentation>::encode(src, src_shadow_data, bytes)]
+        #![trigger <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)]
+        <T as TypeRepresentation>::encode(src, src_shadow_data, bytes) ==> <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)
+}
+
+/// True when for any `AbstractByte` sequence, if that sequence can be decoded to `src` and `src_shadow_data`,
+/// then it can also decoded to `dst` and `dst_shadow_data`.
+pub open spec fn decode_decode<T: ?Sized + TypeRepresentation, U: ?Sized + TypeRepresentation>(src: &T, src_shadow_data: ShadowData<T>, dst: &U, dst_shadow_data: ShadowData<U>) -> bool {
+    &&& forall|bytes|
+        #![trigger <T as TypeRepresentation>::decode(bytes, src, src_shadow_data)]
+        #![trigger <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)]
+        <T as TypeRepresentation>::decode(bytes, src, src_shadow_data) ==> <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)
+}
+
 pub trait TransmuteSpec<Dst: TypeRepresentation> where Self: TypeRepresentation + Sized {
     open spec fn transmute_req(src: Self, src_shadow_data: ShadowData<Self>, dst: Dst, dst_shadow_data: ShadowData<Dst>) -> bool {
         &&& encode_decode::<Self, Dst>(&src, arbitrary(), &dst, arbitrary())

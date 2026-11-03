@@ -8,6 +8,7 @@
 //! and that a value's encoding can be decoded back to the same value (see: <https://github.com/minirust/minirust/blob/master/spec/lang/representation.md#generic-properties>).
 #![allow(unused_imports)]
 
+use super::arithmetic::mul::*;
 use super::arithmetic::power::*;
 use super::arithmetic::power2::*;
 use super::endian::*;
@@ -462,8 +463,6 @@ unsigned_int_encoding! {
     (usize, usize_encode);
 }
 
-verus! {
-
 /// Types where every initialized byte sequence of length `size_of::<Self>()` decodes to a valid value of that type.
 /// This value is given by the natural number represented by the byte values
 /// (with respect to the endianness of the platform),
@@ -512,9 +511,6 @@ pub trait DecodesToNat: TypeRepresentation + BasePow2 + Integer {
     ;
 }
 
-}  // verus!
-
-
 macro_rules! decodes_to_nat {
     ($($uint:ty),+) => {$(
         verus! {
@@ -547,8 +543,6 @@ macro_rules! decodes_to_nat {
 }
 
 decodes_to_nat!(u8, u16, u32, u64, u128, usize);
-
-verus! {
 
 /// The bytes of `digits.len()` consecutive `B`s, each decoding to its digit,
 /// are initialized, and their `EndianNat` is the digits' `EndianNat` in base `B`.
@@ -602,6 +596,9 @@ proof fn lemma_bytes_to_endian_digits<B: DecodesToNat>(bytes: Seq<AbstractByte>,
             assert(rest.subrange(i * s, (i + 1) * s) =~= bytes.subrange(j * s, (j + 1) * s));
         }
         lemma_bytes_to_endian_digits(rest, rest_digits);
+        lemma_mul_is_distributive_add_other_way(s, least_i, 1);
+        lemma_mul_is_distributive_sub_other_way(s, k, 1);
+        lemma_mul_basics(s);
         assert(least =~= bytes.subrange(least_i * s, (least_i + 1) * s));
         B::lemma_decode(least, digits[least_i]);
         bytes_to_endian(least).to_nat_properties();
@@ -665,9 +662,6 @@ pub proof fn lemma_decode_to_big<BIG, B>(bytes: Seq<AbstractByte>, digits: Seq<B
     to_big_from_digits_single::<BIG, B>(digits);
     BIG::lemma_decode(bytes, v);
 }
-
-}  // verus!
-
 
 /// When x is negative, the bitwise result of this function is equivalent
 /// to the two's complement representation of x in the given base.
@@ -1534,40 +1528,48 @@ macro_rules! impl_type_representation_for_scalar_range_repr {
 
 pub(crate) use impl_type_representation_for_scalar_range_repr;
 
-// TODO: Define type representation for any slice.
-
-/// The abstract encoding for a `[u8]` maps each value in the slice to a corresponding abtract byte with no provenance.
-impl TypeRepresentation for [u8] {
+/// The abstract encoding for a `[T]` encodes `T` elements in sequence.
+/// Encoding `[T]` is only supported for types `T` whose encoding does not depend on shadow data.
+impl<T: TypeRepresentation> TypeRepresentation for [T] {
     open spec fn can_be_encoded() -> bool {
-        true
+        &&& T::can_be_encoded()
+        &&& !T::encoding_depends_on_shadow_data()
     }
 
     open spec fn encoding_depends_on_shadow_data() -> bool {
-        false
+        T::encoding_depends_on_shadow_data()
     }
 
-    open spec fn encode_no_shadow_data(value: &[u8], bytes: Seq<AbstractByte>) -> bool {
-        &&& value@.len() == bytes.len()
-        &&& forall|i| #![trigger value@[i]] 0 <= i < value@.len() ==> u8::encode(&value@[i], arbitrary(), seq![bytes[i]])
+    open spec fn encode_no_shadow_data(value: &[T], bytes: Seq<AbstractByte>) -> bool {
+        &&& bytes.len() == value@.len() * size_of::<T>()
+        &&& forall|i: int| #![trigger value@[i]] 0 <= i < value@.len() ==> T::encode(
+            &value@[i],
+            arbitrary(),
+            bytes.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+        )
     }
 
-    open spec fn encode_with_shadow_data(value: &[u8], shadow_data: ShadowData<[u8]>, bytes: Seq<AbstractByte>) -> bool {
+    open spec fn encode_with_shadow_data(value: &[T], shadow_data: ShadowData<[T]>, bytes: Seq<AbstractByte>) -> bool {
         arbitrary()
     }
 
-    open spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &[u8]) -> bool {
-        &&& value@.len() == bytes.len()
-        &&& forall|i| #![trigger value@[i]] 0 <= i < value@.len() ==> u8::decode(seq![bytes[i]], &value@[i], arbitrary())
+    open spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &[T]) -> bool {
+        &&& bytes.len() == value@.len() * size_of::<T>()
+        &&& forall|i: int| #![trigger value@[i]] 0 <= i < value@.len() ==> T::decode(
+            bytes.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+            &value@[i],
+            arbitrary(),
+        )
     }
 
-    open spec fn decode_with_shadow_data(bytes: Seq<AbstractByte>, value: &[u8], shadow_data: ShadowData<[u8]>) -> bool {
+    open spec fn decode_with_shadow_data(bytes: Seq<AbstractByte>, value: &[T], shadow_data: ShadowData<[T]>) -> bool {
         arbitrary()
     }
 
     proof fn encoding_independent_of_shadow_data(
-        v: &[u8],
-        shadow_data1: ShadowData<[u8]>,
-        shadow_data2: ShadowData<[u8]>,
+        v: &[T],
+        shadow_data1: ShadowData<[T]>,
+        shadow_data2: ShadowData<[T]>,
         b: Seq<AbstractByte>,
     ) {
         // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
@@ -1575,55 +1577,83 @@ impl TypeRepresentation for [u8] {
         assert(Self::decode(b, v, shadow_data1) == Self::decode(b, v, shadow_data2));
     }
 
-    proof fn encoding_size(v: &[u8], shadow_data: ShadowData<[u8]>, b: Seq<AbstractByte>) {
+    proof fn encoding_size(v: &[T], shadow_data: ShadowData<[T]>, b: Seq<AbstractByte>) {
+        broadcast use layout_of_slices;
+
         // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
         assert(Self::encode(v, shadow_data, b) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
         assert(Self::decode(b, v, shadow_data) ==> b.len() == crate::vstd::layout::spec_size_of_val::<Self>(v));
     }
 
-    proof fn encoding_exists(tracked v: &[u8], shadow_data: ShadowData<[u8]>) -> (b: Seq<AbstractByte>) {
-        broadcast use endian_to_bytes_to_endian, EndianNat::from_nat_to_nat;
-
-        unsigned_int_max_values();
-        let bytes = v@.map_values(
-            |e| endian_to_bytes(EndianNat::<u8>::from_nat(e as nat, size_of::<u8>()), None)[0],
-        );
-        assert forall|i| #![trigger v@[i]] 0 <= i < v@.len() implies u8::encode(&v@[i], arbitrary(), seq![bytes[i]]) by {
-            assert(seq![bytes[i]] == endian_to_bytes(
-                EndianNat::<u8>::from_nat(v@[i] as nat, size_of::<u8>()),
-                None,
-            ));
-        }
-        let b = bytes;
+    proof fn encoding_exists(tracked v: &[T], shadow_data: ShadowData<[T]>) -> (b: Seq<AbstractByte>) {
+        let b = slice_encoding_exists_prefix(v, v@.len() as int);
         // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
         assert(Self::encode(v, shadow_data, b));
         b
     }
 
-    proof fn encoding_invertible(v: &[u8], shadow_data: ShadowData<[u8]>, b: Seq<AbstractByte>) {
-        assert forall|i| #![trigger v@[i]] 0 <= i < v@.len() implies u8::decode(seq![b[i]], &v@[i], arbitrary()) by {
-            u8::encoding_invertible(&v@[i], arbitrary(), seq![b[i]]);
+    proof fn encoding_invertible(v: &[T], shadow_data: ShadowData<[T]>, b: Seq<AbstractByte>) {
+        let s = size_of::<T>() as int;
+        assert forall|i: int| #![trigger v@[i]] 0 <= i < v@.len() implies T::decode(
+            b.subrange(i * s, (i + 1) * s),
+            &v@[i],
+            arbitrary(),
+        ) by {
+            T::encoding_invertible(&v@[i], arbitrary(), b.subrange(i * s, (i + 1) * s));
         }
         // Workaround for a Verus definition-ordering issue (see note on `TypeRepresentation`)
         assert(Self::decode(b, v, shadow_data));
     }
 }
 
-/// True when all `AbstractByte` encodings of `src` and `src_shadow_data` can be decoded to `dst` and `dst_shadow_data`.
-pub open spec fn encode_decode<T: ?Sized + TypeRepresentation, U: ?Sized + TypeRepresentation>(src: &T, src_shadow_data: ShadowData<T>, dst: &U, dst_shadow_data: ShadowData<U>) -> bool {
-    &&& forall|bytes|
-        #![trigger <T as TypeRepresentation>::encode(src, src_shadow_data, bytes)]
-        #![trigger <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)]
-        <T as TypeRepresentation>::encode(src, src_shadow_data, bytes) ==> <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)
-}
+/// Encodes the first `n` elements of `v`, one `size_of::<T>()`-byte slot per element.
+proof fn slice_encoding_exists_prefix<T: TypeRepresentation>(tracked v: &[T], n: int) -> (b: Seq<
+    AbstractByte,
+>)
+    requires
+        T::can_be_encoded(),
+        !T::encoding_depends_on_shadow_data(),
+        0 <= n <= v@.len(),
+    ensures
+        b.len() == n * size_of::<T>(),
+        forall|i: int| #![trigger v@[i]] 0 <= i < n ==> T::encode(
+            &v@[i],
+            arbitrary(),
+            b.subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+        ),
+    decreases n,
+{
+    broadcast use layout_of_sized;
 
-/// True when for any `AbstractByte` sequence, if that sequence can be decoded to `src` and `src_shadow_data`,
-/// then it can also decoded to `dst` and `dst_shadow_data`.
-pub open spec fn decode_decode<T: ?Sized + TypeRepresentation, U: ?Sized + TypeRepresentation>(src: &T, src_shadow_data: ShadowData<T>, dst: &U, dst_shadow_data: ShadowData<U>) -> bool {
-    &&& forall|bytes|
-        #![trigger <T as TypeRepresentation>::decode(bytes, src, src_shadow_data)]
-        #![trigger <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)]
-        <T as TypeRepresentation>::decode(bytes, src, src_shadow_data) ==> <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)
+    let s = size_of::<T>() as int;
+    if n == 0 {
+        Seq::empty()
+    } else {
+        let prev = slice_encoding_exists_prefix(v, n - 1);
+        let tracked e = super::slice::tracked_slice_index(v, n - 1);
+        let e_bytes = T::encoding_exists(e, arbitrary());
+        T::encoding_size(e, arbitrary(), e_bytes);
+        assert(e_bytes.len() == s);
+        let b = prev + e_bytes;
+        lemma_mul_is_distributive_add_other_way(s, n - 1, 1);
+        lemma_mul_basics(s);
+        assert(b.len() == n * s);
+        assert forall|i: int| #![trigger v@[i]] 0 <= i < n implies T::encode(
+            &v@[i],
+            arbitrary(),
+            b.subrange(i * s, (i + 1) * s),
+        ) by {
+            if i < n - 1 {
+                lemma_mul_nonnegative(i, s);
+                lemma_mul_inequality(i, i + 1, s);
+                lemma_mul_inequality(i + 1, n - 1, s);
+                assert(b.subrange(i * s, (i + 1) * s) =~= prev.subrange(i * s, (i + 1) * s));
+            } else {
+                assert(b.subrange(i * s, (i + 1) * s) =~= e_bytes);
+            }
+        }
+        b
+    }
 }
 
 pub broadcast group group_type_representation_axioms {
