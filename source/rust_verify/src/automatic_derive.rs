@@ -1,6 +1,5 @@
 use crate::context::BodyCtxt;
 use crate::verus_items::RustItem;
-use rustc_hir::HirId;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyKind;
 use rustc_span::Span;
@@ -11,8 +10,8 @@ use vir::ast::{
     GenericBounds, Idents, ImplPaths, ItemKind, Mode, Opaqueness, ParamX, Path, Place, PlaceX,
     SpannedTyped, Typ, TypX, UnaryOpr, VarIdent, VirErr, VirErrAs, Visibility,
 };
+use vir::ast_util::bool_typ;
 use vir::messages::WarningAllow;
-use vir::ast_util::{bool_typ};
 
 /// Traits with special handling
 #[derive(Clone, Copy, Debug)]
@@ -212,10 +211,10 @@ fn clone_add_post_condition<'tcx>(
                 return Ok(None);
             }
         };
-        let rel = cleanup_span_ids(ctxt, span, hir_id, &rel);
+        let rel = cleanup_span_ids(bctx, span, &rel);
         let (datatype_visibility, datatype_body_visibility) =
-            get_visibilities(&expr.span, ctxt, def_id)?;
-        let function = mk_spec_function(
+            get_visibilities(&expr.span, bctx, def_id)?;
+        let aux_function = mk_spec_function(
             &expr.span,
             spec_fn_name,
             datatype_visibility.clone(),
@@ -236,7 +235,7 @@ fn clone_add_post_condition<'tcx>(
             .collect();
         let ct = CallTarget::Fun(
             CallTargetKind::Static,
-            function.x.name.clone(),
+            aux_function.x.name.clone(),
             Arc::new(typ_args),
             Arc::new(vec![]),
             CallTargetAttrs {
@@ -252,25 +251,33 @@ fn clone_add_post_condition<'tcx>(
         );
         let ret_var = SpannedTyped::new(
             &expr.span,
-            &functionx.ret.x.typ,
-            ExprX::Var(functionx.ret.x.name.clone()),
+            &functionx.outer_ret.x.typ,
+            ExprX::Var(functionx.inner_ret.x.name.clone()),
         );
         let args = Arc::new(vec![self_var, ret_var]);
-        let ens_expr = SpannedTyped::new(&expr.span, &bool_typ(), ExprX::Call(ct, args, None));
+        let ens_expr = SpannedTyped::new(
+            &expr.span,
+            &bool_typ(),
+            ExprX::Call { target: ct, args, body: None, post_args: None },
+        );
 
-        let ens_expr = cleanup_span_ids(ctxt, span, hir_id, &ens_expr);
+        let ens_expr = cleanup_span_ids(bctx, span, &ens_expr);
         functionx.ensure.0 = Arc::new(vec![ens_expr]);
         // TODO: Right now trait functions are always public, but the datatype might be private,
         // so it's impossible to make this well-formed. So we fix the visibility here, but really,
         // this should be fixed for all trait functions.
         functionx.visibility = datatype_visibility;
-        Ok(Some(function))
+        Ok(Some(aux_function))
     }
 }
 
+/// Turn
+///   `match scrutinee { pat => Struct { field: arg.clone() , ... }, ... }`
+/// into:
+///   `match scrutinee { pat => vstd::pervasive::strictly_cloned(arg, out.field) && ..., ... }`
 fn to_relation(expr: &Expr, output: &Expr) -> Result<Expr, ()> {
     match &expr.x {
-        ExprX::Match(scrutinee, arms) => {
+        ExprX::Match(scrutinee, arms, assert_irrefutable) => {
             let mut new_arms: Vec<Arm> = vec![];
             for mut arm in arms.iter().cloned() {
                 let armx = Arc::make_mut(&mut arm);
@@ -280,7 +287,7 @@ fn to_relation(expr: &Expr, output: &Expr) -> Result<Expr, ()> {
             Ok(SpannedTyped::new(
                 &expr.span,
                 &expr.typ,
-                ExprX::Match(scrutinee.clone(), Arc::new(new_arms)),
+                ExprX::Match(scrutinee.clone(), Arc::new(new_arms), *assert_irrefutable),
             ))
         }
         ExprX::Ctor(dt, variant_ident, binders, None) => {
@@ -308,17 +315,19 @@ fn to_relation(expr: &Expr, output: &Expr) -> Result<Expr, ()> {
                     ),
                 );
                 let (clonee, impl_paths, clone_typ_arg) = match &binder.a.x {
-                    ExprX::Call(
-                        CallTarget::Fun(
-                            CallTargetKind::DynamicResolved { .. } | CallTargetKind::Dynamic,
-                            fun,
-                            typs,
-                            impl_paths,
-                            _call_target_attrs,
-                        ),
+                    ExprX::Call {
+                        target:
+                            CallTarget::Fun(
+                                CallTargetKind::DynamicResolved { .. } | CallTargetKind::Dynamic,
+                                fun,
+                                typs,
+                                impl_paths,
+                                _call_target_attrs,
+                            ),
                         args,
-                        None,
-                    ) if fun == &vir::fun!(CrateId::Core => "clone", "Clone", "clone") => {
+                        body: None,
+                        post_args: None,
+                    } if fun == &vir::fun!(CrateId::Core => "clone", "Clone"; "clone") => {
                         assert!(args.len() == 1);
                         (args[0].clone(), impl_paths.clone(), typs[0].clone())
                     }
@@ -340,7 +349,7 @@ fn to_relation(expr: &Expr, output: &Expr) -> Result<Expr, ()> {
 }
 
 fn strictly_cloned_call(e1: &Expr, e2: &Expr, typ: Typ, impl_paths: ImplPaths) -> Expr {
-    let fun = vir::fun!(CrateId::Vstd => "pervasive", "strictly_cloned");
+    let fun = vir::fun!(CrateId::Vstd => "pervasive"; "strictly_cloned");
     let ct = CallTarget::Fun(
         CallTargetKind::Static,
         fun,
@@ -353,7 +362,11 @@ fn strictly_cloned_call(e1: &Expr, e2: &Expr, typ: Typ, impl_paths: ImplPaths) -
         },
     );
     let args = Arc::new(vec![e1.clone(), e2.clone()]);
-    SpannedTyped::new(&e1.span, &bool_typ(), ExprX::Call(ct, args, None))
+    SpannedTyped::new(
+        &e1.span,
+        &bool_typ(),
+        ExprX::Call { target: ct, args, body: None, post_args: None },
+    )
 }
 
 fn mk_spec_function(
@@ -413,8 +426,8 @@ fn mk_spec_function(
             typ_params: typ_params.clone(),
             typ_bounds: typ_bounds.clone(),
             params: Arc::new(vec![self_param, other_param]),
-            ret: ret_param,
-            ens_has_return: false,
+            outer_ret: ret_param.clone(),
+            inner_ret: ret_param,
             require: Arc::new(vec![]),
             ensure: (Arc::new(vec![]), Arc::new(vec![])),
             returns: None,
@@ -428,7 +441,6 @@ fn mk_spec_function(
             attrs: Arc::new(FunctionAttrsX {
                 uses_ghost_blocks: true,
                 inline: false,
-                hidden: Arc::new(vec![]),
                 broadcast_forall: false,
                 broadcast_forall_only: false,
                 no_auto_trigger: false,
@@ -460,10 +472,14 @@ fn mk_spec_function(
                 tracked_swap: false,
                 tracked_take_option: false,
                 is_async: false,
+                impls_cannot_extend_spec: false,
+                is_drop: false,
             }),
             body: Some(body.clone()),
             extra_dependencies: vec![],
-            async_ret: None,
+            atomic_update: None,
+            hidden: Arc::new(vec![]),
+            return_opaque_type_eqs: Arc::new(vec![]),
         },
     )
 }
@@ -473,9 +489,10 @@ fn mk_spec_function(
 /// (ii) visiblity of the interior of the datatype
 fn get_visibilities<'tcx>(
     span: &vir::messages::Span,
-    ctxt: &Context<'tcx>,
+    bctx: &BodyCtxt<'tcx>,
     def_id: DefId,
 ) -> Result<(Visibility, Visibility), VirErr> {
+    let ctxt = &bctx.ctxt;
     let fn_sig = ctxt.tcx.fn_sig(def_id).skip_binder();
     let self_ty = fn_sig.output().skip_binder();
     let adt_def = match self_ty.kind() {
