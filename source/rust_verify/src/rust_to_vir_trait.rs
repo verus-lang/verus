@@ -810,6 +810,7 @@ fn make_trait_decl<'tcx>(
     Ok(FunctionInfo {
         function: vir::def::Spanned::new(method.span.clone(), methodx),
         function_for_autospec: None,
+        autoderive_aux_function: None,
         pre_header: spec_method_info.pre_header.clone(),
         def_id: spec_method_info.def_id,
         body_id: spec_method_info.body_id.clone(),

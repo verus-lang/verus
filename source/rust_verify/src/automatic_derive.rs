@@ -1,4 +1,4 @@
-use crate::context::BodyCtxt;
+use crate::context::{BodyCtxt, Context};
 use crate::verus_items::RustItem;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyKind;
@@ -6,9 +6,9 @@ use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     Arm, AutospecUsage, BinaryOp, BodyVisibility, CallTarget, CallTargetAttrs, CallTargetKind,
-    CrateId, Expr, ExprX, FieldOpr, Fun, Function, FunctionAttrsX, FunctionKind, FunctionX,
-    GenericBounds, Idents, ImplPaths, ItemKind, Mode, Opaqueness, ParamX, Path, Place, PlaceX,
-    SpannedTyped, Typ, TypX, UnaryOpr, VarIdent, VirErr, VirErrAs, Visibility,
+    CrateId, Expr, ExprX, FieldOpr, Fun, Function, FunctionAttrsX, FunctionKind, FunctionStub,
+    FunctionStubX, FunctionX, GenericBounds, Idents, ImplPaths, ItemKind, Mode, Opaqueness, ParamX,
+    Path, Place, PlaceX, SpannedTyped, Typ, TypX, UnaryOpr, VarIdent, VirErr, VirErrAs, Visibility,
 };
 use vir::ast_util::bool_typ;
 use vir::messages::WarningAllow;
@@ -66,36 +66,100 @@ pub fn is_automatically_derived(attrs: &[rustc_hir::Attribute]) -> bool {
     false
 }
 
-pub fn modify_derived_item<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    id: rustc_span::def_id::DefId,
-    inputs: &Vec<rustc_middle::ty::Ty>,
+/// Called when creating the FunctionStub for an automatically-derived function,
+/// before the body is processed.
+/// If the derived function needs an auxiliary spec function (see `clone_add_post_condition`),
+/// this creates the FunctionStub for that auxiliary function up front
+/// (and adjusts the stub of the derived function as necessary).
+/// The full auxiliary Function is created later, by `modify_derived_item`.
+pub(crate) fn make_aux_function_stub<'tcx>(
+    ctxt: &Context<'tcx>,
     span: Span,
     action: AutomaticDeriveAction,
-    function: &mut FunctionX,
+    function: &mut FunctionStubX,
     def_id: DefId,
-) -> Result<Option<Function>, VirErr> {
+) -> Result<Option<FunctionStub>, VirErr> {
     let AutomaticDeriveAction::Special(special) = action else {
         return Ok(None);
     };
     match special {
         SpecialTrait::Clone => {
-            if function.name.path.last_segment().is_name("clone") {
-                return clone_add_post_condition(bctx, id, inputs, span, function, def_id);
+            if function.name.path.last_segment().is_name("clone") && function.params.len() >= 1 {
+                let module_path = function.name.path.pop_segment().pop_segment();
+                let spec_fn_name = vir::def::clone_spec_fn_name(&function.name.path.pop_segment());
+                let other_ident = vir::ast_util::air_unique_var(vir::def::OTHER_PARAM_VALUE);
+                let (datatype_visibility, datatype_body_visibility) =
+                    get_visibilities(ctxt, span, def_id)?;
+                // TODO: Right now trait functions are always public, but the datatype might be
+                // private, so it's impossible to make the ensures clause well-formed.
+                // So we fix the visibility here, but really,
+                // we should find a general solution that works for all trait functions.
+                function.visibility = datatype_visibility.clone();
+                let stub = mk_spec_function_stub(
+                    &ctxt.spans.to_air_span(span),
+                    spec_fn_name,
+                    datatype_visibility,
+                    datatype_body_visibility,
+                    &module_path,
+                    &function.typ_params,
+                    &function.typ_bounds,
+                    &function.params[0].x.typ,
+                    &function.params[0].x.name,
+                    &other_ident,
+                );
+                return Ok(Some(stub));
             }
         }
     }
     Ok(None)
 }
 
+/// Called after the body of the automatically-derived function is processed.
+/// `aux_stub` should be the stub returned by `make_aux_function_stub`;
+/// if it is `Some`, this always returns the corresponding full auxiliary Function.
+pub(crate) fn modify_derived_item<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    id: rustc_span::def_id::DefId,
+    inputs: &Vec<rustc_middle::ty::Ty>,
+    span: Span,
+    action: AutomaticDeriveAction,
+    function: &mut FunctionX,
+    aux_stub: Option<&FunctionStub>,
+) -> Result<Option<Function>, VirErr> {
+    let mut aux_body = None;
+    if let AutomaticDeriveAction::Special(special) = action {
+        match special {
+            SpecialTrait::Clone => {
+                if function.name.path.last_segment().is_name("clone") {
+                    aux_body =
+                        clone_add_post_condition(bctx, id, inputs, span, function, aux_stub)?;
+                }
+            }
+        }
+    }
+    match aux_stub {
+        Some(aux_stub) => {
+            // If we didn't end up needing the auxiliary function, we still need to
+            // produce a Function for the stub; if aux_body == None, this will just
+            // create a function with an uninterpreted body.
+            Ok(Some(stub_to_spec_function(aux_stub, aux_body)))
+        }
+        None => {
+            assert!(aux_body.is_none());
+            Ok(None)
+        }
+    }
+}
+
+/// Returns the body for the auxiliary spec function, if it's needed
 fn clone_add_post_condition<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     mut id: rustc_span::def_id::DefId,
     inputs: &Vec<rustc_middle::ty::Ty>,
     span: Span,
     functionx: &mut FunctionX,
-    def_id: DefId,
-) -> Result<Option<Function>, VirErr> {
+    aux_stub: Option<&FunctionStub>,
+) -> Result<Option<Expr>, VirErr> {
     if inputs.len() >= 1 {
         use rustc_middle::ty::{AdtDef, TyKind};
         if let TyKind::Ref(_, t, _) = inputs[0].kind() {
@@ -195,10 +259,12 @@ fn clone_add_post_condition<'tcx>(
         //
         // For enums, it's similar, but there's a match statement to handle.
 
+        let Some(aux_stub) = aux_stub else {
+            warn_unexpected();
+            return Ok(None);
+        };
         let ExprX::Block(_, Some(expr)) = &body.x else { unreachable!() };
-        let module_path = functionx.name.path.pop_segment().pop_segment();
-        let spec_fn_name = vir::def::clone_spec_fn_name(&functionx.name.path.pop_segment());
-        let other_ident = vir::ast_util::air_unique_var(vir::def::OTHER_PARAM_VALUE);
+        let other_ident = aux_stub.x.params[1].x.name.clone();
         let other_var = SpannedTyped::new(
             &expr.span,
             &functionx.params[0].x.typ,
@@ -212,21 +278,6 @@ fn clone_add_post_condition<'tcx>(
             }
         };
         let rel = cleanup_span_ids(bctx, span, &rel);
-        let (datatype_visibility, datatype_body_visibility) =
-            get_visibilities(&expr.span, bctx, def_id)?;
-        let aux_function = mk_spec_function(
-            &expr.span,
-            spec_fn_name,
-            datatype_visibility.clone(),
-            datatype_body_visibility,
-            &module_path,
-            &functionx.typ_params,
-            &functionx.typ_bounds,
-            &functionx.params[0].x.typ,
-            &functionx.params[0].x.name,
-            &other_ident,
-            &rel,
-        );
 
         let typ_args: Vec<_> = functionx
             .typ_params
@@ -235,7 +286,7 @@ fn clone_add_post_condition<'tcx>(
             .collect();
         let ct = CallTarget::Fun(
             CallTargetKind::Static,
-            aux_function.x.name.clone(),
+            aux_stub.x.name.clone(),
             Arc::new(typ_args),
             Arc::new(vec![]),
             CallTargetAttrs {
@@ -263,11 +314,7 @@ fn clone_add_post_condition<'tcx>(
 
         let ens_expr = cleanup_span_ids(bctx, span, &ens_expr);
         functionx.ensure.0 = Arc::new(vec![ens_expr]);
-        // TODO: Right now trait functions are always public, but the datatype might be private,
-        // so it's impossible to make this well-formed. So we fix the visibility here, but really,
-        // this should be fixed for all trait functions.
-        functionx.visibility = datatype_visibility;
-        Ok(Some(aux_function))
+        Ok(Some(rel))
     }
 }
 
@@ -369,7 +416,7 @@ fn strictly_cloned_call(e1: &Expr, e2: &Expr, typ: Typ, impl_paths: ImplPaths) -
     )
 }
 
-fn mk_spec_function(
+fn mk_spec_function_stub(
     span: &vir::messages::Span,
     spec_fn_name: Fun,
     datatype_visibility: Visibility,
@@ -380,8 +427,7 @@ fn mk_spec_function(
     self_typ: &Typ,
     self_param_name: &VarIdent,
     other_param_name: &VarIdent,
-    body: &Expr,
-) -> Function {
+) -> FunctionStub {
     let self_param = vir::def::Spanned::new(
         span.clone(),
         ParamX {
@@ -414,7 +460,7 @@ fn mk_spec_function(
     );
     vir::def::Spanned::new(
         span.clone(),
-        FunctionX {
+        FunctionStubX {
             name: spec_fn_name,
             proxy: None,
             kind: FunctionKind::Static,
@@ -426,17 +472,9 @@ fn mk_spec_function(
             typ_params: typ_params.clone(),
             typ_bounds: typ_bounds.clone(),
             params: Arc::new(vec![self_param, other_param]),
-            outer_ret: ret_param.clone(),
-            inner_ret: ret_param,
-            require: Arc::new(vec![]),
-            ensure: (Arc::new(vec![]), Arc::new(vec![])),
-            returns: None,
-            decrease: Arc::new(vec![]),
-            decrease_when: None,
-            decrease_by: None,
-            fndef_axioms: None,
-            mask_spec: None,
-            unwind_spec: None,
+            outer_ret: ret_param,
+            returns: false,
+            decreases_len: 0,
             item_kind: ItemKind::Function,
             attrs: Arc::new(FunctionAttrsX {
                 uses_ghost_blocks: true,
@@ -475,7 +513,59 @@ fn mk_spec_function(
                 impls_cannot_extend_spec: false,
                 is_drop: false,
             }),
-            body: Some(body.clone()),
+        },
+    )
+}
+
+fn stub_to_spec_function(stub: &FunctionStub, body: Option<Expr>) -> Function {
+    let FunctionStubX {
+        name,
+        proxy,
+        kind,
+        visibility,
+        body_visibility,
+        opaqueness,
+        owning_module,
+        mode,
+        typ_params,
+        typ_bounds,
+        params,
+        outer_ret,
+        item_kind,
+        attrs,
+        returns,
+        decreases_len,
+    } = stub.x.clone();
+    assert!(!returns);
+    assert!(decreases_len == 0);
+    vir::def::Spanned::new(
+        stub.span.clone(),
+        FunctionX {
+            name,
+            proxy,
+            kind,
+            visibility,
+            body_visibility,
+            opaqueness,
+            owning_module,
+            mode,
+            typ_params,
+            typ_bounds,
+            params,
+            inner_ret: outer_ret.clone(),
+            outer_ret,
+            require: Arc::new(vec![]),
+            ensure: (Arc::new(vec![]), Arc::new(vec![])),
+            returns: None,
+            decrease: Arc::new(vec![]),
+            decrease_when: None,
+            decrease_by: None,
+            fndef_axioms: None,
+            mask_spec: None,
+            unwind_spec: None,
+            item_kind,
+            attrs,
+            body: body,
             extra_dependencies: vec![],
             atomic_update: None,
             hidden: Arc::new(vec![]),
@@ -488,20 +578,19 @@ fn mk_spec_function(
 /// (i) visiblity of the datatype
 /// (ii) visiblity of the interior of the datatype
 fn get_visibilities<'tcx>(
-    span: &vir::messages::Span,
-    bctx: &BodyCtxt<'tcx>,
+    ctxt: &Context<'tcx>,
+    span: Span,
     def_id: DefId,
 ) -> Result<(Visibility, Visibility), VirErr> {
-    let ctxt = &bctx.ctxt;
     let fn_sig = ctxt.tcx.fn_sig(def_id).skip_binder();
     let self_ty = fn_sig.output().skip_binder();
     let adt_def = match self_ty.kind() {
         TyKind::Adt(adt_def, _args) => adt_def,
         _ => {
-            return Err(vir::messages::error(
+            return crate::util::err_span(
                 span,
                 "Verus Internal Error: handling auto-derive Clone, expected TyKind::Adt",
-            ));
+            );
         }
     };
     let datatype_vis = crate::rust_to_vir_base::mk_visibility(ctxt, adt_def.did());
