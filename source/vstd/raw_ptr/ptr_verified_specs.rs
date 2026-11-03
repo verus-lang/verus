@@ -65,6 +65,7 @@ proof fn points_to_from_parts_ref_slice<'a, T>(
 
 /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
+#[cfg(not(verus_verify_core))]
 #[inline(always)]
 #[verifier::shadow_data]
 pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T)
@@ -77,20 +78,12 @@ pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> 
     opens_invariants none
     no_unwind
 {
-    proof {
-        PointsTo::<T>::lemma_pt_parts_wf(*perm);
-    }
-    let tracked pt_unaligned = perm.tracked_pt_unaligned();
-    let tracked r = ref_from_parts(
-        ptr,
-        pt_unaligned.tracked_pt_untyped(),
-        pt_unaligned.tracked_typed_value(),
-    );
-    ptr_shr_ref(ptr, Tracked(r))
+    ptr_shr_ref(ptr, Tracked(perm.borrow_ref()))
 }
 
 /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
+#[cfg(not(verus_verify_core))]
 #[inline(always)]
 #[verifier::shadow_data]
 pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<[T]>>) -> (v: &[T])
@@ -103,16 +96,7 @@ pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<
     opens_invariants none
     no_unwind
 {
-    proof {
-        PointsTo::<[T]>::lemma_pt_parts_wf(*perm);
-    }
-    let tracked pt_unaligned = perm.tracked_pt_unaligned();
-    let tracked r = ref_from_parts_slice(
-        ptr,
-        pt_unaligned.tracked_pt_untyped(),
-        pt_unaligned.tracked_typed_value(),
-    );
-    ptr_shr_ref(ptr, Tracked(r))
+    ptr_shr_ref(ptr, Tracked(perm.borrow_ref()))
 }
 
 /// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
@@ -297,6 +281,7 @@ pub proof fn shr_ref_points_to_slice<'a, T>(tracked r: &'a [T]) -> (tracked pt: 
 }
 
 /// Convert from a shared reference to a `&'a mut T` to a `&'a PointsTo<T>`.
+#[cfg(not(verus_verify_core))]
 #[verifier::shadow_data]
 pub proof fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> (tracked pt:
     &'a PointsTo<T>)
@@ -313,6 +298,7 @@ pub proof fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
 }
 
 /// Convert from a shared reference to a `&'a mut [T]` to a `&'a PointsTo<[T]>`.
+#[cfg(not(verus_verify_core))]
 #[verifier::shadow_data]
 pub proof fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T]) -> (tracked pt:
     &'a PointsTo<[T]>)

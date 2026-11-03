@@ -1896,6 +1896,25 @@ impl<T> PointsTo<T> {
     {
     }
 
+    /// Borrows the valid value as a `&T` at the permission's pointer.
+    #[verifier::shadow_data]
+    pub proof fn borrow_ref(tracked &self) -> (tracked r: &T)
+        requires
+            self.wf(),
+            self.is_valid(),
+        ensures
+            r == self.value(),
+            shared_ref_ptr(shadow_data(r)) == self.ptr() as *const T,
+    {
+        PointsTo::<T>::lemma_pt_parts_wf(*self);
+        let tracked pt_unaligned = self.tracked_pt_unaligned();
+        ref_from_parts(
+            self.ptr() as *const T,
+            pt_unaligned.tracked_pt_untyped(),
+            pt_unaligned.tracked_typed_value(),
+        )
+    }
+
     /// This takes a mutable borrow of the `T` from a mutable borrow of a `PointsTo<T>`.
     /// The pointer of this borrow matches the permission's pointer.
     ///
@@ -2310,6 +2329,25 @@ impl<T> PointsTo<[T]> {
                 self.typed_value(),
             ),
     {
+    }
+
+    /// Borrows the valid value as a `&[T]` at the permission's pointer.
+    #[verifier::shadow_data]
+    pub proof fn borrow_ref(tracked &self) -> (tracked r: &[T])
+        requires
+            self.wf(),
+            self.is_valid(),
+        ensures
+            r@ == self.value(),
+            shared_ref_ptr(shadow_data(r)) == self.ptr() as *const [T],
+    {
+        PointsTo::<[T]>::lemma_pt_parts_wf(*self);
+        let tracked pt_unaligned = self.tracked_pt_unaligned();
+        ref_from_parts_slice(
+            self.ptr() as *const [T],
+            pt_unaligned.tracked_pt_untyped(),
+            pt_unaligned.tracked_typed_value(),
+        )
     }
 
     /// This takes a mutable borrow of the `[T]` from a mutable borrow of a `PointsTo<[T]>`.
