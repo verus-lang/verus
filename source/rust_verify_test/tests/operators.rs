@@ -758,3 +758,35 @@ test_verify_one_file! {
         "bare modulo operator (%) in ghost code; it is expected that (%) is translated by the verus macro",
     ])
 }
+
+test_verify_one_file! {
+    #[test] bool_ineqs verus_code! {
+        fn test_lt() {
+            let x = (true < true); assert(x == false);
+            let x = (false < true); assert(x == true);
+            let x = (true < false); assert(x == false);
+            let x = (false < false); assert(x == false);
+        }
+
+        fn test_le() {
+            let x = (true <= true); assert(x == true);
+            let x = (false <= true); assert(x == true);
+            let x = (true <= false); assert(x == false);
+            let x = (false <= false); assert(x == true);
+        }
+
+        fn test_gt() {
+            let x = (true > true); assert(x == false);
+            let x = (false > true); assert(x == false);
+            let x = (true > false); assert(x == true);
+            let x = (false > false); assert(x == false);
+        }
+
+        fn test_ge() {
+            let x = (true >= true); assert(x == true);
+            let x = (false >= true); assert(x == false);
+            let x = (true >= false); assert(x == true);
+            let x = (false >= false); assert(x == true);
+        }
+    } => Ok(())
+}

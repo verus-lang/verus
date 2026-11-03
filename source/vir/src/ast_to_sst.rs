@@ -4010,6 +4010,23 @@ fn binary_op_exp(
             assume_fp_postcondition(&var_ident, e1, e2, op, &e1.typ, typ, span),
         ];
         return (stms, exp);
+    } else if let BinaryOp::BoolInequality(ineq_op) = op {
+        // (a < b) == (!a && b)
+        let (neg_l, neg_r, bin_op) = match ineq_op {
+            crate::ast::InequalityOp::Lt => (Some(UnaryOp::Not), None, sst::BinaryOp::And),
+            crate::ast::InequalityOp::Gt => (None, Some(UnaryOp::Not), sst::BinaryOp::And),
+            crate::ast::InequalityOp::Le => (Some(UnaryOp::Not), None, sst::BinaryOp::Or),
+            crate::ast::InequalityOp::Ge => (None, Some(UnaryOp::Not), sst::BinaryOp::Or),
+        };
+        let l = match neg_l {
+            Some(op) => SpannedTyped::new(&e1.span, &bool_typ(), ExpX::Unary(op, e1.clone())),
+            None => e1.clone(),
+        };
+        let r = match neg_r {
+            Some(op) => SpannedTyped::new(&e2.span, &bool_typ(), ExpX::Unary(op, e2.clone())),
+            None => e2.clone(),
+        };
+        SpannedTyped::new(span, &bool_typ(), ExpX::Binary(bin_op, l, r))
     } else {
         let pure_op = match op {
             // Ops with side-effects are turned into sst ops without side-effects
@@ -4029,6 +4046,7 @@ fn binary_op_exp(
             BinaryOp::Arith(ArithOp::TruncatingMod(_, _)) => unreachable!(),
             BinaryOp::Arith(ArithOp::TruncatingDiv(_, _)) => unreachable!(),
             BinaryOp::UninterpretedFloat(..) => unreachable!(),
+            BinaryOp::BoolInequality(..) => unreachable!(),
 
             // Pure ops
             BinaryOp::BoolOrNoSC => sst::BinaryOp::Or,

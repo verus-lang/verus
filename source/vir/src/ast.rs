@@ -771,6 +771,8 @@ pub enum BinaryOp {
     Eq(Mode),
     /// not Eq
     Ne,
+    /// inequality on bools (ordered false < true)
+    BoolInequality(InequalityOp),
     /// arithmetic inequality
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
