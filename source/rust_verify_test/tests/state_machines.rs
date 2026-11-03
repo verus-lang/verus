@@ -9404,3 +9404,118 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+const REMOVE_MAP_ADD_TRAIT: &str = code_str! {
+    verus! {
+    // In spec code `x + y` desugars to `x.spec_add(y)`, so these impls give `+` meaning on Map
+    pub trait MyAdd<R, O> {
+        spec fn spec_add(self, r: R) -> O;
+    }
+
+    impl MyAdd<Map<int, int>, Map<int, int>> for Map<int, int> {
+        open spec fn spec_add(self, r: Map<int, int>) -> Map<int, int> {
+            self.union_prefer_right(r)
+        }
+    }
+
+    impl MyAdd<Set<int>, Set<int>> for Map<int, int> {
+        open spec fn spec_add(self, r: Set<int>) -> Set<int> {
+            self.dom().union(r).insert(2)
+        }
+    }
+    }
+};
+
+test_verify_one_file! {
+    #[test] remove_map_general_expr_precedence_unsound IMPORTS.to_string() + REMOVE_MAP_ADD_TRAIT + verus_code_str! {
+        tokenized_state_machine!{
+            X {
+                fields {
+                    #[sharding(variable)]
+                    pub phase: int,
+
+                    #[sharding(map)]
+                    pub m: Map<int, int>,
+                }
+
+                init!{
+                    initialize() {
+                        init phase = 0;
+                        init m = Map::<int, int>::empty().insert(1, 1).insert(2, 2);
+                    }
+                }
+
+                // The removed keys must be `(a + b).dom()`, not `a + (b.dom())`
+                transition!{
+                    bad(a: Map<int, int>, b: Map<int, int>) {
+                        require(pre.phase == 0);
+                        remove m -= (a + b);
+                        update phase = 1;
+                    }
+                }
+
+                #[invariant]
+                pub fn the_inv(&self) -> bool {
+                    &&& (self.phase == 0 ==> self.m == Map::<int, int>::empty().insert(1, 1).insert(2, 2))
+                    &&& (self.phase == 1 ==> !self.m.dom().contains(2))
+                }
+
+                #[inductive(initialize)]
+                fn initialize_inductive(post: Self) {
+                }
+
+                #[inductive(bad)]
+                fn bad_inductive(pre: Self, post: Self, a: Map<int, int>, b: Map<int, int>) {
+                } // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] remove_map_general_expr_precedence_ok IMPORTS.to_string() + REMOVE_MAP_ADD_TRAIT + verus_code_str! {
+        tokenized_state_machine!{
+            X {
+                fields {
+                    #[sharding(variable)]
+                    pub phase: int,
+
+                    #[sharding(map)]
+                    pub m: Map<int, int>,
+                }
+
+                init!{
+                    initialize() {
+                        init phase = 0;
+                        init m = Map::<int, int>::empty().insert(1, 1).insert(2, 2);
+                    }
+                }
+
+                transition!{
+                    tr(a: Map<int, int>, b: Map<int, int>) {
+                        require(pre.phase == 0);
+                        require(a == Map::<int, int>::empty().insert(1, 1));
+                        require(b == Map::<int, int>::empty());
+                        remove m -= (a + b);
+                        update phase = 1;
+                    }
+                }
+
+                #[invariant]
+                pub fn the_inv(&self) -> bool {
+                    &&& (self.phase == 0 ==> self.m == Map::<int, int>::empty().insert(1, 1).insert(2, 2))
+                    &&& (self.phase == 1 ==> self.m.dom().contains(2))
+                }
+
+                #[inductive(initialize)]
+                fn initialize_inductive(post: Self) {
+                }
+
+                #[inductive(tr)]
+                fn tr_inductive(pre: Self, post: Self, a: Map<int, int>, b: Map<int, int>) {
+                    assert(a.union_prefer_right(b) =~= Map::<int, int>::empty().insert(1, 1));
+                }
+            }
+        }
+    } => Ok(())
+}
