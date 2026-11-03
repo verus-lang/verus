@@ -383,7 +383,7 @@ the 8 definitional axioms in `specs/slice_index.rs` stay
 
 | Previously trusted | Now |
 |---|---|
-| `ptr_ref`, `ptr_ref_slice`, rustlib `ptr_ref_str` (exec) | `ref_from_parts*`, then `ptr_shr_ref` |
+| `ptr_ref`, `ptr_ref_slice`, rustlib `ptr_ref_str` (exec) | `PointsTo::borrow_ref` (`ref_from_parts*`), then `ptr_shr_ref` |
 | `ptr_mut_ref`, `ptr_mut_ref_slice` (exec) | `PointsTo::borrow_mut`, then `ptr_mut_ref_join` |
 | `PointsTo<T>` / `<[T]>` / rustlib `<str>::borrow_mut` | `mut_ref_from_parts*` |
 | `mut_ref_to_shr_points_to` (+ `_slice`, rustlib `_str`) | `mut_ref_as_shr_ref`, then `ref_to_parts*` |
@@ -393,6 +393,11 @@ the 8 definitional axioms in `specs/slice_index.rs` stay
 | `Box::from_raw_in_verus`, `into_non_null_with_allocator_verus` | the `*_untyped_with_typed_value` versions |
 | rustlib `as_slice_ptr_verus`, `as_str_ptr_verus` | removed: the casts, then `ref_to_parts*` (verified `shr_ref_points_to*`) |
 | everything in `PointsTo` / `PointsToUnaligned`'s trait impls (`wf`, alignment, decoding, ...) | verified, in `points_to_ops.rs` |
+| `mut_ref_slice_len` | `mut_ref_as_shr_ref`, then the new verified `shr_ref_slice_len` (`ref_to_parts_slice`) |
+
+rustlib's `mut_ref_str_len` stays an axiom:
+the pointer's metadata is the length even for a `&mut str` that isn't valid UTF-8,
+but `ref_to_parts_str`, the only trusted route from a `str` reference to its pointer, requires `inv()`.
 
 Also verified: `ExSliceIndex::get` / `index` (rustlib `core/src/slice/index.rs`) get `#[verifier::shadow_data]`,
 so they lose their `call_requires` / `call_ensures` axioms; nothing uses them.
