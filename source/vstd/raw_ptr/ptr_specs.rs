@@ -460,6 +460,9 @@ pub axiom fn mut_ref_from_parts<'a, T>(
 /// so the final parts are well-formed with bytes that decode to the final elements.
 // This is an axiom because the bytes live in separate ghost state from the `TypedValue<[T]>`,
 // so they can't be updated through a borrow of the value alone.
+// TODO: merge with `mut_ref_from_parts` into one generic axiom over `T: ?Sized`
+// (with a generic `pt_parts_wf` and the final wf under `additional_validity_constraints`, for `str`)
+// once Verus knows that a `&mut [T]`'s final length equals its current length.
 pub axiom fn mut_ref_from_parts_slice<'a, T>(
     ptr: *mut [T],
     tracked pt_untyped: &'a mut PointsToUntyped,

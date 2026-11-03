@@ -2,6 +2,7 @@ use super::super::group_vstd_default;
 use super::super::prelude::*;
 use super::points_to_model::*;
 use super::ptr_model::*;
+use super::ptr_specs::const_ptr_eq_up_to_tag;
 
 verus! {
 
