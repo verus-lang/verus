@@ -1,8 +1,7 @@
 use super::super::group_vstd_default;
 use super::super::prelude::*;
-use super::points_to_model::PTPhys;
-use super::points_to_model::PTTypedValue;
-use super::points_to_model::PointsTo;
+use super::points_to_model::*;
+use super::ptr_model::*;
 
 verus! {
 
@@ -40,15 +39,17 @@ impl<'a, T> SharedReference<'a, T> {
         &*self.0
     }
 
-    // NOTE: there does not exist a points_to_unaligned function because SharedReference
-    // by definition gives you an _aligned_ PointsTo.
+    /// A shared reference gives the parts of a shared, valid permission (`pt_untyped` and `typed_value`).
+    // The parts are those of an _aligned_ `PointsTo`:
     // https://doc.rust-lang.org/std/primitive.reference.html
-    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
+    pub axiom fn pt_untyped_and_typed_value(tracked self) -> (tracked (pt_untyped, typed_value): (
+        &'a PointsToUntyped,
+        &'a TypedValue<T>,
+    ))
         ensures
-            pt.ptr() == self.ptr(),
-            pt.is_valid(),
-            pt.value() == self.value(),
-            pt.wf(),
+            pt_parts_wf(self.ptr()@, *pt_untyped, *typed_value),
+            typed_value.is_valid(),
+            typed_value.value() == self.value(),
     ;
 }
 
@@ -125,13 +126,16 @@ impl<'a, T> SharedReference<'a, [T]> {
         &(self.as_ref())[idx]
     }
 
-    /// A shared slice reference gives a shared, valid slice permission.
-    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<[T]>)
+    /// A shared slice reference gives the parts of a shared, valid slice permission
+    /// (`pt_untyped` and `typed_value`).
+    pub axiom fn pt_untyped_and_typed_value(tracked self) -> (tracked (pt_untyped, typed_value): (
+        &'a PointsToUntyped,
+        &'a TypedValue<[T]>,
+    ))
         ensures
-            pt.ptr() == self.ptr(),
-            pt.is_valid(),
-            pt.value() == self.value()@,
-            pt.wf(),
+            pt_parts_wf_slice(self.ptr()@, *pt_untyped, *typed_value),
+            typed_value.is_valid(),
+            typed_value.value_ref()@ == self.value()@,
     ;
 }
 
@@ -169,41 +173,43 @@ pub broadcast axiom fn axiom_shared_ref_value_view<'a, T>(shared_ref: SharedRefe
         shared_ref.value()@ == #[trigger] shared_ref@,
 ;
 
-/// Like [`ptr_ref`](super::ptr_specs::ptr_ref) but returns a `SharedReference` so it keeps track of the relationship
+/// Like [`ptr_ref_untyped_with_typed_value`](super::ptr_specs::ptr_ref_untyped_with_typed_value)
+/// but returns a `SharedReference` so it keeps track of the relationship
 /// between the pointers.
 /// Note the resulting reference's pointers does NOT have the same provenance.
 /// This is because in Rust models like Stacked Borrows / Tree Borrows, the pointer
 /// gets a new tag.
 #[inline(always)]
 #[verifier::external_body]
-pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: SharedReference<
-    'a,
-    T,
->)
+pub fn ptr_ref2_untyped_with_typed_value<'a, T>(
+    ptr: *const T,
+    Tracked(pt_untyped): Tracked<&PointsToUntyped>,
+    Tracked(typed_value): Tracked<&TypedValue<T>>,
+) -> (v: SharedReference<'a, T>)
     requires
-        perm.ptr() == ptr,
-        perm.is_valid(),
-        perm.wf(),
+        pt_parts_wf(ptr@, *pt_untyped, *typed_value),
+        typed_value.is_valid(),
     ensures
-        v.value() == perm.value(),
-        v.ptr().addr() == ptr.addr(),
-        v.ptr()@.metadata == ptr@.metadata,
+        v.value() == typed_value.value(),
+        const_ptr_eq_up_to_tag(v.ptr(), ptr),
     opens_invariants none
     no_unwind
 {
     SharedReference(unsafe { &*ptr })
 }
 
-/// Same as [`ptr_ref2`], but operates on ghost values.
+/// Same as [`ptr_ref2_untyped_with_typed_value`], but operates on ghost values.
 /// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
-pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) -> (tracked v:
-    SharedReference<'a, T>)
+pub axiom fn ptr_ref2_ghost_untyped_with_typed_value<'a, T>(
+    ptr: *const T,
+    tracked pt_untyped: &PointsToUntyped,
+    tracked typed_value: &TypedValue<T>,
+) -> (tracked v: SharedReference<'a, T>)
     requires
-        perm.ptr() == ptr,
-        perm.is_valid(),
-        perm.wf(),
+        pt_parts_wf(ptr@, *pt_untyped, *typed_value),
+        typed_value.is_valid(),
     ensures
-        v.value() == perm.value(),
+        v.value() == typed_value.value(),
         v.ptr() == ptr,
 ;
 
@@ -219,19 +225,19 @@ pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) ->
 //         v.value() == perm.value(),
 //         v.ptr() == ptr,
 // ;
-/// The ghost version of `ptr_ref2` for slices.
+/// The ghost version of `ptr_ref2_untyped_with_typed_value` for slices.
 /// Because this doesn't constitute a retag,
 /// the returned value's pointer has the same provenance as the original pointer.
-pub axiom fn ptr_ref2_slice_ghost<'a, T>(
+pub axiom fn ptr_ref2_slice_ghost_untyped_with_typed_value<'a, T>(
     ptr: *const [T],
-    tracked perm: &PointsTo<[T]>,
+    tracked pt_untyped: &PointsToUntyped,
+    tracked typed_value: &TypedValue<[T]>,
 ) -> (tracked v: SharedReference<'a, [T]>)
     requires
-        perm.ptr() == ptr,
-        perm.is_valid(),
-        perm.wf(),
+        pt_parts_wf_slice(ptr@, *pt_untyped, *typed_value),
+        typed_value.is_valid(),
     ensures
-        v.value()@ == perm.value(),
+        v.value()@ == typed_value.value_ref()@,
         v.ptr() == ptr,
 ;
 

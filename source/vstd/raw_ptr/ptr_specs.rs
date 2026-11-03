@@ -50,6 +50,7 @@ pub open spec fn ptr_null<
 }
 
 #[cfg(verus_keep_ghost)]
+#[cfg(not(verus_verify_core))]
 #[verifier::when_used_as_spec(ptr_null)]
 pub assume_specification<
     T: core::marker::PointeeSized + core::ptr::Pointee<Metadata = ()>,
@@ -71,6 +72,7 @@ pub open spec fn ptr_null_mut<
 }
 
 #[cfg(verus_keep_ghost)]
+#[cfg(not(verus_verify_core))]
 #[verifier::when_used_as_spec(ptr_null_mut)]
 pub assume_specification<
     T: core::marker::PointeeSized + core::ptr::Pointee<Metadata = ()>,
@@ -236,22 +238,75 @@ pub fn cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> (result: usize)
 ////////////////////////////////////////////////
 // Pointer reference and dereference operations
 ////////////////////////////////////////////////
-/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
-/// The memory pointed to by `ptr` must be initialized.
+/// Equivalent to `&*ptr`, given a tracked shared reference `r` with the pointer `ptr`.
 #[inline(always)]
+#[verifier::shadow_data]
 #[verifier::external_body]
-pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T)
+pub const fn ptr_shr_ref<'a, T: ?Sized>(ptr: *const T, Tracked(r): Tracked<&'a T>) -> (v: &'a T)
     requires
-        perm.ptr() == ptr,
-        perm.is_valid(),
-        perm.wf(),
+        shared_ref_ptr(shadow_data(r)) == ptr,
     ensures
-        v == perm.value(),
+        v == r,
+        const_ptr_eq_up_to_tag(ptr, shared_ref_ptr(shadow_data(v))),
     opens_invariants none
     no_unwind
 {
     unsafe { &*ptr }
 }
+
+/// A shared reference gives the parts of a shared permission for its memory, at its pointer.
+#[verifier::shadow_data]
+pub axiom fn ref_to_parts<'a, T>(tracked r: &'a T) -> (tracked (
+    pt_untyped,
+    typed_value,
+): (&'a PointsToUntyped, &'a TypedValue<T>))
+    ensures
+        pt_parts_wf(shared_ref_ptr(shadow_data(r))@, *pt_untyped, *typed_value),
+        typed_value.is_valid(),
+        typed_value.value_ref() == r,
+;
+
+/// A shared slice reference gives the parts of a shared permission for its memory, at its pointer.
+#[verifier::shadow_data]
+pub axiom fn ref_to_parts_slice<'a, T>(tracked r: &'a [T]) -> (tracked (
+    pt_untyped,
+    typed_value,
+): (&'a PointsToUntyped, &'a TypedValue<[T]>))
+    ensures
+        pt_parts_wf_slice(shared_ref_ptr(shadow_data(r))@, *pt_untyped, *typed_value),
+        typed_value.is_valid(),
+        typed_value.value_ref() == r,
+;
+
+/// The valid value of a permission's parts, borrowed as a `&T` at `ptr`.
+#[verifier::shadow_data]
+pub axiom fn ref_from_parts<'a, T>(
+    ptr: *const T,
+    tracked pt_untyped: &'a PointsToUntyped,
+    tracked typed_value: &'a TypedValue<T>,
+) -> (tracked r: &'a T)
+    requires
+        pt_parts_wf(ptr@, *pt_untyped, *typed_value),
+        typed_value.is_valid(),
+    ensures
+        r == typed_value.value_ref(),
+        shared_ref_ptr(shadow_data(r)) == ptr,
+;
+
+/// The valid value of a slice permission's parts, borrowed as a `&[T]` at `ptr`.
+#[verifier::shadow_data]
+pub axiom fn ref_from_parts_slice<'a, T>(
+    ptr: *const [T],
+    tracked pt_untyped: &'a PointsToUntyped,
+    tracked typed_value: &'a TypedValue<[T]>,
+) -> (tracked r: &'a [T])
+    requires
+        pt_parts_wf_slice(ptr@, *pt_untyped, *typed_value),
+        typed_value.is_valid(),
+    ensures
+        r == typed_value.value_ref(),
+        shared_ref_ptr(shadow_data(r)) == ptr,
+;
 
 // /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 // /// The memory pointed to by `ptr` must be initialized.
@@ -269,68 +324,6 @@ pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> 
 // {
 //     unsafe { &*ptr }
 // }
-/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
-/// The memory pointed to by `ptr` must be initialized.
-#[inline(always)]
-#[verifier::external_body]
-pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<[T]>>) -> (v: &[T])
-    requires
-        perm.ptr() == ptr,
-        perm.is_valid(),
-        perm.wf(),
-    ensures
-        v@ == perm.value(),
-    opens_invariants none
-    no_unwind
-{
-    unsafe { &*ptr }
-}
-
-/// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
-/// The memory pointed to by `ptr` must be initialized.
-#[inline(always)]
-pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
-    requires
-        old(perm).ptr() == ptr,
-        old(perm).is_valid(),
-        old(perm).wf(),
-    ensures
-        final(perm).ptr() == ptr,
-        final(perm).is_valid(),
-        // The final bytes decode to the final value.
-        final(perm).wf(),
-        old(perm).value() == *v,
-        final(perm).value() == *final(v),
-    opens_invariants none
-    no_unwind
-{
-    let tracked val = perm.borrow_mut();
-    ptr_mut_ref_join(ptr, Tracked(val))
-}
-
-/// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
-/// The memory pointed to by `ptr` must be initialized.
-#[inline(always)]
-pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v:
-    &mut [T])
-    requires
-        old(perm).ptr() == ptr,
-        old(perm).is_valid(),
-        old(perm).wf(),
-    ensures
-        final(perm).ptr() == ptr,
-        final(perm).is_valid(),
-        // The final bytes decode to the final value.
-        final(perm).wf(),
-        old(perm).value() == v@,
-        final(perm).value() == final(v)@,
-    opens_invariants none
-    no_unwind
-{
-    let tracked val = perm.borrow_mut();
-    ptr_mut_ref_join(ptr, Tracked(val))
-}
-
 // /// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
 // /// The memory pointed to by `ptr` must be initialized.
 // TODO: move to rustlib
@@ -380,6 +373,7 @@ macro_rules! pointer_specs {
 
             #[verifier::when_used_as_spec(spec_with_addr)]
             #[cfg(verus_keep_ghost)]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification<T: ::core::marker::PointeeSized>[<*$mu T>::with_addr](p: *$mu T, addr: usize) -> (q: *$mu T)
                 ensures q == spec_with_addr(p, addr)
                 opens_invariants none
@@ -426,26 +420,61 @@ pub const fn ptr_mut_ref_join<T: ?Sized>(ptr: *mut T, Tracked(perm): Tracked<&mu
     unsafe { &mut *ptr }
 }
 
-/// Convert from a shared reference to a `&'a mut T` to a `&'a PointsTo<T>`.
-pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> (tracked pt:
-    &'a PointsTo<T>)
+/// Borrows a `&'a mut T` as a `&'a T` at the same pointer.
+#[verifier::shadow_data]
+pub axiom fn mut_ref_as_shr_ref<'a, T: ?Sized>(tracked mut_ref: &'a &'a mut T) -> (tracked r: &'a T)
     ensures
-        pt.ptr() == mut_ref_ptr(*mut_ref),
-        pt.is_valid(),
-        pt.value() == *old(*mut_ref),
-        pt.wf(),
-        *final(*mut_ref) == *old(*mut_ref),
+        r == &*old(*mut_ref),
+        &*final(*mut_ref) == &*old(*mut_ref),
+        shared_ref_ptr(shadow_data(r)) == mut_ref_ptr(*mut_ref),
 ;
 
-/// Convert from a shared reference to a `&'a mut [T]` to a `&'a PointsTo<[T]>`.
-pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T]) -> (tracked pt:
-    &'a PointsTo<[T]>)
+/// This takes a mutable borrow of the `T` at `ptr`
+/// from mutable borrows of the parts of a `PointsTo<T>` (`pt_untyped` and `typed_value`).
+///
+/// Writing through the reference updates both the value and the underlying bytes,
+/// so the final parts are well-formed with bytes that decode to the final value.
+// This is an axiom because the bytes live in separate ghost state from the `TypedValue<T>`,
+// so they can't be updated through a borrow of the value alone.
+pub axiom fn mut_ref_from_parts<'a, T>(
+    ptr: *mut T,
+    tracked pt_untyped: &'a mut PointsToUntyped,
+    tracked typed_value: &'a mut TypedValue<T>,
+) -> (tracked val: &'a mut T)
+    requires
+        pt_parts_wf(ptr@, *old(pt_untyped), *old(typed_value)),
+        old(typed_value).is_valid(),
     ensures
-        pt.ptr() == mut_ref_ptr(*mut_ref),
-        pt.is_valid(),
-        pt.value() == (*old(*mut_ref))@,
-        pt.wf(),
-        &*final(*mut_ref) == &*old(*mut_ref),
+        &*val == old(typed_value).value_ref(),
+        mut_ref_ptr(val) == ptr,
+        final(pt_untyped).ptr() == old(pt_untyped).ptr(),
+        final(typed_value).is_valid(),
+        final(typed_value).value_ref() == &*final(val),
+        pt_parts_wf(ptr@, *final(pt_untyped), *final(typed_value)),
+;
+
+/// This takes a mutable borrow of the `[T]` at `ptr`
+/// from mutable borrows of the parts of a `PointsTo<[T]>` (`pt_untyped` and `typed_value`).
+///
+/// Writing through the reference updates both the elements and the underlying bytes,
+/// so the final parts are well-formed with bytes that decode to the final elements.
+// This is an axiom because the bytes live in separate ghost state from the `TypedValue<[T]>`,
+// so they can't be updated through a borrow of the value alone.
+pub axiom fn mut_ref_from_parts_slice<'a, T>(
+    ptr: *mut [T],
+    tracked pt_untyped: &'a mut PointsToUntyped,
+    tracked typed_value: &'a mut TypedValue<[T]>,
+) -> (tracked val: &'a mut [T])
+    requires
+        pt_parts_wf_slice(ptr@, *old(pt_untyped), *old(typed_value)),
+        old(typed_value).is_valid(),
+    ensures
+        &*val == old(typed_value).value_ref(),
+        mut_ref_ptr(val) == ptr,
+        final(pt_untyped).ptr() == old(pt_untyped).ptr(),
+        final(typed_value).is_valid(),
+        final(typed_value).value_ref() == &*final(val),
+        pt_parts_wf_slice(ptr@, *final(pt_untyped), *final(typed_value)),
 ;
 
 // TODO: move to rustlib
@@ -498,6 +527,14 @@ pub open spec fn ptr_eq_up_to_tag<T: ?Sized>(p: *mut T, q: *mut T) -> bool {
     &&& p.addr() == q.addr()
     &&& provenance_eq_up_to_tag(p@.provenance, q@.provenance)
     &&& p@.metadata == q@.metadata
+}
+
+/// Two `*const` pointers are equal up to their tags.
+/// Since `*mut T` and `*const T` are [semantically the same](https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html#pointer-model),
+/// we can define this operation in terms of the operation on `*mut T`.
+#[verifier::inline]
+pub open spec fn const_ptr_eq_up_to_tag<T: ?Sized>(p: *const T, q: *const T) -> bool {
+    ptr_eq_up_to_tag(p as *mut T, q as *mut T)
 }
 
 /// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
