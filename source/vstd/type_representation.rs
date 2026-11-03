@@ -1,30 +1,11 @@
-//! This module defines (i.e., axiomatizes) the Rust abstract machine's representation for primitive types (integers, boolean, raw pointers),
-//! as well as encodings for structs and enums derived from these primitive types.
+//! This module defines (i.e., axiomatizes) the Rust abstract machine's representation for many primitive types (integers, boolean, raw pointers, shared references, slices),
+//! as well as helpers for defining the representation for structs and enums derived from these primitive types.
 //!
-//! The uninterpreted functions `abs_encode`, `abs_decode`, and `can_be_encoded` define the encoding, decoding, and validity of transumute operations for a given type.
-//! The abstract representation is encoded on a `Seq<AbstractByte>`, which encodes byte values as well as an optional `Provenance` for initialized memory.
-//! Note that these functions are defined as relations between values and byte sequences, meaning that some byte sequences can be decoded to
-//! multiple possible values (this is done to account for ghost state, which is not encoded in the abstract representation.)
-//! These relations are unspecified for a given type unless they are explicitly implemented (see next paragraph).
+//! The representation is defined on a `Seq<AbstractByte>`, which encodes byte values as well as an optional `Provenance` for initialized memory.
 //!
-//! The `TypeRepresentation` trait is implemented on a given type in order to add axioms for `abs_encode`, `abs_decode`, and `can_be_encoded` for that type.
+//! The `TypeRepresentation` trait is implemented on a given type in order to add axioms defining how that type can be encoded into and decoded from a `Seq<AbstractByte>`.
 //! The trait is used to ensure that the encoding axioms satisfy certain validity properties, e.g. that the resulting byte sequence is the correct length for the value/type,
 //! and that a value's encoding can be decoded back to the same value (see: <https://github.com/minirust/minirust/blob/master/spec/lang/representation.md#generic-properties>).
-//! `TypeRepresentation` is implemented here for primitive integers (e.g., `u8`, `isize`), `bool`, `()`, and raw pointers.
-//! `TypeRepresentationUnsized` is the version of this trait for unsized types.
-//!
-//! The `PrimitiveRepresentation`, `TransparentRepresentation`, and `ScalarRangeRepresentation` traits are used to help
-//! implement `TypeRepresentation` for enums or structs with primitive, transparent, or scalar range representations.
-//! (See: <https://doc.rust-lang.org/reference/type-layout.html> for more about primitive and transparent representations.
-//! For scalar range representations, see the non-zero niche types for an example: <https://doc.rust-lang.org/1.88.0/src/core/num/niche_types.rs.html>.)
-//!
-//! The `AbstractByteEncodingFor` trait is used to make intermediate or shared definitions about encodings to byte sequences.
-//! It is essentially the same as `TypeRepresentation`, except that it does not include axioms tying the definitions to `abs_encode`, `abs_decode`, and `can_be_encoded`.
-//! This is useful for when many types may share the same underlying byte-level representation, e.g. zero-sized types or `*const` and `*mut` pointers.
-//! The representation is defined once on a `AbstractByteEncodingFor`, and then `TypeRepresentation` is derived from the `AbstractByteEncodingFor`
-//! for each of the relevant types (see: the `encoding_from_type_representation!` macro).
-//! In other words, `TypeRepresentation` defines *the* representation for a given type, whereas `AbstractByteEncodingFor` is a carrier for
-//! potentially shared definitions.
 #![allow(unused_imports)]
 
 use super::arithmetic::power::*;
@@ -617,31 +598,30 @@ pub open spec fn encoding_exists<T: TypeRepresentation>(value: T) -> bool {
 
 /// Implements `AbstractByteEncodingFor` for raw pointers.
 ///
-/// This encoding is intended to be shared across `*const T` and `*mut T`, as both types have the same layout (see: [Raw pointer type layout](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer)).
-/// The encoding is defined for `T: ?Sized`, and can be used to conditionally implement the encoding for raw pointers.
-/// The condition is whether a suitable encoding has been implemented for the pointer's metadata type `<T as core::ptr::Pointee>::Metadata` (see: [Pointee::Metadata](https://doc.rust-lang.org/1.88.0/core/ptr/trait.Pointee.html#pointer-metadata)).
-/// This is defined as `ptr_metadata_encoding_well_defined::<T>()`.
+/// This encoding is intended to be shared across `*const T` and `*mut T`, as both types have the same layout 
+/// (see: [Raw pointer type layout](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer)).
+/// The encoding is defined for `<T as core::ptr::Pointee>::Metadata: TypeRepresentation`.
 ///
-/// *Note:* This encoding assumes that the pointer address is encoded first, followed by the pointer metadata. This is, to our knowledge, not a stable assumption.
+/// *Note:* This encoding assumes that the pointer address is encoded first, followed by the pointer metadata. 
+/// This is, to our knowledge, not a stable assumption.
 ///
 /// The encoding for raw pointers is divided into two parts:
 ///
 /// The first `size_of::<usize>()` bytes encode the pointer's address and per-byte provenance.
-/// On decoding, all of the first `size_of::<usize>()` bytes must have the same provenance in order for the resulting pointer to have non-null provenance.
+/// On decoding, all of the first `size_of::<usize>()` bytes must have the same provenance 
+/// in order for the resulting pointer to have non-null provenance.
 ///
 /// The next `size_of::<*mut T>() - size_of::<usize>()` bytes encode the pointer's metadata.
-/// This is specified using `abs_encode::<<T as core::ptr::Pointee>::Metadata>` and `abs_decode::<<T as core::ptr::Pointee>::Metadata>`.
+/// This is specified using `<<T as core::ptr::Pointee>::Metadata>::encode` and `<<T as core::ptr::Pointee>::Metadata>::decode`.
 /// - For `T: Sized`, the metadata is always `()`, so the metadata encoding is a sequence of length 0.
-///   Because the encoding for `()` is already implemented (see the lemma `ptr_metadata_encoding_well_defined_sized_types`),
-///   this `AbstractByteEncodingFor` provides an implementation for the encodings of raw pointers to all sized types.
-/// - For `T: ?Sized`, if the encoding for `<T as core::ptr::Pointee>::Metadata` is not implemented as specified by `ptr_metadata_encoding_well_defined::<T>()`,
-///   then this `AbstractByteEncodingFor` will not provide an implementation for the encodings of `*mut T` or `*const T`.
+///
+/// The encoding for the pointer's metadata must not depend on the shadow data of the metadata. 
+/// This is because there is no way to extract the shadow data from a spec-mode value of type `<T as core::ptr::Pointee>::Metadata`.
 macro_rules! raw_ptr_encoding_from_type_representation {
     ($(
         ($mutability:tt, $lemma_name:ident);
     )+) => {$(
         verus! {
-            /// TODO
             impl<T: core::marker::PointeeSized> TypeRepresentation for *$mutability T where <T as core::ptr::Pointee>::Metadata: TypeRepresentation {
                 open spec fn can_be_encoded() -> bool {
                     &&& <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::can_be_encoded()
@@ -799,8 +779,7 @@ raw_ptr_encoding_from_type_representation! {
     (const, const_ptr_encode);
 }
 
-/// TODO
-/// For `T: Sized`, the pointer metadata type for `*mut T` and `*const T` has a suitable encoding.
+/// For `T: Sized`, `*mut T` and `*const T` can always be encoded.
 pub broadcast proof fn sized_ptr_can_be_encoded<T: Sized>()
     ensures
         #![trigger <*mut T as TypeRepresentation>::can_be_encoded()] 
@@ -818,7 +797,7 @@ pub broadcast proof fn sized_ptr_can_be_encoded<T: Sized>()
     }
 }
 
-/// TODO
+/// For `T = [T]`, `*mut T` and `*const T` can always be encoded.
 pub broadcast proof fn slice_ptr_can_be_encoded<T>()
     ensures
         #![trigger <*mut [T] as TypeRepresentation>::can_be_encoded()] 
@@ -842,8 +821,7 @@ pub broadcast proof fn slice_ptr_can_be_encoded<T>()
     }
 }
 
-/// TODO
-/// The pointer metadata type for `str` has a suitable encoding.
+/// For `T = str`, `*mut T` and `*const T` can always be encoded.
 pub broadcast proof fn str_ptr_can_be_encoded()
     ensures
         #![trigger <*mut str as TypeRepresentation>::can_be_encoded()] 
@@ -856,14 +834,11 @@ pub broadcast proof fn str_ptr_can_be_encoded()
     assert(<*mut [u8] as TypeRepresentation>::can_be_encoded());
 }
 
-// TODO - comment
 /// The layout for shared references is the same as that for pointers
 /// (see: <https://doc.rust-lang.org/reference/type-layout.html#pointers-and-references-layout>).
+/// See the documentation for `raw_ptr_encoding_from_type_representation`.
 ///
-/// To transmute values of type `&T`, we must use the `SharedReference<T>` type.
-/// In practice, transmuting with a `SharedReference` requires first constructing a `PointsTo` for the destination type.
-/// This is done using the `transmute_shared` axioms on `PointsTo`.
-/// Then, one constructs a tracked `SharedReference` for the destination type using the `ptr_shared_ref_ghost` axioms.
+/// To implement this encoding, we rely on the shadow data of the shared reference to get the underlying pointer.
 impl<T: ?Sized> TypeRepresentation for &T
     where <T as core::ptr::Pointee>::Metadata: TypeRepresentation
 {
@@ -1420,8 +1395,7 @@ impl TypeRepresentation for [u8] {
     }
 }
 
-/// Generic precondition on transmute.
-/// TODO
+/// True when all `AbstractByte` encodings of `src` and `src_shadow_data` can be decoded to `dst` and `dst_shadow_data`.
 pub open spec fn encode_decode<T: ?Sized + TypeRepresentation, U: ?Sized + TypeRepresentation>(src: &T, src_shadow_data: ShadowData<T>, dst: &U, dst_shadow_data: ShadowData<U>) -> bool {
     &&& forall|bytes|
         #![trigger <T as TypeRepresentation>::encode(src, src_shadow_data, bytes)]
@@ -1429,7 +1403,8 @@ pub open spec fn encode_decode<T: ?Sized + TypeRepresentation, U: ?Sized + TypeR
         <T as TypeRepresentation>::encode(src, src_shadow_data, bytes) ==> <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)
 }
 
-/// TODO
+/// True when for any `AbstractByte` sequence, if that sequence can be decoded to `src` and `src_shadow_data`,
+/// then it can also decoded to `dst` and `dst_shadow_data`.
 pub open spec fn decode_decode<T: ?Sized + TypeRepresentation, U: ?Sized + TypeRepresentation>(src: &T, src_shadow_data: ShadowData<T>, dst: &U, dst_shadow_data: ShadowData<U>) -> bool {
     &&& forall|bytes|
         #![trigger <T as TypeRepresentation>::decode(bytes, src, src_shadow_data)]
