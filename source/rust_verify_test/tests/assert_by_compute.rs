@@ -1581,3 +1581,19 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] quantifier_with_triggers_uses_param_regression_1277 verus_code! {
+        use vstd::prelude::*;
+
+        uninterp spec fn f(a: int, b: int) -> bool;
+
+        spec fn all_f(n: int) -> bool {
+            forall|i: int| ::verus_builtin::with_triggers(((f(n, i),),), (f(n, i) || i == 0 || i == 1 || i == 2))
+        }
+
+        proof fn bad() {
+            assert(all_f(7)) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
