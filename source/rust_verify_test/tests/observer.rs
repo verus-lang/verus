@@ -1169,9 +1169,9 @@ test_verify_one_file_with_options! {
         let d = parse(&err);
         assert_eq!(first_pass(&d, "x@", 4), vec![
             // loop query: the two body assignments
-            vc("x@1", 33, "Assign"), vc("x@2", 34, "Assign"),
+            vc("x@1", 34, "Assign"), vc("x@2", 35, "Assign"),
             // function query: the assignment before the loop, then the loop-entry havoc
-            vc("x@1", 27, "Assign"), vc("x@2", 29, "Havoc"),
+            vc("x@1", 28, "Assign"), vc("x@2", 30, "Havoc"),
         ]);
     }
 }
@@ -1193,8 +1193,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => {
         let d = parse(&err);
         assert_eq!(first_pass(&d, "x@", 4), vec![
-            vc("x@1", 29, "Havoc"), vc("x@2", 32, "Assign"),
-            vc("x@1", 28, "Assign"), vc("x@2", 29, "Havoc"),
+            vc("x@1", 30, "Havoc"), vc("x@2", 33, "Assign"),
+            vc("x@1", 29, "Assign"), vc("x@2", 30, "Havoc"),
         ]);
     }
 }
@@ -1219,7 +1219,7 @@ test_verify_one_file_with_options! {
         let got: std::collections::BTreeSet<_> =
             d.version_correlations.iter().filter(|(v, _, _)| v.starts_with("x@")).cloned().collect();
         let want: std::collections::BTreeSet<_> =
-            [vc("x@1", 28, "Assign"), vc("x@2", 29, "Assign"), vc("x@1", 31, "Assign")].into();
+            [vc("x@1", 29, "Assign"), vc("x@2", 30, "Assign"), vc("x@1", 32, "Assign")].into();
         assert_eq!(got, want);
     }
 }
