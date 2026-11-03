@@ -788,5 +788,10 @@ test_verify_one_file! {
             let x = (true >= false); assert(x == true);
             let x = (false >= false); assert(x == true);
         }
+
+        fn test_ge_ref() {
+            let x = (&true >= &true); assert(x == true);
+        }
+
     } => Ok(())
 }

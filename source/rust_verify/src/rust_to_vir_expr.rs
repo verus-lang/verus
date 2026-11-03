@@ -4196,7 +4196,7 @@ fn binopkind_to_binaryop_inner<'tcx>(
         let lhs_inner_ty = maybe_strip_shared_ref(lhs_ty);
         let rhs_inner_ty = maybe_strip_shared_ref(rhs_ty);
         let d0b = if bctx.in_ghost { Div0Behavior::Allow } else { Div0Behavior::Error };
-        let is_bool = lhs_inner_ty.is_bool();
+        let is_bool = ty_is_bool_or_ref_bool(lhs_inner_ty);
         let vop = match op {
             BinOpKind::Le if is_bool => BinaryOp::BoolInequality(InequalityOp::Le),
             BinOpKind::Ge if is_bool => BinaryOp::BoolInequality(InequalityOp::Ge),
