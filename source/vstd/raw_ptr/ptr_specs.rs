@@ -394,13 +394,6 @@ pointer_specs!(ptr_const_specs, ptr_from_data, const);
 /// Extracts the pointer from the shadow data of a shared reference.
 pub uninterp spec fn shared_ref_ptr<T: ?Sized>(s: ShadowData<&T>) -> *const T;
 
-/// The length of a `&mut [T]` should always match the metadata of its corresponding pointer.
-// TODO: define the equivalent shared ref version, using shadow data?
-pub axiom fn mut_ref_slice_len<T>(tracked b: &&mut [T])
-    ensures
-        mut_ref_ptr(*b)@.metadata == old(*b)@.len(),
-;
-
 ////////////////////////////////////////
 // Mutable reference conversions
 ///////////////////////////////////////

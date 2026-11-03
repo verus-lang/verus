@@ -280,6 +280,25 @@ pub proof fn shr_ref_points_to_slice<'a, T>(tracked r: &'a [T]) -> (tracked pt: 
     points_to_from_parts_ref_slice(shared_ref_ptr(shadow_data(r)) as *mut [T], pt_untyped, typed_value)
 }
 
+/// The length of a `&[T]` matches the metadata of its pointer.
+#[verifier::shadow_data]
+pub proof fn shr_ref_slice_len<T>(tracked r: &[T])
+    ensures
+        shared_ref_ptr(shadow_data(r))@.metadata == r@.len(),
+{
+    let tracked (pt_untyped, typed_value) = ref_to_parts_slice(r);
+}
+
+/// The length of a `&mut [T]` should always match the metadata of its corresponding pointer.
+#[verifier::shadow_data]
+pub proof fn mut_ref_slice_len<T>(tracked b: &&mut [T])
+    ensures
+        mut_ref_ptr(*b)@.metadata == old(*b)@.len(),
+{
+    let tracked r = mut_ref_as_shr_ref(b);
+    shr_ref_slice_len(r);
+}
+
 /// Convert from a shared reference to a `&'a mut T` to a `&'a PointsTo<T>`.
 #[cfg(not(verus_verify_core))]
 #[verifier::shadow_data]
