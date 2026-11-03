@@ -43,6 +43,8 @@ pub enum ConsumerState {
 
 // ANCHOR: fields
 tokenized_state_machine!{FifoQueue<T> {
+    #![verifier::prophetic]
+
     fields {
         // IDs of the cells used in the ring buffer.
         // These are fixed throughout the protocol.
