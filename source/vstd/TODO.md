@@ -24,125 +24,59 @@ The trusted specs are in [TRUSTED_REVIEW.md](TRUSTED_REVIEW.md).
   (`mut_ref_as_shr_ref` covers `&mut` → `&`; exec conversions between reference types such as `str::as_bytes`
   need shadow-data ensures wherever a pointer has to flow across them).
 
-## Proposal: rustlib's verified APIs over `Tracked<&T>`
+## For review (uncommitted, rustlib)
 
-This proposes moving rustlib's verified functions that still take a shared `&PointsTo` to `Tracked<&T>`.
-These are spec changes to verified functions; no new trusted items.
+- **`SliceIndexVerus`** (its three methods and 21 impls) and **`get_offset_len_noubcheck_verus` / `get_offset_len_mut_noubcheck_verus`**
+  (`slice/index.rs`) take a `Tracked(r): Tracked<&T>` in place of a `&PointsTo<T>`,
+  with `shared_ref_ptr(shadow_data(r)) == <the pointer>` in place of the permission's `ptr`, `wf` and value requires.
+  `output_ptr_ref`, `get_unchecked_verus` and `get_unchecked_mut_verus` also require `valid_slice(r)`
+  (for `str`, `r.inv()`, which `ref_to_parts_str` needs; always true for `&[T]`).
+- **`#[verifier::shadow_data]` on `ExSliceIndex::get_mut` and `index_mut`**,
+  so every core `SliceIndex` impl of those methods is a shadow-data function
+  (`str`'s `Range`, `RangeTo` and `RangeFrom` impls relate a pointer to `shadow_data(r)`).
+- **`NonNull::as_mut_verus`** takes a `Tracked<&'a mut T>` in place of a `&'a mut PointsTo<T>`,
+  and its bound is `T: MetaSized` (was `T: Sized`):
+  ```rust
+  pub const unsafe fn as_mut_verus<'a>(&mut self, Tracked(perm): Tracked<&'a mut T>) -> (v: &'a mut T)
+      where T: MetaSized
+      requires
+          mut_ref_ptr(perm) == old(self)@,
+      ensures
+          old(self)@ == final(self)@,
+          &*v == &*old(perm),
+          &*final(v) == &*final(perm),
+  ```
 
-Not changed:
-the verified wrappers `ptr_ref`, `ptr_ref_slice`, `ptr_ref_str`;
-`ptr_ref2*` (go with `SharedReference`);
-`CopyPointsTo::new` (`specs/ptr.rs`), which stores the borrow in a struct field, where shadow data isn't tracked.
+## Remaining `PointsTo` uses
 
-**Callers.** A caller that relates a pointer to `shadow_data(r)` needs `#[verifier::shadow_data]` itself.
-For trait methods the attribute goes on the trait declaration, and every impl gets it.
-This works for an `external_trait_specification` too (tested: `#[verifier::shadow_data]` on an `ExSliceIndex`-style method
-makes its impls shadow-data functions; without it, the impl's precondition fails).
-Shadow-data functions lose their `call_requires` / `call_ensures` axioms; nothing in rustlib uses them for these methods.
+**Trusted specs over `PointsTo` / `PointsToUnaligned`:**
 
-### `SliceIndexVerus` (`core/src/slice/index.rs:443`) and its 21 impls
+- vstd's structural axioms (`points_to_structs.rs`):
+  `PointsToUnaligned::from_raw_parts_ref` / `from_raw_parts_mut` and `PointsTo::from_raw_parts_mut`.
+  They are field primitives of the structs, so they can't be stated over the parts.
+- rustlib's `ptr::read_unaligned_verus` (`core/src/ptr/mod.rs`), over a `PointsToUnalignedArg`; on hold (below).
 
-`perm: &PointsTo<T>` becomes `r: &T` (`T` is `[U]` or `str`), with `#[verifier::shadow_data]` on the three trait methods:
+**Specs taking a `&mut PointsTo`:** none that could take a `Tracked<&mut T>`.
+These change the value's validity, so they need the permission:
 
-```rust
-#[verifier::shadow_data]
-fn output_ptr_ref<'a>(
-    ptr: *const <Self as SliceIndex<T>>::Output,
-    Tracked(r): Tracked<&'a T>,
-    Ghost(ghost_self): Ghost<&Self>,
-    Ghost(orig_ptr): Ghost<*const T>,
-) -> (out: &'a <Self as SliceIndex<T>>::Output)
-    requires
-        shared_ref_ptr(shadow_data(r)) == orig_ptr,
-        valid_indices(ghost_self.spec_start(slice_len(orig_ptr)), ghost_self.spec_end(slice_len(orig_ptr)), r),
-        ptr == ptr_from_data(get_unchecked_result::<T, <Self as SliceIndex<T>>::Output>(
-            orig_ptr, ghost_self.spec_start(slice_len(orig_ptr)), ghost_self.spec_end(slice_len(orig_ptr)), item_size::<T>(),
-        )),
-    ensures
-        index_result(ghost_self.spec_start(slice_len(orig_ptr)), ghost_self.spec_end(slice_len(orig_ptr)), r, out),
-;
+- `ptr::read_verus` and `NonNull::read_verus` move the value out, leaving the permission empty.
+- `ptr::write_verus` writes to memory that may not hold a valid value.
+- `PointsToUnalignedArg::Move` and `PointsToArg::Move` (`specs/ptr.rs`) move the value out.
 
-#[verifier::shadow_data]
-unsafe fn get_unchecked_verus(self, slice: *const T, Tracked(r): Tracked<&T>) -> (out: *const <Self as SliceIndex<T>>::Output)
-    requires
-        shared_ref_ptr(shadow_data(r)) == slice,
-        valid_indices(self.spec_start(slice_len(slice)), self.spec_end(slice_len(slice)), r),
-    returns
-        // unchanged
-;
+vstd keeps `ptr_mut_ref` and `ptr_mut_ref_slice` for code outside rustlib.
 
-// get_unchecked_mut_verus: the same, with `slice: *mut T` and `shared_ref_ptr(shadow_data(r)) == slice as *const T`.
-```
+**Specs taking or giving a shared `&PointsTo`:**
 
-- **`perm_wf(perm)` goes:** a reference is always valid.
-- **`forall|v| perm_value_eq(perm, v) ==> index_result(.., v, out)` becomes `index_result(.., r, out)`.**
-- **Bodies:** `ref_to_parts*` on `r` (a proof call; no exec code added), then the existing proofs
-  (`borrow_index` / `subrange`, then `as_aligned` and `ref_from_parts*`, then `ptr_shr_ref`; `ptr_bounds` and `as_untyped()` for `get_unchecked*`).
-- **Callers:** `<[T]>::get_unchecked_verus` / `get_unchecked_mut_verus` and `str::get_unchecked` / `get_unchecked_mut` get the attribute
-  and pass `Tracked(self)` with `self.as_slice_ptr()` / `as_str_ptr()`;
-  the `_mut` callers pass `Tracked(mut_ref_as_shr_ref(&slice))` in place of `mut_ref_to_shr_points_to*`.
-- **Trusted code removed:** the 8 definitional axioms in `specs/slice_index.rs` that exist only for `&PointsTo`:
-  `def_perm_ptr_*`, `def_perm_wf_*`, `def_perm_value_eq_*` (`[T]` and `str`), `def_valid_indices_slice_points_to`, `def_valid_indices_str_points_to`,
-  with the `uninterp` `perm_ptr` / `perm_wf` / `perm_value_eq` and the `valid_indices_*_points_to` spec fns.
-  `valid_indices` on `&[T]` / `&str` already has its definitions.
+- `shr_ref_points_to`, `shr_ref_points_to_slice` (vstd) and `shr_ref_points_to_str` (rustlib) give a `&PointsTo` for a reference.
+  About 25 rustlib proof bodies use them to reach the permission API (`subrange`, `borrow_index`, `as_big_*`, `ptr_bounds`, ...).
+- `SharedReference`'s items, kept until it is removed:
+  `ptr_ref2`, `ptr_ref2_ghost`, `ptr_ref2_slice_ghost` (vstd), `ptr_ref2_str_ghost` (rustlib),
+  and `SharedReference<T>` / `<[T]>` / `<str>::points_to`.
+- `CopyPointsTo`, `CopyPointsToUnaligned` and `PointsToArg` (`specs/ptr.rs`); on hold (below).
+- vstd keeps `ptr_ref`, `ptr_ref_slice`, `mut_ref_to_shr_points_to` and `mut_ref_to_shr_points_to_slice` for code outside rustlib.
 
-### `from_raw_parts_verus` (`core/src/slice/raw.rs:160`)
-
-```rust
-#[verifier::shadow_data]
-pub const unsafe fn from_raw_parts_verus<'a, T>(data: *const T, len: usize, Tracked(r): Tracked<&'a [T]>) -> (out: &'a [T])
-    requires
-        shared_ref_ptr(shadow_data(r)) == ptr_from_data(PtrData::<[T]> { addr: data@.addr, provenance: data@.provenance, metadata: len }),
-    ensures
-        out@ == r@,
-```
-
-- The body builds the slice pointer from `data` and `len`, then calls `ptr_shr_ref`; no `ref_to_parts` needed.
-- The safety conditions (1a)–(1c) (non-null, in bounds, aligned) follow from `r` being a reference at that pointer,
-  so the requires don't need them; they can stay as comments.
-- **Caller:** `str::split_at_unchecked` gets the attribute, and gets its two `&[u8]` halves with `ref_from_parts_slice`
-  on the parts of `perm.subrange(0, mid)` / `perm.subrange(mid, len)`.
-
-### `read_copy_verus` (`core/src/ptr/mod.rs:1893`)
-
-```rust
-#[verifier::shadow_data]
-pub const unsafe fn read_copy_verus<T: Copy>(src: *const T, Tracked(r): Tracked<&T>) -> (out: T)
-    requires
-        shared_ref_ptr(shadow_data(r)) == src,
-    ensures
-        out == *r,
-```
-
-- The body gets the parts with `ref_to_parts` on `r` (a proof call), then runs the current proof (`bytes_decode`, `is_aligned`, `as_untyped()` for `read_via_copy_verus`).
-- No callers in verified code.
-
-### `get_offset_len_noubcheck_verus` / `get_offset_len_mut_noubcheck_verus` (`core/src/slice/index.rs:147, 218`)
-
-```rust
-#[verifier::shadow_data]
-const unsafe fn get_offset_len_noubcheck_verus<T>(ptr: *const [T], offset: usize, len: usize, Tracked(r): Tracked<&[T]>) -> *const [T]
-    requires
-        shared_ref_ptr(shadow_data(r)) == ptr,
-        offset <= r@.len(),
-    returns
-        // unchanged
-;
-// _mut_: the same, with `ptr: *mut [T]` and `shared_ref_ptr(shadow_data(r)) == ptr as *const [T]`.
-```
-
-- The body gets the parts with `ref_to_parts_slice` on `r` (a proof call) for `ptr_bounds`, `provenance_not_none`, `is_nonnull` and `as_untyped()`.
-- **Callers:** the `get_unchecked*_verus` impls above (already shadow-data functions under `SliceIndexVerus`),
-  and the `get` / `get_mut` / `index` / `index_mut` impls of core's `SliceIndex` for `Range` / `RangeFrom`
-  (`index.rs:985, 1011, 1088, 1113, 1435, 1456`).
-  Those need the attribute on `ExSliceIndex`'s `get_mut` and `index_mut` too (`get` and `index` have it),
-  which makes every core `SliceIndex` impl of those methods a shadow-data function
-  (`[T]` and `str`, including `IndexRange`, `RangeInclusive`, the `Bound` pairs, ...).
-- This is possible (tested, above); the cost is the attribute on core trait methods and their impls,
-  for two private helpers. Alternatively, keep them taking `&PointsTo`, with their callers building it with `ref_to_parts_slice`.
-
-**Suggested:** `SliceIndexVerus`, `from_raw_parts_verus` and `read_copy_verus`;
-`get_offset_len_*` either way.
+The permission types' own methods (`as_aligned`, `borrow_index`, `subrange`, `as_big_*`, `as_bytes`, `is_disjoint_*`, ...)
+are left out of these lists.
 
 ## On hold: verifying `read_unaligned` and `MaybeUninit`
 
@@ -150,6 +84,11 @@ const unsafe fn get_offset_len_noubcheck_verus<T>(ptr: *const [T], offset: usize
 Until then, `read_unaligned_verus` stays as it is now:
 trusted (`external_body`), taking a `PointsToUnalignedArg`, so it is the one remaining trusted spec over `PointsToUnaligned`.
 `MaybeUninit`, `CopyPointsToUnaligned` and vstd's `std_specs/maybe_uninit.rs` are unchanged.
+So are their aligned counterparts in rustlib's `specs/ptr.rs`, `CopyPointsTo` and `PointsToArg`,
+which still hold a `&PointsTo` (and, for `PointsToArg::Move`, a `&mut PointsTo`)
+and have no users;
+`CopyPointsTo::new` can't take a `Tracked<&T>` in their place,
+since it stores the borrow in a struct field, where shadow data isn't tracked.
 
 To check when this resumes:
 whether Verus accepts an exec union field read under an `is_variant` precondition (`assume_init_verus`),
