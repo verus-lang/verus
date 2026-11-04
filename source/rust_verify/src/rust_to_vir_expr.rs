@@ -3542,13 +3542,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
             }
         }
-        // This a desugered `await` expression
-        ExprKind::Match(
-            Expr { hir_id: _, kind: ExprKind::Call(_expr, call_args), span: _ },
-            _arms,
-            rustc_hir::MatchSource::AwaitDesugar,
-        ) => {
-            let vir_expr = expr_to_vir_consume(bctx, &call_args[0])?;
+        // This is a desugared `await` expression: `match IntoFuture::into_future(x) { ... }`.
+        // Keep the `into_future` call so that the awaited future is the one it returns.
+        ExprKind::Match(into_future, _arms, rustc_hir::MatchSource::AwaitDesugar) => {
+            let vir_expr = expr_to_vir_consume(bctx, into_future)?;
             mk_expr(ExprX::Await(vir_expr))
         }
         ExprKind::Match(expr, arms, _match_source) => {

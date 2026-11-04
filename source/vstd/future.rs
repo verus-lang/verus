@@ -38,8 +38,24 @@ pub trait ExFuture {
     ;
 }
 
+#[verifier::external_trait_specification]
+pub trait ExIntoFuture {
+    type ExternalTraitSpecificationFor: core::future::IntoFuture;
+
+    type Output;
+
+    type IntoFuture: Future<Output = Self::Output>;
+
+    fn into_future(self) -> Self::IntoFuture;
+}
+
+pub assume_specification<F: Future>[ <F as IntoFuture>::into_future ](f: F) -> (r:
+    <F as IntoFuture>::IntoFuture)
+    ensures
+        r == f,
+;
+
 pub trait FutureAdditionalSpecFns<T>: Future<Output = T> {
-    /// Whether this future has been awaited.
     #[verifier::prophetic]
     spec fn awaited(&self) -> bool;
 }
