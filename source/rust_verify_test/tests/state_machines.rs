@@ -9404,3 +9404,93 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] prophetic_attr_ok IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn p(x: u8) -> bool;
+
+        tokenized_state_machine!{ X {
+            #![verifier::prophetic]
+
+            fields {
+                #[sharding(variable)] pub v: u8,
+            }
+
+            init!{
+                initialize(x: u8) {
+                    require p(x);
+                    init v = x;
+                }
+            }
+
+            transition!{
+                tr(x: u8) {
+                    require p(x);
+                    update v = x;
+                }
+            }
+
+            #[invariant]
+            #[verifier::prophetic]
+            pub fn inv(&self) -> bool {
+                p(self.v)
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self, x: u8) { }
+
+            #[inductive(tr)]
+            fn tr_inductive(pre: Self, post: Self, x: u8) { }
+        }}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_missing IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn p(x: u8) -> bool;
+
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(variable)] pub v: u8,
+            }
+
+            init!{
+                initialize(x: u8) {
+                    require p(x);
+                    init v = x;
+                }
+            }
+
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_missing2 IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn p(x: u8) -> bool;
+
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(variable)] pub v: u8,
+            }
+
+            init!{
+                initialize(x: u8) {
+                    init v = x;
+                }
+            }
+
+            #[invariant]
+            #[verifier::prophetic]
+            pub fn inv(&self) -> bool {
+                p(self.v)
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self, x: u8) { }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
+}
