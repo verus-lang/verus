@@ -27,8 +27,8 @@ pub(crate) fn thir_body<'tcx>(
         return Err(reported);
     }
 
-    let expr = if crate::verus::erase_body(&mut cx, owner_def) {
-        crate::verus::erase_tree(&mut cx, body.value, crate::verus::TreeErase::IncludeBasicChecks)
+    let expr = if let Some(t) = crate::verus::erase_body(&mut cx, owner_def) {
+        crate::verus::erase_tree(&mut cx, body.value, t)
     } else {
         cx.mirror_expr(body.value)
     };

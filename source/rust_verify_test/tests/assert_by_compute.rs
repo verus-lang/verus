@@ -4,6 +4,86 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] closed_view_issue1728 verus_code! {
+        use vstd::prelude::*;
+
+        mod a {
+            use vstd::prelude::*;
+
+            pub struct A;
+
+            impl View for A {
+                type V = nat;
+
+                closed spec fn view(&self) -> Self::V { 42 }
+            }
+        }
+
+        proof fn test(a1: a::A, a2: a::A) {
+            assert(a1@ == a2@) by (compute);
+        }
+    } => Ok(err) => {
+        assert_eq!(
+            err.warnings.iter().filter(|w| w.message.contains("failed to simplify expression")).count(),
+            1,
+        );
+    }
+}
+
+test_verify_one_file! {
+    #[test] closed_string_view_compute_fails verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(left: &String, right: &String) {
+            assert(left@ == right@) by (compute); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] closed_string_view_compute_fallback verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(left: &String, right: &String)
+            requires left@ == right@,
+        {
+            assert(left@ == right@) by (compute);
+        }
+    } => Ok(err) => {
+        assert_eq!(
+            err.warnings.iter().filter(|w| w.message.contains("failed to simplify expression")).count(),
+            1,
+        );
+    }
+}
+
+test_verify_one_file! {
+    #[test] closed_generic_method_compute_fallback verus_code! {
+        mod inner {
+            use vstd::prelude::*;
+
+            pub struct S<T> { pub value: T }
+
+            pub trait Identity<A> {
+                spec fn identity<B>(&self, b: B) -> (A, B);
+            }
+
+            impl<T> Identity<T> for S<T> {
+                closed spec fn identity<U>(&self, u: U) -> (T, U) { (self.value, u) }
+            }
+        }
+
+        use inner::*;
+
+        proof fn test(s: &S<u64>, x: u32)
+            requires s.identity(x) == (3u64, x),
+        {
+            assert(s.identity(add(x, 0)) == (3u64, x)) by (compute);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] bit_vectors verus_code! {
 
         spec fn shifter(x: u64, amt: usize) -> u64
@@ -678,6 +758,41 @@ test_verify_one_file! {
             let s: Seq<int> = seq![1, 2, 3, 4, 5];
             let even: Seq<int> = s.filter(|x: int| x % 2 == 0);
             assert(even =~= seq![2, 4]) by (compute);   // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] quantifier_trigger_uses_param_regression_1277 verus_code! {
+        #[allow(unused_imports)]
+        use vstd::seq::*;
+
+        uninterp spec fn h(i: int) -> bool;
+        uninterp spec fn g(n: int, i: int, j: int) -> int;
+
+        // GitHub issue 1277: triggers that mention a parameter must be
+        // evaluated in the same environment as the quantifier body
+        spec fn comm(n: int) -> bool {
+            forall|i: int| #[trigger] (n + i) == i + n
+        }
+
+        spec fn nested(n: int) -> bool {
+            forall|i: int| #[trigger] h(i) ==> forall|j: int| #[trigger] g(n, i, j) == g(n, i, j)
+        }
+
+        spec fn all_nonneg(s: Seq<int>) -> bool {
+            forall|i: int| 0 <= i < s.len() ==> #[trigger] s[i] >= 0
+        }
+
+        spec fn wrong(n: int) -> bool {
+            forall|i: int| #[trigger] (n + i) == i + n + 1
+        }
+
+        proof fn test() {
+            assert(comm(3)) by (compute);
+            assert(nested(3)) by (compute);
+            assert(all_nonneg(seq![1, 2, 3])) by (compute);
+            assert(wrong(3)) by (compute); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -1434,4 +1549,51 @@ test_verify_one_file! {
             assert(t(5) == 7) by (compute_only);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] quantifier_binders_share_name_regression_3200 verus_code! {
+        // Macro hygiene allows two binders named `x`
+        macro_rules! swap {
+            ($v:ident) => {
+                ::verus_builtin::forall(|$v: int, x: int| ::verus_builtin::imply(p($v, x), p(x, $v))) // FAILS
+            };
+        }
+
+        macro_rules! diff {
+            ($v:ident) => {
+                ::verus_builtin::forall(|$v: int, x: int| ::verus_builtin::equal(d($v, x), $v - x))
+            };
+        }
+
+        uninterp spec fn p(a: int, b: int) -> bool;
+
+        spec fn d(a: int, b: int) -> int {
+            a - b
+        }
+
+        proof fn good() {
+            assert(diff!(x)) by (compute);
+        }
+
+        proof fn bad() {
+            assert(swap!(x)) by (compute);
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] quantifier_with_triggers_uses_param_regression_1277 verus_code! {
+        use vstd::prelude::*;
+
+        uninterp spec fn f(a: int, b: int) -> bool;
+
+        spec fn all_f(n: int) -> bool {
+            forall|i: int| ::verus_builtin::with_triggers(((f(n, i),),), (f(n, i) || i == 0 || i == 1 || i == 2))
+        }
+
+        proof fn bad() {
+            assert(all_f(7)) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }

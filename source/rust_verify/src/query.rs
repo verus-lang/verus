@@ -715,3 +715,9 @@ pub fn get_global_query<'tcx>(_tcx: TyCtxt<'tcx>) -> Option<Rc<Query<'tcx>>> {
         None => None,
     })
 }
+
+/// Drops the global Query once it is no longer needed (after the lifetime checks).
+pub fn clear_global_query() {
+    let query = QUERY.with_borrow_mut(|q| q.take());
+    drop(query);
+}

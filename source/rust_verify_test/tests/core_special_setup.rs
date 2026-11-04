@@ -29,6 +29,7 @@ test_verify_one_file_with_options! {
         #![cfg_attr(verus_keep_ghost, feature(fmt_internals))]
         #![cfg_attr(verus_keep_ghost, feature(fmt_arguments_from_str))]
         #![cfg_attr(verus_keep_ghost, feature(panic_internals))]
+        #![cfg_attr(verus_keep_ghost, feature(maybe_uninit_array_assume_init))]
         #![cfg_attr(
             verus_keep_ghost,
             feature(fn_traits),

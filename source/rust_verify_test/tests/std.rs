@@ -2380,3 +2380,77 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] maybe_uninit_array_assume_init verus_code! {
+        use core::mem::MaybeUninit;
+        use vstd::prelude::*;
+        use vstd::std_specs::maybe_uninit::MaybeUninitAdditionalSpecFns;
+
+        fn test() {
+            let a = [MaybeUninit::new(1u8), MaybeUninit::new(2u8)];
+            let r = unsafe { MaybeUninit::array_assume_init(a) };
+            assert(r@[0] == 1u8);
+            assert(r@[1] == 2u8);
+        }
+
+        fn test_generic<T>(a: [MaybeUninit<T>; 2])
+            requires
+                forall|i: int| #![auto] 0 <= i < 2 ==> a@[i].mem_contents().is_init(),
+        {
+            let r = unsafe { MaybeUninit::array_assume_init(a) };
+            assert(r@[0] == a@[0].mem_contents().value());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] maybe_uninit_array_assume_init_requires_init verus_code! {
+        use core::mem::MaybeUninit;
+        use vstd::prelude::*;
+
+        fn test() {
+            let a = [MaybeUninit::new(1u8), MaybeUninit::<u8>::uninit()];
+            let _r = unsafe { MaybeUninit::array_assume_init(a) };
+        }
+    } => Err(err) => {
+        assert!(err.errors.iter().all(|e| e.rendered.contains("precondition not satisfied")));
+    }
+}
+
+test_verify_one_file! {
+    #[test] nonnull_specs verus_code! {
+        use vstd::prelude::*;
+        use core::ptr::NonNull;
+
+        fn roundtrip(ptr: *mut u8)
+            requires ptr@.addr != 0,
+        {
+            let nn = unsafe { NonNull::new_unchecked(ptr) };
+            let back = nn.as_ptr();
+            assert(back == ptr);
+        }
+
+        fn new_some(ptr: *mut u8)
+            requires ptr@.addr != 0,
+        {
+            let o = NonNull::new(ptr);
+            assert(o is Some);
+            if let Some(nn) = o {
+                assert(nn.as_ptr() == ptr);
+            }
+        }
+
+        fn new_none(ptr: *mut u8)
+            requires ptr@.addr == 0,
+        {
+            let o = NonNull::new(ptr);
+            assert(o is None);
+        }
+
+        fn invariant<T>(nn: NonNull<T>) {
+            broadcast use vstd::std_specs::ptr::axiom_nonnull_addr_nonzero;
+            assert(nn.as_ptr()@.addr != 0);
+        }
+    } => Ok(())
+}

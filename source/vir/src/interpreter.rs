@@ -17,7 +17,7 @@ use crate::messages::{Message, Span, ToAny, WarningAllow, error};
 use crate::sst::{
     ArithOp, BinaryOp, Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent,
 };
-use crate::sst_util::{free_vars_exp, subst_exp};
+use crate::sst_util::{free_vars_exp, free_vars_exps, subst_exp};
 use crate::unicode::valid_unicode_scalar_bigint;
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
@@ -386,6 +386,16 @@ impl SyntacticEquality for Binders<Typ> {
 }
 
 // Constructor fields may appear in any source order. Use the same order for equality and hashing.
+/// Trigger terms are evaluated in the same environment as the body they belong to,
+/// so a free variable bound there (e.g. a function parameter) is replaced by its value
+fn subst_env_into_trigger(env: &Env, trig: &[Exp]) -> Exps {
+    let env_substs = free_vars_exps(trig)
+        .into_keys()
+        .filter_map(|id| env.get(&id).map(|v| (id, v.clone())))
+        .collect();
+    Arc::new(trig.iter().map(|e| subst_exp(&HashMap::new(), &env_substs, e)).collect())
+}
+
 fn sorted_ctor_fields(fields: &Binders<Exp>) -> Vec<&Binder<Exp>> {
     let mut fields: Vec<_> = fields.iter().collect();
     fields.sort_unstable_by(|l, r| l.name.cmp(&r.name));
@@ -1734,12 +1744,15 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(CallFun::Fun(fun, resolved_method), typs, args) => {
-            let (fun, typs) = resolve_call(fun, resolved_method, typs);
+            // Resolve the implementation for evaluation, but preserve the original trait call
+            // when returning a partially evaluated expression. AIR uses the trait declaration's
+            // name and type arguments, not a separate function for the implementation.
+            let (reduced_fun, reduced_typs) = resolve_call(fun, resolved_method, typs);
             if state.perf {
                 // Record the call for later performance analysis
-                match state.fun_calls.get_mut(fun) {
+                match state.fun_calls.get_mut(reduced_fun) {
                     None => {
-                        state.fun_calls.insert(fun.clone(), 1);
+                        state.fun_calls.insert(reduced_fun.clone(), 1);
                     }
                     Some(count) => {
                         *count += 1;
@@ -1750,18 +1763,18 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             let new_args: Result<Vec<Exp>, VirErr> =
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
             let new_args = Arc::new(new_args?);
-            if let Some(array_fn) = is_array_fn(&fun) {
+            if let Some(array_fn) = is_array_fn(&reduced_fun) {
                 eval_array(ctx, state, array_fn, exp, &new_args)
-            } else if let Some(seq_fn) = is_sequence_fn(&fun) {
+            } else if let Some(seq_fn) = is_sequence_fn(&reduced_fun) {
                 eval_seq(ctx, state, seq_fn, exp, &new_args)
             } else {
                 // Try to find the function's body
-                match ctx.fun_ssts.get(fun) {
+                match ctx.fun_ssts.get(reduced_fun) {
                     Some(func)
                         if func.x.axioms.spec_axioms.is_some() && func.x.kind.inline_okay() =>
                     {
                         let memoize = func.x.attrs.memoize;
-                        match state.lookup_call(&fun, &typs, &new_args, memoize) {
+                        match state.lookup_call(&reduced_fun, &reduced_typs, &new_args, memoize) {
                             Some(prev_result) => {
                                 state.cache_hits += 1;
                                 Ok(prev_result)
@@ -1779,7 +1792,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     let formal_id = formal.x.name.clone();
                                     env.insert(formal_id, actual.clone()).unwrap();
                                 }
-                                for (formal, actual) in typ_params.iter().zip(typs.iter()) {
+                                for (formal, actual) in typ_params.iter().zip(reduced_typs.iter()) {
                                     type_env.insert(formal.clone(), actual.clone()).unwrap();
                                 }
                                 // Proactively apply the type environment to the body.
@@ -1810,7 +1823,13 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     ))
                                 };
                                 state.env = prev_env;
-                                state.insert_call(fun, &typs, &new_args, &result.clone()?, memoize);
+                                state.insert_call(
+                                    reduced_fun,
+                                    &reduced_typs,
+                                    &new_args,
+                                    &result.clone()?,
+                                    memoize,
+                                );
                                 result
                             }
                         }
@@ -1894,6 +1913,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             if b.name.0.ends_with("$compute") {
                                 return b.clone();
                             }
+                            // Binders may share a name (macro hygiene), so number each one
+                            state.iterations += 1;
                             let id = VarIdent(
                                 Arc::new(format!("{}$compute", b.name.0)),
                                 VarIdentDisambiguate::VirSubst(state.iterations),
@@ -1906,20 +1927,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 );
                 let empty_substs = HashMap::new();
                 let e = subst_exp(&empty_substs, &substs, e);
-                let triggers = Arc::new(
-                    triggers
-                        .iter()
-                        .map(|trig| {
-                            Arc::new(
-                                trig.iter().map(|e| subst_exp(&empty_substs, &substs, e)).collect(),
-                            )
-                        })
-                        .collect(),
-                );
-                let bnd = crate::def::Spanned::new(
-                    bnd.span.clone(),
-                    BndX::Quant(*quant_type, bnds.clone(), triggers, by_locals.clone()),
-                );
                 state.env.push_scope(true);
                 for b in bnds.iter() {
                     let id = b.name.clone();
@@ -1927,6 +1934,20 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         SpannedTyped::new(&e.span, &b.a, Interp(InterpExp::FreeVar(id.clone())));
                     state.env.insert(id, val).unwrap();
                 }
+                let triggers = Arc::new(
+                    triggers
+                        .iter()
+                        .map(|trig| {
+                            let trig: Vec<Exp> =
+                                trig.iter().map(|e| subst_exp(&empty_substs, &substs, e)).collect();
+                            subst_env_into_trigger(&state.env, &trig)
+                        })
+                        .collect(),
+                );
+                let bnd = crate::def::Spanned::new(
+                    bnd.span.clone(),
+                    BndX::Quant(*quant_type, bnds.clone(), triggers, by_locals.clone()),
+                );
                 let e = eval_expr_internal(ctx, state, &e)?;
                 state.env.pop_scope();
                 if let ExpX::Const(Constant::Bool(_)) = e.x {
@@ -1989,8 +2010,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             InterpExp::Array(_) => ok,
         },
         WithTriggers(triggers, body) => {
+            let triggers = Arc::new(
+                triggers.iter().map(|trig| subst_env_into_trigger(&state.env, trig)).collect(),
+            );
             let body = eval_expr_internal(ctx, state, body)?;
-            exp_new(WithTriggers(triggers.clone(), body))
+            exp_new(WithTriggers(triggers, body))
         }
         // Ignored by the interpreter at present (i.e., treated as symbolic)
         VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | StaticVar(..) => ok,
