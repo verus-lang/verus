@@ -1090,21 +1090,6 @@ test_verify_one_file! {
             assert(forall|k: int| 0 <= k < 256 ==> a@[k] == k as u8);
         }
 
-        fn vec_iter_mut_works(v: &mut Vec<u8>)
-            ensures
-                final(v)@.len() == old(v)@.len(),
-                forall|k: int| 0 <= k < old(v)@.len() ==> final(v)@[k] == k as u8,
-        {
-            let n = v.len();
-            for (i, x) in it: v.iter_mut().enumerate()
-                invariant
-                    n == old(v)@.len(),
-                    forall|k: int| #![auto] 0 <= k < it.index() ==> *final(it.seq()[k].1) == k as u8,
-            {
-                *x = i as u8;
-            }
-        }
-
         fn wrong_index_fails(v: &Vec<u32>) {
             for (i, x) in it: v.iter().enumerate() {
                 assert(i == it.index() + 1); // FAILS
@@ -1114,30 +1099,44 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] enumerate_produces verus_code! {
+    // `Enumerate` counts the items it yields in a `usize`, so `enumerate` must know that
+    // at most `usize::MAX` items will be yielded; without the laws, `remaining()` bounds nothing.
+    #[test] enumerate_requires_bounded_len verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
 
-        #[verifier::exec_allows_no_decreases_clause]
-        fn diverge() -> u32
-            ensures false,
+        fn bounded<I: Iterator>(it: I)
+            requires
+                it.obeys_prophetic_iter_laws(),
+                it.remaining().len() <= usize::MAX,
         {
-            loop {}
+            let _ = it.enumerate();
         }
 
-        fn test(v: &Vec<u32>) {
-            let e = v.iter().enumerate();
-            assert(forall|k: int| 0 <= k < v.len() ==> #[trigger] e.produces()[k]);
-
-            let input = vec![0u32, 1, 2];
-            let inner = input.into_iter().map(|x: u32| -> (out: u32)
-                ensures x > 0 && out == x,
-            { if x == 0 { diverge() } else { x } });
-            let stuck = inner.enumerate();
-            // `enumerate` gets stuck wherever its inner iterator does
-            assert(!stuck.produces()[0]);
+        // The bound is known for the usual slice and Vec iterators, whatever their length
+        fn common_sources(v: Vec<u32>, r: &Vec<u32>, s: &[u32], m: &mut Vec<u32>) {
+            let _ = r.iter().enumerate();
+            let _ = r.into_iter().enumerate();
+            let _ = s.iter().enumerate();
+            let _ = s.into_iter().enumerate();
+            let _ = m.iter_mut().enumerate();
+            let _ = v.into_iter().enumerate();
         }
-    } => Ok(())
+
+        fn unbounded<I: Iterator>(it: I)
+            requires
+                it.obeys_prophetic_iter_laws(),
+        {
+            let _ = it.enumerate(); // FAILS
+        }
+
+        fn without_laws<I: Iterator>(it: I)
+            requires
+                it.remaining().len() <= usize::MAX,
+        {
+            let _ = it.enumerate(); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {

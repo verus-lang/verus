@@ -505,6 +505,9 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
 pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>)
     ensures
         IteratorSpec::remaining(&iter) == s@.as_ref(),
+        // Stated via `len()` so callers learn that the length fits in a `usize`
+        // (needed, e.g., by `enumerate` and `position`)
+        IteratorSpec::remaining(&iter).len() == s.len(),
         into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
 ;
@@ -513,6 +516,7 @@ pub assume_specification<'a, T> [<&'a [T] as core::iter::IntoIterator>::into_ite
     (iter: Iter<'a, T>)
     ensures
         IteratorSpec::remaining(&iter) == s@.as_ref(),
+        IteratorSpec::remaining(&iter).len() == s.len(),
         into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
 ;
@@ -549,6 +553,7 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for IterMut<'a, T> {
 pub assume_specification<'a, T>[ <[T]>::iter_mut ](slice: &'a mut [T]) -> (iter: IterMut<'a, T>)
     ensures
         IteratorSpec::remaining(&iter).len() == old(slice)@.len() == final(slice)@.len(),
+        IteratorSpec::remaining(&iter).len() == old(slice).len(),
         // Each yielded reference initially points at the corresponding element...
         forall|i: int| #![trigger IteratorSpec::remaining(&iter)[i]]
             0 <= i < old(slice)@.len() ==> *(IteratorSpec::remaining(&iter)[i]) == old(slice)@[i],

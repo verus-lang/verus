@@ -193,8 +193,14 @@ pub trait ExIterator {
 
     fn enumerate(self) -> (r: Enumerate<Self>)
         where Self: Sized,
+        requires
+            // std's `Enumerate` keeps its count in a `usize`, so yielding more than `usize::MAX`
+            // items overflows it (panicking or wrapping around); without the laws, `remaining()`
+            // doesn't bound how many items will be yielded
+            self.obeys_prophetic_iter_laws(),
+            self.remaining().len() <= usize::MAX as int,
         ensures
-            self.obeys_prophetic_iter_laws() ==> enumerate_post(self, r),
+            enumerate_post(self, r),
     ;
 
     fn filter<P>(self, predicate: P) -> (r: core::iter::Filter<Self, P>)
@@ -520,8 +526,8 @@ pub uninterp spec fn enumerate_iter<I>(e: Enumerate<I>) -> I;
 // Define Iter::enumerate's postcondition
 pub uninterp spec fn enumerate_post<I>(i: I, e: Enumerate<I>) -> bool;
 
-// The count starts at 0 and is incremented with the caller's overflow checks,
-// so past `usize::MAX` it either panics or wraps around (as `k as usize` does).
+// The count starts at 0, and `enumerate`'s precondition bounds the number of items
+// by `usize::MAX`, so the count never overflows and `k as usize` is exact.
 pub broadcast axiom fn enumerate_postcondition<I: IteratorSpec>(i: I, r: Enumerate<I>)
     requires
         i.obeys_prophetic_iter_laws(),
