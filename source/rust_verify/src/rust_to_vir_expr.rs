@@ -4196,7 +4196,13 @@ fn binopkind_to_binaryop_inner<'tcx>(
         let lhs_inner_ty = maybe_strip_shared_ref(lhs_ty);
         let rhs_inner_ty = maybe_strip_shared_ref(rhs_ty);
         let d0b = if bctx.in_ghost { Div0Behavior::Allow } else { Div0Behavior::Error };
+        let is_bool = ty_is_bool_or_ref_bool(lhs_inner_ty);
         let vop = match op {
+            BinOpKind::Le if is_bool => BinaryOp::BoolInequality(InequalityOp::Le),
+            BinOpKind::Ge if is_bool => BinaryOp::BoolInequality(InequalityOp::Ge),
+            BinOpKind::Lt if is_bool => BinaryOp::BoolInequality(InequalityOp::Lt),
+            BinOpKind::Gt if is_bool => BinaryOp::BoolInequality(InequalityOp::Gt),
+
             BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
             BinOpKind::Ge => BinaryOp::Inequality(InequalityOp::Ge),
             BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
@@ -4609,14 +4615,14 @@ pub(crate) fn stmt_to_vir<'tcx>(
                     ItemKind::Use(..) | ItemKind::Macro(..) => {
                         return Ok(vec![]);
                     }
-                    ItemKind::Struct(..) | ItemKind::Enum(..) => {
-                        // Nested datatypes are handled elsewhere as standalone items
-                        // It doesn't matter that they also appear here as statements
-                        return Ok(vec![]);
-                    }
-                    ItemKind::Fn { .. } | ItemKind::Const(..) => {
-                        // Nested functions and constants are handled elsewhere as standalone items
-                        // It doesn't matter that they also appear here as statements
+                    ItemKind::Struct(..)
+                    | ItemKind::Enum(..)
+                    | ItemKind::Fn { .. }
+                    | ItemKind::Const(..)
+                    | ItemKind::Impl(..)
+                    | ItemKind::Static(..) => {
+                        // Nested items are translated and checked independently as standalone items.
+                        // Their declarations do not need a statement-level VIR representation.
                         return Ok(vec![]);
                     }
                     _ => {
