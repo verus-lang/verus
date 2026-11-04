@@ -2188,7 +2188,8 @@ fn check_expr(
                 }
                 proph = proph.join(arg_proph);
             }
-            if let Some(CtorUpdateTail { place, taken_fields }) = update {
+
+            let place_mode = if let Some(CtorUpdateTail { place, taken_fields }) = update {
                 let place_expect = if typing.block_ghostness == Ghost::Exec {
                     Expect(Mode::Exec)
                 } else {
@@ -2222,7 +2223,10 @@ fn check_expr(
                 }
 
                 proph = proph.join(place_proph);
-            }
+                Some(place_mode)
+            } else {
+                None
+            };
 
             record.type_inv_info.ctor_needs_check.insert(expr.span.id, mode != Mode::Spec);
             if !matches!(dt, Dt::Tuple(_)) {
@@ -2232,11 +2236,13 @@ fn check_expr(
             // Now that we've computed the final mode of this struct expr, go back through
             // all the 'take_fields' and see which ones require moves.
             if let Some(CtorUpdateTail { place: _, taken_fields }) = update {
+                let place_mode = place_mode.unwrap();
                 for (taken_field, read_kind) in taken_fields.iter() {
                     let field_mode = get_field_mode(taken_field);
-                    let arg_mode = mode_join(field_mode, mode);
+                    let arg_mode = mode_join(place_mode, field_mode);
+                    let expected_arg_mode = mode_join(field_mode, mode);
 
-                    let final_read_kind = match arg_mode {
+                    let final_read_kind = match expected_arg_mode {
                         Mode::Spec => ReadKind::Spec,
                         _ => read_kind.preliminary_kind,
                     };

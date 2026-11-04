@@ -2076,3 +2076,24 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot move from exec place at this binding in non-executable context")
 }
+
+test_verify_one_file! {
+    #[test] move_exec_to_proof_ctor_tail_fail2 verus_code! {
+        use vstd::prelude::*;
+
+        struct S {
+            a: u64,
+            x: Vec<u64>,
+        }
+
+        proof fn consume<T>(tracked t: T) { }
+
+        fn test(s: S) {
+            proof {
+                let tracked a = 5u64;
+                let tracked t = S { a, ..s };
+                consume(t.x);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move from exec place (field `x` from the constructor tail) in non-executable context")
+}
