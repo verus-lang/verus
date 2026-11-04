@@ -1,5 +1,7 @@
 use super::super::prelude::*;
+use super::borrow::BorrowSpec;
 
+use core::borrow::Borrow;
 use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
 use core::marker::PointeeSized;
 
@@ -195,6 +197,17 @@ pub trait ExOrd: Eq + PartialOrd + PointeeSized {
                         }
                 }
     ;
+}
+
+/// Whether borrowing preserves the ordering of values.
+///
+/// This compares the `cmp_spec` results; faithfulness of the comparison and
+/// borrowing specifications is expressed separately by their `obeys_*_spec` predicates.
+pub open spec fn borrowed_key_ordering_matches<T: Borrow<U> + Ord, U: Ord + ?Sized>() -> bool {
+    forall|x: T, y: T| #[trigger]
+        x.cmp_spec(&y) == <T as BorrowSpec<U>>::borrow_spec(&x).cmp_spec(
+            <T as BorrowSpec<U>>::borrow_spec(&y),
+        )
 }
 
 pub trait PartialEqIs<Rhs: PointeeSized = Self>: PartialEq<Rhs> + PointeeSized {

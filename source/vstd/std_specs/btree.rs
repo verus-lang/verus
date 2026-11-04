@@ -4,7 +4,7 @@
 //! The specification is only meaningful when the `Key` obeys our [`Ord`] model,
 //! as specified by [`super::super::laws_cmp::obeys_cmp_spec`].
 //! Borrowed-query comparison guarantees additionally require
-//! `<Q as OrdSpec>::obeys_cmp_spec()` and
+//! `obeys_cmp::<&Q>()` and
 //! `<Key as BorrowSpec<Q>>::obeys_borrow_spec()`.
 //!
 //! By default, the Verus standard library brings useful axioms
@@ -16,6 +16,7 @@ use super::super::map::{assert_maps_equal, assert_maps_equal_internal};
 use super::super::prelude::*;
 use super::borrow::BorrowSpec;
 use super::cmp::OrdSpec;
+pub use super::cmp::borrowed_key_ordering_matches;
 use super::iter::IteratorSpec;
 
 use alloc::alloc::Allocator;
@@ -262,17 +263,6 @@ impl<'a, Key, Value, A> View for CursorMut<'a, Key, Value, A> {
 impl<'a, Key, Value, A> CursorMutSpecFns<Key, Value> for CursorMut<'a, Key, Value, A> {
     #[verifier::prophetic]
     uninterp spec fn final_map(self) -> Map<Key, Value>;
-}
-
-/// Whether a borrowed key type's ordering agrees with the ordering of stored keys.
-///
-/// This is the semantic requirement imposed on `Key: Borrow<Q>` by the standard library's
-/// borrowed-key `BTreeMap` operations.
-pub open spec fn borrowed_key_ordering_matches<Key: Borrow<Q> + Ord, Q: Ord + ?Sized>() -> bool {
-    forall|k1: Key, k2: Key| #[trigger]
-        k1.cmp_spec(&k2) == <Key as BorrowSpec<Q>>::borrow_spec(&k1).cmp_spec(
-            <Key as BorrowSpec<Q>>::borrow_spec(&k2),
-        )
 }
 
 /// Whether a key occurs before the gap returned by [`BTreeMap::lower_bound_mut`].
@@ -648,7 +638,7 @@ pub open spec fn btree_map_contains_key_ensures<
 >(m: &BTreeMap<Key, Value, A>, k: &Q, result: bool) -> bool {
     ({
         &&& obeys_cmp::<Key>()
-        &&& <Q as OrdSpec>::obeys_cmp_spec()
+        &&& obeys_cmp::<&Q>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
         &&& btree_map_inv(m)
     }) ==> {
@@ -686,6 +676,8 @@ pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_obeys_cmp_concret
     ensures
         result == m@.contains_key(*k),
 {
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+
     reveal(crate::laws_cmp::obeys_cmp_ord);
 }
 
@@ -703,6 +695,7 @@ pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_obeys_cmp_deep_eq
         Key::obeys_cmp_spec(),
         result == m.deep_view().contains_key(k.deep_view()),
 {
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
     broadcast use {
         crate::map::group_map_lemmas,
         crate::set::group_set_lemmas,
@@ -735,7 +728,7 @@ pub open spec fn btree_map_get_ensures<
 >(m: &BTreeMap<Key, Value, A>, k: &Q, result: Option<&Value>) -> bool {
     ({
         &&& obeys_cmp::<Key>()
-        &&& <Q as OrdSpec>::obeys_cmp_spec()
+        &&& obeys_cmp::<&Q>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
         &&& btree_map_inv(m)
     }) ==> {
@@ -785,6 +778,8 @@ pub broadcast proof fn lemma_btree_map_get_ensures_if_obeys_cmp_concrete_eq<
             None => !m@.contains_key(*k),
         },
 {
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+
     reveal(crate::laws_cmp::obeys_cmp_ord);
 }
 
@@ -808,6 +803,7 @@ pub broadcast proof fn lemma_btree_map_get_ensures_if_obeys_cmp_deep_eq<
             None => !m.deep_view().contains_key(k.deep_view()),
         },
 {
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
     broadcast use {
         crate::map::group_map_lemmas,
         crate::set::group_set_lemmas,
@@ -853,7 +849,7 @@ pub open spec fn btree_map_remove_ensures<
 ) -> bool {
     ({
         &&& obeys_cmp::<Key>()
-        &&& <Q as OrdSpec>::obeys_cmp_spec()
+        &&& obeys_cmp::<&Q>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
         &&& btree_map_inv(old_m)
     }) ==> {
@@ -912,6 +908,7 @@ pub broadcast proof fn lemma_btree_map_remove_ensures_if_obeys_cmp_concrete_eq<
             None => !old_m@.contains_key(*k),
         },
 {
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
     broadcast use {crate::map::group_map_lemmas, crate::set::group_set_lemmas};
 
     reveal(crate::laws_cmp::obeys_cmp_ord);
@@ -948,6 +945,7 @@ pub broadcast proof fn lemma_btree_map_remove_ensures_if_obeys_cmp_deep_eq<
             None => !old_m.deep_view().contains_key(k.deep_view()),
         },
 {
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
     broadcast use {
         crate::map::group_map_lemmas,
         crate::set::group_set_lemmas,
@@ -1016,7 +1014,7 @@ pub open spec fn btree_map_get_mut_ensures<
 ) -> bool {
     ({
         &&& obeys_cmp::<Key>()
-        &&& <Q as OrdSpec>::obeys_cmp_spec()
+        &&& obeys_cmp::<&Q>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
         &&& btree_map_inv(old_m)
     }) ==> {
@@ -1093,6 +1091,8 @@ pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_obeys_cmp_concrete_eq<
             },
         },
 {
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+
     reveal(crate::laws_cmp::obeys_cmp_ord);
 }
 
@@ -1128,6 +1128,8 @@ pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_obeys_cmp_deep_eq<
             },
         },
 {
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+
     reveal(crate::laws_cmp::obeys_cmp_ord);
 
     match result {
@@ -1181,7 +1183,7 @@ pub assume_specification<
     ensures
         ({
             &&& obeys_cmp::<Key>()
-            &&& <Q as OrdSpec>::obeys_cmp_spec()
+            &&& obeys_cmp::<&Q>()
             &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
         }) ==> {
             &&& cursor@.wf()
@@ -1207,7 +1209,7 @@ pub assume_specification<
     ensures
         ({
             &&& obeys_cmp::<Key>()
-            &&& <Q as OrdSpec>::obeys_cmp_spec()
+            &&& obeys_cmp::<&Q>()
             &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
         }) ==> {
             &&& cursor@.wf()
@@ -1632,7 +1634,7 @@ pub open spec fn btree_set_contains_ensures<
 >(m: &BTreeSet<Key, A>, k: &Q, result: bool) -> bool {
     ({
         &&& obeys_cmp::<Key>()
-        &&& <Q as OrdSpec>::obeys_cmp_spec()
+        &&& obeys_cmp::<&Q>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
         &&& btree_set_inv(m)
     }) ==> {
@@ -1666,6 +1668,8 @@ pub broadcast proof fn lemma_btree_set_contains_ensures_if_obeys_cmp_concrete_eq
     ensures
         result == m@.contains(*k),
 {
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+
     reveal(crate::laws_cmp::obeys_cmp_ord);
 }
 
@@ -1682,6 +1686,7 @@ pub broadcast proof fn lemma_btree_set_contains_ensures_if_obeys_cmp_deep_eq<
         Key::obeys_cmp_spec(),
         result == m.deep_view().contains(k.deep_view()),
 {
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
     broadcast use {crate::set::group_set_lemmas, Set::lemma_map_contains};
 
     reveal(crate::laws_cmp::obeys_cmp_ord);
@@ -1707,7 +1712,7 @@ pub open spec fn btree_set_get_ensures<Key: Borrow<Q> + Ord, A: Allocator + Clon
 ) -> bool {
     ({
         &&& obeys_cmp::<Key>()
-        &&& <Q as OrdSpec>::obeys_cmp_spec()
+        &&& obeys_cmp::<&Q>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
         &&& btree_set_inv(m)
     }) ==> {
@@ -1751,6 +1756,8 @@ pub broadcast proof fn lemma_btree_set_get_ensures_if_obeys_cmp_concrete_eq<
             None => !m@.contains(*k),
         },
 {
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+
     reveal(crate::laws_cmp::obeys_cmp_ord);
 }
 
@@ -1774,6 +1781,7 @@ pub broadcast proof fn lemma_btree_set_get_ensures_if_obeys_cmp_deep_eq<
             None => !m.deep_view().contains(k.deep_view()),
         },
 {
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
     broadcast use {crate::set::group_set_lemmas, Set::lemma_map_contains};
 
     reveal(crate::laws_cmp::obeys_cmp_ord);
@@ -1799,7 +1807,7 @@ pub open spec fn btree_set_remove_ensures<
 >(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: &Q, result: bool) -> bool {
     ({
         &&& obeys_cmp::<Key>()
-        &&& <Q as OrdSpec>::obeys_cmp_spec()
+        &&& obeys_cmp::<&Q>()
         &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
         &&& btree_set_inv(old_m)
     }) ==> {
@@ -1844,6 +1852,7 @@ pub broadcast proof fn lemma_btree_set_remove_ensures_if_obeys_cmp_concrete_eq<
         final_m@ == old_m@.remove(*k),
         result == old_m@.contains(*k),
 {
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
     broadcast use crate::set::group_set_lemmas;
 
     reveal(crate::laws_cmp::obeys_cmp_ord);
@@ -1868,6 +1877,7 @@ pub broadcast proof fn lemma_btree_set_remove_ensures_if_obeys_cmp_deep_eq<
         final_m.deep_view() == old_m.deep_view().remove(k.deep_view()),
         result == old_m.deep_view().contains(k.deep_view()),
 {
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
     broadcast use {crate::set::group_set_lemmas, Set::lemma_map_contains};
 
     reveal(crate::laws_cmp::obeys_cmp_ord);
