@@ -107,6 +107,7 @@ const MONOTYPE_APP_END: &str = ">";
 const MONOTYPE_DECORATE: &str = "$%";
 const TRAIT_DEFAULT_PREFIX: &str = "default%";
 const TRAIT_DEFAULT_SEPARATOR: &str = "%%%";
+const PREFIX_EXTENSION_IMPL: &str = "extension_impl%";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
 const DUMMY_PARAM: &str = "no%param";
@@ -451,6 +452,20 @@ pub fn trait_inherit_default_name(default_fun: &Fun, impl_path: &Path) -> Fun {
             krate: path.krate.clone(),
             segments: Arc::new(segments),
         }),
+    })
+}
+
+/// Path of the impl of an external_trait_extension trait TSpec that Verus synthesizes
+/// for an impl of T (origin_impl_path) that has no matching TSpecImpl impl
+pub(crate) fn synthesized_extension_impl_path(origin_impl_path: &Path) -> Path {
+    let mut segments = (*origin_impl_path.segments).clone();
+    let last = segments.last().expect("segment").to_string();
+    let x = PREFIX_EXTENSION_IMPL.to_string() + &last;
+    assert!(!x.contains(TRAIT_DEFAULT_SEPARATOR));
+    *segments.last_mut().unwrap() = Segment::V(Arc::new(x), 0);
+    Arc::new(crate::ast::PathX {
+        krate: origin_impl_path.krate.clone(),
+        segments: Arc::new(segments),
     })
 }
 

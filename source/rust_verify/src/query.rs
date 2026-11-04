@@ -643,8 +643,9 @@ impl<'tcx> Query<'tcx> {
 
         // Inherit default bodies
         let mut new_warning_ctx = (*pre_crate.warning_ctx).clone();
-        let krate = vir::traits::inherit_default_bodies(&krate, &mut new_warning_ctx)
-            .map_err(|e| self.emit_error(e))?;
+        let krate =
+            vir::traits::inherit_default_bodies(&krate, &unpruned_crate, &mut new_warning_ctx)
+                .map_err(|e| self.emit_error(e))?;
 
         // Resolution inference
         // Make sure to do this before the res_info goes stale

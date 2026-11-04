@@ -363,17 +363,8 @@ pub(crate) fn translate_trait<'tcx>(
             );
             if mode == Mode::Spec {
                 if external_trait_extension.is_some() {
-                    if let TraitItemKind::Fn(_, TraitFn::Provided(_)) = kind {
-                        if !is_verus_spec {
-                            return err_span(
-                                *span,
-                                "Verus does not currently support default bodies in external spec extensions",
-                            );
-                        }
-                        // TODO: support defaults
-                        // (they would currently just get dropped here if we didn't return an error)
-                    }
                     // spec functions live in extension trait, not in our trait
+                    // (including any default bodies, which are copied to the extension trait)
                     no_erasure_needed.push(owner_id.to_def_id());
                     continue;
                 } else if !is_verus_spec && ex_assoc_item.is_none() {
