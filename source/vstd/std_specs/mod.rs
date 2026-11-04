@@ -17,6 +17,7 @@ pub mod iter;
 pub mod manually_drop;
 pub mod maybe_uninit;
 pub mod ops;
+pub mod pin;
 pub mod ptr;
 
 #[cfg(feature = "alloc")]
@@ -30,6 +31,7 @@ pub mod range;
 pub mod result;
 
 pub mod slice;
+pub mod task;
 
 #[cfg(feature = "alloc")]
 pub mod vec;
