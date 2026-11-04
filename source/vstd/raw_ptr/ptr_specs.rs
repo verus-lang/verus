@@ -253,6 +253,21 @@ pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> 
     unsafe { &*ptr }
 }
 
+/// Ghost equivalent of `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+/// Because this doesn't constitute a retag, the returned reference's pointer is `ptr` itself.
+#[verifier::shadow_data]
+pub axiom fn ptr_ref_tracked<'a, T>(ptr: *const T, tracked perm: &'a PointsTo<T>) -> (tracked v:
+    &'a T)
+    requires
+        perm.ptr() == ptr,
+        perm.is_valid(),
+        perm.wf(),
+    ensures
+        v == perm.value(),
+        shared_ref_ptr(shadow_data(v)) == ptr,
+;
+
 // /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 // /// The memory pointed to by `ptr` must be initialized.
 // TODO: move to rustlib
@@ -285,6 +300,23 @@ pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<
 {
     unsafe { &*ptr }
 }
+
+/// Ghost equivalent of `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+/// Because this doesn't constitute a retag, the returned reference's pointer is `ptr` itself.
+#[verifier::shadow_data]
+pub axiom fn ptr_ref_tracked_slice<'a, T>(
+    ptr: *const [T],
+    tracked perm: &'a PointsTo<[T]>,
+) -> (tracked v: &'a [T])
+    requires
+        perm.ptr() == ptr,
+        perm.is_valid(),
+        perm.wf(),
+    ensures
+        v@ == perm.value(),
+        shared_ref_ptr(shadow_data(v)) == ptr,
+;
 
 /// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
@@ -406,6 +438,41 @@ pub axiom fn mut_ref_slice_len<T>(tracked b: &&mut [T])
     ensures
         mut_ref_ptr(*b)@.metadata == old(*b)@.len(),
 ;
+
+////////////////////////////////////////
+// Shared reference conversions
+///////////////////////////////////////
+/// Gets the shared permission to the memory pointed to by a `&'a T`.
+#[inline(always)]
+#[verifier::shadow_data]
+#[verifier::external_body]
+pub const fn ref_points_to<'a, T>(r: &'a T) -> (pt: Tracked<&'a PointsTo<T>>)
+    ensures
+        pt@.ptr() == shared_ref_ptr(shadow_data(r)),
+        pt@.is_valid(),
+        pt@.value() == *r,
+        pt@.wf(),
+    opens_invariants none
+    no_unwind
+{
+    Tracked::assume_new()
+}
+
+/// Gets the shared permission to the memory pointed to by a `&'a [T]`.
+#[inline(always)]
+#[verifier::shadow_data]
+#[verifier::external_body]
+pub const fn ref_points_to_slice<'a, T>(r: &'a [T]) -> (pt: Tracked<&'a PointsTo<[T]>>)
+    ensures
+        pt@.ptr() == shared_ref_ptr(shadow_data(r)),
+        pt@.is_valid(),
+        pt@.value() == r@,
+        pt@.wf(),
+    opens_invariants none
+    no_unwind
+{
+    Tracked::assume_new()
+}
 
 ////////////////////////////////////////
 // Mutable reference conversions

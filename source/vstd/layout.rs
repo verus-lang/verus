@@ -251,11 +251,15 @@ pub broadcast axiom fn layout_of_str(x: &str)
         spec_align_of_val::<str>(x) == align_of::<u8>(),
 ;
 
-/// For `Sized` types, the alignment of a value is the same as the alignment of the type
+/// For `Sized` types, the size and alignment of a value are the same as the size and
+/// alignment of the type
 /// ([Reference](https://doc.rust-lang.org/std/mem/fn.align_of_val.html))
 pub broadcast axiom fn layout_of_sized<T>(v: &T)
     ensures
-        #[trigger] spec_align_of_val::<T>(v) == align_of::<T>(),
+        #![trigger spec_align_of_val::<T>(v)]
+        #![trigger spec_size_of_val::<T>(v)]
+        spec_align_of_val::<T>(v) == align_of::<T>(),
+        spec_size_of_val::<T>(v) == size_of::<T>(),
 ;
 
 /// `str` has the same layout as `[u8]`, which has the same layout as `u8`.

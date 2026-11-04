@@ -4,6 +4,8 @@ use super::*;
 use crate::vstd::endian::{BasePow2, CompatibleSmallerBaseFor, EndianNat};
 #[cfg(verus_keep_ghost)]
 use crate::vstd::endian::{to_big_from_digits, to_big_from_digits_single, to_endian_from_digits};
+#[cfg(verus_keep_ghost)]
+use crate::vstd::modes::tracked_from_spec;
 
 verus! {
 
@@ -1177,7 +1179,7 @@ impl<T> PointsToUnaligned<[T]> {
             self.typed_value().is_empty() ==> out.typed_value().is_empty(),
             out.wf(),
     {
-        broadcast use crate::vstd::type_representation::abs_decode_slice;
+        broadcast use abstract_bytes_decode_slice;
 
         let s = size_of::<T>() as int;
         let n = self.len() as int;
@@ -1228,7 +1230,7 @@ impl<T> PointsToUnaligned<[T]> {
             self.typed_value().is_empty() ==> out.typed_value().is_empty(),
             out.wf(),
     {
-        broadcast use crate::vstd::type_representation::abs_decode_slice;
+        broadcast use abstract_bytes_decode_slice;
 
         let s = size_of::<T>() as int;
         let n = self.len() as int;
@@ -1261,7 +1263,7 @@ impl<T> PointsToUnaligned<[T]> {
         if self.typed_value().is_valid() {
             let w = out.value();
             // Each element's slot in the subrange's bytes is its slot in `self`'s bytes
-            assert forall|k: int| 0 <= k < w.len() implies abs_decode::<T>(
+            assert forall|k: int| 0 <= k < w.len() implies abstract_bytes_decode::<T>(
                 out.bytes().subrange(k * s, (k + 1) * s),
                 &#[trigger] w[k],
             ) by {
@@ -1315,7 +1317,7 @@ impl<T> PointsToUnaligned<[T]> {
     ) -> (tracked out: &'a Self)
         requires
             pt_untyped.wf(),
-            abs_decode::<[T]>(pt_untyped.bytes(), value),
+            abstract_bytes_decode::<[T]>(pt_untyped.bytes(), value),
         ensures
             out.ptr()@ == (PtrData {
                 addr: pt_untyped.ptr()@.addr,
@@ -1327,10 +1329,7 @@ impl<T> PointsToUnaligned<[T]> {
             out.typed_value().value_ref() == value,
             out.wf(),
     {
-        broadcast use
-            crate::vstd::slice::group_slice_axioms,
-            crate::vstd::type_representation::abs_decode_slice,
-        ;
+        broadcast use crate::vstd::slice::group_slice_axioms, abstract_bytes_decode_slice;
 
         assert(value@.len() == crate::vstd::slice::spec_slice_len(value));
         let tracked typed_value = TypedValue::valid_ref(value);
@@ -1476,7 +1475,7 @@ impl<T> PointsTo<[T]> {
     ) -> (tracked out: &'a Self)
         requires
             pt_untyped.wf(),
-            abs_decode::<[T]>(pt_untyped.bytes(), value),
+            abstract_bytes_decode::<[T]>(pt_untyped.bytes(), value),
             Self::satisfies_alignment(pt_untyped.ptr()@.addr),
         ensures
             out.ptr()@ == (PtrData {
@@ -1503,6 +1502,8 @@ impl<T> PointsTo<[T]> {
     ///
     /// (3) `self.len() * size_of::<T>() == size_of::<V>()`.
     ///
+    /// (4) Every `V` value satisfies its type invariant (`TrivialOwnership::type_inv`).
+    ///
     /// The `V`'s value is the integer with the `T`s as its digits,
     /// in this platform's endianness (`to_big_from_digits`),
     /// and the bytes are unchanged.
@@ -1519,6 +1520,7 @@ impl<T> PointsTo<[T]> {
             self.wf(),
             self.is_valid(),
             self.len() * size_of::<T>() == size_of::<V>(),
+            forall|v: V| v.type_inv(),
         ensures
             out.ptr() == ptr_mut_from_data::<V>(
                 PtrData {
@@ -1532,7 +1534,7 @@ impl<T> PointsTo<[T]> {
             out.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
             out.wf(),
     {
-        broadcast use crate::vstd::type_representation::abs_decode_slice, EndianNat::exp_properties;
+        broadcast use abstract_bytes_decode_slice, EndianNat::exp_properties;
 
         let ghost digits = self.value();
         let ghost k = digits.len() as int;
@@ -1541,14 +1543,18 @@ impl<T> PointsTo<[T]> {
         T::bits_to_base();
         V::lemma_base_size();
         // Each element is a digit in base `T`, since its bytes decode to it
-        assert forall|i: int| 0 <= i < k implies 0 <= (#[trigger] digits[i] as int) < T::base() by {
+        assert forall|i: int| 0 <= i < k implies {
+            &&& 0 <= (#[trigger] digits[i] as int) < T::base()
+            &&& T::decode(self.bytes().subrange(i * s, (i + 1) * s), &digits[i], arbitrary())
+        } by {
             assert(0 <= i * s && (i + 1) * s <= k * s) by (nonlinear_arith)
                 requires
                     0 <= i < k,
                     s >= 0,
             ;
             let chunk = self.bytes().subrange(i * s, (i + 1) * s);
-            T::lemma_abs_decode(chunk, digits[i]);
+            T::lemma_decode(chunk, digits[i]);
+            type_representation_implements_encode_decode::<T>(&digits[i], chunk);
             bytes_to_endian(chunk).to_nat_properties();
         }
         // The elements are one digit in base `V`
@@ -1568,10 +1574,12 @@ impl<T> PointsTo<[T]> {
         let ghost n = to_big_from_digits::<V, T>(digits).index(0);
         V::lemma_from_nat(n as nat);
         let ghost v = V::from_nat(n as nat);
-        lemma_abs_decode_to_big::<V, T>(self.bytes(), digits, v);
+        lemma_decode_to_big::<V, T>(self.bytes(), digits, v);
+        V::lemma_decode(self.bytes(), v);
+        type_representation_implements_encode_decode::<V>(&v, self.bytes());
 
         let tracked typed_value: &TypedValue<V> = crate::vstd::modes::tracked_static_ref(
-            TypedValue::Valid(Tracked(V::tracked_from_spec(v))),
+            TypedValue::Valid(Tracked(tracked_from_spec(v))),
         );
         PointsToUnaligned::<V>::from_raw_parts_ref(self.as_untyped(), typed_value, ())
     }
@@ -1589,6 +1597,8 @@ impl<T> PointsTo<[T]> {
     ///
     /// (4) The pointer's address is aligned to `V`.
     ///
+    /// (5) Every `V` value satisfies its type invariant (`TrivialOwnership::type_inv`).
+    ///
     /// The `V`'s value is the integer with the `T`s as its digits,
     /// in this platform's endianness (`to_big_from_digits`),
     /// and the bytes are unchanged.
@@ -1602,6 +1612,7 @@ impl<T> PointsTo<[T]> {
             self.is_valid(),
             self.len() * size_of::<T>() == size_of::<V>(),
             self.ptr()@.addr as int % align_of::<V>() as int == 0,
+            forall|v: V| v.type_inv(),
         ensures
             out.ptr() == ptr_mut_from_data::<V>(
                 PtrData {

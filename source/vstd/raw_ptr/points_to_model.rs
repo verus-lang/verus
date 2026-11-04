@@ -7,6 +7,7 @@ use super::super::modes::tracked_ref;
 use super::super::prelude::*;
 #[cfg(verus_keep_ghost)]
 use super::super::type_representation::*;
+use super::abstract_bytes::*;
 use super::ptr_model;
 use super::ptr_model::*;
 
@@ -153,7 +154,7 @@ pub trait PTTypedValue: PTPhys {
     /// and it satisfies `additional_validity_constraints`.
     open spec fn valid_value(self) -> bool {
         self.typed_value().is_valid() ==> {
-            &&& abs_decode(self.bytes(), self.typed_value().value_ref())
+            &&& abstract_bytes_decode(self.bytes(), self.typed_value().value_ref())
             &&& Self::additional_validity_constraints(
                 self.typed_value().value_ref(),
                 self.ptr()@.metadata,
@@ -179,7 +180,7 @@ pub trait PTTypedValue: PTPhys {
         ensures
             self.bytes().len() == Self::size(self.ptr()@.metadata),
             self.typed_value().is_valid() ==> {
-                &&& abs_decode(self.bytes(), self.typed_value().value_ref())
+                &&& abstract_bytes_decode(self.bytes(), self.typed_value().value_ref())
                 &&& Self::additional_validity_constraints(
                     self.typed_value().value_ref(),
                     self.ptr()@.metadata,
@@ -282,7 +283,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
         requires
             self.wf(),
             v.is_valid() ==> {
-                &&& abs_decode(self.bytes(), v.value_ref())
+                &&& abstract_bytes_decode(self.bytes(), v.value_ref())
                 &&& Self::additional_validity_constraints(v.value_ref(), self.ptr()@.metadata)
             },
         ensures
@@ -339,7 +340,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
             pt_untyped.len() == Self::size(metadata),
             Self::satisfies_alignment(pt_untyped.ptr()@.addr),
             typed_value.is_valid() ==> {
-                &&& abs_decode(pt_untyped.bytes(), typed_value.value_ref())
+                &&& abstract_bytes_decode(pt_untyped.bytes(), typed_value.value_ref())
                 &&& Self::additional_validity_constraints(typed_value.value_ref(), metadata)
             },
         ensures
@@ -491,7 +492,7 @@ pub trait PTSizedValue: PTValueOps where <Self as PTPhys>::A: Sized {
     proof fn put(tracked &mut self, tracked v: Self::A)
         requires
             self.wf(),
-            abs_decode(self.bytes(), &v),
+            abstract_bytes_decode(self.bytes(), &v),
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
@@ -507,7 +508,7 @@ pub trait PTSizedValue: PTValueOps where <Self as PTPhys>::A: Sized {
     proof fn copy(tracked &mut self, tracked v: &Self::A) where Self::A: Copy
         requires
             self.wf(),
-            abs_decode(self.bytes(), v),
+            abstract_bytes_decode(self.bytes(), v),
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
@@ -525,7 +526,7 @@ pub trait PTSizedValue: PTValueOps where <Self as PTPhys>::A: Sized {
 
         requires
             self.wf(),
-            v.is_valid() ==> abs_decode(self.bytes(), &v.value()),
+            v.is_valid() ==> abstract_bytes_decode(self.bytes(), &v.value()),
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
@@ -548,7 +549,7 @@ pub trait PTSizedValue: PTValueOps where <Self as PTPhys>::A: Sized {
             pt_untyped.wf(),
             pt_untyped.len() == Self::size(()),
             Self::satisfies_alignment(pt_untyped.ptr()@.addr),
-            abs_decode(pt_untyped.bytes(), &value),
+            abstract_bytes_decode(pt_untyped.bytes(), &value),
         ensures
             out.ptr() == ptr_mut_from_data::<Self::A>(
                 PtrData {
