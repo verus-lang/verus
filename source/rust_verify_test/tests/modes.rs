@@ -2012,7 +2012,7 @@ test_verify_one_file! {
             }
         }
 
-        fn test_nested_tuple(p: ((Tracked<X>, &mut X), Tracked<X>)) {
+        fn test_nested_tuple(p: ((Tracked<X>, &mut X, u8), Tracked<X>)) {
             proof {
                 consume(p);
             }

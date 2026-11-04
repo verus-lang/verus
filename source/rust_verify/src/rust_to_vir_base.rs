@@ -620,9 +620,8 @@ impl<'tcx> BodyCtxt<'tcx> {
     /// The cases we allow are:
     ///  - References
     ///  - Tracked types
+    ///  - All `Copy` types (as these can never have drop glue)
     ///  - Tuples thereof
-    /// (We don't need to consider `Copy` types in selecting this set, since for those types,
-    /// it won't count as a 'move' in the first place.)
     pub(crate) fn is_proof_to_exec_move_okay(
         &self,
         ty: rustc_middle::ty::Ty<'tcx>,
@@ -638,7 +637,7 @@ impl<'tcx> BodyCtxt<'tcx> {
         match ty.kind() {
             TyKind::Tuple(tys) => tys.iter().all(|t| self.b_is_proof_to_exec_move_okay(t)),
             TyKind::Ref(_, _, _) => true,
-            _ => is_tracked_or_ghost_ty(&self.ctxt.verus_items, ty).is_some(),
+            _ => is_tracked_or_ghost_ty(&self.ctxt.verus_items, ty).is_some() || self.is_copy(ty),
         }
     }
 }
