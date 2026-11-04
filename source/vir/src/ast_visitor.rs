@@ -863,7 +863,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         &mut self,
         pb: &PatternBinding,
     ) -> Result<R::Ret<PatternBinding>, Err> {
-        let PatternBinding { name, by_ref, typ, user_mut, copy } = pb;
+        let PatternBinding { name, by_ref, typ, user_mut, copy, move_exec_to_proof_okay } = pb;
         let typ = self.visit_typ(typ)?;
         R::ret(|| PatternBinding {
             name: name.clone(),
@@ -871,6 +871,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             typ: R::get(typ),
             user_mut: *user_mut,
             copy: *copy,
+            move_exec_to_proof_okay: *move_exec_to_proof_okay,
         })
     }
 
@@ -1602,11 +1603,19 @@ where
 fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool) {
     match &pattern.x {
         PatternX::Wildcard => {}
-        PatternX::Var(PatternBinding { name, user_mut, by_ref: _, typ, copy: _ }) => {
+        PatternX::Var(PatternBinding {
+            name,
+            user_mut,
+            by_ref: _,
+            typ,
+            copy: _,
+            move_exec_to_proof_okay: _,
+        }) => {
             let _ = map.insert(name.clone(), ScopeEntry::new(typ, *user_mut, init));
         }
         PatternX::Binding {
-            binding: PatternBinding { name, user_mut, by_ref: _, typ, copy: _ },
+            binding:
+                PatternBinding { name, user_mut, by_ref: _, typ, copy: _, move_exec_to_proof_okay: _ },
             sub_pat,
         } => {
             insert_pattern_vars(map, sub_pat, init);
