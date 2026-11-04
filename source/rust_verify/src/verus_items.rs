@@ -921,6 +921,7 @@ pub(crate) enum RustItem {
     TryTraitBranch,
     ResidualTraitFromResidual,
     IntoIterFn,
+    IntoFutureFn,
     ManuallyDrop,
     PhantomData,
     Destruct,
@@ -991,6 +992,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().into_iter_fn() == Some(def_id) {
         return Some(RustItem::IntoIterFn);
+    }
+    if tcx.lang_items().into_future_fn() == Some(def_id) {
+        return Some(RustItem::IntoFutureFn);
     }
     if tcx.lang_items().manually_drop() == Some(def_id) {
         return Some(RustItem::ManuallyDrop);

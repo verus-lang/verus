@@ -654,3 +654,163 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] into_future_await_uses_conversion verus_code! {
+        use vstd::prelude::*;
+        use core::future::{Future, IntoFuture};
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+
+        pub struct Ready7;
+
+        impl Future for Ready7 {
+            type Output = u64;
+
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
+                Poll::Ready(7)
+            }
+        }
+
+        impl vstd::future::FutureSpecImpl for Ready7 {
+            open spec fn obeys_future_laws(&self) -> bool {
+                true
+            }
+
+            #[verifier::prophetic]
+            open spec fn view(&self) -> u64 {
+                7
+            }
+        }
+
+        pub struct Gen;
+
+        impl IntoFuture for Gen {
+            type Output = u64;
+            type IntoFuture = Ready7;
+
+            fn into_future(self) -> Ready7 {
+                Ready7
+            }
+        }
+
+        async fn run() -> (r: u64)
+            ensures r == 7,
+        {
+            Gen.await
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] into_future_await_result_is_unknown verus_code! {
+        use vstd::prelude::*;
+        use core::future::{Future, IntoFuture};
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        exec static COUNTER: AtomicU64 ensures true { AtomicU64::new(0) }
+
+        pub struct Val {
+            pub v: u64,
+        }
+
+        impl Future for Val {
+            type Output = u64;
+
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
+                Poll::Ready(self.get_mut().v)
+            }
+        }
+
+        impl vstd::future::FutureSpecImpl for Val {
+            open spec fn obeys_future_laws(&self) -> bool {
+                true
+            }
+
+            #[verifier::prophetic]
+            open spec fn view(&self) -> u64 {
+                self.v
+            }
+        }
+
+        pub struct Gen;
+
+        impl IntoFuture for Gen {
+            type Output = u64;
+            type IntoFuture = Val;
+
+            fn into_future(self) -> Val {
+                Val { v: COUNTER.fetch_add(1, Ordering::SeqCst) }
+            }
+        }
+
+        async fn run() -> (r: (u64, u64))
+            ensures r.0 == r.1, // FAILS
+        {
+            let a = Gen.await;
+            let b = Gen.await;
+            (a, b)
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] into_future_await_uses_ensures verus_code! {
+        use vstd::prelude::*;
+        use core::future::{Future, IntoFuture};
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+
+        pub struct Val {
+            pub v: u64,
+        }
+
+        impl Future for Val {
+            type Output = u64;
+
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
+                Poll::Ready(self.get_mut().v)
+            }
+        }
+
+        impl vstd::future::FutureSpecImpl for Val {
+            open spec fn obeys_future_laws(&self) -> bool {
+                true
+            }
+
+            #[verifier::prophetic]
+            open spec fn view(&self) -> u64 {
+                self.v
+            }
+        }
+
+        pub struct Gen {
+            pub n: u64,
+        }
+
+        impl IntoFuture for Gen {
+            type Output = u64;
+            type IntoFuture = Val;
+
+            fn into_future(self) -> (r: Val)
+                ensures r.v == self.n,
+            {
+                Val { v: self.n }
+            }
+        }
+
+        async fn run(n: u64) -> (r: u64)
+            ensures r == n,
+        {
+            Gen { n }.await
+        }
+
+        async fn run_fails(n: u64) -> (r: u64)
+            ensures r == n + 1, // FAILS
+        {
+            Gen { n }.await
+        }
+    } => Err(err) => assert_one_fails(err)
+}
