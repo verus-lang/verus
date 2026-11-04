@@ -316,6 +316,7 @@ test_verify_one_file! {
 // -- e09 --
 
 const E09_SHARED: &str = verus_code_str! {
+    use vstd::prelude::*;
     #[derive(PartialEq, Eq, Structural)]
     struct Point {
         x: int,

@@ -2508,7 +2508,7 @@ test_verify_one_file! {
             let w3 = W { x: 4 };
 
             let x = w1 == w2;
-            assert(x); // FAIL
+            assert(x); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
 }

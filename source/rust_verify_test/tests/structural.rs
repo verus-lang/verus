@@ -4,12 +4,14 @@ mod common;
 use common::*;
 
 const STRUCTS: &str = verus_code_str! {
+    #[verifier::external_derive(PartialEq)]
     #[derive(PartialEq, Eq, Structural)]
     struct Car {
         four_doors: bool,
         passengers: u64,
     }
 
+    #[verifier::external_derive(PartialEq)]
     #[derive(PartialEq, Eq, Structural)]
     enum Vehicle {
         Car(Car),

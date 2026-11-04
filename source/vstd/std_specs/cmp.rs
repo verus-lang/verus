@@ -11,7 +11,9 @@ verus_skip_verusfmt! {
 pub trait ExPartialEq<Rhs: PointeeSized = Self>: PointeeSized {
     type ExternalTraitSpecificationFor: PartialEq<Rhs>;
 
-    spec fn obeys_eq_spec() -> bool;
+    /// This is `false` by default (i.e., for unknown types)
+    /// but usually overriden to `true` for specific impls.
+    open spec fn obeys_eq_spec() -> bool { false }
 
     spec fn eq_spec(&self, other: &Rhs) -> bool;
 
