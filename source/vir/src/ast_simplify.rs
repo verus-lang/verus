@@ -1339,6 +1339,27 @@ fn simplify_function(
         }
     }
 
+    if functionx.attrs.has_trivial_clone {
+        // This is the `clone` method of a `Clone` impl for a type that also implements
+        // `TrivialClone`, so the clone must be equivalent to a copy: `ensures ret == self`
+        if functionx.params.len() != 1 {
+            return Err(error(&function.span, "expected `clone` to have one parameter"));
+        }
+        let self_param = &functionx.params[0];
+        let self_var = SpannedTyped::new(
+            &function.span,
+            &self_param.x.typ,
+            ExprX::Var(self_param.x.name.clone()),
+        );
+        let ret_var = SpannedTyped::new(
+            &function.span,
+            &functionx.inner_ret.x.typ,
+            ExprX::Var(functionx.inner_ret.x.name.clone()),
+        );
+        let eq = mk_eq(&function.span, &ret_var, &self_var);
+        Arc::make_mut(&mut functionx.ensure.0).push(eq);
+    }
+
     let local = LocalCtxt {
         span: function.span.clone(),
         typ_params: (*functionx.typ_params).clone(),
