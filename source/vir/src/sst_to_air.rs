@@ -602,10 +602,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
                         panic!("abstract datatype should be boxed")
                     }
                 }
-                // ShadowData is always represented as Poly (it is never a monotype),
-                // so its values need an explicit has_type invariant, like boxed values
-                Primitive::ShadowData => return Some(expr_has_typ(ctx, expr, typ)),
-                Primitive::StrSlice | Primitive::Global => {}
+                Primitive::StrSlice | Primitive::Global | Primitive::ShadowData => {}
             }
             None
         }
@@ -3016,25 +3013,6 @@ pub(crate) fn body_stm_to_air(
         } else {
             Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
         });
-    }
-    for decl in local_decls.iter() {
-        // Shadow data temporaries (see shadow_data.rs) are never assigned,
-        // so their typing invariant must be assumed at their declaration
-        fn is_shadow_data_typ(t: &Typ) -> bool {
-            match &*undecorate_typ(t) {
-                TypX::Primitive(Primitive::ShadowData, _) => true,
-                TypX::Boxed(t) => is_shadow_data_typ(t),
-                _ => false,
-            }
-        }
-        if matches!(decl.kind, crate::sst::LocalDeclKind::Nondeterministic)
-            && is_shadow_data_typ(&decl.typ)
-        {
-            let x = ident_var(&suffix_local_unique_id(&decl.ident));
-            if let Some(expr) = typ_invariant(ctx, &decl.typ, &x) {
-                local_shared.push(mk_unnamed_axiom(expr));
-            }
-        }
     }
 
     set_fuel(ctx, &mut local_shared, hidden);
