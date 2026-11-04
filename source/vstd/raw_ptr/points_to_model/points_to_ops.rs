@@ -1329,10 +1329,7 @@ impl<T> PointsToUnaligned<[T]> {
             out.typed_value().value_ref() == value,
             out.wf(),
     {
-        broadcast use
-            crate::vstd::slice::group_slice_axioms,
-            abstract_bytes_decode_slice,
-        ;
+        broadcast use crate::vstd::slice::group_slice_axioms, abstract_bytes_decode_slice;
 
         assert(value@.len() == crate::vstd::slice::spec_slice_len(value));
         let tracked typed_value = TypedValue::valid_ref(value);
@@ -1523,7 +1520,7 @@ impl<T> PointsTo<[T]> {
             self.wf(),
             self.is_valid(),
             self.len() * size_of::<T>() == size_of::<V>(),
-            forall|v: V| v.type_inv()
+            forall|v: V| v.type_inv(),
         ensures
             out.ptr() == ptr_mut_from_data::<V>(
                 PtrData {
@@ -1615,7 +1612,7 @@ impl<T> PointsTo<[T]> {
             self.is_valid(),
             self.len() * size_of::<T>() == size_of::<V>(),
             self.ptr()@.addr as int % align_of::<V>() as int == 0,
-            forall|v: V| v.type_inv()
+            forall|v: V| v.type_inv(),
         ensures
             out.ptr() == ptr_mut_from_data::<V>(
                 PtrData {

@@ -257,7 +257,8 @@ pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> 
 /// The memory pointed to by `ptr` must be initialized.
 /// Because this doesn't constitute a retag, the returned reference's pointer is `ptr` itself.
 #[verifier::shadow_data]
-pub axiom fn ptr_ref_tracked<'a, T>(ptr: *const T, tracked perm: &'a PointsTo<T>) -> (tracked v: &'a T)
+pub axiom fn ptr_ref_tracked<'a, T>(ptr: *const T, tracked perm: &'a PointsTo<T>) -> (tracked v:
+    &'a T)
     requires
         perm.ptr() == ptr,
         perm.is_valid(),
@@ -304,7 +305,10 @@ pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<
 /// The memory pointed to by `ptr` must be initialized.
 /// Because this doesn't constitute a retag, the returned reference's pointer is `ptr` itself.
 #[verifier::shadow_data]
-pub axiom fn ptr_ref_tracked_slice<'a, T>(ptr: *const [T], tracked perm: &'a PointsTo<[T]>) -> (tracked v: &'a [T])
+pub axiom fn ptr_ref_tracked_slice<'a, T>(
+    ptr: *const [T],
+    tracked perm: &'a PointsTo<[T]>,
+) -> (tracked v: &'a [T])
     requires
         perm.ptr() == ptr,
         perm.is_valid(),

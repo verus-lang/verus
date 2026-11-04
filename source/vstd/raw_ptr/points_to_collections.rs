@@ -675,7 +675,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             forall|i: int|
                 0 <= i < len ==> {
-                    &&& (#[trigger] self.seq_typed_value()[i]).is_valid() ==> abstract_bytes_decode::<T>(
+                    &&& (#[trigger] self.seq_typed_value()[i]).is_valid()
+                        ==> abstract_bytes_decode::<T>(
                         self.seq_pt()[i].bytes(),
                         &self.seq_typed_value()[i].value(),
                     )
@@ -697,7 +698,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             forall|i: int|
                 0 <= i < self.len() ==> {
-                    &&& (#[trigger] self.seq_typed_value()[i]).is_valid() ==> abstract_bytes_decode::<T>(
+                    &&& (#[trigger] self.seq_typed_value()[i]).is_valid()
+                        ==> abstract_bytes_decode::<T>(
                         self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
                         &self.seq_typed_value()[i].value(),
                     )
@@ -1486,9 +1488,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             pt_untyped.len() == capacity * size_of::<T>(),
             typed_value.len() <= capacity,
             forall|i: int|
-                0 <= i < typed_value.len() && typed_value[i].is_valid() ==> #[trigger] abstract_bytes_decode::<
-                    T,
-                >(
+                0 <= i < typed_value.len() && typed_value[i].is_valid()
+                    ==> #[trigger] abstract_bytes_decode::<T>(
                     pt_untyped.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
                     &typed_value[i].value(),
                 ),

@@ -39,7 +39,7 @@ pub axiom fn tracked_static_mut_ref<V>(tracked v: V) -> (tracked res: &'static m
 /// so any spec value can be used as a tracked one.
 pub unsafe trait TrivialOwnership {
     /// Any type invariants on `self`.
-    /// Specs marked with `#[verifier::type_invariant]` should be included here.  
+    /// Specs marked with `#[verifier::type_invariant]` should be included here.
     spec fn type_inv(&self) -> bool;
 }
 
@@ -48,14 +48,16 @@ pub axiom fn tracked_from_spec<T: TrivialOwnership>(v: T) -> (tracked out: T)
     requires
         v.type_inv(),
     ensures
-        out == v;
+        out == v,
+;
 
 /// Makes a spec value a tracked reference, for any type that owns no resources.
 pub axiom fn tracked_from_spec_ref<'a, T: ?Sized + TrivialOwnership>(v: &T) -> (tracked out: &'a T)
     requires
         v.type_inv(),
     ensures
-        out == v;
+        out == v,
+;
 
 /// Implements `TrivialOwnership` with a trivial type invariant for a given type.
 /// The type must own no resources (no permissions, tokens or other tracked data)

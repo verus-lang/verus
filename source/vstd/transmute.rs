@@ -1,65 +1,138 @@
 #![allow(unused_imports)]
 
 use super::prelude::*;
+use super::raw_ptr::shared_ref_ptr;
 use super::type_representation::*;
 use crate::vstd::group_vstd_default;
-use super::raw_ptr::shared_ref_ptr;
 
 verus! {
 
-broadcast use {group_vstd_default};
-
+broadcast use group_vstd_default;
 
 /// True when all `AbstractByte` encodings of `src` and `src_shadow_data` can be decoded to `dst` and `dst_shadow_data`.
-pub open spec fn encode_decode<T: ?Sized + TypeRepresentation, U: ?Sized + TypeRepresentation>(src: &T, src_shadow_data: ShadowData<T>, dst: &U, dst_shadow_data: ShadowData<U>) -> bool {
+pub open spec fn encode_decode<T: ?Sized + TypeRepresentation, U: ?Sized + TypeRepresentation>(
+    src: &T,
+    src_shadow_data: ShadowData<T>,
+    dst: &U,
+    dst_shadow_data: ShadowData<U>,
+) -> bool {
     &&& forall|bytes|
         #![trigger <T as TypeRepresentation>::encode(src, src_shadow_data, bytes)]
         #![trigger <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)]
-        <T as TypeRepresentation>::encode(src, src_shadow_data, bytes) ==> <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)
+        <T as TypeRepresentation>::encode(src, src_shadow_data, bytes)
+            ==> <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)
 }
 
 /// True when for any `AbstractByte` sequence, if that sequence can be decoded to `src` and `src_shadow_data`,
 /// then it can also be decoded to `dst` and `dst_shadow_data`.
-pub open spec fn decode_decode<T: ?Sized + TypeRepresentation, U: ?Sized + TypeRepresentation>(src: &T, src_shadow_data: ShadowData<T>, dst: &U, dst_shadow_data: ShadowData<U>) -> bool {
+pub open spec fn decode_decode<T: ?Sized + TypeRepresentation, U: ?Sized + TypeRepresentation>(
+    src: &T,
+    src_shadow_data: ShadowData<T>,
+    dst: &U,
+    dst_shadow_data: ShadowData<U>,
+) -> bool {
     &&& forall|bytes|
         #![trigger <T as TypeRepresentation>::decode(bytes, src, src_shadow_data)]
         #![trigger <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)]
-        <T as TypeRepresentation>::decode(bytes, src, src_shadow_data) ==> <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)
+        <T as TypeRepresentation>::decode(bytes, src, src_shadow_data)
+            ==> <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)
 }
 
 pub trait TransmuteSpec<Dst: TypeRepresentation> where Self: TypeRepresentation + Sized {
-    open spec fn transmute_req(src: Self, src_shadow_data: ShadowData<Self>, dst: Dst, dst_shadow_data: ShadowData<Dst>) -> bool {
+    open spec fn transmute_req(
+        src: Self,
+        src_shadow_data: ShadowData<Self>,
+        dst: Dst,
+        dst_shadow_data: ShadowData<Dst>,
+    ) -> bool {
         &&& encode_decode::<Self, Dst>(&src, arbitrary(), &dst, arbitrary())
         &&& Self::can_be_encoded()
     }
 }
 
-impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for bool {}
-impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u8 {}
-impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u16 {}
-impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u32 {}
-impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u64 {}
-impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u128 {}
-impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for usize {}
-impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i8 {}
-impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i16 {}
-impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i32 {}
-impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i64 {}
-impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i128 {}
-impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for isize {}
-impl<T: ?Sized, Dst: TypeRepresentation> TransmuteSpec<Dst> for *mut T where <T as core::ptr::Pointee>::Metadata: TypeRepresentation {}
-impl<T: ?Sized, Dst: TypeRepresentation> TransmuteSpec<Dst> for *const T where <T as core::ptr::Pointee>::Metadata: TypeRepresentation {}
-impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for () {}
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for bool {
+
+}
+
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u8 {
+
+}
+
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u16 {
+
+}
+
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u32 {
+
+}
+
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u64 {
+
+}
+
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for u128 {
+
+}
+
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for usize {
+
+}
+
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i8 {
+
+}
+
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i16 {
+
+}
+
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i32 {
+
+}
+
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i64 {
+
+}
+
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for i128 {
+
+}
+
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for isize {
+
+}
+
+impl<T: ?Sized, Dst: TypeRepresentation> TransmuteSpec<Dst> for *mut T where
+    <T as core::ptr::Pointee>::Metadata: TypeRepresentation,
+ {
+
+}
+
+impl<T: ?Sized, Dst: TypeRepresentation> TransmuteSpec<Dst> for *const T where
+    <T as core::ptr::Pointee>::Metadata: TypeRepresentation,
+ {
+
+}
+
+impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for () {
+
+}
+
 // the transmute precondition on shared references is stronger:
 // we also require that the pointed-to data satisfies the type representation invariants
 // currently, this can only be expressed for types whose encoding does not depend on shadow data
-impl<'a, T: ?Sized, U: ?Sized> TransmuteSpec<&'a U> for &'a T 
-    where T: TypeRepresentation, 
+impl<'a, T: ?Sized, U: ?Sized> TransmuteSpec<&'a U> for &'a T where
+    T: TypeRepresentation,
     U: TypeRepresentation,
     <T as core::ptr::Pointee>::Metadata: TypeRepresentation,
-    <U as core::ptr::Pointee>::Metadata: TypeRepresentation
-{
-    open spec fn transmute_req(src: &'a T, src_shadow_data: ShadowData<&'a T>, dst: &'a U, dst_shadow_data: ShadowData<&'a U>) -> bool {
+    <U as core::ptr::Pointee>::Metadata: TypeRepresentation,
+ {
+    open spec fn transmute_req(
+        src: &'a T,
+        src_shadow_data: ShadowData<&'a T>,
+        dst: &'a U,
+        dst_shadow_data: ShadowData<&'a U>,
+    ) -> bool {
         &&& encode_decode::<&'a T, &'a U>(&src, src_shadow_data, &dst, dst_shadow_data)
         &&& decode_decode::<T, U>(src, arbitrary(), dst, arbitrary())
         &&& Self::can_be_encoded()
@@ -176,24 +249,27 @@ transmute_ptr_reflexive_injective_lemmas! {
 
 /// A value `x: &T` can be transmuted to itself.
 #[verifier::shadow_data]
-pub proof fn transmute_shr_ref_reflexive<T: ?Sized + TypeRepresentation>(tracked x: &T, tracked y: &T)
-    where <T as core::ptr::Pointee>::Metadata: TypeRepresentation
+pub proof fn transmute_shr_ref_reflexive<T: ?Sized + TypeRepresentation>(
+    tracked x: &T,
+    tracked y: &T,
+) where <T as core::ptr::Pointee>::Metadata: TypeRepresentation
     requires
         <*const T as TypeRepresentation>::can_be_encoded(),
         T::can_be_encoded(),
         !T::encoding_depends_on_shadow_data(),
         x == y,
-        shared_ref_ptr(shadow_data(x)) == shared_ref_ptr(shadow_data(y))
+        shared_ref_ptr(shadow_data(x)) == shared_ref_ptr(shadow_data(y)),
     ensures
         <&T as TransmuteSpec<&T>>::transmute_req(x, shadow_data(x), y, shadow_data(y)),
 {
     let sd_x = shadow_data(x);
     let sd_y = shadow_data(y);
-    assert forall|bytes| #[trigger] <&T as TypeRepresentation>::encode(&x, sd_x, bytes) implies <&T as TypeRepresentation>::decode(
-        bytes,
-        &y,
-        sd_y
-    ) by {
+    assert forall|bytes| #[trigger]
+        <&T as TypeRepresentation>::encode(
+            &x,
+            sd_x,
+            bytes,
+        ) implies <&T as TypeRepresentation>::decode(bytes, &y, sd_y) by {
         <&T as TypeRepresentation>::encoding_invertible(&x, sd_x, bytes);
     }
 }
