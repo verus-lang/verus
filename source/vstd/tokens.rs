@@ -54,7 +54,7 @@ pub trait ValueToken<Value> : Sized {
 
 /// Interface for VerusSync tokens created for a field marked with the `variable` or `option` strategies.
 ///
-/// See the super-trait [`ValueToken`](ValueToken) for more information.
+/// See the super-trait [`ValueToken`] for more information.
 pub trait UniqueValueToken<Value> : ValueToken<Value> {
     /// The token for a given instance must be unique; in other words, if we have two
     /// tokens, they must be for distinct instances.
@@ -101,7 +101,7 @@ pub trait KeyValueToken<Key, Value> : Sized {
 
 /// Interface for VerusSync tokens created for a field marked with the `map` strategy.
 ///
-/// See the super-trait [`KeyValueToken`](KeyValueToken) for more information.
+/// See the super-trait [`KeyValueToken`] for more information.
 pub trait UniqueKeyValueToken<Key, Value> : KeyValueToken<Key, Value> {
     /// The token for a given instance and key must be unique; in other words, if we have two
     /// tokens, they must be for distinct instances or keys.
@@ -206,7 +206,7 @@ pub trait ElementToken<Element> : Sized {
 
 /// Interface for VerusSync tokens created for a field marked with the `set` strategy.
 ///
-/// See the super-trait [`ElementToken`](ElementToken) for more information.
+/// See the super-trait [`ElementToken`] for more information.
 pub trait UniqueElementToken<Element> : ElementToken<Element> {
     /// The token for a given instance and element must be unique; in other words, if we have two
     /// tokens, they must be for distinct instances or elements.
@@ -238,7 +238,7 @@ pub trait SimpleToken : Sized {
 
 /// Interface for VerusSync tokens created for a field marked with the `bool` strategy.
 ///
-/// See the super-trait [`SimpleToken`](SimpleToken) for more information.
+/// See the super-trait [`SimpleToken`] for more information.
 pub trait UniqueSimpleToken : SimpleToken {
     /// The token for a given instance must be unique; in other words, if we have two
     /// tokens, they must be for distinct instances.

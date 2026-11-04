@@ -281,7 +281,7 @@ impl<T> PointsTo<T> {
     ;
 
     /// "Forgets" about the value stored behind the pointer.
-    /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
+    /// Updates the `PointsTo` value to [`MemContents::Uninit`].
     /// Note that this is a `proof` function, i.e.,
     /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
     /// Only the proof-code representation changes.
@@ -1035,10 +1035,8 @@ impl<'a, T> SharedReference<'a, T> {
 /// gets a new tag.
 #[inline(always)]
 #[verifier::external_body]
-pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: SharedReference<
-    'a,
-    T,
->)
+pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&'a PointsTo<T>>) -> (v:
+    SharedReference<'a, T>)
     requires
         perm.ptr() == ptr,
         perm.is_init(),

@@ -29,16 +29,11 @@ impl<T: DeepViewClone> DeepViewClone for Option<T> {
     }
 }
 
-impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Option<T> where &'a T: ExecSpecEq<'a, Other = &'a T> {
-    type Other = &'a Option<T>;
+impl<T: ObeysDeepEq> ObeysDeepEq for Option<T> {
+    proof fn lemma_obeys_deep_eq() {
+        broadcast use crate::laws_eq::lemma_option_obeys_deep_eq;
 
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        match (this, other) {
-            (Some(t1), Some(t2)) => <&'a T>::exec_eq(t1, t2),
-            (None, None) => true,
-            _ => false,
-        }
+        T::lemma_obeys_deep_eq();
     }
 }
 
@@ -69,6 +64,49 @@ impl<'a, T> ExecSpecOptionUnwrap<'a> for &'a Option<T> where T: DeepView + DeepV
             res.deep_view() == self.deep_view()->0,
     {
         self.deep_clone().unwrap()
+    }
+}
+
+pub trait ExecSpecOptionArrow<T>: Sized {
+    spec fn is_some_variant_spec(&self) -> bool;
+
+    #[allow(non_snake_case)]
+    fn exec_arrow_Some_0(&self) -> &T
+        requires
+            self.is_some_variant_spec(),
+    ;
+
+    fn exec_arrow_0(&self) -> &T
+        requires
+            self.is_some_variant_spec(),
+    ;
+}
+
+impl<T: DeepView> ExecSpecOptionArrow<T> for Option<T> {
+    open spec fn is_some_variant_spec(&self) -> bool {
+        *self is Some
+    }
+
+    #[inline(always)]
+    fn exec_arrow_Some_0(&self) -> (res: &T)
+        ensures
+            res.deep_view() == self.deep_view()->Some_0,
+    {
+        match self {
+            Some(t) => t,
+            None => crate::pervasive::unreached(),
+        }
+    }
+
+    #[inline(always)]
+    fn exec_arrow_0(&self) -> (res: &T)
+        ensures
+            res.deep_view() == self.deep_view()->0,
+    {
+        match self {
+            Some(t) => t,
+            None => crate::pervasive::unreached(),
+        }
     }
 }
 

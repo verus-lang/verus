@@ -21,7 +21,7 @@ There are two prover modes related to nonlinear arithmetic.
  * `nonlinear_arith` - Enable Z3's nonlinear theory of arithmetic.
  * `integer_ring` - Enable a decidable, equational theory of rings.
 
-The first is general-purpose, but unfortunately it is somewhat unpredicable. (This is why it is turned off by default.)
+The first is general-purpose, but unfortunately it is somewhat unpredictable. (This is why it is turned off by default.)
 The second handles a more specific class of problems, but it is decidable and efficient.
 Invoking either prover mode requires an understanding of how to _minimize prover context_.
 We describe each of these modes in more detail below.
@@ -59,7 +59,7 @@ other than that which is:
  * inferred from a variable's type (e.g., the allowed ranges of a `u64` or `nat`), or
  * supplied explicitly.
 
-To supply context explicitly, you can use a `requires` clause, a shown below:
+To supply context explicitly, you can use a `requires` clause, as shown below:
 
 ```rust
 {{#include ../../../../examples/guide/nonlinear_bitvec.rs:bound_checking}}
@@ -177,7 +177,7 @@ that `a - b * tmp_0 == c - d * tmp_1` after this simplification has taken place.
 
 ## 3. Combining `integer_ring` and `nonlinear_arith`.
 
-As explained above, the `integer_ring` feature has several limitations, it is not possible to get an arbitary nonlinear property only with the `integer_ring` feature. Instead, it is a common pattern to have a `by(nonlinear_arith)` function as a main lemma for the desired property, and use `integer_ring` lemma as a helper lemma.
+As explained above, the `integer_ring` feature has several limitations, it is not possible to get an arbitrary nonlinear property only with the `integer_ring` feature. Instead, it is a common pattern to have a `by(nonlinear_arith)` function as a main lemma for the desired property, and use `integer_ring` lemma as a helper lemma.
 
 To work around the lack of support for inequalities and division, you can often write a helper proof discharged with `integer_ring` and use it to prove properties that are not directly supported by `integer_ring`. Furthermore, you can also add additional variables to the formulas. For example, to work around division, one can introduce `c` where `b = a * c`, instead of `b/a`.
 
@@ -211,7 +211,7 @@ pub proof fn lemma_mod_difference_equal(x: int, y: int, d: int) by(nonlinear_ari
 }
 ```
 
-In the `lemma_mod_between` function below, we want to prove that `x % d <= z % d < y % d`. However, `integer_ring` only supports equalities, so we cannot prove `lemma_mod_between` directly. Instead, we provide facts that can help assist the proof. The helper lemma provides 1) `x % d - y % d == x - y  (mod d)` and 2) ` y % d - z % d == y - z  (mod d)`. The rest of the proof is done via `by(nonlinear_arith)`.
+In the `lemma_mod_between` function below, we want to prove that `x % d <= z % d < y % d`. However, `integer_ring` only supports equalities, so we cannot prove `lemma_mod_between` directly. Instead, we provide facts that can help assist the proof. The helper lemma provides 1) `x % d - z % d == x - z  (mod d)` and 2) `z % d - y % d == z - y  (mod d)`. The rest of the proof is done via `by(nonlinear_arith)`.
 
 ```rust
 pub proof fn lemma_mod_between_helper(x: int, y: int, d: int, small_x:int, small_y:int, tmp1:int) by(integer_ring)
@@ -224,8 +224,8 @@ pub proof fn lemma_mod_between_helper(x: int, y: int, d: int, small_x:int, small
 {}
 
 // note that below two facts are from the helper function, and the rest are done by `by(nonlinear_arith)`.
-// x % d - y % d == x - y  (mod d)
-// y % d - z % d == y - z  (mod d)
+// x % d - z % d == x - z  (mod d)
+// z % d - y % d == z - y  (mod d)
 pub proof fn lemma_mod_between(d: int, x: int, y: int, z: int) by(nonlinear_arith)
     requires
         d > 0,
@@ -277,7 +277,7 @@ proof fn lemma_mod_after_mul_u32(x: u32, y: u32 , z: u32, m: u32)
 
 The desired property for `nat` can be proved similarly.
 
-The next example is similar, but note that we introduce several additional variables(`ab`, `bc`, and `abc`) to help with the integer_ring proof.
+The next example is similar, but note that we introduce several additional variables (`ac`, `bc`, and `abc`) to help with the integer_ring proof.
 
 ```rust
 pub proof fn multiple_offsed_mod_gt_0_helper(a: int, b: int, c: int, ac: int, bc: int, abc: int) by (integer_ring)
@@ -307,8 +307,8 @@ pub proof fn multiple_offsed_mod_gt_0(a: nat, b: nat, c: nat) by (nonlinear_arit
 }
 ```
 
-More `integer_ring` examples can be found in [this folder](https://github.com/verus-lang/verus/tree/main/source/../examples/integer_ring), and this [testcase file](https://github.com/verus-lang/verus/blob/main/source/rust_verify_test/tests/integer_ring.rs).
+More `integer_ring` examples can be found in [this folder](https://github.com/verus-lang/verus/tree/main/examples/integer_ring), and this [testcase file](https://github.com/verus-lang/verus/blob/main/source/rust_verify_test/tests/integer_ring.rs).
 
 ### Examining the encoding
 
-Singular queries will be logged to the directory specified with `--log-dir` (which defaults to `.verus-log`) in a the `.air` file for the module containing the file.
+Singular queries will be logged to the directory specified with `--log-dir` (which defaults to `.verus-log`) in the `.air` file for the module containing the file.

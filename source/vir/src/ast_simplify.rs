@@ -8,16 +8,16 @@ use crate::ast::VarBinderX;
 use crate::ast::VarBinders;
 use crate::ast::VarIdent;
 use crate::ast::{
-    AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BoundsCheck, BuiltinSpecFun, ByRef, CallTarget,
-    ChainedOp, ClosureKind, Constant, CtorPrintStyle, CtorUpdateTail, Datatype,
+    Arch, AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BoundsCheck, BuiltinSpecFun, ByRef,
+    CallTarget, ChainedOp, ClosureKind, Constant, CtorPrintStyle, CtorUpdateTail, Datatype,
     DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs, Field, FieldOpr, Fun, Function,
     FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, LogicalOp, Mode, MultiOp, Path,
     Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ,
     TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
-    conjoin, mk_eq, mk_implies, place_to_spec_expr, typ_args_for_datatype_typ, undecorate_typ,
-    unit_typ, wrap_in_trigger,
+    conjoin, is_unit, mk_eq, mk_implies, place_to_spec_expr, typ_args_for_datatype_typ,
+    undecorate_typ, unit_typ, wrap_in_trigger,
 };
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
@@ -198,6 +198,11 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => {
             pattern_to_decls_with_no_initializer(p, stmts);
         }
+        PatternX::Slice(pats) => {
+            for p in pats.iter() {
+                pattern_to_decls_with_no_initializer(p, stmts);
+            }
+        }
     }
 }
 
@@ -352,9 +357,9 @@ fn simplify_one_expr(
                 };
                 match scope_map.get(x) {
                     None => {
-                        return Err(error(
+                        return Err(crate::messages::internal_error(
                             &expr.span,
-                            "Verus Internal Error: cannot find this variable",
+                            "cannot find this variable",
                         ));
                     }
                     Some(entry) if entry.user_mut == Some(false) && entry.init => {
@@ -602,7 +607,7 @@ fn simplify_one_expr(
                     if_expr = Some(SpannedTyped::new(&expr.span, &expr.typ.clone(), ifx));
                 } else if *assert_irrefutable && !test_is_true {
                     if has_guard {
-                        return Err(error(&arm.x.guard.span, "if-guard on final match arm"));
+                        return Err(error(&arm.x.guard.span, "match guard on final match arm"));
                     }
                     let assertion = SpannedTyped::new(
                         &arm.x.pattern.span,
@@ -639,7 +644,10 @@ fn simplify_one_expr(
                 };
                 Ok(if_expr)
             } else {
-                Err(error(&expr.span, "not yet implemented: zero-arm match expressions"))
+                Err(error(
+                    &expr.span,
+                    "Verus does not currently support zero-arm match expressions",
+                ))
             }
         }
         ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: expr1 } => Ok(expr1.clone()),
@@ -649,6 +657,7 @@ fn simplify_one_expr(
             body,
             requires,
             ensures,
+            mask_spec,
             ret,
             external_spec,
         } => {
@@ -661,8 +670,17 @@ fn simplify_one_expr(
                 ExprX::Var(closure_var_ident.clone()),
             );
 
-            let external_spec_expr =
-                exec_closure_spec(state, &expr.span, &closure_var, params, ret, requires, ensures)?;
+            let external_spec_expr = exec_closure_spec(
+                state,
+                &expr.span,
+                &closure_var,
+                params,
+                ret,
+                requires,
+                ensures,
+                mask_spec,
+                proof_fn_modes.is_some(),
+            )?;
             let external_spec = Some((closure_var_ident, external_spec_expr));
 
             Ok(SpannedTyped::new(
@@ -674,6 +692,7 @@ fn simplify_one_expr(
                     body: body.clone(),
                     requires: requires.clone(),
                     ensures: ensures.clone(),
+                    mask_spec: mask_spec.clone(),
                     ret: ret.clone(),
                     external_spec,
                 },
@@ -729,10 +748,12 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
                 }
             }
         }
-        StmtX::Decl { pattern, mode: _, init: None, els: Some(_), .. } => Err(error(
-            &pattern.span,
-            "Verus Internal Error: Decl with else-block but no initializer",
-        )),
+        StmtX::Decl { pattern, mode: _, init: None, els: Some(_), .. } => {
+            Err(crate::messages::internal_error(
+                &pattern.span,
+                "Decl with else-block but no initializer",
+            ))
+        }
         StmtX::Decl { pattern, mode: _, init: Some(_init), els: None, assert_irrefutable: _ }
             if matches!(
                 pattern.x,
@@ -792,9 +813,9 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
         }
         TypX::AnonymousClosure(typs, typ, kind, id) => {
             let Some(fun) = local.fun.clone() else {
-                return Err(error(
+                return Err(crate::messages::internal_error(
                     &local.span,
-                    format!("Verus Internal Error: found AnonymousClosure type outside function"),
+                    format!("found AnonymousClosure type outside function"),
                 ));
             };
             let path =
@@ -882,6 +903,32 @@ fn mk_closure_ens_call(
                 Arc::new(vec![]),
             ),
             args: Arc::new(vec![fn_val.clone(), arg_tuple.clone(), ret_arg.clone()]),
+            post_args: None,
+            body: None,
+        },
+    )
+}
+
+fn mk_closure_opens_call(
+    state: &mut State,
+    span: &Span,
+    params: &VarBinders<Typ>,
+    fn_val: &Expr,
+    arg_tuple: &Expr,
+) -> Expr {
+    let inv_typ = crate::inv_masks::namespace_set_typ();
+    let mut typ_args = closure_trait_call_typ_args(state, fn_val, params);
+    Arc::make_mut(&mut typ_args).push(inv_typ.clone());
+    SpannedTyped::new(
+        span,
+        &inv_typ,
+        ExprX::Call {
+            target: CallTarget::BuiltinSpecFun(
+                BuiltinSpecFun::ClosureOpensInvariants,
+                typ_args,
+                Arc::new(vec![]),
+            ),
+            args: Arc::new(vec![fn_val.clone(), arg_tuple.clone()]),
             post_args: None,
             body: None,
         },
@@ -1028,6 +1075,58 @@ fn exec_closure_spec_ensures(
     Ok(ens_forall)
 }
 
+fn exec_closure_spec_mask(
+    state: &mut State,
+    span: &Span,
+    closure_var: &Expr,
+    params: &VarBinders<Typ>,
+    mask: crate::ast::MaskSpec,
+) -> Result<Expr, VirErr> {
+    // For invariant mask:
+
+    // If the closure has `|a0, a1, a2| opens_invariants f(a0, a1, a2)`
+    // then we emit a spec of the form
+    //
+    //      forall x :: f(x.0, x.1, x.2) == closure.opens_invariants(x)
+    //
+    // with `closure.opens_invariants(x)` as the trigger
+
+    let (tuple_ident, tuple_var) = exec_closure_spec_param(state, span, params);
+    let tuple_typ = tuple_var.typ.clone();
+
+    // Supply 'let' statements of the form 'let a0 = x.0; let a1 = x.1; ...' etc.
+
+    let mut decls: Vec<Stmt> = Vec::new();
+    for (i, p) in params.iter().enumerate() {
+        let typ = &p.a;
+        let pattern = PatternX::simple_var(p.name.clone(), span, typ);
+        let tuple_field = tuple_get_field_expr(state, span, typ, &tuple_var, params.len(), i);
+        let decl = StmtX::Decl {
+            pattern,
+            mode: None,
+            init: Some(PlaceX::spec_temporary(tuple_field)),
+            els: None,
+            assert_irrefutable: false,
+        };
+        decls.push(Spanned::new(span.clone(), decl));
+    }
+
+    let inv_typ = crate::inv_masks::namespace_set_typ();
+    let inv_mask = SpannedTyped::new(span, &inv_typ, ExprX::InvMask(mask));
+
+    let closure_opens_call =
+        wrap_in_trigger(&mk_closure_opens_call(state, span, params, closure_var, &tuple_var));
+
+    let bool_typ = Arc::new(TypX::Bool);
+    let quant_body = mk_eq(span, &inv_mask, &closure_opens_call);
+
+    let forall = Quant { quant: air::ast::Quant::Forall };
+    let binders = Arc::new(vec![Arc::new(VarBinderX { name: tuple_ident, a: tuple_typ })]);
+    let forall = SpannedTyped::new(span, &bool_typ, ExprX::Quant(forall, binders, quant_body));
+
+    Ok(forall)
+}
+
 fn exec_closure_spec(
     state: &mut State,
     span: &Span,
@@ -1036,16 +1135,26 @@ fn exec_closure_spec(
     ret: &VarBinder<Typ>,
     requires: &Exprs,
     ensures: &Exprs,
+    mask_spec: &Option<crate::ast::MaskSpec>,
+    is_proof: bool,
 ) -> Result<Expr, VirErr> {
     let req_forall = exec_closure_spec_requires(state, span, closure_var, params, requires)?;
+    let mut exprs: Vec<Expr> = vec![req_forall];
 
     if ensures.len() > 0 {
         let ens_forall =
             exec_closure_spec_ensures(state, span, closure_var, params, ret, ensures, false)?;
-        Ok(conjoin(span, &vec![req_forall, ens_forall]))
-    } else {
-        Ok(req_forall)
+        exprs.push(ens_forall);
     }
+    if is_proof {
+        // proof mask is none by default
+        let mask_spec = mask_spec.clone().unwrap_or_else(|| {
+            crate::ast::MaskSpec::InvariantOpens(span.clone(), Arc::new(vec![]))
+        });
+        let ens_mask = exec_closure_spec_mask(state, span, closure_var, params, mask_spec)?;
+        exprs.push(ens_mask);
+    }
+    Ok(conjoin(span, &exprs))
 }
 
 pub(crate) fn need_fndef_axiom(fndef_typs: &HashSet<Fun>, f: &Function) -> bool {
@@ -1059,7 +1168,7 @@ pub(crate) fn need_fndef_axiom(fndef_typs: &HashSet<Fun>, f: &Function) -> bool 
 }
 
 fn add_fndef_axioms_to_function(
-    _ctx: &GlobalCtx,
+    fndef_funs: &HashMap<&Fun, &Function>,
     state: &mut State,
     function: &Function,
     fn_once_trait_in_scope: bool,
@@ -1077,7 +1186,12 @@ fn add_fndef_axioms_to_function(
 
     let (fun, typ_args, is_trait_method_impl, inherit) = match &function.x.kind {
         FunctionKind::TraitMethodImpl { method, trait_typ_args, inherit_body_from, .. } => {
-            (method, trait_typ_args.clone(), true, inherit_body_from.is_some())
+            let typ_args = crate::traits::trait_method_impl_typ_args(
+                fndef_funs[method],
+                trait_typ_args,
+                &function.x.typ_params,
+            );
+            (method, typ_args, true, inherit_body_from.is_some())
         }
         _ => {
             let typ_args: Vec<_> = function
@@ -1133,7 +1247,7 @@ fn add_fndef_axioms_to_function(
             typ_bounds: function.x.typ_bounds.clone(),
             trait_path: ClosureKind::FnOnce.trait_path(),
             trait_typ_args,
-            typ: function.x.ret.x.typ.clone(),
+            typ: function.x.outer_ret.x.typ.clone(),
             impl_paths: Arc::new(vec![]),
         };
 
@@ -1157,8 +1271,8 @@ fn add_fndef_axioms_to_function(
     }
 
     let ret = Arc::new(VarBinderX {
-        name: function.x.ret.x.name.clone(),
-        a: function.x.ret.x.typ.clone(),
+        name: function.x.outer_ret.x.name.clone(),
+        a: function.x.outer_ret.x.typ.clone(),
     });
     let (mut closure_enss, default_enss) = function.x.ensure.clone();
     if inherit {
@@ -1208,17 +1322,19 @@ fn simplify_function(
     if let Some(r) = functionx.returns.clone() {
         functionx.returns = None;
 
-        if functionx.ens_has_return {
+        if !is_unit(&undecorate_typ(&functionx.inner_ret.x.typ)) {
             let var = SpannedTyped::new(
                 &r.span,
-                &functionx.ret.x.typ,
-                ExprX::Var(functionx.ret.x.name.clone()),
+                &functionx.inner_ret.x.typ,
+                ExprX::Var(functionx.inner_ret.x.name.clone()),
             );
             let eq = mk_eq(&r.span, &var, &r);
             Arc::make_mut(&mut functionx.ensure.0).push(eq);
         } else {
             // For a unit return type, any returns clause is tautological so we
             // can just skip appending to the postconditions.
+            // We need to do this anyway since a unit-return function might
+            // not have a return-arg to the ensures.
         }
     }
 
@@ -1252,13 +1368,13 @@ fn simplify_function(
         };
         param_names.push(name);
     }
-    let ret_name = if rename_ok && !param_ids.contains(&functionx.ret.x.name.0) {
-        let prev = functionx.ret.x.name.clone();
+    let ret_name = if rename_ok && !param_ids.contains(&functionx.inner_ret.x.name.0) {
+        let prev = functionx.inner_ret.x.name.clone();
         let name = VarIdent(prev.0.clone(), crate::ast::VarIdentDisambiguate::VirParam);
         state.rename_vars.insert(prev, name.clone()).map(|_| panic!("rename ret"));
         name
     } else {
-        functionx.ret.x.name.clone()
+        functionx.inner_ret.x.name.clone()
     };
 
     for (a, b) in state.rename_vars.iter() {
@@ -1295,6 +1411,7 @@ fn simplify_function(
         &|state, _, stmt| simplify_one_stmt(ctx, state, stmt),
         &|state, typ| simplify_one_typ(&local, state, typ),
         &|state, map, place| simplify_one_place(ctx, state, map, place),
+        &|_, _, pat| Ok(pat.clone()),
     )?;
     let mut functionx = function.x.clone();
     assert!(functionx.params.len() == param_names.len());
@@ -1306,8 +1423,16 @@ fn simplify_function(
             .map(|(p, x)| p.new_x(crate::ast::ParamX { name: x.clone(), ..p.x.clone() }))
             .collect(),
     );
-    functionx.ret =
-        functionx.ret.new_x(crate::ast::ParamX { name: ret_name, ..functionx.ret.x.clone() });
+
+    let inner_outer_align = functionx.inner_ret.x.name == functionx.outer_ret.x.name;
+    functionx.inner_ret = functionx
+        .inner_ret
+        .new_x(crate::ast::ParamX { name: ret_name.clone(), ..functionx.inner_ret.x.clone() });
+    if inner_outer_align {
+        functionx.outer_ret = functionx
+            .outer_ret
+            .new_x(crate::ast::ParamX { name: ret_name, ..functionx.outer_ret.x.clone() });
+    }
 
     Ok(Spanned::new(function.span.clone(), functionx))
 }
@@ -1459,11 +1584,17 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let fn_once_trait_path = ClosureKind::FnOnce.trait_path();
     let fn_once_trait_in_scope = traits.iter().any(|t| t.x.name == fn_once_trait_path);
 
+    // A TraitMethodImpl needs fndef axioms only if its trait method is in fndef_typs
+    let fndef_funs: HashMap<&Fun, &Function> = functions
+        .iter()
+        .filter(|f| state.fndef_typs.contains(&f.x.name))
+        .map(|f| (&f.x.name, f))
+        .collect();
     let mut new_functions: Vec<Function> = Vec::with_capacity(functions.len());
     for f in functions.iter() {
         if need_fndef_axiom(&state.fndef_typs, f) {
             let (f2, tis, ai) =
-                add_fndef_axioms_to_function(ctx, &mut state, f, fn_once_trait_in_scope)?;
+                add_fndef_axioms_to_function(&fndef_funs, &mut state, f, fn_once_trait_in_scope)?;
             trait_impls.extend(tis);
             if let Some(ai) = ai {
                 assoc_type_impls.push(ai);
@@ -1671,54 +1802,63 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     Ok(krate)
 }
 
-pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
+pub fn merge_krates(
+    krates: Vec<Krate>,
+    merged_traits: &crate::traits::MergedTraits,
+) -> Result<Krate, VirErr> {
+    let merged_arch = krate_merge_arch(&krates[0], &krates[1..])?;
     let mut krates = krates.into_iter();
     let mut kratex: KrateX = (*krates.next().expect("at least one crate")).clone();
+    kratex.arch = merged_arch;
     for k in krates {
         let KrateX {
             functions,
             reveal_groups,
             datatypes,
             opaque_types,
-            traits,
-            trait_impls,
+            traits: _,
+            trait_impls: _,
             assoc_type_impls,
             modules,
             external_fns,
             external_types,
             path_as_rust_names,
-            arch,
+            arch: _,
         } = &*k;
         kratex.functions.extend(functions.clone());
         kratex.reveal_groups.extend(reveal_groups.clone());
         kratex.datatypes.extend(datatypes.clone());
         kratex.opaque_types.extend(opaque_types.clone());
-        kratex.traits.extend(traits.clone());
-        kratex.trait_impls.extend(trait_impls.clone());
         kratex.assoc_type_impls.extend(assoc_type_impls.clone());
         kratex.modules.extend(modules.clone());
         kratex.external_fns.extend(external_fns.clone());
         kratex.external_types.extend(external_types.clone());
         kratex.path_as_rust_names.extend(path_as_rust_names.clone());
-        kratex.arch.word_bits = {
-            let word_bits = match (arch.word_bits, kratex.arch.word_bits) {
-                (crate::ast::ArchWordBits::Exactly(l), crate::ast::ArchWordBits::Exactly(r)) => {
-                    if l != r {
-                        return Err(crate::messages::error_bare(
-                            "all crates must have compatible arch_word_bits (set via `global size_of usize`",
-                        ));
-                    } else {
-                        crate::ast::ArchWordBits::Exactly(l)
-                    }
-                }
-                (crate::ast::ArchWordBits::Either32Or64, other)
-                | (other, crate::ast::ArchWordBits::Either32Or64) => other,
-            };
-            if let crate::ast::ArchWordBits::Exactly(e) = &word_bits {
-                assert!(*e == 32 || *e == 64);
-            }
-            word_bits
-        };
     }
+    kratex.traits = merged_traits.traits.clone();
+    kratex.trait_impls = merged_traits.trait_impls.clone();
     Ok(Arc::new(kratex))
+}
+
+pub fn krate_merge_arch(krate: &Krate, other_krates: &[Krate]) -> Result<Arch, VirErr> {
+    let mut word_bits = krate.arch.word_bits;
+    for krate in other_krates.iter() {
+        word_bits = match (word_bits, krate.arch.word_bits) {
+            (crate::ast::ArchWordBits::Exactly(l), crate::ast::ArchWordBits::Exactly(r)) => {
+                if l != r {
+                    return Err(crate::messages::error_bare(
+                        "all crates must have compatible `arch_word_bits` (set via `global size_of usize`)",
+                    ));
+                } else {
+                    crate::ast::ArchWordBits::Exactly(l)
+                }
+            }
+            (crate::ast::ArchWordBits::Either32Or64, other)
+            | (other, crate::ast::ArchWordBits::Either32Or64) => other,
+        };
+        if let crate::ast::ArchWordBits::Exactly(e) = &word_bits {
+            assert!(*e == 32 || *e == 64);
+        }
+    }
+    Ok(Arch { word_bits })
 }

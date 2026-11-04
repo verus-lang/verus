@@ -2989,7 +2989,7 @@ test_verify_one_file! {
                 // this should derive a contradiction if not for the recursion checking
             }
         }}
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -3021,7 +3021,7 @@ test_verify_one_file! {
             inst.ro(&token);
         }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -9220,4 +9220,187 @@ test_verify_one_file! {
             assert(j.map() =~= imap![]);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] pre_reserved_property_issue3083 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields { #[sharding(variable)] pub v: int, }
+            init!{ initialize() { init v = 1; } }
+            property!{ p() {
+                let pre = State { v: 0 };  // shadows the real pre-state
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "'pre' is a reserved identifier in state machine definitions")
+}
+
+test_verify_one_file! {
+    #[test] pre_reserved_transition_issue3083 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Y {
+            fields { #[sharding(variable)] pub v: int, }
+            init!{ initialize() { init v = 1; } }
+            transition!{ dec() {
+                let pre = State { v: 2 };
+            } }
+            #[inductive(initialize)] fn init_inductive(post: Self) { }
+            #[inductive(dec)] fn dec_inductive(pre: Self, post: Self) { }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "'pre' is a reserved identifier in state machine definitions")
+}
+
+test_verify_one_file! {
+    #[test] post_reserved_transition_issue3083 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Y {
+            fields { #[sharding(variable)] pub v: int, }
+            init!{ initialize() { init v = 1; } }
+            transition!{ dec() {
+                let post = State { v: 2 };
+            } }
+            #[inductive(initialize)] fn init_inductive(post: Self) { }
+            #[inductive(dec)] fn dec_inductive(pre: Self, post: Self) { }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "'post' is a reserved identifier in state machine definitions")
+}
+
+test_verify_one_file! {
+    #[test] special_op_in_block_issue3197 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Z {
+            fields {
+                #[sharding(variable)] pub fresh: bool,
+                #[sharding(option)] pub opt: Option<u8>,
+            }
+            #[invariant] pub fn inv(&self) -> bool { self.fresh ==> self.opt is None }
+            init!{ initialize() { init fresh = true; init opt = None; } }
+            transition!{ two() {
+                require(pre.fresh);
+                update fresh = false;
+                { let x: u8 = 7; add opt += Some(x); }
+                add opt += Some(8);
+            } }
+            #[inductive(initialize)] fn init_inductive(post: Self) { }
+            #[inductive(two)] fn two_inductive(pre: Self, post: Self) { }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "unable to prove inherent safety condition: to add a value Some(_), field must be None before the update")
+}
+
+test_verify_one_file! {
+    #[test] special_op_in_block2_issue3197 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Z {
+            fields {
+                #[sharding(variable)] pub fresh: bool,
+                #[sharding(map)] pub m: Map<u8, u8>,
+            }
+            #[invariant] pub fn inv(&self) -> bool { self.fresh ==> self.m =~= map![] }
+            init!{ initialize() { init fresh = true; init m = Map::<u8, u8>::empty(); } }
+            transition!{ two() {
+                require(pre.fresh);
+                update fresh = false;
+                { let x: u8 = 7; add m += [0 => 100]; }
+                add m += [0 => 101];
+            } }
+            #[inductive(initialize)] fn init_inductive(post: Self) { }
+            #[inductive(two)] fn two_inductive(pre: Self, post: Self) { }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "unable to prove inherent safety condition: the given key must be absent from the map before the update")
+}
+
+test_verify_one_file! {
+    #[test] special_op_in_block3_issue3197 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Z {
+            fields {
+                #[sharding(variable)] pub fresh: bool,
+                #[sharding(map)] pub m: Map<u8, u8>,
+            }
+            #[invariant] pub fn inv(&self) -> bool { self.fresh ==> self.m =~= map![] }
+            init!{ initialize() { init fresh = true; init m = Map::<u8, u8>::empty(); } }
+            transition!{ two() {
+                require(pre.fresh);
+                update fresh = false;
+                { let x: u8 = 7; add m += [0 => 100]; }
+                add m += [1 => 101];
+            } }
+            #[inductive(initialize)] fn init_inductive(post: Self) { }
+            #[inductive(two)] fn two_inductive(pre: Self, post: Self) { }
+        }}
+        proof fn good() {
+            let tracked (Tracked(inst), Tracked(mut f), Tracked(o)) = Z::Instance::initialize();
+            let tracked (Tracked(a), Tracked(b)) = inst.two(&mut f);
+            assert(a.key() == 0);
+            assert(b.key() == 1);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] pre_reserved_raw_ident_issue3173 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields { #[sharding(variable)] pub v: int, }
+            init!{ initialize() { init v = 1; } }
+            property!{ p() {
+                let r#pre = State { v: 0 };
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "'pre' is a reserved identifier in state machine definitions")
+}
+
+test_verify_one_file! {
+    #[test] pre_reserved_item_issue3173 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields { #[sharding(variable)] pub v: u8, }
+            init!{ initialize() { init v = 1; } }
+            property!{ p() {
+                assert({ const pre: State = State { v: 0u8 }; pre.v == 0u8 });
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "'pre' is a reserved identifier in state machine definitions")
+}
+
+test_verify_one_file! {
+    #[test] label_reserved_param_issue3173 IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X {
+            fields { pub v: int, }
+            pub enum Label { A, B }
+            init!{ initialize() { init v = 0; } }
+            transition!{ tr(lbl: Label, label: Label) {
+                require(lbl is A && label is B);
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "'label' cannot be used as a param name since it would shadow the label")
+}
+
+test_verify_one_file! {
+    #[test] inherent_token_method_issue3173 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields { #[sharding(variable)] pub v: u8, }
+            init!{ initialize() { init v = 1; } }
+        }}
+        impl X::v {
+            pub open spec fn value(&self) -> u8 { 0 }
+        }
+        proof fn bad() {
+            let tracked (Tracked(inst), Tracked(tok)) = X::Instance::initialize();
+            assert(vstd::tokens::ValueToken::value(&tok) == 0); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] trait_instance_method_issue3173 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields { #[sharding(constant)] pub k: u8, #[sharding(variable)] pub v: u8, }
+            init!{ initialize(x: u8) { init k = x; init v = x; } }
+            property!{ p() { } }
+        }}
+        pub uninterp spec fn the_id() -> vstd::tokens::InstanceId;
+        pub trait FakeId { spec fn id(self) -> vstd::tokens::InstanceId; }
+        impl FakeId for X::Instance {
+            open spec fn id(self) -> vstd::tokens::InstanceId { the_id() }
+        }
+        proof fn bad() {
+            let tracked (Tracked(inst1), Tracked(tok1)) = X::Instance::initialize(1);
+            let tracked (Tracked(inst2), Tracked(tok2)) = X::Instance::initialize(2);
+            inst1.p(&tok2); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

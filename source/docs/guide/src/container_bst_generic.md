@@ -1,7 +1,7 @@
 # Making it generic
 
-In the previous sections, we devised a `TreeMap<V>` which a used fixed key type (`u64`).
-In this section, we'll show to make a `TreeMap<K, V>` which is generic over the key type `K`.
+In the previous sections, we devised a `TreeMap<V>` which used a fixed key type (`u64`).
+In this section, we'll show how to make a `TreeMap<K, V>` which is generic over the key type `K`.
 
 ## Defining a "total order"
 
@@ -53,7 +53,7 @@ so it can be left alone, the same as before.
 
 ### Updating the implementations and proofs
 
-Updating the implementations take a bit more work, since we need more substantial proof code.
+Updating the implementations takes a bit more work, since we need more substantial proof code.
 Whereas Verus has good automation for integer inequalities (`<`), it has no such automation
 for our new, hand-made `TotalOrdered` trait. Thus, we need to add proof code to invoke
 its properties manually.
@@ -62,7 +62,7 @@ Let's take a look at `Node::get`.
 
 The meat of the proof roughly goes as follows:
 
-Supoose we're looking for the key `key` which compares less than `self.key`.
+Suppose we're looking for the key `key` which compares less than `self.key`.
 Then we need to show that recursing into the left subtree gives the correct answer; for this,
 it suffices to show that `key` is _not_ in the right subtree.
 

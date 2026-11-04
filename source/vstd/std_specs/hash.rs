@@ -217,11 +217,6 @@ pub broadcast proof fn axiom_box_integer_type_obeys_hash_table_key_model<Key: In
     admit();
 }
 
-#[verifier::external_trait_specification]
-pub trait ExHasher {
-    type ExternalTraitSpecificationFor: Hasher;
-}
-
 // Our model for the external trait `BuildHasher` is that for any two
 // `Hasher`s it builds, if they're both given the same write sequence
 // then their states will match and they'll produce the same digest
@@ -289,7 +284,10 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -321,7 +319,10 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -355,7 +356,10 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for hash_map::Iter<'a, K, V> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -568,6 +572,13 @@ pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, 
         len == spec_hash_map_len(m),
 ;
 
+pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::capacity ](
+    m: &HashMap<Key, Value, S, A>,
+) -> (cap: usize)
+    ensures
+        cap >= spec_hash_map_len(m),
+;
+
 pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::is_empty ](
     m: &HashMap<Key, Value, S, A>,
 ) -> (res: bool)
@@ -608,6 +619,13 @@ pub assume_specification<K, V, S: core::default::Default>[ <HashMap<
 
 pub assume_specification<Key, Value>[ HashMap::<Key, Value>::with_capacity ](capacity: usize) -> (m:
     HashMap<Key, Value, RandomState>)
+    ensures
+        m@ == Map::<Key, Value>::empty(),
+;
+
+pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::with_hasher ](
+    hash_builder: S,
+) -> (m: HashMap<Key, Value, S>)
     ensures
         m@ == Map::<Key, Value>::empty(),
 ;
@@ -868,7 +886,10 @@ impl<'a, K> super::iter::IteratorSpecImpl for hash_set::Iter::<'a, K> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -941,6 +962,22 @@ pub assume_specification<Key>[ HashSet::<Key>::with_capacity ](capacity: usize) 
     Key,
     RandomState,
 >)
+    ensures
+        m@ == Set::<Key>::empty(),
+;
+
+pub assume_specification<Key, S>[ HashSet::<Key, S>::with_hasher ](hash_builder: S) -> (m: HashSet<
+    Key,
+    S,
+>)
+    ensures
+        m@ == Set::<Key>::empty(),
+;
+
+pub assume_specification<Key, S>[ HashSet::<Key, S>::with_capacity_and_hasher ](
+    capacity: usize,
+    hash_builder: S,
+) -> (m: HashSet<Key, S>)
     ensures
         m@ == Set::<Key>::empty(),
 ;

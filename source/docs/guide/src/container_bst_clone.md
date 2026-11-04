@@ -1,7 +1,7 @@
 # Implementing Clone
 
 As a finishing touch, let's implement `Clone` for `TreeMap<K, V>`.
-The main trick here will be in figuring out the correct specification for `TreeMap::<K, V>::Clone`.
+The main trick here will be in figuring out the correct specification for `TreeMap::<K, V>::clone`.
 
 Naturally, such an implementation will require both `K: Clone` and `V: Clone`.
 However, to write a sensible clone implementation for the tree, we have to consider
@@ -45,7 +45,7 @@ ensure that `self@.dom() =~= res@.dom()`.
 ### Dealing with `V::clone`
 
 So what about `V`? Again, we don't know _a priori_ what `V::clone` does. It might return
-a value unequal to the imput; it might even be nondeterminstic. Therefore,
+a value unequal to the input; it might even be nondeterministic. Therefore,
 a cloned `TreeMap` may have different values than the original.
 
 In order to specify `TreeMap::<K, V>::clone` as generically as possible, we choose
@@ -76,11 +76,11 @@ example with a user-defined type.
 {{#include ../../../../examples/guide/bst_map_generic.rs:clone_int_wrapper}}
 ```
 
-This works because of the postcondition on `IntWrapper::clone`, that is, `ensures *s == self`.
+This works because of the postcondition on `IntWrapper::clone`, that is, `ensures s == *self`.
 If you're new to this style, it might seem initially surprising that 
 `IntWrapper::clone` has any effect on the verification of `test_clone_int_wrapper`, since
 it doesn't directly call `IntWrapper::clone`. In this case, the postcondition is referenced
-indirectly via `TreeMap<u64, IntWrapper>:clone`.
+indirectly via `TreeMap<u64, IntWrapper>::clone`.
 
 Let's do one more example, this time with a _less_ precise clone function.
 
@@ -94,13 +94,13 @@ if every struct needs to have a unique identifier). Anyway, the postcondition of
 `WeirdInt::clone` doesn't say both objects are equal, only that the `int_value` fields are equal.
 This postcondition can then be inferred for each value in the map, as shown.
 
-### Implementing `TreeMap::<K, V>::Clone`.
+### Implementing `TreeMap::<K, V>::clone`.
 
 As usual, we write the implementation as a recursive function.
 
-It's not necessary to implement `Node::Clone`; one could instead just implement a normal
-recursive function as a helper for `TreeMap::Clone`; but it's more Rust-idiomatic to do it
-this way. This lets us call `Option<Node<K, V>>::Clone`
+It's not necessary to implement `Clone` for `Node`; one could instead just implement a normal
+recursive function as a helper for `TreeMap::clone`; but it's more Rust-idiomatic to do it
+this way. This lets us call `clone` on the `Option<Box<Node<K, V>>>` root
 in the implementation of `TreeMap::clone` (the spec for `Option::clone` is provided by
 vstd). However, you can see that there are a few 'gotchas' that need
 to be worked around.

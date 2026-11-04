@@ -37,12 +37,30 @@ pub enum CrateId {
     Id(Ident, u64),
 }
 
+/// Should mirror [`DefPathData`](https://doc.rust-lang.org/beta/nightly-rustc/rustc_hir/definitions/enum.DefPathData.html), plus kinds specific to Verus.
+/// The kinds have no semantic meaning in VIR, they might as well just be random names.
+///
+/// I use `T` and `V` for the type namespace and value namespace, partially for brevity,
+/// and partially because I think the actual names 'type' and 'value' would sometimes be confusing.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Segment {
+    V(Ident, u32),
+    T(Ident, u32),
+    Ctor(u32),
+    Impl(u32),
+    ForeignMod(u32),
+    OpaqueTy(u32),
+    Closure(u32),
+    AnonConst(u32),
+}
+pub type Segments = Arc<Vec<Segment>>;
+
 /// A fully-qualified name, such as a module name, function name, or datatype name
 pub type Path = Arc<PathX>;
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PathX {
     pub krate: CrateId,
-    pub segments: Idents,
+    pub segments: Segments,
 }
 
 #[derive(
@@ -418,7 +436,10 @@ pub enum UnaryOp {
     /// Mark an expression as a member of an SMT quantifier trigger group.
     /// Each trigger group becomes one SMT trigger containing all the expressions in the trigger group.
     Trigger(TriggerAnnotation),
-    /// Force integer value into range given by IntRange (e.g. by using mod)
+    /// Force integer value into range given by IntRange (e.g. by using mod).
+    /// truncate gives the value of the 'truncate' attribute, which impacts
+    /// the recommendations given for this operation, but otherwise has no impact
+    /// on its semantics
     Clip {
         range: IntRange,
         truncate: bool,
@@ -560,8 +581,9 @@ pub enum UnaryOpr {
     /// For primitive types this is trivially true.
     /// For datatypes this is recursive in the natural way.
     HasResolved(Typ),
-    /// Coerce from concrete type to `dyn T`. Typ arg is the Self type
-    ToDyn(Typ),
+    /// Coerce from concrete type to `dyn T`, recording the Self type and the
+    /// trait implementations needed to construct the trait object.
+    ToDyn(Typ, ImplPaths),
     /// Isolation boundary for the loop of the given label, which must be contained
     /// in the boundary.
     LoopIsolationBoundary(Label),
@@ -583,6 +605,18 @@ pub enum OverflowBehavior {
     Truncate(IntRange),
     /// Error if the result is outside the given range.
     Error(IntRange),
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum SignedDivEdgeCaseBehavior {
+    /// Return an unbounded int, the exact value of the arithmetic expression.
+    Allow,
+    /// Error if the operands trigger the division edge case of
+    /// lhs == iN::MIN and rhs == (-1)
+    /// This is an error because the division result doesn't fit in the range for the iN
+    /// type (the result would be -iN::MIN which is iN::MAX + 1).
+    /// This is an error both for div and mod.
+    Error(IntegerTypeBitwidth),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -612,10 +646,14 @@ pub enum ArithOp {
     Sub(OverflowBehavior),
     /// IntRange::Int *
     Mul(OverflowBehavior),
-    /// IntRange::Int / defined as Euclidean (round towards -infinity, not round-towards zero)
+    /// IntRange::Int / defined as Euclidean (round towards -infinity)
     EuclideanDiv(Div0Behavior),
-    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
+    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative dividend)
     EuclideanMod(Div0Behavior),
+    /// IntRange::Int / defined as Rust does (round towards 0)
+    TruncatingDiv(Div0Behavior, SignedDivEdgeCaseBehavior),
+    /// IntRange::Int % defined as Rust does (returns non-positive result for negative dividend)
+    TruncatingMod(Div0Behavior, SignedDivEdgeCaseBehavior),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -671,6 +709,21 @@ pub enum ChainedOp {
     MultiEq,
 }
 
+/// Floating point Binary Ops, unspecified
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum UninterpretedFloatBinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    Eq,
+    Ne,
+}
+
 /// IEEE floating point binary ops (rounding mode RNE)
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum IeeeFloatBinaryOp {
@@ -709,12 +762,17 @@ pub enum BinaryOp {
     /// boolean xor (no short-circuiting)
     BoolXor,
     /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
-    HeightCompare { strictly_lt: bool, recursive_function_field: bool },
+    HeightCompare {
+        strictly_lt: bool,
+        recursive_function_field: bool,
+    },
     /// SMT equality for any type -- two expressions are exactly the same value
     /// Some types support compilable equality (Mode == Exec); others only support spec equality (Mode == Spec)
     Eq(Mode),
     /// not Eq
     Ne,
+    /// inequality on bools (ordered false < true)
+    BoolInequality(InequalityOp),
     /// arithmetic inequality
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
@@ -723,6 +781,7 @@ pub enum BinaryOp {
     RealArith(RealArithOp),
     /// Bit Vector Operators
     Bitwise(BitwiseOp, BitshiftBehavior),
+    UninterpretedFloat(UninterpretedFloatBinaryOp),
     /// IEEE floating point binary ops (rounding mode RNE)
     IeeeFloat(IeeeFloatBinaryOp),
     /// Used only for handling verus_builtin::strslice_get_char
@@ -882,7 +941,7 @@ pub enum PatternX {
     /// Fields can appear **in any order** even for tuple variants.
     Constructor(Dt, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
-    /// Matches something equal to the value of this expr
+    /// Matches something equal to the value of this expr *using spec equality*
     /// This only supports literals, consts, and pure functions
     /// so we don't need to worry about side-effects, binding order, etc.
     /// See `check_expr_in_pattern` for the exact supported expressions.
@@ -901,6 +960,8 @@ pub enum PatternX {
     /// and ultimately x will have type `&mut T`.
     MutRef(Pattern),
     ImmutRef(Pattern),
+    /// Match against a slice or array
+    Slice(Patterns),
 }
 
 /// Arms of match expressions
@@ -939,6 +1000,7 @@ pub enum BuiltinSpecFun {
     // not just "closure" types. TODO rename?
     ClosureReq,
     ClosureEns,
+    ClosureOpensInvariants,
     /// default_ensures clauses, for use by call_ensures on impls that inherit the default
     DefaultEns,
 }
@@ -1060,6 +1122,14 @@ pub enum AtomicallyKind {
     Loop,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, Copy, ToDebugSNode)]
+pub enum LoopSource {
+    /// loop, while, or for
+    Loop,
+    /// breakable block
+    BreakableBlock,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -1126,6 +1196,7 @@ pub enum ExprX {
         body: Expr,
         requires: Exprs,
         ensures: Exprs,
+        mask_spec: Option<MaskSpec>,
         ret: VarBinder<Typ>,
         /// The 'external spec' is an Option because it gets filled in during
         /// ast_simplify. It contains the assumptions that surrounding context
@@ -1188,6 +1259,8 @@ pub enum ExprX {
         invs: LoopInvariants,
         decrease: Exprs,
         atomic_call: bool,
+        known_no_back_edge: bool,
+        source: LoopSource,
     },
     /// Open invariant
     OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
@@ -1203,8 +1276,8 @@ pub enum ExprX {
     InvMask(MaskSpec),
     /// Return from function
     Return(Option<Expr>),
-    /// break or continue
-    BreakOrContinue { label: Label, is_break: bool },
+    /// break or continue; only break may carry a loop result
+    BreakOrContinue { label: Label, is_break: bool, value: Option<Expr> },
     /// Enter a Rust ghost block, which will be erased during compilation.
     /// In principle, this is not needed, because we can infer which code to erase using modes.
     /// However, we can't easily communicate the inferred modes back to rustc for erasure
@@ -1553,6 +1626,8 @@ pub struct FunctionAttrsX {
     pub tracked_take_option: bool,
     /// Whether the function is an async function
     pub is_async: bool,
+    /// Is this a types's drop implementation
+    pub is_drop: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1662,10 +1737,14 @@ pub struct FunctionX {
     pub typ_bounds: GenericBounds,
     /// Function parameters
     pub params: Params,
-    /// Return value
-    pub ret: Param,
-    /// Can the ensures clause reference the 'ret' param (must be true for non-unit types)
-    pub ens_has_return: bool,
+    /// Return value from the external perspective
+    pub outer_ret: Param,
+    /// Return value from the internal perspective, serves as a binder for the 'ensures' clauses.
+    ///
+    /// For non-async functions, `inner_ret` is always identical to `outer_ret`.
+    /// For async functions, `inner_ret` has the source-level type and `outer_ret` has
+    /// the `impl Future` opaque type. In this case, the two should be named differently.
+    pub inner_ret: Param,
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)
     pub require: Exprs,
     /// Postconditions (proof/exec functions only)
@@ -1701,11 +1780,11 @@ pub struct FunctionX {
     pub attrs: FunctionAttrs,
     /// Body of the function (may be None for foreign functions or for external_body functions)
     pub body: Option<Expr>,
+    /// Return-position opaque type equalities available while checking the body.
+    pub return_opaque_type_eqs: Arc<Vec<(Typ, Typ)>>,
     /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
-    /// The return type of the async function i.e., impl Future<Output>.
-    pub async_ret: Option<Param>,
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
 }
@@ -1726,11 +1805,11 @@ pub struct FunctionStubX {
     pub typ_params: Idents,
     pub typ_bounds: GenericBounds,
     pub params: Params,
-    pub ret: Param,
-    pub ens_has_return: bool,
+    pub outer_ret: Param,
     pub item_kind: ItemKind,
     pub attrs: FunctionAttrs,
-    pub async_ret: Option<Param>,
+    pub returns: bool,
+    pub decreases_len: usize,
 }
 
 pub type RevealGroup = Arc<Spanned<RevealGroupX>>;
@@ -1908,11 +1987,6 @@ pub struct TraitImplX {
     pub auto_imported: bool,
     // Is a blanket implementation declared by external_trait_extension:
     pub external_trait_blanket: bool,
-}
-
-#[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
-pub enum WellKnownItem {
-    DropTrait,
 }
 
 pub type ModuleReveals = Arc<Spanned<Vec<Fun>>>;

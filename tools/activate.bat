@@ -8,3 +8,6 @@ cargo build --release
 popd
 
 set PATH=%SCRIPT_DIR%vargo\target\release;%PATH%
+
+echo WARNING: Vargo is being deprecated. Use Cargo instead. Refer to `BUILD.md`.
+echo See also: https://github.com/verus-lang/verus/pull/2686

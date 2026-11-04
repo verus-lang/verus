@@ -81,3 +81,93 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file_with_options! {
+    #[test] cvc5_smtlib_with_z3_verifies ["-V cvc5-smtlib"] => verus_code! {
+        use vstd::prelude::*;
+
+        struct Node {
+            next: Box<Option<Node>>,
+        }
+
+        impl Node {
+            spec fn depth(&self) -> nat
+                decreases self
+            {
+                match *self.next {
+                    Option::Some(next) => 1 + next.depth(),
+                    Option::None => 0,
+                }
+            }
+        }
+    } => Ok(())
+}
+
+#[test]
+fn cvc5_solver_and_smtlib_options_are_mutually_exclusive() {
+    let output =
+        run_verus_raw(&["--version", "-V", "cvc5", "-V", "cvc5-smtlib"], std::path::Path::new("."));
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("`-V cvc5` and `-V cvc5-smtlib` are mutually exclusive")
+    );
+}
+
+#[test]
+fn cvc5_smtlib_emits_cvc5_encoding_with_z3() {
+    let test_dir = tempfile::tempdir().expect("temporary test directory");
+    let entry_file = test_dir.path().join("test.rs");
+    let log_dir = test_dir.path().join("smt-log");
+    std::fs::create_dir(&log_dir).expect("SMT log directory");
+    std::fs::write(
+        &entry_file,
+        format!(
+            "{}{}{}",
+            FEATURE_PRELUDE,
+            USE_PRELUDE,
+            verus_code! {
+                use vstd::prelude::*;
+
+                struct Node {
+                    next: Box<Option<Node>>,
+                }
+
+                impl Node {
+                    spec fn depth(&self) -> nat
+                        decreases self
+                    {
+                        match *self.next {
+                            Option::Some(next) => 1 + next.depth(),
+                            Option::None => 0,
+                        }
+                    }
+                }
+            }
+        ),
+    )
+    .expect("test source");
+
+    let log_dir_option = format!("--log-dir={}", log_dir.display());
+    let output = run_verus(
+        &["-V cvc5-smtlib", "--log-smt", &log_dir_option],
+        test_dir.path(),
+        &entry_file,
+        true,
+        false,
+    );
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+
+    let smt_files = std::fs::read_dir(&log_dir)
+        .expect("read SMT log directory")
+        .map(|entry| entry.expect("SMT log entry").path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "smt2"))
+        .collect::<Vec<_>>();
+    assert_eq!(smt_files.len(), 1);
+    let smt = std::fs::read_to_string(&smt_files[0]).expect("read SMT log file");
+    assert!(smt.contains("(set-logic ALL)"));
+    assert!(smt.contains("(declare-fun partial-order"));
+    assert!(smt.contains("(set-option :auto_config false)"));
+    assert!(!smt.contains(":skolemid"));
+    assert!(!smt.contains("(set-option :incremental true)"));
+}

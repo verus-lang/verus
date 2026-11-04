@@ -150,7 +150,7 @@ test_verify_one_file! {
                 crate::M1::g();
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "in 'requires' clause of public function, cannot refer to private function")
+    } => Err(err) => assert_vir_error_msg(err, "in `requires` clause of public function, cannot refer to private function")
 }
 
 test_verify_one_file! {
@@ -179,7 +179,7 @@ test_verify_one_file! {
     #[test] main_proof_fail verus_code! {
         pub proof fn main() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "`main` function should be #[verifier::exec]")
+    } => Err(err) => assert_vir_error_msg(err, "`main` function must be `exec`")
 }
 
 test_verify_one_file! {
@@ -187,7 +187,7 @@ test_verify_one_file! {
         pub closed spec fn main() {
             ()
         }
-    } => Err(err) => assert_vir_error_msg(err, "`main` function should be #[verifier::exec]")
+    } => Err(err) => assert_vir_error_msg(err, "`main` function must be `exec`")
 }
 
 test_verify_one_file! {
@@ -313,7 +313,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "the function body is declared 'open' to a wider scope than the function itself")
+    } => Err(err) => assert_vir_error_msg(err, "the function body is declared `open` to a wider scope than the function itself")
 }
 
 test_verify_one_file! {

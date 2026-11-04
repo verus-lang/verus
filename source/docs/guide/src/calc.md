@@ -15,8 +15,8 @@ since you need to repeat each of the intermediate expressions at each point.
 The `calc!` macro supports structured proofs through calculations.
 
 In particular, one can show `a_1 R a_n` for some transitive relation `R` by performing a series
-of steps `a_1 R a_2`, `a_2 R a_3`, ... `a_{n-1} R a_n`. The calc macro provides both convenient
-syntax sugar to perform such a proof conveniently, without repeating oneself too often, or
+of steps `a_1 R a_2`, `a_2 R a_3`, ... `a_{n-1} R a_n`. The calc macro provides convenient
+syntax sugar to perform such a proof without repeating oneself too often or
 exposing the internal steps to the outside context.
 
 The expected usage looks like:

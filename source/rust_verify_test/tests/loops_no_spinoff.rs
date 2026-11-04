@@ -1419,7 +1419,7 @@ test_verify_one_file_with_options! {
                 i = i + 1;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "attribute 'allow_complex_invariants' can only be used with 'loop_isolation(false)'")
+    } => Err(err) => assert_vir_error_msg(err, "attribute `allow_complex_invariants` can only be used with `loop_isolation(false)`")
 }
 
 // Invariant violation - invariant_except_break not maintained
@@ -1465,5 +1465,5 @@ test_verify_one_file_with_options! {
 
             assert(x == 20); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "loop with loop_isolation=false contains 'break' statement inside a nested loop with loop_isolation=true")
+    } => Err(err) => assert_vir_error_msg(err, "loop with `loop_isolation(false)` contains `break` statement inside a nested loop with `loop_isolation(true)`")
 }

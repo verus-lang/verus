@@ -17,8 +17,10 @@ pub struct Span {
     #[serde(default = "crate::messages::empty_raw_span")]
     pub raw_span: RawSpan,
     pub id: AstId, // arbitrary integer identifier that may be set and used in any way (e.g. as unique id, or just left as 0)
-    pub data: Vec<u64>, // arbitrary integers (e.g. for serialization/deserialization)
-    pub as_string: String, // if we can't print (description, raw_span), print as_string instead
+    // `data` and `as_string` are shared (Arc) because spans are cloned into many AST, SST,
+    // and AIR nodes; with owned Vec/String, each clone allocated its own copy.
+    pub data: Arc<[u64]>, // arbitrary integers (e.g. for serialization/deserialization)
+    pub as_string: Arc<str>, // if we can't print (description, raw_span), print as_string instead
 }
 
 impl std::fmt::Debug for Span {
@@ -175,6 +177,17 @@ impl air::messages::MessageInterface for VirMessageInterface {
             .collect()
     }
 
+    fn all_msgs_with_spans(&self, message: &ArcDynMessage) -> Vec<(String, Option<String>)> {
+        let message: &MessageX =
+            message.downcast_ref().expect("unexpected value in Any -> Message conversion");
+        Some((message.note.clone(), message.spans.first().map(|s| s.as_string.to_string())))
+            .into_iter()
+            .chain(
+                message.labels.iter().map(|l| (l.note.clone(), Some(l.span.as_string.to_string()))),
+            )
+            .collect()
+    }
+
     fn bare(&self, level: MessageLevel, note: &str) -> ArcDynMessage {
         Arc::new(MessageX {
             level,
@@ -236,8 +249,8 @@ impl air::messages::MessageInterface for VirMessageInterface {
             span: Span {
                 raw_span: Arc::new(()),
                 id: 0,
-                data: Vec::new(),
-                as_string: air_span.to_owned(),
+                data: Arc::new([]),
+                as_string: air_span.into(),
             },
             note: note.to_owned(),
             is_proof_note: false,
@@ -431,11 +444,15 @@ pub fn multiple_errors<'a, S: Into<String>>(
     multiple_message(MessageLevel::Error, note, spans)
 }
 
-/// Prepend the error with "Verus Internal Error"
+/// Prepend the error with "Verus internal error"
 /// Helpful for distinguishing user errors from Verus bugs.
 pub fn internal_error<S: Into<String>>(span: &Span, note: S) -> Message {
-    let msg = format!("Verus Internal Error: {:}", note.into());
-    message(MessageLevel::Error, msg, span)
+    let msg = format!("Verus internal error: {:}", note.into());
+    let e = message(MessageLevel::Error, msg, span);
+    match crate::util::get_verus_github_bug_report_url() {
+        Some(url) => e.help(format!("this is a bug in the verifier; please report it at {}", url)),
+        None => e,
+    }
 }
 
 /// Error message with a span to be highlighted with ^^^^^^, and a label for that span

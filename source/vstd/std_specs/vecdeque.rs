@@ -288,7 +288,10 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 

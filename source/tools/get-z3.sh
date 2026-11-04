@@ -25,7 +25,13 @@ elif [ `uname` == "Linux" ]; then
         exit -1
     fi
 elif [[ $(uname) == "MINGW64_NT"* ]]; then
-    filename="z3-$z3_version-x64-win"
+    # Git Bash runs emulated on Windows arm64, so `uname -m` says x86_64 there;
+    # only the system name carries the -ARM64 suffix.
+    if [[ $(uname) == *"-ARM64" ]]; then
+        filename="z3-$z3_version-arm64-win"
+    else
+        filename="z3-$z3_version-x64-win"
+    fi
 fi
 
 URL="https://github.com/Z3Prover/z3/releases/download/z3-$z3_version/$filename.zip"

@@ -30,7 +30,7 @@ Two particular abilities of ghost code[^note_tracked] are worth keeping in mind:
   even if the type doesn't implement the Rust `Copy` trait.
 - Ghost code can create a value of any type[^note_uninhabited],
   even if the type has no public constructors
-  (e.g. even if the type is struct whose fields are all private to another module).
+  (e.g. even if the type is a struct whose fields are all private to another module).
 
 For example, the following `spec` functions create and duplicate values of type `S`,
 defined in another module with private fields and without the `Copy` trait:

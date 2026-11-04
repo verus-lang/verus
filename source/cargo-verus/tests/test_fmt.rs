@@ -1,0 +1,52 @@
+use cargo_verus::{
+    BIN_NAME, ExecutionPlan, plan_execution,
+    test_utils::{MockPackage, MockWorkspace},
+};
+
+#[test]
+fn detects_cargo_vs_verus() {
+    let workspace = MockWorkspace::new()
+        .members([
+            MockPackage::new("ordinary").lib(),
+            MockPackage::new("verus").lib().verify(true),
+            MockPackage::new("verus_without_verification").lib().verify(false),
+            MockPackage::new("verus_formatted_as_rust").lib().verify(true).fmt_as_rust(true),
+        ])
+        .materialize();
+
+    let args = [BIN_NAME, "fmt", "--check"];
+    let plan = plan_execution(workspace.path(), args).expect("plan");
+    let ExecutionPlan::FormatSources(formatting_plan) = plan else {
+        panic!("expected formatting plan");
+    };
+    let manifest = |package| workspace.path().join(package).canonicalize().expect("canonicalize");
+
+    assert_eq!(
+        formatting_plan.cargo_targets,
+        [manifest("ordinary/Cargo.toml"), manifest("verus_formatted_as_rust/Cargo.toml")]
+    );
+    assert!(formatting_plan.is_check);
+    assert_eq!(
+        formatting_plan.verus_targets,
+        [manifest("verus/Cargo.toml"), manifest("verus_without_verification/Cargo.toml")]
+    );
+}
+
+#[test]
+fn package_selector_narrows_formatting_targets() {
+    let workspace = MockWorkspace::new()
+        .members([MockPackage::new("ordinary").lib(), MockPackage::new("verus").lib().verify(true)])
+        .materialize();
+
+    let args = [BIN_NAME, "fmt", "--package", "verus"];
+    let plan = plan_execution(workspace.path(), args).expect("plan");
+    let ExecutionPlan::FormatSources(formatting_plan) = plan else {
+        panic!("expected formatting plan");
+    };
+
+    assert!(formatting_plan.cargo_targets.is_empty());
+    assert_eq!(
+        formatting_plan.verus_targets,
+        [workspace.path().join("verus/Cargo.toml").canonicalize().expect("canonicalize")]
+    );
+}

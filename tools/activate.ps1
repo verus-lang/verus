@@ -5,3 +5,6 @@ cargo build --release
 Pop-Location
 
 $env:PATH = "$ScriptDir\vargo\target\release;$env:PATH"
+
+Write-Host "WARNING: Vargo is being deprecated. Use Cargo instead. Refer to `BUILD.md`."
+Write-Host "  See also: https://github.com/verus-lang/verus/pull/2686"

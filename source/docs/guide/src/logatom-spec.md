@@ -52,7 +52,7 @@ pub trait UpdateTry {
 
 The Verus standard library provides implementations of this trait for two types:
 
-- `AY = Result<T, E>` specifies an atomic update which can be committed by outputting `Ok(t)` and aborted using `Err(e)`; this is equivalent an Iris atomic update, except that we do not force `AX` and `E` to be the same.
+- `AY = Result<T, E>` specifies an atomic update which can be committed by outputting `Ok(t)` and aborted using `Err(e)`; this is equivalent to an Iris atomic update, except that we do not force `AX` and `E` to be the same.
 
 - `AY = Commit<T>` specifies an atomic update that cannot be aborted.
 

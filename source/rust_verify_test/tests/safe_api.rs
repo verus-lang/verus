@@ -9,7 +9,7 @@ test_verify_one_file_with_options! {
             requires x > 0,
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'requires' clause is nontrivial")
+    } => Err(err) => assert_vir_error_msg(err, "safe API violation: `requires` clause is nontrivial")
 }
 
 test_verify_one_file_with_options! {
@@ -75,7 +75,7 @@ test_verify_one_file_with_options! {
             fn test(x: u8) -> (y: u8)
                 ensures y > 0;
         }
-    } => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'ensures' clause is nontrivial")
+    } => Err(err) => assert_vir_error_msg(err, "safe API violation: `ensures` clause is nontrivial")
 }
 
 test_verify_one_file_with_options! {
@@ -84,7 +84,7 @@ test_verify_one_file_with_options! {
             fn test(x: u8) -> (y: u8)
                 no_unwind;
         }
-    } => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'unwind' clause is nontrivial")
+    } => Err(err) => assert_vir_error_msg(err, "safe API violation: `unwind` clause is nontrivial")
 }
 
 test_verify_one_file_with_options! {
@@ -93,7 +93,7 @@ test_verify_one_file_with_options! {
             fn test(x: u8) -> (y: u8)
                 no_unwind when x > 0;
         }
-    } => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'unwind' clause is nontrivial")
+    } => Err(err) => assert_vir_error_msg(err, "safe API violation: `unwind` clause is nontrivial")
 }
 
 test_verify_one_file_with_options! {
@@ -102,7 +102,7 @@ test_verify_one_file_with_options! {
             fn test(x: u8) -> (y: u8)
                 opens_invariants none;
         }
-    } => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'invariant' clause is nontrivial")
+    } => Err(err) => assert_vir_error_msg(err, "safe API violation: `invariant` clause is nontrivial")
 }
 
 test_verify_one_file_with_options! {
@@ -136,7 +136,7 @@ test_verify_one_file_with_options! {
             fn test(x: u8) {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'requires' clause is nontrivial")
+    } => Err(err) => assert_vir_error_msg(err, "safe API violation: `requires` clause is nontrivial")
 }
 
 test_verify_one_file_with_options! {
@@ -152,7 +152,7 @@ test_verify_one_file_with_options! {
             fn test(x: u8) {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'requires' clause is nontrivial")
+    } => Err(err) => assert_vir_error_msg(err, "safe API violation: `requires` clause is nontrivial")
 }
 
 test_verify_one_file_with_options! {
@@ -184,7 +184,7 @@ test_verify_one_file_with_options! {
 
         impl Foo for X {
         }
-    } => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'requires' clause is nontrivial")
+    } => Err(err) => assert_vir_error_msg(err, "safe API violation: `requires` clause is nontrivial")
 }
 
 // There are a few sneaky ways to smuggle private functions to the client
@@ -198,7 +198,7 @@ test_verify_one_file_with_options! {
             let f = |y: u32| requires y > 0 { };
             f
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not support opaque types together with the check-api-safety flag:")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `impl Trait` types together with the check-api-safety flag:")
 }
 
 test_verify_one_file_with_options! {
@@ -211,7 +211,7 @@ test_verify_one_file_with_options! {
         pub fn test() -> impl Fn(u32) {
             test2
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not support opaque types together with the check-api-safety flag:")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `impl Trait` types together with the check-api-safety flag:")
 }
 
 test_verify_one_file_with_options! {
@@ -225,7 +225,7 @@ test_verify_one_file_with_options! {
             test2
         }
     //} => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'requires' clause is nontrivial")
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: function pointer types")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support function pointer types")
 }
 
 test_verify_one_file_with_options! {
@@ -238,7 +238,7 @@ test_verify_one_file_with_options! {
         fn test() -> Box<dyn Fn(u32) -> ()> {
             Box::new(foo)
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dyn")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support dyn")
 }
 
 test_verify_one_file_with_options! {
@@ -267,7 +267,7 @@ test_verify_one_file_with_options! {
             fn exec_fn()
                 ensures Self::foo();
         }
-    } => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'ensures' clause is nontrivial")
+    } => Err(err) => assert_vir_error_msg(err, "safe API violation: `ensures` clause is nontrivial")
 }
 
 test_verify_one_file_with_options! {
@@ -297,7 +297,7 @@ test_verify_one_file_with_options! {
                 20
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'ensures' clause is nontrivial")
+    } => Err(err) => assert_vir_error_msg(err, "safe API violation: `ensures` clause is nontrivial")
 }
 
 test_verify_one_file_with_options! {
@@ -327,7 +327,7 @@ test_verify_one_file_with_options! {
             fn exec_fn(t: &mut u64) -> (r: u8)
                 ensures Self::foo(*final(t), r) ==> *final(t) == 8 && r == 20;
         }
-    } => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'ensures' clause is nontrivial")
+    } => Err(err) => assert_vir_error_msg(err, "safe API violation: `ensures` clause is nontrivial")
 }
 
 test_verify_one_file_with_options! {
@@ -426,7 +426,7 @@ test_verify_one_file_with_options! {
             proof fn proof_fn(tracked t: &mut int) -> (r: u8)
                 ensures Self::foo(*final(t), r) ==> *final(t) == 8 && r == 20;
         }
-    } => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'ensures' clause is nontrivial")
+    } => Err(err) => assert_vir_error_msg(err, "safe API violation: `ensures` clause is nontrivial")
 }
 
 test_verify_one_file_with_options! {
@@ -440,4 +440,19 @@ test_verify_one_file_with_options! {
                 ensures Self::foo(*final(t), r) ==> *final(t) == 8 && r == 20;
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] trait_decl_with_default_issue3214 ["-V check-api-safety"] => verus_code! {
+        use vstd::prelude::*;
+        pub trait Foo {
+            fn test(x: u8)
+                requires x > 0,
+            {
+                if x == 0 {
+                    unsafe { core::hint::unreachable_unchecked() }
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "safe API violation: `requires` clause is nontrivial for provided method `test_crate::Foo::test`")
 }

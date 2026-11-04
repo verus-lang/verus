@@ -23,7 +23,7 @@ By default, any variable in a proof function has `ghost` mode. Parameters, varia
 and return values may be marked tracked. For example:
 
 ```rust
-fn some_proof_fn(tracked param: Foo) -> (tracked ret: RetType) {
+proof fn some_proof_fn(tracked param: Foo) -> (tracked ret: RetType) {
     let tracked x = ...;
 }
 ```
@@ -34,7 +34,7 @@ for example.
 
 To mix-and-match tracked and ghost data, there are a few possibilities.
 First, you can create a struct
-marked `tracked`, which individual fields either marked `ghost` or `tracked`.
+marked `tracked`, with individual fields either marked `ghost` or `tracked`.
 
 Secondly, you can use the `Tracked` and `Ghost` types from Verus's builtin library to
 create tuples like `(Tracked<X>, Ghost<Y>)`. These support pattern matching:
@@ -69,7 +69,7 @@ fn some_exec_fn() {
 }
 ```
 
-Futhermore:
+Furthermore:
 
  * Arguments and return values for an `exec` function must be `exec` mode.
 
@@ -92,7 +92,7 @@ you can unwrap them via pattern matching:
 ```rust
 exec fn example(Tracked(x): Tracked<X>, Ghost(y): Ghost<Y>) {
     // Use `x` as if it were declared `let tracked x`
-    // Use `y` as if it were declared `let tracked y`
+    // Use `y` as if it were declared `let ghost y`
 }
 ```
 

@@ -135,9 +135,9 @@ which suppresses the note:
 
 In practice, a valid trigger needs to follow two rules: 
 
-1. A trigger for a statement needs to contain all of its non-free variables, meaning those variables that are instantiated by a forall or an exist.
-    In order to achieve this, you can split the trigger into multiple parts. You can learn more about this in the [next chapter](https://verus-lang.github.io/verus/guide/multitriggers.html)
-3. A trigger cannot contain equality or disequality (`==`, `===`, `!=`, or `!==`), any basic integer arithmetic operator (like `<=` or `+`), or any basic boolean operator (like `&&`)
+1. A trigger for a statement needs to contain all of its non-free variables, meaning those variables that are instantiated by a `forall` or an `exists`.
+    In order to achieve this, you can split the trigger into multiple parts. You can learn more about this in the [next section](./multitriggers.md).
+2. A trigger cannot contain equality or disequality (`==`, `===`, `!=`, or `!==`), any basic integer arithmetic operator (like `<=` or `+`), or any basic boolean operator (like `&&`)
 
 Suppose we want to choose the following invalid trigger, `0 <= i`:
 
@@ -145,7 +145,7 @@ Suppose we want to choose the following invalid trigger, `0 <= i`:
 {{#include ../../../../examples/guide/quants.rs:test_use_forall_bad1}}
 ```
 
-this will result in the following error: 
+This will result in the following error: 
 
 ```
 error: trigger must be a function call, a field access, or a bitwise operator
@@ -153,7 +153,7 @@ error: trigger must be a function call, a field access, or a bitwise operator
     |         forall|i: int| (#[trigger](0 <= i)) && i < s.len() ==> is_even(s[i]),
     |                        ^^^^^^^^^^^^^^^^^^^^
 ```
-if we really wanted to, we could make it a valid trigger by introducing an extra function:
+If we really wanted to, we could make it a valid trigger by introducing an extra function:
 
 ```rust
 {{#include ../../../../examples/guide/quants.rs:test_use_forall_bad2}}
@@ -162,7 +162,7 @@ if we really wanted to, we could make it a valid trigger by introducing an extra
 but this trigger fails to match because the code doesn't explicitly mention `nonnegative(3)`
 (you'd have to add an explicit `assert(nonnegative(3))` to make the code work).
 
-## Good triggers and  bad triggers
+## Good triggers and bad triggers
 
 Going back to our original example: 
 
@@ -181,7 +181,7 @@ irrelevant instantiations that clog up the SMT solver with useless information,
 slowing down the proof.
 
 In this case, `s[i]` is probably a good trigger to choose.
-It matches whenever the function `test_use_forall_succeeds4`
+It matches whenever the function `test_use_forall_succeeds3`
 talks about an element of the sequence `s`,
 yielding a fact that is likely to be useful for reasoning about `s`.
 

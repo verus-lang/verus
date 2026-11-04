@@ -24,7 +24,7 @@ pub(crate) fn vir_err_span_string(span: Span, msg: String) -> VirErr {
 }
 
 pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {
-    err_span(span, format!("The verifier does not yet support the following Rust feature: {}", msg))
+    err_span(span, format!("Verus does not currently support {}", msg))
 }
 
 pub(crate) fn internal_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {
@@ -68,6 +68,21 @@ macro_rules! internal_err {
         $crate::util::internal_err_span($span, $msg.to_string())?;
         unreachable!()
     }};
+}
+
+#[macro_export]
+macro_rules! internal_err_unless {
+    ($assertion: expr, $span: expr, $msg: expr) => {
+        if (!$assertion) {
+            $crate::util::internal_err_span($span, $msg.to_string())?;
+        }
+    };
+    ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
+        if (!$assertion) {
+            dbg!($info);
+            $crate::util::internal_err_span($span, $msg.to_string())?;
+        }
+    };
 }
 
 #[macro_export]
@@ -364,8 +379,8 @@ where
 
 pub(crate) fn no_builtin_err(span: &vir::messages::Span) -> VirErr {
     vir::messages::error(span,
-        "Error: The verus_builtin crate was not imported but it is necessary to run Verus. You likely need to add `use vstd::prelude::*;` at the top of a lib.rs or main.rs file.")
-    .help("For getting started with Verus, see: https://verus-lang.github.io/verus/guide/getting_started.html")
+        "the `verus_builtin` crate was not imported but it is necessary to run Verus; you likely need to add `use vstd::prelude::*;` at the top of a lib.rs or main.rs file")
+    .help("for getting started with Verus, see: https://verus-lang.github.io/verus/guide/getting_started.html")
 }
 
 pub(crate) fn iter_crate_free_items<'tcx>(

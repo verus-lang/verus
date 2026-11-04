@@ -104,6 +104,17 @@ fn run_example_for_file(file_path: &str) {
     }
     std::fs::create_dir_all(&example_out_dir).unwrap();
 
+    {
+        // same naming scheme as examples_in_dir!
+        let dir = relative_path.parent().unwrap().to_str().unwrap();
+        let test_name = dir.replace("../../", "").replace("/", "_").replace("-", "_")
+            + "_"
+            + &relative_path.file_prefix().unwrap().to_str().unwrap().replace("-", "_");
+        let file_name = relative_path.file_name().unwrap().to_str().unwrap().to_string();
+        let contents = std::fs::read_to_string(&relative_path).expect("cannot read example");
+        let files = [(file_name.clone(), contents)];
+        prepare_test_log_dir("examples", &test_name, &file_name, &files, &options);
+    }
     let output = run_verus(&options, &example_out_dir, &relative_path, true, true);
 
     use regex::Regex;
