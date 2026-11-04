@@ -8,7 +8,6 @@ test_verify_one_file! {
         mod M1 {
             use verus_builtin::*;
 
-            #[derive(PartialEq, Eq)]
             pub struct Car {
                 passengers: nat,
                 pub four_doors: bool,
@@ -25,8 +24,8 @@ test_verify_one_file! {
     #[test] test_needs_pub_abstract2 verus_code! {
         mod M1 {
             use verus_builtin::*;
+            use vstd::prelude::*;
 
-            #[derive(PartialEq, Eq)]
             pub struct Car {
                 passengers: nat,
                 pub four_doors: bool,
@@ -72,7 +71,6 @@ const M1: &str = verus_code_str! {
     mod M1 {
         use verus_builtin::*;
 
-        #[derive(PartialEq, Eq)]
         pub struct Car {
             passengers: nat,
             pub four_doors: bool,
@@ -82,7 +80,6 @@ const M1: &str = verus_code_str! {
             c.passengers
         }
 
-        #[derive(PartialEq, Eq)]
         pub struct Bike {
             pub hard_tail: bool,
         }

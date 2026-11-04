@@ -4,7 +4,6 @@ mod common;
 use common::*;
 
 const STRUCT: &str = verus_code_str! {
-    #[derive(PartialEq, Eq)]
     struct Bike {
         hard_tail: bool,
     }
@@ -60,7 +59,6 @@ test_verify_one_file! {
         mod M1 {
             use verus_builtin::*;
 
-            #[derive(PartialEq, Eq)]
             pub struct Bike {
                 pub hard_tail: bool,
             }

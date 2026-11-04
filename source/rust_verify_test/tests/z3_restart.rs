@@ -27,7 +27,6 @@ test_verify_one_file! {
 // From https://github.com/verus-lang/verus/blob/ad92b2a8908a219ec84c277d2bb701934e9a8d9c/source/rust_verify/tests/adts_generics.rs#L1
 test_verify_one_file! {
     #[test] test_box_unbox_struct verus_code! {
-        #[derive(Eq, PartialEq)]
         struct Thing<A> {
             a: A,
         }
