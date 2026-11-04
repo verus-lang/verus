@@ -206,7 +206,6 @@ pub proof fn transmute_const_ptr_metasized_usize_injective<T: core::ptr::Pointee
     let bytes = <*const T as TypeRepresentation>::encoding_exists(&x, arbitrary());
 }
 
-// TODO - test cases for &T, &U
 /// A value `x: &T` can be transmuted to itself.
 #[verifier::shadow_data]
 pub proof fn transmute_shr_ref_reflexive<T: ?Sized + TypeRepresentation>(tracked x: &T, tracked y: &T)
