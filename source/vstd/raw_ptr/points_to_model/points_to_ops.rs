@@ -1505,6 +1505,8 @@ impl<T> PointsTo<[T]> {
     ///
     /// (3) `self.len() * size_of::<T>() == size_of::<V>()`.
     ///
+    /// (4) Every `V` value satisfies its type invariant (`TrivialOwnership::type_inv`).
+    ///
     /// The `V`'s value is the integer with the `T`s as its digits,
     /// in this platform's endianness (`to_big_from_digits`),
     /// and the bytes are unchanged.
@@ -1597,6 +1599,8 @@ impl<T> PointsTo<[T]> {
     /// (3) `self.len() * size_of::<T>() == size_of::<V>()`.
     ///
     /// (4) The pointer's address is aligned to `V`.
+    ///
+    /// (5) Every `V` value satisfies its type invariant (`TrivialOwnership::type_inv`).
     ///
     /// The `V`'s value is the integer with the `T`s as its digits,
     /// in this platform's endianness (`to_big_from_digits`),

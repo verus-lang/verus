@@ -15,10 +15,10 @@ use super::endian::*;
 use super::layout::*;
 use super::math::*;
 use super::prelude::*;
-use super::raw_ptr::{shared_ref_ptr, Provenance};
+use super::raw_ptr::{shared_ref_ptr, Provenance, PtrData};
 use super::seq::*;
 use crate::vstd::group_vstd_default;
-use core::marker::{MetaSized, PhantomData};
+use core::marker::MetaSized;
 
 verus! {
 
@@ -97,20 +97,18 @@ impl AbstractByte {
 /// Implementors of this trait must ensure that the specifications satisfy several properties by proving the lemmas on this trait.
 /// While the specifications defined by implementations of this trait are trusted, these lemmas help check for unsound or vacuous specifications.
 /// The required properties are:
-/// (1) Any abstract byte sequence satisfying `encode` or `decode` is the correct size for the type, as specified by `size_of::<T>()`.
+/// (1) Any abstract byte sequence satisfying `encode` or `decode` is the correct size for the value, as specified by `spec_size_of_val`.
 /// (2) Any `tracked` value of the type has at least one abstract byte sequence satisfying `encode`. 
-/// This requirement is on `tracked` values only because this restricts lemma to values satisfying the type invariant.
+/// This requirement is on `tracked` values only because this restricts the lemma to values satisfying the type invariant.
 /// (3) Any abstract byte sequence that encodes a value of the type must decode into the same value.
+/// (4) If the encoding does not depend on shadow data, then `encode` and `decode` give the same result for any shadow data.
 pub trait TypeRepresentation where Self: MetaSized {
     /// Is encoding allowed for this type?
-    /// Because `can_be_encoded` is a precondition for `abs_encode_impl` and `abs_can_be_encoded_impl`,
-    /// this definition allows the encoding to be conditionally implement `abs_encode`, `abs_decode`, and `abs_can_be_encoded_impl`.
+    /// Because `can_be_encoded` is a precondition for the lemmas on this trait and for transmutes,
+    /// this allows the encoding to be conditionally defined, e.g. only for some type arguments.
     spec fn can_be_encoded() -> bool;
 
     /// Does this type's abstract byte encoding depend on the value's shadow data?
-    /// Shadow data is only observable for shared reference types, so this is `false` for
-    /// almost every type. When it is `false`, `encode`/`decode` ignore their `shadow_data`
-    /// argument entirely and the `*_no_shadow_data` forms below are the canonical ones.
     spec fn encoding_depends_on_shadow_data() -> bool;
 
     /// Can `value` be encoded to the given bytes, for a type whose encoding does not
@@ -151,8 +149,7 @@ pub trait TypeRepresentation where Self: MetaSized {
 
     // Required properties for a valid encoding.
     /// If `encoding_depends_on_shadow_data()` is `false`, then the encoding really must not
-    /// vary with the shadow data. This checks that an implementation has not misdeclared the
-    /// flag, e.g. by overriding `encode`/`decode` with shadow-data-dependent definitions.
+    /// vary with the shadow data.
     proof fn encoding_independent_of_shadow_data(
         v: &Self,
         shadow_data1: ShadowData<Self>,
@@ -259,7 +256,7 @@ impl TypeRepresentation for bool {
 }
 
 // We utilize the EndianNat type to transform an unsigned int to its byte representation.
-/// Convert the given `EndianNat` representation to `AbtractByte`s with the given provenance.
+/// Convert the given `EndianNat` representation to `AbstractByte`s with the given provenance.
 pub open spec fn endian_to_bytes(endian: EndianNat<u8>, prov: Option<Provenance>) -> Seq<
     AbstractByte,
 >
@@ -277,7 +274,7 @@ pub open spec fn bytes_to_endian(bytes: Seq<AbstractByte>) -> EndianNat<u8>
     EndianNat::<u8>::new_default(bytes.map_values(|b: AbstractByte| b.byte() as int))
 }
 
-/// Ensures that converting from an `EndianNat` representation to `AbtractByte`s and back results in the same `EndianNat`.
+/// Ensures that converting from an `EndianNat` representation to `AbstractByte`s and back results in the same `EndianNat`.
 pub broadcast proof fn endian_to_bytes_to_endian(n: nat, len: nat, prov: Option<Provenance>)
     requires
         pow(u8::base() as int, len) > n,
@@ -372,7 +369,7 @@ macro_rules! unsigned_int_encoding {
                 }
 
                 open spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &$int) -> bool {
-                    // fail if any byte is uninitalized or if the byte sequence is not the necessary length
+                    // fail if any byte is uninitialized or if the byte sequence is not the necessary length
                     &&& bytes.len() == size_of::<$int>()
                     &&& AbstractByte::all_init(bytes)
                     &&& {
@@ -423,7 +420,7 @@ macro_rules! unsigned_int_encoding {
                 }
             }
 
-            /// Useful properties about `$int::encode(v, bytes)`.
+            /// Useful properties about `$int::encode(v, shadow_data, bytes)`.
             pub broadcast proof fn $lemma_name(v: $int, bytes: Seq<AbstractByte>)
                 requires
                     #[trigger] $int::encode(&v, arbitrary(), bytes),
@@ -704,7 +701,7 @@ macro_rules! signed_int_encoding {
                 }
 
                 open spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &$int) -> bool {
-                    // fail if any byte is uninitalized or if the byte sequence is not the necessary length
+                    // fail if any byte is uninitialized or if the byte sequence is not the necessary length
                     &&& bytes.len() == size_of::<$int>()
                     &&& AbstractByte::all_init(bytes)
                     &&& {
@@ -755,7 +752,7 @@ macro_rules! signed_int_encoding {
                 }
             }
 
-            /// Useful properties about `$int::encode(v, bytes)`.
+            /// Useful properties about `$int::encode(v, shadow_data, bytes)`.
             pub broadcast proof fn $lemma_name(v: $int, bytes: Seq<AbstractByte>)
                 requires
                     #[trigger] $int::encode(&v, arbitrary(), bytes),
@@ -798,7 +795,43 @@ pub open spec fn encoding_exists<T: TypeRepresentation>(value: T) -> bool {
     exists|bytes| #[trigger] T::encode(&value, arbitrary(), bytes)
 }
 
-/// Implements `AbstractByteEncodingFor` for raw pointers.
+/// Abstract bytes encoding a pointer with the given address, provenance and metadata,
+/// as specified by the `TypeRepresentation` for raw pointers.
+proof fn ptr_data_encoding_exists<T: core::marker::PointeeSized>(data: PtrData<T>) -> (b: Seq<AbstractByte>)
+    where <T as core::ptr::Pointee>::Metadata: TypeRepresentation
+    requires
+        <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::can_be_encoded(),
+        encoding_exists::<<T as core::ptr::Pointee>::Metadata>(data.metadata),
+    ensures
+        b.len() == size_of::<*mut T>(),
+        b.subrange(0, size_of::<usize>() as int) == endian_to_bytes(
+            EndianNat::<u8>::from_nat(data.addr as nat, size_of::<usize>()),
+            Some(data.provenance),
+        ),
+        <<T as core::ptr::Pointee>::Metadata>::encode(
+            &data.metadata,
+            arbitrary(),
+            b.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int),
+        ),
+{
+    broadcast use endian_to_bytes_to_endian;
+
+    unsigned_int_max_values();
+    let prefix = endian_to_bytes(
+        EndianNat::<u8>::from_nat(data.addr as nat, size_of::<usize>()),
+        Some(data.provenance),
+    );
+    let suffix = choose|bytes| <<T as core::ptr::Pointee>::Metadata>::encode(&data.metadata, arbitrary(), bytes);
+    <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::encoding_size(&data.metadata, arbitrary(), suffix);
+    // the metadata type is `Sized`, so its value size is its type size
+    layout_of_sized::<<T as core::ptr::Pointee>::Metadata>(&data.metadata);
+    let b = prefix.add(suffix);
+    assert(b.subrange(0, size_of::<usize>() as int) == prefix);
+    assert(b.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int) == suffix);
+    b
+}
+
+/// Implements `TypeRepresentation` for raw pointers.
 ///
 /// This encoding is intended to be shared across `*const T` and `*mut T`, as both types have the same layout 
 /// (see: [Raw pointer type layout](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer)).
@@ -860,7 +893,7 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                 open spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &Self) -> bool {
                     let prefix = bytes.subrange(0, size_of::<usize>() as int);
                     let suffix = bytes.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int);
-                    // fail if any byte is uninitalized or if the byte sequence is not the necessary length
+                    // fail if any byte is uninitialized or if the byte sequence is not the necessary length
                     &&& bytes.len() == size_of::<*mut T>()
                     &&& AbstractByte::all_init(prefix)
                     &&& {
@@ -903,29 +936,7 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                 }
 
                 proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
-                    let tracked m = *v as *mut T;
-                    broadcast use endian_to_bytes_to_endian;
-
-                    unsigned_int_max_values();
-                    let prefix = endian_to_bytes(
-                        EndianNat::<u8>::from_nat(v@.addr as nat, size_of::<usize>()),
-                        Some(v@.provenance),
-                    );
-
-                    assert(encoding_exists::<<T as core::ptr::Pointee>::Metadata>(v@.metadata));
-                    let suffix = choose|bytes|
-                        <<T as core::ptr::Pointee>::Metadata>::encode(&v@.metadata, arbitrary(), bytes);
-                    <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::encoding_size(
-                        &v@.metadata,
-                        arbitrary(),
-                        suffix,
-                    );
-                    // the metadata type is `Sized`, so its value size is its type size
-                    layout_of_sized::<<T as core::ptr::Pointee>::Metadata>(&v@.metadata);
-                    let b = prefix.add(suffix);
-                    assert(b.subrange(0, size_of::<usize>() as int) == prefix);
-                    assert(b.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int) == suffix);
-                    b
+                    ptr_data_encoding_exists(v@)
                 }
 
                 proof fn encoding_invertible(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
@@ -944,7 +955,7 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                 }
             }
 
-            /// Useful properties for `<*$mutability T as TypeRepresentation>::encode(v, bytes)`.
+            /// Useful properties for `<*$mutability T as TypeRepresentation>::encode(v, shadow_data, bytes)`.
             pub broadcast proof fn $lemma_name<T: ?Sized>(v: *$mutability T, bytes: Seq<AbstractByte>) where
                 <T as core::ptr::Pointee>::Metadata: TypeRepresentation,
                 requires
@@ -1005,7 +1016,7 @@ pub broadcast proof fn sized_ptr_can_be_encoded<T: Sized>()
     }
 }
 
-/// For `T = [T]`, `*mut T` and `*const T` can always be encoded.
+/// For slices `[T]`, `*mut [T]` and `*const [T]` can always be encoded.
 pub broadcast proof fn slice_ptr_can_be_encoded<T>()
     ensures
         #![trigger <*mut [T] as TypeRepresentation>::can_be_encoded()] 
@@ -1015,8 +1026,6 @@ pub broadcast proof fn slice_ptr_can_be_encoded<T>()
 {
     assert forall|value| #[trigger]
         encoding_exists::<usize>(value) by {
-        broadcast use usize_encode;
-
         let bytes = endian_to_bytes(
             EndianNat::<u8>::from_nat(value as nat, size_of::<usize>()),
             None,
@@ -1088,27 +1097,7 @@ impl<T: ?Sized> TypeRepresentation for &T
     }
 
     proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
-        broadcast use endian_to_bytes_to_endian;
-
-        unsigned_int_max_values();
-        let prefix = endian_to_bytes(
-            EndianNat::<u8>::from_nat(shared_ref_ptr(shadow_data)@.addr as nat, size_of::<usize>()),
-            Some(shared_ref_ptr(shadow_data)@.provenance),
-        );
-
-        assert(encoding_exists::<<T as core::ptr::Pointee>::Metadata>(shared_ref_ptr(shadow_data)@.metadata));
-        let suffix = choose|bytes| <<T as core::ptr::Pointee>::Metadata>::encode(&shared_ref_ptr(shadow_data)@.metadata, arbitrary(), bytes);
-        <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::encoding_size(
-            &shared_ref_ptr(shadow_data)@.metadata,
-            arbitrary(),
-            suffix,
-        );
-        // the metadata type is `Sized`, so its value size is its type size
-        layout_of_sized::<<T as core::ptr::Pointee>::Metadata>(&shared_ref_ptr(shadow_data)@.metadata);
-        let b = prefix.add(suffix);
-        assert(b.subrange(0, size_of::<usize>() as int) == prefix);
-        assert(b.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int) == suffix);
-        b
+        ptr_data_encoding_exists(shared_ref_ptr(shadow_data)@)
     }
 
     proof fn encoding_invertible(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
@@ -1209,8 +1198,8 @@ impl_type_representation_for_zero_sized_type! {
     ((), open);
 }
 
-/// This trait is intended to be implemented on types a primitive type representation,
-/// i.e. types defined with the `#[repr(<primitive>)]` attribute
+/// This trait is intended to be implemented on types with a primitive type representation,
+/// i.e. types defined with the `#[repr(primitive)]` attribute
 /// (see: [Primitive representations](https://doc.rust-lang.org/reference/type-layout.html#primitive-representation-of-field-less-enums)).
 /// Intended to be used in conjunction with the `impl_type_representation_for_primitive_repr` macro.
 pub trait PrimitiveTypeRepresentation<Primitive: TypeRepresentation> where Self: Sized {
@@ -1301,8 +1290,8 @@ macro_rules! impl_type_representation_for_primitive_repr {
 
 pub(crate) use impl_type_representation_for_primitive_repr;
 
-/// This trait is intended to be implemented on types a transparent type representation,
-/// i.e. types defined with the `#[repr(<transparent>)]` attribute
+/// This trait is intended to be implemented on types with a transparent type representation,
+/// i.e. types defined with the `#[repr(transparent)]` attribute
 /// (see: [Transparent representations](https://doc.rust-lang.org/reference/type-layout.html#the-transparent-representation)).
 /// Intended to be used in conjunction with the `impl_type_representation_for_transparent_repr` macro.
 pub trait TransparentTypeRepresentation<Inner: TypeRepresentation> where Self: Sized {
@@ -1537,8 +1526,6 @@ impl<T: TypeRepresentation> TypeRepresentation for [T] {
     }
 
     proof fn encoding_size(v: &[T], shadow_data: ShadowData<[T]>, b: Seq<AbstractByte>) {
-        broadcast use layout_of_slices;
-
     }
 
     proof fn encoding_exists(tracked v: &[T], shadow_data: ShadowData<[T]>) -> (b: Seq<AbstractByte>) {
@@ -1574,8 +1561,6 @@ proof fn slice_encoding_exists_prefix<T: TypeRepresentation>(tracked v: &[T], n:
         ),
     decreases n,
 {
-    broadcast use layout_of_sized;
-
     let s = size_of::<T>() as int;
     lemma_mul_basics(s);
     if n == 0 {
@@ -1585,17 +1570,14 @@ proof fn slice_encoding_exists_prefix<T: TypeRepresentation>(tracked v: &[T], n:
         let tracked e = super::slice::tracked_slice_index(v, n - 1);
         let e_bytes = T::encoding_exists(e, arbitrary());
         T::encoding_size(e, arbitrary(), e_bytes);
-        assert(e_bytes.len() == s);
         let b = prev + e_bytes;
         lemma_mul_is_distributive_add_other_way(s, n - 1, 1);
-        assert(b.len() == n * s);
         assert forall|i: int| #![trigger v@[i]] 0 <= i < n implies T::encode(
             &v@[i],
             arbitrary(),
             b.subrange(i * s, (i + 1) * s),
         ) by {
             if i < n - 1 {
-                lemma_mul_nonnegative(i, s);
                 lemma_mul_inequality(i, i + 1, s);
                 lemma_mul_inequality(i + 1, n - 1, s);
                 assert(b.subrange(i * s, (i + 1) * s) =~= prev.subrange(i * s, (i + 1) * s));

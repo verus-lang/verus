@@ -57,7 +57,7 @@ pub axiom fn tracked_from_spec_ref<'a, T: ?Sized + TrivialOwnership>(v: &T) -> (
     ensures
         out == v;
 
-/// Implements `TrivialOwnership` with a trivial type invariant a given type.
+/// Implements `TrivialOwnership` with a trivial type invariant for a given type.
 /// The type must own no resources (no permissions, tokens or other tracked data)
 /// and must not have a `#[verifier::type_invariant]`.
 macro_rules! impl_trivial_ownership {
@@ -72,22 +72,24 @@ macro_rules! impl_trivial_ownership {
     )*};
 }
 
-impl_trivial_ownership!(u8);
-impl_trivial_ownership!(u16);
-impl_trivial_ownership!(u32);
-impl_trivial_ownership!(u64);
-impl_trivial_ownership!(u128);
-impl_trivial_ownership!(usize);
-impl_trivial_ownership!(i8);
-impl_trivial_ownership!(i16);
-impl_trivial_ownership!(i32);
-impl_trivial_ownership!(i64);
-impl_trivial_ownership!(i128);
-impl_trivial_ownership!(isize);
-impl_trivial_ownership!(bool);
-impl_trivial_ownership!(());
-impl_trivial_ownership!(char);
-impl_trivial_ownership!(str);
+impl_trivial_ownership!(
+    u8,
+    u16,
+    u32,
+    u64,
+    u128,
+    usize,
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    isize,
+    bool,
+    (),
+    char,
+    str,
+);
 
 unsafe impl<T> TrivialOwnership for *const T {
     open spec fn type_inv(&self) -> bool {
