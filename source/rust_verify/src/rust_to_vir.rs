@@ -41,6 +41,9 @@ use vir::context::{WarningConfig, WarningCtx};
 pub(crate) struct State {
     pub(crate) external_info: ExternalInfo,
     pub(crate) fun_warn_configs: HashMap<Fun, WarningConfig>,
+    /// For each `TrivialClone` impl: (span of the `TrivialClone` impl, DefId of the
+    /// corresponding `Clone` impl)
+    pub(crate) trivial_clone_impls: Vec<(rustc_span::Span, DefId)>,
 }
 
 impl State {
@@ -558,7 +561,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
         .insert(tcx.get_diagnostic_item(rustc_span::sym::Send).expect("send"));
 
     let fun_warn_configs = HashMap::new();
-    let mut state = State { external_info, fun_warn_configs };
+    let mut state = State { external_info, fun_warn_configs, trivial_clone_impls: Vec::new() };
 
     let mut errors = vec![];
 
@@ -737,6 +740,14 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
     }
 
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&CrateId::Vstd);
+
+    crate::rust_to_vir_impl::set_trivial_clone_attrs(
+        &ctxt,
+        &vir,
+        &mut infos,
+        &state.trivial_clone_impls,
+    )
+    .map_err(|e| (vec![e], None))?;
 
     let anon_consts = collect_anon_consts(&ctxt, &mut state, crate_items);
 
