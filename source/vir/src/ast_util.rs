@@ -1553,7 +1553,7 @@ fn place_to_friendly_string_rec(p: &Place, has_suffix: bool) -> String {
         PlaceX::Field(opr, p) => {
             format!("{:}.{:}", place_to_friendly_string_rec(p, true), opr.field)
         }
-        PlaceX::Index(..) => {
+        PlaceX::Index(p, ..) => {
             format!("{:}[_]", place_to_friendly_string_rec(p, true))
         }
         PlaceX::DerefMut(p) | PlaceX::ModeUnwrap(p, _) => {
