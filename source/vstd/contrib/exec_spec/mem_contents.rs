@@ -20,6 +20,16 @@ pub enum ExecMemContents<T> {
     Init(T),
 }
 
+impl<T: core::fmt::Debug> crate::std_specs::fmt::DebugSpecImpl for ExecMemContents<T> {
+    open spec fn fmt_req(&self, f: &core::fmt::Formatter<'_>) -> bool {
+        match self {
+            ExecMemContents::Uninit => true,
+            ExecMemContents::Init(t) => forall|f2: &core::fmt::Formatter<'_>| #[trigger]
+                crate::std_specs::fmt::DebugSpec::fmt_req(t, f2),
+        }
+    }
+}
+
 #[allow(non_snake_case)]
 impl<T: DeepView> ExecMemContents<T> {
     #[inline(always)]

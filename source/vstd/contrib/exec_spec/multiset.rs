@@ -20,6 +20,15 @@ pub struct ExecMultiset<T: std::hash::Hash + std::cmp::Eq> {
     pub m: HashMap<T, usize>,
 }
 
+impl<
+    T: std::hash::Hash + std::cmp::Eq + core::fmt::Debug,
+> crate::std_specs::fmt::DebugSpecImpl for ExecMultiset<T> {
+    open spec fn fmt_req(&self, f: &core::fmt::Formatter<'_>) -> bool {
+        forall|f2: &core::fmt::Formatter<'_>| #[trigger]
+            crate::std_specs::fmt::DebugSpec::fmt_req(&self.m, f2)
+    }
+}
+
 /// Compares multiplicities, where an absent element has multiplicity 0 (as in the deep view).
 impl<T: std::hash::Hash + std::cmp::Eq> PartialEq for ExecMultiset<T> {
     #[verifier::external_body]

@@ -168,6 +168,187 @@ pub assume_specification<'a, const N: usize, const M: usize>[ arguments_new ](
 ) -> Arguments<'a>
 ;
 
+// Formatter functions, including those emitted by #[derive(Debug)]
+// (see rustc_builtin_macros/src/deriving/debug.rs)
+impl<T: core::fmt::Debug + ?Sized> DebugSpecImpl for &T {
+    open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
+        DebugSpec::fmt_req(*self, f)
+    }
+}
+
+pub assume_specification<'a>[ Formatter::<'a>::write_str ](
+    f: &mut Formatter<'a>,
+    data: &str,
+) -> Result<(), Error>
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field1_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    value1: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+    requires
+        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field1_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    name1: &str,
+    value1: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+    requires
+        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field2_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    value1: &dyn core::fmt::Debug,
+    value2: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+    requires
+        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field2_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    name1: &str,
+    value1: &dyn core::fmt::Debug,
+    name2: &str,
+    value2: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+    requires
+        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field3_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    value1: &dyn core::fmt::Debug,
+    value2: &dyn core::fmt::Debug,
+    value3: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+    requires
+        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value3.fmt_req(f2),
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field3_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    name1: &str,
+    value1: &dyn core::fmt::Debug,
+    name2: &str,
+    value2: &dyn core::fmt::Debug,
+    name3: &str,
+    value3: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+    requires
+        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value3.fmt_req(f2),
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field4_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    value1: &dyn core::fmt::Debug,
+    value2: &dyn core::fmt::Debug,
+    value3: &dyn core::fmt::Debug,
+    value4: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+    requires
+        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value3.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value4.fmt_req(f2),
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field4_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    name1: &str,
+    value1: &dyn core::fmt::Debug,
+    name2: &str,
+    value2: &dyn core::fmt::Debug,
+    name3: &str,
+    value3: &dyn core::fmt::Debug,
+    name4: &str,
+    value4: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+    requires
+        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value3.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value4.fmt_req(f2),
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field5_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    value1: &dyn core::fmt::Debug,
+    value2: &dyn core::fmt::Debug,
+    value3: &dyn core::fmt::Debug,
+    value4: &dyn core::fmt::Debug,
+    value5: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+    requires
+        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value3.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value4.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value5.fmt_req(f2),
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field5_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    name1: &str,
+    value1: &dyn core::fmt::Debug,
+    name2: &str,
+    value2: &dyn core::fmt::Debug,
+    name3: &str,
+    value3: &dyn core::fmt::Debug,
+    name4: &str,
+    value4: &dyn core::fmt::Debug,
+    name5: &str,
+    value5: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+    requires
+        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value3.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value4.fmt_req(f2),
+        forall|f2: &Formatter<'a>| value5.fmt_req(f2),
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_fields_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    values: &[&dyn core::fmt::Debug],
+) -> Result<(), Error>
+    requires
+        forall|i: int, f2: &Formatter<'a>|
+            0 <= i < values@.len() ==> #[trigger] values@[i].fmt_req(f2),
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_fields_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    names: &[&str],
+    values: &[&dyn core::fmt::Debug],
+) -> Result<(), Error>
+    requires
+        names@.len() == values@.len(),
+        forall|i: int, f2: &Formatter<'a>|
+            0 <= i < values@.len() ==> #[trigger] values@[i].fmt_req(f2),
+;
+
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification[ alloc::fmt::format ](args: Arguments<'_>) -> alloc::string::String
 ;
@@ -260,6 +441,22 @@ def_trait_axiom!(core::fmt::UpperExp, axiom_fmt_req_all_upper_exp);
 
 def_trait_axiom!(core::fmt::UpperHex, axiom_fmt_req_all_upper_hex);
 
+// Connects `fmt_req` of a `dyn Debug` value to `fmt_req` of the underlying value.
+// (Verus automatically generates this connection only for types with an explicit
+// `DebugSpecImpl`; this extends it to types whose `fmt_req` is given by other axioms,
+// such as `axiom_fmt_req_all_debug`.)
+// TODO: remove this after https://github.com/verus-lang/verus/issues/2725 is fixed
+pub broadcast axiom fn axiom_fmt_req_dyn_debug<A: core::fmt::Debug>(a: &A, f: &Formatter)
+    ensures
+        #[trigger] DebugSpec::fmt_req(to_dyn_debug(a), f) == DebugSpec::fmt_req(a, f),
+;
+
+#[doc(hidden)]
+#[verifier::inline]
+pub open spec fn to_dyn_debug<'a, A: core::fmt::Debug>(a: &'a A) -> &'a dyn core::fmt::Debug {
+    a
+}
+
 pub broadcast group group_fmt_axioms {
     // types
     axiom_fmt_req_all_u8,
@@ -293,6 +490,8 @@ pub broadcast group group_fmt_axioms {
     axiom_fmt_req_all_pointer,
     axiom_fmt_req_all_upper_exp,
     axiom_fmt_req_all_upper_hex,
+    // dyn
+    axiom_fmt_req_dyn_debug,
 }
 
 } // verus!

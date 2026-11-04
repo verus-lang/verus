@@ -592,8 +592,12 @@ impl<'tcx> Query<'tcx> {
         self.emit_diags(diags);
         let () = check.map_err(|e| self.emit_error(e))?;
 
-        vir::well_formed::finish_dyn_compatability_checks(&krate, all_dyn_compatability_checks)
-            .map_err(|e| self.emit_errors(e))?;
+        vir::well_formed::finish_dyn_compatability_checks(
+            &krate,
+            &other_vir_crates,
+            all_dyn_compatability_checks,
+        )
+        .map_err(|e| self.emit_errors(e))?;
 
         Ok(krate)
     }
