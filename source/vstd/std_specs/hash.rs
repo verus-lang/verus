@@ -520,6 +520,7 @@ pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, 
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> IteratorSpec::remaining(
             &iter,
         ).to_set() == m@.kv_pairs(),
+        iter.remaining().no_duplicates(),
         into_iter_entries(iter) == IteratorSpec::remaining(&iter),
         IteratorSpec::decrease(&iter) is Some,
 ;
