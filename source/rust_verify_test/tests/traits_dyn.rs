@@ -758,3 +758,23 @@ test_verify_one_file! {
         fn test(x: &dyn T) {}
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] dyn_array_has_type verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            spec fn f(&self) -> u8;
+        }
+        impl T for u8 {
+            spec fn f(&self) -> u8 { *self }
+        }
+        fn test(a: &u8, b: &u8) {
+            let arr: [&dyn T; 2] = [a, b];
+            assert(arr@.len() == 2);
+            let s: &[&dyn T] = &[a, b];
+            assert(s@.len() == 2);
+            assert(s@[1].f() == *b);
+            assert(s@[0].f() == *b); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
