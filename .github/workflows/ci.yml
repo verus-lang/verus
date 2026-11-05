@@ -209,6 +209,13 @@ jobs:
         run: |
           # check cvc5
           cargo run --release --bin rust_verify -- -V cvc5 ../examples/assorted_demo.rs
+          # a by(bit_vector) proof: these query contexts run prelude-free, so they
+          # need their own (set-logic ALL) for cvc5
+          cargo run --release --bin rust_verify -- -V cvc5 ../examples/bitvector_basic.rs
+          # the bit-vector tests, at low parallelism (cvc5's rlimit is sensitive to
+          # CPU contention)
+          VERUS_EXTRA_ARGS="-V cvc5" cargo nextest run --release -p rust_verify_test \
+            --test bitvector -j 4
           cargo nextest run --release -p air
           cargo nextest run --release -p rust_verify_test
           # cvc5: multi-error reporting reads the failing assertion labels out of the model;
