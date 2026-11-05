@@ -1393,3 +1393,149 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_string_str_partial_eq verus_code! {
+        use vstd::prelude::*;
+
+        fn string_eq_ref_str(s: String, t: &str) -> (b: bool)
+            requires
+                s@ == t@,
+            ensures
+                b,
+        {
+            s == t
+        }
+
+        fn ref_str_eq_string(t: &str, s: String) -> (b: bool)
+            requires
+                t@ == s@,
+            ensures
+                b,
+        {
+            t == s
+        }
+
+        fn string_ne_ref_str(s: String, t: &str) -> (b: bool)
+            requires
+                s@ != t@,
+            ensures
+                b,
+        {
+            s != t
+        }
+
+        fn ref_str_ne_string(t: &str, s: String) -> (b: bool)
+            requires
+                t@ != s@,
+            ensures
+                b,
+        {
+            t != s
+        }
+
+        fn string_ne_str(s: String, t: &str) -> (b: bool)
+            requires
+                s@ != t@,
+            ensures
+                b,
+        {
+            s != *t
+        }
+
+        fn str_ne_string(t: &str, s: String) -> (b: bool)
+            requires
+                t@ != s@,
+            ensures
+                b,
+        {
+            *t != s
+        }
+
+        fn string_eq_str(s: String, t: &str) -> (b: bool)
+            requires
+                s@ == t@,
+            ensures
+                b,
+        {
+            s == *t
+        }
+
+        fn str_eq_string(t: &str, s: String) -> (b: bool)
+            requires
+                t@ == s@,
+            ensures
+                b,
+        {
+            *t == s
+        }
+
+        fn string_eq_literal() -> (b: bool)
+            ensures
+                b,
+        {
+            let s = String::from_str("hi");
+            s == "hi"
+        }
+
+        fn literal_eq_string() -> (b: bool)
+            ensures
+                b,
+        {
+            let s = String::from_str("hi");
+            "hi" == s
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_str_partial_eq_fail verus_code! {
+        use vstd::prelude::*;
+
+        fn bad(a: &str, b: &str)
+            requires
+                a@ != b@,
+        {
+            let r = a == b;
+            assert(r); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_string_str_partial_eq_fail verus_code! {
+        use vstd::prelude::*;
+
+        fn string_eq_ref_str(s: String, t: &str)
+            requires
+                s@ != t@,
+        {
+            let r = s == t;
+            assert(r); // FAILS
+        }
+
+        fn ref_str_eq_string(t: &str, s: String)
+            requires
+                t@ != s@,
+        {
+            let r = t == s;
+            assert(r); // FAILS
+        }
+
+        fn string_eq_str(s: String, t: &str)
+            requires
+                s@ != t@,
+        {
+            let r = s == *t;
+            assert(r); // FAILS
+        }
+
+        fn str_eq_string(t: &str, s: String)
+            requires
+                t@ != s@,
+        {
+            let r = *t == s;
+            assert(r); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 4)
+}

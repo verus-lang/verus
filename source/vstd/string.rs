@@ -376,6 +376,79 @@ impl PartialEqSpecImpl for String {
     }
 }
 
+// `String == str` and `str == String`, as in alloc::string::impl_eq!
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl PartialEqSpecImpl<str> for String {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &str) -> bool {
+        self@ == other@
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ <String as PartialEq<str>>::eq ](s: &String, other: &str) -> bool
+;
+
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl PartialEqSpecImpl<String> for str {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &String) -> bool {
+        self@ == other@
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ <str as PartialEq<String>>::eq ](s: &str, other: &String) -> bool
+;
+
+// `String == &str` and `&str == String`, e.g. `s == "lit"`
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl PartialEqSpecImpl<&str> for String {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &&str) -> bool {
+        self@ == (*other)@
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification<'a>[ <String as PartialEq<&str>>::eq ](s: &String, other: &&str) -> bool
+;
+
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl<'a> PartialEqSpecImpl<String> for &'a str {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &String) -> bool {
+        (**self)@ == other@
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification<'a>[ <&'a str as PartialEq<String>>::eq ](
+    s: &&'a str,
+    other: &String,
+) -> bool
+;
+
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 #[verifier::external_type_specification]
 #[verifier::external_body]
