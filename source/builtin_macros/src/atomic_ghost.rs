@@ -184,28 +184,12 @@ fn atomic_ghost_main(ag: AG) -> parse::Result<TokenStream> {
 // The exec-only form of the vstd atomic_* macros. Keep the receiver and
 // operands evaluated once, in that order, including for no_op.
 fn exec_operation(atomic: &Expr, op: &Ident, operands: &[Expr]) -> TokenStream {
-    fn identifiers(tokens: TokenStream, names: &mut std::collections::HashSet<String>) {
-        for token in tokens {
-            match token {
-                proc_macro2::TokenTree::Ident(id) => {
-                    names.insert(id.to_string());
-                }
-                proc_macro2::TokenTree::Group(group) => identifiers(group.stream(), names),
-                _ => {}
-            }
-        }
-    }
-    let mut names = std::collections::HashSet::new();
-    identifiers(quote! { #atomic #(#operands)* }, &mut names);
-    let mut fresh = |base: &str| {
-        let mut name = base.to_owned();
-        while !names.insert(name.clone()) {
-            name.push('_');
-        }
-        Ident::new(&name, proc_macro2::Span::mixed_site())
-    };
-    let receiver = fresh("__verus_exec_atomic");
-    let args: Vec<_> = operands.iter().map(|_| fresh("__verus_exec_operand")).collect();
+    let mut names = crate::fresh_names::FreshNames::default();
+    names.reserve(quote! { #atomic #(#operands)* });
+    let span = proc_macro2::Span::mixed_site();
+    let receiver = names.underscored("__verus_exec_atomic", span);
+    let args: Vec<_> =
+        operands.iter().map(|_| names.underscored("__verus_exec_operand", span)).collect();
     let call = if op == "no_op" {
         quote! { () }
     } else {

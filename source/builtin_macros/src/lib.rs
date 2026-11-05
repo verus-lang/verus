@@ -17,6 +17,7 @@ mod calc_macro;
 mod contrib;
 mod enum_synthesize;
 mod fndecl;
+mod fresh_names;
 mod is_variant;
 mod rustdoc;
 mod struct_decl_inv;
