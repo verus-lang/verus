@@ -1,8 +1,8 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
     GenericBoundX, GenericBounds, Ident, Idents, ImplPath, ImplPaths, Krate, Mode, Path, Place,
-    Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr,
-    Visibility,
+    Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitImplX, TraitX, Typ, TypX, Typs,
+    VirErr, Visibility,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -562,6 +562,7 @@ copy by fn_call_to_vir in the rust_verify crate.  For example:
 */
 pub fn inherit_default_bodies(
     krate: &Krate,
+    unpruned_krate: &Krate,
     warning_ctx: &mut crate::context::WarningCtx,
 ) -> Result<Krate, VirErr> {
     let mut kratex = (**krate).clone();
@@ -599,13 +600,36 @@ pub fn inherit_default_bodies(
         }
     }
 
-    for trait_impl in &krate.trait_impls {
+    // map TSpec to T for each external_trait_extension(TSpec via TSpecImpl) on T
+    let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
+    for tr in unpruned_krate.traits.iter() {
+        if let Some((extension, _)) = &tr.x.external_trait_extension {
+            extension_to_trait.insert(extension.clone(), tr.x.name.clone());
+        }
+    }
+    let synthesized_impls = synthesize_extension_impls(
+        krate,
+        unpruned_krate,
+        &trait_map,
+        &default_methods,
+        &extension_to_trait,
+    );
+    kratex.trait_impls.extend(synthesized_impls.iter().cloned());
+
+    for trait_impl in krate.trait_impls.iter().chain(synthesized_impls.iter()) {
         if !trait_map.contains_key(&trait_impl.x.trait_path) {
             // skip external traits and marker traits
             continue;
         }
-        if trait_impl.x.auto_imported {
+        if trait_impl.x.external_trait_blanket {
+            // the blanket impl for an extension trait implements every method
+            continue;
+        }
+        if trait_impl.x.auto_imported && !extension_to_trait.contains_key(&trait_impl.x.trait_path)
+        {
             // skip external impls
+            // (but extension trait spec functions can only be overridden by Verus code,
+            // so the default bodies are valid even for external types)
             continue;
         }
         for default_function in &default_methods[&trait_impl.x.trait_path] {
@@ -687,6 +711,12 @@ pub fn inherit_default_bodies(
                     &trait_impl.x.trait_path,
                     &tr.x.typ_params,
                 );
+                if let Some(origin_trait) = extension_to_trait.get(&trait_impl.x.trait_path) {
+                    // For TSpec: T, also remove the Self: T bound,
+                    // since the impl of TSpec is merged with the impl of T
+                    // (just as for spec functions explicitly implemented in impls of TSpecImpl)
+                    remove_self_is_itself_bound(&mut f_typ_bounds, origin_trait, &tr.x.typ_params);
+                }
                 let f_typ_bounds =
                     crate::ast_visitor::map_generic_bounds_visitor(&f_typ_bounds, &mut (), &ft)
                         .expect("map_generic_bounds_visitor");
@@ -732,6 +762,96 @@ pub fn inherit_default_bodies(
     }
 
     Ok(Arc::new(kratex))
+}
+
+/// For `#[verifier::external_trait_extension(TSpec via TSpecImpl)]` on a trait `T`,
+/// an `impl T for ...` may be paired with an `impl TSpecImpl for ...`
+/// (which Verus represents as an impl of `TSpec`).
+/// If `TSpec` has spec functions with default bodies, then any impl of `T` that
+/// is *not* paired with an impl of `TSpecImpl` still gets the default bodies from `TSpec`.
+/// To support this, we synthesize an impl of `TSpec` for each such unpaired impl of `T`,
+/// as if the user had written an empty impl of `TSpecImpl`.
+/// inherit_default_bodies then fills in the synthesized impl with the default bodies.
+///
+/// Note: to decide whether an impl of `T` is paired, we look at the unpruned crate,
+/// so that we never synthesize a default when a user-written `TSpecImpl` impl exists
+/// (e.g. in another crate) but has been pruned away.
+/// I'm not sure this is necessary - ideally prune.rs wouldn't prune anyway
+/// _just_ the spec impl anyway - but I'm not sure what the current behavior is there,
+/// so using the unpruned crate is more conservative.
+fn synthesize_extension_impls(
+    krate: &Krate,
+    unpruned_krate: &Krate,
+    trait_map: &HashMap<Path, &Trait>,
+    default_methods: &HashMap<Path, Vec<&Function>>,
+    extension_to_trait: &HashMap<Path, Path>,
+) -> Vec<TraitImpl> {
+    // map T to TSpec, for each extension trait TSpec that has at least one default method
+    let mut trait_to_extension: HashMap<Path, Path> = HashMap::new();
+    for (extension, t) in extension_to_trait.iter() {
+        if trait_map.contains_key(extension)
+            && default_methods.get(extension).is_some_and(|ms| !ms.is_empty())
+        {
+            trait_to_extension.insert(t.clone(), extension.clone());
+        }
+    }
+    if trait_to_extension.is_empty() {
+        return vec![];
+    }
+
+    // Find all impls of T that are paired with an impl of TSpec
+    let unpruned_impl_map: HashMap<Path, TraitImpl> =
+        unpruned_krate.trait_impls.iter().map(|ti| (ti.x.impl_path.clone(), ti.clone())).collect();
+    let mut paired: HashSet<Path> = HashSet::new();
+    for ti in unpruned_krate.trait_impls.iter() {
+        if ti.x.external_trait_blanket {
+            continue;
+        }
+        let Some(t) = extension_to_trait.get(&ti.x.trait_path) else { continue };
+        if !trait_to_extension.contains_key(t) {
+            continue;
+        }
+        match find_trait_impl_from_extension(ti, &unpruned_impl_map, t) {
+            Ok(origin) => {
+                paired.insert(origin.x.impl_path.clone());
+            }
+            Err(_) => {
+                // The error is reported elsewhere (see Ctx::new);
+                // to be conservative, treat all possible candidates as paired.
+                // (TODO: report that error here instead?)
+                for imp in ti.x.trait_typ_arg_impls.x.iter() {
+                    if let ImplPath::TraitImplPath(imp) = imp {
+                        paired.insert(imp.clone());
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    let mut synthesized: Vec<TraitImpl> = Vec::new();
+    for ti in krate.trait_impls.iter() {
+        if ti.x.external_trait_blanket || paired.contains(&ti.x.impl_path) {
+            continue;
+        }
+        let Some(extension) = trait_to_extension.get(&ti.x.trait_path) else { continue };
+        // The bounds on TSpecImpl are the bounds on T plus T itself
+        let mut trait_typ_arg_impls = vec![ImplPath::TraitImplPath(ti.x.impl_path.clone())];
+        trait_typ_arg_impls.extend(ti.x.trait_typ_arg_impls.x.iter().cloned());
+        let trait_implx = TraitImplX {
+            impl_path: crate::def::synthesized_extension_impl_path(&ti.x.impl_path),
+            typ_params: ti.x.typ_params.clone(),
+            typ_bounds: ti.x.typ_bounds.clone(),
+            trait_path: extension.clone(),
+            trait_typ_args: ti.x.trait_typ_args.clone(),
+            trait_typ_arg_impls: ti.x.trait_typ_arg_impls.new_x(Arc::new(trait_typ_arg_impls)),
+            owning_module: ti.x.owning_module.clone(),
+            auto_imported: ti.x.auto_imported,
+            external_trait_blanket: false,
+        };
+        synthesized.push(ti.new_x(trait_implx));
+    }
+    synthesized
 }
 
 pub(crate) fn redirect_calls_in_default_methods(
@@ -1585,9 +1705,21 @@ pub fn merge_external_traits(
 
 pub(crate) fn find_trait_impl_from_extension(
     extension: &TraitImpl,
-    candidates: Vec<TraitImpl>,
+    trait_impl_map: &HashMap<Path, TraitImpl>,
     origin_trait_path: &Path,
 ) -> Result<TraitImpl, VirErr> {
+    let mut candidates: Vec<TraitImpl> = Vec::new();
+    for imp in extension.x.trait_typ_arg_impls.x.iter() {
+        if let ImplPath::TraitImplPath(imp) = imp {
+            if let Some(candidate) = trait_impl_map.get(imp) {
+                if &candidate.x.trait_path == origin_trait_path
+                    && !candidate.x.external_trait_blanket
+                {
+                    candidates.push(candidate.clone());
+                }
+            }
+        }
+    }
     for candidate in candidates.iter() {
         if candidate.x.typ_params == extension.x.typ_params
             && crate::ast_util::n_types_equal(

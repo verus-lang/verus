@@ -1180,3 +1180,280 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "overflow evaluating the requirement")
 }
+
+test_verify_one_file! {
+    #[test] test_trait_extension_default_bodies verus_code! {
+        #[verifier::external]
+        pub trait T<A> {
+            fn f(&self, a: A) -> bool;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait Ex<A> {
+            type ExternalTraitSpecificationFor: T<A>;
+
+            spec fn req(&self) -> int;
+
+            open spec fn obeys(&self) -> bool {
+                false
+            }
+
+            open spec fn g<B>(&self, a: A, b: B) -> bool {
+                self.obeys()
+            }
+
+            fn f(&self, a: A) -> (r: bool)
+                ensures
+                    self.obeys() ==> r;
+        }
+
+        struct X<C> {
+            c: C,
+        }
+
+        // no impl of TSpecImpl: Verus synthesizes one with the default bodies
+        impl<C> T<u8> for X<C> {
+            fn f(&self, a: u8) -> bool {
+                false
+            }
+        }
+
+        // impl of TSpecImpl that overrides some, but not all, of the defaults
+        impl T<u8> for u32 {
+            fn f(&self, a: u8) -> bool {
+                true
+            }
+        }
+
+        impl TSpecImpl<u8> for u32 {
+            open spec fn req(&self) -> int {
+                7
+            }
+
+            open spec fn obeys(&self) -> bool {
+                true
+            }
+        }
+
+        // impl of TSpecImpl that overrides nothing except the required method
+        impl T<u8> for u64 {
+            fn f(&self, a: u8) -> bool {
+                false
+            }
+        }
+
+        impl TSpecImpl<u8> for u64 {
+            open spec fn req(&self) -> int {
+                8
+            }
+        }
+
+        proof fn test(x: X<u16>, u: u32, v: u64) {
+            assert(!TSpec::<u8>::obeys(&x));
+            assert(!TSpec::<u8>::g(&x, 3u8, 5int));
+            assert(TSpec::<u8>::obeys(&u));
+            assert(TSpec::<u8>::g(&u, 3u8, true));
+            assert(TSpec::<u8>::req(&u) == 7);
+            assert(!TSpec::<u8>::obeys(&v));
+            assert(!TSpec::<u8>::g(&v, 3u8, 5int));
+            assert(TSpec::<u8>::req(&v) == 8);
+        }
+
+        fn test_exec(x: X<u16>, u: u32) {
+            let r = u.f(3);
+            assert(r);
+            let r = x.f(3);
+            assert(r); // FAILS
+        }
+
+        proof fn test_fail(x: X<u16>) {
+            assert(TSpec::<u8>::obeys(&x)); // FAILS
+        }
+
+        proof fn test_fail_req(x: X<u16>) {
+            // req has no default, so it remains uninterpreted for X
+            assert(TSpec::<u8>::req(&x) == 7); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_default_bodies_in_impl verus_code! {
+        #[verifier::external]
+        pub trait Tr {
+            fn f() -> bool;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TrSpec via TrSpecImpl)]
+        pub trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            open spec fn obeys() -> bool {
+                false
+            }
+
+            fn f() -> (b: bool)
+                ensures
+                    Self::obeys() ==> b;
+        }
+
+        struct X<A> {
+            a: A,
+        }
+
+        // The default obeys() == false is visible inside the impl of Tr
+        impl<A> Tr for X<A> {
+            fn f() -> bool {
+                false
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_default_bodies_in_impl2 verus_code! {
+        #[verifier::external]
+        pub trait Tr {
+            fn f() -> bool;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TrSpec via TrSpecImpl)]
+        pub trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            open spec fn obeys() -> bool {
+                false
+            }
+
+            fn f() -> (b: bool)
+                ensures
+                    Self::obeys() ==> b; // FAILS
+        }
+
+        struct Y;
+
+        impl Tr for Y {
+            fn f() -> bool {
+                false
+            }
+        }
+
+        impl TrSpecImpl for Y {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_default_bodies_in_impl_fails verus_code! {
+        #[verifier::external]
+        pub trait Tr {
+            fn f() -> bool;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TrSpec via TrSpecImpl)]
+        pub trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            open spec fn obeys() -> bool {
+                false
+            }
+
+            fn f() -> (b: bool)
+                ensures
+                    Self::obeys() ==> b; // FAILS
+        }
+
+        struct Z;
+
+        impl Tr for Z {
+            fn f() -> bool {
+                false
+            }
+        }
+
+        impl TrSpecImpl for Z {
+            open spec fn obeys() -> bool {
+                true
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_default_bodies_in_impl_fails2 verus_code! {
+        #[verifier::external]
+        pub trait Tr {
+            fn f() -> bool;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TrSpec via TrSpecImpl)]
+        pub trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            open spec fn obeys() -> bool {
+                true
+            }
+
+            fn f() -> (b: bool)
+                ensures
+                    Self::obeys() ==> b; // FAILS
+        }
+
+        struct X<A> {
+            a: A,
+        }
+
+        // The default obeys() == true is visible inside the impl of Tr
+        impl<A> Tr for X<A> {
+            fn f() -> bool {
+                false
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_default_bodies_empty_impl verus_code! {
+        #[verifier::external]
+        pub trait T<A> {
+            fn f(&self, a: A) -> bool;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait Ex<A> {
+            type ExternalTraitSpecificationFor: T<A>;
+
+            spec fn req(&self) -> int;
+
+            open spec fn obeys(&self) -> bool {
+                false
+            }
+
+            open spec fn g<B>(&self, a: A, b: B) -> bool {
+                self.obeys()
+            }
+
+            fn f(&self, a: A) -> (r: bool)
+                ensures
+                    self.obeys() ==> r;
+        }
+
+        struct X<C> {
+            c: C,
+        }
+
+        impl T<u8> for u32 {
+            fn f(&self, a: u8) -> bool {
+                true
+            }
+        }
+
+        impl TSpecImpl<u8> for u32 {
+        }
+    } => Err(err) => assert_rust_error_msg(err, "not all trait items implemented, missing: `req`")
+}
