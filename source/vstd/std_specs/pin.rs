@@ -10,7 +10,6 @@ verus! {
 pub struct ExPin<P>(Pin<P>);
 
 pub trait PinAdditionalSpecFns<'a, T: ?Sized> {
-    /// The mutable reference behind this `Pin`, with its current and prophesied values.
     spec fn mut_ref(&self) -> MutRef<'a, T>;
 }
 

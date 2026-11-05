@@ -10,11 +10,10 @@ use crate::ast_to_sst::{
     expr_to_stm_or_error, stms_to_one_stm,
 };
 use crate::ast_util::{is_body_visible_to, unit_typ};
-use crate::ast_visitor;
 use crate::context::{Ctx, FunctionCtx};
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
-use crate::messages::{Message, error};
+use crate::messages::{Message, Span, error};
 use crate::sst::{BndX, CallFun, Exp, ExpX, Exps, LocalDeclKind, Par, ParX, Pars, Stm, StmX};
 use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
@@ -22,6 +21,7 @@ use crate::sst::{
 };
 use crate::sst_util::{sst_equal, subst_exp};
 use crate::util::{vec_map, vec_map_result};
+use crate::{ast_visitor, fun};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -248,9 +248,8 @@ fn func_body_to_sst(
 
 fn async_future_spec_call(
     function: &Function,
-    span: &crate::messages::Span,
-    trait_path: Path,
-    method: &str,
+    span: &Span,
+    fun: Fun,
     typ: &Typ,
     trait_typ: Option<&Typ>,
 ) -> Expr {
@@ -260,9 +259,6 @@ fn async_future_spec_call(
         assume_external_allowed: false,
     };
     let future_typ = function.x.outer_ret.x.typ.clone();
-    let fun = Arc::new(crate::ast::FunX {
-        path: trait_path.push_segment(crate::ast::Segment::V(Arc::new(method.to_string()), 0)),
-    });
     let mut trait_typs = vec![future_typ.clone()];
     if let Some(trait_typ) = trait_typ {
         trait_typs.push(trait_typ.clone());
@@ -301,8 +297,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
         let awaited_call = async_future_spec_call(
             function,
             &e.span,
-            crate::path!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"),
-            "awaited",
+            fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "awaited"),
             &Arc::new(TypX::Bool),
             Some(&output_typ),
         );
@@ -312,8 +307,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
             PlaceX::Temporary(async_future_spec_call(
                 function,
                 &e.span,
-                crate::path!(CrateId::Vstd => "future", "FutureSpec"),
-                "view",
+                fun!(CrateId::Vstd => "future", "FutureSpec"; "view"),
                 &output_typ,
                 None,
             )),
@@ -392,8 +386,7 @@ pub fn func_decl_to_sst(
         let obeys = async_future_spec_call(
             function,
             &function.span,
-            crate::path!(CrateId::Vstd => "future", "FutureSpec"),
-            "obeys_future_laws",
+            fun!(CrateId::Vstd => "future", "FutureSpec"; "obeys_future_laws"),
             &Arc::new(TypX::Bool),
             None,
         );

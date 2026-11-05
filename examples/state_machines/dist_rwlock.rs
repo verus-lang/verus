@@ -322,7 +322,7 @@ struct_with_invariants!{
 
 impl<T> RwLock<T> {
     #[verifier::spinoff_prover]
-    fn new(rc_width: usize, t: T) -> (s: Self)
+    fn new(rc_width: usize, Tracked(t): Tracked<T>) -> (s: Self)
         requires
             0 < rc_width,
         ensures

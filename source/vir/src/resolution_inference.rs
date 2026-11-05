@@ -1600,8 +1600,8 @@ impl<'a> Builder<'a> {
 
     fn is_move(&self, unfinal_read_kind: &UnfinalizedReadKind) -> bool {
         match &unfinal_read_kind.preliminary_kind {
-            ReadKind::Move => {
-                matches!(self.read_kind_finals[&unfinal_read_kind.id], ReadKind::Move)
+            ReadKind::Move(_) => {
+                matches!(self.read_kind_finals[&unfinal_read_kind.id], ReadKind::Move(_))
             }
             _ => false,
         }
@@ -2134,9 +2134,24 @@ pub fn pattern_all_bound_vars_with_ownership(
     ) {
         match &pattern.x {
             PatternX::Wildcard => {}
-            PatternX::Var(PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ })
+            PatternX::Var(PatternBinding {
+                name,
+                user_mut: _,
+                by_ref: _,
+                typ,
+                copy: _,
+                move_exec_to_proof_okay: _,
+            })
             | PatternX::Binding {
-                binding: PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ },
+                binding:
+                    PatternBinding {
+                        name,
+                        user_mut: _,
+                        by_ref: _,
+                        typ,
+                        copy: _,
+                        move_exec_to_proof_okay: _,
+                    },
                 sub_pat: _,
             } => {
                 let spec = matches!(&modes[name], Mode::Spec);
@@ -2191,9 +2206,24 @@ fn moves_and_muts_for_pattern(
     ) {
         match &pattern.x {
             PatternX::Wildcard => {}
-            PatternX::Var(PatternBinding { name, user_mut: _, by_ref, typ: _, copy })
+            PatternX::Var(PatternBinding {
+                name,
+                user_mut: _,
+                by_ref,
+                typ: _,
+                copy,
+                move_exec_to_proof_okay: _,
+            })
             | PatternX::Binding {
-                binding: PatternBinding { name, user_mut: _, by_ref, typ: _, copy },
+                binding:
+                    PatternBinding {
+                        name,
+                        user_mut: _,
+                        by_ref,
+                        typ: _,
+                        copy,
+                        move_exec_to_proof_okay: _,
+                    },
                 sub_pat: _,
             } => {
                 // no need to descend into subpat, already moving or borrowing the whole thing
