@@ -57,6 +57,18 @@ pub open spec fn obeys_cmp_spec<T: Ord>() -> bool {
     obeys_cmp::<T>()
 }
 
+/// Whether the type's cmp spec matches structural equality, i.e.,
+/// whether `v1.cmp(&v2) is Equal <==> v1 == v2`.
+pub open spec fn obeys_cmp_concrete_eq<T: Ord>() -> bool {
+    forall|v1: T, v2: T| v1.cmp_spec(&v2) is Equal <==> v1 == v2
+}
+
+/// Whether the type's cmp spec matches deep-view equality, i.e.,
+/// whether `v1.cmp(&v2) is Equal <==> v1.deep_view() == v2.deep_view()`.
+pub open spec fn obeys_cmp_deep_eq<T: Ord + DeepView>() -> bool {
+    forall|v1: T, v2: T| v1.cmp_spec(&v2) is Equal <==> v1.deep_view() == v2.deep_view()
+}
+
 macro_rules! num_laws_cmp {
     ($n: ty, $modname:ident) => {
         verus! {
