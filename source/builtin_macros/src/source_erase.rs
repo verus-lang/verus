@@ -17,17 +17,17 @@ pub(crate) struct SourceErasure {
     pub(crate) verus_depth: u32,
     pub(crate) expression_is_statement: bool,
     pub(crate) statement_macro_needs_semi: bool,
-    identifiers: std::collections::HashSet<String>,
+    identifiers: crate::fresh_names::FreshNames,
 }
 
-/// A source range selected by the macro rewriter for removal.
+/// An edit selected by the macro rewriter, with a span in the original source.
 #[allow(dead_code)] // The fields are read by the ordinary library's callers.
 pub struct Erasure {
     pub span: Span,
     pub kind: ErasureKind,
 }
 
-/// Wrappers permit removing otherwise empty lines immediately inside them.
+/// The replacement and whitespace policy for a source edit.
 #[allow(dead_code)] // Replacement text is read only by the ordinary library's callers.
 pub enum ErasureKind {
     Node,
@@ -45,9 +45,57 @@ pub enum ErasureKind {
     Identifier(String),
     /// Expand a known executable Verus macro with its existing generator.
     ExpandMacro {
-        name: String,
+        kind: ExecMacro,
         tokens: TokenStream,
     },
+}
+
+/// Executable macros supported by source extraction.
+///
+/// Recognition and dispatch share this list, so adding a variant also requires
+/// the tool to supply its expansion.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecMacro {
+    AtomicWithGhost,
+    StructWithInvariants,
+    StateMachine,
+    TokenizedStateMachine,
+    TokenizedStateMachineVstd,
+}
+
+impl ExecMacro {
+    pub(crate) fn from_name(name: &str) -> Option<Self> {
+        [
+            Self::AtomicWithGhost,
+            Self::StructWithInvariants,
+            Self::StateMachine,
+            Self::TokenizedStateMachine,
+            Self::TokenizedStateMachineVstd,
+        ]
+        .iter()
+        .copied()
+        .find(|kind| kind.name() == name)
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::AtomicWithGhost => "atomic_with_ghost",
+            Self::StructWithInvariants => "struct_with_invariants",
+            Self::StateMachine => "state_machine",
+            Self::TokenizedStateMachine => "tokenized_state_machine",
+            Self::TokenizedStateMachineVstd => "tokenized_state_machine_vstd",
+        }
+    }
+
+    pub fn is_expression(self) -> bool {
+        match self {
+            Self::AtomicWithGhost => true,
+            Self::StructWithInvariants
+            | Self::StateMachine
+            | Self::TokenizedStateMachine
+            | Self::TokenizedStateMachineVstd => false,
+        }
+    }
 }
 
 impl Erasure {
@@ -58,16 +106,7 @@ impl Erasure {
 
 impl SourceErasure {
     pub(crate) fn collect_identifiers(&mut self, tokens: TokenStream) {
-        for token in tokens {
-            match token {
-                proc_macro2::TokenTree::Ident(id) => {
-                    let name = id.to_string();
-                    self.identifiers.insert(name.strip_prefix("r#").unwrap_or(&name).to_owned());
-                }
-                proc_macro2::TokenTree::Group(group) => self.collect_identifiers(group.stream()),
-                _ => {}
-            }
-        }
+        self.identifiers.reserve(tokens);
     }
 
     pub(crate) fn record_ghost_pattern(
@@ -79,15 +118,9 @@ impl SourceErasure {
         let Pat::Ident(binding) = &original.elems[0] else { unreachable!() };
         let Pat::Ident(lowered) = lowered else { unreachable!() };
         let base = lowered.ident.to_string();
-        let ident = temporaries.entry(base.clone()).or_insert_with(|| {
-            let mut name = base.clone();
-            let mut suffix = 0;
-            while !self.identifiers.insert(name.clone()) {
-                suffix += 1;
-                name = format!("{base}_{suffix}");
-            }
-            proc_macro2::Ident::new(&name, binding.ident.span())
-        });
+        let ident = temporaries
+            .entry(base.clone())
+            .or_insert_with(|| self.identifiers.numbered(&base, binding.ident.span()));
         lowered.ident = ident.clone();
         lowered.attrs = original.attrs.iter().chain(&binding.attrs).cloned().collect();
         self.spans.push(Erasure::node(original.path.span()));
@@ -161,13 +194,7 @@ pub(crate) fn is_expanded_item_macro(path: &verus_syn::Path) -> bool {
 }
 
 fn is_expanded_item_macro_name(name: &str) -> bool {
-    matches!(
-        name,
-        "struct_with_invariants"
-            | "state_machine"
-            | "tokenized_state_machine"
-            | "tokenized_state_machine_vstd"
-    )
+    ExecMacro::from_name(name).is_some_and(|kind| !kind.is_expression())
 }
 
 fn is_proof_derive(meta: &Meta) -> bool {
@@ -197,7 +224,8 @@ fn is_proof_meta(meta: &Meta) -> bool {
 }
 
 /// Rust's outer grammar keeps ordinary calls such as assert(a, b) distinct from
-/// Verus assertions. Only recognized macro payloads enter the Verus visitor.
+/// Verus assertions. Supported signatures, constructors, patterns, and macro
+/// payloads bridge into the shared visitor; unknown macro payloads stay opaque.
 pub(crate) struct RustVisitor<'a> {
     pub(crate) visitor: &'a mut Visitor,
 }
@@ -656,10 +684,10 @@ impl Visitor {
             return;
         }
         let tokens = verus_syn::rejoin_tokens(mac.tokens.clone());
-        if name == "atomic_with_ghost" || is_expanded_item_macro_name(&name) {
+        if let Some(kind) = ExecMacro::from_name(&name) {
             self.source_erasure.as_mut().unwrap().spans.push(Erasure {
                 span: mac.span(),
-                kind: ErasureKind::ExpandMacro { name, tokens },
+                kind: ErasureKind::ExpandMacro { kind, tokens },
             });
             return;
         }

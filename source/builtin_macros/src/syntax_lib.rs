@@ -15,6 +15,7 @@ mod config;
 mod contrib;
 mod enum_synthesize;
 mod exec_expand;
+mod fresh_names;
 mod rustdoc;
 mod source_erase;
 mod struct_decl_inv;
@@ -23,7 +24,7 @@ mod topological_sort;
 mod unerased_proxies;
 
 use config::{EraseGhost, VstdKind};
-pub use source_erase::{Erasure, ErasureKind};
+pub use source_erase::{Erasure, ErasureKind, ExecMacro};
 
 // This entry point always requests ordinary Rust output, independently of the
 // flags used to build the tool. Compiler cfg expansion requires a proc-macro
@@ -48,5 +49,15 @@ pub fn source_erasures(source: &str) -> verus_syn::Result<Vec<Erasure>> {
         Ok(file) => syntax::source_erasure_rust(&file),
         // Also accept unwrapped Verus source.
         Err(_) => syntax::source_erasure(&mut verus_syn::parse_file(source)?),
+    }
+}
+
+/// Apply the same source recording to an expression, without a synthetic item.
+///
+/// Spans refer directly to `source`, just as for the file entry point.
+pub fn source_expression_erasures(source: &str) -> verus_syn::Result<Vec<Erasure>> {
+    match syn::parse_str(source) {
+        Ok(expr) => syntax::source_erasure_rust_expr(&expr),
+        Err(_) => syntax::source_erasure_expr(&mut verus_syn::parse_str(source)?),
     }
 }

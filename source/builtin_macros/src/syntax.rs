@@ -113,6 +113,7 @@ pub(crate) struct Visitor {
 }
 
 // For exec "let pat = init" declarations, recursively find Tracked(x), Ghost(x), x in pat
+#[derive(Default)]
 struct ExecGhostPatVisitor<'a> {
     inside_ghost: u32,
     tracked: Option<Token![tracked]>,
@@ -486,15 +487,7 @@ fn proof_fn_tracks_to_type(span: Span, tracks: impl Iterator<Item = bool>) -> Ty
 }
 
 pub(crate) fn rewrite_exe_pat(pat: &mut Pat) -> (Vec<Stmt>, Vec<Stmt>) {
-    let mut visit_pat = ExecGhostPatVisitor {
-        inside_ghost: 0,
-        tracked: None,
-        ghost: None,
-        x_decls: Vec::new(),
-        x_assigns: Vec::new(),
-        source_erasure: None,
-        source_temporaries: std::collections::HashMap::new(),
-    };
+    let mut visit_pat = ExecGhostPatVisitor::default();
 
     visit_pat.visit_pat_mut(pat);
     let ExecGhostPatVisitor { x_decls, x_assigns, .. } = visit_pat;
@@ -505,16 +498,7 @@ pub(crate) fn rewrite_exe_pat_source(
     pat: &mut Pat,
     source: &mut crate::source_erase::SourceErasure,
 ) {
-    ExecGhostPatVisitor {
-        inside_ghost: 0,
-        tracked: None,
-        ghost: None,
-        x_decls: Vec::new(),
-        x_assigns: Vec::new(),
-        source_erasure: Some(source),
-        source_temporaries: std::collections::HashMap::new(),
-    }
-    .visit_pat_mut(pat);
+    ExecGhostPatVisitor { source_erasure: Some(source), ..Default::default() }.visit_pat_mut(pat);
 }
 
 pub(crate) fn rewrite_args_unwrap_ghost_tracked(
@@ -1623,6 +1607,18 @@ impl VisitMut for ExecGhostPatVisitor<'_> {
                         return;
                     }
                     let tmp_x = mk_ident_tmp(&id.ident);
+                    if let Some(source) = &mut self.source_erasure {
+                        // Source mode needs the binding edit, not the compiler's
+                        // ghost declarations and assignments.
+                        let mut lowered = parse_quote_spanned!(id.span() => #tmp_x);
+                        source.record_ghost_pattern(
+                            pts,
+                            &mut lowered,
+                            &mut self.source_temporaries,
+                        );
+                        *pat = lowered;
+                        return;
+                    }
                     let mut x = id.clone();
                     x.mutability = None;
                     let span = id.span();
@@ -1654,15 +1650,7 @@ impl VisitMut for ExecGhostPatVisitor<'_> {
                             Stmt::Expr(Expr::Verbatim(assign), Some(Semi { spans: [span] }));
                         self.x_assigns.push(assign);
                     }
-                    let mut lowered = parse_quote_spanned!(span => #tmp_x);
-                    if let Some(source) = &mut self.source_erasure {
-                        source.record_ghost_pattern(
-                            pts,
-                            &mut lowered,
-                            &mut self.source_temporaries,
-                        );
-                    }
-                    *pat = lowered;
+                    *pat = parse_quote_spanned!(span => #tmp_x);
                     return;
                 }
             }
@@ -1760,10 +1748,7 @@ impl Visitor {
             inside_ghost: self.inside_ghost,
             tracked: local.tracked.clone(),
             ghost: local.ghost.clone(),
-            x_decls: Vec::new(),
-            x_assigns: Vec::new(),
-            source_erasure: None,
-            source_temporaries: std::collections::HashMap::new(),
+            ..Default::default()
         };
         visit_pat.visit_pat_mut(&mut local.pat);
         if visit_pat.x_decls.len() == 0 && local.tracked.is_none() && local.ghost.is_none() {
@@ -5856,7 +5841,9 @@ pub(crate) fn rewrite_items(
     rewrite_items_inner(&mut items.items, erase_ghost, use_spec_traits)
 }
 
-fn source_visitor() -> Visitor {
+fn source_visitor(tokens: TokenStream) -> Visitor {
+    let mut source = crate::source_erase::SourceErasure::default();
+    source.collect_identifiers(tokens);
     Visitor {
         erase_ghost: EraseGhost::EraseAll,
         use_spec_traits: false,
@@ -5870,7 +5857,7 @@ fn source_visitor() -> Visitor {
         rustdoc: false,
         inside_impl: None,
         additional_items: Vec::new(),
-        source_erasure: Some(crate::source_erase::SourceErasure::default()),
+        source_erasure: Some(source),
     }
 }
 
@@ -5887,8 +5874,7 @@ fn source_result(visitor: Visitor) -> verus_syn::Result<Vec<crate::source_erase:
 pub(crate) fn source_erasure(
     file: &mut verus_syn::File,
 ) -> verus_syn::Result<Vec<crate::source_erase::Erasure>> {
-    let mut visitor = source_visitor();
-    visitor.source_erasure.as_mut().unwrap().collect_identifiers(file.to_token_stream());
+    let mut visitor = source_visitor(file.to_token_stream());
     visitor.visit_items_prefilter(&mut file.items);
     visitor.visit_file_mut(file);
     source_result(visitor)
@@ -5898,10 +5884,28 @@ pub(crate) fn source_erasure(
 pub(crate) fn source_erasure_rust(
     file: &syn::File,
 ) -> verus_syn::Result<Vec<crate::source_erase::Erasure>> {
-    let mut visitor = source_visitor();
-    visitor.source_erasure.as_mut().unwrap().collect_identifiers(file.to_token_stream());
+    let mut visitor = source_visitor(file.to_token_stream());
     let mut rust = crate::source_erase::RustVisitor { visitor: &mut visitor };
     syn::visit::Visit::visit_file(&mut rust, file);
+    source_result(visitor)
+}
+
+#[allow(dead_code)]
+pub(crate) fn source_erasure_expr(
+    expr: &mut verus_syn::Expr,
+) -> verus_syn::Result<Vec<crate::source_erase::Erasure>> {
+    let mut visitor = source_visitor(expr.to_token_stream());
+    visitor.visit_expr_mut(expr);
+    source_result(visitor)
+}
+
+#[allow(dead_code)]
+pub(crate) fn source_erasure_rust_expr(
+    expr: &syn::Expr,
+) -> verus_syn::Result<Vec<crate::source_erase::Erasure>> {
+    let mut visitor = source_visitor(expr.to_token_stream());
+    let mut rust = crate::source_erase::RustVisitor { visitor: &mut visitor };
+    syn::visit::Visit::visit_expr(&mut rust, expr);
     source_result(visitor)
 }
 

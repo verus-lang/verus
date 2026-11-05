@@ -2,8 +2,8 @@
 proof artifacts with the same syntax visitor used by `builtin_macros`, then
 applies edits to the original text. Comments, spacing, indentation, and line
 endings outside the erased or expanded regions are preserved. Whole-line
-annotations and blank lines immediately
-inside a removed `verus!` wrapper are removed. A proof expression used as a value
+annotations and blank lines immediately inside a removed `verus!` wrapper are
+removed. A proof expression used as a value
 (for example, a match arm body) becomes `{}`, preserving executable control flow.
 Expression macro wrappers become parentheses, retaining operator precedence;
 statement terminators are added where needed. Contracted constants and statics
@@ -87,8 +87,8 @@ uses bare canonical names; qualified or renamed constructors and patterns are
 not resolved.
 
 Snapshots describe source, and are not guaranteed to compile as ordinary Rust.
-Imports and ordinary Rust attributes
-are preserved unless their item has `#[cfg(verus_keep_ghost)]`.
+Imports and ordinary Rust attributes are preserved unless their item has
+`#[cfg(verus_keep_ghost)]`.
 Unrecognized macro payloads are opaque: the tool does not expand arbitrary
 macros, evaluate general `cfg` expressions, resolve names, or perform the
 verifier's type-based erasure. Use the canonical Verus macro and attribute names;
@@ -101,8 +101,8 @@ the snapshot unchanged.
 
 Qualified macro and derive names are recognized through `verus_builtin_macros`,
 `builtin_macros`, `verus_state_machines_macros`, and `vstd`; similarly named macros
-in other namespaces stay
-opaque. Conditional mode attributes are not evaluated, so `cfg_attr` that changes
+in other namespaces stay opaque. Conditional mode attributes are not evaluated,
+so `cfg_attr` that changes
 an item between exec and ghost modes cannot be classified without choosing a
 configuration.
 
@@ -113,6 +113,25 @@ desugaring `for` loops. Keeping this entry point next to the proc-macro
 implementation allows syntax changes to be shared without a second parser.
 The `verus_state_machines_macros_syntax` companion similarly shares the
 state-machine parser and generator with its proc-macro crate.
+
+The implementation follows three steps:
+
+1. `builtin_macros/src/source_erase.rs` records source spans at the shared
+   visitor's erasure decisions. Its Rust visitor bridges supported constructs
+   into the Verus AST without interpreting ordinary Rust calls as proof code.
+   File and expression entry points use the same recording and name allocation.
+2. `tools/verus-exec/src/lib.rs` turns those records into text edits.
+   `expansion.rs` dispatches existing generators and formats their output.
+   The shared `ExecMacro` enum defines supported macros; its exhaustive dispatch
+   requires an expansion for each new variant.
+3. `edits.rs` maps spans to UTF-8 byte ranges, merges overlapping edits, and
+   removes empty annotation lines while preserving source bytes elsewhere.
+
+Add syntax support at the existing visitor's decision point rather than parsing
+it again in the tool. Add executable macros to `ExecMacro` and `expansion.rs`.
+The shared `fresh_names.rs` allocator reserves caller identifiers, including
+raw spellings and names inside opaque macros. It keeps source-binding and atomic
+temporary-name conventions stable.
 
 Run the tool's tests with `cargo test -p verus-exec` and its lint checks with
 `cargo clippy -p verus-exec --all-targets -- -D warnings`.
