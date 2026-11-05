@@ -209,6 +209,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] spec_fn_lambda_parameter_type_integer_trait_3010 verus_code! {
+        use vstd::prelude::*;
         spec fn h1<A1: Integer>() -> spec_fn(A1) -> bool { |x: A1| x as int >= 0 }
 
         proof fn test_h() {

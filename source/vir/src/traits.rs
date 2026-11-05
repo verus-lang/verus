@@ -1,14 +1,14 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
-    GenericBoundX, GenericBounds, Ident, Idents, ImplPath, ImplPaths, Krate, Mode, Path, Place,
-    Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr,
-    Visibility,
+    CallTarget, CallTargetKind, CrateId, Expr, ExprX, Fun, Function, FunctionKind, FunctionX,
+    GenericBound, GenericBoundX, GenericBounds, Ident, Idents, ImplPath, ImplPaths, Krate, Mode,
+    Path, Place, Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs,
+    VirErr, Visibility,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::messages::{Span, ToAny, error};
+use crate::messages::{Span, error};
 use crate::sst_to_air::typ_to_ids;
 use air::ast::{Command, CommandX, Commands, DeclX};
 use air::ast_util::{ident_apply, ident_var, mk_bind_expr, mk_implies, mk_unnamed_axiom, str_typ};
@@ -231,13 +231,12 @@ pub fn method_if_not_demoted(lookup: &DemoteTraitLookup, function: &Function) ->
     }
 }
 
+fn is_copy_trait(trait_path: &Path) -> bool {
+    *trait_path == crate::path!(CrateId::Core => "marker", "Copy")
+}
+
 // We consider methods for external traits to be static.
-pub fn demote_external_traits(
-    diagnostics: &(impl air::messages::Diagnostics + ?Sized),
-    warning_ctx: &crate::context::WarningCtx,
-    krate: &Krate,
-    lookup: &DemoteTraitLookup,
-) -> Result<Krate, VirErr> {
+pub fn demote_external_traits(krate: &Krate, lookup: &DemoteTraitLookup) -> Result<Krate, VirErr> {
     let DemoteTraitLookup { traits, funs, .. } = &lookup;
 
     let mut kratex = (**krate).clone();
@@ -252,24 +251,17 @@ pub fn demote_external_traits(
                 GenericBoundX::ConstTyp(..) => continue,
             };
             let our_trait = traits.contains(trait_path);
-            if !our_trait {
-                let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
-                    panic!("missing warn_config for function {:?}", function.x.name);
-                };
-                crate::messages::warning_maybe_if_in_local_crate(
-                    warn_config,
+
+            // `Copy` is declared in vstd, but checking it here allows it to work in --no-vstd
+            if !our_trait && !is_copy_trait(trait_path) {
+                return Err(error(
                     &function.span,
-                    &crate::messages::WarningAllow::UndeclaredExternalTrait,
-                    || {
-                        format!(
-                            "cannot use external trait {} as a bound without declaring the trait \
-                            (use `#[verifier::external_trait_specification]` to declare the trait); \
-                            this is a warning for now but will eventually be an error",
-                            path_as_friendly_rust_name(trait_path)
-                        )
-                    },
-                    |msg| diagnostics.report(&msg.to_any()),
-                );
+                    format!(
+                        "cannot use external trait `{}` as a bound without declaring the trait",
+                        path_as_friendly_rust_name(trait_path)
+                    ),
+                )
+                .help("use `#[verifier::external_trait_specification]` to declare the trait"));
             }
         }
 

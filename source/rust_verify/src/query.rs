@@ -633,13 +633,8 @@ impl<'tcx> Query<'tcx> {
         );
 
         // Demote external traits
-        let krate = vir::traits::demote_external_traits(
-            &*self.reporter,
-            &pre_crate.warning_ctx,
-            &krate,
-            &demote_trait_lookup,
-        )
-        .map_err(|e| self.emit_error(e))?;
+        let krate = vir::traits::demote_external_traits(&krate, &demote_trait_lookup)
+            .map_err(|e| self.emit_error(e))?;
 
         // Inherit default bodies
         let mut new_warning_ctx = (*pre_crate.warning_ctx).clone();

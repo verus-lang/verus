@@ -424,6 +424,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion6_via_fn_once verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnOnce(u8) -> bool>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -438,6 +439,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion7_via_fn_once verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnOnce<(u8,)>>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -452,6 +454,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion8_via_fn_once verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnOnce(u8) -> bool>(f: F) -> bool;
 
         fn test(x: u8) -> bool
@@ -464,6 +467,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion9_via_fn_once_with_ref verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnOnce(u8) -> bool>(f: F) -> bool;
 
         fn test(x: u8) -> bool
@@ -476,6 +480,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion10_via_fn verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: Fn(u8)>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -489,6 +494,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion11_via_fn_mut verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnMut(u8)>(f: F) -> bool {
             call_requires(f, (0,))
         }
