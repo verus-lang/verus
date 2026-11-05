@@ -655,6 +655,7 @@ impl Clone for crate::ExprClosure {
             output: self.output.clone(),
             requires: self.requires.clone(),
             ensures: self.ensures.clone(),
+            invariants: self.invariants.clone(),
             inner_attrs: self.inner_attrs.clone(),
             body: self.body.clone(),
         }

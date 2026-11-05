@@ -468,7 +468,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         struct S;
         impl Integer for S {}
-    } => Err(err) => assert_rust_error_msg(err, "the trait `verus_builtin::Integer` requires an `unsafe impl` declaration")
+    } => Err(err) => assert_vir_error_msg(err, "cannot implement `sealed` trait")
 }
 
 test_verify_one_file! {

@@ -181,7 +181,8 @@ The Verus-relevant options are:
 - `--manifest-path`, `--target-dir`
 - `--frozen`, `--locked`, `--offline`
 - `--config`, `-Z`
-The `-Z` option must be written with a space, e.g. `-Z unstable-options`, the
+
+The `-Z` option must be written with a space, e.g. `-Z unstable-options`; the
 compact form is not supported.
 
 Common Verus arguments that can be passed this way include `--rlimit`,
@@ -190,7 +191,7 @@ crate-specific arguments this way.  For example, passing `--verify-module`
 or `--verify-function` is unlikely to work, unless you have the same module/function
 in every verified crate in your project and its dependencies.  To pass these
 project-specific flags, see below for how to control which crates receive
-which the Verus arguments.
+which Verus arguments.
 
 ### Controlling which crates receive Verus arguments
 

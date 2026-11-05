@@ -14,7 +14,7 @@ This usually, but not always, resolves to the `view` method [defined by the `Vie
 
 ### Examples
 
-By convention, the `view()` function is spec function
+By convention, the `view()` function is a spec function
 for the abstraction of an exec-mode object.
 See, for example:
 

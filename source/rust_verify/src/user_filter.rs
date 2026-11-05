@@ -17,7 +17,7 @@ pub enum UserFilter {
     Function(ModuleId, String, HashSet<Fun>),
 }
 
-type ModuleId = vir::ast::Idents;
+type ModuleId = vir::ast::Segments;
 
 fn root_module_id() -> ModuleId {
     Arc::new(vec![])
@@ -33,7 +33,7 @@ impl UserFilter {
     }
 
     pub fn from_args(args: &Args, local_krate: &Krate) -> Result<UserFilter, VirErr> {
-        let validate_module_name = |s: &str| -> Result<vir::ast::Idents, VirErr> {
+        let validate_module_name = |s: &str| -> Result<ModuleId, VirErr> {
             let segments = parse_path_segments_from_user_str(s)?;
             if local_krate.modules.iter().find(|m| m.x.path.segments == segments).is_none() {
                 let mut lines = local_krate
@@ -201,7 +201,7 @@ impl UserFilter {
         }
 
         // Get all substring matches, even if the user didn't use any * in their pattern.
-        // We might use of these automatically, or if not, this list will at least help us
+        // We might use one of these automatically, or if not, this list will at least help us
         // print an informative error message.
         let substring_matches =
             Self::get_all_substring_matches(function_pattern, &module_fun_names);

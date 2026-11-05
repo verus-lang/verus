@@ -1,6 +1,6 @@
-# Getting started with VSCode
+# Getting started with VS Code
 
-This page will get you set up using Verus in VSCode using the [verus-analyzer](https://github.com/verus-lang/verus-analyzer) extension. Note that verus-analyzer is **very experimental.**
+This page will get you set up using Verus in VS Code using the [verus-analyzer](https://github.com/verus-lang/verus-analyzer) extension. Note that verus-analyzer is **very experimental.**
 
 ## 1. Create a Rust crate
 
@@ -17,11 +17,11 @@ This will create the following files:
  * `verus_test/Cargo.toml`
  * `verus_test/src/main.rs`
 
-## 2. Install verus-analyzer via VSCode
+## 2. Install verus-analyzer via VS Code
 
-Open VSCode and install verus-analyzer through the VSCode marketplace.
+Open VS Code and install verus-analyzer through the VS Code marketplace.
 
-## 3. Open your workspace in VSCode.
+## 3. Open your workspace in VS Code.
 
 Go to `File > Open Folder` and select the `verus_test` directory.
 
@@ -68,7 +68,7 @@ Save the file in order to trigger verus-analyzer.
 This program has an error which Verus should detect.
 If everything is working correctly, you should see an error from Verus on the final `assert` line:
 
-![Screenshot of VSCode indicating an error on the file source line](graphics/verus-analyzer-error-example.png)
+![Screenshot of VS Code indicating an error on the file source line](graphics/verus-analyzer-error-example.png)
 
 If you click the link, "Click for full compiler diagnostic", you should see an error like:
 

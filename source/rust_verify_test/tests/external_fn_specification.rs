@@ -357,7 +357,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] const_wrong_type verus_code! {
         assume_specification[char::REPLACEMENT_CHARACTER] -> u8;
-    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
+    } => Err(err) => assert_error_msgs(err, &[
+        "mismatched types",
+        "`assume_specification` requires function type signature to match `core::char::methods::impl&%0::REPLACEMENT_CHARACTER` exactly"
+    ])
 }
 
 test_verify_one_file! {
@@ -1461,14 +1464,14 @@ test_verify_one_file! {
     #[test] module_external code! {
         #[verifier::external]
         mod moo {
-            #[verifier::verify]
+            #[verus::internal(verify)]
             fn stuff() {
                 verus_builtin::assert_(false);
             }
         }
     } => Ok(err) => {
         assert!(err.warnings.len() == 2);
-        assert!(err.warnings[0].message.contains("`#[verifier::verify]` has no effect because item is already marked external"));
+        assert!(err.warnings[0].message.contains("`#[verus::internal(verify)]` has no effect because item is already marked external"));
     }
 }
 
@@ -1659,4 +1662,23 @@ test_verify_one_file! {
             &**x
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3171 shape 3
+    #[test] test_no_verifier_verify_attribute1 code! {
+        verus! {
+        pub spec const C: bool = (-7i8 % 2i8) == 1i8;
+        fn g(y: u8) -> (r: u8) requires y == 1 ensures r == 1 { y }
+        }
+        #[verifier::verify]
+        fn f() -> u8 {
+            let y: u8 = if C { 1 } else { 2 };
+            g(y)
+        }
+    } => Ok(err) => {
+        assert_eq!(err.errors.len(), 0);
+        assert_eq!(err.warnings.len(), 2);
+        assert!(err.warnings[0].message.contains("`#[verifier(verifier::verify)]` is deprecated"));
+    }
 }

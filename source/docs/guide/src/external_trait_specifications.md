@@ -10,7 +10,7 @@ for this purpose:
 ## Soundness warning
 
 > [!CAUTION]
-> Since the `assume_specification` statement is unchecked, it can easily be used to subvert
+> Since external trait specifications are unchecked, it can easily be used to subvert
 > Verus's guarantees.
 >
 > Further, specifying traits correctly is often even more difficult than specifying ordinary
@@ -107,7 +107,7 @@ pub trait ExPartialEq<Rhs = Self> {
 }
 ```
 
-The ensures clause says: **if** the type obeys the Verus spec for `Eq` (`obeys_eq_spec()` is true), **then**
+The ensures clause says: **if** the type obeys the Verus spec for `PartialEq` (`obeys_eq_spec()` is true), **then**
 the result matches `eq_spec`. For integer types and `bool`, `vstd` defines `obeys_eq_spec()`
 to be true, and proves that these types satisfy the `eq_spec`.  For other types, Verus
 doesn't know whether `obeys_eq_spec()` is true or false, so it won't assume that the postcondition

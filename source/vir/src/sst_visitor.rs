@@ -515,6 +515,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 au_branch_bool,
                 pre_modified_params_incl,
                 pre_modified_params_excl,
+                known_no_back_edge,
             } => {
                 let pre_stms = self.visit_stms(pre_stms)?;
                 let cond = R::map_opt(cond, &mut |(cond_stm, cond_exp)| {
@@ -551,6 +552,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         au_branch_bool: R::get_opt(au_branch_bool),
                         pre_modified_params_incl: R::get_opt(pre_modified_params_incl),
                         pre_modified_params_excl: R::get_opt(pre_modified_params_excl),
+                        known_no_back_edge: *known_no_back_edge,
                     })
                 })
             }

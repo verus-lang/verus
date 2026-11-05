@@ -1,5 +1,7 @@
 use super::super::prelude::*;
+use super::borrow::BorrowSpec;
 
+use core::borrow::Borrow;
 use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
 use core::marker::PointeeSized;
 
@@ -197,6 +199,17 @@ pub trait ExOrd: Eq + PartialOrd + PointeeSized {
     ;
 }
 
+/// Whether borrowing preserves the ordering of values.
+///
+/// This compares the `cmp_spec` results; faithfulness of the comparison and
+/// borrowing specifications is expressed separately by their `obeys_*_spec` predicates.
+pub open spec fn borrowed_key_ordering_matches<T: Borrow<U> + Ord, U: Ord + ?Sized>() -> bool {
+    forall|x: T, y: T| #[trigger]
+        x.cmp_spec(&y) == <T as BorrowSpec<U>>::borrow_spec(&x).cmp_spec(
+            <T as BorrowSpec<U>>::borrow_spec(&y),
+        )
+}
+
 pub trait PartialEqIs<Rhs: PointeeSized = Self>: PartialEq<Rhs> + PointeeSized {
     spec fn is_eq(&self, other: &Rhs) -> bool;
 
@@ -343,6 +356,18 @@ pub assume_specification[ <bool as PartialEq<bool>>::eq ](x: &bool, y: &bool) ->
 
 pub assume_specification[ <bool as PartialEq<bool>>::ne ](x: &bool, y: &bool) -> bool;
 
+/* char */
+
+impl PartialEqSpecImpl for char {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &char) -> bool {
+        *self == *other
+    }
+}
+
 /* floating point */
 
 /*
@@ -440,6 +465,19 @@ pub assume_specification[ <f64 as PartialOrd<f64>>::ge ](x: &f64, y: &f64) -> (o
     ensures
         ge_ensures::<f64>(*x, *y, o),
 ;
+
+#[cfg(feature = "alloc")]
+impl<T: PartialEq + ?Sized, A: core::alloc::Allocator> PartialEqSpecImpl
+    for alloc::boxed::Box<T, A>
+{
+    open spec fn obeys_eq_spec() -> bool {
+        T::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &Self) -> bool {
+        <T as PartialEqSpec>::eq_spec(&**self, &**other)
+    }
+}
 
 /* reference types & */
 

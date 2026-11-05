@@ -1756,7 +1756,7 @@ test_verify_one_file! {
 
         struct Pred<T> { t: T }
         impl<T> InvariantPredicate<(), T> for Pred<T> {
-            spec fn inv(k: (), v: T) -> bool { true }
+            open spec fn inv(k: (), v: T) -> bool { true }
         }
 
         struct X { }
@@ -1779,7 +1779,7 @@ test_verify_one_file! {
 
         struct Pred<T> { t: T }
         impl<T> InvariantPredicate<(), T> for Pred<T> {
-            spec fn inv(k: (), v: T) -> bool { true }
+            open spec fn inv(k: (), v: T) -> bool { true }
         }
 
         struct X { }

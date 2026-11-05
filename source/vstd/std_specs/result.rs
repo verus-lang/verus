@@ -202,6 +202,22 @@ pub assume_specification<T: core::fmt::Debug, E>[ Result::<T, E>::unwrap_err ](
         e == result->Err_0,
 ;
 
+// unwrap_unchecked
+pub assume_specification<T, E>[ Result::<T, E>::unwrap_unchecked ](result: Result<T, E>) -> T
+    requires
+        result is Ok,
+    returns
+        result->Ok_0,
+;
+
+// unwrap_err_unchecked
+pub assume_specification<T, E>[ Result::<T, E>::unwrap_err_unchecked ](result: Result<T, E>) -> E
+    requires
+        result is Err,
+    returns
+        result->Err_0,
+;
+
 // expect
 #[verifier::inline]
 pub open spec fn spec_expect<T, E: core::fmt::Debug>(result: Result<T, E>, msg: &str) -> T
@@ -220,6 +236,27 @@ pub assume_specification<T, E: core::fmt::Debug>[ Result::<T, E>::expect ](
         result is Ok,
     ensures
         t == result->Ok_0,
+;
+
+// expect_err
+/// Returns the error value when `result` is `Err`.
+#[verifier::inline]
+pub open spec fn spec_expect_err<T: core::fmt::Debug, E>(result: Result<T, E>, msg: &str) -> E
+    recommends
+        result is Err,
+{
+    result->Err_0
+}
+
+#[verifier::when_used_as_spec(spec_expect_err)]
+pub assume_specification<T: core::fmt::Debug, E>[ Result::<T, E>::expect_err ](
+    result: Result<T, E>,
+    msg: &str,
+) -> E
+    requires
+        result is Err,
+    returns
+        result->Err_0,
 ;
 
 // map
@@ -248,6 +285,164 @@ pub assume_specification<T, E, F, O: FnOnce(E) -> F>[Result::<T, E>::map_err](re
             mapped_result->Err_0,
         ),
         result.is_ok() ==> mapped_result == Result::<T, F>::Ok(result->Ok_0);
+
+// map_or
+pub assume_specification<T, E, U, F: FnOnce(T) -> U>[ Result::<T, E>::map_or ](
+    result: Result<T, E>,
+    default: U,
+    f: F,
+) -> (res: U)
+    requires
+        result is Ok ==> f.requires((result->Ok_0,)),
+    ensures
+        result is Ok ==> f.ensures((result->Ok_0,), res),
+        result is Err ==> res == default,
+;
+
+// map_or_else
+pub assume_specification<T, E, U, D: FnOnce(E) -> U, F: FnOnce(T) -> U>[ Result::<
+    T,
+    E,
+>::map_or_else ](result: Result<T, E>, default: D, f: F) -> (res: U)
+    requires
+        result is Err ==> default.requires((result->Err_0,)),
+        result is Ok ==> f.requires((result->Ok_0,)),
+    ensures
+        result is Err ==> default.ensures((result->Err_0,), res),
+        result is Ok ==> f.ensures((result->Ok_0,), res),
+;
+
+// is_ok_and
+pub assume_specification<T, E, F: FnOnce(T) -> bool>[ Result::<T, E>::is_ok_and ](
+    result: Result<T, E>,
+    f: F,
+) -> (res: bool)
+    requires
+        result is Ok ==> f.requires((result->Ok_0,)),
+    ensures
+        result is Err ==> !res,
+        result is Ok ==> f.ensures((result->Ok_0,), res),
+;
+
+// is_err_and
+pub assume_specification<T, E, F: FnOnce(E) -> bool>[ Result::<T, E>::is_err_and ](
+    result: Result<T, E>,
+    f: F,
+) -> (res: bool)
+    requires
+        result is Err ==> f.requires((result->Err_0,)),
+    ensures
+        result is Ok ==> !res,
+        result is Err ==> f.ensures((result->Err_0,), res),
+;
+
+// inspect
+pub assume_specification<T, E, F: FnOnce(&T)>[ Result::<T, E>::inspect ](
+    result: Result<T, E>,
+    f: F,
+) -> (res: Result<T, E>)
+    requires
+        result is Ok ==> f.requires((&result->Ok_0,)),
+    ensures
+        res == result,
+        result is Ok ==> f.ensures((&result->Ok_0,), ()),
+;
+
+// inspect_err
+pub assume_specification<T, E, F: FnOnce(&E)>[ Result::<T, E>::inspect_err ](
+    result: Result<T, E>,
+    f: F,
+) -> (res: Result<T, E>)
+    requires
+        result is Err ==> f.requires((&result->Err_0,)),
+    ensures
+        res == result,
+        result is Err ==> f.ensures((&result->Err_0,), ()),
+;
+
+// and
+/// Denotes `next` when `result` is `Ok`, otherwise the `Err` of `result`.
+#[verifier::allow_in_spec]
+pub assume_specification<T, E, U>[ Result::<T, E>::and ](
+    result: Result<T, E>,
+    next: Result<U, E>,
+) -> Result<U, E>
+    returns
+        match result {
+            Ok(_) => next,
+            Err(e) => Err(e),
+        },
+;
+
+// and_then
+pub assume_specification<T, E, U, F: FnOnce(T) -> Result<U, E>>[ Result::<T, E>::and_then ](
+    result: Result<T, E>,
+    op: F,
+) -> (res: Result<U, E>)
+    requires
+        result is Ok ==> op.requires((result->Ok_0,)),
+    ensures
+        result is Ok ==> op.ensures((result->Ok_0,), res),
+        result is Err ==> res == Err(result->Err_0),
+;
+
+// or
+/// Denotes the `Ok` of `result` when `result` is `Ok`, otherwise `next`.
+#[verifier::allow_in_spec]
+pub assume_specification<T, E, F>[ Result::<T, E>::or ](
+    result: Result<T, E>,
+    next: Result<T, F>,
+) -> Result<T, F>
+    returns
+        match result {
+            Ok(t) => Ok(t),
+            Err(_) => next,
+        },
+;
+
+// or_else
+pub assume_specification<T, E, F, O: FnOnce(E) -> Result<T, F>>[ Result::<T, E>::or_else ](
+    result: Result<T, E>,
+    op: O,
+) -> (res: Result<T, F>)
+    requires
+        result is Err ==> op.requires((result->Err_0,)),
+    ensures
+        result is Ok ==> res == Ok(result->Ok_0),
+        result is Err ==> op.ensures((result->Err_0,), res),
+;
+
+// unwrap_or
+/// Denotes the `Ok` payload, or `default` when `result` is `Err`.
+#[verifier::allow_in_spec]
+pub assume_specification<T, E>[ Result::<T, E>::unwrap_or ](result: Result<T, E>, default: T) -> T
+    returns
+        match result {
+            Ok(t) => t,
+            Err(_) => default,
+        },
+;
+
+// unwrap_or_else
+pub assume_specification<T, E, F: FnOnce(E) -> T>[ Result::<T, E>::unwrap_or_else ](
+    result: Result<T, E>,
+    op: F,
+) -> (res: T)
+    requires
+        result is Err ==> op.requires((result->Err_0,)),
+    ensures
+        result is Ok ==> res == result->Ok_0,
+        result is Err ==> op.ensures((result->Err_0,), res),
+;
+
+// unwrap_or_default
+pub assume_specification<T: core::default::Default, E>[ Result::<T, E>::unwrap_or_default ](
+    result: Result<T, E>,
+) -> (res: T)
+    ensures
+        result is Ok ==> res == result->Ok_0,
+        result is Err ==> <T as core::default::Default>::default.ensures((), res),
+;
 
 // ok
 #[verifier::inline]
@@ -306,6 +501,33 @@ pub assume_specification<T: Clone, E: Clone>[ <Result<T, E> as Clone>::clone_fro
             (Err(_), Ok(src), Ok(dst)) => cloned(src, dst),
             (Ok(_), Err(src), Err(dst)) => cloned(src, dst),
             _ => false,
+        },
+;
+
+// transpose
+/// Swaps the `Result` and the inner `Option`; `Ok(None)` becomes `None`.
+#[verifier::allow_in_spec]
+pub assume_specification<T, E>[ Result::<Option<T>, E>::transpose ](
+    result: Result<Option<T>, E>,
+) -> Option<Result<T, E>>
+    returns
+        match result {
+            Ok(Some(t)) => Some(Ok(t)),
+            Ok(None) => None,
+            Err(e) => Some(Err(e)),
+        },
+;
+
+// flatten
+/// Denotes the inner `Result` when `result` is `Ok`, otherwise the outer `Err`.
+#[verifier::allow_in_spec]
+pub assume_specification<T, E>[ Result::<Result<T, E>, E>::flatten ](
+    result: Result<Result<T, E>, E>,
+) -> Result<T, E>
+    returns
+        match result {
+            Ok(inner) => inner,
+            Err(e) => Err(e),
         },
 ;
 

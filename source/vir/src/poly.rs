@@ -537,6 +537,11 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 let exps = visit_exps_poly(ctx, state, exps);
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), exps))
             }
+            CallFun::InternalFun(InternalFun::ClosureOpensInvariants) => {
+                let exps = visit_exps_poly(ctx, state, exps);
+                let typ = coerce_typ_to_poly(ctx, &exp.typ);
+                mk_exp_typ(&typ, ExpX::Call(call_fun.clone(), typs.clone(), exps))
+            }
             CallFun::InternalFun(InternalFun::CheckDecreaseHeight) => {
                 assert!(exps.len() == 3);
                 let e0 = visit_exp_poly(ctx, state, &exps[0]);
@@ -1015,6 +1020,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             au_branch_bool,
             pre_modified_params_excl,
             pre_modified_params_incl,
+            known_no_back_edge,
         } => {
             let pre_stms = visit_stms(ctx, state, pre_stms);
             let cond = cond
@@ -1043,6 +1049,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 au_branch_bool,
                 pre_modified_params_excl: pre_modified_params_excl.clone(),
                 pre_modified_params_incl: pre_modified_params_incl.clone(),
+                known_no_back_edge: *known_no_back_edge,
             })
         }
         StmX::OpenInvariant(s) => {

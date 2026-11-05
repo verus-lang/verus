@@ -153,7 +153,7 @@ and may eventually remove the `assert`s.
 A complete proof may contain `assert`s, but should not contain any `assume`s.
 
 (In some situations, `assert` can help the SMT solver complete a proof,
-by giving the SMT hints about how to [manipulate `forall` and `exists` expressions](forall.md).
+by giving the SMT solver hints about how to [manipulate `forall` and `exists` expressions](forall.md).
 There are also special forms of `assert`, such as `assert(...) by(bit_vector)`,
 to help prove properties about [bit vectors](bitvec.md), [nonlinear integer arithmetic](nonlinear.md),
 [`forall` expressions](quantproofs.md), etc.)
@@ -169,7 +169,7 @@ Let's put everything from this section together into a final version of our exam
 Here, we've made a few final adjustments.
 
 First, we've combined the two preconditions `-16 <= x1` and `x1 < 16`
-into a single preconditon `-16 <= x1 < 16`,
+into a single precondition `-16 <= x1 < 16`,
 since Verus lets us chain multiple inequalities together in a single expression
 (equivalently, we could have also written `-16 <= x1 && x1 < 16`).
 
@@ -201,5 +201,5 @@ Note that the generated executable does not contain the `requires`, `ensures`, a
 since these are only needed during static verification,
 not during run-time execution.
 We refer to `requires`, `ensures`, `assert`, and `assume` as *ghost code*,
-in contast to the *executable code* that actually gets compiled.
+in contrast to the *executable code* that actually gets compiled.
 Verus erases all ghost code before compilation so that it imposes no run-time overhead.

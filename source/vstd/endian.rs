@@ -1016,8 +1016,6 @@ impl<B: Base> EndianNat<B> {
     ///
     /// [`to_big`]: EndianNat::to_big
     /// [`from_big`]: EndianNat::from_big
-    #[verifier::spinoff_prover]
-    #[verifier::rlimit(20)]
     pub broadcast proof fn from_big_to_big<BIG>(n: EndianNat<BIG>) where
         BIG: BasePow2,
         B: CompatibleSmallerBaseFor<BIG>,
@@ -1027,48 +1025,15 @@ impl<B: Base> EndianNat<B> {
             n.endian == endianness(),
         ensures
             #[trigger] Self::to_big(Self::from_big(n)) == n,
-        decreases n.len(),
     {
-        reveal(EndianNat::to_big);
-        reveal(EndianNat::to_nat);
         broadcast use EndianNat::exp_properties;
 
-        if n.len() == 0 {
-            Self::from_big_properties(n);
-            let small = Self::from_big(n);
-            assert(small.len() % Self::exp() == 0) by (nonlinear_arith)
-                requires
-                    small.len() == 0,
-                    Self::exp() > 0,
-            ;
-            Self::to_big_properties(small);
-            assert(Self::to_big(Self::from_big(n)).digits == n.digits);
-            assert(Self::to_big(Self::from_big(n)).endian == n.endian);
-        } else {
-            let least = n.least();
-            let rest = n.drop_least();
-            Self::from_big_to_big(rest);
-            Self::from_big_properties(rest);
-
-            let small = Self::from_big(n);
-            let small_least = small.take_least(Self::exp());
-            let small_rest = small.skip_least(Self::exp());
-            Self::from_nat_properties(least, Self::exp());
-            let from_nat_least = EndianNat::<B>::from_nat(least, Self::exp());
-            assert(small_least =~= from_nat_least);
-            EndianNat::<B>::from_nat_to_nat(least, Self::exp());
-
-            assert(small_rest =~= Self::from_big(rest));
-            // `(rest.len() * exp) % exp == 0`
-            lemma_mod_multiples_basic(rest.len() as int, Self::exp() as int);
-            assert(small_rest.len() % Self::exp() == 0);
-
-            Self::from_big_properties(n);
-            // `(n.len() * exp) % exp == 0`.  Use the dedicated lemma rather than
-            // a bare `nonlinear_arith`, which times out under Z3 >= 4.13.
-            lemma_mod_multiples_basic(n.len() as int, Self::exp() as int);
-            assert(small.len() % Self::exp() == 0);
-        }
+        Self::from_big_properties(n);
+        let small = Self::from_big(n);
+        lemma_mod_multiples_basic(n.len() as int, Self::exp() as int);
+        Self::to_big_properties(small);
+        lemma_div_by_multiple(n.len() as int, Self::exp() as int);
+        EndianNat::<BIG>::to_nat_injective(Self::to_big(small), n);
     }
 
     pub broadcast proof fn to_big_injective<BIG>(n1: EndianNat<B>, n2: EndianNat<B>) where

@@ -50,7 +50,7 @@ const C: u64 = foo();  // FAILS with error "cannot call function `foo` with mode
 
 ## Using an `exec const` in a `spec` or `proof` context
 Similar to functions, if you want to use an `exec const` in a `spec` or `proof` context, 
-you can annotate the declaration with `[verifier::when_used_as_spec(SPEC_DEF)]`, 
+you can annotate the declaration with `#[verifier::when_used_as_spec(SPEC_DEF)]`, 
 where `SPEC_DEF` is the name of a `spec const` or a `spec` function with no arguments. 
 
 ```rust
@@ -68,10 +68,10 @@ It doesn't handle using something like `::<usize>` to coerce a function to a dif
 
 ## Trouble-shooting overflow errors
 Verus may have difficulty proving that a `const` declaration does not overflow; 
-using `[verifier::when_used_as_spec(SPEC_DEF)]` 
-or `[verifier::non_linear]` may help. 
+using `#[verifier::when_used_as_spec(SPEC_DEF)]` 
+or `#[verifier::nonlinear]` may help. 
 
-For example, here `[verifier::non_linear]` is added to prevent the error 
+For example, here `#[verifier::nonlinear]` is added to prevent the error 
 "possible arithmetic underflow/overflow." 
 This allows Verus to reason about the (seemingly) 
 non-linear expression `BAR_PLUS_ONE * BAR`, 

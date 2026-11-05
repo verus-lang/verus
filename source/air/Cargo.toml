@@ -12,6 +12,7 @@ getopts = { workspace = true }
 smt-scope = { workspace = true }
 petgraph = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 indexmap = { workspace = true }
 yansi = { workspace = true }
 

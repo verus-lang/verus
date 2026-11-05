@@ -12,7 +12,10 @@ For example, while the `len()` method of
 [`std::collections::HashSet`](https://doc.rust-lang.org/std/collections/hash_set/struct.HashSet.html)
 returns a length of type `usize`,
 which is bounded,
-the `len()` methods of `Seq`, `Set`, and `ISet` each return
+the `len()` methods of
+[`Seq`](https://verus-lang.github.io/verus/verusdoc/vstd/seq/struct.Seq.html#method.len),
+[`Set`](https://verus-lang.github.io/verus/verusdoc/vstd/set/struct.Set.html#method.len), and
+[`ISet`](https://verus-lang.github.io/verus/verusdoc/vstd/iset/struct.ISet.html#method.len) each return
 a length of type `nat`, which is unbounded.
 
 `Seq`, `Set`, and `Map` objects are always finite.
@@ -73,7 +76,7 @@ Each `Map<Key, Value>` value has a domain of type `Set<Key>` given by `.dom()`.
 Likewise, each `IMap<Key, Value>` has a domain of type `ISet<Key>`.
 In the `test_map2` example above, each of `m` and `m_finite` has the finite
 domain `{0, 10, 20, 30, 40}`
-while `m_infinite`'s domain is the infinite set `{..., -20, 10, 0, 10, 20, ...}`.
+while `m_infinite`'s domain is the infinite set `{..., -20, -10, 0, 10, 20, ...}`.
 
 Some constructors of `Set<T>` don't necessarily produce a finite set; they
 produce an `Option<Set<T>>` that's only `Some` when the set is finite. Thus,
@@ -87,11 +90,11 @@ just use an `ISet` instead. Examples of functions that produce an
 * `Set::<T>::full()` constructs a set of all members of `T`. If `T` has trait
   `FiniteFull`, an ambient broadcast lemma is sufficient to know it's `Some`.
 * `Set::<T>::complement(self)` constructs a set of all members of `T` not in
-  `self.`
+  `self`.
 * `Set::<T>::new_from_iset(s)` constructs a set of all members of `T` in the
   `ISet` s.
 
-For more operations, including sequence contenation (`.add` or `+`),
+For more operations, including sequence concatenation (`.add` or `+`),
 sequence update,
 set union (`.union` or `+`),
 set intersection (`.intersect`),
@@ -166,7 +169,7 @@ For example, the exact cardinality of the intersection of two sets
 depends on which elements the two sets have in common.
 If the two sets are disjoint,
 the intersection's cardinality will be 0,
-but otherwise, the intersections's cardinality will be some non-zero value.
+but otherwise, the intersection's cardinality will be some non-zero value.
 Let's try to prove that the intersection's cardinality is no larger than
 either of the two sets' cardinalities.
 Without loss of generality, we can just prove that

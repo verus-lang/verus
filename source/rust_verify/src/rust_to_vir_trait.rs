@@ -99,8 +99,10 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
                             let vattrs = ctxt.get_verifier_attrs(attrs)?;
                             if let Some((spec, imp)) = vattrs.external_trait_extension {
                                 let path = ctxt.def_id_to_vir_path(trait_def_id);
-                                let spec = path.replace_last(Arc::new(spec.clone()));
-                                let imp = path.replace_last(Arc::new(imp.clone()));
+                                let spec = path
+                                    .replace_last(vir::ast::Segment::T(Arc::new(spec.clone()), 0));
+                                let imp = path
+                                    .replace_last(vir::ast::Segment::T(Arc::new(imp.clone()), 0));
                                 let m = &mut external_info.external_trait_extension_impl_map;
                                 assert!(!m.contains_key(&imp));
                                 m.insert(imp, spec);
@@ -180,6 +182,7 @@ pub(crate) fn translate_trait<'tcx>(
     trait_vattrs: &VerifierAttrs,
     crate_items: &CrateItems,
     safety: Safety,
+    no_erasure_needed: &mut Vec<DefId>,
 ) -> Result<(), VirErr> {
     let tcx = ctxt.tcx;
     let orig_trait_path = ctxt.def_id_to_vir_path(trait_def_id);
@@ -332,8 +335,12 @@ pub(crate) fn translate_trait<'tcx>(
         }
 
         let item_path = ctxt.def_id_to_vir_path(owner_id.to_def_id());
-        let is_verus_spec =
-            item_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
+        let is_verus_spec = item_path
+            .segments
+            .last()
+            .expect("segment.last")
+            .name()
+            .is_some_and(|name| name.starts_with(VERUS_SPEC));
         let attrs = tcx.hir_attrs(trait_item.hir_id());
         let ex_item_id_for = if let Some(ex_trait_id_for) = ex_trait_id_for {
             match kind {
@@ -367,6 +374,7 @@ pub(crate) fn translate_trait<'tcx>(
                         // (they would currently just get dropped here if we didn't return an error)
                     }
                     // spec functions live in extension trait, not in our trait
+                    no_erasure_needed.push(owner_id.to_def_id());
                     continue;
                 } else if !is_verus_spec && ex_assoc_item.is_none() {
                     return err_span(
@@ -429,6 +437,7 @@ pub(crate) fn translate_trait<'tcx>(
                     ex_item_id_for,
                     None,
                     &mut vir.opaque_types,
+                    no_erasure_needed,
                 )?;
                 if let Some(fun) = fun {
                     method_names.push(fun);
@@ -474,6 +483,7 @@ pub(crate) fn translate_trait<'tcx>(
                     ex_item_id_for,
                     None,
                     &mut vir.opaque_types,
+                    no_erasure_needed,
                 )?;
                 if let Some(fun) = fun {
                     method_names.push(fun);
@@ -600,8 +610,8 @@ pub(crate) fn translate_trait<'tcx>(
     };
     state.external_info.local_trait_ids.push(target_trait_id);
     let external_trait_extension = if let Some((spec, imp)) = external_trait_extension {
-        let spec = orig_trait_path.replace_last(Arc::new(spec.clone()));
-        let imp = orig_trait_path.replace_last(Arc::new(imp.clone()));
+        let spec = orig_trait_path.replace_last(vir::ast::Segment::T(Arc::new(spec.clone()), 0));
+        let imp = orig_trait_path.replace_last(vir::ast::Segment::T(Arc::new(imp.clone()), 0));
         Some((spec, imp))
     } else {
         None
@@ -810,9 +820,10 @@ fn make_trait_decl<'tcx>(
         assume_specification_opaque_type_map: spec_method_info
             .assume_specification_opaque_type_map
             .clone(),
-        return_opaque_type_eqs: spec_method_info.return_opaque_type_eqs.clone(),
         ret_typ_mode: spec_method_info.ret_typ_mode.clone(),
         autoderive_action: None,
         is_external_const: false,
+        has_opaque_types: spec_method_info.has_opaque_types,
+        external_id: spec_method_info.external_id,
     })
 }
