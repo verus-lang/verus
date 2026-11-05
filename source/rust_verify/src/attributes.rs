@@ -1430,7 +1430,19 @@ pub(crate) fn get_external_attrs(
                 es.external_auto_derives = AutoDerivesAttr::AllExternal
             }
             Attr::ExternalAutoDerives(Some(external_auto_derives)) => {
-                es.external_auto_derives = AutoDerivesAttr::SomeExternal(external_auto_derives)
+                // Several attributes on one item merge: the excluded names are their union.
+                es.external_auto_derives =
+                    match std::mem::replace(&mut es.external_auto_derives, AutoDerivesAttr::Regular)
+                    {
+                        AutoDerivesAttr::Regular => {
+                            AutoDerivesAttr::SomeExternal(external_auto_derives)
+                        }
+                        AutoDerivesAttr::SomeExternal(mut names) => {
+                            names.extend(external_auto_derives);
+                            AutoDerivesAttr::SomeExternal(names)
+                        }
+                        AutoDerivesAttr::AllExternal => AutoDerivesAttr::AllExternal,
+                    }
             }
             Attr::UsesUnerasedProxy => es.uses_unerased_proxy = true,
             Attr::StructuralConstWrapper => es.structural_const_wrapper = true,
