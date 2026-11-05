@@ -1597,3 +1597,20 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] empty_seq_preferred_panic_regression_3427 verus_code! {
+        use vstd::prelude::*;
+
+        pub open spec fn preferred(prompts: Seq<bool>, end: nat, selected: Option<usize>) -> bool {
+            end <= prompts.len() && match selected {
+                None => forall|j: int| 0 <= j < end ==> !prompts[j],
+                Some(i) => i < end && prompts[i as int],
+            }
+        }
+
+        proof fn witness_absent_accept() {
+            assert(preferred(Seq::empty(), 0, None)) by (compute);
+        }
+    } => Ok(())
+}
