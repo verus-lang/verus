@@ -2337,3 +2337,18 @@ fn parse_solver_version() {
     assert_eq!(parse_version_response("(:version \"1.3.1\")\r"), Some("1.3.1"));
     assert_eq!(parse_version_response("(:status sat)"), None);
 }
+
+#[test]
+fn parse_reason_unknown() {
+    use crate::smt_verify::SmtReasonUnknown::*;
+    let z3 = SmtSolver::Z3;
+    assert_eq!(z3.parse_reason_unknown("(:reason-unknown \"canceled\")"), Some(Canceled));
+    assert_eq!(z3.parse_reason_unknown("(:reason-unknown \"unknown\")"), Some(Unknown));
+    // https://github.com/verus-lang/verus/issues/1557
+    assert_eq!(z3.parse_reason_unknown("(:reason-unknown \"\")"), Some(Unknown));
+    assert_eq!(
+        z3.parse_reason_unknown("(:reason-unknown \"(incomplete quantifiers)\")"),
+        Some(Incomplete)
+    );
+    assert_eq!(z3.parse_reason_unknown("(:reason-unknown \"memout\")"), None);
+}
