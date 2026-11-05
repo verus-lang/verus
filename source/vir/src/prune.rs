@@ -494,6 +494,26 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 reach_atomic_update_ops(state, ctxt);
             }
 
+            // ast_to_sst uses these for async ensures and .await (local or imported async fns)
+            if function.x.attrs.is_async {
+                reach_function(
+                    ctxt,
+                    state,
+                    &crate::fun!(CrateId::Vstd => "future", "FutureSpec"; "obeys_future_laws"),
+                );
+                reach_function(
+                    ctxt,
+                    state,
+                    &crate::fun!(CrateId::Vstd => "future", "FutureSpec"; "view"),
+                );
+                reach_function(
+                    ctxt,
+                    state,
+                    &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "awaited"),
+                );
+                reach_function(ctxt, state, &crate::fun!(CrateId::Vstd => "future"; "exec_await"));
+            }
+
             // note: the types in typ_bounds are handled below by map_function_visitor_env
             traverse_generic_bounds(ctxt, state, &function.x.typ_bounds, false);
             let fe = |state: &mut State, _: &mut VisitorScopeMap, e: &Expr| {
@@ -1108,37 +1128,6 @@ pub fn prune_krate_for_module_or_krate(
             if is_root_function(f) {
                 // our function
                 reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
-
-                // an async function, we need to include async related functions
-                if f.x.attrs.is_async {
-                    reach(
-                        &mut state.reached_functions,
-                        &mut state.worklist_functions,
-                        &crate::fun!(
-                            CrateId::Vstd => "future", "FutureSpec"; "obeys_future_laws"
-                        ),
-                    );
-
-                    reach(
-                        &mut state.reached_functions,
-                        &mut state.worklist_functions,
-                        &crate::fun!(CrateId::Vstd => "future", "FutureSpec"; "view"),
-                    );
-
-                    reach(
-                        &mut state.reached_functions,
-                        &mut state.worklist_functions,
-                        &crate::fun!(
-                            CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "awaited"
-                        ),
-                    );
-
-                    reach(
-                        &mut state.reached_functions,
-                        &mut state.worklist_functions,
-                        &crate::fun!(CrateId::Vstd => "future"; "exec_await"),
-                    );
-                }
             }
             continue;
         }
