@@ -12,11 +12,12 @@ verus! {
 
 type ReadAU = AtomicUpdate<FlagToken, Commit<FlagToken>, ReadPred>;
 type FlipAU = AtomicUpdate<FlagToken, Commit<FlagToken>, FlipPred>;
+type FlipDone = Resolution<FlagToken, Commit<FlagToken>, FlipPred>;
 
 pub enum Protocol {
     Empty(GhostVarAuth<Option<FlipAU>>),
     Offering(Tracked<FlipAU>),
-    Accepted,
+    Accepted(FlipDone),
 }
 
 use Protocol::*;
@@ -71,10 +72,10 @@ impl InvariantPredicate<K, V> for FlagInv {
                 &&& gv@ is Some
                 &&& gv@->0 == au@
             },
-            Accepted => {
+            Accepted(done) => {
                 &&& pend_perm.value() == 2
                 &&& gv@ is Some
-                &&& gv@->0.resolves()
+                &&& done.is_for(gv@->0)
             }
         }
     }
@@ -231,16 +232,14 @@ impl Flag {
                         Tracked(Commit(token))
                     });
 
-                    try_open_atomic_update!(other_au.get(), mut token => {
+                    let tracked res_done = try_open_atomic_update!(other_au.get(), mut token => {
                         let ghost old_auth = auth@;
                         auth.update(&mut token.value, !old_auth);
                         Tracked(Commit(token))
                     });
 
-                    assert(gv@ is Some);
-                    assert(gv@->0.resolves());
-
-                    proto = Accepted;
+                    let tracked done = res_done.get().tracked_unwrap();
+                    proto = Accepted(done);
                 }
 
                 v = (value_perm, pend_perm, auth, gv, proto);
@@ -384,6 +383,11 @@ impl Flag {
                     gva.agree(&gv);
 
                     assert(proto is Accepted);
+                    match &proto {
+                        Accepted(done) => done.agree(),
+                        _ => proof_from_false(),
+                    }
+
                     assert(gva@ is Some);
                     let ghost au = gva@->0;
                     assert(au.resolves());
