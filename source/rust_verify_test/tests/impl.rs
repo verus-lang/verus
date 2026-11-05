@@ -4,7 +4,6 @@ mod common;
 use common::*;
 
 const STRUCT: &str = verus_code_str! {
-    #[derive(PartialEq, Eq)]
     struct Bike {
         hard_tail: bool,
     }
@@ -60,7 +59,6 @@ test_verify_one_file! {
         mod M1 {
             use verus_builtin::*;
 
-            #[derive(PartialEq, Eq)]
             pub struct Bike {
                 pub hard_tail: bool,
             }
@@ -98,7 +96,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_impl_mod_priv_field verus_code! {
         mod M1 {
-            #[derive(PartialEq, Eq)]
             pub struct Bike {
                 hard_tail: bool,
             }
@@ -124,7 +121,6 @@ test_verify_one_file! {
 }
 
 const IMPL_GENERIC_SHARED: &str = verus_code_str! {
-    #[derive(PartialEq, Eq)]
     struct Wrapper<A> {
         v: A,
     }
@@ -156,13 +152,11 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_impl_generic_param verus_code! {
-        #[derive(PartialEq, Eq, Structural)]
         struct Two<A, B> {
             a: A,
             b: B,
         }
 
-        #[derive(PartialEq, Eq)]
         struct Wrapper<A> {
             v: A,
         }
@@ -182,7 +176,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_impl_with_self verus_code! {
-        #[derive(PartialEq, Eq, Structural)]
         struct Bike {
             hard_tail: bool,
         }
@@ -226,7 +219,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_generic_struct verus_code! {
-        #[derive(PartialEq, Eq)]
         struct TemplateCar<V> {
             four_doors: bool,
             passengers: u64,

@@ -406,18 +406,8 @@ impl GlobalCtx {
             // If TSpec extends T with spec functions,
             // merge 'impl TSpec for typ' into 'impl T for typ'.
             if let Some(t) = extension_to_trait.get(&trait_impl.x.trait_path) {
-                let mut candidates: Vec<TraitImpl> = Vec::new();
-                for imp in trait_impl.x.trait_typ_arg_impls.x.iter() {
-                    if let ImplPath::TraitImplPath(imp) = imp {
-                        if let Some(candidate) = trait_impl_map.get(imp) {
-                            if &candidate.x.trait_path == t && !candidate.x.external_trait_blanket {
-                                candidates.push(candidate.clone());
-                            }
-                        }
-                    }
-                }
                 let origin_impl =
-                    crate::traits::find_trait_impl_from_extension(trait_impl, candidates, t)?;
+                    crate::traits::find_trait_impl_from_extension(trait_impl, &trait_impl_map, t)?;
                 let extension_node =
                     Node::TraitImpl(ImplPath::TraitImplPath(trait_impl.x.impl_path.clone()));
                 let origin_node =

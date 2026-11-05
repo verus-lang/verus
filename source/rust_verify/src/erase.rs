@@ -39,6 +39,7 @@ pub enum MiscCall {
     GhostBorrowMut,
     MutRefTracked,
     ShrRefStructWrap,
+    IntrinsicDiscriminantValue,
 }
 
 /// Information about each call in the AST (each ExprKind::Call).
@@ -187,7 +188,8 @@ fn resolved_call_to_call_erase(
             | MiscCall::BoxNew
             | MiscCall::IdentityClone { .. }
             | MiscCall::TrackedNew
-            | MiscCall::TrackedExec => CallErasure::keep_all(),
+            | MiscCall::TrackedExec
+            | MiscCall::IntrinsicDiscriminantValue => CallErasure::keep_all(),
 
             MiscCall::ClosureToFnProof(_)
             | MiscCall::TrackedExecBorrow
