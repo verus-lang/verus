@@ -1635,6 +1635,9 @@ pub struct FunctionAttrsX {
     pub is_async: bool,
     /// Is this a types's drop implementation
     pub is_drop: bool,
+    /// Is this the `clone` method of a `Clone` impl for a type that also implements
+    /// `TrivialClone`? If so, we add the postcondition `ensures ret == self`.
+    pub has_trivial_clone: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1994,6 +1997,7 @@ pub struct TraitImplX {
     pub auto_imported: bool,
     // Is a blanket implementation declared by external_trait_extension:
     pub external_trait_blanket: bool,
+    pub is_unsafe: bool,
 }
 
 pub type ModuleReveals = Arc<Spanned<Vec<Fun>>>;

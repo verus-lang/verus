@@ -381,6 +381,7 @@ impl<'tcx> Query<'tcx> {
             let mut state = crate::rust_to_vir::State {
                 external_info: crate::rust_to_vir_impl::ExternalInfo::new(),
                 fun_warn_configs: HashMap::new(),
+                trivial_clone_impls: Vec::new(),
             };
             let mut infos: Vec<FunctionOrConstInfo<'tcx>> = Vec::new();
             let name = crate::rust_to_vir_func::check_item_const_or_static(

@@ -28,6 +28,7 @@
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(btree_cursors))]
 #![cfg_attr(verus_keep_ghost, feature(panic_internals))]
 #![cfg_attr(verus_keep_ghost, feature(maybe_uninit_array_assume_init))]
+#![cfg_attr(verus_keep_ghost, feature(trivial_clone))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
