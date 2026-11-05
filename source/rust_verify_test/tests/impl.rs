@@ -334,3 +334,19 @@ test_verify_one_file! {
         unsafe impl Sync for Foo { }
     } => Err(e) => assert_vir_error_msg(e, "unsafe impl for `Sync` is not allowed")
 }
+
+test_verify_one_file! {
+    #[test] impl_in_ghost_code_rejected_3426 verus_code! {
+        pub struct S;
+        pub trait Tr { fn m(&self) -> (r: u8) ensures r == 2; }
+        impl Tr for S { fn m(&self) -> (r: u8) { 2 } }
+
+        fn f() -> (r: u8) ensures r == 1 {
+            let s = S;
+            proof {
+                impl S { fn m(&self) -> (r: u8) ensures r == 1 { 1 } }
+            }
+            s.m()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "impl or static items in ghost code")
+}
