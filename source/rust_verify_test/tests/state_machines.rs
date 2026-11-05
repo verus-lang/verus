@@ -15,6 +15,12 @@ const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use verus_builtin::*;
     #[allow(unused_imports)] use verus_builtin_macros::*;
     #[allow(unused_imports)] use verus_state_machines_macros::*;
+    // With `--cfg verus_verified_tsm` (test_verify_tsm!'s `verified` run, or VERUS_TSM=verified)
+    // these explicit imports shadow the glob-imported trusted macros.
+    #[cfg(verus_verified_tsm)] #[allow(unused_imports)]
+    use verus_state_machines_macros::verified_tokenized_state_machine as tokenized_state_machine;
+    #[cfg(verus_verified_tsm)] #[allow(unused_imports)]
+    use verus_state_machines_macros::verified_state_machine_model as state_machine;
 
     verus!{
 
@@ -27,7 +33,7 @@ const IMPORTS: &str = code_str! {
     }
 };
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] dupe_name_fail IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -47,7 +53,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "duplicate item name")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_birds_eye_init_error IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields { #[sharding(variable)] pub t: int }
@@ -62,7 +68,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "`birds_eye` has no effect in an init!")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_birds_eye_nontokenized_error IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields { pub t: int }
@@ -95,7 +101,7 @@ test_verify_one_file_with_options! {
     }
 }
 
-test_verify_one_file_with_options! {
+test_verify_tsm_with_options! {
     #[test] test_state_machine_req_custom_err_is_inert ["--expand-errors"] => IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -126,7 +132,7 @@ test_verify_one_file_with_options! {
     }
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_birds_eye_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -143,7 +149,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "a guard value must be a deterministic function")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_withdraw_bind_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -160,7 +166,7 @@ test_verify_one_file! {
     } => Err(e) => assert_any_vir_error_msg(e, "a guard value must be a deterministic function")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_birds_eye_req IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -177,7 +183,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'require' statements should not be in the scope of a `birds_eye` let-binding")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] require_let_birds_eye_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -194,7 +200,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'require' statements should not be in the scope of a `birds_eye` let-binding")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_withdraw_bind_req IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -211,7 +217,7 @@ test_verify_one_file! {
     } => Err(e) => assert_any_vir_error_msg(e, "'require' statements should not be in the scope of a `withdraw` let-binding")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_birds_eye_req2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -231,7 +237,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'require' statements should not be preceeded by an assert which is in the scope of")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_withdraw_bind_req2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -251,7 +257,7 @@ test_verify_one_file! {
     } => Err(e) => assert_any_vir_error_msg(e, "'require' statements should not be preceeded by an assert which is in the scope of")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_birds_eye_special IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -268,7 +274,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'remove' statements should not be in the scope of a `birds_eye` let-binding")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_withdraw_binding_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -285,7 +291,7 @@ test_verify_one_file! {
     } => Err(e) => assert_any_vir_error_msg(e, "'remove' statements should not be in the scope of a `withdraw` let-binding")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_birds_eye_special2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -305,7 +311,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'remove' statements should not be preceeded by an assert which is in the scope of")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_update_constant IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -321,7 +327,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'update' statement not allowed for field with sharding strategy 'constant'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_add_constant IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -337,7 +343,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'add' statement not allowed for field with sharding strategy 'constant'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_have_constant IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -353,7 +359,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'have' statement not allowed for field with sharding strategy 'constant'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_option_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -370,7 +376,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_map_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -387,7 +393,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_imap_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -404,7 +410,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_multiset_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -421,7 +427,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_storage_option_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -438,7 +444,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_nottokenized_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -455,7 +461,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_pre_no_field IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -471,7 +477,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be used opaquely")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_pre_no_field_withdraw_kv_value IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -487,7 +493,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot be used opaquely")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_pre_no_field_remove_kv_key IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -539,7 +545,46 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// Checked-macro version of test_use_pre_no_field_withdraw_kv_key. API difference: in a machine
+// with storage, an operation that consumes no token takes a `Unit` (here from
+// `<init>_with_unit`, as the machine has no field token).
 test_verify_one_file! {
+    #[test] test_use_pre_no_field_withdraw_kv_key_verified IMPORTS.to_string() + verus_code_str! {
+        verified_tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_imap)] pub v: IMap<int, int>,
+            }
+
+            init!{
+                initialize() {
+                    init v = IMap::empty();
+                }
+            }
+
+            transition!{
+                tr() {
+                    // this is ok:
+                    withdraw v -= [{ let s = pre; s.v.index(0) } => 5]
+                          by { assume(false); };
+                }
+            }
+        }}
+
+        verus!{
+
+        proof fn foo(tracked m: IMap<int, int>) {
+            requires(equal(m, IMap::empty()));
+
+            let tracked (Tracked(inst), Tracked(unit)) = X::Instance::initialize_with_unit(m);
+            let tracked t = (inst).tr(unit);
+            assert(t == 5);
+        }
+
+        }
+    } => Ok(())
+}
+
+test_verify_tsm! {
     #[test] test_use_pre_no_field2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -555,7 +600,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "`pre` cannot be used opaquely")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_pre_no_field3 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -571,7 +616,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "any field access must be a state field")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_use_pre_no_field4 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -587,7 +632,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "expected a named field")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] field_name_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -597,7 +642,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] field_name_reserved_ident2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -607,7 +652,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] sm_name_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ instance {
             fields {
@@ -617,7 +662,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] sm_name_reserved_ident2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ param_token_a {
             fields {
@@ -627,7 +672,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] let_name_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -643,7 +688,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] let_name_reserved_ident2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -659,7 +704,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] arg_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -674,7 +719,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] arg_reserved_ident2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -689,7 +734,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] binding_reserved_ident1 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -705,7 +750,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "reserved identifier")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] duplicate_inductive_lemma IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -729,7 +774,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "duplicate 'inductive' lemma")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] missing_inductive_lemma IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -750,7 +795,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "missing inductiveness proofs for")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] missing_inductive_lemma_init IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -771,7 +816,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "missing inductiveness proofs for")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inductive_lemma_readonly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -790,7 +835,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'inductive' lemma does not make sense for a 'readonly' transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inductive_lemma_property IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -809,7 +854,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'inductive' lemma does not make sense for a 'property' definition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_wrong_args IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -828,7 +873,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "params for 'inductive' lemma should be")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_bad_transition_name IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -847,7 +892,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "could not find transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_bad_generic_params IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -866,7 +911,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "should have no generic parameters")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_bad_return_type IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -885,7 +930,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "should have no return type")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_bad_header IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -905,7 +950,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the precondition and postcondition are implicit")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_doesnt_verify IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -930,7 +975,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_doesnt_verify_init IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -955,7 +1000,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] sm_generic_param_not_type IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X<'a> {
             fields {
@@ -965,7 +1010,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "Only generic type parameters are supported")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] multiple_fields IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -979,14 +1024,14 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "Expected only one declaration of `fields` block")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] no_fields IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
         }}
     } => Err(e) => assert_vir_error_msg(e, "'fields' declaration was not found")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] conflicting_attrs IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1008,7 +1053,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "conflicting attributes")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] explicit_mode_inv IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1030,7 +1075,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "should not be explicitly labelled")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_mode_inv IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1051,7 +1096,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "an invariant function should be `spec`")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_mode_inductive IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1076,7 +1121,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "an inductiveness lemma should be `proof`")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] explicit_mode_field IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1086,7 +1131,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "should not be explicitly labelled")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] explicit_mode_proof IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1112,7 +1157,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "should not be explicitly labelled")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inv_wrong_params IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1138,7 +1183,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "an invariant function must take 1 argument (self)")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inv_wrong_ret IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1164,7 +1209,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "an invariant function must return a bool")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inv_wrong_generics IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1190,7 +1235,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "an invariant function must take 0 type arguments")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] normal_sm_sharding IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1198,9 +1243,11 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_vir_error_msg(e, "sharding strategy only makes sense for tokenized state machines")
+    // verified_state_machine_model! accepts (and ignores) sharding annotations by design.
+    ; verified => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] tokenized_sm_no_sharding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1210,7 +1257,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "tokenized state machine requires a sharding strategy")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] unrecognized_sharding_strategy_name IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1220,7 +1267,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "unrecognized sharding strategy")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] duplicate_sharding_attr IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1232,7 +1279,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "duplicate sharding attribute")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1243,7 +1290,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Option<_>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_option2 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1254,7 +1301,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Option<_>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_option3 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1265,7 +1312,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Option<_>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_storage_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1276,7 +1323,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Option<_>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_map IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1287,7 +1334,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Map<_, _>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_storage_map IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1298,7 +1345,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Map<_, _>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_storage_imap IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1309,7 +1356,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form IMap<_, _>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_multiset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1320,7 +1367,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Multiset<_>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_set IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1331,7 +1378,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form Set<_>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_iset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1342,7 +1389,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be of the form ISet<_>")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_count IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1353,7 +1400,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be nat")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_form_bool IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1364,7 +1411,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "must be bool")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] special_op_conditional IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1383,7 +1430,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statements are not supported inside conditionals")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] special_op_binding_conditional IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1402,7 +1449,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statements are not supported inside conditionals")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] special_op_match IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1425,7 +1472,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statements are not supported inside conditionals")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] remove_after_have IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1443,7 +1490,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "remove -> have -> add")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] remove_after_have_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1461,7 +1508,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "remove -> have -> add")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] have_after_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1479,7 +1526,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "remove -> have -> add")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] remove_after_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1497,7 +1544,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "remove -> have -> add")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_missing IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1512,7 +1559,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "procedure does not initialize")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_dupe IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1529,7 +1576,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "might be initialized multiple times")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_dupe_conditional IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1550,7 +1597,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "might be initialized multiple times")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_if IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1569,7 +1616,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the else-branch does not initialize")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_dupe_match IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1590,7 +1637,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "might be initialized multiple times")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_else IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1609,7 +1656,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the if-branch does not initialize")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_match IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1634,7 +1681,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "all branches of a match-statement must initialize")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_init_match2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1658,7 +1705,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "all branches of a match-statement must initialize")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_update IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1675,7 +1722,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'update' statement not allowed in initialization")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_update2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1691,7 +1738,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'update' statement not allowed in initialization")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_special IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1708,7 +1755,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "use 'init' instead")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_special_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1725,7 +1772,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "use 'init' instead")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] init_wf_assert IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1742,7 +1789,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'assert' statement not allowed in initialization")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] normal_wf_update_dupe IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1759,7 +1806,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "might be updated multiple times")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] normal_wf_update_dupe_conditional IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1778,7 +1825,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "might be updated multiple times")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] normal_wf_update_dupe_conditional2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1798,7 +1845,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "might be updated multiple times")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] normal_wf_update_dupe_match IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1821,7 +1868,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "might be updated multiple times")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] normal_wf_update_init IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1837,7 +1884,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'init' statement not allowed")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] normal_wf_update_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1854,7 +1901,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "'guard' statement only allowed in 'readonly' transition or 'property' definition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] readonly_wf_update IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1870,7 +1917,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] property_wf_update IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1886,7 +1933,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in property definition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] readonly_wf_init IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1902,7 +1949,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed outside 'init' routine")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] property_wf_init IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -1918,7 +1965,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed outside 'init' routine")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] readonly_wf_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1935,7 +1982,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] property_wf_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1952,7 +1999,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in 'property' definition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] readonly_wf_remove_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1969,7 +2016,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] readonly_wf_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1986,7 +2033,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] readonly_wf_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2003,7 +2050,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] readonly_wf_withdraw IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2020,7 +2067,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed in readonly transition")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] field_not_found IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -2036,7 +2083,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "field 'whats_this' not found")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2053,7 +2100,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_remove_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2070,7 +2117,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2087,7 +2134,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_remove IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2104,7 +2151,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2128,7 +2175,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_general_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2152,7 +2199,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2176,7 +2223,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_general_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2200,7 +2247,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2217,7 +2264,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_general_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2234,7 +2281,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_have IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2251,7 +2298,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_have IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2268,7 +2315,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_have IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2285,7 +2332,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "adding a proof body is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_withdraw IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2309,7 +2356,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_withdraw IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2333,7 +2380,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_withdraw_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2356,7 +2403,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_withdraw IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2381,7 +2428,7 @@ test_verify_one_file! {
     //} => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2401,7 +2448,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2421,7 +2468,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_general_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2441,7 +2488,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_general_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2468,7 +2515,153 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+// The `by` blocks are needed (the invariant is opaque): they prove the
+// operations' inherent safety conditions.
+test_verify_tsm! {
+    #[test] inherent_safety_condition_by_block_needed IMPORTS.to_string() + verus_code_str! {
+        #[verifier::opaque]
+        pub open spec fn full(v: int) -> bool { v == 0 }
+
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(constant)]
+                pub k: int,
+
+                #[sharding(variable)]
+                pub v: int,
+
+                #[sharding(storage_option)]
+                pub s: Option<int>,
+
+                #[sharding(storage_map)]
+                pub m: Map<int, int>,
+            }
+
+            #[invariant]
+            pub fn inv(&self) -> bool {
+                &&& (self.s is Some <==> full(self.v))
+                &&& (full(self.v) ==> self.s == Some(self.k))
+                &&& (self.m.dom().contains(1) <==> full(self.v))
+                &&& (full(self.v) ==> self.m[1] == self.k)
+            }
+
+            init!{
+                initialize(k: int) {
+                    init k = k;
+                    init v = 0;
+                    init s = Option::Some(k);
+                    init m = Map::empty().insert(1, k);
+                }
+            }
+
+            transition!{
+                take() {
+                    require pre.v == 0;
+                    update v = 1;
+                    withdraw s -= Some(pre.k) by { reveal(full); };
+                    withdraw m -= [1 => pre.k] by { reveal(full); };
+                }
+            }
+
+            transition!{
+                give() {
+                    require pre.v == 1;
+                    update v = 0;
+                    deposit s += Some(pre.k) by { reveal(full); };
+                    deposit m += [1 => pre.k] by { reveal(full); };
+                }
+            }
+
+            property!{
+                peek() {
+                    require pre.v == 0;
+                    guard s >= Some(pre.k) by { reveal(full); };
+                    guard m >= [1 => pre.k] by { reveal(full); };
+                }
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self, k: int) { reveal(full); }
+
+            #[inductive(take)]
+            fn take_inductive(pre: Self, post: Self) { reveal(full); }
+
+            #[inductive(give)]
+            fn give_inductive(pre: Self, post: Self) { reveal(full); }
+        }}
+    } => Ok(())
+}
+
+test_verify_tsm! {
+    #[test] inherent_safety_condition_by_block_missing IMPORTS.to_string() + verus_code_str! {
+        #[verifier::opaque]
+        pub open spec fn full(v: int) -> bool { v == 0 }
+
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(constant)]
+                pub k: int,
+
+                #[sharding(variable)]
+                pub v: int,
+
+                #[sharding(storage_option)]
+                pub s: Option<int>,
+            }
+
+            #[invariant]
+            pub fn inv(&self) -> bool {
+                &&& (self.s is Some <==> full(self.v))
+                &&& (full(self.v) ==> self.s == Some(self.k))
+            }
+
+            init!{
+                initialize(k: int) {
+                    init k = k;
+                    init v = 0;
+                    init s = Option::Some(k);
+                }
+            }
+
+            transition!{
+                take() {
+                    require pre.v == 0;
+                    update v = 1;
+                    withdraw s -= Some(pre.k); // FAILS
+                }
+            }
+
+            transition!{
+                give() {
+                    require pre.v == 1;
+                    update v = 0;
+                    deposit s += Some(pre.k); // FAILS
+                }
+            }
+
+            property!{
+                peek() {
+                    require pre.v == 0;
+                    guard s >= Some(pre.k); // FAILS
+                }
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self, k: int) { reveal(full); }
+
+            #[inductive(take)]
+            fn take_inductive(pre: Self, post: Self) { reveal(full); }
+
+            #[inductive(give)]
+            fn give_inductive(pre: Self, post: Self) { reveal(full); }
+        }}
+    } => Err(e) => assert_fails(e, 3)
+    // (the checked macro reports the three conditions, which have no `by`
+    // block, at the macro invocation: one diagnostic)
+    ; verified => Err(e) => assert_fails_anywhere(e, 1)
+}
+
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2490,7 +2683,7 @@ test_verify_one_file! {
     //} => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_general_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2512,7 +2705,7 @@ test_verify_one_file! {
     //} => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_option_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2536,7 +2729,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_map_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2560,7 +2753,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inherent_safety_condition_multiset_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2577,7 +2770,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "storage_multiset strategy not implemented")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assert_safety_condition_fail IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -2593,7 +2786,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assert_safety_condition_readonly_fail IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -2609,7 +2802,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assert_safety_condition_property_fail IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -2625,7 +2818,7 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_var_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2642,7 +2835,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "statement not allowed for field with sharding strategy")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_multiset_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2659,7 +2852,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'multiset'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_multiset_add_set IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2676,7 +2869,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'multiset'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_set_add_multiset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2693,7 +2886,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'set'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_multiset_add_option_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2710,7 +2903,7 @@ test_verify_one_file! {
     } => Err(e) => assert_any_vir_error_msg(e, "element but the given field has sharding strategy 'multiset'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_map_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2727,7 +2920,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'map'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_option_add_map IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2744,7 +2937,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'option'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_option_add_multiset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2761,7 +2954,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'option'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_map_add_multiset IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2778,7 +2971,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'map'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_multiset_add_map IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2795,7 +2988,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'multiset'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_map_guard_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2812,7 +3005,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'map'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_count_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2829,7 +3022,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "element but the given field has sharding strategy 'count'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_option_deposit_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2846,7 +3039,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "is only for storage types")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] wrong_op_storage_option_add_option IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2863,7 +3056,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "use deposit/withdraw/guard statements for storage strategies")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] no_let_repeated_idents IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -2883,7 +3076,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "bound variables with the same name")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] no_let_repeated_idents2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -2900,7 +3093,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "bound variables with the same name")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] no_let_repeated_idents3 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -2916,7 +3109,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "bound variables with the same name")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] no_let_repeated_idents4 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2933,7 +3126,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "bound variables with the same name")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] type_recursion_ok IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2944,7 +3137,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] type_recursion_fail_negative IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2955,9 +3148,12 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_vir_error_msg(e, "non-positive position")
+    // The checked Instance of this machine holds only a location (it does not mention State),
+    // so there is no recursion through IMap's rejected parameter.
+    ; verified => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] lemma_recursion_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2990,9 +3186,11 @@ test_verify_one_file! {
             }
         }}
     } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
+    // The checked macro reports the cycle twice (lemma and its use in a generated proof).
+    ; verified => Err(err) => assert_any_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[ignore] #[test] lemma_recursion_assert_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -3024,7 +3222,7 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] relation_codegen IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -3232,7 +3430,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] relation_codegen_match IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -3353,7 +3551,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] relation_codegen_special_finite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -3603,9 +3801,12 @@ test_verify_one_file! {
         } // verus!
 
     } => Ok(())
+    // checked macro: tr1 withdraws from and then deposits into `storage_opt` (a replace), which
+    // the checked macro rejects at the deposit (workaround: two transitions)
+    ; verified => Err(err) => assert_vir_error_msg(err, "verified storage cannot deposit into a location withdrawn earlier in the same transition (one storage exchange cannot replace a stored value: its deposit must be disjoint from the pre-state storage); split the transition in two, with the intermediate state explicit: see examples/verified_tsm/storage_replace_in_two_transitions.rs")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] relation_codegen_special_infinite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -3855,9 +4056,12 @@ test_verify_one_file! {
         } // verus!
 
     } => Ok(())
+    // checked macro: tr1 withdraws from and then deposits into `storage_opt` (a replace), which
+    // the checked macro rejects at the deposit (workaround: two transitions)
+    ; verified => Err(err) => assert_vir_error_msg(err, "verified storage cannot deposit into a location withdrawn earlier in the same transition (one storage exchange cannot replace a stored value: its deposit must be disjoint from the pre-state storage); split the transition in two, with the intermediate state explicit: see examples/verified_tsm/storage_replace_in_two_transitions.rs")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] relation_codegen_special_general_finite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -4125,9 +4329,13 @@ test_verify_one_file! {
 
         } // verus!
     } => Ok(())
+    // checked macro: tr1 withdraws from and then deposits into `storage_opt` (a replace, here
+    // with general operands `(Option::Some(..))`), which the checked macro rejects at the
+    // deposit (workaround: two transitions)
+    ; verified => Err(err) => assert_vir_error_msg(err, "verified storage cannot deposit into a location withdrawn earlier in the same transition (one storage exchange cannot replace a stored value: its deposit must be disjoint from the pre-state storage); split the transition in two, with the intermediate state explicit: see examples/verified_tsm/storage_replace_in_two_transitions.rs")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] relation_codegen_special_general_infinite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -4395,9 +4603,13 @@ test_verify_one_file! {
 
         } // verus!
     } => Ok(())
+    // checked macro: tr1 withdraws from and then deposits into `storage_opt` (a replace, here
+    // with general operands `(Option::Some(..))`), which the checked macro rejects at the
+    // deposit (workaround: two transitions)
+    ; verified => Err(err) => assert_vir_error_msg(err, "verified storage cannot deposit into a location withdrawn earlier in the same transition (one storage exchange cannot replace a stored value: its deposit must be disjoint from the pre-state storage); split the transition in two, with the intermediate state explicit: see examples/verified_tsm/storage_replace_in_two_transitions.rs")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] relation_codegen_opt_general IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -4525,7 +4737,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] nondet_tokenizing IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Z {
             fields {
@@ -4603,7 +4815,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] pre_in_init IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -4619,7 +4831,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "no previous state to refer to")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] self_in_transition IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -4635,7 +4847,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "`self` is meaningless")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] post_in_transition IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
             fields {
@@ -4651,7 +4863,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "cannot refer directly to `post`")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] test_let_pattern IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields { #[sharding(variable)] pub t: (int, int) }
@@ -4683,7 +4895,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] super_error IMPORTS.to_string() + verus_code_str! {
         struct Bar { }
 
@@ -4701,7 +4913,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "`super::` path not allowed here")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] if_let_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -4719,7 +4931,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "do not support if-let conditionals")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] if_let_fail_with_else IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -4739,7 +4951,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "do not support if-let conditionals")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] if_let_fail_with_chain IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -4759,7 +4971,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "do not support if-let conditionals")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] use_self_type IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -4821,7 +5033,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] bind_codegen_finite IMPORTS.to_string() + verus_code_str! {
 
         tokenized_state_machine!{ Y {
@@ -5057,7 +5269,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] bind_codegen_infinite IMPORTS.to_string() + verus_code_str! {
 
         tokenized_state_machine!{ Y {
@@ -5293,7 +5505,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] bind_fail_add IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5310,7 +5522,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "pattern-binding cannot be used in an 'add' statement")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] bind_fail_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5327,7 +5539,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "pattern-binding cannot be used in a 'deposit' statement")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] bind_fail_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5344,7 +5556,7 @@ test_verify_one_file! {
     } => Err(e) => assert_any_vir_error_msg(e, "pattern-binding cannot be used in a 'guard' statement")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assert_let_fail_1_bind IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5359,9 +5571,11 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_vir_error_msg(e, "unable to prove safety condition that the pattern matches")
+    // TODO(checked macro): report safety conditions with the trusted macro's messages and spans.
+    ; verified => Err(e) => assert_fails_anywhere(e, 1)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assert_let_fail_0_bind IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5376,9 +5590,11 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_any_vir_error_msg(e, "unable to prove safety condition that the pattern matches")
+    // The checked macro reports the failing safety condition at the macro invocation.
+    ; verified => Err(e) => assert_fails_anywhere(e, 1)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assert_require_let_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5540,7 +5756,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] count_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5647,7 +5863,7 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 2)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_option_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5664,7 +5880,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_map_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5681,7 +5897,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_bool_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5698,7 +5914,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] use_plus_for_persistent_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5715,7 +5931,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "for the persistent strategy `persistent_bool`, use `(union)=` instead of `+=`")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] use_union_for_nonpersistent_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5732,7 +5948,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "use `+=` instead of `(union)=`")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_count_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5749,7 +5965,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_set_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5766,7 +5982,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_option_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -5936,7 +6152,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_map_codegen_finite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -6104,7 +6320,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_map_codegen_infinite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -6272,7 +6488,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] pattern_binding_withdraw_assert_fails IMPORTS.to_string() + verus_code_str! {
         pub enum Goo {
             Bar,
@@ -6338,9 +6554,10 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_fails(e, 6)
+    ; verified cheating "test source contains `by { assume(pre.storage_..) }` on its withdrawals"
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] special_refutable_pattern_binding_codegen_finite IMPORTS.to_string() + verus_code_str! {
         pub enum Goo {
             Bar,
@@ -6935,7 +7152,7 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 10)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] special_refutable_pattern_binding_codegen_infinite IMPORTS.to_string() + verus_code_str! {
         pub enum Goo {
             Bar,
@@ -6960,6 +7177,8 @@ test_verify_one_file! {
 
             init!{
                 initialize(m: IMap<int, Goo>, opt: Option<Goo>) {
+                    // (the checked macro's storage tokens need a finite initial storage)
+                    require m.dom().finite();
                     init m = m;
                     init storage_m = m;
                     init opt = opt;
@@ -7530,7 +7749,7 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 10)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] labels_wrong_type_name IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
@@ -7542,7 +7761,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "only supports the declaration of a `Label` and `InitLabel` types")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] labels_init_missing IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
@@ -7560,7 +7779,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the first param to an 'init'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] labels_init_missing2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
@@ -7578,7 +7797,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the first param to an 'init'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] labels_tr_missing IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
@@ -7596,7 +7815,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the first param to a 'transition'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] labels_readonly_missing IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Y {
             fields {
@@ -7614,7 +7833,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the first param to a 'readonly'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] bool_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -7783,7 +8002,7 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 3)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_bool_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -7916,7 +8135,7 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 1)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_count_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -7994,7 +8213,7 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 1)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] set_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -8145,9 +8364,12 @@ test_verify_one_file! {
 
         }
     } => Err(e) => assert_fails(e, 2)
+    // The checked macro proves both failing safety conditions in one generated function, so
+    // Verus reports the first one only (and its span is the macro invocation).
+    ; verified => Err(e) => assert_fails(e, 1)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] iset_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -8298,9 +8520,12 @@ test_verify_one_file! {
 
         }
     } => Err(e) => assert_fails(e, 2)
+    // The checked macro proves both failing safety conditions in one generated function, so
+    // Verus reports the first one only (and its span is the macro invocation).
+    ; verified => Err(e) => assert_fails_anywhere(e, 1)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_set_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -8416,7 +8641,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] persistent_iset_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -8532,7 +8757,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] tokenized_with_conditional IMPORTS.to_string() + verus_code_str! {
 
         tokenized_state_machine!{ Y {
@@ -8601,7 +8826,7 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 2)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assert_in_if IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X {
 
@@ -8637,7 +8862,7 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 1)
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] double_scoped_updates_if IMPORTS.to_string() + verus_code_str! {
       state_machine!{ X {
 
@@ -8731,9 +8956,10 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+    ; verified cheating "test source contains `assert .. by { assume(false); }`"
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] double_scoped_updates_match IMPORTS.to_string() + verus_code_str! {
 
         state_machine!{ X {
@@ -8854,9 +9080,12 @@ test_verify_one_file! {
             let post = X::take_step::tr(pre, x, y, z, w, v); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+    // The checked take_step states its precondition as two requires clauses.
+    ; verified => Err(err) => assert_fails_anywhere(err, 2)
+    ; verified cheating "test source contains `assert .. by { assume(false); }`"
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] if_let_assert_with_no_else IMPORTS.to_string() + verus_code_str! {
         pub struct Y {
             pub a: int,
@@ -8904,6 +9133,7 @@ test_verify_one_file! {
         }
 
     } => Ok(())
+    ; verified cheating "test source contains `assert(k == x) by { assume(false); }`"
 }
 
 test_verify_one_file! {
@@ -8946,7 +9176,49 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+// Checked-macro version of step_is_variant: the original imports the trusted `state_machine`
+// explicitly, which the prelude's macro switch cannot redirect.
+test_verify_one_file_with_options! {
+    #[test] step_is_variant_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use verus_state_machines_macros::verified_state_machine_model;
+
+        verified_state_machine_model! { X {
+            fields {
+                pub number: int,
+            }
+
+            init!{
+                initialize() {
+                    init number = 0;
+                }
+            }
+
+            transition!{
+                add(n: int) {
+                    update number = pre.number + 2*n;
+                }
+            }
+
+            transition!{
+                sub(n: int) {
+                    update number = pre.number - 2*n;
+                }
+            }
+        }}
+
+        proof fn test(s: X::Step)
+            requires s.is_add(),
+        {
+            match s {
+                X::Step::add(_) => assert(true),
+                X::Step::sub(_) => assert(false),
+                _ => {},
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_tsm! {
     #[test] label_generics IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X<T, U> {
             fields {
@@ -8975,7 +9247,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] label_generics_fail1 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X<T, U> {
             fields {
@@ -9004,7 +9276,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the first param to an 'init' definition must be 'InitLabel'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] label_generics_fail2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X<T, U> {
             fields {
@@ -9034,7 +9306,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "the first param to a 'transition' must be 'Label'")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] label_generics_fail3 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X<T, U> {
             fields {
@@ -9049,7 +9321,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "invalid generic param")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] label_generics_fail4 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ X<T, U> {
             fields {
@@ -9064,7 +9336,7 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "invalid generic param")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] arrow_functions_regression_1002_1 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Example {
             fields {}
@@ -9089,7 +9361,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] arrow_functions_regression_1002_2 IMPORTS.to_string() + verus_code_str! {
         state_machine!{ Example {
             fields {
@@ -9110,7 +9382,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] inst_copy IMPORTS.to_string() + verus_code_str! {
         pub struct Y { }
 
@@ -9133,7 +9405,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] pers_token_copy IMPORTS.to_string() + verus_code_str! {
         pub struct Y { }
 
@@ -9156,7 +9428,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] other_token_not_copy IMPORTS.to_string() + verus_code_str! {
         pub struct Y { }
 
@@ -9179,7 +9451,7 @@ test_verify_one_file! {
     } => Err(e) => assert_rust_error_msg(e, "use of moved value")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] assoc_type_in_field IMPORTS.to_string() + verus_code_str! {
         pub trait Tr {
             type AssocType;
@@ -9222,7 +9494,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] pre_reserved_property_issue3083 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields { #[sharding(variable)] pub v: int, }
@@ -9234,7 +9506,7 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "'pre' is a reserved identifier in state machine definitions")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] pre_reserved_transition_issue3083 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields { #[sharding(variable)] pub v: int, }
@@ -9248,7 +9520,7 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "'pre' is a reserved identifier in state machine definitions")
 }
 
-test_verify_one_file! {
+test_verify_tsm! {
     #[test] post_reserved_transition_issue3083 IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields { #[sharding(variable)] pub v: int, }
@@ -9260,6 +9532,1760 @@ test_verify_one_file! {
             #[inductive(dec)] fn dec_inductive(pre: Self, post: Self) { }
         }}
     } => Err(err) => assert_vir_error_msg(err, "'post' is a reserved identifier in state machine definitions")
+}
+
+const SUB_UPDATE_TYPES: &str = verus_code_str! {
+    pub struct Pt { pub x: int, pub y: int }
+    pub struct Rec<A> { pub a: A, pub s: Seq<int> }
+    pub struct Pair(pub int, pub bool);
+    pub struct Outer { pub p: Pt }
+    pub enum E { A { x: int }, B }
+};
+
+test_verify_tsm! {
+    #[test] dot_field_sub_updates IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
+        state_machine!{ X {
+            fields {
+                pub p: Pt,
+                pub r: Rec<int>,
+                pub t: (int, (Pt, int)),
+                pub q: Pair,
+                pub m: Map<int, Pt>,
+            }
+
+            transition!{
+                tr(v: int, w: int, k: int, b: bool) {
+                    require(pre.r.s.len() == 2 && pre.m.dom().contains(k));
+                    update p.x = v;
+                    update p.y = w;
+                    update p.x = v + 1;
+                    update r.a = v;
+                    update r.s[1] = w;
+                    update t.1.0.y = v;
+                    update t.0 = w;
+                    update q.1 = b;
+                    update m[k].y = v;
+                }
+            }
+
+            transition!{
+                branch(c: bool, v: int) {
+                    if c { update p.x = v; } else { update p.y = v; }
+                }
+            }
+        }}
+
+        proof fn test(pre: X::State, post: X::State, v: int, w: int, k: int, b: bool)
+            requires X::State::tr(pre, post, v, w, k, b)
+            ensures
+                post.p == (Pt { x: v + 1, y: w }),
+                post.r.a == v && post.r.s[1] == w && post.r.s[0] == pre.r.s[0],
+                post.t.0 == w && post.t.1.0.y == v && post.t.1.0.x == pre.t.1.0.x,
+                post.t.1.1 == pre.t.1.1,
+                post.q.1 == b && post.q.0 == pre.q.0,
+                post.m[k] == (Pt { x: pre.m[k].x, y: v }),
+        { }
+
+        proof fn test_branch(pre: X::State, post: X::State, v: int)
+            requires X::State::branch(pre, post, false, v)
+            ensures post.p == (Pt { x: pre.p.x, y: v })
+        { }
+
+        proof fn test_fail(pre: X::State, post: X::State, v: int, w: int, k: int, b: bool)
+            requires X::State::tr(pre, post, v, w, k, b)
+            ensures post.p.x == v // FAILS
+        { }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_tsm! {
+    #[test] dot_field_sub_updates_tokenized IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(variable)] pub p: Pt,
+                #[sharding(variable)] pub m: Map<int, Pt>,
+                #[sharding(not_tokenized)] pub r: Rec<int>,
+            }
+
+            #[invariant]
+            pub fn inv(&self) -> bool { self.m.dom().contains(1) }
+
+            init!{
+                initialize() {
+                    init p = Pt { x: 0, y: 0 };
+                    init m = Map::empty().insert(1, Pt { x: 0, y: 0 });
+                    init r = Rec { a: 0, s: Seq::empty() };
+                }
+            }
+
+            transition!{
+                tr(v: int, w: int) {
+                    update p.x = v;
+                    update p.y = w;
+                    update m[1].y = v;
+                    update r.a = w;
+                }
+            }
+
+            transition!{
+                branch(c: bool, v: int) {
+                    if c { update p.x = v; } else { update p.y = v; }
+                }
+            }
+
+            #[inductive(initialize)] fn initialize_inductive(post: Self) { }
+            #[inductive(tr)] fn tr_inductive(pre: Self, post: Self, v: int, w: int) {
+                assert(post.m.dom() =~= pre.m.dom());
+            }
+            #[inductive(branch)] fn branch_inductive(pre: Self, post: Self, c: bool, v: int) { }
+        }}
+
+        proof fn client() {
+            let tracked (Tracked(inst), Tracked(mut p), Tracked(mut m)) = X::Instance::initialize();
+            inst.tr(1, 2, &mut p, &mut m);
+            assert(p.value() == Pt { x: 1, y: 2 });
+            assert(m.value()[1] == Pt { x: 0, y: 1 });
+            inst.branch(true, 5, &mut p);
+            assert(p.value() == Pt { x: 5, y: 2 });
+            assert(p.value().y == 3); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_tsm! {
+    #[test] dot_field_sub_update_unknown_type IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
+        state_machine!{ X {
+            fields { pub o: Outer, }
+            transition!{ tr(v: int) { update o.p.x = v; } }
+        }}
+    } => Err(e) => assert_vir_error_msg(e, "cannot update a field of `o.p`: its type is not known to the state machine macro")
+}
+
+test_verify_tsm! {
+    #[test] dot_field_sub_update_tuple_index IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
+        state_machine!{ X {
+            fields { pub t: (int, int), }
+            transition!{ tr(v: int) { update t.2 = v; } }
+        }}
+    } => Err(e) => assert_vir_error_msg(e, "`t` has no element 2")
+}
+
+test_verify_tsm! {
+    #[test] dot_field_sub_update_enum IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
+        state_machine!{ X {
+            fields { pub e: E, }
+            transition!{ tr(v: int) { update e.x = v; } }
+        }}
+    } => Err(e) => assert_rust_error_msg(e, "expected struct, variant or union type, found enum `E`")
+}
+
+test_verify_tsm! {
+    #[test] dot_field_sub_updates_tokenized_paths IMPORTS.to_string() + SUB_UPDATE_TYPES + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields { #[sharding(variable)] pub p: Pt, }
+            transition!{
+                tr(c: bool, v: int) {
+                    update p.x = v;
+                    if c { update p.y = v; }
+                }
+            }
+        }}
+    } => Err(e) => assert_vir_error_msg(e, "tokenized transitions support one field or index update of a field per path")
+}
+
+// Regression (checked macro): a general `remove` or `have` of a `map`, `imap`, `set`, `iset` or
+// `multiset` field after a `remove` of the same field failed the generated readiness proof
+// (`__tsm_ready_<tr>`, "assertion failed" at the macro). The later operand is observed in the
+// fragment the removal leaves, and the transition's enabling condition needs it disjoint from the
+// removed operand (for a multiset: their sum in the state); the inclusion of each input token in
+// `op(owned, h)` does not say that. Singleton later operands, and general ones after no removal,
+// were not affected.
+test_verify_tsm! {
+    #[test] general_operand_after_remove_same_field IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(map)] pub m: Map<int, int>,
+                #[sharding(imap)] pub im: IMap<int, int>,
+                #[sharding(set)] pub s: Set<int>,
+                #[sharding(iset)] pub is: ISet<int>,
+                #[sharding(multiset)] pub ms: Multiset<int>,
+            }
+
+            init!{ initialize() {
+                init m = Map::empty(); init im = IMap::empty(); init s = Set::empty();
+                init is = ISet::empty(); init ms = Multiset::empty();
+            } }
+
+            // The reported case: constant operands.
+            transition!{ map_constants() {
+                remove m -= ( Map::<int, int>::empty().insert(0, 1) );
+                have m >= ( Map::<int, int>::empty().insert(2, 3) );
+            } }
+
+            transition!{ map_remove_have(a: Map<int, int>, b: Map<int, int>) {
+                remove m -= (a);
+                have m >= (b);
+            } }
+            transition!{ map_remove_remove(a: Map<int, int>, b: Map<int, int>) {
+                remove m -= (a);
+                remove m -= (b);
+            } }
+            transition!{ map_remove_remove_have_add(a: Map<int, int>, b: Map<int, int>, c: Map<int, int>) {
+                remove m -= (a);
+                remove m -= (b);
+                have m >= (c);
+                add m += (a);
+            } }
+            transition!{ map_singleton_remove_have(k: int, v: int, b: Map<int, int>) {
+                remove m -= [k => v];
+                have m >= (b);
+            } }
+
+            transition!{ imap_remove_have(a: IMap<int, int>, b: IMap<int, int>) {
+                remove im -= (a);
+                have im >= (b);
+            } }
+            transition!{ imap_remove_remove_have(a: IMap<int, int>, b: IMap<int, int>, c: IMap<int, int>) {
+                remove im -= (a);
+                remove im -= (b);
+                have im >= (c);
+            } }
+
+            transition!{ set_remove_have(a: Set<int>, b: Set<int>) {
+                remove s -= (a);
+                have s >= (b);
+            } }
+            transition!{ set_remove_remove_have(a: Set<int>, b: Set<int>, c: Set<int>) {
+                remove s -= (a);
+                remove s -= (b);
+                have s >= (c);
+            } }
+            transition!{ set_singleton_remove_have(e: int, b: Set<int>) {
+                remove s -= set { e };
+                have s >= (b);
+            } }
+
+            transition!{ iset_remove_have(a: ISet<int>, b: ISet<int>) {
+                remove is -= (a);
+                have is >= (b);
+            } }
+            transition!{ iset_remove_remove(a: ISet<int>, b: ISet<int>) {
+                remove is -= (a);
+                remove is -= (b);
+            } }
+
+            // The checked macro's generic interface requires a borrowed multiset
+            // operand without repeated elements.
+            transition!{ multiset_remove_have(a: Multiset<int>, b: Multiset<int>) {
+                require(forall|x: int| b.count(x) <= 1);
+                remove ms -= (a);
+                have ms >= (b);
+            } }
+            transition!{ multiset_remove_remove_have(a: Multiset<int>, b: Multiset<int>, c: Multiset<int>) {
+                require(forall|x: int| c.count(x) <= 1);
+                remove ms -= (a);
+                remove ms -= (b);
+                have ms >= (c);
+            } }
+            transition!{ multiset_singleton_remove_have(e: int, b: Multiset<int>) {
+                require(forall|x: int| b.count(x) <= 1);
+                remove ms -= {e};
+                have ms >= (b);
+            } }
+        }}
+    } => Ok(())
+}
+
+// Checked-macro version of general_operand_after_remove_same_field for the raw interface's
+// local-ready operations (the trusted macro has neither); its `storage_option`
+// field is unused. Their readiness proof (`local_ready::<tr>::ready`) failed for a map or set `have` or
+// general `remove`, and for any `remove`/`have` after a `remove` of the same field: the later
+// operand is observed in the fragment the removal leaves, and only the first singleton `remove`
+// of a field had a hint lifting its operand to the completion's state.
+test_verify_one_file_with_options! {
+    #[test] general_operand_after_remove_same_field_local_ready_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        verified_tokenized_state_machine!{
+            #[verified_raw_tokens]
+            X {
+            fields {
+                #[sharding(map)] pub m: Map<int, int>,
+                #[sharding(imap)] pub im: IMap<int, int>,
+                #[sharding(set)] pub s: Set<int>,
+                #[sharding(iset)] pub is: ISet<int>,
+                #[sharding(multiset)] pub ms: Multiset<int>,
+                #[sharding(persistent_map)] pub pm: Map<int, int>,
+                #[sharding(persistent_set)] pub ps: Set<int>,
+                #[sharding(storage_option)] pub st: Option<int>,
+            }
+
+            init!{ initialize() {
+                init m = Map::empty(); init im = IMap::empty(); init s = Set::empty();
+                init is = ISet::empty(); init ms = Multiset::empty(); init pm = Map::empty();
+                init ps = Set::empty(); init st = None;
+            } }
+
+            transition!{ map_constants() {
+                remove m -= ( Map::<int, int>::empty().insert(0, 1) );
+                have m >= ( Map::<int, int>::empty().insert(2, 3) );
+            } }
+            transition!{ map_have(a: Map<int, int>) {
+                have m >= (a);
+            } }
+            transition!{ map_remove(a: Map<int, int>) {
+                remove m -= (a);
+            } }
+            transition!{ map_remove_have(a: Map<int, int>, b: Map<int, int>) {
+                remove m -= (a);
+                have m >= (b);
+            } }
+            transition!{ map_remove_remove(a: Map<int, int>, b: Map<int, int>) {
+                remove m -= (a);
+                remove m -= (b);
+            } }
+            transition!{ map_remove_remove_have_add(a: Map<int, int>, b: Map<int, int>, c: Map<int, int>) {
+                remove m -= (a);
+                remove m -= (b);
+                have m >= (c);
+                add m += (a);
+            } }
+            transition!{ map_singleton_remove_have(k: int, v: int, b: Map<int, int>) {
+                remove m -= [k => v];
+                have m >= (b);
+            } }
+            transition!{ map_singleton_remove_remove(k: int, v: int, l: int, w: int) {
+                remove m -= [k => v];
+                remove m -= [l => w];
+            } }
+            transition!{ map_let_remove_have(a: Map<int, int>, b: Map<int, int>) {
+                let x = a;
+                remove m -= (x);
+                require(b.len() > 0);
+                have m >= (b);
+            } }
+            transition!{ map_have_bound_remove(k: int, b: Map<int, int>) {
+                have m >= [k => let v];
+                remove m -= (b);
+                have m >= [k => v];
+            } }
+
+            transition!{ imap_remove_have(a: IMap<int, int>, b: IMap<int, int>) {
+                remove im -= (a);
+                have im >= (b);
+            } }
+            transition!{ imap_remove_remove_have(a: IMap<int, int>, b: IMap<int, int>, c: IMap<int, int>) {
+                remove im -= (a);
+                remove im -= (b);
+                have im >= (c);
+            } }
+
+            transition!{ set_remove_have(a: Set<int>, b: Set<int>) {
+                remove s -= (a);
+                have s >= (b);
+            } }
+            transition!{ set_remove_remove_have(a: Set<int>, b: Set<int>, c: Set<int>) {
+                remove s -= (a);
+                remove s -= (b);
+                have s >= (c);
+            } }
+            transition!{ set_singleton_remove_have(e: int, b: Set<int>) {
+                remove s -= set { e };
+                have s >= (b);
+            } }
+
+            transition!{ iset_remove_have(a: ISet<int>, b: ISet<int>) {
+                remove is -= (a);
+                have is >= (b);
+            } }
+            transition!{ iset_remove_remove(a: ISet<int>, b: ISet<int>) {
+                remove is -= (a);
+                remove is -= (b);
+            } }
+
+            transition!{ multiset_remove_have(a: Multiset<int>, b: Multiset<int>) {
+                remove ms -= (a);
+                have ms >= (b);
+            } }
+            transition!{ multiset_remove_remove_have(a: Multiset<int>, b: Multiset<int>, c: Multiset<int>) {
+                remove ms -= (a);
+                remove ms -= (b);
+                have ms >= (c);
+            } }
+            transition!{ multiset_singleton_remove_have(e: int, f: int) {
+                remove ms -= {e};
+                have ms >= {f};
+            } }
+            transition!{ multiset_singleton_remove_remove(e: int, f: int) {
+                remove ms -= {e};
+                remove ms -= {f};
+            } }
+
+            transition!{ persistent_haves(a: Map<int, int>, k: int, v: int, b: Set<int>, e: int) {
+                have pm >= (a);
+                have pm >= [k => v];
+                have ps >= (b);
+                have ps >= set { e };
+            } }
+
+            transition!{ two_fields(a: Map<int, int>, b: Set<int>, c: Map<int, int>, d: Set<int>) {
+                remove m -= (a);
+                remove s -= (b);
+                have m >= (c);
+                have s >= (d);
+            } }
+        }}
+    } => Ok(())
+}
+
+// Branch version of general_operand_after_remove_same_field_local_ready_verified (checked macro
+// only, as there): `remove`s and `have`s under `if`/`match`, before and after the join. The
+// readiness proof replayed only the statements before the first `if`/`match`; and a map
+// observation after a join that changes the owned fragment had no usable trigger.
+test_verify_one_file_with_options! {
+    #[test] branch_operands_local_ready_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        verified_tokenized_state_machine!{
+            #[verified_raw_tokens]
+            X {
+            fields {
+                #[sharding(map)] pub m: Map<int, int>,
+                #[sharding(imap)] pub im: IMap<int, int>,
+                #[sharding(set)] pub s: Set<int>,
+                #[sharding(multiset)] pub ms: Multiset<int>,
+                #[sharding(persistent_map)] pub pm: Map<int, int>,
+                #[sharding(storage_option)] pub st: Option<int>,
+            }
+
+            init!{ initialize() {
+                init m = Map::empty(); init im = IMap::empty(); init s = Set::empty();
+                init ms = Multiset::empty(); init pm = Map::empty(); init st = None;
+            } }
+
+            transition!{ remove_if_have(a: Map<int, int>, b: Map<int, int>, c: bool) {
+                remove m -= (a);
+                if c { have m >= (b); }
+            } }
+            transition!{ if_remove_have(a: Map<int, int>, b: Map<int, int>, c: bool) {
+                if c { remove m -= (a); have m >= (b); }
+            } }
+            transition!{ if_else_remove_have(a: Map<int, int>, b: Map<int, int>, d: Map<int, int>, c: bool) {
+                if c { remove m -= (a); } else { remove m -= (b); }
+                have m >= (d);
+            } }
+            transition!{ remove_if_else_have(a: Map<int, int>, b: Map<int, int>, d: Map<int, int>, c: bool) {
+                remove m -= (a);
+                if c { remove m -= (b); } else { have m >= (b); }
+                have m >= (d);
+            } }
+            transition!{ nested(a: Map<int, int>, b: Map<int, int>, d: Map<int, int>, c: bool, e: bool) {
+                if c {
+                    if e { remove m -= (a); } else { have m >= (a); }
+                    have m >= (b);
+                } else {
+                    remove m -= (b);
+                }
+                have m >= (d);
+            } }
+            transition!{ nested_join(a: Map<int, int>, b: Map<int, int>, d: Map<int, int>, c: bool, e: bool) {
+                remove m -= (a);
+                if c {
+                    if e { remove m -= (b); }
+                    have m >= (d);
+                }
+                have m >= (d);
+            } }
+            transition!{ if_let(a: Map<int, int>, b: Map<int, int>, c: bool) {
+                if c {
+                    let x = a;
+                    remove m -= (x);
+                    have m >= (b);
+                }
+            } }
+            transition!{ if_tuple(a: Map<int, int>, b: Map<int, int>, d: Map<int, int>, c: bool) {
+                if c {
+                    let (x, y) = (a, b);
+                    remove m -= (x);
+                    remove m -= (y);
+                    have m >= (d);
+                }
+            } }
+            transition!{ if_require_assert(a: Map<int, int>, b: Map<int, int>, c: bool) {
+                if c {
+                    require(b.len() > 0);
+                    remove m -= (a);
+                    assert(c);
+                    have m >= (b);
+                }
+            } }
+            transition!{ if_remove_add(a: Map<int, int>, b: Map<int, int>, c: bool) {
+                if c { remove m -= (a); } else { remove m -= (a); have m >= (b); }
+                add m += (a);
+            } }
+            transition!{ match_remove_have(a: Map<int, int>, b: Map<int, int>, o: Option<int>) {
+                match o {
+                    Some(v) => { remove m -= (a); have m >= (b); }
+                    None => { have m >= (b); }
+                }
+            } }
+            transition!{ match_guard(a: Map<int, int>, b: Map<int, int>, d: Map<int, int>, o: Option<int>) {
+                remove m -= (a);
+                match o {
+                    Some(v) if v > 0 => { have m >= (b); }
+                    _ => { remove m -= (b); }
+                }
+                have m >= (d);
+            } }
+            transition!{ if_singleton(k: int, v: int, l: int, w: int, b: Map<int, int>, c: bool) {
+                if c { remove m -= [k => v]; have m >= (b); } else { remove m -= [k => v]; remove m -= [l => w]; }
+            } }
+
+            transition!{ imap_if_else_remove_have(a: IMap<int, int>, b: IMap<int, int>, d: IMap<int, int>, c: bool) {
+                if c { remove im -= (a); } else { remove im -= (b); }
+                have im >= (d);
+            } }
+            transition!{ set_if_else_remove_have(a: Set<int>, b: Set<int>, d: Set<int>, c: bool) {
+                if c { remove s -= (a); } else { remove s -= (b); }
+                have s >= (d);
+            } }
+            transition!{ set_nested(a: Set<int>, b: Set<int>, d: Set<int>, c: bool, e: bool) {
+                if c {
+                    if e { remove s -= (a); } else { have s >= (a); }
+                    have s >= (b);
+                } else {
+                    remove s -= (b);
+                }
+                have s >= (d);
+            } }
+            transition!{ multiset_if_else_remove_have(a: Multiset<int>, b: Multiset<int>, d: Multiset<int>, c: bool) {
+                require(forall|x: int| d.count(x) <= 1);
+                if c { remove ms -= (a); } else { remove ms -= (b); }
+                have ms >= (d);
+            } }
+            transition!{ persistent_match(a: Map<int, int>, b: Map<int, int>, o: Option<int>) {
+                match o {
+                    Some(v) => { have pm >= (a); add pm (union)= (a); }
+                    None => { have pm >= (b); }
+                }
+            } }
+            transition!{ persistent_if_add(a: Map<int, int>, b: Map<int, int>, d: Map<int, int>, c: bool) {
+                have pm >= (a);
+                if c { have pm >= (b); } else { have pm >= (d); }
+                add pm (union)= (a);
+            } }
+            transition!{ two_fields(a: Map<int, int>, b: Set<int>, d: Map<int, int>, e: Set<int>, c: bool) {
+                if c { remove m -= (a); remove s -= (b); } else { remove s -= (b); }
+                have m >= (d);
+                have s >= (e);
+            } }
+        }}
+    } => Ok(())
+}
+
+// Storage operations under a branch (and after a `let`) in a local-ready raw
+// transition (checked macro only): the readiness proof's deposit equality quantified over the
+// inline `local_ready::<tr>::deposited`/`<tr>_deposited`, whose `let`/`match` bodies Verus cannot
+// choose a trigger in ("Could not automatically infer triggers").
+test_verify_one_file_with_options! {
+    #[test] branch_storage_local_ready_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        pub struct Tok { pub v: int }
+        pub enum Cmd { Put(int), Take, Nop }
+
+        verified_tokenized_state_machine!{
+            #[verified_raw_tokens]
+            X {
+            fields {
+                #[sharding(variable)] pub auth: Map<int, Tok>,
+                #[sharding(storage_map)] pub stored: Map<int, Tok>,
+                #[sharding(variable)] pub n: int,
+                #[sharding(constant)] pub k: int,
+                #[sharding(map)] pub m: Map<int, int>,
+            }
+            #[invariant] pub fn same(&self) -> bool { self.auth == self.stored }
+            init!{ initialize(k: int) {
+                init auth = Map::empty(); init stored = Map::empty(); init n = 0; init k = k;
+                init m = Map::empty();
+            } }
+            transition!{ branchy(cmd: Cmd, t: Tok, a: Map<int, int>, b: Map<int, int>) {
+                let key = pre.k + 1;
+                match cmd {
+                    Cmd::Put(v) => {
+                        require(!pre.auth.contains_key(key));
+                        remove m -= (a);
+                        deposit stored += [key => t];
+                        update auth = pre.auth.insert(key, t);
+                        update n = v;
+                    }
+                    Cmd::Take => {
+                        require(pre.auth.contains_key(key) && pre.auth[key] == t);
+                        withdraw stored -= [key => t];
+                        update auth = pre.auth.remove(key);
+                    }
+                    Cmd::Nop => {}
+                }
+                have m >= (b);
+            } }
+            transition!{ keyed(t: Tok) {
+                let key = pre.k + 1;
+                require(!pre.auth.contains_key(key));
+                deposit stored += [key => t];
+                update auth = pre.auth.insert(key, t);
+            } }
+            #[inductive(initialize)] fn initialize_inductive(post: Self, k: int) {}
+            #[inductive(branchy)] fn branchy_inductive(pre: Self, post: Self, cmd: Cmd, t: Tok, a: Map<int, int>, b: Map<int, int>) {}
+            #[inductive(keyed)] fn keyed_inductive(pre: Self, post: Self, t: Tok) {}
+        }}
+    } => Ok(())
+}
+
+// Checked-macro test of local readiness (raw interface) for values bound by patterns (the trusted
+// macro has no local-ready operations): `remove`/`have` of a map entry `[k => let v]` (map, imap,
+// persistent map), of `Some(let x)` (option, persistent option), refutable patterns, bound
+// values in requirements, updates, conditions, later keys and deposits, keys bound by a `let`
+// or a pattern, a path after a refutable pattern, and a `let`-bound withdrawal. The local requirement used to read such a value from `__observed(..)`, which is
+// arbitrary, so no client could establish it; the local state now takes it from the supplied
+// fragments. The clients establish each local requirement from their tokens, some with the
+// observed entry in the shared fragment.
+test_verify_one_file_with_options! {
+    #[test] implicit_bindings_local_ready_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::tsm::Machine;
+        pub enum Tag { A(int), B }
+        verified_tokenized_state_machine!{
+            #[verified_raw_tokens]
+            X {
+            fields {
+                #[sharding(map)] pub m: Map<int, int>,
+                #[sharding(imap)] pub im: IMap<int, int>,
+                #[sharding(persistent_map)] pub pm: Map<int, int>,
+                #[sharding(option)] pub o: Option<int>,
+                #[sharding(persistent_option)] pub po: Option<int>,
+                #[sharding(option)] pub ro: Option<Tag>,
+                #[sharding(map)] pub rm: Map<int, Tag>,
+                #[sharding(set)] pub s: Set<int>,
+                #[sharding(variable)] pub cnt: int,
+                #[sharding(option)] pub held: Option<int>,
+                #[sharding(variable)] pub full: bool,
+                #[sharding(storage_option)] pub st: Option<int>,
+            }
+            #[invariant] pub fn stored(&self) -> bool {
+                self.st == self.held && self.full == (self.held is Some)
+            }
+            init!{ initialize() {
+                init m = Map::empty().insert(1, 5).insert(12, 13); init im = IMap::empty().insert(2, 6);
+                init pm = Map::empty().insert(3, 7); init o = Some(8); init po = Some(9);
+                init ro = Some(Tag::A(10)); init rm = Map::empty().insert(4, Tag::A(11));
+                init s = Set::empty().insert(8);
+                init cnt = 0; init held = None; init full = false; init st = None;
+            } }
+            init!{ initialize_held(v: int) {
+                init m = Map::empty(); init im = IMap::empty(); init pm = Map::empty(); init o = None;
+                init po = None; init ro = None; init rm = Map::empty(); init s = Set::empty(); init cnt = 0;
+                init held = Some(v); init full = true; init st = Some(v);
+            } }
+            transition!{ map_remove_bound(k: int) {
+                remove m -= [k => let v]; require(v > 0); update cnt = v;
+            } }
+            transition!{ map_have_bound(k: int) { have m >= [k => let v]; require(v > 0); } }
+            transition!{ imap_remove_readd(k: int) {
+                remove im -= [k => let v]; require(v > 0); add im += [k => v + 1];
+            } }
+            transition!{ pmap_have_bound(k: int) { have pm >= [k => let v]; require(v > 0); } }
+            transition!{ option_remove_readd() {
+                remove o -= Some(let x); require(x > 0); add o += Some(x + 1);
+            } }
+            transition!{ poption_have_bound() { have po >= Some(let x); require(x > 0); } }
+            transition!{ refutable_option() {
+                remove ro -= Some(let Tag::A(x)); require(x > 0); add ro += Some(Tag::B);
+            } }
+            transition!{ refutable_map(k: int) { have rm >= [k => let Tag::A(x)]; require(x > 0); } }
+            transition!{ bound_condition(k: int, j: int) {
+                remove m -= [k => let v];
+                if v > 0 { remove m -= [j => let w]; require(w > v); } else { update cnt = 0; }
+            } }
+            transition!{ bound_key() { remove o -= Some(let x); have m >= [x + 4 => let v]; require(v == 13); } }
+            // Keys bound by a `let` or a pattern (no ground fragment term until the
+            // completion's entry is read), a path after a refutable pattern, a literal value.
+            transition!{ let_key(cur: int) {
+                let j = pre.cnt + 1; remove m -= [j => cur]; add m += [j => 0];
+            } }
+            transition!{ refutable_then_have() {
+                remove rm -= [4 => let Tag::A(x)]; add rm += [4 => Tag::B]; have pm >= [3 => 7];
+            } }
+            transition!{ bound_set() { have o >= Some(let x); remove s -= set { x }; } }
+            transition!{ literal_after_remove(a: Map<int, int>) { remove m -= (a); have m >= [12 => 13]; } }
+            transition!{ put() {
+                remove o -= Some(let x); require(!pre.full);
+                add held += Some(x); deposit st += Some(x); update full = true;
+            } }
+            transition!{ take() { remove held -= Some(let x); withdraw st -= Some(let y); update full = false; } }
+            #[inductive(initialize)] fn initialize_inductive(post: Self) { }
+            #[inductive(initialize_held)] fn initialize_held_inductive(post: Self, v: int) { }
+            #[inductive(map_remove_bound)] fn map_remove_bound_inductive(pre: Self, post: Self, k: int) { }
+            #[inductive(map_have_bound)] fn map_have_bound_inductive(pre: Self, post: Self, k: int) { }
+            #[inductive(imap_remove_readd)] fn imap_remove_readd_inductive(pre: Self, post: Self, k: int) { }
+            #[inductive(pmap_have_bound)] fn pmap_have_bound_inductive(pre: Self, post: Self, k: int) { }
+            #[inductive(option_remove_readd)] fn option_remove_readd_inductive(pre: Self, post: Self) { }
+            #[inductive(poption_have_bound)] fn poption_have_bound_inductive(pre: Self, post: Self) { }
+            #[inductive(refutable_option)] fn refutable_option_inductive(pre: Self, post: Self) { }
+            #[inductive(refutable_map)] fn refutable_map_inductive(pre: Self, post: Self, k: int) { }
+            #[inductive(bound_condition)] fn bound_condition_inductive(pre: Self, post: Self, k: int, j: int) { }
+            #[inductive(bound_key)] fn bound_key_inductive(pre: Self, post: Self) { }
+            #[inductive(let_key)] fn let_key_inductive(pre: Self, post: Self, cur: int) { }
+            #[inductive(refutable_then_have)] fn refutable_then_have_inductive(pre: Self, post: Self) { }
+            #[inductive(bound_set)] fn bound_set_inductive(pre: Self, post: Self) { }
+            #[inductive(literal_after_remove)] fn literal_after_remove_inductive(pre: Self, post: Self, a: Map<int, int>) { }
+            #[inductive(put)] fn put_inductive(pre: Self, post: Self) { }
+            #[inductive(take)] fn take_inductive(pre: Self, post: Self) { }
+        }}
+
+        proof fn start() -> (tracked t: X::Token)
+            ensures t.fragment() == X::Protocol::embed(X::State {
+                m: Map::empty().insert(1, 5).insert(12, 13), im: IMap::empty().insert(2, 6),
+                pm: Map::empty().insert(3, 7), o: Some(8), po: Some(9), ro: Some(Tag::A(10)),
+                rm: Map::empty().insert(4, Tag::A(11)), s: Set::empty().insert(8), cnt: 0, held: None,
+                full: false, st: None })
+        {
+            let tracked t = X::Protocol::initialize(IMap::tracked_empty());
+            let s = choose|s: X::State| X::State::initialize(s) && s.invariant() && t.fragment() == X::Protocol::embed(s);
+            assert(s.m =~= Map::empty().insert(1, 5).insert(12, 13));
+            assert(s.s =~= Set::empty().insert(8));
+            t
+        }
+
+        proof fn owned_clients() {
+            let tracked t = X::local_ready::map_remove_bound::run(start(), 1);
+            let tracked t = X::local_ready::map_have_bound::run(start(), 1);
+            let tracked t = X::local_ready::imap_remove_readd::run(start(), 2);
+            let tracked t = X::local_ready::pmap_have_bound::run(start(), 3);
+            let tracked t = X::local_ready::option_remove_readd::run(start());
+            let tracked t = X::local_ready::poption_have_bound::run(start());
+            let tracked t = X::local_ready::refutable_option::run(start());
+            let tracked t = X::local_ready::refutable_map::run(start(), 4);
+            let tracked t = X::local_ready::bound_condition::run(start(), 1, 12);
+            let tracked t = X::local_ready::bound_key::run(start());
+            let tracked t = X::local_ready::let_key::run(start(), 5);
+            let tracked t = X::local_ready::refutable_then_have::run(start());
+            let tracked t = X::local_ready::bound_set::run(start());
+            let tracked t = X::local_ready::literal_after_remove::run(start(), Map::empty().insert(1, 5));
+        }
+
+        // The observed entry is in the shared fragment.
+        proof fn shared_clients() {
+            let tracked (m, rest) = X::Protocol::take_m(start());
+            let tracked rest = X::local_ready::map_have_bound::run_with_shared(rest, &m, 1);
+            let tracked (po, rest) = X::Protocol::take_po(start());
+            let tracked rest = X::local_ready::poption_have_bound::run_with_shared(rest, &po);
+        }
+
+        // The deposit is the removed option's value.
+        proof fn deposit_client(tracked v: int) requires v == 8 {
+            let tracked mut d = IMap::tracked_empty();
+            d.tracked_insert(X::__StorageKey::st, X::__StorageValue::st(v));
+            assert(d =~= IMap::empty().insert(X::__StorageKey::st, X::__StorageValue::st(8)));
+            let tracked t = X::local_ready::put::run(start(), d);
+        }
+
+        // The withdrawn value is bound by a pattern; the invariant links it to `held`.
+        proof fn withdraw_client(tracked v: int) {
+            let tracked mut b = IMap::tracked_empty();
+            b.tracked_insert(X::__StorageKey::st, X::__StorageValue::st(v));
+            let tracked t = X::Protocol::initialize_held(b, v);
+            let s = choose|s: X::State| X::State::initialize_held(s, v) && s.invariant() && t.fragment() == X::Protocol::embed(s);
+            let tracked (t, w) = X::local_ready::take::run(t);
+        }
+    } => Ok(())
+}
+
+// The local-ready API of a transition `t` is the associated items of the generated type
+// `local_ready::t` (`run`, `run_with_shared`, `observed`, `precondition`, `ready`, ...). Its
+// names used to be suffixes of `t` on `Protocol` and `State` (`Protocol::t_local`, ...), and the
+// macro rejected machines where they collided: here transitions `a`, `a_local` and `a_observed`
+// (whose raw operations were `a`'s local-ready ones) and State functions named like the former
+// `a_declared_requires` and `b_local_deposited` (with `b`'s pattern-bound value: a named local state).
+test_verify_one_file_with_options! {
+    #[test] local_ready_namespace_former_conflicts_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::tsm::Machine;
+        pub struct Tok { pub v: int }
+        verified_tokenized_state_machine! {
+            #[verified_raw_tokens]
+            N {
+                fields {
+                    #[sharding(variable)] pub auth: Map<nat, Tok>,
+                    #[sharding(storage_map)] pub stored: Map<nat, Tok>,
+                    #[sharding(option)] pub o: Option<nat>,
+                    #[sharding(variable)] pub n: nat,
+                }
+                #[invariant] pub fn same(&self) -> bool { self.auth == self.stored }
+                // Former names of the local-ready State predicates of `a` and `b`.
+                pub open spec fn a_declared_requires(&self) -> bool { self.n == 0 }
+                pub open spec fn b_local_deposited(&self) -> nat { self.n }
+                init! { initialize() { init auth = Map::empty(); init stored = Map::empty(); init o = Some(1); init n = 0; } }
+                transition! { a(t: Tok) {
+                    require(!pre.auth.contains_key(1nat));
+                    deposit stored += [1nat => t];
+                    update auth = pre.auth.insert(1nat, t);
+                } }
+                transition! { a_local(t: Tok) {
+                    require(!pre.auth.contains_key(2nat));
+                    deposit stored += [2nat => t];
+                    update auth = pre.auth.insert(2nat, t);
+                } }
+                transition! { a_observed(t: Tok) {
+                    require(pre.auth.contains_key(1nat) && pre.auth[1nat] == t);
+                    withdraw stored -= [1nat => t];
+                    update auth = pre.auth.remove(1nat);
+                } }
+                transition! { b() {
+                    remove o -= Some(let x);
+                    update n = x;
+                } }
+                #[inductive(initialize)] fn initialize_inductive(post: Self) {}
+                #[inductive(a)] fn a_inductive(pre: Self, post: Self, t: Tok) {}
+                #[inductive(a_local)] fn a_local_inductive(pre: Self, post: Self, t: Tok) {}
+                #[inductive(a_observed)] fn a_observed_inductive(pre: Self, post: Self, t: Tok) {}
+                #[inductive(b)] fn b_inductive(pre: Self, post: Self) {}
+            }
+        }
+
+        proof fn client(tracked x: Tok, tracked y: Tok) {
+            assert(IMap::<nat, Tok>::empty() =~= Map::<nat, Tok>::empty().to_imap());
+            assert(N::__tag_stored(IMap::empty()) =~= IMap::empty());
+            let tracked token = N::Protocol::initialize(IMap::tracked_empty());
+            let tracked mut d = IMap::tracked_empty();
+            d.tracked_insert(N::__StorageKey::stored(1nat), N::__StorageValue::stored(x));
+            assert(d =~= IMap::empty().insert(N::__StorageKey::stored(1nat), N::__StorageValue::stored(x)));
+            let tracked token = N::local_ready::a::run(token, d, x);
+            let tracked mut d = IMap::tracked_empty();
+            d.tracked_insert(N::__StorageKey::stored(2nat), N::__StorageValue::stored(y));
+            assert(d =~= IMap::empty().insert(N::__StorageKey::stored(2nat), N::__StorageValue::stored(y)));
+            let tracked obs = N::local_ready::a_local::observed(token, d, y);
+            assert(obs.before.auth.contains_key(1nat));
+            let tracked (token, mut w) = N::local_ready::a_observed::run(obs.token, x);
+            let tracked x2 = N::__unwrap_stored(w.tracked_remove(N::__StorageKey::stored(1nat)));
+            assert(x2 == x);
+            let tracked token = N::local_ready::b::run(token);
+        }
+
+        proof fn ready_lemma(owned: N::Fragment, h: N::Fragment, deposit: IMap<N::__StorageKey, N::__StorageValue>, t: Tok)
+            requires N::local_ready::a_local::precondition(owned, h, deposit, t)
+            ensures N::Protocol::a_local_requires(owned, h, deposit, t)
+        {
+            N::local_ready::a_local::ready(owned, h, deposit, t);
+        }
+    } => Ok(())
+}
+
+// The local-ready namespace of a machine with type parameters: `M::local_ready::t::<T>::run(..)`.
+test_verify_one_file_with_options! {
+    #[test] local_ready_namespace_generic_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::tsm::Machine;
+        verified_tokenized_state_machine! {
+            #[verified_raw_tokens]
+            G<T> {
+                fields {
+                    #[sharding(variable)] pub auth: Map<nat, T>,
+                    #[sharding(storage_map)] pub stored: Map<nat, T>,
+                }
+                #[invariant] pub fn same(&self) -> bool { self.auth == self.stored }
+                pub open spec fn put_declared_requires(&self) -> bool { true }
+                init! { initialize() { init auth = Map::empty(); init stored = Map::empty(); } }
+                transition! { put(t: T) {
+                    require(!pre.auth.contains_key(1nat));
+                    deposit stored += [1nat => t];
+                    update auth = pre.auth.insert(1nat, t);
+                } }
+                transition! { put_local(t: T) {
+                    require(!pre.auth.contains_key(2nat));
+                    deposit stored += [2nat => t];
+                    update auth = pre.auth.insert(2nat, t);
+                } }
+                #[inductive(initialize)] fn initialize_inductive(post: Self) {}
+                #[inductive(put)] fn put_inductive(pre: Self, post: Self, t: T) {}
+                #[inductive(put_local)] fn put_local_inductive(pre: Self, post: Self, t: T) {}
+            }
+        }
+
+        proof fn client<T>(tracked x: T, tracked y: T) {
+            assert(IMap::<nat, T>::empty() =~= Map::<nat, T>::empty().to_imap());
+            assert(G::__tag_stored::<T>(IMap::empty()) =~= IMap::empty());
+            let tracked token = G::Protocol::<T>::initialize(IMap::tracked_empty());
+            let tracked mut d = IMap::tracked_empty();
+            d.tracked_insert(G::__StorageKey::stored(1nat), G::__StorageValue::<T>::stored(x));
+            assert(d =~= IMap::empty().insert(G::__StorageKey::stored(1nat), G::__StorageValue::<T>::stored(x)));
+            let tracked token = G::local_ready::put::<T>::run(token, d, x);
+            let tracked mut d = IMap::tracked_empty();
+            d.tracked_insert(G::__StorageKey::stored(2nat), G::__StorageValue::<T>::stored(y));
+            assert(d =~= IMap::empty().insert(G::__StorageKey::stored(2nat), G::__StorageValue::<T>::stored(y)));
+            let tracked obs = G::local_ready::put_local::<T>::observed(token, d, y);
+            assert(obs.after.auth.contains_key(2nat));
+        }
+    } => Ok(())
+}
+
+// Local readiness (raw interface; the trusted macro has neither) of
+// readonly transitions and properties. One without a `guard` has the raw operation of a mutating
+// transition (`local_ready::t::{run, run_with_shared, observed}`); one with a `guard` borrows
+// the token (`local_ready::t::run(&token, ..)` returns the guarded storage). Also the raw guard frames of a `have` under
+// an `if`/`match` (its owned-frame link was unconditional) and of a key a `let` binds (it did not
+// compile).
+test_verify_one_file_with_options! {
+    #[test] readonly_property_local_ready_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        pub struct Tok { pub v: int }
+        pub enum Cmd { A(int), B, C }
+        verified_tokenized_state_machine!{
+            #[verified_raw_tokens]
+            X {
+            fields {
+                #[sharding(variable)] pub n: int,
+                #[sharding(constant)] pub c: int,
+                #[sharding(map)] pub m: Map<int, int>,
+                #[sharding(set)] pub s: Set<int>,
+                #[sharding(multiset)] pub ms: Multiset<int>,
+                #[sharding(option)] pub o: Option<int>,
+                #[sharding(persistent_map)] pub pm: Map<int, int>,
+                #[sharding(persistent_set)] pub ps: Set<int>,
+                #[sharding(persistent_option)] pub po: Option<int>,
+                #[sharding(storage_map)] pub stored: Map<int, Tok>,
+                #[sharding(storage_option)] pub cell: Option<Tok>,
+            }
+            init!{ initialize(c: int) {
+                init n = 0; init c = c; init m = Map::empty(); init s = Set::empty(); init ms = Multiset::empty();
+                init o = None; init pm = Map::empty(); init ps = Set::empty(); init po = None;
+                init stored = Map::empty(); init cell = None;
+            } }
+            #[invariant] pub fn inv_m(&self) -> bool {
+                forall|k| #[trigger] self.m.contains_key(k) ==> self.stored.contains_key(k) && self.stored[k] == Tok { v: self.m[k] }
+            }
+            #[invariant] pub fn inv_o(&self) -> bool {
+                (self.o is Some ==> self.cell == Some(Tok { v: self.o->Some_0 }))
+                && (self.po is Some ==> self.cell == Some(Tok { v: self.po->Some_0 }))
+            }
+            #[inductive(initialize)] fn initialize_inductive(post: Self, c: int) {}
+
+            readonly!{ ro_map(k: int, v: int) {
+                have m >= [k => v];
+                require(pre.n == v);
+            } }
+            readonly!{ ro_map_general(a: Map<int, int>, k: int, v: int) {
+                have m >= (a);
+                have m >= [k => v];
+                assert(a.contains_key(k) ==> a[k] == v);
+            } }
+            readonly!{ ro_set(e: int, b: Set<int>) {
+                have s >= set { e };
+                have s >= (b);
+            } }
+            readonly!{ ro_multiset(e: int, b: Multiset<int>) {
+                require(forall|x: int| b.count(x) <= 1);
+                have ms >= {e};
+                have ms >= (b);
+            } }
+            readonly!{ ro_option(v: int) {
+                have o >= Some(v);
+                require(pre.c > v);
+            } }
+            readonly!{ ro_persistent(a: Map<int, int>, k: int, v: int, b: Set<int>, e: int, w: int) {
+                have pm >= (a);
+                have pm >= [k => v];
+                have ps >= (b);
+                have ps >= set { e };
+                have po >= Some(w);
+            } }
+            readonly!{ ro_let(a: Map<int, int>, b: Map<int, int>) {
+                let x = a;
+                have m >= (x);
+                let (y, z) = (b, pre.c);
+                require(z > 0);
+                have m >= (y);
+            } }
+            readonly!{ ro_if(a: Map<int, int>, b: Map<int, int>, c: bool) {
+                if c { have m >= (a); require(pre.n > 0); } else { have m >= (b); }
+                have m >= (b);
+            } }
+            readonly!{ ro_match(cmd: Cmd, a: Map<int, int>, e: int) {
+                match cmd {
+                    Cmd::A(k) if k > 0 => { have m >= [k => 0]; have m >= (a); }
+                    Cmd::B => { have s >= set { e }; }
+                    _ => { require(pre.n == e); }
+                }
+            } }
+            readonly!{ ro_birds_eye(k: int, v: int) {
+                have m >= [k => v];
+                birds_eye let st = pre.stored;
+                assert(st.contains_key(k) && st[k] == Tok { v });
+            } }
+            property!{ pr_assert(k: int, v: int) {
+                have m >= [k => v];
+                require(pre.n == v);
+                birds_eye let st = pre.stored;
+                assert(st.contains_key(k));
+            } }
+            property!{ pr_option_bound() {
+                have o >= Some(let v);
+                birds_eye let cl = pre.cell;
+                assert(cl == Some(Tok { v }));
+            } }
+            property!{ pr_map_bound(k: int) {
+                have m >= [k => let v];
+                have pm >= [k => v];
+                birds_eye let st = pre.stored;
+                assert(st[k] == Tok { v });
+            } }
+            readonly!{ ro_guard(v: int) {
+                have o >= Some(v);
+                guard cell >= Some(Tok { v });
+            } }
+            property!{ gd_map(k: int) {
+                have m >= [k => let v];
+                guard stored >= [k => Tok { v }];
+            } }
+            property!{ gd_map_general(a: Map<int, int>, k: int) {
+                have m >= (a);
+                require(a.contains_key(k));
+                guard stored >= [k => Tok { v: a[k] }] by { assert(a.dom().contains(k)); assert(pre.m.dom().contains(k)); };
+            } }
+            property!{ gd_option(v: int) {
+                have o >= Some(v);
+                guard cell >= Some(Tok { v });
+            } }
+            property!{ gd_persistent_option() {
+                have po >= Some(let v);
+                guard cell >= Some(Tok { v });
+            } }
+            property!{ gd_if(k: int, v: int, b: bool) {
+                if b {
+                    have m >= [k => v];
+                    guard stored >= [k => Tok { v }];
+                } else {
+                    have o >= Some(v);
+                    guard cell >= Some(Tok { v });
+                }
+            } }
+            property!{ gd_match(x: Option<int>, k: int) {
+                match x {
+                    Some(v) => { have m >= [k => v]; guard stored >= [k => Tok { v }]; }
+                    None => { have o >= Some(k); guard cell >= Some(Tok { v: k }); }
+                }
+            } }
+            property!{ gd_birds_eye(k: int, v: int) {
+                have m >= [k => v];
+                guard stored >= [k => Tok { v }];
+                birds_eye let st = pre.stored;
+                assert(st[k] == Tok { v });
+            } }
+            property!{ gd_let_tuple(k: int, v: int) {
+                let (kk, vv) = (k, v);
+                have m >= [kk => vv];
+                require(pre.n == vv);
+                guard stored >= [kk => Tok { v: vv }];
+            } }
+        }}
+
+        proof fn client_ro_guard(tracked t: &X::Token, v: int)
+            requires t.fragment() == X::Fragment::field_o(Some(v)),
+        {
+            let tracked g = X::local_ready::ro_guard::run(t, v);
+            assert(g[X::__StorageKey::cell] == X::__StorageValue::cell(Tok { v }));
+        }
+        proof fn client_ro_set(tracked t: X::Token, e: int)
+            requires t.fragment() == X::Fragment::field_s(Set::empty().insert(e)),
+        {
+            let tracked t = X::local_ready::ro_set::run(t, e, Set::empty().insert(e));
+        }
+        proof fn client_ro_multiset(tracked t: X::Token, e: int)
+            requires t.fragment() == X::Fragment::field_ms(Multiset::singleton(e)),
+        {
+            let tracked t = X::local_ready::ro_multiset::run(t, e, Multiset::singleton(e));
+        }
+        proof fn client_ro_persistent(tracked t: X::Token, k: int, v: int, e: int, w: int)
+            requires t.fragment() == X::Fragment::field_pm(Map::empty().insert(k, v)).with_ps(Set::empty().insert(e)).with_po(Some(w)),
+        {
+            let tracked t = X::local_ready::ro_persistent::run(t, Map::empty().insert(k, v), k, v, Set::empty().insert(e), e, w);
+        }
+        proof fn client_ro_map(tracked t: X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_n(v),
+        {
+            let tracked t = X::local_ready::ro_map::run(t, k, v);
+        }
+        proof fn client_ro_map_general(tracked t: X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v).insert(k + 1, v)),
+        {
+            let a = Map::empty().insert(k + 1, v);
+            let tracked t = X::local_ready::ro_map_general::run(t, a, k, v);
+            let tracked c = X::local_ready::ro_map_general::observed(t, a, k, v);
+            assert(X::State::ro_map_general_strong(c.before, c.after, a, k, v));
+        }
+        proof fn client_ro_option(tracked t: X::Token, v: int)
+            requires t.fragment() == X::Fragment::field_o(Some(v)).with_c(v + 1),
+        {
+            let tracked t = X::local_ready::ro_option::run(t, v);
+        }
+        proof fn client_ro_let(tracked t: X::Token, a: Map<int, int>)
+            requires t.fragment() == X::Fragment::field_m(a).with_c(1),
+        {
+            let tracked t = X::local_ready::ro_let::run(t, a, a);
+        }
+        proof fn client_ro_if(tracked t: X::Token, a: Map<int, int>, b: Map<int, int>)
+            requires t.fragment() == X::Fragment::field_m(b).with_n(0),
+        {
+            // `pre.n` is read on one path only, but the token must hold it.
+            let tracked t = X::local_ready::ro_if::run(t, a, b, false);
+        }
+        proof fn client_ro_match(tracked t: X::Token, k: int, e: int)
+            requires k > 0, t.fragment() == X::Fragment::field_m(Map::empty().insert(k, 0)).with_s(Set::empty().insert(e)).with_n(e),
+        {
+            let a = Map::empty().insert(k, 0);
+            let tracked t = X::local_ready::ro_match::run(t, Cmd::A(k), a, e);
+            let tracked t = X::local_ready::ro_match::run(t, Cmd::B, a, e);
+            let tracked t = X::local_ready::ro_match::run(t, Cmd::C, a, e);
+        }
+        proof fn client_ro_birds_eye(tracked t: X::Token, tracked s: &X::Token, k: int, v: int)
+            requires t.loc() == s.loc(), t.fragment() == X::Fragment::field_n(0), s.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)),
+        {
+            // The `have` observes the shared token.
+            let tracked t = X::local_ready::ro_birds_eye::run_with_shared(t, s, k, v);
+        }
+        proof fn client_pr_assert(tracked t: X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_n(v),
+        {
+            let tracked t = X::local_ready::pr_assert::run(t, k, v);
+        }
+        proof fn client_pr_option_bound(tracked t: X::Token, v: int)
+            requires t.fragment() == X::Fragment::field_o(Some(v)),
+        {
+            let tracked c = X::local_ready::pr_option_bound::observed(t);
+            assert(c.before.o == Some(v));
+        }
+        proof fn client_pr_map_bound(tracked t: X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_pm(Map::empty().insert(k, v)),
+        {
+            let tracked t = X::local_ready::pr_map_bound::run(t, k);
+        }
+        proof fn client_gd_map(tracked t: &X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)),
+        {
+            let tracked g = X::local_ready::gd_map::run(t, k);
+            assert(g.contains_key(X::__StorageKey::stored(k)));
+            assert(g[X::__StorageKey::stored(k)] == X::__StorageValue::stored(Tok { v }));
+        }
+        proof fn client_gd_map_general(tracked t: &X::Token, a: Map<int, int>, k: int)
+            requires t.fragment() == X::Fragment::field_m(a), a.contains_key(k),
+        {
+            let tracked g = X::local_ready::gd_map_general::run(t, a, k);
+            assert(g[X::__StorageKey::stored(k)] == X::__StorageValue::stored(Tok { v: a[k] }));
+        }
+        proof fn client_gd_option(tracked t: &X::Token, v: int)
+            requires t.fragment() == X::Fragment::field_o(Some(v)),
+        {
+            let tracked g = X::local_ready::gd_option::run(t, v);
+            assert(g[X::__StorageKey::cell] == X::__StorageValue::cell(Tok { v }));
+        }
+        proof fn client_gd_persistent_option(tracked t: &X::Token, v: int)
+            requires t.fragment() == X::Fragment::field_po(Some(v)),
+        {
+            let tracked g = X::local_ready::gd_persistent_option::run(t);
+            assert(g[X::__StorageKey::cell] == X::__StorageValue::cell(Tok { v }));
+        }
+        proof fn client_gd_if(tracked t: &X::Token, tracked u: &X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)), u.fragment() == X::Fragment::field_o(Some(v)),
+        {
+            let tracked g = X::local_ready::gd_if::run(t, k, v, true);
+            assert(g[X::__StorageKey::stored(k)] == X::__StorageValue::stored(Tok { v }));
+            let tracked g = X::local_ready::gd_if::run(u, k, v, false);
+            assert(g[X::__StorageKey::cell] == X::__StorageValue::cell(Tok { v }));
+        }
+        proof fn client_gd_match(tracked t: &X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_o(Some(k)),
+        {
+            let tracked g = X::local_ready::gd_match::run(t, Some(v), k);
+            assert(g[X::__StorageKey::stored(k)] == X::__StorageValue::stored(Tok { v }));
+            let tracked g = X::local_ready::gd_match::run(t, None, k);
+            assert(g[X::__StorageKey::cell] == X::__StorageValue::cell(Tok { v: k }));
+        }
+        proof fn client_gd_birds_eye(tracked t: &X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)),
+        {
+            let tracked g = X::local_ready::gd_birds_eye::run(t, k, v);
+        }
+        proof fn client_gd_let_tuple(tracked t: &X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_n(v),
+        {
+            let tracked g = X::local_ready::gd_let_tuple::run(t, k, v);
+            assert(g[X::__StorageKey::stored(k)] == X::__StorageValue::stored(Tok { v }));
+        }
+    } => Ok(())
+}
+
+// Negative of readonly_property_local_ready_verified: the local requirement of a readonly
+// transition or property is not met when the token lacks an observed component, when a
+// `require` fails on the token's values, or when only the shared token holds the components.
+test_verify_one_file_with_options! {
+    #[test] readonly_property_local_ready_insufficient_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        pub struct Tok { pub v: int }
+        verified_tokenized_state_machine!{
+            #[verified_raw_tokens]
+            X {
+            fields {
+                #[sharding(variable)] pub n: int,
+                #[sharding(map)] pub m: Map<int, int>,
+                #[sharding(option)] pub o: Option<int>,
+                #[sharding(storage_map)] pub stored: Map<int, Tok>,
+                #[sharding(storage_option)] pub cell: Option<Tok>,
+            }
+            init!{ initialize() {
+                init n = 0; init m = Map::empty(); init o = None; init stored = Map::empty(); init cell = None;
+            } }
+            #[invariant] pub fn inv_m(&self) -> bool {
+                forall|k| #[trigger] self.m.contains_key(k) ==> self.stored.contains_key(k) && self.stored[k] == Tok { v: self.m[k] }
+            }
+            #[invariant] pub fn inv_o(&self) -> bool { self.o is Some ==> self.cell == Some(Tok { v: self.o->Some_0 }) }
+            #[inductive(initialize)] fn initialize_inductive(post: Self) {}
+
+            readonly!{ ro_map(k: int, v: int) {
+                have m >= [k => v];
+                require(pre.n == v);
+            } }
+            property!{ pr_assert(k: int, v: int) {
+                have m >= [k => v];
+                require(pre.n == v);
+                birds_eye let st = pre.stored;
+                assert(st.contains_key(k));
+            } }
+            property!{ gd_option(v: int) {
+                have o >= Some(v);
+                guard cell >= Some(Tok { v });
+            } }
+        }}
+        proof fn bad_guard(tracked t: &X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)),
+        {
+            // The token does not hold `o`.
+            let tracked g = X::local_ready::gd_option::run(t, v); // FAILS
+        }
+        proof fn bad_require(tracked t: X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_n(v + 1),
+        {
+            // `require(pre.n == v)` does not hold of the token's `n`.
+            let tracked t = X::local_ready::ro_map::run(t, k, v); // FAILS
+        }
+        proof fn bad_shared(tracked t: X::Token, tracked s: &X::Token, k: int, v: int)
+            requires t.loc() == s.loc(), t.fragment() == X::Fragment::empty(), s.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_n(v),
+        {
+            // `run` does not observe the shared token (`run_with_shared` does).
+            let tracked t = X::local_ready::pr_assert::run(t, k, v); // FAILS
+        }
+        proof fn good_shared(tracked t: X::Token, tracked s: &X::Token, k: int, v: int)
+            requires t.loc() == s.loc(), t.fragment() == X::Fragment::empty(), s.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_n(v),
+        {
+            let tracked t = X::local_ready::pr_assert::run_with_shared(t, s, k, v);
+        }
+    } => Err(e) => assert_fails(e, 3)
+}
+
+// Local readiness of raw machines without storage (checked macro only): the
+// operations are over the plain `Token`, without deposit and withdrawal, for variable, constant,
+// map, set, multiset, count, option and persistent fields, `remove`/`have`/`add`, `if`/`match`,
+// `let` and a pattern binding. Also: a singleton `remove` under a branch, a `require` with a
+// quantifier over a variable, and a general `have` whose operand reads a constant (their local
+// state is a named function, see `local_ready::t::local_state`).
+test_verify_one_file_with_options! {
+    #[test] local_ready_without_storage_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::algebra::ResourceAlgebra;
+        use vstd::resource::pcm::PCM;
+        use vstd::resource::tsm::Machine;
+        verified_tokenized_state_machine! {
+            #[verified_raw_tokens]
+            X {
+                fields {
+                    #[sharding(variable)] pub v: int,
+                    #[sharding(constant)] pub k: int,
+                    #[sharding(map)] pub m: Map<int, int>,
+                    #[sharding(set)] pub s: Set<int>,
+                    #[sharding(multiset)] pub ms: Multiset<int>,
+                    #[sharding(count)] pub c: nat,
+                    #[sharding(option)] pub o: Option<int>,
+                    #[sharding(persistent_map)] pub pm: Map<int, int>,
+                    #[sharding(persistent_set)] pub ps: Set<int>,
+                    #[sharding(persistent_option)] pub po: Option<int>,
+                }
+                init! { initialize(k0: int) {
+                    init v = 0; init k = k0; init m = Map::empty(); init s = Set::empty();
+                    init ms = Multiset::empty(); init c = 0; init o = None; init pm = Map::empty();
+                    init ps = Set::empty(); init po = None;
+                } }
+                transition! { var_update(x: int) {
+                    require(pre.v < x && pre.k <= x);
+                    update v = x;
+                } }
+                transition! { map_replace(a: int, b: int, w: int) {
+                    remove m -= [a => b];
+                    add m += [a => w];
+                } }
+                transition! { map_have(a: int, b: int) {
+                    have m >= [a => b];
+                    update v = b;
+                } }
+                transition! { set_ops(e: int, f: int) {
+                    have s >= set { e };
+                    remove s -= set { f };
+                    add s += set { f };
+                } }
+                transition! { multiset_ops(e: int) {
+                    remove ms -= {e};
+                    add ms += {e};
+                    add ms += {e};
+                } }
+                transition! { count_ops() {
+                    remove c -= (2);
+                    add c += (1);
+                } }
+                transition! { option_ops(x: int) {
+                    remove o -= Some(x);
+                    add o += Some(x + 1);
+                } }
+                transition! { option_bind() {
+                    remove o -= Some(let x);
+                    add o += Some(x + 1);
+                } }
+                transition! { persistent_ops(a: int, b: int, e: int, x: int) {
+                    have pm >= [a => b];
+                    have ps >= set { e };
+                    have po >= Some(x);
+                    add ps (union)= set { e + 1 };
+                } }
+                transition! { branchy(a: int, b: int, x: int) {
+                    if x > 0 {
+                        remove m -= [a => b];
+                        add m += [a => x];
+                    } else {
+                        require(pre.v < x);
+                        update v = x;
+                    }
+                } }
+                transition! { matchy(y: Option<int>, a: int, b: int) {
+                    match y {
+                        Some(z) => {
+                            remove m -= [a => b];
+                            add m += [a => z];
+                        }
+                        None => {
+                            remove c -= (1);
+                        }
+                    }
+                } }
+                transition! { letty(a: int, b: int) {
+                    let w = b + 1;
+                    remove m -= [a => b];
+                    require(w > pre.k);
+                    add m += [a => w];
+                } }
+                #[inductive(initialize)] fn initialize_inductive(post: Self, k0: int) {}
+                #[inductive(var_update)] fn var_update_inductive(pre: Self, post: Self, x: int) {}
+                #[inductive(map_replace)] fn map_replace_inductive(pre: Self, post: Self, a: int, b: int, w: int) {}
+                #[inductive(map_have)] fn map_have_inductive(pre: Self, post: Self, a: int, b: int) {}
+                #[inductive(set_ops)] fn set_ops_inductive(pre: Self, post: Self, e: int, f: int) {}
+                #[inductive(multiset_ops)] fn multiset_ops_inductive(pre: Self, post: Self, e: int) {}
+                #[inductive(count_ops)] fn count_ops_inductive(pre: Self, post: Self) {}
+                #[inductive(option_ops)] fn option_ops_inductive(pre: Self, post: Self, x: int) {}
+                #[inductive(option_bind)] fn option_bind_inductive(pre: Self, post: Self) {}
+                #[inductive(persistent_ops)] fn persistent_ops_inductive(pre: Self, post: Self, a: int, b: int, e: int, x: int) {}
+                #[inductive(branchy)] fn branchy_inductive(pre: Self, post: Self, a: int, b: int, x: int) {}
+                #[inductive(matchy)] fn matchy_inductive(pre: Self, post: Self, y: Option<int>, a: int, b: int) {}
+                #[inductive(letty)] fn letty_inductive(pre: Self, post: Self, a: int, b: int) {}
+            }
+        }
+
+        proof fn clients_x(tracked t: X::Token, tracked shared: &X::Token)
+            requires
+                t.loc() == shared.loc(),
+                t.fragment() == X::Fragment::field_v(3).with_m(Map::empty().insert(1, 2)).with_c(3nat)
+                    .with_s(Set::empty().insert(5)).with_ms(Multiset::singleton(7)).with_o(Some(4)),
+                shared.fragment() == X::Fragment::field_k(2).with_pm(Map::empty().insert(8, 9))
+                    .with_ps(Set::empty().insert(6)).with_po(Some(10)),
+        {
+            let tracked t = X::local_ready::var_update::run_with_shared(t, shared, 4);
+            assert(t.fragment().v == Some(vstd::resource::exclusive::ExclusiveRA::Exclusive(4int)));
+            let tracked t = X::local_ready::map_replace::run(t, 1, 2, 11);
+            let tracked t = X::local_ready::map_have::run(t, 1, 11);
+            let tracked t = X::local_ready::multiset_ops::run(t, 7);
+            let tracked t = X::local_ready::set_ops::run(t, 5, 5);
+            let tracked t = X::local_ready::count_ops::run(t);
+            let tracked t = X::local_ready::option_ops::run(t, 4);
+            let tracked t = X::local_ready::option_bind::run(t);
+            assert(t.fragment().o == Some(vstd::resource::exclusive::ExclusiveRA::Exclusive(6int)));
+            let tracked t = X::local_ready::persistent_ops::run_with_shared(t, shared, 8, 9, 6, 10);
+            let tracked t = X::local_ready::branchy::run(t, 1, 11, 20);
+            let tracked t = X::local_ready::letty::run_with_shared(t, shared, 1, 20);
+            let tracked cert = X::local_ready::matchy::observed(t, Some(20), 1, 21);
+            assert(cert.after.m[1] == 20);
+            let tracked t = cert.token;
+        }
+
+        verified_tokenized_state_machine! {
+            #[verified_raw_tokens]
+            Q<T> {
+                fields {
+                    #[sharding(variable)] pub auth: Seq<T>,
+                    #[sharding(constant)] pub dests: Set<int>,
+                    #[sharding(persistent_set)] pub visited: Set<int>,
+                    #[sharding(set)] pub unvisited: Set<int>,
+                }
+                init! { initialize(d: Set<int>) {
+                    init auth = Seq::empty(); init dests = d; init visited = Set::empty();
+                    init unvisited = Set::empty();
+                } }
+                transition! { insert(val: T) {
+                    require(forall |i: int| 0 <= i < pre.auth.len() ==> pre.auth[i] != val);
+                    update auth = pre.auth.push(val);
+                } }
+                transition! { visit(v: int) {
+                    have visited >= (pre.dests);
+                    remove unvisited -= set { v };
+                    add visited (union)= set { v };
+                } }
+                #[inductive(initialize)] fn initialize_inductive(post: Self, d: Set<int>) {}
+                #[inductive(insert)] fn insert_inductive(pre: Self, post: Self, val: T) {}
+                #[inductive(visit)] fn visit_inductive(pre: Self, post: Self, v: int) {}
+            }
+        }
+
+        proof fn clients_q<T>(tracked t: Q::Token<T>, tracked shared: &Q::Token<T>, x: T, y: T)
+            requires
+                t.loc() == shared.loc(), x != y,
+                t.fragment() == Q::Fragment::<T>::field_auth(Seq::empty()).with_unvisited(Set::empty().insert(3)),
+                shared.fragment() == Q::Fragment::<T>::field_dests(Set::empty().insert(1))
+                    .with_visited(Set::empty().insert(1).insert(2)),
+        {
+            let tracked t = Q::local_ready::insert::<T>::run(t, x);
+            let tracked t = Q::local_ready::insert::<T>::run(t, y);
+            let tracked t = Q::local_ready::visit::<T>::run_with_shared(t, shared, 3);
+            assert(t.fragment().visited.at(3) == Some(vstd::resource::agree::AgreementRA::Agree(())));
+        }
+    } => Ok(())
+}
+
+// Storage-free version of readonly_property_local_ready_verified (checked macro only): the
+// readonly transitions and properties without a `guard` (a guard needs storage), over the plain
+// `Token`; the `birds_eye` assertions read non-storage fields.
+test_verify_one_file_with_options! {
+    #[test] readonly_property_local_ready_without_storage_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::algebra::ResourceAlgebra;
+        use vstd::resource::pcm::PCM;
+        use vstd::resource::tsm::Machine;
+
+                pub enum Cmd { A(int), B, C }
+        verified_tokenized_state_machine!{
+            #[verified_raw_tokens]
+            X {
+            fields {
+                #[sharding(variable)] pub n: int,
+                #[sharding(constant)] pub c: int,
+                #[sharding(map)] pub m: Map<int, int>,
+                #[sharding(set)] pub s: Set<int>,
+                #[sharding(multiset)] pub ms: Multiset<int>,
+                #[sharding(option)] pub o: Option<int>,
+                #[sharding(persistent_map)] pub pm: Map<int, int>,
+                #[sharding(persistent_set)] pub ps: Set<int>,
+                #[sharding(persistent_option)] pub po: Option<int>,
+            }
+            init!{ initialize(c: int) {
+                init n = 0; init c = c; init m = Map::empty(); init s = Set::empty(); init ms = Multiset::empty();
+                init o = None; init pm = Map::empty(); init ps = Set::empty(); init po = None;
+            } }
+            #[invariant] pub fn inv_pm(&self) -> bool {
+                forall|k| #[trigger] self.pm.contains_key(k) && self.m.contains_key(k) ==> self.pm[k] == self.m[k]
+            }
+            #[invariant] pub fn inv_o(&self) -> bool {
+                self.o is Some && self.po is Some ==> self.o == self.po
+            }
+            #[inductive(initialize)] fn initialize_inductive(post: Self, c: int) {}
+
+            readonly!{ ro_map(k: int, v: int) {
+                have m >= [k => v];
+                require(pre.n == v);
+            } }
+            readonly!{ ro_map_general(a: Map<int, int>, k: int, v: int) {
+                have m >= (a);
+                have m >= [k => v];
+                assert(a.contains_key(k) ==> a[k] == v);
+            } }
+            readonly!{ ro_set(e: int, b: Set<int>) {
+                have s >= set { e };
+                have s >= (b);
+            } }
+            readonly!{ ro_multiset(e: int, b: Multiset<int>) {
+                require(forall|x: int| b.count(x) <= 1);
+                have ms >= {e};
+                have ms >= (b);
+            } }
+            readonly!{ ro_option(v: int) {
+                have o >= Some(v);
+                require(pre.c > v);
+            } }
+            readonly!{ ro_persistent(a: Map<int, int>, k: int, v: int, b: Set<int>, e: int, w: int) {
+                have pm >= (a);
+                have pm >= [k => v];
+                have ps >= (b);
+                have ps >= set { e };
+                have po >= Some(w);
+            } }
+            readonly!{ ro_let(a: Map<int, int>, b: Map<int, int>) {
+                let x = a;
+                have m >= (x);
+                let (y, z) = (b, pre.c);
+                require(z > 0);
+                have m >= (y);
+            } }
+            readonly!{ ro_if(a: Map<int, int>, b: Map<int, int>, c: bool) {
+                if c { have m >= (a); require(pre.n > 0); } else { have m >= (b); }
+                have m >= (b);
+            } }
+            readonly!{ ro_match(cmd: Cmd, a: Map<int, int>, e: int) {
+                match cmd {
+                    Cmd::A(k) if k > 0 => { have m >= [k => 0]; have m >= (a); }
+                    Cmd::B => { have s >= set { e }; }
+                    _ => { require(pre.n == e); }
+                }
+            } }
+            readonly!{ ro_birds_eye(k: int, v: int) {
+                have m >= [k => v];
+                birds_eye let mm = pre.m;
+                assert(mm.contains_key(k) && mm[k] == v);
+            } }
+            property!{ pr_assert(k: int, v: int) {
+                have m >= [k => v];
+                require(pre.n == v);
+                birds_eye let mm = pre.m;
+                assert(mm.contains_key(k));
+            } }
+            property!{ pr_option_bound() {
+                have o >= Some(let v);
+                birds_eye let p = pre.po;
+                assert(p is Some ==> p == Some(v));
+            } }
+            property!{ pr_map_bound(k: int) {
+                have m >= [k => let v];
+                have pm >= [k => v];
+                birds_eye let mm = pre.m;
+                assert(mm[k] == v);
+            } }
+        }}
+
+        proof fn client_ro_set(tracked t: X::Token, e: int)
+            requires t.fragment() == X::Fragment::field_s(Set::empty().insert(e)),
+        {
+            let tracked t = X::local_ready::ro_set::run(t, e, Set::empty().insert(e));
+        }
+        proof fn client_ro_multiset(tracked t: X::Token, e: int)
+            requires t.fragment() == X::Fragment::field_ms(Multiset::singleton(e)),
+        {
+            let tracked t = X::local_ready::ro_multiset::run(t, e, Multiset::singleton(e));
+        }
+        proof fn client_ro_persistent(tracked t: X::Token, k: int, v: int, e: int, w: int)
+            requires t.fragment() == X::Fragment::field_pm(Map::empty().insert(k, v)).with_ps(Set::empty().insert(e)).with_po(Some(w)),
+        {
+            let tracked t = X::local_ready::ro_persistent::run(t, Map::empty().insert(k, v), k, v, Set::empty().insert(e), e, w);
+        }
+        proof fn client_ro_map(tracked t: X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_n(v),
+        {
+            let tracked t = X::local_ready::ro_map::run(t, k, v);
+        }
+        proof fn client_ro_map_general(tracked t: X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v).insert(k + 1, v)),
+        {
+            let a = Map::empty().insert(k + 1, v);
+            let tracked t = X::local_ready::ro_map_general::run(t, a, k, v);
+            let tracked c = X::local_ready::ro_map_general::observed(t, a, k, v);
+            assert(X::State::ro_map_general_strong(c.before, c.after, a, k, v));
+        }
+        proof fn client_ro_option(tracked t: X::Token, v: int)
+            requires t.fragment() == X::Fragment::field_o(Some(v)).with_c(v + 1),
+        {
+            let tracked t = X::local_ready::ro_option::run(t, v);
+        }
+        proof fn client_ro_let(tracked t: X::Token, a: Map<int, int>)
+            requires t.fragment() == X::Fragment::field_m(a).with_c(1),
+        {
+            let tracked t = X::local_ready::ro_let::run(t, a, a);
+        }
+        proof fn client_ro_if(tracked t: X::Token, a: Map<int, int>, b: Map<int, int>)
+            requires t.fragment() == X::Fragment::field_m(b).with_n(0),
+        {
+            // `pre.n` is read on one path only, but the token must hold it.
+            let tracked t = X::local_ready::ro_if::run(t, a, b, false);
+        }
+        proof fn client_ro_match(tracked t: X::Token, k: int, e: int)
+            requires k > 0, t.fragment() == X::Fragment::field_m(Map::empty().insert(k, 0)).with_s(Set::empty().insert(e)).with_n(e),
+        {
+            let a = Map::empty().insert(k, 0);
+            let tracked t = X::local_ready::ro_match::run(t, Cmd::A(k), a, e);
+            let tracked t = X::local_ready::ro_match::run(t, Cmd::B, a, e);
+            let tracked t = X::local_ready::ro_match::run(t, Cmd::C, a, e);
+        }
+        proof fn client_ro_birds_eye(tracked t: X::Token, tracked s: &X::Token, k: int, v: int)
+            requires t.loc() == s.loc(), t.fragment() == X::Fragment::field_n(0), s.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)),
+        {
+            // The `have` observes the shared token.
+            let tracked t = X::local_ready::ro_birds_eye::run_with_shared(t, s, k, v);
+        }
+        proof fn client_pr_assert(tracked t: X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_n(v),
+        {
+            let tracked t = X::local_ready::pr_assert::run(t, k, v);
+        }
+        proof fn client_pr_option_bound(tracked t: X::Token, v: int)
+            requires t.fragment() == X::Fragment::field_o(Some(v)),
+        {
+            let tracked c = X::local_ready::pr_option_bound::observed(t);
+            assert(c.before.o == Some(v));
+        }
+        proof fn client_pr_map_bound(tracked t: X::Token, k: int, v: int)
+            requires t.fragment() == X::Fragment::field_m(Map::empty().insert(k, v)).with_pm(Map::empty().insert(k, v)),
+        {
+            let tracked t = X::local_ready::pr_map_bound::run(t, k);
+        }
+    } => Ok(())
+}
+
+// The readiness chain names the fragments hygienically: a transition's pattern or `let` may bind
+// `owned` or `h` (the names of `local_ready::t::ready`'s parameters).
+test_verify_one_file_with_options! {
+    #[test] local_ready_chain_binder_names_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::tsm::Machine;
+        verified_tokenized_state_machine! {
+            #[verified_raw_tokens]
+            H {
+                fields {
+                    #[sharding(map)] pub m: Map<int, int>,
+                    #[sharding(set)] pub s: Set<int>,
+                }
+                init! { initialize() { init m = Map::empty(); init s = Set::empty(); } }
+                transition! { binder_owned(k: int) {
+                    have m >= [k => let owned];
+                    have s >= set {owned};
+                } }
+                transition! { binder_h(k: int) {
+                    let h = k + 1;
+                    remove m -= [h => 0];
+                    add m += [h => 1];
+                    have s >= set {h};
+                } }
+                #[inductive(initialize)] fn initialize_inductive(post: Self) {}
+                #[inductive(binder_owned)] fn binder_owned_inductive(pre: Self, post: Self, k: int) {}
+                #[inductive(binder_h)] fn binder_h_inductive(pre: Self, post: Self, k: int) {}
+            }
+        }
+
+        proof fn client(tracked t: H::Token)
+            requires t.fragment() == H::Fragment::field_m(Map::empty().insert(2, 0)).with_s(Set::empty().insert(2)),
+        {
+            let tracked t = H::local_ready::binder_h::run(t, 1);
+        }
+    } => Ok(())
+}
+
+// Local readiness is generated for every raw transition, readonly transition and property except
+// the forms `verified_readiness::local_ready_supported` skips, whose readiness lemma is not proved;
+// here a closure in an `if` condition. Such a transition keeps its other raw operations
+// (`Protocol::pick`, ...), the machine's other transitions get their local-ready API, and clients
+// see no `local_ready::pick`. A `have` of a map or persistent set field after an `add` to it
+// (`swap_check`, `grow`) is proved by the statement calculus's chain.
+test_verify_one_file_with_options! {
+    #[test] local_ready_default_skipped_forms_verified ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::tsm::Machine;
+        verified_tokenized_state_machine! {
+            #[verified_raw_tokens]
+            S {
+                fields {
+                    #[sharding(map)] pub m: Map<int, int>,
+                    #[sharding(persistent_set)] pub ps: Set<int>,
+                }
+                init! { initialize() { init m = Map::empty().insert(1, 0); init ps = Set::empty(); } }
+                transition! { swap(k: int) {
+                    remove m -= [k => 0];
+                    add m += [k => 1];
+                } }
+                // Proved by the chain: a `have` after an `add` to the same map field.
+                transition! { swap_check(k: int, j: int) {
+                    remove m -= [k => 0];
+                    add m += [k => 1];
+                    have m >= [j => 1];
+                } }
+                // Proved by the chain: the same for a persistent set.
+                transition! { grow(a: Set<int>, b: Set<int>) {
+                    have ps >= (a);
+                    add ps (union)= (a);
+                    have ps >= (b);
+                } }
+                // Skipped: a closure in an `if` condition.
+                transition! { pick(k: int) {
+                    if (|i: int| i > 0)(k) {
+                        remove m -= [k => 0];
+                        add m += [k => 1];
+                    }
+                } }
+                #[inductive(initialize)] fn initialize_inductive(post: Self) {}
+                #[inductive(swap)] fn swap_inductive(pre: Self, post: Self, k: int) {}
+                #[inductive(swap_check)] fn swap_check_inductive(pre: Self, post: Self, k: int, j: int) {}
+                #[inductive(grow)] fn grow_inductive(pre: Self, post: Self, a: Set<int>, b: Set<int>) {}
+                #[inductive(pick)] fn pick_inductive(pre: Self, post: Self, k: int) {}
+            }
+        }
+
+        proof fn client(tracked t: S::Token)
+            requires t.fragment() == S::Fragment::field_m(Map::empty().insert(1, 0).insert(2, 1)),
+        {
+            let tracked t = S::local_ready::swap_check::run(t, 1, 2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] local_ready_default_skipped_forms_no_api ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        use vstd::resource::tsm::Machine;
+        verified_tokenized_state_machine! {
+            #[verified_raw_tokens]
+            S {
+                fields {
+                    #[sharding(map)] pub m: Map<int, int>,
+                    #[sharding(persistent_set)] pub ps: Set<int>,
+                }
+                init! { initialize() { init m = Map::empty().insert(1, 0); init ps = Set::empty(); } }
+                transition! { swap(k: int) {
+                    remove m -= [k => 0];
+                    add m += [k => 1];
+                } }
+                // Proved by the chain: a `have` after an `add` to the same map field.
+                transition! { swap_check(k: int, j: int) {
+                    remove m -= [k => 0];
+                    add m += [k => 1];
+                    have m >= [j => 1];
+                } }
+                // Proved by the chain: the same for a persistent set.
+                transition! { grow(a: Set<int>, b: Set<int>) {
+                    have ps >= (a);
+                    add ps (union)= (a);
+                    have ps >= (b);
+                } }
+                // Skipped: a closure in an `if` condition.
+                transition! { pick(k: int) {
+                    if (|i: int| i > 0)(k) {
+                        remove m -= [k => 0];
+                        add m += [k => 1];
+                    }
+                } }
+                #[inductive(initialize)] fn initialize_inductive(post: Self) {}
+                #[inductive(swap)] fn swap_inductive(pre: Self, post: Self, k: int) {}
+                #[inductive(swap_check)] fn swap_check_inductive(pre: Self, post: Self, k: int, j: int) {}
+                #[inductive(grow)] fn grow_inductive(pre: Self, post: Self, a: Set<int>, b: Set<int>) {}
+                #[inductive(pick)] fn pick_inductive(pre: Self, post: Self, k: int) {}
+            }
+        }
+
+        proof fn client(tracked t: S::Token)
+            requires t.fragment() == S::Fragment::field_m(Map::empty().insert(1, 0)),
+        {
+            let tracked t = S::local_ready::pick::run(t, 1);
+        }
+    } => Err(e) => assert_rust_error_msg(e, "cannot find `pick` in `local_ready`")
 }
 
 test_verify_one_file! {

@@ -42,6 +42,19 @@ pub fn examples_in_dir(input: TokenStream) -> TokenStream {
                 run_example_for_file(#path_to_file_string);
             }
         });
+
+        // An example that selects its state-machine macro with `cfg(verus_verified_tsm)` is
+        // also run with the checked `verified_tokenized_state_machine!`.
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        if text.contains("cfg(verus_verified_tsm)") {
+            let tsm_ident = syn::Ident::new(&(test_name + "_verified_tsm"), arg.span());
+            res.extend(quote! {
+                #[test]
+                fn #tsm_ident() {
+                    run_example_for_file_tsm(#path_to_file_string);
+                }
+            });
+        }
     }
 
     res.into()

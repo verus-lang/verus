@@ -384,13 +384,12 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
         }
         TransitionStmt::SubUpdate(span, f, subs, e) => {
             let field = get_field(&sm.fields, f);
-            vec![SimplStmt::Assign(
-                *span,
-                get_cur_ident(f),
-                Box::new(field.get_type()),
-                update_sub_expr(&get_cur(f), subs, 0, e),
-                false,
-            )]
+            let ty = field.get_type();
+            // Errors are reported earlier by `transitions::desugar_sub_updates`;
+            // this keeps them errors rather than panics.
+            let value = sub_update_expr(&get_cur(f), Some(&ty), f, subs, e)
+                .unwrap_or_else(|err| Expr::Verbatim(err.to_compile_error()));
+            vec![SimplStmt::Assign(*span, get_cur_ident(f), Box::new(ty), value, false)]
         }
     }
 }
@@ -502,23 +501,189 @@ fn get_initializer_expr(f: &Ident, op: &SpecialOp) -> Expr {
     }
 }
 
-fn update_sub_expr(root: &Expr, subs: &Vec<SubIdx>, i: usize, val: &Expr) -> Expr {
-    if i == subs.len() {
-        val.clone()
-    } else {
-        match &subs[i] {
-            SubIdx::Field(_field) => {
-                panic!("dot-fields in sub-updates not yet supported");
-            }
-            SubIdx::Idx(idx_e) => {
-                let child = Expr::Verbatim(quote_spanned! { idx_e.span() => #root.index(#idx_e) });
-                let r = update_sub_expr(&child, subs, i + 1, val);
-                Expr::Verbatim(quote_spanned! { idx_e.span() =>
-                    #root.update_at_index(#idx_e, #r)
-                })
+/// The whole-field value of the sub-update `update f<subs> = val`, where `root`
+/// is the value of `f` before the update and `root_ty` its declared type.
+///
+/// An index step `[i]` becomes `root.update_at_index(i, ..)`. A field step
+/// `.m` becomes a struct update `Path { m: .., ..root }` when the type of
+/// `root` is a path (a struct, or a tuple struct with `.0`), and rebuilds the
+/// tuple when it is a tuple type. The macro does not see struct definitions,
+/// so the type at each step is only known syntactically: from the field's
+/// declared type, through tuple elements and the values of `Map`/`IMap`/`Seq`.
+/// A field step at a point of unknown type (e.g. `.a.b` with `a` a struct
+/// field) is an error.
+pub fn sub_update_expr(
+    root: &Expr,
+    root_ty: Option<&Type>,
+    field: &Ident,
+    subs: &[SubIdx],
+    val: &Expr,
+) -> verus_syn::parse::Result<Expr> {
+    sub_update_rec(root, root_ty, field.to_string(), subs, val)
+}
+
+fn sub_update_rec(
+    root: &Expr,
+    root_ty: Option<&Type>,
+    desc: String,
+    subs: &[SubIdx],
+    val: &Expr,
+) -> verus_syn::parse::Result<Expr> {
+    let Some((sub, rest)) = subs.split_first() else {
+        return Ok(val.clone());
+    };
+    let ty = root_ty.map(strip_type_parens);
+    match sub {
+        SubIdx::Idx(idx_e) => {
+            let child = Expr::Verbatim(quote_spanned! { idx_e.span() => #root.index(#idx_e) });
+            let child_ty = ty.and_then(collection_value_type);
+            let desc = format!("{desc}[..]");
+            let r = sub_update_rec(&child, child_ty.as_ref(), desc, rest, val)?;
+            Ok(Expr::Verbatim(quote_spanned! { idx_e.span() =>
+                #root.update_at_index(#idx_e, #r)
+            }))
+        }
+        SubIdx::Field(member) => {
+            let span = member.span();
+            let child = Expr::Verbatim(quote_spanned! { span => #root.#member });
+            let child_desc = format!("{desc}.{}", member_string(member));
+            match ty {
+                None => Err(verus_syn::Error::new(
+                    span,
+                    format!(
+                        "cannot update a field of `{desc}`: its type is not known to the state machine macro \
+                        (field updates are supported on the field's declared type, tuple elements, and \
+                        `Map`/`IMap`/`Seq` values); update `{desc}` as a whole instead"
+                    ),
+                )),
+                Some(Type::Tuple(tuple)) => {
+                    let verus_syn::Member::Unnamed(index) = member else {
+                        return Err(verus_syn::Error::new(
+                            span,
+                            format!("`{desc}` has a tuple type; expected a tuple index"),
+                        ));
+                    };
+                    let i = index.index as usize;
+                    if i >= tuple.elems.len() {
+                        return Err(verus_syn::Error::new(
+                            span,
+                            format!("`{desc}` has no element {i}"),
+                        ));
+                    }
+                    let elem_ty = tuple.elems.iter().nth(i);
+                    let r = sub_update_rec(&child, elem_ty, child_desc, rest, val)?;
+                    let elems = (0..tuple.elems.len()).map(|j| {
+                        if j == i {
+                            quote_spanned! { span => #r }
+                        } else {
+                            let j = verus_syn::Index { index: j as u32, span };
+                            quote_spanned! { span => #root.#j }
+                        }
+                    });
+                    Ok(Expr::Verbatim(quote_spanned! { span => ( #(#elems,)* ) }))
+                }
+                Some(Type::Path(type_path)) if type_path.qself.is_none() => {
+                    // Spanned at the field, so that e.g. "expected struct, found
+                    // enum" points at the update.
+                    let path = respan(
+                        quote::ToTokens::to_token_stream(&expr_path_of_type(
+                            &type_path.path,
+                            span,
+                        )?),
+                        span,
+                    );
+                    let r = sub_update_rec(&child, None, child_desc, rest, val)?;
+                    Ok(Expr::Verbatim(quote_spanned! { span =>
+                        #path { #member: #r, .. #root }
+                    }))
+                }
+                Some(_) => Err(verus_syn::Error::new(
+                    span,
+                    format!(
+                        "cannot update a field of `{desc}`: field updates are supported on struct and tuple types"
+                    ),
+                )),
             }
         }
     }
+}
+
+fn respan(tokens: proc_macro2::TokenStream, span: Span) -> proc_macro2::TokenStream {
+    tokens
+        .into_iter()
+        .map(|mut tt| {
+            if let proc_macro2::TokenTree::Group(g) = &tt {
+                let mut group = proc_macro2::Group::new(g.delimiter(), respan(g.stream(), span));
+                group.set_span(span);
+                tt = proc_macro2::TokenTree::Group(group);
+            } else {
+                tt.set_span(span);
+            }
+            tt
+        })
+        .collect()
+}
+
+fn strip_type_parens(ty: &Type) -> &Type {
+    match ty {
+        Type::Paren(p) => strip_type_parens(&p.elem),
+        Type::Group(g) => strip_type_parens(&g.elem),
+        _ => ty,
+    }
+}
+
+fn member_string(member: &verus_syn::Member) -> String {
+    match member {
+        verus_syn::Member::Named(ident) => ident.to_string(),
+        verus_syn::Member::Unnamed(index) => index.index.to_string(),
+    }
+}
+
+/// The value type `V` of `Map<K, V>`, `IMap<K, V>` or `Seq<V>` (by name).
+fn collection_value_type(ty: &Type) -> Option<Type> {
+    let Type::Path(type_path) = ty else { return None };
+    if type_path.qself.is_some() {
+        return None;
+    }
+    let segment = type_path.path.segments.last()?;
+    let verus_syn::PathArguments::AngleBracketed(args) = &segment.arguments else { return None };
+    let types: Vec<&Type> = args
+        .args
+        .iter()
+        .filter_map(|a| match a {
+            verus_syn::GenericArgument::Type(t) => Some(t),
+            _ => None,
+        })
+        .collect();
+    match (segment.ident.to_string().as_str(), types.len()) {
+        ("Map" | "IMap", 2) => Some(types[1].clone()),
+        ("Seq", 1) => Some(types[0].clone()),
+        _ => None,
+    }
+}
+
+/// The type path `a::B<T>` as an expression path `a::B::<T>` for a struct
+/// expression.
+fn expr_path_of_type(
+    path: &verus_syn::Path,
+    span: Span,
+) -> verus_syn::parse::Result<verus_syn::Path> {
+    let mut path = path.clone();
+    for segment in path.segments.iter_mut() {
+        match &mut segment.arguments {
+            verus_syn::PathArguments::None => {}
+            verus_syn::PathArguments::AngleBracketed(args) => {
+                args.colon2_token = Some(Default::default());
+            }
+            verus_syn::PathArguments::Parenthesized(_) => {
+                return Err(verus_syn::Error::new(
+                    span,
+                    "field updates are supported on struct and tuple types",
+                ));
+            }
+        }
+    }
+    Ok(path)
 }
 
 fn get_opt_type(stype: &ShardableType) -> Type {
@@ -532,7 +697,7 @@ fn get_opt_type(stype: &ShardableType) -> Type {
     }
 }
 
-fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Expr> {
+pub(crate) fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Expr> {
     if stype.is_persistent() {
         match elt {
             MonoidElt::SingletonKV(key, val) => Some(Expr::Verbatim(quote_vstd! { vstd =>
@@ -617,7 +782,7 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
 /// Add the elements, assuming they are addable. Build the expression assuming
 /// to "prefer" the content from the right-hand side, even though it shouldn't really matter.
 /// That's often easier, anyway.
-fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
+pub(crate) fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
     if stype.is_persistent() {
         match elt {
             MonoidElt::SingletonKV(key, val) => {
@@ -830,7 +995,7 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
     }
 }
 
-fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
+pub(crate) fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
     assert!(!stype.is_persistent());
     match elt {
         MonoidElt::OptionSome(_e) => {
@@ -887,4 +1052,148 @@ fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             }
         },
     }
+}
+
+/// For the verified backend: the fields a transition assigns (beyond the
+/// prologue `assign update_tmp_f = pre.f`), and the statements with the
+/// prologue of every other field dropped and its `update_tmp_f` read as
+/// `pre.f`. A field the transition does not update then costs no temporary in
+/// the generated relations and executors.
+pub fn inline_unassigned(
+    sm: &SM,
+    sops: Vec<SimplStmt>,
+) -> (Vec<SimplStmt>, std::collections::HashSet<String>) {
+    fn assigned(sops: &[SimplStmt], out: &mut std::collections::HashSet<String>) {
+        for s in sops {
+            match s {
+                SimplStmt::Assign(_, n, _, _, false) => {
+                    if let Some(f) = field_name_from_tmp(n) {
+                        out.insert(f.to_string());
+                    }
+                }
+                SimplStmt::Let(_, _, _, _, v, _) => assigned(v, out),
+                SimplStmt::Split(_, _, es, _) => {
+                    for (_, v) in es {
+                        assigned(v, out)
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut set = std::collections::HashSet::new();
+    assigned(&sops, &mut set);
+    let inline: std::collections::HashMap<String, Ident> = sm
+        .fields
+        .iter()
+        .filter(|f| !set.contains(&f.name.to_string()))
+        .map(|f| (get_cur_ident(&f.name).to_string(), f.name.clone()))
+        .collect();
+    fn rw(
+        ts: proc_macro2::TokenStream,
+        m: &std::collections::HashMap<String, Ident>,
+    ) -> proc_macro2::TokenStream {
+        use proc_macro2::{Group, TokenTree};
+        let mut out = proc_macro2::TokenStream::new();
+        for t in ts {
+            match t {
+                TokenTree::Ident(id) if m.contains_key(&id.to_string()) => {
+                    let f = &m[&id.to_string()];
+                    out.extend(quote! {(pre.#f)});
+                }
+                TokenTree::Group(g) => {
+                    let mut ng = Group::new(g.delimiter(), rw(g.stream(), m));
+                    ng.set_span(g.span());
+                    out.extend([TokenTree::Group(ng)]);
+                }
+                t => out.extend([t]),
+            }
+        }
+        out
+    }
+    fn ex(e: &Expr, m: &std::collections::HashMap<String, Ident>) -> Expr {
+        Expr::Verbatim(rw(quote! {#e}, m))
+    }
+    fn pf(p: &AssertProof, m: &std::collections::HashMap<String, Ident>) -> AssertProof {
+        AssertProof {
+            proof: p.proof.as_ref().map(|b| {
+                let b = &**b;
+                std::rc::Rc::new(
+                    verus_syn::parse2(rw(quote! {#b}, m)).expect("rewritten proof block"),
+                )
+            }),
+            error_msg: p.error_msg.clone(),
+        }
+    }
+    fn go(sops: Vec<SimplStmt>, m: &std::collections::HashMap<String, Ident>) -> Vec<SimplStmt> {
+        let mut out = vec![];
+        for s in sops {
+            out.push(match s {
+                SimplStmt::Assign(_, ref n, _, _, true) if m.contains_key(&n.to_string()) => {
+                    continue;
+                }
+                SimplStmt::Assign(sp, n, t, e, p) => SimplStmt::Assign(sp, n, t, ex(&e, m), p),
+                SimplStmt::Require(sp, e) => SimplStmt::Require(sp, ex(&e, m)),
+                SimplStmt::PostCondition(sp, e, r) => SimplStmt::PostCondition(sp, ex(&e, m), r),
+                SimplStmt::Assert(sp, e, p) => SimplStmt::Assert(sp, ex(&e, m), pf(&p, m)),
+                SimplStmt::Let(sp, pat, ty, e, v, ids) => {
+                    SimplStmt::Let(sp, pat, ty, ex(&e, m), go(v, m), ids)
+                }
+                SimplStmt::Split(sp, k, es, ids) => {
+                    let k = match *k {
+                        SplitKind::If(e) => SplitKind::If(ex(&e, m)),
+                        SplitKind::Match(e, arms) => SplitKind::Match(
+                            ex(&e, m),
+                            arms.into_iter()
+                                .map(|mut a| {
+                                    a.guard = a.guard.map(|(t, g)| (t, Box::new(ex(&g, m))));
+                                    a
+                                })
+                                .collect(),
+                        ),
+                        k => k,
+                    };
+                    let es = es.into_iter().map(|(sp, v)| (sp, go(v, m))).collect();
+                    SimplStmt::Split(sp, Box::new(k), es, ids)
+                }
+            });
+        }
+        out
+    }
+    (go(sops, &inline), set)
+}
+
+/// For the verified backend's strong relation: the top-level postconditions of
+/// the fields in `preserved` (each `equal(post.f, pre.f)` with its own error
+/// message) as one conjunction, reported for all of them.
+pub fn merge_preserved(
+    sops: Vec<SimplStmt>,
+    preserved: &std::collections::HashSet<String>,
+) -> Vec<SimplStmt> {
+    let mut out = vec![];
+    let mut merged: Vec<(Span, Expr, String)> = vec![];
+    for s in sops {
+        match s {
+            SimplStmt::PostCondition(
+                sp,
+                e,
+                PostConditionReason::FieldValue(PostConditionReasonField::NoUpdateTopLevel, f),
+            ) if preserved.contains(&f) => merged.push((sp, e, f)),
+            s => out.push(s),
+        }
+    }
+    if let Some((sp, _, _)) = merged.first() {
+        let sp = *sp;
+        let es: Vec<_> = merged.iter().map(|(_, e, _)| e).collect();
+        let names: Vec<_> = merged.iter().map(|(_, _, f)| f.clone()).collect();
+        out.push(SimplStmt::PostCondition(
+            sp,
+            Expr::Verbatim(quote! {(true #(&& #es)*)}),
+            PostConditionReason::FieldValue(
+                PostConditionReasonField::NoUpdateTopLevel,
+                names.join("`, `"),
+            ),
+        ));
+    }
+    out
 }

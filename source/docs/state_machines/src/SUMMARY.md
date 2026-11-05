@@ -64,3 +64,4 @@
     - [Operation definitions](./operations.md)
       - [`birds_eye`](./birds-eye.md)
     - [Formalism of Tokenization by monoids (TODO)](./monoid-formalism.md)
+    - [Checked tokens: raw and generic interfaces](./checked-token-interfaces.md)
