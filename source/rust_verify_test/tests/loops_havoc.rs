@@ -60,6 +60,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_field_havocing_box_with_allocator verus_code! {
         use core::alloc::Allocator;
+        use vstd::prelude::*;
 
         struct Pair {
             preserved: u64,
