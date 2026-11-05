@@ -705,3 +705,59 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+// https://github.com/verus-lang/verus/issues/740
+test_verify_one_file! {
+    #[test] issue740_auto_trigger_through_if_let verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Foo {
+            pub field1: Vec<u64>,
+            pub field2: Vec<u64>,
+        }
+
+        pub open spec fn example(field_num: int, foo: Foo) -> bool {
+            let field = if field_num == 1 {
+                foo.field1
+            } else {
+                foo.field2
+            };
+            forall |i: int| 0 <= i < field.len() ==> field@[i] == 5
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Z3 would silently ignore this trigger")
+}
+
+test_verify_one_file! {
+    #[test] issue740_manual_trigger_through_if_let verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Foo {
+            pub field1: Vec<u64>,
+            pub field2: Vec<u64>,
+        }
+
+        pub open spec fn example(field_num: int, foo: Foo) -> bool {
+            let field = if field_num == 1 {
+                foo.field1
+            } else {
+                foo.field2
+            };
+            forall |i: int| 0 <= i < field.len() ==> #[trigger] field@[i] == 5
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Z3 would silently ignore this trigger")
+}
+
+test_verify_one_file! {
+    #[test] issue740_auto_trigger_through_plain_let_ok verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Foo {
+            pub field1: Vec<u64>,
+        }
+
+        pub open spec fn example(foo: Foo) -> bool {
+            let field = foo.field1;
+            forall |i: int| 0 <= i < field.len() ==> field@[i] == 5
+        }
+    } => Ok(())
+}
