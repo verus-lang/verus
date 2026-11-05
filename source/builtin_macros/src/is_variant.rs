@@ -145,7 +145,7 @@ fn attribute_is_variant_internal(
     let generics = &ast.generics;
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    quote! {
+    let output = quote! {
         #ast
 
         #[verus::internal(verus_macro)]
@@ -154,5 +154,6 @@ fn attribute_is_variant_internal(
         impl #impl_generics #struct_name #ty_generics #where_clause {
             #is_impls
         }
-    }
+    };
+    crate::internal_attrs::mark(&[quote!(#ast).into()], output.into()).into()
 }

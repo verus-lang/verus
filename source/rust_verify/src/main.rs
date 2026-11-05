@@ -77,6 +77,14 @@ pub fn main() {
 
     let mut args: Vec<String> = args.collect();
 
+    // Verus's own tests may write `#[verus::internal(...)]` attributes by hand
+    let allow_hand_written_internal_attrs = build_test_mode
+        && args.first().map(|a| a.as_str())
+            == Some("--internal-test-allow-hand-written-internal-attrs");
+    if allow_hand_written_internal_attrs {
+        args.remove(0);
+    }
+
     if args.iter().any(|arg| arg == "-vV") {
         // Intercept invocations with `-vV`, used for e.g. Cargo fingerprinting.
         // Include Verus details in the output to ensure that fingerprints are accurate.
@@ -149,8 +157,9 @@ pub fn main() {
     // TODO: Audit that the environment access only happens in single-threaded code.
     unsafe { std::env::set_var("RUSTC_BOOTSTRAP", "1") };
 
-    let verifier =
+    let mut verifier =
         rust_verify::verifier::Verifier::new(our_args, via_cargo, via_cargo_compile, dep_tracker);
+    verifier.allow_hand_written_internal_attrs = allow_hand_written_internal_attrs;
 
     let (verifier, stats, status) = rust_verify::driver::run(
         verifier,
