@@ -56,5 +56,7 @@ The guarantees Verus does provide are contingent on the following:
 4. Rust proc-macros can make arbitrary changes to Rust source code before Verus sees the code,
    or they can change what code Verus sees during verification compared to what a normal Rust compile
    sees.  Verus does not prevent such shenanigans.
-5. The correctness of Verus, the solvers it depends on, and on Rust itself (including `rustc`,
+5. Verus does not typically support unstable Rust features.  It attempts to reject uses of such
+   features, but we cannot guarantee that we will catch them all.
+6. The correctness of Verus, the solvers it depends on, and on Rust itself (including `rustc`,
    `cargo`, etc.).
