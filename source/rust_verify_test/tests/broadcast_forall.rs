@@ -692,3 +692,418 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// Issue #1166: a broadcast axiom enabled before a for-loop must stay available
+// inside the isolated loop. `admit` is confined to this uninterpreted predicate.
+test_verify_one_file! {
+    #[test] issue_1166_broadcast_visible_in_for_loop verus_code! {
+        use vstd::prelude::*;
+
+        pub uninterp spec fn map_contains_key_opaque<Key, Value>(m: Map<Key, Value>, k: Key) -> bool;
+
+        pub broadcast proof fn axiom_map_contains_key_opaque<Key, Value>(m: Map<Key, Value>, k: Key)
+            ensures
+                #[trigger] map_contains_key_opaque::<Key, Value>(m, k) <==> m.contains_key(k),
+        {
+            admit();
+        }
+
+        fn test_axiom(m: Map<u64, u32>, k: u64)
+            requires
+                map_contains_key_opaque(m, k),
+        {
+            broadcast use axiom_map_contains_key_opaque;
+            for _i in 0..10
+                invariant
+                    map_contains_key_opaque(m, k),
+            {
+                assert(m.contains_key(k)) by {
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] broadcast_use_reaches_isolated_loops verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::opaque]
+        spec fn f(i: int) -> bool { true }
+
+        #[verifier::opaque]
+        spec fn g(i: int) -> bool { true }
+
+        broadcast proof fn lemma_f(i: int)
+            ensures #[trigger] f(i),
+        {
+            reveal(f);
+        }
+
+        broadcast proof fn lemma_g(i: int)
+            ensures #[trigger] g(i),
+        {
+            reveal(g);
+        }
+
+        broadcast group group_fg {
+            lemma_f,
+            lemma_g,
+        }
+
+        fn test_for() {
+            broadcast use lemma_f;
+            let mut n: u64 = 0;
+            for x in 0u64..2u64
+                invariant n == x,
+            {
+                assert(f(10));
+                n = n + 1;
+            }
+            assert(n == 2);
+        }
+
+        fn test_while() {
+            broadcast use lemma_f;
+            let mut i: u64 = 0;
+            while i < 2
+                invariant i <= 2,
+                decreases 2 - i,
+            {
+                assert(f(10));
+                i = i + 1;
+            }
+        }
+
+        fn test_nested() {
+            broadcast use lemma_f;
+            let mut i: u64 = 0;
+            while i < 2
+                invariant i <= 2,
+                decreases 2 - i,
+            {
+                let mut j: u64 = 0;
+                while j < 2
+                    invariant j <= 2,
+                    decreases 2 - j,
+                {
+                    assert(f(10));
+                    j = j + 1;
+                }
+                i = i + 1;
+            }
+        }
+
+        fn test_group() {
+            broadcast use group_fg;
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(f(1));
+                assert(g(1));
+                i = i + 1;
+            }
+        }
+
+        fn test_positive_branch_and_nested(b: bool) {
+            if b {
+                broadcast use lemma_f;
+                let mut i: u64 = 0;
+                while i < 1
+                    invariant i <= 1,
+                    decreases 1 - i,
+                {
+                    let mut j: u64 = 0;
+                    while j < 1
+                        invariant j <= 1,
+                        decreases 1 - j,
+                    {
+                        assert(f(3));
+                        j = j + 1;
+                    }
+                    i = i + 1;
+                }
+            }
+        }
+
+        fn test_closure_sees_outer_broadcast() {
+            broadcast use lemma_f;
+            let clos = |x: u64| -> (r: u64)
+                ensures r == x,
+            {
+                let mut i: u64 = 0;
+                while i < 1
+                    invariant i <= 1,
+                    decreases 1 - i,
+                {
+                    assert(f(4));
+                    i = i + 1;
+                }
+                x
+            };
+            let _ = clos(1u64);
+        }
+
+        fn test_proof_block_broadcast_reaches_later_loop() {
+            proof {
+                broadcast use lemma_f;
+            }
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(f(5));
+                i = i + 1;
+            }
+        }
+
+        // `assert by` and `by (nonlinear_arith)` are separate proof contexts.
+        // Directives established before them stay available to a later loop,
+        // and the nonlinear query itself does not import those directives.
+        fn test_broadcast_survives_proof_queries() {
+            broadcast use lemma_f;
+            assert(f(6)) by {
+            };
+            assert(true) by (nonlinear_arith) {
+            };
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(f(6));
+                i = i + 1;
+            }
+        }
+
+        fn test_isolation_boundary_pre_stms() {
+            broadcast use lemma_f;
+            let mut i: u64 = 0;
+            #[verus::internal(loop_isolation_boundary)]
+            {
+                broadcast use lemma_g;
+                let y: u64 = 1;
+                while i < 1
+                    invariant i <= 1,
+                    decreases 1 - i,
+                {
+                    assert(f(7));
+                    assert(g(7));
+                    assert(y == 1);
+                    i = i + 1;
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] broadcast_use_does_not_leak_across_queries verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::opaque]
+        spec fn f(i: int) -> bool { true }
+
+        broadcast proof fn lemma_f(i: int)
+            ensures f(i),
+        {
+            reveal(f);
+        }
+
+        fn no_broadcast() {
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(f(10)); // FAILS
+                i = i + 1;
+            }
+        }
+
+        fn broadcast_after_loop() {
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(f(10)); // FAILS
+                i = i + 1;
+            }
+            broadcast use lemma_f;
+        }
+
+        fn sibling_branch(b: bool) {
+            if b {
+                broadcast use lemma_f;
+                let mut i: u64 = 0;
+                while i < 1
+                    invariant i <= 1,
+                    decreases 1 - i,
+                {
+                    assert(f(10));
+                    i = i + 1;
+                }
+            } else {
+                let mut i: u64 = 0;
+                while i < 1
+                    invariant i <= 1,
+                    decreases 1 - i,
+                {
+                    assert(f(10)); // FAILS
+                    i = i + 1;
+                }
+            }
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(f(10)); // FAILS
+                i = i + 1;
+            }
+        }
+
+        fn only_inside_completed_loop() {
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                broadcast use lemma_f;
+                assert(f(10));
+                i = i + 1;
+            }
+            let mut j: u64 = 0;
+            while j < 1
+                invariant j <= 1,
+                decreases 1 - j,
+            {
+                assert(f(10)); // FAILS
+                j = j + 1;
+            }
+        }
+
+        fn nonlinear_query_stays_isolated() {
+            broadcast use lemma_f;
+            assert(f(10)) by (nonlinear_arith) { // FAILS
+            };
+        }
+
+        fn closure_broadcast_does_not_escape() {
+            let clos = |x: u64| -> (r: u64)
+                ensures r == x,
+            {
+                broadcast use lemma_f;
+                assert(f(10));
+                x
+            };
+            let _ = clos(1u64);
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(f(10)); // FAILS
+                i = i + 1;
+            }
+        }
+
+        fn assert_by_broadcast_does_not_escape() {
+            assert(true) by {
+                broadcast use lemma_f;
+                assert(f(10));
+            };
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(f(10)); // FAILS
+                i = i + 1;
+            }
+        }
+    } => Err(err) => assert_fails(err, 8)
+}
+
+test_verify_one_file! {
+    #[test] ordinary_facts_stay_isolated verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::opaque]
+        spec fn f(i: int) -> bool { true }
+
+        broadcast proof fn lemma_f(i: int)
+            ensures f(i),
+        {
+            reveal(f);
+        }
+
+        fn precondition_not_in_invariant(x: u64)
+            requires x == 5,
+        {
+            broadcast use lemma_f;
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(f(10));
+                assert(x == 5); // FAILS
+                i = i + 1;
+            }
+        }
+
+        fn local_not_in_invariant() {
+            let y: u64 = 6;
+            broadcast use lemma_f;
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(f(10));
+                assert(y == 6); // FAILS
+                i = i + 1;
+            }
+        }
+
+        fn outside_boundary_not_in_invariant() {
+            broadcast use lemma_f;
+            let z: u64 = 7;
+            let mut i: u64 = 0;
+            #[verus::internal(loop_isolation_boundary)]
+            {
+                while i < 1
+                    invariant i <= 1,
+                    decreases 1 - i,
+                {
+                    assert(f(10));
+                    assert(z == 7); // FAILS
+                    i = i + 1;
+                }
+            }
+        }
+
+        #[verifier::loop_isolation(false)]
+        fn not_isolated(x: u64)
+            requires x == 5,
+        {
+            let y: u64 = 6;
+            broadcast use lemma_f;
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(f(10));
+                assert(x == 5);
+                assert(y == 6);
+                i = i + 1;
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
