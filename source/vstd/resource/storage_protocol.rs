@@ -406,7 +406,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
 
     /// Wrap this resource in a type that implements `Copy`,
     /// given that the resource is duplicable.
-    pub axiom fn into_copyable(self, p: P) -> (r: CopyableStorageResource<K, V, P>)
+    pub axiom fn into_copyable(tracked self, p: P) -> (tracked r: CopyableStorageResource<K, V, P>)
         requires
             P::op(P::op(self.value(), self.value()), p) == self.value(),
         ensures
@@ -425,7 +425,7 @@ impl<K, V, P: Protocol<K, V>> CopyableStorageResource<K, V, P> {
     /// The location of the resource
     pub uninterp spec fn loc(self) -> Loc;
 
-    pub axiom fn into_resource(self) -> (r: StorageResource<K, V, P>)
+    pub axiom fn into_resource(tracked self) -> (tracked r: StorageResource<K, V, P>)
         ensures
             r.loc() == self.loc(),
             r.value() == self.value(),

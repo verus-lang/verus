@@ -329,7 +329,7 @@ impl<P: PCM> Resource<P> {
 
     /// Wrap this resource in a type that implements `Copy`,
     /// given that the resource is duplicable.
-    pub axiom fn into_copyable(self, p: P) -> (r: CopyableResource<P>)
+    pub axiom fn into_copyable(tracked self, p: P) -> (tracked r: CopyableResource<P>)
         requires
             P::op(P::op(self.value(), self.value()), p) == self.value(),
         ensures
@@ -348,7 +348,7 @@ impl<P: PCM> CopyableResource<P> {
     /// The location of the resource
     pub uninterp spec fn loc(self) -> Loc;
 
-    pub axiom fn into_resource(self) -> (r: Resource<P>)
+    pub axiom fn into_resource(tracked self) -> (tracked r: Resource<P>)
         ensures
             r.loc() == self.loc(),
             r.value() == self.value(),
