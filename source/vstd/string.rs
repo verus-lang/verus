@@ -528,6 +528,10 @@ pub uninterp spec fn into_iter_elts<'a>(i: Chars<'a>) -> Seq<char>;
 pub assume_specification[ str::chars ](s: &str) -> (iter: Chars<'_>)
     ensures
         IteratorSpec::remaining(&iter) == s@,
+        // Every `char` takes at least one byte, and `s.len()` (a `usize`) counts bytes.
+        // This lets callers learn that the length fits in a `usize`
+        // (needed, e.g., by `enumerate` and `position`)
+        IteratorSpec::remaining(&iter).len() <= s.len(),
         IteratorSpec::decrease(&iter) is Some,
 ;
 
