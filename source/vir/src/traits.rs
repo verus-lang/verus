@@ -282,7 +282,7 @@ pub fn demote_external_traits(krate: &Krate, lookup: &DemoteTraitLookup) -> Resu
                         &function.span,
                         format!(
                             "no specification for trait method `{:}` on trait `{:}` supplied to Verus",
-                            method.path.last_segment().to_string(),
+                            method.path.last_segment(),
                             path_as_friendly_rust_name(trait_path)
                         ),
                     )
