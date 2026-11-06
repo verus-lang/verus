@@ -23,8 +23,13 @@ fn lib_with_example_imports_own_lib() {
 
     let driver_args = cargo_plan.parse_driver_args_for_key_prefix(&args_prefix);
     assert!(
-        driver_args.contains(&"import-dep-if-present=mylib"),
-        "driver args should include the package's own lib: {:?}",
+        driver_args.contains(&"import-direct-dep-if-present=mylib"),
+        "driver args should include the package's own lib as direct-only: {:?}",
+        driver_args,
+    );
+    assert!(
+        !driver_args.contains(&"import-dep-if-present=mylib"),
+        "the package's own lib must not be eligible for transitive fallback: {:?}",
         driver_args,
     );
 }
