@@ -591,6 +591,12 @@ test_verify_one_file! {
             assert(a@ == ("A")@);
             assert(a.is_ascii());
         }
+
+        fn clone_from_contents(dest: &mut String, source: &String)
+            ensures final(dest)@ == source@,
+        {
+            dest.clone_from(source);
+        }
     } => Ok(())
 }
 

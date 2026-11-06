@@ -77,3 +77,83 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] clone_from_contracts verus_code! {
+        use vstd::prelude::*;
+
+        // Arbitrary lengths cover empty, growing, equal, shrinking, and clearing vectors.
+        fn clone_from_lengths(dest: &mut Vec<u64>, source: &Vec<u64>) {
+            let ghost before = source@;
+            <Vec<u64> as Clone>::clone_from(dest, source);
+            assert(dest@ == source@);
+            assert(source@ == before);
+            assert(*dest == *source); // FAILS: contents do not determine whole-Vec equality.
+        }
+
+        fn nested_containers(dest: &mut Vec<[u64; 3]>, source: &Vec<[u64; 3]>)
+            ensures final(dest).deep_view() == source.deep_view(),
+        {
+            let nested = vec![vec![7u64, 8], vec![9u64]];
+            let mut copy = vec![vec![1u64]];
+            copy.clone_from(&nested);
+            assert(copy.deep_view() == nested.deep_view());
+            dest.clone_from(source);
+        }
+
+        pub struct Value { pub id: u64, pub scratch: u64 }
+        impl View for Value {
+            type V = u64;
+            open spec fn view(&self) -> u64 { self.id }
+        }
+        impl Clone for Value {
+            fn clone(&self) -> (result: Self)
+                ensures result@ == self@,
+            { Value { id: self.id, scratch: 0 } }
+            fn clone_from(&mut self, source: &Self)
+                ensures final(self)@ == source@,
+            { self.id = source.id; }
+        }
+
+        fn update_generic<T: Clone + View>(dest: &mut T, source: &T)
+            requires forall|source: T, previous: T, result: T|
+                #[trigger] cloned_from(source, previous, result) ==> result@ == source@,
+            ensures final(dest)@ == source@,
+        {
+            dest.clone_from(source);
+            assert(cloned_from(*source, *old(dest), *dest));
+        }
+
+        fn grow(dest: &mut Vec<Value>, source: &Vec<Value>)
+            requires old(dest).len() <= source.len(),
+            ensures
+                final(dest).len() == source.len(),
+                forall|i: int| 0 <= i < source.len() ==> final(dest)@[i]@ == source@[i]@,
+        {
+            assert forall|source: Value, previous: Value, result: Value|
+                #[trigger] cloned_from(source, previous, result) implies result@ == source@ by {}
+            let mut value = Value { id: 0, scratch: 1 };
+            update_generic(&mut value, &Value { id: 7, scratch: 2 });
+            assert(value@ == 7);
+            dest.clone_from(source);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+// Handwritten Clone plus Copy still calls clone_from for reused elements.
+#[test]
+fn handwritten_clone_and_copy_reuses_elements() {
+    #[derive(Copy)]
+    struct Value(u64);
+    impl Clone for Value {
+        fn clone(&self) -> Self {
+            *self
+        }
+        fn clone_from(&mut self, _source: &Self) {
+            self.0 = 0;
+        }
+    }
+    let mut dest = vec![Value(1)];
+    dest.clone_from(&vec![Value(7), Value(8)]);
+    assert!(matches!(dest.as_slice(), [Value(0), Value(8)]));
+}

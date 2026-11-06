@@ -75,6 +75,42 @@ impl ExternalInfo {
     }
 }
 
+/// Returns VIR function identifiers for trait defaults this impl inherits.
+/// Includes an item only when rustc selects the trait's own default definition
+/// and marks the selection final (specialization cannot replace it).
+/// Definitions supplied by an impl, including `default fn` methods, are excluded.
+fn find_inherited_default_methods<'tcx>(ctxt: &Context<'tcx>, impl_def_id: DefId) -> Arc<Vec<Fun>> {
+    let tcx = ctxt.tcx;
+    let trait_def_id = tcx.impl_trait_ref(impl_def_id).skip_binder().def_id;
+    let mut default_item_ids: Vec<DefId> = Vec::new();
+    for assoc_item in tcx.associated_items(trait_def_id).in_definition_order() {
+        // VIR also represents associated constants as functions.
+        if matches!(assoc_item.kind, AssocKind::Fn { .. } | AssocKind::Const { .. })
+            && assoc_item.defaultness(tcx).has_value()
+        {
+            default_item_ids.push(assoc_item.def_id);
+        }
+    }
+    if default_item_ids.is_empty() {
+        return Arc::new(vec![]);
+    }
+    let trait_def = tcx.trait_def(trait_def_id);
+    let Ok(ancestors) = trait_def.ancestors(tcx, impl_def_id) else {
+        return Arc::new(vec![]);
+    };
+    let mut inherited_methods = Vec::new();
+    for trait_item_id in default_item_ids {
+        let Some(leaf_def) = ancestors.leaf_def(tcx, trait_item_id) else {
+            continue;
+        };
+        // Use the same specialization graph as direct trait calls.
+        if leaf_def.item.def_id == trait_item_id && leaf_def.is_final() {
+            inherited_methods.push(Arc::new(FunX { path: ctxt.def_id_to_vir_path(trait_item_id) }));
+        }
+    }
+    Arc::new(inherited_methods)
+}
+
 fn trait_impl_to_vir<'tcx>(
     ctxt: &Context<'tcx>,
     span: rustc_span::Span,
@@ -97,6 +133,12 @@ fn trait_impl_to_vir<'tcx>(
         // Currently, we ignore negative impls;
         // trait_conflicts.rs should protect us from any overlap caused by ignoring negative impls
         // TODO: better handling of negative impls
+        return Ok(None);
+    }
+    if ctxt.tcx.defaultness(impl_def_id).is_default() {
+        if hir_generics.is_some() {
+            return err_span(span, "Verus does not support `default impl` (specialization)");
+        }
         return Ok(None);
     }
 
@@ -142,6 +184,12 @@ fn trait_impl_to_vir<'tcx>(
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
     let impl_path = ctxt.def_id_to_vir_path(impl_def_id);
+    // Generated extension-trait impls have no default methods.
+    let inherited_default_methods = if external_trait_blanket {
+        Arc::new(vec![])
+    } else {
+        find_inherited_default_methods(ctxt, impl_def_id)
+    };
     let trait_impl = vir::ast::TraitImplX {
         impl_path: impl_path.clone(),
         typ_params,
@@ -151,6 +199,7 @@ fn trait_impl_to_vir<'tcx>(
         trait_typ_arg_impls: ctxt.spanned_new(path_span, impl_paths),
         owning_module: Some(module_path),
         auto_imported,
+        inherited_default_methods,
         external_trait_blanket,
     };
     let trait_impl = ctxt.spanned_new(span, trait_impl);
@@ -555,6 +604,10 @@ pub(crate) fn translate_impl_item<'tcx>(
         return Ok(());
     }
     let assoc_item = ctxt.tcx.associated_item(impl_item_id.hir_id().owner.to_def_id());
+    if assoc_item.defaultness(ctxt.tcx).is_default() {
+        // Specialization can replace this item with a definition Verus has not checked.
+        return err_span(impl_item.span, "Verus does not support `default` items (specialization)");
+    }
     let mk_trait_function_kind = || -> FunctionKind {
         if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone() {
             let ident = impl_item.ident.to_string();

@@ -669,6 +669,77 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_default_ensures_fallback_override_requires_spec code! {
+        use vstd::prelude::*;
+
+        verus! {
+        #[verifier::external]
+        pub trait D {}
+        #[verifier::external_trait_specification]
+        pub trait ExD {
+            type ExternalTraitSpecificationFor: D;
+        }
+
+        pub trait T {
+            fn required(&self);
+            fn g(&self) {}
+            fn f(&self) { self.g(); }
+        }
+        }
+
+        // Box<dyn D> prevents auto-import; inherited f calls the unspecified override of g.
+        impl T for Box<dyn D> {
+            fn required(&self) {}
+            fn g(&self) {}
+        }
+
+        verus! {
+        pub assume_specification[ <Box<dyn D> as T>::required ](x: &Box<dyn D>);
+        fn caller(x: &Box<dyn D>) {
+            x.f();
+        }
+        }
+    } => Err(err) => {
+        assert_vir_error_msg(err.clone(), "cannot analyze inherited default method");
+        assert_help_error_msg(err, "add an `assume_specification` for this method implementation");
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_default_ensures_fallback_inherits_default code! {
+        use vstd::prelude::*;
+
+        verus! {
+        #[verifier::external]
+        pub trait D {}
+        #[verifier::external_trait_specification]
+        pub trait ExD {
+            type ExternalTraitSpecificationFor: D;
+        }
+
+        pub trait T {
+            fn required(&self) -> (r: u64) ensures r <= 7;
+            fn f(&self) -> (r: u64) ensures r <= 7 { self.required() }
+        }
+        }
+
+        // The impl inherits `f`, so only `required` needs a spec; `f` gets the
+        // verified default's contract.
+        impl T for Box<dyn D> {
+            fn required(&self) -> u64 { 7 }
+        }
+
+        verus! {
+        pub assume_specification[ <Box<dyn D> as T>::required ](x: &Box<dyn D>) -> (r: u64);
+        fn caller(x: &Box<dyn D>) {
+            let r = x.f();
+            assert(r <= 7);
+        }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_default_ensures_extern1 verus_code! {
         #[verifier::external]
         trait T {
@@ -801,8 +872,9 @@ test_verify_one_file! {
         }
         fn inheritor2() {
             assert(forall|r| call_ensures(<i8 as T>::f, (6,), r) ==> r <= 6);
-            // Because T for i8 is external, we shouldn't know whether it inherits the default
-            assert(forall|r| call_ensures(<i8 as T>::f, (6,), r) ==> r == 3); // FAILS
+            // Even though T for i8 is external, rustc's specialization graph confirms
+            // it inherits the default, so the default_ensures contract applies.
+            assert(forall|r| call_ensures(<i8 as T>::f, (6,), r) ==> r == 3);
         }
         fn overrider1() {
             assert(forall|r| call_ensures(<u16 as T>::f, (6,), r) ==> r == 3); // FAILS
@@ -819,7 +891,31 @@ test_verify_one_file! {
         fn overrider5() {
             assert(forall|r| call_ensures(<bool as T>::f, (21,), r) ==> r == 3);
         }
-    } => Err(err) => assert_fails(err, 5)
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] spec_omits_default_method verus_code! {
+        #[verifier::external]
+        pub trait T {
+            fn req(&self) -> u64;
+            fn f(&self) -> u64 { self.req() }
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            fn req(&self) -> u64;
+            // `f` deliberately omitted
+        }
+
+        pub struct S;
+        impl T for S {
+            fn req(&self) -> u64 { 7 }
+        }
+
+        fn call_it(s: &S) -> u64 { s.f() }
+    } => Err(err) => assert_vir_error_msg(err, "declare `f` in the trait's `external_trait_specification`")
 }
 
 test_verify_one_file! {

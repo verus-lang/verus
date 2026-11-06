@@ -86,6 +86,12 @@ test_verify_one_file! {
             let a = [0u8; 16];
             let _b = a.clone();
         }
+
+        fn clone_from_array(dest: &mut [u64; 3], source: &[u64; 3])
+            ensures final(dest)@ == source@,
+        {
+            dest.clone_from(source);
+        }
     } => Ok(())
 }
 

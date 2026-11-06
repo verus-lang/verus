@@ -41,6 +41,7 @@ test_verify_one_file! {
     #[test] test_hash_map verus_code! {
         use std::collections::HashMap;
         use vstd::prelude::*;
+
         fn test()
         {
             let mut m = HashMap::<u32, i8>::new();
@@ -108,6 +109,7 @@ test_verify_one_file! {
     #[test] test_hash_set verus_code! {
         use std::collections::HashSet;
         use vstd::prelude::*;
+
         fn test()
         {
             let mut m = HashSet::<u32>::new();
