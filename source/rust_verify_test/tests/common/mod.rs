@@ -381,6 +381,10 @@ pub fn run_verus(
             verus_args.push("--no-cheating".to_string());
         } else if *option == "--output-json" {
             verus_args.push("--output-json".to_string());
+        } else if *option == "--incremental" {
+            // mimic cargo's default for dev builds
+            verus_args.push("-C".to_string());
+            verus_args.push(format!("incremental={}", test_dir.join("incremental").display()));
         } else if *option == "vstd" {
             // ignore
         } else if *option == "-V allow-inline-air" {

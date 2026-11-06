@@ -1392,10 +1392,13 @@ pub(crate) fn check_proof_with_callee<'tcx>(
         ));
     };
     // `f` and `_VERUS_VERIFIED_f` are generated from the same item,
-    // with the same parent and the same identifier span
+    // with the same parent and the same identifier span.
+    // (Ignore the spans' parent field, which, in incremental compilation,
+    // is set to the item that contains the span, i.e. to `f` or `_VERUS_VERIFIED_f` itself.)
+    let ident_span = |id| tcx.def_ident_span(id).map(|s| s.with_parent(None));
     if tcx.item_name(compiled_id).as_str() != compiled_name
         || tcx.opt_parent(compiled_id) != tcx.opt_parent(ver_id)
-        || tcx.def_ident_span(compiled_id) != tcx.def_ident_span(ver_id)
+        || ident_span(compiled_id) != ident_span(ver_id)
     {
         return err(format!(
             "in the compiled program, `{compiled_name}` here resolves to `{}`, not to `{expected}` (declared with `#[verus_spec(with ...)]`)",
