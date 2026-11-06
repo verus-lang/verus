@@ -1,0 +1,18 @@
+[package]
+name = "verus_state_machines_macros_syntax"
+version = "0.1.0"
+edition = "2018"
+license = "MIT"
+description = "Ordinary-library access to the Verus state-machine generator"
+
+[lib]
+path = "../src/syntax_lib.rs"
+
+[dependencies]
+verus_syn = { workspace = true }
+quote = { workspace = true }
+proc-macro2 = { workspace = true }
+indexmap = { workspace = true }
+
+[lints]
+workspace = true
