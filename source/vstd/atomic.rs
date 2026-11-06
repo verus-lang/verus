@@ -920,6 +920,7 @@ impl<T, E> UpdateTry for Result<T, E> {
 #[derive(Debug)]
 pub struct Commit<T>(pub T);
 
+#[cfg(verus_keep_ghost)]
 impl<T: core::fmt::Debug> super::std_specs::fmt::DebugSpecImpl for Commit<T> {
     open spec fn fmt_req(&self, f: &core::fmt::Formatter<'_>) -> bool {
         forall|f2: &core::fmt::Formatter<'_>| #[trigger]

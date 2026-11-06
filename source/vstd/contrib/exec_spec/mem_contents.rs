@@ -20,6 +20,7 @@ pub enum ExecMemContents<T> {
     Init(T),
 }
 
+#[cfg(verus_keep_ghost)]
 impl<T: core::fmt::Debug> crate::std_specs::fmt::DebugSpecImpl for ExecMemContents<T> {
     open spec fn fmt_req(&self, f: &core::fmt::Formatter<'_>) -> bool {
         match self {

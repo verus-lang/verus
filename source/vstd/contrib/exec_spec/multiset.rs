@@ -20,6 +20,7 @@ pub struct ExecMultiset<T: std::hash::Hash + std::cmp::Eq> {
     pub m: HashMap<T, usize>,
 }
 
+#[cfg(verus_keep_ghost)]
 impl<
     T: std::hash::Hash + std::cmp::Eq + core::fmt::Debug,
 > crate::std_specs::fmt::DebugSpecImpl for ExecMultiset<T> {
