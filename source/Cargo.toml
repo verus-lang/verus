@@ -60,7 +60,7 @@ proc-macro2 = "1.0.106"
 quote = "1.0"
 rand = "0.10"
 regex = "1.13"
-rustc-dep-info = "0.1.0"
+rustc-dep-info = "0.2.0"
 rustc_tools_util = "0.4"
 serde_json = { version = "1.0.150", features = ["preserve_order"] }
 serde = { version = "1", features = ["std", "derive", "rc"] }
