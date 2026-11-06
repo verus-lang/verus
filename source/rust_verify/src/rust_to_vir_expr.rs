@@ -81,7 +81,7 @@ use rustc_hir::{
     LetStmt, Lit, LoopSource, Node, Pat, PatExpr, PatExprKind, PatKind, QPath, Stmt, StmtKind,
     StructTailExpr, UnOp,
 };
-use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
+use rustc_hir::{Attribute, BindingMode, BodyOwnerKind, BorrowKind, ByRef, Mutability};
 use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AllowTwoPhase, AutoBorrow, AutoBorrowMutability, DerefAdjustKind,
     PatAdjust, PatAdjustment, PointerCoercion,
@@ -4558,6 +4558,68 @@ fn unwrap_parameter_to_vir<'tcx>(
     }
 }
 
+/// Finds the nested `fn` items that occur inside ghost code, at any depth.
+/// Such a `fn` is compiled, so its own body is not ghost, but an `impl` or `static`
+/// inside it still changes how the verified program resolves calls.
+struct GhostNestedFns<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    in_ghost: bool,
+    found: std::collections::HashSet<DefId>,
+}
+
+impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for GhostNestedFns<'tcx> {
+    type NestedFilter = rustc_middle::hir::nested_filter::OnlyBodies;
+    fn maybe_tcx(&mut self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+    // Proof blocks may be marked on the block expression or on the statement holding it.
+    fn visit_expr(&mut self, e: &'tcx Expr<'tcx>) {
+        let saved = self.in_ghost;
+        self.in_ghost =
+            saved || crate::attributes::get_ghost_block_opt(self.tcx.hir_attrs(e.hir_id)).is_some();
+        rustc_hir::intravisit::walk_expr(self, e);
+        self.in_ghost = saved;
+    }
+    fn visit_stmt(&mut self, s: &'tcx Stmt<'tcx>) {
+        let saved = self.in_ghost;
+        self.in_ghost =
+            saved || crate::attributes::get_ghost_block_opt(self.tcx.hir_attrs(s.hir_id)).is_some();
+        rustc_hir::intravisit::walk_stmt(self, s);
+        self.in_ghost = saved;
+    }
+    fn visit_nested_item(&mut self, item_id: rustc_hir::ItemId) {
+        let item = self.tcx.hir_item(item_id);
+        if let ItemKind::Fn { body, .. } = item.kind {
+            if self.in_ghost {
+                self.found.insert(item.owner_id.to_def_id());
+            }
+            let saved = self.in_ghost;
+            self.in_ghost = saved
+                || crate::attributes::get_mode(Mode::Exec, self.tcx.hir_attrs(item.hir_id()))
+                    != Mode::Exec;
+            rustc_hir::intravisit::walk_body(self, self.tcx.hir_body(body));
+            self.in_ghost = saved;
+        }
+    }
+}
+
+/// The `DefId`s of all nested `fn` items inside ghost code (see `GhostNestedFns`).
+pub(crate) fn ghost_nested_fns(tcx: TyCtxt<'_>) -> std::collections::HashSet<DefId> {
+    let mut v = GhostNestedFns { tcx, in_ghost: false, found: Default::default() };
+    for owner in tcx.hir_body_owners() {
+        let attrs = tcx.hir_attrs(tcx.local_def_id_to_hir_id(owner));
+        v.in_ghost = match tcx.hir_body_owner_kind(owner) {
+            BodyOwnerKind::Fn => crate::attributes::get_mode(Mode::Exec, attrs) != Mode::Exec,
+            BodyOwnerKind::Const { .. } => {
+                crate::attributes::get_mode(Mode::Spec, attrs) != Mode::Exec
+            }
+            _ => false,
+        };
+        rustc_hir::intravisit::walk_body(&mut v, tcx.hir_body_owned_by(owner));
+    }
+    v.found
+}
+
 pub(crate) fn stmt_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     stmt: &Stmt<'tcx>,
@@ -4617,7 +4679,9 @@ pub(crate) fn stmt_to_vir<'tcx>(
                     }
                     // Ghost code is erased for compilation, but an impl there can still change
                     // how the verified program resolves calls. Reject impl and static items.
-                    ItemKind::Impl(..) | ItemKind::Static(..) if bctx.in_ghost => {
+                    ItemKind::Impl(..) | ItemKind::Static(..)
+                        if bctx.in_ghost || bctx.ctxt.ghost_nested_fns.contains(&bctx.fun_id) =>
+                    {
                         unsupported_err!(stmt.span, "impl or static items in ghost code", stmt)
                     }
                     ItemKind::Struct(..)

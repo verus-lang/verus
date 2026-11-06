@@ -350,3 +350,53 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "impl or static items in ghost code")
 }
+
+test_verify_one_file! {
+    #[test] impl_in_exec_nested_fn_in_proof_rejected_3426 verus_code! {
+        pub struct S;
+        fn f() -> (r: u8) ensures r == 1 {
+            let s = S;
+            proof {
+                fn hidden() {
+                    impl S { fn m(&self) -> (r: u8) ensures r == 1 { 1 } }
+                }
+            }
+            s.m()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "impl or static items in ghost code")
+}
+
+test_verify_one_file! {
+    #[test] impl_in_closure_in_exec_nested_fn_in_proof_rejected_3426 verus_code! {
+        pub struct S;
+        proof fn p() {
+            fn hidden() {
+                let c = || { impl S { fn m(&self) -> u8 { 1 } } };
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "impl or static items in ghost code")
+}
+
+test_verify_one_file! {
+    #[test] impl_in_nested_fn_in_spec_fn_rejected_3426 verus_code! {
+        pub struct S;
+        spec fn sp() -> bool {
+            fn hidden() { impl S { fn m(&self) -> u8 { 1 } } }
+            true
+        }
+    } => Err(err) => assert_vir_error_msg(err, "impl or static items in ghost code")
+}
+
+test_verify_one_file! {
+    #[test] impl_in_nested_fn_outside_ghost_still_allowed_3426 verus_code! {
+        pub struct S;
+        fn f() -> (r: u8) ensures r == 1 {
+            #[allow(non_local_definitions)]
+            fn hidden() {
+                impl S { fn m(&self) -> (r: u8) ensures r == 1 { 1 } }
+            }
+            let s = S;
+            s.m()
+        }
+    } => Ok(())
+}
