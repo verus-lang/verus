@@ -1625,6 +1625,10 @@ pub struct FunctionAttrsX {
     pub impls_cannot_extend_spec: bool,
     /// Whether to assume that this function terminates
     pub exec_assume_termination: bool,
+    /// For a trait method impl whose method isn't declared in the trait's Verus spec
+    /// (e.g., an incomplete `external_trait_specification`), assume compatibility
+    /// and treat the impl as a static function rather than erroring
+    pub assume_compatibility_with_trait_spec: bool,
     /// Whether to allow this function to not terminate
     pub exec_allows_no_decreases_clause: bool,
     /// Is this function `tracked_swap`, which requires special handling

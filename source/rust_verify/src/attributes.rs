@@ -398,6 +398,9 @@ pub(crate) enum Attr {
     ImplsCannotExtendSpec,
     // Assume that the function terminates
     AssumeTermination,
+    // Allow a trait method impl even when the trait's spec (e.g., via
+    // external_trait_specification) doesn't declare the method (unsound)
+    AssumeCompatibilityWithTraitSpec,
     // Proxy containing unerased code
     UnerasedProxy,
     UsesUnerasedProxy,
@@ -754,6 +757,9 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, arg, None) if arg == "assume_termination" => {
                     v.push(Attr::AssumeTermination);
+                }
+                AttrTree::Fun(_, arg, None) if arg == "assume_compatibility_with_trait_spec" => {
+                    v.push(Attr::AssumeCompatibilityWithTraitSpec);
                 }
                 AttrTree::Fun(_, arg, None) if arg == "exec_allows_no_decreases_clause" => {
                     v.push(Attr::ExecAllowNoDecreasesClause);
@@ -1324,6 +1330,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) open_visibility_qualifier: bool,
     pub(crate) impls_cannot_extend_spec: bool,
     pub(crate) assume_termination: bool,
+    pub(crate) assume_compatibility_with_trait_spec: bool,
     pub(crate) exec_allows_no_decreases_clause: bool,
     pub(crate) externals_available_without_declaration: Option<bool>,
     pub(crate) unerased_proxy: bool,
@@ -1519,6 +1526,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         open_visibility_qualifier: false,
         impls_cannot_extend_spec: false,
         assume_termination: false,
+        assume_compatibility_with_trait_spec: false,
         exec_allows_no_decreases_clause: false,
         externals_available_without_declaration: None,
         unerased_proxy: false,
@@ -1604,6 +1612,9 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
             Attr::ImplsCannotExtendSpec => vs.impls_cannot_extend_spec = true,
             Attr::AssumeTermination => vs.assume_termination = true,
+            Attr::AssumeCompatibilityWithTraitSpec => {
+                vs.assume_compatibility_with_trait_spec = true
+            }
             Attr::ExecAllowNoDecreasesClause => vs.exec_allows_no_decreases_clause = true,
             Attr::ExternalsAvailableWithoutDeclaration(flag) => {
                 vs.externals_available_without_declaration = Some(flag)
