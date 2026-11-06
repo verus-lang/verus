@@ -417,6 +417,8 @@ pub struct FuncCheckSst {
 pub struct FuncSpecBodySst {
     pub decrease_when: Option<Exp>,
     pub termination_check: Option<FuncCheckSst>,
+    /// Exported checks are retained in the SST, but executed only by their owning bucket.
+    pub verify_termination_in_this_bucket: bool,
     pub body_exp: Exp,
 }
 
