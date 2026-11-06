@@ -2969,7 +2969,7 @@ fn check_no_opaque_types_in_trait<'tcx>(
 
 // TODO: move the callbacks into a different file, like driver.rs
 pub(crate) struct VerifierCallbacksEraseMacro {
-    pub first_dep_info: Option<std::path::PathBuf>,
+    pub first_pass_dep_info: Option<std::path::PathBuf>,
     pub(crate) verifier: Verifier,
     /// start time of the rustc compilation
     pub(crate) rust_start_time: Instant,
@@ -3132,7 +3132,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         dep_info_path_d.display(),
                     )
                 });
-                self.first_dep_info = Some(dep_info_path_verus_d);
+                self.first_pass_dep_info = Some(dep_info_path_verus_d);
             }
         }
         self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));

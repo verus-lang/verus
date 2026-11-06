@@ -119,7 +119,7 @@ for all functions (it would only be needed for functions with tracked data in pr
 struct CompilerCallbacksEraseMacro {
     pub do_compile: bool,
     pub override_stability: bool,
-    pub dep_info: Option<std::path::PathBuf>,
+    pub second_pass_dep_info: Option<std::path::PathBuf>,
 }
 
 impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
@@ -148,7 +148,7 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
     ) -> rustc_driver::Compilation {
         if tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo) {
             if let OutFileName::Real(path) = tcx.output_filenames(()).path(OutputType::DepInfo) {
-                self.dep_info = Some(path);
+                self.second_pass_dep_info = Some(path);
             }
         }
         rustc_driver::Compilation::Continue
@@ -184,12 +184,12 @@ pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
     do_compile: bool,
     vstd: Vstd,
-    first_dep_info: Option<std::path::PathBuf>,
+    first_pass_dep_info: Option<std::path::PathBuf>,
 ) -> Result<(), ()> {
     let mut callbacks = CompilerCallbacksEraseMacro {
         do_compile,
         override_stability: matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore),
-        dep_info: None,
+        second_pass_dep_info: None,
     };
     rustc_args.extend(["--cfg", "verus_only", "--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     if matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore) {
@@ -218,7 +218,7 @@ pub(crate) fn run_with_erase_macro_compile(
     let result = run_compiler(rustc_args, true, true, &mut callbacks);
     if result.is_ok() {
         // Rustc writes its dep-info after after_expansion, so merge only after it returns.
-        match (first_dep_info, callbacks.dep_info) {
+        match (first_pass_dep_info, callbacks.second_pass_dep_info) {
             (Some(first), Some(second)) => {
                 let info_1 = rustc_dep_info::Contents::read_file(&first).unwrap_or_else(|err| {
                     panic!("failed to read first-pass dep-info from `{}`: {err}", first.display())
@@ -340,7 +340,7 @@ pub fn run(
     }
     // Build VIR and run verification
     let mut verifier_callbacks = VerifierCallbacksEraseMacro {
-        first_dep_info: None,
+        first_pass_dep_info: None,
         verifier,
         rust_start_time: Instant::now(),
         rust_end_time: None,
@@ -357,7 +357,7 @@ pub fn run(
         rust_end_time,
         tc_start_time,
         tc_end_time,
-        first_dep_info,
+        first_pass_dep_info,
         ..
     } = verifier_callbacks;
     let time1 = Instant::now();
@@ -388,7 +388,12 @@ pub fn run(
         Ok(())
     } else {
         let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
-        run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd, first_dep_info)
+        run_with_erase_macro_compile(
+            rustc_args,
+            do_compile,
+            verifier.args.vstd,
+            first_pass_dep_info,
+        )
     };
 
     let time2 = Instant::now();
