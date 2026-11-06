@@ -456,6 +456,7 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                 || Some(trait_def_id) == tcx.lang_items().tuple_trait()
                                 || Some(trait_def_id) == tcx.lang_items().pointee_trait()
                                 || Some(trait_def_id) == tcx.lang_items().sync_trait()
+                                || Some(trait_def_id) == tcx.lang_items().unpin_trait()
                                 || Some(trait_def_id) == tcx.lang_items().destruct_trait()
                                 || matches!(
                                     verus_items::get_rust_item(tcx, trait_def_id),
@@ -593,6 +594,51 @@ pub(crate) fn is_tracked_or_ghost_ty<'tcx>(
             }
         }
         _ => None,
+    }
+}
+
+impl<'tcx> BodyCtxt<'tcx> {
+    /// It's not, in general, safe to move an exec value into a proof context;
+    /// since the move will be erased, rust will insert a drop in the compilation pass.
+    ///
+    /// Example:
+    ///
+    /// ```
+    /// fn test() {
+    ///     {
+    ///         let x = ...;
+    ///         proof {
+    ///             save_in_invariant(x); // tracked move of x
+    ///         }
+    ///     } // Rust drops `x` here, may call drop constructor
+    ///
+    ///     // Do something contradictory with the saved `x` here
+    /// }
+    /// ```
+    ///
+    /// We can, however, allow this in special cases where we know the drop operation is trivial.
+    /// The cases we allow are:
+    ///  - References
+    ///  - Tracked types
+    ///  - All `Copy` types (as these can never have drop glue)
+    ///  - Tuples thereof
+    pub(crate) fn is_proof_to_exec_move_okay(
+        &self,
+        ty: rustc_middle::ty::Ty<'tcx>,
+    ) -> vir::ast::MoveExecToProofOkay {
+        if self.b_is_proof_to_exec_move_okay(ty) {
+            vir::ast::MoveExecToProofOkay::Yes
+        } else {
+            vir::ast::MoveExecToProofOkay::No
+        }
+    }
+
+    pub(crate) fn b_is_proof_to_exec_move_okay(&self, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+        match ty.kind() {
+            TyKind::Tuple(tys) => tys.iter().all(|t| self.b_is_proof_to_exec_move_okay(t)),
+            TyKind::Ref(_, _, _) => true,
+            _ => is_tracked_or_ghost_ty(&self.ctxt.verus_items, ty).is_some() || self.is_copy(ty),
+        }
     }
 }
 

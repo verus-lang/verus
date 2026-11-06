@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::def::user_local_name;
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
@@ -1532,6 +1533,43 @@ pub fn place_has_deref_mut(p: &Place) -> bool {
     }
 }
 
+pub fn place_to_friendly_string(p: &Place) -> String {
+    place_to_friendly_string_rec(p, false)
+}
+
+fn place_to_friendly_string_rec(p: &Place, has_suffix: bool) -> String {
+    let mut stars = "".to_string();
+    let mut inner_star = false;
+
+    let mut typ = &p.typ;
+    while let TypX::Decorate(TypDecoration::Ref | TypDecoration::Box, _, t) = &**typ {
+        typ = t;
+        stars += "*";
+    }
+
+    let inner: String = match &p.x {
+        PlaceX::Local(x) => user_local_name(x).to_string(),
+        PlaceX::Temporary(..) => format!("(unnamed temporary)"),
+        PlaceX::Field(opr, p) => {
+            format!("{:}.{:}", place_to_friendly_string_rec(p, true), opr.field)
+        }
+        PlaceX::Index(p, ..) => {
+            format!("{:}[_]", place_to_friendly_string_rec(p, true))
+        }
+        PlaceX::DerefMut(p) | PlaceX::ModeUnwrap(p, _) => {
+            inner_star = true;
+            format!("*{:}", place_to_friendly_string_rec(p, false))
+        }
+        PlaceX::WithExpr(_, p) | PlaceX::UserDefinedTypInvariantObligation(p, _) => {
+            place_to_friendly_string_rec(p, has_suffix)
+        }
+    };
+
+    let has_stars = stars.len() > 0 || inner_star;
+    let res = stars + &inner;
+    if has_suffix && has_stars { "(".to_string() + &res + ")" } else { res }
+}
+
 impl PatternX {
     /// Returns a Pattern Var that is valid post-simplification.
     pub(crate) fn simple_var(name: VarIdent, span: &Span, typ: &Typ) -> Pattern {
@@ -1544,6 +1582,7 @@ impl PatternX {
                 by_ref: ByRef::No,
                 typ: typ.clone(),
                 copy: false,
+                move_exec_to_proof_okay: MoveExecToProofOkay::Yes,
             }),
         )
     }

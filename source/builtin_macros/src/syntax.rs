@@ -3634,7 +3634,7 @@ impl Visitor {
                 } else if is_inside_ghost {
                     quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Tracked #turbofish ::new(#inner))
                 } else {
-                    quote_spanned_builtin!(verus_builtin, span => #[verifier::ghost_wrapper] /* vattr */ #verus_builtin::tracked_exec #turbofish (#[verifier::tracked_block_wrapped] /* vattr */ #inner))
+                    quote_spanned_builtin!(verus_builtin, span => #[verus::internal(ghost_wrapper)] #verus_builtin::tracked_exec #turbofish (#[verus::internal(tracked_block_wrapped)] #inner))
                 });
             } else {
                 // Ghost(...)
@@ -3644,7 +3644,7 @@ impl Visitor {
                 } else if is_inside_ghost {
                     quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Ghost #turbofish ::new(#inner))
                 } else {
-                    quote_spanned_builtin!(verus_builtin, span => #[verifier::ghost_wrapper] /* vattr */ #verus_builtin::ghost_exec #turbofish (#[verifier::ghost_block_wrapped] /* vattr */ #inner))
+                    quote_spanned_builtin!(verus_builtin, span => #[verus::internal(ghost_wrapper)] #verus_builtin::ghost_exec #turbofish (#[verus::internal(ghost_block_wrapped)] #inner))
                 });
             }
         } else if let Expr::Unary(unary) = expr {
@@ -4835,7 +4835,26 @@ impl VisitMut for Visitor {
             _ => false,
         });
         if has_pre_post_items {
-            visit_items_in_block(&mut block.stmts, |items| self.visit_items_prefilter(items));
+            visit_items_in_block(&mut block.stmts, |items| {
+                for item in items.iter_mut() {
+                    if let Item::Static(sta) = item {
+                        if matches!(sta.mode, FnMode::Default)
+                            && !is_external(&sta.attrs)
+                            && self.inside_external_code == 0
+                        {
+                            // There's no way to write `exec static` inside a function body: verus_syn's
+                            // statement parser only knows `spec`/`exec const` and `spec`/`proof fn`, so a
+                            // local static can't be given a mode. Default it to exec here. This has to
+                            // happen before visit_items_prefilter, which copies the mode into the proxy fn.
+                            // (Module-level statics still have to say `exec` explicitly.)
+                            sta.mode = FnMode::Exec(verus_syn::ModeExec {
+                                exec_token: Token![exec](sta.static_token.span),
+                            });
+                        }
+                    }
+                }
+                self.visit_items_prefilter(items);
+            });
         }
         let block_stmts = std::mem::replace(&mut block.stmts, vec![]);
         for mut stmt in block_stmts {

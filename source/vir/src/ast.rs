@@ -771,6 +771,8 @@ pub enum BinaryOp {
     Eq(Mode),
     /// not Eq
     Ne,
+    /// inequality on bools (ordered false < true)
+    BoolInequality(InequalityOp),
     /// arithmetic inequality
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
@@ -907,6 +909,7 @@ pub struct PatternBinding {
     /// True if the type of this variable is copy.
     /// This is used by resolution analysis; it is meaningless post-simplification.
     pub copy: bool,
+    pub move_exec_to_proof_okay: MoveExecToProofOkay,
 }
 
 /// Patterns for match expressions
@@ -1347,8 +1350,8 @@ pub struct UnfinalizedReadKind {
 /// Spec until mode-checking, whereas the other kinds are distinguished in rust_to_vir.
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
 pub enum ReadKind {
-    /// A move.
-    Move,
+    /// A move. bool = is an exec-to-proof move okay
+    Move(MoveExecToProofOkay),
     /// A copy. (Not a move.)
     Copy,
     /// Take a shared borrow (&). (Not a move.)
@@ -1361,6 +1364,12 @@ pub enum ReadKind {
     Spec,
     /// Prophetic spec snapshot. (Not a move.)
     SpecAfterBorrow,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
+pub enum MoveExecToProofOkay {
+    Yes,
+    No,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]

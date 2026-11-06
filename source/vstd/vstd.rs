@@ -27,6 +27,7 @@
 #![cfg_attr(verus_keep_ghost, feature(fmt_arguments_from_str))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(btree_cursors))]
 #![cfg_attr(verus_keep_ghost, feature(panic_internals))]
+#![cfg_attr(verus_keep_ghost, feature(maybe_uninit_array_assume_init))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -144,6 +145,8 @@ pub broadcast group group_vstd_default {
     //
     // std_specs for alloc (with or without std)
     //
+    #[cfg(feature = "alloc")]
+    std_specs::borrow::group_borrow_axioms,
     #[cfg(feature = "alloc")]
     std_specs::vec::group_vec_axioms,
     #[cfg(feature = "alloc")]

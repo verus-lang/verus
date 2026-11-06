@@ -56,6 +56,7 @@ test_verify_one_file! {
         }
         async fn bar() {
             let future = foo();
+            assert(future.obeys_future_laws());
             assert(future.awaited() ==> future@ == 1);
             let ret = future.await;
             assert(ret == 1);
@@ -96,6 +97,7 @@ test_verify_one_file! {
 
         async fn foo_of_foo() -> (ret: impl Future<Output = usize>)
             ensures
+                ret.obeys_future_laws(),
                 ret.awaited() ==> ret@ == 233,
         {
             foo()
@@ -432,4 +434,383 @@ test_verify_one_file! {
             consumes_opaque(f1);
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+}
+
+test_verify_one_file! {
+    #[test] custom_future_without_future_laws verus_code! {
+        use vstd::prelude::*;
+        use core::future::Future;
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        exec static COUNTER: AtomicU64 ensures true { AtomicU64::new(0) }
+
+        struct CustomFuture;
+
+        impl Future for CustomFuture {
+            type Output = u64;
+
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
+                Poll::Ready(COUNTER.fetch_add(1, Ordering::SeqCst))
+            }
+        }
+
+        impl vstd::future::FutureSpecImpl for CustomFuture {
+            open spec fn obeys_future_laws(&self) -> bool {
+                false
+            }
+
+            #[verifier::prophetic]
+            uninterp spec fn view(&self) -> u64;
+
+        }
+
+        async fn equality_is_unknown() {
+            let future1 = CustomFuture;
+            let future2 = CustomFuture;
+            assert(future1 == future2);
+            let output1 = future1.await;
+            let output2 = future2.await;
+            assert(output1 == output2); // FAILS
+        }
+
+        async fn inequality_is_unknown() {
+            let future1 = CustomFuture;
+            let future2 = CustomFuture;
+            assert(future1 == future2);
+            let output1 = future1.await;
+            let output2 = future2.await;
+            assert(output1 != output2); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] custom_future_awaited_is_opaque verus_code! {
+        use vstd::prelude::*;
+        use core::future::Future;
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+
+        struct CustomFuture;
+
+        impl Future for CustomFuture {
+            type Output = ();
+
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<()> {
+                Poll::Pending
+            }
+        }
+
+        impl vstd::future::FutureSpecImpl for CustomFuture {
+            open spec fn obeys_future_laws(&self) -> bool {
+                false
+            }
+
+            #[verifier::prophetic]
+            uninterp spec fn view(&self) -> ();
+        }
+
+        async fn no_contradiction() {
+            CustomFuture.await;
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] custom_future_poll_must_return_view verus_code! {
+        use vstd::prelude::*;
+        use core::future::Future;
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        exec static COUNTER: AtomicU64 ensures true { AtomicU64::new(0) }
+
+        struct CustomFuture;
+
+        impl Future for CustomFuture {
+            type Output = u64;
+
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
+                Poll::Ready(COUNTER.fetch_add(1, Ordering::SeqCst))
+            }
+        }
+
+        impl vstd::future::FutureSpecImpl for CustomFuture {
+            open spec fn obeys_future_laws(&self) -> bool {
+                true
+            }
+
+            #[verifier::prophetic]
+            uninterp spec fn view(&self) -> u64;
+
+        }
+    } => Err(err) => assert_vir_error_msg(err, "postcondition not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] custom_future_pending_preserves_view verus_code! {
+        use vstd::prelude::*;
+        use core::future::Future;
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+
+        pub struct Drift {
+            pub output: u64,
+        }
+
+        impl Future for Drift {
+            type Output = u64;
+
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
+                let this = self.get_mut();
+                this.output = if this.output == 0 { 1 } else { 0 };
+                Poll::Pending
+            }
+        }
+
+        impl vstd::future::FutureSpecImpl for Drift {
+            open spec fn obeys_future_laws(&self) -> bool {
+                true
+            }
+
+            #[verifier::prophetic]
+            open spec fn view(&self) -> u64 {
+                self.output
+            }
+
+        }
+    } => Err(err) => assert_vir_error_msg(err, "postcondition not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] custom_future_obeys_future_laws verus_code! {
+        use vstd::prelude::*;
+        use vstd::future::FutureSpec;
+        use core::future::Future;
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+
+        pub struct Delay {
+            pub output: u64,
+            pub ready: bool,
+        }
+
+        impl Future for Delay {
+            type Output = u64;
+
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
+                let this = self.get_mut();
+                if this.ready {
+                    Poll::Ready(this.output)
+                } else {
+                    this.ready = true;
+                    Poll::Pending
+                }
+            }
+        }
+
+        impl vstd::future::FutureSpecImpl for Delay {
+            open spec fn obeys_future_laws(&self) -> bool {
+                true
+            }
+
+            #[verifier::prophetic]
+            open spec fn view(&self) -> u64 {
+                self.output
+            }
+
+        }
+
+        pub struct Never;
+
+        impl Future for Never {
+            type Output = u64;
+
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
+                Poll::Pending
+            }
+        }
+
+        impl vstd::future::FutureSpecImpl for Never {
+            open spec fn obeys_future_laws(&self) -> bool {
+                true
+            }
+
+            #[verifier::prophetic]
+            uninterp spec fn view(&self) -> u64;
+
+        }
+
+        async fn run(x: u64) -> (r: u64)
+            ensures r == x,
+        {
+            let d = Delay { output: x, ready: false };
+            assert(d@ == x);
+            d.await
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] into_future_await_uses_conversion verus_code! {
+        use vstd::prelude::*;
+        use core::future::{Future, IntoFuture};
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+
+        pub struct Ready7;
+
+        impl Future for Ready7 {
+            type Output = u64;
+
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
+                Poll::Ready(7)
+            }
+        }
+
+        impl vstd::future::FutureSpecImpl for Ready7 {
+            open spec fn obeys_future_laws(&self) -> bool {
+                true
+            }
+
+            #[verifier::prophetic]
+            open spec fn view(&self) -> u64 {
+                7
+            }
+        }
+
+        pub struct Gen;
+
+        impl IntoFuture for Gen {
+            type Output = u64;
+            type IntoFuture = Ready7;
+
+            fn into_future(self) -> Ready7 {
+                Ready7
+            }
+        }
+
+        async fn run() -> (r: u64)
+            ensures r == 7,
+        {
+            Gen.await
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] into_future_await_result_is_unknown verus_code! {
+        use vstd::prelude::*;
+        use core::future::{Future, IntoFuture};
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        exec static COUNTER: AtomicU64 ensures true { AtomicU64::new(0) }
+
+        pub struct Val {
+            pub v: u64,
+        }
+
+        impl Future for Val {
+            type Output = u64;
+
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
+                Poll::Ready(self.get_mut().v)
+            }
+        }
+
+        impl vstd::future::FutureSpecImpl for Val {
+            open spec fn obeys_future_laws(&self) -> bool {
+                true
+            }
+
+            #[verifier::prophetic]
+            open spec fn view(&self) -> u64 {
+                self.v
+            }
+        }
+
+        pub struct Gen;
+
+        impl IntoFuture for Gen {
+            type Output = u64;
+            type IntoFuture = Val;
+
+            fn into_future(self) -> Val {
+                Val { v: COUNTER.fetch_add(1, Ordering::SeqCst) }
+            }
+        }
+
+        async fn run() -> (r: (u64, u64))
+            ensures r.0 == r.1, // FAILS
+        {
+            let a = Gen.await;
+            let b = Gen.await;
+            (a, b)
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] into_future_await_uses_ensures verus_code! {
+        use vstd::prelude::*;
+        use core::future::{Future, IntoFuture};
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+
+        pub struct Val {
+            pub v: u64,
+        }
+
+        impl Future for Val {
+            type Output = u64;
+
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
+                Poll::Ready(self.get_mut().v)
+            }
+        }
+
+        impl vstd::future::FutureSpecImpl for Val {
+            open spec fn obeys_future_laws(&self) -> bool {
+                true
+            }
+
+            #[verifier::prophetic]
+            open spec fn view(&self) -> u64 {
+                self.v
+            }
+        }
+
+        pub struct Gen {
+            pub n: u64,
+        }
+
+        impl IntoFuture for Gen {
+            type Output = u64;
+            type IntoFuture = Val;
+
+            fn into_future(self) -> (r: Val)
+                ensures r.v == self.n,
+            {
+                Val { v: self.n }
+            }
+        }
+
+        async fn run(n: u64) -> (r: u64)
+            ensures r == n,
+        {
+            Gen { n }.await
+        }
+
+        async fn run_fails(n: u64) -> (r: u64)
+            ensures r == n + 1, // FAILS
+        {
+            Gen { n }.await
+        }
+    } => Err(err) => assert_one_fails(err)
 }

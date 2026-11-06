@@ -210,7 +210,7 @@ impl ExprOrPlace {
                 let rk = if bctx.is_copy(ty) {
                     vir::ast::ReadKind::Copy
                 } else {
-                    vir::ast::ReadKind::Move
+                    vir::ast::ReadKind::Move(bctx.is_proof_to_exec_move_okay(ty))
                 };
                 let rk = UnfinalizedReadKind {
                     preliminary_kind: rk,
@@ -847,12 +847,14 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
             pat_typ = actual_pat_typ;
 
             let name = local_to_var(x, canonical.local_id);
+            let node_type = bctx.types.node_type(pat.hir_id);
             let binding = vir::ast::PatternBinding {
                 name,
                 user_mut: Some(mutable),
                 by_ref: vir_by_ref,
                 typ: var_typ.clone(),
-                copy: bctx.is_copy(bctx.types.node_type(pat.hir_id)),
+                copy: bctx.is_copy(node_type),
+                move_exec_to_proof_okay: bctx.is_proof_to_exec_move_okay(node_type),
             };
             match subpat {
                 None => PatternX::Var(binding),
@@ -3540,13 +3542,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
             }
         }
-        // This a desugered `await` expression
-        ExprKind::Match(
-            Expr { hir_id: _, kind: ExprKind::Call(_expr, call_args), span: _ },
-            _arms,
-            rustc_hir::MatchSource::AwaitDesugar,
-        ) => {
-            let vir_expr = expr_to_vir_consume(bctx, &call_args[0])?;
+        // This is a desugared `await` expression: `match IntoFuture::into_future(x) { ... }`.
+        // Keep the `into_future` call so that the awaited future is the one it returns.
+        ExprKind::Match(into_future, _arms, rustc_hir::MatchSource::AwaitDesugar) => {
+            let vir_expr = expr_to_vir_consume(bctx, into_future)?;
             mk_expr(ExprX::Await(vir_expr))
         }
         ExprKind::Match(expr, arms, _match_source) => {
@@ -4196,7 +4195,13 @@ fn binopkind_to_binaryop_inner<'tcx>(
         let lhs_inner_ty = maybe_strip_shared_ref(lhs_ty);
         let rhs_inner_ty = maybe_strip_shared_ref(rhs_ty);
         let d0b = if bctx.in_ghost { Div0Behavior::Allow } else { Div0Behavior::Error };
+        let is_bool = ty_is_bool_or_ref_bool(lhs_inner_ty);
         let vop = match op {
+            BinOpKind::Le if is_bool => BinaryOp::BoolInequality(InequalityOp::Le),
+            BinOpKind::Ge if is_bool => BinaryOp::BoolInequality(InequalityOp::Ge),
+            BinOpKind::Lt if is_bool => BinaryOp::BoolInequality(InequalityOp::Lt),
+            BinOpKind::Gt if is_bool => BinaryOp::BoolInequality(InequalityOp::Gt),
+
             BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
             BinOpKind::Ge => BinaryOp::Inequality(InequalityOp::Ge),
             BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
@@ -4609,14 +4614,14 @@ pub(crate) fn stmt_to_vir<'tcx>(
                     ItemKind::Use(..) | ItemKind::Macro(..) => {
                         return Ok(vec![]);
                     }
-                    ItemKind::Struct(..) | ItemKind::Enum(..) => {
-                        // Nested datatypes are handled elsewhere as standalone items
-                        // It doesn't matter that they also appear here as statements
-                        return Ok(vec![]);
-                    }
-                    ItemKind::Fn { .. } | ItemKind::Const(..) => {
-                        // Nested functions and constants are handled elsewhere as standalone items
-                        // It doesn't matter that they also appear here as statements
+                    ItemKind::Struct(..)
+                    | ItemKind::Enum(..)
+                    | ItemKind::Fn { .. }
+                    | ItemKind::Const(..)
+                    | ItemKind::Impl(..)
+                    | ItemKind::Static(..) => {
+                        // Nested items are translated and checked independently as standalone items.
+                        // Their declarations do not need a statement-level VIR representation.
                         return Ok(vec![]);
                     }
                     _ => {
@@ -5240,7 +5245,11 @@ fn ctor_tail_get_taken_fields<'tcx>(
             TypingEnv::post_analysis(bctx.ctxt.tcx, bctx.fun_id),
             field_def.ty(bctx.ctxt.tcx, args),
         );
-        let rk = if bctx.is_copy(ty) { vir::ast::ReadKind::Copy } else { vir::ast::ReadKind::Move };
+        let rk = if bctx.is_copy(ty) {
+            vir::ast::ReadKind::Copy
+        } else {
+            vir::ast::ReadKind::Move(bctx.is_proof_to_exec_move_okay(ty))
+        };
         let rk = UnfinalizedReadKind { preliminary_kind: rk, id: bctx.ctxt.unique_read_kind_id() };
         let ident = field_ident_from_rust(field_def.name.as_str());
         taken_fields.push((ident, rk));
