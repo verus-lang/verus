@@ -119,6 +119,7 @@ for all functions (it would only be needed for functions with tracked data in pr
 struct CompilerCallbacksEraseMacro {
     pub do_compile: bool,
     pub override_stability: bool,
+    pub dep_info: Option<std::path::PathBuf>,
 }
 
 impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
@@ -145,40 +146,9 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
         _compiler: &rustc_interface::interface::Compiler,
         tcx: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
-        // Merge the dep-info files from the first (previous) and second (current) passes.
-        rustc_interface::passes::write_dep_info(tcx);
         if tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo) {
-            // Load and merge the dep-info files.
-            if let OutFileName::Real(path_2) = tcx.output_filenames(()).path(OutputType::DepInfo) {
-                let path_1 = path_2.with_extension("verus.d");
-                let info_1 = rustc_dep_info::Contents::read_file(&path_1).unwrap_or_else(|err| {
-                    panic!(
-                        "failed to read the first-pass dep-info from `{}`: {err}",
-                        path_1.display()
-                    )
-                });
-                let info_2 = rustc_dep_info::Contents::read_file(&path_2).unwrap_or_else(|err| {
-                    panic!(
-                        "failed to read the second-pass dep-info from `{}`: {err}",
-                        path_2.display()
-                    )
-                });
-                let merged_info = info_1.merge(
-                    info_2,
-                    // Second-pass metadata entries have priority.
-                    |metadata_1, metadata_2| metadata_2.or(metadata_1),
-                    // Second-pass env settings have priority.
-                    |env_1, env_2| env_2.or(env_1),
-                );
-                merged_info.write_file(&path_2).unwrap_or_else(|err| {
-                    panic!("failed to write the combined dep-info to `{}`: {err}", path_2.display())
-                });
-                std::fs::remove_file(&path_1).unwrap_or_else(|err| {
-                    eprintln!(
-                        "warning: failed to remove the first-pass dep-info from `{}`: {err}",
-                        path_1.display()
-                    )
-                });
+            if let OutFileName::Real(path) = tcx.output_filenames(()).path(OutputType::DepInfo) {
+                self.dep_info = Some(path);
             }
         }
         rustc_driver::Compilation::Continue
@@ -214,10 +184,12 @@ pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
     do_compile: bool,
     vstd: Vstd,
+    first_dep_info: Option<std::path::PathBuf>,
 ) -> Result<(), ()> {
     let mut callbacks = CompilerCallbacksEraseMacro {
         do_compile,
         override_stability: matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore),
+        dep_info: None,
     };
     rustc_args.extend(["--cfg", "verus_only", "--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     if matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore) {
@@ -243,7 +215,36 @@ pub(crate) fn run_with_erase_macro_compile(
     for a in allow {
         rustc_args.extend(["-A", a].map(|s| s.to_string()));
     }
-    run_compiler(rustc_args, true, true, &mut callbacks)
+    let result = run_compiler(rustc_args, true, true, &mut callbacks);
+    if result.is_ok() {
+        // Rustc writes its dep-info after after_expansion, so merge only after it returns.
+        match (first_dep_info, callbacks.dep_info) {
+            (Some(first), Some(second)) => {
+                let info_1 = rustc_dep_info::Contents::read_file(&first).unwrap_or_else(|err| {
+                    panic!("failed to read first-pass dep-info from `{}`: {err}", first.display())
+                });
+                let info_2 = rustc_dep_info::Contents::read_file(&second).unwrap_or_else(|err| {
+                    panic!("failed to read second-pass dep-info from `{}`: {err}", second.display())
+                });
+                // Prefer second-pass metadata and environment values when both are present.
+                let merged = info_1.merge(info_2, |a, b| b.or(a), |a, b| b.or(a));
+                merged.write_file(&second).unwrap_or_else(|err| {
+                    panic!("failed to write combined dep-info to `{}`: {err}", second.display())
+                });
+                std::fs::remove_file(&first).unwrap_or_else(|err| {
+                    eprintln!("warning: failed to remove `{}`: {err}", first.display())
+                });
+            }
+            (Some(first), None) => {
+                let destination = first.with_extension("d");
+                std::fs::rename(&first, &destination).unwrap_or_else(|err| {
+                    panic!("failed to restore dep-info `{}`: {err}", destination.display())
+                });
+            }
+            (None, _) => {}
+        }
+    }
+    result
 }
 
 pub struct VerusRoot {
@@ -339,6 +340,7 @@ pub fn run(
     }
     // Build VIR and run verification
     let mut verifier_callbacks = VerifierCallbacksEraseMacro {
+        first_dep_info: None,
         verifier,
         rust_start_time: Instant::now(),
         rust_end_time: None,
@@ -355,6 +357,7 @@ pub fn run(
         rust_end_time,
         tc_start_time,
         tc_end_time,
+        first_dep_info,
         ..
     } = verifier_callbacks;
     let time1 = Instant::now();
@@ -385,7 +388,7 @@ pub fn run(
         Ok(())
     } else {
         let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
-        run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
+        run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd, first_dep_info)
     };
 
     let time2 = Instant::now();

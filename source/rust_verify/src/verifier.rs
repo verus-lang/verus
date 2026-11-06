@@ -2969,6 +2969,7 @@ fn check_no_opaque_types_in_trait<'tcx>(
 
 // TODO: move the callbacks into a different file, like driver.rs
 pub(crate) struct VerifierCallbacksEraseMacro {
+    pub first_dep_info: Option<std::path::PathBuf>,
     pub(crate) verifier: Verifier,
     /// start time of the rustc compilation
     pub(crate) rust_start_time: Instant,
@@ -3120,18 +3121,18 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         if self.verifier.has_second_compile_pass()
             && tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo)
         {
-            // Change the extension of the dep-info file from `.d` to `.verus.d`
-            //   so that the second compiler pass does not overwrite it.
+            // Save the first pass's dep-info for the merge after the second pass.
             if let OutFileName::Real(dep_info_path_d) =
                 tcx.output_filenames(()).path(OutputType::DepInfo)
             {
-                let dep_info_path_verus_d = dep_info_path_d.with_extension("verus.d");
+                let dep_info_path_verus_d = dep_info_path_d.with_extension("verus-d");
                 std::fs::rename(&dep_info_path_d, &dep_info_path_verus_d).unwrap_or_else(|err| {
                     panic!(
-                        "error: failed to change the extension of {} to `.verus.d` due to {err}",
+                        "error: failed to change the extension of {} to `.verus-d` due to {err}",
                         dep_info_path_d.display(),
                     )
                 });
+                self.first_dep_info = Some(dep_info_path_verus_d);
             }
         }
         self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
