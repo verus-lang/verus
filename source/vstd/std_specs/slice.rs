@@ -763,6 +763,10 @@ pub assume_specification<'a, T>[ <[T]>::chunks ](s: &'a [T], chunk_size: usize) 
         IteratorSpec::remaining(&iter) == after_chunks_elts(iter),
         IteratorSpec::remaining(&iter).len() == (s@.len() + chunk_size as int - 1) / (
         chunk_size as int),
+        // Each chunk is non-empty, so there are at most `s.len()` of them.
+        // This lets callers learn that the length fits in a `usize`
+        // (needed, e.g., by `enumerate` and `position`)
+        IteratorSpec::remaining(&iter).len() <= s.len(),
         forall|i: int|
             #![trigger IteratorSpec::remaining(&iter)[i]]
             0 <= i < IteratorSpec::remaining(&iter).len() ==> {

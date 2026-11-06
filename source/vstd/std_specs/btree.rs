@@ -174,7 +174,10 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
 ) -> (iter: btree_map::Iter<'a, Key, Value>)
     ensures
         key_obeys_cmp_spec::<Key>() ==> {
+            // `m.len()` is mentioned so callers learn that the length fits in a `usize`
+            // (needed, e.g., by `enumerate` and `position`)
             &&& IteratorSpec::remaining(&iter).len() == m@.dom().len()
+            &&& IteratorSpec::remaining(&iter).len() == m.len()
             &&& forall|i: int|
                 #![trigger m@.contains_key(*IteratorSpec::remaining(&iter)[i].0)]
                 #![trigger m@[*IteratorSpec::remaining(&iter)[i].0]]
@@ -1000,6 +1003,7 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
             &&& IteratorSpec::remaining(&keys).unref().to_set() == m@.dom()
             &&& IteratorSpec::remaining(&keys).no_duplicates()
             &&& IteratorSpec::remaining(&keys).len() == m@.dom().len()
+            &&& IteratorSpec::remaining(&keys).len() == m.len()
             &&& increasing_seq(IteratorSpec::remaining(&keys))
             &&& into_iter_keys(keys) == IteratorSpec::remaining(&keys).unref()
             &&& IteratorSpec::decrease(&keys) is Some
@@ -1013,6 +1017,7 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
         key_obeys_cmp_spec::<Key>() ==> {
             &&& IteratorSpec::remaining(&values).unref().to_set() == m@.values()
             &&& IteratorSpec::remaining(&values).len() == m@.dom().len()
+            &&& IteratorSpec::remaining(&values).len() == m.len()
             &&& into_iter_values(values) == IteratorSpec::remaining(&values).unref()
             &&& IteratorSpec::decrease(&values) is Some
             &&& exists|key_seq: Seq<Key>|
@@ -1282,6 +1287,7 @@ pub assume_specification<'a, Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::ite
             &&& IteratorSpec::remaining(&r).unref().to_set() == m@
             &&& IteratorSpec::remaining(&r).no_duplicates()
             &&& IteratorSpec::remaining(&r).len() == m@.len()
+            &&& IteratorSpec::remaining(&r).len() == m.len()
             &&& increasing_seq(IteratorSpec::remaining(&r))
             &&& into_iter_btree_keys(r) == IteratorSpec::remaining(&r).unref()
             &&& IteratorSpec::decrease(&r) is Some

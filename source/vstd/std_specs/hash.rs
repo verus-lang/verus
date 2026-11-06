@@ -378,7 +378,10 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
 ) -> (iter: hash_map::Iter<'a, Key, Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+            // `m.len()` is mentioned so callers learn that the length fits in a `usize`
+            // (needed, e.g., by `enumerate` and `position`)
             &&& IteratorSpec::remaining(&iter).len() == m@.dom().len()
+            &&& IteratorSpec::remaining(&iter).len() == m.len()
             &&& forall|i: int|
                 #![trigger m@.contains_key(*IteratorSpec::remaining(&iter)[i].0)]
                 #![trigger m@[*IteratorSpec::remaining(&iter)[i].0]]
@@ -844,6 +847,7 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
             &&& IteratorSpec::remaining(&keys).unref().to_set() == m@.dom()
             &&& IteratorSpec::remaining(&keys).no_duplicates()
             &&& IteratorSpec::remaining(&keys).len() == m@.dom().len()
+            &&& IteratorSpec::remaining(&keys).len() == m.len()
             &&& into_iter_keys(keys) == IteratorSpec::remaining(&keys).unref()
             &&& IteratorSpec::decrease(&keys) is Some
         },
@@ -856,6 +860,7 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             &&& IteratorSpec::remaining(&values).unref().to_set() == m@.values()
             &&& IteratorSpec::remaining(&values).len() == m@.dom().len()
+            &&& IteratorSpec::remaining(&values).len() == m.len()
             &&& into_iter_values(values) == IteratorSpec::remaining(&values).unref()
             &&& IteratorSpec::decrease(&values) is Some
         },
@@ -1157,6 +1162,7 @@ pub assume_specification<'a, Key, S, A: Allocator>[ HashSet::<Key, S, A>::iter ]
             &&& IteratorSpec::remaining(&hash_keys).unref().to_set() == m@
             &&& IteratorSpec::remaining(&hash_keys).no_duplicates()
             &&& IteratorSpec::remaining(&hash_keys).len() == m@.len()
+            &&& IteratorSpec::remaining(&hash_keys).len() == m.len()
             &&& into_iter_hash_keys(hash_keys) == IteratorSpec::remaining(&hash_keys).unref()
             &&& IteratorSpec::decrease(&hash_keys) is Some
         },

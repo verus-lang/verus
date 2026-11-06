@@ -1104,6 +1104,7 @@ test_verify_one_file! {
     #[test] enumerate_requires_bounded_len verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
+        use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
         fn bounded<I: Iterator>(it: I)
             requires
@@ -1121,6 +1122,29 @@ test_verify_one_file! {
             let _ = s.into_iter().enumerate();
             let _ = m.iter_mut().enumerate();
             let _ = v.into_iter().enumerate();
+        }
+
+        // ... and for the iterators over other collections, `str`, and slice chunks
+        fn other_sources(
+            hm: &HashMap<u32, u32>,
+            hs: &HashSet<u32>,
+            bm: &BTreeMap<u32, u32>,
+            bs: &BTreeSet<u32>,
+            vd: &VecDeque<u32>,
+            st: &str,
+            s: &[u32],
+        ) {
+            let _ = hm.iter().enumerate();
+            let _ = hm.keys().enumerate();
+            let _ = hm.values().enumerate();
+            let _ = hs.iter().enumerate();
+            let _ = bm.iter().enumerate();
+            let _ = bm.keys().enumerate();
+            let _ = bm.values().enumerate();
+            let _ = bs.iter().enumerate();
+            let _ = vd.iter().enumerate();
+            let _ = st.chars().enumerate();
+            let _ = s.chunks(2).enumerate();
         }
 
         fn unbounded<I: Iterator>(it: I)
