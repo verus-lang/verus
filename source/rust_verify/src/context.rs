@@ -61,6 +61,8 @@ pub struct ContextX<'tcx> {
     pub(crate) crate_name: CrateId,
     pub(crate) name_def_id_map: Rc<RefCell<HashMap<Path, DefId>>>,
     pub(crate) next_read_kind_id: AtomicU64,
+    /// Nested `fn` items inside ghost code; see `rust_to_vir_expr::ghost_nested_fns`
+    pub(crate) ghost_nested_fns: std::collections::HashSet<DefId>,
 }
 
 /// Warnings and notes collected while translating HIR to VIR, waiting to be reported.
@@ -182,6 +184,7 @@ impl<'tcx> ContextX<'tcx> {
             crate_name,
             name_def_id_map: Rc::new(RefCell::new(HashMap::new())),
             next_read_kind_id: AtomicU64::new(0),
+            ghost_nested_fns: Default::default(),
         }
     }
 
