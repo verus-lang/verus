@@ -274,11 +274,18 @@ pub fn demote_external_traits(
         }
 
         if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
-            let our_trait_method = traits.contains(trait_path) && funs.contains(method);
+            let our_trait = traits.contains(trait_path);
+            let our_trait_method = funs.contains(method);
             let mut functionx = function.x.clone();
-            if !our_trait_method {
+            if !our_trait {
                 check_modes(function, &function.span)?;
                 functionx.kind = FunctionKind::Static;
+            } else if !our_trait_method {
+                return Err(error(
+                    &function.span,
+                    format!("no specification for trait method `{:}` on trait `{:}` supplied to Verus", method.path.last_segment().to_string(), path_as_friendly_rust_name(trait_path))
+                )
+                .help("if this trait is declared via `#[verifier::external_trait_specification]`, add a specifiction for the method there"));
             }
             *function = Spanned::new(function.span.clone(), functionx);
         }
