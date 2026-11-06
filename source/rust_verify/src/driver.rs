@@ -184,8 +184,7 @@ pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
     do_compile: bool,
     vstd: Vstd,
-    first_pass_dep_info: Option<std::path::PathBuf>,
-) -> Result<(), ()> {
+) -> (Result<(), ()>, Option<std::path::PathBuf>) {
     let mut callbacks = CompilerCallbacksEraseMacro {
         do_compile,
         override_stability: matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore),
@@ -216,37 +215,7 @@ pub(crate) fn run_with_erase_macro_compile(
         rustc_args.extend(["-A", a].map(|s| s.to_string()));
     }
     let result = run_compiler(rustc_args, true, true, &mut callbacks);
-    if result.is_ok() {
-        // Rustc writes its dep-info after after_expansion, so merge only after it returns.
-        let first_pass_dep_info = first_pass_dep_info.filter(|path| path.is_file());
-        let second_pass_dep_info = callbacks.second_pass_dep_info.filter(|path| path.is_file());
-        match (first_pass_dep_info, second_pass_dep_info) {
-            (Some(first), Some(second)) => {
-                let info_1 = rustc_dep_info::Contents::read_file(&first).unwrap_or_else(|err| {
-                    panic!("failed to read first-pass dep-info from `{}`: {err}", first.display())
-                });
-                let info_2 = rustc_dep_info::Contents::read_file(&second).unwrap_or_else(|err| {
-                    panic!("failed to read second-pass dep-info from `{}`: {err}", second.display())
-                });
-                // Prefer second-pass metadata and environment values when both are present.
-                let merged = info_1.merge(info_2, |a, b| b.or(a), |a, b| b.or(a));
-                merged.write_file(&second).unwrap_or_else(|err| {
-                    panic!("failed to write combined dep-info to `{}`: {err}", second.display())
-                });
-                std::fs::remove_file(&first).unwrap_or_else(|err| {
-                    eprintln!("warning: failed to remove `{}`: {err}", first.display())
-                });
-            }
-            (Some(first), None) => {
-                let destination = first.with_extension("d");
-                std::fs::rename(&first, &destination).unwrap_or_else(|err| {
-                    panic!("failed to restore dep-info `{}`: {err}", destination.display())
-                });
-            }
-            (None, _) => {}
-        }
-    }
-    result
+    (result, callbacks.second_pass_dep_info)
 }
 
 pub struct VerusRoot {
@@ -373,32 +342,48 @@ pub fn run(
         _ => Duration::new(0, 0),
     };
 
-    if status.is_err() || verifier.encountered_vir_error {
-        return (
-            verifier,
-            Stats {
-                time_rustc,
-                time_verify: (time1 - time0) - time_trait_conflicts,
-                time_trait_conflicts,
-                time_compile: Duration::new(0, 0),
-            },
-            Err(()),
-        );
-    }
-
-    let compile_status = if !verifier.has_second_compile_pass() {
-        Ok(())
-    } else {
+    let first_pass_failed = status.is_err() || verifier.encountered_vir_error;
+    let (compile_status, second_pass_dep_info) = if first_pass_failed {
+        (Err(()), None)
+    } else if verifier.has_second_compile_pass() {
         let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
-        run_with_erase_macro_compile(
-            rustc_args,
-            do_compile,
-            verifier.args.vstd,
-            first_pass_dep_info,
-        )
+        run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
+    } else {
+        (Ok(()), None)
     };
 
-    let time2 = Instant::now();
+    let time2 = if first_pass_failed { time1 } else { Instant::now() };
+
+    // Rustc writes dep-info after after_expansion, so combine files after the passes return.
+    // A failed second pass may leave an old output file at its altered path.
+    let first_pass_dep_info = first_pass_dep_info.filter(|path| path.is_file());
+    let second_pass_dep_info =
+        second_pass_dep_info.filter(|path| compile_status.is_ok() && path.is_file());
+    match (first_pass_dep_info, second_pass_dep_info) {
+        (Some(first), Some(second)) => {
+            let info_1 = rustc_dep_info::Contents::read_file(&first).unwrap_or_else(|err| {
+                panic!("failed to read first-pass dep-info from `{}`: {err}", first.display())
+            });
+            let info_2 = rustc_dep_info::Contents::read_file(&second).unwrap_or_else(|err| {
+                panic!("failed to read second-pass dep-info from `{}`: {err}", second.display())
+            });
+            // Prefer second-pass metadata and environment values when both are present.
+            let merged = info_1.merge(info_2, |a, b| b.or(a), |a, b| b.or(a));
+            merged.write_file(&second).unwrap_or_else(|err| {
+                panic!("failed to write combined dep-info to `{}`: {err}", second.display())
+            });
+            std::fs::remove_file(&first).unwrap_or_else(|err| {
+                eprintln!("warning: failed to remove `{}`: {err}", first.display())
+            });
+        }
+        (Some(first), None) => {
+            let destination = first.with_extension("d");
+            std::fs::rename(&first, &destination).unwrap_or_else(|err| {
+                panic!("failed to restore dep-info `{}`: {err}", destination.display())
+            });
+        }
+        (None, _) => {}
+    }
 
     let stats = Stats {
         time_rustc,

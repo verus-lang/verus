@@ -3118,9 +3118,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         }
 
         rustc_interface::passes::write_dep_info(tcx);
-        if self.verifier.has_second_compile_pass()
-            && tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo)
-        {
+        if tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo) {
             // Save the first pass's dep-info for the merge after the second pass.
             if let OutFileName::Real(dep_info_path_d) =
                 tcx.output_filenames(()).path(OutputType::DepInfo)
