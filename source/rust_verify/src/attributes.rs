@@ -339,7 +339,7 @@ pub(crate) enum Attr {
     SpinoffProver,
     // Use a new dedicated Z3 process for loops
     LoopIsolation(bool),
-    // Check requires[no_unwind] conditions at call sites
+    // Check requires[no_panic] conditions at call sites
     RestrictUnwind(bool),
     // Allow complex invariants (invariant_except_break, ensures) with loop_isolation(false)
     AllowComplexInvariants,

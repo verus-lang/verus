@@ -338,9 +338,9 @@
             "syn": "Requires"
           }
         },
-        "unwind_requires": {
+        "no_panic_requires": {
           "option": {
-            "syn": "UnwindRequires"
+            "syn": "NoPanicRequires"
           }
         },
         "ensures": {
@@ -5408,6 +5408,31 @@
       }
     },
     {
+      "ident": "NoPanicRequires",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Requires"
+        },
+        "bracket_token": {
+          "group": "Bracket"
+        },
+        "no_panic_token": {
+          "proc_macro2": "Ident"
+        },
+        "exact": {
+          "option": {
+            "proc_macro2": "Ident"
+          }
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
       "ident": "Open",
       "features": {
         "any": []
@@ -6630,9 +6655,9 @@
             "syn": "Requires"
           }
         },
-        "unwind_requires": {
+        "no_panic_requires": {
           "option": {
-            "syn": "UnwindRequires"
+            "syn": "NoPanicRequires"
           }
         },
         "recommends": {
@@ -7683,31 +7708,6 @@
         },
         "unwind_token": {
           "proc_macro2": "Ident"
-        },
-        "exprs": {
-          "syn": "Specification"
-        }
-      }
-    },
-    {
-      "ident": "UnwindRequires",
-      "features": {
-        "any": []
-      },
-      "fields": {
-        "token": {
-          "token": "Requires"
-        },
-        "bracket_token": {
-          "group": "Bracket"
-        },
-        "no_unwind_token": {
-          "token": "NoUnwind"
-        },
-        "exact": {
-          "option": {
-            "proc_macro2": "Ident"
-          }
         },
         "exprs": {
           "syn": "Specification"

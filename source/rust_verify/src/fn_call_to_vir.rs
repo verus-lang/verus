@@ -437,7 +437,7 @@ pub(crate) fn call_index<'tcx>(
     call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
 }
 
-/// Determine whether `requires[no_unwind]` conditions should be checked for a call,
+/// Determine whether `requires[no_panic]` conditions should be checked for a call,
 /// based on #[verifier::restrict_unwind(...)] on the call expression (if any)
 /// or on the enclosing items.
 pub(crate) fn get_restrict_unwind<'tcx>(

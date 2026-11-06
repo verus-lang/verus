@@ -868,6 +868,12 @@ pub trait Fold {
     fn fold_mode_tracked(&mut self, i: crate::ModeTracked) -> crate::ModeTracked {
         fold_mode_tracked(self, i)
     }
+    fn fold_no_panic_requires(
+        &mut self,
+        i: crate::NoPanicRequires,
+    ) -> crate::NoPanicRequires {
+        fold_no_panic_requires(self, i)
+    }
     fn fold_open(&mut self, i: crate::Open) -> crate::Open {
         fold_open(self, i)
     }
@@ -1271,12 +1277,6 @@ pub trait Fold {
     fn fold_unwind_ensures(&mut self, i: crate::UnwindEnsures) -> crate::UnwindEnsures {
         fold_unwind_ensures(self, i)
     }
-    fn fold_unwind_requires(
-        &mut self,
-        i: crate::UnwindRequires,
-    ) -> crate::UnwindRequires {
-        fold_unwind_requires(self, i)
-    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn fold_use_glob(&mut self, i: crate::UseGlob) -> crate::UseGlob {
@@ -1483,7 +1483,8 @@ where
             .map(|it| ((it).0, crate::punctuated::fold((it).1, f, F::fold_fn_arg))),
         output: f.fold_return_type(node.output),
         requires: (node.requires).map(|it| f.fold_requires(it)),
-        unwind_requires: (node.unwind_requires).map(|it| f.fold_unwind_requires(it)),
+        no_panic_requires: (node.no_panic_requires)
+            .map(|it| f.fold_no_panic_requires(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         unwind_ensures: (node.unwind_ensures).map(|it| f.fold_unwind_ensures(it)),
         default_ensures: (node.default_ensures).map(|it| f.fold_default_ensures(it)),
@@ -4021,6 +4022,21 @@ where
         tracked_token: node.tracked_token,
     }
 }
+pub fn fold_no_panic_requires<F>(
+    f: &mut F,
+    node: crate::NoPanicRequires,
+) -> crate::NoPanicRequires
+where
+    F: Fold + ?Sized,
+{
+    crate::NoPanicRequires {
+        token: node.token,
+        bracket_token: node.bracket_token,
+        no_panic_token: f.fold_ident(node.no_panic_token),
+        exact: (node.exact).map(|it| f.fold_ident(it)),
+        exprs: f.fold_specification(node.exprs),
+    }
+}
 pub fn fold_open<F>(f: &mut F, node: crate::Open) -> crate::Open
 where
     F: Fold + ?Sized,
@@ -4619,7 +4635,8 @@ where
         prover: (node.prover).map(|it| f.fold_prover(it)),
         atomic_spec: (node.atomic_spec).map(|it| f.fold_atomic_spec(it)),
         requires: (node.requires).map(|it| f.fold_requires(it)),
-        unwind_requires: (node.unwind_requires).map(|it| f.fold_unwind_requires(it)),
+        no_panic_requires: (node.no_panic_requires)
+            .map(|it| f.fold_no_panic_requires(it)),
         recommends: (node.recommends).map(|it| f.fold_recommends(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         unwind_ensures: (node.unwind_ensures).map(|it| f.fold_unwind_ensures(it)),
@@ -5170,21 +5187,6 @@ where
         bracket_token: node.bracket_token,
         on_token: f.fold_ident(node.on_token),
         unwind_token: f.fold_ident(node.unwind_token),
-        exprs: f.fold_specification(node.exprs),
-    }
-}
-pub fn fold_unwind_requires<F>(
-    f: &mut F,
-    node: crate::UnwindRequires,
-) -> crate::UnwindRequires
-where
-    F: Fold + ?Sized,
-{
-    crate::UnwindRequires {
-        token: node.token,
-        bracket_token: node.bracket_token,
-        no_unwind_token: node.no_unwind_token,
-        exact: (node.exact).map(|it| f.fold_ident(it)),
         exprs: f.fold_specification(node.exprs),
     }
 }

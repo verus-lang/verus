@@ -1021,7 +1021,7 @@ pub fn func_def_to_sst(
         unwind_ens?
     };
 
-    // For `requires[no_unwind exact]`, the function must unwind when the condition fails,
+    // For `requires[no_panic exact]`, the function must unwind when the condition fails,
     // so a normal return must establish the condition
     if let (
         UnwindSpec::NoUnwindWhen(_, NoUnwindWhenKind::RequiresExact),

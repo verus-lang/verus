@@ -32,18 +32,21 @@ This effectively says:
  * If `i < self.len()`, then the function will not unwind.
  * If the function returns normally, then `i < self.len()` (equivalently, if `i >= self.len()`, then the function must unwind).
 
-## `requires[no_unwind]`
+## `requires[no_panic]`
 
-A function can also give its no-unwind condition as a `requires`-like clause:
+A function can also give its no-unwind condition as a `requires`-like clause,
+written `requires[no_panic]`:
 
 ```rust
 fn unwrap<T>(o: Option<T>) -> T
-    requires[no_unwind]
+    requires[no_panic]
         o.is_some(),
 ```
 
 Like `no_unwind when o.is_some()`, this means that the function will not unwind
-if the condition holds. The difference is that the condition is checked at every call site
+if the condition holds.
+(The clause is called `no_panic` because a panic might either unwind or abort,
+and callers may want to rule out both.) The difference is that the condition is checked at every call site
 by default, as if it were a precondition, even if the caller is itself allowed to unwind.
 
 To skip this check, use `#[verifier::restrict_unwind(false)]`. This attribute can be placed
@@ -52,7 +55,7 @@ calls inside it. When `restrict_unwind` is false for a call, the condition is on
 to the extent needed to show that the caller meets its own unwinding signature
 (as with `no_unwind when`).
 
-The form `requires[no_unwind exact]` additionally specifies that the function
+The form `requires[no_panic exact]` additionally specifies that the function
 _will_ unwind if the condition does not hold.
 Equivalently, if the function returns normally, then the condition holds.
 Verus checks this in the body of the function (the condition must hold at every normal return),
@@ -60,7 +63,7 @@ and callers may assume the condition after the call returns:
 
 ```rust
 fn unwrap<T>(o: Option<T>) -> T
-    requires[no_unwind exact]
+    requires[no_panic exact]
         o.is_some(),
 
 #[verifier::restrict_unwind(false)]
@@ -70,9 +73,9 @@ fn test(o: Option<u8>) {
 }
 ```
 
-A function may use either `requires[no_unwind]`, `requires[no_unwind exact]`,
+A function may use either `requires[no_panic]`, `requires[no_panic exact]`,
 or `no_unwind`/`no_unwind when`, but not more than one of these.
-`requires[no_unwind ...]` can be combined with an ordinary `requires` clause.
+`requires[no_panic ...]` can be combined with an ordinary `requires` clause.
 
 ## `ensures[on unwind]`
 
@@ -85,13 +88,15 @@ fn f(i: u8)
 ```
 
 This means that if the function unwinds, then `i >= 10`.
-Like `requires[no_unwind]` and `no_unwind when`, the conditions may only refer to the
+(Unlike `requires[no_panic]`, this is specifically about unwinding,
+since there is no path on which an abort "returns" to the caller.)
+Like `requires[no_panic]` and `no_unwind when`, the conditions may only refer to the
 function's arguments (in their state at the call).
-Unlike `requires[no_unwind]`, `ensures[on unwind]` is never checked at call sites;
+Unlike `requires[no_panic]`, `ensures[on unwind]` is never checked at call sites;
 instead, callers may assume the conditions if the call unwinds.
 
 Verus checks the `ensures[on unwind]` conditions at every point where the function
-might unwind, along with the negation of the function's `requires[no_unwind]` or `no_unwind when`
+might unwind, along with the negation of the function's `requires[no_panic]` or `no_unwind when`
 conditions (if any).
 `ensures[on unwind]` can be combined with `ensures` and with any of the unwind specifications above.
 

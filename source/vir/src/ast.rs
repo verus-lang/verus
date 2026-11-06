@@ -859,10 +859,10 @@ pub enum HeaderExprX {
     NoUnwind,
     /// This function will not unwind if the given condition holds (function of arguments)
     NoUnwindWhen(Expr),
-    /// `requires[no_unwind]`: the function will not unwind if the conditions hold,
+    /// `requires[no_panic]`: the function will not unwind if the conditions hold,
     /// and the conditions are checked at call sites by default (see restrict_unwind)
     NoUnwindRequires(Exprs),
-    /// `requires[no_unwind exact]`: same as NoUnwindRequires, but additionally
+    /// `requires[no_panic exact]`: same as NoUnwindRequires, but additionally
     /// the function unwinds if the conditions do not hold
     NoUnwindRequiresExact(Exprs),
     /// `ensures[on unwind]`: the conditions hold if the function unwinds
@@ -1036,7 +1036,7 @@ pub struct CallTargetAttrs {
     pub const_var: bool,
     /// If the expected Fun is undeclared, enable replacing Fun with AssumeExternal
     pub assume_external_allowed: bool,
-    /// If true, check the callee's `requires[no_unwind]` conditions at this call site
+    /// If true, check the callee's `requires[no_panic]` conditions at this call site
     /// even if not needed to prove that the caller does not unwind
     pub restrict_unwind: bool,
 }
@@ -1681,10 +1681,10 @@ pub enum NoUnwindWhenKind {
     /// `no_unwind when e`: the condition is only checked at call sites
     /// when needed to prove that the caller doesn't unwind
     When,
-    /// `requires[no_unwind] e`: the condition is checked at call sites
+    /// `requires[no_panic] e`: the condition is checked at call sites
     /// (unless restrict_unwind is false for the call)
     Requires,
-    /// `requires[no_unwind exact] e`: same as Requires, but additionally the function
+    /// `requires[no_panic exact] e`: same as Requires, but additionally the function
     /// unwinds if the condition does not hold (so the condition holds if the function returns)
     RequiresExact,
 }

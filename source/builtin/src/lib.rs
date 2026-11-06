@@ -164,17 +164,17 @@ pub fn no_unwind_when(_b: bool) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::no_unwind_requires"]
+#[rustc_diagnostic_item = "verus::verus_builtin::no_panic_requires"]
 #[verifier::proof]
-pub fn no_unwind_requires<A>(_a: A) {
+pub fn no_panic_requires<A>(_a: A) {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::no_unwind_requires_exact"]
+#[rustc_diagnostic_item = "verus::verus_builtin::no_panic_requires_exact"]
 #[verifier::proof]
-pub fn no_unwind_requires_exact<A>(_a: A) {
+pub fn no_panic_requires_exact<A>(_a: A) {
     unimplemented!();
 }
 

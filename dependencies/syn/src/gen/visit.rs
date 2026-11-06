@@ -779,6 +779,9 @@ pub trait Visit<'ast> {
     fn visit_mode_tracked(&mut self, i: &'ast crate::ModeTracked) {
         visit_mode_tracked(self, i);
     }
+    fn visit_no_panic_requires(&mut self, i: &'ast crate::NoPanicRequires) {
+        visit_no_panic_requires(self, i);
+    }
     fn visit_open(&mut self, i: &'ast crate::Open) {
         visit_open(self, i);
     }
@@ -1124,9 +1127,6 @@ pub trait Visit<'ast> {
     fn visit_unwind_ensures(&mut self, i: &'ast crate::UnwindEnsures) {
         visit_unwind_ensures(self, i);
     }
-    fn visit_unwind_requires(&mut self, i: &'ast crate::UnwindRequires) {
-        visit_unwind_requires(self, i);
-    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_use_glob(&mut self, i: &'ast crate::UseGlob) {
@@ -1354,8 +1354,8 @@ where
     if let Some(it) = &node.requires {
         v.visit_requires(it);
     }
-    if let Some(it) = &node.unwind_requires {
-        v.visit_unwind_requires(it);
+    if let Some(it) = &node.no_panic_requires {
+        v.visit_no_panic_requires(it);
     }
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
@@ -4034,6 +4034,18 @@ where
 {
     skip!(node.tracked_token);
 }
+pub fn visit_no_panic_requires<'ast, V>(v: &mut V, node: &'ast crate::NoPanicRequires)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+    skip!(node.bracket_token);
+    v.visit_ident(&node.no_panic_token);
+    if let Some(it) = &node.exact {
+        v.visit_ident(it);
+    }
+    v.visit_specification(&node.exprs);
+}
 pub fn visit_open<'ast, V>(v: &mut V, node: &'ast crate::Open)
 where
     V: Visit<'ast> + ?Sized,
@@ -4661,8 +4673,8 @@ where
     if let Some(it) = &node.requires {
         v.visit_requires(it);
     }
-    if let Some(it) = &node.unwind_requires {
-        v.visit_unwind_requires(it);
+    if let Some(it) = &node.no_panic_requires {
+        v.visit_no_panic_requires(it);
     }
     if let Some(it) = &node.recommends {
         v.visit_recommends(it);
@@ -5233,18 +5245,6 @@ where
     skip!(node.bracket_token);
     v.visit_ident(&node.on_token);
     v.visit_ident(&node.unwind_token);
-    v.visit_specification(&node.exprs);
-}
-pub fn visit_unwind_requires<'ast, V>(v: &mut V, node: &'ast crate::UnwindRequires)
-where
-    V: Visit<'ast> + ?Sized,
-{
-    skip!(node.token);
-    skip!(node.bracket_token);
-    skip!(node.no_unwind_token);
-    if let Some(it) = &node.exact {
-        v.visit_ident(it);
-    }
     v.visit_specification(&node.exprs);
 }
 #[cfg(feature = "full")]

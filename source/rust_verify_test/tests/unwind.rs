@@ -908,14 +908,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] requires_no_unwind ["exec_allows_no_decreases_clause"] => verus_code! {
+    #[test] requires_no_panic ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
 
         fn fn_may_unwind() {
         }
 
         fn f(i: u8)
-            requires[no_unwind]
+            requires[no_panic]
                 i >= 5,
         {
         }
@@ -923,14 +923,14 @@ test_verify_one_file_with_options! {
         fn f2(i: u8, j: u8)
             requires
                 i < 200,
-            requires[no_unwind]
+            requires[no_panic]
                 i >= 5,
                 j >= 5,
         {
         }
 
         fn f3(i: u8, j: u8)
-            requires[no_unwind]
+            requires[no_panic]
                 i >= 5,
             requires
                 j < 200,
@@ -988,24 +988,24 @@ test_verify_one_file_with_options! {
         }
 
         fn body1(i: u8)
-            requires[no_unwind]
+            requires[no_panic]
                 i >= 5,
         {
             fn_may_unwind(); // FAILS
         }
 
         fn body2(i: u8)
-            requires[no_unwind]
+            requires[no_panic]
                 i >= 5,
         {
-            // the caller's own requires[no_unwind] conditions are not preconditions,
+            // the caller's own requires[no_panic] conditions are not preconditions,
             // so with restrict_unwind, this must be proven unconditionally
             f(i); // FAILS
         }
 
         #[verifier::restrict_unwind(false)]
         fn body3(i: u8)
-            requires[no_unwind]
+            requires[no_panic]
                 i >= 5,
         {
             f(i);
@@ -1016,7 +1016,7 @@ test_verify_one_file_with_options! {
 
         #[verifier::restrict_unwind(false)]
         fn body4(i: u8)
-            requires[no_unwind]
+            requires[no_panic]
                 i >= 4,
         {
             f(i); // FAILS
@@ -1025,7 +1025,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] requires_no_unwind_exact ["exec_allows_no_decreases_clause"] => verus_code! {
+    #[test] requires_no_panic_exact ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
 
         #[verifier::external_body]
@@ -1037,7 +1037,7 @@ test_verify_one_file_with_options! {
         }
 
         fn g(i: u8)
-            requires[no_unwind exact]
+            requires[no_panic exact]
                 i >= 5,
         {
             if i < 5 {
@@ -1046,13 +1046,13 @@ test_verify_one_file_with_options! {
         }
 
         fn g_bad(i: u8)
-            requires[no_unwind exact]
+            requires[no_panic exact]
                 i >= 5, // FAILS
         {
         }
 
         fn g_bad2(i: u8)
-            requires[no_unwind exact]
+            requires[no_panic exact]
                 i >= 5,
         {
             if i < 5 {
@@ -1085,7 +1085,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file! {
-    #[test] requires_no_unwind_assume_specification verus_code! {
+    #[test] requires_no_panic_assume_specification verus_code! {
         use vstd::prelude::*;
 
         #[verifier::external]
@@ -1095,7 +1095,7 @@ test_verify_one_file! {
         }
 
         pub assume_specification[ext](i: u8) -> (r: u8)
-            requires[no_unwind exact]
+            requires[no_panic exact]
                 i > 0,
             ensures
                 r == i;
@@ -1118,12 +1118,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] requires_no_unwind_trait verus_code! {
+    #[test] requires_no_panic_trait verus_code! {
         use vstd::prelude::*;
 
         trait T {
             fn m(&self, i: u8)
-                requires[no_unwind]
+                requires[no_panic]
                     i >= 5;
         }
 
@@ -1161,9 +1161,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] requires_no_unwind_bad_syntax verus_code! {
+    #[test] requires_no_panic_bad_syntax verus_code! {
         fn f(i: u8)
-            requires[no_unwind bogus]
+            requires[no_panic bogus]
                 i >= 5,
         {
         }
@@ -1171,9 +1171,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] requires_no_unwind_with_no_unwind verus_code! {
+    #[test] requires_no_unwind_old_syntax verus_code! {
         fn f(i: u8)
             requires[no_unwind]
+                i >= 5,
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use `requires[no_panic]` instead of `requires[no_unwind]`")
+}
+
+test_verify_one_file! {
+    #[test] requires_no_panic_with_no_unwind verus_code! {
+        fn f(i: u8)
+            requires[no_panic]
                 i >= 5,
             no_unwind
         {
@@ -1182,9 +1192,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] requires_no_unwind_proof_fn verus_code! {
+    #[test] requires_no_panic_proof_fn verus_code! {
         proof fn f(i: u8)
-            requires[no_unwind]
+            requires[no_panic]
                 i >= 5,
         {
         }
@@ -1362,7 +1372,7 @@ test_verify_one_file! {
         }
 
         fn r(i: u8)
-            requires[no_unwind]
+            requires[no_panic]
                 i < 10,
         {
             if i >= 10 {
@@ -1387,10 +1397,10 @@ test_verify_one_file! {
             r(i); // FAILS
         }
 
-        // the endpoint of the unwind path checks the negation of requires[no_unwind]
+        // the endpoint of the unwind path checks the negation of requires[no_panic]
         // and the ensures[on unwind] conditions
         fn g(i: u8, j: u8)
-            requires[no_unwind]
+            requires[no_panic]
                 i < 10,
             ensures[on unwind]
                 j == 0,
@@ -1401,7 +1411,7 @@ test_verify_one_file! {
         }
 
         fn g_fail1(i: u8, j: u8)
-            requires[no_unwind]
+            requires[no_panic]
                 i < 10,
             ensures[on unwind]
                 j == 0,
@@ -1412,7 +1422,7 @@ test_verify_one_file! {
         }
 
         fn g_fail2(i: u8, j: u8)
-            requires[no_unwind]
+            requires[no_panic]
                 i < 10,
             ensures[on unwind]
                 j == 0,

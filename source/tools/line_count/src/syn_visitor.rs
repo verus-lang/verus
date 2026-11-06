@@ -198,9 +198,9 @@ impl<'f> Visitor<'f> {
                     LineContent::FunctionSpec,
                 );
             }
-            if let Some(unwind_requires) = &sig.spec.unwind_requires {
+            if let Some(no_panic_requires) = &sig.spec.no_panic_requires {
                 self.mark(
-                    unwind_requires,
+                    no_panic_requires,
                     self.mode_or_trusted(CodeKind::Spec),
                     LineContent::FunctionSpec,
                 );

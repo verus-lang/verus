@@ -95,7 +95,7 @@ impl PartialEq for crate::AssumeSpecification {
             && self.generics == other.generics && self.qself == other.qself
             && self.path == other.path && self.inputs == other.inputs
             && self.output == other.output && self.requires == other.requires
-            && self.unwind_requires == other.unwind_requires
+            && self.no_panic_requires == other.no_panic_requires
             && self.ensures == other.ensures
             && self.unwind_ensures == other.unwind_ensures
             && self.default_ensures == other.default_ensures
@@ -2070,6 +2070,15 @@ impl PartialEq for crate::ModeTracked {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::NoPanicRequires {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::NoPanicRequires {
+    fn eq(&self, other: &Self) -> bool {
+        self.no_panic_token == other.no_panic_token && self.exact == other.exact
+            && self.exprs == other.exprs
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Eq for crate::Open {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::Open {
@@ -2562,7 +2571,7 @@ impl PartialEq for crate::SignatureSpec {
     fn eq(&self, other: &Self) -> bool {
         self.prover == other.prover && self.atomic_spec == other.atomic_spec
             && self.requires == other.requires
-            && self.unwind_requires == other.unwind_requires
+            && self.no_panic_requires == other.no_panic_requires
             && self.recommends == other.recommends && self.ensures == other.ensures
             && self.unwind_ensures == other.unwind_ensures
             && self.default_ensures == other.default_ensures
@@ -3017,14 +3026,6 @@ impl PartialEq for crate::UnwindEnsures {
     fn eq(&self, other: &Self) -> bool {
         self.on_token == other.on_token && self.unwind_token == other.unwind_token
             && self.exprs == other.exprs
-    }
-}
-#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
-impl Eq for crate::UnwindRequires {}
-#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
-impl PartialEq for crate::UnwindRequires {
-    fn eq(&self, other: &Self) -> bool {
-        self.exact == other.exact && self.exprs == other.exprs
     }
 }
 #[cfg(feature = "full")]

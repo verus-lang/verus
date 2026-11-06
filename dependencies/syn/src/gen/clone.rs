@@ -119,7 +119,7 @@ impl Clone for crate::AssumeSpecification {
             inputs: self.inputs.clone(),
             output: self.output.clone(),
             requires: self.requires.clone(),
-            unwind_requires: self.unwind_requires.clone(),
+            no_panic_requires: self.no_panic_requires.clone(),
             ensures: self.ensures.clone(),
             unwind_ensures: self.unwind_ensures.clone(),
             default_ensures: self.default_ensures.clone(),
@@ -2130,6 +2130,18 @@ impl Clone for crate::ModeTracked {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::NoPanicRequires {
+    fn clone(&self) -> Self {
+        crate::NoPanicRequires {
+            token: self.token.clone(),
+            bracket_token: self.bracket_token.clone(),
+            no_panic_token: self.no_panic_token.clone(),
+            exact: self.exact.clone(),
+            exprs: self.exprs.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::Open {
     fn clone(&self) -> Self {
         crate::Open {
@@ -2634,7 +2646,7 @@ impl Clone for crate::SignatureSpec {
             prover: self.prover.clone(),
             atomic_spec: self.atomic_spec.clone(),
             requires: self.requires.clone(),
-            unwind_requires: self.unwind_requires.clone(),
+            no_panic_requires: self.no_panic_requires.clone(),
             recommends: self.recommends.clone(),
             ensures: self.ensures.clone(),
             unwind_ensures: self.unwind_ensures.clone(),
@@ -3058,18 +3070,6 @@ impl Clone for crate::UnwindEnsures {
             bracket_token: self.bracket_token.clone(),
             on_token: self.on_token.clone(),
             unwind_token: self.unwind_token.clone(),
-            exprs: self.exprs.clone(),
-        }
-    }
-}
-#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
-impl Clone for crate::UnwindRequires {
-    fn clone(&self) -> Self {
-        crate::UnwindRequires {
-            token: self.token.clone(),
-            bracket_token: self.bracket_token.clone(),
-            no_unwind_token: self.no_unwind_token.clone(),
-            exact: self.exact.clone(),
             exprs: self.exprs.clone(),
         }
     }

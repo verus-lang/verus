@@ -37,12 +37,12 @@ use verus_syn::{
     ImplItem, ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
     InvariantNameSetList, InvariantNameSetListCompl, InvariantNameSetSet, Item, ItemBroadcastGroup,
     ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion,
-    Lit, Local, MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec, ModeSpecChecked, Pat,
-    PatIdent, PatType, Path, PathArguments, Publish, Receiver, Recommends, Requires, ReturnType,
-    Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr,
-    SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath,
-    TypeReference, UnOp, UnwindEnsures, UnwindRequires, Visibility, braced, bracketed,
-    parenthesized, parse_macro_input,
+    Lit, Local, MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec, ModeSpecChecked,
+    NoPanicRequires, Pat, PatIdent, PatType, Path, PathArguments, Publish, Receiver, Recommends,
+    Requires, ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants,
+    SignatureSpec, SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type,
+    TypeFnProof, TypeFnSpec, TypePath, TypeReference, UnOp, UnwindEnsures, Visibility, braced,
+    bracketed, parenthesized, parse_macro_input,
 };
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -986,7 +986,7 @@ impl Visitor {
         atomic_perm_clause: Option<(verus_syn::Ident, verus_syn::PermClause)>,
     ) -> Vec<Stmt> {
         let requires = self.take_ghost(&mut spec.requires);
-        let unwind_requires = self.take_ghost(&mut spec.unwind_requires);
+        let no_panic_requires = self.take_ghost(&mut spec.no_panic_requires);
         let recommends = self.take_ghost(&mut spec.recommends);
         let ensures = self.take_ghost(&mut spec.ensures);
         let unwind_ensures = self.take_ghost(&mut spec.unwind_ensures);
@@ -1066,15 +1066,15 @@ impl Visitor {
                 ));
             }
         }
-        if let Some(UnwindRequires { token, exact, mut exprs, .. }) = unwind_requires {
+        if let Some(NoPanicRequires { token, exact, mut exprs, .. }) = no_panic_requires {
             if exprs.exprs.len() > 0 {
                 for expr in exprs.exprs.iter_mut() {
                     self.visit_expr_mut(expr);
                 }
                 let f = if exact.is_some() {
-                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::no_unwind_requires_exact)
+                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::no_panic_requires_exact)
                 } else {
-                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::no_unwind_requires)
+                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::no_panic_requires)
                 };
                 spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(quote_spanned!(token.span => #f([#exprs]))),
@@ -2269,7 +2269,7 @@ impl Visitor {
             inputs,
             output,
             requires,
-            unwind_requires,
+            no_panic_requires,
             ensures,
             unwind_ensures,
             default_ensures,
@@ -2304,7 +2304,7 @@ impl Visitor {
                 prover: None,
                 atomic_spec: None,
                 requires: requires,
-                unwind_requires,
+                no_panic_requires,
                 recommends: None,
                 ensures: ensures,
                 unwind_ensures,

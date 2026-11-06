@@ -257,10 +257,10 @@ impl Debug for Lite<syn::AssumeSpecification> {
             }
             formatter.field("requires", Print::ref_cast(val));
         }
-        if let Some(val) = &self.value.unwind_requires {
+        if let Some(val) = &self.value.no_panic_requires {
             #[derive(RefCast)]
             #[repr(transparent)]
-            struct Print(syn::UnwindRequires);
+            struct Print(syn::NoPanicRequires);
             impl Debug for Print {
                 fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                     formatter.write_str("Some(")?;
@@ -269,7 +269,7 @@ impl Debug for Lite<syn::AssumeSpecification> {
                     Ok(())
                 }
             }
-            formatter.field("unwind_requires", Print::ref_cast(val));
+            formatter.field("no_panic_requires", Print::ref_cast(val));
         }
         if let Some(val) = &self.value.ensures {
             #[derive(RefCast)]
@@ -5252,6 +5252,28 @@ impl Debug for Lite<syn::ModeTracked> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::NoPanicRequires> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("NoPanicRequires");
+        formatter.field("no_panic_token", Lite(&self.value.no_panic_token));
+        if let Some(val) = &self.value.exact {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(proc_macro2::Ident);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("exact", Print::ref_cast(val));
+        }
+        formatter.field("exprs", Lite(&self.value.exprs));
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::Open> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Open");
@@ -6264,10 +6286,10 @@ impl Debug for Lite<syn::SignatureSpec> {
             }
             formatter.field("requires", Print::ref_cast(val));
         }
-        if let Some(val) = &self.value.unwind_requires {
+        if let Some(val) = &self.value.no_panic_requires {
             #[derive(RefCast)]
             #[repr(transparent)]
-            struct Print(syn::UnwindRequires);
+            struct Print(syn::NoPanicRequires);
             impl Debug for Print {
                 fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                     formatter.write_str("Some(")?;
@@ -6276,7 +6298,7 @@ impl Debug for Lite<syn::SignatureSpec> {
                     Ok(())
                 }
             }
-            formatter.field("unwind_requires", Print::ref_cast(val));
+            formatter.field("no_panic_requires", Print::ref_cast(val));
         }
         if let Some(val) = &self.value.recommends {
             #[derive(RefCast)]
@@ -7376,27 +7398,6 @@ impl Debug for Lite<syn::UnwindEnsures> {
         let mut formatter = formatter.debug_struct("UnwindEnsures");
         formatter.field("on_token", Lite(&self.value.on_token));
         formatter.field("unwind_token", Lite(&self.value.unwind_token));
-        formatter.field("exprs", Lite(&self.value.exprs));
-        formatter.finish()
-    }
-}
-impl Debug for Lite<syn::UnwindRequires> {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        let mut formatter = formatter.debug_struct("UnwindRequires");
-        if let Some(val) = &self.value.exact {
-            #[derive(RefCast)]
-            #[repr(transparent)]
-            struct Print(proc_macro2::Ident);
-            impl Debug for Print {
-                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                    formatter.write_str("Some(")?;
-                    Debug::fmt(Lite(&self.0), formatter)?;
-                    formatter.write_str(")")?;
-                    Ok(())
-                }
-            }
-            formatter.field("exact", Print::ref_cast(val));
-        }
         formatter.field("exprs", Lite(&self.value.exprs));
         formatter.finish()
     }

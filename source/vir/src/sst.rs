@@ -229,7 +229,7 @@ pub enum StmX {
         /// Code to be executed *inside* the function call,
         /// i.e. emplaced between the pre- and postcondition
         body: Option<Stm>,
-        /// If true, check the callee's `requires[no_unwind]` conditions
+        /// If true, check the callee's `requires[no_panic]` conditions
         /// (see CallTargetAttrs::restrict_unwind)
         restrict_unwind: bool,
         /// Code to be executed in the case that the call unwinds

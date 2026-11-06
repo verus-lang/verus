@@ -1934,7 +1934,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 Arc::new(ExprX::Apply(f_unwind, req_args.clone()))
             };
 
-            // For `requires[no_unwind]`, check the condition unless restrict_unwind is false.
+            // For `requires[no_panic]`, check the condition unless restrict_unwind is false.
             // (This makes the unwind path below vacuous.)
             match &callee_unwind_spec {
                 UnwindSpec::NoUnwindWhen(e, NoUnwindWhenKind::Requires)
@@ -1946,7 +1946,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         "cannot show this call will not unwind",
                         format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
                     )
-                    .secondary_label(&e.span, "failed this requires[no_unwind] condition")
+                    .secondary_label(&e.span, "failed this requires[no_panic] condition")
                     .help("to allow unwinding here, use #[verifier::restrict_unwind(false)]");
                     stmts.push(Arc::new(StmtX::Assert(None, error, None, callee_no_unwind_when())));
                 }
@@ -2039,7 +2039,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 }
             }
 
-            // For `requires[no_unwind exact]`, the callee unwinds if the condition fails,
+            // For `requires[no_panic exact]`, the callee unwinds if the condition fails,
             // so if the call returns, the condition holds
             if matches!(
                 callee_unwind_spec,

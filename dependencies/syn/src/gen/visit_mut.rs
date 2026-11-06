@@ -795,6 +795,9 @@ pub trait VisitMut {
     fn visit_mode_tracked_mut(&mut self, i: &mut crate::ModeTracked) {
         visit_mode_tracked_mut(self, i);
     }
+    fn visit_no_panic_requires_mut(&mut self, i: &mut crate::NoPanicRequires) {
+        visit_no_panic_requires_mut(self, i);
+    }
     fn visit_open_mut(&mut self, i: &mut crate::Open) {
         visit_open_mut(self, i);
     }
@@ -1140,9 +1143,6 @@ pub trait VisitMut {
     fn visit_unwind_ensures_mut(&mut self, i: &mut crate::UnwindEnsures) {
         visit_unwind_ensures_mut(self, i);
     }
-    fn visit_unwind_requires_mut(&mut self, i: &mut crate::UnwindRequires) {
-        visit_unwind_requires_mut(self, i);
-    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_use_glob_mut(&mut self, i: &mut crate::UseGlob) {
@@ -1360,8 +1360,8 @@ where
     if let Some(it) = &mut node.requires {
         v.visit_requires_mut(it);
     }
-    if let Some(it) = &mut node.unwind_requires {
-        v.visit_unwind_requires_mut(it);
+    if let Some(it) = &mut node.no_panic_requires {
+        v.visit_no_panic_requires_mut(it);
     }
     if let Some(it) = &mut node.ensures {
         v.visit_ensures_mut(it);
@@ -3868,6 +3868,18 @@ where
 {
     skip!(node.tracked_token);
 }
+pub fn visit_no_panic_requires_mut<V>(v: &mut V, node: &mut crate::NoPanicRequires)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
+    skip!(node.bracket_token);
+    v.visit_ident_mut(&mut node.no_panic_token);
+    if let Some(it) = &mut node.exact {
+        v.visit_ident_mut(it);
+    }
+    v.visit_specification_mut(&mut node.exprs);
+}
 pub fn visit_open_mut<V>(v: &mut V, node: &mut crate::Open)
 where
     V: VisitMut + ?Sized,
@@ -4466,8 +4478,8 @@ where
     if let Some(it) = &mut node.requires {
         v.visit_requires_mut(it);
     }
-    if let Some(it) = &mut node.unwind_requires {
-        v.visit_unwind_requires_mut(it);
+    if let Some(it) = &mut node.no_panic_requires {
+        v.visit_no_panic_requires_mut(it);
     }
     if let Some(it) = &mut node.recommends {
         v.visit_recommends_mut(it);
@@ -5020,18 +5032,6 @@ where
     skip!(node.bracket_token);
     v.visit_ident_mut(&mut node.on_token);
     v.visit_ident_mut(&mut node.unwind_token);
-    v.visit_specification_mut(&mut node.exprs);
-}
-pub fn visit_unwind_requires_mut<V>(v: &mut V, node: &mut crate::UnwindRequires)
-where
-    V: VisitMut + ?Sized,
-{
-    skip!(node.token);
-    skip!(node.bracket_token);
-    skip!(node.no_unwind_token);
-    if let Some(it) = &mut node.exact {
-        v.visit_ident_mut(it);
-    }
     v.visit_specification_mut(&mut node.exprs);
 }
 #[cfg(feature = "full")]
