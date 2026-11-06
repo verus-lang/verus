@@ -296,6 +296,7 @@ test_verify_one_file! {
                 self.inner.next()
             }
 
+            #[verifier::assume_compatibility_with_trait_spec]
             fn fold<B, F>(self, init: B, f: F) -> B
                 where F: FnMut(B, Self::Item) -> B,
             {

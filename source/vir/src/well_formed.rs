@@ -1371,6 +1371,14 @@ fn check_function_inner(
         emit.emit_deferred_err(msg);
     }
 
+    if function.x.attrs.assume_compatibility_with_trait_spec && ctxt.no_cheating {
+        let msg = error(
+            &function.span,
+            "`#[verifier::assume_compatibility_with_trait_spec]` not allowed with `--no-cheating`",
+        );
+        emit.emit_deferred_err(msg);
+    }
+
     #[cfg(feature = "singular")]
     if function.x.attrs.integer_ring {
         let _ = match std::env::var("VERUS_SINGULAR_PATH") {
