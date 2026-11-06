@@ -7,9 +7,12 @@ on verification but on the assumptions being made.
 Assumptions can be introduced through the following mechanisms:
 
  * An [`assume`](./requires_ensures.md) statement
- * An axiom - any proof function introduced with `#[verifier::external_body]`
- * An axiomatic specification - any exec function introduced with `#[verifier::external_body]` or `#[verifier::external_fn_specification]`
+ * An axiom - any proof function introduced with `#[verifier::external_body]` or the `axiom fn` modifier
+ * An axiomatic specification - any exec function introduced with `#[verifier::external_body]`, `#[verifier::external_fn_specification]`, or `assume_specification`.
  * `#[verifier::external]` (See below.)
+
+The `--no-cheating` command-line flag can help identify and control such assumptions
+in your code base.
 
 Types (structs and enums) can also be marked as `#[verifier::external_body]`,
 though to be pedantic, this does not introduce a new assumption _per se_.
