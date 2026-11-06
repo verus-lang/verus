@@ -1047,6 +1047,123 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] enumerate_works verus_code! {
+        use vstd::prelude::*;
+
+        fn collect_works() {
+            let v: Vec<u32> = vec![10, 20, 30];
+            let w: Vec<(usize, u32)> = v.into_iter().enumerate().collect();
+            assert(w@ == seq![(0usize, 10u32), (1, 20), (2, 30)]);
+        }
+
+        fn for_loop_works(v: &Vec<u32>) {
+            let mut w: Vec<usize> = Vec::new();
+            for (i, x) in it: v.iter().enumerate()
+                invariant
+                    w@.len() == it.index() <= v.len(),
+                    forall|k: int| 0 <= k < it.index() ==> w@[k] == k,
+            {
+                assert(i == it.index());
+                assert(*x == v@[i as int]);
+                w.push(i);
+            }
+            assert(w@.len() == v@.len());
+        }
+
+        fn loop_vars_in_invariant(v: &Vec<u32>) {
+            for (i, x) in it: v.iter().enumerate()
+                invariant
+                    it.index() < v.len() ==> i == it.index() && *x == v@[it.index()],
+            {
+            }
+        }
+
+        // Move-to-front reset
+        fn array_iter_mut_works() {
+            let mut a: [u8; 256] = [0; 256];
+            for (i, x) in it: a.iter_mut().enumerate()
+                invariant
+                    forall|k: int| #![auto] 0 <= k < it.index() ==> *final(it.seq()[k].1) == k as u8,
+            {
+                *x = i as u8;
+            }
+            assert(forall|k: int| 0 <= k < 256 ==> a@[k] == k as u8);
+        }
+
+        fn wrong_index_fails(v: &Vec<u32>) {
+            for (i, x) in it: v.iter().enumerate() {
+                assert(i == it.index() + 1); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // `Enumerate` counts the items it yields in a `usize`, so `enumerate` must know that
+    // at most `usize::MAX` items will be yielded; without the laws, `remaining()` bounds nothing.
+    #[test] enumerate_requires_bounded_len verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+        use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+
+        fn bounded<I: Iterator>(it: I)
+            requires
+                it.obeys_prophetic_iter_laws(),
+                it.remaining().len() <= usize::MAX,
+        {
+            let _ = it.enumerate();
+        }
+
+        // The bound is known for the usual slice and Vec iterators, whatever their length
+        fn common_sources(v: Vec<u32>, r: &Vec<u32>, s: &[u32], m: &mut Vec<u32>) {
+            let _ = r.iter().enumerate();
+            let _ = r.into_iter().enumerate();
+            let _ = s.iter().enumerate();
+            let _ = s.into_iter().enumerate();
+            let _ = m.iter_mut().enumerate();
+            let _ = v.into_iter().enumerate();
+        }
+
+        // ... and for the iterators over other collections, `str`, and slice chunks
+        fn other_sources(
+            hm: &HashMap<u32, u32>,
+            hs: &HashSet<u32>,
+            bm: &BTreeMap<u32, u32>,
+            bs: &BTreeSet<u32>,
+            vd: &VecDeque<u32>,
+            st: &str,
+            s: &[u32],
+        ) {
+            let _ = hm.iter().enumerate();
+            let _ = hm.keys().enumerate();
+            let _ = hm.values().enumerate();
+            let _ = hs.iter().enumerate();
+            let _ = bm.iter().enumerate();
+            let _ = bm.keys().enumerate();
+            let _ = bm.values().enumerate();
+            let _ = bs.iter().enumerate();
+            let _ = vd.iter().enumerate();
+            let _ = st.chars().enumerate();
+            let _ = s.chunks(2).enumerate();
+        }
+
+        fn unbounded<I: Iterator>(it: I)
+            requires
+                it.obeys_prophetic_iter_laws(),
+        {
+            let _ = it.enumerate(); // FAILS
+        }
+
+        fn without_laws<I: Iterator>(it: I)
+            requires
+                it.remaining().len() <= usize::MAX,
+        {
+            let _ = it.enumerate(); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
     #[test] zip_works verus_code! {
         use vstd::prelude::*;
 
