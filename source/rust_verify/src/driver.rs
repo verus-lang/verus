@@ -218,7 +218,9 @@ pub(crate) fn run_with_erase_macro_compile(
     let result = run_compiler(rustc_args, true, true, &mut callbacks);
     if result.is_ok() {
         // Rustc writes its dep-info after after_expansion, so merge only after it returns.
-        match (first_pass_dep_info, callbacks.second_pass_dep_info) {
+        let first_pass_dep_info = first_pass_dep_info.filter(|path| path.is_file());
+        let second_pass_dep_info = callbacks.second_pass_dep_info.filter(|path| path.is_file());
+        match (first_pass_dep_info, second_pass_dep_info) {
             (Some(first), Some(second)) => {
                 let info_1 = rustc_dep_info::Contents::read_file(&first).unwrap_or_else(|err| {
                     panic!("failed to read first-pass dep-info from `{}`: {err}", first.display())
