@@ -1359,7 +1359,7 @@ test_verify_one_file! {
         fn test2<T>(v: Ve<T, Gl>) {
             let x = v.gget(1); // FAILS
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Err(err) => assert_vir_error_msg(err, "cannot use external trait `test_crate::Al` as a bound without declaring the trait")
 }
 
 test_verify_one_file! {
