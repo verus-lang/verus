@@ -186,7 +186,7 @@ pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
     do_compile: bool,
     vstd: Vstd,
-) -> (Result<(), ()>, Option<std::path::PathBuf>) {
+) -> Result<Option<std::path::PathBuf>, ()> {
     let mut callbacks = CompilerCallbacksEraseMacro {
         do_compile,
         override_stability: matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore),
@@ -216,8 +216,8 @@ pub(crate) fn run_with_erase_macro_compile(
     for a in allow {
         rustc_args.extend(["-A", a].map(|s| s.to_string()));
     }
-    let result = run_compiler(rustc_args, true, true, &mut callbacks);
-    (result, callbacks.second_pass_dep_info)
+    run_compiler(rustc_args, true, true, &mut callbacks)?;
+    Ok(callbacks.second_pass_dep_info)
 }
 
 pub struct VerusRoot {
@@ -345,22 +345,21 @@ pub fn run(
     };
 
     let first_pass_failed = status.is_err() || verifier.encountered_vir_error;
-    let (compile_status, second_pass_dep_info) = if first_pass_failed {
-        (Err(()), None)
+    let compile_status = if first_pass_failed {
+        Err(())
     } else if verifier.has_second_compile_pass() {
         let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
         run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
     } else {
-        (Ok(()), None)
+        Ok(None)
     };
 
     let time2 = if first_pass_failed { time1 } else { Instant::now() };
 
     // Rustc writes dep-info after after_expansion, so combine files after the passes return.
-    // A failed second pass may leave an old output file at its altered path.
     let first_pass_dep_info = first_pass_dep_info.filter(|path| path.is_file());
     let second_pass_dep_info =
-        second_pass_dep_info.filter(|path| compile_status.is_ok() && path.is_file());
+        compile_status.as_ref().ok().and_then(|path| path.as_ref()).filter(|path| path.is_file());
     match (first_pass_dep_info, second_pass_dep_info) {
         (Some(first), Some(second)) => {
             let info_1 = rustc_dep_info::Contents::read_file(&first).unwrap_or_else(|err| {
