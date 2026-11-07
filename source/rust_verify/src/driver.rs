@@ -9,6 +9,8 @@ use rustc_session::config::{OutFileName, OutputType};
 use rustc_span::{Span, sym};
 use std::time::{Duration, Instant};
 
+pub(crate) const SAVED_DEP_INFO_SUFFIX: &str = "-verus";
+
 struct DefaultCallbacks;
 impl rustc_driver::Callbacks for DefaultCallbacks {}
 
@@ -377,7 +379,10 @@ pub fn run(
             });
         }
         (Some(first), None) => {
-            let destination = first.with_extension("d");
+            let saved = first.as_os_str();
+            assert!(saved.as_encoded_bytes().ends_with(SAVED_DEP_INFO_SUFFIX.as_bytes()));
+            let original = saved.slice_encoded_bytes(..saved.len() - SAVED_DEP_INFO_SUFFIX.len());
+            let destination = std::path::Path::new(original);
             std::fs::rename(&first, &destination).unwrap_or_else(|err| {
                 panic!("failed to restore dep-info `{}`: {err}", destination.display())
             });

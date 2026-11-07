@@ -3123,10 +3123,11 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             if let OutFileName::Real(dep_info_path_d) =
                 tcx.output_filenames(()).path(OutputType::DepInfo)
             {
-                let dep_info_path_verus_d = dep_info_path_d.with_extension("verus-d");
+                let mut dep_info_path_verus_d = dep_info_path_d.clone();
+                dep_info_path_verus_d.as_mut_os_string().push(crate::driver::SAVED_DEP_INFO_SUFFIX);
                 std::fs::rename(&dep_info_path_d, &dep_info_path_verus_d).unwrap_or_else(|err| {
                     panic!(
-                        "error: failed to change the extension of {} to `.verus-d` due to {err}",
+                        "error: failed to save dep-info {} with `-verus` suffix due to {err}",
                         dep_info_path_d.display(),
                     )
                 });
