@@ -26,6 +26,14 @@ impl FileStats {
         }
     }
 
+    /// Removes all kinds and contents from the lines, leaving them unaccounted
+    pub fn unmark(&mut self, spanned: &impl Spanned) {
+        for l in to_lines_range(spanned) {
+            self.lines[l].kinds.clear();
+            self.lines[l].line_content.clear();
+        }
+    }
+
     pub fn mark_content(&mut self, spanned: &impl Spanned, content: LineContent) {
         for l in to_lines_range(spanned) {
             self.lines[l].line_content.insert(content);

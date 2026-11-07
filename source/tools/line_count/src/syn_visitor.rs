@@ -171,6 +171,18 @@ impl<'f> Visitor<'f> {
         if self.trusted > 0 { CodeKind::Trusted } else { kind }
     }
 
+    /// Leaves `#[verus_verify]` attributes unaccounted, like the `verus! {` line,
+    /// unless they share a line with the item (which starts at `item_start`)
+    fn unmark_verus_verify_attrs(&mut self, attrs: &Vec<Attribute>, item_start: proc_macro2::Span) {
+        for attr in attrs {
+            if attr.path().is_ident("verus_verify")
+                && attr.span().end().line < item_start.start().line
+            {
+                self.file_stats.unmark(attr);
+            }
+        }
+    }
+
     fn handle_signature(
         &mut self,
         content_code_kind: CodeKind,
@@ -339,6 +351,17 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
     fn visit_expr_closure(&mut self, i: &'ast verus_syn::ExprClosure) {
         // TODO
         verus_syn::visit::visit_expr_closure(self, i);
+        // Specs in a #[verus_spec] on an exec closure are spec, like specs on an exec function
+        // (visit_attribute marked them as proof)
+        let kind = match self.in_body {
+            Some(CodeKind::Proof) => CodeKind::Proof,
+            _ => CodeKind::Spec,
+        };
+        for attr in &i.attrs {
+            if attr.path().segments.first().map(|s| s.ident == "verus_spec").unwrap_or(false) {
+                self.mark(attr, self.mode_or_trusted(kind), LineContent::FunctionSpec);
+            }
+        }
     }
 
     fn visit_expr_loop(&mut self, i: &'ast verus_syn::ExprLoop) {
@@ -477,6 +500,7 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
     fn visit_item_enum(&mut self, i: &'ast verus_syn::ItemEnum) {
         let exit = self.item_attr_enter(&i.attrs);
         self.mark(&i, self.mode_or_trusted(i.mode.to_code_kind()), LineContent::DatatypeDecl);
+        self.unmark_verus_verify_attrs(&i.attrs, i.enum_token.span);
         verus_syn::visit::visit_item_enum(self, i);
         exit.exit(self);
     }
@@ -534,6 +558,7 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
     fn visit_item_struct(&mut self, i: &'ast verus_syn::ItemStruct) {
         let exit = self.item_attr_enter(&i.attrs);
         self.mark(&i, self.mode_or_trusted(i.mode.to_code_kind()), LineContent::DatatypeDecl);
+        self.unmark_verus_verify_attrs(&i.attrs, i.struct_token.span);
         verus_syn::visit::visit_item_struct(self, i);
         exit.exit(self);
     }
@@ -781,6 +806,52 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
             }
             for tok in tokens_here {
                 self.mark(&tok.span(), CodeKind::Proof, LineContent::Atomic);
+            }
+        } else if outer_last_segment == Some("open_atomic_invariant".into())
+            || outer_last_segment == Some("open_local_invariant".into())
+            || outer_last_segment == Some("open_atomic_invariant_in_proof".into())
+            || outer_last_segment == Some("open_local_invariant_in_proof".into())
+            || outer_last_segment == Some("open_atomic_invariant_attr".into())
+            || outer_last_segment == Some("open_local_invariant_attr".into())
+        {
+            // The body block is counted as if it were not inside the macro
+            let mut tokens: Vec<proc_macro2::TokenTree> = i.tokens.clone().into_iter().collect();
+            let body = match tokens.pop() {
+                Some(proc_macro2::TokenTree::Group(g))
+                    if g.delimiter() == proc_macro2::Delimiter::Brace =>
+                {
+                    Some(g)
+                }
+                Some(tok) => {
+                    tokens.push(tok);
+                    None
+                }
+                None => None,
+            };
+            if let Some(body) = &body {
+                let block: Option<verus_syn::Block> =
+                    verus_syn::parse2(proc_macro2::TokenTree::Group(body.clone()).into()).ok();
+                if let Some(block) = block {
+                    self.visit_block(&block);
+                }
+            }
+            // `open_atomic_invariant!(inv => inner => {` and `});` lines are proof
+            let kind = self.mode_or_trusted(CodeKind::Proof);
+            self.mark(&i.path, kind, LineContent::OpenInvariant);
+            self.mark(&i.delimiter.span().close(), kind, LineContent::OpenInvariant);
+            for tok in tokens {
+                self.mark(&tok.span(), kind, LineContent::OpenInvariant);
+            }
+            if let Some(body) = &body {
+                self.mark(&body.span_open(), kind, LineContent::OpenInvariant);
+                self.mark(&body.span_close(), kind, LineContent::OpenInvariant);
+            }
+            // for atomic invariant macros, the Atomic attribution is added to the whole macro invocation
+            if outer_last_segment == Some("open_atomic_invariant".into())
+                || outer_last_segment == Some("open_atomic_invariant_in_proof".into())
+                || outer_last_segment == Some("open_atomic_invariant_attr".into())
+            {
+                self.mark_content(i, LineContent::Atomic);
             }
         } else if outer_last_segment == Some("tld_get_mut".into())
             || outer_last_segment == Some("page_get_mut_inner".into())
