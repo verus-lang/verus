@@ -17,7 +17,7 @@ use air::profiler::Profiler;
 use rustc_errors::{Diag, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
-use rustc_session::config::ErrorOutputType;
+use rustc_session::config::{ErrorOutputType, OutFileName, OutputType};
 use std::sync::Mutex;
 
 use vir::messages::{
@@ -496,6 +496,11 @@ impl CommandBatch {
 }
 
 impl Verifier {
+    /// Whether a second invocation of `rustc_driver::run_compiler` is necessary to generate code.
+    pub fn has_second_compile_pass(&self) -> bool {
+        self.compile || (!self.args.no_erasure_check && !self.args.no_lifetime)
+    }
+
     pub fn new(
         args: Args,
         via_cargo_args: Option<CargoVerusArgs>,
@@ -2964,6 +2969,7 @@ fn check_no_opaque_types_in_trait<'tcx>(
 
 // TODO: move the callbacks into a different file, like driver.rs
 pub(crate) struct VerifierCallbacksEraseMacro {
+    pub first_pass_dep_info: Option<std::path::PathBuf>,
     pub(crate) verifier: Verifier,
     /// start time of the rustc compilation
     pub(crate) rust_start_time: Instant,
@@ -3112,6 +3118,22 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         }
 
         rustc_interface::passes::write_dep_info(tcx);
+        if tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo) {
+            // Save the first pass's dep-info for the merge after the second pass.
+            if let OutFileName::Real(dep_info_path) =
+                tcx.output_filenames(()).path(OutputType::DepInfo)
+            {
+                let mut saved_dep_info_path = dep_info_path.clone();
+                saved_dep_info_path.as_mut_os_string().push(crate::driver::SAVED_DEP_INFO_SUFFIX);
+                std::fs::rename(&dep_info_path, &saved_dep_info_path).unwrap_or_else(|err| {
+                    panic!(
+                        "error: failed to save dep-info {} with `-verus` suffix due to {err}",
+                        dep_info_path.display(),
+                    )
+                });
+                self.first_pass_dep_info = Some(saved_dep_info_path);
+            }
+        }
         self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
 
         let time_import0 = Instant::now();

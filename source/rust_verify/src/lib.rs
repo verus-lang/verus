@@ -1,4 +1,5 @@
 #![feature(rustc_private)]
+#![feature(os_str_slice)]
 #![feature(box_patterns)]
 
 // not using this as a dependency, only necessary to make the rlib for the compiler crates
