@@ -1785,3 +1785,192 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain non-atomic operations")
 }
+
+test_verify_one_file! {
+    #[test] test_atomic_spec_attr code!{
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        verus!{
+        pub tracked struct Tok { pub ghost v: int }
+        }
+
+        #[verus_spec(r =>
+            atomically (au) {
+                type IncPred,
+                (old_t: Tok) -> (new_t: Commit<Tok>),
+                requires old_t.v >= x,
+                ensures new_t@.v == old_t.v + 1,
+            },
+            ensures r == x,
+        )]
+        pub fn inc(x: u64) -> u64 {
+            proof!{
+                try_open_atomic_update_in_proof!(au, t => { Tracked(Commit(Tok { v: t.v + 1 })) });
+            }
+            x
+        }
+
+        #[verus_verify]
+        pub struct Counter { pub n: u64 }
+
+        #[verus_verify]
+        impl Counter {
+            #[verus_spec(r =>
+                with k: Ghost<int>
+                atomically (au) {
+                    type AddPred,
+                    (old_t: Tok) -> (new_t: Commit<Tok>),
+                    ensures new_t@.v == old_t.v + self.n + k@,
+                },
+                ensures r == self.n,
+            )]
+            pub fn add(&self) -> u64 {
+                proof!{
+                    try_open_atomic_update_in_proof!(au, t => { Tracked(Commit(Tok { v: t.v + self.n + k@ })) });
+                }
+                self.n
+            }
+        }
+
+        #[verus_spec(
+            with Tracked(t): Tracked<Tok>
+            requires t.v == 0,
+        )]
+        fn client() {
+            proof_decl!{ let tracked mut t = Some(t); }
+            proof_with!(atomically |update| {
+                let tracked res: Commit<Tok> = update(t.tracked_take());
+                t = Some(res.get());
+            });
+            let r = inc(0);
+            proof!{ assert(t->Some_0.v == 1); assert(r == 0); }
+            let c = Counter { n: 5 };
+            proof_with!(atomically |update| {
+                let tracked res: Commit<Tok> = update(t.tracked_take());
+                t = Some(res.get());
+            }, Ghost(2));
+            let r2 = c.add();
+            proof!{ assert(t->Some_0.v == 8); assert(r2 == 5); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_atomic_spec_attr_unresolved code!{
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        verus!{
+        pub tracked struct Tok { pub ghost v: int }
+        }
+
+        #[verus_spec(
+            atomically (au) {
+                (old_t: Tok) -> (new_t: Commit<Tok>),
+                ensures new_t@.v == old_t.v + 1,
+            },
+        )]
+        pub fn inc() {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot show atomic update resolves at end of function")
+}
+
+test_verify_one_file! {
+    #[test] test_atomic_call_attr_fail code!{
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        verus!{
+        pub tracked struct Tok { pub ghost v: int }
+        }
+
+        #[verus_spec(
+            atomically (au) {
+                (old_t: Tok) -> (new_t: Commit<Tok>),
+                ensures new_t@.v == old_t.v + 1,
+            },
+        )]
+        pub fn inc() {
+            proof!{
+                try_open_atomic_update_in_proof!(au, t => { Tracked(Commit(Tok { v: t.v + 1 })) });
+            }
+        }
+
+        #[verus_spec(
+            with Tracked(t): Tracked<Tok>
+            requires t.v == 0,
+        )]
+        fn client() {
+            proof_decl!{ let tracked mut t = Some(t); }
+            proof_with!(atomically |update| {
+                let tracked res: Commit<Tok> = update(t.tracked_take());
+                t = Some(res.get());
+            });
+            inc();
+            proof!{ assert(t->Some_0.v == 2); } // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_in_closure_with_spec code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(ret =>
+            with Ghost(g): Ghost<u64>
+            ensures ret == g,
+        )]
+        fn id() -> u64 {
+            proof!{ assume(false); }
+            0
+        }
+
+        #[verus_spec]
+        fn test() {
+            let f = #[verus_spec(r =>
+                ensures r == 7,
+            )]
+            || -> u64 {
+                proof_with!(Ghost(7u64));
+                id()
+            };
+            let x = f();
+            proof!{ assert(x == 7); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_spec_in_macro_rules code!{
+        use vstd::prelude::*;
+
+        macro_rules! mk_id {
+            ($name:ident, $t:ty) => {
+                #[verus_spec(ret =>
+                    requires
+                        x < 100,
+                        x < 100 ==> x < 200,
+                    ensures
+                        {
+                            &&& ret == x
+                            &&& ret < 100
+                        },
+                )]
+                fn $name(x: $t) -> $t {
+                    x
+                }
+            };
+        }
+
+        mk_id!(id_u8, u8);
+        mk_id!(id_u64, u64);
+
+        #[verus_spec]
+        fn test() {
+            let x = id_u64(7);
+            proof!{ assert(x == 7); }
+            let y = id_u8(200); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

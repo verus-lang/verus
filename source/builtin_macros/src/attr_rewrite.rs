@@ -195,7 +195,43 @@ pub(crate) fn rewrite_verus_attribute(
         #item
     };
     spec_fun.map(|f| f.to_tokens(&mut new_stream));
+    if let Item::Impl(imp) = &item {
+        atomic_spec_items_for_impl(imp).to_tokens(&mut new_stream);
+    }
     new_stream.into()
+}
+
+/// The predicate types for the `atomically` specs of an impl's methods,
+/// which cannot be emitted by the methods' own `#[verus_spec]` since they must be outside the impl
+fn atomic_spec_items_for_impl(imp: &syn::ItemImpl) -> TokenStream {
+    let mut tokens = TokenStream::new();
+    for item in &imp.items {
+        let syn::ImplItem::Fn(fun) = item else { continue };
+        for attr in &fun.attrs {
+            if !attr.path().segments.last().map_or(false, |seg| seg.ident == VERUS_SPEC) {
+                continue;
+            }
+            let syn::Meta::List(list) = &attr.meta else { continue };
+            let Ok(spec_attr) =
+                verus_syn::parse2::<verus_syn::SignatureSpecAttr>(list.tokens.clone())
+            else {
+                continue;
+            };
+            let mut sig = fun.sig.clone();
+            if spec_attr.spec.with.is_some() {
+                // The name of the verified function (see `rewrite_unverified_func`)
+                sig.ident = syn::Ident::new(&format!("{VERIFIED}_{}", sig.ident), sig.ident.span());
+            }
+            syntax::atomic_spec_items_attr(
+                &spec_attr,
+                &sig,
+                &fun.vis,
+                Some((&imp.generics, &imp.self_ty)),
+            )
+            .to_tokens(&mut tokens);
+        }
+    }
+    tokens
 }
 
 struct ExecReplacer {
@@ -293,10 +329,11 @@ impl VisitMut for ExecReplacer {
                     with_args = TokenStream::new();
                 }
                 syn::Stmt::Expr(expr, _) if !with_args.is_empty() => {
-                    let call_with_spec = verus_syn::parse2(with_args.clone()).unwrap_or_else(|e| {
-                        panic!("Failed to parse proof_with {:?}: {:?}", with_args, e)
-                    });
-                    rewrite_with_expr(self.erase.clone(), expr, call_with_spec);
+                    let (atomically, call_with_spec) = parse_with_spec_on_expr(with_args.clone())
+                        .unwrap_or_else(|e| {
+                            panic!("Failed to parse proof_with {:?}: {:?}", with_args, e)
+                        });
+                    rewrite_with_expr(self.erase.clone(), expr, call_with_spec, atomically);
                     with_args = TokenStream::new();
                 }
                 _ if with_args.is_empty() => {
@@ -323,6 +360,21 @@ impl VisitMut for ExecReplacer {
         // So, if there's no `verus_spec` attribute, we need to add an empty one.
         let span = for_loop.span();
         add_verus_spec_if_needed(&mut for_loop.attrs, span);
+    }
+
+    fn visit_expr_closure_mut(&mut self, closure: &mut syn::ExprClosure) {
+        // In verification mode, don't recurse into a closure with its own #[verus_spec],
+        // since its expansion rewrites the closure body (rewriting it twice would apply
+        // its proof_with! twice).
+        // In non-verification mode, the #[verus_spec] is dropped, so we still need to recurse.
+        let has_verus_spec = closure
+            .attrs
+            .iter()
+            .any(|attr| attr.path().segments.last().map_or(false, |seg| seg.ident == VERUS_SPEC));
+        if self.erase.keep() && has_verus_spec {
+            return;
+        }
+        syn::visit_mut::visit_expr_closure_mut(self, closure);
     }
 }
 
@@ -494,6 +546,9 @@ pub(crate) fn rewrite_verus_spec(
     if erase.erase_all() {
         return input;
     }
+    // Rejoin multi-character operators like `==>` that lose their spacing
+    // when transcribed by `macro_rules!`, as `verus!` does
+    let outer_attr_tokens = crate::syntax::rejoin_tokens(outer_attr_tokens);
     // Remove the last `,` if `input` has one.
     let mut tokens: Vec<_> = proc_macro2::TokenStream::from(input).into_iter().collect();
     if matches!(tokens.last(), Some(proc_macro2::TokenTree::Punct(p)) if p.as_char() == ',') {
@@ -768,6 +823,13 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 }
             }
 
+            // The predicate type for an `atomically` spec
+            // (for a method, `#[verus_verify]` emits it next to the impl instead)
+            if erase.keep() && !is_impl_fn {
+                syntax::atomic_spec_items_attr(&spec_attr, &fun.sig, &fun.vis, None)
+                    .to_tokens(&mut new_stream);
+            }
+
             // Update function signature based on verus_spec.
             let spec_stmts =
                 syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, is_impl_fn, false);
@@ -947,7 +1009,10 @@ fn rewrite_verus_spec_on_expr_local(
     if erase.erase() {
         return io_target.to_token_stream().into();
     }
-    let call_with_spec = verus_syn::parse_macro_input!(attr_input as verus_syn::WithSpecOnExpr);
+    let (atomically, call_with_spec) = match parse_with_spec_on_expr(attr_input.into()) {
+        Ok(parsed) => parsed,
+        Err(err) => return err.to_compile_error().into(),
+    };
     let tokens = match io_target {
         VerusIOTarget::Local(mut local) => {
             if let Err(error_tokens) = check_misuse_verus_spec(&local.attrs, true) {
@@ -955,7 +1020,7 @@ fn rewrite_verus_spec_on_expr_local(
             }
             let syn::Local { init, .. } = &mut local;
             if let Some(syn::LocalInit { expr, .. }) = init {
-                let x_declares = rewrite_with_expr(erase, expr, call_with_spec);
+                let x_declares = rewrite_with_expr(erase, expr, call_with_spec, atomically);
                 quote! {
                     #(#x_declares)*
                     #local
@@ -967,7 +1032,7 @@ fn rewrite_verus_spec_on_expr_local(
             }
         }
         VerusIOTarget::Expr(mut e) => {
-            rewrite_with_expr(erase, &mut e, call_with_spec);
+            rewrite_with_expr(erase, &mut e, call_with_spec, atomically);
             e.into_token_stream()
         }
     };
@@ -1039,12 +1104,31 @@ fn apply_erased_fields<'a>(
     return Ok(());
 }
 
+/// Parse the arguments of `proof_with!` (preceded by `with`),
+/// which may start with an `atomically` block for a call to a function with an `atomically` spec:
+/// `proof_with!(atomically |update| { ... }, Tracked(x) => Ghost(y))`
+fn parse_with_spec_on_expr(
+    with_args: TokenStream,
+) -> verus_syn::Result<(Option<verus_syn::AtomicallyBlock>, verus_syn::WithSpecOnExpr)> {
+    let parser = |input: verus_syn::parse::ParseStream| {
+        let with: verus_syn::Token![with] = input.parse()?;
+        let atomically: Option<verus_syn::AtomicallyBlock> = input.parse()?;
+        if atomically.is_some() && input.peek(verus_syn::Token![,]) {
+            let _: verus_syn::Token![,] = input.parse()?;
+        }
+        let rest: TokenStream = input.parse()?;
+        Ok((atomically, verus_syn::parse2(quote! { #with #rest })?))
+    };
+    verus_syn::parse::Parser::parse2(parser, with_args)
+}
+
 // Expand `with extra_in => extra_out` on a method call expr.
 // Return some pre-statements that needs to be declared before the expr.
 fn rewrite_with_expr(
     erase: EraseGhost,
     expr: &mut Expr,
     call_with_spec: verus_syn::WithSpecOnExpr,
+    atomically: Option<verus_syn::AtomicallyBlock>,
 ) -> Vec<verus_syn::Stmt> {
     let verus_syn::WithSpecOnExpr { inputs, outputs, follows, erased_fields, .. } = call_with_spec;
 
@@ -1069,7 +1153,7 @@ fn rewrite_with_expr(
                     erased_fields,
                     ..call_with_spec
                 };
-                return rewrite_with_expr(erase, expr, call_with_spec);
+                return rewrite_with_expr(erase, expr, call_with_spec, atomically);
             }
             _ => {
                 *expr = Expr::Verbatim(quote_spanned!(expr.span() =>
@@ -1084,13 +1168,25 @@ fn rewrite_with_expr(
         return vec![];
     }
     match expr {
-        syn::Expr::Call(syn::ExprCall { args, .. })
-        | syn::Expr::MethodCall(syn::ExprMethodCall { args, .. }) => {
+        syn::Expr::Call(syn::ExprCall { attrs, args, .. })
+        | syn::Expr::MethodCall(syn::ExprMethodCall { attrs, args, .. }) => {
             for arg in inputs {
                 let arg =
                     syntax::rewrite_expr(erase.clone(), false, arg.into_token_stream().into());
                 args.push(syn::Expr::Verbatim(arg.into()));
             }
+            // The atomic update is the last argument (see `syntax::sig_specs_attr`)
+            if let Some(atomically) = atomically {
+                let (atomic_attrs, arg) = syntax::atomic_call_attr(erase.clone(), atomically);
+                attrs.extend(atomic_attrs.into_iter().map(|attr| syn::parse_quote!(#attr)));
+                args.push(syn::Expr::Verbatim(arg.into_token_stream()));
+            }
+        }
+        _ if atomically.is_some() => {
+            *expr = Expr::Verbatim(quote_spanned!(expr.span() =>
+                compile_error!("`atomically` can only be applied to a function call")
+            ));
+            return vec![];
         }
         _ => {}
     };
