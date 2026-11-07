@@ -714,6 +714,34 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+#[test]
+fn test_proof_with_callee_incremental() {
+    let incremental_dir = tempfile::tempdir().unwrap();
+    let incremental_arg = format!("-Cincremental={}", incremental_dir.path().display());
+    let code = code! {
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        struct Lock<T> { value: T }
+
+        #[verus_verify]
+        impl<T> Lock<T> {
+            #[verus_spec(with Ghost(resource): Ghost<u8>)]
+            fn release_lock(&self) {}
+
+            fn test(&self) {
+                proof_with!(Ghost(0u8));
+                self.release_lock();
+                #[verus_spec(with Ghost(0u8))]
+                self.release_lock();
+            }
+        }
+    };
+    let result =
+        verify_one_file("test_proof_with_callee_incremental", code, &[&incremental_arg]).unwrap();
+    assert!(result.warnings.is_empty());
+}
+
 test_verify_one_file! {
     #[test] test_proof_with_callee_shadowed_by_local_fn code!{
         use vstd::prelude::*;
