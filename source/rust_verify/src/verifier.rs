@@ -3120,18 +3120,18 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         rustc_interface::passes::write_dep_info(tcx);
         if tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo) {
             // Save the first pass's dep-info for the merge after the second pass.
-            if let OutFileName::Real(dep_info_path_d) =
+            if let OutFileName::Real(dep_info_path) =
                 tcx.output_filenames(()).path(OutputType::DepInfo)
             {
-                let mut dep_info_path_verus_d = dep_info_path_d.clone();
-                dep_info_path_verus_d.as_mut_os_string().push(crate::driver::SAVED_DEP_INFO_SUFFIX);
-                std::fs::rename(&dep_info_path_d, &dep_info_path_verus_d).unwrap_or_else(|err| {
+                let mut saved_dep_info_path = dep_info_path.clone();
+                saved_dep_info_path.as_mut_os_string().push(crate::driver::SAVED_DEP_INFO_SUFFIX);
+                std::fs::rename(&dep_info_path, &saved_dep_info_path).unwrap_or_else(|err| {
                     panic!(
                         "error: failed to save dep-info {} with `-verus` suffix due to {err}",
-                        dep_info_path_d.display(),
+                        dep_info_path.display(),
                     )
                 });
-                self.first_pass_dep_info = Some(dep_info_path_verus_d);
+                self.first_pass_dep_info = Some(saved_dep_info_path);
             }
         }
         self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
