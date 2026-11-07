@@ -323,7 +323,8 @@ pub fn run(
         spans: None,
         unresolved_import_deps: std::collections::HashSet::new(),
     };
-    let status = run_compiler(rustc_args_verify.clone(), true, false, &mut verifier_callbacks);
+    let first_pass_result =
+        run_compiler(rustc_args_verify.clone(), true, false, &mut verifier_callbacks);
     let VerifierCallbacksEraseMacro {
         verifier,
         rust_start_time,
@@ -344,8 +345,8 @@ pub fn run(
         _ => Duration::new(0, 0),
     };
 
-    let first_pass_failed = status.is_err() || verifier.encountered_vir_error;
-    let compile_status = if first_pass_failed {
+    let first_pass_failed = first_pass_result.is_err() || verifier.encountered_vir_error;
+    let second_pass_result = if first_pass_failed {
         Err(())
     } else if verifier.has_second_compile_pass() {
         let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
@@ -358,8 +359,11 @@ pub fn run(
 
     // Rustc writes dep-info after after_expansion, so combine files after the passes return.
     let first_pass_dep_info = first_pass_dep_info.filter(|path| path.is_file());
-    let second_pass_dep_info =
-        compile_status.as_ref().ok().and_then(|path| path.as_ref()).filter(|path| path.is_file());
+    let second_pass_dep_info = second_pass_result
+        .as_ref()
+        .ok()
+        .and_then(|path| path.as_ref())
+        .filter(|path| path.is_file());
     match (first_pass_dep_info, second_pass_dep_info) {
         (Some(first), Some(second)) => {
             let info_1 = rustc_dep_info::Contents::read_file(&first).unwrap_or_else(|err| {
@@ -369,7 +373,11 @@ pub fn run(
                 panic!("failed to read second-pass dep-info from `{}`: {err}", second.display())
             });
             // Prefer second-pass metadata and environment values when both are present.
-            let merged = info_1.merge(info_2, |a, b| b.or(a), |a, b| b.or(a));
+            let merged = info_1.merge(
+                info_2,
+                |meta_1, meta_2| meta_2.or(meta_1),
+                |env_1, env_2| env_2.or(env_1),
+            );
             merged.write_file(&second).unwrap_or_else(|err| {
                 panic!("failed to write combined dep-info to `{}`: {err}", second.display())
             });
@@ -397,7 +405,7 @@ pub fn run(
     };
 
     // Run borrow checker and compiler with #[exec] (not #[proof])
-    if let Err(_) = compile_status {
+    if let Err(_) = second_pass_result {
         return (verifier, stats, Err(()));
     }
 
