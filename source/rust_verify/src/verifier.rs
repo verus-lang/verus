@@ -3127,7 +3127,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 saved_dep_info_path.as_mut_os_string().push(crate::driver::SAVED_DEP_INFO_SUFFIX);
                 std::fs::rename(&dep_info_path, &saved_dep_info_path).unwrap_or_else(|err| {
                     panic!(
-                        "error: failed to save dep-info {} with `-verus` suffix due to {err}",
+                        "error: failed to save dep-info {} with `{SAVED_DEP_INFO_SUFFIX}` suffix due to {err}",
                         dep_info_path.display(),
                     )
                 });
