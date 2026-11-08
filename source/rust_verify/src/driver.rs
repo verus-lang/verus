@@ -9,8 +9,6 @@ use rustc_session::config::{OutFileName, OutputType};
 use rustc_span::{Span, sym};
 use std::time::{Duration, Instant};
 
-pub(crate) const SAVED_DEP_INFO_SUFFIX: &str = "-verus";
-
 struct DefaultCallbacks;
 impl rustc_driver::Callbacks for DefaultCallbacks {}
 
@@ -279,6 +277,8 @@ pub fn run(
     verus_root: Option<VerusRoot>,
     build_test_mode: bool,
 ) -> (Verifier, Stats, Result<(), ()>) {
+    use crate::verifier::SAVED_DEP_INFO_SUFFIX;
+
     if !rustc_args.iter().any(|a| a.starts_with("--edition")) {
         rustc_args.push(format!("--edition"));
         rustc_args.push(format!("2021"));
