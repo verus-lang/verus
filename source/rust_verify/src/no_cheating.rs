@@ -488,10 +488,13 @@ impl<'a, 'tcx> HeaderFinder<'a, 'tcx> {
                     | SpecItem::DecreasesWhen
                     | SpecItem::DecreasesBy
                     | SpecItem::RecommendsBy
-                    | SpecItem::OpensInvariantMask
+                    | SpecItem::OpensInvariantsNone
+                    | SpecItem::OpensInvariantsAny
+                    | SpecItem::OpensInvariants
+                    | SpecItem::OpensInvariantsExcept
+                    | SpecItem::OpensInvariantsSet
                     | SpecItem::NoUnwind
                     | SpecItem::NoUnwindWhen
-                    | SpecItem::AtomicSpec
             )) | Some(VerusItem::Directive(DirectiveItem::ExtraDependency))
         )
     }
