@@ -1,7 +1,7 @@
 # Closures
 
 In the previous chapter, we saw how to pass functions as values, which we did by referencing
-function items by name. However, it is more common in Rust to creating functions
+function items by name. However, it is more common in Rust to create functions
 using _closures_.
 
 ## Preconditions and postconditions on a closure
@@ -9,7 +9,7 @@ using _closures_.
 Verus allows you to specify `requires` and `ensures` on a closure just like you can for
 any other function.
 Here's an example, calling the `vec_map` function we defined in the
-[previous chapter](./exec_funs_as_values.md'):
+[previous chapter](./exec_funs_as_values.md):
 
 ```rust
 {{#include ../../../../examples/guide/higher_order_fns.rs:vec_map_example_with_closure}}
@@ -19,7 +19,7 @@ Here's an example, calling the `vec_map` function we defined in the
 
 One of the most challenging aspects of closures, in general, is that closures
 can capture variables from the surrounding context.
-Rust resolves this challenge through its hierarcy of function traits:
+Rust resolves this challenge through its hierarchy of function traits:
 `FnOnce`, `FnMut`, and `Fn`.
 The declaration of the closure and the details of its context capture determine
 which traits it has. In turn,

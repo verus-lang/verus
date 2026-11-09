@@ -120,6 +120,7 @@ pub struct ArgsX {
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
     pub no_bv_simplify: bool,
+    pub observer: Option<String>,
 }
 
 impl ArgsX {
@@ -169,6 +170,7 @@ impl ArgsX {
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
             no_bv_simplify: Default::default(),
+            observer: None,
         }
     }
 }
@@ -415,6 +417,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
     const EXTENDED_NO_BV_SIMPLIFY: &str = "no-bv-simplify";
+    const EXTENDED_OBSERVER: &str = "observer";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (
@@ -442,6 +445,7 @@ pub fn parse_args_with_imports(
             EXTENDED_NO_BV_SIMPLIFY,
             "internal option to disable simplification of bit-vector assertions before sending to the SMT solver",
         ),
+        (EXTENDED_OBSERVER, "Observer to run during verification (e.g., test)"),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -489,7 +493,7 @@ pub fn parse_args_with_imports(
     opts.optflag(
         "",
         OPT_NO_CHEATING,
-        "Do not allow assume, admit, verifier::external_body, and assume_specification",
+        "Do not allow assume, admit, verifier::external_body, and assume_specification; also reject options that skip or weaken checks",
     );
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optflag("", OPT_TIME_EXPANDED, "Measure and report time taken with module breakdown");
@@ -850,7 +854,41 @@ pub fn parse_args_with_imports(
         axiom_usage_info: extended.contains_key(EXTENDED_AXIOM_USAGE_INFO),
         check_api_safety: extended.contains_key(EXTENDED_CHECK_API_SAFETY),
         no_bv_simplify: extended.contains_key(EXTENDED_NO_BV_SIMPLIFY),
+        observer: match extended.get(EXTENDED_OBSERVER) {
+            None => None,
+            Some(Some(name)) => Some(name.clone()),
+            Some(None) => error(format!(
+                "-V {} needs a name, e.g. -V {}=test",
+                EXTENDED_OBSERVER, EXTENDED_OBSERVER
+            )),
+        },
     };
+
+    if args.no_cheating {
+        let disallowed_flags = [
+            OPT_VERIFY_ROOT,
+            OPT_VERIFY_MODULE,
+            OPT_VERIFY_ONLY_MODULE,
+            OPT_VERIFY_FUNCTION,
+            OPT_NO_LIFETIME,
+            OPT_NO_ERASURE_CHECK,
+            OPT_NO_TRAIT_CONFLICTS,
+            OPT_IS_VSTD,
+            OPT_IS_CORE,
+            OPT_IS_STDLIB_OUTSIDE_OF_CORE,
+        ];
+        for flag in disallowed_flags {
+            if matches.opt_present(flag) {
+                error(format!("`--{}` is not allowed with `--{}`", flag, OPT_NO_CHEATING));
+            }
+        }
+        let disallowed_extended = [EXTENDED_ALLOW_INLINE_AIR, EXTENDED_IGNORE_UNEXPECTED_SMT];
+        for key in disallowed_extended {
+            if extended.contains_key(key) {
+                error(format!("`-V {}` is not allowed with `--{}`", key, OPT_NO_CHEATING));
+            }
+        }
+    }
 
     if args.compile && args.no_erasure_check {
         error("`--compile` and `--no-erasure-check` are mutually exclusive".to_string())

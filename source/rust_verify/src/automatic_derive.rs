@@ -73,7 +73,7 @@ pub fn modify_derived_item<'tcx>(
     };
     match special {
         SpecialTrait::Clone => {
-            if &*function.name.path.last_segment() == "clone" {
+            if function.name.path.last_segment().is_name("clone") {
                 return clone_add_post_condition(bctx, id, inputs, span, function);
             }
         }

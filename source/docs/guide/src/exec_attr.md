@@ -40,11 +40,11 @@ Use `#[verus_verify(...)]` to provide hints to the verifier to mark a function
 as `external`, `external_body`, `spinoff_prover`, or specify a different
 resource limit via `rlimit(amount)`.
 
-In addition, you can create a dual mode (spec + exec) function the via
+In addition, you can create a dual mode (spec + exec) function via the
 [`verus_verify(dual_spec)`](exec_to_spec.md) attribute, which will attempt to
 generate a spec function from an executable function.
 
-## Adding proofs inside function
+## Adding proofs inside functions
 
 When a function has the `#[verus_spec(...)]` attribute, we can introduce 
 proofs directly inside executable functions using the proof macros described below.
@@ -66,6 +66,12 @@ ghost/tracked variables, as shown in this example:
 ```rust
 {{#include ../../../../examples/guide/exec_attr.rs:proof}}
 ```
+
+Statement-position macro invocations inside `proof_decl!` are not supported:
+their output could execute during verification and be erased during compilation.
+Call macros that expand to `proof_decl!` directly in the surrounding scope,
+and place macros that expand to proof statements inside `proof!`.
+Macro expressions in ghost/tracked initializers remain supported.
 
 ### Adding ghost/tracked variables to executable function calls
 

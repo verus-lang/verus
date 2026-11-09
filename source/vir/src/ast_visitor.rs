@@ -411,6 +411,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 body,
                 requires,
                 ensures,
+                mask_spec,
                 ret: r,
                 external_spec,
             } => {
@@ -423,6 +424,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 }
 
                 let requires = self.visit_exprs(requires)?;
+                let mask_spec = R::map_opt(mask_spec, &mut |ms| self.visit_mask_spec(ms))?;
 
                 self.push_scope();
                 let b = R::get_or(&ret, r);
@@ -448,6 +450,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         body: R::get(body),
                         requires: R::get_vec_a(requires),
                         ensures: R::get_vec_a(ensures),
+                        mask_spec: R::get_opt(mask_spec),
                         ret: R::get(ret),
                         external_spec: R::get_opt(external_spec),
                     })
@@ -582,6 +585,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 invs,
                 decrease,
                 atomic_call,
+                known_no_back_edge,
+                source,
             } => {
                 let cond = self.visit_opt_expr(cond)?;
                 let body = self.visit_expr(body)?;
@@ -599,6 +604,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         invs: R::get_vec_a(invs),
                         decrease: R::get_vec_a(decrease),
                         atomic_call: *atomic_call,
+                        known_no_back_edge: *known_no_back_edge,
+                        source: *source,
                     })
                 })
             }
@@ -856,7 +863,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         &mut self,
         pb: &PatternBinding,
     ) -> Result<R::Ret<PatternBinding>, Err> {
-        let PatternBinding { name, by_ref, typ, user_mut, copy } = pb;
+        let PatternBinding { name, by_ref, typ, user_mut, copy, move_exec_to_proof_okay } = pb;
         let typ = self.visit_typ(typ)?;
         R::ret(|| PatternBinding {
             name: name.clone(),
@@ -864,6 +871,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             typ: R::get(typ),
             user_mut: *user_mut,
             copy: *copy,
+            move_exec_to_proof_okay: *move_exec_to_proof_okay,
         })
     }
 
@@ -1595,11 +1603,19 @@ where
 fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool) {
     match &pattern.x {
         PatternX::Wildcard => {}
-        PatternX::Var(PatternBinding { name, user_mut, by_ref: _, typ, copy: _ }) => {
+        PatternX::Var(PatternBinding {
+            name,
+            user_mut,
+            by_ref: _,
+            typ,
+            copy: _,
+            move_exec_to_proof_okay: _,
+        }) => {
             let _ = map.insert(name.clone(), ScopeEntry::new(typ, *user_mut, init));
         }
         PatternX::Binding {
-            binding: PatternBinding { name, user_mut, by_ref: _, typ, copy: _ },
+            binding:
+                PatternBinding { name, user_mut, by_ref: _, typ, copy: _, move_exec_to_proof_okay: _ },
             sub_pat,
         } => {
             insert_pattern_vars(map, sub_pat, init);
@@ -1792,7 +1808,7 @@ where
 }
 
 /// Walk the AST, visit every Expr
-pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
+pub fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
 where
     MF: FnMut(&VisitorScopeMap, &Expr) -> Result<(), E>,
 {

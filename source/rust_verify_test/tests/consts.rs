@@ -127,6 +127,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] dual_mode_const_branch_on_spec_const_issue3211 verus_code! {
+        pub spec const S: bool = true;
+        const C: u8 = if S { 1 } else { 2 };
+    } => Err(e) => assert_vir_error_msg(e, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
+    #[test] exec_static_branch_on_spec_const_issue3211 verus_code! {
+        pub spec const S: bool = true;
+        exec static X: u8 = if S { 1 } else { 2 };
+    } => Err(e) => assert_vir_error_msg(e, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
     #[test] test_used_as_spec verus_code! {
         spec const SPEC_E: u64 = 7;
         #[verifier::when_used_as_spec(SPEC_E)]

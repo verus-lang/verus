@@ -128,7 +128,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
     pub open spec fn all(self, pred: spec_fn(A) -> bool) -> bool {
-        forall|i: int| 0 <= i < self.len() ==> #[trigger] pred(self[i])
+        forall|i: int| 0 <= i < self.len() ==> pred(#[trigger] self[i])
     }
 
     /// Tests if any element in the sequence satisfies the predicate.

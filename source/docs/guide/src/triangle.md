@@ -22,7 +22,7 @@ Showing this property requires an [inductive proof](induction.md).  We cover ind
 later; the important thing here is that we can do this proof using a `proof` function
 (`triangle_is_monotonic`).  To invoke the results of our proof in our `exec` implementation, 
 we [assert](proof_functions.md#assert-by) that the new sum fits, and as
-justification, we  an invoke our proof with the relevant arguments.  At the
+justification, we invoke our proof with the relevant arguments.  At the
 call site, Verus will check that the preconditions for `triangle_is_monotonic`
 hold and then assume that the postconditions hold.
 

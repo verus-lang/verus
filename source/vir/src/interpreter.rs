@@ -6,18 +6,18 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArchWordBits, ArrayKind, BitwiseOp, ComputeMode, Constant, CrateId, Dt, Fun, FunX, Ident,
-    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, Primitive,
-    SpannedTyped, Typ, TypX, Typs, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
+    ArchWordBits, ArrayKind, BitwiseOp, ComputeMode, Constant, CrateId, Dt, Fun, Ident,
+    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Primitive, SpannedTyped,
+    Typ, TypX, Typs, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::SstMap;
-use crate::ast_util::{n_types_equal, path_as_vstd_name, types_equal, undecorate_typ};
+use crate::ast_util::{int_typ, n_types_equal, path_as_vstd_name, types_equal, undecorate_typ};
 use crate::context::GlobalCtx;
 use crate::messages::{Message, Span, ToAny, WarningAllow, error};
 use crate::sst::{
     ArithOp, BinaryOp, Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent,
 };
-use crate::sst_util::{free_vars_exp, subst_exp};
+use crate::sst_util::{free_vars_exp, free_vars_exps, subst_exp};
 use crate::unicode::valid_unicode_scalar_bigint;
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
@@ -386,6 +386,16 @@ impl SyntacticEquality for Binders<Typ> {
 }
 
 // Constructor fields may appear in any source order. Use the same order for equality and hashing.
+/// Trigger terms are evaluated in the same environment as the body they belong to,
+/// so a free variable bound there (e.g. a function parameter) is replaced by its value
+fn subst_env_into_trigger(env: &Env, trig: &[Exp]) -> Exps {
+    let env_substs = free_vars_exps(trig)
+        .into_keys()
+        .filter_map(|id| env.get(&id).map(|v| (id, v.clone())))
+        .collect();
+    Arc::new(trig.iter().map(|e| subst_exp(&HashMap::new(), &env_substs, e)).collect())
+}
+
 fn sorted_ctor_fields(fields: &Binders<Exp>) -> Vec<&Binder<Exp>> {
     let mut fields: Vec<_> = fields.iter().collect();
     fields.sort_unstable_by(|l, r| l.name.cmp(&r.name));
@@ -841,10 +851,7 @@ fn eval_array(
                                     array_exp.typ
                                 ),
                             };
-                            let seq_type_path = Arc::new(PathX {
-                                krate: CrateId::Vstd,
-                                segments: strs_to_idents(vec!["seq", "Seq"]),
-                            });
+                            let seq_type_path = crate::path!(CrateId::Vstd => "seq", "Seq");
                             let seq_typ = Arc::new(TypX::Datatype(
                                 Dt::Path(seq_type_path),
                                 Arc::new(vec![inner_typ]),
@@ -904,11 +911,6 @@ pub(crate) fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     }
 }
 
-fn strs_to_idents(s: Vec<&str>) -> Idents {
-    let idents = s.iter().map(|s| Arc::new(s.to_string())).collect();
-    Arc::new(idents)
-}
-
 pub(crate) fn is_seq_to_sst_fun(fun: &Fun) -> bool {
     match is_sequence_fn(fun) {
         Some(SeqFn::Empty | SeqFn::Push) => true,
@@ -921,8 +923,7 @@ pub(crate) fn is_seq_to_sst_fun(fun: &Fun) -> bool {
 /// macro definition in vstd's seq.rs.
 // TODO: More robust way of pointing to vstd's sequence functions
 fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirErr> {
-    let seq_type_path =
-        Arc::new(PathX { krate: CrateId::Vstd, segments: strs_to_idents(vec!["seq", "Seq"]) });
+    let seq_type_path = crate::path!(CrateId::Vstd => "seq", "Seq");
     let seq_typ = Arc::new(TypX::Datatype(
         Dt::Path(seq_type_path),
         Arc::new(vec![inner_typ.clone()]),
@@ -931,16 +932,8 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirEr
     let new_seq_exp = |e: ExpX| SpannedTyped::new(span, &seq_typ, e);
     if s.len() <= 1 {
         let typs = Arc::new(vec![inner_typ.clone()]);
-        let path_empty = Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: strs_to_idents(vec!["seq", "Seq", "empty"]),
-        });
-        let path_push = Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: strs_to_idents(vec!["seq", "Seq", "push"]),
-        });
-        let fun_empty = Arc::new(FunX { path: path_empty });
-        let fun_push = Arc::new(FunX { path: path_push });
+        let fun_empty = crate::fun!(CrateId::Vstd => "seq", "Seq"; "empty");
+        let fun_push = crate::fun!(CrateId::Vstd => "seq", "Seq"; "push");
         let empty =
             new_seq_exp(ExpX::Call(CallFun::Fun(fun_empty, None), typs.clone(), Arc::new(vec![])));
         let seq = s.iter().fold(empty, |acc, e| {
@@ -950,16 +943,16 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirEr
         Ok(seq)
     } else {
         // Describe the sequence in terms of a view on an array literal
-        let path_view = Arc::new(PathX {
-            krate: CrateId::Vstd,
-            segments: strs_to_idents(vec!["array", "array_view"]),
-        });
-        let fun_view = Arc::new(FunX { path: path_view });
+        let fun_view = crate::fun!(CrateId::Vstd => "array"; "array_view");
+        let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(s.len())));
+        let array_typ = Arc::new(TypX::Primitive(
+            Primitive::Array,
+            Arc::new(vec![inner_typ.clone(), array_len_typ.clone()]),
+        ));
         // Keep hidden variables hidden: this also runs during interpretation (a partially
         // simplified sequence), where a restored variable could be captured by a callee's
         // parameter of the same name. The final cleanup_exp restores them.
-        let array = raw_array(span, inner_typ.clone(), s);
-        let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(s.len())));
+        let array = raw_array(span, array_typ, s);
         let array_view = new_seq_exp(ExpX::Call(
             CallFun::Fun(fun_view, None),
             Arc::new(vec![inner_typ.clone(), array_len_typ]),
@@ -969,26 +962,14 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirEr
     }
 }
 
-/// An array literal of the given elements, as they are (no cleanup)
-fn raw_array(span: &Span, inner_typ: Typ, arr: &Vector<Exp>) -> Exp {
-    let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(arr.len())));
-    let arr_typ =
-        Arc::new(TypX::Primitive(Primitive::Array, Arc::new(vec![inner_typ, array_len_typ])));
+/// An array literal of type `arr_typ` with the given elements, as they are (no cleanup)
+fn raw_array(span: &Span, arr_typ: Typ, arr: &Vector<Exp>) -> Exp {
     SpannedTyped::new(span, &arr_typ, ExpX::ArrayLiteral(Arc::new(arr.iter().cloned().collect())))
 }
 
 /// Convert an interpreter-internal array representation back into a
 /// representation we can pass to AIR
-fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Result<Exp, VirErr> {
-    let arr_typ = if !matches!(*typ, TypX::Primitive(Primitive::Array, _)) {
-        // We only have the inner type for the array, so we need to construct the rest
-        let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(arr.len())));
-        let array_typs = Arc::new(vec![typ, array_len_typ]);
-        let array_typ = Arc::new(TypX::Primitive(Primitive::Array, array_typs));
-        array_typ
-    } else {
-        typ
-    };
+fn array_to_sst(span: &Span, arr_typ: Typ, arr: &Vector<Exp>) -> Result<Exp, VirErr> {
     let exp_new = |e: ExpX| SpannedTyped::new(span, &arr_typ, e);
     let exps: Result<Vec<Exp>, VirErr> = arr.iter().map(|e| cleanup_exp(e)).collect();
     let exps = Arc::new(exps?);
@@ -1043,9 +1024,17 @@ fn eval_seq(
                             // Apply the lambda to each index of the new sequence
                             let vec: Result<Vec<Exp>, VirErr> = (0..len)
                                 .map(|i| {
-                                    let int_i = exp_new(Const(Constant::Int(BigInt::from(i))));
+                                    let int_i = SpannedTyped::new(
+                                        &exp.span,
+                                        &int_typ(),
+                                        Const(Constant::Int(BigInt::from(i))),
+                                    );
                                     let args = Arc::new(vec![int_i]);
-                                    let call = exp_new(CallLambda(lambda.clone(), args));
+                                    let call = SpannedTyped::new(
+                                        &exp.span,
+                                        &typs[0],
+                                        CallLambda(lambda.clone(), args),
+                                    );
                                     eval_expr_internal(ctx, state, &call)
                                 })
                                 .collect();
@@ -1134,8 +1123,8 @@ fn eval_seq(
                     (Interp(Seq(l)), Interp(Seq(r))) => match l.syntactic_eq(r) {
                         None => {
                             let new_args = vec![
-                                seq_to_sst(&args[0].span, args[0].typ.clone(), &l)?,
-                                seq_to_sst(&args[1].span, args[1].typ.clone(), &r)?,
+                                seq_to_sst(&args[0].span, typs[0].clone(), &l)?,
+                                seq_to_sst(&args[1].span, typs[0].clone(), &r)?,
                             ];
                             let new_args = Arc::new(new_args);
                             Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
@@ -1831,12 +1820,15 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(CallFun::Fun(fun, resolved_method), typs, args) => {
-            let (fun, typs) = resolve_call(fun, resolved_method, typs);
+            // Resolve the implementation for evaluation, but preserve the original trait call
+            // when returning a partially evaluated expression. AIR uses the trait declaration's
+            // name and type arguments, not a separate function for the implementation.
+            let (reduced_fun, reduced_typs) = resolve_call(fun, resolved_method, typs);
             if state.perf {
                 // Record the call for later performance analysis
-                match state.fun_calls.get_mut(fun) {
+                match state.fun_calls.get_mut(reduced_fun) {
                     None => {
-                        state.fun_calls.insert(fun.clone(), 1);
+                        state.fun_calls.insert(reduced_fun.clone(), 1);
                     }
                     Some(count) => {
                         *count += 1;
@@ -1847,18 +1839,18 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             let new_args: Result<Vec<Exp>, VirErr> =
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
             let new_args = Arc::new(new_args?);
-            if let Some(array_fn) = is_array_fn(&fun) {
+            if let Some(array_fn) = is_array_fn(&reduced_fun) {
                 eval_array(ctx, state, array_fn, exp, &new_args)
-            } else if let Some(seq_fn) = is_sequence_fn(&fun) {
+            } else if let Some(seq_fn) = is_sequence_fn(&reduced_fun) {
                 eval_seq(ctx, state, seq_fn, exp, &new_args)
             } else {
                 // Try to find the function's body
-                match ctx.fun_ssts.get(fun) {
+                match ctx.fun_ssts.get(reduced_fun) {
                     Some(func)
                         if func.x.axioms.spec_axioms.is_some() && func.x.kind.inline_okay() =>
                     {
                         let memoize = func.x.attrs.memoize;
-                        match state.lookup_call(&fun, &typs, &new_args, memoize) {
+                        match state.lookup_call(&reduced_fun, &reduced_typs, &new_args, memoize) {
                             Some(prev_result) => {
                                 state.cache_hits += 1;
                                 Ok(prev_result)
@@ -1869,7 +1861,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 let spec_axioms = func.x.axioms.spec_axioms.as_ref().unwrap();
                                 state.cache_misses += 1;
                                 for a in new_args.iter() {
-                                    check_closed(a, || format!("an argument of `{}`", fname(fun)))?;
+                                    check_closed(a, || {
+                                        format!("an argument of `{}`", fname(reduced_fun))
+                                    })?;
                                 }
                                 let mut env = Env::new();
                                 let mut type_env = TypeEnv::new();
@@ -1879,7 +1873,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     let formal_id = formal.x.name.clone();
                                     env.insert(formal_id, actual.clone()).unwrap();
                                 }
-                                for (formal, actual) in typ_params.iter().zip(typs.iter()) {
+                                for (formal, actual) in typ_params.iter().zip(reduced_typs.iter()) {
                                     type_env.insert(formal.clone(), actual.clone()).unwrap();
                                 }
                                 // Proactively apply the type environment to the body.
@@ -1911,10 +1905,18 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 };
                                 state.env = prev_env;
                                 let result = result.and_then(|r| {
-                                    check_closed(&r, || format!("the result of `{}`", fname(fun)))
-                                        .map(|_| r)
+                                    check_closed(&r, || {
+                                        format!("the result of `{}`", fname(reduced_fun))
+                                    })
+                                    .map(|_| r)
                                 });
-                                state.insert_call(fun, &typs, &new_args, &result.clone()?, memoize);
+                                state.insert_call(
+                                    reduced_fun,
+                                    &reduced_typs,
+                                    &new_args,
+                                    &result.clone()?,
+                                    memoize,
+                                );
                                 result
                             }
                         }
@@ -2006,6 +2008,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             if b.name.0.ends_with("$compute") {
                                 return b.clone();
                             }
+                            // Binders may share a name (macro hygiene), so number each one
+                            state.iterations += 1;
                             let id = VarIdent(
                                 Arc::new(format!("{}$compute", b.name.0)),
                                 VarIdentDisambiguate::VirSubst(state.iterations),
@@ -2018,20 +2022,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 );
                 let empty_substs = HashMap::new();
                 let e = subst_exp(&empty_substs, &substs, e);
-                let triggers = Arc::new(
-                    triggers
-                        .iter()
-                        .map(|trig| {
-                            Arc::new(
-                                trig.iter().map(|e| subst_exp(&empty_substs, &substs, e)).collect(),
-                            )
-                        })
-                        .collect(),
-                );
-                let bnd = crate::def::Spanned::new(
-                    bnd.span.clone(),
-                    BndX::Quant(*quant_type, bnds.clone(), triggers, by_locals.clone()),
-                );
                 state.env.push_scope(true);
                 for b in bnds.iter() {
                     let id = b.name.clone();
@@ -2039,6 +2029,20 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         SpannedTyped::new(&e.span, &b.a, Interp(InterpExp::FreeVar(id.clone())));
                     state.env.insert(id, val).unwrap();
                 }
+                let triggers = Arc::new(
+                    triggers
+                        .iter()
+                        .map(|trig| {
+                            let trig: Vec<Exp> =
+                                trig.iter().map(|e| subst_exp(&empty_substs, &substs, e)).collect();
+                            subst_env_into_trigger(&state.env, &trig)
+                        })
+                        .collect(),
+                );
+                let bnd = crate::def::Spanned::new(
+                    bnd.span.clone(),
+                    BndX::Quant(*quant_type, bnds.clone(), triggers, by_locals.clone()),
+                );
                 let e = eval_expr_internal(ctx, state, &e)?;
                 state.env.pop_scope();
                 if let ExpX::Const(Constant::Bool(_)) = e.x {
@@ -2103,8 +2107,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             InterpExp::Array(_) => unchanged(),
         },
         WithTriggers(triggers, body) => {
+            let triggers = Arc::new(
+                triggers.iter().map(|trig| subst_env_into_trigger(&state.env, trig)).collect(),
+            );
             let body = eval_expr_internal(ctx, state, body)?;
-            exp_new(WithTriggers(triggers.clone(), body))
+            exp_new(WithTriggers(triggers, body))
         }
         // Ignored by the interpreter at present (i.e., treated as symbolic). A static is closed.
         // The others name a variable; returned as is, it must not be one the environment binds

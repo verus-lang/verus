@@ -62,10 +62,10 @@ pub struct GlobalCtx {
     pub func_call_graph: Arc<Graph<Node>>,
     pub func_call_sccs: Arc<Vec<Node>>,
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
-    pub(crate) datatype_graph_span_infos: Vec<Span>,
-    pub trait_impl_to_extensions: HashMap<Path, Vec<Path>>,
+    pub(crate) datatype_graph_span_infos: Arc<Vec<Span>>,
+    pub trait_impl_to_extensions: Arc<HashMap<Path, Vec<Path>>>,
     /// Map TSpec to T
-    pub(crate) extension_to_trait: HashMap<Path, Path>,
+    pub(crate) extension_to_trait: Arc<HashMap<Path, Path>>,
     pub(crate) warning_ctx: Arc<WarningCtx>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
@@ -133,10 +133,38 @@ pub struct Ctx {
     // is overkill, perhaps this should be revisited.
     pub(crate) string_hashes: RefCell<HashMap<BigUint, Arc<String>>>,
     pub(crate) byte_string_hashes: RefCell<HashMap<BigUint, Arc<Vec<u8>>>>,
+    /// Observer for the verification pipeline.
+    pub observer: Option<std::rc::Rc<std::cell::RefCell<dyn crate::vir_observer::VirObserver>>>,
+    /// AIR-level handles to the same shared observer object, included here so the
+    /// verifier can attach them to each `air::Context` it builds (see verifier.rs).
+    pub air_observer: Option<std::rc::Rc<std::cell::RefCell<dyn air::air_observer::AirObserver>>>,
+    pub query_result_observer: Option<
+        std::rc::Rc<std::cell::RefCell<dyn air::query_result_observer::QueryResultObserver>>,
+    >,
     pub arch_word_bits: ArchWordBits,
 }
 
 impl Ctx {
+    /// Call a callback on the observer if one is registered.
+    pub(crate) fn notify<F: FnOnce(&mut dyn crate::vir_observer::VirObserver)>(&self, f: F) {
+        if let Some(obs) = &self.observer {
+            f(&mut *obs.borrow_mut());
+        }
+    }
+
+    /// Ask the observer for an assert ID, or use the default (clone parent).
+    pub(crate) fn make_assert_id(
+        &self,
+        kind: crate::vir_observer::AssertIdKind,
+        index: usize,
+        parent: &Option<air::ast::AssertId>,
+    ) -> Option<air::ast::AssertId> {
+        self.observer.as_ref().map_or_else(
+            || parent.clone(),
+            |obs| obs.borrow_mut().make_assert_id(kind, index, parent),
+        )
+    }
+
     pub(crate) fn checking_spec_preconditions(&self) -> bool {
         match self.fun {
             Some(FunctionCtx { checking_spec_preconditions: true, .. }) => true,
@@ -421,7 +449,7 @@ impl GlobalCtx {
 
         for t in &krate.trait_impls {
             if let Some(last) = &t.x.impl_path.segments.last() {
-                if last.starts_with(crate::def::PREFIX_IMPL_TUPLE) {
+                if crate::def::is_impl_tuple(last) {
                     // Our internally auto-generated tuple impls don't depend on any other impls,
                     // so they can always appear first.
                     // Furthermore, we currently lack the impl_path dependency edges that
@@ -730,9 +758,9 @@ impl GlobalCtx {
             func_call_graph: Arc::new(func_call_graph),
             func_call_sccs: Arc::new(func_call_sccs),
             datatype_graph: Arc::new(datatype_graph),
-            datatype_graph_span_infos: span_infos,
-            extension_to_trait,
-            trait_impl_to_extensions,
+            datatype_graph_span_infos: Arc::new(span_infos),
+            extension_to_trait: Arc::new(extension_to_trait),
+            trait_impl_to_extensions: Arc::new(trait_impl_to_extensions),
             warning_ctx,
             qid_map,
             rlimit,
@@ -809,6 +837,7 @@ impl Ctx {
         used_builtins: crate::prune::UsedBuiltins,
         fndef_types: Vec<Fun>,
         resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
+        observers: crate::vir_observer::Observers,
     ) -> Result<Self, VirErr> {
         let name_ctxt = NameCtxt::new();
         let mut datatype_is_transparent: HashMap<Dt, bool> = HashMap::new();
@@ -857,6 +886,23 @@ impl Ctx {
             opaque_type_map.insert(opaque_type.x.name.clone(), opaque_type.clone());
         }
 
+        // Register the observer; deliver the span resolver, then the krate. The observer
+        // receives the NameCtxt so it can compute AIR names consistently with lowering — both
+        // share the same NameCtxt instance, so crate-name interning decisions made here are
+        // reused during lowering.
+        let crate::vir_observer::Observers {
+            vir: observer,
+            air: air_observer,
+            query_result: query_result_observer,
+            span_resolver,
+        } = observers;
+        if let Some(obs) = &observer {
+            if let Some(resolver) = &span_resolver {
+                obs.borrow_mut().on_span_resolver(resolver);
+            }
+            obs.borrow_mut().on_krate(&krate, &name_ctxt, &module.x.path.krate);
+        }
+
         Ok(Ctx {
             module,
             datatype_is_transparent,
@@ -884,6 +930,9 @@ impl Ctx {
             global,
             string_hashes,
             byte_string_hashes,
+            observer,
+            air_observer,
+            query_result_observer,
             arch_word_bits: krate.arch.word_bits,
             opaque_type_map,
         })

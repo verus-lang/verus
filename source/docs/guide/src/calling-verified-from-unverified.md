@@ -34,7 +34,7 @@ pub unsafe fn index_unchecked<T>(vec: &Vec<T>, i: usize) -> &T
 pub fn index<T>(vec: &Vec<T>, i: usize) -> Option<&T>
 {
     if i < vec.len() {
-        Some(index_unchecked(vec, i))
+        Some(unsafe { index_unchecked(vec, i) })
     } else {
         None
     }
@@ -45,5 +45,5 @@ If your API involves passing state back and forth between your code and your cal
 then you can consider defining a public struct with private fields that contain your
 state.  Since your caller cannot create their own versions of the struct, or modify
 values in the structs you give them, then you can (reasonably) safely use pre- and 
-post-conditions on your API (or [type invariants](container_bst_type_invariant.md) 
+post-conditions on your API (or [type invariants](container_bst_type_invariant.md))
 to maintain invariants about the contents of such structs.

@@ -12,13 +12,13 @@ The `nonlinear_arith` solver can be invoked via an [`assert-by` statement](./ref
 assert(Q) by(nonlinear_arith);
 ```
 
-Proves `Q` via the the `nonlinear_arith` solver.
+Proves `Q` via the `nonlinear_arith` solver.
 
 ```
 assert(Q) by(nonlinear_arith) requires P;
 ```
 
-Proves `P ==> Q` via the the `nonlinear_arith` solver.
+Proves `P ==> Q` via the `nonlinear_arith` solver.
 
 **As a proof function.**
 The `nonlinear_arith` solver can be invoked with a `by(nonlinear_arith)` on a [proof function](./reference-proof-signature.md).
@@ -30,7 +30,7 @@ proof fn example(...) by(nonlinear_arith)
 { }
 ```
 
-This proves `P ==> Q` via the `bit_vector` solver.
+This proves `P ==> Q` via the `nonlinear_arith` solver.
 
 ## Solver operation
 
