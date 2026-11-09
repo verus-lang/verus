@@ -2,13 +2,33 @@
 use super::super::prelude::*;
 
 #[cfg(feature = "alloc")]
-use alloc::borrow::Borrow;
-#[cfg(feature = "alloc")]
 use alloc::borrow::Cow;
 #[cfg(feature = "alloc")]
 use alloc::borrow::ToOwned;
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+use alloc::string::String;
+#[cfg(feature = "alloc")]
+use core::alloc::Allocator;
+use core::borrow::Borrow;
 
 verus! {
+
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(BorrowSpec via BorrowSpecImpl)]
+pub trait ExBorrow<Borrowed: ?Sized> {
+    type ExternalTraitSpecificationFor: Borrow<Borrowed>;
+
+    spec fn obeys_borrow_spec() -> bool;
+
+    spec fn borrow_spec(&self) -> &Borrowed;
+
+    fn borrow(&self) -> (result: &Borrowed)
+        ensures
+            Self::obeys_borrow_spec() ==> result == self.borrow_spec(),
+    ;
+}
 
 #[cfg(feature = "alloc")]
 #[verifier::external_trait_specification]
@@ -98,6 +118,57 @@ impl<'a, T: DeepView + Clone> DeepView for Cow<'a, [T]> {
             Cow::Owned(owned) => owned.deep_view(),
         }
     }
+}
+
+impl<T: ?Sized> BorrowSpecImpl<T> for T {
+    open spec fn obeys_borrow_spec() -> bool {
+        true
+    }
+
+    open spec fn borrow_spec(&self) -> &T {
+        self
+    }
+}
+
+impl<T: ?Sized> BorrowSpecImpl<T> for &T {
+    open spec fn obeys_borrow_spec() -> bool {
+        true
+    }
+
+    open spec fn borrow_spec(&self) -> &T {
+        *self
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<T: ?Sized, A: Allocator> BorrowSpecImpl<T> for Box<T, A> {
+    open spec fn obeys_borrow_spec() -> bool {
+        true
+    }
+
+    open spec fn borrow_spec(&self) -> &T {
+        &**self
+    }
+}
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl BorrowSpecImpl<str> for String {
+    open spec fn obeys_borrow_spec() -> bool {
+        true
+    }
+
+    uninterp spec fn borrow_spec(&self) -> &str;
+}
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub broadcast axiom fn axiom_string_borrow(s: &String)
+    ensures
+        #[trigger] <String as BorrowSpec<str>>::borrow_spec(s)@ == s@,
+;
+
+pub broadcast group group_borrow_axioms {
+    #[cfg(all(feature = "alloc", not(verus_verify_core)))]
+    axiom_string_borrow,
 }
 
 } // verus!

@@ -4,7 +4,7 @@ use crate::context::ContextX;
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
 use crate::query::{Query, QueryError, set_global_query};
-use crate::rust_to_vir_base::mk_crate_id;
+use crate::rust_to_vir_path::mk_crate_id;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
 use crate::util::{HashMapAbsorbWith, error};
@@ -407,7 +407,7 @@ pub(crate) fn io_vir_err(msg: String, err: std::io::Error) -> VirErr {
 }
 
 pub fn module_name(module: &vir::ast::Path) -> String {
-    module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::")
+    module.segments.iter().map(|s| s.friendly_name()).collect::<Vec<_>>().join("::")
 }
 
 mod util {
@@ -1411,6 +1411,10 @@ impl Verifier {
                 ),
             ),
             CommandBatch::new("Trait-Bounds", vir::traits::trait_bound_axioms(ctx, &krate.traits)),
+            CommandBatch::new(
+                "Trait-Extension-Blanket-Impls",
+                vir::traits::external_trait_blanket_impls_to_air(ctx, &krate.trait_impls),
+            ),
             CommandBatch::new(
                 "Associated-Type-Impls",
                 vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls),
@@ -2673,8 +2677,8 @@ impl Verifier {
             Some(vir::messages::Span {
                 raw_span: crate::spans::to_raw_span(no_span),
                 id: 0,
-                data: vec![],
-                as_string: "no location".to_string(),
+                data: Arc::new([]),
+                as_string: "no location".into(),
             })
         };
 
@@ -3225,6 +3229,11 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         if !self.verifier.args.no_lifetime {
             self.run_lifetime_checks_on_verus_aware_items(tcx);
         }
+        // The global Query (pre-crate, unchecked and checked functions with their erasure
+        // info and modes, exportable and merged crates) is only needed for the lifetime checks
+        // above (thir_body/mir_borrowck); verify_crate uses self.vir_crate. Drop it here so that
+        // these copies of the crate do not stay alive during verification and compilation.
+        crate::query::clear_global_query();
 
         if let Some(_guar) = compiler.sess.dcx().has_errors() {
             return rustc_driver::Compilation::Stop;

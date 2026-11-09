@@ -399,6 +399,7 @@ struct ProofFnOptions {
     copy: bool,
     send: bool,
     sync: bool,
+    opens: bool,
 }
 
 enum ProofFnTypeArg {
@@ -407,6 +408,7 @@ enum ProofFnTypeArg {
     Copy,
     Send,
     Sync,
+    Opens,
     Tracked,
     Ghost,
     Zero,
@@ -418,6 +420,7 @@ const PROOF_FN: u8 = 3;
 const PROOF_FN_COPY: u8 = 4;
 const PROOF_FN_SEND: u8 = 5;
 const PROOF_FN_SYNC: u8 = 6;
+const PROOF_FN_OPENS: u8 = 7;
 
 impl ProofFnTypeArg {
     fn to_type(&self, span: Span) -> Type {
@@ -430,6 +433,7 @@ impl ProofFnTypeArg {
             ProofFnTypeArg::Copy => (None, Some(PROOF_FN_COPY)),
             ProofFnTypeArg::Send => (None, Some(PROOF_FN_SEND)),
             ProofFnTypeArg::Sync => (None, Some(PROOF_FN_SYNC)),
+            ProofFnTypeArg::Opens => (None, Some(PROOF_FN_OPENS)),
             ProofFnTypeArg::Tracked => (Some("Trk".to_string()), None),
             ProofFnTypeArg::Ghost => (None, None),
             ProofFnTypeArg::Zero => (None, Some(0)),
@@ -479,6 +483,7 @@ impl ProofFnOptions {
                 ("Copy", PathArguments::None) if !options.copy => options.copy = true,
                 ("Send", PathArguments::None) if !options.send => options.send = true,
                 ("Sync", PathArguments::None) if !options.sync => options.sync = true,
+                ("OpensInvariants", PathArguments::None) if !options.opens => options.opens = true,
                 _ => {
                     return Err(format!("unexpected option {}", path.ident));
                 }
@@ -495,7 +500,7 @@ impl ProofFnOptions {
         }
     }
 
-    fn to_types(&self, span: Span) -> (Type, Type, Type, Type, Type) {
+    fn to_types(&self, span: Span) -> (Type, Type, Type, Type, Type, Type) {
         let usage = ProofFnTypeArg::Usage(self.usage).to_type(span);
         let req_ens = match &self.req_ens {
             None => ProofFnTypeArg::ReqEns(None).to_type(span),
@@ -507,7 +512,8 @@ impl ProofFnOptions {
         let copy = f(self.copy, ProofFnTypeArg::Copy);
         let send = f(self.send, ProofFnTypeArg::Send);
         let sync = f(self.sync, ProofFnTypeArg::Sync);
-        (usage, req_ens, copy, send, sync)
+        let opens = f(self.opens, ProofFnTypeArg::Opens);
+        (usage, req_ens, copy, send, sync, opens)
     }
 }
 
@@ -2160,7 +2166,7 @@ impl Visitor {
                 }
                 Item::AssumeSpecification(assume_specification) => {
                     *item = if self.erase_ghost.erase() {
-                        Item::Verbatim(quote! { const _: () = (); })
+                        Item::Verbatim(quote! {})
                     } else {
                         self.handle_assume_specification(
                             assume_specification,
@@ -3628,7 +3634,7 @@ impl Visitor {
                 } else if is_inside_ghost {
                     quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Tracked #turbofish ::new(#inner))
                 } else {
-                    quote_spanned_builtin!(verus_builtin, span => #[verifier::ghost_wrapper] /* vattr */ #verus_builtin::tracked_exec #turbofish (#[verifier::tracked_block_wrapped] /* vattr */ #inner))
+                    quote_spanned_builtin!(verus_builtin, span => #[verus::internal(ghost_wrapper)] #verus_builtin::tracked_exec #turbofish (#[verus::internal(tracked_block_wrapped)] #inner))
                 });
             } else {
                 // Ghost(...)
@@ -3638,7 +3644,7 @@ impl Visitor {
                 } else if is_inside_ghost {
                     quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Ghost #turbofish ::new(#inner))
                 } else {
-                    quote_spanned_builtin!(verus_builtin, span => #[verifier::ghost_wrapper] /* vattr */ #verus_builtin::ghost_exec #turbofish (#[verifier::ghost_block_wrapped] /* vattr */ #inner))
+                    quote_spanned_builtin!(verus_builtin, span => #[verus::internal(ghost_wrapper)] #verus_builtin::ghost_exec #turbofish (#[verus::internal(ghost_block_wrapped)] #inner))
                 });
             }
         } else if let Expr::Unary(unary) = expr {
@@ -3716,7 +3722,8 @@ impl Visitor {
             };
             let requires = self.take_ghost(&mut clos.requires);
             let ensures = self.take_ghost(&mut clos.ensures);
-            let opts = match ProofFnOptions::parse_opt(&clos.options) {
+            let opens_invariants = self.take_ghost(&mut clos.invariants);
+            let mut opts = match ProofFnOptions::parse_opt(&clos.options) {
                 Ok(opts) => opts,
                 Err(err) => {
                     *expr = Expr::Verbatim(quote_spanned!(clos.span() =>
@@ -3730,6 +3737,14 @@ impl Visitor {
                     ::core::compile_error!("ReqEns and requires/ensures cannot be used together")
                 ));
                 return true;
+            }
+            if opts.opens {
+                *expr = Expr::Verbatim(quote_spanned!(clos.span() =>
+                    compile_error!("OpensInvariants cannot be used in closure expression; use opens_invariants instead")
+                ));
+                return true;
+            } else if opens_invariants.is_some() {
+                opts.opens = true;
             }
             let mut stmts: Vec<Stmt> = Vec::new();
             // TODO: wrap specs inside ghost blocks
@@ -3788,6 +3803,17 @@ impl Visitor {
                     }
                 }
             }
+            if let Some(invs) = opens_invariants {
+                let SignatureInvariants { set, .. } = *invs;
+                let full_span = set.span();
+                let mask_expr = self.inv_name_set_to_mask_expr(set);
+                stmts.push(Stmt::Expr(
+                    Expr::Verbatim(quote_spanned_builtin!(verus_builtin, full_span =>
+                        #verus_builtin::opens_invariant_mask(#mask_expr)
+                    )),
+                    Some(Semi { spans: [full_span] }),
+                ));
+            }
             self.inside_ghost -= 1;
             if stmts.len() > 0 {
                 if let Expr::Block(block) = &mut *clos.body {
@@ -3810,16 +3836,16 @@ impl Visitor {
             }
             let mut new_expr = Expr::Closure(clos);
             if is_proof_fn {
-                let (usage, _req_ens, copy, send, sync) = opts.to_types(span);
+                let (usage, _req_ens, copy, send, sync, opens) = opts.to_types(span);
                 let arg_modes =
                     proof_fn_tracks_to_type(span, inputs.iter().map(|x| x.tracked_token.is_some()));
                 let ret_mode = proof_fn_track_to_type(span, ret_tracked);
                 new_expr = Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
-                    #verus_builtin::closure_to_fn_proof::<#usage, #copy, #send, #sync, #arg_modes, #ret_mode, _, #output, _>(#new_expr)
+                    #verus_builtin::closure_to_fn_proof::<#usage, #copy, #send, #sync, #opens, #arg_modes, #ret_mode, _, #output, _>(#new_expr)
                 ));
                 if let Some(t) = &opts.req_ens {
                     new_expr = Expr::Verbatim(quote_spanned_vstd!(vstd, span =>
-                        #vstd::function::proof_fn_as_req_ens::<#t, #usage, _, #copy, #send, #sync, _, _, _, #output>(#new_expr)
+                        #vstd::function::proof_fn_as_req_ens::<#t, #usage, _, #copy, #send, #sync, #opens, _, _, _, #output>(#new_expr)
                     ));
                 }
             }
@@ -4119,8 +4145,6 @@ impl Visitor {
         //      };
         //      VERUS_loop_result
         //  }
-        // Note that "continue" and labels are not yet supported;
-        // continue would also need to call ghost_advance.
         let span = for_loop.span();
 
         let verus_syn::ExprForLoop {
@@ -4811,7 +4835,26 @@ impl VisitMut for Visitor {
             _ => false,
         });
         if has_pre_post_items {
-            visit_items_in_block(&mut block.stmts, |items| self.visit_items_prefilter(items));
+            visit_items_in_block(&mut block.stmts, |items| {
+                for item in items.iter_mut() {
+                    if let Item::Static(sta) = item {
+                        if matches!(sta.mode, FnMode::Default)
+                            && !is_external(&sta.attrs)
+                            && self.inside_external_code == 0
+                        {
+                            // There's no way to write `exec static` inside a function body: verus_syn's
+                            // statement parser only knows `spec`/`exec const` and `spec`/`proof fn`, so a
+                            // local static can't be given a mode. Default it to exec here. This has to
+                            // happen before visit_items_prefilter, which copies the mode into the proxy fn.
+                            // (Module-level statics still have to say `exec` explicitly.)
+                            sta.mode = FnMode::Exec(verus_syn::ModeExec {
+                                exec_token: Token![exec](sta.static_token.span),
+                            });
+                        }
+                    }
+                }
+                self.visit_items_prefilter(items);
+            });
         }
         let block_stmts = std::mem::replace(&mut block.stmts, vec![]);
         for mut stmt in block_stmts {
@@ -5159,9 +5202,9 @@ impl VisitMut for Visitor {
                             return;
                         }
                     };
-                    let (usage, req_ens, copy, send, sync) = opts.to_types(options.span());
+                    let (usage, req_ens, copy, send, sync, opens) = opts.to_types(options.span());
                     Type::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
-                        #verus_builtin::FOpts<#usage, #req_ens, #copy, #send, #sync>
+                        #verus_builtin::FOpts<#usage, #req_ens, #copy, #send, #sync, #opens>
                     ))
                 };
 
@@ -5672,14 +5715,14 @@ pub(crate) fn rewrite_proof_decl(
                     ss.to_tokens(&mut new_stream);
                 }
             }
-            Stmt::Macro(mut mac) => {
-                // Due to the difference between function-like macro vs proceudure macro,
-                // Macros used inside proof block need to explicitly call proof or proof_decl.
-                // We should avoid entering proof mode if calling a macro.
-                visitor.visit_macro_mut(&mut mac.mac);
-                mac.to_tokens(&mut new_stream);
+            Stmt::Macro(mac) => {
+                // The expansion could introduce exec code or bindings into this scope,
+                // but proof_decl erases all of its output during compilation.
+                return quote_spanned!(mac.mac.span() => ::core::compile_error!(
+                    "Macro statements are not supported in proof_decl!; invoke declaration macros in the surrounding scope or use proof! for proof statements"
+                )).into();
             }
-            _ => {
+            Stmt::Item(_) | Stmt::Expr(_, _) => {
                 let span = ss.span();
                 let mut proof_expr = Expr::Unary(ExprUnary {
                     attrs: vec![],

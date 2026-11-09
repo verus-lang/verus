@@ -4,7 +4,7 @@ use super::core::IndexSpec;
 use super::iter::IteratorSpec;
 use super::range::{
     ExRange, RangeBoundsSpec, slice_range_end, slice_range_start, slice_range_valid,
-    spec_range_inclusive_slice_bounds,
+    spec_range_inclusive_is_empty,
 };
 
 use core::ops::{
@@ -230,13 +230,28 @@ pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::get_mut ](i: RangeF
 pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index_mut ](i: RangeFull, slice: &mut [T]) -> (r: &mut [T])
 ;
 
+// Indexing with an empty range doesn't verify, since std doesn't say whether it
+// panics. `get` still verifies and returns `None` or an empty slice.
+pub uninterp spec fn spec_range_inclusive_unspecified_slice_in_bounds<T>(
+    range: &RangeInclusive<usize>,
+    slice: &[T],
+) -> bool;
+
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
     open spec fn in_bounds(&self, slice: &[T]) -> bool {
-        generic_slice_in_bounds(&spec_range_inclusive_slice_bounds(self), slice@)
+        if spec_range_inclusive_is_empty(self) {
+            spec_range_inclusive_unspecified_slice_in_bounds(self, slice)
+        } else {
+            generic_slice_in_bounds(self, slice@)
+        }
     }
 
     open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
-        generic_slice_index_postcondition(&spec_range_inclusive_slice_bounds(self), slice@, r@)
+        if spec_range_inclusive_is_empty(self) {
+            r@.len() == 0
+        } else {
+            generic_slice_index_postcondition(self, slice@, r@)
+        }
     }
 
     open spec fn index_mut_postcondition(
@@ -246,7 +261,12 @@ impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
         immediate_output: &[T],
         final_output: &[T]
     ) -> bool {
-        generic_slice_index_mut_postcondition(&spec_range_inclusive_slice_bounds(self), old_slice@, final_slice@, immediate_output@, final_output@)
+        if spec_range_inclusive_is_empty(self) {
+            &&& immediate_output@.len() == 0
+            &&& final_slice@ == old_slice@
+        } else {
+            generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
+        }
     }
 }
 
@@ -485,6 +505,9 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
 pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>)
     ensures
         IteratorSpec::remaining(&iter) == s@.as_ref(),
+        // Stated via `len()` so callers learn that the length fits in a `usize`
+        // (needed, e.g., by `enumerate` and `position`)
+        IteratorSpec::remaining(&iter).len() == s.len(),
         into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
 ;
@@ -493,6 +516,7 @@ pub assume_specification<'a, T> [<&'a [T] as core::iter::IntoIterator>::into_ite
     (iter: Iter<'a, T>)
     ensures
         IteratorSpec::remaining(&iter) == s@.as_ref(),
+        IteratorSpec::remaining(&iter).len() == s.len(),
         into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
 ;
@@ -529,6 +553,7 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for IterMut<'a, T> {
 pub assume_specification<'a, T>[ <[T]>::iter_mut ](slice: &'a mut [T]) -> (iter: IterMut<'a, T>)
     ensures
         IteratorSpec::remaining(&iter).len() == old(slice)@.len() == final(slice)@.len(),
+        IteratorSpec::remaining(&iter).len() == old(slice).len(),
         // Each yielded reference initially points at the corresponding element...
         forall|i: int| #![trigger IteratorSpec::remaining(&iter)[i]]
             0 <= i < old(slice)@.len() ==> *(IteratorSpec::remaining(&iter)[i]) == old(slice)@[i],
@@ -738,6 +763,10 @@ pub assume_specification<'a, T>[ <[T]>::chunks ](s: &'a [T], chunk_size: usize) 
         IteratorSpec::remaining(&iter) == after_chunks_elts(iter),
         IteratorSpec::remaining(&iter).len() == (s@.len() + chunk_size as int - 1) / (
         chunk_size as int),
+        // Each chunk is non-empty, so there are at most `s.len()` of them.
+        // This lets callers learn that the length fits in a `usize`
+        // (needed, e.g., by `enumerate` and `position`)
+        IteratorSpec::remaining(&iter).len() <= s.len(),
         forall|i: int|
             #![trigger IteratorSpec::remaining(&iter)[i]]
             0 <= i < IteratorSpec::remaining(&iter).len() ==> {

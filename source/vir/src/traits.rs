@@ -1049,6 +1049,48 @@ pub fn trait_decls_to_air(ctx: &Ctx, krate: &crate::sst::KrateSst) -> Commands {
             ));
             commands.push(Arc::new(CommandX::Global(decl_trait_id)));
             commands.push(Arc::new(CommandX::Global(decl_to_dyn)));
+
+            // Typing axiom for to_dyn:
+            //   forall Self, A1..Am, x. has_type(x, Self) ==>
+            //     has_type(to_dyn%T(Self, A1..Am, x), DYN%T(A1..Am))
+            use crate::ast_util::LowerUniqueVar;
+            use air::ast::{BindX, Quant};
+            use air::ast_util::{ident_binder, str_var};
+            let typ_params = tr.x.typ_param_names_with_self();
+            let typ_args: Vec<Typ> =
+                typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
+            let dyn_typ = Arc::new(TypX::Dyn(
+                tr.x.name.clone(),
+                Arc::new(typ_args[1..].to_vec()),
+                Arc::new(vec![]),
+            ));
+            let x_name = "x!";
+            let x = str_var(x_name);
+            let mut to_dyn_args: Vec<air::ast::Expr> =
+                typ_args.iter().flat_map(|t| typ_to_ids(ctx, t)).collect();
+            to_dyn_args.push(x.clone());
+            let to_dyn = ident_apply(&ctx.name_ctxt.to_dyn(&tr.x.name), &Arc::new(to_dyn_args));
+            let hypothesis = crate::sst_to_air::expr_has_typ(ctx, &x, &typ_args[0]);
+            let conclusion = crate::sst_to_air::expr_has_typ(ctx, &to_dyn, &dyn_typ);
+            let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
+            for typ_param in typ_params.iter() {
+                for (x, t) in crate::def::suffix_typ_param_ids_types(typ_param) {
+                    binders.push(ident_binder(&x.lower(), &str_typ(t)));
+                }
+            }
+            binders.push(ident_binder(&Arc::new(x_name.to_string()), &str_typ(crate::def::POLY)));
+            let qid = crate::def::new_internal_qid(
+                ctx,
+                format!("{}_has_type_to_dyn", path_as_friendly_rust_name(&tr.x.name)),
+            );
+            let bind = Arc::new(BindX::Quant(
+                Quant::Forall,
+                Arc::new(binders),
+                Arc::new(vec![Arc::new(vec![to_dyn.clone()])]),
+                qid,
+            ));
+            let forall = mk_bind_expr(&bind, &mk_implies(&hypothesis, &conclusion));
+            commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(forall))));
         }
     }
     Arc::new(commands)
@@ -1360,6 +1402,20 @@ pub(crate) fn fix_missing_trigger_params_fn(
         Some(Arc::new(BindX::Let(Arc::new(binders))))
     };
     (substs, extra_trigger_terms)
+}
+
+pub fn external_trait_blanket_impls_to_air(ctx: &Ctx, imps: &Vec<TraitImpl>) -> Commands {
+    // If TSpec extends T, the generated blanket impl "impl<A: T> TSpec for A" yields
+    //   forall A. tr_bound%T(A) ==> tr_bound%TSpec(A)
+    // This is the converse of TSpec's supertrait axiom (see trait_bound_axioms),
+    // and like that axiom, it depends only on the traits, not on any other impls or functions,
+    // and it has no proof obligations (the blanket impl's methods are all external_body),
+    // so we emit it up front.
+    let mut commands: Vec<Command> = Vec::new();
+    for imp in imps.iter().filter(|imp| imp.x.external_trait_blanket) {
+        commands.extend(trait_impl_to_air(ctx, imp).iter().cloned());
+    }
+    Arc::new(commands)
 }
 
 pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {

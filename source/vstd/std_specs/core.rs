@@ -90,9 +90,51 @@ pub trait ExFreeze: PointeeSized {
     type ExternalTraitSpecificationFor: core::marker::Freeze;
 }
 
+// Declaring the methods means an impl of `Hasher` cannot add a `requires` clause, which
+// std's callers (such as the `Hash` impls) would not satisfy. The unstable `write_str` and
+// `write_length_prefix` are not declared.
+#[verifier::external_trait_specification]
+pub trait ExHasher {
+    type ExternalTraitSpecificationFor: core::hash::Hasher;
+
+    fn finish(&self) -> u64;
+
+    fn write(&mut self, bytes: &[u8]);
+
+    fn write_u8(&mut self, i: u8);
+
+    fn write_u16(&mut self, i: u16);
+
+    fn write_u32(&mut self, i: u32);
+
+    fn write_u64(&mut self, i: u64);
+
+    fn write_u128(&mut self, i: u128);
+
+    fn write_usize(&mut self, i: usize);
+
+    fn write_i8(&mut self, i: i8);
+
+    fn write_i16(&mut self, i: i16);
+
+    fn write_i32(&mut self, i: i32);
+
+    fn write_i64(&mut self, i: i64);
+
+    fn write_i128(&mut self, i: i128);
+
+    fn write_isize(&mut self, i: isize);
+}
+
+// Declaring the methods means an impl of `Hash` cannot add a `requires` clause, which
+// std's callers (such as `HashMap::insert`) would not satisfy.
 #[verifier::external_trait_specification]
 pub trait ExHash: PointeeSized {
     type ExternalTraitSpecificationFor: core::hash::Hash;
+
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H);
+
+    fn hash_slice<H: core::hash::Hasher>(data: &[Self], state: &mut H) where Self: Sized;
 }
 
 #[verifier::external_trait_specification]

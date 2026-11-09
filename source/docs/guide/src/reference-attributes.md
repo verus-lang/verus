@@ -259,6 +259,12 @@ The rlimit may be set to `infinity` to remove the limit.
 
 The rlimit can also be configured with the `--rlimit` command line option.
 
+## `#[verifier::spinoff_prover]`
+
+Runs the verification of the given proof or exec function in a fresh SMT solver instance,
+separate from the one used for the rest of its module.
+See [spinning off separate SMT solver instances](./spinoff_prover.md) for more information.
+
 ## `#[trigger]`
 
 Used to manually specify trigger groups for a quantifier.

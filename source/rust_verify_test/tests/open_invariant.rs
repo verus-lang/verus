@@ -322,6 +322,21 @@ test_both! {
 }
 
 test_both! {
+    break_block_early break_block_early_local verus_code! {
+        use vstd::invariant::*;
+
+        pub fn blah<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
+          let mut idx = 0;
+          'a: {
+            open_atomic_invariant!(&i => inner => {
+              break 'a;
+            });
+          }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
+}
+
+test_both! {
     continue_early continue_early_local verus_code! {
         use vstd::invariant::*;
 

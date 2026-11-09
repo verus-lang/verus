@@ -422,6 +422,9 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
 > as core::iter::IntoIterator>::IntoIter)
     ensures
         IteratorSpec::remaining(&iter) == vec@,
+        // Stated via `len()` so callers learn that the length fits in a `usize`
+        // (needed, e.g., by `enumerate` and `position`)
+        IteratorSpec::remaining(&iter).len() == vec.len(),
         into_iter_elts(iter) == IteratorSpec::remaining(&iter),
         IteratorSpec::decrease(&iter) is Some,
 ;
@@ -430,6 +433,7 @@ pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::Int
     (iter: <&'a Vec<T, A> as core::iter::IntoIterator>::IntoIter)
     ensures
         IteratorSpec::remaining(&iter) == vec@.as_ref(),
+        IteratorSpec::remaining(&iter).len() == vec.len(),
         super::slice::into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
 ;
