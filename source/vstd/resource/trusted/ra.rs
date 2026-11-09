@@ -89,6 +89,7 @@ impl<P: RA> Clone for CopyableResource<P> {
 /// See [`Resource`] for more information.
 pub trait RA: Sized {
     /// Whether an element is valid
+    #[verifier::prophetic]
     spec fn valid(self) -> bool;
 
     /// Compose two elements
@@ -141,17 +142,20 @@ pub open spec fn incl<P: RA>(a: P, b: P) -> bool {
     exists|c| P::op(a, c) == b
 }
 
+#[verifier::prophetic]
 pub open spec fn conjunct_shared<P: RA>(a: P, b: P, c: P) -> bool {
     forall|p: P| p.valid() && incl(a, p) && incl(b, p) ==> #[trigger] incl(c, p)
 }
 
 /// A frame preserving update is an update of a value from `a --> b` such that every value `c`
 /// that could compose with `a` (also called the frame) can still compose with `b`.
+#[verifier::prophetic]
 pub open spec fn frame_preserving_update<P: RA>(a: P, b: P) -> bool {
     forall|c| #![trigger P::op(a, c), P::op(b, c)] P::op(a, c).valid() ==> P::op(b, c).valid()
 }
 
 /// A nondeterministic version of a [`frame_preserving_update`].
+#[verifier::prophetic]
 pub open spec fn frame_preserving_update_nondeterministic<P: RA>(a: P, bs: ISet<P>) -> bool {
     forall|c|
         #![trigger P::op(a, c)]
