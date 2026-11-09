@@ -1676,3 +1676,20 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    // `old(x)` is never looked up in the interpreter's environment, so it may be passed to a
+    // spec function (even one whose parameter is also named `x`) or captured by a closure
+    #[test] old_passed_to_spec_fn verus_code! {
+        spec fn g(x: u8) -> int { x + 1 }
+        spec fn apply(f: spec_fn(int) -> int, v: int) -> int { f(v) }
+        fn f(x: &mut u8)
+            requires *old(x) < 10,
+        {
+            *x = 3;
+            assert(g(*old(x)) == *old(x) + 1) by (compute);
+            assert(apply(|v: int| v + *old(x), 1) == 1 + *old(x)) by (compute);
+            assert(g(*x) == 4) by (compute);
+        }
+    } => Ok(())
+}

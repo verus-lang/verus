@@ -1206,38 +1206,41 @@ fn eval_array_index(
 
 /// Symbolically execute the expression as far as we can,
 /// stopping when we hit a symbolic control-flow decision
-/// The variables `exp` mentions that are not bound inside it, ignoring triggers (they do not
-/// affect the meaning of an expression, and the interpreter does not evaluate them)
+/// The variables `exp` mentions that are not bound inside it. Only `Var` counts: it is the
+/// one form the interpreter resolves in its environment, so the one that changes meaning
+/// when it ends up in another scope. Triggers are skipped; they do not affect the meaning of
+/// an expression, and the interpreter does not evaluate them.
 fn mentioned_vars(exp: &Exp) -> Vec<UniqueIdent> {
-    let no_trigs: Trigs = Arc::new(vec![]);
-    let exp = crate::sst_visitor::map_exp_visitor(exp, &mut |e| match &e.x {
-        ExpX::Bind(bnd, body) => {
-            let x = match &bnd.x {
-                BndX::Quant(q, bs, _, l) => {
-                    BndX::Quant(*q, bs.clone(), no_trigs.clone(), l.clone())
+    use crate::sst_visitor::{Visitor, VisitorScopeMap, Walk};
+
+    struct Collector {
+        scope_map: VisitorScopeMap,
+        vars: Vec<UniqueIdent>,
+    }
+
+    impl Visitor<Walk, (), VisitorScopeMap> for Collector {
+        fn scoper(&mut self) -> Option<&mut VisitorScopeMap> {
+            Some(&mut self.scope_map)
+        }
+
+        // also covers the triggers of `WithTriggers`, which `visit_exp_rec` visits through this
+        fn visit_triggers(&mut self, _trigs: &Trigs) -> Result<(), ()> {
+            Ok(())
+        }
+
+        fn visit_exp(&mut self, exp: &Exp) -> Result<(), ()> {
+            if let ExpX::Var(x) = &exp.x {
+                if !self.scope_map.contains_key(x) {
+                    self.vars.push(x.clone());
                 }
-                BndX::Lambda(bs, _) => BndX::Lambda(bs.clone(), no_trigs.clone()),
-                BndX::Choose(bs, _, c) => BndX::Choose(bs.clone(), no_trigs.clone(), c.clone()),
-                BndX::Let(_) => return e.clone(),
-            };
-            e.new_x(ExpX::Bind(crate::def::Spanned::new(bnd.span.clone(), x), body.clone()))
-        }
-        _ => e.clone(),
-    });
-    let mut vars = Vec::new();
-    let mut scope_map = crate::sst_visitor::VisitorScopeMap::new();
-    crate::sst_visitor::exp_visitor_dfs::<(), _>(&exp, &mut scope_map, &mut |e, scope_map| {
-        match &e.x {
-            ExpX::Var(x) | ExpX::VarLoc(x) | ExpX::VarAt(x, _) | ExpX::Old(_, x)
-                if !scope_map.contains_key(x) =>
-            {
-                vars.push(x.clone());
             }
-            _ => {}
+            self.visit_exp_rec(exp)
         }
-        crate::sst_visitor::VisitorControlFlow::Recurse
-    });
-    vars
+    }
+
+    let mut collector = Collector { scope_map: VisitorScopeMap::new(), vars: Vec::new() };
+    collector.visit_exp(exp).unwrap();
+    collector.vars
 }
 
 /// Values cross scopes when a call binds its arguments in the callee's environment and when
@@ -2113,23 +2116,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             let body = eval_expr_internal(ctx, state, body)?;
             exp_new(WithTriggers(triggers, body))
         }
-        // Ignored by the interpreter at present (i.e., treated as symbolic). A static is closed.
-        // The others name a variable; returned as is, it must not be one the environment binds
-        // (a parameter of a function being unfolded, or a bound variable), since it would then
-        // mean something else in the result.
-        StaticVar(..) => unchanged(),
-        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) => {
-            match mentioned_vars(exp).into_iter().find(|x| state.env.get(x).is_some()) {
-                None => unchanged(),
-                Some(x) => Err(error(
-                    &exp.span,
-                    format!(
-                        "assert_by_compute does not support `{}` here (it refers to a variable of a function being evaluated)",
-                        x.0
-                    ),
-                )),
-            }
-        }
+        // Ignored by the interpreter at present (i.e., treated as symbolic). The interpreter
+        // never looks these up in its environment, and none can occur in a spec function's
+        // body, so each comes from the assertion itself (perhaps inside a closure written
+        // there) and keeps its meaning wherever evaluation moves it.
+        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | StaticVar(..) => unchanged(),
         ExecFnByName(_) => unchanged(), // closed
         FuelConst(_) => unchanged(),    // closed
     };
