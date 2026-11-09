@@ -18,7 +18,7 @@ broadcast use super::super::super::iset::group_iset_lemmas;
 /// [Iris from the ground up](https://people.mpi-sws.org/~dreyer/papers/iris-ground-up/paper.pdf).
 ///
 /// To embed the concept into Verus, we:
-///  * Use a trait, [`PCM`], to embed the well-formedness laws of a resource algebra
+///  * Use a trait, [`RA`], to embed the well-formedness laws of a resource algebra
 ///  * use a "tracked ghost" object, `Resource<P>` (this page) to represent ownership of a resource.
 ///
 /// Most operations are fairly standard, just "translated" from the usual CSL presentation into Verus.
@@ -47,71 +47,47 @@ broadcast use super::super::super::iset::group_iset_lemmas;
 /// "swiss army knife" for building useful ghost resources.
 #[verifier::external_body]
 #[verifier::accept_recursive_types(P)]
-pub tracked struct Resource<P: PCM> {
+pub tracked struct Resource<P: RA> {
     p: core::marker::PhantomData<P>,
 }
 
 #[cfg(verus_keep_ghost)]
 #[verifier::external]
-impl<P: PCM> !Copy for Resource<P> {
+impl<P: RA> !Copy for Resource<P> {
 
 }
 
 #[verifier::external_body]
 #[verifier::accept_recursive_types(P)]
-pub tracked struct CopyableResource<P: PCM> {
+pub tracked struct CopyableResource<P: RA> {
     p: core::marker::PhantomData<P>,
 }
 
-impl<P: PCM> Copy for CopyableResource<P> {
+impl<P: RA> Copy for CopyableResource<P> {
 
 }
 
-impl<P: PCM> Clone for CopyableResource<P> {
+impl<P: RA> Clone for CopyableResource<P> {
     #[verifier::external_body]
     fn clone(&self) -> Self {
         CopyableResource { p: core::marker::PhantomData }
     }
 }
 
-/// A Partial Commutative Monoid is a special type of [`ResourceAlgebra`], where all elements have
-/// the same core (which belongs in the carrier), the unit. For this reason, they are also called
-/// unitary resource algebras[^note].
-///
-/// [^note]: This is slightly misleading. PCMs are partial in the sense that the operation is not
-/// defined for certain inputs. Because Verus does not support partial functions, we model that
-/// partiality with the validity predicate, which does make it a unitary resource algebra.
-pub trait PCM: ResourceAlgebra {
-    /// The unit of the monoid, i.e., the carrier value that composed with any other carrier value
-    /// yields the identity function
-    spec fn unit() -> Self;
-
-    /// The core of an element `a` is, by definition, some other element `x`
-    /// such that `a · x = a`
-    proof fn op_unit(self)
-        ensures
-            Self::op(self, Self::unit()) == self,
-    ;
-
-    /// The unit is always a valid element
-    proof fn unit_valid()
-        ensures
-            Self::unit().valid(),
-    ;
-}
-
-/// A Resource Algebra operating on a type T
+/// A unital Resource Algebra (also known as a Partial Commutative Monoid) on the carrier type `Self`.
 ///
 /// This construction is based off the [Iris from the Ground Up](https://people.mpi-sws.org/~dreyer/papers/iris-ground-up/paper.pdf)
 /// report.
 ///
 /// A striking difference is that we do not need a core for elements (the core is interesting in
-/// Iris because of the persistent modality, which Verus does not have).
+/// Iris because of the persistent modality, which Verus does not have). Instead, we require a
+/// single unit element, which serves as the core of every element.
+///
+/// Note that "partiality" is modeled with the validity predicate,
+/// since Verus does not support partial functions.
 ///
 /// See [`Resource`] for more information.
-// TODO(bsdinis): it should probably not be required that ghost things be sized, but that sounds
-// like a relatively complicated change -- needs to be done across the codebase
-pub trait ResourceAlgebra: Sized {
+pub trait RA: Sized {
     /// Whether an element is valid
     spec fn valid(self) -> bool;
 
@@ -119,6 +95,10 @@ pub trait ResourceAlgebra: Sized {
     ///
     /// Sometimes the notation `a · b` is used to represent `RA::op(a, b)`
     spec fn op(a: Self, b: Self) -> Self;
+
+    /// The unit of the monoid, i.e., the carrier value that composed with any other carrier value
+    /// yields the identity function
+    spec fn unit() -> Self;
 
     /// The operation is associative
     proof fn associative(a: Self, b: Self, c: Self)
@@ -140,37 +120,50 @@ pub trait ResourceAlgebra: Sized {
         ensures
             a.valid(),
     ;
+
+    /// The core of an element `a` is, by definition, some other element `x`
+    /// such that `a · x = a`
+    proof fn op_unit(self)
+        ensures
+            Self::op(self, Self::unit()) == self,
+    ;
+
+    /// The unit is always a valid element
+    proof fn unit_valid()
+        ensures
+            Self::unit().valid(),
+    ;
 }
 
 /// The preorder relation.
 /// `incl(a, b)` (or a ≼ b) means that there is some `c` such that `a · c == b`
-pub open spec fn incl<RA: ResourceAlgebra>(a: RA, b: RA) -> bool {
-    exists|c| RA::op(a, c) == b
+pub open spec fn incl<P: RA>(a: P, b: P) -> bool {
+    exists|c| P::op(a, c) == b
 }
 
-pub open spec fn conjunct_shared<RA: ResourceAlgebra>(a: RA, b: RA, c: RA) -> bool {
-    forall|p: RA| p.valid() && incl(a, p) && incl(b, p) ==> #[trigger] incl(c, p)
+pub open spec fn conjunct_shared<P: RA>(a: P, b: P, c: P) -> bool {
+    forall|p: P| p.valid() && incl(a, p) && incl(b, p) ==> #[trigger] incl(c, p)
 }
 
 /// A frame preserving update is an update of a value from `a --> b` such that every value `c`
 /// that could compose with `a` (also called the frame) can still compose with `b`.
-pub open spec fn frame_preserving_update<P: PCM>(a: P, b: P) -> bool {
+pub open spec fn frame_preserving_update<P: RA>(a: P, b: P) -> bool {
     forall|c| #![trigger P::op(a, c), P::op(b, c)] P::op(a, c).valid() ==> P::op(b, c).valid()
 }
 
 /// A nondeterministic version of a [`frame_preserving_update`].
-pub open spec fn frame_preserving_update_nondeterministic<P: PCM>(a: P, bs: ISet<P>) -> bool {
+pub open spec fn frame_preserving_update_nondeterministic<P: RA>(a: P, bs: ISet<P>) -> bool {
     forall|c|
         #![trigger P::op(a, c)]
         P::op(a, c).valid() ==> exists|b| #[trigger] bs.contains(b) && P::op(b, c).valid()
 }
 
 /// The set of values such that can be created by composing an element of `s` with `t`.
-pub open spec fn set_op<RA: ResourceAlgebra>(s: ISet<RA>, t: RA) -> ISet<RA> {
-    ISet::new(|v| exists|q| s.contains(q) && v == RA::op(q, t))
+pub open spec fn set_op<P: RA>(s: ISet<P>, t: P) -> ISet<P> {
+    ISet::new(|v| exists|q| s.contains(q) && v == P::op(q, t))
 }
 
-impl<P: PCM> Resource<P> {
+impl<P: RA> Resource<P> {
     /// The underlying value of the resource
     pub uninterp spec fn value(self) -> P;
 
@@ -240,16 +233,16 @@ impl<P: PCM> Resource<P> {
             new_values.contains(out.value()),
     {
         let tracked u = Self::create_unit(self.loc());
-        PCM::op_unit(self.value());
+        P::op_unit(self.value());
         assert(set_op(new_values, u.value()) =~= new_values) by {
             assert forall|x|
                 set_op(new_values, u.value()).contains(x) <==> #[trigger] new_values.contains(
                     x,
                 ) by {
-                PCM::op_unit(x);
+                P::op_unit(x);
                 if set_op(new_values, u.value()).contains(x) {
                     let q = choose|q| #[trigger] new_values.contains(q) && x == P::op(q, u.value());
-                    PCM::op_unit(q);
+                    P::op_unit(q);
                 }
             }
         };
@@ -409,7 +402,7 @@ impl<P: PCM> Resource<P> {
 /// A variant of [`Resource`] that implements `Copy`.
 ///
 /// Use [`Self::into_resource`] to get the underlying resource.
-impl<P: PCM> CopyableResource<P> {
+impl<P: RA> CopyableResource<P> {
     /// The underlying value of the resource
     pub uninterp spec fn value(self) -> P;
 

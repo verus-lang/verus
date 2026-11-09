@@ -71,7 +71,7 @@ impl<K, V, P> Clone for CopyableStorageResource<K, V, P> {
 pub trait Protocol<K, V>: Sized {
     spec fn op(self, other: Self) -> Self;
 
-    /// Note that `rel`, in contrast to [`ResourceAlgebra::valid`](super::ra::ResourceAlgebra::valid), is not
+    /// Note that `rel`, in contrast to [`RA::valid`](super::ra::RA::valid), is not
     /// necessarily closed under inclusion.
     spec fn rel(self, s: IMap<K, V>) -> bool;
 
