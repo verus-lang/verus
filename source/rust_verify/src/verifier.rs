@@ -3247,8 +3247,9 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 tcx,
                 self.verifier.vir_crate.as_ref().expect("vir_crate should be initialized"),
                 &crate_items,
+                &verus_items,
                 |d| {
-                    crate::rust_to_vir_base::def_id_to_vir_path(
+                    crate::rust_to_vir_path::def_id_to_vir_path(
                         tcx,
                         &verus_items,
                         d,

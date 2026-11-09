@@ -2,77 +2,142 @@
 //! Verus assumes about them, using rustc's drop-elaborated MIR.
 //!
 //! Verus's encoding does not see implicit drops: a value that goes out of scope runs its
-//! `Drop` impl (and the impls of its fields) at a point rustc decides. Verus assumes that such
-//! a call neither unwinds nor opens an invariant. That holds for `Drop` impls Verus verifies
-//! (they must be marked `no_unwind` and `opens_invariants none`, and their bodies are checked
-//! against that), but not for unverified ones (an external impl, or an
-//! `external_type_specification` of a type with a `Drop` impl): #2949 (a `no_unwind`
-//! function whose drop panics) and #778 (a drop inside an atomic function).
+//! `Drop` impl (and the impls in its drop glue) at a point rustc decides. Verus assumes about
+//! each such drop what it knows about the `Drop` impls that Verus checks: they are `no_unwind`
+//! and `opens_invariants none`. Unchecked code can break those assumptions in three ways:
 //!
-//! rustc's MIR after drop elaboration has one `Drop` terminator for each drop that can run.
-//! For each verified exec function that is `no_unwind` or atomic, this pass finds the `Drop`
-//! terminators on non-cleanup paths, the types with a `Drop` impl in the dropped value's drop
-//! glue, and reports the impls that are local to the crate but not verified. `Drop` impls of
-//! other crates (std's, or a dependency's) are trusted, as before; they are listed with
-//! `VERUS_CHECK_DROPS_VERBOSE=1`. `--no-check-drops` turns the check off.
+//! - (a) a drop that unwinds, in a `no_unwind` function;
+//! - (b) a drop that unwinds, in an invariant block (atomic or local), which then exits
+//!   early with the invariant not restored;
+//! - (c) any drop that is not one atomic step, in an atomic function or an atomic invariant
+//!   block.
 //!
-//! The same applies inside `open_atomic_invariant!` blocks of any verified exec function:
-//! the block must be one atomic step, and an unverified drop inside it is arbitrary code.
-//! Those drops are found by span: a `Drop` terminator (or a moving call to an unverified
-//! callee) whose span lies in the body of an atomic `OpenInvariant`.
+//! rustc's MIR after drop elaboration has one `Drop` terminator for each drop that can run,
+//! and this pass checks those on non-cleanup paths. Arguments moved into a callee that Verus
+//! does not check count as dropped too, since the callee may drop them (std's `unwrap_or`
+//! drops its unused default); a callee Verus checks is checked for its own drops.
+//!
+//! For each dropped value, the pass walks its drop glue for the `Drop` impls it can run:
+//!
+//! - in an atomic context (c), running any `Drop` impl is a step of its own, so every impl
+//!   in the drop glue is reported, whoever wrote it (`Drop` impls cannot be marked
+//!   `#[verifier::atomic]`, as no trait method can);
+//! - otherwise (a, b), an impl of this crate that Verus knows (verified, or `external_body`)
+//!   is fine: Verus requires `Drop` impls to be `no_unwind`. An impl of this crate that Verus
+//!   doesn't know (an unverified impl, or the impl of a type given an
+//!   `external_type_specification`) may unwind. Impls of other crates (std's, a dependency's)
+//!   are trusted not to unwind, as before; they are listed with `VERUS_CHECK_DROPS_VERBOSE=1`;
+//! - drop glue the pass cannot see (that of a type parameter, a `dyn` type, an unnormalized
+//!   projection, or a coroutine) is not checked; such drops are listed with
+//!   `VERUS_CHECK_DROPS_VERBOSE=1`. This is a known gap: `fn f<T>(x: T) no_unwind {}` passes,
+//!   though `f` may be called with a `T` whose `Drop` impl unwinds. It cannot simply be
+//!   rejected here: the MIR this pass reads is the one Verus builds for lifetime checking,
+//!   which still contains the tracked (ghost) values, and drops of those (often of a type
+//!   parameter, as in vstd's `atomic_with_ghost!`) do not happen in the compiled program.
+//!
+//! Invariant blocks are found in the MIR itself: a block starts at a call to
+//! `open_atomic_invariant_begin` or `open_local_invariant_begin` and ends at the matching call
+//! to `open_invariant_end`. The bodies of closures defined in verified functions are checked
+//! for invariant blocks too.
+//!
+//! `--no-check-drops` turns the check off.
 
 use crate::external::{CrateItems, VerifOrExternal};
+use crate::verus_items::{OpenInvariantBlockItem, VerusItem, VerusItems};
 use rustc_hir::OwnerId;
 use rustc_hir::def::DefKind;
-use rustc_middle::mir::TerminatorKind;
-use rustc_middle::ty::{Ty, TyCtxt, TyKind, TypingEnv};
-use rustc_span::def_id::{DefId, LocalDefId};
+use rustc_middle::mir::{BasicBlock, Body, Operand, START_BLOCK, TerminatorKind};
+use rustc_middle::ty::{Instance, Ty, TyCtxt, TyKind, TypingEnv, Unnormalized};
+use rustc_span::def_id::DefId;
 use std::collections::{HashMap, HashSet};
 use vir::ast::{Krate, UnwindSpec};
 
-/// The `Drop` impls (the `drop` method's DefId) that dropping a value of type `ty` can run.
-fn drop_impls_of<'tcx>(
+/// What dropping a value can run, as far as this pass can tell
+enum DropGlue<'tcx> {
+    /// the `Drop` impl of `ty` (its `drop` method)
+    Impl(Ty<'tcx>, DefId),
+    /// drop glue of `ty` that this pass cannot see
+    Unknown(Ty<'tcx>),
+}
+
+/// The drop glue of `ty`
+fn drop_glue_of<'tcx>(
     tcx: TyCtxt<'tcx>,
     typing_env: TypingEnv<'tcx>,
     ty: Ty<'tcx>,
     seen: &mut HashSet<Ty<'tcx>>,
-    out: &mut Vec<(Ty<'tcx>, DefId)>,
+    out: &mut Vec<DropGlue<'tcx>>,
 ) {
     if !seen.insert(ty) || !ty.needs_drop(tcx, typing_env) {
         return;
     }
+    let mut walk =
+        |t: Ty<'tcx>, out: &mut Vec<DropGlue<'tcx>>| drop_glue_of(tcx, typing_env, t, seen, out);
     match ty.kind() {
+        // no drop glue (`needs_drop` is false for these; listed for exhaustiveness)
+        TyKind::Bool
+        | TyKind::Char
+        | TyKind::Int(_)
+        | TyKind::Uint(_)
+        | TyKind::Float(_)
+        | TyKind::Str
+        | TyKind::Never
+        | TyKind::Foreign(_)
+        | TyKind::FnDef(..)
+        | TyKind::FnPtr(..)
+        | TyKind::RawPtr(..)
+        | TyKind::Ref(..) => {}
         TyKind::Adt(adt, args) => {
             if let Some(d) = tcx.adt_destructor(adt.did()) {
-                out.push((ty, d.did));
-            }
-            if adt.is_box() {
-                drop_impls_of(tcx, typing_env, args.type_at(0), seen, out);
-                return;
+                out.push(DropGlue::Impl(ty, d.did));
             }
             for v in adt.variants() {
                 for f in v.fields.iter() {
-                    drop_impls_of(tcx, typing_env, f.ty(tcx, args).skip_norm_wip(), seen, out);
+                    match tcx.try_normalize_erasing_regions(typing_env, f.ty(tcx, args)) {
+                        Ok(t) => walk(t, out),
+                        Err(_) => out.push(DropGlue::Unknown(f.ty(tcx, args).skip_normalization())),
+                    }
                 }
             }
-            // container types (Vec<T>, ...) drop their elements through raw pointers, which
-            // the field walk does not see: walk the type arguments too
+            // container types (`Vec<T>`, `Box<T>`, ...) drop their elements through raw
+            // pointers, which the field walk does not see: walk the type arguments too
             for a in args.types() {
-                drop_impls_of(tcx, typing_env, a, seen, out);
+                walk(a, out);
             }
         }
         TyKind::Tuple(ts) => {
             for t in ts.iter() {
-                drop_impls_of(tcx, typing_env, t, seen, out);
+                walk(t, out);
             }
         }
-        TyKind::Array(t, _) | TyKind::Slice(t) => drop_impls_of(tcx, typing_env, *t, seen, out),
+        TyKind::Array(t, _) | TyKind::Slice(t) | TyKind::Pat(t, _) => walk(*t, out),
         TyKind::Closure(_, args) => {
             for t in args.as_closure().upvar_tys() {
-                drop_impls_of(tcx, typing_env, t, seen, out);
+                walk(t, out);
             }
         }
-        _ => {}
+        TyKind::CoroutineClosure(_, args) => {
+            for t in args.as_coroutine_closure().upvar_tys() {
+                walk(t, out);
+            }
+        }
+        TyKind::Alias(..) => {
+            match tcx.try_normalize_erasing_regions(typing_env, Unnormalized::new_wip(ty)) {
+                Ok(t) if t != ty && !matches!(t.kind(), TyKind::Alias(..)) => walk(t, out),
+                _ => out.push(DropGlue::Unknown(ty)),
+            }
+        }
+        // the drop glue depends on a type this pass does not know (a type parameter, the type
+        // behind a `dyn`), or on state it does not model (a coroutine's saved locals)
+        TyKind::Param(_)
+        | TyKind::Dynamic(..)
+        | TyKind::Coroutine(..)
+        | TyKind::CoroutineWitness(..)
+        | TyKind::UnsafeBinder(_)
+        | TyKind::Bound(..)
+        | TyKind::Placeholder(_)
+        | TyKind::Infer(_)
+        | TyKind::Error(_) => out.push(DropGlue::Unknown(ty)),
     }
 }
 
@@ -81,44 +146,88 @@ pub(crate) struct DropFinding {
     pub msg: String,
 }
 
+/// For each basic block that is not on a cleanup path, the invariant blocks open when it runs
+/// (innermost last; `true` for an atomic invariant). `None` for blocks not reached, and for
+/// every block if the begin and end calls do not nest properly, in which case the caller
+/// must assume the worst.
+fn open_invariants<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    body: &Body<'tcx>,
+    verus_items: &VerusItems,
+) -> Option<HashMap<BasicBlock, Vec<bool>>> {
+    let item = |func: &Operand<'tcx>| match func.ty(body, tcx).kind() {
+        TyKind::FnDef(d, _) => match verus_items.id_to_name.get(d) {
+            Some(VerusItem::OpenInvariantBlock(i)) => Some(*i),
+            _ => None,
+        },
+        _ => None,
+    };
+    let mut state: HashMap<BasicBlock, Vec<bool>> = HashMap::new();
+    let mut work = vec![(START_BLOCK, vec![])];
+    while let Some((bb, open)) = work.pop() {
+        if body.basic_blocks[bb].is_cleanup {
+            continue; // already unwinding
+        }
+        match state.get(&bb) {
+            Some(prev) if *prev == open => continue,
+            Some(_) => return None, // reached with different invariants open
+            None => {}
+        }
+        state.insert(bb, open.clone());
+        let term = body.basic_blocks[bb].terminator();
+        let mut after = open;
+        if let TerminatorKind::Call { func, .. } = &term.kind {
+            match item(func) {
+                Some(OpenInvariantBlockItem::OpenAtomicInvariantBegin) => after.push(true),
+                Some(OpenInvariantBlockItem::OpenLocalInvariantBegin) => after.push(false),
+                Some(OpenInvariantBlockItem::OpenInvariantEnd) => {
+                    after.pop()?;
+                }
+                None => {}
+            }
+        }
+        for s in term.successors() {
+            work.push((s, after.clone()));
+        }
+    }
+    Some(state)
+}
+
 pub(crate) fn check_drops<'tcx>(
     tcx: TyCtxt<'tcx>,
     krate: &Krate,
     crate_items: &CrateItems,
+    verus_items: &VerusItems,
     def_id_to_vir_path: impl Fn(DefId) -> vir::ast::Path,
     verbose: bool,
 ) -> Vec<DropFinding> {
-    // which VIR functions need checking: exec with body, no_unwind or atomic, or containing
-    // atomic invariant blocks (whose body spans are collected)
-    let mut wanted: HashMap<vir::ast::Path, (bool, bool)> = HashMap::new();
-    let mut atomic_blocks: HashMap<vir::ast::Path, Vec<rustc_span::Span>> = HashMap::new();
+    // the verified exec functions that need checking: whether each is no_unwind and atomic,
+    // and whether it (or a closure in it) has an invariant block. The MIR of other functions
+    // is not built here: building it may evaluate constants that only Verus's own pipeline
+    // can evaluate.
+    let mut verified: HashMap<vir::ast::Path, (bool, bool, bool)> = HashMap::new();
+    // the functions Verus knows (verified or external_body)
+    let mut known: HashSet<vir::ast::Path> = HashSet::new();
     for f in krate.functions.iter() {
-        if f.x.mode != vir::ast::Mode::Exec || f.x.attrs.is_external_body {
+        known.insert(f.x.name.path.clone());
+        if f.x.mode != vir::ast::Mode::Exec || f.x.attrs.is_external_body || f.x.body.is_none() {
             continue;
         }
-        let Some(fbody) = &f.x.body else { continue };
         let no_unwind = matches!(f.x.unwind_spec, Some(UnwindSpec::NoUnwind));
-        let atomic = f.x.attrs.atomic;
-        let blocks = std::cell::RefCell::new(vec![]);
-        let _ = vir::ast_visitor::map_expr_visitor(fbody, &|e: &vir::ast::Expr| {
-            if let vir::ast::ExprX::OpenInvariant(_, _, b, vir::ast::InvAtomicity::Atomic) = &e.x {
-                if let Some(sp) = crate::spans::from_raw_span(&b.span.raw_span) {
-                    blocks.borrow_mut().push(sp);
-                }
+        let has_block = std::cell::Cell::new(false);
+        let _ = vir::ast_visitor::map_expr_visitor(f.x.body.as_ref().unwrap(), &|e| {
+            if let vir::ast::ExprX::OpenInvariant(..) = &e.x {
+                has_block.set(true);
             }
             Ok(e.clone())
         });
-        let blocks = blocks.into_inner();
-        if no_unwind || atomic || !blocks.is_empty() {
-            wanted.insert(f.x.name.path.clone(), (no_unwind, atomic));
-        }
-        if !blocks.is_empty() {
-            atomic_blocks.insert(f.x.name.path.clone(), blocks);
+        let has_block = has_block.get();
+        if no_unwind || f.x.attrs.atomic || has_block {
+            verified.insert(f.x.name.path.clone(), (no_unwind, f.x.attrs.atomic, has_block));
         }
     }
-    let verified_local = |did: DefId| -> bool {
+    let verified_local_fn = |did: DefId| -> bool {
         let Some(local) = did.as_local() else { return false };
-        // the `drop` method's owner is the impl item
         let owner = tcx.local_def_id_to_hir_id(local).owner;
         let impl_owner = tcx.parent(did);
         let item = crate_items.map.get(&owner).or_else(|| {
@@ -126,96 +235,149 @@ pub(crate) fn check_drops<'tcx>(
         });
         matches!(item, Some(VerifOrExternal::VerusAware { external_body: false, .. }))
     };
+
     let mut findings = vec![];
     let mut trusted: HashSet<String> = HashSet::new();
+    let mut unchecked: HashSet<String> = HashSet::new();
     for local in tcx.hir_body_owners() {
         let did: DefId = local.to_def_id();
-        if !matches!(tcx.def_kind(did), DefKind::Fn | DefKind::AssocFn) {
-            continue;
-        }
-        let path = def_id_to_vir_path(did);
-        let Some((no_unwind, atomic)) = wanted.get(&path).copied() else { continue };
-        let blocks: &[rustc_span::Span] = atomic_blocks.get(&path).map_or(&[], |v| &v[..]);
-        let in_atomic_block = |sp: rustc_span::Span| {
-            let sp = sp.source_callsite();
-            blocks.iter().any(|b| b.contains(sp) || b.source_callsite().contains(sp))
+        // a closure is checked for invariant blocks if its enclosing function is verified
+        let (no_unwind, atomic) = match tcx.def_kind(did) {
+            DefKind::Fn | DefKind::AssocFn => match verified.get(&def_id_to_vir_path(did)) {
+                Some((no_unwind, atomic, _)) => (*no_unwind, *atomic),
+                None => continue,
+            },
+            DefKind::Closure => {
+                let root = tcx.typeck_root_def_id(did);
+                if !matches!(tcx.def_kind(root), DefKind::Fn | DefKind::AssocFn)
+                    || !matches!(verified.get(&def_id_to_vir_path(root)), Some((_, _, true)))
+                {
+                    continue;
+                }
+                (false, false)
+            }
+            _ => continue,
         };
         let body = tcx.mir_drops_elaborated_and_const_checked(local);
         let body = body.borrow();
         let typing_env = body.typing_env(tcx);
-        for bb in body.basic_blocks.iter() {
-            if bb.is_cleanup {
+        let open = open_invariants(tcx, &body, verus_items);
+        for (bb, data) in body.basic_blocks.iter_enumerated() {
+            if data.is_cleanup {
                 continue; // already unwinding
             }
-            // the values this block's terminator may drop: a `Drop` terminator's place, or the
-            // arguments moved into a callee that is not verified (std's `unwrap_or` drops its
-            // unused default, #2949); a verified callee's drops are checked there
+            // invariants open at this block; if the blocks don't nest, assume an atomic one
+            let (in_block, in_atomic_block) = match &open {
+                Some(m) => match m.get(&bb) {
+                    Some(o) => (!o.is_empty(), o.contains(&true)),
+                    None => continue, // unreachable
+                },
+                None => (true, true),
+            };
+            let need_no_unwind = no_unwind || in_block;
+            let need_atomic = atomic || in_atomic_block;
+            if !need_no_unwind && !need_atomic {
+                continue;
+            }
+            let context = if atomic {
+                "an atomic function"
+            } else if in_atomic_block {
+                "an atomic invariant block"
+            } else if in_block {
+                "an invariant block"
+            } else {
+                "a `no_unwind` function"
+            };
+
+            // the values this block's terminator may drop
+            let term = data.terminator();
             let mut dropped: Vec<Ty<'tcx>> = vec![];
-            match &bb.terminator().kind {
+            match &term.kind {
                 TerminatorKind::Drop { place, .. } => dropped.push(place.ty(&*body, tcx).ty),
-                TerminatorKind::Call { func, args, .. } => {
+                TerminatorKind::Call { func, args, .. }
+                | TerminatorKind::TailCall { func, args, .. } => {
                     let callee = match func.ty(&*body, tcx).kind() {
-                        TyKind::FnDef(d, _) => Some(*d),
-                        _ => None,
+                        TyKind::FnDef(d, fargs) => {
+                            // a trait method call names the trait's method: resolve it to the
+                            // impl that runs, which may be one Verus checks
+                            let resolved = fargs.no_bound_vars().and_then(|fargs| {
+                                Instance::try_resolve(tcx, typing_env, *d, fargs).ok().flatten()
+                            });
+                            Some(resolved.map_or(*d, |instance| instance.def_id()))
+                        }
+                        _ => None, // a call through a function pointer or closure value
                     };
-                    let callee_verified = callee.map_or(false, |d| {
-                        d.as_local().map_or(false, |l| {
-                            let owner = tcx.local_def_id_to_hir_id(l).owner;
-                            matches!(
-                                crate_items.map.get(&owner),
-                                Some(VerifOrExternal::VerusAware { external_body: false, .. })
-                            )
-                        })
+                    let checked = callee.is_some_and(|d| {
+                        verified_local_fn(d) || verus_items.id_to_name.contains_key(&d)
                     });
-                    if !callee_verified {
+                    if !checked {
                         for a in args.iter() {
-                            if let rustc_middle::mir::Operand::Move(p) = &a.node {
+                            if let Operand::Move(p) = &a.node {
                                 dropped.push(p.ty(&*body, tcx).ty);
                             }
                         }
                     }
                 }
-                _ => continue,
+                // these drop nothing
+                TerminatorKind::Goto { .. }
+                | TerminatorKind::SwitchInt { .. }
+                | TerminatorKind::UnwindResume
+                | TerminatorKind::UnwindTerminate(_)
+                | TerminatorKind::Return
+                | TerminatorKind::Unreachable
+                | TerminatorKind::Assert { .. }
+                | TerminatorKind::Yield { .. }
+                | TerminatorKind::CoroutineDrop
+                | TerminatorKind::FalseEdge { .. }
+                | TerminatorKind::FalseUnwind { .. }
+                | TerminatorKind::InlineAsm { .. } => {}
             }
-            let term_span = bb.terminator().source_info.span;
-            let block_only = !no_unwind && !atomic;
-            if block_only && !in_atomic_block(term_span) {
-                continue;
-            }
+
             for ty in dropped {
-                let mut impls = vec![];
-                drop_impls_of(tcx, typing_env, ty, &mut HashSet::new(), &mut impls);
-                for (dty, drop_fn) in impls {
-                    if verified_local(drop_fn) {
-                        continue; // checked no_unwind / opens_invariants none
-                    }
-                    if !drop_fn.is_local() {
-                        trusted.insert(format!("{dty}"));
-                        continue;
-                    }
-                    let span = bb.terminator().source_info.span;
-                    let what = match (no_unwind, atomic) {
-                        (_, true) => "an atomic function",
-                        (true, _) => "a `no_unwind` function",
-                        _ => "an atomic invariant block",
+                let mut glue = vec![];
+                drop_glue_of(tcx, typing_env, ty, &mut HashSet::new(), &mut glue);
+                for g in glue {
+                    let problem = match g {
+                        DropGlue::Impl(dty, drop_fn) => {
+                            if need_atomic {
+                                // whatever the impl does, running it is a step of its own
+                                format!(
+                                    "this may drop a `{dty}` in {context}, but running its `Drop` \
+                                     impl is not one atomic step (move the value out)"
+                                )
+                            } else if !drop_fn.is_local() {
+                                trusted.insert(format!("{dty}"));
+                                continue;
+                            } else if !known.contains(&def_id_to_vir_path(drop_fn)) {
+                                format!(
+                                    "this may drop a `{dty}`, whose `Drop` impl is not verified, \
+                                     in {context}; the impl may unwind or open invariants \
+                                     (verify the `Drop` impl, or move the value out)"
+                                )
+                            } else {
+                                continue;
+                            }
+                        }
+                        DropGlue::Unknown(uty) => {
+                            unchecked.insert(format!("{uty}"));
+                            continue;
+                        }
                     };
-                    findings.push(DropFinding {
-                    span,
-                    msg: format!(
-                        "this may drop a `{dty}`, whose `Drop` impl is not verified, in {what}; \
-                         Verus assumes that implicit drops do not unwind and open no invariants \
-                         (verify the `Drop` impl, or move the value out)"
-                    ),
-                });
+                    findings.push(DropFinding { span: term.source_info.span, msg: problem });
                 }
             }
         }
-        let _ = local as LocalDefId;
     }
-    if verbose && !trusted.is_empty() {
-        let mut t: Vec<_> = trusted.into_iter().collect();
-        t.sort();
-        eprintln!("note: --check-drops trusts the Drop impls of: {}", t.join(", "));
+    if verbose {
+        for (what, set) in
+            [("trusts the Drop impls of", trusted), ("does not check drops of", unchecked)]
+        {
+            if !set.is_empty() {
+                let mut t: Vec<_> = set.into_iter().collect();
+                t.sort();
+                eprintln!("note: --check-drops {what}: {}", t.join(", "));
+            }
+        }
     }
     findings
 }
