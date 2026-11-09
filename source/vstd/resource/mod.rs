@@ -7,6 +7,7 @@ mod lib;
 pub mod pcm;
 pub mod relations;
 pub mod storage_protocol;
+pub mod trusted;
 
 pub use combinators::agree;
 pub use combinators::auth;
