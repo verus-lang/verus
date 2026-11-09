@@ -6,10 +6,11 @@
 //! signature and Verus specification for reference closure while leaving its body untrusted.
 
 use crate::attributes::{TrustAttribute, get_trust_attributes};
+use crate::config::Vstd;
 use crate::context::ContextX;
 use crate::util::vir_err_span_str;
 use crate::verus_items::{DirectiveItem, SpecItem, VerusItem};
-use rustc_hir::def::Res;
+use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::intravisit::{FnKind, Visitor};
 use rustc_hir::{
@@ -249,10 +250,7 @@ impl<'a, 'tcx> TrustedItemScanner<'a, 'tcx> {
         if !policy.in_trusted_closure() {
             return;
         }
-        if matches!(item.kind, ItemKind::Use(..))
-            && self.ctxt.tcx.parent_module_from_def_id(item.owner_id.def_id).to_local_def_id()
-                == rustc_hir::CRATE_OWNER_ID.def_id
-        {
+        if matches!(item.kind, ItemKind::Use(..)) {
             return;
         }
         let mut checker = RefChecker::new(
@@ -367,6 +365,23 @@ impl<'a, 'tcx> RefChecker<'a, 'tcx> {
         let Some(mut local) = def_id.as_local() else {
             return true;
         };
+        let tcx = self.ctxt.tcx;
+        // generic parameters carry no code
+        if matches!(
+            tcx.def_kind(def_id),
+            DefKind::TyParam | DefKind::ConstParam | DefKind::LifetimeParam
+        ) {
+            return true;
+        }
+        // vstd embedded in core
+        if self.ctxt.cmd_line_args.vstd == Vstd::IsCore
+            && matches!(
+                tcx.def_path(def_id).data.first().and_then(|d| d.data.get_opt_name()),
+                Some(name) if matches!(name.as_str(), "vstd" | "verus_builtin")
+            )
+        {
+            return true;
+        }
         loop {
             if let Some(policy) = self.policies.get(&local) {
                 return policy.in_trusted_closure();

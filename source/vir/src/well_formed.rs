@@ -30,7 +30,13 @@ struct Ctxt<'a> {
 impl<'a> Ctxt<'a> {
     fn assumptions_allowed(&self, function: &Function) -> bool {
         function.x.attrs.no_cheating_trusted
-            || matches!(&function.x.owning_module, Some(path) if path.is_vstd_path())
+            || matches!(&function.x.owning_module, Some(path) if path.is_vstd_path()
+            // vstd embedded in core
+            || (path.krate == crate::ast::CrateId::Core
+                && matches!(
+                    path.segments.first().map(|s| s.as_str()),
+                    Some("vstd" | "verus_builtin")
+                )))
     }
 }
 

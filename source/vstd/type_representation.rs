@@ -870,8 +870,10 @@ macro_rules! encoding_from_type_representation {
                     $type_repr::encoding_invertible(v, b);
                 }
 
+                #[verus::trusted]
                 axiom fn abs_encode_impl(v: Self, b: Seq<AbstractByte>);
 
+                #[verus::trusted]
                 axiom fn abs_can_be_encoded_impl();
             }
         }
@@ -907,8 +909,10 @@ macro_rules! encoding_from_type_representation {
                     $type_repr::encoding_invertible(v, b);
                 }
 
+                #[verus::trusted]
                 axiom fn abs_encode_impl(v: Self, b: Seq<AbstractByte>);
 
+                #[verus::trusted]
                 axiom fn abs_can_be_encoded_impl();
             }
         }

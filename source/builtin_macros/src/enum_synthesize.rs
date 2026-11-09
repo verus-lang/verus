@@ -252,7 +252,18 @@ pub(crate) fn visit_item_enum_synthesize(
         methods.extend(methods_all.into_iter());
 
         let (impl_generics, ty_generics, where_clause) = enum_.generics.split_for_impl();
+        // inherit the enum's trust
+        let trust_attrs: Vec<_> = enum_
+            .attrs
+            .iter()
+            .filter(|attr| {
+                let segs: Vec<String> =
+                    attr.path().segments.iter().map(|s| s.ident.to_string()).collect();
+                segs == ["verus", "trusted"] || segs == ["verus", "untrusted"]
+            })
+            .collect();
         Some(Item::Verbatim(quote_spanned! { enum_.span() =>
+            #(#trust_attrs)*
             #[verus::internal(verus_macro)]
             impl #impl_generics #enum_ident #ty_generics #where_clause {
                 #methods
