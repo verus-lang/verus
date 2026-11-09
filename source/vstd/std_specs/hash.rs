@@ -37,6 +37,7 @@
 //! `vstd::std_specs::hash::group_hash_axioms`.
 use super::super::laws_eq::{obeys_concrete_eq, obeys_deep_eq};
 use super::super::map::{assert_maps_equal, assert_maps_equal_internal};
+use super::super::pervasive::obeys_clone_eq;
 use super::super::prelude::*;
 use super::borrow::BorrowSpec;
 use super::cmp::PartialEqSpec;
@@ -460,7 +461,7 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
     m: &'a HashMap<Key, Value, S, A>,
 ) -> (iter: hash_map::Iter<'a, Key, Value>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() && hash_map_wf(m) ==> {
             // `m.len()` is mentioned so callers learn that the length fits in a `usize`
             // (needed, e.g., by `enumerate` and `position`)
             &&& IteratorSpec::remaining(&iter).len() == m@.dom().len()
@@ -520,10 +521,10 @@ pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, 
     m: HashMap<Key, Value, S, A>,
 ) -> (iter: hash_map::IntoIter<Key, Value, A>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> IteratorSpec::remaining(
-            &iter,
-        ).to_set() == m@.kv_pairs(),
-        iter.remaining().no_duplicates(),
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() && hash_map_wf(&m) ==> {
+            &&& IteratorSpec::remaining(&iter).to_set() == m@.kv_pairs()
+            &&& iter.remaining().no_duplicates()
+        },
         into_iter_entries(iter) == IteratorSpec::remaining(&iter),
         IteratorSpec::decrease(&iter) is Some,
 ;
@@ -709,10 +710,15 @@ pub assume_specification<K: Clone, V: Clone, S: Clone, A: Allocator + Clone>[ <H
     A,
 > as Clone>::clone ](this: &HashMap<K, V, S, A>) -> (other: HashMap<K, V, S, A>)
     ensures
-        other@.dom() == this@.dom(),
-        forall|key|
-            #![trigger other@.dom().contains(key)]
-            other@.dom().contains(key) ==> cloned(this@[key], #[trigger] other@[key]),
+// The keys are cloned too, and stay in the buckets of the originals; only keys that
+// clone to equal values leave them unchanged (and the copy well formed).
+
+        obeys_clone_eq::<K>() ==> {
+            &&& other@.dom() == this@.dom()
+            &&& forall|key|
+                #![trigger other@.dom().contains(key)]
+                other@.dom().contains(key) ==> cloned(this@[key], #[trigger] other@[key])
+        },
 ;
 
 pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: HashMap<
@@ -722,6 +728,7 @@ pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: Hash
 >)
     ensures
         m@ == Map::<Key, Value>::empty(),
+        hash_map_wf(&m),
 ;
 
 pub assume_specification<K, V, S: core::default::Default>[ <HashMap<
@@ -731,12 +738,14 @@ pub assume_specification<K, V, S: core::default::Default>[ <HashMap<
 > as core::default::Default>::default ]() -> (m: HashMap<K, V, S>)
     ensures
         m@ == Map::<K, V>::empty(),
+        hash_map_wf(&m),
 ;
 
 pub assume_specification<Key, Value>[ HashMap::<Key, Value>::with_capacity ](capacity: usize) -> (m:
     HashMap<Key, Value, RandomState>)
     ensures
         m@ == Map::<Key, Value>::empty(),
+        hash_map_wf(&m),
 ;
 
 pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::with_hasher ](
@@ -744,6 +753,7 @@ pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::with_hasher ]
 ) -> (m: HashMap<Key, Value, S>)
     ensures
         m@ == Map::<Key, Value>::empty(),
+        hash_map_wf(&m),
 ;
 
 pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ HashMap::<
@@ -754,12 +764,34 @@ pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ H
 >::reserve ](m: &mut HashMap<Key, Value, S, A>, additional: usize)
     ensures
         final(m)@ == old(m)@,
+        hash_map_wf(old(m)) ==> hash_map_wf(final(m)),
+;
+
+/// Whether each of the map's entries is stored where its key's hash says, so that the map's
+/// view describes what its operations do. Every map built by the specified operations is well
+/// formed. The one way to get a malformed map in safe code is to clone one whose key type's
+/// `Clone` changes the key (see [`obeys_clone_eq`]): the copy keeps each changed key in the
+/// original's bucket.
+///
+/// This depends on the map value, not only its view: a malformed copy can have the same view
+/// as the well-formed original.
+pub uninterp spec fn hash_map_wf<Key, Value, S, A: Allocator>(
+    m: &HashMap<Key, Value, S, A>,
+) -> bool;
+
+/// If keys clone to equal values, no map can be malformed.
+pub broadcast axiom fn axiom_hash_map_wf_if_obeys_clone_eq<Key: Clone, Value, S, A: Allocator>(
+    m: &HashMap<Key, Value, S, A>,
+)
+    ensures
+        obeys_clone_eq::<Key>() ==> #[trigger] hash_map_wf(m),
 ;
 
 pub open spec fn hash_map_inv<Key: Eq + Hash, Value, S, A: Allocator>(
     m: &HashMap<Key, Value, S, A>,
 ) -> bool {
-    forall|k1: Key, k2: Key|
+    &&& hash_map_wf(m)
+    &&& forall|k1: Key, k2: Key|
         {
             &&& #[trigger] m@.contains_key(k1)
             &&& #[trigger] m@.contains_key(k2)
@@ -1284,13 +1316,14 @@ pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, 
 )
     ensures
         final(m)@ == Map::<Key, Value>::empty(),
+        hash_map_wf(final(m)),
 ;
 
 pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::keys ](
     m: &'a HashMap<Key, Value, S, A>,
 ) -> (keys: Keys<'a, Key, Value>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() && hash_map_wf(m) ==> {
             &&& IteratorSpec::remaining(&keys).unref().to_set() == m@.dom()
             &&& IteratorSpec::remaining(&keys).no_duplicates()
             &&& IteratorSpec::remaining(&keys).len() == m@.dom().len()
@@ -1304,7 +1337,7 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
     m: &'a HashMap<Key, Value, S, A>,
 ) -> (values: Values<'a, Key, Value>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() && hash_map_wf(m) ==> {
             &&& IteratorSpec::remaining(&values).unref().to_set() == m@.values()
             &&& IteratorSpec::remaining(&values).len() == m@.dom().len()
             &&& IteratorSpec::remaining(&values).len() == m.len()
@@ -1400,6 +1433,7 @@ pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::is_empty ]
 pub assume_specification<Key>[ HashSet::<Key>::new ]() -> (m: HashSet<Key, RandomState>)
     ensures
         m@ == Set::<Key>::empty(),
+        hash_set_wf(&m),
 ;
 
 pub assume_specification<T, S: core::default::Default>[ <HashSet<
@@ -1408,6 +1442,7 @@ pub assume_specification<T, S: core::default::Default>[ <HashSet<
 > as core::default::Default>::default ]() -> (m: HashSet<T, S>)
     ensures
         m@ == Set::<T>::empty(),
+        hash_set_wf(&m),
 ;
 
 pub assume_specification<Key>[ HashSet::<Key>::with_capacity ](capacity: usize) -> (m: HashSet<
@@ -1416,6 +1451,7 @@ pub assume_specification<Key>[ HashSet::<Key>::with_capacity ](capacity: usize) 
 >)
     ensures
         m@ == Set::<Key>::empty(),
+        hash_set_wf(&m),
 ;
 
 pub assume_specification<Key, S>[ HashSet::<Key, S>::with_hasher ](hash_builder: S) -> (m: HashSet<
@@ -1424,6 +1460,7 @@ pub assume_specification<Key, S>[ HashSet::<Key, S>::with_hasher ](hash_builder:
 >)
     ensures
         m@ == Set::<Key>::empty(),
+        hash_set_wf(&m),
 ;
 
 pub assume_specification<Key, S>[ HashSet::<Key, S>::with_capacity_and_hasher ](
@@ -1432,6 +1469,7 @@ pub assume_specification<Key, S>[ HashSet::<Key, S>::with_capacity_and_hasher ](
 ) -> (m: HashSet<Key, S>)
     ensures
         m@ == Set::<Key>::empty(),
+        hash_set_wf(&m),
 ;
 
 pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet::<
@@ -1441,10 +1479,24 @@ pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet:
 >::reserve ](m: &mut HashSet<Key, S, A>, additional: usize)
     ensures
         final(m)@ == old(m)@,
+        hash_set_wf(old(m)) ==> hash_set_wf(final(m)),
+;
+
+/// Whether each of the set's elements is stored where its hash says; see [`hash_map_wf`].
+/// Verified code can still get a malformed set by cloning one through a generic `T: Clone`.
+pub uninterp spec fn hash_set_wf<Key, S, A: Allocator>(m: &HashSet<Key, S, A>) -> bool;
+
+/// If elements clone to equal values, no set can be malformed.
+pub broadcast axiom fn axiom_hash_set_wf_if_obeys_clone_eq<Key: Clone, S, A: Allocator>(
+    m: &HashSet<Key, S, A>,
+)
+    ensures
+        obeys_clone_eq::<Key>() ==> #[trigger] hash_set_wf(m),
 ;
 
 pub open spec fn hash_set_inv<Key: Eq + Hash, S, A: Allocator>(m: &HashSet<Key, S, A>) -> bool {
-    forall|k1: Key, k2: Key|
+    &&& hash_set_wf(m)
+    &&& forall|k1: Key, k2: Key|
         {
             &&& #[trigger] m@.contains(k1)
             &&& #[trigger] m@.contains(k2)
@@ -1846,13 +1898,14 @@ pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::clear ](
 )
     ensures
         final(m)@ == Set::<Key>::empty(),
+        hash_set_wf(final(m)),
 ;
 
 pub assume_specification<'a, Key, S, A: Allocator>[ HashSet::<Key, S, A>::iter ](
     m: &'a HashSet<Key, S, A>,
 ) -> (hash_keys: hash_set::Iter<'a, Key>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() && hash_set_wf(m) ==> {
             &&& IteratorSpec::remaining(&hash_keys).unref().to_set() == m@
             &&& IteratorSpec::remaining(&hash_keys).no_duplicates()
             &&& IteratorSpec::remaining(&hash_keys).len() == m@.len()
@@ -2047,6 +2100,7 @@ pub broadcast proof fn lemma_hash_map_entry_ensures_if_obeys_concrete_eq<
         obeys_key_model::<Key>(),
         builds_valid_hashers::<S>(),
         obeys_concrete_eq::<Key>(),
+        hash_map_inv(old_m),
         #[trigger] hash_map_entry_ensures(old_m, final_m, key, entry),
     ensures
         entry.spec_key() == key,
@@ -2288,6 +2342,8 @@ pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::insert_en
 ;
 
 pub broadcast group group_hash_axioms {
+    axiom_hash_map_wf_if_obeys_clone_eq,
+    axiom_hash_set_wf_if_obeys_clone_eq,
     lemma_hash_map_insert_ensures_if_obeys_concrete_eq,
     lemma_hash_map_insert_ensures_if_obeys_deep_eq,
     lemma_hash_map_contains_key_ensures_if_obeys_concrete_eq,

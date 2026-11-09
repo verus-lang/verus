@@ -417,6 +417,7 @@ test_verify_one_file! {
 
         fn test_map<Key: Hash + Eq + Copy>(m: &mut HashMap<Key, u32>, key: Key)
             requires
+                vstd::std_specs::hash::hash_map_wf(old(m)),
                 obeys_key_model::<Key>(),
                 obeys_concrete_eq::<Key>(),
         {
@@ -443,6 +444,7 @@ test_verify_one_file! {
 
         fn test_map_entry<Key: Hash + Eq + Copy>(m: &mut HashMap<Key, u32>, key: Key)
             requires
+                vstd::std_specs::hash::hash_map_wf(old(m)),
                 obeys_key_model::<Key>(),
                 obeys_concrete_eq::<Key>(),
         {
@@ -469,6 +471,7 @@ test_verify_one_file! {
 
         fn test_set<Key: Hash + Eq + Copy>(m: &mut HashSet<Key>, key: Key)
             requires
+                vstd::std_specs::hash::hash_set_wf(old(m)),
                 obeys_key_model::<Key>(),
                 obeys_concrete_eq::<Key>(),
         {
@@ -2003,6 +2006,66 @@ test_verify_one_file! {
             let mut h = Sum { s: 0 };
             0u8.hash(&mut h);
             let _ = h.finish();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // a key whose `Clone` changes it leaves the clone's keys in the originals' buckets, and
+    // nothing may be concluded about the clone
+    #[test] test_hash_map_clone_unfaithful_key verus_code! {
+        use std::collections::HashMap;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::*;
+        #[derive(PartialEq, Eq, Hash)]
+        pub struct K { pub a: u8 }
+        impl Clone for K { fn clone(&self) -> (r: K) ensures r.a == 0 { K { a: 0 } } }
+        fn test() {
+            assume(obeys_key_model::<K>());
+            assume(vstd::laws_eq::obeys_concrete_eq::<K>());
+            let mut m = HashMap::<K, u8>::new();
+            m.insert(K { a: 1 }, 5);
+            assert(m@.contains_key(K { a: 1 }));
+            let c = m.clone(); // holds K { a: 0 } in the bucket of K { a: 1 }
+            let found = c.contains_key(&K { a: 1 }); // false when run
+            assert(found); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_hash_generic_clone_not_wf verus_code! {
+        use std::collections::HashSet;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::hash_set_wf;
+        fn dup<T: Clone>(t: &T) -> T { t.clone() }
+        fn test<K: std::hash::Hash + Eq + Clone>(s: &HashSet<K>) {
+            let c = dup(s);
+            assert(hash_set_wf(&c)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // keys that clone to equal values: every map is well formed, and clone copies the view
+    #[test] test_hash_clone_faithful_keys verus_code! {
+        use std::collections::{HashMap, HashSet};
+        use vstd::prelude::*;
+        fn param(m: &HashMap<u64, u8>, k: u64) -> (r: bool)
+            ensures r == m@.contains_key(k),
+        {
+            m.contains_key(&k)
+        }
+        fn param_set(s: &HashSet<u32>, k: u32) -> (r: bool)
+            ensures r == s@.contains(k),
+        {
+            s.contains(&k)
+        }
+        fn test(m: &HashMap<u64, u8>) {
+            let c = m.clone();
+            assert(c@ == m@);
+            let b = c.contains_key(&3);
+            assert(b == m@.contains_key(3));
         }
     } => Ok(())
 }

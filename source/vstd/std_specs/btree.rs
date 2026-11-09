@@ -13,6 +13,7 @@
 //! `vstd::std_specs::btree::group_btree_axioms`.
 use super::super::laws_cmp::{obeys_cmp, obeys_cmp_concrete_eq, obeys_cmp_deep_eq};
 use super::super::map::{assert_maps_equal, assert_maps_equal_internal};
+use super::super::pervasive::obeys_clone_eq;
 use super::super::prelude::*;
 use super::borrow::BorrowSpec;
 use super::cmp::OrdSpec;
@@ -176,7 +177,7 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
     m: &'a BTreeMap<Key, Value, A>,
 ) -> (iter: btree_map::Iter<'a, Key, Value>)
     ensures
-        key_obeys_cmp_spec::<Key>() ==> {
+        key_obeys_cmp_spec::<Key>() && btree_map_wf(m) ==> {
             // `m.len()` is mentioned so callers learn that the length fits in a `usize`
             // (needed, e.g., by `enumerate` and `position`)
             &&& IteratorSpec::remaining(&iter).len() == m@.dom().len()
@@ -453,10 +454,33 @@ pub broadcast proof fn lemma_btree_map_deepview_values<K: DeepView, V: DeepView>
     }
 }
 
+/// Whether the map's entries are arranged as the tree requires, so that its view describes
+/// what its operations do. Every map built by the specified operations is well formed. The one
+/// way to get a malformed map in safe code is to clone one whose key type's `Clone` changes
+/// the key (see [`obeys_clone_eq`]): the copy then holds the changed keys at the positions of
+/// the originals.
+///
+/// This depends on the map value, not only its view: a malformed copy can have the same view
+/// as the well-formed original.
+pub uninterp spec fn btree_map_wf<Key, Value, A: Allocator + Clone>(
+    m: &BTreeMap<Key, Value, A>,
+) -> bool;
+
+/// If keys clone to equal values, no map can be malformed.
+pub broadcast axiom fn axiom_btree_map_wf_if_obeys_clone_eq<
+    Key: Clone,
+    Value,
+    A: Allocator + Clone,
+>(m: &BTreeMap<Key, Value, A>)
+    ensures
+        obeys_clone_eq::<Key>() ==> #[trigger] btree_map_wf(m),
+;
+
 pub open spec fn btree_map_inv<Key: Ord, Value, A: Allocator + Clone>(
     m: &BTreeMap<Key, Value, A>,
 ) -> bool {
-    forall|k1: Key, k2: Key|
+    &&& btree_map_wf(m)
+    &&& forall|k1: Key, k2: Key|
         {
             &&& #[trigger] m@.contains_key(k1)
             &&& #[trigger] m@.contains_key(k2)
@@ -496,18 +520,28 @@ pub assume_specification<K: Clone, V: Clone, A: Allocator + Clone>[ <BTreeMap::<
     A,
 > as Clone>::clone ](this: &BTreeMap<K, V, A>) -> (other: BTreeMap<K, V, A>)
     ensures
-        other@ == this@,
+// The keys are cloned too; only keys that clone to equal values leave them unchanged
+// (and the copy well formed).
+
+        obeys_clone_eq::<K>() ==> {
+            &&& other@.dom() == this@.dom()
+            &&& forall|key|
+                #![trigger other@.dom().contains(key)]
+                other@.dom().contains(key) ==> cloned(this@[key], #[trigger] other@[key])
+        },
 ;
 
 pub assume_specification<Key, Value>[ BTreeMap::<Key, Value>::new ]() -> (m: BTreeMap<Key, Value>)
     ensures
         m@ == Map::<Key, Value>::empty(),
+        btree_map_wf(&m),
 ;
 
 pub assume_specification<K, V>[ <BTreeMap<K, V> as core::default::Default>::default ]() -> (m:
     BTreeMap<K, V>)
     ensures
         m@ == Map::<K, V>::empty(),
+        btree_map_wf(&m),
 ;
 
 pub open spec fn btree_map_insert_ensures<Key: Ord, Value, A: Allocator + Clone>(
@@ -559,6 +593,7 @@ pub broadcast proof fn lemma_btree_map_insert_ensures_if_obeys_cmp_concrete_eq<
     requires
         obeys_cmp::<Key>(),
         obeys_cmp_concrete_eq::<Key>(),
+        btree_map_inv(old_m),
         #[trigger] btree_map_insert_ensures::<Key, Value, A>(old_m, final_m, k, v, result),
     ensures
         final_m@ == old_m@.insert(k, v),
@@ -1168,6 +1203,7 @@ pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Valu
 )
     ensures
         final(m)@ == Map::<Key, Value>::empty(),
+        btree_map_wf(final(m)),
 ;
 
 /// Specification for [`BTreeMap::lower_bound_mut`].
@@ -1184,6 +1220,9 @@ pub assume_specification<
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
+// the cursor's operations keep the entries in order
+
+        btree_map_wf(old(map)) ==> btree_map_wf(final(map)),
         ({
             &&& obeys_cmp::<Key>()
             &&& obeys_cmp::<&Q>()
@@ -1210,6 +1249,9 @@ pub assume_specification<
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
+// the cursor's operations keep the entries in order
+
+        btree_map_wf(old(map)) ==> btree_map_wf(final(map)),
         ({
             &&& obeys_cmp::<Key>()
             &&& obeys_cmp::<&Q>()
@@ -1395,7 +1437,7 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
     m: &'a BTreeMap<Key, Value, A>,
 ) -> (keys: Keys<'a, Key, Value>)
     ensures
-        key_obeys_cmp_spec::<Key>() ==> {
+        key_obeys_cmp_spec::<Key>() && btree_map_wf(m) ==> {
             &&& IteratorSpec::remaining(&keys).unref().to_set() == m@.dom()
             &&& IteratorSpec::remaining(&keys).no_duplicates()
             &&& IteratorSpec::remaining(&keys).len() == m@.dom().len()
@@ -1410,7 +1452,7 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
     m: &'a BTreeMap<Key, Value, A>,
 ) -> (values: Values<'a, Key, Value>)
     ensures
-        key_obeys_cmp_spec::<Key>() ==> {
+        key_obeys_cmp_spec::<Key>() && btree_map_wf(m) ==> {
             &&& IteratorSpec::remaining(&values).unref().to_set() == m@.values()
             &&& IteratorSpec::remaining(&values).len() == m@.dom().len()
             &&& IteratorSpec::remaining(&values).len() == m.len()
@@ -1495,8 +1537,20 @@ impl<Key: DeepView, A: Allocator + Clone> DeepView for BTreeSet<Key, A> {
     }
 }
 
+/// Whether the set's elements are arranged as the tree requires; see [`btree_map_wf`].
+pub uninterp spec fn btree_set_wf<Key, A: Allocator + Clone>(m: &BTreeSet<Key, A>) -> bool;
+
+/// If elements clone to equal values, no set can be malformed.
+pub broadcast axiom fn axiom_btree_set_wf_if_obeys_clone_eq<Key: Clone, A: Allocator + Clone>(
+    m: &BTreeSet<Key, A>,
+)
+    ensures
+        obeys_clone_eq::<Key>() ==> #[trigger] btree_set_wf(m),
+;
+
 pub open spec fn btree_set_inv<Key: Ord, A: Allocator + Clone>(m: &BTreeSet<Key, A>) -> bool {
-    forall|k1: Key, k2: Key|
+    &&& btree_set_wf(m)
+    &&& forall|k1: Key, k2: Key|
         {
             &&& #[trigger] m@.contains(k1)
             &&& #[trigger] m@.contains(k2)
@@ -1530,12 +1584,16 @@ pub assume_specification<K: Clone, A: Allocator + Clone>[ <BTreeSet::<K, A> as C
     this: &BTreeSet<K, A>,
 ) -> (other: BTreeSet<K, A>)
     ensures
-        other@ == this@,
+// The elements are cloned; only elements that clone to equal values leave them
+// unchanged (and the copy well formed).
+
+        obeys_clone_eq::<K>() ==> other@ == this@,
 ;
 
 pub assume_specification<Key>[ BTreeSet::<Key>::new ]() -> (m: BTreeSet<Key>)
     ensures
         m@ == Set::<Key>::empty(),
+        btree_set_wf(&m),
 ;
 
 pub assume_specification<T>[ <BTreeSet<T> as core::default::Default>::default ]() -> (m: BTreeSet<
@@ -1543,6 +1601,7 @@ pub assume_specification<T>[ <BTreeSet<T> as core::default::Default>::default ](
 >)
     ensures
         m@ == Set::<T>::empty(),
+        btree_set_wf(&m),
 ;
 
 pub open spec fn btree_set_insert_ensures<Key: Ord, A: Allocator + Clone>(
@@ -1928,13 +1987,14 @@ pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::clear ]
 ) where A: Clone
     ensures
         final(m)@ == Set::<Key>::empty(),
+        btree_set_wf(final(m)),
 ;
 
 pub assume_specification<'a, Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::iter ](
     m: &'a BTreeSet<Key, A>,
 ) -> (r: btree_set::Iter<'a, Key>)
     ensures
-        key_obeys_cmp_spec::<Key>() ==> {
+        key_obeys_cmp_spec::<Key>() && btree_set_wf(m) ==> {
             &&& IteratorSpec::remaining(&r).unref().to_set() == m@
             &&& IteratorSpec::remaining(&r).no_duplicates()
             &&& IteratorSpec::remaining(&r).len() == m@.len()
@@ -1952,6 +2012,8 @@ pub broadcast axiom fn axiom_btree_set_decreases<Key, A: Allocator + Clone>(m: B
 
 pub broadcast group group_btree_axioms {
     axiom_key_obeys_cmp_spec_meaning,
+    axiom_btree_map_wf_if_obeys_clone_eq,
+    axiom_btree_set_wf_if_obeys_clone_eq,
     axiom_increasing_seq_meaning,
     axiom_spec_btree_map_len,
     lemma_btree_map_insert_ensures_if_obeys_cmp_concrete_eq,
