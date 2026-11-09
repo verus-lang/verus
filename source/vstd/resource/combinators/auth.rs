@@ -28,7 +28,6 @@ proof fn lemma_incl_valid<RA: ResourceAlgebra>(a: RA, b: RA)
 }
 
 impl<RA: ResourceAlgebra> ResourceAlgebra for AuthRA<RA> {
-    #[verifier::prophetic]
     open spec fn valid(self) -> bool {
         match self.auth {
             None => self.frac.valid(),

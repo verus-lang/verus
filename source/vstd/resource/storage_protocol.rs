@@ -70,7 +70,6 @@ pub trait Protocol<K, V>: Sized {
 
     /// Note that `rel`, in contrast to [`PCM::valid`](crate::resource::algebra::ResourceAlgebra::valid), is not
     /// necessarily closed under inclusion.
-    #[verifier::prophetic]
     spec fn rel(self, s: IMap<K, V>) -> bool;
 
     spec fn unit() -> Self;
@@ -95,12 +94,10 @@ pub open spec fn incl<K, V, P: Protocol<K, V>>(a: P, b: P) -> bool {
     exists|c| P::op(a, c) == b
 }
 
-#[verifier::prophetic]
 pub open spec fn guards<K, V, P: Protocol<K, V>>(p: P, b: IMap<K, V>) -> bool {
     forall|q: P, t: IMap<K, V>| #![all_triggers] P::rel(P::op(p, q), t) ==> b.submap_of(t)
 }
 
-#[verifier::prophetic]
 pub open spec fn exchanges<K, V, P: Protocol<K, V>>(
     p1: P,
     b1: IMap<K, V>,
@@ -116,7 +113,6 @@ pub open spec fn exchanges<K, V, P: Protocol<K, V>>(
         }
 }
 
-#[verifier::prophetic]
 pub open spec fn exchanges_nondeterministic<K, V, P: Protocol<K, V>>(
     p1: P,
     s1: IMap<K, V>,
@@ -135,7 +131,6 @@ pub open spec fn exchanges_nondeterministic<K, V, P: Protocol<K, V>>(
             }
 }
 
-#[verifier::prophetic]
 pub open spec fn deposits<K, V, P: Protocol<K, V>>(p1: P, b1: IMap<K, V>, p2: P) -> bool {
     forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
@@ -145,7 +140,6 @@ pub open spec fn deposits<K, V, P: Protocol<K, V>>(p1: P, b1: IMap<K, V>, p2: P)
         }
 }
 
-#[verifier::prophetic]
 pub open spec fn withdraws<K, V, P: Protocol<K, V>>(p1: P, p2: P, b2: IMap<K, V>) -> bool {
     forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
@@ -155,7 +149,6 @@ pub open spec fn withdraws<K, V, P: Protocol<K, V>>(p1: P, p2: P, b2: IMap<K, V>
         }
 }
 
-#[verifier::prophetic]
 pub open spec fn updates<K, V, P: Protocol<K, V>>(p1: P, p2: P) -> bool {
     forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
