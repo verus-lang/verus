@@ -155,11 +155,19 @@ pub open spec fn frame_preserving_update<P: RA>(a: P, b: P) -> bool {
 }
 
 /// A nondeterministic version of a [`frame_preserving_update`].
+///
+/// Rather than quantifying existentially over the new value, the caller provides a witness
+/// function `f` that maps each valid frame `c` to a new value `f(c)` in `bs` that is still
+/// compatible with `c`.
 #[verifier::prophetic]
-pub open spec fn frame_preserving_update_nondeterministic<P: RA>(a: P, bs: ISet<P>) -> bool {
+pub open spec fn frame_preserving_update_nondeterministic<P: RA>(
+    a: P,
+    bs: ISet<P>,
+    f: spec_fn(P) -> P,
+) -> bool {
     forall|c|
         #![trigger P::op(a, c)]
-        P::op(a, c).valid() ==> exists|b| #[trigger] bs.contains(b) && P::op(b, c).valid()
+        P::op(a, c).valid() ==> bs.contains(f(c)) && P::op(f(c), c).valid()
 }
 
 /// The set of values such that can be created by composing an element of `s` with `t`.
@@ -229,9 +237,13 @@ impl<P: RA> Resource<P> {
 
     /// This is a more general version of [`update`](Self::update).
     // GHOST-UPDATE rule
-    pub proof fn update_nondeterministic(tracked self, new_values: ISet<P>) -> (tracked out: Self)
+    pub proof fn update_nondeterministic(
+        tracked self,
+        new_values: ISet<P>,
+        f: spec_fn(P) -> P,
+    ) -> (tracked out: Self)
         requires
-            frame_preserving_update_nondeterministic(self.value(), new_values),
+            frame_preserving_update_nondeterministic(self.value(), new_values, f),
         ensures
             out.loc() == self.loc(),
             new_values.contains(out.value()),
@@ -250,7 +262,7 @@ impl<P: RA> Resource<P> {
                 }
             }
         };
-        self.update_nondeterministic_with_shared(&u, new_values)
+        self.update_nondeterministic_with_shared(&u, new_values, f)
     }
 
     // VERIFIED
@@ -268,8 +280,9 @@ impl<P: RA> Resource<P> {
             out.value() == new_value,
     {
         let new_values = iset![new_value];
+        let f = |c: P| new_value;
         assert(new_values.contains(new_value));
-        self.update_nondeterministic(new_values)
+        self.update_nondeterministic(new_values, f)
     }
 
     /// Extracts the resource from `r`, leaving `r` unspecified and returning
@@ -323,12 +336,14 @@ impl<P: RA> Resource<P> {
         tracked self,
         tracked other: &Self,
         new_values: ISet<P>,
+        f: spec_fn(P) -> P,
     ) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),
             frame_preserving_update_nondeterministic(
                 P::op(self.value(), other.value()),
                 set_op(new_values, other.value()),
+                f,
             ),
         ensures
             out.loc() == self.loc(),
@@ -373,8 +388,9 @@ impl<P: RA> Resource<P> {
     {
         let new_values = iset![new_value];
         let so = set_op(new_values, other.value());
+        let f = |c: P| P::op(new_value, other.value());
         assert(so.contains(P::op(new_value, other.value())));
-        self.update_nondeterministic_with_shared(other, new_values)
+        self.update_nondeterministic_with_shared(other, new_values, f)
     }
 
     /// If `x --> x · y` is a frame-perserving update, and we have a shared reference to `x`,

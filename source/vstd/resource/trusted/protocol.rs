@@ -124,18 +124,18 @@ pub open spec fn exchanges_nondeterministic<K, V, P: Protocol<K, V>>(
     p1: P,
     s1: IMap<K, V>,
     new_values: ISet<(P, IMap<K, V>)>,
+    f: spec_fn(P, IMap<K, V>) -> (P, IMap<K, V>, IMap<K, V>),
 ) -> bool {
     forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
-        P::rel(P::op(p1, q), t1) ==> exists|p2: P, s2: IMap<K, V>, t2: IMap<K, V>|
-            #![all_triggers]
-            {
-                &&& new_values.contains((p2, s2))
-                &&& P::rel(P::op(p2, q), t2)
-                &&& t1.dom().disjoint(s1.dom())
-                &&& t2.dom().disjoint(s2.dom())
-                &&& t1.union_prefer_right(s1) =~= t2.union_prefer_right(s2)
-            }
+        P::rel(P::op(p1, q), t1) ==> {
+            let (p2, s2, t2) = f(q, t1);
+            &&& new_values.contains((p2, s2))
+            &&& P::rel(P::op(p2, q), t2)
+            &&& t1.dom().disjoint(s1.dom())
+            &&& t2.dom().disjoint(s2.dom())
+            &&& t1.union_prefer_right(s1) =~= t2.union_prefer_right(s2)
+        }
 }
 
 #[verifier::prophetic]
@@ -250,7 +250,10 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             }),
     {
         let se = iset![(new_p_value, new_s_value)];
-        Self::exchange_nondeterministic(p, s, se)
+        let f = |q: P, t1: IMap<K, V>|
+            (new_p_value, new_s_value, t1.union_prefer_right(s).remove_keys(new_s_value.dom()));
+        assert(se.contains((new_p_value, new_s_value)));
+        Self::exchange_nondeterministic(p, s, se, f)
     }
 
     pub proof fn deposit(tracked self, tracked base: IMap<K, V>, new_value: P) -> (tracked out:
@@ -297,9 +300,10 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         tracked p: Self,
         tracked s: IMap<K, V>,
         new_values: ISet<(P, IMap<K, V>)>,
+        f: spec_fn(P, IMap<K, V>) -> (P, IMap<K, V>, IMap<K, V>),
     ) -> (tracked out: (Self, IMap<K, V>))
         requires
-            exchanges_nondeterministic(p.value(), s, new_values),
+            exchanges_nondeterministic(p.value(), s, new_values, f),
         ensures
             ({
                 let (new_p, new_s) = out;
@@ -321,7 +325,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
                 assert(new_values.contains(v));
             }
         });
-        Self::exchange_nondeterministic_with_shared(selff, &unit, s, new_values)
+        Self::exchange_nondeterministic_with_shared(selff, &unit, s, new_values, f)
     }
 
     pub axiom fn guard(tracked p: &Self, s_value: IMap<K, V>) -> (tracked s: &IMap<K, V>)
@@ -382,13 +386,19 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.1 == new_s_value,
     {
         let se = iset![(new_p_value, new_s_value)];
-        assert(exchanges_nondeterministic(P::op(p.value(), x.value()), s, set_op(se, x.value())))
+        let f = |q: P, t1: IMap<K, V>|
+            (
+                P::op(new_p_value, x.value()),
+                new_s_value,
+                t1.union_prefer_right(s).remove_keys(new_s_value.dom()),
+            );
+        assert(exchanges_nondeterministic(P::op(p.value(), x.value()), s, set_op(se, x.value()), f))
             by {
             let new_values = set_op(se, x.value());
             assert(se.contains((new_p_value, new_s_value)));
             assert(new_values.contains((P::op(new_p_value, x.value()), new_s_value)));
         }
-        Self::exchange_nondeterministic_with_shared(p, x, s, se)
+        Self::exchange_nondeterministic_with_shared(p, x, s, se, f)
     }
 
     // See `logic_exchange_with_extra_guard_nondeterministic`
@@ -399,6 +409,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         tracked x: &Self,
         tracked s: IMap<K, V>,
         new_values: ISet<(P, IMap<K, V>)>,
+        f: spec_fn(P, IMap<K, V>) -> (P, IMap<K, V>, IMap<K, V>),
     ) -> (tracked out: (Self, IMap<K, V>))
         requires
             p.loc() == x.loc(),
@@ -406,6 +417,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
                 P::op(p.value(), x.value()),
                 s,
                 set_op(new_values, x.value()),
+                f,
             ),
         ensures
             ({
