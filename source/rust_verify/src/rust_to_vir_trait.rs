@@ -18,8 +18,10 @@ use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{Fun, FunctionKind, GenericBound, Ident, KrateX, TraitX, VirErr, Visibility};
-use vir::ast_util::params_equal_opt;
+use vir::ast::{
+    Fun, FunctionKind, GenericBound, Ident, KrateX, ParamX, TraitX, VirErr, Visibility,
+};
+use vir::ast_util::{params_equal_opt, types_equal, unit_typ};
 use vir::def::VERUS_SPEC;
 use vir::messages::error;
 
@@ -700,11 +702,10 @@ fn make_trait_decl<'tcx>(
         decreases_len,
     } = spec_method.x.clone();
     let mut methodx = method.x.clone();
-    if methodx.attrs.is_async != attrs.is_async {
-        return Err(error(
-            &spec_method.span,
-            "method specification has different async-ness from method",
-        ));
+    // The syntax macro removes the return type and async-ness from spec_method,
+    // since its specs are about the method's return value
+    if attrs.is_async {
+        return Err(error(&spec_method.span, "method specification should not be async"));
     }
     while typ_bounds.len() > methodx.typ_bounds.len() {
         // The syntax macro may add Sized bounds to spec_method so that Rust accepts the function.
@@ -758,11 +759,8 @@ fn make_trait_decl<'tcx>(
             ));
         }
     }
-    if !params_equal_opt(&methodx.outer_ret, &outer_ret, false, false) {
-        return Err(error(
-            &spec_method.span,
-            "method specification has a different return from method",
-        ));
+    if !types_equal(&outer_ret.x.typ, &unit_typ()) {
+        return Err(error(&spec_method.span, "method specification should not have a return type"));
     }
 
     let has_default_ensures = spec_method_info.pre_header.default_ensures;
@@ -787,7 +785,11 @@ fn make_trait_decl<'tcx>(
 
     methodx.opaqueness = opaqueness;
     methodx.params = params; // this is important; the correct parameter modes are in spec_method
-    methodx.outer_ret = outer_ret;
+    if !methodx.attrs.is_async {
+        // The type and mode come from the method; the name is the one bound in spec_method
+        let name = outer_ret.x.name.clone();
+        methodx.outer_ret = methodx.outer_ret.new_x(ParamX { name, ..methodx.outer_ret.x.clone() });
+    }
     methodx.decreases_len = decreases_len;
     methodx.returns = returns;
     assert!(matches!(spec_method_info.body_id, CheckItemFnEither::BodyId(_)));
@@ -803,19 +805,20 @@ fn make_trait_decl<'tcx>(
         function_for_autospec: None,
         autoderive_aux_function: None,
         pre_header: spec_method_info.pre_header.clone(),
-        def_id: spec_method_info.def_id,
+        def_id: method_info.def_id,
+        spec_def_id: Some(spec_method_info.def_id),
         body_id: spec_method_info.body_id.clone(),
-        sig: spec_method_info.sig.clone(),
+        sig: method_info.sig.clone(),
         vattrs: spec_method_info.vattrs.clone(),
         external_trait_from_to: spec_method_info.external_trait_from_to.clone(),
         migrate_postcondition_vars: spec_method_info.migrate_postcondition_vars.clone(),
         assume_specification_opaque_type_map: spec_method_info
             .assume_specification_opaque_type_map
             .clone(),
-        ret_typ_mode: spec_method_info.ret_typ_mode.clone(),
+        ret_typ_mode: method_info.ret_typ_mode.clone(),
         autoderive_action: None,
         is_external_const: false,
-        has_opaque_types: spec_method_info.has_opaque_types,
+        has_opaque_types: method_info.has_opaque_types,
         external_id: spec_method_info.external_id,
     })
 }

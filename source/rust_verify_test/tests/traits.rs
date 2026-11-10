@@ -242,7 +242,7 @@ test_verify_one_file_with_options! {
             fn VERUS_SPEC__f(&self, x: bool) -> bool { no_method_body() }
             fn f(&self, x: bool) -> u16;
         }
-    } => Err(err) => assert_vir_error_msg(err, "method specification has a different return from method")
+    } => Err(err) => assert_vir_error_msg(err, "method specification should not have a return type")
 }
 
 test_verify_one_file_with_options! {
@@ -5067,4 +5067,136 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot use external trait `test_crate::Tr` as a bound without declaring the trait")
+}
+
+test_verify_one_file! {
+    #[test] trait_decl_ensures_unsafe_fn verus_code! {
+        trait T {
+            unsafe fn h(&self, x: u8) -> (r: u8)
+                requires x < 100,
+                ensures r == x + 1;
+        }
+
+        struct S;
+
+        impl T for S {
+            unsafe fn h(&self, x: u8) -> (r: u8) {
+                x + 1
+            }
+        }
+
+        fn test<A: T>(a: &A) {
+            let r = unsafe { a.h(5) };
+            assert(r == 6);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_decl_ensures_tracked_return verus_code! {
+        trait T {
+            proof fn p(tracked self) -> (tracked r: Self)
+                ensures r == self;
+        }
+
+        struct S;
+
+        impl T for S {
+            proof fn p(tracked self) -> (tracked r: Self) {
+                self
+            }
+        }
+
+        proof fn test<A: T>(tracked a: A) -> (tracked r: A)
+            ensures r == a
+        {
+            let tracked b = a.p();
+            b
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_decl_ensures_generic_by_value_self verus_code! {
+        trait T {
+            fn g<V>(self, v: V) -> (r: (V, bool))
+                ensures r == (v, true);
+        }
+
+        struct S;
+
+        impl T for S {
+            fn g<V>(self, v: V) -> (r: (V, bool)) {
+                (v, true)
+            }
+        }
+
+        fn test<A: T>(a: A) {
+            let r = a.g(3u8);
+            assert(r.0 == 3 && r.1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_decl_returns_unnamed verus_code! {
+        trait T {
+            fn k(&self, x: u8) -> u8
+                requires x < 10,
+                returns (x + 1) as u8;
+        }
+
+        struct S;
+
+        impl T for S {
+            fn k(&self, x: u8) -> u8 {
+                x + 1
+            }
+        }
+
+        struct R;
+
+        impl T for R {
+            fn k(&self, x: u8) -> u8 {
+                return x; // FAILS
+            }
+        }
+
+        fn test<A: T>(a: &A) {
+            let r = a.k(3);
+            assert(r == 4);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_decl_ensures_supertrait_same_name verus_code! {
+        trait U {
+            fn f(&self) -> bool;
+        }
+
+        trait T: U {
+            fn f(&self) -> (r: u8)
+                ensures r == 7;
+        }
+
+        struct S;
+
+        impl U for S {
+            fn f(&self) -> bool {
+                true
+            }
+        }
+
+        impl T for S {
+            fn f(&self) -> (r: u8) {
+                7
+            }
+        }
+
+        fn test<A: T>(a: &A) {
+            let r = T::f(a);
+            assert(r == 7);
+        }
+    } => Ok(())
 }

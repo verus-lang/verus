@@ -1634,6 +1634,8 @@ pub(crate) struct FunctionInfo<'tcx> {
 
     pub pre_header: PreHeader,
     pub def_id: DefId,
+    /// For a trait method declaration, the VERUS_SPEC__ method that owns body_id
+    pub spec_def_id: Option<DefId>,
     pub body_id: CheckItemFnEither<BodyId, ()>,
     pub sig: FnOrConstSig<'tcx>,
     pub vattrs: VerifierAttrs,
@@ -2184,6 +2186,8 @@ pub(crate) fn check_item_fn<'tcx>(
             (false, None, Some((typ, mode))) => (air_unique_var(RETURN_VALUE), typ, mode),
             (false, Some(x), Some((typ, mode))) => (x, typ, mode),
             (true, _, Some((typ, mode))) => (air_unique_var(RETURN_VALUE_ASYNC_FUTURE), typ, mode),
+            // A VERUS_SPEC__ method names the method's return value without having a return type
+            (false, Some(x), None) if is_verus_spec => (x, unit_typ(), mode),
             _ => panic!("internal error: ret_typ"),
         };
     let ret_span = sig.output_span();
@@ -2389,6 +2393,7 @@ pub(crate) fn check_item_fn<'tcx>(
         sig,
         vattrs,
         def_id: id,
+        spec_def_id: None,
         external_trait_from_to,
         migrate_postcondition_vars,
         assume_specification_opaque_type_map,
@@ -2435,6 +2440,7 @@ pub(crate) fn finish_function<'tcx>(
         ref sig,
         ref vattrs,
         def_id,
+        spec_def_id,
         ref external_trait_from_to,
         ref migrate_postcondition_vars,
         ref assume_specification_opaque_type_map,
@@ -2466,16 +2472,18 @@ pub(crate) fn finish_function<'tcx>(
 
     let (vir_body, header, body_hir_id, bctx) = match &body_id {
         CheckItemFnEither::BodyId(body_id) => {
-            let is_async = match sig.asyncness() {
-                rustc_hir::IsAsync::NotAsync => false,
-                rustc_hir::IsAsync::Async(..) => true,
+            // VERUS_SPEC__ methods are never async (see make_trait_decl)
+            let (body_def_id, is_async) = match (spec_def_id, sig.asyncness()) {
+                (Some(spec_def_id), _) => (spec_def_id, false),
+                (None, rustc_hir::IsAsync::NotAsync) => (def_id, false),
+                (None, rustc_hir::IsAsync::Async(..)) => (def_id, true),
             };
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
 
             let (mut vir_body, param_decls, bctx) = body_to_vir(
                 ctxt,
-                def_id,
+                body_def_id,
                 body_id,
                 body,
                 mode,

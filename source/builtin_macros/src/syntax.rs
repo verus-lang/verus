@@ -108,6 +108,8 @@ pub(crate) struct Visitor {
     pub(crate) rustdoc: bool,
     // The current `Self` type taken from the surrounding impl block
     inside_impl: Option<Box<(Generics, Box<Type>)>>,
+    // The current trait as `<Self as Trait<..>>`, taken from the surrounding trait declaration
+    inside_trait: Option<TokenStream>,
     // A place to put items that are emitted while visiting
     additional_items: Vec<Item>,
 }
@@ -977,6 +979,8 @@ impl Visitor {
         is_closure: bool,
         // function name
         fn_ident: &Ident,
+        // `<Self as Trait<..>>` if the function must be called through its trait
+        trait_self: Option<&TokenStream>,
         generics: Option<impl ToTokens>,
         inputs: (Option<impl ToTokens>, impl ToTokens), // optional self and args
         is_async_fn: bool,                              // is the function an async function
@@ -994,9 +998,9 @@ impl Visitor {
 
         let (self_token_op, args) = inputs;
 
-        // Either the single identifier in the return pattern, or a fresh identifier.
+        // Either the single identifier in the return pattern, or a fresh one if it shadows fn_ident
         let ret_val_ident: &Ident = match ret_pat {
-            Some(Pat::Ident(pat)) if pat.ident != *fn_ident => &pat.ident,
+            Some(Pat::Ident(pat)) if trait_self.is_some() || pat.ident != *fn_ident => &pat.ident,
             _ => &Ident::new("_VERUS_ret_ident", Span::call_site()),
         };
 
@@ -1166,7 +1170,7 @@ impl Visitor {
                                     }
                                 };
                                 let receiver_token = {
-                                    match (is_impl_fn, self_token_op) {
+                                    match (is_impl_fn, &self_token_op) {
                                         (true, None) => Some(quote_spanned!(token.span => Self::)),
                                         (true, Some(self_token)) => {
                                             Some(quote_spanned!(token.span => #self_token.))
@@ -1177,10 +1181,21 @@ impl Visitor {
                                         }
                                     }
                                 };
+                                let call = match (trait_self, &self_token_op) {
+                                    (Some(trait_self), None) => {
+                                        quote_spanned!(token.span => #trait_self::#fn_ident #generics_token(#args))
+                                    }
+                                    (Some(trait_self), Some(self_token)) => {
+                                        quote_spanned!(token.span => #trait_self::#fn_ident #generics_token(#self_token, #args))
+                                    }
+                                    (None, _) => {
+                                        quote_spanned!(token.span => #receiver_token #fn_ident #generics_token(#args))
+                                    }
+                                };
                                 if is_async_fn {
-                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #verus_builtin::get_future_output_type(#receiver_token #fn_ident #generics_token(#args))))
+                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #verus_builtin::get_future_output_type(#call)))
                                 } else {
-                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #receiver_token #fn_ident #generics_token(#args)))
+                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #call))
                                 }
                             };
                             let contrain_typ_expr = Expr::Verbatim(constrain_type);
@@ -1327,12 +1342,19 @@ impl Visitor {
 
             arg.tracked = None;
         }
+        // The VERUS_SPEC__ copy of a trait method (see split_trait_method) holds only the specs
+        // of the method, so it gets no return type, return mode, or async-ness of its own
+        let specified_method = if is_trait {
+            sig.ident.to_string().strip_prefix(VERUS_SPEC).map(|x| Ident::new(x, sig.ident.span()))
+        } else {
+            None
+        };
         let (ret_pat, ret_ty) = match &mut sig.output {
             ReturnType::Default => (None, None),
             ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ref mut ty) => {
                 self.visit_type_mut(ty);
                 if let Some(token) = tracked {
-                    if !self.erase_ghost.erase_all() {
+                    if !self.erase_ghost.erase_all() && specified_method.is_none() {
                         attrs.push(mk_verus_attr(token.span, quote! { returns(proof) }));
                     }
                     *tracked = None;
@@ -1499,6 +1521,8 @@ impl Visitor {
             name_verus_params(&mut sig.inputs);
         }
 
+        // Call the method through the trait in case a supertrait has a method of the same name
+        let trait_self = if specified_method.is_some() { self.inside_trait.clone() } else { None };
         let spec_stmts = self.take_sig_specs(
             &mut sig.spec,
             ret_pat.as_ref(),
@@ -1506,12 +1530,17 @@ impl Visitor {
             sig_span,
             is_impl_fn,
             false,
-            &sig.ident,
+            specified_method.as_ref().unwrap_or(&sig.ident),
+            trait_self.as_ref(),
             verus_generic_to_tokens(&sig.generics),
             verus_inputs_to_tokens(&sig.inputs),
             sig.asyncness.is_some(),
             atomic_perm_clause,
         );
+        if specified_method.is_some() {
+            sig.output = ReturnType::Default;
+            sig.asyncness = None;
+        }
         if !self.erase_ghost.erase() {
             // Rustdoc reads contracts from doc attributes (see rustdoc.rs), so skip them where
             // they wouldn't compile: in const fns, and with named returns and complex patterns
@@ -5263,10 +5292,15 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_trait_mut(&mut self, tr: &mut ItemTrait) {
+        let ident = &tr.ident;
+        let (_, ty_generics, _) = tr.generics.split_for_impl();
+        let trait_self = quote_spanned!(ident.span() => <Self as #ident #ty_generics>);
+        let outer_trait = self.inside_trait.replace(trait_self);
         tr.attrs.push(mk_verus_attr(tr.span(), quote! { verus_macro }));
         self.visit_trait_items_prefilter(&mut tr.items);
         self.filter_attrs(&mut tr.attrs);
         verus_syn::visit_mut::visit_item_trait_mut(self, tr);
+        self.inside_trait = outer_trait;
     }
 
     fn visit_reveal_hide_mut(&mut self, _i: &mut verus_syn::RevealHide) {
@@ -5586,6 +5620,7 @@ pub(crate) fn rewrite_items_inner(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_impl: None,
+        inside_trait: None,
         additional_items: Vec::new(),
     };
     visitor.visit_items_prefilter(items);
@@ -5628,6 +5663,7 @@ pub(crate) fn rewrite_impl_items(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_impl: None,
+        inside_trait: None,
         additional_items: Vec::new(),
     };
     visitor.visit_impl_items_prefilter(&mut items.items, for_trait);
@@ -5664,6 +5700,7 @@ pub(crate) fn rewrite_expr(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_impl: None,
+        inside_trait: None,
         additional_items: Vec::new(),
     };
     visitor.visit_expr_mut(&mut expr);
@@ -5698,6 +5735,7 @@ pub(crate) fn rewrite_proof_decl(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_impl: None,
+        inside_trait: None,
         additional_items: Vec::new(),
     };
     for mut ss in stmts {
@@ -5754,6 +5792,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_impl: None,
+        inside_trait: None,
         additional_items: Vec::new(),
     };
     visitor.visit_expr_mut(expr);
@@ -6003,6 +6042,7 @@ pub(crate) fn sig_specs_attr(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_impl: None,
+        inside_trait: None,
         additional_items: Vec::new(),
     };
 
@@ -6030,6 +6070,7 @@ pub(crate) fn sig_specs_attr(
         is_impl_fn,
         is_closure,
         &sig.ident,
+        None,
         generic_to_tokens(&sig.generics),
         inputs_to_tokens(&sig.inputs),
         sig.asyncness.is_some(),
@@ -6054,6 +6095,7 @@ pub(crate) fn while_loop_spec_attr(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_impl: None,
+        inside_trait: None,
         additional_items: Vec::new(),
     };
     let mut spec_attr = spec_attr;
@@ -6089,6 +6131,7 @@ pub(crate) fn for_loop_spec_attr(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_impl: None,
+        inside_trait: None,
         additional_items: Vec::new(),
     };
     let mut spec_attr = spec_attr;
@@ -6150,6 +6193,7 @@ pub(crate) fn proof_block(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_impl: None,
+        inside_trait: None,
         additional_items: Vec::new(),
     };
     visitor.visit_block_mut(&mut invoke);
@@ -6177,6 +6221,7 @@ pub(crate) fn proof_macro_exprs(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_impl: None,
+        inside_trait: None,
         additional_items: Vec::new(),
     };
     for element in &mut invoke.elements.elements {
@@ -6210,6 +6255,7 @@ pub(crate) fn inv_au_macro_exprs(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_impl: None,
+        inside_trait: None,
         additional_items: Vec::new(),
     };
 
@@ -6254,6 +6300,7 @@ pub(crate) fn proof_macro_explicit_exprs(
         assign_to: false,
         rustdoc: env_rustdoc(),
         inside_impl: None,
+        inside_trait: None,
         additional_items: Vec::new(),
     };
     for element in &mut invoke.elements.elements {
