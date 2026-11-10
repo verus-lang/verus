@@ -3,9 +3,9 @@ use super::super::seq::{
     group_seq_lemmas, lemma_seq_empty, lemma_seq_subrange_index, lemma_seq_subrange_len,
 };
 use super::control_flow::{TrySpec, try_laws};
+use core::iter::{Enumerate, Filter, FromIterator, Iterator, Rev, Skip, Take, Zip};
 use core::num::NonZero;
 use core::ops::{ControlFlow, Try};
-use core::iter::{Enumerate, Filter, FromIterator, Iterator, Rev, Skip, Take, Zip};
 
 // Reduce the boilerplate in the definitions below.  We have to use a macro,
 // since inside of ExIterator, we don't yet know that `self` is an Iterator.
