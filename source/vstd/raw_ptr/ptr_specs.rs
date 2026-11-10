@@ -443,36 +443,24 @@ pub axiom fn mut_ref_slice_len<T>(tracked b: &&mut [T])
 // Shared reference conversions
 ///////////////////////////////////////
 /// Gets the shared permission to the memory pointed to by a `&'a T`.
-#[inline(always)]
 #[verifier::shadow_data]
-#[verifier::external_body]
-pub const fn ref_points_to<'a, T>(r: &'a T) -> (pt: Tracked<&'a PointsTo<T>>)
+pub axiom fn ref_points_to<'a, T>(tracked r: &'a T) -> (tracked pt: &'a PointsTo<T>)
     ensures
-        pt@.ptr() == shared_ref_ptr(shadow_data(r)),
-        pt@.is_valid(),
-        pt@.value() == *r,
-        pt@.wf(),
-    opens_invariants none
-    no_unwind
-{
-    Tracked::assume_new()
-}
+        pt.ptr() == shared_ref_ptr(shadow_data(r)),
+        pt.is_valid(),
+        pt.value() == *r,
+        pt.wf(),
+;
 
 /// Gets the shared permission to the memory pointed to by a `&'a [T]`.
-#[inline(always)]
 #[verifier::shadow_data]
-#[verifier::external_body]
-pub const fn ref_points_to_slice<'a, T>(r: &'a [T]) -> (pt: Tracked<&'a PointsTo<[T]>>)
+pub axiom fn ref_points_to_slice<'a, T>(tracked r: &'a [T]) -> (tracked pt: &'a PointsTo<[T]>)
     ensures
-        pt@.ptr() == shared_ref_ptr(shadow_data(r)),
-        pt@.is_valid(),
-        pt@.value() == r@,
-        pt@.wf(),
-    opens_invariants none
-    no_unwind
-{
-    Tracked::assume_new()
-}
+        pt.ptr() == shared_ref_ptr(shadow_data(r)),
+        pt.is_valid(),
+        pt.value() == r@,
+        pt.wf(),
+;
 
 ////////////////////////////////////////
 // Mutable reference conversions
