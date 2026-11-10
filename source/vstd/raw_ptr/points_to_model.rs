@@ -7,6 +7,7 @@ use super::super::modes::tracked_ref;
 use super::super::prelude::*;
 #[cfg(verus_keep_ghost)]
 use super::super::type_representation::*;
+use super::abstract_bytes::*;
 use super::ptr_model;
 use super::ptr_model::*;
 
@@ -153,7 +154,7 @@ pub trait PTTypedValue: PTPhys {
     /// and it satisfies `additional_validity_constraints`.
     open spec fn valid_value(self) -> bool {
         self.typed_value().is_valid() ==> {
-            &&& abs_decode(self.bytes(), self.typed_value().value_ref())
+            &&& abstract_bytes_decode(self.bytes(), self.typed_value().value_ref())
             &&& Self::additional_validity_constraints(
                 self.typed_value().value_ref(),
                 self.ptr()@.metadata,
@@ -179,7 +180,7 @@ pub trait PTTypedValue: PTPhys {
         ensures
             self.bytes().len() == Self::size(self.ptr()@.metadata),
             self.typed_value().is_valid() ==> {
-                &&& abs_decode(self.bytes(), self.typed_value().value_ref())
+                &&& abstract_bytes_decode(self.bytes(), self.typed_value().value_ref())
                 &&& Self::additional_validity_constraints(
                     self.typed_value().value_ref(),
                     self.ptr()@.metadata,
@@ -282,7 +283,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
         requires
             self.wf(),
             v.is_valid() ==> {
-                &&& abs_decode(self.bytes(), v.value_ref())
+                &&& abstract_bytes_decode(self.bytes(), v.value_ref())
                 &&& Self::additional_validity_constraints(v.value_ref(), self.ptr()@.metadata)
             },
         ensures
@@ -339,7 +340,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
             pt_untyped.len() == Self::size(metadata),
             Self::satisfies_alignment(pt_untyped.ptr()@.addr),
             typed_value.is_valid() ==> {
-                &&& abs_decode(pt_untyped.bytes(), typed_value.value_ref())
+                &&& abstract_bytes_decode(pt_untyped.bytes(), typed_value.value_ref())
                 &&& Self::additional_validity_constraints(typed_value.value_ref(), metadata)
             },
         ensures
@@ -491,7 +492,7 @@ pub trait PTSizedValue: PTValueOps where <Self as PTPhys>::A: Sized {
     proof fn put(tracked &mut self, tracked v: Self::A)
         requires
             self.wf(),
-            abs_decode(self.bytes(), &v),
+            abstract_bytes_decode(self.bytes(), &v),
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
@@ -507,7 +508,7 @@ pub trait PTSizedValue: PTValueOps where <Self as PTPhys>::A: Sized {
     proof fn copy(tracked &mut self, tracked v: &Self::A) where Self::A: Copy
         requires
             self.wf(),
-            abs_decode(self.bytes(), v),
+            abstract_bytes_decode(self.bytes(), v),
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
@@ -525,7 +526,7 @@ pub trait PTSizedValue: PTValueOps where <Self as PTPhys>::A: Sized {
 
         requires
             self.wf(),
-            v.is_valid() ==> abs_decode(self.bytes(), &v.value()),
+            v.is_valid() ==> abstract_bytes_decode(self.bytes(), &v.value()),
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
@@ -548,7 +549,7 @@ pub trait PTSizedValue: PTValueOps where <Self as PTPhys>::A: Sized {
             pt_untyped.wf(),
             pt_untyped.len() == Self::size(()),
             Self::satisfies_alignment(pt_untyped.ptr()@.addr),
-            abs_decode(pt_untyped.bytes(), &value),
+            abstract_bytes_decode(pt_untyped.bytes(), &value),
         ensures
             out.ptr() == ptr_mut_from_data::<Self::A>(
                 PtrData {
@@ -621,6 +622,8 @@ impl PTProperties for PointsToByte {
     /// (`self` is an &mut reference to enforce distinctness,
     /// so you cannot pass the same PointsTo as both arguments.)
     /// Since `u8` is not a ZST, this implies the pointers have distinct addresses.
+    // TODO(verify-rustlib-refactor): proved there,
+    // from the narrower axiom `PointsToByte::is_disjoint_byte`.
     axiom fn is_disjoint<OtherPointsToPerm: PTPhys>(
         tracked &mut self,
         tracked other: &OtherPointsToPerm,
@@ -805,6 +808,24 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             out.ptr() == ptr,
             *final(s) == final(out).seq_pt(),
     ;
+
+    // TODO(real-ptr-flag): remove, with its callers, once pointers have an `is_real` flag.
+    // It only proves the `isize::MAX` bounds on `from_elems_ref`/`from_elems_mut` and `tracked_from_spec`.
+    /// The memory fits in an allocation:
+    /// it takes at most `isize::MAX` bytes.
+    pub proof fn lemma_size_bound(tracked &self)
+        requires
+            self.wf_basic(),
+        ensures
+            Self::size(self.ptr()@.metadata) <= isize::MAX,
+    {
+        broadcast use ptr_model::provenance_properties;
+
+        if Self::size(self.ptr()@.metadata) != 0 {
+            self.provenance_not_none();
+            self.ptr_bounds();
+        }
+    }
 }
 
 /// Permission to access an (untyped) contiguous sequence of bytes in memory.
@@ -915,8 +936,15 @@ impl<T> TypedValue<T> {
 impl<T> TypedValue<[T]> {
     /// A sequence of borrows of typed values acts as one borrow of a slice typed value.
     /// If any element is empty, the slice is empty.
+    /// The slice length must fit in a `usize`.
     pub axiom fn from_elems_ref<'a>(tracked elems: Seq<&'a TypedValue<T>>) -> (tracked out:
         &'a TypedValue<[T]>)
+        requires
+            elems.len() <= usize::MAX,
+            // TODO(real-ptr-flag): remove this bound once pointers have an `is_real` flag.
+            // Until then, it stops a slice too large for memory from giving a well-formed `PointsTo`.
+            // The `usize::MAX` bound above stays.
+            elems.len() * size_of::<T>() <= isize::MAX,
         ensures
     // Valid with the elements' values if every element is valid
     // (a zero-length Seq counts as valid); otherwise empty.
@@ -931,8 +959,15 @@ impl<T> TypedValue<[T]> {
 
     /// A sequence of mutable borrows of typed values acts as one mutable borrow of a slice typed value.
     /// If any element is empty, the slice starts empty.
+    /// The slice length must fit in a `usize`.
     pub axiom fn from_elems_mut<'a>(tracked elems: Seq<&'a mut TypedValue<T>>) -> (tracked out:
         &'a mut TypedValue<[T]>)
+        requires
+            elems.len() <= usize::MAX,
+            // TODO(real-ptr-flag): remove this bound once pointers have an `is_real` flag.
+            // Until then, it stops a slice too large for memory from giving a well-formed `PointsTo`.
+            // The `usize::MAX` bound above stays.
+            elems.len() * size_of::<T>() <= isize::MAX,
         ensures
     // Initially: valid with the elements' values if every element is valid
     // (a zero-length Seq counts as valid); otherwise empty.
@@ -1471,6 +1506,7 @@ impl<T> PointsTo<T> {
     /// so `final(self)` is well-formed with bytes that decode to the final value.
     // This is an axiom because the bytes live in separate ghost state from the `TypedValue<T>`,
     // so they can't be updated through a borrow of the value alone.
+    // TODO(verify-rustlib-refactor): proved there, from `mut_ref_from_parts`.
     pub axiom fn borrow_mut(tracked &mut self) -> (tracked val: &mut T)
         requires
             self.wf(),

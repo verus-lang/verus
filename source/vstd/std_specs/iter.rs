@@ -55,6 +55,16 @@ pub trait ExIterator {
                 decreases_to!(old(self).decrease()->0 => final(self).decrease()->0),
     ;
 
+    /// Returns bounds on the number of remaining items:
+    /// at least the lower bound, and at most the upper bound if there is one.
+    fn size_hint(&self) -> (r: (usize, Option<usize>))
+        ensures
+            self.obeys_prophetic_iter_laws() ==> {
+                &&& r.0 <= self.remaining().len()
+                &&& r.1 matches Some(u) ==> self.remaining().len() <= u
+            },
+    ;
+
     /******* Mechanisms that support ergonomic `for` loops *********/
 
     /// Value used by default for the decreases clause when no explicit decreases clause is provided
@@ -313,6 +323,7 @@ pub uninterp spec fn iter_len<I: ?Sized>(i: &I) -> usize;
 pub broadcast axiom fn iter_len_exact<I: ExactSizeIterator>(i: I)
     requires
         i.obeys_prophetic_iter_laws(),
+        i.remaining().len() <= usize::MAX,
     ensures
         #[trigger] iter_len(&i) == i.remaining().len();
 
