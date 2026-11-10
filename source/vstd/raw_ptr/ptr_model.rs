@@ -2,7 +2,7 @@
 //! The tools here are meant to address "real Rust pointers, including all their subtleties on the Rust Abstract Machine,
 //! to the largest extent that is reasonable."
 //!
-//! For a gentler introduction to some of the concepts here, see [`PPtr`](crate::simple_pptr), which uses a much-simplified pointer model.
+//! For a gentler introduction to some of the concepts here, see `PPtr`, which uses a much-simplified pointer model.
 //!
 //! ### Pointer model
 //!
