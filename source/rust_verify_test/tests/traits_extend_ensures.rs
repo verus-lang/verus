@@ -213,7 +213,7 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "spec functions cannot have requires/ensures")
+    } => Err(err) => assert_vir_error_msg(err, "spec functions cannot have `requires`/`ensures`")
 }
 
 test_verify_one_file! {
@@ -444,7 +444,7 @@ test_verify_one_file! {
                 default_ensures
                     r == i / 2;
         }
-    } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")
+    } => Err(err) => assert_vir_error_msg(err, "`default_ensures` not allowed here")
 }
 
 test_verify_one_file! {
@@ -459,7 +459,7 @@ test_verify_one_file! {
                 i / 2
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")
+    } => Err(err) => assert_vir_error_msg(err, "`default_ensures` not allowed here")
 }
 
 test_verify_one_file! {
@@ -472,7 +472,7 @@ test_verify_one_file! {
         {
             i / 2
         }
-    } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")
+    } => Err(err) => assert_vir_error_msg(err, "`default_ensures` not allowed here")
 }
 
 test_verify_one_file! {
@@ -484,7 +484,7 @@ test_verify_one_file! {
             assert((verus_builtin::default_ensures)(true));
             i / 2
         }
-    } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")
+    } => Err(err) => assert_vir_error_msg(err, "`default_ensures` not allowed here")
 }
 
 test_verify_one_file! {
@@ -502,7 +502,7 @@ test_verify_one_file! {
                 i / 2
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")
+    } => Err(err) => assert_vir_error_msg(err, "`default_ensures` not allowed here")
 }
 
 test_verify_one_file! {
@@ -523,7 +523,7 @@ test_verify_one_file! {
                 i / 2
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")
+    } => Err(err) => assert_vir_error_msg(err, "`default_ensures` not allowed here")
 }
 
 test_verify_one_file! {
@@ -861,7 +861,7 @@ test_verify_one_file! {
     #[test] test_impls_cannot_extend_spec_trait_decl_only1 verus_code! {
         #[verifier::impls_cannot_extend_spec]
         fn e();
-    } => Err(err) => assert_vir_error_msg(err, "only exec trait functions can be marked impls_cannot_extend_spec")
+    } => Err(err) => assert_vir_error_msg(err, "only exec trait methods can be marked `impls_cannot_extend_spec`")
 }
 
 test_verify_one_file! {
@@ -873,7 +873,7 @@ test_verify_one_file! {
             #[verifier::impls_cannot_extend_spec]
             fn e() {}
         }
-    } => Err(err) => assert_vir_error_msg(err, "only exec trait functions can be marked impls_cannot_extend_spec")
+    } => Err(err) => assert_vir_error_msg(err, "only exec trait methods can be marked `impls_cannot_extend_spec`")
 }
 
 test_verify_one_file! {
@@ -882,7 +882,7 @@ test_verify_one_file! {
             #[verifier::impls_cannot_extend_spec]
             spec fn e();
         }
-    } => Err(err) => assert_vir_error_msg(err, "only exec trait functions can be marked impls_cannot_extend_spec")
+    } => Err(err) => assert_vir_error_msg(err, "only exec trait methods can be marked `impls_cannot_extend_spec`")
 }
 
 test_verify_one_file! {
@@ -891,7 +891,7 @@ test_verify_one_file! {
             #[verifier::impls_cannot_extend_spec]
             proof fn e();
         }
-    } => Err(err) => assert_vir_error_msg(err, "only exec trait functions can be marked impls_cannot_extend_spec")
+    } => Err(err) => assert_vir_error_msg(err, "only exec trait methods can be marked `impls_cannot_extend_spec`")
 }
 
 test_verify_one_file! {
@@ -903,7 +903,7 @@ test_verify_one_file! {
         impl T for u8 {
             fn e() ensures true {}
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare ensures clauses because the trait declaration is marked impls_cannot_extend_spec")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `ensures` clauses because the trait declaration is marked `impls_cannot_extend_spec`")
 }
 
 test_verify_one_file! {
@@ -912,7 +912,7 @@ test_verify_one_file! {
             #[verifier::impls_cannot_extend_spec]
             fn f() default_ensures true {}
         }
-    } => Err(err) => assert_vir_error_msg(err, "impls_cannot_extend_spec functions cannot use default_ensures")
+    } => Err(err) => assert_vir_error_msg(err, "`impls_cannot_extend_spec` functions cannot use `default_ensures`")
 }
 
 test_verify_one_file! {
@@ -1074,7 +1074,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare ensures clauses because the trait declaration is marked impls_cannot_extend_spec")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `ensures` clauses because the trait declaration is marked `impls_cannot_extend_spec`")
 }
 
 test_verify_one_file! {

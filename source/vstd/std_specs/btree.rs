@@ -3,24 +3,32 @@
 //!
 //! The specification is only meaningful when the `Key` obeys our [`Ord`] model,
 //! as specified by [`super::super::laws_cmp::obeys_cmp_spec`].
+//! Borrowed-query comparison guarantees additionally require
+//! `obeys_cmp::<&Q>()` and
+//! `<Key as BorrowSpec<Q>>::obeys_borrow_spec()`.
 //!
 //! By default, the Verus standard library brings useful axioms
 //! about the behavior of `BTreeMap` and `BTreeSet` into the ambient
 //! reasoning context by broadcasting the group
 //! `vstd::std_specs::btree::group_btree_axioms`.
-use super::super::laws_cmp::obeys_cmp;
+use super::super::laws_cmp::{obeys_cmp, obeys_cmp_concrete_eq, obeys_cmp_deep_eq};
+use super::super::map::{assert_maps_equal, assert_maps_equal_internal};
 use super::super::prelude::*;
+use super::borrow::BorrowSpec;
 use super::cmp::OrdSpec;
+pub use super::cmp::borrowed_key_ordering_matches;
 use super::iter::IteratorSpec;
 
 use alloc::alloc::Allocator;
 use alloc::boxed::Box;
 use alloc::collections::btree_map;
-use alloc::collections::btree_map::{Keys, Values};
+use alloc::collections::btree_map::{CursorMut, Keys, UnorderedKeyError, Values};
 use alloc::collections::btree_set;
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::borrow::Borrow;
+use core::cmp::Ordering;
 use core::marker::PhantomData;
+use core::ops::Bound;
 use core::option::Option;
 
 verus! {
@@ -75,7 +83,10 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -107,7 +118,10 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -141,7 +155,10 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for btree_map::Iter<'a, K, V> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -160,7 +177,10 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
 ) -> (iter: btree_map::Iter<'a, Key, Value>)
     ensures
         key_obeys_cmp_spec::<Key>() ==> {
+            // `m.len()` is mentioned so callers learn that the length fits in a `usize`
+            // (needed, e.g., by `enumerate` and `position`)
             &&& IteratorSpec::remaining(&iter).len() == m@.dom().len()
+            &&& IteratorSpec::remaining(&iter).len() == m.len()
             &&& forall|i: int|
                 #![trigger m@.contains_key(*IteratorSpec::remaining(&iter)[i].0)]
                 #![trigger m@[*IteratorSpec::remaining(&iter)[i].0]]
@@ -193,6 +213,127 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
 #[verifier::accept_recursive_types(Value)]
 #[verifier::reject_recursive_types(A)]
 pub struct ExBTreeMap<Key, Value, A: Allocator + Clone>(BTreeMap<Key, Value, A>);
+
+/// Verus declaration for Rust's mutable B-tree cursor type.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(Key)]
+#[verifier::accept_recursive_types(Value)]
+#[verifier::reject_recursive_types(A)]
+pub struct ExCursorMut<'a, Key: 'a, Value: 'a, A>(CursorMut<'a, Key, Value, A>);
+
+/// Verus declaration for the error returned when a cursor insertion would break key ordering.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExUnorderedKeyError(UnorderedKeyError);
+
+/// The abstract state of a mutable B-tree cursor.
+///
+/// A cursor points at the gap immediately before `keys[position]`. Therefore, `peek_next`
+/// accesses `keys[position]`, while `peek_prev` accesses `keys[position - 1]`.
+pub ghost struct CursorMutModel<Key, Value> {
+    /// All keys in the underlying map, in strictly increasing order.
+    pub keys: Seq<Key>,
+    /// The index of the element immediately after the cursor.
+    pub position: int,
+    /// The current contents of the complete map borrowed by the cursor.
+    pub map: Map<Key, Value>,
+}
+
+impl<Key, Value> CursorMutModel<Key, Value> {
+    /// Whether this model consistently represents an ordered map and a gap in that map.
+    pub open spec fn wf(self) -> bool {
+        &&& 0 <= self.position <= self.keys.len()
+        &&& self.keys.no_duplicates()
+        &&& self.keys.to_set() == self.map.dom()
+        &&& increasing_seq(self.keys)
+    }
+}
+
+/// Abstract and prophetic state for mutable B-tree cursors.
+pub trait CursorMutSpecFns<Key, Value>: View<V = CursorMutModel<Key, Value>> + Sized {
+    /// The contents of the borrowed map when this cursor's borrow is resolved.
+    #[verifier::prophetic]
+    spec fn final_map(self) -> Map<Key, Value>;
+}
+
+impl<'a, Key, Value, A> View for CursorMut<'a, Key, Value, A> {
+    type V = CursorMutModel<Key, Value>;
+
+    uninterp spec fn view(&self) -> CursorMutModel<Key, Value>;
+}
+
+impl<'a, Key, Value, A> CursorMutSpecFns<Key, Value> for CursorMut<'a, Key, Value, A> {
+    #[verifier::prophetic]
+    uninterp spec fn final_map(self) -> Map<Key, Value>;
+}
+
+/// Whether a key occurs before the gap returned by [`BTreeMap::lower_bound_mut`].
+pub open spec fn before_lower_bound<Key: Borrow<Q>, Q: Ord + ?Sized>(
+    key: Key,
+    bound: Bound<&Q>,
+) -> bool {
+    let borrowed_key = <Key as BorrowSpec<Q>>::borrow_spec(&key);
+    match bound {
+        Bound::Included(bound_key) => borrowed_key.cmp_spec(bound_key) is Less,
+        Bound::Excluded(bound_key) => !(borrowed_key.cmp_spec(bound_key) is Greater),
+        Bound::Unbounded => false,
+    }
+}
+
+/// Whether a key occurs before the gap returned by [`BTreeMap::upper_bound_mut`].
+pub open spec fn before_upper_bound<Key: Borrow<Q>, Q: Ord + ?Sized>(
+    key: Key,
+    bound: Bound<&Q>,
+) -> bool {
+    let borrowed_key = <Key as BorrowSpec<Q>>::borrow_spec(&key);
+    match bound {
+        Bound::Included(bound_key) => !(borrowed_key.cmp_spec(bound_key) is Greater),
+        Bound::Excluded(bound_key) => borrowed_key.cmp_spec(bound_key) is Less,
+        Bound::Unbounded => true,
+    }
+}
+
+/// Whether a cursor is at the gap selected by [`BTreeMap::lower_bound_mut`].
+pub open spec fn positioned_at_lower_bound<Key: Borrow<Q>, Value, Q: Ord + ?Sized>(
+    model: CursorMutModel<Key, Value>,
+    bound: Bound<&Q>,
+) -> bool {
+    &&& forall|i: int|
+        #![trigger before_lower_bound(model.keys[i], bound)]
+        0 <= i < model.position ==> before_lower_bound(model.keys[i], bound)
+    &&& forall|i: int|
+        #![trigger before_lower_bound(model.keys[i], bound)]
+        model.position <= i < model.keys.len() ==> !before_lower_bound(model.keys[i], bound)
+}
+
+/// Whether a cursor is at the gap selected by [`BTreeMap::upper_bound_mut`].
+pub open spec fn positioned_at_upper_bound<Key: Borrow<Q>, Value, Q: Ord + ?Sized>(
+    model: CursorMutModel<Key, Value>,
+    bound: Bound<&Q>,
+) -> bool {
+    &&& forall|i: int|
+        #![trigger before_upper_bound(model.keys[i], bound)]
+        0 <= i < model.position ==> before_upper_bound(model.keys[i], bound)
+    &&& forall|i: int|
+        #![trigger before_upper_bound(model.keys[i], bound)]
+        model.position <= i < model.keys.len() ==> !before_upper_bound(model.keys[i], bound)
+}
+
+/// Whether a key can be inserted at the cursor's current gap without breaking key order.
+pub open spec fn key_fits_at_position<Key: Ord, Value>(
+    model: CursorMutModel<Key, Value>,
+    key: Key,
+) -> bool {
+    &&& (model.position == 0 || model.keys[model.position - 1].cmp_spec(&key) is Less)
+    &&& (model.position == model.keys.len() || key.cmp_spec(&model.keys[model.position]) is Less)
+}
+
+/// Once the cursor has been dropped, its prophesied map is its current map.
+pub broadcast axiom fn axiom_has_resolved_cursor<Key, Value, A>(cursor: CursorMut<Key, Value, A>)
+    ensures
+        #[trigger] has_resolved(cursor) ==> cursor.final_map() == cursor@.map,
+;
 
 pub trait BTreeMapAdditionalSpecFns<Key, Value>: View<V = Map<Key, Value>> {
     spec fn spec_index(&self, k: Key) -> Value
@@ -312,19 +453,16 @@ pub broadcast proof fn lemma_btree_map_deepview_values<K: DeepView, V: DeepView>
     }
 }
 
-/// Borrowing a key works the same way on deep_view as on view,
-/// if deep_view is injective; see `axiom_contains_deref_key`.
-pub broadcast axiom fn axiom_btree_map_deepview_borrow<
-    K: DeepView + Borrow<Q>,
-    V: DeepView,
-    Q: View<V = <K as DeepView>::V> + Eq + ?Sized,
->(m: BTreeMap<K, V>, k: &Q)
-    requires
-        key_obeys_cmp_spec::<K>(),
-        crate::relations::injective(|k: K| k.deep_view()),
-    ensures
-        #[trigger] contains_borrowed_key(m@, k) <==> m.deep_view().contains_key(k@),
-;
+pub open spec fn btree_map_inv<Key: Ord, Value, A: Allocator + Clone>(
+    m: &BTreeMap<Key, Value, A>,
+) -> bool {
+    forall|k1: Key, k2: Key|
+        {
+            &&& #[trigger] m@.contains_key(k1)
+            &&& #[trigger] m@.contains_key(k2)
+            &&& k1 != k2
+        } ==> !(k1.cmp_spec(&k2) is Equal)
+}
 
 pub uninterp spec fn spec_btree_map_len<Key, Value, A: Allocator + Clone>(
     m: &BTreeMap<Key, Value, A>,
@@ -372,51 +510,148 @@ pub assume_specification<K, V>[ <BTreeMap<K, V> as core::default::Default>::defa
         m@ == Map::<K, V>::empty(),
 ;
 
+pub open spec fn btree_map_insert_ensures<Key: Ord, Value, A: Allocator + Clone>(
+    old_m: &BTreeMap<Key, Value, A>,
+    final_m: &BTreeMap<Key, Value, A>,
+    k: Key,
+    v: Value,
+    result: Option<Value>,
+) -> bool {
+    obeys_cmp::<Key>() && btree_map_inv(old_m) ==> {
+        &&& btree_map_inv(final_m)
+        &&& match result {
+            Some(old_value) => exists|stored_key: Key|
+                {
+                    &&& #[trigger] old_m@.contains_key(stored_key)
+                    &&& k.cmp_spec(&stored_key) is Equal
+                    &&& old_value == old_m@[stored_key]
+                    &&& final_m@ == old_m@.insert(stored_key, v)
+                },
+            None => {
+                &&& forall|stored_key: Key| #[trigger]
+                    old_m@.contains_key(stored_key) ==> !(k.cmp_spec(&stored_key) is Equal)
+                &&& final_m@ == old_m@.insert(k, v)
+            },
+        }
+    }
+}
+
 pub assume_specification<Key: Ord, Value, A: Allocator + Clone>[ BTreeMap::<
     Key,
     Value,
     A,
 >::insert ](m: &mut BTreeMap<Key, Value, A>, k: Key, v: Value) -> (result: Option<Value>)
     ensures
-        obeys_cmp::<Key>() ==> {
-            &&& final(m)@ == old(m)@.insert(k, v)
-            &&& match result {
-                Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
-                None => !old(m)@.contains_key(k),
-            }
+        btree_map_insert_ensures(old(m), final(m), k, v, result),
+;
+
+pub broadcast proof fn lemma_btree_map_insert_ensures_if_obeys_cmp_concrete_eq<
+    Key: Ord,
+    Value,
+    A: Allocator + Clone,
+>(
+    old_m: &BTreeMap<Key, Value, A>,
+    final_m: &BTreeMap<Key, Value, A>,
+    k: Key,
+    v: Value,
+    result: Option<Value>,
+)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
+        #[trigger] btree_map_insert_ensures::<Key, Value, A>(old_m, final_m, k, v, result),
+    ensures
+        final_m@ == old_m@.insert(k, v),
+        match result {
+            Some(old_value) => old_m@.contains_key(k) && old_value == old_m[k],
+            None => !old_m@.contains_key(k),
         },
-;
+{
+}
 
-// The specification for `contains_key` has a parameter `key: &Q`
-// where you'd expect to find `key: &Key`. This allows for the case
-// that `Key` can be borrowed as something other than `&Key`. For
-// instance, `Box<u32>` can be borrowed as `&u32` and `String` can be
-// borrowed as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively.
-// To deal with this, we have a specification function that opaquely
-// specifies what it means for a map to contain a borrowed key of type
-// `&Q`. And the postcondition of `contains_key` just says that its
-// result matches the output of that specification function. But this
-// isn't very helpful by itself, since there's no body to that
-// specification function. So we have special-case axioms that say
-// what this means in two important circumstances: (1) `Key = Q` and
-// (2) `Key = Box<Q>`.
-pub uninterp spec fn contains_borrowed_key<Key, Value, Q: ?Sized>(
-    m: Map<Key, Value>,
-    k: &Q,
-) -> bool;
-
-pub broadcast axiom fn axiom_contains_deref_key<Q, Value>(m: Map<Q, Value>, k: &Q)
+pub broadcast proof fn lemma_btree_map_insert_ensures_if_obeys_cmp_deep_eq<
+    Key: Ord + DeepView,
+    Value: DeepView,
+    A: Allocator + Clone,
+>(
+    old_m: &BTreeMap<Key, Value, A>,
+    final_m: &BTreeMap<Key, Value, A>,
+    k: Key,
+    v: Value,
+    result: Option<Value>,
+)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
+        btree_map_inv(old_m),
+        #[trigger] btree_map_insert_ensures::<Key, Value, A>(old_m, final_m, k, v, result),
     ensures
-        #[trigger] contains_borrowed_key::<Q, Value, Q>(m, k) <==> m.contains_key(*k),
-;
+        final_m.deep_view() == old_m.deep_view().insert(k.deep_view(), v.deep_view()),
+        match result {
+            Some(old_value) => {
+                &&& old_m.deep_view().contains_key(k.deep_view())
+                &&& old_value.deep_view() == old_m.deep_view()[k.deep_view()]
+            },
+            None => !old_m.deep_view().contains_key(k.deep_view()),
+        },
+{
+    broadcast use {
+        crate::map::group_map_lemmas,
+        crate::set::group_set_lemmas,
+        Set::lemma_map_contains,
+    };
 
-pub broadcast axiom fn axiom_contains_box<Q, Value>(m: Map<Box<Q>, Value>, k: &Q)
-    ensures
-        #[trigger] contains_borrowed_key::<Box<Q>, Value, Q>(m, k) <==> m.contains_key(
-            Box::new(*k),
-        ),
-;
+    reveal(btree_map_deep_view_impl);
+
+    let stored_key = match result {
+        Some(old_value) => choose|stored_key: Key|
+            {
+                &&& #[trigger] old_m@.contains_key(stored_key)
+                &&& k.cmp_spec(&stored_key) is Equal
+                &&& old_value == old_m@[stored_key]
+                &&& final_m@ == old_m@.insert(stored_key, v)
+            },
+        None => k,
+    };
+
+    assert(final_m@.contains_key(stored_key));
+    assert_maps_equal!(
+        final_m.deep_view(),
+        old_m.deep_view().insert(k.deep_view(), v.deep_view()),
+        kd => {
+            if final_m.deep_view().contains_key(kd) && kd != k.deep_view() {
+                let key = choose|key: Key|
+                    final_m@.contains_key(key) && #[trigger] key.deep_view() == kd;
+                assert(old_m@.contains_key(key));
+            }
+            if old_m.deep_view().contains_key(kd) {
+                let key = choose|key: Key|
+                    old_m@.contains_key(key) && #[trigger] key.deep_view() == kd;
+                assert(final_m@.contains_key(key));
+            }
+        }
+    );
+}
+
+pub open spec fn btree_map_contains_key_ensures<
+    Key: Borrow<Q> + Ord,
+    Value,
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>(m: &BTreeMap<Key, Value, A>, k: &Q, result: bool) -> bool {
+    ({
+        &&& obeys_cmp::<Key>()
+        &&& obeys_cmp::<&Q>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& btree_map_inv(m)
+    }) ==> {
+        &&& result == exists|key: Key|
+            {
+                &&& #[trigger] m@.contains_key(key)
+                &&& k.cmp_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)) is Equal
+            }
+    }
+}
 
 pub assume_specification<
     Key: Borrow<Q> + Ord,
@@ -425,46 +660,95 @@ pub assume_specification<
     Q: Ord + ?Sized,
 >[ BTreeMap::<Key, Value, A>::contains_key::<Q> ](m: &BTreeMap<Key, Value, A>, k: &Q) -> (result:
     bool)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> result == contains_borrowed_key(m@, k),
+        btree_map_contains_key_ensures(m, k, result),
 ;
 
-// The specification for `get` has a parameter `key: &Q` where you'd
-// expect to find `key: &Key`. This allows for the case that `Key` can
-// be borrowed as something other than `&Key`. For instance,
-// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
-// as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively.
-// To deal with this, we have a specification function that opaquely
-// specifies what it means for a map to map a borrowed key of type
-// `&Q` to a certain value. And the postcondition of `get` says that
-// its result matches the output of that specification function. (It
-// also says that its result corresponds to the output of
-// `contains_borrowed_key`, discussed above.) But this isn't very
-// helpful by itself, since there's no body to that specification
-// function. So we have special-case axioms that say what this means
-// in two important circumstances: (1) `Key = Q` and (2) `Key =
-// Box<Q>`.
-pub uninterp spec fn maps_borrowed_key_to_value<Key, Value, Q: ?Sized>(
-    m: Map<Key, Value>,
-    k: &Q,
-    v: Value,
-) -> bool;
-
-pub broadcast axiom fn axiom_maps_deref_key_to_value<Q, Value>(m: Map<Q, Value>, k: &Q, v: Value)
+pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_obeys_cmp_concrete_eq<
+    Key: Ord,
+    Value,
+    A: Allocator + Clone,
+>(m: &BTreeMap<Key, Value, A>, k: &Key, result: bool)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
+        btree_map_inv(m),
+        #[trigger] btree_map_contains_key_ensures(m, k, result),
     ensures
-        #[trigger] maps_borrowed_key_to_value::<Q, Value, Q>(m, k, v) <==> m.contains_key(*k)
-            && m[*k] == v,
-;
+        result == m@.contains_key(*k),
+{
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
 
-pub broadcast axiom fn axiom_maps_box_key_to_value<Q, Value>(m: Map<Box<Q>, Value>, q: &Q, v: Value)
+    reveal(crate::laws_cmp::obeys_cmp_ord);
+}
+
+pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_obeys_cmp_deep_eq<
+    Key: Ord + DeepView,
+    Value: DeepView,
+    A: Allocator + Clone,
+>(m: &BTreeMap<Key, Value, A>, k: &Key, result: bool)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
+        btree_map_inv(m),
+        #[trigger] btree_map_contains_key_ensures(m, k, result),
     ensures
-        #[trigger] maps_borrowed_key_to_value::<Box<Q>, Value, Q>(m, q, v) <==> {
-            let k = Box::new(*q);
-            &&& m.contains_key(k)
-            &&& m[k] == v
-        },
-;
+        Key::obeys_cmp_spec(),
+        result == m.deep_view().contains_key(k.deep_view()),
+{
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+    broadcast use {
+        crate::map::group_map_lemmas,
+        crate::set::group_set_lemmas,
+        Set::lemma_map_contains,
+    };
+
+    reveal(crate::laws_cmp::obeys_cmp_ord);
+    reveal(btree_map_deep_view_impl);
+
+    if result {
+        let key = choose|key: Key|
+            {
+                &&& #[trigger] m@.contains_key(key)
+                &&& k.cmp_spec(&key) is Equal
+            };
+        assert(m.deep_view().contains_key(key.deep_view()));
+    }
+    if m.deep_view().contains_key(k.deep_view()) {
+        let key = choose|key: Key|
+            m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+        assert(k.cmp_spec(&key) is Equal);
+    }
+}
+
+pub open spec fn btree_map_get_ensures<
+    Key: Borrow<Q> + Ord,
+    Value,
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>(m: &BTreeMap<Key, Value, A>, k: &Q, result: Option<&Value>) -> bool {
+    ({
+        &&& obeys_cmp::<Key>()
+        &&& obeys_cmp::<&Q>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& btree_map_inv(m)
+    }) ==> {
+        match result {
+            Some(v) => exists|key: Key|
+                {
+                    &&& #[trigger] m@.contains_key(key)
+                    &&& k.cmp_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)) is Equal
+                    &&& m@[key] == *v
+                },
+            None => forall|key: Key| #[trigger]
+                m@.contains_key(key) ==> !(k.cmp_spec(
+                    <Key as BorrowSpec<Q>>::borrow_spec(&key),
+                ) is Equal),
+        }
+    }
+}
 
 pub assume_specification<
     'a,
@@ -475,54 +759,122 @@ pub assume_specification<
 >[ BTreeMap::<Key, Value, A>::get::<Q> ](m: &'a BTreeMap<Key, Value, A>, k: &Q) -> (result: Option<
     &'a Value,
 >)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> match result {
-            Some(v) => maps_borrowed_key_to_value(m@, k, *v),
-            None => !contains_borrowed_key(m@, k),
+        btree_map_get_ensures(m, k, result),
+;
+
+pub broadcast proof fn lemma_btree_map_get_ensures_if_obeys_cmp_concrete_eq<
+    Key: Ord,
+    Value,
+    A: Allocator + Clone,
+>(m: &BTreeMap<Key, Value, A>, k: &Key, result: Option<&Value>)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
+        btree_map_inv(m),
+        #[trigger] btree_map_get_ensures(m, k, result),
+    ensures
+        match result {
+            Some(v) => m@.contains_key(*k) && *v == m@[*k],
+            None => !m@.contains_key(*k),
         },
-;
+{
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
 
-// The specification for `remove` has a parameter `key: &Q` where
-// you'd expect to find `key: &Key`. This allows for the case that
-// `Key` can be borrowed as something other than `&Key`. For instance,
-// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
-// as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively. To deal with this, we have a specification function
-// that opaquely specifies what it means for two maps to be related by
-// a remove of a certain `&Q`. And the postcondition of `remove` says
-// that `old(self)@` and `self@` satisfy that relationship. (It also
-// says that its result corresponds to the output of
-// `contains_borrowed_key` and `maps_borrowed_key_to_value`, discussed
-// above.) But this isn't very helpful by itself, since there's no
-// body to that specification function. So we have special-case axioms
-// that say what this means in two important circumstances: (1) `Key =
-// Q` and (2) `Key = Box<Q>`.
-pub uninterp spec fn borrowed_key_removed<Key, Value, Q: ?Sized>(
-    old_m: Map<Key, Value>,
-    new_m: Map<Key, Value>,
-    k: &Q,
-) -> bool;
+    reveal(crate::laws_cmp::obeys_cmp_ord);
+}
 
-pub broadcast axiom fn axiom_deref_key_removed<Q, Value>(
-    old_m: Map<Q, Value>,
-    new_m: Map<Q, Value>,
-    k: &Q,
-)
+pub broadcast proof fn lemma_btree_map_get_ensures_if_obeys_cmp_deep_eq<
+    Key: Ord + DeepView,
+    Value: DeepView,
+    A: Allocator + Clone,
+>(m: &BTreeMap<Key, Value, A>, k: &Key, result: Option<&Value>)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
+        btree_map_inv(m),
+        #[trigger] btree_map_get_ensures(m, k, result),
     ensures
-        #[trigger] borrowed_key_removed::<Q, Value, Q>(old_m, new_m, k) <==> new_m == old_m.remove(
-            *k,
-        ),
-;
+        Key::obeys_cmp_spec(),
+        match result {
+            Some(v) => {
+                &&& m.deep_view().contains_key(k.deep_view())
+                &&& v.deep_view() == m.deep_view()[k.deep_view()]
+            },
+            None => !m.deep_view().contains_key(k.deep_view()),
+        },
+{
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+    broadcast use {
+        crate::map::group_map_lemmas,
+        crate::set::group_set_lemmas,
+        Set::lemma_map_contains,
+    };
 
-pub broadcast axiom fn axiom_box_key_removed<Q, Value>(
-    old_m: Map<Box<Q>, Value>,
-    new_m: Map<Box<Q>, Value>,
-    q: &Q,
-)
-    ensures
-        #[trigger] borrowed_key_removed::<Box<Q>, Value, Q>(old_m, new_m, q) <==> new_m
-            == old_m.remove(Box::new(*q)),
-;
+    reveal(crate::laws_cmp::obeys_cmp_ord);
+    reveal(btree_map_deep_view_impl);
+
+    match result {
+        Some(v) => {
+            let stored_key = choose|key: Key|
+                {
+                    &&& #[trigger] m@.contains_key(key)
+                    &&& k.cmp_spec(&key) is Equal
+                    &&& m@[key] == *v
+                };
+            assert(m.deep_view().contains_key(k.deep_view()));
+            let key = choose|key: Key|
+                m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+            assert(key == stored_key);
+        },
+        None => {
+            if m.deep_view().contains_key(k.deep_view()) {
+                let key = choose|key: Key|
+                    m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+                assert(k.cmp_spec(&key) is Equal);
+            }
+        },
+    }
+}
+
+pub open spec fn btree_map_remove_ensures<
+    Key: Borrow<Q> + Ord,
+    Value,
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>(
+    old_m: &BTreeMap<Key, Value, A>,
+    final_m: &BTreeMap<Key, Value, A>,
+    k: &Q,
+    result: Option<Value>,
+) -> bool {
+    ({
+        &&& obeys_cmp::<Key>()
+        &&& obeys_cmp::<&Q>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& btree_map_inv(old_m)
+    }) ==> {
+        &&& btree_map_inv(final_m)
+        &&& match result {
+            Some(v) => exists|key: Key|
+                {
+                    &&& #[trigger] old_m@.contains_key(key)
+                    &&& k.cmp_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)) is Equal
+                    &&& old_m@[key] == v
+                    &&& final_m@ == old_m@.remove(key)
+                },
+            None => {
+                &&& forall|key: Key| #[trigger]
+                    old_m@.contains_key(key) ==> !(k.cmp_spec(
+                        <Key as BorrowSpec<Q>>::borrow_spec(&key),
+                    ) is Equal)
+                &&& final_m@ == old_m@
+            },
+        }
+    }
+}
 
 pub assume_specification<
     Key: Borrow<Q> + Ord,
@@ -531,21 +883,512 @@ pub assume_specification<
     Q: Ord + ?Sized,
 >[ BTreeMap::<Key, Value, A>::remove::<Q> ](m: &mut BTreeMap<Key, Value, A>, k: &Q) -> (result:
     Option<Value>)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> {
-            &&& borrowed_key_removed(old(m)@, final(m)@, k)
-            &&& match result {
-                Some(v) => maps_borrowed_key_to_value(old(m)@, k, v),
-                None => !contains_borrowed_key(old(m)@, k),
+        btree_map_remove_ensures(old(m), final(m), k, result),
+;
+
+pub broadcast proof fn lemma_btree_map_remove_ensures_if_obeys_cmp_concrete_eq<
+    Key: Ord,
+    Value,
+    A: Allocator + Clone,
+>(
+    old_m: &BTreeMap<Key, Value, A>,
+    final_m: &BTreeMap<Key, Value, A>,
+    k: &Key,
+    result: Option<Value>,
+)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
+        btree_map_inv(old_m),
+        #[trigger] btree_map_remove_ensures(old_m, final_m, k, result),
+    ensures
+        final_m@ == old_m@.remove(*k),
+        match result {
+            Some(v) => old_m@.contains_key(*k) && v == old_m@[*k],
+            None => !old_m@.contains_key(*k),
+        },
+{
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+    broadcast use {crate::map::group_map_lemmas, crate::set::group_set_lemmas};
+
+    reveal(crate::laws_cmp::obeys_cmp_ord);
+
+    if result is None {
+        assert(!old_m@.contains_key(*k));
+        assert(old_m@.remove(*k) =~= old_m@);
+    }
+}
+
+pub broadcast proof fn lemma_btree_map_remove_ensures_if_obeys_cmp_deep_eq<
+    Key: Ord + DeepView,
+    Value: DeepView,
+    A: Allocator + Clone,
+>(
+    old_m: &BTreeMap<Key, Value, A>,
+    final_m: &BTreeMap<Key, Value, A>,
+    k: &Key,
+    result: Option<Value>,
+)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
+        btree_map_inv(old_m),
+        #[trigger] btree_map_remove_ensures(old_m, final_m, k, result),
+    ensures
+        Key::obeys_cmp_spec(),
+        final_m.deep_view() == old_m.deep_view().remove(k.deep_view()),
+        match result {
+            Some(v) => {
+                &&& old_m.deep_view().contains_key(k.deep_view())
+                &&& v.deep_view() == old_m.deep_view()[k.deep_view()]
+            },
+            None => !old_m.deep_view().contains_key(k.deep_view()),
+        },
+{
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+    broadcast use {
+        crate::map::group_map_lemmas,
+        crate::set::group_set_lemmas,
+        Set::lemma_map_contains,
+    };
+
+    reveal(crate::laws_cmp::obeys_cmp_ord);
+    reveal(btree_map_deep_view_impl);
+
+    let stored_key = match result {
+        Some(v) => choose|key: Key|
+            {
+                &&& #[trigger] old_m@.contains_key(key)
+                &&& k.cmp_spec(&key) is Equal
+                &&& old_m@[key] == v
+                &&& final_m@ == old_m@.remove(key)
+            },
+        None => *k,
+    };
+
+    match result {
+        Some(v) => {
+            assert(old_m.deep_view().contains_key(k.deep_view()));
+            let key = choose|key: Key|
+                old_m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+            assert(key == stored_key);
+        },
+        None => {
+            if old_m.deep_view().contains_key(k.deep_view()) {
+                let key = choose|key: Key|
+                    old_m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+                assert(k.cmp_spec(&key) is Equal);
             }
         },
+    }
+
+    assert_maps_equal!(
+        final_m.deep_view(),
+        old_m.deep_view().remove(k.deep_view()),
+        kd => {
+            if final_m.deep_view().contains_key(kd) {
+                let key = choose|key: Key|
+                    final_m@.contains_key(key) && #[trigger] key.deep_view() == kd;
+                assert(old_m@.contains_key(key));
+                assert(key.deep_view() != k.deep_view());
+            }
+            if old_m.deep_view().contains_key(kd) && kd != k.deep_view() {
+                let key = choose|key: Key|
+                    old_m@.contains_key(key) && #[trigger] key.deep_view() == kd;
+                assert(final_m@.contains_key(key));
+            }
+        }
+    );
+}
+
+pub open spec fn btree_map_get_mut_ensures<
+    Key: Borrow<Q> + Ord,
+    Value,
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>(
+    old_m: &BTreeMap<Key, Value, A>,
+    final_m: &BTreeMap<Key, Value, A>,
+    k: &Q,
+    result: Option<(Value, Value)>,
+) -> bool {
+    ({
+        &&& obeys_cmp::<Key>()
+        &&& obeys_cmp::<&Q>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& btree_map_inv(old_m)
+    }) ==> {
+        &&& btree_map_inv(final_m)
+        &&& match result {
+            Some((current_value, final_value)) => exists|stored_key: Key|
+                {
+                    &&& #[trigger] old_m@.contains_key(stored_key)
+                    &&& k.cmp_spec(<Key as BorrowSpec<Q>>::borrow_spec(&stored_key)) is Equal
+                    &&& old_m@[stored_key] == current_value
+                    &&& final_m@ == old_m@.insert(stored_key, final_value)
+                },
+            None => {
+                &&& forall|stored_key: Key| #[trigger]
+                    old_m@.contains_key(stored_key) ==> !(k.cmp_spec(
+                        <Key as BorrowSpec<Q>>::borrow_spec(&stored_key),
+                    ) is Equal)
+                &&& final_m@ == old_m@
+            },
+        }
+    }
+}
+
+/// Specification for [`BTreeMap::get_mut`].
+pub assume_specification<
+    'a,
+    Key: Borrow<Q> + Ord,
+    Value,
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>[ BTreeMap::<Key, Value, A>::get_mut::<Q> ](
+    m: &'a mut BTreeMap<Key, Value, A>,
+    key: &Q,
+) -> (result: Option<&'a mut Value>)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>(),
+    ensures
+        match result {
+            Some(value) => btree_map_get_mut_ensures(
+                old(m),
+                final(m),
+                key,
+                Some((*value, *final(value))),
+            ),
+            None => btree_map_get_mut_ensures(old(m), final(m), key, None),
+        },
 ;
+
+pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_obeys_cmp_concrete_eq<
+    Key: Ord,
+    Value,
+    A: Allocator + Clone,
+>(
+    old_m: &BTreeMap<Key, Value, A>,
+    final_m: &BTreeMap<Key, Value, A>,
+    k: &Key,
+    result: Option<(Value, Value)>,
+)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
+        btree_map_inv(old_m),
+        #[trigger] btree_map_get_mut_ensures(old_m, final_m, k, result),
+    ensures
+        match result {
+            Some((current_value, final_value)) => {
+                &&& old_m@.contains_key(*k)
+                &&& current_value == old_m@[*k]
+                &&& final_m@ == old_m@.insert(*k, final_value)
+            },
+            None => {
+                &&& !old_m@.contains_key(*k)
+                &&& final_m@ == old_m@
+            },
+        },
+{
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+
+    reveal(crate::laws_cmp::obeys_cmp_ord);
+}
+
+pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_obeys_cmp_deep_eq<
+    Key: Ord + DeepView,
+    Value: DeepView,
+    A: Allocator + Clone,
+>(
+    old_m: &BTreeMap<Key, Value, A>,
+    final_m: &BTreeMap<Key, Value, A>,
+    k: &Key,
+    result: Option<(Value, Value)>,
+)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
+        btree_map_inv(old_m),
+        #[trigger] btree_map_get_mut_ensures(old_m, final_m, k, result),
+    ensures
+        Key::obeys_cmp_spec(),
+        match result {
+            Some((current_value, final_value)) => {
+                &&& old_m.deep_view().contains_key(k.deep_view())
+                &&& current_value.deep_view() == old_m.deep_view()[k.deep_view()]
+                &&& final_m.deep_view() == old_m.deep_view().insert(
+                    k.deep_view(),
+                    final_value.deep_view(),
+                )
+            },
+            None => {
+                &&& !old_m.deep_view().contains_key(k.deep_view())
+                &&& final_m.deep_view() == old_m.deep_view()
+            },
+        },
+{
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+
+    reveal(crate::laws_cmp::obeys_cmp_ord);
+
+    match result {
+        Some((current_value, final_value)) => {
+            lemma_btree_map_insert_ensures_if_obeys_cmp_deep_eq(
+                old_m,
+                final_m,
+                *k,
+                final_value,
+                Some(current_value),
+            );
+        },
+        None => {
+            broadcast use {
+                crate::map::group_map_lemmas,
+                crate::set::group_set_lemmas,
+                Set::lemma_map_contains,
+            };
+
+            reveal(btree_map_deep_view_impl);
+
+            if old_m.deep_view().contains_key(k.deep_view()) {
+                let key = choose|key: Key|
+                    old_m@.contains_key(key) && #[trigger] key.deep_view() == k.deep_view();
+                assert(k.cmp_spec(&key) is Equal);
+            }
+        },
+    }
+}
 
 pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::clear ](
     m: &mut BTreeMap<Key, Value, A>,
 )
     ensures
         final(m)@ == Map::<Key, Value>::empty(),
+;
+
+/// Specification for [`BTreeMap::lower_bound_mut`].
+pub assume_specification<
+    'a,
+    Key: Borrow<Q> + Ord,
+    Value,
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>[ BTreeMap::<Key, Value, A>::lower_bound_mut::<Q> ](
+    map: &'a mut BTreeMap<Key, Value, A>,
+    bound: Bound<&Q>,
+) -> (cursor: CursorMut<'a, Key, Value, A>)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>(),
+    ensures
+        ({
+            &&& obeys_cmp::<Key>()
+            &&& obeys_cmp::<&Q>()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> {
+            &&& cursor@.wf()
+            &&& cursor@.map == old(map)@
+            &&& final(map)@ == cursor.final_map()
+            &&& positioned_at_lower_bound(cursor@, bound)
+        },
+;
+
+/// Specification for [`BTreeMap::upper_bound_mut`].
+pub assume_specification<
+    'a,
+    Key: Borrow<Q> + Ord,
+    Value,
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>[ BTreeMap::<Key, Value, A>::upper_bound_mut::<Q> ](
+    map: &'a mut BTreeMap<Key, Value, A>,
+    bound: Bound<&Q>,
+) -> (cursor: CursorMut<'a, Key, Value, A>)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>(),
+    ensures
+        ({
+            &&& obeys_cmp::<Key>()
+            &&& obeys_cmp::<&Q>()
+            &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        }) ==> {
+            &&& cursor@.wf()
+            &&& cursor@.map == old(map)@
+            &&& final(map)@ == cursor.final_map()
+            &&& positioned_at_upper_bound(cursor@, bound)
+        },
+;
+
+/// Specification for [`CursorMut::next`].
+pub assume_specification<'a, 'b, Key, Value, A>[ CursorMut::<'a, Key, Value, A>::next ](
+    cursor: &'b mut CursorMut<'a, Key, Value, A>,
+) -> (result: Option<(&'b Key, &'b mut Value)>)
+    requires
+        old(cursor)@.wf(),
+    ensures
+        final(cursor).final_map() == old(cursor).final_map(),
+        final(cursor)@.wf(),
+        match result {
+            Some((key, value)) => {
+                let old_model = old(cursor)@;
+                let new_model = final(cursor)@;
+                &&& old_model.position < old_model.keys.len()
+                &&& *key == old_model.keys[old_model.position]
+                &&& *value == old_model.map[*key]
+                &&& new_model.keys == old_model.keys
+                &&& new_model.position == old_model.position + 1
+                &&& new_model.map == old_model.map.insert(*key, *final(value))
+            },
+            None => {
+                &&& old(cursor)@.position == old(cursor)@.keys.len()
+                &&& final(cursor)@ == old(cursor)@
+            },
+        },
+;
+
+/// Specification for [`CursorMut::prev`].
+pub assume_specification<'a, 'b, Key, Value, A>[ CursorMut::<'a, Key, Value, A>::prev ](
+    cursor: &'b mut CursorMut<'a, Key, Value, A>,
+) -> (result: Option<(&'b Key, &'b mut Value)>)
+    requires
+        old(cursor)@.wf(),
+    ensures
+        final(cursor).final_map() == old(cursor).final_map(),
+        final(cursor)@.wf(),
+        match result {
+            Some((key, value)) => {
+                let old_model = old(cursor)@;
+                let new_model = final(cursor)@;
+                &&& old_model.position > 0
+                &&& *key == old_model.keys[old_model.position - 1]
+                &&& *value == old_model.map[*key]
+                &&& new_model.keys == old_model.keys
+                &&& new_model.position == old_model.position - 1
+                &&& new_model.map == old_model.map.insert(*key, *final(value))
+            },
+            None => {
+                &&& old(cursor)@.position == 0
+                &&& final(cursor)@ == old(cursor)@
+            },
+        },
+;
+
+/// Specification for [`CursorMut::peek_prev`].
+pub assume_specification<'a, 'b, Key, Value, A>[ CursorMut::<'a, Key, Value, A>::peek_prev ](
+    cursor: &'b mut CursorMut<'a, Key, Value, A>,
+) -> (result: Option<(&'b Key, &'b mut Value)>)
+    requires
+        old(cursor)@.wf(),
+    ensures
+        final(cursor).final_map() == old(cursor).final_map(),
+        final(cursor)@.wf(),
+        match result {
+            Some((key, value)) => {
+                let old_model = old(cursor)@;
+                let new_model = final(cursor)@;
+                &&& old_model.position > 0
+                &&& *key == old_model.keys[old_model.position - 1]
+                &&& *value == old_model.map[*key]
+                &&& new_model.keys == old_model.keys
+                &&& new_model.position == old_model.position
+                &&& new_model.map == old_model.map.insert(*key, *final(value))
+            },
+            None => {
+                &&& old(cursor)@.position == 0
+                &&& final(cursor)@ == old(cursor)@
+            },
+        },
+;
+
+/// Specification for [`CursorMut::peek_next`].
+pub assume_specification<'a, 'b, Key, Value, A>[ CursorMut::<'a, Key, Value, A>::peek_next ](
+    cursor: &'b mut CursorMut<'a, Key, Value, A>,
+) -> (result: Option<(&'b Key, &'b mut Value)>)
+    requires
+        old(cursor)@.wf(),
+    ensures
+        final(cursor).final_map() == old(cursor).final_map(),
+        final(cursor)@.wf(),
+        match result {
+            Some((key, value)) => {
+                let old_model = old(cursor)@;
+                let new_model = final(cursor)@;
+                &&& old_model.position < old_model.keys.len()
+                &&& *key == old_model.keys[old_model.position]
+                &&& *value == old_model.map[*key]
+                &&& new_model.keys == old_model.keys
+                &&& new_model.position == old_model.position
+                &&& new_model.map == old_model.map.insert(*key, *final(value))
+            },
+            None => {
+                &&& old(cursor)@.position == old(cursor)@.keys.len()
+                &&& final(cursor)@ == old(cursor)@
+            },
+        },
+;
+
+/// Specification for [`CursorMut::insert_after`].
+pub assume_specification<'a, Key: Ord, Value, A: Allocator + Clone>[ CursorMut::<
+    'a,
+    Key,
+    Value,
+    A,
+>::insert_after ](cursor: &mut CursorMut<'a, Key, Value, A>, key: Key, value: Value) -> (result:
+    Result<(), UnorderedKeyError>)
+    requires
+        old(cursor)@.wf(),
+    ensures
+        final(cursor).final_map() == old(cursor).final_map(),
+        obeys_cmp::<Key>() ==> {
+            &&& final(cursor)@.wf()
+            &&& match result {
+                Ok(()) => {
+                    let old_model = old(cursor)@;
+                    let new_model = final(cursor)@;
+                    &&& key_fits_at_position(old_model, key)
+                    &&& new_model.keys == old_model.keys.insert(old_model.position, key)
+                    &&& new_model.position == old_model.position
+                    &&& new_model.map == old_model.map.insert(key, value)
+                },
+                Err(_) => {
+                    &&& !key_fits_at_position(old(cursor)@, key)
+                    &&& final(cursor)@ == old(cursor)@
+                },
+            }
+        },
+;
+
+/// Specification for [`CursorMut::remove_next`].
+pub assume_specification<'a, Key: Ord, Value, A: Allocator + Clone>[ CursorMut::<
+    'a,
+    Key,
+    Value,
+    A,
+>::remove_next ](cursor: &mut CursorMut<'a, Key, Value, A>) -> (result: Option<(Key, Value)>)
+    requires
+        old(cursor)@.wf(),
+    ensures
+        final(cursor).final_map() == old(cursor).final_map(),
+        final(cursor)@.wf(),
+        match result {
+            Some((key, value)) => {
+                let old_model = old(cursor)@;
+                let new_model = final(cursor)@;
+                &&& old_model.position < old_model.keys.len()
+                &&& key == old_model.keys[old_model.position]
+                &&& value == old_model.map[key]
+                &&& new_model.keys == old_model.keys.remove(old_model.position)
+                &&& new_model.position == old_model.position
+                &&& new_model.map == old_model.map.remove(key)
+            },
+            None => {
+                &&& old(cursor)@.position == old(cursor)@.keys.len()
+                &&& final(cursor)@ == old(cursor)@
+            },
+        },
 ;
 
 pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::keys ](
@@ -556,6 +1399,7 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
             &&& IteratorSpec::remaining(&keys).unref().to_set() == m@.dom()
             &&& IteratorSpec::remaining(&keys).no_duplicates()
             &&& IteratorSpec::remaining(&keys).len() == m@.dom().len()
+            &&& IteratorSpec::remaining(&keys).len() == m.len()
             &&& increasing_seq(IteratorSpec::remaining(&keys))
             &&& into_iter_keys(keys) == IteratorSpec::remaining(&keys).unref()
             &&& IteratorSpec::decrease(&keys) is Some
@@ -569,6 +1413,7 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
         key_obeys_cmp_spec::<Key>() ==> {
             &&& IteratorSpec::remaining(&values).unref().to_set() == m@.values()
             &&& IteratorSpec::remaining(&values).len() == m@.dom().len()
+            &&& IteratorSpec::remaining(&values).len() == m.len()
             &&& into_iter_values(values) == IteratorSpec::remaining(&values).unref()
             &&& IteratorSpec::decrease(&values) is Some
             &&& exists|key_seq: Seq<Key>|
@@ -606,7 +1451,10 @@ impl<'a, T> super::iter::IteratorSpecImpl for btree_set::Iter::<'a, T> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -645,6 +1493,15 @@ impl<Key: DeepView, A: Allocator + Clone> DeepView for BTreeSet<Key, A> {
     open spec fn deep_view(&self) -> Set<Key::V> {
         self@.map(|x: Key| x.deep_view())
     }
+}
+
+pub open spec fn btree_set_inv<Key: Ord, A: Allocator + Clone>(m: &BTreeSet<Key, A>) -> bool {
+    forall|k1: Key, k2: Key|
+        {
+            &&& #[trigger] m@.contains(k1)
+            &&& #[trigger] m@.contains(k2)
+            &&& k1 != k2
+        } ==> !(k1.cmp_spec(&k2) is Equal)
 }
 
 pub uninterp spec fn spec_btree_set_len<Key, A: Allocator + Clone>(m: &BTreeSet<Key, A>) -> usize;
@@ -688,81 +1545,194 @@ pub assume_specification<T>[ <BTreeSet<T> as core::default::Default>::default ](
         m@ == Set::<T>::empty(),
 ;
 
+pub open spec fn btree_set_insert_ensures<Key: Ord, A: Allocator + Clone>(
+    old_m: &BTreeSet<Key, A>,
+    final_m: &BTreeSet<Key, A>,
+    k: Key,
+    result: bool,
+) -> bool {
+    obeys_cmp::<Key>() && btree_set_inv(old_m) ==> {
+        &&& btree_set_inv(final_m)
+        &&& if result {
+            &&& forall|stored_key: Key| #[trigger]
+                old_m@.contains(stored_key) ==> !(k.cmp_spec(&stored_key) is Equal)
+            &&& final_m@ == old_m@.insert(k)
+        } else {
+            &&& exists|stored_key: Key| #[trigger]
+                old_m@.contains(stored_key) && k.cmp_spec(&stored_key) is Equal
+            &&& final_m@ == old_m@
+        }
+    }
+}
+
 pub assume_specification<Key: Ord, A: Allocator + Clone>[ BTreeSet::<Key, A>::insert ](
     m: &mut BTreeSet<Key, A>,
     k: Key,
 ) -> (result: bool)
     ensures
-        obeys_cmp::<Key>() ==> {
-            &&& final(m)@ == old(m)@.insert(k)
-            &&& result == !old(m)@.contains(k)
-        },
+        btree_set_insert_ensures(old(m), final(m), k, result),
 ;
 
-// The specification for `contains` has a parameter `key: &Q`
-// where you'd expect to find `key: &Key`. This allows for the case
-// that `Key` can be borrowed as something other than `&Key`. For
-// instance, `Box<u32>` can be borrowed as `&u32` and `String` can be
-// borrowed as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively.
-// To deal with this, we have a specification function that opaquely
-// specifies what it means for a set to contain a borrowed key of type
-// `&Q`. And the postcondition of `contains` just says that its
-// result matches the output of that specification function. But this
-// isn't very helpful by itself, since there's no body to that
-// specification function. So we have special-case axioms that say
-// what this means in two important circumstances: (1) `Key = Q` and
-// (2) `Key = Box<Q>`.
-pub uninterp spec fn set_contains_borrowed_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q) -> bool;
-
-pub broadcast axiom fn axiom_set_contains_deref_key<Q>(m: Set<Q>, k: &Q)
+pub broadcast proof fn lemma_btree_set_insert_ensures_if_obeys_cmp_concrete_eq<
+    Key: Ord,
+    A: Allocator + Clone,
+>(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: Key, result: bool)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
+        btree_set_inv(old_m),
+        #[trigger] btree_set_insert_ensures::<Key, A>(old_m, final_m, k, result),
     ensures
-        #[trigger] set_contains_borrowed_key::<Q, Q>(m, k) <==> m.contains(*k),
-;
+        final_m@ == old_m@.insert(k),
+        result == !old_m@.contains(k),
+{
+    broadcast use crate::set::group_set_lemmas;
 
-pub broadcast axiom fn axiom_set_contains_box<Q>(m: Set<Box<Q>>, k: &Q)
+    assert(k.cmp_spec(&k) is Equal);
+    if !result {
+        assert(old_m@.contains(k));
+        assert(old_m@.insert(k) =~= old_m@);
+    }
+}
+
+pub broadcast proof fn lemma_btree_set_insert_ensures_if_obeys_cmp_deep_eq<
+    Key: Ord + DeepView,
+    A: Allocator + Clone,
+>(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: Key, result: bool)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
+        btree_set_inv(old_m),
+        #[trigger] btree_set_insert_ensures::<Key, A>(old_m, final_m, k, result),
     ensures
-        #[trigger] set_contains_borrowed_key::<Box<Q>, Q>(m, k) <==> m.contains(Box::new(*k)),
-;
+        final_m.deep_view() == old_m.deep_view().insert(k.deep_view()),
+        result == !old_m.deep_view().contains(k.deep_view()),
+{
+    broadcast use {
+        crate::set::group_set_lemmas,
+        Set::lemma_map_contains,
+        Set::lemma_set_map_insert_commute,
+    };
+
+    if result {
+        assert(!old_m.deep_view().contains(k.deep_view())) by {
+            if old_m.deep_view().contains(k.deep_view()) {
+                let stored_key = choose|stored_key: Key|
+                    old_m@.contains(stored_key) && #[trigger] stored_key.deep_view()
+                        == k.deep_view();
+                assert(k.cmp_spec(&stored_key) is Equal);
+            }
+        }
+    } else {
+        let stored_key = choose|stored_key: Key| #[trigger]
+            old_m@.contains(stored_key) && k.cmp_spec(&stored_key) is Equal;
+        assert(stored_key.deep_view() == k.deep_view());
+        assert(old_m.deep_view().contains(k.deep_view()));
+    }
+    assert(final_m.deep_view() =~= old_m.deep_view().insert(k.deep_view()));
+}
+
+pub open spec fn btree_set_contains_ensures<
+    Key: Borrow<Q> + Ord,
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>(m: &BTreeSet<Key, A>, k: &Q, result: bool) -> bool {
+    ({
+        &&& obeys_cmp::<Key>()
+        &&& obeys_cmp::<&Q>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& btree_set_inv(m)
+    }) ==> {
+        &&& result == exists|key: Key|
+            {
+                &&& #[trigger] m@.contains(key)
+                &&& k.cmp_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)) is Equal
+            }
+    }
+}
 
 pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?Sized>[ BTreeSet::<
     Key,
     A,
 >::contains ](m: &BTreeSet<Key, A>, k: &Q) -> (result: bool)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> result == set_contains_borrowed_key(m@, k),
-    no_unwind
+        btree_set_contains_ensures(m, k, result),
 ;
 
-// The specification for `get` has a parameter `key: &Q` where you'd
-// expect to find `key: &Key`. This allows for the case that `Key` can
-// be borrowed as something other than `&Key`. For instance,
-// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
-// as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively.
-// To deal with this, we have a specification function that opaquely
-// specifies what it means for a returned reference to point to an
-// element of a BTreeSet. And the postcondition of `get` says that
-// its result matches the output of that specification function. (It
-// also says that its result corresponds to the output of
-// `contains_borrowed_key`, discussed above.) But this isn't very
-// helpful by itself, since there's no body to that specification
-// function. So we have special-case axioms that say what this means
-// in two important circumstances: (1) `Key = Q` and (2) `Key =
-// Box<Q>`.
-pub uninterp spec fn sets_borrowed_key_to_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q, v: &Key) -> bool;
-
-pub broadcast axiom fn axiom_set_deref_key_to_value<Q>(m: Set<Q>, k: &Q, v: &Q)
+pub broadcast proof fn lemma_btree_set_contains_ensures_if_obeys_cmp_concrete_eq<
+    Key: Ord,
+    A: Allocator + Clone,
+>(m: &BTreeSet<Key, A>, k: &Key, result: bool)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
+        btree_set_inv(m),
+        #[trigger] btree_set_contains_ensures(m, k, result),
     ensures
-        #[trigger] sets_borrowed_key_to_key::<Q, Q>(m, k, v) <==> m.contains(*k) && k == v,
-;
+        result == m@.contains(*k),
+{
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
 
-pub broadcast axiom fn axiom_set_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &Box<Q>)
+    reveal(crate::laws_cmp::obeys_cmp_ord);
+}
+
+pub broadcast proof fn lemma_btree_set_contains_ensures_if_obeys_cmp_deep_eq<
+    Key: Ord + DeepView,
+    A: Allocator + Clone,
+>(m: &BTreeSet<Key, A>, k: &Key, result: bool)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
+        btree_set_inv(m),
+        #[trigger] btree_set_contains_ensures(m, k, result),
     ensures
-        #[trigger] sets_borrowed_key_to_key::<Box<Q>, Q>(m, q, v) <==> (m.contains(*v) && Box::new(
-            *q,
-        ) == v),
-;
+        Key::obeys_cmp_spec(),
+        result == m.deep_view().contains(k.deep_view()),
+{
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+    broadcast use {crate::set::group_set_lemmas, Set::lemma_map_contains};
+
+    reveal(crate::laws_cmp::obeys_cmp_ord);
+
+    if result {
+        let key = choose|key: Key|
+            {
+                &&& #[trigger] m@.contains(key)
+                &&& k.cmp_spec(&key) is Equal
+            };
+        assert(m.deep_view().contains(key.deep_view()));
+    }
+    if m.deep_view().contains(k.deep_view()) {
+        let key = choose|key: Key| m@.contains(key) && #[trigger] key.deep_view() == k.deep_view();
+        assert(k.cmp_spec(&key) is Equal);
+    }
+}
+
+pub open spec fn btree_set_get_ensures<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?Sized>(
+    m: &BTreeSet<Key, A>,
+    k: &Q,
+    result: Option<&Key>,
+) -> bool {
+    ({
+        &&& obeys_cmp::<Key>()
+        &&& obeys_cmp::<&Q>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& btree_set_inv(m)
+    }) ==> {
+        &&& match result {
+            Some(key) => {
+                &&& m@.contains(*key)
+                &&& k.cmp_spec(<Key as BorrowSpec<Q>>::borrow_spec(key)) is Equal
+            },
+            None => forall|key: Key| #[trigger]
+                m@.contains(key) ==> !(k.cmp_spec(
+                    <Key as BorrowSpec<Q>>::borrow_spec(&key),
+                ) is Equal),
+        }
+    }
+}
 
 pub assume_specification<
     'a,
@@ -770,56 +1740,188 @@ pub assume_specification<
     A: Allocator + Clone,
     Q: Ord + ?Sized,
 >[ BTreeSet::<Key, A>::get::<Q> ](m: &'a BTreeSet<Key, A>, k: &Q) -> (result: Option<&'a Key>)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> match result {
-            Some(v) => sets_borrowed_key_to_key(m@, k, v),
-            None => !set_contains_borrowed_key(m@, k),
+        btree_set_get_ensures(m, k, result),
+;
+
+pub broadcast proof fn lemma_btree_set_get_ensures_if_obeys_cmp_concrete_eq<
+    Key: Ord,
+    A: Allocator + Clone,
+>(m: &BTreeSet<Key, A>, k: &Key, result: Option<&Key>)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
+        btree_set_inv(m),
+        #[trigger] btree_set_get_ensures(m, k, result),
+    ensures
+        match result {
+            Some(key) => m@.contains(*key) && *key == *k,
+            None => !m@.contains(*k),
         },
-;
+{
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
 
-// The specification for `remove` has a parameter `key: &Q` where
-// you'd expect to find `key: &Key`. This allows for the case that
-// `Key` can be borrowed as something other than `&Key`. For instance,
-// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
-// as `&str`, so in those cases `Q` would be `u32` and `str`
-// respectively. To deal with this, we have a specification function
-// that opaquely specifies what it means for two sets to be related by
-// a remove of a certain `&Q`. And the postcondition of `remove` says
-// that `old(self)@` and `self@` satisfy that relationship. (It also
-// says that its result corresponds to the output of
-// `set_contains_borrowed_key`, discussed above.) But this isn't very
-// helpful by itself, since there's no body to that specification
-// function. So we have special-case axioms that say what this means
-// in two important circumstances: (1) `Key = Q` and (2) `Key = Box<Q>`.
-pub uninterp spec fn sets_differ_by_borrowed_key<Key, Q: ?Sized>(
-    old_m: Set<Key>,
-    new_m: Set<Key>,
-    k: &Q,
-) -> bool;
+    reveal(crate::laws_cmp::obeys_cmp_ord);
+}
 
-pub broadcast axiom fn axiom_set_deref_key_removed<Q>(old_m: Set<Q>, new_m: Set<Q>, k: &Q)
+pub broadcast proof fn lemma_btree_set_get_ensures_if_obeys_cmp_deep_eq<
+    Key: Ord + DeepView,
+    A: Allocator + Clone,
+>(m: &BTreeSet<Key, A>, k: &Key, result: Option<&Key>)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
+        btree_set_inv(m),
+        #[trigger] btree_set_get_ensures(m, k, result),
     ensures
-        #[trigger] sets_differ_by_borrowed_key::<Q, Q>(old_m, new_m, k) <==> new_m == old_m.remove(
-            *k,
-        ),
-;
+        Key::obeys_cmp_spec(),
+        match result {
+            Some(key) => {
+                &&& m@.contains(*key)
+                &&& m.deep_view().contains(k.deep_view())
+                &&& key.deep_view() == k.deep_view()
+            },
+            None => !m.deep_view().contains(k.deep_view()),
+        },
+{
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+    broadcast use {crate::set::group_set_lemmas, Set::lemma_map_contains};
 
-pub broadcast axiom fn axiom_set_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: Set<Box<Q>>, q: &Q)
-    ensures
-        #[trigger] sets_differ_by_borrowed_key::<Box<Q>, Q>(old_m, new_m, q) <==> new_m
-            == old_m.remove(Box::new(*q)),
-;
+    reveal(crate::laws_cmp::obeys_cmp_ord);
+
+    match result {
+        Some(key) => {
+            assert(m.deep_view().contains(key.deep_view()));
+        },
+        None => {
+            if m.deep_view().contains(k.deep_view()) {
+                let key = choose|key: Key|
+                    m@.contains(key) && #[trigger] key.deep_view() == k.deep_view();
+                assert(k.cmp_spec(&key) is Equal);
+            }
+        },
+    }
+}
+
+pub open spec fn btree_set_remove_ensures<
+    Key: Borrow<Q> + Ord,
+    A: Allocator + Clone,
+    Q: Ord + ?Sized,
+>(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: &Q, result: bool) -> bool {
+    ({
+        &&& obeys_cmp::<Key>()
+        &&& obeys_cmp::<&Q>()
+        &&& <Key as BorrowSpec<Q>>::obeys_borrow_spec()
+        &&& btree_set_inv(old_m)
+    }) ==> {
+        &&& btree_set_inv(final_m)
+        &&& if result {
+            exists|key: Key|
+                {
+                    &&& #[trigger] old_m@.contains(key)
+                    &&& k.cmp_spec(<Key as BorrowSpec<Q>>::borrow_spec(&key)) is Equal
+                    &&& final_m@ == old_m@.remove(key)
+                }
+        } else {
+            &&& forall|key: Key| #[trigger]
+                old_m@.contains(key) ==> !(k.cmp_spec(
+                    <Key as BorrowSpec<Q>>::borrow_spec(&key),
+                ) is Equal)
+            &&& final_m@ == old_m@
+        }
+    }
+}
 
 pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?Sized>[ BTreeSet::<
     Key,
     A,
 >::remove::<Q> ](m: &mut BTreeSet<Key, A>, k: &Q) -> (result: bool)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> {
-            &&& sets_differ_by_borrowed_key(old(m)@, final(m)@, k)
-            &&& result == set_contains_borrowed_key(old(m)@, k)
-        },
+        btree_set_remove_ensures(old(m), final(m), k, result),
 ;
+
+pub broadcast proof fn lemma_btree_set_remove_ensures_if_obeys_cmp_concrete_eq<
+    Key: Ord,
+    A: Allocator + Clone,
+>(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: &Key, result: bool)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_concrete_eq::<Key>(),
+        btree_set_inv(old_m),
+        #[trigger] btree_set_remove_ensures(old_m, final_m, k, result),
+    ensures
+        final_m@ == old_m@.remove(*k),
+        result == old_m@.contains(*k),
+{
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+    broadcast use crate::set::group_set_lemmas;
+
+    reveal(crate::laws_cmp::obeys_cmp_ord);
+
+    if !result {
+        assert(!old_m@.contains(*k));
+        assert(old_m@.remove(*k) =~= old_m@);
+    }
+}
+
+pub broadcast proof fn lemma_btree_set_remove_ensures_if_obeys_cmp_deep_eq<
+    Key: Ord + DeepView,
+    A: Allocator + Clone,
+>(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: &Key, result: bool)
+    requires
+        obeys_cmp::<Key>(),
+        obeys_cmp_deep_eq::<Key>(),
+        btree_set_inv(old_m),
+        #[trigger] btree_set_remove_ensures(old_m, final_m, k, result),
+    ensures
+        Key::obeys_cmp_spec(),
+        final_m.deep_view() == old_m.deep_view().remove(k.deep_view()),
+        result == old_m.deep_view().contains(k.deep_view()),
+{
+    broadcast use crate::laws_cmp::lemma_ref_obeys_cmp_spec;
+    broadcast use {crate::set::group_set_lemmas, Set::lemma_map_contains};
+
+    reveal(crate::laws_cmp::obeys_cmp_ord);
+
+    let stored_key = if result {
+        choose|key: Key|
+            {
+                &&& #[trigger] old_m@.contains(key)
+                &&& k.cmp_spec(&key) is Equal
+                &&& final_m@ == old_m@.remove(key)
+            }
+    } else {
+        *k
+    };
+    assert(stored_key.deep_view() == k.deep_view());
+
+    if result {
+        assert(old_m.deep_view().contains(k.deep_view()));
+    } else if old_m.deep_view().contains(k.deep_view()) {
+        let key = choose|key: Key|
+            old_m@.contains(key) && #[trigger] key.deep_view() == k.deep_view();
+        assert(k.cmp_spec(&key) is Equal);
+    }
+    assert forall|kd: Key::V| #[trigger]
+        final_m.deep_view().contains(kd) <==> old_m.deep_view().remove(k.deep_view()).contains(
+            kd,
+        ) by {
+        if final_m.deep_view().contains(kd) {
+            let key = choose|key: Key| final_m@.contains(key) && #[trigger] key.deep_view() == kd;
+            assert(old_m@.contains(key));
+            assert(key.deep_view() != k.deep_view());
+        }
+        if old_m.deep_view().contains(kd) && kd != k.deep_view() {
+            let key = choose|key: Key| old_m@.contains(key) && #[trigger] key.deep_view() == kd;
+            assert(final_m@.contains(key));
+        }
+    }
+    assert(final_m.deep_view() =~= old_m.deep_view().remove(k.deep_view()));
+}
 
 pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::clear ](
     m: &mut BTreeSet<Key, A>,
@@ -836,6 +1938,7 @@ pub assume_specification<'a, Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::ite
             &&& IteratorSpec::remaining(&r).unref().to_set() == m@
             &&& IteratorSpec::remaining(&r).no_duplicates()
             &&& IteratorSpec::remaining(&r).len() == m@.len()
+            &&& IteratorSpec::remaining(&r).len() == m.len()
             &&& increasing_seq(IteratorSpec::remaining(&r))
             &&& into_iter_btree_keys(r) == IteratorSpec::remaining(&r).unref()
             &&& IteratorSpec::decrease(&r) is Some
@@ -850,23 +1953,29 @@ pub broadcast axiom fn axiom_btree_set_decreases<Key, A: Allocator + Clone>(m: B
 pub broadcast group group_btree_axioms {
     axiom_key_obeys_cmp_spec_meaning,
     axiom_increasing_seq_meaning,
-    axiom_box_key_removed,
-    axiom_contains_deref_key,
-    axiom_contains_box,
-    axiom_deref_key_removed,
-    axiom_maps_deref_key_to_value,
-    axiom_maps_box_key_to_value,
-    axiom_btree_map_deepview_borrow,
     axiom_spec_btree_map_len,
-    axiom_set_box_key_removed,
-    axiom_set_contains_deref_key,
-    axiom_set_contains_box,
-    axiom_set_deref_key_removed,
-    axiom_set_deref_key_to_value,
-    axiom_set_box_key_to_value,
+    lemma_btree_map_insert_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_map_insert_ensures_if_obeys_cmp_deep_eq,
+    lemma_btree_map_contains_key_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_map_contains_key_ensures_if_obeys_cmp_deep_eq,
+    lemma_btree_map_get_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_map_get_ensures_if_obeys_cmp_deep_eq,
+    lemma_btree_map_remove_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_map_remove_ensures_if_obeys_cmp_deep_eq,
+    lemma_btree_map_get_mut_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_map_get_mut_ensures_if_obeys_cmp_deep_eq,
     axiom_spec_btree_set_len,
+    lemma_btree_set_insert_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_set_insert_ensures_if_obeys_cmp_deep_eq,
+    lemma_btree_set_contains_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_set_contains_ensures_if_obeys_cmp_deep_eq,
+    lemma_btree_set_get_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_set_get_ensures_if_obeys_cmp_deep_eq,
+    lemma_btree_set_remove_ensures_if_obeys_cmp_concrete_eq,
+    lemma_btree_set_remove_ensures_if_obeys_cmp_deep_eq,
     axiom_btree_map_decreases,
     axiom_btree_set_decreases,
+    axiom_has_resolved_cursor,
 }
 
 } // verus!

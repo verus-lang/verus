@@ -592,6 +592,124 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] loop_break_value ["exec_allows_no_decreases_clause"] => verus_code! {
+        struct Token {
+            value: u64,
+        }
+
+        #[verifier::loop_isolation(false)]
+        fn test_basic() {
+            let value = loop {
+                break 5u64;
+            };
+            assert(value == 5);
+        }
+
+        fn test_explicit_unit_value() {
+            let _: () = loop {
+                break ();
+            };
+        }
+
+        #[verifier::loop_isolation(false)]
+        fn test_unit_value_side_effect() {
+            let mut a = 0;
+            loop {
+                break ({ a = 2; () });
+            }
+            assert(a == 2);
+        }
+
+        #[allow(unreachable_code)]
+        #[verifier::loop_isolation(false)]
+        fn test_diverging_break_value() {
+            let _: () = loop {
+                break (loop {});
+            };
+            assert(false);
+        }
+
+        #[allow(unreachable_code)]
+        #[verifier::loop_isolation(false)]
+        fn test_diverging_break_value_with_non_unit_loop(cond: bool) -> u64 {
+            if cond {
+                3
+            } else {
+                loop {
+                    break (return 5);
+                }
+            }
+        }
+
+        #[verifier::loop_isolation(false)]
+        fn test_multiple_paths(select_first: bool) {
+            let value = loop {
+                if select_first {
+                    break 10u64;
+                } else {
+                    break 20u64;
+                }
+            };
+            assert((select_first && value == 10) || (!select_first && value == 20));
+        }
+
+        #[verifier::loop_isolation(false)]
+        fn test_labeled_outer_break() {
+            let value = 'outer: loop {
+                loop {
+                    break 'outer 30u64;
+                }
+            };
+            assert(value == 30);
+        }
+
+        #[verifier::loop_isolation(false)]
+        fn test_non_copy_result() {
+            let token = loop {
+                break Token { value: 40 };
+            };
+            assert(token.value == 40);
+        }
+
+        #[verifier::allow_complex_invariants]
+        #[verifier::loop_isolation(false)]
+        fn test_value_evaluated_once() {
+            let mut count = 0u64;
+            let value = loop
+                invariant_except_break count == 0
+            {
+                count = count + 1;
+                break count;
+            };
+            assert(count == 1);
+            assert(value == 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] loop_break_value_wrong_result ["exec_allows_no_decreases_clause"] => verus_code! {
+        #[verifier::loop_isolation(false)]
+        fn test() {
+            let value = loop {
+                break 5u64;
+            };
+            assert(value == 6); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] loop_break_value_requires_no_isolation ["exec_allows_no_decreases_clause"] => verus_code! {
+        fn test() {
+            let _value = loop {
+                break 5u64;
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "loops with value-bearing `break`")
+}
+
+test_verify_one_file_with_options! {
     #[test] while_b ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(b: bool) {
             while b {
@@ -1178,6 +1296,146 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file! {
+    #[test] for_loop_continue verus_code! {
+        use vstd::prelude::*;
+
+        fn skips_body() {
+            let mut count: u32 = 0;
+            for i in it: 0u32..3u32
+                invariant
+                    count == it.index() - (if it.index() > 1 { 1int } else { 0int }),
+            {
+                if i == 1 {
+                    continue;
+                }
+                assert(i != 1);
+                count += 1;
+            }
+            assert(count == 2);
+        }
+
+        fn history(v: Vec<u32>) {
+            let mut seen: Vec<u32> = Vec::new();
+            for x in it: v
+                invariant seen@ == it.history(),
+            {
+                assert(seen.len() == it.index());
+                seen.push(x);
+                continue;
+            }
+            assert(seen@ == v@);
+        }
+
+        #[verifier::loop_isolation(false)]
+        fn no_isolation() {
+            let mut count: u32 = 0;
+            for i in 0u32..3u32
+                invariant count == i,
+            {
+                count += 1;
+                if i == 1 {
+                    continue;
+                }
+            }
+            assert(count == 3);
+        }
+
+        fn with_break() {
+            let mut count: u32 = 0;
+            for i in 0u32..5u32
+                invariant_except_break count == i,
+                invariant count <= 3,
+                ensures count == 3,
+            {
+                if i == 3 {
+                    break;
+                }
+                count += 1;
+                continue;
+            }
+            assert(count == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] for_loop_continue_labeled verus_code! {
+        use vstd::prelude::*;
+
+        fn outer() {
+            let mut count: u32 = 0;
+            'outer: for i in 0u32..3u32
+                invariant count == i,
+            {
+                count += 1;
+                // As with other loops, a labeled continue that checks the outer
+                // decreases clause must not cross an isolated inner loop.
+                #[verifier::loop_isolation(false)]
+                for j in inner: 0u32..2u32
+                    invariant inner.index() == 0,
+                {
+                    continue 'outer;
+                }
+                count += 1;
+            }
+            assert(count == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] for_loop_continue_fail verus_code! {
+        use vstd::prelude::*;
+
+        fn invariant_fail() {
+            let mut count: u32 = 0;
+            for i in 0u32..3u32
+                invariant count == i,
+            {
+                if i == 1 {
+                    continue; // FAILS
+                }
+                count += 1;
+            }
+        }
+
+        fn invariant_except_break_fail() {
+            let mut count: u32 = 0;
+            for i in 0u32..3u32
+                invariant_except_break count == i,
+            {
+                if i == 1 {
+                    continue; // FAILS
+                }
+                count += 1;
+            }
+        }
+
+        fn decreases_fail() {
+            for i in 0u32..3u32
+                decreases 0int,
+            {
+                continue; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] for_loop_continue_labeled_fail verus_code! {
+        use vstd::prelude::*;
+
+        fn outer_isolated() {
+            'outer: for i in 0u32..3u32 {
+                for j in 0u32..2u32 {
+                    continue 'outer; // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 test_verify_one_file_with_options! {
     #[test] for_loop1 ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
@@ -1523,14 +1781,14 @@ test_verify_one_file! {
                 hi <= src.len(),
                 hi <= old(dst).len(),
             ensures
-                src@.subrange(lo as int, hi as int) == final(dst)@.subrange(lo as int, hi as int),
+                src@[lo..hi] == final(dst)@[lo..hi],
         {
             for n in lo..hi
                 invariant
                     lo <= hi,
                     hi <= src.len(),
                     hi <= dst.len(),
-                    src@.subrange(lo as int, n as int) =~= dst@.subrange(lo as int, n as int),
+                    src@[lo..n] =~= dst@[lo..n],
             {
                 dst[n] = src[n];
             }
@@ -1551,7 +1809,7 @@ test_verify_one_file! {
                 i = i + 1;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "loop invariants with 'loop_isolation(false)' cannot be invariant_except_break or ensures, unless #[verifier::allow_complex_invariants] is used")
+    } => Err(err) => assert_vir_error_msg(err, "loop invariants with `loop_isolation(false)` cannot be `invariant_except_break` or `ensures`, unless `#[verifier::allow_complex_invariants]` is used")
 }
 
 test_verify_one_file! {
@@ -1616,27 +1874,27 @@ test_verify_one_file! {
             requires
                 0 <= i <= j < s.len(),
             ensures
-                sum_u8(s.take(i)) <= sum_u8(s.take(j)),
+                sum_u8(s[..i]) <= sum_u8(s[..j]),
             decreases j - i,
         {
             if i == j {
             } else {
                 sum_u8_monotonic(s, i, j - 1);
-                assert(sum_u8(s.take(i)) <= sum_u8(s.take(j - 1)));
-                assert(sum_u8(s.take(j - 1)) <= sum_u8(s.take(j))) by {
-                    assert(s.take(j).drop_last() == s.take(j - 1)); // OBSERVE
+                assert(sum_u8(s[..i]) <= sum_u8(s[..j - 1]));
+                assert(sum_u8(s[..j - 1]) <= sum_u8(s[..j])) by {
+                    assert(s[..j].drop_last() == s[..j - 1]); // OBSERVE
                 }
             }
         }
 
         proof fn sum_u8_monotonic_forall()
             ensures
-                forall |s: Seq<u8>, i, j| #![auto]
+                forall|s: Seq<u8>, i: int, j: int|
                     0 <= i <= j < s.len() ==>
-                    sum_u8(s.take(i)) <= sum_u8(s.take(j)),
+                    sum_u8(#[trigger] s[..i]) <= sum_u8(#[trigger] s[..j]),
         {
-            assert forall |s: Seq<u8>, i, j| #![auto] 0 <= i <= j < s.len() implies
-                sum_u8(s.take(i)) <= sum_u8(s.take(j)) by {
+            assert forall|s: Seq<u8>, i: int, j: int| 0 <= i <= j < s.len() implies
+                sum_u8(#[trigger] s[..i]) <= sum_u8(#[trigger] s[..j]) by {
                 sum_u8_monotonic(s, i, j);
             }
         }
@@ -1647,12 +1905,12 @@ test_verify_one_file! {
 
             for x in y: v
               invariant_except_break
-                 sum == sum_u8(v@.take(y.index()))
+                 sum == sum_u8(v@[..y.index()])
               ensures
-                  (y.index() == y.seq().len() && sum == sum_u8(y.seq().take(y.index()))) ||
-                      (sum == u8::MAX && sum_u8(v@.take(y.index())) > u8::MAX),
+                  (y.index() == y.seq().len() && sum == sum_u8(y.seq()[..y.index()])) ||
+                      (sum == u8::MAX && sum_u8(v@[..y.index()]) > u8::MAX),
             {
-                assert(v@.take(y.index() + 1).drop_last() == v@.take(y.index() as int)); // OBSERVE
+                assert(v@[..y.index() + 1].drop_last() == v@[..y.index()]); // OBSERVE
                 if x <= u8::MAX - sum {
                     sum += x;
                 } else {
@@ -1662,7 +1920,7 @@ test_verify_one_file! {
             }
 
             // Prove that we accomplished our goal
-            assert(v@.take(v@.len() as int) == v@); // OBSERVE
+            assert(v@[..v@.len()] == v@); // OBSERVE
             proof {
                 // PAPER CUT: Can't call a lemma on the prophetic sequence
                 sum_u8_monotonic_forall();
@@ -1693,10 +1951,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore]
     #[test] map_iter verus_code! {
         use vstd::prelude::*;
-        use vstd::std_specs::iter::to_map;
 
         #[verifier::loop_isolation(false)]
         fn test() {
@@ -1711,7 +1967,7 @@ test_verify_one_file! {
 
             let mut w = vec![];
 
-            for x in it: to_map(v.iter(), f)
+            for x in it: v.iter().map(f)
                 invariant
                     w.len() == it.index(),
                     forall |i| 0 <= i < w.len() ==> #[trigger] w[i] == v[i] + 1,
@@ -1725,151 +1981,149 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-  #[test] test_vecdeque_for_loop verus_code! {
-      use vstd::prelude::*;
-      use vstd::std_specs::vecdeque::*;
-      use std::collections::VecDeque;
-      spec fn sum(s: Seq<u32>) -> nat
-          decreases s.len(),
-      {
-          if s.len() == 0 {
-              0
-          } else {
-              sum(s.drop_last()) + s.last() as nat
-          }
-      }
+    #[test] test_vecdeque_for_loop verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::vecdeque::*;
+        use std::collections::VecDeque;
+        spec fn sum(s: Seq<u32>) -> nat
+            decreases s.len(),
+        {
+            if s.len() == 0 {
+                0
+            } else {
+                sum(s.drop_last()) + s.last() as nat
+            }
+        }
 
-      broadcast proof fn sum_monotonic(s: Seq<u32>, i: nat, j: nat)
-          requires
-              i <= j,
-              j <= s.len(),
-          ensures
-              #[trigger] sum(s.take(i as int)) <= #[trigger] sum(s.take(j as int)),
-          decreases j,
-      {
-          if j == 0 {
-          } else if i == j {
-          } else {
-              sum_monotonic(s, i, (j - 1) as nat);
-              assert(s.take(j as int).drop_last() == s.take((j - 1) as int));
-          }
-      }
+        broadcast proof fn sum_monotonic(s: Seq<u32>, i: nat, j: nat)
+            requires
+                i <= j,
+                j <= s.len(),
+            ensures
+                #[trigger] sum(s[..i]) <= #[trigger] sum(s[..j]),
+            decreases j,
+        {
+            if j == 0 {
+            } else if i == j {
+            } else {
+                sum_monotonic(s, i, (j - 1) as nat);
+                assert(s[..j].drop_last() == s[..j - 1]);
+            }
+        }
 
+        fn test() {
+            let mut vd = VecDeque::<u32>::new();
+            vd.push_back(10);
+            vd.push_back(20);
+            vd.push_back(30);
 
-      fn test() {
-          let mut vd = VecDeque::<u32>::new();
-          vd.push_back(10);
-          vd.push_back(20);
-          vd.push_back(30);
-
-
-          let mut s: u32 = 0;
-          for x in it: vd.iter()
-              invariant
-                  vd@ == seq![10u32, 20u32, 30u32],
-                  s as nat == sum(vd@.take(it.index())),
-          {
-              // Prove that we don't overflow
-              broadcast use sum_monotonic;
-              assert(sum(vd@.take(it.index() + 1)) <= sum(vd@.take(vd@.len() as int)));
-              assert(sum(vd@.take(vd@.len() as int)) == sum(vd@)) by {
-                  assert(vd@.take(vd@.len() as int) == vd@);
-              };
-              assert(sum(seq![10u32, 20u32, 30u32]) < u32::MAX) by (compute);
-              s = s + *x;
-              // Prove the invariant
-              assert(s as nat == sum(vd@.take(it.index() + 1))) by {
-                  assert(vd@.take(it.index() + 1).drop_last() == vd@.take(it.index())); // OBSERVE
-              };
-          }
-          assert(sum(seq![10u32, 20u32, 30u32]) == 60) by (compute);
-          assert(vd@.take(vd@.len() as int) == vd@);  // OBSERVE
-          assert(s == 60);
-      }
-  } => Ok(())
+            let mut s: u32 = 0;
+            for x in it: vd.iter()
+                invariant
+                    vd@ == seq![10u32, 20u32, 30u32],
+                    s as nat == sum(vd@[..it.index()]),
+            {
+                // Prove that we don't overflow
+                broadcast use sum_monotonic;
+                assert(sum(vd@[..it.index() + 1]) <= sum(vd@[..vd@.len()]));
+                assert(sum(vd@[..vd@.len()]) == sum(vd@)) by {
+                    assert(vd@[..vd@.len()] == vd@);
+                };
+                assert(sum(seq![10u32, 20u32, 30u32]) < u32::MAX) by (compute);
+                s = s + *x;
+                // Prove the invariant
+                assert(s as nat == sum(vd@[..it.index() + 1])) by {
+                    assert(vd@[..it.index() + 1].drop_last() == vd@[..it.index()]); // OBSERVE
+                };
+            }
+            assert(sum(seq![10u32, 20u32, 30u32]) == 60) by (compute);
+            assert(vd@[..vd@.len()] == vd@);  // OBSERVE
+            assert(s == 60);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
-  #[test] test_vecdeque_rev_for_loop verus_code! {
-      use vstd::prelude::*;
-      use vstd::std_specs::vecdeque::*;
-      use std::collections::VecDeque;
+    #[test] test_vecdeque_rev_for_loop verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::vecdeque::*;
+        use std::collections::VecDeque;
 
-      fn test() {
-          let mut vd = VecDeque::<u32>::new();
-          vd.push_back(1);
-          vd.push_back(2);
-          vd.push_back(3);
+        fn test() {
+            let mut vd = VecDeque::<u32>::new();
+            vd.push_back(1);
+            vd.push_back(2);
+            vd.push_back(3);
 
-          let mut w: Vec<u32> = Vec::new();
-          for x in it: vd.iter().rev()
-              invariant
-                  w.len() == it.index(),
-                  forall |i| 0 <= i < w.len() ==> w[i] == *it.seq()[i],
-          {
-              w.push(*x);
-          }
-          assert(w@ == vd@.reverse());
-      }
-  } => Ok(())
+            let mut w: Vec<u32> = Vec::new();
+            for x in it: vd.iter().rev()
+                invariant
+                    w.len() == it.index(),
+                    forall |i| 0 <= i < w.len() ==> w[i] == *it.seq()[i],
+            {
+                w.push(*x);
+            }
+            assert(w@ == vd@.reverse());
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
-  #[test] test_nested_for_loops verus_code! {
-      use vstd::prelude::*;
+    #[test] test_nested_for_loops verus_code! {
+        use vstd::prelude::*;
 
-      fn test() {
-          let mut count: u64 = 0;
-          #[verifier::loop_isolation(false)]
-          for i in 0u64..3u64
-              invariant count == i * 4,
-          {
-              for j in 0u64..4u64
-                  invariant
-                      count == i * 4 + j,
-                      i < 3
-              {
-                  count += 1;
-              }
-          }
-          assert(count == 12);
-      }
-  } => Ok(())
+        fn test() {
+            let mut count: u64 = 0;
+            #[verifier::loop_isolation(false)]
+            for i in 0u64..3u64
+                invariant count == i * 4,
+            {
+                for j in 0u64..4u64
+                    invariant
+                        count == i * 4 + j,
+                        i < 3
+                {
+                    count += 1;
+                }
+            }
+            assert(count == 12);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
-  #[test] test_for_loop_search verus_code! {
-      use vstd::prelude::*;
-      fn find_value(v: &Vec<u32>, target: u32) -> (result: Option<usize>)
-          ensures
-              match result {
-                  Some(idx) => idx < v.len() && v[idx as int] == target,
-                  None => forall |i: int| 0 <= i < v.len() ==> v[i] != target,
-              },
-      {
-          let mut result: Option<usize> = None;
-          let mut index: usize = 0;
-          for x in it: v
-              invariant_except_break
-                  index as int == it.index(),
-                  result is None,
-              invariant
-                  index <= v.len(),
-                  result is None ==> forall |i: int| 0 <= i < it.index() ==> v[i] != target,
-                  result matches Some(idx) ==> idx < v.len() && v[idx as int] == target,
-              ensures
-                  result is None ==> forall |i: int| 0 <= i < v.len() ==> v[i] != target,
-                  result matches Some(idx) ==> idx < v.len() && v[idx as int] == target,
-          {
-              if *x == target {
-                  result = Some(index);
-                  break;
-              }
-              index += 1;
-          }
-          result
-      }
-  } => Ok(())
+    #[test] test_for_loop_search verus_code! {
+        use vstd::prelude::*;
+        fn find_value(v: &Vec<u32>, target: u32) -> (result: Option<usize>)
+            ensures
+                match result {
+                    Some(idx) => idx < v.len() && v[idx as int] == target,
+                    None => forall |i: int| 0 <= i < v.len() ==> v[i] != target,
+                },
+        {
+            let mut result: Option<usize> = None;
+            let mut index: usize = 0;
+            for x in it: v
+                invariant_except_break
+                    index as int == it.index(),
+                    result is None,
+                invariant
+                    index <= v.len(),
+                    result is None ==> forall |i: int| 0 <= i < it.index() ==> v[i] != target,
+                    result matches Some(idx) ==> idx < v.len() && v[idx as int] == target,
+                ensures
+                    result is None ==> forall |i: int| 0 <= i < v.len() ==> v[i] != target,
+                    result matches Some(idx) ==> idx < v.len() && v[idx as int] == target,
+            {
+                if *x == target {
+                    result = Some(index);
+                    break;
+                }
+                index += 1;
+            }
+            result
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -1958,4 +2212,104 @@ test_verify_one_file! {
             m!();
         }
     } => Err(err) => assert_vir_error_msg(err, "`for` loops produced by a macro expansion")
+}
+
+test_verify_one_file! {
+    // The locals introduced by the for-loop desugaring must not capture user names
+    // (the compiled code keeps the plain Rust `for` loop, where they don't exist).
+    #[test] for_loop_desugar_no_capture_loop_next_issue3172 verus_code! {
+        use vstd::prelude::*;
+        #[allow(non_snake_case)]
+        fn f() -> (r: u32)
+            ensures r == 0
+        {
+            let VERUS_loop_next: u32 = 100;
+            let mut s: u32 = 0;
+            for x in 0..1u32
+                invariant s == 0, // FAILS
+            {
+                s = VERUS_loop_next;
+            }
+            s
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] for_loop_desugar_no_capture_iter_init_issue3172 verus_code! {
+        use vstd::prelude::*;
+        #[allow(non_snake_case)]
+        fn g(s: &[u32]) -> (r: usize)
+            requires s@.len() == 3,
+            ensures r == 3
+        {
+            let VERUS_iter_init: &[u32] = &[];
+            let mut n: usize = 3;
+            for x in s
+                invariant n == 3, s@.len() == 3, // FAILS
+            {
+                n = VERUS_iter_init.len();
+            }
+            n
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // User locals named like the generated ones stay visible and are not shadowed.
+    #[test] for_loop_desugar_user_names_visible_issue3172 verus_code! {
+        use vstd::prelude::*;
+        #[allow(non_snake_case)]
+        fn h(v: &Vec<u32>) {
+            let VERUS_iter_init: u32 = 1;
+            let VERUS_iter: u32 = 2;
+            let VERUS_ghost_iter: u32 = 3;
+            let VERUS_old_snap: u32 = 4;
+            let VERUS_old_iter: u32 = 5;
+            let VERUS_loop_next: u32 = 6;
+            let VERUS_loop_val: u32 = 7;
+            let VERUS_loop_result: u32 = 8;
+            let VERUS_exec_iter: u32 = 9;
+            for x in v
+                invariant
+                    VERUS_iter_init == 1, VERUS_iter == 2, VERUS_ghost_iter == 3,
+                    VERUS_old_snap == 4, VERUS_old_iter == 5, VERUS_loop_next == 6,
+                    VERUS_loop_val == 7, VERUS_loop_result == 8, VERUS_exec_iter == 9,
+            {
+                assert(VERUS_iter_init == 1);
+                assert(VERUS_iter == 2);
+                assert(VERUS_ghost_iter == 3);
+                assert(VERUS_old_snap == 4);
+                assert(VERUS_old_iter == 5);
+                assert(VERUS_loop_next == 6);
+                assert(VERUS_loop_val == 7);
+                assert(VERUS_loop_result == 8);
+                assert(VERUS_exec_iter == 9);
+            }
+            for x in it: v
+                invariant VERUS_loop_next == 6, it.index() <= v.len(),
+            {
+                assert(VERUS_loop_next == 6);
+            }
+            assert(VERUS_loop_result == 8);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Hygienic generated locals must not move the "not an iterator" error to the whole
+    // verus! block or duplicate it.
+    #[test] for_loop_not_iterator_error_span_issue3172 verus_code! {
+        use vstd::prelude::*;
+        fn f() {
+            for x in 5u32 {}
+        }
+    } => Err(err) => {
+        let errs: Vec<_> =
+            err.errors.iter().filter(|e| e.message.contains("is not an iterator")).collect();
+        assert_eq!(errs.len(), 1);
+        let primary = errs[0].spans.iter().find(|s| s.is_primary).unwrap();
+        assert_eq!(primary.line_start, primary.line_end);
+        assert!(primary.text[0].text.contains("for x in 5u32"));
+    }
 }

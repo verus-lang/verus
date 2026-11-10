@@ -436,7 +436,7 @@ test_verify_one_file_with_options! {
             let mut s = S { a: 5, b: false };
             muts_exec(&mut s.a);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow a ghost-mode place")
 }
 
 const PROOF_FN_COMMON: &str = code_str! {
@@ -517,7 +517,7 @@ test_verify_one_file! {
             let mut g = g;
             f(&mut g.e); // fails, tracked <- ghost assign
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow a ghost-mode place")
 }
 
 test_verify_one_file! {
@@ -781,7 +781,7 @@ test_verify_one_file! {
                 f(g.borrow_mut()); // fails, tracked <- ghost assign
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow a ghost-mode place")
 }
 
 test_verify_one_file! {
@@ -1238,7 +1238,7 @@ test_verify_one_file! {
         fn test1(Ghost(g): Ghost<&mut int>, Ghost(t): Tracked<&mut S>)
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "ill-formed unwrap_parameter header")
+    } => Err(err) => assert_vir_error_msg(err, "ill-formed `unwrap_parameter` header")
 }
 
 test_verify_one_file! {
@@ -1283,7 +1283,7 @@ test_verify_one_file! {
             #[verus::internal(header_unwrap_parameter)] let h;
             #[verifier(proof_block)] { h = g }; // should be tmp_h.view()
         }
-    } => Err(err) => assert_vir_error_msg(err, "ill-formed unwrap_parameter header")
+    } => Err(err) => assert_vir_error_msg(err, "Verus internal error: ill-formed `unwrap_parameter` header")
 }
 
 test_verify_one_file! {
@@ -1299,7 +1299,7 @@ test_verify_one_file! {
             let ghost mut i = 1000;
             test1(Ghost(&mut i), Tracked(&mut t2));
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot take mutable borrow of ghost-mode place")
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow a ghost-mode place")
 }
 
 test_verify_one_file! {
@@ -1799,4 +1799,301 @@ test_verify_one_file! {
             let y = a.spec_neg();
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::SpecNeg::spec_neg` in executable context")
+}
+
+test_verify_one_file! {
+    #[test] exec_attr_proof_fn_issue3147 verus_code! {
+        #[verifier::exec]
+        proof fn helper()
+            no_unwind
+        {
+        }
+
+        fn main()
+            no_unwind
+        {
+            helper();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "conflicting mode attributes: `exec` and `proof`")
+}
+
+test_verify_one_file! {
+    #[test] exec_attr_private_proof_method_issue3147 verus_code! {
+        trait Get { fn get(&self, x: u64) -> u64; }
+        struct S {}
+
+        impl Get for S {
+            fn get(&self, x: u64) -> u64 { 7 }
+        }
+
+        impl S {
+            #[verifier::exec]
+            proof fn get(&self, x: u64) -> (r: u64)
+                ensures r == x,
+            {
+                x
+            }
+        }
+
+        fn main() {
+            let s = S {};
+            let r = s.get(5);
+            assert(r == 5);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "conflicting mode attributes: `exec` and `proof`")
+}
+
+test_verify_one_file! {
+    #[test] proof_exec_attrs_issue3147 code! {
+        #[verifier::proof]
+        #[verifier::exec]
+        fn f() -> bool { true }
+    } => Err(err) => assert_vir_error_msg(err, "conflicting mode attributes: `proof` and `exec`")
+}
+
+test_verify_one_file! {
+    #[test] exec_attr_checked_spec_fn_issue3147 verus_code! {
+        #[verifier::exec]
+        spec(checked) fn f() -> bool { true }
+    } => Err(err) => assert_vir_error_msg(err, "conflicting mode attributes: `exec` and `spec`")
+}
+
+test_verify_one_file! {
+    #[test] repeated_mode_attrs_issue3147 verus_code! {
+        #[verifier::exec]
+        exec fn e() {}
+
+        #[verifier::proof]
+        proof fn p() {}
+
+        #[verifier::spec]
+        spec(checked) fn s() -> bool { true }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] break_from_proof_block_issue3171 verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn f() {
+            loop {
+                proof {
+                    break;
+                    ()
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`break`/`continue` is not allowed outside executable context")
+}
+
+test_verify_one_file! {
+    #[test] break_with_value_from_proof_block_issue3171 verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn f() {
+            let x = loop {
+                proof {
+                    break true;
+                    ()
+                }
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`break`/`continue` is not allowed outside executable context")
+}
+
+test_verify_one_file! {
+    #[test] continue_from_proof_block_issue3171 verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn f() {
+            loop {
+                proof {
+                    continue;
+                    ()
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`break`/`continue` is not allowed outside executable context")
+}
+
+test_verify_one_file! {
+    #[test] break_from_tracked_issue3171 verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn f() {
+            loop {
+                let x = Tracked(break);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`break`/`continue` is not allowed outside executable context")
+}
+
+test_verify_one_file! {
+    #[test] break_from_ghost_issue3171 verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn f() {
+            loop {
+                let x = Ghost(break);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`break`/`continue` is not allowed outside executable context")
+}
+
+test_verify_one_file! {
+    #[test] break_from_ghost_local_issue3171 verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn f() {
+            loop {
+                let ghost x = break;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`break`/`continue` is not allowed outside executable context")
+}
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3171
+    #[test] exec_match_on_ghost1 verus_code! {
+        pub struct S {
+            pub ghost g: u64,
+        }
+
+        fn test() -> (r: u64)
+            ensures r == 1,
+        {
+            let mut s = S { g: 7 };
+            proof { s.g = 5; }
+            match s {
+                S { g: 5 } => 1,
+                _ => 0,
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot match on ghost value in exec context")
+}
+
+test_verify_one_file! {
+    #[test] exec_match_on_ghost2 verus_code! {
+        enum E { A, B }
+        struct S {
+            pub ghost g: E,
+        }
+
+        fn test(s: S) {
+            match s {
+                S { g: E::A } => {}
+                _ => {}
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot match on ghost value in exec context")
+}
+
+test_verify_one_file! {
+    #[test] move_exec_to_proof_okay verus_code! {
+        struct X { }
+
+        proof fn consume<T>(tracked t: T) { }
+
+        fn test_tracked(t: Tracked<X>) {
+            proof {
+                consume(t);
+            }
+        }
+
+        fn test_mut_ref(r: &mut X) {
+            proof {
+                consume(r);
+            }
+        }
+
+        fn test_tuple(p: (Tracked<X>, &mut X)) {
+            proof {
+                consume(p);
+            }
+        }
+
+        fn test_nested_tuple(p: ((Tracked<X>, &mut X, u8), Tracked<X>)) {
+            proof {
+                consume(p);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] move_exec_to_proof_fail verus_code! {
+        struct X { }
+
+        proof fn consume(tracked x: X) { }
+
+        fn test(x: X) {
+            proof {
+                consume(x);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move from exec place (`x`) in non-executable context")
+}
+
+test_verify_one_file! {
+    #[test] move_exec_to_proof_ctor_tail_fail verus_code! {
+        struct X { }
+
+        struct S {
+            a: u64,
+            x: X,
+        }
+
+        fn test(s: S) {
+            proof {
+                let tracked t = S { a: 5, ..s };
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move from exec place (field `x` from the constructor tail) in non-executable context")
+}
+
+test_verify_one_file! {
+    #[test] move_exec_to_proof_let_fail verus_code! {
+        struct X { }
+
+        fn test(x: X) {
+            proof {
+                let tracked y = x;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move from exec place at this binding in non-executable context")
+}
+
+test_verify_one_file! {
+    #[test] move_exec_to_proof_match_fail verus_code! {
+        struct X { }
+
+        fn test(p: (X, u64)) {
+            proof {
+                match p {
+                    (x, _) => { }
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move from exec place at this binding in non-executable context")
+}
+
+test_verify_one_file! {
+    #[test] move_exec_to_proof_ctor_tail_fail2 verus_code! {
+        use vstd::prelude::*;
+
+        struct S {
+            a: u64,
+            x: Vec<u64>,
+        }
+
+        proof fn consume<T>(tracked t: T) { }
+
+        fn test(s: S) {
+            proof {
+                let tracked a = 5u64;
+                let tracked t = S { a, ..s };
+                consume(t.x);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot move from exec place (field `x` from the constructor tail) in non-executable context")
 }

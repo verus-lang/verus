@@ -111,6 +111,14 @@ impl<B: Base> EndianNat<B> {
         self.digits[i]
     }
 
+    #[verifier::inline]
+    pub open spec fn spec_index(self, i: int) -> int
+        recommends
+            0 <= i < self.digits.len(),
+    {
+        self.index(i)
+    }
+
     /// The first digit in this `EndianNat`. Ignores endianness.
     pub open spec fn first(self) -> nat
         recommends
@@ -162,7 +170,23 @@ impl<B: Base> EndianNat<B> {
         recommends
             0 <= n <= self.digits.len(),
     {
-        EndianNat { endian: self.endian, digits: self.digits.take(n as int), phantom: self.phantom }
+        EndianNat { endian: self.endian, digits: self.digits[..n], phantom: self.phantom }
+    }
+
+    #[verifier::inline]
+    pub open spec fn spec_index_range_from<N: Integer>(self, n: N) -> Self
+        recommends
+            0 <= n as int <= self.digits.len(),
+    {
+        self.skip(n as nat)
+    }
+
+    #[verifier::inline]
+    pub open spec fn spec_index_range_to<N: Integer>(self, n: N) -> Self
+        recommends
+            0 <= n as int <= self.digits.len(),
+    {
+        self.take(n as nat)
     }
 
     /// Constructs an `EndianNat` by skipping the least significant `n` digits of the original `EndianNat`.
@@ -171,8 +195,8 @@ impl<B: Base> EndianNat<B> {
             0 <= n <= self.digits.len(),
     {
         match self.endian {
-            Endian::Little => self.skip(n),
-            Endian::Big => self.take((self.len() - n) as nat),
+            Endian::Little => self[n..],
+            Endian::Big => self[..self.len() - n],
         }
     }
 
@@ -182,8 +206,8 @@ impl<B: Base> EndianNat<B> {
             0 <= n <= self.digits.len(),
     {
         match self.endian {
-            Endian::Little => self.take((self.len() - n) as nat),
-            Endian::Big => self.skip(n),
+            Endian::Little => self[..self.len() - n],
+            Endian::Big => self[n..],
         }
     }
 
@@ -193,8 +217,8 @@ impl<B: Base> EndianNat<B> {
             0 <= n <= self.digits.len(),
     {
         match self.endian {
-            Endian::Little => self.take(n),
-            Endian::Big => self.skip((self.len() - n) as nat),
+            Endian::Little => self[..n],
+            Endian::Big => self[self.len() - n..],
         }
     }
 
@@ -204,8 +228,8 @@ impl<B: Base> EndianNat<B> {
             0 <= n <= self.digits.len(),
     {
         match self.endian {
-            Endian::Little => self.skip((self.len() - n) as nat),
-            Endian::Big => self.take(n),
+            Endian::Little => self[self.len() - n..],
+            Endian::Big => self[..n],
         }
     }
 
@@ -1001,48 +1025,15 @@ impl<B: Base> EndianNat<B> {
             n.endian == endianness(),
         ensures
             #[trigger] Self::to_big(Self::from_big(n)) == n,
-        decreases n.len(),
     {
-        reveal(EndianNat::to_big);
-        reveal(EndianNat::to_nat);
         broadcast use EndianNat::exp_properties;
 
-        if n.len() == 0 {
-            Self::from_big_properties(n);
-            let small = Self::from_big(n);
-            assert(small.len() % Self::exp() == 0) by (nonlinear_arith)
-                requires
-                    small.len() == 0,
-                    Self::exp() > 0,
-            ;
-            Self::to_big_properties(small);
-            assert(Self::to_big(Self::from_big(n)).digits == n.digits);
-            assert(Self::to_big(Self::from_big(n)).endian == n.endian);
-        } else {
-            let least = n.least();
-            let rest = n.drop_least();
-            Self::from_big_to_big(rest);
-            Self::from_big_properties(rest);
-
-            let small = Self::from_big(n);
-            let small_least = small.take_least(Self::exp());
-            let small_rest = small.skip_least(Self::exp());
-            Self::from_nat_properties(least, Self::exp());
-            let from_nat_least = EndianNat::<B>::from_nat(least, Self::exp());
-            assert(small_least =~= from_nat_least);
-            EndianNat::<B>::from_nat_to_nat(least, Self::exp());
-
-            assert(small_rest =~= Self::from_big(rest));
-            // `(rest.len() * exp) % exp == 0`
-            lemma_mod_multiples_basic(rest.len() as int, Self::exp() as int);
-            assert(small_rest.len() % Self::exp() == 0);
-
-            Self::from_big_properties(n);
-            // `(n.len() * exp) % exp == 0`.  Use the dedicated lemma rather than
-            // a bare `nonlinear_arith`, which times out under Z3 >= 4.13.
-            lemma_mod_multiples_basic(n.len() as int, Self::exp() as int);
-            assert(small.len() % Self::exp() == 0);
-        }
+        Self::from_big_properties(n);
+        let small = Self::from_big(n);
+        lemma_mod_multiples_basic(n.len() as int, Self::exp() as int);
+        Self::to_big_properties(small);
+        lemma_div_by_multiple(n.len() as int, Self::exp() as int);
+        EndianNat::<BIG>::to_nat_injective(Self::to_big(small), n);
     }
 
     pub broadcast proof fn to_big_injective<BIG>(n1: EndianNat<B>, n2: EndianNat<B>) where
@@ -1095,7 +1086,7 @@ impl<B: Base> EndianNat<B> {
             x.len() > 0,
         ensures
             Self::to_big(x).len() == 1,
-            Self::to_big(x).index(0) == x.to_nat() as int,
+            Self::to_big(x)[0] == x.to_nat(),
     {
         broadcast use EndianNat::exp_properties;
 

@@ -71,7 +71,7 @@ impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SmtSolver {
     Z3,
     Cvc5,
@@ -80,6 +80,35 @@ pub enum SmtSolver {
 impl Default for SmtSolver {
     fn default() -> Self {
         SmtSolver::Z3
+    }
+}
+
+impl SmtSolver {
+    /// Name of the solver, for use in user-facing diagnostics.
+    pub fn name(&self) -> &'static str {
+        match self {
+            SmtSolver::Z3 => "z3",
+            SmtSolver::Cvc5 => "cvc5",
+        }
+    }
+
+    pub fn default_encoding(&self) -> SmtEncoding {
+        match self {
+            SmtSolver::Z3 => SmtEncoding::Z3,
+            SmtSolver::Cvc5 => SmtEncoding::Cvc5,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SmtEncoding {
+    Z3,
+    Cvc5,
+}
+
+impl Default for SmtEncoding {
+    fn default() -> Self {
+        SmtEncoding::Z3
     }
 }
 
@@ -98,6 +127,11 @@ pub struct Context {
     pub(crate) apply_count: u64,
     pub(crate) typing: Typing,
     pub(crate) debug: bool,
+    pub(crate) air_observer:
+        Option<std::rc::Rc<std::cell::RefCell<dyn crate::air_observer::AirObserver>>>,
+    pub(crate) query_result_observer: Option<
+        std::rc::Rc<std::cell::RefCell<dyn crate::query_result_observer::QueryResultObserver>>,
+    >,
     pub(crate) ignore_unexpected_smt: bool,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Emitter,
@@ -115,12 +149,21 @@ pub struct Context {
     pub(crate) usage_info_enabled: bool,
     pub(crate) check_valid_used: bool,
     pub(crate) solver: SmtSolver,
+    pub(crate) smt_encoding: SmtEncoding,
 }
 
 impl Context {
     pub fn new(
         message_interface: Arc<dyn crate::messages::MessageInterface>,
         solver: SmtSolver,
+    ) -> Self {
+        Self::new_with_encoding(message_interface, solver, solver.default_encoding())
+    }
+
+    pub fn new_with_encoding(
+        message_interface: Arc<dyn crate::messages::MessageInterface>,
+        solver: SmtSolver,
+        smt_encoding: SmtEncoding,
     ) -> Self {
         let mut context = Context {
             message_interface: message_interface.clone(),
@@ -141,9 +184,11 @@ impl Context {
                 snapshots: HashSet::new(),
                 break_labels_local: HashSet::new(),
                 break_labels_in_scope: crate::scope_map::ScopeMap::new(),
-                solver: solver.clone(),
+                smt_encoding,
             },
             debug: false,
+            air_observer: None,
+            query_result_observer: None,
             ignore_unexpected_smt: false,
             rlimit: 0,
             air_initial_log: Emitter::new(
@@ -151,23 +196,23 @@ impl Context {
                 false,
                 false,
                 None,
-                solver.clone(),
+                smt_encoding,
             ),
             air_middle_log: Emitter::new(
                 message_interface.clone(),
                 false,
                 false,
                 None,
-                solver.clone(),
+                smt_encoding,
             ),
             air_final_log: Emitter::new(
                 message_interface.clone(),
                 false,
                 false,
                 None,
-                solver.clone(),
+                smt_encoding,
             ),
-            smt_log: Emitter::new(message_interface.clone(), true, true, None, solver.clone()),
+            smt_log: Emitter::new(message_interface.clone(), true, true, None, smt_encoding),
             smt_transcript_log: None,
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
@@ -182,6 +227,7 @@ impl Context {
             usage_info_enabled: false,
             check_valid_used: false,
             solver,
+            smt_encoding,
         };
         context.axiom_infos.push_scope(false);
         context.array_map.push_scope(false);
@@ -200,6 +246,19 @@ impl Context {
             self.smt_process = Some(SmtProcess::launch(&self.solver, transcript_log));
         }
         self.smt_process.as_mut().unwrap()
+    }
+
+    /// Register observers for AIR passes and for solver results. Either may be `None`;
+    /// with none registered every observer hook is a no-op.
+    pub fn set_observers(
+        &mut self,
+        air_observer: Option<std::rc::Rc<std::cell::RefCell<dyn crate::air_observer::AirObserver>>>,
+        query_result_observer: Option<
+            std::rc::Rc<std::cell::RefCell<dyn crate::query_result_observer::QueryResultObserver>>,
+        >,
+    ) {
+        self.air_observer = air_observer;
+        self.query_result_observer = query_result_observer;
     }
 
     pub fn set_air_initial_log(&mut self, writer: Box<dyn std::io::Write>) {
@@ -292,7 +351,7 @@ impl Context {
     pub fn enable_usage_info(&mut self) {
         assert!(matches!(self.state, ContextState::NotStarted));
         self.usage_info_enabled = true;
-        self.set_z3_param_bool("produce-unsat-cores", true, true);
+        self.set_solver_option_bool("produce-unsat-cores", true, true);
     }
 
     // emit blank line into log files
@@ -311,30 +370,37 @@ impl Context {
         self.smt_log.comment(s);
     }
 
-    fn log_set_z3_param(&mut self, option: &str, value: &str) {
+    fn log_set_solver_option(&mut self, option: &str, value: &str) {
         self.air_initial_log.log_set_option(option, value);
         self.air_middle_log.log_set_option(option, value);
         self.air_final_log.log_set_option(option, value);
         self.smt_log.log_set_option(option, value);
     }
 
-    pub(crate) fn set_z3_param_bool(&mut self, option: &str, value: bool, write_to_logs: bool) {
+    pub(crate) fn set_solver_option_bool(
+        &mut self,
+        option: &str,
+        value: bool,
+        write_to_logs: bool,
+    ) {
         if option == "air_recommended_options" && value {
+            if matches!(self.smt_encoding, SmtEncoding::Cvc5) {
+                self.smt_log.log_node(&node!((set-logic {str_to_node("ALL")})));
+            }
             match self.solver {
                 SmtSolver::Z3 => {
-                    self.set_z3_param_bool("auto_config", false, true);
-                    self.set_z3_param_bool("smt.mbqi", false, true);
-                    self.set_z3_param_u32("smt.case_split", 3, true);
-                    self.set_z3_param_f64("smt.qi.eager_threshold", 100.0, true);
-                    self.set_z3_param_bool("smt.delay_units", true, true);
-                    self.set_z3_param_u32("smt.arith.solver", 2, true);
-                    self.set_z3_param_bool("smt.arith.nl", false, true);
-                    self.set_z3_param_bool("pi.enabled", false, true);
-                    self.set_z3_param_bool("rewriter.sort_disjunctions", false, true);
+                    self.set_solver_option_bool("auto_config", false, true);
+                    self.set_solver_option_bool("smt.mbqi", false, true);
+                    self.set_solver_option_u32("smt.case_split", 3, true);
+                    self.set_solver_option_f64("smt.qi.eager_threshold", 100.0, true);
+                    self.set_solver_option_bool("smt.delay_units", true, true);
+                    self.set_solver_option_u32("smt.arith.solver", 2, true);
+                    self.set_solver_option_bool("smt.arith.nl", false, true);
+                    self.set_solver_option_bool("pi.enabled", false, true);
+                    self.set_solver_option_bool("rewriter.sort_disjunctions", false, true);
                 }
                 SmtSolver::Cvc5 => {
-                    self.smt_log.log_node(&node!((set-logic {str_to_node("ALL")})));
-                    self.set_z3_param_bool("incremental", true, true);
+                    self.set_solver_option_bool("incremental", true, true);
                 }
             }
         } else if option == "single_check_query" && value {
@@ -344,50 +410,50 @@ impl Context {
             }
         } else {
             if write_to_logs {
-                self.log_set_z3_param(option, &value.to_string());
+                self.log_set_solver_option(option, &value.to_string());
             }
         }
     }
 
-    pub(crate) fn set_z3_param_u32(&mut self, option: &str, value: u32, write_to_logs: bool) {
+    pub(crate) fn set_solver_option_u32(&mut self, option: &str, value: u32, write_to_logs: bool) {
         if option == "rlimit" && write_to_logs && matches!(self.solver, SmtSolver::Z3) {
             self.set_rlimit(value);
         } else {
             if write_to_logs {
-                self.log_set_z3_param(option, &value.to_string());
+                self.log_set_solver_option(option, &value.to_string());
             }
         }
     }
 
-    pub(crate) fn set_z3_param_f64(&mut self, option: &str, value: f64, write_to_logs: bool) {
+    pub(crate) fn set_solver_option_f64(&mut self, option: &str, value: f64, write_to_logs: bool) {
         if write_to_logs {
             let mut s = value.to_string();
             if !s.contains(".") {
                 s += ".0";
             }
-            self.log_set_z3_param(option, &s);
+            self.log_set_solver_option(option, &s);
         }
     }
 
-    pub(crate) fn set_z3_param_str(&mut self, option: &str, value: &str, write_to_logs: bool) {
+    pub(crate) fn set_solver_option_str(&mut self, option: &str, value: &str, write_to_logs: bool) {
         if write_to_logs {
-            self.log_set_z3_param(option, value);
+            self.log_set_solver_option(option, value);
         }
     }
 
-    pub fn set_z3_param(&mut self, option: &str, value: &str) {
+    pub fn set_solver_option(&mut self, option: &str, value: &str) {
         if value == "true" {
-            self.set_z3_param_bool(option, true, true);
+            self.set_solver_option_bool(option, true, true);
         } else if value == "false" {
-            self.set_z3_param_bool(option, false, true);
+            self.set_solver_option_bool(option, false, true);
         } else if let Ok(v) = value.parse::<u32>() {
-            self.set_z3_param_u32(option, v, true);
+            self.set_solver_option_u32(option, v, true);
         } else if let Ok(v) = value.parse::<f64>() {
-            self.set_z3_param_f64(option, v, true);
+            self.set_solver_option_f64(option, v, true);
         } else if value.is_ascii() {
-            self.set_z3_param_str(option, value, true);
+            self.set_solver_option_str(option, value, true);
         } else {
-            panic!("unexpected z3 param {}", value);
+            panic!("unexpected solver option value {}", value);
         }
     }
 
@@ -414,13 +480,13 @@ impl Context {
             ContextState::NotStarted => {
                 let profile_logfile_name = self.profile_logfile_name.clone();
                 if let Some(profile_logfile_name) = profile_logfile_name {
-                    self.set_z3_param("trace", "true");
+                    self.set_solver_option("trace", "true");
                     // Very expensive.  May be needed to support more detailed log analysis.
-                    // self.set_z3_param("proof", "true");
+                    // self.set_solver_option("proof", "true");
 
                     // sise does not support backslashes in atoms, which appear in Windows paths
                     let profile_logfile_name = profile_logfile_name.replace("\\", "/");
-                    self.log_set_z3_param("trace_file_name", &profile_logfile_name);
+                    self.log_set_solver_option("trace_file_name", &profile_logfile_name);
                 }
                 self.blank_line();
                 self.comment("AIR prelude");
@@ -477,13 +543,26 @@ impl Context {
         query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
         self.ensure_started();
+        if let Some(o) = &self.air_observer {
+            o.borrow_mut().on_query_start(query);
+        }
 
         self.air_initial_log.log_query(query);
         let query = match crate::typecheck::check_query(self, query) {
             Ok(query) => query,
             Err(err) => return ValidityResult::TypeError(err),
         };
-        let (query, snapshots, local_vars) = crate::var_to_const::lower_query(&query);
+        let (query, snapshots, local_vars) = {
+            // Scope the borrow so it is released before `on_query_lowered` below
+            // (both use the same shared observer handle — no reentrant borrow).
+            let mut guard = self.air_observer.as_ref().map(|o| o.borrow_mut());
+            let obs_ref =
+                guard.as_mut().map(|g| &mut **g as &mut dyn crate::air_observer::AirObserver);
+            crate::var_to_const::lower_query(&query, obs_ref)
+        };
+        if let Some(o) = &self.air_observer {
+            o.borrow_mut().on_query_lowered(&query, &snapshots, &local_vars);
+        }
         self.air_middle_log.log_query(&query);
         let query = crate::block_to_assert::lower_query(message_interface, &query);
         self.air_final_log.log_query(&query);
@@ -551,6 +630,22 @@ impl Context {
         smt_output[0].clone()
     }
 
+    /// Evaluate a boolean AIR expression in the current solver model.
+    pub fn evaluate_bool(&mut self, expr: &crate::ast::Expr) -> Option<bool> {
+        let printer =
+            crate::printer::Printer::new(self.message_interface.clone(), true, self.solver.clone());
+        let node = printer.expr_to_node(expr);
+        // SMT-LIB `get-value`, which both solvers answer as `((<expr> <value>))`.
+        self.smt_log.log_node(&Node::List(vec![str_to_node("get-value"), Node::List(vec![node])]));
+        let smt_data = self.smt_log.take_pipe_data();
+        let output = self.get_smt_process().send_commands(smt_data).join(" ");
+        match output.strip_suffix("))").and_then(|s| s.rsplit(' ').next())? {
+            "true" => Some(true),
+            "false" => Some(false),
+            _ => None,
+        }
+    }
+
     pub fn command(
         &mut self,
         message_interface: &dyn crate::messages::MessageInterface,
@@ -568,7 +663,7 @@ impl Context {
                 ValidityResult::Valid(UsageInfo::None)
             }
             CommandX::SetOption(option, value) => {
-                self.set_z3_param(option, value);
+                self.set_solver_option(option, value);
                 ValidityResult::Valid(UsageInfo::None)
             }
             CommandX::Global(decl) => {

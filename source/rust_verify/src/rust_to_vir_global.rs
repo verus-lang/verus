@@ -35,7 +35,7 @@ pub(crate) fn process_const_early<'tcx>(
     let attrs = ctxt.tcx.hir_attrs(item.hir_id());
     let vattrs = ctxt.get_verifier_attrs_no_check(attrs)?;
     if vattrs.size_of_global {
-        let err = || crate::util::err_span(item.span, "invalid global size_of");
+        let err = || crate::util::err_span(item.span, "invalid global `size_of`");
         let ItemKind::Const(_ident, generics, _ty, ConstItemRhs::Body(body_id)) = item.kind else {
             return err();
         };

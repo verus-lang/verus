@@ -7,7 +7,7 @@ For VS Code, we require `verus-analyzer`, our Verus-specific fork of `rust-analy
 For Emacs, we have stand-alone support for Verus. The steps to get started with [Emacs](#quickstart-emacs) are below.
 
 ## Quickstart Emacs
-We support for Verus programming in Emacs through [verus-mode.el](https://github.com/verus-lang/verus-mode.el), a major mode that supports syntax highlighting, verification-on-save, jump-to-definition, and more.
+We support Verus programming in Emacs through [verus-mode.el](https://github.com/verus-lang/verus-mode.el), a major mode that supports syntax highlighting, verification-on-save, jump-to-definition, and more.
 
 To use verus-mode, the setup can be as simple as configuring `.emacs` to (i) set `verus-home` to the path to Verus, and then (ii) load up `verus-mode`.
 

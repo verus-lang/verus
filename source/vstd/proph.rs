@@ -12,7 +12,7 @@ The two types provide a similar interface, but make different tradeoffs along ce
 1. [`ProphecyGhost`] can resolve to any ghost-computed value, but [`Prophecy`] is required to resolve to an exec-computed value.
 2. [`ProphecyGhost`] allows prophecies to resolve to values dependent on other prophecies, whereas [`Prophecy`] does not allow this.
 3. The [`ProphecyGhost::value`] function, which gives the prophesied value, is marked
-   [`verifier::prophetic`](https://verus-lang.github.io/verus/guide/reference-attributes.html#verifierrprophetic), which means it is subject to Verus's prophecy-dependence tracking, which entails certain restrictions on how it is used. However, [`Prophecy::view`] is (counterintuitively) NOT marked prophetic, and so it is not subject to the restrictions that Verus usually enforces on prophesied values. (This is presently the only way to get a prophecy value without being subject to prophecy-dependence restrictions.)
+   [`verifier::prophetic`](https://verus-lang.github.io/verus/guide/reference-attributes.html#verifierprophetic), which means it is subject to Verus's prophecy-dependence tracking, which entails certain restrictions on how it is used. However, [`Prophecy::view`] is (counterintuitively) NOT marked prophetic, and so it is not subject to the restrictions that Verus usually enforces on prophesied values. (This is presently the only way to get a prophecy value without being subject to prophecy-dependence restrictions.)
 
 |                   | Ghost resolution | Dependent resolution | Prophecy-dependence tracking |
 |-------------------|------------------|----------------------|------------------------------|
@@ -52,7 +52,7 @@ error: prophetic value not allowed for argument to proof-mode function with trac
 
 On the other hand, `Prophecy` does not have this problem because its `resolve` function requires its resolved value to be computed in exec code.
 By definition, then, the resolution cannot be dependent on prophesied values, which are always ghost.
-We can argue for soundness similarly to the [_Future is Ours_ paper]((https://plv.mpi-sws.org/prophecies/paper.pdf)):
+We can argue for soundness similarly to the [_Future is Ours_ paper](https://plv.mpi-sws.org/prophecies/paper.pdf):
 for any program trace, we can determine the full sequence of resolved prophecy variables before instantiating
 the proof accompanying the program.
 
@@ -198,7 +198,7 @@ and resolved to a definitive value via [`ProphecyGhost::resolve`](Self::resolve)
 
 In contrast to the similar [`Prophecy`], this allows resolving on ghost computations
 and permits dependent resolutions. However, the [`value()`](Self::value)
-is marked [`verifier::prophetic`](https://verus-lang.github.io/verus/guide/reference-attributes.html#verifierrprophetic), which entails certain restrictions in the way it can be used.
+is marked [`verifier::prophetic`](https://verus-lang.github.io/verus/guide/reference-attributes.html#verifierprophetic), which entails certain restrictions in the way it can be used.
 See [the module level documentation](self) for a detailed comparison with the rationale
 for these trade-offs.
 

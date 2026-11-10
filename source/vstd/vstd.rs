@@ -25,7 +25,9 @@
 #![cfg_attr(verus_keep_ghost, feature(hint_must_use))]
 #![cfg_attr(verus_keep_ghost, feature(fmt_internals))]
 #![cfg_attr(verus_keep_ghost, feature(fmt_arguments_from_str))]
+#![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(btree_cursors))]
 #![cfg_attr(verus_keep_ghost, feature(panic_internals))]
+#![cfg_attr(verus_keep_ghost, feature(maybe_uninit_array_assume_init))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -66,6 +68,8 @@ pub mod math;
 pub mod modes;
 pub mod multiset;
 pub mod multiset_lib;
+#[cfg(verus_keep_ghost)]
+pub mod mut_ref;
 pub mod pervasive;
 pub mod predicate;
 pub mod proph;
@@ -127,19 +131,22 @@ pub broadcast group group_vstd_default {
     string::group_string_axioms,
     raw_ptr::group_raw_ptr_axioms,
     layout::group_layout_axioms,
+    mut_ref::group_mut_ref_axioms,
     //
     // core std_specs
     //
     std_specs::range::group_range_axioms,
-    std_specs::slice::group_slice_axioms,
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
     std_specs::fmt::group_fmt_axioms,
     std_specs::manually_drop::group_manually_drop_axioms,
     std_specs::iter::group_iter_axioms,
+    std_specs::nonzero::group_nonzero_axioms,
     //
     // std_specs for alloc (with or without std)
     //
+    #[cfg(feature = "alloc")]
+    std_specs::borrow::group_borrow_axioms,
     #[cfg(feature = "alloc")]
     std_specs::vec::group_vec_axioms,
     #[cfg(feature = "alloc")]
@@ -151,11 +158,6 @@ pub broadcast group group_vstd_default {
     std_specs::hash::group_hash_axioms,
     #[cfg(feature = "alloc")]
     std_specs::btree::group_btree_axioms,
-    //
-    // std_specs for nonzero_internals
-    //
-    #[cfg(feature = "nonzero_internals")]
-    std_specs::nonzero::group_nonzero_axioms,
 }
 
 } // verus!

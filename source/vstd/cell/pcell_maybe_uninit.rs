@@ -9,8 +9,8 @@ use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
 
-use verus as verus_;
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 /**
 Variant of [`pcell::PCell<V>`](super::pcell::PCell) for potentially uninitialized data.

@@ -73,8 +73,8 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_vir_error_msgs(err, &[
-        "no_method_body can only appear in trait method declarations",
-        "no_method_body can only appear in trait method declarations",
+        "trait declaration with `no_method_body()` should start with VERUS_SPEC__",
+        "`no_method_body` can only appear in trait method declarations",
     ])
 }
 
@@ -94,7 +94,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `requires`")
 }
 
 test_verify_one_file! {
@@ -314,7 +314,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file_with_options! {
@@ -337,7 +337,7 @@ test_verify_one_file_with_options! {
             }
         }
     } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
+        assert!(err.warnings.iter().find(|x| x.message.contains("if `exec_allows_no_decreases_clause` is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
     }
 }
 

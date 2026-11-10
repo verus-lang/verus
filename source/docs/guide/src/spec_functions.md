@@ -36,7 +36,7 @@ Verus will complain if the function lacks this annotation.
 In the example above with `min` being `closed`,
 the module `M2` can still talk about the function `min`,
 proving, for example, that `min(10, 20)` equals itself
-(because everything equals itself, regardless of what's in it's body).
+(because everything equals itself, regardless of what's in its body).
 On the other hand, the assertion that `min(10, 20) == 10` fails,
 because `M2` cannot see `min`'s body and therefore doesn't know that `min`
 computes the minimum of two numbers:
@@ -48,7 +48,7 @@ error: assertion failed
    |                ^^^^^^^^^^^^^^^^^ assertion failed
 ```
 
-After the call to `lemma_min`, the assertion that `min(10, 20) <= 10` succeeds because `lemma_min` exposes `min(x,y) <= x` as a post-condition. `lemma_min` can prove because this postcondition because it can see the body of `min` despite `min` being `closed`, as `lemma_min` and `min` are in the same module.
+After the call to `lemma_min`, the assertion that `min(10, 20) <= 10` succeeds because `lemma_min` exposes `min(x,y) <= x` as a postcondition. `lemma_min` can prove this postcondition because it can see the body of `min` despite `min` being `closed`, as `lemma_min` and `min` are in the same module.
 
 You can think of `pub open spec` functions as defining abbreviations
 and `pub closed spec` functions as defining abstractions.
@@ -58,7 +58,7 @@ Both can be useful, depending on the situation.
 and from specifications inside `exec` functions,
 such as preconditions and postconditions.
 For example, we can define the minimum of three numbers, `min3`,
-in terms of the mininum of two numbers.
+in terms of the minimum of two numbers.
 We can then define an `exec` function, `compute_min3`,
 that uses imperative code with mutable updates to compute
 the minimum of 3 numbers,

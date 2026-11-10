@@ -2139,6 +2139,9 @@ where
     if let Some(it) = &mut node.ensures {
         v.visit_ensures_mut(it);
     }
+    if let Some(it) = &mut node.invariants {
+        v.visit_signature_invariants_mut(&mut **it);
+    }
     v.visit_attributes_mut(&mut node.inner_attrs);
     v.visit_expr_mut(&mut *node.body);
 }

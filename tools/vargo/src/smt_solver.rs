@@ -4,7 +4,7 @@ use regex::Regex;
 use std::fmt::Display;
 use std::path::Path;
 
-use crate::consts;
+use crate::external_deps;
 use crate::macros::warning;
 
 #[derive(Clone, Debug)]
@@ -37,15 +37,15 @@ impl SmtSolverType {
         match self {
             SmtSolverType::Z3 => Regex::new(r"Z3 version (\d+\.\d+\.\d+) - \d+ bit")
                 .expect("failed to compile Z3 version regex"),
-            SmtSolverType::Cvc5 => Regex::new(r"This is cvc5 version (\d+\.\d+\.\d+)")
+            SmtSolverType::Cvc5 => Regex::new(r"(?:This is )?cvc5 (?:version )?(\d+\.\d+\.\d+)")
                 .expect("failed to compile cvc5 version regex"),
         }
     }
 
     fn expected_version(&self) -> String {
         match self {
-            SmtSolverType::Z3 => consts::EXPECTED_Z3_VERSION.to_string(),
-            SmtSolverType::Cvc5 => consts::EXPECTED_CVC5_VERSION.to_string(),
+            SmtSolverType::Z3 => external_deps::Z3_VERSION.to_string(),
+            SmtSolverType::Cvc5 => external_deps::CVC5_VERSION.to_string(),
         }
     }
 }

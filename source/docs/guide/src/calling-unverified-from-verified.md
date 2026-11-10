@@ -10,7 +10,7 @@ aware of the unverified code, and we need to tell Verus what it should
 One way to apply an assumption to an unverified function is to use the `#[verifier::external_body]` attribute.
 This tells Verus to process the _specification_ of a function, without verifying or processing its body.
 Thus, it causes Verus to assume the specification without proof. Obviously, this should be used with care,
-with wrong specifications can subvert Verus's guarantees!
+as wrong specifications can subvert Verus's guarantees!
 
 ```rust
 #[verifier::external_body]
@@ -59,7 +59,7 @@ fn wrapper_swap<T>(a: &mut T, b: &mut T)
 }
 ```
 
-However, this may be incovenient, because now you need to call `wrapper_swap` instead of
+However, this may be inconvenient, because now you need to call `wrapper_swap` instead of
 the more familiar `std::mem::swap`. If you want to apply the specification to
 `std::mem::swap` itself, so that you can call it from verified code, you can
 use the [`assume_specification` directive](./reference-assume-specification.md), which goes at the item level (like functions).
@@ -91,7 +91,7 @@ you can also add an `assume_specification` to your own crate.
 Sometimes, Verus will complain that it doesn't recognize a type; for this, you just need
 to make Verus aware of it. For this, you can use the `#[verifier::external_type_specification]` attribute.
 
-This will make Verus aware of the `SomeStruct`:
+This will make Verus aware of `SomeStruct`:
 
 ```rust
 #[verifier::external_type_specification]

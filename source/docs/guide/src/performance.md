@@ -1,4 +1,4 @@
-# Meausuring verification performance
+# Measuring verification performance
 
 To see a more detailed breakdown of where Verus is spending time, you can pass
 `--time` on the command line.  For even more details, try `--time-expanded`.

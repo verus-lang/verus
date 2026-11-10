@@ -34,6 +34,111 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file_with_options! {
+    #[test] test_local_impls_and_statics ["--compile"] => code! {
+        verus! {
+            trait LocalValue {
+                const VALUE: u64;
+
+                fn value(&self) -> (r: u64)
+                    ensures r == 7;
+            }
+
+            fn verus_items() {
+                struct Local;
+
+                impl Local {
+                    fn read() -> u64 {
+                        {
+                            static VALUE: u64 = 7;
+                            VALUE
+                        }
+                    }
+                }
+
+                impl LocalValue for Local {
+                    const VALUE: u64 = 7;
+
+                    fn value(&self) -> u64 {
+                        7
+                    }
+                }
+
+                let _ = Local::read();
+                let value = Local.value();
+                let constant = Local::VALUE;
+                assert(value == 7);
+                assert(constant == 7);
+            }
+        }
+
+        #[verus_spec]
+        fn attribute_items() {
+            struct Local;
+
+            impl Local {
+                #[verus_spec(r => ensures r == 7)]
+                fn seven() -> u64 {
+                    {
+                        #[verus_spec(ensures CHECKED == 7)]
+                        static CHECKED: u64 = 7;
+                        CHECKED
+                    }
+                }
+            }
+
+            impl LocalValue for Local {
+                const VALUE: u64 = 7;
+
+                fn value(&self) -> u64 {
+                    7
+                }
+            }
+
+            static VALUE: u64 = 7;
+            let _ = VALUE;
+            let value = Local.value();
+            let constant = Local::VALUE;
+            let seven = Local::seven();
+            proof! {
+                assert(value == 7);
+                assert(constant == 7);
+                assert(seven == 7);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_unused_local_impl_body verus_code! {
+        fn test() {
+            struct Local;
+
+            impl Local {
+                fn bad() {
+                    // The method must be verified even though it is never called.
+                    assert(false); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_unused_local_static_initializer code! {
+        #[verus_spec(requires false)]
+        const fn initialize() -> u64 {
+            7
+        }
+
+        #[verus_spec]
+        fn test() {
+            // The initializer must be verified even though the static is never read.
+            static UNUSED: u64 = initialize(); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 // TODO: spec fn, broadcast, etc.
 // TODO: ownership check
 
@@ -240,4 +345,84 @@ test_verify_one_file! {
             assert(f(100) >= 0); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] nested_items_in_spec_and_proof_fns_issue3134 verus_code! {
+        #[verifier::external]
+        fn ext(a: u8) -> u8 {
+            a
+        }
+
+        spec fn nested_fn(x: u8) -> int {
+            fn e() {
+            }
+            x + 1
+        }
+
+        spec fn nested_const(x: u8) -> int {
+            const C: u8 = 0;
+            x + 1
+        }
+
+        spec fn nested_static(x: u8) -> int {
+            let before = x + 1;
+            static S: u8 = 0;
+            before + (x + 1)
+        }
+
+        spec fn nested_impl(x: u8) -> int {
+            struct Local;
+            impl Local {
+                fn e() {
+                }
+            }
+            x + 1
+        }
+
+        spec fn nested_assume_specification(x: u8) -> int {
+            pub assume_specification[ ext ](a: u8) -> u8;
+            x + 1
+        }
+
+        proof fn nested_fn_in_proof_fn(x: u8) -> (r: int)
+            ensures
+                r == x + 1,
+        {
+            fn e() {
+            }
+            x + 1
+        }
+
+        proof fn test() {
+            assert(nested_fn(255) == 256);
+            assert(nested_const(255) == 256);
+            assert(nested_static(255) == 512);
+            assert(nested_impl(255) == 256);
+            assert(nested_assume_specification(255) == 256);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] nested_proof_fn_then_proof_block_in_exec_fn_issue3134 verus_code! {
+        fn test() {
+            proof fn p() {
+            }
+            proof {
+                p();
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] nested_exec_fn_in_proof_block_issue3134 verus_code! {
+        fn test() {
+            proof {
+                fn e() {
+                }
+            }
+        }
+    } => Ok(())
 }

@@ -214,7 +214,7 @@ test_verify_one_file! {
         fn aproof(a: nat) {
             reveal(m1);
         }
-    } => Err(err) => assert_rust_error_msg(err, "expected value, found module")
+    } => Err(err) => assert_rust_error_msg(err, "cannot find value `m1` in this scope")
 }
 
 test_verify_one_file! {
@@ -437,7 +437,7 @@ test_verify_one_file! {
             reveal(m::foo);
             assert(m::foo(0) == 0);
         }
-    } => Err(err) => assert_vir_error_msg(err, "reveal/fuel statement is not allowed here because the function `test_crate::m::foo` is marked 'closed' and thus its body is not visible here")
+    } => Err(err) => assert_vir_error_msg(err, "reveal/fuel statement is not allowed here because the function `test_crate::m::foo` is marked `closed` and thus its body is not visible here")
 }
 
 test_verify_one_file! {

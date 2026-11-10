@@ -159,7 +159,7 @@ mod sequences {
         if s.len() == 0 {
             Seq::empty()
         } else {
-            reverse(s.subrange(1, s.len() as int)).push(s.index(0))
+            reverse(s[1..s.len()]).push(s.index(0))
         }
     }
 
@@ -167,7 +167,7 @@ mod sequences {
         assert(seq![a, b, c, d].len() == 4) by (compute_only);
         assert(seq![a, b, c, d] =~= seq![a, b].add(seq![c, d])) by (compute_only);
         assert(seq![a, b, c, d] =~= seq![a, b].push(c).push(d)) by (compute_only);
-        assert(seq![a, b, c, d].subrange(1, 3) =~= seq![b].push(c)) by (compute_only);
+        assert(seq![a, b, c, d][1..3] =~= seq![b].push(c)) by (compute_only);
         assert(seq![a, b, c, d] =~= reverse(seq![d, c, b, a])) by (compute_only);
     }
 
@@ -222,7 +222,7 @@ mod veribetrkv_example_original {
         if p.len() == 0 {
             Seq::empty()
         } else {
-            xor(p.subrange(0, p.len() - 1), q.subrange(0, q.len() - 1)).push(p.last() ^ q.last())
+            xor(p[..p.len() - 1], q[..q.len() - 1]).push(p.last() ^ q.last())
         }
     }
 
@@ -236,7 +236,7 @@ mod veribetrkv_example_original {
         if p.len() == 0 {
             assert(xor(p, q).len() == p.len());
         } else {
-            xor_len(p.subrange(0, p.len() - 1), q.subrange(0, q.len() - 1));
+            xor_len(p[..p.len() - 1], q[..q.len() - 1]);
         }
     }
 
@@ -250,9 +250,9 @@ mod veribetrkv_example_original {
             p.add(zeroes((q.len() - 1 - p.len()) as nat))
         } else {
             if p.last() {
-                mod_F2_X(xor(p, shift(q, (p.len() - q.len()) as nat)).subrange(0, p.len() - 1), q)
+                mod_F2_X(xor(p, shift(q, (p.len() - q.len()) as nat))[..p.len() - 1], q)
             } else {
-                mod_F2_X(p.subrange(0, p.len() - 1), q)
+                mod_F2_X(p[..p.len() - 1], q)
             }
         }
     }
@@ -271,7 +271,7 @@ mod veribetrkv_example_original {
         if s.len() == 0 {
             Seq::empty()
         } else {
-            reverse(s.subrange(1, s.len() as int)).push(s.index(0))
+            reverse(s[1..]).push(s.index(0))
         }
     }
 
@@ -398,9 +398,9 @@ mod veribetrkv_example_list_comprehension {
             p.add(zeroes((q.len() - 1 - p.len()) as nat))
         } else {
             if p.last() {
-                mod_F2_X(xor(p, shift(q, (p.len() - q.len()) as nat)).subrange(0, p.len() - 1), q)
+                mod_F2_X(xor(p, shift(q, (p.len() - q.len()) as nat))[..p.len() - 1], q)
             } else {
-                mod_F2_X(p.subrange(0, p.len() - 1), q)
+                mod_F2_X(p[..p.len() - 1], q)
             }
         }
     }
@@ -411,7 +411,7 @@ mod veribetrkv_example_list_comprehension {
         if s.len() == 0 {
             Seq::empty()
         } else {
-            reverse(s.subrange(1, s.len() as int)).push(s.index(0))
+            reverse(s[1..]).push(s.index(0))
         }
     }
 

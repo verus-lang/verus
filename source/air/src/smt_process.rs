@@ -50,11 +50,11 @@ pub(crate) fn writer_thread(requests: Receiver<Vec<u8>>, mut smt_pipe_stdin: Chi
         smt_pipe_stdin
             .write_all(&req)
             .and_then(|_| writeln!(&smt_pipe_stdin))
-            // Ask Z3 to print DONE, so we know when it is done
+            // Ask the solver to print DONE, so we know when it is done
             .and_then(|_| writeln!(&smt_pipe_stdin, "(echo \"{}\")", DONE))
             .and_then(|_| smt_pipe_stdin.flush())
-            // The Z3 process could die unexpectedly.  In that case, we die too:
-            .expect("IO error: failure when sending data to Z3 process across pipe");
+            // The solver process could die unexpectedly.  In that case, we die too:
+            .expect("IO error: failure when sending data to solver process across pipe");
     }
     // Exit when the other side closes the channel
 }
@@ -72,8 +72,8 @@ fn reader_thread(
             let mut line = String::new();
             smt_pipe_stdout
                 .read_line(&mut line)
-                // The Z3 process could die unexpectedly.  In that case, we die too:
-                .expect("IO error: failure when receiving data to Z3 process across pipe");
+                // The solver process could die unexpectedly.  In that case, we die too:
+                .expect("IO error: failure when receiving data from solver process across pipe");
             line = line.replace("\n", "").replace("\r", "");
             if line == "" {
                 empty_lines += 1;
@@ -87,7 +87,7 @@ fn reader_thread(
                 {
                     responses
                         .send((smt_pipe_stdout, lines))
-                        .expect("internal error: Z3 reader thread failure");
+                        .expect("internal error: solver reader thread failure");
                     break;
                 }
             }
@@ -158,12 +158,12 @@ impl SmtProcess {
         self.transcript_log = Some(writer);
     }
 
-    /// Send commands to Z3, wait for Z3 to acknowledge commands, and return responses
+    /// Send commands to the solver, wait for acknowledgement, and return responses
     pub(crate) fn send_commands(&mut self, commands: Vec<u8>) -> Vec<String> {
         self.send_commands_async(commands).wait()
     }
 
-    /// Send commands to Z3
+    /// Send commands to the solver
     pub(crate) fn send_commands_async<'a>(&'a mut self, commands: Vec<u8>) -> CommandsHandle<'a> {
         // Send request to writer thread
         if let Some(writer) = &mut self.transcript_log {
@@ -211,7 +211,7 @@ impl<'a> CommandsHandle<'a> {
 
     pub fn wait(mut self) -> Vec<String> {
         let (smt_pipe_stdout, result) =
-            self.receiver.recv().expect("internal error: Z3 reader thread failure");
+            self.receiver.recv().expect("internal error: solver reader thread failure");
         self.log_result(&result);
         self.smt_process.responses_buf_recv = Some((smt_pipe_stdout, self.receiver));
         result
@@ -226,7 +226,7 @@ impl<'a> CommandsHandle<'a> {
             }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(self),
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                panic!("internal error: Z3 reader thread disconnected")
+                panic!("internal error: solver reader thread disconnected")
             }
         }
     }

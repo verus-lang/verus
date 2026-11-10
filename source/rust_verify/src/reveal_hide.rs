@@ -4,7 +4,7 @@ use std::sync::Arc;
 use rustc_hir::{Expr, ExprKind, QPath, def::Res};
 use vir::ast::{ExprX, FunX, HeaderExprX};
 
-use crate::{unsupported_err, unsupported_err_unless, util::err_span};
+use crate::{internal_err, internal_err_unless, unsupported_err, util::err_span};
 
 pub(crate) enum RevealHideResult {
     Expr(vir::ast::Expr),
@@ -19,15 +19,15 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
     tcx: rustc_middle::ty::TyCtxt<'ctxt>,
     mk_expr: Option<impl Fn(ExprX) -> Result<vir::ast::Expr, vir::ast::VirErr>>,
 ) -> Result<RevealHideResult, vir::ast::VirErr> {
-    unsupported_err_unless!(args_len == 2, expr.span, "expected reveal", &args);
+    internal_err_unless!(args_len == 2, expr.span, "expected reveal", &args);
     let ExprKind::Block(block, None) = args[0].kind else {
-        unsupported_err!(expr.span, "invalid reveal", &args);
+        internal_err!(expr.span, "invalid reveal", &args);
     };
     if block.stmts.len() != 1 || !matches!(block.stmts[0].kind, rustc_hir::StmtKind::Item(_)) {
-        unsupported_err!(expr.span, "invalid reveal", &args);
+        internal_err!(expr.span, "invalid reveal", &args);
     }
     let Some(block_expr) = block.expr.as_ref() else {
-        unsupported_err!(expr.span, "invalid reveal", &args);
+        internal_err!(expr.span, "invalid reveal", &args);
     };
     let is_broadcast_use = {
         let expr_attrs = ctxt.tcx.hir_attrs(block_expr.hir_id);
@@ -35,13 +35,13 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
         expr_vattrs.broadcast_use_reveal
     };
     let ExprKind::Path(QPath::Resolved(None, path)) = &block_expr.kind else {
-        unsupported_err!(expr.span, "invalid reveal", &args);
+        internal_err!(expr.span, "invalid reveal", &args);
     };
     let id = {
         let Some(path_map) =
             &*crate::verifier::BODY_HIR_ID_TO_REVEAL_PATH_RES.read().expect("lock failed")
         else {
-            unsupported_err!(expr.span, "invalid reveal", &args);
+            internal_err!(expr.span, "invalid reveal", &args);
         };
         let (ty_res, res) = &path_map[&path.res.def_id()];
         if let Some(ty_res) = ty_res {
@@ -56,7 +56,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
                         Res::Def(_, def_id) => tcx.type_of(*def_id).skip_binder(),
                         Res::PrimTy(prim_ty) => crate::util::hir_prim_ty_to_mir_ty(tcx, prim_ty),
                         _ => {
-                            unsupported_err!(expr.span, "type {:?} not supported in reveal", ty_res)
+                            unsupported_err!(expr.span, "`reveal` for type {:?}", ty_res)
                         }
                     };
                     *tcx.non_blanket_impls_for_ty(trait_, ty_)
@@ -110,7 +110,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
             match res {
                 crate::hir_hide_reveal_rewrite::ResOrSymbol::Res(res) => res.def_id(),
                 crate::hir_hide_reveal_rewrite::ResOrSymbol::Symbol(_) => {
-                    unsupported_err!(expr.span, "unexpected reveal", &args);
+                    internal_err!(expr.span, "unexpected reveal", &args);
                 }
             }
         }
@@ -118,16 +118,16 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
     let path = ctxt.def_id_to_vir_path(id);
 
     let ExprKind::Lit(fuel_lit) = args[1].kind else {
-        unsupported_err!(expr.span, "invalid reveal", &args);
+        internal_err!(expr.span, "invalid reveal", &args);
     };
     let span = &ctxt.spans.to_air_span(expr.span);
     let rustc_ast::LitKind::Int(fuel_val, rustc_ast::LitIntType::Unsuffixed) = fuel_lit.node else {
-        return Err(vir::messages::error(span, "Fuel must be a u32 value"));
+        return Err(vir::messages::error(span, "fuel must be a u32 value"));
     };
     let fuel_n: u32 = fuel_val
         .get()
         .try_into()
-        .map_err(|_| vir::messages::error(span, "Fuel must be a u32 value"))?;
+        .map_err(|_| vir::messages::error(span, "fuel must be a u32 value"))?;
 
     let fun = Arc::new(FunX { path });
     if let Some(mk_expr) = mk_expr {

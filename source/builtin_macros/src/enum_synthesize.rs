@@ -201,7 +201,7 @@ pub(crate) fn visit_item_enum_synthesize(
                         #[verifier::external]
                         #publish
                         #vis fn #method_ident(self) -> #ty_ {
-                            unimplemented!()
+                            ::core::unimplemented!()
                         }
                     }
                 }

@@ -1,13 +1,9 @@
 use crate::ast::{
-    Expr, ExprX, Exprs, Fun, Function, FunctionX, HeaderExprX, LoopInvariant, LoopInvariantKind,
-    LoopInvariants, MaskSpec, PlaceX, Sizedness, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter,
-    VarIdent, VirErr, Visibility,
+    Expr, ExprX, Exprs, Fun, HeaderExprX, LoopInvariant, LoopInvariantKind, LoopInvariants,
+    MaskSpec, PlaceX, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent, VirErr, Visibility,
 };
-use crate::ast_util::{air_unique_var, params_equal_opt};
-use crate::def::VERUS_SPEC;
+use crate::ast_util::air_unique_var;
 use crate::messages::error;
-use crate::messages::multiple_errors;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,6 +37,15 @@ impl HeaderAllows {
             HeaderAllows::Loop => true,
             HeaderAllows::Closure => true,
             HeaderAllows::Some(hs) => hs.contains(&HeaderAllow::Ensure),
+        }
+    }
+
+    fn opens_invariants(&self) -> bool {
+        match self {
+            HeaderAllows::All => true,
+            HeaderAllows::Loop => false,
+            HeaderAllows::Closure => true,
+            HeaderAllows::Some(_) => false,
         }
     }
 
@@ -111,7 +116,10 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                 ExprX::Header(header) => match &**header {
                     HeaderExprX::UnwrapParameter(unwrap) => {
                         if !unwrap_parameter_allowed {
-                            return Err(error(&stmt.span, "unwrap_parameter must appear "));
+                            return Err(error(
+                                &stmt.span,
+                                "`unwrap_parameter` must appear before all other header declarations",
+                            ));
                         }
                         is_unwrap_parameter = true;
                         unwrap_parameters.push(unwrap.clone());
@@ -119,14 +127,14 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                     HeaderExprX::NoMethodBody => {
                         return Err(error(
                             &stmt.span,
-                            "no_method_body() must be a method's final expression, with no semicolon",
+                            "`no_method_body()` must be a method's final expression, with no semicolon",
                         ));
                     }
                     HeaderExprX::Requires(es) => {
                         if require.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to requires allowed (use requires([e1, ..., en]) for multiple expressions",
+                                "only one `requires` clause allowed (use `requires e1, ..., en` for multiple expressions)",
                             ));
                         }
                         allowed = allows.require();
@@ -136,7 +144,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if recommend.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to recommends allowed (use recommends([e1, ..., en]) for multiple expressions",
+                                "only one `recommends` clause allowed (use `recommends e1, ..., en` for multiple expressions)",
                             ));
                         }
                         recommend = Some(es.clone());
@@ -145,19 +153,19 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if ensure.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions",
+                                "only one `ensures` clause allowed (use `ensures e1, ..., en` for multiple expressions)",
                             ));
                         }
                         if es.1.len() == 0 {
                             allowed = allows.ensure();
                         } else if !allows.all() {
-                            return Err(error(&stmt.span, "default_ensures not allowed here"));
+                            return Err(error(&stmt.span, "`default_ensures` not allowed here"));
                         }
                         ensure = Some((id_typ.clone(), es.clone()));
                     }
                     HeaderExprX::Returns(e) => {
                         if returns.is_some() {
-                            return Err(error(&stmt.span, "only one call to returns allowed"));
+                            return Err(error(&stmt.span, "only one `returns` clause allowed"));
                         }
                         returns = Some(e.clone());
                     }
@@ -165,7 +173,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if invariant_except_break.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to invariant_except_break allowed (use invariant_except_break([e1, ..., en]) for multiple expressions",
+                                "only one `invariant_except_break` clause allowed (use `invariant_except_break e1, ..., en` for multiple expressions)",
                             ));
                         }
                         allowed = allows.loops();
@@ -175,7 +183,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if invariant.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one call to invariant allowed (use invariant([e1, ..., en]) for multiple expressions",
+                                "only one `invariant` clause allowed (use `invariant e1, ..., en` for multiple expressions)",
                             ));
                         }
                         allowed = allows.loops();
@@ -185,7 +193,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if decrease.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one decreases expression currently supported",
+                                "only one `decreases` expression currently supported",
                             ));
                         }
                         allowed = allows.loops();
@@ -195,7 +203,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if decrease_when.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one if decrease_when expression currently supported",
+                                "only one `decreases ... when` expression currently supported",
                             ));
                         }
                         decrease_when = Some(e.clone());
@@ -204,7 +212,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if decrease_by.is_some() {
                             return Err(error(
                                 &stmt.span,
-                                "only one decreases_by expression currently supported",
+                                "only one `decreases ... via` function currently supported",
                             ));
                         }
                         decrease_by = Some(path.clone());
@@ -219,6 +227,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if invariant_mask.is_some() {
                             return Err(error(&stmt.span, "only one invariant mask spec allowed"));
                         }
+                        allowed = allows.opens_invariants();
                         invariant_mask = Some(mask_spec.clone());
                     }
                     HeaderExprX::AtomicSpec(e) => {
@@ -235,7 +244,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         match unwind_spec {
                             None => {}
                             _ => {
-                                return Err(error(&stmt.span, "only one unwind spec allowed"));
+                                return Err(error(&stmt.span, "only one `unwind` spec allowed"));
                             }
                         }
                         unwind_spec = match &**header {
@@ -252,7 +261,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                             _ => {
                                 return Err(error(
                                     &stmt.span,
-                                    "only one open_visibility_qualifier declaration allowed",
+                                    "only one `open_visibility_qualifier` declaration allowed",
                                 ));
                             }
                         }
@@ -364,9 +373,9 @@ pub fn read_header(body: &mut Expr, allows: &HeaderAllows) -> Result<Header, Vir
                     }
                     NestedHeaderBlock::Yes => {}
                     NestedHeaderBlock::Conflict => {
-                        return Err(error(
+                        return Err(crate::messages::internal_error(
                             &stmt.span,
-                            "internal error: invalid nested header block",
+                            "invalid nested header block",
                         ));
                     }
                 }
@@ -378,7 +387,7 @@ pub fn read_header(body: &mut Expr, allows: &HeaderAllows) -> Result<Header, Vir
                         if block.len() != 0 {
                             return Err(error(
                                 &e.span,
-                                "no statements are allowed before no_method_body()",
+                                "no statements are allowed before `no_method_body()`",
                             ));
                         }
                         expr = None;
@@ -438,163 +447,6 @@ impl Header {
                 .map(|e| crate::ast_visitor::map_expr_visitor(e, &f).unwrap())
                 .collect(),
         )
-    }
-}
-
-fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function, VirErr> {
-    let FunctionX {
-        name: _,
-        proxy: _,
-        kind: _,
-        visibility: _,
-        body_visibility: _,
-        opaqueness,
-        owning_module: _,
-        mode: _,
-        typ_params,
-        mut typ_bounds,
-        params,
-        ret,
-        ens_has_return: _,
-        require,
-        ensure,
-        returns,
-        decrease,
-        decrease_when,
-        decrease_by,
-        fndef_axioms: _,
-        mask_spec,
-        atomic_update: _,
-        unwind_spec,
-        item_kind: _,
-        attrs: _,
-        body: _,
-        extra_dependencies,
-        async_ret: _,
-    } = spec_method.x.clone();
-    let mut methodx = method.x.clone();
-    while typ_bounds.len() > methodx.typ_bounds.len() {
-        // The syntax macro may add Sized bounds to spec_method so that Rust accepts the function.
-        // Remove these added Sized bounds so that we can match the remaining bounds.
-        use crate::ast::{GenericBoundX, TraitId};
-        if let GenericBoundX::Trait(TraitId::Sizedness(Sizedness::Sized), _) =
-            &**typ_bounds.last().unwrap()
-        {
-            Arc::make_mut(&mut typ_bounds).pop();
-        }
-    }
-    if methodx.typ_params.len() != typ_params.len() {
-        return Err(error(
-            &spec_method.span,
-            "method specification has different number of type parameters from method",
-        ));
-    }
-    if methodx.typ_bounds.len() != typ_bounds.len() {
-        return Err(error(
-            &spec_method.span,
-            "method specification has different number of type bounds from method",
-        ));
-    }
-    for (x1, x2) in methodx.typ_params.iter().zip(typ_params.iter()) {
-        if x1 != x2 {
-            return Err(error(
-                &spec_method.span,
-                "method specification has different type parameters from method",
-            ));
-        }
-    }
-    for (b1, b2) in methodx.typ_bounds.iter().zip(typ_bounds.iter()) {
-        if !crate::ast_util::generic_bounds_equal(b1, b2) {
-            return Err(error(
-                &spec_method.span,
-                "method specification has different type parameters or bounds from method",
-            ));
-        }
-    }
-    if methodx.params.len() != params.len() {
-        return Err(error(
-            &spec_method.span,
-            "method specification has different number of parameters from method",
-        ));
-    }
-    for (p1, p2) in methodx.params.iter().zip(params.iter()) {
-        if !params_equal_opt(p1, p2, false, false) {
-            return Err(error(
-                &spec_method.span,
-                "method specification has different parameters from method",
-            ));
-        }
-    }
-    if !params_equal_opt(&methodx.ret, &ret, false, false) {
-        return Err(error(
-            &spec_method.span,
-            "method specification has a different return from method",
-        ));
-    }
-
-    let has_default_ensures = ensure.1.len() > 0;
-    match &mut methodx.kind {
-        crate::ast::FunctionKind::TraitMethodDecl { trait_path: _, has_default }
-            if methodx.proxy.is_some() && has_default_ensures =>
-        {
-            // We use an external trait function default only if the spec mentions it:
-            *has_default = true;
-        }
-        _ => {}
-    };
-
-    methodx.opaqueness = opaqueness;
-    methodx.params = params; // this is important; the correct parameter modes are in spec_method
-    methodx.ret = ret;
-    methodx.require = require;
-    methodx.ensure = ensure;
-    methodx.returns = returns;
-    methodx.decrease = decrease;
-    methodx.decrease_when = decrease_when;
-    methodx.decrease_by = decrease_by;
-    methodx.mask_spec = mask_spec;
-    methodx.unwind_spec = unwind_spec;
-    methodx.extra_dependencies = extra_dependencies;
-    assert!(methodx.body.is_none());
-    Ok(crate::def::Spanned::new(method.span.clone(), methodx))
-}
-
-// Each trait method declaration is encoded as a pair of methods:
-//   fn VERUS_SPEC__f() { requires(x); ... }
-//   fn f();
-// This is done to preserve f's lack of a body,
-// so that Rust's type checker can check that implementations of f provide a body.
-// When generating VIR, merge the methods back into a single method:
-//   fn f() requires x;
-pub fn make_trait_decls(methods: Vec<Function>) -> Result<Vec<Function>, VirErr> {
-    let mut decls: Vec<Function> = Vec::new();
-    let mut specs: HashMap<String, Function> = HashMap::new();
-    for method in methods.into_iter() {
-        let mut name = method.x.name.path.segments.last().expect("method name last").to_string();
-        if name.starts_with(VERUS_SPEC) {
-            let name = name.split_off(VERUS_SPEC.len());
-            specs.insert(name, method);
-        } else {
-            decls.push(method);
-        }
-    }
-    for method in decls.iter_mut() {
-        let name = method.x.name.path.segments.last().expect("method name last").to_string();
-        // Note: None case means no specification method, which means no requires, ensures, etc.
-        if let Some(spec_method) = specs.remove(&name) {
-            *method = make_trait_decl(method, &spec_method)?;
-        }
-    }
-    if specs.is_empty() {
-        Ok(decls)
-    } else {
-        Err(multiple_errors(
-            specs.values().map(|spec| &spec.span),
-            format!(
-                "no matching method found for method specification{}",
-                if specs.len() > 1 { "s" } else { "" },
-            ),
-        ))
     }
 }
 

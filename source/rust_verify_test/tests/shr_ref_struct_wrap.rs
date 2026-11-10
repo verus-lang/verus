@@ -68,7 +68,7 @@ test_verify_one_file! {
         proof fn test1() {
             let tracked t = shr_ref_struct_wrap(&0int, &(1int, 2int), "", "0");
         }
-    } => Err(err) => assert_vir_error_msg(err, "shr_ref_struct_wrap not supported for tuples")
+    } => Err(err) => assert_vir_error_msg(err, "`shr_ref_struct_wrap` not supported for tuples")
 }
 
 test_verify_one_file! {
@@ -137,7 +137,7 @@ test_verify_one_file! {
         proof fn test(tracked y: &Y) -> (tracked x: &X) {
             shr_ref_struct_wrap(&0int, &arbitrary(), "", "g")
         }
-    } => Err(err) => assert_vir_error_msg(err, "shr_ref_struct_wrap cannot target ghost-mode field")
+    } => Err(err) => assert_vir_error_msg(err, "`shr_ref_struct_wrap` cannot target ghost-mode field")
 }
 
 test_verify_one_file! {
@@ -157,7 +157,7 @@ test_verify_one_file! {
         proof fn test(tracked y: &Y) -> (tracked x: &X) {
             shr_ref_struct_wrap(&0int, &arbitrary(), "", "g")
         }
-    } => Err(err) => assert_vir_error_msg(err, "shr_ref_struct_wrap cannot target ghost-mode datatype")
+    } => Err(err) => assert_vir_error_msg(err, "`shr_ref_struct_wrap` cannot target ghost-mode datatype")
 }
 
 test_verify_one_file! {
@@ -177,7 +177,7 @@ test_verify_one_file! {
         proof fn test(tracked y: &Y) -> (tracked x: &X) {
             shr_ref_struct_wrap(y, &arbitrary(), "", "y")
         }
-    } => Err(err) => assert_vir_error_msg(err, "shr_ref_struct_wrap can only be applied when all other fields of the relevant variant are ghost-mode or of type Ghost (field `g2` does not meet this requirement)")
+    } => Err(err) => assert_vir_error_msg(err, "`shr_ref_struct_wrap` can only be applied when all other fields of the relevant variant are ghost-mode or of type `Ghost` (field `g2` does not meet this requirement)")
 }
 
 test_verify_one_file! {
@@ -202,7 +202,7 @@ test_verify_one_file! {
         proof fn test(tracked y: &Y) -> (tracked x: &X) {
             shr_ref_struct_wrap(y, &arbitrary(), "Foo", "y")
         }
-    } => Err(err) => assert_vir_error_msg(err, "shr_ref_struct_wrap can only be applied when all other fields of the relevant variant are ghost-mode or of type Ghost (field `g2` does not meet this requirement)")
+    } => Err(err) => assert_vir_error_msg(err, "`shr_ref_struct_wrap` can only be applied when all other fields of the relevant variant are ghost-mode or of type `Ghost` (field `g2` does not meet this requirement)")
 }
 
 test_verify_one_file! {
@@ -378,4 +378,90 @@ test_verify_one_file! {
             shr_ref_struct_wrap(y, &arbitrary(), "", "g")
         }
     } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for `shr_ref_struct_wrap`")
+}
+
+test_verify_one_file! {
+    #[test] inner_lifetime_error verus_code! {
+        tracked struct Y { ghost value: int }
+        tracked struct X<T> { tracked y: T }
+
+        uninterp spec fn arbitrary<A>() -> A;
+
+        proof fn test<'a>(tracked y: &'a Y) -> (tracked r: &'static Y) {
+            let tracked x = shr_ref_struct_wrap(
+                &y, &X::<&'static Y> { y: arbitrary() }, "", "y");
+            x.y
+        }
+    } => Err(err) => assert_rust_error_msg(err, "lifetime may not live long enough")
+}
+
+test_verify_one_file! {
+    #[test] declared_inner_lifetime_error verus_code! {
+        tracked struct Y { ghost value: int }
+        tracked struct X { tracked y: &'static Y }
+
+        uninterp spec fn arbitrary<A>() -> A;
+
+        proof fn test<'a>(tracked y: &'a Y) -> (tracked r: &'static Y) {
+            let tracked x = shr_ref_struct_wrap(&y, &X { y: arbitrary() }, "", "y");
+            x.y
+        }
+    } => Err(err) => assert_rust_error_msg(err, "lifetime may not live long enough")
+}
+
+test_verify_one_file! {
+    #[test] enum_inner_lifetime_error verus_code! {
+        tracked struct Y { ghost value: int }
+        tracked enum X<'a> {
+            Ref { tracked y: &'a Y },
+            Empty,
+        }
+
+        uninterp spec fn arbitrary<A>() -> A;
+
+        proof fn test<'a, 'inner>(tracked y: &'a &'inner Y)
+            -> (tracked x: &'a X<'static>)
+        {
+            shr_ref_struct_wrap(y, &X::<'static>::Ref { y: arbitrary() }, "Ref", "y")
+        }
+    } => Err(err) => assert_rust_error_msg(err, "lifetime may not live long enough")
+}
+
+test_verify_one_file! {
+    #[test] malformed10 verus_code! {
+        tracked struct Y { ghost value: int }
+        tracked struct X { tracked y: Y }
+
+        uninterp spec fn arbitrary<A>() -> A;
+
+        proof fn test(tracked y: &Y) -> (tracked x: &'static X) {
+            let tracked x = shr_ref_struct_wrap(y, &arbitrary::<&'static X>(), "", "y");
+            *x
+        }
+    } => Err(err) => assert_vir_error_msg(err, "second argument to `shr_ref_struct_wrap` should be a datatype")
+}
+
+test_verify_one_file! {
+    #[test] inner_lifetime_ok verus_code! {
+        tracked struct Y { ghost value: int }
+        tracked struct X<'a> { tracked y: &'a Y }
+
+        uninterp spec fn arbitrary<A>() -> A;
+
+        proof fn test<'a, 'b>(tracked y: &'b &'a Y) -> (tracked x: &'b X<'a>) {
+            shr_ref_struct_wrap(y, &X { y: arbitrary() }, "", "y")
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] with_union verus_code! {
+        union U { a: u64, b: u32 }
+
+        uninterp spec fn arbitrary<A>() -> A;
+
+        proof fn test(tracked y: &u64) -> (tracked u: &U) {
+            shr_ref_struct_wrap(y, &arbitrary(), "a", "a")
+        }
+    } => Ok(())
 }

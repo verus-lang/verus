@@ -54,7 +54,7 @@ pub broadcast proof fn seq_contains_orig_elems_after_push<A>(s:Seq<A>, v:A, x:A)
 To bring this ambient lemma into scope, for a specific proof, or for an entire
 module, you can use `broadcast use seq_contains_orig_elems_after_push;`.
 
-Some of these broadcast-ed lemmas are available in the verus standard library `vstd`,
+Some of these broadcast-ed lemmas are available in the Verus standard library `vstd`,
 some as part of broadcast "groups", which combine a number of properties into a single
 group name, which can be brought into scope with `broadcast use broadcast_group_name;`.
 For example, the example above can all be automatically proved from `broadcast use vstd::seq_lib::group_seq_properties;`.

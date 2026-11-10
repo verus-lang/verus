@@ -5,8 +5,8 @@ use std::{
 
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{
-    EarlyParamRegion, GenericArg, GenericParamDefKind, InstantiatedPredicates, Ty, TyCtxt, TyKind,
-    TypingEnv,
+    EarlyParamRegion, GenericArg, GenericParamDefKind, InstantiatedClauses, RegionExt, Ty, TyCtxt,
+    TyKind, TypingEnv,
 };
 use rustc_type_ir::{
     Interner, TypeFoldable, TypeFolder, TypeSuperVisitable, TypeVisitable, TypeVisitor,
@@ -33,7 +33,7 @@ pub(crate) fn build_boundary_suggestion<'tcx>(
         rustc_hir::def::DefKind::Const { is_type_const: _ } => {
             build_const_assume_specification_suggestion(ctxt, external_def_id, path)
         }
-        _ => Err(crate::util::error("Building boundary suggestion for non type/fn/const")),
+        _ => Err(crate::util::error("building boundary suggestion for non type/fn/const")),
     }
 }
 pub(crate) fn build_external_type_suggestion<'tcx>(
@@ -46,7 +46,7 @@ pub(crate) fn build_external_type_suggestion<'tcx>(
 
     let generics = ctxt.tcx.generics_of(external_def_id);
 
-    let predicates = ctxt.tcx.predicates_of(external_def_id).instantiate_identity(ctxt.tcx);
+    let predicates = ctxt.tcx.clauses_of(external_def_id).instantiate_identity(ctxt.tcx);
     let mut region_renamer: RegionRenamer<'_> =
         build_region_renamer(ctxt, external_def_id, generics)?;
 
@@ -70,7 +70,7 @@ pub(crate) fn build_external_type_suggestion<'tcx>(
                 Some(_) => "", // This may be the point that it makes sense to check for the type being in a private module or otherwise not visible
             },
             "struct ",
-            "Ex".to_owned() + &path.last_segment(), // Proxy type name
+            "Ex".to_owned() + &path.last_segment().friendly_name(), // Proxy type name
             if generics.is_empty() {
                 "".to_owned()
             } else {
@@ -121,7 +121,7 @@ pub(crate) fn check_visibilities<'tcx, T: TypeVisitable<TyCtxt<'tcx>>>(
                 return crate::util::err_span(
                     tcx.def_span(def_id),
                     format!(
-                        "Could not build suggestion as there is no visible path to {}.",
+                        "could not build suggestion as there is no visible path to {}",
                         tcx.def_path_str(def_id)
                     ),
                 );
@@ -144,13 +144,13 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
 
     let visibility = mk_visibility(ctxt, external_def_id);
 
-    let predicates = ctxt.tcx.predicates_of(external_def_id);
+    let predicates = ctxt.tcx.clauses_of(external_def_id);
     let inst_predicates = predicates.instantiate_identity(ctxt.tcx);
     let generics = ctxt.tcx.generics_of(external_def_id);
     let mut region_renamer: RegionRenamer<'_> =
         build_region_renamer(ctxt, external_def_id, generics)?;
     let fn_sig = fn_sig.fold_with(&mut region_renamer);
-    // `InstantiatedPredicates` is not `TypeFoldable`, so we cannot fold the whole
+    // `InstantiatedClauses` is not `TypeFoldable`, so we cannot fold the whole
     // list here; `build_where_clauses` folds each `Clause` individually so that
     // anonymous early-bound lifetimes are renamed consistently with `fn_sig`.
     let (param_declarations, type_params) =
@@ -161,7 +161,7 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
 
     let path_string = if let Some(_trait_def_id) = ctxt.tcx.trait_of_assoc(external_def_id) {
         return Err(crate::util::error(
-            "Cannot build specification for unresolved trait item.  Consider an external_trait_specification declaration.",
+            "cannot build specification for unresolved trait item; consider an `external_trait_specification` declaration",
         ));
     } else if let Some(impl_def_id) = ctxt.tcx.impl_of_assoc(external_def_id) {
         let of_trait = ctxt.tcx.impl_opt_trait_ref(impl_def_id).is_some();
@@ -236,18 +236,20 @@ fn prepend_crate_if_local_for_type<'tcx>(ctxt: &Context<'tcx>, ty: &Ty<'tcx>, s:
     match ty.kind() {
         rustc_type_ir::TyKind::Adt(adt_def, _) => prepend_crate_if_local(adt_def.did(), s),
         rustc_type_ir::TyKind::FnDef(did, _) => prepend_crate_if_local(*did, s),
-        rustc_type_ir::TyKind::Ref(region, inner_ty, _) => match region.get_name(ctxt.tcx) {
-            Some(sym) => {
-                "&".to_owned()
-                    + sym.as_str()
-                    + " "
-                    + &prepend_crate_if_local_for_type(ctxt, inner_ty, inner_ty.to_string())
-            }
-            None => {
-                "&".to_owned()
-                    + &prepend_crate_if_local_for_type(ctxt, inner_ty, inner_ty.to_string())
-            }
-        },
+        rustc_type_ir::TyKind::Ref(region, inner_ty, mutability) => {
+            let lifetime = match region.get_name(ctxt.tcx) {
+                Some(sym) => sym.as_str().to_owned() + " ",
+                None => "".to_owned(),
+            };
+            let mutability = match mutability {
+                rustc_ast::Mutability::Mut => "mut ",
+                rustc_ast::Mutability::Not => "",
+            };
+            "&".to_owned()
+                + &lifetime
+                + mutability
+                + &prepend_crate_if_local_for_type(ctxt, inner_ty, inner_ty.to_string())
+        }
         _ => s,
     }
 }
@@ -289,12 +291,12 @@ fn build_region_renamer<'tcx>(
 
 fn build_where_clauses<'tcx>(
     ctxt: &crate::context::Context<'tcx>,
-    inst_predicates: InstantiatedPredicates<'tcx>,
+    inst_predicates: InstantiatedClauses<'tcx>,
     mut unsized_type_params: BTreeSet<rustc_span::Symbol>,
     region_renamer: &mut RegionRenamer<'tcx>,
 ) -> Result<Vec<String>, VirErr> {
     let mut where_clauses: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    // `InstantiatedPredicates` is not `TypeFoldable`, but each individual `Clause`
+    // `InstantiatedClauses` is not `TypeFoldable`, but each individual `Clause`
     // is, so we fold them one at a time to rename anonymous early-bound lifetimes
     // consistently with the (already-folded) function signature.
     let folded_clauses: Vec<_> = inst_predicates
@@ -376,7 +378,8 @@ fn build_where_clauses<'tcx>(
             rustc_type_ir::ClauseKind::Projection(projection_predicate) => {
                 let (trait_ref, proj_term_args) =
                     projection_predicate.projection_term.trait_ref_and_own_args(ctxt.tcx);
-                let projected_item_id = projection_predicate.projection_term.def_id();
+                let projected_item_id =
+                    projection_predicate.projection_term.expect_projection_def_id();
                 // Assuming here that the only projection predicate possible on an Fn trait is the Output restriction.
                 // Assuming that trait ref args for an fn trait are [self_ty, args_tuple]
                 if ctxt.tcx.is_fn_trait(trait_ref.def_id) {
@@ -448,7 +451,7 @@ fn build_where_clauses<'tcx>(
 fn build_generics_declarations<'tcx>(
     ctxt: &crate::context::Context<'tcx>,
     generics: &'tcx rustc_middle::ty::Generics,
-    predicates: &InstantiatedPredicates,
+    predicates: &InstantiatedClauses,
     region_renamer: &RegionRenamer<'tcx>,
 ) -> Result<
     (Vec<(&'tcx rustc_middle::ty::GenericParamDef, String)>, BTreeSet<rustc_span::Symbol>),
@@ -497,7 +500,7 @@ fn build_generics_declarations<'tcx>(
                         return crate::util::err_span(
                             ctxt.tcx.def_span(param.def_id),
                             format!(
-                                "Could not find type for const generic parameter {}",
+                                "could not find type for const generic parameter {}",
                                 param.name.as_str()
                             ),
                         );
@@ -536,10 +539,7 @@ impl<'tcx> TypeFolder<TyCtxt<'tcx>> for RegionRenamer<'tcx> {
     fn cx(&self) -> TyCtxt<'tcx> {
         self.tcx
     }
-    fn fold_region(
-        &mut self,
-        r: <TyCtxt<'tcx> as Interner>::Region,
-    ) -> <TyCtxt<'tcx> as Interner>::Region {
+    fn fold_region(&mut self, r: rustc_middle::ty::Region<'tcx>) -> rustc_middle::ty::Region<'tcx> {
         self.rename_if_anon_early(r)
     }
 }

@@ -71,7 +71,7 @@ test_both! {
                 proof { inner = 0u8; }
             }); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "Cannot show invariant holds at end of block")
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant holds at end of block")
 }
 
 test_both! {
@@ -217,7 +217,7 @@ test_both! {
             });
         }
 
-    } => Err(err) => assert_vir_error_msg(err, "Invariant must be Proof mode")
+    } => Err(err) => assert_vir_error_msg(err, "invariant must be proof mode")
 }
 
 test_both! {
@@ -315,6 +315,21 @@ test_both! {
           while idx < 5 {
             open_atomic_invariant!(&i => inner => {
               break;
+            });
+          }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
+}
+
+test_both! {
+    break_block_early break_block_early_local verus_code! {
+        use vstd::invariant::*;
+
+        pub fn blah<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
+          let mut idx = 0;
+          'a: {
+            open_atomic_invariant!(&i => inner => {
+              break 'a;
             });
           }
         }
@@ -550,7 +565,7 @@ test_verify_one_file! {
           opens_invariants [ true ]
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "invariant mask must be type int")
+    } => Err(err) => assert_vir_error_msg(err, "invariant mask must be type `int`")
 }
 
 test_verify_one_file! {
@@ -561,7 +576,7 @@ test_verify_one_file! {
           opens_invariants [ some_inv() ]
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "in 'opens_invariants' clause of public function, cannot refer to private function")
+    } => Err(err) => assert_vir_error_msg(err, "in `opens_invariants` clause of public function, cannot refer to private function")
 }
 
 test_verify_one_file! {
@@ -588,7 +603,7 @@ test_verify_one_file! {
             fn stuff()
                 opens_invariants any;
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare an opens_invariants spec")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare an `opens_invariants` spec")
 }
 
 test_verify_one_file! {
@@ -815,7 +830,7 @@ test_verify_one_file! {
                 }
             });
         }
-    } => Err(err) => assert_vir_error_msg(err, "Cannot show invariant holds at end of block")
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant holds at end of block")
 }
 
 test_verify_one_file! {

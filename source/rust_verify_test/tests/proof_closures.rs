@@ -59,7 +59,7 @@ test_verify_one_file_with_options! {
                 return y;
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support `return` inside `proof_fn`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `return` inside `proof_fn`")
     // TODO: } => Err(err) => assert_one_fails(err)
 }
 
@@ -143,7 +143,7 @@ test_verify_one_file_with_options! {
             let z = f(2);
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use while in proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use loop in proof or spec mode")
 }
 
 test_verify_one_file_with_options! {
@@ -161,7 +161,7 @@ test_verify_one_file_with_options! {
             let z = f(2);
             assert(b);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use while in proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use loop in proof or spec mode")
 }
 
 // 2 arg closures
@@ -214,7 +214,7 @@ test_verify_one_file_with_options! {
                 return 0 as u64;
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support `return` inside `proof_fn`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `return` inside `proof_fn`")
     //TODO } => Err(err) => assert_one_fails(err)
 }
 
@@ -332,7 +332,7 @@ test_verify_one_file_with_options! {
                 return;
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support `return` inside `proof_fn`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `return` inside `proof_fn`")
     //TODO } => Err(err) => assert_one_fails(err)
 }
 
@@ -590,7 +590,7 @@ test_verify_one_file_with_options! {
                 return some_spec_fn();
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support `return` inside `proof_fn`")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `return` inside `proof_fn`")
     //TODO } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
 
@@ -612,7 +612,7 @@ test_verify_one_file_with_options! {
 
             0
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use while in proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use loop in proof or spec mode")
 }
 
 test_verify_one_file_with_options! {
@@ -1303,7 +1303,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] cant_implement_copy_trait ["vstd"] => verus_code! {
-        impl Copy for FOpts<1, (), 0, 0, 0> {}
+        impl Copy for FOpts<1, (), 0, 0, 0, 0> {}
     } => Err(err) => assert_rust_error_msg(err, "only traits defined in the current crate can be implemented")
 }
 
@@ -1864,4 +1864,226 @@ test_verify_one_file_with_options! {
             q(tracked_swap);
         }
     } => Err(err) => assert_rust_error_msg(err, "mismatched types")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_ok ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn callee()
+            opens_invariants [3int]
+        {
+        }
+
+        proof fn caller()
+            opens_invariants [3int, 4int]
+        {
+            let tracked f = proof_fn|i: int| requires i == 10 ensures true opens_invariants [3int] {
+                callee();
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_fails1 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn callee()
+            opens_invariants [3int]
+        {
+        }
+
+        proof fn caller()
+            opens_invariants [3int, 4int]
+        {
+            let tracked f = proof_fn|i: int| requires i == 10 ensures true opens_invariants [4int] {
+                callee(); // FAILS
+            };
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_fails2 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn callee()
+            opens_invariants [3int]
+        {
+        }
+
+        proof fn caller()
+            opens_invariants [3int, 4int]
+        {
+            let tracked f = proof_fn|i: int| requires i == 10 ensures true {
+                callee(); // FAILS
+            };
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_fails3 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn callee()
+            opens_invariants [3int]
+        {
+        }
+
+        proof fn caller()
+            opens_invariants [4int]
+        {
+            let tracked f = proof_fn|i: int| requires i == 10 ensures true opens_invariants [3int] {
+                callee();
+            };
+            f(); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_none ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(tracked f: proof_fn[OpensInvariants](i: int))
+            requires f.requires((10int,))
+            opens_invariants none
+        {
+            f(10); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_some ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(tracked f: proof_fn[OpensInvariants](i: int))
+            requires
+                f.requires((10int,)),
+                f.opens_invariants((10int,)) == iset![3int],
+            opens_invariants [3int, 4int]
+        {
+            f(10);
+        }
+
+        proof fn caller()
+            opens_invariants [3int, 4int]
+        {
+            test(proof_fn|i: int| requires i == 10 opens_invariants [3int] { });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_some_caller_mismatch1 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(tracked f: proof_fn[OpensInvariants](i: int))
+            requires
+                f.requires((10int,)),
+                f.opens_invariants((10int,)) == iset![3int],
+            opens_invariants [3int, 4int]
+        {
+            f(10);
+        }
+
+        proof fn caller()
+            opens_invariants [3int, 4int]
+        {
+            test(proof_fn|i: int| requires i == 10 opens_invariants [5int] { }); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_some_caller_mismatch2 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(tracked f: proof_fn[OpensInvariants](i: int))
+            requires
+                f.requires((10int,)),
+                f.opens_invariants((10int,)) == iset![3int],
+            opens_invariants [3int, 4int]
+        {
+            f(10);
+        }
+
+        proof fn caller()
+            opens_invariants [3int, 4int]
+        {
+            test(proof_fn|i: int| requires i == 10 { });
+        }
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_mismatch ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(tracked f: proof_fn[OpensInvariants](i: int))
+            requires
+                f.requires((10int,)),
+                f.opens_invariants((10int,)) == iset![5int],
+            opens_invariants [3int, 4int]
+        {
+            f(10); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_exec_opens_none ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test(Tracked(f): Tracked<proof_fn[OpensInvariants](i: int)>)
+            requires f.requires((10int,))
+            opens_invariants none
+        {
+            proof {
+                f(10); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_exec_opens_some ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test(Tracked(f): Tracked<proof_fn[OpensInvariants](i: int)>)
+            requires
+                f.requires((10int,)),
+                f.opens_invariants((10int,)) == iset![3int],
+            opens_invariants [3int, 4int]
+        {
+            proof {
+                f(10);
+            }
+        }
+
+        fn caller() {
+            let tracked f = proof_fn|i: int| requires i == 10 opens_invariants [3int] { };
+            test(Tracked(f));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_exec_opens_mismatch ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test(Tracked(f): Tracked<proof_fn[OpensInvariants](i: int)>)
+            requires
+                f.requires((10int,)),
+                f.opens_invariants((10int,)) == iset![5int],
+            opens_invariants [3int, 4int]
+        {
+            proof {
+                f(10); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
 }

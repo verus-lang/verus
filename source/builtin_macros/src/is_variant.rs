@@ -32,7 +32,7 @@ fn attribute_is_variant_internal(
     match ast.data {
         syn::Data::Enum(_) => {}
         _ => {
-            return quote! { compile_error!("#[is_variant] is only allowed on enums\nthis message will only be emitted for the first invocation encountered"); };
+            return quote! { ::core::compile_error!("#[is_variant] is only allowed on enums\nthis message will only be emitted for the first invocation encountered"); };
         }
     }
 
@@ -132,7 +132,7 @@ fn attribute_is_variant_internal(
                     #[verus::internal(spec)]
                     #[verifier::inline]
                     #publish
-                    #vis fn #fun_ident(&self) -> bool {
+                    #vis fn #fun_ident(&self) -> ::core::primitive::bool {
                         #verus_builtin::is_variant(self, #variant_ident_str)
                     }
 

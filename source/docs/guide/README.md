@@ -14,9 +14,7 @@ We have a couple of postprocessors to allow special stylings in the guide.
 
 ## Grammar items
 
-The first one (`verus-grammar.py`)
-
-First, there's the `V@` and `R@` notation, used in the reference section for grammar items.
+The first one (`verus-grammar.py`) handles the `V@` and `R@` notation, used in the reference section for grammar items.
 e.g., this in src/reference-assume-specification.md:
 
 > ```verus-grammar
@@ -34,7 +32,7 @@ e.g., this in src/reference-assume-specification.md:
 The V@ is used for Verus-specific concepts and R@ is used for Rust-specific concepts.
 The postprocessors will automatically crosslink the pages through V@ links.
 
-## The DIFF admoninition
+## The DIFF admonition
 
 mdbook has a nice feature called admonitions: https://rust-lang.github.io/mdBook/format/markdown.html?highlight=admoni#admonitions
 

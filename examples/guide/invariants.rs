@@ -192,7 +192,7 @@ fn fib_checked_no_precondition(n: u64) -> (result: Option<u64>)
 // ANCHOR: bank_spec
 spec fn always_non_negative(s: Seq<i64>) -> bool
 {
-    forall|i: int| 0 <= i <= s.len() ==> sum(#[trigger] s.take(i)) >= 0    
+    forall|i: int| 0 <= i <= s.len() ==> sum(#[trigger] s[..i]) >= 0
 }
 
 spec fn sum(s: Seq<i64>) -> int
@@ -233,11 +233,11 @@ fn non_negative(operations: &[i64]) -> (r: bool)
     let mut s = 0i128;
     for i in 0usize..operations.len()
         invariant
-            s == sum(operations@.take(i as int)),
-            forall|j: int| 0 <= j <= i ==> sum(#[trigger] operations@.take(j)) >= 0,
+            s == sum(operations@[..i]),
+            forall|j: int| 0 <= j <= i ==> sum(#[trigger] operations@[..j]) >= 0,
             i64::MIN <= s <= i64::MAX * i,
     {
-        assert(operations@.take(i as int) =~= operations@.take(
+        assert(operations@[..i] =~= operations@.take(
             (i + 1) as int,
         ).drop_last());
         s = s + operations[i] as i128;

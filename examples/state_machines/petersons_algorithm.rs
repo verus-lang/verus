@@ -4,13 +4,14 @@ use verus_builtin_macros::*;
 use verus_state_machines_macros::*;
 use vstd::prelude::*;
 
-#[verifier::verify]
+verus! {
 pub enum ThreadState {
     Idle,
     SetFlag,
     Waiting,
     Critical,
 }
+} // verus!
 
 tokenized_state_machine! { Petersons<T> {
     fields {

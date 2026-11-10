@@ -294,7 +294,7 @@ test_verify_one_file! {
         fn test() {
             let x = foo;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it as mode 'exec'")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it has mode `exec`")
 }
 
 test_verify_one_file! {
@@ -304,7 +304,7 @@ test_verify_one_file! {
         fn test() {
             let x = foo;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it as mode 'exec'")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it has mode `exec`")
 }
 
 test_verify_one_file! {
@@ -314,7 +314,7 @@ test_verify_one_file! {
         spec fn test() -> bool {
             call_requires(foo, ())
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it as mode 'exec'")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it has mode `exec`")
 }
 
 test_verify_one_file! {
@@ -727,7 +727,7 @@ test_verify_one_file! {
         fn b(i: u8)
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "Non-static calls are not supported with --no-vstd")
+    } => Err(err) => assert_vir_error_msg(err, "non-static calls are not supported with `--no-vstd`")
 }
 
 test_verify_one_file! {
@@ -2061,4 +2061,126 @@ test_verify_one_file_with_options! {
         struct S10; impl Clone for S10 { fn clone(&self) -> Self { S10 } }
         struct S11; impl Clone for S11 { fn clone(&self) -> Self { S11 } }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_broadcast ["vstd"] => verus_code! {
+        // Tests type invariant is emitted
+
+        uninterp spec fn a<T>(x: T) -> bool;
+        uninterp spec fn b<T>(x: T) -> bool;
+
+        broadcast axiom fn test1<T>(x: T)
+            requires #[trigger] a(x),
+            ensures b(x);
+
+        fn some_func() { }
+
+        fn test() {
+            broadcast use test1;
+            let f = some_func;
+            assume(a(f));
+            assert(b(f));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_broadcast_with_generics ["vstd"] => verus_code! {
+        uninterp spec fn a<T>(x: T) -> bool;
+        uninterp spec fn b<T>(x: T) -> bool;
+
+        broadcast axiom fn test1<T>(x: T)
+            requires #[trigger] a(x),
+            ensures b(x);
+
+        fn some_func<U>() { }
+
+        fn test() {
+            broadcast use test1;
+            assume(a(some_func::<u64>));
+            assert(b(some_func::<u64>));
+        }
+
+        fn test_fails() {
+            broadcast use test1;
+            assume(a(some_func::<u64>));
+            assert(b(some_func::<u32>)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] trait_method_generic_fndef verus_code! {
+        trait T<A> {
+            fn f<C>(c: C) -> C;
+        }
+
+        struct S<U>(U);
+
+        impl<U> T<u8> for S<U> {
+            fn f<D>(c: D) -> (r: D)
+                ensures r == c,
+            {
+                c
+            }
+        }
+
+        proof fn test<U>(r: bool)
+            requires call_ensures(<S<U> as T<u8>>::f::<bool>, (true,), r),
+        {
+            assert(r);
+            assert(!r); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_method_generic_fndef_inherited verus_code! {
+        trait T {
+            fn f<C>(c: C) -> (r: C)
+                default_ensures r == c,
+            {
+                c
+            }
+        }
+
+        impl T for u8 {}
+
+        proof fn test(r: bool)
+            requires call_ensures(<u8 as T>::f::<bool>, (true,), r),
+        {
+            assert(r);
+            assert(!r); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] trait_method_generic_fndef_fn_once ["vstd"] => verus_code! {
+        trait T {
+            fn f<C>(c: C) -> C;
+        }
+
+        impl T for u8 {
+            fn f<D>(c: D) -> (r: D)
+                ensures r == c,
+            {
+                c
+            }
+        }
+
+        fn apply<F: FnOnce<(u32,)>>(f: F) -> (r: F::Output)
+            requires call_requires(f, (3,)),
+            ensures call_ensures(f, (3,), r),
+        {
+            f(3)
+        }
+
+        fn test() {
+            let r = apply(<u8 as T>::f::<u32>);
+            assert(r == 3);
+            assert(r == 4); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }

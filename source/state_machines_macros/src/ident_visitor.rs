@@ -4,11 +4,12 @@ use crate::ast::{
 use crate::simplification::UPDATE_TMP_PREFIX;
 use crate::util::combine_errors_or_ok;
 use std::collections::HashSet;
+use verus_syn::ext::IdentExt;
 use verus_syn::parse;
 use verus_syn::spanned::Spanned;
 use verus_syn::visit;
 use verus_syn::visit::Visit;
-use verus_syn::{Error, Expr, ExprMacro, Ident, Macro, Pat, PatIdent, Path, Type};
+use verus_syn::{Error, Expr, ExprMacro, Ident, Item, Macro, Pat, PatIdent, Path, Type};
 
 /// Error if any identifiers conflict with reserved IDs used by macro expanion.
 ///
@@ -197,6 +198,7 @@ struct IdentVisitor {
     pub kind: TransitionKind,
     pub bound_names: HashSet<String>,
     pub field_names: HashSet<String>,
+    pub in_item: bool,
 }
 
 impl IdentVisitor {
@@ -205,18 +207,21 @@ impl IdentVisitor {
         bound_names: HashSet<String>,
         field_names: HashSet<String>,
     ) -> IdentVisitor {
-        IdentVisitor { errors: Vec::new(), kind, bound_names, field_names }
+        IdentVisitor { errors: Vec::new(), kind, bound_names, field_names, in_item: false }
     }
 }
 
 impl<'ast> Visit<'ast> for IdentVisitor {
     fn visit_ident(&mut self, node: &'ast Ident) {
+        // In some cases, "pre" and "post" can be used but not declared.
+        // The `visit_pat_ident` override needs to call `validate_ident` directly
+        // to skip past these checks.
         if node == "post" {
             self.errors.push(Error::new(
                 node.span(),
                 "cannot refer directly to `post` in a transition definition",
             ));
-        } else if node == "pre" {
+        } else if node == "pre" && !self.in_item {
             if self.kind == TransitionKind::Init {
                 self.errors.push(Error::new(node.span(),
                     "cannot refer to `pre` in an 'init' routine; there is no previous state to refer to"));
@@ -230,6 +235,28 @@ impl<'ast> Visit<'ast> for IdentVisitor {
                 Ok(()) => {}
             }
         }
+    }
+
+    fn visit_pat_ident(&mut self, node: &'ast PatIdent) {
+        let PatIdent { attrs, by_ref: _, mutability: _, ident, subpat } = node;
+        match validate_ident(ident) {
+            Err(err) => self.errors.push(err),
+            Ok(()) => {}
+        }
+        for attr in attrs {
+            self.visit_attribute(attr);
+        }
+        if let Some((_token, pat)) = subpat {
+            self.visit_pat(pat);
+        }
+    }
+
+    fn visit_item(&mut self, node: &'ast Item) {
+        // A nested item cannot see the outer `pre`, so treat any `pre` inside it
+        // (e.g., `const pre`) like a declaration.
+        let in_item = std::mem::replace(&mut self.in_item, true);
+        visit::visit_item(self, node);
+        self.in_item = in_item;
     }
 
     fn visit_expr_macro(&mut self, node: &'ast ExprMacro) {
@@ -276,8 +303,8 @@ impl<'ast> Visit<'ast> for IdentVisitor {
 
 /// Validate a single identifier.
 pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
-    for kw in ["post", "instance", "tmp_tuple", "tmp_e", "tmp_assert"] {
-        if ident == kw {
+    for kw in ["pre", "post", "instance", "tmp_tuple", "tmp_e", "tmp_assert"] {
+        if ident.unraw() == kw {
             return Err(Error::new(
                 ident.span(),
                 format!("'{kw:}' is a reserved identifier in state machine definitions"),
@@ -286,7 +313,7 @@ pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
     }
 
     for prefix in ["param_token_", "original_field_", UPDATE_TMP_PREFIX] {
-        if ident.to_string().starts_with(prefix) {
+        if ident.unraw().to_string().starts_with(prefix) {
             return Err(Error::new(
                 ident.span(),
                 format!(

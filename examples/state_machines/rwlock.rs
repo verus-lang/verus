@@ -8,11 +8,12 @@ use vstd::{pervasive::*, *};
 
 use verus_state_machines_macros::tokenized_state_machine;
 
+verus! {
 // TODO make T generic
-#[verifier::verify]
 pub struct T {
     t: u8,
 }
+} // verus!
 
 tokenized_state_machine!(RwLock {
     fields {

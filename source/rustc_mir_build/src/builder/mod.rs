@@ -28,7 +28,7 @@ use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::sorted_map::SortedIndexMultiMap;
 use rustc_errors::ErrorGuaranteed;
 use rustc_hir::def::DefKind;
-use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_hir::def_id::LocalDefId;
 use rustc_hir::{self as hir, BindingMode, ByRef, HirId, ItemLocalId, Node, find_attr};
 use rustc_index::bit_set::GrowableBitSet;
 use rustc_index::{Idx, IndexSlice, IndexVec};
@@ -43,8 +43,7 @@ use rustc_session::lint;
 use rustc_span::{Span, Symbol};
 
 use crate::builder::expr::as_place::PlaceBuilder;
-use crate::builder::scope::{DropKind, LintLevel};
-use crate::errors;
+use crate::builder::scope::LintLevel;
 
 #[path = "../../../rustc_mir_build_additional_files/verus_builder.rs"]
 pub mod verus_builder;
@@ -175,7 +174,6 @@ struct Builder<'a, 'tcx> {
 
     def_id: LocalDefId,
     hir_id: HirId,
-    parent_module: DefId,
     check_overflow: bool,
     fn_span: Span,
     arg_count: usize,
@@ -532,9 +530,15 @@ fn construct_fn<'tcx>(
         );
     }
 
-    // FIXME(#132279): This should be able to reveal opaque
-    // types defined during HIR typeck.
-    let infcx = tcx.infer_ctxt().build(TypingMode::non_body_analysis());
+    let typing_mode = if tcx.use_typing_mode_post_typeck_until_borrowck() {
+        TypingMode::borrowck(tcx, fn_def)
+    } else {
+        // FIXME(#132279): This should be able to reveal opaque
+        // types defined during HIR typeck.
+        TypingMode::non_body_analysis()
+    };
+
+    let infcx = tcx.infer_ctxt().build(typing_mode);
     let mut builder = Builder::new(
         thir,
         infcx,
@@ -575,6 +579,7 @@ fn construct_fn<'tcx>(
 
     body.spread_arg = if abi == ExternAbi::RustCall {
         // RustCall pseudo-ABI untuples the last argument.
+        // FIXME(splat): splat can untuple any argument, set spread_arg here
         Some(Local::new(arguments.len()))
     } else {
         None
@@ -601,7 +606,7 @@ fn construct_const<'a, 'tcx>(
         })
         | Node::ImplItem(hir::ImplItem { kind: hir::ImplItemKind::Const(ty, _), span, .. })
         | Node::TraitItem(hir::TraitItem {
-            kind: hir::TraitItemKind::Const(ty, Some(_), _),
+            kind: hir::TraitItemKind::Const(ty, Some(_)),
             span,
             ..
         }) => (*span, ty.span),
@@ -614,9 +619,15 @@ fn construct_const<'a, 'tcx>(
         _ => span_bug!(tcx.def_span(def), "can't build MIR for {:?}", def),
     };
 
-    // FIXME(#132279): We likely want to be able to use the hidden types of
-    // opaques used by this function here.
-    let infcx = tcx.infer_ctxt().build(TypingMode::non_body_analysis());
+    let typing_mode = if tcx.use_typing_mode_post_typeck_until_borrowck() {
+        TypingMode::borrowck(tcx, def)
+    } else {
+        // FIXME(#132279): This should be able to reveal opaque
+        // types defined during HIR typeck.
+        TypingMode::non_body_analysis()
+    };
+
+    let infcx = tcx.infer_ctxt().build(typing_mode);
     let mut builder =
         Builder::new(thir, infcx, def, hir_id, span, 0, const_ty, const_ty_span, None);
 
@@ -627,7 +638,6 @@ fn construct_const<'a, 'tcx>(
     builder.cfg.terminate(block, source_info, TerminatorKind::Return);
 
     builder.build_drop_trees();
-
     builder.lint_and_remove_uninhabited();
     builder.finish()
 }
@@ -644,7 +654,6 @@ fn construct_error(tcx: TyCtxt<'_>, def_id: LocalDefId, guar: ErrorGuaranteed) -
         DefKind::Const { .. }
         | DefKind::AssocConst { .. }
         | DefKind::AnonConst
-        | DefKind::InlineConst
         | DefKind::Static { .. }
         | DefKind::GlobalAsm => {
             (vec![], tcx.type_of(def_id).instantiate_identity().skip_norm_wip(), None)
@@ -798,7 +807,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             param_env,
             def_id: def,
             hir_id,
-            parent_module: tcx.parent_module(hir_id).to_def_id(),
             check_overflow,
             cfg: CFG { basic_blocks: IndexVec::new() },
             fn_span: span,
@@ -851,8 +859,21 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     }
 
     fn lint_and_remove_uninhabited(&mut self) {
-        let mut lints = vec![];
+        let parent_module = self.tcx.parent_module_from_def_id(self.def_id);
+        let typing_env = self.infcx.typing_env(self.param_env);
 
+        // check if the function's return type is inhabited
+        // this was added here because of this regression
+        // https://github.com/rust-lang/rust/issues/149571
+        let return_ty_is_inhabited =
+            matches!(self.tcx.def_kind(self.def_id), DefKind::Fn | DefKind::AssocFn)
+                && self.local_decls[RETURN_PLACE].ty.is_inhabited_from(
+                    self.tcx,
+                    parent_module,
+                    typing_env,
+                );
+
+        let mut lints = vec![];
         let mut basic_blocks_edited = vec![];
 
         for (bbindex, bbdata) in self.cfg.basic_blocks.iter_mut().enumerate() {
@@ -865,6 +886,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
             if crate::builder::verus_builder::skip_edge_deletion_for_uninhabited_ty(
                 &self.verus_mir_builder_ctxt,
+                self.tcx,
+                self.def_id,
                 BasicBlock::from_usize(bbindex),
                 func.ty(&self.local_decls, self.tcx),
             ) {
@@ -872,12 +895,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             }
 
             let ty = destination.ty(&self.local_decls, self.tcx).ty;
-            let ty_is_inhabited = ty.is_inhabited_from(
-                self.tcx,
-                self.parent_module,
-                self.infcx.typing_env(self.param_env),
-            );
-            if !ty_is_inhabited {
+            if !ty.is_inhabited_from(self.tcx, parent_module, typing_env) {
                 // Unreachable code warnings are already emitted during type checking.
                 // However, during type checking, full type information is being
                 // calculated but not yet available, so the check for diverging
@@ -887,21 +905,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 // uninhabited types (e.g. empty enums). The check above is used so
                 // that we do not emit the same warning twice if the uninhabited type
                 // is indeed `!`.
-                if !ty.is_never()
-                    && matches!(self.tcx.def_kind(self.def_id), DefKind::Fn | DefKind::AssocFn)
-                // check if the function's return type is inhabited
-                // this was added here because of this regression
-                // https://github.com/rust-lang/rust/issues/149571
-                    && self
-                        .tcx
-                        .fn_sig(self.def_id).instantiate_identity().skip_binder()
-                        .output()
-                        .is_inhabited_from(
-                            self.tcx,
-                            self.parent_module,
-                            self.infcx.typing_env(self.param_env),
-                        )
-                {
+                if !ty.is_never() && return_ty_is_inhabited {
                     lints.push((target_bb, ty, term.source_info.span));
                 }
 
@@ -928,7 +932,16 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     {
                         continue;
                     }
-                    StatementKind::StorageLive(_) | StatementKind::StorageDead(_) => {
+                    // Ignore return value plumbing. After a call returning a non-`!`
+                    // uninhabited type, a tail expression can be unreachable while
+                    // still being needed to satisfy the surrounding return type.
+                    StatementKind::Assign((place, _)) if place.as_local() == Some(RETURN_PLACE) => {
+                        continue;
+                    }
+                    // Ignore statements inserted by MIR building that do not correspond to user code.
+                    StatementKind::StorageLive(_)
+                    | StatementKind::StorageDead(_)
+                    | StatementKind::BackwardIncompatibleDropHint { .. } => {
                         continue;
                     }
                     StatementKind::FakeRead(..) => return Some((stmt.source_info, "definition")),
@@ -963,7 +976,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 lint::builtin::UNREACHABLE_CODE,
                 lint_root,
                 target_loc.span,
-                errors::UnreachableDueToUninhabited {
+                crate::diagnostics::UnreachableDueToUninhabited {
                     expr: target_loc.span,
                     orig: orig_span,
                     descr,
@@ -1112,11 +1125,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             let place = Place::from(local);
 
             // Make sure we drop (parts of) the argument even when not matched on.
-            self.schedule_drop(
+            self.schedule_drop_value(
                 param.pat.as_ref().map_or(expr_span, |pat| pat.span),
                 argument_scope,
                 local,
-                DropKind::Value,
             );
 
             let Some(ref pat) = param.pat else {

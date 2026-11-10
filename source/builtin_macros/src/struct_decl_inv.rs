@@ -487,14 +487,14 @@ fn check_invdecl_params_match(
         match &fn_arg.kind {
             FnArgKind::Typed(pat_type) => {
                 let ty1 = &pat_type.ty;
-                let ty2 = concrete_arg;
-                if ty1.to_token_stream().to_string() != ty2.to_token_stream().to_string() {
+                // The concrete args of atomic types are emitted as `::core::primitive::*`,
+                // but the user writes the primitive type name
+                let ty2 = concrete_arg.to_token_stream().to_string();
+                let ty2 = ty2.strip_prefix(":: core :: primitive :: ").unwrap_or(&ty2);
+                if ty1.to_token_stream().to_string() != ty2 {
                     return Err(Error::new(
                         ty1.span(),
-                        format!(
-                            "struct_with_invariants: this type is expected to be {}",
-                            ty2.to_token_stream()
-                        ),
+                        format!("struct_with_invariants: this type is expected to be {}", ty2),
                     ));
                 }
             }
@@ -755,7 +755,7 @@ fn output_invariant(
                 stream.extend(quote_spanned_vstd! { vstd, predicate.span() =>
                     #pred_struct_decl
                     impl<#type_params> #vstd::atomic_ghost::AtomicInvariantPredicate<#k_type, #v_type, #g_type> for #pred_self_ty #where_clause {
-                        #publish_kind spec fn atomic_inv(#tmp_k: #k_type, #tmp_v: #v_type, #tmp_g: #g_type) -> bool {
+                        #publish_kind spec fn atomic_inv(#tmp_k: #k_type, #tmp_v: #v_type, #tmp_g: #g_type) -> ::core::primitive::bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;
                             let #g_pat = #tmp_g;
@@ -774,7 +774,7 @@ fn output_invariant(
                 stream.extend(quote_spanned_vstd! { vstd, predicate.span() =>
                     #pred_struct_decl
                     impl<#type_params> #vstd::invariant::InvariantPredicate<#k_type, #v_type> for #pred_self_ty #where_clause {
-                        #publish_kind spec fn inv(#tmp_k: #k_type, #tmp_v: #v_type) -> bool {
+                        #publish_kind spec fn inv(#tmp_k: #k_type, #tmp_v: #v_type) -> ::core::primitive::bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;
                             #predicate
@@ -1098,17 +1098,17 @@ fn get_concrete_args(type_path: &TypePath) -> parse::Result<Option<PartialType>>
 
 fn get_builtin_concrete_arg(name: &str) -> Option<Type> {
     match name {
-        "AtomicBool" => Some(Type::Verbatim(quote! { bool })),
-        "AtomicU64" => Some(Type::Verbatim(quote! { u64 })),
-        "AtomicU32" => Some(Type::Verbatim(quote! { u32 })),
-        "AtomicU16" => Some(Type::Verbatim(quote! { u16 })),
-        "AtomicU8" => Some(Type::Verbatim(quote! { u8 })),
-        "AtomicUsize" => Some(Type::Verbatim(quote! { usize })),
-        "AtomicI64" => Some(Type::Verbatim(quote! { i64 })),
-        "AtomicI32" => Some(Type::Verbatim(quote! { i32 })),
-        "AtomicI16" => Some(Type::Verbatim(quote! { i16 })),
-        "AtomicI8" => Some(Type::Verbatim(quote! { i8 })),
-        "AtomicIsize" => Some(Type::Verbatim(quote! { isize })),
+        "AtomicBool" => Some(Type::Verbatim(quote! { ::core::primitive::bool })),
+        "AtomicU64" => Some(Type::Verbatim(quote! { ::core::primitive::u64 })),
+        "AtomicU32" => Some(Type::Verbatim(quote! { ::core::primitive::u32 })),
+        "AtomicU16" => Some(Type::Verbatim(quote! { ::core::primitive::u16 })),
+        "AtomicU8" => Some(Type::Verbatim(quote! { ::core::primitive::u8 })),
+        "AtomicUsize" => Some(Type::Verbatim(quote! { ::core::primitive::usize })),
+        "AtomicI64" => Some(Type::Verbatim(quote! { ::core::primitive::i64 })),
+        "AtomicI32" => Some(Type::Verbatim(quote! { ::core::primitive::i32 })),
+        "AtomicI16" => Some(Type::Verbatim(quote! { ::core::primitive::i16 })),
+        "AtomicI8" => Some(Type::Verbatim(quote! { ::core::primitive::i8 })),
+        "AtomicIsize" => Some(Type::Verbatim(quote! { ::core::primitive::isize })),
         _ => None,
     }
 }

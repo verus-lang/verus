@@ -15,7 +15,7 @@ test_verify_one_file! {
             let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
             assert(s1 =~= s2);
             assert(s1 == s2);
-            let s3 = s2.subrange(1, 4);
+            let s3 = s2[1..4];
             assert(s3.len() == 3);
             let s4 = Seq::<int>::empty().push(10).push(20).push(30);
             assert(s3 =~= s4);
@@ -64,7 +64,7 @@ test_verify_one_file! {
             let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
             assert(s1 =~= s2);
             assert(s1 == s2);
-            let s3 = s2.subrange(1, 4);
+            let s3 = s2[1..4];
             assert(s3.len() == 3);
             let s4 = Seq::<int>::empty().push(10).push(20).push(30);
             assert(s3 =~= s4);
@@ -125,6 +125,65 @@ test_verify_one_file! {
             // push_distributes_over_add is not broadcasted.
             // Test for successful broadcast of push_distributes_over_add
             assert((s2 + s4).push(120) == s2 + s4.push(120));
+        }
+
+        proof fn filter_index_test1() {
+           let seq: Seq<int> = seq![1, 2, 3, 4, 5];
+           let even_indexed_vals: Seq<int> = seq.filter_index(|i:int| i % 2 == 0);
+           reveal_with_fuel(Seq::<_>::filter_index, 6); // Needed for Verus to unfold the recursive definition of filter_index
+           assert(even_indexed_vals =~= seq![1, 3, 5]);
+        }
+
+        proof fn filter_index_test2() {
+           let seq: Seq<int> = seq![1, 2, 3, 4, 5];
+           let even_indexed_vals: Seq<int> = seq.filter_index(|i:int| i % 2 == 0 && seq[i] >= 3);
+           reveal_with_fuel(Seq::<_>::filter_index, 6); // Needed for Verus to unfold the recursive definition of filter_index
+           assert(even_indexed_vals =~= seq![3, 5]);
+        }
+
+        proof fn filter_index_test1a() {
+            let seq: Seq<int> = seq![1, 2, 3, 4, 5];
+            let even_indexed_vals: Seq<int> = seq.filter_index(|i:int| i % 2 == 0);
+            broadcast use Seq::lemma_filter_index;
+
+            assert(even_indexed_vals.contains(1));
+            assert(!even_indexed_vals.contains(2));
+            assert(even_indexed_vals.contains(3));
+            assert(!even_indexed_vals.contains(4));
+            assert(even_indexed_vals.contains(5));
+        }
+
+        proof fn filter_index_test2a() {
+            let seq: Seq<int> = seq![1, 2, 3, 4, 5];
+            let even_indexed_vals: Seq<int> = seq.filter_index(|i:int| i % 2 == 0 && seq[i] >= 3);
+            broadcast use Seq::lemma_filter_index;
+            assert(!even_indexed_vals.contains(1));
+            assert(!even_indexed_vals.contains(2));
+            assert(even_indexed_vals.contains(3));
+            assert(!even_indexed_vals.contains(4));
+            assert(even_indexed_vals.contains(5));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] range_syntax verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(s: Seq<bool>) {
+            assert(s[..] == s);
+            assert(s[10..] == s[10..s.len()]);
+            assert(s[..20] == s[0..20]);
+            assert(s[..=19] == s[0..20]);
+            assert(s[10..20] == s[10..20]);
+            assert(s[10..=19] == s[10..20]);
+
+            assert(s[..] == s);
+            assert(s[10u32..] == s[10..s.len()]);
+            assert(s[..20nat] == s[0..20]);
+            assert(s[..=19u8] == s[0..20]);
+            assert(s[10i64..20u16] == s[10..20]);
+            assert(s[10i128..=19int] == s[10..20]);
         }
     } => Ok(())
 }

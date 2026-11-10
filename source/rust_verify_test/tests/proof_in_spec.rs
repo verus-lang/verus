@@ -248,7 +248,7 @@ test_verify_one_file! {
             }
             3
         }
-    } => Err(err) => assert_vir_error_msg(err, "proof blocks inside spec code is currently supported only for")
+    } => Err(err) => assert_vir_error_msg(err, "Verus currently supports proof blocks inside spec code only for")
 }
 
 test_verify_one_file! {
@@ -259,7 +259,7 @@ test_verify_one_file! {
             }
             3
         }
-    } => Err(err) => assert_vir_error_msg(err, "proof blocks inside spec code is currently supported only for")
+    } => Err(err) => assert_vir_error_msg(err, "Verus currently supports proof blocks inside spec code only for")
 }
 
 test_verify_one_file! {
@@ -272,7 +272,7 @@ test_verify_one_file! {
                 3
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "proof blocks inside spec code is currently supported only for")
+    } => Err(err) => assert_vir_error_msg(err, "Verus currently supports proof blocks inside spec code only for")
 }
 
 test_verify_one_file! {
@@ -299,7 +299,7 @@ test_verify_one_file! {
                 3
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "proof blocks inside spec code is currently supported only for")
+    } => Err(err) => assert_vir_error_msg(err, "Verus currently supports proof blocks inside spec code only for")
 }
 
 test_verify_one_file! {
@@ -335,7 +335,7 @@ test_verify_one_file! {
                 3
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "proof blocks inside spec code is currently supported only for")
+    } => Err(err) => assert_vir_error_msg(err, "Verus currently supports proof blocks inside spec code only for")
 }
 
 test_verify_one_file! {
@@ -419,7 +419,7 @@ test_verify_one_file! {
             }
             f(i) + 1
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {

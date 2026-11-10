@@ -20,7 +20,7 @@ V@[ext_eq_expr] ::= V@[spec_expr] =~=  V@[spec_expr]
 ### Typing
 
 The extensional equality operator requires both the left-hand side and right-hand side
-to have the same type. The expression returns a [`bool`](./reference-types#bool).
+to have the same type. The expression returns a [`bool`](./reference-types.md#bool).
 
 ### Semantics
 

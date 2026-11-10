@@ -143,7 +143,8 @@ fn tail_triangle(n: u32, idx: u32, sum: &mut u32)
         *old(sum) == triangle(idx as nat),
         triangle(n as nat) <= u32::MAX,
     ensures
-        *sum == triangle(n as nat),
+        *final(sum) == triangle(n as nat),
+    decreases n - idx,
 {
     if idx < n {
         let idx = idx + 1;
@@ -487,7 +488,7 @@ proof fn example_decreases_to(s: Seq<int>)
     assert(decreases_to!(s => s[2]));
 
     // sequence decreases-to a subrange of the sequence
-    assert(decreases_to!(s => s.subrange(1, 3)));
+    assert(decreases_to!(s => s[1..3]));
 }
 // ANCHOR_END: example_decreases_to
 

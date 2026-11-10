@@ -1266,7 +1266,7 @@ test_verify_one_file! {
             };
         }
     //} => Err(err) => assert_one_fails(err)
-    } => Err(err) => assert_vir_error_msg(err, "Not supported: match arm containing both an or-pattern (|) and a match-guard")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support a match arm containing both an or-pattern (|) and a match guard")
 }
 
 test_verify_one_file! {
@@ -1625,4 +1625,64 @@ test_verify_one_file! {
         assert!(err.errors[0].message.contains("unable to prove this pattern will successfully match"));
         assert_fails(err, 1);
     }
+}
+
+test_verify_one_file! {
+    #[test] ref_patterns verus_code! {
+        fn test(x: &u64) {
+            match x {
+                &y => { assert(x == y); }
+            }
+        }
+
+        fn test2(x: &mut u64) {
+            match x {
+                &mut y => { assert(*x == y); }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] float_patterns verus_code! {
+        const ZERO: f64 = 0.0;
+        const NEG_ZERO: f64 = -0.0;
+
+        struct X { }
+
+        impl X {
+            const ZERO: f64 = 0.0;
+        }
+
+        fn matches_zero(x: f64) -> (r: bool)
+            ensures x == NEG_ZERO ==> !r // should fail
+        {
+            match x {
+                ZERO => true,
+                _ => false,
+            }
+        }
+
+        fn matches_zero_lit(x: f64) -> (r: bool)
+            ensures x == NEG_ZERO ==> !r // should fail
+        {
+            match x {
+                0.0 => true,
+                _ => false,
+            }
+        }
+
+        fn matches_zero_assoc_const(x: f64) -> (r: bool)
+            ensures x == NEG_ZERO ==> !r // should fail
+        {
+            match x {
+                X::ZERO => true,
+                _ => false,
+            }
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "equality-testing this type in a pattern: f64",
+        "equality-testing this type in a pattern: f64",
+        "equality-testing this type in a pattern: f64",
+    ])
 }

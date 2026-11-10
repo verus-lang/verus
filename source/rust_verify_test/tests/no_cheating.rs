@@ -103,5 +103,5 @@ test_verify_one_file_with_options! {
         {
             a(i)
         }
-    } => Err(err) => assert_vir_error_msg(err, "#[verifier::assume_termination] not allowed with --no-cheating")
+    } => Err(err) => assert_vir_error_msg(err, "`#[verifier::assume_termination]` not allowed with `--no-cheating`")
 }

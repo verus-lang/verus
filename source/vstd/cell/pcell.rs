@@ -7,8 +7,8 @@ use core::cell::UnsafeCell;
 use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 
-use verus as verus_;
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 /**
 `PCell<T>` (which stands for "permissioned cell") is the most primitive Verus `Cell` type.
@@ -36,7 +36,7 @@ Despite the fact that it is, in some ways, "like a pointer", note that
 has no concept of a "null ID",
 and has no runtime representation.
 
-### Differences from [`UnsafeCell`](core::cell::UnsafeCell).
+### Differences from [`UnsafeCell`].
 
 Though inspired by `UnsafeCell`, `PCell` is not quite the same thing.
 The differences include:
@@ -120,6 +120,15 @@ impl<T: ?Sized> PointsTo<T> {
         *final(self) == *old(self),
         final(self).id() != other.id(),
     ;
+
+    pub axiom fn borrow(tracked &self) -> (tracked t: &T)
+        ensures t == self.value();
+
+    pub axiom fn borrow_mut(tracked &mut self) -> (tracked t: &mut T)
+        ensures
+            &*t == old(self).value(),
+            final(self).value() == &*final(t),
+            final(self).id() == old(self).id();
 }
 
 impl<T: ?Sized> PCell<T> {

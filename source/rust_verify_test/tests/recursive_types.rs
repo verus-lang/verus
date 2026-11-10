@@ -204,7 +204,7 @@ test_verify_one_file! {
         struct Map<K, V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
-    } => Err(err) => assert_vir_error_msg(err, "in external_body datatype, each type parameter must be one of: #[verifier::reject_recursive_types], #[verifier::reject_recursive_types_in_ground_variants], #[verifier::accept_recursive_types]")
+    } => Err(err) => assert_vir_error_msg(err, "in `external_body` datatype, each type parameter must be one of: `#[verifier::reject_recursive_types]`, `#[verifier::reject_recursive_types_in_ground_variants]`, `#[verifier::accept_recursive_types]`")
 }
 
 test_verify_one_file! {
@@ -221,7 +221,7 @@ test_verify_one_file! {
             a: Map<A, int>,
             b: Map<int, B>,
         }
-    } => Err(err) => assert_vir_error_msg(err, "Type parameter A of test_crate::D must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
+    } => Err(err) => assert_vir_error_msg(err, "type parameter A of test_crate::D must be declared `#[verifier::reject_recursive_types]` to be used in a non-positive position")
 }
 
 test_verify_one_file! {
@@ -269,7 +269,7 @@ test_verify_one_file! {
         struct X<A>(A);
         struct Y<A>(Set<X<A>>);
         struct Z(Y<Z>);
-    } => Err(err) => assert_vir_error_msg(err, "Type parameter A of test_crate::Y must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
+    } => Err(err) => assert_vir_error_msg(err, "type parameter A of test_crate::Y must be declared `#[verifier::reject_recursive_types]` to be used in a non-positive position")
 }
 
 test_verify_one_file! {

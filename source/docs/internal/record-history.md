@@ -1,9 +1,9 @@
 The `record-history` feature records every invocation of Verus with the current source of the crate it was invoked on, and the Verus verification results and outputs.
 
-To enable, re-build vargo, then compile Verus with `--features record-history`:
+To enable, compile Verus with `--features record-history`:
 
 ```
-vargo build --release --features record-history
+cargo build --release --features record-history
 ```
 
 Then you need a per-project opt-in.

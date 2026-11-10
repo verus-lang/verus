@@ -538,7 +538,10 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
             }
 
             hir::ExprKind::Closure(closure) => {
-                if !crate::verus::erase_closure_body_for_closure_captures(closure.def_id) {
+                if !crate::verus::erase_closure_body_for_closure_captures(
+                    self.cx.tcx(),
+                    closure.def_id,
+                ) {
                     self.cx.recursive_analyze_closure(expr, closure);
                     self.walk_captures(closure)?;
                 }
@@ -705,7 +708,8 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
         let typeck_results = self.cx.typeck_results();
         let adjustments = typeck_results.expr_adjustments(expr);
         let mut place_with_id = self.cat_expr_unadjusted(expr)?;
-        for adjustment in adjustments {
+        for (adjustment_index, adjustment) in adjustments.iter().enumerate() {
+            let is_last_adjustment = adjustment_index + 1 == adjustments.len();
             debug!("walk_adjustment expr={:?} adj={:?}", expr, adjustment);
             match adjustment.kind {
                 adjustment::Adjust::NeverToAny | adjustment::Adjust::Pointer(_) => {
@@ -730,13 +734,13 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                     self.walk_autoref(expr, &place_with_id, autoref);
                 }
 
-                adjustment::Adjust::GenericReborrow(_reborrow) => {
-                    // To build an expression as a place expression, it needs to be a field
-                    // projection or deref at the outmost layer. So it is field projection or deref
-                    // on an adjusted value. But this means that adjustment is applied on a
-                    // subexpression that is not the final operand/rvalue for function call or
-                    // assignment. This is a contradiction.
-                    unreachable!("Reborrow trait usage during adjustment walk");
+                adjustment::Adjust::GenericReborrow(mutability) if is_last_adjustment => {
+                    let bk = ty::BorrowKind::from_mutbl(mutability);
+                    self.delegate.borrow_mut().borrow(&place_with_id, place_with_id.hir_id, bk);
+                }
+
+                adjustment::Adjust::GenericReborrow(_) => {
+                    span_bug!(expr.span, "generic reborrow adjustment must be terminal");
                 }
             }
             place_with_id = self.cat_expr_adjusted(expr, place_with_id, adjustment)?;
@@ -1402,7 +1406,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
 
             Res::Local(var_id) => {
                 if self.upvars.is_some_and(|upvars| upvars.contains_key(&var_id)) {
-                    if crate::verus::erase_var_for_closure_captures(hir_id) {
+                    if crate::verus::erase_var_for_closure_captures(self.cx.tcx(), hir_id) {
                         return Ok(PlaceWithHirId::new(
                             hir_id,
                             expr_ty,

@@ -14,7 +14,7 @@ Any of the following types may be coerced to any of the other types:
  * `u8`, `u16`, `u32`, `u64`, `u128`, `usize`
  * `int`
  * `nat`
- * [`char`](./char.md)
+ * [`char`](./reference-types.md#char)
 
 Note that this is more permissive than `as` in Rust exec code. For example, Rust does
 not permit using `as` to cast from a `u16` to a `char`, but this is allowed in Verus
@@ -26,7 +26,7 @@ Verus defines `as`-casting as follows:
 
  * Casting to an `int` is always defined and does not require truncation.
  * Casting to a `nat` is _unspecified_ if the input value is negative.
- * Casting to a `char` is _unspecified_ if the input value is outside the [allowed `char` values](./char.md).
+ * Casting to a `char` is _unspecified_ if the input value is outside the [allowed `char` values](./reference-types.md#char).
  * Casting to any other finite-size integer type is defined as _truncation_ — taking the
     lower N bits for the appropriate N, then interpreting the result as a signed or unsigned
     integer.
@@ -35,8 +35,8 @@ Verus defines `as`-casting as follows:
 
 The definition of truncation is _not_ exported in Verus's default prover mode
 (i.e., it behaves as if it is unspecified). To reason about truncation, use
-[the bit-vector solver](./reference-assert-by-bit-vector.md)
-or the [compute solver](./reference-assert-by-compute.md).
+[the bit-vector solver](./reference-prover-mode-bit-vector.md)
+or the [compute solver](./reference-prover-mode-compute.md).
 
 Also note that the value of N for `usize` and `isize` may be [configured with the `global` directive](./reference-global.md).
 
@@ -51,7 +51,7 @@ the expression `ptr as INT_TYPE` is equivalent to `ptr.addr() as INT_TYPE`.
 > Using `ptr.addr()` explicitly is often clearer than an `as`-cast.
 
 > [!NOTE]
-> Verus does not support casting an integer to a pointer using `as`. Instead, use a function like [`with_addr`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/struct.VstdSpecsForRustStdLib.html#method._verus_external_fn_specification_1018__60__32__42__32_mut_32_T_32__62__32__58__58__32_with__addr) or [`with_exposed_provenance`](https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/fn.with_exposed_provenance.html).
+> Verus does not support casting an integer to a pointer using `as`. Instead, use a function like [`with_addr`](https://doc.rust-lang.org/std/primitive.pointer.html#method.with_addr) or [`with_exposed_provenance`](https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/fn.with_exposed_provenance.html).
 
 ### Pointers to pointers
 

@@ -14,8 +14,8 @@ use core::option::Option;
 use core::option::Option::None;
 use core::slice::SliceIndex;
 
-use verus as verus_;
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -138,6 +138,14 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::try_reserve ](
         final(vec)@ == old(vec)@,
 ;
 
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::try_reserve_exact ](
+    vec: &mut Vec<T, A>,
+    additional: usize,
+) -> (result: Result<(), TryReserveError>)
+    ensures
+        final(vec)@ == old(vec)@,
+;
+
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::push ](vec: &mut Vec<T, A>, value: T)
     ensures
         final(vec)@ == old(vec)@.push(value),
@@ -147,7 +155,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::pop ](vec: &mut Vec<T, A
     Option<T>)
     ensures
         old(vec)@.len() > 0 ==> value == Some(old(vec)@[old(vec)@.len() - 1])
-            && final(vec)@ == old(vec)@.subrange(0, old(vec)@.len() - 1),
+            && final(vec)@ == old(vec)@[..old(vec)@.len() - 1],
         old(vec)@.len() == 0 ==> value == None::<T> && final(vec)@ == old(vec)@,
 ;
 
@@ -177,7 +185,7 @@ pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::exte
 
 impl<T: Sized, I: SliceIndex<[T]>, A: Allocator> super::core::IndexSpecImpl<I> for Vec<T, A> {
     open spec fn index_req(&self, index: &I) -> bool {
-        forall|s: &[T]| #[trigger] s@ == self@ ==> index.index_req(s)
+        forall|s: &[T]| #[trigger] s@ == self@ ==> index.in_bounds(s)
     }
 }
 
@@ -215,6 +223,8 @@ pub assume_specification<T, A: Allocator> [ <Vec<T, A>>::is_empty ](
     v: &Vec<T, A>,
 ) -> (res: bool)
     ensures res <==> v@.len() == 0,
+    opens_invariants none
+    no_unwind
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::remove ](
@@ -236,6 +246,17 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::clear ](vec: &mut Vec<T,
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, A>) -> (slice: &[T])
     ensures
         slice@ == vec@,
+    opens_invariants none
+    no_unwind
+;
+
+pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::convert::AsRef<[T]>>::as_ref ](
+    vec: &Vec<T, A>,
+) -> (slice: &[T])
+    ensures
+        slice@ == vec@,
+    opens_invariants none
+    no_unwind
 ;
 
 #[doc(hidden)]
@@ -243,6 +264,8 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_slice ](vec: &mut
     ensures
         slice@ == old(vec)@,
         final(slice)@ == final(vec)@,
+    opens_invariants none
+    no_unwind
 ;
 
 pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::Deref>::deref ](
@@ -267,8 +290,8 @@ pub assume_specification<T, A: Allocator + core::clone::Clone>[ Vec::<T, A>::spl
     requires
         at <= old(vec)@.len(),
     ensures
-        final(vec)@ == old(vec)@.subrange(0, at as int),
-        return_value@ == old(vec)@.subrange(at as int, old(vec)@.len() as int),
+        final(vec)@ == old(vec)@[..at],
+        return_value@ == old(vec)@[at..],
 ;
 
 pub open spec fn vec_clone_trigger<T, A: Allocator>(v1: Vec<T, A>, v2: Vec<T, A>) -> bool {
@@ -299,7 +322,7 @@ pub broadcast proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::truncate ](vec: &mut Vec<T, A>, len: usize)
     ensures
-        len <= old(vec).len() ==> final(vec)@ == old(vec)@.subrange(0, len as int),
+        len <= old(vec).len() ==> final(vec)@ == old(vec)@[..len],
         len > old(vec).len() ==> final(vec)@ == old(vec)@,
 ;
 
@@ -309,10 +332,10 @@ pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](
     value: T,
 )
     ensures
-        len <= old(vec).len() ==> final(vec)@ == old(vec)@.subrange(0, len as int),
+        len <= old(vec).len() ==> final(vec)@ == old(vec)@[..len],
         len > old(vec).len() ==> {
             &&& final(vec)@.len() == len
-            &&& final(vec)@.subrange(0, old(vec).len() as int) == old(vec)@
+            &&& final(vec)@[..old(vec).len()] == old(vec)@
             &&& forall|i| #![all_triggers] old(vec).len() <= i < len ==> cloned::<T>(value, final(vec)@[i])
         },
 ;
@@ -361,7 +384,10 @@ impl <T, A: Allocator> super::iter::IteratorSpecImpl for IntoIter<T, A> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -396,6 +422,9 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
 > as core::iter::IntoIterator>::IntoIter)
     ensures
         IteratorSpec::remaining(&iter) == vec@,
+        // Stated via `len()` so callers learn that the length fits in a `usize`
+        // (needed, e.g., by `enumerate` and `position`)
+        IteratorSpec::remaining(&iter).len() == vec.len(),
         into_iter_elts(iter) == IteratorSpec::remaining(&iter),
         IteratorSpec::decrease(&iter) is Some,
 ;
@@ -404,13 +433,16 @@ pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::Int
     (iter: <&'a Vec<T, A> as core::iter::IntoIterator>::IntoIter)
     ensures
         IteratorSpec::remaining(&iter) == vec@.as_ref(),
+        IteratorSpec::remaining(&iter).len() == vec.len(),
         super::slice::into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
 ;
 
 impl<T>  FromIteratorSpecImpl<T> for Vec<T> {
-    open spec fn from_iter_ensures(remaining: Seq<T>, s: Self) -> bool {
-        remaining == s@
+    open spec fn from_iter_ensures(remaining: Seq<T>, produces: Seq<bool>, s: Self) -> bool {
+        &&& produces.len() == remaining.len()
+        &&& produces.all(|p: bool| p)
+        &&& remaining == s@
     }
 }
 
@@ -475,5 +507,14 @@ pub broadcast group group_vec_axioms {
     axiom_vec_has_resolved,
     axiom_vec_decreases_to_view,
 }
+
+pub axiom fn tracked_borrow_slice<T, A: Allocator>(tracked vec: &Vec<T, A>) -> (tracked t: &[T])
+    ensures t@ == vec@;
+
+pub axiom fn tracked_borrow_mut_slice<T, A: Allocator>(tracked vec: &mut Vec<T, A>) -> (tracked t: &mut [T])
+    ensures
+        (*t)@ == old(vec)@,
+        (*t).len() == final(t).len(),
+        final(vec)@ == final(t)@;
 
 } // verus!

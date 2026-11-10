@@ -1,4 +1,4 @@
-use air::context::SmtSolver;
+use air::context::{SmtEncoding, SmtSolver};
 use getopts::Options;
 use std::{collections::HashSet, sync::Arc};
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
@@ -84,7 +84,9 @@ pub struct ArgsX {
     pub verify_function: Option<String>,
     pub no_external_by_default: bool,
     pub no_verify: bool,
+    pub build_sst: bool,
     pub no_lifetime: bool,
+    pub no_trait_conflicts: bool,
     pub no_erasure_check: bool,
     pub no_auto_recommends_check: bool,
     pub no_cheating: bool,
@@ -101,7 +103,6 @@ pub struct ArgsX {
     pub show_triggers: ShowTriggers,
     pub ignore_unexpected_smt: bool,
     pub allow_inline_air: bool,
-    pub debugger: bool,
     pub profile: bool,
     pub profile_all: bool,
     pub capture_profiles: bool,
@@ -115,9 +116,11 @@ pub struct ArgsX {
     pub report_long_running: bool,
     pub use_crate_name: bool,
     pub solver: SmtSolver,
+    pub smt_encoding: SmtEncoding,
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
     pub no_bv_simplify: bool,
+    pub observer: Option<String>,
 }
 
 impl ArgsX {
@@ -131,7 +134,9 @@ impl ArgsX {
             verify_function: Default::default(),
             no_external_by_default: Default::default(),
             no_verify: Default::default(),
+            build_sst: Default::default(),
             no_lifetime: Default::default(),
+            no_trait_conflicts: Default::default(),
             no_erasure_check: Default::default(),
             no_auto_recommends_check: Default::default(),
             no_cheating: Default::default(),
@@ -148,7 +153,6 @@ impl ArgsX {
             show_triggers: Default::default(),
             ignore_unexpected_smt: Default::default(),
             allow_inline_air: Default::default(),
-            debugger: Default::default(),
             profile: Default::default(),
             profile_all: Default::default(),
             capture_profiles: Default::default(),
@@ -162,9 +166,11 @@ impl ArgsX {
             report_long_running: Default::default(),
             use_crate_name: Default::default(),
             solver: Default::default(),
+            smt_encoding: Default::default(),
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
             no_bv_simplify: Default::default(),
+            observer: None,
         }
     }
 }
@@ -234,7 +240,7 @@ pub fn enable_default_features_and_verus_attr(
 }
 
 fn error(msg: String) -> ! {
-    eprintln!("Error: {}", msg);
+    eprintln!("error: {}", msg);
     std::process::exit(-1)
 }
 
@@ -247,7 +253,7 @@ fn parse_opts_or_pairs(strs: Vec<String>) -> std::collections::HashMap<String, O
             [opt] => parsed.insert((*opt).to_owned(), None),
             [key, val] => parsed.insert((*key).to_owned(), Some((*val).to_owned())),
             _ => {
-                error(format!("invalid parsed option -V {}", o));
+                error(format!("invalid parsed option `-V {}`", o));
             }
         };
     }
@@ -277,12 +283,12 @@ pub fn parse_cargo_args(_program: &String, args: &mut Vec<String>) -> CargoVerus
                     cargo_verus_args.import_dep_if_present.push(val.to_string());
                 } else {
                     error(format!(
-                        "expected --VIA-CARGO {}=DEP_NAME",
+                        "expected `--VIA-CARGO {}=DEP_NAME`",
                         CARGO_OPT_IMPORT_DEP_IF_PRESENT
                     ));
                 }
             } else {
-                error(format!("unexpected --VIA-CARGO {}", arg));
+                error(format!("unexpected `--VIA-CARGO {}`", arg));
             }
             next_is_via_cargo = false;
             false
@@ -307,7 +313,9 @@ pub fn parse_args_with_imports(
     const OPT_VERIFY_FUNCTION: &str = "verify-function";
     const OPT_NO_EXTERNAL_BY_DEFAULT: &str = "no-external-by-default";
     const OPT_NO_VERIFY: &str = "no-verify";
+    const OPT_BUILD_SST: &str = "build-sst";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
+    const OPT_NO_TRAIT_CONFLICTS: &str = "no-trait-conflicts";
     const OPT_NO_ERASURE_CHECK: &str = "no-erasure-check";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
     const OPT_NO_CHEATING: &str = "no-cheating";
@@ -399,19 +407,19 @@ pub fn parse_args_with_imports(
 
     const OPT_EXTENDED_MULTI: &str = "V";
     const EXTENDED_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
-    const EXTENDED_DEBUG: &str = "debug";
     const EXTENDED_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
     const EXTENDED_CVC5: &str = "cvc5";
+    const EXTENDED_CVC5_SMTLIB: &str = "cvc5-smtlib";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
     const EXTENDED_NO_BV_SIMPLIFY: &str = "no-bv-simplify";
+    const EXTENDED_OBSERVER: &str = "observer";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
-        (EXTENDED_DEBUG, "Enable debugging of proof failures"),
         (
             EXTENDED_NO_SOLVER_VERSION_CHECK,
             "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)",
@@ -422,6 +430,7 @@ pub fn parse_args_with_imports(
             "Always collect prover performance data, but don't generate output reports",
         ),
         (EXTENDED_CVC5, "Use the cvc5 SMT solver, rather than the default (Z3)"),
+        (EXTENDED_CVC5_SMTLIB, "Use cvc5-compatible SMT-LIB with the default Z3 solver"),
         (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
         (
             EXTENDED_USE_CRATE_NAME,
@@ -436,6 +445,7 @@ pub fn parse_args_with_imports(
             EXTENDED_NO_BV_SIMPLIFY,
             "internal option to disable simplification of bit-vector assertions before sending to the SMT solver",
         ),
+        (EXTENDED_OBSERVER, "Observer to run during verification (e.g., test)"),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -448,7 +458,7 @@ pub fn parse_args_with_imports(
         OPT_VERSION,
         "Print version information (add `--output-json` to print as json) ",
     );
-    opts.optopt("", OPT_EXPORT, "Export Verus metadata for library crate", "CRATENAME=PATH");
+    opts.optopt("", OPT_EXPORT, "Export Verus metadata for library crate", "PATH");
     opts.optmulti("", OPT_IMPORT, "Import Verus metadata from library crate", "CRATENAME=PATH");
     opts.optflag("", OPT_VERIFY_ROOT, "Verify just the root module of crate");
     opts.optmulti(
@@ -471,7 +481,9 @@ pub fn parse_args_with_imports(
     );
     opts.optflag("", OPT_NO_EXTERNAL_BY_DEFAULT, "(deprecated) Verify all items, even those declared outside the verus! macro, and even if they aren't marked #[verifier::verify]");
     opts.optflag("", OPT_NO_VERIFY, "Do not run verification");
+    opts.optflag("", OPT_BUILD_SST, "Always build SST even if no-verify is set");
     opts.optflag("", OPT_NO_LIFETIME, "Do not run lifetime checking on proofs");
+    opts.optflag("", OPT_NO_TRAIT_CONFLICTS, "Do not run trait conflict checking");
     opts.optflag("", OPT_NO_ERASURE_CHECK, "Do not run the final erasure check");
     opts.optflag(
         "",
@@ -481,7 +493,7 @@ pub fn parse_args_with_imports(
     opts.optflag(
         "",
         OPT_NO_CHEATING,
-        "Do not allow assume, admit, verifier::external_body, and assume_specification",
+        "Do not allow assume, admit, verifier::external_body, and assume_specification; also reject options that skip or weaken checks",
     );
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optflag("", OPT_TIME_EXPANDED, "Measure and report time taken with module breakdown");
@@ -611,7 +623,7 @@ pub fn parse_args_with_imports(
         if v.len() == 2 {
             (v[0].to_string(), v[1].to_string())
         } else {
-            error("expected option of form option_name=option_value".to_string())
+            error("expected option of form `option_name=option_value`".to_string())
         }
     };
 
@@ -620,7 +632,7 @@ pub fn parse_args_with_imports(
     let is_core = matches.opt_present(OPT_IS_CORE);
     let is_stdlib_outside_of_core = matches.opt_present(OPT_IS_STDLIB_OUTSIDE_OF_CORE);
     if is_vstd && is_core {
-        error("contradictory options --is-core and --is-vstd".to_string());
+        error("contradictory options `--is-core` and `--is-vstd`".to_string());
     }
     let vstd = if is_vstd {
         Vstd::IsVstd
@@ -649,10 +661,19 @@ pub fn parse_args_with_imports(
         let extended_keys_set: HashSet<_> = EXTENDED_KEYS.iter().map(|(k, _)| *k).collect();
         for extended_key in extended.keys() {
             if !extended_keys_set.contains(extended_key.as_str()) {
-                error(format!("unexpected extended option -V {}", extended_key));
+                error(format!("unexpected extended option `-V {}`", extended_key));
             }
         }
     }
+    if extended.contains_key(EXTENDED_CVC5) && extended.contains_key(EXTENDED_CVC5_SMTLIB) {
+        error("`-V cvc5` and `-V cvc5-smtlib` are mutually exclusive".to_string());
+    }
+    let solver = if extended.contains_key(EXTENDED_CVC5) { SmtSolver::Cvc5 } else { SmtSolver::Z3 };
+    let smt_encoding = if extended.contains_key(EXTENDED_CVC5_SMTLIB) {
+        SmtEncoding::Cvc5
+    } else {
+        solver.default_encoding()
+    };
 
     let args = ArgsX {
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
@@ -663,13 +684,13 @@ pub fn parse_args_with_imports(
         verify_function: {
             if matches.opt_present(OPT_VERIFY_FUNCTION) {
                 if matches.opt_present(OPT_VERIFY_MODULE) {
-                    error("When using --verify-function, use --verify-only-module instead of --verify-module".to_owned())
+                    error("when using `--verify-function`, use `--verify-only-module` instead of `--verify-module`".to_owned())
                 }
                 if !matches.opt_present(OPT_VERIFY_ONLY_MODULE)
                     && !matches.opt_present(OPT_VERIFY_ROOT)
                 {
                     error(
-                        "--verify-function option requires --verify-only-module or --verify-root"
+                        "`--verify-function` option requires `--verify-only-module` or `--verify-root`"
                             .to_owned(),
                     )
                 }
@@ -677,14 +698,16 @@ pub fn parse_args_with_imports(
                     + (if matches.opt_present(OPT_VERIFY_ROOT) { 1 } else { 0 })
                     > 1
                 {
-                    error("Must pass at most one --verify-only-module or --verify-root when using --verify-function".to_string())
+                    error("must pass at most one `--verify-only-module` or `--verify-root` when using `--verify-function`".to_string())
                 }
             }
             matches.opt_str(OPT_VERIFY_FUNCTION)
         },
         no_external_by_default: matches.opt_present(OPT_NO_EXTERNAL_BY_DEFAULT),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
+        build_sst: matches.opt_present(OPT_BUILD_SST),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
+        no_trait_conflicts: matches.opt_present(OPT_NO_TRAIT_CONFLICTS),
         no_erasure_check: matches.opt_present(OPT_NO_ERASURE_CHECK),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
         no_cheating: matches.opt_present(OPT_NO_CHEATING),
@@ -704,7 +727,9 @@ pub fn parse_args_with_imports(
                         }
                     })
                 })
-                .unwrap_or_else(|| error("expected number or `infinity` after rlimit".to_string()))
+                .unwrap_or_else(|| {
+                    error("expected number or `infinity` after `--rlimit`".to_string())
+                })
                 .unwrap_or(DEFAULT_RLIMIT_SECS);
             if rlimit == 0.0 {
                 error("rlimit 0 is not allowed".to_string());
@@ -715,7 +740,7 @@ pub fn parse_args_with_imports(
         smt_options: matches.opt_strs(OPT_SMT_OPTION).iter().map(split_pair_eq).collect(),
         multiple_errors: matches
             .opt_get::<u32>(OPT_MULTIPLE_ERRORS)
-            .unwrap_or_else(|_| error("expected integer after multiple-errors".to_string()))
+            .unwrap_or_else(|_| error("expected integer after `--multiple-errors`".to_string()))
             .unwrap_or(2),
         expand_errors: matches.opt_present(OPT_EXPAND_ERRORS),
         log_dir: matches.opt_str(OPT_LOG_DIR),
@@ -728,7 +753,7 @@ pub fn parse_args_with_imports(
             vir_log_option: {
                 if let Some(oo) = log.get(LOG_VIR_OPTION) {
                     let Some(oo) = oo else {
-                        error("expected --log vir-option=OPT1+OPT2+OPT3".to_string())
+                        error("expected `--log vir-option=OPT1+OPT2+OPT3`".to_string())
                     };
                     let vir_opts = oo.split('+').map(|s| s.trim()).collect::<Vec<_>>();
                     if vir_opts.contains(&"compact") {
@@ -757,7 +782,7 @@ pub fn parse_args_with_imports(
         },
         show_triggers: if matches.opt_present(OPT_TRIGGERS) {
             if matches.opt_present(OPT_TRIGGERS_MODE) {
-                error("--triggers and --triggers-mode are mutually exclusive".to_owned())
+                error("`--triggers` and `--triggers-mode` are mutually exclusive".to_owned())
             }
             ShowTriggers::Module
         } else if let Some(triggers_mode) = matches.opt_str(OPT_TRIGGERS_MODE) {
@@ -767,18 +792,17 @@ pub fn parse_args_with_imports(
                 TRIGGERS_MODE_SILENT => ShowTriggers::Silent,
                 TRIGGERS_MODE_VERBOSE_ALL_MODULES => ShowTriggers::VerboseAllModules,
                 TRIGGERS_MODE_VERBOSE => ShowTriggers::Verbose,
-                _ => error(format!("invalid --triggers-mode {triggers_mode}")),
+                _ => error(format!("invalid `--triggers-mode` {triggers_mode}")),
             }
         } else {
             ShowTriggers::default()
         },
         ignore_unexpected_smt: extended.contains_key(EXTENDED_IGNORE_UNEXPECTED_SMT),
         allow_inline_air: extended.contains_key(EXTENDED_ALLOW_INLINE_AIR),
-        debugger: extended.contains_key(EXTENDED_DEBUG),
         profile: {
             if matches.opt_present(OPT_PROFILE) {
                 if matches.opt_present(OPT_PROFILE_ALL) {
-                    error("--profile and --profile-all are mutually exclusive".to_string())
+                    error("`--profile` and `--profile-all` are mutually exclusive".to_string())
                 }
             };
             matches.opt_present(OPT_PROFILE)
@@ -788,19 +812,19 @@ pub fn parse_args_with_imports(
                 if !(matches.opt_present(OPT_VERIFY_ONLY_MODULE)
                     || matches.opt_present(OPT_VERIFY_ROOT))
                 {
-                    error("Must pass --verify-only-module or --verify-root when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
+                    error("must pass `--verify-only-module` or `--verify-root` when using `--profile-all`; to capture a full project's profile, consider `-V capture-profiles`".to_string())
                 }
                 if matches.opt_present(OPT_VERIFY_MODULE) {
-                    error("When using --profile-all, use --verify-only-module instead of --verify-module".to_string())
+                    error("when using `--profile-all`, use `--verify-only-module` instead of `--verify-module`".to_string())
                 }
                 if matches.opt_count(OPT_VERIFY_ONLY_MODULE) > 1 {
                     error(
-                        "Must pass at most one --verify-only-module when using profile-all"
+                        "must pass at most one `--verify-only-module` when using `--profile-all`"
                             .to_string(),
                     )
                 }
                 if matches.opt_present(OPT_PROFILE) {
-                    error("--profile and --profile-all are mutually exclusive".to_string())
+                    error("`--profile` and `--profile-all` are mutually exclusive".to_string())
                 }
             };
             matches.opt_present(OPT_PROFILE_ALL)
@@ -808,7 +832,7 @@ pub fn parse_args_with_imports(
         capture_profiles: {
             if extended.contains_key(EXTENDED_CAPTURE_PROFILES) {
                 if matches.opt_present(OPT_PROFILE) {
-                    error("--profile and --capture-profiles are mutually exclusive".to_string())
+                    error("`--profile` and `--capture-profiles` are mutually exclusive".to_string())
                 }
             };
             extended.contains_key(EXTENDED_CAPTURE_PROFILES)
@@ -820,19 +844,54 @@ pub fn parse_args_with_imports(
         version: matches.opt_present(OPT_VERSION),
         num_threads: matches
             .opt_get::<usize>(OPT_NUM_THREADS)
-            .unwrap_or_else(|_| error("expected integer after num_threads".to_string()))
+            .unwrap_or_else(|_| error("expected integer after `--num-threads`".to_string()))
             .unwrap_or(default_num_threads),
         trace: matches.opt_present(OPT_TRACE),
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
         use_crate_name: extended.contains_key(EXTENDED_USE_CRATE_NAME),
-        solver: if extended.contains_key(EXTENDED_CVC5) { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
+        solver,
+        smt_encoding,
         axiom_usage_info: extended.contains_key(EXTENDED_AXIOM_USAGE_INFO),
         check_api_safety: extended.contains_key(EXTENDED_CHECK_API_SAFETY),
         no_bv_simplify: extended.contains_key(EXTENDED_NO_BV_SIMPLIFY),
+        observer: match extended.get(EXTENDED_OBSERVER) {
+            None => None,
+            Some(Some(name)) => Some(name.clone()),
+            Some(None) => error(format!(
+                "-V {} needs a name, e.g. -V {}=test",
+                EXTENDED_OBSERVER, EXTENDED_OBSERVER
+            )),
+        },
     };
 
+    if args.no_cheating {
+        let disallowed_flags = [
+            OPT_VERIFY_ROOT,
+            OPT_VERIFY_MODULE,
+            OPT_VERIFY_ONLY_MODULE,
+            OPT_VERIFY_FUNCTION,
+            OPT_NO_LIFETIME,
+            OPT_NO_ERASURE_CHECK,
+            OPT_NO_TRAIT_CONFLICTS,
+            OPT_IS_VSTD,
+            OPT_IS_CORE,
+            OPT_IS_STDLIB_OUTSIDE_OF_CORE,
+        ];
+        for flag in disallowed_flags {
+            if matches.opt_present(flag) {
+                error(format!("`--{}` is not allowed with `--{}`", flag, OPT_NO_CHEATING));
+            }
+        }
+        let disallowed_extended = [EXTENDED_ALLOW_INLINE_AIR, EXTENDED_IGNORE_UNEXPECTED_SMT];
+        for key in disallowed_extended {
+            if extended.contains_key(key) {
+                error(format!("`-V {}` is not allowed with `--{}`", key, OPT_NO_CHEATING));
+            }
+        }
+    }
+
     if args.compile && args.no_erasure_check {
-        error("--compile and --no-erasure-check are mutually exclusive".to_string())
+        error("`--compile` and `--no-erasure-check` are mutually exclusive".to_string())
     }
 
     (Arc::new(args), unmatched)

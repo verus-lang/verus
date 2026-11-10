@@ -4,6 +4,123 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] external_trait_supertrait_associated_type verus_code! {
+        #[verifier::external]
+        trait Build<A>: Sized {
+            fn build(a: A) -> Self;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExBuild<A>: Sized {
+            type ExternalTraitSpecificationFor: Build<A>;
+            fn build(a: A) -> Self;
+        }
+
+        #[verifier::external]
+        trait T<A>: Build<Self::Item> {
+            type Item;
+            fn identity(a: Self::Item) -> Self::Item;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT<A>: Build<Self::Item> {
+            type ExternalTraitSpecificationFor: T<A>;
+            type Item;
+            fn identity(a: Self::Item) -> (ret: Self::Item)
+                ensures ret == a;
+        }
+
+        impl Build<u32> for u32 {
+            fn build(a: u32) -> Self { a }
+        }
+
+        impl T<bool> for u32 {
+            type Item = u32;
+            fn identity(a: u32) -> u32 { a }
+        }
+
+        fn identity<A, I: T<A>>(a: I::Item) -> (ret: I::Item)
+            ensures ret == a,
+        {
+            I::identity(a)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] external_trait_supertrait_associated_type_mismatch verus_code! {
+        #[verifier::external]
+        trait Build<A>: Sized {}
+
+        #[verifier::external_trait_specification]
+        trait ExBuild<A>: Sized {
+            type ExternalTraitSpecificationFor: Build<A>;
+        }
+
+        #[verifier::external]
+        trait T: Build<Self::Item> {
+            type Item;
+            type Other;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT: Build<Self::Other> {
+            type ExternalTraitSpecificationFor: T;
+            type Item;
+            type Other;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`external_trait_specification` trait bound mismatch")
+}
+
+test_verify_one_file! {
+    #[test] external_trait_marker_name_collision verus_code! {
+        #[verifier::external]
+        trait T {
+            type ExternalTraitSpecificationFor;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+        }
+
+        #[verifier::external]
+        trait SizedT: Sized {
+            type ExternalTraitSpecificationFor;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExSizedT: Sized {
+            type ExternalTraitSpecificationFor: SizedT;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] external_trait_custom_marker_name_collision verus_code! {
+        #[verifier::external]
+        trait Build<A>: Sized {}
+
+        #[verifier::external_trait_specification]
+        trait ExBuild<A>: Sized {
+            type ExternalTraitSpecificationFor: Build<A>;
+        }
+
+        #[verifier::external]
+        trait T: Build<Self::ExternalTraitSpecificationFor> {
+            type Marker;
+            type ExternalTraitSpecificationFor;
+        }
+
+        #[verifier::external_trait_specification(Marker)]
+        trait ExT: Build<Self::ExternalTraitSpecificationFor> {
+            type Marker: T;
+            type ExternalTraitSpecificationFor;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait verus_code! {
         trait Tr {
             fn foo();
@@ -22,7 +139,7 @@ test_verify_one_file! {
         fn ex_foo() {
             X::foo()
         }
-    } => Err(err) => assert_vir_error_msg(err, "using assume_specification for this function requires you to specify all other functions for the same trait impl, but the method `bar` is missing")
+    } => Err(err) => assert_vir_error_msg(err, "using `assume_specification` for this function requires you to specify all other functions for the same trait impl, but the method `bar` is missing")
 }
 
 test_verify_one_file! {
@@ -97,7 +214,7 @@ test_verify_one_file! {
         fn ex_bar() {
             X::bar()
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate assume_specification for this method")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate `assume_specification` for this method")
 }
 
 test_verify_one_file! {
@@ -123,7 +240,7 @@ test_verify_one_file! {
         fn ex_bar() {
             X::bar()
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for this trait implementation")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `test_crate::X::foo`")
 }
 
 test_verify_one_file! {
@@ -139,7 +256,7 @@ test_verify_one_file! {
                 X
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for this trait method implementation")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `test_crate::X::from`")
 }
 
 test_verify_one_file! {
@@ -205,7 +322,7 @@ test_verify_one_file! {
             type ExternalTraitSpecificationFor: T;
             fn f();
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate method")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `test_crate::T::f`")
 }
 
 test_verify_one_file! {
@@ -256,7 +373,7 @@ test_verify_one_file! {
         trait Ex<A: Copy> {
             type ExternalTraitSpecificationFor: T<A>;
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_trait_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "`external_trait_specification` trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -342,11 +459,6 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] test_trait4 ["--disable-internal-test-mode"] => verus_code! {
-        #[verifier::external_trait_specification]
-        pub trait ExIntoIterator {
-            type ExternalTraitSpecificationFor: core::iter::IntoIterator;
-        }
-
         #[verifier::external_type_specification]
         #[verifier::external_body]
         #[verifier::reject_recursive_types_in_ground_variants(I)]
@@ -357,6 +469,7 @@ test_verify_one_file_with_options! {
             type ExternalTraitSpecificationFor: core::iter::Iterator;
             type Item;
             fn count(self) -> usize where Self: Sized;
+            #[verifier::impls_cannot_extend_spec]
             fn cmp<I>(self, other: I) -> core::cmp::Ordering where Self: core::iter::Iterator, I: core::iter::IntoIterator<Item = <Self as core::iter::Iterator>::Item>, <Self as core::iter::Iterator>::Item: Ord, Self: Sized;
         }
 
@@ -558,7 +671,7 @@ test_verify_one_file! {
                 !TSpec::<u8>::s(self, q, a, b, x)
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -615,7 +728,7 @@ test_verify_one_file! {
             spec fn s1() -> bool { <u32 as TSpec>::s2() }
             spec fn s2() -> bool { !<u32 as TSpec>::s1() }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -1023,4 +1136,47 @@ test_verify_one_file! {
             type ExternalTraitSpecificationFor: Integer;
         }
     } => Err(err) => assert_vir_error_msg(err, "not a private non-local bound")
+}
+
+test_verify_one_file! {
+    // Regression test: an associated type fixed only by a where-clause bound
+    // normalizes to a bare inference variable, which used to trip an
+    // `assert!(!matches!(t.kind(), TyKind::Infer(..)))` in rust_to_vir_base
+    // and panic the verifier. The program is rejected either way -- the point
+    // is that it is rejected with a diagnostic rather than an ICE.
+    #[test] external_trait_extension_projection_normalizes_to_infer verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        pub trait Src { type Item; }
+
+        #[verifier::external]
+        pub struct Adapt<I>(I);
+
+        #[verifier::external]
+        impl<'a, I, X: 'a> Src for Adapt<I>
+            where I: Src<Item = &'a X>, X: Copy,
+        {
+            type Item = X;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(SrcSpec via SrcSpecImpl)]
+        pub trait ExSrc {
+            type ExternalTraitSpecificationFor: Src;
+            type Item;
+            spec fn items(&self) -> Seq<Self::Item>;
+        }
+
+        #[verifier::external_body]
+        #[verifier::external_type_specification]
+        #[verifier::reject_recursive_types(I)]
+        pub struct ExAdapt<I>(Adapt<I>);
+
+        impl<'a, I, X: 'a> SrcSpecImpl for Adapt<I>
+            where I: Src<Item = &'a X> + SrcSpec, X: Copy,
+        {
+            closed spec fn items(&self) -> Seq<Self::Item> { Seq::empty() }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "overflow evaluating the requirement")
 }
