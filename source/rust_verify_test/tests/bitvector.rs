@@ -769,6 +769,14 @@ test_verify_one_bv_file! {
         {
             assert((0xaaafff1bu32 as i32) >> (code << 1) < 0) by(bit_vector) requires 1 <= code <= 15;
         }
+
+        proof fn test_quantified(z: i8)
+            requires 0 <= z < 8,
+        {
+            assert(forall |x: u32, y: i32| 0 <= y < 32 ==> #[trigger] (x >> y) == x >> (y as u32)) by(bit_vector);
+            assert(forall |x: i64, y: i8| 0 <= y ==> #[trigger] (x << y) == x << (y as u8)) by(bit_vector);
+            assert(exists |x: u8| #[trigger] (x >> z) == 1) by(bit_vector) requires 0 <= z < 8;
+        }
     } => Ok(())
 }
 
@@ -797,7 +805,58 @@ test_verify_one_bv_file! {
         {
             assert(x << y == 0) by(bit_vector) requires y < 0; // FAILS
         }
-    } => Err(err) => assert_fails(err, 4)
+
+        // The result may be any value of the result type,
+        // even if the shifted value fits in fewer bits
+        proof fn test_shr_negative_range(b: u8, y: i8)
+            requires y < 0,
+        {
+            assert((1u16 >> y) <= 1) by(bit_vector) requires y < 0; // FAILS
+            assert(((b as u16) >> y) <= 255) by(bit_vector) requires y < 0; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 6)
+}
+
+test_verify_one_bv_file! {
+    #[test] test_shift_negative_amount_unspecified_quantified verus_code! {
+        // A shift by a negative amount could be the identity, for instance,
+        // so its result depends on the (possibly quantified) operands
+        proof fn test_shr_exists() {
+            assert(exists |x: u8| (#[trigger] (x >> (-1i8))) != x) by(bit_vector); // FAILS
+        }
+
+        proof fn test_shl_exists() {
+            assert(exists |x: u8| (#[trigger] (x << (-1i8))) != x) by(bit_vector); // FAILS
+        }
+
+        proof fn test_forall_premise() {
+            assert((forall |x: u16| #[trigger] (x >> (-3i8)) == x) ==> false) by(bit_vector); // FAILS
+        }
+
+        proof fn test_forall_requires()
+            requires forall |x: i32| #[trigger] (x << (-1i32)) == x,
+        {
+            assert(false) by(bit_vector) requires forall |x: i32| #[trigger] (x << (-1i32)) == x; // FAILS
+        }
+
+        proof fn test_quantified_amount(x: u8) {
+            assert(exists |y: i8| -2 <= y < 0 && #[trigger] (x >> y) != (y as u8)) by(bit_vector); // FAILS
+        }
+
+        proof fn test_free_amount(y: i16)
+            requires y < 0,
+        {
+            assert(exists |x: u16| (#[trigger] (x << y)) != x) by(bit_vector) requires y < 0; // FAILS
+        }
+
+        proof fn test_nested() {
+            assert(forall |w: u8| #![trigger (w as u16)] exists |x: u8| (#[trigger] (x >> (-1i8))) != x ^ w) by(bit_vector); // FAILS
+        }
+
+        proof fn test_let() {
+            assert(exists |x: u8| #![trigger (x >> (-1i8))] { let z = x; (z >> (-1i8)) != z }) by(bit_vector); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 8)
 }
 
 test_verify_one_bv_file! {

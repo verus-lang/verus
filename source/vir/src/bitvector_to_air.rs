@@ -44,7 +44,7 @@ pub(crate) fn bv_to_queries(
 
 pub struct BvSpecialized {
     pub expr: Expr,
-    pub decls: Vec<(Ident, air::ast::Typ)>,
+    pub decls: Vec<(Ident, air::ast::Typs, air::ast::Typ)>,
     pub specialized: Option<u32>,
     pub span: Span,
 }
@@ -56,7 +56,7 @@ fn make_query(
 ) -> (Query, String) {
     let mut requires_air: Vec<Expr> = vec![];
     let mut ensures_air: Vec<(Span, Expr)> = vec![];
-    let mut all_decl_lists: Vec<&Vec<(Ident, air::ast::Typ)>> = vec![];
+    let mut all_decl_lists: Vec<&Vec<(Ident, air::ast::Typs, air::ast::Typ)>> = vec![];
 
     fn get_sp(v: &Vec<BvSpecialized>, sp: Option<u32>) -> &BvSpecialized {
         match sp {
@@ -87,15 +87,15 @@ fn make_query(
         all_decl_lists.push(&e.decls);
     }
 
-    let mut all_decls_map = HashMap::<Ident, air::ast::Typ>::new();
+    let mut all_decls_map = HashMap::<Ident, (air::ast::Typs, air::ast::Typ)>::new();
     let mut local: Vec<Decl> = vec![];
     for list in all_decl_lists.iter() {
-        for (id, typ) in list.iter() {
-            if let Some(typ2) = all_decls_map.get(id) {
-                assert!(typ == typ2);
+        for (id, typs, typ) in list.iter() {
+            if let Some((typs2, typ2)) = all_decls_map.get(id) {
+                assert!(typs == typs2 && typ == typ2);
             } else {
-                all_decls_map.insert(id.clone(), typ.clone());
-                local.push(Arc::new(DeclX::Const(id.clone(), typ.clone())));
+                all_decls_map.insert(id.clone(), (typs.clone(), typ.clone()));
+                local.push(Arc::new(DeclX::fun_or_const(id.clone(), typs.clone(), typ.clone())));
             }
         }
     }
@@ -172,7 +172,8 @@ fn bv_maybe_split(ctx: &Ctx, id_idx: &mut u64, exp: &Exp) -> Result<Vec<BvSpecia
 
 struct State {
     pub arch: ArchWordBits,
-    pub decls: Vec<(Ident, air::ast::Typ)>,
+    /// Query-local constants (no parameter types) and uninterpreted functions
+    pub decls: Vec<(Ident, air::ast::Typs, air::ast::Typ)>,
     pub scope_map: ScopeMap<crate::ast::VarIdent, BvTyp>,
     pub id_idx: u64,
 }
@@ -328,7 +329,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                     let bv_typ = bv_typ_for_vir_typ(state, &exp.span, &exp.typ)?;
 
                     // Add to free vars list (we'll de-dupe later)
-                    state.decls.push((id.clone(), bv_typ.to_air_typ()));
+                    state.decls.push((id.clone(), Arc::new(vec![]), bv_typ.to_air_typ()));
 
                     Ok(BvExpr { expr: string_var(&id), bv_typ: bv_typ })
                 }
@@ -351,7 +352,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                     let bv_typ = bv_typ_for_vir_typ(state, &exp.span, &typ)?;
 
                     // Add to free vars list (we'll de-dupe later)
-                    state.decls.push((id.clone(), bv_typ.to_air_typ()));
+                    state.decls.push((id.clone(), Arc::new(vec![]), bv_typ.to_air_typ()));
 
                     Ok(BvExpr { expr: string_var(&id), bv_typ: bv_typ })
                 }
@@ -600,7 +601,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
         ExpX::Binary(BinaryOp::Bitwise(BitwiseOp::Shr), lhs, rhs) => {
             let lhs = bv_exp_to_expr(ctx, state, lhs)?;
             let rhs = bv_exp_to_expr(ctx, state, rhs)?;
-            let (rhs, signed_amount) = shift_amount(state, &exp.span, rhs)?;
+            let (lhs, rhs, signed_shift) = shift_operands(state, &exp.span, lhs, rhs)?;
 
             let (lhs_w, lhs_extend) = lhs.bv_typ.expect_bv(&exp.span)?;
             let (rhs_w, rhs_extend) = rhs.bv_typ.expect_bv(&exp.span)?;
@@ -627,14 +628,14 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             let expr = if lhs_w < rhs_w { truncate(&expr, lhs_w) } else { expr };
 
             let shifted = BvExpr { expr, bv_typ: lhs.bv_typ };
-            guard_negative_shift(state, &exp.span, signed_amount, shifted)
+            guard_negative_shift(state, exp, signed_shift, shifted)
         }
         ExpX::Binary(BinaryOp::Bitwise(BitwiseOp::Shl(w, signed)), lhs, rhs) => {
             let w = bitwidth_exact(state, *w);
 
             let lhs = bv_exp_to_expr(ctx, state, lhs)?;
             let rhs = bv_exp_to_expr(ctx, state, rhs)?;
-            let (rhs, signed_amount) = shift_amount(state, &exp.span, rhs)?;
+            let (lhs, rhs, signed_shift) = shift_operands(state, &exp.span, lhs, rhs)?;
 
             let (lhs_w, lhs_extend) = lhs.bv_typ.expect_bv(&exp.span)?;
             let (rhs_w, rhs_extend) = rhs.bv_typ.expect_bv(&exp.span)?;
@@ -661,7 +662,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             let expr = if w < shift_w { truncate(&expr, w) } else { expr };
 
             let shifted = BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, extend) };
-            guard_negative_shift(state, &exp.span, signed_amount, shifted)
+            guard_negative_shift(state, exp, signed_shift, shifted)
         }
         ExpX::Binary(BinaryOp::IeeeFloat(fop), lhs, rhs) => {
             use crate::ast::IeeeFloatBinaryOp;
@@ -1370,59 +1371,75 @@ fn if_then_arbitrary(
 ) -> Result<BvExpr, VirErr> {
     let (width, _) = exp.bv_typ.expect_bv(span)?;
     let id = state.fresh_id();
-    state.decls.push((id.clone(), air::ast_util::bv_typ(width)));
+    state.decls.push((id.clone(), Arc::new(vec![]), air::ast_util::bv_typ(width)));
     let arb = Arc::new(ExprX::Var(id));
     Ok(BvExpr { expr: mk_ite(bool_condition, &arb, &exp.expr), bv_typ: exp.bv_typ })
 }
 
-/// A shift amount of signed type, bound to a temporary by `shift_amount`
-struct SignedShiftAmount {
-    tmp: Ident,
-    rhs: Expr,
-    width: u32,
+/// The operands of a shift whose amount has a signed type, bound to temporaries by `shift_operands`
+struct SignedShift {
+    binders: Vec<Binder<Expr>>,
+    lhs: BvExpr,
+    amount: Expr,
+    amount_width: u32,
 }
 
 /// Shifting by a negative amount is unspecified (see `bit_shr` and `bit_shl` in the prelude).
-/// So a shift amount of signed type is bound to a temporary,
-/// which the shift uses reinterpreted as unsigned (exact when it is nonnegative),
-/// and `guard_negative_shift` makes the result arbitrary when it is negative.
-fn shift_amount(
+/// So when the shift amount has a signed type, both operands are bound to temporaries,
+/// the shift uses the amount reinterpreted as unsigned (exact when it is nonnegative),
+/// and `guard_negative_shift` makes the result arbitrary when the amount is negative.
+fn shift_operands(
     state: &mut State,
     span: &Span,
+    lhs: BvExpr,
     rhs: BvExpr,
-) -> Result<(BvExpr, Option<SignedShiftAmount>), VirErr> {
-    let (width, extend) = rhs.bv_typ.expect_bv(span)?;
-    match extend {
-        Extend::Zero => Ok((rhs, None)),
-        Extend::Sign => {
-            let tmp = state.fresh_id();
-            let unsigned = BvExpr {
-                expr: Arc::new(ExprX::Var(tmp.clone())),
-                bv_typ: BvTyp::Bv(width, Extend::Zero),
-            };
-            Ok((unsigned, Some(SignedShiftAmount { tmp, rhs: rhs.expr, width })))
-        }
+) -> Result<(BvExpr, BvExpr, Option<SignedShift>), VirErr> {
+    let (amount_width, extend) = rhs.bv_typ.expect_bv(span)?;
+    if extend == Extend::Zero {
+        return Ok((lhs, rhs, None));
     }
+    let lhs_tmp = state.fresh_id();
+    let amount_tmp = state.fresh_id();
+    let binders = vec![
+        Arc::new(BinderX { name: lhs_tmp.clone(), a: lhs.expr }),
+        Arc::new(BinderX { name: amount_tmp.clone(), a: rhs.expr }),
+    ];
+    let lhs = BvExpr { expr: Arc::new(ExprX::Var(lhs_tmp)), bv_typ: lhs.bv_typ };
+    let amount = Arc::new(ExprX::Var(amount_tmp));
+    let unsigned_amount =
+        BvExpr { expr: amount.clone(), bv_typ: BvTyp::Bv(amount_width, Extend::Zero) };
+    let signed_shift = SignedShift { binders, lhs: lhs.clone(), amount, amount_width };
+    Ok((lhs, unsigned_amount, Some(signed_shift)))
 }
 
-/// let tmp = rhs in (if tmp < 0 { arbitrary } else { shifted }),
-/// with a fresh "arbitrary" variable for every instance, as for division by zero
+/// let lhs_tmp = lhs, amount_tmp = amount in
+///     (if amount_tmp < 0 { arbitrary(lhs_tmp, amount_tmp) } else { shifted }),
+/// where `arbitrary` is a fresh uninterpreted function for every instance,
+/// ranging over the whole type of the shift expression `exp`.
+/// The arbitrary result must be a function of the operands, not a constant,
+/// because a constant can't depend on quantified variables.
+/// (E.g., `exists |x: u8| (x >> -1i8) != x` would then be provable,
+/// even though a negative shift could be the identity.)
 fn guard_negative_shift(
     state: &mut State,
-    span: &Span,
-    signed_amount: Option<SignedShiftAmount>,
+    exp: &Exp,
+    signed_shift: Option<SignedShift>,
     shifted: BvExpr,
 ) -> Result<BvExpr, VirErr> {
-    let Some(SignedShiftAmount { tmp, rhs, width }) = signed_amount else {
+    let Some(SignedShift { binders, lhs, amount, amount_width }) = signed_shift else {
         return Ok(shifted);
     };
-    let tmp_expr = Arc::new(ExprX::Var(tmp.clone()));
+    let result_typ = bv_typ_for_vir_typ(state, &exp.span, &exp.typ)?;
+    let fun = state.fresh_id();
+    let param_typs = vec![lhs.bv_typ.to_air_typ(), air::ast_util::bv_typ(amount_width)];
+    state.decls.push((fun.clone(), Arc::new(param_typs), result_typ.to_air_typ()));
+    let args = Arc::new(vec![lhs.expr, amount.clone()]);
+    let arbitrary = BvExpr { expr: Arc::new(ExprX::Apply(fun, args)), bv_typ: result_typ };
+    let (arbitrary, shifted) = make_same_bv_typ(&exp.span, arbitrary, shifted)?;
     let negative =
-        Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSLt, tmp_expr, mk_bit_vec_zero(width)));
-    let guarded = if_then_arbitrary(state, span, &negative, &shifted)?;
-    let binders = Arc::new(vec![Arc::new(BinderX { name: tmp, a: rhs })]);
-    let e = Arc::new(ExprX::Bind(Arc::new(air::ast::BindX::Let(binders)), guarded.expr));
-    Ok(BvExpr { expr: e, bv_typ: guarded.bv_typ })
+        Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSLt, amount, mk_bit_vec_zero(amount_width)));
+    let guarded = mk_ite(&negative, &arbitrary.expr, &shifted.expr);
+    Ok(BvExpr { expr: air::ast_util::mk_let(&binders, &guarded), bv_typ: shifted.bv_typ })
 }
 
 impl State {
