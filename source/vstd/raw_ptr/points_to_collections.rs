@@ -1885,6 +1885,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         let s = size_of::<T>() as int;
         let tracked pt_untyped = self.as_untyped();
         let tracked elems = self.borrow_typed_values(0, n);
+        // TODO(real-ptr-flag): remove once pointers have an `is_real` flag
+        // (proves `from_elems_ref`'s `isize::MAX` bound).
+        self.lemma_size_bound();
         let tracked typed_value = TypedValue::<[T]>::from_elems_ref(elems);
         self.bytes_len();
         match typed_value {
@@ -2078,6 +2081,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         let s = size_of::<T>() as int;
         self.bytes_len();
         self.bytes_decode();
+        // TODO(real-ptr-flag): remove once pointers have an `is_real` flag
+        // (proves `from_elems_mut`'s `isize::MAX` bound).
+        self.lemma_size_bound();
         let base = self.thin_ptr();
         let tracked perms = self.tracked_seq_pt_mut();
         let perms_ref = perms;

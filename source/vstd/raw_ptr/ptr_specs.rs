@@ -238,6 +238,8 @@ pub fn cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> (result: usize)
 ////////////////////////////////////////////////
 /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
+// TODO(verify-rustlib-refactor): verified there,
+// from `ptr_shr_ref` and `PointsTo::borrow_ref`.
 #[inline(always)]
 #[verifier::external_body]
 pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T)
@@ -256,6 +258,7 @@ pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> 
 /// Ghost equivalent of `&*ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 /// Because this doesn't constitute a retag, the returned reference's pointer is `ptr` itself.
+// TODO(verify-rustlib-refactor): proved there, as `PointsTo::borrow_ref` (from `ref_from_parts`).
 #[verifier::shadow_data]
 pub axiom fn ptr_ref_tracked<'a, T>(ptr: *const T, tracked perm: &'a PointsTo<T>) -> (tracked v:
     &'a T)
@@ -286,6 +289,8 @@ pub axiom fn ptr_ref_tracked<'a, T>(ptr: *const T, tracked perm: &'a PointsTo<T>
 // }
 /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
+// TODO(verify-rustlib-refactor): verified there,
+// from `ptr_shr_ref` and `PointsTo::<[T]>::borrow_ref`.
 #[inline(always)]
 #[verifier::external_body]
 pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<[T]>>) -> (v: &[T])
@@ -304,6 +309,8 @@ pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<
 /// Ghost equivalent of `&*ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 /// Because this doesn't constitute a retag, the returned reference's pointer is `ptr` itself.
+// TODO(verify-rustlib-refactor): proved there,
+// as `PointsTo::<[T]>::borrow_ref` (from `ref_from_parts_slice`).
 #[verifier::shadow_data]
 pub axiom fn ptr_ref_tracked_slice<'a, T>(
     ptr: *const [T],
@@ -320,6 +327,8 @@ pub axiom fn ptr_ref_tracked_slice<'a, T>(
 
 /// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
+// TODO(verify-rustlib-refactor): verified there,
+// from `PointsTo::borrow_mut` and `ptr_mut_ref_join`.
 #[inline(always)]
 #[verifier::external_body]
 pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
@@ -342,6 +351,8 @@ pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>
 
 /// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
+// TODO(verify-rustlib-refactor): verified there,
+// from `PointsTo::<[T]>::borrow_mut` and `ptr_mut_ref_join`.
 #[inline(always)]
 #[verifier::external_body]
 pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v:
@@ -434,6 +445,7 @@ pub uninterp spec fn shared_ref_ptr<T: ?Sized>(s: ShadowData<&T>) -> *const T;
 
 /// The length of a `&mut [T]` should always match the metadata of its corresponding pointer.
 // TODO: define the equivalent shared ref version, using shadow data?
+// TODO(verify-rustlib-refactor): proved there (in `ptr_verified_specs.rs`).
 pub axiom fn mut_ref_slice_len<T>(tracked b: &&mut [T])
     ensures
         mut_ref_ptr(*b)@.metadata == old(*b)@.len(),
@@ -443,6 +455,7 @@ pub axiom fn mut_ref_slice_len<T>(tracked b: &&mut [T])
 // Shared reference conversions
 ///////////////////////////////////////
 /// Gets the shared permission to the memory pointed to by a `&'a T`.
+// TODO(verify-rustlib-refactor): proved there, as `shr_ref_points_to` (from `ref_to_parts`).
 #[verifier::shadow_data]
 pub axiom fn ref_points_to<'a, T>(tracked r: &'a T) -> (tracked pt: &'a PointsTo<T>)
     ensures
@@ -453,6 +466,8 @@ pub axiom fn ref_points_to<'a, T>(tracked r: &'a T) -> (tracked pt: &'a PointsTo
 ;
 
 /// Gets the shared permission to the memory pointed to by a `&'a [T]`.
+// TODO(verify-rustlib-refactor): proved there,
+// as `shr_ref_points_to_slice` (from `ref_to_parts_slice`).
 #[verifier::shadow_data]
 pub axiom fn ref_points_to_slice<'a, T>(tracked r: &'a [T]) -> (tracked pt: &'a PointsTo<[T]>)
     ensures
@@ -482,6 +497,8 @@ pub const fn ptr_mut_ref_join<T: ?Sized>(ptr: *mut T, Tracked(perm): Tracked<&mu
 }
 
 /// Convert from a shared reference to a `&'a mut T` to a `&'a PointsTo<T>`.
+// TODO(verify-rustlib-refactor): proved there,
+// from `mut_ref_as_shr_ref` and `ref_to_parts`.
 pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> (tracked pt:
     &'a PointsTo<T>)
     ensures
@@ -493,6 +510,8 @@ pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
 ;
 
 /// Convert from a shared reference to a `&'a mut [T]` to a `&'a PointsTo<[T]>`.
+// TODO(verify-rustlib-refactor): proved there,
+// from `mut_ref_as_shr_ref` and `ref_to_parts_slice`.
 pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T]) -> (tracked pt:
     &'a PointsTo<[T]>)
     ensures

@@ -44,19 +44,16 @@ pub unsafe trait TrivialOwnership {
 }
 
 /// Makes a spec value tracked, for any type that owns no resources.
-pub axiom fn tracked_from_spec<T: TrivialOwnership>(v: T) -> (tracked out: T)
+/// The value must fit in an allocation.
+pub axiom fn tracked_from_spec<T: ?Sized + TrivialOwnership>(v: &T) -> (tracked out: Tracked<T>)
     requires
         v.type_inv(),
+        // TODO(real-ptr-flag): remove this bound, and the doc line "The value must fit in an allocation.",
+        // once pointers have an `is_real` flag.
+        // Until then, it stops a made-up value too large for memory from giving a well-formed `PointsTo`.
+        super::layout::spec_size_of_val::<T>(v) <= isize::MAX,
     ensures
-        out == v,
-;
-
-/// Makes a spec value a tracked reference, for any type that owns no resources.
-pub axiom fn tracked_from_spec_ref<'a, T: ?Sized + TrivialOwnership>(v: &T) -> (tracked out: &'a T)
-    requires
-        v.type_inv(),
-    ensures
-        out == v,
+        &*out == v,
 ;
 
 /// Implements `TrivialOwnership` with a trivial type invariant for a given type.

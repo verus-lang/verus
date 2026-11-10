@@ -1245,6 +1245,9 @@ impl<T> PointsToUnaligned<[T]> {
         // The subrange's bytes
         let tracked (_, tail) = self.pt_untyped.split_ref((i * s) as nat);
         let tracked (sub, _) = tail.split_ref(((j - i) * s) as nat);
+        // TODO(real-ptr-flag): remove once pointers have an `is_real` flag
+        // (proves `from_elems_ref`'s `isize::MAX` bound).
+        sub.lemma_size_bound();
 
         // The subrange's typed value
         let tracked typed_value: &TypedValue<[T]> = match &self.val {
@@ -1577,9 +1580,14 @@ impl<T> PointsTo<[T]> {
         lemma_decode_to_big::<V, T>(self.bytes(), digits, v);
         V::lemma_decode(self.bytes(), v);
         type_representation_implements_encode_decode::<V>(&v, self.bytes());
+        // `v` fits in an allocation, since it's decoded from `self`'s bytes.
+        // TODO(real-ptr-flag): remove these two calls once pointers have an `is_real` flag
+        // (they prove `tracked_from_spec`'s `isize::MAX` bound).
+        abstract_bytes_encode_decode_len::<V>(&v, self.bytes());
+        self.as_untyped().lemma_size_bound();
 
         let tracked typed_value: &TypedValue<V> = crate::vstd::modes::tracked_static_ref(
-            TypedValue::Valid(Tracked(tracked_from_spec(v))),
+            TypedValue::Valid(tracked_from_spec(&v)),
         );
         PointsToUnaligned::<V>::from_raw_parts_ref(self.as_untyped(), typed_value, ())
     }
