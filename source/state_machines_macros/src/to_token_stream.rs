@@ -331,7 +331,17 @@ pub fn output_primary_stuff(
         // `to_relation` then takes that simplified transition and turns it into
         // a boolean predicate between `pre` and `post`.
 
-        let simplified_body = simplify_ops(sm, &trans.body, trans.kind);
+        // For prophetic state machines, prophecy is only allowed in `require` and
+        // `assert` statements; wrap all other expressions in `prophecy_disallowed`.
+        // This must happen before `simplify_ops`, since special ops may be lowered
+        // to `require` or `assert` statements.
+        let body = if sm.prophetic {
+            crate::disallow_prophecy::disallow_prophecy(&trans.body)
+        } else {
+            trans.body.clone()
+        };
+
+        let simplified_body = simplify_ops(sm, &body, trans.kind);
 
         // Output the 'weak' transition relation.
         // (or for the 'Init' case, a single-state predicate).

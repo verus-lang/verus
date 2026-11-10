@@ -359,6 +359,16 @@ pub fn old<A: ?Sized>(_: &mut A) -> &mut A {
     unimplemented!();
 }
 
+/// Used internally (e.g., by state machine macros) to mark expressions that are
+/// not allowed to depend on prophecies. The `reason` string literal is used in the
+/// error message: "prophetic expression not allowed in {reason}".
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::prophecy_disallowed"]
+#[verifier::spec]
+pub fn prophecy_disallowed<A>(_reason: &str, _a: A) -> A {
+    unimplemented!();
+}
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::is_variant"]
 #[verifier::spec]

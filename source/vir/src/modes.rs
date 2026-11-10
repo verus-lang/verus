@@ -293,6 +293,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::Atomically(..)
             | ExprX::InvMask(..)
             | ExprX::Old(..)
+            | ExprX::ProphecyDisallowed(..)
             | ExprX::Await(..)
         => None,
         ExprX::NonSpecClosure { .. } => Some(OuterProphReason::NonSpecClosure),
@@ -2404,8 +2405,14 @@ fn check_expr(
             };
             let (mode1, proph1) =
                 check_expr(ctxt, record, typing, outer_mode, Expect(op_mode), e1, outer_proph)?;
-            // Join mode into the outer mode due to short-circuiting
-            let outer_proph2 = outer_proph.clone().join(proph1.clone());
+            // Join mode into the outer mode due to short-circuiting.
+            // However, if in_pure is true, then we can treat the operation as
+            // non-short-circuiting, so there is no need to join.
+            let outer_proph2 = if typing.in_pure {
+                outer_proph.clone()
+            } else {
+                outer_proph.clone().join(proph1.clone())
+            };
             let (mode2, proph2) =
                 check_expr(ctxt, record, typing, outer_mode, Expect(op_mode), e2, &outer_proph2)?;
             Ok((mode_join(op_mode, mode_join(mode1, mode2)), proph1.join(proph2)))
@@ -3687,6 +3694,19 @@ fn check_expr(
                 outer_proph,
             )?;
             Ok((Mode::Spec, proph))
+        }
+        ExprX::ProphecyDisallowed(reason, e) => {
+            let (mode, proph) =
+                check_expr(ctxt, record, typing, outer_mode, expect, e, outer_proph)?;
+            if let Proph::Yes(proph_reason) = &proph {
+                let err = error_with_label(
+                    &e.span,
+                    format!("prophetic expression not allowed in {:}", reason),
+                    "this expression is expected to be non-prophetic",
+                );
+                return Err(proph_reason.annotate_err(err));
+            }
+            Ok((mode, proph))
         }
         ExprX::Await(e) => {
             match (ctxt.fun_mode, outer_mode) {

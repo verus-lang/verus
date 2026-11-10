@@ -10,6 +10,7 @@ mod case_macro;
 mod check_bind_stmts;
 mod check_birds_eye;
 mod concurrency_tokens;
+mod disallow_prophecy;
 mod field_access_visitor;
 mod ident_visitor;
 mod inherent_safety_conditions;

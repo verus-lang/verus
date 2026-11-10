@@ -9559,3 +9559,140 @@ test_verify_one_file! {
         }}
     } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
 }
+
+test_verify_one_file! {
+    #[test] prophetic_attr_bad_proph IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn q(x: u8) -> u8;
+
+        tokenized_state_machine!{ X {
+            #![verifier::prophetic]
+
+            fields {
+                #[sharding(variable)] pub v: u8,
+            }
+
+            init!{
+                initialize(x: u8) {
+                    init v = x;
+                }
+            }
+
+            transition!{
+                tr(x: u8) {
+                    update v = q(x);
+                }
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self, x: u8) { }
+
+            #[inductive(tr)]
+            fn tr_inductive(pre: Self, post: Self, x: u8) { }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "prophetic expression not allowed in `update` statement")
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_require_assert_ok IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn q(x: u8) -> bool;
+
+        tokenized_state_machine!{ X {
+            #![verifier::prophetic]
+
+            fields {
+                #[sharding(variable)] pub v: u8,
+                #[sharding(multiset)] pub m: Multiset<u8>,
+            }
+
+            init!{
+                initialize(x: u8) {
+                    init v = x;
+                    init m = Multiset::empty();
+                }
+            }
+
+            transition!{
+                tr(x: u8) {
+                    require(q(x));
+                    let y = x;
+                    update v = y;
+                    add m += {y};
+                    assert(q(x)) by { assume(false); };
+                }
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self, x: u8) { }
+
+            #[inductive(tr)]
+            fn tr_inductive(pre: Self, post: Self, x: u8) { }
+        }}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_bad_proph_remove IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn q(x: u8) -> u8;
+
+        tokenized_state_machine!{ X {
+            #![verifier::prophetic]
+
+            fields {
+                #[sharding(multiset)] pub m: Multiset<u8>,
+            }
+
+            transition!{
+                tr(x: u8) {
+                    remove m -= {q(x)};
+                }
+            }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "prophetic expression not allowed in `remove` statement")
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_bad_proph_have IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn q(x: u8) -> u8;
+
+        tokenized_state_machine!{ X {
+            #![verifier::prophetic]
+
+            fields {
+                #[sharding(multiset)] pub m: Multiset<u8>,
+            }
+
+            transition!{
+                tr(x: u8) {
+                    have m >= {q(x)};
+                }
+            }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "prophetic expression not allowed in `have` statement")
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_bad_proph_if IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn q(x: u8) -> bool;
+
+        tokenized_state_machine!{ X {
+            #![verifier::prophetic]
+
+            fields {
+                #[sharding(variable)] pub v: u8,
+            }
+
+            transition!{
+                tr(x: u8) {
+                    if q(x) {
+                        update v = 0;
+                    }
+                }
+            }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "prophetic expression not allowed in `if` condition")
+}
