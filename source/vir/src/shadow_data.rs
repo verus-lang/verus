@@ -304,8 +304,7 @@ fn no_shadow_data_fun_check(
     shadow_funs: Rc<HashMap<Fun, ShadowFun>>,
     fun_check: &mut FuncCheckSst,
 ) -> Result<(), VirErr> {
-    let ctxt =
-        Ctxt { shadow_funs, shadows: HashMap::new(), ret_var: None, has_shadow_data: false };
+    let ctxt = Ctxt { shadow_funs, shadows: HashMap::new(), ret_var: None, has_shadow_data: false };
     let mut state = State { shadow_temps: Vec::new() };
     shadow_data_fun_check_stms(&ctxt, &mut state, fun_check)?;
     declare_havocs(&state, Arc::make_mut(&mut fun_check.local_decls));

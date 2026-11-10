@@ -247,7 +247,8 @@ pub assume_specification<A: core::iter::Step>[ <Range<A> as Iterator>::next ](
 
 pub assume_specification<A: core::iter::Step>[ <Range<A> as Iterator>::size_hint ](
     range: &Range<A>,
-) -> (usize, Option<usize>);
+) -> (usize, Option<usize>)
+;
 
 } // verus!
 macro_rules! step_specs {
