@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use vstd::invariant::*;
 use vstd::cell::pcell_maybe_uninit::*;
 use vstd::cell::CellId;
-use vstd::simple_pptr::MemContents;
+use vstd::simple_pptr::TypedValue;
 
 verus!{
 
@@ -12,8 +12,8 @@ impl InvariantPredicate<CellId, PointsTo<u8>> for EvenCell {
     open spec fn inv(cell_id: CellId, points_to: PointsTo<u8>) -> bool {
         points_to.id() == cell_id
           && (match points_to.mem_contents() {
-              MemContents::Uninit => false,
-              MemContents::Init(x) => x % 2 == 0,
+              TypedValue::Uninit => false,
+              TypedValue::Init(x) => x % 2 == 0,
           })
     }
 }

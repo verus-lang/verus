@@ -7,7 +7,7 @@ use vstd::atomic_ghost::*;
 use vstd::cell::pcell_maybe_uninit::*;
 use vstd::prelude::*;
 use vstd::*;
-use vstd::raw_ptr::MemContents;
+use vstd::raw_ptr::TypedValue;
 
 use std::sync::atomic::*;
 
@@ -42,7 +42,7 @@ struct_with_invariants!{
                 GhostState::Uninitialized(points_to) => {
                     v == 0
                       && points_to.id() == cell.id()
-                      && (points_to.mem_contents() == MemContents::Init(None))
+                      && (points_to.mem_contents() == TypedValue::Init(None))
                 }
                 GhostState::Initializing => {
                     v == 1
@@ -50,7 +50,7 @@ struct_with_invariants!{
                 GhostState::Initialized(points_to) => {
                     v == 2
                       && points_to.id() == cell.id()
-                      && (points_to.mem_contents() matches MemContents::Init(Some(_)))
+                      && (points_to.mem_contents() matches TypedValue::Init(Some(_)))
                 }
             }
         }

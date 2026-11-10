@@ -26,15 +26,15 @@ fn test_body(tests: &str, contradiction_smoke_test: bool) -> String {
 const CELL_TEST: &str = code_str! {
     let (cell, Tracked(mut token)) = PCell::<u32>::empty();
     assert(equal(token.view().pcell, cell.id()));
-    assert(equal(token.mem_contents(), MemContents::Uninit));
+    assert(equal(token.mem_contents(), TypedValue::Uninit));
 
     cell.put(Tracked(&mut token), 5);
     assert(equal(token.view().pcell, cell.id()));
-    assert(equal(token.mem_contents(), MemContents::Init(5)));
+    assert(equal(token.mem_contents(), TypedValue::Init(5)));
 
     let x = cell.replace(Tracked(&mut token), 7);
     assert(equal(token.view().pcell, cell.id()));
-    assert(equal(token.mem_contents(), MemContents::Init(7)));
+    assert(equal(token.mem_contents(), TypedValue::Init(7)));
     assert(equal(x, 5));
 
     let t = cell.borrow(Tracked(&token));
@@ -42,7 +42,7 @@ const CELL_TEST: &str = code_str! {
 
     let x = cell.take(Tracked(&mut token));
     assert(equal(token.view().pcell, cell.id()));
-    assert(equal(token.mem_contents(), MemContents::Uninit));
+    assert(equal(token.mem_contents(), TypedValue::Uninit));
     assert(equal(x, 7));
 };
 
@@ -63,18 +63,18 @@ const PTR_TEST: &str = code_str! {
     let ptr = ptr as *mut u32;
 
     assert(equal(token.ptr(), ptr));
-    assert(equal(token.mem_contents(), MemContents::Uninit));
+    assert(equal(token.mem_contents(), TypedValue::Uninit));
 
     ptr_mut_write(ptr, Tracked(&mut token), 5);
     assert(equal(token.ptr(), ptr));
-    assert(equal(token.mem_contents(), MemContents::Init(5)));
+    assert(equal(token.mem_contents(), TypedValue::Init(5)));
 
     let t = ptr_ref(ptr, Tracked(&token));
     assert(equal(*t, 5));
 
     let x = ptr_mut_read(ptr, Tracked(&mut token));
     assert(equal(token.ptr(), ptr));
-    assert(equal(token.mem_contents(), MemContents::Uninit));
+    assert(equal(token.mem_contents(), TypedValue::Uninit));
     assert(equal(x, 5));
 
     let tracked token = token.into_raw();

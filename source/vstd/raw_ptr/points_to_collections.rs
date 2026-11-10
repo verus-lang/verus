@@ -2,6 +2,8 @@
 
 use super::abstract_bytes::*;
 use super::points_to_model::*;
+use super::points_to_ops::*;
+use super::points_to_structs::*;
 use super::ptr_model::*;
 use crate::vstd::group_vstd_default;
 use crate::vstd::layout::{self, *};
@@ -353,7 +355,7 @@ impl PointsToRaw {
         } by {
             assert(bytes.dom().contains(start + i));
         }
-        let tracked out = PointsToUntyped::from_seq(perms, ptr);
+        let tracked out = PointsToUntyped::from_seq_pt(perms, ptr);
         out
     }
 }
@@ -762,7 +764,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                         size_of::<T>() == 0,
                 ;
             }
-            let tracked seq = Self::from_seq(perms, ptr);
+            let tracked seq = Self::from_seq_pt(perms, ptr);
             seq.zero_sized_helper((remaining - 1) as nat, total)
         }
     }
@@ -1442,7 +1444,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         } else {
             let tracked mut seq_pt = self.into_seq();
             let tracked last = seq_pt.tracked_pop();
-            let tracked head = Self::from_seq(seq_pt, old_self.thin_ptr());
+            let tracked head = Self::from_seq_pt(seq_pt, old_self.thin_ptr());
             let ghost old_head = head;
             let ghost old_last = last;
             let tracked (head_u8, mut head_typed_value) = head.into_untyped_with_typed_value();
@@ -1563,7 +1565,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 == tail_ptr@.addr + i * size_of::<T>() by {
                 assert(0 * size_of::<T>() == 0) by (nonlinear_arith);
             }
-            let tracked tail_typed = Self::from_seq(tail_seq, tail_ptr);
+            let tracked tail_typed = Self::from_seq_pt(tail_seq, tail_ptr);
 
             // Invoke the inductive hypothesis on the head
             assert forall|i: int|
