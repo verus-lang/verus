@@ -1556,6 +1556,15 @@ impl Visitor {
                             prefix != "verus" && prefix != "verifier"
                         })
                         .collect();
+                    // trust carries to the generated lemma
+                    let trust_attrs: Vec<&Attribute> = attrs
+                        .iter()
+                        .filter(|a| {
+                            let segs: Vec<String> =
+                                a.path().segments.iter().map(|s| s.ident.to_string()).collect();
+                            segs == ["verus", "trusted"] || segs == ["verus", "untrusted"]
+                        })
+                        .collect();
                     let (type_, size_lit, align_lit) = match inner {
                         verus_syn::GlobalInner::SizeOf(size_of) => {
                             (&size_of.type_, &size_of.expr_lit, None)
@@ -1627,6 +1636,7 @@ impl Visitor {
 
                                 #(#pass_through_attrs)*
                                 #verus_builtin_macros::verus! {
+                                    #(#trust_attrs)*
                                     #[verus::internal(size_of_broadcast_proof)]
                                     #[verifier::external_body]
                                     #[allow(non_snake_case)]
