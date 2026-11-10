@@ -165,6 +165,7 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
                 by_ref: ByRef::No,
                 typ: binding.typ.clone(),
                 copy: false,
+                move_exec_to_proof_okay: crate::ast::MoveExecToProofOkay::Yes,
             });
             let v_pattern = SpannedTyped::new(&pattern.span, &binding.typ, v_patternx);
             stmts.push(Spanned::new(
@@ -740,6 +741,7 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
                     user_mut: _,
                     typ: _,
                     copy: _,
+                    move_exec_to_proof_okay: _,
                 }) => Ok(vec![stmt.clone()]),
                 _ => {
                     let mut stmts: Vec<Stmt> = Vec::new();
@@ -762,7 +764,8 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
                     name: _,
                     user_mut: _,
                     typ: _,
-                    copy: _
+                    copy: _,
+                    move_exec_to_proof_okay: _,
                 })
             ) =>
         {

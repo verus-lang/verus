@@ -548,8 +548,7 @@ test_verify_one_file! {
             while proph() {
             }
         }
-    //} => Err(err) => assert_vir_error_msg(err, "loop cannot occur in prophecy-conditional context")
-    } => Err(err) => assert_vir_error_msg(err, "cannot use while in proof or spec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use loop in proof or spec mode")
 }
 
 test_verify_one_file! {
@@ -564,8 +563,7 @@ test_verify_one_file! {
                 if proph() { break; }
             }
         }
-    //} => Err(err) => assert_vir_error_msg(err, "loop cannot occur in prophecy-conditional context")
-    } => Err(err) => assert_vir_error_msg(err, "cannot use while in proof or spec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use loop in proof or spec mode")
 }
 
 test_verify_one_file! {
@@ -580,8 +578,7 @@ test_verify_one_file! {
                 if proph() { continue; }
             }
         }
-    //} => Err(err) => assert_vir_error_msg(err, "loop cannot occur in prophecy-conditional context")
-    } => Err(err) => assert_vir_error_msg(err, "cannot use while in proof or spec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use loop in proof or spec mode")
 }
 
 test_verify_one_file! {

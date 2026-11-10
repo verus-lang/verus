@@ -686,6 +686,21 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::clone` which is ignored")
 }
 
+test_verify_one_file_with_options! {
+    #[test] external_derive_attr_stacked ["--no-external-by-default"] => verus_code! {
+        #[derive(Clone, PartialEq, Copy)]
+        #[verifier::external_derive(Clone)]
+        #[verifier::external_derive(PartialEq)]
+        struct X {
+            u: u64,
+        }
+
+        fn test(x: X) {
+            let a = x.clone();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::clone` which is ignored")
+}
+
 test_verify_one_file! {
     #[test] vec_index_nounwind verus_code! {
         use vstd::*;
@@ -798,6 +813,150 @@ test_verify_one_file! {
             assert(y@.u == 20); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] pin_get_mut verus_code! {
+        use vstd::prelude::*;
+        use vstd::simple_pptr::PPtr;
+        use vstd::std_specs::pin::PinAdditionalSpecFns;
+        use core::pin::Pin;
+
+        broadcast use vstd::std_specs::pin::group_pin_axioms;
+
+        struct X {
+            value: u64,
+        }
+
+        fn update(pin: Pin<&mut X>)
+            requires
+                pin.mut_ref().current.value < 100,
+            ensures
+                pin.mut_ref().future.value().value == pin.mut_ref().current.value + 1,
+        {
+            let x = pin.get_mut();
+            x.value = x.value + 1;
+        }
+
+        fn update_slice(pin: Pin<&mut [u64]>)
+            requires
+                pin.mut_ref().current@.len() > 0,
+                pin.mut_ref().current@[0] < 100,
+            ensures
+                pin.mut_ref().future.value()@.len() == pin.mut_ref().current@.len(),
+                pin.mut_ref().future.value()@[0] == pin.mut_ref().current@[0] + 1,
+        {
+            let slice = pin.get_mut();
+            slice[0] = slice[0] + 1;
+        }
+
+        fn replace_pptr<V: core::marker::Unpin>(
+            pin: Pin<&mut PPtr<V>>,
+            replacement: PPtr<V>,
+        )
+            ensures
+                *pin.mut_ref().future.value() == replacement,
+        {
+            *pin.get_mut() = replacement;
+        }
+
+        fn preserve_pptr<V>(pin: Pin<&mut PPtr<V>>)
+            ensures
+                pin.mut_ref().future.value() == pin.mut_ref().current,
+        {
+        }
+
+        fn unchanged(pin: Pin<&mut X>)
+            ensures
+                pin.mut_ref().future.value() == pin.mut_ref().current,
+        {
+        }
+
+        fn get_mut_unchanged(pin: Pin<&mut X>)
+            ensures
+                pin.mut_ref().future.value() == pin.mut_ref().current,
+        {
+            let _x = pin.get_mut();
+        }
+
+        fn changed_is_not_resolved(pin: Pin<&mut X>)
+            ensures
+                pin.mut_ref().future.value() == pin.mut_ref().current, // FAILS
+        {
+            let x = pin.get_mut();
+            x.value = if x.value == 0 { 1 } else { 0 };
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] pin_nested verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::pin::PinAdditionalSpecFns;
+        use core::pin::Pin;
+
+        broadcast use vstd::std_specs::pin::group_pin_axioms;
+
+        struct X {
+            value: u64,
+        }
+
+        fn nested_unchanged<'a>(pin: Pin<&mut Pin<&'a mut X>>)
+            ensures
+                pin.mut_ref().future.value() == pin.mut_ref().current,
+        {
+        }
+
+        fn pin_ref_unchanged<'a>(pin: &mut Pin<&'a mut X>)
+            ensures
+                final(pin).mut_ref() == old(pin).mut_ref(),
+        {
+        }
+
+        fn replace_nested<'a>(
+            outer: Pin<&mut Pin<&'a mut X>>,
+            replacement: Pin<&'a mut X>,
+        )
+            ensures
+                outer.mut_ref().future.value().mut_ref() == replacement.mut_ref(),
+        {
+            let slot = outer.get_mut();
+            *slot = replacement;
+        }
+
+        fn replace_pin<'a>(slot: &mut Pin<&'a mut X>, replacement: Pin<&'a mut X>)
+            ensures
+                final(slot).mut_ref() == replacement.mut_ref(),
+        {
+            *slot = replacement;
+        }
+
+        fn option_unchanged<'a>(option: Option<Pin<&'a mut X>>)
+            ensures
+                match option {
+                    Some(pin) => pin.mut_ref().future.value() == pin.mut_ref().current,
+                    None => true,
+                },
+        {
+        }
+
+        struct Node<'a> {
+            next: Option<Pin<&'a mut Node<'a>>>,
+        }
+
+        fn recursive_target_unchanged<'a>(pin: Pin<&mut Node<'a>>)
+            ensures
+                pin.mut_ref().future.value() == pin.mut_ref().current,
+        {
+        }
+
+        fn outer_resolution_does_not_resolve_inner<'a>(pin: Pin<&mut Pin<&'a mut X>>)
+            ensures
+                pin.mut_ref().current.mut_ref().future.value()
+                    == pin.mut_ref().current.mut_ref().current, // FAILS
+        {
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -2233,6 +2392,80 @@ test_verify_one_file! {
             assert(lv == old(s)@.subrange(0, mid as int));
             assert(rv == old(s)@.subrange(mid as int, old(s)@.len() as int));
             assert(s@ == lv + rv);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] maybe_uninit_array_assume_init verus_code! {
+        use core::mem::MaybeUninit;
+        use vstd::prelude::*;
+        use vstd::std_specs::maybe_uninit::MaybeUninitAdditionalSpecFns;
+
+        fn test() {
+            let a = [MaybeUninit::new(1u8), MaybeUninit::new(2u8)];
+            let r = unsafe { MaybeUninit::array_assume_init(a) };
+            assert(r@[0] == 1u8);
+            assert(r@[1] == 2u8);
+        }
+
+        fn test_generic<T>(a: [MaybeUninit<T>; 2])
+            requires
+                forall|i: int| #![auto] 0 <= i < 2 ==> a@[i].mem_contents().is_init(),
+        {
+            let r = unsafe { MaybeUninit::array_assume_init(a) };
+            assert(r@[0] == a@[0].mem_contents().value());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] maybe_uninit_array_assume_init_requires_init verus_code! {
+        use core::mem::MaybeUninit;
+        use vstd::prelude::*;
+
+        fn test() {
+            let a = [MaybeUninit::new(1u8), MaybeUninit::<u8>::uninit()];
+            let _r = unsafe { MaybeUninit::array_assume_init(a) };
+        }
+    } => Err(err) => {
+        assert!(err.errors.iter().all(|e| e.rendered.contains("precondition not satisfied")));
+    }
+}
+
+test_verify_one_file! {
+    #[test] nonnull_specs verus_code! {
+        use vstd::prelude::*;
+        use core::ptr::NonNull;
+
+        fn roundtrip(ptr: *mut u8)
+            requires ptr@.addr != 0,
+        {
+            let nn = unsafe { NonNull::new_unchecked(ptr) };
+            let back = nn.as_ptr();
+            assert(back == ptr);
+        }
+
+        fn new_some(ptr: *mut u8)
+            requires ptr@.addr != 0,
+        {
+            let o = NonNull::new(ptr);
+            assert(o is Some);
+            if let Some(nn) = o {
+                assert(nn.as_ptr() == ptr);
+            }
+        }
+
+        fn new_none(ptr: *mut u8)
+            requires ptr@.addr == 0,
+        {
+            let o = NonNull::new(ptr);
+            assert(o is None);
+        }
+
+        fn invariant<T>(nn: NonNull<T>) {
+            broadcast use vstd::std_specs::ptr::axiom_nonnull_addr_nonzero;
+            assert(nn.as_ptr()@.addr != 0);
         }
     } => Ok(())
 }

@@ -40,7 +40,7 @@ test_verify_one_file_with_options! {
             loop {
                 let z = x;
                 x = 5;
-                return z; // FAILS (requires invariant relating x to old(x))
+                return z;
             }
         }
 
@@ -81,7 +81,7 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_fails(err, 5)
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file_with_options! {
@@ -123,7 +123,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         fn test_loop_fails0() {
             let r = |mut x: u64| -> (y: u64)
-                ensures x == y // FAILS (requires invariant relating x to old(x))
+                ensures x == y
             {
                 loop {
                     let z = x;
@@ -176,7 +176,7 @@ test_verify_one_file_with_options! {
                 }
             };
         }
-    } => Err(err) => assert_fails(err, 5)
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file_with_options! {
@@ -296,7 +296,7 @@ test_verify_one_file_with_options! {
             loop {
                 let z = x;
                 x = 5;
-                return z; // FAILS (requires invariant relating x to old(x))
+                return z;
             }
         }
 
@@ -337,7 +337,7 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_fails(err, 5)
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file_with_options! {
@@ -379,7 +379,7 @@ test_verify_one_file_with_options! {
         #[verifier::exec_allows_no_decreases_clause]
         fn test_loop_fails0() {
             let r = |mut x: u64| -> (y: u64)
-                ensures x == y // FAILS (requires invariant relating x to old(x))
+                ensures x == y
             {
                 loop {
                     let z = x;
@@ -432,7 +432,7 @@ test_verify_one_file_with_options! {
                 }
             };
         }
-    } => Err(err) => assert_fails(err, 5)
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file_with_options! {

@@ -38,7 +38,7 @@ and publishing for the Verus project.
 1. **`basic-test`** (macOs x64, Windows x64, and Linux x64)
    - Runs basic tests only
 
-1. **`smoke-test`** (macOs ARM64)
+1. **`smoke-test`** (Linux x64)
    - Checks that `verus` builds with esoteric configurations
    - Runs minimal tests relevant to the configuration
 

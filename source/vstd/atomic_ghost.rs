@@ -268,7 +268,7 @@ declare_atomic_type_generic!(AtomicPtr, PAtomicPtr, PermissionPtr<T>, *mut T, At
 /// | `fetch_xor(x)`                | `next == prev ^ x && ret == prev`                                                                                          |
 /// | `fetch_nand(x)`               | `next == !(prev & x) && ret == prev`                                                                                       |
 /// | `fetch_max(x)`                | `next == max(prev, x) && ret == prev`                                                                                      |
-/// | `fetch_min(x)`                | `next == max(prev, x) && ret == prev`                                                                                      |
+/// | `fetch_min(x)`                | `next == min(prev, x) && ret == prev`                                                                                      |
 /// | `no_op()` (**)                | `next == prev && ret == ()`                                                                                                |
 ///
 /// (*) Note that `fetch_add` and `fetch_sub` do not specify

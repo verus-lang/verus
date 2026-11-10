@@ -319,6 +319,9 @@ pub assume_specification<'a, T, A: Allocator>[ VecDeque::<T, A>::iter ](
 ) -> (iter: Iter<'a, T>)
     ensures
         IteratorSpec::remaining(&iter) == v@.as_ref(),
+        // Stated via `len()` so callers learn that the length fits in a `usize`
+        // (needed, e.g., by `enumerate` and `position`)
+        IteratorSpec::remaining(&iter).len() == v.len(),
         into_iter_elts(iter) == IteratorSpec::remaining(&iter),
         IteratorSpec::decrease(&iter) is Some,
 ;

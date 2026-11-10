@@ -2166,7 +2166,7 @@ impl Visitor {
                 }
                 Item::AssumeSpecification(assume_specification) => {
                     *item = if self.erase_ghost.erase() {
-                        Item::Verbatim(quote! { const _: () = (); })
+                        Item::Verbatim(quote! {})
                     } else {
                         self.handle_assume_specification(
                             assume_specification,
@@ -3634,7 +3634,7 @@ impl Visitor {
                 } else if is_inside_ghost {
                     quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Tracked #turbofish ::new(#inner))
                 } else {
-                    quote_spanned_builtin!(verus_builtin, span => #[verifier::ghost_wrapper] /* vattr */ #verus_builtin::tracked_exec #turbofish (#[verifier::tracked_block_wrapped] /* vattr */ #inner))
+                    quote_spanned_builtin!(verus_builtin, span => #[verus::internal(ghost_wrapper)] #verus_builtin::tracked_exec #turbofish (#[verus::internal(tracked_block_wrapped)] #inner))
                 });
             } else {
                 // Ghost(...)
@@ -3644,7 +3644,7 @@ impl Visitor {
                 } else if is_inside_ghost {
                     quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Ghost #turbofish ::new(#inner))
                 } else {
-                    quote_spanned_builtin!(verus_builtin, span => #[verifier::ghost_wrapper] /* vattr */ #verus_builtin::ghost_exec #turbofish (#[verifier::ghost_block_wrapped] /* vattr */ #inner))
+                    quote_spanned_builtin!(verus_builtin, span => #[verus::internal(ghost_wrapper)] #verus_builtin::ghost_exec #turbofish (#[verus::internal(ghost_block_wrapped)] #inner))
                 });
             }
         } else if let Expr::Unary(unary) = expr {
@@ -4145,8 +4145,6 @@ impl Visitor {
         //      };
         //      VERUS_loop_result
         //  }
-        // Note that "continue" and labels are not yet supported;
-        // continue would also need to call ghost_advance.
         let span = for_loop.span();
 
         let verus_syn::ExprForLoop {
@@ -4837,7 +4835,26 @@ impl VisitMut for Visitor {
             _ => false,
         });
         if has_pre_post_items {
-            visit_items_in_block(&mut block.stmts, |items| self.visit_items_prefilter(items));
+            visit_items_in_block(&mut block.stmts, |items| {
+                for item in items.iter_mut() {
+                    if let Item::Static(sta) = item {
+                        if matches!(sta.mode, FnMode::Default)
+                            && !is_external(&sta.attrs)
+                            && self.inside_external_code == 0
+                        {
+                            // There's no way to write `exec static` inside a function body: verus_syn's
+                            // statement parser only knows `spec`/`exec const` and `spec`/`proof fn`, so a
+                            // local static can't be given a mode. Default it to exec here. This has to
+                            // happen before visit_items_prefilter, which copies the mode into the proxy fn.
+                            // (Module-level statics still have to say `exec` explicitly.)
+                            sta.mode = FnMode::Exec(verus_syn::ModeExec {
+                                exec_token: Token![exec](sta.static_token.span),
+                            });
+                        }
+                    }
+                }
+                self.visit_items_prefilter(items);
+            });
         }
         let block_stmts = std::mem::replace(&mut block.stmts, vec![]);
         for mut stmt in block_stmts {
@@ -5698,14 +5715,14 @@ pub(crate) fn rewrite_proof_decl(
                     ss.to_tokens(&mut new_stream);
                 }
             }
-            Stmt::Macro(mut mac) => {
-                // Due to the difference between function-like macro vs proceudure macro,
-                // Macros used inside proof block need to explicitly call proof or proof_decl.
-                // We should avoid entering proof mode if calling a macro.
-                visitor.visit_macro_mut(&mut mac.mac);
-                mac.to_tokens(&mut new_stream);
+            Stmt::Macro(mac) => {
+                // The expansion could introduce exec code or bindings into this scope,
+                // but proof_decl erases all of its output during compilation.
+                return quote_spanned!(mac.mac.span() => ::core::compile_error!(
+                    "Macro statements are not supported in proof_decl!; invoke declaration macros in the surrounding scope or use proof! for proof statements"
+                )).into();
             }
-            _ => {
+            Stmt::Item(_) | Stmt::Expr(_, _) => {
                 let span = ss.span();
                 let mut proof_expr = Expr::Unary(ExprUnary {
                     attrs: vec![],

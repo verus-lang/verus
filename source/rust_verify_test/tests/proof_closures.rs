@@ -143,7 +143,7 @@ test_verify_one_file_with_options! {
             let z = f(2);
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use while in proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use loop in proof or spec mode")
 }
 
 test_verify_one_file_with_options! {
@@ -161,7 +161,7 @@ test_verify_one_file_with_options! {
             let z = f(2);
             assert(b);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use while in proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use loop in proof or spec mode")
 }
 
 // 2 arg closures
@@ -612,7 +612,7 @@ test_verify_one_file_with_options! {
 
             0
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use while in proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use loop in proof or spec mode")
 }
 
 test_verify_one_file_with_options! {

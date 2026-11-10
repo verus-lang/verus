@@ -424,6 +424,7 @@ pub(crate) enum BuiltinFunctionItem {
     CallOpensInvariants,
     ConstrainType,
     GetFutureOutputType,
+    ProofWithCallee,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -786,6 +787,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::call_opens_invariants",   VerusItem::BuiltinFunction(BuiltinFunctionItem::CallOpensInvariants)),
         ("verus::verus_builtin::constrain_type",          VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)),
         ("verus::verus_builtin::get_future_output_type",  VerusItem::BuiltinFunction(BuiltinFunctionItem::GetFutureOutputType)),
+        ("verus::verus_builtin::proof_with_callee",       VerusItem::BuiltinFunction(BuiltinFunctionItem::ProofWithCallee)),
 
         ("verus::verus_builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
 
@@ -919,6 +921,7 @@ pub(crate) enum RustItem {
     TryTraitBranch,
     ResidualTraitFromResidual,
     IntoIterFn,
+    IntoFutureFn,
     ManuallyDrop,
     PhantomData,
     Destruct,
@@ -989,6 +992,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().into_iter_fn() == Some(def_id) {
         return Some(RustItem::IntoIterFn);
+    }
+    if tcx.lang_items().into_future_fn() == Some(def_id) {
+        return Some(RustItem::IntoFutureFn);
     }
     if tcx.lang_items().manually_drop() == Some(def_id) {
         return Some(RustItem::ManuallyDrop);

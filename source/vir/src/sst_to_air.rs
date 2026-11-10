@@ -1,6 +1,6 @@
 use crate::ast::{
-    ArrayKind, AssertQueryMode, BitwiseOp, CrateId, Dt, FieldOpr, Fun, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Label, Mode, Path, PathX, Primitive,
+    ArrayKind, AssertQueryMode, BitwiseOp, Dt, FieldOpr, Fun, Ident, Idents, InequalityOp,
+    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Label, Mode, Path, Primitive,
     ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
     UnaryOpr, UnwindSpec, VarAt, VarIdent, VirErr,
 };
@@ -143,7 +143,7 @@ pub(crate) fn monotyp_to_path(ctx: &Ctx, typ: &MonoTyp) -> Path {
                 .monotyp_decorate2(*dec, &typs.iter().map(|t| monotyp_to_path(ctx, t)).collect());
         }
     };
-    Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![id]) })
+    crate::def::internal_path(id.to_string())
 }
 
 pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
@@ -1623,7 +1623,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
 #[derive(Debug)]
 struct LoopInfo {
     loop_isolation: bool,
-    is_for_loop: bool,
     label: Label,
     loop_id: u64,
     air_break_label: Ident,
@@ -2330,14 +2329,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let is_air_break = *is_break && !loop_info.loop_isolation;
             if !ctx.checking_spec_preconditions() && !is_air_break {
                 assert!(!is_break || !loop_info.some_cond); // AST-to-SST conversion must eliminate the cond
-                if loop_info.is_for_loop && !*is_break {
-                    // At the very least, the syntax macro will need to advance the ghost iterator
-                    // at each continue.
-                    return Err(error(
-                        &stm.span,
-                        "Verus does not currently support `continue` in `for` loops",
-                    ));
-                }
                 let invs = if *is_break {
                     loop_info.invs_exit.clone()
                 } else {
@@ -2578,6 +2569,7 @@ fn loop_to_stmts(
         au_branch_bool,
         pre_modified_params_incl,
         pre_modified_params_excl,
+        known_no_back_edge,
     } = &stm.x
     else {
         unreachable!()
@@ -2685,7 +2677,7 @@ fn loop_to_stmts(
     */
 
     let mut air_body: Vec<Stmt> = state.static_prelude.clone();
-    if !loop_isolation {
+    if !loop_isolation && !known_no_back_edge {
         air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
         let start = air_body.len();
         modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut air_body);
@@ -2736,10 +2728,12 @@ fn loop_to_stmts(
             air_body.extend(assert_free_pre_stmts);
 
             // Havoc all vars that might be modified during the loop
-            air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_BOUNDARY))));
-            let start = air_body.len();
-            modified_vars.emit_havocs(ctx, SNAPSHOT_BOUNDARY, &mut air_body);
-            notify_emitted_havocs(ctx, stm, modified_vars, &air_body[start..]);
+            if !known_no_back_edge {
+                air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_BOUNDARY))));
+                let start = air_body.len();
+                modified_vars.emit_havocs(ctx, SNAPSHOT_BOUNDARY, &mut air_body);
+                notify_emitted_havocs(ctx, stm, modified_vars, &air_body[start..]);
+            }
         }
     }
 
@@ -2764,7 +2758,6 @@ fn loop_to_stmts(
     let air_break_label = crate::def::break_label(*id);
     let loop_info = LoopInfo {
         loop_isolation,
-        is_for_loop: *is_for_loop,
         label: label.clone(),
         loop_id: *id,
         air_break_label: air_break_label.clone(),
