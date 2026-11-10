@@ -3,8 +3,9 @@ use crate::ast::{
     CtorUpdateTail, Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind,
     FunctionX, GenericBound, GenericBoundX, Krate, KrateX, LoopInvariant, LoopInvariants, MaskSpec,
     NullaryOpr, Param, ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX,
-    SpannedTyped, Stmt, StmtX, Trait, TraitImpl, TraitImplX, TraitX, Typ, TypDecorationArg, TypX,
-    Typs, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, VirErr,
+    ReturnOpaqueTypeEq, SpannedTyped, Stmt, StmtX, Trait, TraitImpl, TraitImplX, TraitX, Typ,
+    TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders,
+    VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -1252,12 +1253,15 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         let atomic_update = R::map_opt(atomic_update, &mut |exp| self.visit_expr(exp))?;
         let unwind_spec = R::map_opt(unwind_spec, &mut |us| self.visit_unwind_spec(us))?;
         let body = self.visit_opt_expr(body)?;
-        let return_opaque_type_eqs =
-            R::map_vec(return_opaque_type_eqs, &mut |(opaque, hidden)| {
-                let opaque = self.visit_typ(opaque)?;
-                let hidden = self.visit_typ(hidden)?;
-                R::ret(|| (R::get(opaque), R::get(hidden)))
-            })?;
+        let return_opaque_type_eqs = R::map_vec(return_opaque_type_eqs, &mut |eq| {
+            let opaque = self.visit_typ(&eq.opaque)?;
+            let hidden = self.visit_typ(&eq.hidden)?;
+            R::ret(|| ReturnOpaqueTypeEq {
+                opaque: R::get(opaque),
+                hidden: R::get(hidden),
+                impl_paths: eq.impl_paths.clone(),
+            })
+        })?;
         self.pop_scope();
 
         let fndef_axioms = self.visit_opt_exprs(fndef_axioms)?;
