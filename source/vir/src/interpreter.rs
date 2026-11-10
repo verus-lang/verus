@@ -949,7 +949,10 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirEr
             Primitive::Array,
             Arc::new(vec![inner_typ.clone(), array_len_typ.clone()]),
         ));
-        let array = cleanup_array(span, array_typ, s)?;
+        // Keep hidden variables hidden: this also runs during interpretation (a partially
+        // simplified sequence), where a restored variable could be captured by a callee's
+        // parameter of the same name. The final cleanup_exp restores them.
+        let array = raw_array(span, array_typ, s);
         let array_view = new_seq_exp(ExpX::Call(
             CallFun::Fun(fun_view, None),
             Arc::new(vec![inner_typ.clone(), array_len_typ]),
@@ -957,6 +960,11 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirEr
         ));
         Ok(array_view)
     }
+}
+
+/// An array literal of type `arr_typ` with the given elements, as they are (no cleanup)
+fn raw_array(span: &Span, arr_typ: Typ, arr: &Vector<Exp>) -> Exp {
+    SpannedTyped::new(span, &arr_typ, ExpX::ArrayLiteral(Arc::new(arr.iter().cloned().collect())))
 }
 
 /// Convert an interpreter-internal array representation back into a
@@ -1198,6 +1206,66 @@ fn eval_array_index(
 
 /// Symbolically execute the expression as far as we can,
 /// stopping when we hit a symbolic control-flow decision
+/// The variables `exp` mentions that are not bound inside it. Only `Var` counts: it is the
+/// one form the interpreter resolves in its environment, so the one that changes meaning
+/// when it ends up in another scope. Triggers are skipped; they do not affect the meaning of
+/// an expression, and the interpreter does not evaluate them.
+fn mentioned_vars(exp: &Exp) -> Vec<UniqueIdent> {
+    use crate::sst_visitor::{Visitor, VisitorScopeMap, Walk};
+
+    struct Collector {
+        scope_map: VisitorScopeMap,
+        vars: Vec<UniqueIdent>,
+    }
+
+    impl Visitor<Walk, (), VisitorScopeMap> for Collector {
+        fn scoper(&mut self) -> Option<&mut VisitorScopeMap> {
+            Some(&mut self.scope_map)
+        }
+
+        // also covers the triggers of `WithTriggers`, which `visit_exp_rec` visits through this
+        fn visit_triggers(&mut self, _trigs: &Trigs) -> Result<(), ()> {
+            Ok(())
+        }
+
+        fn visit_exp(&mut self, exp: &Exp) -> Result<(), ()> {
+            if let ExpX::Var(x) = &exp.x {
+                if !self.scope_map.contains_key(x) {
+                    self.vars.push(x.clone());
+                }
+            }
+            self.visit_exp_rec(exp)
+        }
+    }
+
+    let mut collector = Collector { scope_map: VisitorScopeMap::new(), vars: Vec::new() };
+    collector.visit_exp(exp).unwrap();
+    collector.vars
+}
+
+/// Values cross scopes when a call binds its arguments in the callee's environment and when
+/// the callee's result returns to the caller's. Evaluation turns every variable into its value
+/// or a hidden `FreeVar`, so a variable in such a value escaped evaluation: the other scope
+/// would take it to mean its own variable of that name (#3182, #3198). Fail rather than let
+/// it cross.
+fn check_closed(value: &Exp, what: impl Fn() -> String) -> Result<(), VirErr> {
+    match mentioned_vars(value).first() {
+        None => Ok(()),
+        Some(x) => Err(error(
+            &value.span,
+            format!(
+                "internal error in assert_by_compute: the variable `{}` was left unevaluated in {}",
+                x.0,
+                what()
+            ),
+        )),
+    }
+}
+
+fn fname(fun: &Fun) -> String {
+    crate::ast_util::fun_as_friendly_rust_name(fun)
+}
+
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
     state.iterations += 1;
     if state.iterations > ctx.max_iterations {
@@ -1213,7 +1281,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         "\t".repeat(state.depth),
         exp.x.to_user_string(&ctx.global)
     ));
-    let ok = Ok(exp.clone());
+    // No catch-all "return `exp` unchanged": an unevaluated `exp` may mention variables of the
+    // current environment, which mean something else once the result leaves this scope
+    // (#3198). Each arm that returns `exp` as is says why that is safe.
+    let unchanged = || Ok(exp.clone());
     if state.enable_simplified_cache && state.simplified.contains(exp) {
         state.ptr_hits += 1;
         state
@@ -1228,7 +1299,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     let zero = int_new(BigInt::zero());
     use ExpX::*;
     let r = match &exp.x {
-        Const(_) => ok,
+        Const(_) => unchanged(), // closed
         Var(id) => match state.env.get(id) {
             None => {
                 state.log(format!("Failed to find a match for variable {:?}", id));
@@ -1249,9 +1320,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             let clipped =
                                 exp.new_x(Unary(UnaryOp::Clip { range, truncate: false }, value));
                             let value = eval_expr_internal(ctx, state, &clipped)?;
-                            if matches!(&value.x, Const(Constant::Int(_))) { Ok(value) } else { ok }
+                            // a const generic mentions no variables
+                            if matches!(&value.x, Const(Constant::Int(_))) {
+                                Ok(value)
+                            } else {
+                                unchanged()
+                            }
                         }
-                        None => ok,
+                        None => unchanged(),
                     }
                 }
                 TypX::ConstBool(b) => bool_new(*b),
@@ -1259,9 +1335,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     let var_id = VarIdent(id.clone(), VarIdentDisambiguate::TypParamBare);
                     exp_new(Interp(InterpExp::FreeVar(var_id)))
                 }
-                _ => ok,
+                _ => unchanged(), // mentions types only
             },
-            _ => ok,
+            _ => unchanged(), // the other nullary operators mention no variables
         },
         Unary(op, e) => {
             use Constant::*;
@@ -1653,7 +1729,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             BitAnd => int_new(i1 & i2),
                             BitOr => int_new(i1 | i2),
                             Shr => match i2.to_u128() {
-                                None => ok,
+                                None => ok_e2(e2),
                                 Some(i2) => int_new(i1 >> i2),
                             },
                             Shl(w, signed) => {
@@ -1664,10 +1740,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 if i2 >= 128 { 0i128 } else { i1 << i2 };
                                             match i128_to_width(i1_shifted, *w, ctx.arch) {
                                                 Some(i) => int_new(i),
-                                                None => ok,
+                                                None => ok_e2(e2),
                                             }
                                         }
-                                        _ => ok,
+                                        _ => ok_e2(e2),
                                     }
                                 } else {
                                     match (i1.to_u128(), i2.to_u128()) {
@@ -1676,10 +1752,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 if i2 >= 128 { 0u128 } else { i1 << i2 };
                                             match u128_to_width(i1_shifted, *w, ctx.arch) {
                                                 Some(i) => int_new(i),
-                                                None => ok,
+                                                None => ok_e2(e2),
                                             }
                                         }
-                                        _ => ok,
+                                        _ => ok_e2(e2),
                                     }
                                 }
                             }
@@ -1787,6 +1863,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 let pars = &func.x.pars;
                                 let spec_axioms = func.x.axioms.spec_axioms.as_ref().unwrap();
                                 state.cache_misses += 1;
+                                for a in new_args.iter() {
+                                    check_closed(a, || {
+                                        format!("an argument of `{}`", fname(reduced_fun))
+                                    })?;
+                                }
                                 let mut env = Env::new();
                                 let mut type_env = TypeEnv::new();
                                 env.push_scope(true);
@@ -1826,6 +1907,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     ))
                                 };
                                 state.env = prev_env;
+                                let result = result.and_then(|r| {
+                                    check_closed(&r, || {
+                                        format!("the result of `{}`", fname(reduced_fun))
+                                    })
+                                    .map(|_| r)
+                                });
                                 state.insert_call(
                                     reduced_fun,
                                     &reduced_typs,
@@ -1848,7 +1935,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
             }
         }
-        Call(CallFun::Recursive(_), _, _) => ok,
+        Call(fun @ CallFun::Recursive(_), typs, args) => {
+            // not unfolded, but the arguments must be evaluated in this environment
+            let new_args: Result<Vec<Exp>, VirErr> =
+                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+            exp_new(Call(fun.clone(), typs.clone(), Arc::new(new_args?)))
+        }
         Call(fun @ CallFun::InternalFun(_), typs, args) => {
             let new_args: Result<Vec<Exp>, VirErr> =
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
@@ -1873,13 +1965,16 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             });
                             env.push_scope(true);
                             for (formal, actual) in bnds.iter().zip(new_args.iter()) {
+                                check_closed(actual, || "an argument of a closure".to_string())?;
                                 let formal_id = formal.name.clone();
                                 env.insert(formal_id, actual.clone()).unwrap();
                             }
                             let prev_env = std::mem::replace(&mut state.env, env);
                             let e = eval_expr_internal(ctx, state, body);
                             state.env = prev_env;
-                            e
+                            let e = e?;
+                            check_closed(&e, || "the result of a closure".to_string())?;
+                            Ok(e)
                         }
                         _ => panic!(
                             "Expected CallLambda's binder to contain a lambda.  Instead found {:?}",
@@ -1964,7 +2059,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             BndX::Choose(..) => {
                 let free_vars = free_vars_exp(exp);
                 if free_vars.is_empty() {
-                    ok
+                    unchanged() // closed
                 } else {
                     let substs: Result<HashMap<UniqueIdent, Exp>, VirErr> = free_vars
                         .keys()
@@ -2007,10 +2102,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             exp_new(Interp(InterpExp::Array(im_vec)))
         }
         Interp(e) => match e {
-            InterpExp::FreeVar(_) => ok,
-            InterpExp::Seq(_) => ok,
-            InterpExp::Closure(_, _) => ok,
-            InterpExp::Array(_) => ok,
+            // already evaluated: a hidden variable, or a value whose free variables are hidden
+            // (a closure carries its own environment)
+            InterpExp::FreeVar(_) => unchanged(),
+            InterpExp::Seq(_) => unchanged(),
+            InterpExp::Closure(_, _) => unchanged(),
+            InterpExp::Array(_) => unchanged(),
         },
         WithTriggers(triggers, body) => {
             let triggers = Arc::new(
@@ -2019,10 +2116,13 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             let body = eval_expr_internal(ctx, state, body)?;
             exp_new(WithTriggers(triggers, body))
         }
-        // Ignored by the interpreter at present (i.e., treated as symbolic)
-        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | StaticVar(..) => ok,
-        ExecFnByName(_) => ok,
-        FuelConst(_) => ok,
+        // Ignored by the interpreter at present (i.e., treated as symbolic). The interpreter
+        // never looks these up in its environment, and none can occur in a spec function's
+        // body, so each comes from the assertion itself (perhaps inside a closure written
+        // there) and keeps its meaning wherever evaluation moves it.
+        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | StaticVar(..) => unchanged(),
+        ExecFnByName(_) => unchanged(), // closed
+        FuelConst(_) => unchanged(),    // closed
     };
     let res = r?;
     state.depth -= 1;
