@@ -496,9 +496,11 @@ pub trait DecodesToNat: TypeRepresentation + BasePow2 + Integer {
 
     /// The bytes decode to `v` exactly when they are `size_of::<Self>()` initialized bytes
     /// whose `EndianNat` is `v`.
-    /// The encoding does not depend on shadow data.
+    /// The type can be encoded,
+    /// and the encoding does not depend on shadow data.
     proof fn lemma_decode(bytes: Seq<AbstractByte>, v: Self)
         ensures
+            Self::can_be_encoded(),
             !Self::encoding_depends_on_shadow_data(),
             Self::decode(bytes, &v, arbitrary()) <==> {
                 &&& bytes.len() == size_of::<Self>()

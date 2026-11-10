@@ -40,6 +40,7 @@ pub broadcast axiom fn type_representation_implements_encode_decode<T: ?Sized + 
     bytes: Seq<AbstractByte>,
 )
     requires
+        T::can_be_encoded(),
         !T::encoding_depends_on_shadow_data(),
     ensures
         #![trigger abstract_bytes_encode::<T>(value, bytes)]
