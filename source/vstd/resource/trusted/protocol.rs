@@ -68,6 +68,8 @@ impl<K, V, P> Clone for CopyableStorageResource<K, V, P> {
 }
 
 /// See [`StorageResource`] for more information.
+///
+/// Corresponds to the [`VerusSP`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/proph_protocol.v#L36) class in verus-belt.
 pub trait Protocol<K, V>: Sized {
     spec fn op(self, other: Self) -> Self;
 
@@ -176,6 +178,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
 
     pub uninterp spec fn loc(self) -> Loc;
 
+    /// Proved in verus-belt as [`typed_sp_alloc`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/protocol.v#L192).
     pub axiom fn alloc(p: P, tracked s: IMap<K, V>) -> (tracked out: Self)
         requires
             P::rel(p, s),
@@ -183,6 +186,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.value() == p,
     ;
 
+    /// Proved in verus-belt as [`typed_sp_join`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/protocol.v#L228).
     pub axiom fn join(tracked a: Self, tracked b: Self) -> (tracked out: Self)
         requires
             a.loc() == b.loc(),
@@ -191,6 +195,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.value() == P::op(a.value(), b.value()),
     ;
 
+    /// Proved in verus-belt as [`typed_sp_split`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/protocol.v#L263).
     pub axiom fn split(tracked self, a_value: P, b_value: P) -> (tracked out: (Self, Self))
         requires
             self.value() == P::op(a_value, b_value),
@@ -205,6 +210,8 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     /// is defined as the inclusion-closure of invariant, i.e., an element
     /// is valid if there exists another element `x` that, added to it,
     /// meets the invariant.
+    ///
+    /// Proved in verus-belt as [`typed_sp_validate`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/protocol.v#L806).
     pub axiom fn validate(tracked self: &Self) -> (out: (P, IMap<K, V>))
         ensures
             ({
@@ -328,6 +335,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         Self::exchange_nondeterministic_with_shared(selff, &unit, s, new_values, f)
     }
 
+    /// Proved in verus-belt as [`typed_sp_guard`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/protocol.v#L515).
     pub axiom fn guard(tracked p: &Self, s_value: IMap<K, V>) -> (tracked s: &IMap<K, V>)
         requires
             guards(p.value(), s_value),
@@ -336,6 +344,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     ;
 
     // Operations with shared references
+    /// Not yet proved in verus-belt.
     pub axiom fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
         &'a Self)
         requires
@@ -346,6 +355,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             incl(other.value(), out.value()),
     ;
 
+    /// Proved in verus-belt as [`typed_sp_weaken`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/protocol.v#L736).
     pub axiom fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
         requires
             incl(target, self.value()),
@@ -354,6 +364,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.value() == target,
     ;
 
+    /// Proved in verus-belt as [`typed_sp_validate_with_shr`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/protocol.v#L946).
     pub axiom fn validate_with_shared(tracked self: &mut Self, tracked x: &Self) -> (res: (
         P,
         IMap<K, V>,
@@ -404,6 +415,8 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     // See `logic_exchange_with_extra_guard_nondeterministic`
     // https://github.com/secure-foundations/leaf/blob/a51725deedecc88294057ac1502a7c7ff2104a69/src/guarding/protocol.v#L834
     /// Most general kind of update, potentially depositing and withdrawing
+    ///
+    /// Proved in verus-belt as [`typed_sp_exchange_with_shr_nondeterministic`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/protocol.v#L1076).
     pub axiom fn exchange_nondeterministic_with_shared(
         tracked p: Self,
         tracked x: &Self,
@@ -428,6 +441,8 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
 
     /// Wrap this resource in a type that implements `Copy`,
     /// given that the resource is duplicable.
+    ///
+    /// Not yet proved in verus-belt.
     pub axiom fn into_copyable(tracked self, p: P) -> (tracked r: CopyableStorageResource<K, V, P>)
         requires
             P::op(P::op(self.value(), self.value()), p) == self.value(),
@@ -447,6 +462,7 @@ impl<K, V, P: Protocol<K, V>> CopyableStorageResource<K, V, P> {
     /// The location of the resource
     pub uninterp spec fn loc(self) -> Loc;
 
+    /// Not yet proved in verus-belt.
     pub axiom fn into_resource(tracked self) -> (tracked r: StorageResource<K, V, P>)
         ensures
             r.loc() == self.loc(),

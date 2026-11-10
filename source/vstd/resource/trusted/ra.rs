@@ -87,6 +87,8 @@ impl<P: RA> Clone for CopyableResource<P> {
 /// since Verus does not support partial functions.
 ///
 /// See [`Resource`] for more information.
+///
+/// Corresponds to the [`VerusRA`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/ra.v#L19) record in verus-belt.
 pub trait RA: Sized {
     /// Whether an element is valid
     #[verifier::prophetic]
@@ -185,6 +187,8 @@ impl<P: RA> Resource<P> {
     // AXIOMS
     /// Allocate a new resource at a fresh location
     // GHOST-ALLOC rule
+    ///
+    /// Proved in verus-belt as [`typed_ra_alloc`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/ra.v#L435).
     pub axiom fn alloc(value: P) -> (tracked out: Self)
         requires
             value.valid(),
@@ -195,6 +199,8 @@ impl<P: RA> Resource<P> {
     /// We can join together two resources at the same location, where we obtain the combination of
     /// the two
     // reverse implication in the GHOST-OP rule
+    ///
+    /// Proved in verus-belt as [`typed_ra_join`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/ra.v#L464).
     pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),
@@ -205,6 +211,8 @@ impl<P: RA> Resource<P> {
 
     /// If a resource holds the result of a composition, we can split it into the components
     // implication in the GHOST-OP rule
+    ///
+    /// Proved in verus-belt as [`typed_ra_split`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/ra.v#L497).
     pub axiom fn split(tracked self, left: P, right: P) -> (tracked out: (Self, Self))
         requires
             self.value() == P::op(left, right),
@@ -216,6 +224,8 @@ impl<P: RA> Resource<P> {
     ;
 
     /// Create a unit at a particular location
+    ///
+    /// Proved in verus-belt as [`typed_ra_unit`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/ra.v#L533).
     pub axiom fn create_unit(loc: Loc) -> (tracked out: Self)
         ensures
             out.value() == P::unit(),
@@ -230,6 +240,8 @@ impl<P: RA> Resource<P> {
     ///        [`update`](Self::update) for more details. Because of the requirement of that
     ///        updates are frame preserving this means that `join`s remain valid.
     // GHOST-VALID rule
+    ///
+    /// Proved in verus-belt as [`typed_ra_validate`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/ra.v#L636).
     pub axiom fn validate(tracked &self)
         ensures
             self.value().valid(),
@@ -302,6 +314,8 @@ impl<P: RA> Resource<P> {
     // AXIOMS on shared references
     /// This is useful when you have two (or more) shared resources and want to learn
     /// that they agree, as you can combine this validate, e.g., `x.join_shared(y).validate()`.
+    ///
+    /// Not yet proved in verus-belt.
     pub axiom fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
         &'a Self)
         requires
@@ -313,6 +327,8 @@ impl<P: RA> Resource<P> {
     ;
 
     /// Extract a shared reference to a preceding element in the extension order from a shared reference.
+    ///
+    /// Proved in verus-belt as [`typed_ra_weaken`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/ra.v#L875).
     pub axiom fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
         requires
             incl(target, self.value()),
@@ -323,6 +339,8 @@ impl<P: RA> Resource<P> {
 
     /// Validate two items at once. If we have two resources at the same location then its
     /// composition is valid.
+    ///
+    /// Not yet proved in verus-belt.
     pub axiom fn validate_2(tracked &mut self, tracked other: &Self)
         requires
             old(self).loc() == other.loc(),
@@ -332,6 +350,8 @@ impl<P: RA> Resource<P> {
     ;
 
     /// We can do a similar update to [`update_with_shared`](Self::update_with_shared) for non-deterministic updates
+    ///
+    /// Proved in verus-belt as [`typed_ra_update_with_shr_non_det`](https://github.com/verus-lang/verus-belt/blob/d01bee9956410c922817ba24259f0f13bfd8849e/src/lambda_verus/typing/ra.v#L1003).
     pub axiom fn update_nondeterministic_with_shared(
         tracked self,
         tracked other: &Self,
@@ -410,6 +430,8 @@ impl<P: RA> Resource<P> {
 
     /// Wrap this resource in a type that implements `Copy`,
     /// given that the resource is duplicable.
+    ///
+    /// Not yet proved in verus-belt.
     pub axiom fn into_copyable(self, p: P) -> (r: CopyableResource<P>)
         requires
             P::op(P::op(self.value(), self.value()), p) == self.value(),
@@ -429,6 +451,7 @@ impl<P: RA> CopyableResource<P> {
     /// The location of the resource
     pub uninterp spec fn loc(self) -> Loc;
 
+    /// Not yet proved in verus-belt.
     pub axiom fn into_resource(self) -> (r: Resource<P>)
         ensures
             r.loc() == self.loc(),
