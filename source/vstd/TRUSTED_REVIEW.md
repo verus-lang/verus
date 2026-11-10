@@ -19,7 +19,7 @@ Open items and later work are in [TODO.md](TODO.md).
   `ptr_model.rs` (unchanged), `ptr_specs.rs`, `shared_reference.rs`,
   `points_to_model.rs` (the `PTPhys` / `PTProperties` traits, `PointsToByte`, `SeqPointsTo`, `PointsToUntyped`, `TypedValue`, `pt_parts_wf*`),
   and `points_to_structs.rs` (new: the `PointsToUnaligned` and `PointsTo` structs, their closed field accessors and structural axioms).
-- **rustlib:** `proofs/str.rs` (the `str` versions), the reference-to-pointer casts in `core/src/slice/mod.rs` and `core/src/str/mod.rs`,
+- **rustlib:** `proofs/str.rs` (the `str` versions), the reference-to-pointer casts in `core/src/ptr/mod.rs`, `core/src/slice/mod.rs` and `core/src/str/mod.rs`,
   and `Box` in `alloc/src/boxed.rs`.
 
 ## Well-formed parts
@@ -151,6 +151,72 @@ pub axiom fn mut_ref_as_shr_ref<'a, T: ?Sized>(tracked mut_ref: &'a &'a mut T) -
 `ptr_shr_ref` and `mut_ref_as_shr_ref` only relate a reference to a pointer, so one generic version covers `T`, `[T]` and `str`
 (like the existing `ptr_mut_ref_join` for `&mut`).
 `ref_to_parts` and `ref_from_parts` need one version per `pt_parts_wf*` variant.
+
+## Shadow data of compound values (`ptr_specs.rs`)
+
+Shadow data belongs to a whole variable,
+and building a tuple or a `Tracked` gives it havoc'd shadow data, unrelated to the components'.
+These helpers let a function return a `Tracked<&T>` inside a tuple and still state its pointer
+(used by rustlib's verified `ptr::cast_ref_to_ptr`).
+They're generic in the component types, not specific to references.
+
+```rust
+pub uninterp spec fn tracked_shadow<T>(s: ShadowData<T>) -> ShadowData<Tracked<T>>;
+pub uninterp spec fn untracked_shadow<T>(s: ShadowData<Tracked<T>>) -> ShadowData<T>;
+pub uninterp spec fn pair_shadow<A, B>(a: ShadowData<A>, b: ShadowData<B>) -> ShadowData<(A, B)>;
+pub uninterp spec fn pair_shadow_0<A, B>(s: ShadowData<(A, B)>) -> ShadowData<A>;
+pub uninterp spec fn pair_shadow_1<A, B>(s: ShadowData<(A, B)>) -> ShadowData<B>;
+
+// group_shadow_data_axioms (not in group_vstd_default)
+pub broadcast axiom fn axiom_untracked_shadow<T>(s: ShadowData<T>)
+    ensures #[trigger] untracked_shadow(tracked_shadow(s)) == s;
+pub broadcast axiom fn axiom_pair_shadow_0<A, B>(a: ShadowData<A>, b: ShadowData<B>)
+    ensures #[trigger] pair_shadow_0(pair_shadow(a, b)) == a;
+pub broadcast axiom fn axiom_pair_shadow_1<A, B>(a: ShadowData<A>, b: ShadowData<B>)
+    ensures #[trigger] pair_shadow_1(pair_shadow(a, b)) == b;
+
+#[verifier::shadow_data]
+#[verifier::external_body]
+pub const fn tracked_with_shadow<T>(x: T) -> (t: Tracked<T>)
+    ensures
+        t@ == x,
+        shadow_data(t) == tracked_shadow(shadow_data(x)),
+{
+    core::mem::forget(x);
+    Tracked::assume_new()
+}
+
+#[verifier::shadow_data]
+#[verifier::external_body]
+pub proof fn untracked_with_shadow<T>(tracked t: Tracked<T>) -> (tracked x: T)
+    ensures
+        x == t@,
+        shadow_data(x) == untracked_shadow(shadow_data(t)),
+{
+    t.get()
+}
+
+#[verifier::shadow_data]
+#[verifier::external_body]
+pub const fn pair_with_shadow<A, B>(a: A, b: B) -> (p: (A, B))
+    ensures
+        p == (a, b),
+        shadow_data(p) == pair_shadow(shadow_data(a), shadow_data(b)),
+{
+    (a, b)
+}
+
+// pair_1_with_shadow: the same, for `p.1` and `pair_shadow_1`
+#[verifier::shadow_data]
+#[verifier::external_body]
+pub const fn pair_0_with_shadow<A: Copy, B: Copy>(p: (A, B)) -> (a: A)
+    ensures
+        a == p.0,
+        shadow_data(a) == pair_shadow_0(shadow_data(p)),
+{
+    p.0
+}
+```
 
 ## Mutable borrows (`ptr_specs.rs`)
 
@@ -322,11 +388,21 @@ it is now `ptr_eq_up_to_tag(v.ptr(), ptr)`, which also gives the provenance apar
   final(val).inv() ==> pt_parts_wf_str(ptr@, *final(pt_untyped), *final(typed_value)),
   ```
 
-**Reference-to-pointer casts:** `<[T]>::as_slice_ptr` (`core/src/slice/mod.rs`) and `str::as_str_ptr` (`core/src/str/mod.rs`)
+**Reference-to-pointer casts:** `ptr::from_ref` (`core/src/ptr/mod.rs`), `<[T]>::as_slice_ptr` (`core/src/slice/mod.rs`) and `str::as_str_ptr` (`core/src/str/mod.rs`)
 are `external_body`, giving only the pointer.
-They replace `as_slice_ptr_verus` / `as_str_ptr_verus`, which also gave a `&PointsTo`; callers get it with `ref_to_parts*`.
+`as_slice_ptr` and `as_str_ptr` replace `as_slice_ptr_verus` / `as_str_ptr_verus`, which also gave a `&PointsTo`; callers get it with `ref_to_parts*`.
+Their bodies stay as std's casts rather than calls to `from_ref`, so std's exec code is unchanged.
 
 ```rust
+#[verifier::shadow_data]
+#[verifier::external_body] // Ok - cast from `&T` to `*const T`
+pub const fn from_ref<T: PointeeSized>(r: &T) -> *const T
+    returns
+        shared_ref_ptr(shadow_data(r)),
+{
+    r
+}
+
 #[verifier::shadow_data]
 #[verifier::external_body] // Ok - cast from `&self` to `*const [T]`
 pub const fn as_slice_ptr(&self) -> *const [T]
@@ -336,6 +412,21 @@ pub const fn as_slice_ptr(&self) -> *const [T]
     self as *const [T]
 }
 // str::as_str_ptr: the same, with `requires self.inv()`
+```
+
+For `from_ref`, vstd's `shared_ref_ptr` is bounded by `T: PointeeSized` (was `T: ?Sized`), matching the pointer model (`PtrData`, the pointer `View` impls).
+This gives no new facts: `shared_ref_ptr` is `uninterp`,
+and the axioms that relate it to memory (`ref_to_parts`, `ref_to_parts_slice`) are for `T: Sized` and `[T]`.
+
+`ptr::cast_ref_to_ptr` (not in std) is verified over `from_ref` and the [shadow data helpers](#shadow-data-of-compound-values-ptr_specsrs):
+
+```rust
+#[verifier::shadow_data]
+pub const fn cast_ref_to_ptr<'a, T: PointeeSized>(r: &'a T) -> (res: (*const T, Tracked<&'a T>))
+    ensures
+        res.0 == shared_ref_ptr(shadow_data(r)),
+        shared_ref_ptr(untracked_shadow(pair_shadow_1(shadow_data(res)))) == res.0,
+        res.1@ == r,
 ```
 
 **`Box`** (`alloc/src/boxed.rs`): `from_raw_in_verus` and `into_non_null_with_allocator_verus` are verified wrappers over:

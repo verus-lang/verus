@@ -392,7 +392,102 @@ pointer_specs!(ptr_const_specs, ptr_from_data, const);
 // Shared and mutable reference specs
 ////////////////////////////////////////
 /// Extracts the pointer from the shadow data of a shared reference.
-pub uninterp spec fn shared_ref_ptr<T: ?Sized>(s: ShadowData<&T>) -> *const T;
+pub uninterp spec fn shared_ref_ptr<T: core::marker::PointeeSized>(s: ShadowData<&T>) -> *const T;
+
+////////////////////////////////////////
+// Shadow data of compound values
+////////////////////////////////////////
+/// The shadow data of `Tracked(x)`, given the shadow data of `x`.
+pub uninterp spec fn tracked_shadow<T>(s: ShadowData<T>) -> ShadowData<Tracked<T>>;
+
+/// The shadow data of `t@`, given the shadow data of `t`.
+pub uninterp spec fn untracked_shadow<T>(s: ShadowData<Tracked<T>>) -> ShadowData<T>;
+
+/// The shadow data of `(a, b)`, given the shadow data of `a` and of `b`.
+pub uninterp spec fn pair_shadow<A, B>(a: ShadowData<A>, b: ShadowData<B>) -> ShadowData<(A, B)>;
+
+/// The shadow data of `p.0`, given the shadow data of `p`.
+pub uninterp spec fn pair_shadow_0<A, B>(s: ShadowData<(A, B)>) -> ShadowData<A>;
+
+/// The shadow data of `p.1`, given the shadow data of `p`.
+pub uninterp spec fn pair_shadow_1<A, B>(s: ShadowData<(A, B)>) -> ShadowData<B>;
+
+pub broadcast axiom fn axiom_untracked_shadow<T>(s: ShadowData<T>)
+    ensures
+        #[trigger] untracked_shadow(tracked_shadow(s)) == s,
+;
+
+pub broadcast axiom fn axiom_pair_shadow_0<A, B>(a: ShadowData<A>, b: ShadowData<B>)
+    ensures
+        #[trigger] pair_shadow_0(pair_shadow(a, b)) == a,
+;
+
+pub broadcast axiom fn axiom_pair_shadow_1<A, B>(a: ShadowData<A>, b: ShadowData<B>)
+    ensures
+        #[trigger] pair_shadow_1(pair_shadow(a, b)) == b,
+;
+
+pub broadcast group group_shadow_data_axioms {
+    axiom_untracked_shadow,
+    axiom_pair_shadow_0,
+    axiom_pair_shadow_1,
+}
+
+/// Wraps `x` in `Tracked`, keeping its shadow data.
+#[verifier::shadow_data]
+#[verifier::external_body]
+pub const fn tracked_with_shadow<T>(x: T) -> (t: Tracked<T>)
+    ensures
+        t@ == x,
+        shadow_data(t) == tracked_shadow(shadow_data(x)),
+{
+    core::mem::forget(x);
+    Tracked::assume_new()
+}
+
+/// Unwraps `t`, keeping its shadow data.
+#[verifier::shadow_data]
+#[verifier::external_body]
+pub proof fn untracked_with_shadow<T>(tracked t: Tracked<T>) -> (tracked x: T)
+    ensures
+        x == t@,
+        shadow_data(x) == untracked_shadow(shadow_data(t)),
+{
+    t.get()
+}
+
+/// Builds the pair `(a, b)`, keeping the shadow data of `a` and `b`.
+#[verifier::shadow_data]
+#[verifier::external_body]
+pub const fn pair_with_shadow<A, B>(a: A, b: B) -> (p: (A, B))
+    ensures
+        p == (a, b),
+        shadow_data(p) == pair_shadow(shadow_data(a), shadow_data(b)),
+{
+    (a, b)
+}
+
+/// Gets `p.0`, keeping its shadow data.
+#[verifier::shadow_data]
+#[verifier::external_body]
+pub const fn pair_0_with_shadow<A: Copy, B: Copy>(p: (A, B)) -> (a: A)
+    ensures
+        a == p.0,
+        shadow_data(a) == pair_shadow_0(shadow_data(p)),
+{
+    p.0
+}
+
+/// Gets `p.1`, keeping its shadow data.
+#[verifier::shadow_data]
+#[verifier::external_body]
+pub const fn pair_1_with_shadow<A: Copy, B: Copy>(p: (A, B)) -> (b: B)
+    ensures
+        b == p.1,
+        shadow_data(b) == pair_shadow_1(shadow_data(p)),
+{
+    p.1
+}
 
 ////////////////////////////////////////
 // Mutable reference conversions
