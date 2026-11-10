@@ -11,7 +11,6 @@ use super::points_to_structs::*;
 use super::ptr_model;
 use super::ptr_model::*;
 use super::ptr_specs::*;
-use super::shared_reference::*;
 
 verus! {
 
@@ -144,116 +143,6 @@ pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut Poi
 {
     let tracked val = perm.borrow_mut();
     ptr_mut_ref_join(ptr, Tracked(val))
-}
-
-// TODO(verify-rustlib-transmute-v2): `ptr_ref2`, `ptr_ref2_ghost`, `ptr_ref2_slice_ghost`
-// and the two `SharedReference::points_to` impls below are deleted there, with `SharedReference`.
-/// Like [`ptr_ref`] but returns a `SharedReference` so it keeps track of the relationship
-/// between the pointers.
-/// Note the resulting reference's pointers does NOT have the same provenance.
-/// This is because in Rust models like Stacked Borrows / Tree Borrows, the pointer
-/// gets a new tag.
-#[inline(always)]
-pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: SharedReference<
-    'a,
-    T,
->)
-    requires
-        perm.ptr() == ptr,
-        perm.is_valid(),
-        perm.wf(),
-    ensures
-        v.value() == perm.value(),
-        ptr_eq_up_to_tag(v.ptr(), ptr),
-    opens_invariants none
-    no_unwind
-{
-    proof {
-        PointsTo::<T>::lemma_pt_parts_wf(*perm);
-    }
-    let tracked pt_unaligned = perm.tracked_pt_unaligned();
-    ptr_ref2_untyped_with_typed_value(
-        ptr,
-        Tracked(pt_unaligned.tracked_pt_untyped()),
-        Tracked(pt_unaligned.tracked_typed_value()),
-    )
-}
-
-/// Same as [`ptr_ref2`], but operates on ghost values.
-/// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
-pub proof fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) -> (tracked v:
-    SharedReference<'a, T>)
-    requires
-        perm.ptr() == ptr,
-        perm.is_valid(),
-        perm.wf(),
-    ensures
-        v.value() == perm.value(),
-        v.ptr() == ptr,
-{
-    PointsTo::<T>::lemma_pt_parts_wf(*perm);
-    let tracked pt_unaligned = perm.tracked_pt_unaligned();
-    ptr_ref2_ghost_untyped_with_typed_value(
-        ptr,
-        pt_unaligned.tracked_pt_untyped(),
-        pt_unaligned.tracked_typed_value(),
-    )
-}
-
-/// The ghost version of `ptr_ref2` for slices.
-/// Because this doesn't constitute a retag,
-/// the returned value's pointer has the same provenance as the original pointer.
-pub proof fn ptr_ref2_slice_ghost<'a, T>(
-    ptr: *const [T],
-    tracked perm: &PointsTo<[T]>,
-) -> (tracked v: SharedReference<'a, [T]>)
-    requires
-        perm.ptr() == ptr,
-        perm.is_valid(),
-        perm.wf(),
-    ensures
-        v.value()@ == perm.value(),
-        v.ptr() == ptr,
-{
-    PointsTo::<[T]>::lemma_pt_parts_wf(*perm);
-    let tracked pt_unaligned = perm.tracked_pt_unaligned();
-    ptr_ref2_slice_ghost_untyped_with_typed_value(
-        ptr,
-        pt_unaligned.tracked_pt_untyped(),
-        pt_unaligned.tracked_typed_value(),
-    )
-}
-
-impl<'a, T> SharedReference<'a, T> {
-    // NOTE: there does not exist a points_to_unaligned function because SharedReference
-    // by definition gives you an _aligned_ PointsTo.
-    // https://doc.rust-lang.org/std/primitive.reference.html
-    pub proof fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
-        ensures
-            pt.ptr() == self.ptr(),
-            pt.is_valid(),
-            pt.value() == self.value(),
-            pt.wf(),
-    {
-        let ghost ptr = self.ptr();
-        let tracked (pt_untyped, typed_value) = self.pt_untyped_and_typed_value();
-        points_to_from_parts_ref(ptr as *mut T, pt_untyped, typed_value)
-    }
-}
-
-impl<'a, T> SharedReference<'a, [T]> {
-    /// A shared slice reference gives a shared, valid slice permission.
-    pub proof fn points_to(tracked self) -> (tracked pt: &'a PointsTo<[T]>)
-        ensures
-            pt.ptr() == self.ptr(),
-            pt.is_valid(),
-            pt.value() == self.value()@,
-            pt.wf(),
-    {
-        let ghost ptr = self.ptr();
-        let tracked (pt_untyped, typed_value) = self.pt_untyped_and_typed_value();
-        points_to_from_parts_ref_slice(ptr as *mut [T], pt_untyped, typed_value)
-    }
 }
 
 /// A shared reference gives a shared, valid permission for its memory, at its pointer.

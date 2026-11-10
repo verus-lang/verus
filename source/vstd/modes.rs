@@ -35,26 +35,76 @@ pub axiom fn tracked_static_mut_ref<V>(tracked v: V) -> (tracked res: &'static m
         *res == v,
 ;
 
-// TODO(verify-rustlib-transmute-v2): replaced there by `unsafe trait TrivialOwnership`
-// (with `type_inv`, impls for the primitives, raw pointers and `[T]`)
-// and a free `tracked_from_spec<T: ?Sized + TrivialOwnership>(v: &T) -> Tracked<T>`
-// that requires `type_inv` and `spec_size_of_val(v) <= isize::MAX`.
 /// Types whose values own no resources (no permissions, tokens or other tracked data),
 /// so any spec value can be used as a tracked one.
-pub trait TrivialOwnership: Sized {
-    /// Makes a spec value tracked.
-    proof fn tracked_from_spec(v: Self) -> (tracked out: Self)
-        ensures
-            out == v,
-    ;
+pub unsafe trait TrivialOwnership {
+    /// Any type invariants on `self`.
+    /// Specs marked with `#[verifier::type_invariant]` should be included here.
+    spec fn type_inv(&self) -> bool;
 }
 
-impl TrivialOwnership for u32 {
-    axiom fn tracked_from_spec(v: Self) -> (tracked out: Self);
+/// Makes a spec value tracked, for any type that owns no resources.
+/// The value must fit in an allocation.
+pub axiom fn tracked_from_spec<T: ?Sized + TrivialOwnership>(v: &T) -> (tracked out: Tracked<T>)
+    requires
+        v.type_inv(),
+        // TODO(real-ptr-flag): remove this bound, and the doc line "The value must fit in an allocation.",
+        // once pointers have an `is_real` flag.
+        // Until then, it stops a made-up value too large for memory from giving a well-formed `PointsTo`.
+        super::layout::spec_size_of_val::<T>(v) <= isize::MAX,
+    ensures
+        &*out == v,
+;
+
+/// Implements `TrivialOwnership` with a trivial type invariant for a given type.
+/// The type must own no resources (no permissions, tokens or other tracked data)
+/// and must not have a `#[verifier::type_invariant]`.
+macro_rules! impl_trivial_ownership {
+    ($($t:ty),* $(,)?) => {$(
+        verus! {
+            unsafe impl TrivialOwnership for $t {
+                open spec fn type_inv(&self) -> bool {
+                    true
+                }
+            }
+        }
+    )*};
 }
 
-impl TrivialOwnership for usize {
-    axiom fn tracked_from_spec(v: Self) -> (tracked out: Self);
+impl_trivial_ownership!(
+    u8,
+    u16,
+    u32,
+    u64,
+    u128,
+    usize,
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    isize,
+    bool,
+    (),
+    char,
+);
+
+unsafe impl<T> TrivialOwnership for *const T {
+    open spec fn type_inv(&self) -> bool {
+        true
+    }
+}
+
+unsafe impl<T> TrivialOwnership for *mut T {
+    open spec fn type_inv(&self) -> bool {
+        true
+    }
+}
+
+unsafe impl<T: TrivialOwnership> TrivialOwnership for [T] {
+    open spec fn type_inv(&self) -> bool {
+        forall|i| 0 <= i < self@.len() ==> #[trigger] self@[i].type_inv()
+    }
 }
 
 } // verus!

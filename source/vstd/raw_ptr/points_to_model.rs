@@ -7,6 +7,7 @@ use super::super::modes::tracked_ref;
 use super::super::prelude::*;
 #[cfg(verus_keep_ghost)]
 use super::super::type_representation::*;
+use super::abstract_bytes::*;
 use super::ptr_model;
 use super::ptr_model::*;
 
@@ -435,6 +436,24 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             *final(s) == final(out).seq_pt(),
     ;
 
+    // TODO(real-ptr-flag): remove, with its callers, once pointers have an `is_real` flag.
+    // It only proves the `isize::MAX` bounds on `from_elems_ref`/`from_elems_mut` and `tracked_from_spec`.
+    /// The memory fits in an allocation:
+    /// it takes at most `isize::MAX` bytes.
+    pub proof fn lemma_size_bound(tracked &self)
+        requires
+            self.wf_basic(),
+        ensures
+            Self::size(self.ptr()@.metadata) <= isize::MAX,
+    {
+        broadcast use ptr_model::provenance_properties;
+
+        if Self::size(self.ptr()@.metadata) != 0 {
+            self.provenance_not_none();
+            self.ptr_bounds();
+        }
+    }
+
     /// Permissions with the same sequence of permissions and pointer are equal.
     pub proof fn lemma_ext(a: Self, b: Self)
         requires
@@ -557,8 +576,15 @@ impl<T> TypedValue<[T]> {
     // there it requires `elems.len() <= usize::MAX, elems.len() * size_of::<T>() <= isize::MAX`.
     /// A sequence of borrows of typed values acts as one borrow of a slice typed value.
     /// If any element is empty, the slice is empty.
+    /// The slice length must fit in a `usize`.
     pub axiom fn from_elems_ref<'a>(tracked elems: Seq<&'a TypedValue<T>>) -> (tracked out:
         &'a TypedValue<[T]>)
+        requires
+            elems.len() <= usize::MAX,
+            // TODO(real-ptr-flag): remove this bound once pointers have an `is_real` flag.
+            // Until then, it stops a slice too large for memory from giving a well-formed `PointsTo`.
+            // The `usize::MAX` bound above stays.
+            elems.len() * size_of::<T>() <= isize::MAX,
         ensures
     // Valid with the elements' values if every element is valid
     // (a zero-length Seq counts as valid); otherwise empty.
@@ -574,8 +600,15 @@ impl<T> TypedValue<[T]> {
     // TODO(verify-rustlib-transmute-v2): gets the same length bound as `from_elems_ref` there.
     /// A sequence of mutable borrows of typed values acts as one mutable borrow of a slice typed value.
     /// If any element is empty, the slice starts empty.
+    /// The slice length must fit in a `usize`.
     pub axiom fn from_elems_mut<'a>(tracked elems: Seq<&'a mut TypedValue<T>>) -> (tracked out:
         &'a mut TypedValue<[T]>)
+        requires
+            elems.len() <= usize::MAX,
+            // TODO(real-ptr-flag): remove this bound once pointers have an `is_real` flag.
+            // Until then, it stops a slice too large for memory from giving a well-formed `PointsTo`.
+            // The `usize::MAX` bound above stays.
+            elems.len() * size_of::<T>() <= isize::MAX,
         ensures
     // Initially: valid with the elements' values if every element is valid
     // (a zero-length Seq counts as valid); otherwise empty.
@@ -613,7 +646,7 @@ pub open spec fn pt_unaligned_parts_wf<T>(
     &&& pt_untyped.ptr()@.addr == ptr.addr
     &&& pt_untyped.ptr()@.provenance == ptr.provenance
     &&& pt_untyped.len() == size_of::<T>()
-    &&& typed_value.is_valid() ==> abs_decode(pt_untyped.bytes(), typed_value.value_ref())
+    &&& typed_value.is_valid() ==> abstract_bytes_decode(pt_untyped.bytes(), typed_value.value_ref())
 }
 
 /// `pt_untyped` and `typed_value` are the parts of a well-formed `PointsTo<T>` for a pointer with view `ptr`.
@@ -638,7 +671,7 @@ pub open spec fn pt_parts_wf_slice<T>(
     &&& pt_untyped.len() == ptr.metadata * size_of::<T>()
     &&& ptr.addr as nat % align_of::<T>() == 0
     &&& typed_value.is_valid() ==> {
-        &&& abs_decode(pt_untyped.bytes(), typed_value.value_ref())
+        &&& abstract_bytes_decode(pt_untyped.bytes(), typed_value.value_ref())
         &&& typed_value.value_ref()@.len() == ptr.metadata
     }
 }

@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+use super::abstract_bytes::*;
 use super::points_to_model::*;
 use super::points_to_ops::*;
 use super::points_to_structs::*;
@@ -676,7 +677,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             forall|i: int|
                 0 <= i < len ==> {
-                    &&& (#[trigger] self.seq_typed_value()[i]).is_valid() ==> abs_decode::<T>(
+                    &&& (#[trigger] self.seq_typed_value()[i]).is_valid()
+                        ==> abstract_bytes_decode::<T>(
                         self.seq_pt()[i].bytes(),
                         &self.seq_typed_value()[i].value(),
                     )
@@ -698,7 +700,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             forall|i: int|
                 0 <= i < self.len() ==> {
-                    &&& (#[trigger] self.seq_typed_value()[i]).is_valid() ==> abs_decode::<T>(
+                    &&& (#[trigger] self.seq_typed_value()[i]).is_valid()
+                        ==> abstract_bytes_decode::<T>(
                         self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
                         &self.seq_typed_value()[i].value(),
                     )
@@ -1034,7 +1037,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             0 <= start <= start + val.len() <= self.len(),
             forall|i: int|
                 0 <= i < val.len() ==> {
-                    (#[trigger] val[i]).is_valid() ==> abs_decode::<T>(
+                    (#[trigger] val[i]).is_valid() ==> abstract_bytes_decode::<T>(
                         self.bytes().subrange(
                             (start + i) * size_of::<T>(),
                             (start + i + 1) * size_of::<T>(),
@@ -1100,7 +1103,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             0 <= start <= start + val.len() <= self.len(),
             forall|i: int|
                 0 <= i < val.len() ==> {
-                    (#[trigger] val[i]).is_valid() ==> abs_decode::<T>(
+                    (#[trigger] val[i]).is_valid() ==> abstract_bytes_decode::<T>(
                         self.bytes().subrange(
                             (start + i) * size_of::<T>(),
                             (start + i + 1) * size_of::<T>(),
@@ -1204,7 +1207,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             0 <= start <= start + val.len() <= self.len(),
             forall|i: int|
                 0 <= i < val.len() ==> {
-                    abs_decode::<T>(
+                    abstract_bytes_decode::<T>(
                         self.bytes().subrange(
                             (start + i) * size_of::<T>(),
                             (start + i + 1) * size_of::<T>(),
@@ -1278,7 +1281,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             0 <= start <= start + val.len() <= self.len(),
             forall|i: int|
                 0 <= i < val.len() ==> {
-                    abs_decode::<T>(
+                    abstract_bytes_decode::<T>(
                         self.bytes().subrange(
                             (start + i) * size_of::<T>(),
                             (start + i + 1) * size_of::<T>(),
@@ -1487,9 +1490,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             pt_untyped.len() == capacity * size_of::<T>(),
             typed_value.len() <= capacity,
             forall|i: int|
-                0 <= i < typed_value.len() && typed_value[i].is_valid() ==> #[trigger] abs_decode::<
-                    T,
-                >(
+                0 <= i < typed_value.len() && typed_value[i].is_valid()
+                    ==> #[trigger] abstract_bytes_decode::<T>(
                     pt_untyped.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
                     &typed_value[i].value(),
                 ),
@@ -1568,7 +1570,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             // Invoke the inductive hypothesis on the head
             assert forall|i: int|
                 0 <= i < head_typed_value.len()
-                    && head_typed_value[i].is_valid() implies #[trigger] abs_decode::<T>(
+                    && head_typed_value[i].is_valid() implies #[trigger] abstract_bytes_decode::<T>(
                 head.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
                 &head_typed_value[i].value(),
             ) by {
@@ -1879,12 +1881,15 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             !self.is_valid() ==> out.typed_value().is_empty(),
             out.wf(),
     {
-        broadcast use group_vstd_default, abs_decode_slice;
+        broadcast use group_vstd_default, abstract_bytes_decode_slice;
 
         let n = self.len();
         let s = size_of::<T>() as int;
         let tracked pt_untyped = self.as_untyped();
         let tracked elems = self.borrow_typed_values(0, n);
+        // TODO(real-ptr-flag): remove once pointers have an `is_real` flag
+        // (proves `from_elems_ref`'s `isize::MAX` bound).
+        self.lemma_size_bound();
         let tracked typed_value = TypedValue::<[T]>::from_elems_ref(elems);
         self.bytes_len();
         match typed_value {
@@ -1894,7 +1899,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     assert(elems[i].is_valid());
                 }
                 self.bytes_decode();
-                assert forall|i: int| 0 <= i < value@.len() implies abs_decode::<T>(
+                assert forall|i: int| 0 <= i < value@.len() implies abstract_bytes_decode::<T>(
                     pt_untyped.bytes().subrange(i * s, (i + 1) * s),
                     &#[trigger] value@[i],
                 ) by {}
@@ -2070,7 +2075,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 &&& final(self).wf()
             },
     {
-        broadcast use group_vstd_default, abs_decode_slice;
+        broadcast use group_vstd_default, abstract_bytes_decode_slice;
 
         let old_self = *self;
         let self_ref = self;
@@ -2078,6 +2083,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         let s = size_of::<T>() as int;
         self.bytes_len();
         self.bytes_decode();
+        // TODO(real-ptr-flag): remove once pointers have an `is_real` flag
+        // (proves `from_elems_mut`'s `isize::MAX` bound).
+        self.lemma_size_bound();
         let base = self.thin_ptr();
         let tracked perms = self.tracked_seq_pt_mut();
         let perms_ref = perms;
@@ -2099,7 +2107,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         // The slice permission is well-formed
         if unaligned.typed_value().is_valid() {
             let value = unaligned.typed_value().value_ref();
-            assert forall|i: int| 0 <= i < value@.len() implies abs_decode::<T>(
+            assert forall|i: int| 0 <= i < value@.len() implies abstract_bytes_decode::<T>(
                 unaligned.bytes().subrange(i * s, (i + 1) * s),
                 &#[trigger] value@[i],
             ) by {
@@ -2128,7 +2136,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 && new_self[i].wf_basic() by {
                 assert(new_self[i] == final(perms_ref)[i]);
                 if final_unaligned.typed_value().is_valid() {
-                    assert(abs_decode::<T>(
+                    assert(abstract_bytes_decode::<T>(
                         final_unaligned.bytes().subrange(i * s, (i + 1) * s),
                         &final_unaligned.value()[i],
                     ));
