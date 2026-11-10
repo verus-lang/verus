@@ -168,7 +168,11 @@ pub proof fn shr_ref_points_to_slice<'a, T>(tracked r: &'a [T]) -> (tracked pt: 
         pt.wf(),
 {
     let tracked (pt_untyped, typed_value) = ref_to_parts_slice(r);
-    points_to_from_parts_ref_slice(shared_ref_ptr(shadow_data(r)) as *mut [T], pt_untyped, typed_value)
+    points_to_from_parts_ref_slice(
+        shared_ref_ptr(shadow_data(r)) as *mut [T],
+        pt_untyped,
+        typed_value,
+    )
 }
 
 /// The length of a `&[T]` matches the metadata of its pointer.

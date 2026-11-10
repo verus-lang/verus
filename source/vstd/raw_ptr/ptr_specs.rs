@@ -256,10 +256,10 @@ pub const fn ptr_shr_ref<'a, T: ?Sized>(ptr: *const T, Tracked(r): Tracked<&'a T
 
 /// A shared reference gives the parts of a shared permission for its memory, at its pointer.
 #[verifier::shadow_data]
-pub axiom fn ref_to_parts<'a, T>(tracked r: &'a T) -> (tracked (
-    pt_untyped,
-    typed_value,
-): (&'a PointsToUntyped, &'a TypedValue<T>))
+pub axiom fn ref_to_parts<'a, T>(tracked r: &'a T) -> (tracked (pt_untyped, typed_value): (
+    &'a PointsToUntyped,
+    &'a TypedValue<T>,
+))
     ensures
         pt_parts_wf(shared_ref_ptr(shadow_data(r))@, *pt_untyped, *typed_value),
         typed_value.is_valid(),
@@ -268,10 +268,10 @@ pub axiom fn ref_to_parts<'a, T>(tracked r: &'a T) -> (tracked (
 
 /// A shared slice reference gives the parts of a shared permission for its memory, at its pointer.
 #[verifier::shadow_data]
-pub axiom fn ref_to_parts_slice<'a, T>(tracked r: &'a [T]) -> (tracked (
-    pt_untyped,
-    typed_value,
-): (&'a PointsToUntyped, &'a TypedValue<[T]>))
+pub axiom fn ref_to_parts_slice<'a, T>(tracked r: &'a [T]) -> (tracked (pt_untyped, typed_value): (
+    &'a PointsToUntyped,
+    &'a TypedValue<[T]>,
+))
     ensures
         pt_parts_wf_slice(shared_ref_ptr(shadow_data(r))@, *pt_untyped, *typed_value),
         typed_value.is_valid(),

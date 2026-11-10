@@ -816,7 +816,10 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             },
         );
 
-        let tracked seq_pt = self.tracked_seq_pt().tracked_borrow_subrange(start as int, end as int);
+        let tracked seq_pt = self.tracked_seq_pt().tracked_borrow_subrange(
+            start as int,
+            end as int,
+        );
         let tracked sub = Self::from_seq_ref(seq_pt, sub_ptr);
 
         assert forall|i: int| 0 <= i < sub.len() implies {
@@ -1939,11 +1942,7 @@ impl<T> PointsTo<T> {
         let self_ref = self;
         PointsTo::<T>::lemma_pt_parts_wf(old_self);
         let tracked (pt_untyped, typed_value) = self.as_raw_parts_mut().as_raw_parts_mut();
-        let tracked val = mut_ref_from_parts(
-            old_self.ptr(),
-            pt_untyped,
-            typed_value,
-        );
+        let tracked val = mut_ref_from_parts(old_self.ptr(), pt_untyped, typed_value);
         PointsTo::<T>::lemma_pt_parts_wf(*final(self_ref));
         val
     }
@@ -2374,11 +2373,7 @@ impl<T> PointsTo<[T]> {
         let self_ref = self;
         PointsTo::<[T]>::lemma_pt_parts_wf(old_self);
         let tracked (pt_untyped, typed_value) = self.as_raw_parts_mut().as_raw_parts_mut();
-        let tracked val = mut_ref_from_parts_slice(
-            old_self.ptr(),
-            pt_untyped,
-            typed_value,
-        );
+        let tracked val = mut_ref_from_parts_slice(old_self.ptr(), pt_untyped, typed_value);
         PointsTo::<[T]>::lemma_pt_parts_wf(*final(self_ref));
         val
     }

@@ -63,7 +63,7 @@ pub trait PTPhys: Sized + PTPhysSealed {
             new.wf_basic(),
     ;
 
-    /// Ensures that the permission actually holds a `PointsToByte` permission 
+    /// Ensures that the permission actually holds a `PointsToByte` permission
     /// for every byte in its memory range.
     proof fn borrow_byte(tracked &self, addr: int) -> (tracked b: &PointsToByte)
         requires
@@ -225,7 +225,7 @@ impl PointsToByte {
     /// The byte that this permission tracks.
     pub uninterp spec fn byte(self) -> AbstractByte;
 
-    /// Guarantees that the byte associated with this permission 
+    /// Guarantees that the byte associated with this permission
     /// is not associated with any other `PointsToByte` permission.
     /// (`self` is an &mut reference to enforce distinctness,
     /// so you cannot pass the same `PointsToByte` as both arguments.)
@@ -646,7 +646,10 @@ pub open spec fn pt_unaligned_parts_wf<T>(
     &&& pt_untyped.ptr()@.addr == ptr.addr
     &&& pt_untyped.ptr()@.provenance == ptr.provenance
     &&& pt_untyped.len() == size_of::<T>()
-    &&& typed_value.is_valid() ==> abstract_bytes_decode(pt_untyped.bytes(), typed_value.value_ref())
+    &&& typed_value.is_valid() ==> abstract_bytes_decode(
+        pt_untyped.bytes(),
+        typed_value.value_ref(),
+    )
 }
 
 /// `pt_untyped` and `typed_value` are the parts of a well-formed `PointsTo<T>` for a pointer with view `ptr`.
