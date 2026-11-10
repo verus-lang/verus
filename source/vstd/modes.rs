@@ -35,6 +35,10 @@ pub axiom fn tracked_static_mut_ref<V>(tracked v: V) -> (tracked res: &'static m
         *res == v,
 ;
 
+// TODO(verify-rustlib-transmute-v2): replaced there by `unsafe trait TrivialOwnership`
+// (with `type_inv`, impls for the primitives, raw pointers and `[T]`)
+// and a free `tracked_from_spec<T: ?Sized + TrivialOwnership>(v: &T) -> Tracked<T>`
+// that requires `type_inv` and `spec_size_of_val(v) <= isize::MAX`.
 /// Types whose values own no resources (no permissions, tokens or other tracked data),
 /// so any spec value can be used as a tracked one.
 pub trait TrivialOwnership: Sized {

@@ -2595,6 +2595,8 @@ impl<T> PointsTo<[T]> {
         lemma_abs_decode_to_big::<V, T>(self.bytes(), digits, v);
 
         let tracked typed_value: &TypedValue<V> = crate::vstd::modes::tracked_static_ref(
+            // TODO(verify-rustlib-transmute-v2): becomes `TypedValue::Valid(tracked_from_spec(&v))` there,
+            // with a proof of its size bound.
             TypedValue::Valid(Tracked(V::tracked_from_spec(v))),
         );
         PointsToUnaligned::<V>::from_raw_parts_ref(self.as_untyped(), typed_value, ())

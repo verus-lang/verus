@@ -6,6 +6,10 @@ use super::ptr_specs::ptr_eq_up_to_tag;
 
 verus! {
 
+// TODO(verify-rustlib-transmute-v2): this file is deleted there (`SharedReference` is unused),
+// along with the `ptr_ref2*` wrappers and `SharedReference::points_to` in `ptr_verified_specs.rs`.
+// The `ptr_ref2*` functions here are also unsound:
+// their output lifetime `'a` isn't tied to the borrowed parts.
 /// This is meant to be a replacement for `&'a T` that allows Verus to keep track of
 /// not just the `T` value but the pointer as well.
 /// It would be better to get rid of this and use normal reference types `&'a T`,

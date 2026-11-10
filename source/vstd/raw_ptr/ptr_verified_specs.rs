@@ -146,6 +146,8 @@ pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut Poi
     ptr_mut_ref_join(ptr, Tracked(val))
 }
 
+// TODO(verify-rustlib-transmute-v2): `ptr_ref2`, `ptr_ref2_ghost`, `ptr_ref2_slice_ghost`
+// and the two `SharedReference::points_to` impls below are deleted there, with `SharedReference`.
 /// Like [`ptr_ref`] but returns a `SharedReference` so it keeps track of the relationship
 /// between the pointers.
 /// Note the resulting reference's pointers does NOT have the same provenance.

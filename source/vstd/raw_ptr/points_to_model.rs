@@ -552,6 +552,9 @@ impl<T> TypedValue<T> {
 }
 
 impl<T> TypedValue<[T]> {
+    // TODO(verify-rustlib-transmute-v2): unsound without a length bound
+    // (one shared borrow repeated past `usize::MAX` contradicts `axiom_spec_len`);
+    // there it requires `elems.len() <= usize::MAX, elems.len() * size_of::<T>() <= isize::MAX`.
     /// A sequence of borrows of typed values acts as one borrow of a slice typed value.
     /// If any element is empty, the slice is empty.
     pub axiom fn from_elems_ref<'a>(tracked elems: Seq<&'a TypedValue<T>>) -> (tracked out:
@@ -568,6 +571,7 @@ impl<T> TypedValue<[T]> {
                 ==> out.is_empty(),
     ;
 
+    // TODO(verify-rustlib-transmute-v2): gets the same length bound as `from_elems_ref` there.
     /// A sequence of mutable borrows of typed values acts as one mutable borrow of a slice typed value.
     /// If any element is empty, the slice starts empty.
     pub axiom fn from_elems_mut<'a>(tracked elems: Seq<&'a mut TypedValue<T>>) -> (tracked out:
