@@ -686,6 +686,21 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::clone` which is ignored")
 }
 
+test_verify_one_file_with_options! {
+    #[test] external_derive_attr_stacked ["--no-external-by-default"] => verus_code! {
+        #[derive(Clone, PartialEq, Copy)]
+        #[verifier::external_derive(Clone)]
+        #[verifier::external_derive(PartialEq)]
+        struct X {
+            u: u64,
+        }
+
+        fn test(x: X) {
+            let a = x.clone();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::clone` which is ignored")
+}
+
 test_verify_one_file! {
     #[test] vec_index_nounwind verus_code! {
         use vstd::*;
