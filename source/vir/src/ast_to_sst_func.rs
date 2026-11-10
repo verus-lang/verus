@@ -1025,7 +1025,14 @@ pub fn func_def_to_sst(
         return_opaque_type_eqs: if check_api_safety {
             Arc::new(vec![])
         } else {
-            function.x.return_opaque_type_eqs.clone()
+            Arc::new(
+                function
+                    .x
+                    .return_opaque_type_eqs
+                    .iter()
+                    .map(|eq| (eq.opaque.clone(), eq.hidden.clone()))
+                    .collect(),
+            )
         },
         post_condition: Arc::new(PostConditionSst {
             dest,

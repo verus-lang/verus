@@ -1138,3 +1138,116 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    // Big::d calls f, so f is ordered before A::v unless f depends on impl Tr for A
+    #[test] test_opaque_type_hidden_impl_after_fn_ok verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn v(&self) -> int; }
+        struct A;
+
+        fn f() -> (r: impl Tr)
+            ensures r.v() == 1
+        {
+            A
+        }
+
+        impl Tr for A { spec fn v(&self) -> int { 1 } }
+        trait Big: Tr { fn d(&self) { let _r = f(); } }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_hidden_impl_later_module_ok verus_code! {
+        use vstd::prelude::*;
+        pub trait Tr { spec fn v(&self) -> int; }
+        pub struct A;
+
+        fn f() -> (r: impl Tr)
+            ensures r.v() == 1
+        {
+            A
+        }
+
+        mod m {
+            use super::*;
+            impl Tr for A { open spec fn v(&self) -> int { 1 } }
+        }
+        trait Big: Tr { fn d(&self) { let _r = f(); } }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_hidden_blanket_impl_ok verus_code! {
+        use vstd::prelude::*;
+        trait Foo { spec fn k(&self) -> int; }
+        trait Tr { spec fn v(&self) -> int; }
+        struct A;
+
+        fn f() -> (r: impl Tr)
+            ensures r.v() == 1
+        {
+            A
+        }
+
+        impl<X: Foo> Tr for X { spec fn v(&self) -> int { self.k() + 1 } }
+        impl Foo for A { spec fn k(&self) -> int { 0 } }
+        trait Big: Tr { fn d(&self) { let _r = f(); } }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_hidden_generic_impl_ok verus_code! {
+        use vstd::prelude::*;
+        trait Foo { spec fn k(&self) -> int; }
+        trait Tr { spec fn v(&self) -> int; }
+        struct W<T>(T);
+
+        fn f<T: Foo>(t: T) -> (r: impl Tr)
+            ensures r.v() == t.k() + 1
+        {
+            W(t)
+        }
+
+        impl<T: Foo> Tr for W<T> { spec fn v(&self) -> int { self.0.k() + 1 } }
+        trait Big: Foo + Sized { fn d(self) { let _r = f(self); } }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_hidden_fndef_after_fn_ok verus_code! {
+        use vstd::prelude::*;
+        fn f() -> (r: impl Fn() -> u8)
+            ensures forall|x: u8| call_ensures(r, (), x) ==> x == 5
+        {
+            g
+        }
+
+        fn g() -> (r: u8)
+            ensures r == 5
+        {
+            5
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // e calls f, so f can only be ordered after the spec functions of impl Tr for A
+    #[test] test_opaque_type_hidden_impl_calls_fn_ok verus_code! {
+        use vstd::prelude::*;
+        trait Tr { spec fn v(&self) -> int; fn e(&self); }
+        struct A;
+        impl Tr for A {
+            spec fn v(&self) -> int { 1 }
+            fn e(&self) { let _r = f(); }
+        }
+
+        fn f() -> (r: impl Tr)
+            ensures r.v() == 1
+        {
+            A
+        }
+
+        trait Big: Tr { fn d(&self) { let _r = f(); } }
+    } => Ok(())
+}

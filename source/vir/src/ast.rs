@@ -1719,6 +1719,14 @@ pub enum Opaqueness {
     Revealed { visibility: Visibility },
 }
 
+/// `opaque == hidden` while checking the body, with the impls `hidden` uses for `opaque`'s bounds
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
+pub struct ReturnOpaqueTypeEq {
+    pub opaque: Typ,
+    pub hidden: Typ,
+    pub impl_paths: ImplPaths,
+}
+
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1795,7 +1803,7 @@ pub struct FunctionX {
     /// Body of the function (may be None for foreign functions or for external_body functions)
     pub body: Option<Expr>,
     /// Return-position opaque type equalities available while checking the body.
-    pub return_opaque_type_eqs: Arc<Vec<(Typ, Typ)>>,
+    pub return_opaque_type_eqs: Arc<Vec<ReturnOpaqueTypeEq>>,
     /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
