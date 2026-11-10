@@ -264,3 +264,107 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_implicit_ref verus_code! {
+        // In SST, a deref, a `ref` binding and a method auto-ref all lower to a bare variable;
+        // none of them may copy the shadow data of a reference into a reference to a local copy.
+        #[verifier::shadow_data]
+        proof fn id(tracked x: &u64) -> (tracked r: &u64)
+            ensures
+                shadow_data(r) == shadow_data(x),
+        {
+            x
+        }
+
+        trait SelfRef {
+            #[verifier::shadow_data]
+            proof fn self_ref(tracked &self) -> (tracked r: &Self)
+                ensures
+                    shadow_data(r) == shadow_data(self);
+        }
+
+        impl SelfRef for u64 {
+            proof fn self_ref(tracked &self) -> (tracked r: &Self) {
+                self
+            }
+        }
+
+        #[verifier::shadow_data]
+        proof fn test_ref_binding(tracked r: &u64) {
+            let tracked v: u64 = *r;
+            let tracked ref y = v;
+            let tracked z = id(y);
+            assert(shadow_data(z) == shadow_data(r)); // FAILS
+        }
+
+        #[verifier::shadow_data]
+        proof fn test_match_ref(tracked r: &u64) {
+            let tracked v: u64 = *r;
+            match v {
+                ref y => {
+                    let tracked z = id(y);
+                    assert(shadow_data(z) == shadow_data(r)); // FAILS
+                }
+            }
+        }
+
+        #[verifier::shadow_data]
+        proof fn test_auto_ref(tracked r: &u64) {
+            let tracked v: u64 = *r;
+            let tracked z = v.self_ref();
+            assert(shadow_data(z) == shadow_data(r)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] test_tracked_wrapper verus_code! {
+        // Tracked<T> is transparent for shadow data.
+        #[verifier::shadow_data]
+        #[verifier::external_body]
+        fn same(x: &u64, Tracked(y): Tracked<&u64>)
+            requires
+                shadow_data(x) == shadow_data(y),
+        {
+        }
+
+        #[verifier::shadow_data]
+        fn test_tracked(x: &u64, Tracked(y): Tracked<&u64>)
+            requires
+                shadow_data(x) == shadow_data(y),
+        {
+            let tracked z = y;
+            same(x, Tracked(z));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_method_precise verus_code! {
+        trait SelfRef {
+            #[verifier::shadow_data]
+            proof fn self_ref(tracked &self) -> (tracked r: &Self)
+                ensures
+                    shadow_data(r) == shadow_data(self);
+        }
+
+        impl SelfRef for u64 {
+            proof fn self_ref(tracked &self) -> (tracked r: &Self) {
+                self
+            }
+        }
+
+        #[verifier::shadow_data]
+        proof fn test_concrete(tracked r: &u64) {
+            let tracked z = r.self_ref();
+            assert(shadow_data(z) == shadow_data(r));
+        }
+
+        #[verifier::shadow_data]
+        proof fn test_generic<T: SelfRef>(tracked r: &T) {
+            let tracked z = r.self_ref();
+            assert(shadow_data(z) == shadow_data(r));
+        }
+    } => Ok(())
+}
