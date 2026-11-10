@@ -90,7 +90,6 @@ impl_trivial_ownership!(
     bool,
     (),
     char,
-    str,
 );
 
 unsafe impl<T> TrivialOwnership for *const T {
