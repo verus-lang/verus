@@ -3696,8 +3696,19 @@ fn check_expr(
             Ok((Mode::Spec, proph))
         }
         ExprX::ProphecyDisallowed(reason, e) => {
-            let (mode, proph) =
-                check_expr(ctxt, record, typing, outer_mode, expect, e, outer_proph)?;
+            if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                return Err(error(&expr.span, "cannot use `prophecy_disallowed` in exec mode"));
+            }
+            let mut typing = typing.push_in_pure(true);
+            let (_mode, proph) = check_expr(
+                ctxt,
+                record,
+                &mut typing,
+                outer_mode,
+                Expect(Mode::Spec),
+                e,
+                outer_proph,
+            )?;
             if let Proph::Yes(proph_reason) = &proph {
                 let err = error_with_label(
                     &e.span,
@@ -3706,7 +3717,7 @@ fn check_expr(
                 );
                 return Err(proph_reason.annotate_err(err));
             }
-            Ok((mode, proph))
+            Ok((Mode::Spec, proph))
         }
         ExprX::Await(e) => {
             match (ctxt.fun_mode, outer_mode) {

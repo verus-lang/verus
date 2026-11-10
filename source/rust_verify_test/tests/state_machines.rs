@@ -9696,3 +9696,24 @@ test_verify_one_file! {
         }}
     } => Err(err) => assert_vir_error_msg(err, "prophetic expression not allowed in `if` condition")
 }
+
+test_verify_one_file! {
+    #[test] prophetic_attr_bad_proph_guard IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn q(x: u8) -> u8;
+
+        tokenized_state_machine!{ X {
+            #![verifier::prophetic]
+
+            fields {
+                #[sharding(storage_option)] pub m: Option<u8>,
+            }
+
+            property!{
+                tr(x: u8) {
+                    guard m >= Some(q(x));
+                }
+            }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "prophetic expression not allowed in `guard` statement")
+}
