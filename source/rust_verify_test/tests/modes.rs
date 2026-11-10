@@ -2097,3 +2097,16 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot move from exec place (field `x` from the constructor tail) in non-executable context")
 }
+
+test_verify_one_file! {
+    #[test] no_implies_in_exec verus_code! {
+        fn pick(n: u8) -> (r: u8)
+            ensures r == 1,
+        {
+            match n {
+                _ if verus_builtin::imply(n == 0, false) => 1,
+                _ => 1,
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`implies` operator (`==>`) cannot be used in executable context")
+}

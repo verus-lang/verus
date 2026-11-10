@@ -2061,9 +2061,14 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
         }
         VerusItem::CompilableOpr(CompilableOprItem::Implies) => {
-            // REVIEW: should this really be a 'compilable operator'?
-            // Imply is marked as unimplemented! in verus_builtin.
             record_misc(bctx, expr, MiscCall::Implies);
+
+            if !bctx.in_ghost {
+                return err_span(
+                    expr.span,
+                    "`implies` operator (`==>`) cannot be used in executable context",
+                );
+            }
 
             let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
             mk_expr(ExprX::Logical(LogicalOp::Implies, lhs, rhs))
