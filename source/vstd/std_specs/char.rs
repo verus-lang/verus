@@ -23,7 +23,7 @@ pub open spec fn is_white_space(c: char) -> bool {
 }
 
 #[verifier::allow_in_spec]
-pub assume_specification[ char::is_whitespace ](c: char) -> (res: bool)
+pub assume_specification[ char::is_whitespace ](c: char) -> bool
     returns
         is_white_space(c),
 ;
@@ -34,7 +34,8 @@ pub open spec fn is_ascii(c: char) -> bool {
     c <= '\u{7F}'
 }
 
-pub assume_specification[ char::is_ascii ](c: &char) -> (res: bool)
+#[verifier::allow_in_spec]
+pub assume_specification[ char::is_ascii ](c: &char) -> bool
     returns
         is_ascii(*c),
 ;
@@ -42,37 +43,39 @@ pub assume_specification[ char::is_ascii ](c: &char) -> (res: bool)
 // skip as_ascii, as_ascii_unchecked since they are nightly-only experimental API.
 /// Makes a copy of the value in its ASCII upper case equivalent.
 /// <https://doc.rust-lang.org/std/primitive.char.html#method.to_ascii_uppercase>/
-pub open spec fn to_ascii_uppercase(c: char) -> u32 {
+pub open spec fn to_ascii_uppercase(c: char) -> char {
     if is_ascii_lowercase(c) {
-        (c as u32 - 32) as u32
+        (c as u32 - 32) as char
     } else {
-        c as u32
+        c
     }
 }
 
-pub assume_specification[ char::to_ascii_uppercase ](c: &char) -> (res: char)
-    ensures
-        res as u32 == to_ascii_uppercase(*c),
+#[verifier::allow_in_spec]
+pub assume_specification[ char::to_ascii_uppercase ](c: &char) -> char
+    returns
+        to_ascii_uppercase(*c),
 ;
 
 /// Makes a copy of the value in its ASCII lower case equivalent.
 /// <https://doc.rust-lang.org/std/primitive.char.html#method.to_ascii_lowercase>.
-pub open spec fn to_ascii_lowercase(c: char) -> u32 {
+pub open spec fn to_ascii_lowercase(c: char) -> char {
     if is_ascii_uppercase(c) {
-        (c as u32 + 32) as u32
+        (c as u32 + 32) as char
     } else {
-        c as u32
+        c
     }
 }
 
-pub assume_specification[ char::to_ascii_lowercase ](c: &char) -> (res: char)
-    ensures
-        res as u32 == to_ascii_lowercase(*c),
+#[verifier::allow_in_spec]
+pub assume_specification[ char::to_ascii_lowercase ](c: &char) -> char
+    returns
+        to_ascii_lowercase(*c),
 ;
 
 /// ASCII case-insensitive equality property.
 /// <https://doc.rust-lang.org/std/primitive.char.html#method.eq_ignore_ascii_case>.
-pub assume_specification[ char::eq_ignore_ascii_case ](c: &char, other: &char) -> (res: bool)
+pub assume_specification[ char::eq_ignore_ascii_case ](c: &char, other: &char) -> bool
     returns
         to_ascii_lowercase(*c) == to_ascii_lowercase(*other),
 ;
@@ -91,19 +94,12 @@ pub assume_specification[ char::make_ascii_lowercase ](c: &mut char)
 
 /// ASCII alphabetic property
 /// <https://www.unicode.org/reports/tr18/#character_ranges>.
-pub assume_specification[ char::is_ascii_alphabetic ](c: &char) -> (res: bool)
-    returns
-        ('A' <= *c && *c <= 'Z') || ('a' <= *c && *c
-            <= 'z')
-        // is_ascii_alphabetic(*c),
-        ,
-;
-
 pub open spec fn is_ascii_uppercase(c: char) -> bool {
     'A' <= c && c <= 'Z'
 }
 
-pub assume_specification[ char::is_ascii_uppercase ](c: &char) -> (res: bool)
+#[verifier::allow_in_spec]
+pub assume_specification[ char::is_ascii_uppercase ](c: &char) -> bool
     returns
         is_ascii_uppercase(*c),
 ;
@@ -112,53 +108,99 @@ pub open spec fn is_ascii_lowercase(c: char) -> bool {
     'a' <= c && c <= 'z'
 }
 
-pub assume_specification[ char::is_ascii_lowercase ](c: &char) -> (res: bool)
+#[verifier::allow_in_spec]
+pub assume_specification[ char::is_ascii_lowercase ](c: &char) -> bool
     returns
         is_ascii_lowercase(*c),
 ;
 
-/// ASCII alphanumeric property
-pub assume_specification[ char::is_ascii_alphanumeric ](c: &char) -> (res: bool)
+pub open spec fn is_ascii_alphabetic(c: char) -> bool {
+    is_ascii_uppercase(c) || is_ascii_lowercase(c)
+}
+
+#[verifier::allow_in_spec]
+pub assume_specification[ char::is_ascii_alphabetic ](c: &char) -> bool
     returns
-        ('A' <= *c && *c <= 'Z') || ('a' <= *c && *c <= 'z') || ('0' <= *c && *c <= '9'),
+        is_ascii_alphabetic(*c),
 ;
 
-pub assume_specification[ char::is_ascii_digit ](c: &char) -> (res: bool)
+/// ASCII alphanumeric property
+pub open spec fn is_ascii_digit(c: char) -> bool {
+    '0' <= c && c <= '9'
+}
+
+#[verifier::allow_in_spec]
+pub assume_specification[ char::is_ascii_digit ](c: &char) -> bool
     returns
-        '0' <= *c && *c <= '9',
+        is_ascii_digit(*c),
+;
+
+pub open spec fn is_ascii_alphanumeric(c: char) -> bool {
+    is_ascii_uppercase(c) || is_ascii_lowercase(c) || is_ascii_digit(c)
+}
+
+#[verifier::allow_in_spec]
+pub assume_specification[ char::is_ascii_alphanumeric ](c: &char) -> bool
+    returns
+        is_ascii_alphanumeric(*c),
 ;
 
 // skip is_ascii_octdigit since is is a nightly-only experimental API.
 /// ASCII hexadecimal digit property:
 /// <https://www.unicode.org/reports/tr18/#Hex_notation>.
-pub assume_specification[ char::is_ascii_hexdigit ](c: &char) -> (res: bool)
+pub open spec fn is_ascii_hexdigit(c: char) -> bool {
+    ('0' <= c && c <= '9') || ('A' <= c && c <= 'F') || ('a' <= c && c <= 'f')
+}
+
+#[verifier::allow_in_spec]
+pub assume_specification[ char::is_ascii_hexdigit ](c: &char) -> bool
     returns
-        ('0' <= *c && *c <= '9') || ('A' <= *c && *c <= 'F') || ('a' <= *c && *c <= 'f'),
+        is_ascii_hexdigit(*c),
 ;
 
 /// ASCII punctuation property
 /// <https://www.unicode.org/reports/tr18/#General_Category_Property>.
-pub assume_specification[ char::is_ascii_punctuation ](c: &char) -> (res: bool)
+pub open spec fn is_ascii_punctuation(c: char) -> bool {
+    ('!' <= c && c <= '/') || (':' <= c && c <= '@') || ('[' <= c && c <= '`') || ('{' <= c && c
+        <= '~')
+}
+
+#[verifier::allow_in_spec]
+pub assume_specification[ char::is_ascii_punctuation ](c: &char) -> bool
     returns
-        ('!' <= *c && *c <= '/') || (':' <= *c && *c <= '@') || ('[' <= *c && *c <= '`') || ('{'
-            <= *c && *c <= '~'),
+        is_ascii_punctuation(*c),
 ;
 
 /// ASCII graphic character property
 /// <https://doc.rust-lang.org/std/primitive.char.html#method.is_ascii_graphic>/
-pub assume_specification[ char::is_ascii_graphic ](c: &char) -> (res: bool)
+pub open spec fn is_ascii_graphic(c: char) -> bool {
+    '!' <= c && c <= '~'
+}
+
+#[verifier::allow_in_spec]
+pub assume_specification[ char::is_ascii_graphic ](c: &char) -> bool
     returns
-        '!' <= *c && *c <= '~',
+        is_ascii_graphic(*c),
 ;
 
-pub assume_specification[ char::is_ascii_whitespace ](c: &char) -> (res: bool)
+pub open spec fn is_ascii_whitespace(c: char) -> bool {
+    c == '\u{9}' || c == '\u{A}' || c == '\u{C}' || c == '\u{D}' || c == '\u{20}'
+}
+
+#[verifier::allow_in_spec]
+pub assume_specification[ char::is_ascii_whitespace ](c: &char) -> bool
     returns
-        *c == '\u{9}' || *c == '\u{A}' || *c == '\u{C}' || *c == '\u{D}' || *c == '\u{20}',
+        is_ascii_whitespace(*c),
 ;
 
-pub assume_specification[ char::is_ascii_control ](c: &char) -> (res: bool)
+pub open spec fn is_ascii_control(c: char) -> bool {
+    ('\u{0}' <= c && c <= '\u{1F}') || c == '\u{7F}'
+}
+
+#[verifier::allow_in_spec]
+pub assume_specification[ char::is_ascii_control ](c: &char) -> bool
     returns
-        ('\u{0}' <= *c && *c <= '\u{1F}') || *c == '\u{7F}',
+        is_ascii_control(*c),
 ;
 
 } // verus!

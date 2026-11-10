@@ -64,21 +64,14 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = '\u{0}'.is_ascii();
-            assert(a);
-            let b = 'A'.is_ascii();
-            assert(b);
-            let c = '~'.is_ascii();
-            assert(c);
-            let d = '\u{7F}'.is_ascii();
-            assert(d);
+            assert('\u{0}'.is_ascii());
+            assert('A'.is_ascii());
+            assert('~'.is_ascii());
+            assert('\u{7F}'.is_ascii());
 
-            let e = '\u{80}'.is_ascii();
-            assert(!e);
-            let f = '\u{00E9}'.is_ascii(); // é
-            assert(!f);
-            let g = '\u{1f600}'.is_ascii(); // 😀, U+1F600
-            assert(!g);
+            assert(!'\u{80}'.is_ascii());
+            assert(!'\u{00E9}'.is_ascii()); // é
+            assert(!'\u{1f600}'.is_ascii()); // 😀, U+1F600
         }
     } => Ok(())
 }
@@ -88,8 +81,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = '\u{80}'.is_ascii();
-            assert(a); // FAILS
+            assert('\u{80}'.is_ascii()); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -99,22 +91,14 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = 'a'.to_ascii_uppercase();
-            assert(a == 'A');
-            let b = 'z'.to_ascii_uppercase();
-            assert(b == 'Z');
-            let c = 'm'.to_ascii_uppercase();
-            assert(c == 'M');
-            let d = 'A'.to_ascii_uppercase();
-            assert(d == 'A');
-            let e = 'Z'.to_ascii_uppercase();
-            assert(e == 'Z');
-            let f = '0'.to_ascii_uppercase();
-            assert(f == '0');
-            let g = '@'.to_ascii_uppercase();
-            assert(g == '@');
-            let h = '\u{00e9}'.to_ascii_uppercase(); // é, non-ASCII
-            assert(h == '\u{00e9}');
+            assert('a'.to_ascii_uppercase() == 'A');
+            assert('z'.to_ascii_uppercase() == 'Z');
+            assert('m'.to_ascii_uppercase() == 'M');
+            assert('A'.to_ascii_uppercase() == 'A');
+            assert('Z'.to_ascii_uppercase() == 'Z');
+            assert('0'.to_ascii_uppercase() == '0');
+            assert('@'.to_ascii_uppercase() == '@');
+            assert('\u{00e9}'.to_ascii_uppercase() == '\u{00e9}'); // é, non-ASCII
         }
     } => Ok(())
 }
@@ -124,8 +108,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = 'a'.to_ascii_uppercase();
-            assert(a == 'a'); // FAILS
+            assert('a'.to_ascii_uppercase() == 'a'); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -135,22 +118,14 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = 'A'.to_ascii_lowercase();
-            assert(a == 'a');
-            let b = 'Z'.to_ascii_lowercase();
-            assert(b == 'z');
-            let c = 'M'.to_ascii_lowercase();
-            assert(c == 'm');
-            let d = 'a'.to_ascii_lowercase();
-            assert(d == 'a');
-            let e = 'z'.to_ascii_lowercase();
-            assert(e == 'z');
-            let f = '0'.to_ascii_lowercase();
-            assert(f == '0');
-            let g = '@'.to_ascii_lowercase();
-            assert(g == '@');
-            let h = '\u{00C9}'.to_ascii_lowercase(); // É, non-ASCII
-            assert(h == '\u{00C9}');
+            assert('A'.to_ascii_lowercase() == 'a');
+            assert('Z'.to_ascii_lowercase() == 'z');
+            assert('M'.to_ascii_lowercase() == 'm');
+            assert('a'.to_ascii_lowercase() == 'a');
+            assert('z'.to_ascii_lowercase() == 'z');
+            assert('0'.to_ascii_lowercase() == '0');
+            assert('@'.to_ascii_lowercase() == '@');
+            assert('\u{00C9}'.to_ascii_lowercase() == '\u{00C9}'); // É, non-ASCII
         }
     } => Ok(())
 }
@@ -160,8 +135,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = 'A'.to_ascii_lowercase();
-            assert(a == 'A'); // FAILS
+            assert('A'.to_ascii_lowercase() == 'A'); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -211,8 +185,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_char_make_ascii_uppercase verus_code! {
         use vstd::prelude::*;
-        // broadcast use vstd::std_specs::char::lemma_to_ascii_uppercase;
-        use vstd::std_specs::char::to_ascii_uppercase;
 
         fn test() {
             let mut a = 'a';
@@ -299,26 +271,16 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = 'A'.is_ascii_alphabetic();
-            assert(a);
-            let b = 'Z'.is_ascii_alphabetic();
-            assert(b);
-            let c = 'a'.is_ascii_alphabetic();
-            assert(c);
-            let d = 'z'.is_ascii_alphabetic();
-            assert(d);
-            let e = '@'.is_ascii_alphabetic(); // before 'A'
-            assert(!e);
-            let f = '['.is_ascii_alphabetic(); // after 'Z'
-            assert(!f);
-            let g = '`'.is_ascii_alphabetic(); // before 'a'
-            assert(!g);
-            let h = '{'.is_ascii_alphabetic(); // after 'z'
-            assert(!h);
-            let i = '0'.is_ascii_alphabetic();
-            assert(!i);
-            let j = '\u{00e9}'.is_ascii_alphabetic(); // é, alphabetic but non-ASCII
-            assert(!j);
+            assert('A'.is_ascii_alphabetic());
+            assert('Z'.is_ascii_alphabetic());
+            assert('a'.is_ascii_alphabetic());
+            assert('z'.is_ascii_alphabetic());
+            assert(!'@'.is_ascii_alphabetic()); // before 'A'
+            assert(!'['.is_ascii_alphabetic()); // after 'Z'
+            assert(!'`'.is_ascii_alphabetic()); // before 'a'
+            assert(!'{'.is_ascii_alphabetic()); // after 'z'
+            assert(!'0'.is_ascii_alphabetic());
+            assert(!'\u{00e9}'.is_ascii_alphabetic()); // é, alphabetic but non-ASCII
         }
     } => Ok(())
 }
@@ -328,8 +290,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = '0'.is_ascii_alphabetic();
-            assert(a); // FAILS
+            assert('0'.is_ascii_alphabetic()); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -339,20 +300,13 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = 'A'.is_ascii_uppercase();
-            assert(a);
-            let b = 'Z'.is_ascii_uppercase();
-            assert(b);
-            let c = '@'.is_ascii_uppercase(); // before 'A'
-            assert(!c);
-            let d = '['.is_ascii_uppercase(); // after 'Z'
-            assert(!d);
-            let e = 'a'.is_ascii_uppercase();
-            assert(!e);
-            let f = '0'.is_ascii_uppercase();
-            assert(!f);
-            let g = '\u{00c9}'.is_ascii_uppercase(); // É, uppercase but non-ASCII
-            assert(!g);
+            assert('A'.is_ascii_uppercase());
+            assert('Z'.is_ascii_uppercase());
+            assert(!'@'.is_ascii_uppercase()); // before 'A'
+            assert(!'['.is_ascii_uppercase()); // after 'Z'
+            assert(!'a'.is_ascii_uppercase());
+            assert(!'0'.is_ascii_uppercase());
+            assert(!'\u{00c9}'.is_ascii_uppercase()); // É, uppercase but non-ASCII
         }
     } => Ok(())
 }
@@ -362,8 +316,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = 'a'.is_ascii_uppercase();
-            assert(a); // FAILS
+            assert('a'.is_ascii_uppercase()); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -373,20 +326,13 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = 'a'.is_ascii_lowercase();
-            assert(a);
-            let b = 'z'.is_ascii_lowercase();
-            assert(b);
-            let c = '`'.is_ascii_lowercase(); // before 'a'
-            assert(!c);
-            let d = '{'.is_ascii_lowercase(); // after 'z'
-            assert(!d);
-            let e = 'A'.is_ascii_lowercase();
-            assert(!e);
-            let f = '0'.is_ascii_lowercase();
-            assert(!f);
-            let g = '\u{00e9}'.is_ascii_lowercase(); // é, lowercase but non-ASCII
-            assert(!g);
+            assert('a'.is_ascii_lowercase());
+            assert('z'.is_ascii_lowercase());
+            assert(!'`'.is_ascii_lowercase()); // before 'a'
+            assert(!'{'.is_ascii_lowercase()); // after 'z'
+            assert(!'A'.is_ascii_lowercase());
+            assert(!'0'.is_ascii_lowercase());
+            assert(!'\u{00e9}'.is_ascii_lowercase()); // é, lowercase but non-ASCII
         }
     } => Ok(())
 }
@@ -396,8 +342,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = 'A'.is_ascii_lowercase();
-            assert(a); // FAILS
+            assert('A'.is_ascii_lowercase()); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -407,33 +352,20 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = 'A'.is_ascii_alphanumeric();
-            assert(a);
-            let b = 'Z'.is_ascii_alphanumeric();
-            assert(b);
-            let c = 'a'.is_ascii_alphanumeric();
-            assert(c);
-            let d = 'z'.is_ascii_alphanumeric();
-            assert(d);
-            let e = '0'.is_ascii_alphanumeric();
-            assert(e);
-            let f = '9'.is_ascii_alphanumeric();
-            assert(f);
-            let g = '@'.is_ascii_alphanumeric(); // before 'A'
-            assert(!g);
-            let h = '['.is_ascii_alphanumeric(); // after 'Z'
-            assert(!h);
-            let i = '`'.is_ascii_alphanumeric(); // before 'a'
-            assert(!i);
-            let j = '{'.is_ascii_alphanumeric(); // after 'z'
-            assert(!j);
-            let k = '/'.is_ascii_alphanumeric(); // before '0'
-            assert(!k);
-            let l = ':'.is_ascii_alphanumeric(); // after '9'
-            assert(!l);
+            assert('A'.is_ascii_alphanumeric());
+            assert('Z'.is_ascii_alphanumeric());
+            assert('a'.is_ascii_alphanumeric());
+            assert('z'.is_ascii_alphanumeric());
+            assert('0'.is_ascii_alphanumeric());
+            assert('9'.is_ascii_alphanumeric());
+            assert(!'@'.is_ascii_alphanumeric()); // before 'A'
+            assert(!'['.is_ascii_alphanumeric()); // after 'Z'
+            assert(!'`'.is_ascii_alphanumeric()); // before 'a'
+            assert(!'{'.is_ascii_alphanumeric()); // after 'z'
+            assert(!'/'.is_ascii_alphanumeric()); // before '0'
+            assert(!':'.is_ascii_alphanumeric()); // after '9'
 
-            let m = '\u{00e9}'.is_ascii_alphanumeric(); // é, non-ASCII alphabetic
-            assert(!m);
+            assert(!'\u{00e9}'.is_ascii_alphanumeric()); // é, non-ASCII alphabetic
         }
     } => Ok(())
 }
@@ -443,8 +375,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = '@'.is_ascii_alphanumeric();
-            assert(a); // FAILS
+            assert('@'.is_ascii_alphanumeric()); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -454,20 +385,14 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = '0'.is_ascii_digit();
-            assert(a);
-            let b = '9'.is_ascii_digit();
-            assert(b);
+            assert('0'.is_ascii_digit());
+            assert('9'.is_ascii_digit());
 
-            let c = '/'.is_ascii_digit(); // before '0'
-            assert(!c);
-            let d = ':'.is_ascii_digit(); // after '9'
-            assert(!d);
+            assert(!'/'.is_ascii_digit()); // before '0'
+            assert(!':'.is_ascii_digit()); // after '9'
 
-            let e = 'A'.is_ascii_digit();
-            assert(!e);
-            let f = '\u{0660}'.is_ascii_digit(); // Arabic-Indic digit zero, non-ASCII
-            assert(!f);
+            assert(!'A'.is_ascii_digit());
+            assert(!'\u{0660}'.is_ascii_digit()); // Arabic-Indic digit zero, non-ASCII
         }
     } => Ok(())
 }
@@ -477,8 +402,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = 'A'.is_ascii_digit();
-            assert(a); // FAILS
+            assert('A'.is_ascii_digit()); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -488,26 +412,16 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = '0'.is_ascii_hexdigit();
-            assert(a);
-            let b = '9'.is_ascii_hexdigit();
-            assert(b);
-            let c = 'A'.is_ascii_hexdigit();
-            assert(c);
-            let d = 'F'.is_ascii_hexdigit();
-            assert(d);
-            let e = 'a'.is_ascii_hexdigit();
-            assert(e);
-            let f = 'f'.is_ascii_hexdigit();
-            assert(f);
-            let g = '/'.is_ascii_hexdigit();
-            assert(!g);
-            let h = ':'.is_ascii_hexdigit();
-            assert(!h);
-            let i = 'G'.is_ascii_hexdigit();
-            assert(!i);
-            let j = 'g'.is_ascii_hexdigit();
-            assert(!j);
+            assert('0'.is_ascii_hexdigit());
+            assert('9'.is_ascii_hexdigit());
+            assert('A'.is_ascii_hexdigit());
+            assert('F'.is_ascii_hexdigit());
+            assert('a'.is_ascii_hexdigit());
+            assert('f'.is_ascii_hexdigit());
+            assert(!'/'.is_ascii_hexdigit());
+            assert(!':'.is_ascii_hexdigit());
+            assert(!'G'.is_ascii_hexdigit());
+            assert(!'g'.is_ascii_hexdigit());
         }
     } => Ok(())
 }
@@ -517,8 +431,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = 'G'.is_ascii_hexdigit();
-            assert(a); // FAILS
+            assert('G'.is_ascii_hexdigit()); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -528,34 +441,20 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = '!'.is_ascii_punctuation();
-            assert(a);
-            let b = '/'.is_ascii_punctuation();
-            assert(b);
-            let c = ':'.is_ascii_punctuation();
-            assert(c);
-            let d = '@'.is_ascii_punctuation();
-            assert(d);
-            let e = '['.is_ascii_punctuation();
-            assert(e);
-            let f = '`'.is_ascii_punctuation();
-            assert(f);
-            let g = '{'.is_ascii_punctuation();
-            assert(g);
-            let h = '~'.is_ascii_punctuation();
-            assert(h);
-            let i = ' '.is_ascii_punctuation();
-            assert(!i);
-            let j = '0'.is_ascii_punctuation();
-            assert(!j);
-            let k = 'A'.is_ascii_punctuation();
-            assert(!k);
-            let l = 'a'.is_ascii_punctuation();
-            assert(!l);
-            let m = '\u{7f}'.is_ascii_punctuation();
-            assert(!m);
-            let n = '\u{00a1}'.is_ascii_punctuation(); // ¡, non-ASCII
-            assert(!n);
+            assert('!'.is_ascii_punctuation());
+            assert('/'.is_ascii_punctuation());
+            assert(':'.is_ascii_punctuation());
+            assert('@'.is_ascii_punctuation());
+            assert('['.is_ascii_punctuation());
+            assert('`'.is_ascii_punctuation());
+            assert('{'.is_ascii_punctuation());
+            assert('~'.is_ascii_punctuation());
+            assert(!' '.is_ascii_punctuation());
+            assert(!'0'.is_ascii_punctuation());
+            assert(!'A'.is_ascii_punctuation());
+            assert(!'a'.is_ascii_punctuation());
+            assert(!'\u{7f}'.is_ascii_punctuation());
+            assert(!'\u{00a1}'.is_ascii_punctuation()); // ¡, non-ASCII
         }
     } => Ok(())
 }
@@ -565,8 +464,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = 'A'.is_ascii_punctuation();
-            assert(a); // FAILS
+            assert('A'.is_ascii_punctuation()); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -576,22 +474,14 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = '!'.is_ascii_graphic();
-            assert(a);
-            let b = '~'.is_ascii_graphic();
-            assert(b);
-            let c = 'A'.is_ascii_graphic();
-            assert(c);
-            let d = '0'.is_ascii_graphic();
-            assert(d);
-            let e = ' '.is_ascii_graphic();
-            assert(!e);
-            let f = '\u{7f}'.is_ascii_graphic();
-            assert(!f);
-            let g = '\n'.is_ascii_graphic();
-            assert(!g);
-            let h = '\u{00e9}'.is_ascii_graphic(); // é, non-ASCII
-            assert(!h);
+            assert('!'.is_ascii_graphic());
+            assert('~'.is_ascii_graphic());
+            assert('A'.is_ascii_graphic());
+            assert('0'.is_ascii_graphic());
+            assert(!' '.is_ascii_graphic());
+            assert(!'\u{7f}'.is_ascii_graphic());
+            assert(!'\n'.is_ascii_graphic());
+            assert(!'\u{00e9}'.is_ascii_graphic()); // é, non-ASCII
         }
     } => Ok(())
 }
@@ -601,8 +491,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = ' '.is_ascii_graphic();
-            assert(a); // FAILS
+            assert(' '.is_ascii_graphic()); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -612,22 +501,14 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = '\u{9}'.is_ascii_whitespace(); // TAB
-            assert(a);
-            let b = '\u{A}'.is_ascii_whitespace(); // LF
-            assert(b);
-            let c = '\u{C}'.is_ascii_whitespace(); // FF
-            assert(c);
-            let d = '\u{D}'.is_ascii_whitespace(); // CR
-            assert(d);
-            let e = ' '.is_ascii_whitespace(); // SPACE
-            assert(e);
-            let f = '\u{B}'.is_ascii_whitespace(); // VERTICAL TAB
-            assert(!f);
-            let g = 'A'.is_ascii_whitespace();
-            assert(!g);
-            let h = '\u{3000}'.is_ascii_whitespace(); // IDEOGRAPHIC SPACE
-            assert(!h);
+            assert('\u{9}'.is_ascii_whitespace()); // TAB
+            assert('\u{A}'.is_ascii_whitespace()); // LF
+            assert('\u{C}'.is_ascii_whitespace()); // FF
+            assert('\u{D}'.is_ascii_whitespace()); // CR
+            assert(' '.is_ascii_whitespace()); // SPACE
+            assert(!'\u{B}'.is_ascii_whitespace()); // VERTICAL TAB
+            assert(!'A'.is_ascii_whitespace());
+            assert(!'\u{3000}'.is_ascii_whitespace()); // IDEOGRAPHIC SPACE
         }
     } => Ok(())
 }
@@ -637,8 +518,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = '\u{B}'.is_ascii_whitespace();
-            assert(a); // FAILS
+            assert('\u{B}'.is_ascii_whitespace()); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -648,20 +528,13 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = '\u{0}'.is_ascii_control(); // NUL
-            assert(a);
-            let b = '\u{1F}'.is_ascii_control(); // UNIT SEPARATOR
-            assert(b);
-            let c = '\u{7F}'.is_ascii_control(); // DELETE
-            assert(c);
-            let d = ' '.is_ascii_control();
-            assert(!d);
-            let e = '~'.is_ascii_control();
-            assert(!e);
-            let f = '\u{80}'.is_ascii_control();
-            assert(!f);
-            let g = '\u{85}'.is_ascii_control(); // Unicode control, but non-ASCII
-            assert(!g);
+            assert('\u{0}'.is_ascii_control()); // NUL
+            assert('\u{1F}'.is_ascii_control()); // UNIT SEPARATOR
+            assert('\u{7F}'.is_ascii_control()); // DELETE
+            assert(!' '.is_ascii_control());
+            assert(!'~'.is_ascii_control());
+            assert(!'\u{80}'.is_ascii_control());
+            assert(!'\u{85}'.is_ascii_control()); // Unicode control, but non-ASCII
         }
     } => Ok(())
 }
@@ -671,8 +544,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn test() {
-            let a = ' '.is_ascii_control();
-            assert(a); // FAILS
+            assert(' '.is_ascii_control()); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
