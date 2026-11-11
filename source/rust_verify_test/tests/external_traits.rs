@@ -1180,3 +1180,22 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "overflow evaluating the requirement")
 }
+
+test_verify_one_file! {
+    #[test] external_trait_impl_with_rpitit_issue3455 verus_code! {
+        #[verifier::external]
+        trait T {
+            fn f() -> impl Sized;
+        }
+
+        #[verifier::external]
+        impl T for u8 {
+            fn f() -> impl Sized {}
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+        }
+    } => Ok(())
+}
