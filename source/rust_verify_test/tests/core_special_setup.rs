@@ -25,6 +25,7 @@ test_verify_one_file_with_options! {
         #![cfg_attr(verus_keep_ghost, feature(const_destruct))]
         #![cfg_attr(verus_keep_ghost, feature(derive_eq_internals))]
         #![cfg_attr(verus_keep_ghost, feature(nonzero_internals))]
+        #![cfg_attr(verus_keep_ghost, feature(try_trait_v2_residual))]
         #![feature(hint_must_use)]
         #![cfg_attr(verus_keep_ghost, feature(fmt_internals))]
         #![cfg_attr(verus_keep_ghost, feature(fmt_arguments_from_str))]

@@ -381,6 +381,10 @@ pub fn run_verus(
             verus_args.push("--no-cheating".to_string());
         } else if *option == "--output-json" {
             verus_args.push("--output-json".to_string());
+        } else if *option == "--incremental" {
+            // mimic cargo's default for dev builds
+            verus_args.push("-C".to_string());
+            verus_args.push(format!("incremental={}", test_dir.join("incremental").display()));
         } else if *option == "vstd" {
             // ignore
         } else if *option == "-V allow-inline-air" {
@@ -737,6 +741,7 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![feature(btree_cursors)]
     #![feature(const_destruct)]
     #![feature(print_internals)]
+    #![feature(iter_advance_by)]
     #![feature(maybe_uninit_array_assume_init)]
 };
 
