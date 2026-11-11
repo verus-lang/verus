@@ -823,9 +823,16 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                         if !trait_map[&trait_path].iter().any(|t| t.x.assoc_typs.contains(&name)) {
                             continue;
                         }
+                        // Filter the normalized type, which is what translate_assoc_type
+                        // translates: a projection may normalize to an unsupported type.
+                        let assoc_ty = tcx.type_of(assoc_item.def_id).instantiate_identity();
+                        let typing_env = TypingEnv::post_analysis(tcx, assoc_item.def_id);
+                        let assoc_ty = tcx
+                            .try_normalize_erasing_regions(typing_env, assoc_ty)
+                            .unwrap_or_else(|_| assoc_ty.skip_norm_wip());
                         if !crate::rust_to_vir_base::mid_ty_filter_for_external_impls(
                             ctxt,
-                            &tcx.type_of(assoc_item.def_id).skip_binder(),
+                            &assoc_ty,
                             external_info,
                         ) {
                             continue 'impls;
