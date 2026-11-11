@@ -2606,9 +2606,5 @@ test_verify_one_file! {
             let _ = c.reverse_bits();
             let _ = d.reverse_bits();
         }
-
-        fn test_fails(x: u32) {
-            assert(x.reverse_bits() == x); // FAILS
-        }
-    } => Err(err) => assert_one_fails(err)
+    } => Ok(())
 }

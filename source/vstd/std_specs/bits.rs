@@ -175,7 +175,7 @@ pub broadcast proof fn axiom_u8_leading_ones(i: u8)
 }
 
 /// Equivalent to `i.reverse_bits()`.
-/// See [`axiom_u8_reverse_bits`] for useful properties.
+/// See [`lemma_u8_reverse_bits`] for useful properties.
 pub closed spec fn u8_reverse_bits(i: u8) -> u8 {
     // Swap adjacent bits, then adjacent pairs of bits, and so on up to the two halves
     let i = ((i >> 1) & 0x55) | ((i & 0x55) << 1);
@@ -191,7 +191,7 @@ pub assume_specification[ u8::reverse_bits ](i: u8) -> (r: u8)
     no_unwind
 ;
 
-pub broadcast proof fn axiom_u8_reverse_bits(i: u8)
+pub broadcast proof fn lemma_u8_reverse_bits(i: u8)
     ensures
         u8_reverse_bits(#[trigger] u8_reverse_bits(i)) == i,
         // bit j of the result is bit 7 - j of i
@@ -403,7 +403,7 @@ pub broadcast proof fn axiom_u16_leading_ones(i: u16)
 }
 
 /// Equivalent to `i.reverse_bits()`.
-/// See [`axiom_u16_reverse_bits`] for useful properties.
+/// See [`lemma_u16_reverse_bits`] for useful properties.
 pub closed spec fn u16_reverse_bits(i: u16) -> u16 {
     // Swap adjacent bits, then adjacent pairs of bits, and so on up to the two halves
     let i = ((i >> 1) & 0x5555) | ((i & 0x5555) << 1);
@@ -420,7 +420,7 @@ pub assume_specification[ u16::reverse_bits ](i: u16) -> (r: u16)
     no_unwind
 ;
 
-pub broadcast proof fn axiom_u16_reverse_bits(i: u16)
+pub broadcast proof fn lemma_u16_reverse_bits(i: u16)
     ensures
         u16_reverse_bits(#[trigger] u16_reverse_bits(i)) == i,
         // bit j of the result is bit 15 - j of i
@@ -638,7 +638,7 @@ pub broadcast proof fn axiom_u32_leading_ones(i: u32)
 }
 
 /// Equivalent to `i.reverse_bits()`.
-/// See [`axiom_u32_reverse_bits`] for useful properties.
+/// See [`lemma_u32_reverse_bits`] for useful properties.
 pub closed spec fn u32_reverse_bits(i: u32) -> u32 {
     // Swap adjacent bits, then adjacent pairs of bits, and so on up to the two halves
     let i = ((i >> 1) & 0x5555_5555) | ((i & 0x5555_5555) << 1);
@@ -656,7 +656,7 @@ pub assume_specification[ u32::reverse_bits ](i: u32) -> (r: u32)
     no_unwind
 ;
 
-pub broadcast proof fn axiom_u32_reverse_bits(i: u32)
+pub broadcast proof fn lemma_u32_reverse_bits(i: u32)
     ensures
         u32_reverse_bits(#[trigger] u32_reverse_bits(i)) == i,
         // bit j of the result is bit 31 - j of i
@@ -881,7 +881,7 @@ pub broadcast proof fn axiom_u64_leading_ones(i: u64)
 }
 
 /// Equivalent to `i.reverse_bits()`.
-/// See [`axiom_u64_reverse_bits`] for useful properties.
+/// See [`lemma_u64_reverse_bits`] for useful properties.
 pub closed spec fn u64_reverse_bits(i: u64) -> u64 {
     // Swap adjacent bits, then adjacent pairs of bits, and so on up to the two halves
     let i = ((i >> 1) & 0x5555_5555_5555_5555) | ((i & 0x5555_5555_5555_5555) << 1);
@@ -900,7 +900,7 @@ pub assume_specification[ u64::reverse_bits ](i: u64) -> (r: u64)
     no_unwind
 ;
 
-pub broadcast proof fn axiom_u64_reverse_bits(i: u64)
+pub broadcast proof fn lemma_u64_reverse_bits(i: u64)
     ensures
         u64_reverse_bits(#[trigger] u64_reverse_bits(i)) == i,
         // bit j of the result is bit 63 - j of i
@@ -968,10 +968,10 @@ pub broadcast group group_bits_axioms {
     axiom_u64_trailing_ones,
     axiom_u64_leading_zeros,
     axiom_u64_leading_ones,
-    axiom_u8_reverse_bits,
-    axiom_u16_reverse_bits,
-    axiom_u32_reverse_bits,
-    axiom_u64_reverse_bits,
+    lemma_u8_reverse_bits,
+    lemma_u16_reverse_bits,
+    lemma_u32_reverse_bits,
+    lemma_u64_reverse_bits,
 }
 
 } // verus!
