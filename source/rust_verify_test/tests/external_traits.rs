@@ -1180,3 +1180,31 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "overflow evaluating the requirement")
 }
+
+test_verify_one_file! {
+    #[test] external_impl_assoc_type_normalizes_to_external_type verus_code! {
+        #[verifier::external]
+        struct R;
+
+        #[verifier::external]
+        trait T {
+            type X;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            type X;
+        }
+
+        #[verifier::external]
+        impl T for u8 {
+            type X = R;
+        }
+
+        #[verifier::external]
+        impl T for bool {
+            type X = <u8 as T>::X;
+        }
+    } => Ok(())
+}
