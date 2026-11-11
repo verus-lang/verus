@@ -1310,7 +1310,7 @@ fn check_place(
                 return Err(error_with_label(
                     &place.span,
                     format!("cannot mutate {place_mode}-mode place in {context_mode}-code"),
-                    "this place has mode {place_mode}",
+                    format!("this place has mode {place_mode}"),
                 ));
             }
 
