@@ -511,7 +511,7 @@ pub const fn pair_with_shadow<A, B>(a: A, b: B) -> (p: (A, B))
 /// Gets `p.0`, keeping its shadow data.
 #[verifier::shadow_data]
 #[verifier::external_body]
-pub const fn pair_0_with_shadow<A: Copy, B: Copy>(p: (A, B)) -> (a: A)
+pub fn pair_0_with_shadow<A, B: Copy>(p: (A, B)) -> (a: A)
     ensures
         a == p.0,
         shadow_data(a) == pair_shadow_0(shadow_data(p)),
@@ -522,7 +522,7 @@ pub const fn pair_0_with_shadow<A: Copy, B: Copy>(p: (A, B)) -> (a: A)
 /// Gets `p.1`, keeping its shadow data.
 #[verifier::shadow_data]
 #[verifier::external_body]
-pub const fn pair_1_with_shadow<A: Copy, B: Copy>(p: (A, B)) -> (b: B)
+pub fn pair_1_with_shadow<A: Copy, B>(p: (A, B)) -> (b: B)
     ensures
         b == p.1,
         shadow_data(b) == pair_shadow_1(shadow_data(p)),

@@ -853,7 +853,7 @@ pub open spec fn encoding_exists<T: TypeRepresentation>(value: T) -> bool {
 
 /// Abstract bytes encoding a pointer with the given address, provenance and metadata,
 /// as specified by the `TypeRepresentation` for raw pointers.
-proof fn ptr_data_encoding_exists<T: core::marker::PointeeSized>(data: PtrData<T>) -> (b: Seq<
+pub proof fn ptr_data_encoding_exists<T: core::marker::PointeeSized>(data: PtrData<T>) -> (b: Seq<
     AbstractByte,
 >) where <T as core::ptr::Pointee>::Metadata: TypeRepresentation
     requires
