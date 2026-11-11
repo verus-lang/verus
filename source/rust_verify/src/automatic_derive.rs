@@ -29,10 +29,10 @@ pub fn get_action(rust_item: Option<RustItem>) -> AutomaticDeriveAction {
         Some(RustItem::Clone) => AutomaticDeriveAction::Special(SpecialTrait::Clone),
 
         Some(RustItem::Copy) => AutomaticDeriveAction::VerifyAsIs,
+        Some(RustItem::Debug) => AutomaticDeriveAction::VerifyAsIs,
 
         Some(RustItem::Hash)
         | Some(RustItem::Default)
-        | Some(RustItem::Debug)
         | Some(RustItem::Ord)
         | Some(RustItem::PartialOrd) => AutomaticDeriveAction::Ignore,
 
