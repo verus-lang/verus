@@ -426,3 +426,25 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] mod_in_method_of_impl code! {
+        struct S;
+
+        impl S {
+            fn f() {
+                // Items in this module have def paths like {impl#0}::f::m::N,
+                // whose Impl segment is not the parent of N
+                mod m {
+                    use vstd::prelude::*;
+
+                    verus! {
+                        struct N;
+
+                        fn g(n: N) {}
+                    }
+                }
+            }
+        }
+    } => Ok(())
+}
