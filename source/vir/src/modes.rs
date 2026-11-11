@@ -2972,6 +2972,15 @@ fn check_expr(
                     &arm.x.guard,
                     &arm_outer_proph,
                 )?;
+
+                if ctxt.check_ghost_blocks
+                    && typing.block_ghostness == Ghost::Exec
+                    && arm.x.has_guard()
+                    && guard_mode != Mode::Exec
+                {
+                    return Err(error(&expr.span, "pattern guard must have mode exec"));
+                }
+
                 arm_outer_proph = arm_outer_proph.join(guard_proph.clone());
                 // REVIEW: does this need to accumulate modes from previous guards?
                 // By the formalism, yes, but right now it seems to be redundant with
