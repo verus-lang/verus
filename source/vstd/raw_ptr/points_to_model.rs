@@ -298,8 +298,7 @@ impl<T, P: PTProperties<A = T>> PTPhys for SeqPointsTo<T, P> {
     /// a permission is never at a made-up pointer, which may cover more bytes than fit in memory.
     open spec fn wf_basic(self) -> bool {
         // The pointer's metadata is the number of permissions
-        &&& self.ptr()@.metadata
-            == self.len()
+        &&& self.ptr()@.metadata == self.len()
         // The pointer is real
         &&& self.ptr()@.is_real
         // Defining the provenance, realness and address for the individual permissions
