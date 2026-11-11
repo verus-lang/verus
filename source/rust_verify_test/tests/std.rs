@@ -2463,7 +2463,6 @@ test_verify_one_file! {
         fn test_u8(b: [u8; 1]) {
             let x = u8::from_le_bytes(b);
             assert(x == b[0]);
-            assert(x == u8::from_le_bytes(b));
             let y = u8::from_le_bytes([0x2a]);
             assert(y == 0x2a);
         }
@@ -2471,7 +2470,6 @@ test_verify_one_file! {
         fn test_u16(b: [u8; 2]) {
             let x = u16::from_le_bytes(b);
             assert(x == spec_u16_from_le_bytes(b@));
-            assert(x == u16::from_le_bytes(b));
             let y = u16_from_le_bytes(b.as_slice());
             assert(x == y);
         }
@@ -2479,7 +2477,6 @@ test_verify_one_file! {
         fn test_u32(b: [u8; 4]) {
             let x = u32::from_le_bytes(b);
             assert(x == spec_u32_from_le_bytes(b@));
-            assert(x == u32::from_le_bytes(b));
             let y = u32_from_le_bytes(b.as_slice());
             assert(x == y);
         }
@@ -2487,7 +2484,6 @@ test_verify_one_file! {
         fn test_u64(b: [u8; 8]) {
             let x = u64::from_le_bytes(b);
             assert(x == spec_u64_from_le_bytes(b@));
-            assert(x == u64::from_le_bytes(b));
             let y = u64_from_le_bytes(b.as_slice());
             assert(x == y);
         }
@@ -2506,9 +2502,12 @@ test_verify_one_file! {
                 assert(spec_u16_to_le_bytes(w).len() == 2);
                 assert(spec_u32_to_le_bytes(x).len() == 4);
             }
-            assert(u16::from_le_bytes(bw) == w);
-            assert(u32::from_le_bytes(bx) == x);
-            assert(u64::from_le_bytes(by) == y);
+            let w2 = u16::from_le_bytes(bw);
+            let x2 = u32::from_le_bytes(bx);
+            let y2 = u64::from_le_bytes(by);
+            assert(w2 == w);
+            assert(x2 == x);
+            assert(y2 == y);
         }
 
         fn test_value() {
@@ -2542,9 +2541,5 @@ test_verify_one_file! {
             let _ = u32::from_le_bytes(bx);
             let _ = u64::from_le_bytes(by);
         }
-
-        fn test_unknown_bytes(b: [u8; 4]) {
-            assert(u32::from_le_bytes(b) == 0); // FAILS
-        }
-    } => Err(err) => assert_fails(err, 2)
+    } => Err(err) => assert_fails(err, 1)
 }

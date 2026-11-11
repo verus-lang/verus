@@ -564,16 +564,16 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         #[verifier(external)]
-        fn x(a: [u8; core::mem::size_of::<u32>()]) -> u8 {
+        fn f(a: [u8; core::mem::size_of::<u32>()]) -> u8 {
             a[0]
         }
 
         // The array length is compared by value
-        assume_specification[ x ](a: [u8; 4]) -> (r: u8)
+        assume_specification[ f ](a: [u8; 4]) -> (r: u8)
             ensures r == a[0];
 
         fn test(a: [u8; 4]) {
-            let r = x(a);
+            let r = f(a);
             assert(r == a[0]);
         }
     } => Ok(())
@@ -582,16 +582,16 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] mismatch_array_len_const_expr verus_code! {
         #[verifier(external)]
-        fn x(a: [u8; core::mem::size_of::<u32>()]) -> u8 {
+        fn f(a: [u8; core::mem::size_of::<u32>()]) -> u8 {
             a[0]
         }
 
-        // A different length is still rejected, both by rustc (through the call to `x`) and by
+        // A different length is still rejected, both by rustc (through the call to `f`) and by
         // the signature check
-        assume_specification[ x ](a: [u8; 3]) -> u8;
+        assume_specification[ f ](a: [u8; 3]) -> u8;
     } => Err(err) => assert_error_msgs(err, &[
         "mismatched types",
-        "`assume_specification` requires function type signature to match `test_crate::x` exactly"
+        "`assume_specification` requires function type signature to match `test_crate::f` exactly"
     ])
 }
 
