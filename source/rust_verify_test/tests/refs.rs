@@ -407,7 +407,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mut_ref_field_pass_1 verus_code! {
-        #[derive(PartialEq, Eq, Structural)]
         struct S {
             a: u32,
             b: i32,
@@ -436,7 +435,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mut_ref_field_pass_2 verus_code! {
-        #[derive(PartialEq, Eq, Structural)]
         struct S<A> {
             a: A,
             b: bool,
@@ -459,7 +457,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mut_ref_field_and_update_pass verus_code! {
-        #[derive(PartialEq, Eq, Structural)]
         struct S<A> {
             a: A,
             b: bool,

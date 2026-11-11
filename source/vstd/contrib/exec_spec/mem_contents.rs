@@ -12,6 +12,9 @@ use crate::raw_ptr::MemContents;
 verus! {
 
 /// `MemContents<T>` is compiled to `ExecMemContents<T>`
+// TODO: remove the `#[verifier::external_derive(PartialEq)]`
+// which is currently needed because of https://github.com/verus-lang/verus/issues/3177
+#[verifier::external_derive(PartialEq)]
 #[derive(Eq, Hash, PartialEq, Debug)]
 pub enum ExecMemContents<T> {
     /// Mirror of [`MemContents::Uninit`]

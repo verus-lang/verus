@@ -10,6 +10,7 @@ use vstd::*;
 verus! {
 
 #[is_variant]
+#[verifier::external_derive(PartialEq)]
 #[derive(PartialEq, Eq)]  // TODO(utaal): Structural is not implemented for Box
 enum Tree {
     Nil,

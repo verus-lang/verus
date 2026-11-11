@@ -8,8 +8,9 @@ use crate::rust_to_vir_base::{
     typ_of_expr_adjusted, typ_of_node_unadjusted,
 };
 use crate::rust_to_vir_expr::{
-    check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, expr_to_vir_consume,
-    expr_to_vir_place, extract_array, extract_tuple, get_fn_path, mk_ty_clip, pat_to_var,
+    ExprOrPlace, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir,
+    expr_to_vir_consume, expr_to_vir_place, extract_array, extract_tuple, get_fn_path, mk_ty_clip,
+    pat_to_var,
 };
 use crate::util::{err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
@@ -21,7 +22,7 @@ use crate::{err_unless, internal_err_unless, unsupported_err};
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::{Block, BlockCheckMode, Expr, ExprKind, QPath, StmtKind};
-use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind, TypingEnv};
+use rustc_middle::ty::{GenericArg, GenericArgKind, Mutability, TyKind, TypingEnv};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
 use rustc_span::Spanned;
@@ -54,6 +55,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let tcx = bctx.ctxt.tcx;
 
     let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id);
+    let mk_expr = |x: ExprX| Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x));
 
     let rust_item = verus_items::get_rust_item(tcx, f);
     let verus_item = bctx.ctxt.get_verus_item(f);
@@ -107,6 +109,37 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 record_misc(bctx, expr, MiscCall::IdentityClone { is_method });
                 return Ok(arg);
             }
+        }
+        Some(RustItem::IntrinsicDiscriminantValue) => {
+            record_misc(bctx, expr, MiscCall::IntrinsicDiscriminantValue);
+
+            assert!(args.len() == 1);
+
+            let arg_ty = bctx.types.expr_ty_adjusted(args[0]);
+            let vir_arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+            let vir_place = ExprOrPlace::Expr(vir_arg).to_place(bctx, expr.span, arg_ty)?;
+
+            let ty = match arg_ty.kind() {
+                TyKind::Ref(_, t, Mutability::Not) => t,
+                _ => crate::internal_err!(
+                    expr.span,
+                    "`core::intrinsics::discriminant_value` expected shared reference"
+                ),
+            };
+            // In principle, this intrinsic can be used on any type
+            // (it returns 0 for non-enums) and thus it can be used generically.
+            // However, we only support it for enums.
+            if !ty.is_enum() {
+                crate::unsupported_err!(
+                    expr.span,
+                    "using `core::intrinsics::discriminant_value` on non-enum type `{:?}`",
+                    ty
+                )
+            }
+
+            return crate::rust_to_vir_expr::expr_cast_enum_int_to_vir(
+                bctx, args[0], vir_place, mk_expr, *ty,
+            );
         }
         Some(RustItem::CloneFrom) => {
             return err_span(expr.span, "Verus does not currently support `clone_from`");
@@ -1751,6 +1784,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         args[0],
                         source_vir0.to_place(bctx, expr.span, source_vir0_ty)?,
                         mk_expr,
+                        bctx.types.expr_ty_adjusted(args[0]),
                     )?;
                     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;

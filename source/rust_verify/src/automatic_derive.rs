@@ -25,7 +25,7 @@ pub enum AutomaticDeriveAction {
 
 pub fn get_action(rust_item: Option<RustItem>) -> AutomaticDeriveAction {
     match rust_item {
-        Some(RustItem::PartialEq | RustItem::Eq) => AutomaticDeriveAction::Ignore,
+        Some(RustItem::PartialEq | RustItem::Eq) => AutomaticDeriveAction::VerifyAsIs,
         Some(RustItem::Clone) => AutomaticDeriveAction::Special(SpecialTrait::Clone),
 
         Some(RustItem::Copy) => AutomaticDeriveAction::VerifyAsIs,

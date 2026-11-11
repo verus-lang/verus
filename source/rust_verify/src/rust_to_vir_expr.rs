@@ -87,7 +87,7 @@ use rustc_middle::ty::adjustment::{
     PatAdjust, PatAdjustment, PointerCoercion,
 };
 use rustc_middle::ty::{
-    AdtDef, ClauseKind, GenericArg, IntTy, TraitPredicate, TraitRef, TyCtxt, TyKind, TypingEnv,
+    AdtDef, ClauseKind, GenericArg, IntTy, TraitPredicate, TraitRef, Ty, TyCtxt, TyKind, TypingEnv,
     UintTy, Upcast,
 };
 use rustc_mir_build_verus::verus::BodyErasure;
@@ -2389,9 +2389,9 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
     expr: &'tcx Expr<'tcx>,
     place_vir: vir::ast::Place,
     mk_expr: impl Fn(ExprX) -> Result<vir::ast::Expr, vir::messages::Message>,
+    ty: Ty<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let ty = bctx.types.expr_ty_adjusted(expr);
     assert!(ty.is_enum());
 
     /*
@@ -2448,11 +2448,6 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
             _ => unsupported_err!(expr.span, format!("discriminants of an enum of type {:?}", ty)),
         };
         let cast_to = mk_expr(ExprX::Const(val))?;
-        unsupported_err_unless!(
-            vdef.fields.len() == 0,
-            expr.span,
-            "casting an enum whose variants have fields"
-        );
         let variant_name = vdef.name.to_string();
         let (adt_path, _) =
             crate::fn_call_to_vir::check_variant_field(bctx, expr.span, expr, &variant_name, None)?;
@@ -2888,7 +2883,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         move |x: ExprX| Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x));
                     let place = source_vir.to_place(bctx, expr.span, source_ty)?;
                     let place = simplify_place_by_cancelling(&place);
-                    let cast_to = expr_cast_enum_int_to_vir(bctx, source, place, mk_expr)?;
+                    let ty = bctx.types.expr_ty_adjusted(source);
+                    let cast_to = expr_cast_enum_int_to_vir(bctx, source, place, mk_expr, ty)?;
                     Ok(ExprOrPlace::Expr(mk_ty_clip(
                         bctx,
                         &to_vir_ty,
