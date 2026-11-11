@@ -579,8 +579,32 @@ fn parse_update(kw: Ident, input: ParseStream) -> parse::Result<TransitionStmt> 
     loop {
         if input.peek(Token![.]) {
             let _: Token![.] = input.parse()?;
-            let sub_field: Ident = input.parse()?;
-            subs.push(SubIdx::Field(sub_field));
+            if input.peek(verus_syn::LitFloat) {
+                // `x.0.1` lexes as `x`, `.`, `0.1`
+                let lit: verus_syn::LitFloat = input.parse()?;
+                let text = lit.to_string();
+                let parts: Vec<&str> = text.split('.').collect();
+                if parts.len() != 2 || !parts.iter().all(|p| is_tuple_index(p)) {
+                    return Err(Error::new(lit.span(), "expected a field name or tuple index"));
+                }
+                for part in parts {
+                    let index = part.parse::<u32>().map_err(|_| {
+                        Error::new(lit.span(), "expected a field name or tuple index")
+                    })?;
+                    let index = verus_syn::Index { index, span: lit.span() };
+                    subs.push(SubIdx::Field(verus_syn::Member::Unnamed(index)));
+                }
+            } else if input.peek(verus_syn::LitInt) {
+                let lit: verus_syn::LitInt = input.parse()?;
+                if !is_tuple_index(&lit.to_string()) {
+                    return Err(Error::new(lit.span(), "expected a field name or tuple index"));
+                }
+                let index = verus_syn::Index { index: lit.base10_parse()?, span: lit.span() };
+                subs.push(SubIdx::Field(verus_syn::Member::Unnamed(index)));
+            } else {
+                let sub_field: Ident = input.parse()?;
+                subs.push(SubIdx::Field(verus_syn::Member::Named(sub_field)));
+            }
         } else if input.peek(token::Bracket) {
             let content;
             let _ = bracketed!(content in input);
@@ -602,6 +626,14 @@ fn parse_update(kw: Ident, input: ParseStream) -> parse::Result<TransitionStmt> 
     } else {
         Ok(TransitionStmt::Update(stmt_span, field, e))
     }
+}
+
+/// A decimal tuple index without suffix or leading zeros, e.g. `0` or `12`.
+fn is_tuple_index(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 9
+        && s.bytes().all(|b| b.is_ascii_digit())
+        && (s == "0" || !s.starts_with('0'))
 }
 
 /// Parse `init field = ...;`

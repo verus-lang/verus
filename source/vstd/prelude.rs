@@ -86,3 +86,8 @@ pub use super::tokens::ValueToken;
 
 #[cfg(verus_keep_ghost)]
 pub use super::tokens::InstanceId;
+
+#[cfg(verus_keep_ghost)]
+pub use super::resource::tsm::TokenCount;
+#[cfg(verus_keep_ghost)]
+pub use super::resource::tsm::TokenValue;

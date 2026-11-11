@@ -429,7 +429,7 @@ pub fn output_token_types_and_fns(
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum InoutType {
+pub(crate) enum InoutType {
     In,
     Out,
     InOut,
@@ -437,7 +437,7 @@ enum InoutType {
     BorrowOut,
 }
 
-struct TokenParam {
+pub(crate) struct TokenParam {
     pub inout_type: InoutType,
     pub name: Ident,
     pub ty: Type,
@@ -445,6 +445,11 @@ struct TokenParam {
     /// of the generated types? i.e., as opposed to just a single token,
     /// or opposed to a collection of external tokens.
     pub is_collection: bool,
+    /// The operation that created this param and its element, with field
+    /// reads translated to token values (used by the checked facade).
+    pub stmt: Option<MonoidStmtType>,
+    pub elt: Option<MonoidElt>,
+    pub pat: Option<Pat>,
 }
 
 /// Context object for the complex task of translating a single
@@ -470,6 +475,9 @@ struct Ctxt {
     sm: SM,
 
     fresh_num_counter: usize,
+
+    // The checked facade's own collection types for `imap`/`iset` fields.
+    reservation_collections: bool,
 }
 
 impl Ctxt {
@@ -503,7 +511,7 @@ impl Ctxt {
     }
 }
 
-enum Mode {
+pub(crate) enum Mode {
     Ghost,
     Tracked,
 }
@@ -520,11 +528,23 @@ enum Mode {
 ///
 /// When possible, we use &mut arguments (i.e., if a given token is
 /// both an input and an output).
-pub fn exchange_stream(
+pub(crate) fn exchange_parts(
     bundle: &SMBundle,
     tr: &Transition,
     safety_condition_lemmas: &HashMap<String, Ident>,
-) -> parse::Result<TokenStream> {
+) -> parse::Result<ExchangeParts> {
+    exchange_parts_with(bundle, tr, safety_condition_lemmas, false)
+}
+
+/// `exchange_parts`, where `reservation_collections` selects the checked
+/// facade's collection types `<field>_map`/`<field>_set` (instead of
+/// `vstd::tokens::IMapToken`/`ISetToken`) for `imap` and `iset` fields.
+pub(crate) fn exchange_parts_with(
+    bundle: &SMBundle,
+    tr: &Transition,
+    safety_condition_lemmas: &HashMap<String, Ident>,
+    reservation_collections: bool,
+) -> parse::Result<ExchangeParts> {
     let sm = &bundle.sm;
 
     let is_init = tr.kind == TransitionKind::Init;
@@ -577,6 +597,7 @@ pub fn exchange_stream(
         is_init: is_init,
         sm: bundle.sm.clone(),
         fresh_num_counter: 0,
+        reservation_collections,
     };
 
     let mut tr = tr.clone();
@@ -668,6 +689,7 @@ pub fn exchange_stream(
 
     let mut inst_eq_reqs = Vec::new();
     let mut inst_eq_enss = Vec::new();
+    let mut var_updates = HashMap::new();
 
     // Whether or not to mark all borrows with a lifetime parameter 'a
     // We need to do this if there is any borrow in an out param
@@ -765,7 +787,9 @@ pub fn exchange_stream(
                     e,
                     Expr::Verbatim(quote! { #arg_name }),
                 );
-            } else if let Some(init_output_token_type) = get_init_param_output_type(sm, &field) {
+            } else if let Some(init_output_token_type) =
+                get_init_param_output_type(sm, &field, ctxt.reservation_collections)
+            {
                 // Everything else case, output token & postcondition:
 
                 let arg_name = transition_arg_name(field);
@@ -890,6 +914,7 @@ pub fn exchange_stream(
                         let e = e_opt.expect("get_post_value_for_variable");
                         let lhs = get_new_field_value(sm, field);
                         ctxt.ensures.push(mk_eq(lhs.span(), &lhs, &e));
+                        var_updates.insert(field.name.to_string(), e);
                     }
                 }
                 ShardableType::Option(_)
@@ -949,8 +974,44 @@ pub fn exchange_stream(
     let mut enss = inst_eq_enss;
     enss.extend(ctxt.ensures);
 
-    let exch_name = exchange_name(&tr);
+    let extra_deps = get_extra_deps(bundle, &tr, safety_condition_lemmas);
+    let params = ctxt.params;
+    Ok(ExchangeParts {
+        exch_name: exchange_name(&tr),
+        use_explicit_lifetime,
+        in_params,
+        out_params,
+        reqs,
+        enss,
+        extra_deps,
+        params,
+        body: tr.body,
+        var_updates,
+    })
+}
 
+/// The pieces of a token-exchange method: its signature and specification
+/// (shared by the trusted macro and the checked facade) and per-token-param
+/// metadata for generating a checked body.
+pub(crate) struct ExchangeParts {
+    pub exch_name: Ident,
+    pub use_explicit_lifetime: bool,
+    pub in_params: Vec<TokenStream>,
+    pub out_params: Vec<(TokenStream, TokenStream, Mode)>,
+    pub reqs: Vec<Expr>,
+    pub enss: Vec<Expr>,
+    pub extra_deps: TokenStream,
+    pub params: HashMap<String, Vec<TokenParam>>,
+    pub body: TransitionStmt,
+    /// The new value of each updated `variable` field (checked facade only).
+    pub var_updates: HashMap<String, Expr>,
+}
+
+/// The return type, requires, and ensures of an exchange method.
+pub(crate) fn signature_tokens(parts: &ExchangeParts) -> (TokenStream, TokenStream, TokenStream) {
+    let reqs = &parts.reqs;
+    let enss = &parts.enss;
+    let out_params = &parts.out_params;
     let req_stream = if reqs.len() > 0 {
         quote! {
             requires
@@ -1046,16 +1107,24 @@ pub fn exchange_stream(
         (quote! { -> (tracked tmp_tuple: #tup_typ) }, ens_stream)
     };
 
-    // Tie it all together
+    (out_params_ret, req_stream, ens_stream)
+}
 
-    let extra_deps = get_extra_deps(bundle, &tr, safety_condition_lemmas);
-
-    let gen = if use_explicit_lifetime {
+pub fn exchange_stream(
+    bundle: &SMBundle,
+    tr: &Transition,
+    safety_condition_lemmas: &HashMap<String, Ident>,
+) -> parse::Result<TokenStream> {
+    let parts = exchange_parts(bundle, tr, safety_condition_lemmas)?;
+    let (out_params_ret, req_stream, ens_stream) = signature_tokens(&parts);
+    let exch_name = &parts.exch_name;
+    let in_params = &parts.in_params;
+    let extra_deps = &parts.extra_deps;
+    let gen = if parts.use_explicit_lifetime {
         quote! { <'a> }
     } else {
         TokenStream::new()
     };
-
     return Ok(quote_vstd! { vstd =>
         #vstd::prelude::verus_impl!{
             #[cfg(verus_keep_ghost_body)]
@@ -1122,7 +1191,7 @@ fn add_initialization_input_conditions(
     }
 }
 
-fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
+fn get_init_param_output_type(sm: &SM, field: &Field, reservation: bool) -> Option<Type> {
     match &field.stype {
         ShardableType::Variable(_) => Some(field_token_type(&sm, field)),
         ShardableType::Constant(_) => None, // constants handled separately
@@ -1140,7 +1209,9 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
         | ShardableType::Map(..)
         | ShardableType::IMap(..)
         | ShardableType::PersistentMap(..)
-        | ShardableType::PersistentIMap(..) => Some(field_token_collection_type(sm, field)),
+        | ShardableType::PersistentIMap(..) => {
+            Some(field_token_collection_type(sm, field, reservation))
+        }
 
         ShardableType::StorageOption(_) => None, // no output tokens for storage
         ShardableType::StorageMap(_, _) => None,
@@ -1693,8 +1764,9 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> parse::Result<()> 
             ctxt.fields_written.insert(id.to_string());
             Ok(())
         }
-        TransitionStmt::SubUpdate(..) => {
-            panic!("sub-update not supported here");
+        TransitionStmt::SubUpdate(span, ..) => {
+            // Rejected earlier by `check_unsupported_updates`.
+            Err(Error::new(*span, "sub-update not supported here"))
         }
         TransitionStmt::Update(span, id, _e) => {
             let f = ctxt.get_field_or_panic(id);
@@ -1829,8 +1901,9 @@ fn translate_transition(
             return Ok(());
         }
 
-        TransitionStmt::SubUpdate(..) => {
-            panic!("sub-update not supported here");
+        TransitionStmt::SubUpdate(span, ..) => {
+            // Rejected earlier by `check_unsupported_updates`.
+            return Err(Error::new(*span, "sub-update not supported here"));
         }
         TransitionStmt::Initialize(_span, _id, e) | TransitionStmt::Update(_span, _id, e) => {
             let update_e = translate_expr(ctxt, e, false, errors);
@@ -1877,8 +1950,19 @@ fn translate_split_kind(ctxt: &mut Ctxt, sk: &mut SplitKind, errors: &mut Vec<Er
     }
 }
 
-fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
+fn field_token_collection_type(sm: &SM, field: &Field, reservation: bool) -> Type {
     let tok = field_token_type(sm, field);
+    if reservation {
+        let suffix = match &field.stype {
+            ShardableType::IMap(..) | ShardableType::PersistentIMap(..) => Some("map"),
+            ShardableType::ISet(_) | ShardableType::PersistentISet(_) => Some("set"),
+            _ => None,
+        };
+        if let Some(suffix) = suffix {
+            let name = Ident::new(&format!("{}_{}", field.name, suffix), field.name.span());
+            return name_with_type_args(&name, sm);
+        }
+    }
     match &field.stype {
         ShardableType::Option(_)
         | ShardableType::PersistentOption(_)
@@ -2035,7 +2119,7 @@ fn translate_special_condition(
             let ident = ctxt.get_numbered_token_ident(&field.name);
             let is_collection = elt.is_general() && !field.stype.is_count();
             let ty = if is_collection {
-                field_token_collection_type(&ctxt.sm, &field)
+                field_token_collection_type(&ctxt.sm, &field, ctxt.reservation_collections)
             } else {
                 field_token_type(&ctxt.sm, &field)
             };
@@ -2045,6 +2129,9 @@ fn translate_special_condition(
                 name: ident.clone(),
                 ty: ty,
                 is_collection,
+                stmt: Some(op.stmt.clone()),
+                pat: pat_opt.as_ref().map(|p| (**p).clone()),
+                elt: Some(elt.clone()),
             });
 
             Some(TransitionStmt::Require(
@@ -2059,7 +2146,7 @@ fn translate_special_condition(
             let ident = ctxt.get_numbered_token_ident(&field.name);
             let is_collection = elt.is_general() && !field.stype.is_count();
             let ty = if is_collection {
-                field_token_collection_type(&ctxt.sm, &field)
+                field_token_collection_type(&ctxt.sm, &field, ctxt.reservation_collections)
             } else {
                 field_token_type(&ctxt.sm, &field)
             };
@@ -2069,6 +2156,9 @@ fn translate_special_condition(
                 name: ident.clone(),
                 ty: ty,
                 is_collection,
+                stmt: Some(op.stmt.clone()),
+                pat: pat_opt.as_ref().map(|p| (**p).clone()),
+                elt: Some(elt.clone()),
             });
 
             Some(TransitionStmt::PostCondition(
@@ -2083,7 +2173,7 @@ fn translate_special_condition(
             let ident = ctxt.get_numbered_token_ident(&field.name);
             let is_collection = elt.is_general() && !field.stype.is_count();
             let ty = if is_collection {
-                field_token_collection_type(&ctxt.sm, &field)
+                field_token_collection_type(&ctxt.sm, &field, ctxt.reservation_collections)
             } else {
                 field_token_type(&ctxt.sm, &field)
             };
@@ -2093,6 +2183,9 @@ fn translate_special_condition(
                 name: ident.clone(),
                 ty: ty,
                 is_collection,
+                stmt: Some(op.stmt.clone()),
+                pat: pat_opt.as_ref().map(|p| (**p).clone()),
+                elt: Some(elt.clone()),
             });
 
             Some(TransitionStmt::Require(
@@ -2113,11 +2206,15 @@ fn translate_special_condition(
                 stored_object_type(&field)
             };
 
+            let translated = translate_elt(ctxt, elt, false, &mut Vec::new());
             ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
                 inout_type: InoutType::BorrowOut,
                 name: ident.clone(),
                 ty: ty,
                 is_collection: false,
+                stmt: Some(op.stmt.clone()),
+                pat: pat_opt.as_ref().map(|p| (**p).clone()),
+                elt: Some(translated),
             });
 
             Some(TransitionStmt::PostCondition(
@@ -2137,11 +2234,15 @@ fn translate_special_condition(
                 stored_object_type(&field)
             };
 
+            let translated = translate_elt(ctxt, elt, false, &mut Vec::new());
             ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
                 inout_type: InoutType::In,
                 name: ident.clone(),
                 ty: ty,
                 is_collection: false,
+                stmt: Some(op.stmt.clone()),
+                pat: pat_opt.as_ref().map(|p| (**p).clone()),
+                elt: Some(translated),
             });
 
             Some(TransitionStmt::Require(span, mk_eq(span, &Expr::Verbatim(quote! {#ident}), &e)))
@@ -2157,11 +2258,15 @@ fn translate_special_condition(
                 stored_object_type(&field)
             };
 
+            let translated = translate_elt(ctxt, elt, false, &mut Vec::new());
             ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
                 inout_type: InoutType::Out,
                 name: ident.clone(),
                 ty: ty,
                 is_collection: false,
+                stmt: Some(op.stmt.clone()),
+                pat: pat_opt.as_ref().map(|p| (**p).clone()),
+                elt: Some(translated),
             });
 
             if let Some(e) = e_opt {
@@ -2512,17 +2617,44 @@ fn bool_not_expr(e: &Expr) -> Expr {
 }
 
 fn with_prequel(pre: &Vec<PrequelElement>, include_assert_conditions: bool, e: Expr) -> Expr {
+    // Identifiers that the expression built so far may refer to. A `let` none
+    // of whose pattern identifiers occurs here is unused and is left out, so
+    // each condition is wrapped only in the bindings it (transitively) uses,
+    // not in every enclosing binding of the transition. (Over-approximate:
+    // identifiers are never removed, so a shadowed binding is kept as well.)
+    fn idents(ts: TokenStream, out: &mut HashSet<String>) {
+        for t in ts {
+            match t {
+                proc_macro2::TokenTree::Ident(id) => {
+                    out.insert(id.to_string());
+                }
+                proc_macro2::TokenTree::Group(g) => idents(g.stream(), out),
+                _ => {}
+            }
+        }
+    }
+    let mut needed = HashSet::new();
+    idents(quote! {#e}, &mut needed);
     let mut e = e;
     let span = e.span();
     for p in pre.iter().rev() {
         match p {
-            PrequelElement::Let(pat, None, init_e) => {
-                e = Expr::Verbatim(quote_spanned! { span => { let #pat = #init_e; #e } });
-            }
-            PrequelElement::Let(pat, Some(ty), init_e) => {
-                e = Expr::Verbatim(quote_spanned! { span => { let #pat: #ty = #init_e; #e } });
+            PrequelElement::Let(pat, ty, init_e) => {
+                let mut bound = HashSet::new();
+                idents(quote! {#pat}, &mut bound);
+                if bound.is_disjoint(&needed) {
+                    continue;
+                }
+                idents(quote! {#ty #init_e}, &mut needed);
+                e = match ty {
+                    None => Expr::Verbatim(quote_spanned! { span => { let #pat = #init_e; #e } }),
+                    Some(ty) => {
+                        Expr::Verbatim(quote_spanned! { span => { let #pat: #ty = #init_e; #e } })
+                    }
+                };
             }
             PrequelElement::Condition(cond_e) => {
+                idents(quote! {#cond_e}, &mut needed);
                 e = Expr::Verbatim(
                     quote_spanned_vstd! { vstd, span => #vstd::prelude::imply(#cond_e, #e) },
                 );
@@ -2541,9 +2673,11 @@ fn with_prequel(pre: &Vec<PrequelElement>, include_assert_conditions: bool, e: E
                 let mut arm_exprs = vec![Expr::Verbatim(quote! {true}); arms.len()];
                 arm_exprs[*idx] = e;
                 e = emit_match(span, match_e, arms, &arm_exprs);
+                idents(quote! {#e}, &mut needed);
             }
             PrequelElement::AssertCondition(cond_e) => {
                 if include_assert_conditions {
+                    idents(quote! {#cond_e}, &mut needed);
                     e = Expr::Verbatim(
                         quote_spanned_vstd! { vstd, span => #vstd::prelude::imply(#cond_e, #e) },
                     );

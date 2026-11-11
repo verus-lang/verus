@@ -2,7 +2,7 @@ use proc_macro2::Span;
 use std::rc::Rc;
 use verus_syn::token;
 use verus_syn::{
-    Attribute, Block, Expr, FieldsNamed, Generics, Ident, ImplItemFn, Item, Pat, Type,
+    Attribute, Block, Expr, FieldsNamed, Generics, Ident, ImplItemFn, Item, Member, Pat, Type,
 };
 
 #[derive(Clone, Debug)]
@@ -249,7 +249,9 @@ pub enum SplitKind {
 
 #[derive(Clone, Debug)]
 pub enum SubIdx {
-    Field(Ident),
+    /// `.f` or `.0`
+    Field(Member),
+    /// `[e]`
     Idx(Box<Expr>),
 }
 

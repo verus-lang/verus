@@ -103,6 +103,9 @@ pub trait Spanned: private::Sealed {
 
 impl<T: ?Sized + ToTokens> Spanned for T {
     fn span(&self) -> Span {
+        // The span is computed from the first and last outermost token trees of the
+        // printed node, so groups need not be printed with their contents.
+        let _outline = crate::token::printing::Outline::enter();
         self.__span()
     }
 }

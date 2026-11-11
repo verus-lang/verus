@@ -127,9 +127,10 @@ fn validate_idents_transition_stmt(
             validate_ident(f)?;
             for sub in subs {
                 match sub {
-                    SubIdx::Field(ident) => {
+                    SubIdx::Field(verus_syn::Member::Named(ident)) => {
                         validate_ident(ident)?;
                     }
+                    SubIdx::Field(verus_syn::Member::Unnamed(_)) => {}
                     SubIdx::Idx(e) => {
                         validate_idents_expr(e, kind, bound_names, field_names)?;
                     }

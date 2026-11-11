@@ -1,9 +1,13 @@
 #![allow(unused_imports)]
 
+// no-cheating: off --- the example assumes `count < 100000000` (no refcount overflow) in `clone`
 // ANCHOR: full
 use verus_builtin::*;
 use verus_builtin_macros::*;
+#[cfg(not(verus_verified_tsm))]
 use verus_state_machines_macros::tokenized_state_machine;
+#[cfg(verus_verified_tsm)]
+use verus_state_machines_macros::verified_tokenized_state_machine as tokenized_state_machine;
 use vstd::cell::pcell_maybe_uninit as cell;
 use vstd::invariant::*;
 use vstd::modes::*;
