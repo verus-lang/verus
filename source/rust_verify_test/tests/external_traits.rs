@@ -1330,7 +1330,7 @@ test_verify_one_file! {
 
             fn f() -> (b: bool)
                 ensures
-                    Self::obeys() ==> b; // FAILS
+                    Self::obeys() ==> b;
         }
 
         struct Y;

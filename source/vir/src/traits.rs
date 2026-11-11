@@ -824,7 +824,7 @@ fn synthesize_extension_impls(
                         paired.insert(imp.clone());
                     }
                 }
-                break;
+                continue;
             }
         }
     }
