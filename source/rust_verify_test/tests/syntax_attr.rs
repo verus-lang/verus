@@ -736,6 +736,47 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "in the compiled program, `f` here resolves to `call::f`, not to `f` (declared with `#[verus_spec(with ...)]`)")
 }
 
+test_verify_one_file_with_options! {
+    #[test] test_proof_with_callee_incremental ["--incremental"] => code!{
+        // With incremental compilation, rustc sets the parent of item spans,
+        // so the spans of `f` and `_VERUS_VERIFIED_f` differ in their parent field
+        #[verus_verify]
+        struct S { x: u64 }
+
+        #[verus_verify]
+        impl S {
+            #[verus_spec(
+                with Tracked(perm): Tracked<&mut u64>
+                requires old(self).x < 10,
+            )]
+            fn write(&mut self, v: u64) {
+                self.x = 1;
+            }
+
+            #[verus_spec(
+                with Tracked(perm): Tracked<&mut u64>
+                requires old(self).x < 10,
+            )]
+            fn caller(&mut self) {
+                proof_with!(Tracked(perm));
+                self.write(3);
+            }
+        }
+
+        #[verus_spec(r =>
+            with Ghost(g): Ghost<u8>
+            ensures r == 1
+        )]
+        pub fn f(x: u8) -> u8 { 1 }
+
+        #[verus_spec(r => ensures r == 1)]
+        pub fn call() -> u8 {
+            proof_with!{Ghost(0u8)}
+            f(7)
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] test_proof_with_callee_ghost_arg_fixes_generic code!{
         use vstd::prelude::*;
