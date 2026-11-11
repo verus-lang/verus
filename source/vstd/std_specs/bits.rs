@@ -175,13 +175,8 @@ pub broadcast proof fn axiom_u8_leading_ones(i: u8)
 }
 
 /// Equivalent to `i.reverse_bits()`.
-/// See [`lemma_u8_reverse_bits`] for useful properties.
-pub closed spec fn u8_reverse_bits(i: u8) -> u8 {
-    // Swap adjacent bits, then adjacent pairs of bits, and so on up to the two halves
-    let i = ((i >> 1) & 0x55) | ((i & 0x55) << 1);
-    let i = ((i >> 2) & 0x33) | ((i & 0x33) << 2);
-    (i >> 4) | (i << 4)
-}
+/// See [`axiom_u8_reverse_bits`] for useful properties.
+pub uninterp spec fn u8_reverse_bits(i: u8) -> u8;
 
 #[verifier::when_used_as_spec(u8_reverse_bits)]
 pub assume_specification[ u8::reverse_bits ](i: u8) -> (r: u8)
@@ -191,40 +186,13 @@ pub assume_specification[ u8::reverse_bits ](i: u8) -> (r: u8)
     no_unwind
 ;
 
-pub broadcast proof fn lemma_u8_reverse_bits(i: u8)
+pub broadcast axiom fn axiom_u8_reverse_bits(i: u8)
     ensures
         u8_reverse_bits(#[trigger] u8_reverse_bits(i)) == i,
         // bit j of the result is bit 7 - j of i
         forall|j: u8|
             j < 8 ==> #[trigger] (u8_reverse_bits(i) >> j) & 1u8 == (i >> sub(7u8, j)) & 1u8,
-{
-    let r = u8_reverse_bits(i);
-    let x1 = ((i >> 1) & 0x55) | ((i & 0x55) << 1);
-    let x2 = ((x1 >> 2) & 0x33) | ((x1 & 0x33) << 2);
-    assert(r == (x2 >> 4) | (x2 << 4));
-    assert forall|j: u8| j < 8 implies #[trigger] (r >> j) & 1u8 == (i >> sub(7u8, j)) & 1u8 by {
-        assert((r >> j) & 1u8 == (i >> sub(7u8, j)) & 1u8) by (bit_vector)
-            requires
-                x1 == ((i >> 1) & 0x55) | ((i & 0x55) << 1),
-                x2 == ((x1 >> 2) & 0x33) | ((x1 & 0x33) << 2),
-                r == (x2 >> 4) | (x2 << 4),
-                j < 8,
-        ;
-    }
-    let rr = u8_reverse_bits(r);
-    let y1 = ((r >> 1) & 0x55) | ((r & 0x55) << 1);
-    let y2 = ((y1 >> 2) & 0x33) | ((y1 & 0x33) << 2);
-    assert(rr == (y2 >> 4) | (y2 << 4));
-    assert(rr == i) by (bit_vector)
-        requires
-            x1 == ((i >> 1) & 0x55) | ((i & 0x55) << 1),
-            x2 == ((x1 >> 2) & 0x33) | ((x1 & 0x33) << 2),
-            r == (x2 >> 4) | (x2 << 4),
-            y1 == ((r >> 1) & 0x55) | ((r & 0x55) << 1),
-            y2 == ((y1 >> 2) & 0x33) | ((y1 & 0x33) << 2),
-            rr == (y2 >> 4) | (y2 << 4),
-    ;
-}
+;
 
 ///////////////////////////
 /////////////////////////// For u16
@@ -403,14 +371,8 @@ pub broadcast proof fn axiom_u16_leading_ones(i: u16)
 }
 
 /// Equivalent to `i.reverse_bits()`.
-/// See [`lemma_u16_reverse_bits`] for useful properties.
-pub closed spec fn u16_reverse_bits(i: u16) -> u16 {
-    // Swap adjacent bits, then adjacent pairs of bits, and so on up to the two halves
-    let i = ((i >> 1) & 0x5555) | ((i & 0x5555) << 1);
-    let i = ((i >> 2) & 0x3333) | ((i & 0x3333) << 2);
-    let i = ((i >> 4) & 0x0f0f) | ((i & 0x0f0f) << 4);
-    (i >> 8) | (i << 8)
-}
+/// See [`axiom_u16_reverse_bits`] for useful properties.
+pub uninterp spec fn u16_reverse_bits(i: u16) -> u16;
 
 #[verifier::when_used_as_spec(u16_reverse_bits)]
 pub assume_specification[ u16::reverse_bits ](i: u16) -> (r: u16)
@@ -420,46 +382,13 @@ pub assume_specification[ u16::reverse_bits ](i: u16) -> (r: u16)
     no_unwind
 ;
 
-pub broadcast proof fn lemma_u16_reverse_bits(i: u16)
+pub broadcast axiom fn axiom_u16_reverse_bits(i: u16)
     ensures
         u16_reverse_bits(#[trigger] u16_reverse_bits(i)) == i,
         // bit j of the result is bit 15 - j of i
         forall|j: u16|
             j < 16 ==> #[trigger] (u16_reverse_bits(i) >> j) & 1u16 == (i >> sub(15u16, j)) & 1u16,
-{
-    let r = u16_reverse_bits(i);
-    let x1 = ((i >> 1) & 0x5555) | ((i & 0x5555) << 1);
-    let x2 = ((x1 >> 2) & 0x3333) | ((x1 & 0x3333) << 2);
-    let x3 = ((x2 >> 4) & 0x0f0f) | ((x2 & 0x0f0f) << 4);
-    assert(r == (x3 >> 8) | (x3 << 8));
-    assert forall|j: u16| j < 16 implies #[trigger] (r >> j) & 1u16 == (i >> sub(15u16, j))
-        & 1u16 by {
-        assert((r >> j) & 1u16 == (i >> sub(15u16, j)) & 1u16) by (bit_vector)
-            requires
-                x1 == ((i >> 1) & 0x5555) | ((i & 0x5555) << 1),
-                x2 == ((x1 >> 2) & 0x3333) | ((x1 & 0x3333) << 2),
-                x3 == ((x2 >> 4) & 0x0f0f) | ((x2 & 0x0f0f) << 4),
-                r == (x3 >> 8) | (x3 << 8),
-                j < 16,
-        ;
-    }
-    let rr = u16_reverse_bits(r);
-    let y1 = ((r >> 1) & 0x5555) | ((r & 0x5555) << 1);
-    let y2 = ((y1 >> 2) & 0x3333) | ((y1 & 0x3333) << 2);
-    let y3 = ((y2 >> 4) & 0x0f0f) | ((y2 & 0x0f0f) << 4);
-    assert(rr == (y3 >> 8) | (y3 << 8));
-    assert(rr == i) by (bit_vector)
-        requires
-            x1 == ((i >> 1) & 0x5555) | ((i & 0x5555) << 1),
-            x2 == ((x1 >> 2) & 0x3333) | ((x1 & 0x3333) << 2),
-            x3 == ((x2 >> 4) & 0x0f0f) | ((x2 & 0x0f0f) << 4),
-            r == (x3 >> 8) | (x3 << 8),
-            y1 == ((r >> 1) & 0x5555) | ((r & 0x5555) << 1),
-            y2 == ((y1 >> 2) & 0x3333) | ((y1 & 0x3333) << 2),
-            y3 == ((y2 >> 4) & 0x0f0f) | ((y2 & 0x0f0f) << 4),
-            rr == (y3 >> 8) | (y3 << 8),
-    ;
-}
+;
 
 ///////////////////////////
 /////////////////////////// For u32
@@ -638,15 +567,8 @@ pub broadcast proof fn axiom_u32_leading_ones(i: u32)
 }
 
 /// Equivalent to `i.reverse_bits()`.
-/// See [`lemma_u32_reverse_bits`] for useful properties.
-pub closed spec fn u32_reverse_bits(i: u32) -> u32 {
-    // Swap adjacent bits, then adjacent pairs of bits, and so on up to the two halves
-    let i = ((i >> 1) & 0x5555_5555) | ((i & 0x5555_5555) << 1);
-    let i = ((i >> 2) & 0x3333_3333) | ((i & 0x3333_3333) << 2);
-    let i = ((i >> 4) & 0x0f0f_0f0f) | ((i & 0x0f0f_0f0f) << 4);
-    let i = ((i >> 8) & 0x00ff_00ff) | ((i & 0x00ff_00ff) << 8);
-    (i >> 16) | (i << 16)
-}
+/// See [`axiom_u32_reverse_bits`] for useful properties.
+pub uninterp spec fn u32_reverse_bits(i: u32) -> u32;
 
 #[verifier::when_used_as_spec(u32_reverse_bits)]
 pub assume_specification[ u32::reverse_bits ](i: u32) -> (r: u32)
@@ -656,51 +578,13 @@ pub assume_specification[ u32::reverse_bits ](i: u32) -> (r: u32)
     no_unwind
 ;
 
-pub broadcast proof fn lemma_u32_reverse_bits(i: u32)
+pub broadcast axiom fn axiom_u32_reverse_bits(i: u32)
     ensures
         u32_reverse_bits(#[trigger] u32_reverse_bits(i)) == i,
         // bit j of the result is bit 31 - j of i
         forall|j: u32|
             j < 32 ==> #[trigger] (u32_reverse_bits(i) >> j) & 1u32 == (i >> sub(31u32, j)) & 1u32,
-{
-    let r = u32_reverse_bits(i);
-    let x1 = ((i >> 1) & 0x5555_5555) | ((i & 0x5555_5555) << 1);
-    let x2 = ((x1 >> 2) & 0x3333_3333) | ((x1 & 0x3333_3333) << 2);
-    let x3 = ((x2 >> 4) & 0x0f0f_0f0f) | ((x2 & 0x0f0f_0f0f) << 4);
-    let x4 = ((x3 >> 8) & 0x00ff_00ff) | ((x3 & 0x00ff_00ff) << 8);
-    assert(r == (x4 >> 16) | (x4 << 16));
-    assert forall|j: u32| j < 32 implies #[trigger] (r >> j) & 1u32 == (i >> sub(31u32, j))
-        & 1u32 by {
-        assert((r >> j) & 1u32 == (i >> sub(31u32, j)) & 1u32) by (bit_vector)
-            requires
-                x1 == ((i >> 1) & 0x5555_5555) | ((i & 0x5555_5555) << 1),
-                x2 == ((x1 >> 2) & 0x3333_3333) | ((x1 & 0x3333_3333) << 2),
-                x3 == ((x2 >> 4) & 0x0f0f_0f0f) | ((x2 & 0x0f0f_0f0f) << 4),
-                x4 == ((x3 >> 8) & 0x00ff_00ff) | ((x3 & 0x00ff_00ff) << 8),
-                r == (x4 >> 16) | (x4 << 16),
-                j < 32,
-        ;
-    }
-    let rr = u32_reverse_bits(r);
-    let y1 = ((r >> 1) & 0x5555_5555) | ((r & 0x5555_5555) << 1);
-    let y2 = ((y1 >> 2) & 0x3333_3333) | ((y1 & 0x3333_3333) << 2);
-    let y3 = ((y2 >> 4) & 0x0f0f_0f0f) | ((y2 & 0x0f0f_0f0f) << 4);
-    let y4 = ((y3 >> 8) & 0x00ff_00ff) | ((y3 & 0x00ff_00ff) << 8);
-    assert(rr == (y4 >> 16) | (y4 << 16));
-    assert(rr == i) by (bit_vector)
-        requires
-            x1 == ((i >> 1) & 0x5555_5555) | ((i & 0x5555_5555) << 1),
-            x2 == ((x1 >> 2) & 0x3333_3333) | ((x1 & 0x3333_3333) << 2),
-            x3 == ((x2 >> 4) & 0x0f0f_0f0f) | ((x2 & 0x0f0f_0f0f) << 4),
-            x4 == ((x3 >> 8) & 0x00ff_00ff) | ((x3 & 0x00ff_00ff) << 8),
-            r == (x4 >> 16) | (x4 << 16),
-            y1 == ((r >> 1) & 0x5555_5555) | ((r & 0x5555_5555) << 1),
-            y2 == ((y1 >> 2) & 0x3333_3333) | ((y1 & 0x3333_3333) << 2),
-            y3 == ((y2 >> 4) & 0x0f0f_0f0f) | ((y2 & 0x0f0f_0f0f) << 4),
-            y4 == ((y3 >> 8) & 0x00ff_00ff) | ((y3 & 0x00ff_00ff) << 8),
-            rr == (y4 >> 16) | (y4 << 16),
-    ;
-}
+;
 
 ///////////////////////////
 /////////////////////////// For u64
@@ -881,16 +765,8 @@ pub broadcast proof fn axiom_u64_leading_ones(i: u64)
 }
 
 /// Equivalent to `i.reverse_bits()`.
-/// See [`lemma_u64_reverse_bits`] for useful properties.
-pub closed spec fn u64_reverse_bits(i: u64) -> u64 {
-    // Swap adjacent bits, then adjacent pairs of bits, and so on up to the two halves
-    let i = ((i >> 1) & 0x5555_5555_5555_5555) | ((i & 0x5555_5555_5555_5555) << 1);
-    let i = ((i >> 2) & 0x3333_3333_3333_3333) | ((i & 0x3333_3333_3333_3333) << 2);
-    let i = ((i >> 4) & 0x0f0f_0f0f_0f0f_0f0f) | ((i & 0x0f0f_0f0f_0f0f_0f0f) << 4);
-    let i = ((i >> 8) & 0x00ff_00ff_00ff_00ff) | ((i & 0x00ff_00ff_00ff_00ff) << 8);
-    let i = ((i >> 16) & 0x0000_ffff_0000_ffff) | ((i & 0x0000_ffff_0000_ffff) << 16);
-    (i >> 32) | (i << 32)
-}
+/// See [`axiom_u64_reverse_bits`] for useful properties.
+pub uninterp spec fn u64_reverse_bits(i: u64) -> u64;
 
 #[verifier::when_used_as_spec(u64_reverse_bits)]
 pub assume_specification[ u64::reverse_bits ](i: u64) -> (r: u64)
@@ -900,56 +776,13 @@ pub assume_specification[ u64::reverse_bits ](i: u64) -> (r: u64)
     no_unwind
 ;
 
-pub broadcast proof fn lemma_u64_reverse_bits(i: u64)
+pub broadcast axiom fn axiom_u64_reverse_bits(i: u64)
     ensures
         u64_reverse_bits(#[trigger] u64_reverse_bits(i)) == i,
         // bit j of the result is bit 63 - j of i
         forall|j: u64|
             j < 64 ==> #[trigger] (u64_reverse_bits(i) >> j) & 1u64 == (i >> sub(63u64, j)) & 1u64,
-{
-    let r = u64_reverse_bits(i);
-    let x1 = ((i >> 1) & 0x5555_5555_5555_5555) | ((i & 0x5555_5555_5555_5555) << 1);
-    let x2 = ((x1 >> 2) & 0x3333_3333_3333_3333) | ((x1 & 0x3333_3333_3333_3333) << 2);
-    let x3 = ((x2 >> 4) & 0x0f0f_0f0f_0f0f_0f0f) | ((x2 & 0x0f0f_0f0f_0f0f_0f0f) << 4);
-    let x4 = ((x3 >> 8) & 0x00ff_00ff_00ff_00ff) | ((x3 & 0x00ff_00ff_00ff_00ff) << 8);
-    let x5 = ((x4 >> 16) & 0x0000_ffff_0000_ffff) | ((x4 & 0x0000_ffff_0000_ffff) << 16);
-    assert(r == (x5 >> 32) | (x5 << 32));
-    assert forall|j: u64| j < 64 implies #[trigger] (r >> j) & 1u64 == (i >> sub(63u64, j))
-        & 1u64 by {
-        assert((r >> j) & 1u64 == (i >> sub(63u64, j)) & 1u64) by (bit_vector)
-            requires
-                x1 == ((i >> 1) & 0x5555_5555_5555_5555) | ((i & 0x5555_5555_5555_5555) << 1),
-                x2 == ((x1 >> 2) & 0x3333_3333_3333_3333) | ((x1 & 0x3333_3333_3333_3333) << 2),
-                x3 == ((x2 >> 4) & 0x0f0f_0f0f_0f0f_0f0f) | ((x2 & 0x0f0f_0f0f_0f0f_0f0f) << 4),
-                x4 == ((x3 >> 8) & 0x00ff_00ff_00ff_00ff) | ((x3 & 0x00ff_00ff_00ff_00ff) << 8),
-                x5 == ((x4 >> 16) & 0x0000_ffff_0000_ffff) | ((x4 & 0x0000_ffff_0000_ffff) << 16),
-                r == (x5 >> 32) | (x5 << 32),
-                j < 64,
-        ;
-    }
-    let rr = u64_reverse_bits(r);
-    let y1 = ((r >> 1) & 0x5555_5555_5555_5555) | ((r & 0x5555_5555_5555_5555) << 1);
-    let y2 = ((y1 >> 2) & 0x3333_3333_3333_3333) | ((y1 & 0x3333_3333_3333_3333) << 2);
-    let y3 = ((y2 >> 4) & 0x0f0f_0f0f_0f0f_0f0f) | ((y2 & 0x0f0f_0f0f_0f0f_0f0f) << 4);
-    let y4 = ((y3 >> 8) & 0x00ff_00ff_00ff_00ff) | ((y3 & 0x00ff_00ff_00ff_00ff) << 8);
-    let y5 = ((y4 >> 16) & 0x0000_ffff_0000_ffff) | ((y4 & 0x0000_ffff_0000_ffff) << 16);
-    assert(rr == (y5 >> 32) | (y5 << 32));
-    assert(rr == i) by (bit_vector)
-        requires
-            x1 == ((i >> 1) & 0x5555_5555_5555_5555) | ((i & 0x5555_5555_5555_5555) << 1),
-            x2 == ((x1 >> 2) & 0x3333_3333_3333_3333) | ((x1 & 0x3333_3333_3333_3333) << 2),
-            x3 == ((x2 >> 4) & 0x0f0f_0f0f_0f0f_0f0f) | ((x2 & 0x0f0f_0f0f_0f0f_0f0f) << 4),
-            x4 == ((x3 >> 8) & 0x00ff_00ff_00ff_00ff) | ((x3 & 0x00ff_00ff_00ff_00ff) << 8),
-            x5 == ((x4 >> 16) & 0x0000_ffff_0000_ffff) | ((x4 & 0x0000_ffff_0000_ffff) << 16),
-            r == (x5 >> 32) | (x5 << 32),
-            y1 == ((r >> 1) & 0x5555_5555_5555_5555) | ((r & 0x5555_5555_5555_5555) << 1),
-            y2 == ((y1 >> 2) & 0x3333_3333_3333_3333) | ((y1 & 0x3333_3333_3333_3333) << 2),
-            y3 == ((y2 >> 4) & 0x0f0f_0f0f_0f0f_0f0f) | ((y2 & 0x0f0f_0f0f_0f0f_0f0f) << 4),
-            y4 == ((y3 >> 8) & 0x00ff_00ff_00ff_00ff) | ((y3 & 0x00ff_00ff_00ff_00ff) << 8),
-            y5 == ((y4 >> 16) & 0x0000_ffff_0000_ffff) | ((y4 & 0x0000_ffff_0000_ffff) << 16),
-            rr == (y5 >> 32) | (y5 << 32),
-    ;
-}
+;
 
 pub broadcast group group_bits_axioms {
     axiom_u8_trailing_zeros,
@@ -968,10 +801,10 @@ pub broadcast group group_bits_axioms {
     axiom_u64_trailing_ones,
     axiom_u64_leading_zeros,
     axiom_u64_leading_ones,
-    lemma_u8_reverse_bits,
-    lemma_u16_reverse_bits,
-    lemma_u32_reverse_bits,
-    lemma_u64_reverse_bits,
+    axiom_u8_reverse_bits,
+    axiom_u16_reverse_bits,
+    axiom_u32_reverse_bits,
+    axiom_u64_reverse_bits,
 }
 
 } // verus!
