@@ -1962,13 +1962,8 @@ pub fn set_krate_dyn_compatibility(
         if verdicts.len() == 1 && !local_traits.contains(path) {
             continue;
         }
-        let d = get_dyn_compatibility(
-            tr_map,
-            &unsized_blanketed_traits,
-            &fun_map,
-            &mut dyn_map,
-            path,
-        );
+        let d =
+            get_dyn_compatibility(tr_map, &unsized_blanketed_traits, &fun_map, &mut dyn_map, path);
         if matches!(&*d, DynCompatible::Accept) {
             continue;
         }
@@ -1982,19 +1977,43 @@ pub fn set_krate_dyn_compatibility(
                     "it has an unsized blanket impl".to_string()
                 }
             };
-            let name = path_as_friendly_rust_name(path);
-            let span = match krate.traits.iter().find(|t| &t.x.name == path) {
-                Some(local) => &local.span,
-                None => &tr.span,
+            // The crate that declared a particular copy of the trait
+            // (via external_trait_specification, or the trait itself)
+            let spec_crate = |t: &Trait| match &t.x.proxy {
+                Some(proxy) => proxy.x.krate.to_string(),
+                None => t.x.name.krate.to_string(),
             };
+            let name = path_as_friendly_rust_name(path);
+            let local = krate.traits.iter().find(|t| &t.x.name == path);
+            // Blame the first imported copy that is itself not dyn-compatible;
+            // otherwise blame the local copy;
+            // otherwise, the combination of the imported copies is to blame.
+            let culprit = verdicts.iter().find(|(_, v)| !matches!(&**v, DynCompatible::Accept));
+            let (span, culprit_desc) = match (culprit, local) {
+                (Some((t, _)), _) => (&t.span, format!("crate `{}`", spec_crate(t))),
+                (None, Some(t)) => (&t.span, format!("crate `{}`", spec_crate(t))),
+                (None, None) => {
+                    let mut crates: Vec<String> =
+                        verdicts.iter().map(|(t, _)| format!("`{}`", spec_crate(t))).collect();
+                    crates.dedup();
+                    (
+                        &tr.span,
+                        format!("the combined specifications from crates {}", crates.join(", ")),
+                    )
+                }
+            };
+            let upstream_crate = spec_crate(upstream);
             return Err(crate::messages::error(
                 span,
                 format!(
-                    "this specification makes trait {name} not Verus dyn-compatible ({reason}), \
-                    but an imported crate already treats {name} as Verus dyn-compatible"
+                    "{culprit_desc} makes trait `{name}` not Verus dyn-compatible ({reason}), \
+                    but crate `{upstream_crate}` already treats `{name}` as Verus dyn-compatible"
                 ),
             )
-            .secondary_span(&upstream.span));
+            .secondary_label(
+                &upstream.span,
+                format!("crate `{upstream_crate}` specifies `{name}` here"),
+            ));
         }
     }
     for tr in &mut krate.traits {

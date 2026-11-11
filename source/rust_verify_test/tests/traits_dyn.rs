@@ -876,7 +876,7 @@ test_verify_crates! {
                 assert(false);
             }
         },
-    ] => Err(err) => assert_vir_error_msg(err, "but an imported crate already treats a::T as Verus dyn-compatible")
+    ] => Err(err) => assert_vir_error_msg(err, "crate `b` makes trait `a::T` not Verus dyn-compatible (specification of function a::T::all_same uses Self outside of the receiver), but crate `a` already treats `a::T` as Verus dyn-compatible")
 }
 
 test_verify_crates! {
@@ -908,5 +908,55 @@ test_verify_crates! {
                 assert(false);
             }
         },
-    ] => Err(err) => assert_vir_error_msg(err, "but an imported crate already treats a::T as Verus dyn-compatible")
+    ] => Err(err) => assert_vir_error_msg(err, "crate `b` makes trait `a::T` not Verus dyn-compatible (specification of function a::T::all_same uses Self outside of the receiver), but crate `a` already treats `a::T` as Verus dyn-compatible")
+}
+
+test_verify_crates! {
+    #[test] dyn_cross_crate_incompatible_ext_spec_imported_sibling [
+        // T is sealed, so A1 and A2 (unit structs) are its only possible implementors.
+        "t" => verus_code! {
+            pub mod private { pub trait Sealed {} impl Sealed for super::A1 {} impl Sealed for super::A2 {} }
+            #[verifier::external]
+            pub trait T: private::Sealed {
+                fn f(&self);
+                fn all_same(&self) { }
+            }
+            pub struct A1;
+            pub struct A2;
+            #[verifier::external]
+            impl T for A1 { fn f(&self) {} }
+            #[verifier::external]
+            impl T for A2 { fn f(&self) {} }
+        },
+        // a uses dyn T, so it requires T to be verus-dyn-compatible
+        "a" ["t"] => verus_code! {
+            use vstd::prelude::*;
+            use t::T;
+
+            #[verifier::external_trait_specification]
+            pub trait ExT: t::private::Sealed {
+                type ExternalTraitSpecificationFor: T;
+                fn f(&self);
+            }
+
+            pub fn get1() -> Box<dyn T> { Box::new(t::A1) }
+        },
+        // b independently adds a specification that is not verus-dyn-compatible
+        "b" ["t"] => verus_code! {
+            use vstd::prelude::*;
+            use t::T;
+
+            pub open spec fn same<A: ?Sized>(a: &A, b: &A) -> bool { a == b }
+
+            #[verifier::external_trait_specification]
+            pub trait ExTMore: t::private::Sealed {
+                type ExternalTraitSpecificationFor: T;
+                fn all_same(&self)
+                    ensures forall|b: &Self| #[trigger] same(b, self);
+            }
+        },
+        "c" ["t", "a", "b"] => verus_code! {
+            fn test() {}
+        },
+    ] => Err(err) => assert_vir_error_msg(err, "crate `b` makes trait `t::T` not Verus dyn-compatible (specification of function t::T::all_same uses Self outside of the receiver), but crate `a` already treats `t::T` as Verus dyn-compatible")
 }

@@ -840,6 +840,17 @@ pub fn verify_crates(
     crates: Vec<(&str, String)>,
     options: &[&str],
 ) -> Result<TestErr, TestErr> {
+    let crates = crates.into_iter().map(|(n, code)| (n, None, code)).collect();
+    verify_crates_with_deps(name, crates, options)
+}
+
+/// Like verify_crates, but each crate may optionally list the earlier crates it imports
+/// (None means import all earlier crates).
+pub fn verify_crates_with_deps(
+    name: &str,
+    crates: Vec<(&str, Option<Vec<&str>>, String)>,
+    options: &[&str],
+) -> Result<TestErr, TestErr> {
     assert!(crates.len() >= 1);
     let current_exe = std::env::current_exe().unwrap();
     let target_dir = current_exe.parent().unwrap().parent().unwrap();
@@ -852,7 +863,7 @@ pub fn verify_crates(
 
     let n_crates = crates.len();
     let mut deps: Vec<(String, std::path::PathBuf, std::path::PathBuf)> = Vec::new();
-    for (i, (crate_name, code)) in crates.into_iter().enumerate() {
+    for (i, (crate_name, crate_deps, code)) in crates.into_iter().enumerate() {
         let is_last = i + 1 == n_crates;
         let entry_file = test_input_dir.join(format!("{crate_name}.rs"));
         let code = format!("{}{}\n{}", FEATURE_PRELUDE, USE_PRELUDE, code);
@@ -868,7 +879,19 @@ pub fn verify_crates(
                 test_input_dir.join(format!("{crate_name}.vir")),
             ))
         };
-        let crate_args = CrateArgs { deps: deps.clone(), export: export.clone() };
+        let crate_deps = match &crate_deps {
+            None => deps.clone(),
+            Some(names) => names
+                .iter()
+                .map(|n| {
+                    deps.iter()
+                        .find(|(d, _, _)| d == n)
+                        .unwrap_or_else(|| panic!("crate {crate_name}: unknown dependency {n}"))
+                        .clone()
+                })
+                .collect(),
+        };
+        let crate_args = CrateArgs { deps: crate_deps, export: export.clone() };
         let run = run_verus_with_crate_args(
             &crate_options,
             &test_input_dir,
@@ -903,12 +926,19 @@ pub fn verify_crates(
 
 /// Test a sequence of crates, each of which may import the previous ones:
 ///   test_verify_crates! { #[test] name ["a" => verus_code! {...}, "b" => verus_code! {...}] => Ok(()) }
+/// By default, each crate imports all earlier crates;
+/// to import only some, list them after the crate name: "c" ["a"] => verus_code! {...}
 #[macro_export]
 macro_rules! test_verify_crates {
-    ($(#[$attrs:meta])* $name:ident [$($crate_name:literal => $body:expr),+ $(,)?] => $result:pat => $assertions:expr ) => {
+    ($(#[$attrs:meta])* $name:ident [$($crate_name:literal $([$($dep:literal),*])? => $body:expr),+ $(,)?] => $result:pat => $assertions:expr ) => {
         $(#[$attrs])*
         fn $name() {
-            let result = verify_crates(::std::stringify!($name), vec![$(($crate_name, $body)),+], &[]);
+            let result = verify_crates_with_deps(::std::stringify!($name), vec![$(($crate_name, {
+                #[allow(unused_mut, unused_assignments)]
+                let mut deps: Option<Vec<&str>> = None;
+                $(deps = Some(vec![$($dep),*]);)?
+                deps
+            }, $body)),+], &[]);
             #[allow(irrefutable_let_patterns)]
             if let $result = result {
                 $assertions
@@ -917,10 +947,15 @@ macro_rules! test_verify_crates {
             }
         }
     };
-    ($(#[$attrs:meta])* $name:ident [$($crate_name:literal => $body:expr),+ $(,)?] => $result:pat) => {
+    ($(#[$attrs:meta])* $name:ident [$($crate_name:literal $([$($dep:literal),*])? => $body:expr),+ $(,)?] => $result:pat) => {
         $(#[$attrs])*
         fn $name() {
-            let result = verify_crates(::std::stringify!($name), vec![$(($crate_name, $body)),+], &[]);
+            let result = verify_crates_with_deps(::std::stringify!($name), vec![$(($crate_name, {
+                #[allow(unused_mut, unused_assignments)]
+                let mut deps: Option<Vec<&str>> = None;
+                $(deps = Some(vec![$($dep),*]);)?
+                deps
+            }, $body)),+], &[]);
             let result_unit = result.as_ref().map(|_| ());
             #[allow(irrefutable_let_patterns)]
             if let $result = result_unit {
