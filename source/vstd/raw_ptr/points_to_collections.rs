@@ -38,7 +38,7 @@ pub tracked struct PointsToRaw {
 
 impl PointsToRaw {
     /// The domain is finite, and each byte permission is at its key's address,
-    /// with this permission's provenance, at a real pointer.
+    /// with this permission's provenance, and is `wf_basic`.
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
         &&& self.bytes.dom().finite()
@@ -46,7 +46,7 @@ impl PointsToRaw {
             self.bytes.dom().contains(a) ==> {
                 &&& self.bytes[a].ptr()@.addr == a
                 &&& self.bytes[a].ptr()@.provenance == self.provenance@
-                &&& self.bytes[a].ptr()@.is_real
+                &&& self.bytes[a].wf_basic()
             }
     }
 
@@ -241,7 +241,7 @@ impl PointsToRaw {
                 0 <= i < perms.len() ==> {
                     &&& (#[trigger] perms[i]).ptr()@.addr == start + i
                     &&& perms[i].ptr()@.provenance == provenance
-                    &&& perms[i].ptr()@.is_real
+                    &&& perms[i].wf_basic()
                 },
         ensures
             m.dom() == set_int_range(start, start + perms.len()),
@@ -250,7 +250,7 @@ impl PointsToRaw {
                 m.dom().contains(a) ==> {
                     &&& m[a].ptr()@.addr == a
                     &&& m[a].ptr()@.provenance == provenance
-                    &&& m[a].ptr()@.is_real
+                    &&& m[a].wf_basic()
                 },
         decreases perms.len(),
     {
