@@ -102,21 +102,44 @@ impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for isize {
 
 }
 
-impl<T: ?Sized, Dst: TypeRepresentation> TransmuteSpec<Dst> for *mut T where
-    <T as core::ptr::Pointee>::Metadata: TypeRepresentation,
- {
-
-}
-
-impl<T: ?Sized, Dst: TypeRepresentation> TransmuteSpec<Dst> for *const T where
-    <T as core::ptr::Pointee>::Metadata: TypeRepresentation,
- {
-
-}
-
 impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for () {
 
 }
+
+} // verus!
+// Raw pointers get one impl per destination type, instead of a blanket impl,
+// so that a destination can override `transmute_req` with its own conditions
+// (e.g. `&U`, whose conditions a pointer source must not bypass, has no impl here).
+macro_rules! raw_ptr_transmute_spec {
+    ($mutability:tt; $($dst:ty),*) => {
+        verus! {
+            $(
+                impl<T: ?Sized> TransmuteSpec<$dst> for *$mutability T where
+                    <T as core::ptr::Pointee>::Metadata: TypeRepresentation,
+                {
+                }
+            )*
+
+            impl<T: ?Sized, U: ?Sized> TransmuteSpec<*mut U> for *$mutability T where
+                <T as core::ptr::Pointee>::Metadata: TypeRepresentation,
+                <U as core::ptr::Pointee>::Metadata: TypeRepresentation,
+            {
+            }
+
+            impl<T: ?Sized, U: ?Sized> TransmuteSpec<*const U> for *$mutability T where
+                <T as core::ptr::Pointee>::Metadata: TypeRepresentation,
+                <U as core::ptr::Pointee>::Metadata: TypeRepresentation,
+            {
+            }
+        }
+    };
+}
+
+raw_ptr_transmute_spec!(mut; u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, ());
+
+raw_ptr_transmute_spec!(const; u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, ());
+
+verus! {
 
 // the transmute precondition on shared references is stronger:
 // we also require that the pointed-to data satisfies the type representation invariants

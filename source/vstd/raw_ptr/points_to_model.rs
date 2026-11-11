@@ -72,7 +72,7 @@ pub trait PTPhys: Sized + PTPhysSealed {
         ensures
             b.byte_ptr()@.addr == addr,
             b.byte_ptr()@.provenance == self.ptr()@.provenance,
-            b.byte_ptr()@.is_real,
+            b.byte_wf(),
     ;
 }
 
@@ -163,9 +163,9 @@ impl PTPhys for PointsToByte {
         1
     }
 
-    /// A `PointsToByte` is well-formed if its pointer is real.
+    /// The inherent `byte_wf`.
     open spec fn wf_basic(self) -> bool {
-        self.byte_ptr()@.is_real
+        self.byte_wf()
     }
 
     /// If the pointer stays the same, `old` and `new` are permissions to the same memory.
@@ -184,17 +184,14 @@ impl PTPhys for PointsToByte {
 }
 
 impl PTProperties for PointsToByte {
-    /// Guarantee that the `PointsToByte` points to a non-null address.
-    ///
-    /// See <https://doc.rust-lang.org/std/ptr/#safety>.
-    axiom fn is_nonnull(tracked &self);
+    proof fn is_nonnull(tracked &self) {
+    }
 
-    /// The memory associated with a pointer should always be within bounds of its spatial provenance.
-    axiom fn ptr_bounds(tracked &self);
+    proof fn ptr_bounds(tracked &self) {
+    }
 
-    /// Since `u8` is not a ZST, the pointer's provenance is non-null.
-    /// <https://doc.rust-lang.org/std/ptr/index.html#provenance>
-    axiom fn provenance_not_none(tracked &self);
+    proof fn provenance_not_none(tracked &self) {
+    }
 
     /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
     /// since you cannot have two permissions to the same memory.
@@ -225,6 +222,18 @@ impl PointsToByte {
 
     /// The byte that this permission tracks.
     pub uninterp spec fn byte(self) -> AbstractByte;
+
+    /// A `PointsToByte` is well-formed (its `PTPhys::wf_basic`) if its pointer is real and non-null,
+    /// and its byte is within the bounds of its pointer's (non-null) provenance.
+    // An inherent fn for the same reason as `byte_ptr`.
+    pub open spec fn byte_wf(self) -> bool {
+        let p = self.byte_ptr()@;
+        &&& p.is_real
+        &&& p.addr != 0
+        &&& p.provenance is Some
+        &&& p.addr >= p.provenance.unwrap().start_addr()
+        &&& p.addr + 1 <= p.provenance.unwrap().start_addr() + p.provenance.unwrap().alloc_len()
+    }
 
     /// Guarantees that the byte associated with this permission
     /// is not associated with any other `PointsToByte` permission.
