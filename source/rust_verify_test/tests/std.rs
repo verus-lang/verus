@@ -2469,3 +2469,351 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    // (a) a `no_unwind` function drops a value whose `Drop` impl Verus does not check (#2949)
+    #[test] check_drops_no_unwind_unverified [] => code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        // a type whose `Drop` impl Verus does not check
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        // a type whose `Drop` impl Verus checks (so it is no_unwind)
+        pub struct VerifiedDrop { pub x: u8 }
+        impl Drop for VerifiedDrop {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            { }
+        }
+        struct P;
+        impl InvariantPredicate<int, u8> for P { open spec fn inv(k: int, v: u8) -> bool { true } }
+        fn f(d: PanickingDrop) no_unwind { }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "whose `Drop` impl is not verified, in a `no_unwind` function")
+}
+
+test_verify_one_file_with_options! {
+    // a `no_unwind` function may drop a value whose `Drop` impl Verus checks
+    #[test] check_drops_no_unwind_verified [] => code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        // a type whose `Drop` impl Verus does not check
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        // a type whose `Drop` impl Verus checks (so it is no_unwind)
+        pub struct VerifiedDrop { pub x: u8 }
+        impl Drop for VerifiedDrop {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            { }
+        }
+        struct P;
+        impl InvariantPredicate<int, u8> for P { open spec fn inv(k: int, v: u8) -> bool { true } }
+        fn f(v: VerifiedDrop) no_unwind { }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    // a function that may unwind may drop anything
+    #[test] check_drops_may_unwind [] => code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        // a type whose `Drop` impl Verus does not check
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        // a type whose `Drop` impl Verus checks (so it is no_unwind)
+        pub struct VerifiedDrop { pub x: u8 }
+        impl Drop for VerifiedDrop {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            { }
+        }
+        struct P;
+        impl InvariantPredicate<int, u8> for P { open spec fn inv(k: int, v: u8) -> bool { true } }
+        fn f(d: PanickingDrop) { }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    // (b) an unwinding drop in a local invariant block would exit it early
+    #[test] check_drops_local_invariant_block [] => code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        // a type whose `Drop` impl Verus does not check
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        // a type whose `Drop` impl Verus checks (so it is no_unwind)
+        pub struct VerifiedDrop { pub x: u8 }
+        impl Drop for VerifiedDrop {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            { }
+        }
+        struct P;
+        impl InvariantPredicate<int, u8> for P { open spec fn inv(k: int, v: u8) -> bool { true } }
+        fn f(Tracked(i): Tracked<&LocalInvariant<int, u8, P>>, d: PanickingDrop) {
+            open_local_invariant!(i => inner => {
+                let x = d;
+            });
+        }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "whose `Drop` impl is not verified, in an invariant block")
+}
+
+test_verify_one_file_with_options! {
+    // a drop that cannot unwind is fine in a local invariant block
+    #[test] check_drops_local_invariant_block_verified [] => code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        // a type whose `Drop` impl Verus does not check
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        // a type whose `Drop` impl Verus checks (so it is no_unwind)
+        pub struct VerifiedDrop { pub x: u8 }
+        impl Drop for VerifiedDrop {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            { }
+        }
+        struct P;
+        impl InvariantPredicate<int, u8> for P { open spec fn inv(k: int, v: u8) -> bool { true } }
+        fn f(Tracked(i): Tracked<&LocalInvariant<int, u8, P>>, v: VerifiedDrop) {
+            open_local_invariant!(i => inner => {
+                let x = v;
+            });
+        }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    // (c) a drop in an atomic invariant block is a step of its own, even if Verus checks the `Drop` impl (#778)
+    #[test] check_drops_atomic_invariant_block [] => code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        // a type whose `Drop` impl Verus does not check
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        // a type whose `Drop` impl Verus checks (so it is no_unwind)
+        pub struct VerifiedDrop { pub x: u8 }
+        impl Drop for VerifiedDrop {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            { }
+        }
+        struct P;
+        impl InvariantPredicate<int, u8> for P { open spec fn inv(k: int, v: u8) -> bool { true } }
+        fn f(Tracked(i): Tracked<&AtomicInvariant<int, u8, P>>, v: VerifiedDrop) {
+            open_atomic_invariant!(i => inner => {
+                let x = v;
+            });
+        }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in an atomic invariant block, but running its `Drop` impl is not one atomic step")
+}
+
+test_verify_one_file_with_options! {
+    // a drop after the block has closed is fine
+    #[test] check_drops_after_atomic_invariant_block [] => code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        // a type whose `Drop` impl Verus does not check
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        // a type whose `Drop` impl Verus checks (so it is no_unwind)
+        pub struct VerifiedDrop { pub x: u8 }
+        impl Drop for VerifiedDrop {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            { }
+        }
+        struct P;
+        impl InvariantPredicate<int, u8> for P { open spec fn inv(k: int, v: u8) -> bool { true } }
+        fn f(Tracked(i): Tracked<&AtomicInvariant<int, u8, P>>, d: PanickingDrop) {
+            open_atomic_invariant!(i => inner => {
+                let y: u8 = 1;
+            });
+        }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    // (c) a drop in an atomic function
+    #[test] check_drops_atomic_function [] => code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        // a type whose `Drop` impl Verus does not check
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        // a type whose `Drop` impl Verus checks (so it is no_unwind)
+        pub struct VerifiedDrop { pub x: u8 }
+        impl Drop for VerifiedDrop {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            { }
+        }
+        struct P;
+        impl InvariantPredicate<int, u8> for P { open spec fn inv(k: int, v: u8) -> bool { true } }
+        #[verifier::atomic]
+        fn f(v: VerifiedDrop)
+            opens_invariants none
+            no_unwind
+        { }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in an atomic function, but running its `Drop` impl is not one atomic step")
+}
+
+test_verify_one_file_with_options! {
+    // invariant blocks in closures are checked too
+    #[test] check_drops_closure_atomic_invariant_block [] => code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        // a type whose `Drop` impl Verus does not check
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        // a type whose `Drop` impl Verus checks (so it is no_unwind)
+        pub struct VerifiedDrop { pub x: u8 }
+        impl Drop for VerifiedDrop {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            { }
+        }
+        struct P;
+        impl InvariantPredicate<int, u8> for P { open spec fn inv(k: int, v: u8) -> bool { true } }
+        fn f(Tracked(i): Tracked<&AtomicInvariant<int, u8, P>>, v: VerifiedDrop) {
+            let c = move || {
+                open_atomic_invariant!(i => inner => {
+                    let x = v;
+                });
+            };
+        }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in an atomic invariant block, but running its `Drop` impl is not one atomic step")
+}
+
+test_verify_one_file_with_options! {
+    // an atomic block inside a local one: the drop after the atomic block closes is in the local block only
+    #[test] check_drops_nested_invariant_blocks [] => code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        // a type whose `Drop` impl Verus does not check
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        // a type whose `Drop` impl Verus checks (so it is no_unwind)
+        pub struct VerifiedDrop { pub x: u8 }
+        impl Drop for VerifiedDrop {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            { }
+        }
+        struct P;
+        impl InvariantPredicate<int, u8> for P { open spec fn inv(k: int, v: u8) -> bool { true } }
+        fn f(Tracked(li): Tracked<&LocalInvariant<int, u8, P>>, Tracked(ai): Tracked<&AtomicInvariant<int, u8, P>>, v: VerifiedDrop)
+            requires li.namespace() != ai.namespace(),
+        {
+            open_local_invariant!(li => inner => {
+                open_atomic_invariant!(ai => inner2 => {
+                    let y: u8 = 1;
+                });
+                let x = v;
+            });
+        }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    // a value moved into a trait method resolves to the verified impl, whose own drops are checked
+    #[test] check_drops_trait_method_resolved [] => code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        // a type whose `Drop` impl Verus does not check
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        // a type whose `Drop` impl Verus checks (so it is no_unwind)
+        pub struct VerifiedDrop { pub x: u8 }
+        impl Drop for VerifiedDrop {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            { }
+        }
+        struct P;
+        impl InvariantPredicate<int, u8> for P { open spec fn inv(k: int, v: u8) -> bool { true } }
+        trait T { fn take(self, d: VerifiedDrop) no_unwind; }
+        struct S;
+        impl T for S { fn take(self, d: VerifiedDrop) { } }
+        fn f(s: S, v: VerifiedDrop) no_unwind {
+            s.take(v);
+        }
+        }
+    } => Ok(())
+}
