@@ -92,12 +92,23 @@ pub(crate) fn export_crate(
             }
         });
         let krate_with_metadata = CrateWithMetadata { krate: vir_crate, metadata: vir_metadata };
-        bincode_next::serde::encode_into_std_write(
+        if let Err(err) = bincode_next::serde::encode_into_std_write(
             &krate_with_metadata,
             &mut file,
             bincode_next::config::legacy(),
-        )
-        .expect("write crate to file");
+        ) {
+            return Err(crate::util::error(format!(
+                "could not write exported library file `{:?}`: {}",
+                file_path, err
+            )));
+        }
+        // BufWriter's Drop impl ignores errors, so flush explicitly to surface write failures
+        if let Err(err) = std::io::Write::flush(&mut file) {
+            return Err(io_vir_err(
+                format!("could not write exported library file `{:?}`", file_path),
+                err,
+            ));
+        }
         //serde_json::to_writer(file, &vir_crate).expect("write crate to file");
         //serde_json::to_writer_pretty(file, &vir_crate).expect("write crate to file");
     }
