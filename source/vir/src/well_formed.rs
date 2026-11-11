@@ -515,6 +515,7 @@ fn check_one_expr(
     emit: &mut EmitErrorState,
     warn_config: &Option<WarningConfig>,
 ) -> Result<(), VirErr> {
+    check_typ(ctxt, &expr.typ, &expr.span, emit)?;
     match &expr.x {
         ExprX::ConstVar(x, _) => {
             check_function_access(ctxt, x, disallow_private_access, &expr.span, emit)?;
@@ -942,6 +943,7 @@ fn check_one_place(
     _area: Area,
     emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
+    check_typ(ctxt, &place.typ, &place.span, emit)?;
     match &place.x {
         PlaceX::Field(
             FieldOpr { datatype: Dt::Path(path), variant: _, field: _, get_variant: _, check: _ },
