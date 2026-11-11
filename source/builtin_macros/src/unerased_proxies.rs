@@ -278,16 +278,6 @@ impl crate::syntax::Visitor {
 
                 attrs.push(mk_verus_attr(span, quote! { encoded_static }));
 
-                let publish = match (publish, &mode, &vis) {
-                    (publish, _, Visibility::Inherited) => publish,
-                    (
-                        Publish::Default,
-                        FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Default,
-                        _,
-                    ) => Publish::Open(verus_syn::Open { token: token::Open { span } }),
-                    (publish, _, _) => publish,
-                };
-
                 Item::Fn(ItemFn {
                     attrs,
                     vis,

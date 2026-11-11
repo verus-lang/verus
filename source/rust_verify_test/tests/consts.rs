@@ -207,6 +207,13 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] pub_static_missing_exec verus_code! {
+        // https://github.com/verus-lang/verus/issues/2972
+        pub static E: u64 = 0;
+    } => Err(e) => assert_vir_error_msg(e, "explicitly mark the `static` item as `exec` and use an `ensures` clause")
+}
+
+test_verify_one_file! {
     #[test] reference_static_from_proof_unsupported verus_code! {
         exec static E: u64 = 0;
 
