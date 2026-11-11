@@ -145,9 +145,11 @@ pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut Poi
     ptr_mut_ref_join(ptr, Tracked(val))
 }
 
-/// A shared reference gives a shared, valid permission for its memory, at its pointer.
+/// A shared reference at a real pointer gives a shared, valid permission for its memory, at its pointer.
 #[verifier::shadow_data]
 pub proof fn shr_ref_points_to<'a, T>(tracked r: &'a T) -> (tracked pt: &'a PointsTo<T>)
+    requires
+        shared_ref_ptr(shadow_data(r))@.is_real,
     ensures
         pt.ptr() == shared_ref_ptr(shadow_data(r)),
         pt.is_valid(),
@@ -158,9 +160,12 @@ pub proof fn shr_ref_points_to<'a, T>(tracked r: &'a T) -> (tracked pt: &'a Poin
     points_to_from_parts_ref(shared_ref_ptr(shadow_data(r)) as *mut T, pt_untyped, typed_value)
 }
 
-/// A shared slice reference gives a shared, valid permission for its memory, at its pointer.
+/// A shared slice reference at a real pointer gives a shared, valid permission for its memory,
+/// at its pointer.
 #[verifier::shadow_data]
 pub proof fn shr_ref_points_to_slice<'a, T>(tracked r: &'a [T]) -> (tracked pt: &'a PointsTo<[T]>)
+    requires
+        shared_ref_ptr(shadow_data(r))@.is_real,
     ensures
         pt.ptr() == shared_ref_ptr(shadow_data(r)),
         pt.is_valid(),
@@ -175,18 +180,22 @@ pub proof fn shr_ref_points_to_slice<'a, T>(tracked r: &'a [T]) -> (tracked pt: 
     )
 }
 
-/// The length of a `&[T]` matches the metadata of its pointer.
+/// The length of a `&[T]` at a real pointer matches the metadata of its pointer.
 #[verifier::shadow_data]
 pub proof fn shr_ref_slice_len<T>(tracked r: &[T])
+    requires
+        shared_ref_ptr(shadow_data(r))@.is_real,
     ensures
         shared_ref_ptr(shadow_data(r))@.metadata == r@.len(),
 {
     let tracked (pt_untyped, typed_value) = ref_to_parts_slice(r);
 }
 
-/// The length of a `&mut [T]` should always match the metadata of its corresponding pointer.
+/// The length of a `&mut [T]` at a real pointer should always match the metadata of its corresponding pointer.
 #[verifier::shadow_data]
 pub proof fn mut_ref_slice_len<T>(tracked b: &&mut [T])
+    requires
+        mut_ref_ptr(*b)@.is_real,
     ensures
         mut_ref_ptr(*b)@.metadata == old(*b)@.len(),
 {
@@ -194,11 +203,13 @@ pub proof fn mut_ref_slice_len<T>(tracked b: &&mut [T])
     shr_ref_slice_len(r);
 }
 
-/// Convert from a shared reference to a `&'a mut T` to a `&'a PointsTo<T>`.
+/// Convert from a shared reference to a `&'a mut T` at a real pointer to a `&'a PointsTo<T>`.
 #[cfg(not(verus_verify_core))]
 #[verifier::shadow_data]
 pub proof fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> (tracked pt:
     &'a PointsTo<T>)
+    requires
+        mut_ref_ptr(*mut_ref)@.is_real,
     ensures
         pt.ptr() == mut_ref_ptr(*mut_ref),
         pt.is_valid(),
@@ -211,11 +222,13 @@ pub proof fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
     points_to_from_parts_ref(mut_ref_ptr(*mut_ref), pt_untyped, typed_value)
 }
 
-/// Convert from a shared reference to a `&'a mut [T]` to a `&'a PointsTo<[T]>`.
+/// Convert from a shared reference to a `&'a mut [T]` at a real pointer to a `&'a PointsTo<[T]>`.
 #[cfg(not(verus_verify_core))]
 #[verifier::shadow_data]
 pub proof fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T]) -> (tracked pt:
     &'a PointsTo<[T]>)
+    requires
+        mut_ref_ptr(*mut_ref)@.is_real,
     ensures
         pt.ptr() == mut_ref_ptr(*mut_ref),
         pt.is_valid(),

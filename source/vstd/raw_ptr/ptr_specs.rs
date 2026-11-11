@@ -46,7 +46,9 @@ pub assume_specification<T: core::marker::PointeeSized>[ <*const T as PartialEq<
 pub open spec fn ptr_null<
     T: ::core::marker::PointeeSized + core::ptr::Pointee<Metadata = ()>,
 >() -> *const T {
-    ptr_from_data(PtrData::<T> { addr: 0, provenance: Provenance::None, metadata: () })
+    ptr_from_data(
+        PtrData::<T> { addr: 0, provenance: Provenance::None, metadata: (), is_real: true },
+    )
 }
 
 #[cfg(verus_keep_ghost)]
@@ -68,7 +70,9 @@ pub assume_specification<
 pub open spec fn ptr_null_mut<
     T: core::marker::PointeeSized + core::ptr::Pointee<Metadata = ()>,
 >() -> *mut T {
-    ptr_mut_from_data(PtrData::<T> { addr: 0, provenance: Provenance::None, metadata: () })
+    ptr_mut_from_data(
+        PtrData::<T> { addr: 0, provenance: Provenance::None, metadata: (), is_real: true },
+    )
 }
 
 #[cfg(verus_keep_ghost)]
@@ -89,7 +93,14 @@ pub assume_specification<
 // (including casts that involve *const ptrs)
 /// Cast a pointer to a thin pointer. Address and provenance are preserved; metadata is now thin.
 pub open spec fn spec_cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> *mut U {
-    ptr_mut_from_data(PtrData::<U> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: () })
+    ptr_mut_from_data(
+        PtrData::<U> {
+            addr: ptr@.addr,
+            provenance: ptr@.provenance,
+            metadata: (),
+            is_real: ptr@.is_real,
+        },
+    )
 }
 
 /// Cast a pointer to a thin pointer. Address and provenance are preserved; metadata is now thin.
@@ -110,7 +121,14 @@ pub fn cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> (result: *mut U
 /// Cast a pointer to an array of length `N` to a slice pointer.
 /// Address and provenance are preserved; metadata has length `N`.
 pub open spec fn spec_cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> *mut [T] {
-    ptr_mut_from_data(PtrData::<[T]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: N })
+    ptr_mut_from_data(
+        PtrData::<[T]> {
+            addr: ptr@.addr,
+            provenance: ptr@.provenance,
+            metadata: N,
+            is_real: ptr@.is_real,
+        },
+    )
 }
 
 /// Cast a pointer to an array of length `N` to a slice pointer.
@@ -134,7 +152,12 @@ pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (resu
 /// <https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.as.pointer.unsized.unchanged>
 pub open spec fn spec_cast_slice_ptr_to_slice_ptr<T, U>(ptr: *mut [T]) -> *mut [U] {
     ptr_mut_from_data(
-        PtrData::<[U]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+        PtrData::<[U]> {
+            addr: ptr@.addr,
+            provenance: ptr@.provenance,
+            metadata: ptr@.metadata,
+            is_real: ptr@.is_real,
+        },
     )
 }
 
@@ -160,7 +183,12 @@ pub fn cast_slice_ptr_to_slice_ptr<T, U>(ptr: *mut [T]) -> (result: *mut [U])
 /// <https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.as.pointer.unsized.unchanged>
 pub open spec fn spec_cast_slice_ptr_to_str_ptr<T>(ptr: *mut [T]) -> *mut str {
     ptr_mut_from_data(
-        PtrData::<str> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+        PtrData::<str> {
+            addr: ptr@.addr,
+            provenance: ptr@.provenance,
+            metadata: ptr@.metadata,
+            is_real: ptr@.is_real,
+        },
     )
 }
 
@@ -186,7 +214,12 @@ pub fn cast_slice_ptr_to_str_ptr<T>(ptr: *mut [T]) -> (result: *mut str)
 /// <https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.as.pointer.unsized.unchanged>
 pub open spec fn spec_cast_str_ptr_to_slice_ptr<T>(ptr: *mut str) -> *mut [T] {
     ptr_mut_from_data(
-        PtrData::<[T]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+        PtrData::<[T]> {
+            addr: ptr@.addr,
+            provenance: ptr@.provenance,
+            metadata: ptr@.metadata,
+            is_real: ptr@.is_real,
+        },
     )
 }
 
@@ -254,24 +287,32 @@ pub const fn ptr_shr_ref<'a, T: ?Sized>(ptr: *const T, Tracked(r): Tracked<&'a T
     unsafe { &*ptr }
 }
 
-/// A shared reference gives the parts of a shared permission for its memory, at its pointer.
+/// A shared reference at a real pointer gives the parts of a shared permission for its memory,
+/// at its pointer.
+/// (A tracked reference may be to a made-up value that is too large for memory.)
 #[verifier::shadow_data]
 pub axiom fn ref_to_parts<'a, T>(tracked r: &'a T) -> (tracked (pt_untyped, typed_value): (
     &'a PointsToUntyped,
     &'a TypedValue<T>,
 ))
+    requires
+        shared_ref_ptr(shadow_data(r))@.is_real,
     ensures
         pt_parts_wf(shared_ref_ptr(shadow_data(r))@, *pt_untyped, *typed_value),
         typed_value.is_valid(),
         typed_value.value_ref() == r,
 ;
 
-/// A shared slice reference gives the parts of a shared permission for its memory, at its pointer.
+/// A shared slice reference at a real pointer gives the parts of a shared permission for its memory,
+/// at its pointer.
+/// (A tracked reference may be to a made-up value that is too large for memory.)
 #[verifier::shadow_data]
 pub axiom fn ref_to_parts_slice<'a, T>(tracked r: &'a [T]) -> (tracked (pt_untyped, typed_value): (
     &'a PointsToUntyped,
     &'a TypedValue<[T]>,
 ))
+    requires
+        shared_ref_ptr(shadow_data(r))@.is_real,
     ensures
         pt_parts_wf_slice(shared_ref_ptr(shadow_data(r))@, *pt_untyped, *typed_value),
         typed_value.is_valid(),
@@ -588,6 +629,7 @@ pub axiom fn tracked_mut_ref_slice_subrange<T>(
         0 <= i <= j <= mut_ref@.len(),
     ensures
         mut_ref_ptr(sub_mut_ref)@.provenance == mut_ref_ptr(mut_ref)@.provenance,
+        mut_ref_ptr(sub_mut_ref)@.is_real == mut_ref_ptr(mut_ref)@.is_real,
         mut_ref_ptr(sub_mut_ref)@.metadata == j - i,
         mut_ref_ptr(sub_mut_ref).addr() == mut_ref_ptr(mut_ref).addr() + i * size_of::<T>(),
         sub_mut_ref@.len() == final(sub_mut_ref)@.len() == j - i,
@@ -606,6 +648,7 @@ pub axiom fn tracked_mut_ref_slice_idx<T>(
         0 <= i < mut_ref@.len(),
     ensures
         mut_ref_ptr(sub_mut_ref)@.provenance == mut_ref_ptr(mut_ref)@.provenance,
+        mut_ref_ptr(sub_mut_ref)@.is_real == mut_ref_ptr(mut_ref)@.is_real,
         mut_ref_ptr(sub_mut_ref)@.metadata == (),
         mut_ref_ptr(sub_mut_ref).addr() == mut_ref_ptr(mut_ref).addr() + i * size_of::<T>(),
         *sub_mut_ref == (*old(mut_ref))@[i],
@@ -613,11 +656,42 @@ pub axiom fn tracked_mut_ref_slice_idx<T>(
 ;
 
 /// Two pointers are equal up to their tags:
-/// they have the same address, metadata, and provenance apart from the tag.
+/// they have the same address, metadata, realness, and provenance apart from the tag.
 pub open spec fn ptr_mut_eq_up_to_tag<T: ?Sized>(p: *mut T, q: *mut T) -> bool {
     &&& p.addr() == q.addr()
     &&& provenance_eq_up_to_tag(p@.provenance, q@.provenance)
     &&& p@.metadata == q@.metadata
+    &&& p@.is_real == q@.is_real
+}
+
+/// An executable shared reference is at a real pointer.
+///
+/// This takes an `exec` reference, not a tracked one:
+/// a tracked reference may be to a made-up value that is too large for memory.
+#[verifier::shadow_data]
+#[verifier::external_body]
+#[inline(always)]
+pub const fn ref_is_real<T: ?Sized>(r: &T)
+    ensures
+        shared_ref_ptr(shadow_data(r))@.is_real,
+    opens_invariants none
+    no_unwind
+{
+}
+
+/// An executable mutable reference is at a real pointer.
+///
+/// This takes a shared borrow of an `exec` mutable reference (not a tracked one),
+/// so that it is about the reference itself rather than a reborrow of it:
+/// an executable reborrow keeps only the address of the pointer.
+#[verifier::external_body]
+#[inline(always)]
+pub const fn mut_ref_is_real<T: ?Sized>(r: &&mut T)
+    ensures
+        mut_ref_ptr(*r)@.is_real,
+    opens_invariants none
+    no_unwind
+{
 }
 
 /// Two `*const` pointers are equal up to their tags.
@@ -641,6 +715,7 @@ pub open spec fn ptr_eq_up_to_tag<T: ?Sized>(p: *const T, q: *const T) -> bool {
 #[verifier::external_body]
 pub const fn cast_mut_ref_to_ptr<T>(mut_ref: &mut T) -> ((ptr, perm): (*mut T, Tracked<&mut T>))
     ensures
+        ptr@.is_real,
         ptr_mut_eq_up_to_tag(ptr, mut_ref_ptr(mut_ref)),
         mut_ref_ptr(perm@) == ptr,
         &**perm == &*old(mut_ref),
@@ -657,6 +732,7 @@ pub const fn cast_mut_ref_slice_to_ptr<T>(mut_ref: &mut [T]) -> ((ptr, perm): (
     Tracked<&mut [T]>,
 ))
     ensures
+        ptr@.is_real,
         ptr_mut_eq_up_to_tag(ptr, mut_ref_ptr(mut_ref)),
         mut_ref_ptr(perm@) == ptr,
         &**perm == &*old(mut_ref),
@@ -673,6 +749,7 @@ pub const fn cast_mut_ref_str_to_ptr(mut_ref: &mut str) -> ((ptr, perm): (
     Tracked<&mut str>,
 ))
     ensures
+        ptr@.is_real,
         ptr_mut_eq_up_to_tag(ptr, mut_ref_ptr(mut_ref)),
         mut_ref_ptr(perm@) == ptr,
         &**perm == &*old(mut_ref),
@@ -701,9 +778,15 @@ pub fn allocate(size: usize, align: usize) -> ((ptr, perm): (*mut u8, Tracked<Po
         size != 0,
     ensures
         perm@.ptr() == ptr_mut_from_data::<[u8]>(
-            PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: size },
+            PtrData {
+                addr: ptr@.addr,
+                provenance: ptr@.provenance,
+                metadata: size,
+                is_real: ptr@.is_real,
+            },
         ),
         perm@.wf(),
+        ptr@.is_real,
         ptr@.provenance is Some,
         ptr@.addr == ptr@.provenance.unwrap().start_addr(),
         ptr@.provenance.unwrap().alloc_len() == size,

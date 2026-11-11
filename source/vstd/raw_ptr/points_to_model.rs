@@ -72,6 +72,7 @@ pub trait PTPhys: Sized + PTPhysSealed {
         ensures
             b.byte_ptr()@.addr == addr,
             b.byte_ptr()@.provenance == self.ptr()@.provenance,
+            b.byte_ptr()@.is_real,
     ;
 }
 
@@ -162,9 +163,9 @@ impl PTPhys for PointsToByte {
         1
     }
 
-    /// A `PointsToByte` is always well-formed.
+    /// A `PointsToByte` is well-formed if its pointer is real.
     open spec fn wf_basic(self) -> bool {
-        true
+        self.byte_ptr()@.is_real
     }
 
     /// If the pointer stays the same, `old` and `new` are permissions to the same memory.
@@ -172,7 +173,7 @@ impl PTPhys for PointsToByte {
         new.ptr() == old.ptr()
     }
 
-    /// Trivial, since a `PointsToByte` is always well-formed.
+    /// Trivial, since `new` keeps `old`'s pointer.
     proof fn stays_wf_basic(old: Self, new: Self) {
     }
 
@@ -293,17 +294,22 @@ impl<T, P: PTProperties<A = T>> PTPhys for SeqPointsTo<T, P> {
         metadata as nat * P::size(())
     }
 
+    /// The pointer is real:
+    /// a permission is never at a made-up pointer, which may cover more bytes than fit in memory.
     open spec fn wf_basic(self) -> bool {
         // The pointer's metadata is the number of permissions
         &&& self.ptr()@.metadata
             == self.len()
-        // Defining the provenance and address for the individual permissions
+        // The pointer is real
+        &&& self.ptr()@.is_real
+        // Defining the provenance, realness and address for the individual permissions
         &&& forall|i|
             #![trigger self[i].ptr()@.provenance]
             #![trigger self[i].ptr()@.addr]
             #![trigger self[i].wf_basic()]
             0 <= i < self.len() ==> {
                 &&& self[i].ptr()@.provenance == self.ptr()@.provenance
+                &&& self[i].ptr()@.is_real
                 &&& self[i].ptr()@.addr == self.ptr()@.addr + i * P::size(())
                 &&& self[i].wf_basic()
             }
@@ -436,24 +442,6 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             *final(s) == final(out).seq_pt(),
     ;
 
-    // TODO(real-ptr-flag): remove, with its callers, once pointers have an `is_real` flag.
-    // It only proves the `isize::MAX` bounds on `from_elems_ref`/`from_elems_mut` and `tracked_from_spec`.
-    /// The memory fits in an allocation:
-    /// it takes at most `isize::MAX` bytes.
-    pub proof fn lemma_size_bound(tracked &self)
-        requires
-            self.wf_basic(),
-        ensures
-            Self::size(self.ptr()@.metadata) <= isize::MAX,
-    {
-        broadcast use ptr_model::provenance_properties;
-
-        if Self::size(self.ptr()@.metadata) != 0 {
-            self.provenance_not_none();
-            self.ptr_bounds();
-        }
-    }
-
     /// Permissions with the same sequence of permissions and pointer are equal.
     pub proof fn lemma_ext(a: Self, b: Self)
         requires
@@ -571,9 +559,6 @@ impl<T> TypedValue<T> {
 }
 
 impl<T> TypedValue<[T]> {
-    // TODO(verify-rustlib-transmute-v2): unsound without a length bound
-    // (one shared borrow repeated past `usize::MAX` contradicts `axiom_spec_len`);
-    // there it requires `elems.len() <= usize::MAX, elems.len() * size_of::<T>() <= isize::MAX`.
     /// A sequence of borrows of typed values acts as one borrow of a slice typed value.
     /// If any element is empty, the slice is empty.
     /// The slice length must fit in a `usize`.
@@ -581,10 +566,6 @@ impl<T> TypedValue<[T]> {
         &'a TypedValue<[T]>)
         requires
             elems.len() <= usize::MAX,
-            // TODO(real-ptr-flag): remove this bound once pointers have an `is_real` flag.
-            // Until then, it stops a slice too large for memory from giving a well-formed `PointsTo`.
-            // The `usize::MAX` bound above stays.
-            elems.len() * size_of::<T>() <= isize::MAX,
         ensures
     // Valid with the elements' values if every element is valid
     // (a zero-length Seq counts as valid); otherwise empty.
@@ -597,7 +578,6 @@ impl<T> TypedValue<[T]> {
                 ==> out.is_empty(),
     ;
 
-    // TODO(verify-rustlib-transmute-v2): gets the same length bound as `from_elems_ref` there.
     /// A sequence of mutable borrows of typed values acts as one mutable borrow of a slice typed value.
     /// If any element is empty, the slice starts empty.
     /// The slice length must fit in a `usize`.
@@ -605,10 +585,6 @@ impl<T> TypedValue<[T]> {
         &'a mut TypedValue<[T]>)
         requires
             elems.len() <= usize::MAX,
-            // TODO(real-ptr-flag): remove this bound once pointers have an `is_real` flag.
-            // Until then, it stops a slice too large for memory from giving a well-formed `PointsTo`.
-            // The `usize::MAX` bound above stays.
-            elems.len() * size_of::<T>() <= isize::MAX,
         ensures
     // Initially: valid with the elements' values if every element is valid
     // (a zero-length Seq counts as valid); otherwise empty.
@@ -645,6 +621,7 @@ pub open spec fn pt_unaligned_parts_wf<T>(
     &&& pt_untyped.wf()
     &&& pt_untyped.ptr()@.addr == ptr.addr
     &&& pt_untyped.ptr()@.provenance == ptr.provenance
+    &&& pt_untyped.ptr()@.is_real == ptr.is_real
     &&& pt_untyped.len() == size_of::<T>()
     &&& typed_value.is_valid() ==> abstract_bytes_decode(
         pt_untyped.bytes(),
@@ -671,6 +648,7 @@ pub open spec fn pt_parts_wf_slice<T>(
     &&& pt_untyped.wf()
     &&& pt_untyped.ptr()@.addr == ptr.addr
     &&& pt_untyped.ptr()@.provenance == ptr.provenance
+    &&& pt_untyped.ptr()@.is_real == ptr.is_real
     &&& pt_untyped.len() == ptr.metadata * size_of::<T>()
     &&& ptr.addr as nat % align_of::<T>() == 0
     &&& typed_value.is_valid() ==> {
