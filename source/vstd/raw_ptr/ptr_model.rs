@@ -232,11 +232,18 @@ pub broadcast axiom fn axiom_covariant_metadata_eq<T: ?Sized>(m: CovariantMetada
 
 /// Model of a pointer `*mut T` or `*const T` in Rust's abstract machine.
 /// In addition to the address, each pointer has its corresponding provenance and metadata.
+///
+/// `is_real` marks a pointer to the real address space,
+/// as opposed to, say, the pointer of a tracked reference to a made-up value.
+/// Only permissions at real pointers give facts about memory addresses.
+/// Executable operations that make pointers make real ones,
+/// and operations that derive a pointer from another (casts, offsets) keep the flag.
 #[cfg(verus_keep_ghost)]
 pub ghost struct PtrData<T: core::marker::PointeeSized> {
     pub addr: usize,
     pub provenance: Provenance,
     pub metadata: Metadata<T>,
+    pub is_real: bool,
 }
 
 #[cfg(verus_keep_ghost)]
@@ -298,14 +305,20 @@ pub broadcast axiom fn ptrs_mut_eq<T: ?Sized>(a: *mut T)
 // `a@.metadata == b@.metadata`, since this condition is trivial; both values are always unit.
 // (See the test_extensionality_sized test case.)
 #[doc(hidden)]
-pub closed spec fn view_reverse_for_eq_sized<T>(addr: usize, provenance: Provenance) -> *mut T {
-    view_reverse_for_eq(PtrData { addr: addr, provenance: provenance, metadata: () })
+pub closed spec fn view_reverse_for_eq_sized<T>(
+    addr: usize,
+    provenance: Provenance,
+    is_real: bool,
+) -> *mut T {
+    view_reverse_for_eq(
+        PtrData { addr: addr, provenance: provenance, metadata: (), is_real: is_real },
+    )
 }
 
 /// Implies that `a@ == b@ ==> a == b` for `Sized` types.
 pub broadcast proof fn ptrs_mut_eq_sized<T>(a: *mut T)
     ensures
-        view_reverse_for_eq_sized::<T>((#[trigger] a@).addr, a@.provenance) == a,
+        view_reverse_for_eq_sized::<T>((#[trigger] a@).addr, a@.provenance, a@.is_real) == a,
 {
     assert(a@.metadata == ());
     ptrs_mut_eq(a);

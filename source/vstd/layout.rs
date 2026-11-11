@@ -139,16 +139,18 @@ pub const exec fn layout_for_type_is_valid<V>()
 /// Note that, unusually for a lemma, this is an `exec`-mode function. (This is necessary to
 /// ensure that the types are really compilable, as ghost code can reason about "virtual" types
 /// that exceed these bounds.) Despite being `exec`-mode, it is a no-op.
+/// The value is an `exec` reference for the same reason:
+/// a tracked reference may be to a made-up value that is too large for memory.
 #[allow(unused_variables)]
 #[verifier::external_body]
 #[inline(always)]
-pub const exec fn layout_for_val_is_valid<V: ?Sized>(val: Tracked<&V>)
+pub const exec fn layout_for_val_is_valid<V: ?Sized>(val: &V)
     ensures
-        valid_layout(spec_size_of_val::<V>(val@) as usize, spec_align_of_val::<V>(val@) as usize),
-        spec_size_of_val::<V>(val@) as usize as nat == spec_size_of_val::<V>(val@),
-        spec_align_of_val::<V>(val@) as usize as nat == spec_align_of_val::<V>(val@),
-        spec_align_of_val::<V>(val@) != 0,
-        spec_size_of_val::<V>(val@) % spec_align_of_val::<V>(val@) == 0,
+        valid_layout(spec_size_of_val::<V>(val) as usize, spec_align_of_val::<V>(val) as usize),
+        spec_size_of_val::<V>(val) as usize as nat == spec_size_of_val::<V>(val),
+        spec_align_of_val::<V>(val) as usize as nat == spec_align_of_val::<V>(val),
+        spec_align_of_val::<V>(val) != 0,
+        spec_size_of_val::<V>(val) % spec_align_of_val::<V>(val) == 0,
     opens_invariants none
     no_unwind
 {

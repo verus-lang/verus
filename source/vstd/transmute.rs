@@ -215,24 +215,30 @@ macro_rules! transmute_ptr_reflexive_injective_lemmas {
                 }
             }
 
-            /// When a `*$mutability T` is transmuted to a `*$mutability T` for `T: Sized`, it can only be transmuted to itself.
+            /// When a `*$mutability T` is transmuted to a `*$mutability T` for `T: Sized`, it can only be transmuted to itself,
+            /// except that the bytes don't record whether the pointer is real.
             pub proof fn $sized_injective_lemma<T>(tracked x: *$mutability T, y: *$mutability T)
                 requires
                     <*$mutability T as TransmuteSpec<*$mutability T>>::transmute_req(x, arbitrary(), y, arbitrary()),
                 ensures
-                    x@ == y@,
+                    x@.addr == y@.addr,
+                    x@.provenance == y@.provenance,
+                    x@.metadata == y@.metadata,
             {
                 broadcast use group_type_representation_axioms;
 
                 let bytes = <*$mutability T as TypeRepresentation>::encoding_exists(&x, arbitrary());
             }
 
-            /// When a `*$mutability T` is transmuted to a `*$mutability T` for `T: core::ptr::Pointee<Metadata = usize>`, it can only be transmuted to itself.
+            /// When a `*$mutability T` is transmuted to a `*$mutability T` for `T: core::ptr::Pointee<Metadata = usize>`, it can only be transmuted to itself,
+            /// except that the bytes don't record whether the pointer is real.
             pub proof fn $metasized_usize_injective_lemma<T: core::ptr::Pointee<Metadata = usize>>(tracked x: *$mutability T, y: *$mutability T)
                 requires
                     <*$mutability T as TransmuteSpec<*$mutability T>>::transmute_req(x, arbitrary(), y, arbitrary()),
                 ensures
-                    x@ == y@,
+                    x@.addr == y@.addr,
+                    x@.provenance == y@.provenance,
+                    x@.metadata == y@.metadata,
             {
                 broadcast use group_type_representation_axioms;
 
