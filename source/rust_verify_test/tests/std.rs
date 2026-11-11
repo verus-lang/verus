@@ -8,6 +8,8 @@ test_verify_one_file! {
         use std::rc::Rc;
         use std::sync::Arc;
         use vstd::*;
+        use vstd::prelude::*;
+        use vstd::invariant::*;
 
         fn foo() {
             let x = Rc::new(5);
@@ -21,6 +23,44 @@ test_verify_one_file! {
 
             let y1 = y.clone();
             assert(*y1 == 5) by {}
+        }
+
+        pub struct NotClone { pub n: u64 }
+
+        // Rc and Arc inherit the default clone_from; with clone specified as identity,
+        // the destination ends up equal to the source. One receiver per path:
+        // a direct call for Rc, call_ensures reflection for Arc.
+        fn rc_clone_from(dest: &mut Rc<NotClone>, source: &Rc<NotClone>)
+            ensures *final(dest) == *source,
+        {
+            dest.clone_from(source);
+        }
+
+        proof fn arc_clone_from_contract(dest: &mut Arc<NotClone>, source: &Arc<NotClone>)
+            requires call_ensures(Arc::<NotClone>::clone_from, (dest, source), ()),
+            ensures *final(dest) == *source,
+        {}
+
+        fn clone_no_unwind(x: &Arc<u64>, y: &Rc<u64>) -> (r: (Arc<u64>, Rc<u64>))
+            ensures r.0 == x, r.1 == y,
+            no_unwind
+        {
+            (x.clone(), y.clone())
+        }
+
+        pub struct Pred;
+        impl InvariantPredicate<(), u8> for Pred {
+            open spec fn inv(k: (), v: u8) -> bool { true }
+        }
+
+        fn clone_in_atomic_invariant(
+            x: &Arc<u64>,
+            Tracked(inv): Tracked<&AtomicInvariant<(), u8, Pred>>,
+        ) {
+            open_atomic_invariant!(inv => id => {
+                let y = x.clone();
+                assert(y == x);
+            });
         }
     } => Ok(())
 }
@@ -387,6 +427,7 @@ test_verify_one_file! {
     #[test] clone_for_std_types verus_code! {
         use vstd::*;
         use vstd::prelude::*;
+        use std::collections::VecDeque;
 
         fn test_bool(v: bool) {
             let w = v.clone();
@@ -485,6 +526,31 @@ test_verify_one_file! {
         {
             assert(a1.deep_view() =~~= a2.deep_view()); // TODO: get rid of this?
         }
+
+        fn clone_from_primitives() {
+            let mut n = 1u64;
+            n.clone_from(&7);
+            assert(n == 7);
+
+            let mut b = false;
+            b.clone_from(&true);
+            assert(b);
+
+            let mut c = 'a';
+            c.clone_from(&'z');
+            assert(c == 'z');
+        }
+
+        proof fn clone_from_primitive_contract(dest: &mut u64, source: &u64)
+            requires call_ensures(u64::clone_from, (dest, source), ()),
+            ensures *final(dest) == *source,
+        {}
+
+        fn clone_from_deque(dest: &mut VecDeque<u64>, source: &VecDeque<u64>)
+            ensures final(dest)@ == source@,
+        {
+            dest.clone_from(source);
+        }
     } => Err(err) => assert_fails(err, 3)
 }
 
@@ -501,6 +567,127 @@ test_verify_one_file! {
             assert(v[2] == 9);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] clone_from_defaults verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Value { pub n: u64 }
+        impl Clone for Value {
+            fn clone(&self) -> (result: Self)
+                ensures result.n == self.n,
+            {
+                Value { n: self.n }
+            }
+        }
+
+        fn inherited(dest: &mut Value, source: &Value)
+            ensures final(dest).n == source.n,
+        {
+            dest.clone_from(source);
+            assert(dest.n == source.n);
+            Clone::clone_from(dest, source);
+        }
+
+        proof fn inherited_contract(dest: &mut Value, source: &Value)
+            requires call_ensures(Value::clone_from, (dest, source), ()),
+            ensures final(dest).n == source.n,
+        {}
+
+        #[derive(Clone)]
+        #[verifier::allow(autoderive_clone_without_spec)]
+        pub struct P {
+            pub x: u8,
+        }
+
+        fn derived_clone_from(dest: &mut P, source: &P) {
+            dest.clone_from(source);
+            proof {
+                assert(call_ensures(P::clone, (source,), *dest));
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] generic_clone_from_has_no_clone_equivalence verus_code! {
+        use vstd::prelude::*;
+
+        fn test<T: Clone>(dest: &mut T, source: &T) {
+            dest.clone_from(source);
+            <T as Clone>::clone_from(dest, source);
+            assert(cloned::<T>(*source, *dest)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] clone_from_overrides verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Value { pub n: u64 }
+        impl Clone for Value {
+            fn clone(&self) -> (result: Self)
+                ensures result.n == self.n,
+            {
+                Value { n: self.n }
+            }
+
+            fn clone_from(&mut self, source: &Self)
+                ensures final(self).n == 0,
+            {
+                self.n = 0;
+            }
+        }
+
+        fn local_override() {
+            let source = Value { n: 7 };
+            let mut dest = Value { n: 1 };
+            dest.clone_from(&source);
+            assert(dest.n == 0);
+            assert(dest.n == 7); // FAILS
+        }
+
+        proof fn override_contract(dest: &mut Value, source: &Value)
+            requires call_ensures(Value::clone_from, (dest, source), ()),
+            ensures final(dest).n == 0,
+        {}
+
+        // The (Some, Some) arm routes through the element's clone_from override.
+        // (option.rs::clone_from_uses_previous_destination covers the positive side.)
+        fn option_override() {
+            let source = Some(Value { n: 7 });
+            let mut dest = Some(Value { n: 1 });
+            dest.clone_from(&source);
+            assert(dest.unwrap().n == 7); // FAILS
+        }
+
+        fn vec_override() {
+            let mut dest = vec![Value { n: 1 }];
+            let source = vec![Value { n: 7 }, Value { n: 8 }];
+            dest.clone_from(&source);
+            assert(dest.len() == 2);
+            assert(dest[0].n == 0 || dest[0] == source[0]);
+            assert(dest[1].n == 8);
+            assert(dest[0].n == 7); // FAILS
+        }
+
+        // Keep clone_from's FnDef type live for the direct Box call's soundness check.
+        proof fn observe_contract<T: Clone>(dest: &mut T, source: &T) -> (b: bool)
+            ensures b == call_ensures(T::clone_from, (dest, source), ()),
+        {
+            call_ensures(T::clone_from, (dest, source), ())
+        }
+
+        fn box_override(dest: &mut Box<Value>, source: &Box<Value>) {
+            dest.clone_from(source);
+            proof {
+                let b = observe_contract(dest, source);
+            }
+            assert(cloned::<Value>(**source, **dest)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file! {
@@ -587,6 +774,12 @@ test_verify_one_file! {
             let b = a.clone();
             assert(*b == X { i: 5 } || b == a);
         }
+
+        fn clone_from_box(dest: &mut Box<u64>, source: &Box<u64>)
+            ensures **final(dest) == **source,
+        {
+            dest.clone_from(source);
+        }
     } => Err(err) => assert_fails(err, 3)
 }
 
@@ -615,7 +808,14 @@ test_verify_one_file! {
             let b = a.clone();
             assert(a == b); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support this built-in instance")
+
+        fn clone_from_tuple(dest: &mut (u64, bool), source: &(u64, bool)) {
+            dest.clone_from(source);
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "compiler-generated `Clone` implementations",
+        "compiler-generated `Clone` implementations",
+    ])
 }
 
 test_verify_one_file_with_options! {

@@ -3,7 +3,27 @@
 mod common;
 use common::*;
 
-// Note: this file is simply traits_modules.rs with pub replaced with pub(crate)
+// Most tests here mirror traits_modules.rs with pub replaced with pub(crate).
+
+test_verify_one_file! {
+    #[test] closed_spec_default_keeps_reveal_scope verus_code! {
+        pub trait T {
+            closed spec fn f(&self) -> u64 { 5 }
+        }
+        pub(crate) trait U {
+            closed spec fn g(&self) -> u64 { 7 }
+        }
+        pub struct S;
+        mod m2 {
+            impl super::T for super::S {}
+            impl super::U for super::S {}
+        }
+        proof fn use_at_root(s: S) {
+            assert(s.f() == 5);
+            assert(s.g() == 7);
+        }
+    } => Ok(())
+}
 
 test_verify_one_file! {
     #[test] test_supported_8 verus_code! {

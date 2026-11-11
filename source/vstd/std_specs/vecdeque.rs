@@ -236,6 +236,19 @@ pub assume_specification<T: Clone, A: Allocator + Clone>[ <VecDeque<T, A> as Clo
         v@ =~= res@ ==> v@ == res@,
 ;
 
+// VecDeque::clone_from clears the destination and re-extends it with clones of
+// the source's elements, so the previous contents do not matter.
+pub assume_specification<T: Clone, A: Allocator + Clone>[ <VecDeque<T, A> as Clone>::clone_from ](
+    dest: &mut VecDeque<T, A>,
+    source: &VecDeque<T, A>,
+)
+    ensures
+        final(dest).len() == source.len(),
+        forall|i| #![all_triggers] 0 <= i < source.len() ==> cloned::<T>(source[i], final(dest)[i]),
+        vec_dequeue_clone_trigger(*source, *final(dest)),
+        source@ =~= final(dest)@ ==> source@ == final(dest)@,
+;
+
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::truncate ](
     v: &mut VecDeque<T, A>,
     len: usize,

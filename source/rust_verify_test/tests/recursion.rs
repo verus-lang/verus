@@ -2362,6 +2362,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // The inherited clone_from shell is `*self = source.clone()`, so defining
+    // clone through it is a cycle clone -> clone_from -> clone.
+    #[test] clone_through_inherited_clone_from_is_circular verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Value { pub n: u64 }
+
+        impl Clone for Value {
+            fn clone(&self) -> (res: Self)
+                ensures res.n == self.n,
+            {
+                let mut res = Value { n: 0 };
+                res.clone_from(self);
+                res
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
     #[test] recursive_through_struct_with_invariants_ok verus_code!{
         use vstd::prelude::*;
         use vstd::atomic_ghost::*;
