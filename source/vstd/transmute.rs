@@ -107,7 +107,6 @@ impl<Dst: TypeRepresentation> TransmuteSpec<Dst> for () {
 }
 
 } // verus!
-
 // Raw pointers get one impl per destination type, instead of a blanket impl,
 // so that a destination can override `transmute_req` with its own conditions
 // (e.g. `&U`, whose conditions a pointer source must not bypass, has no impl here).
