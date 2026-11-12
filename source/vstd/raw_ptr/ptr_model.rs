@@ -160,6 +160,7 @@ pub type Provenance = Option<ProvenanceData>;
 ///   <https://github.com/minirust/minirust/blob/master/spec/mem/basic.md>
 /// - The actual size of the allocation is at least as big as the originally requested size
 ///   (from the documentation for the `Allocator` trait).
+/// - If memory was allocated with the `Global` allocator, the actual size is the requested size.
 pub broadcast axiom fn provenance_properties(p: ProvenanceData)
     ensures
         #![trigger p.spatial_data()]
@@ -171,6 +172,7 @@ pub broadcast axiom fn provenance_properties(p: ProvenanceData)
         p.start_addr() as nat % p.alignment() == 0,
         p.start_addr() != 0,
         p.orig_size() <= p.alloc_len(),
+        p.alloc_id() == global_alloc_id() ==> p.alloc_len() == p.orig_size(),
 ;
 
 /// Specifies that the pointer's address is within the bounds of its provenance.
