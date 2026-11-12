@@ -10,7 +10,7 @@ use crate::util::{err_span, err_span_vec, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::{ConstItemRhs, ImplItemKind, Item, QPath, Safety, TraitImplHeader, TraitRef};
-use rustc_middle::ty::{AssocKind, GenericArgKind, PseudoCanonicalInput, RegionExt, TypingEnv};
+use rustc_middle::ty::{AssocKind, GenericArgKind, PseudoCanonicalInput, TypingEnv};
 use rustc_span::def_id::DefId;
 use rustc_span::hygiene::MacroKind;
 use rustc_span::{ExpnKind, Span, sym};

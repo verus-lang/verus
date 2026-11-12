@@ -14,7 +14,7 @@ use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, SmtSolver, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
-use rustc_errors::{Diag, EmissionGuarantee};
+use rustc_errors::Diag;
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
 use rustc_session::config::ErrorOutputType;
@@ -123,8 +123,8 @@ impl air::messages::Diagnostics for Reporter<'_> {
             }
         }
 
-        fn emit_with_diagnostic_details<'a, G: EmissionGuarantee>(
-            mut diag: Diag<'a, G>,
+        fn emit_with_diagnostic_details<'a>(
+            mut diag: Diag<'a>,
             multispan: MultiSpan,
             help: &[String],
         ) {

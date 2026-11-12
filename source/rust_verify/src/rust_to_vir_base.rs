@@ -11,7 +11,7 @@ use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKi
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
     AdtDef, AliasTyKind, BoundVarIndexKind, BoundVarReplacerDelegate, Clause, ClauseKind,
-    ConstKind, GenericArg, GenericArgKind, GenericParamDefKind, IsRigid, RegionExt, TermKind,
+    ConstKind, GenericArg, GenericArgKind, GenericParamDefKind, IsRigid, TermKind,
     TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode,
     ValTreeKind, Value, Visibility,
 };
@@ -211,10 +211,7 @@ where
         }
     }
 
-    fn fold_predicate(
-        &mut self,
-        p: rustc_middle::ty::Predicate<'tcx>,
-    ) -> rustc_middle::ty::Predicate<'tcx> {
+    fn fold_predicate<P: rustc_type_ir::PredicateProxy<TyCtxt<'tcx>>>(&mut self, p: P) -> P {
         if p.has_vars_bound_at_or_above(self.current_index) { p.super_fold_with(self) } else { p }
     }
 }
@@ -2848,7 +2845,7 @@ pub(crate) fn hack_fix_no_lifetime_opaque_ty_issue2541<'tcx>(
     // params are used covariantly
     rustc_middle::ty::fold_regions(tcx, ty, |region, _debruijn| {
         if matches!(region.kind(), rustc_middle::ty::ReErased) {
-            rustc_middle::ty::Region::new_from_kind(tcx, rustc_middle::ty::ReStatic)
+            tcx.lifetimes.re_static
         } else {
             region
         }

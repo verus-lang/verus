@@ -22,7 +22,7 @@ use rustc_hir::{
 };
 use rustc_middle::ty::{
     AdtDef, AliasTermKind, AliasTyKind, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind,
-    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionExt, RegionKind,
+    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind,
     TyCtxt, TyKind, TypingEnv, ValTreeKind, Value,
 };
 use rustc_mir_build_verus::verus::BodyErasure;
@@ -1402,10 +1402,7 @@ fn mismatch_type_error_user_str_early<'tcx>(
                         let mut r = r;
                         r.name = rustc_span::Symbol::intern(&format!("'_{:}", idx));
                         idx += 1;
-                        GenericArg::from(Region::new_from_kind(
-                            ctxt.tcx,
-                            RegionKind::ReEarlyParam(r),
-                        ))
+                        GenericArg::from(Region::new_early_param(ctxt.tcx, r))
                     } else {
                         arg
                     }

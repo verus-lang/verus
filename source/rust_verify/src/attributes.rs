@@ -2,7 +2,8 @@ use crate::util::{err_span, err_span_bare, vir_err_span_str};
 use rustc_ast::token::{LitKind, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_hir::attrs::AttributeKind;
-use rustc_hir::{AttrArgs, Attribute};
+use rustc_hir::Attribute;
+use rustc_hir::attrs::AttrArgs;
 use rustc_span::Span;
 use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr, VirErrAs};
 use vir::messages::WarningAllow;
@@ -1767,6 +1768,7 @@ fn attr_is_unsupported(kind: &AttributeKind) -> (Option<&'static str>, bool) {
         // safe
         | AllowInternalUnsafe(..)
         | AllowInternalUnstable(..)
+        | AlwaysGca
         | AutomaticallyDerived
         | CfgAttrTrace(..)
         | CfgTrace(..)
@@ -1876,7 +1878,7 @@ fn attr_is_unsupported(kind: &AttributeKind) -> (Option<&'static str>, bool) {
         | RustcDumpItemBounds
         | RustcDumpLayout(..)
         | RustcDumpObjectLifetimeDefaults
-        | RustcDumpPredicates
+        | RustcDumpClauses
         | RustcDumpSymbolName(..)
         | RustcDumpUserArgs
         | RustcDumpVariances
@@ -1903,7 +1905,6 @@ fn attr_is_unsupported(kind: &AttributeKind) -> (Option<&'static str>, bool) {
         | RustcMustImplementOneOf { .. }
         | RustcMustMatchExhaustively(..)
         | RustcNeverReturnsNullPtr
-        | RustcNeverTypeOptions { .. }
         | RustcNoImplicitAutorefs
         | RustcNoImplicitBounds
         | RustcNoMirInline
@@ -1923,7 +1924,6 @@ fn attr_is_unsupported(kind: &AttributeKind) -> (Option<&'static str>, bool) {
         | RustcPubTransparent(..)
         | RustcReallocator
         | RustcRegions
-        | RustcReservationImpl(..)
         | RustcScalableVector { .. }
         | RustcShouldNotBeCalledOnConstItems
         | RustcSimdMonomorphizeLaneLimit(..)
