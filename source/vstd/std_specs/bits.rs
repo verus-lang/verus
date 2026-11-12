@@ -174,6 +174,26 @@ pub broadcast proof fn axiom_u8_leading_ones(i: u8)
     }
 }
 
+/// Equivalent to `i.reverse_bits()`.
+/// See [`axiom_u8_reverse_bits`] for useful properties.
+pub uninterp spec fn u8_reverse_bits(i: u8) -> u8;
+
+#[verifier::when_used_as_spec(u8_reverse_bits)]
+pub assume_specification[ u8::reverse_bits ](i: u8) -> (r: u8)
+    ensures
+        r == u8_reverse_bits(i),
+    opens_invariants none
+    no_unwind
+;
+
+pub broadcast axiom fn axiom_u8_reverse_bits(i: u8)
+    ensures
+        u8_reverse_bits(#[trigger] u8_reverse_bits(i)) == i,
+        // bit j of the result is bit 7 - j of i
+        forall|j: u8|
+            j < 8 ==> #[trigger] (u8_reverse_bits(i) >> j) & 1u8 == (i >> sub(7u8, j)) & 1u8,
+;
+
 ///////////////////////////
 /////////////////////////// For u16
 /// Equivalent to `i.trailing_zeros()`.
@@ -350,6 +370,26 @@ pub broadcast proof fn axiom_u16_leading_ones(i: u16)
     }
 }
 
+/// Equivalent to `i.reverse_bits()`.
+/// See [`axiom_u16_reverse_bits`] for useful properties.
+pub uninterp spec fn u16_reverse_bits(i: u16) -> u16;
+
+#[verifier::when_used_as_spec(u16_reverse_bits)]
+pub assume_specification[ u16::reverse_bits ](i: u16) -> (r: u16)
+    ensures
+        r == u16_reverse_bits(i),
+    opens_invariants none
+    no_unwind
+;
+
+pub broadcast axiom fn axiom_u16_reverse_bits(i: u16)
+    ensures
+        u16_reverse_bits(#[trigger] u16_reverse_bits(i)) == i,
+        // bit j of the result is bit 15 - j of i
+        forall|j: u16|
+            j < 16 ==> #[trigger] (u16_reverse_bits(i) >> j) & 1u16 == (i >> sub(15u16, j)) & 1u16,
+;
+
 ///////////////////////////
 /////////////////////////// For u32
 /// Equivalent to `i.trailing_zeros()`.
@@ -525,6 +565,26 @@ pub broadcast proof fn axiom_u32_leading_ones(i: u32)
             == 1u32) by (bit_vector);
     }
 }
+
+/// Equivalent to `i.reverse_bits()`.
+/// See [`axiom_u32_reverse_bits`] for useful properties.
+pub uninterp spec fn u32_reverse_bits(i: u32) -> u32;
+
+#[verifier::when_used_as_spec(u32_reverse_bits)]
+pub assume_specification[ u32::reverse_bits ](i: u32) -> (r: u32)
+    ensures
+        r == u32_reverse_bits(i),
+    opens_invariants none
+    no_unwind
+;
+
+pub broadcast axiom fn axiom_u32_reverse_bits(i: u32)
+    ensures
+        u32_reverse_bits(#[trigger] u32_reverse_bits(i)) == i,
+        // bit j of the result is bit 31 - j of i
+        forall|j: u32|
+            j < 32 ==> #[trigger] (u32_reverse_bits(i) >> j) & 1u32 == (i >> sub(31u32, j)) & 1u32,
+;
 
 ///////////////////////////
 /////////////////////////// For u64
@@ -704,6 +764,26 @@ pub broadcast proof fn axiom_u64_leading_ones(i: u64)
     }
 }
 
+/// Equivalent to `i.reverse_bits()`.
+/// See [`axiom_u64_reverse_bits`] for useful properties.
+pub uninterp spec fn u64_reverse_bits(i: u64) -> u64;
+
+#[verifier::when_used_as_spec(u64_reverse_bits)]
+pub assume_specification[ u64::reverse_bits ](i: u64) -> (r: u64)
+    ensures
+        r == u64_reverse_bits(i),
+    opens_invariants none
+    no_unwind
+;
+
+pub broadcast axiom fn axiom_u64_reverse_bits(i: u64)
+    ensures
+        u64_reverse_bits(#[trigger] u64_reverse_bits(i)) == i,
+        // bit j of the result is bit 63 - j of i
+        forall|j: u64|
+            j < 64 ==> #[trigger] (u64_reverse_bits(i) >> j) & 1u64 == (i >> sub(63u64, j)) & 1u64,
+;
+
 pub broadcast group group_bits_axioms {
     axiom_u8_trailing_zeros,
     axiom_u8_trailing_ones,
@@ -721,6 +801,10 @@ pub broadcast group group_bits_axioms {
     axiom_u64_trailing_ones,
     axiom_u64_leading_zeros,
     axiom_u64_leading_ones,
+    axiom_u8_reverse_bits,
+    axiom_u16_reverse_bits,
+    axiom_u32_reverse_bits,
+    axiom_u64_reverse_bits,
 }
 
 } // verus!
