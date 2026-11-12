@@ -11,8 +11,8 @@ use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
 use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemId, TraitItemKind};
 use rustc_middle::ty::{
-    AliasTyKind, ClauseKind, TraitClause, TraitRef, Ty, TyCtxt, TyKind, TypeFoldable,
-    TypeFolder, TypeSuperFoldable, TypingEnv,
+    AliasTyKind, ClauseKind, TraitClause, TraitRef, Ty, TyCtxt, TyKind, TypeFoldable, TypeFolder,
+    TypeSuperFoldable, TypingEnv,
 };
 use rustc_span::Span;
 use rustc_span::def_id::DefId;

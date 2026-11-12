@@ -1,9 +1,9 @@
 use crate::util::{err_span, err_span_bare, vir_err_span_str};
 use rustc_ast::token::{LitKind, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
-use rustc_hir::attrs::AttributeKind;
 use rustc_hir::Attribute;
 use rustc_hir::attrs::AttrArgs;
+use rustc_hir::attrs::AttributeKind;
 use rustc_span::Span;
 use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr, VirErrAs};
 use vir::messages::WarningAllow;
@@ -678,9 +678,7 @@ pub(crate) fn parse_attrs(
                     let number = get_rlimit_arg(*span, attrs)?;
                     v.push(Attr::RLimit(number));
                 }
-                AttrTree::Fun(span, arg, Some([AttrTree::Fun(_, s, None)]))
-                    if arg == "allow" =>
-                {
+                AttrTree::Fun(span, arg, Some([AttrTree::Fun(_, s, None)])) if arg == "allow" => {
                     if let Some(allow) = WarningAllow::from_str(s) {
                         v.push(Attr::Allow(allow));
                     } else {

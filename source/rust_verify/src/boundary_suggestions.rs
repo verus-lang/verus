@@ -5,8 +5,8 @@ use std::{
 
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{
-    EarlyParamRegion, GenericArg, GenericParamDefKind, InstantiatedClauses, Ty, TyCtxt,
-    TyKind, TypingEnv,
+    EarlyParamRegion, GenericArg, GenericParamDefKind, InstantiatedClauses, Ty, TyCtxt, TyKind,
+    TypingEnv,
 };
 use rustc_type_ir::{
     Interner, TypeFoldable, TypeFolder, TypeSuperVisitable, TypeVisitable, TypeVisitor,

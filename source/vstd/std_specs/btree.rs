@@ -536,11 +536,11 @@ pub open spec fn btree_map_insert_ensures<Key: Ord, Value, A: AllocatorClone>(
     }
 }
 
-pub assume_specification<Key: Ord, Value, A: AllocatorClone>[ BTreeMap::<
-    Key,
-    Value,
-    A,
->::insert ](m: &mut BTreeMap<Key, Value, A>, k: Key, v: Value) -> (result: Option<Value>)
+pub assume_specification<Key: Ord, Value, A: AllocatorClone>[ BTreeMap::<Key, Value, A>::insert ](
+    m: &mut BTreeMap<Key, Value, A>,
+    k: Key,
+    v: Value,
+) -> (result: Option<Value>)
     ensures
         btree_map_insert_ensures(old(m), final(m), k, v, result),
 ;
@@ -1734,12 +1734,10 @@ pub open spec fn btree_set_get_ensures<Key: Borrow<Q> + Ord, A: AllocatorClone, 
     }
 }
 
-pub assume_specification<
-    'a,
-    Key: Borrow<Q> + Ord,
-    A: AllocatorClone,
-    Q: Ord + ?Sized,
->[ BTreeSet::<Key, A>::get::<Q> ](m: &'a BTreeSet<Key, A>, k: &Q) -> (result: Option<&'a Key>)
+pub assume_specification<'a, Key: Borrow<Q> + Ord, A: AllocatorClone, Q: Ord + ?Sized>[ BTreeSet::<
+    Key,
+    A,
+>::get::<Q> ](m: &'a BTreeSet<Key, A>, k: &Q) -> (result: Option<&'a Key>)
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
@@ -1805,11 +1803,12 @@ pub broadcast proof fn lemma_btree_set_get_ensures_if_obeys_cmp_deep_eq<
     }
 }
 
-pub open spec fn btree_set_remove_ensures<
-    Key: Borrow<Q> + Ord,
-    A: AllocatorClone,
-    Q: Ord + ?Sized,
->(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: &Q, result: bool) -> bool {
+pub open spec fn btree_set_remove_ensures<Key: Borrow<Q> + Ord, A: AllocatorClone, Q: Ord + ?Sized>(
+    old_m: &BTreeSet<Key, A>,
+    final_m: &BTreeSet<Key, A>,
+    k: &Q,
+    result: bool,
+) -> bool {
     ({
         &&& obeys_cmp::<Key>()
         &&& obeys_cmp::<&Q>()

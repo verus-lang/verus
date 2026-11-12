@@ -322,8 +322,7 @@ pub(crate) fn gen_check_trait_impl_conflicts(
             &t.x.typ_params.iter().map(|(x, _)| x.clone()).collect(),
             &t.x.typ_bounds,
         );
-        let (a_params, mut a_bounds) =
-            gen_generics(state, &t.x.assoc_typs, &t.x.assoc_typs_bounds);
+        let (a_params, mut a_bounds) = gen_generics(state, &t.x.assoc_typs, &t.x.assoc_typs_bounds);
         used_traits.insert(t.x.name.clone());
         for a in t.x.assoc_typs.iter() {
             used_assoc_typs.insert((t.x.name.clone(), a.clone()));
@@ -413,8 +412,7 @@ pub(crate) fn gen_check_trait_impl_conflicts(
         );
         let t_args =
             generic_params.iter().map(|p| Box::new(TypX::TypParam(p.name.clone()))).collect();
-        let (a_params, a_bounds) =
-            gen_generics(state, &t.x.assoc_typs, &t.x.assoc_typs_bounds);
+        let (a_params, a_bounds) = gen_generics(state, &t.x.assoc_typs, &t.x.assoc_typs_bounds);
         let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)> = Vec::new();
         for x in &a_params {
             // TODO: test associated types once we support "dyn with more than one trait"
