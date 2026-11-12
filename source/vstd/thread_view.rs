@@ -280,6 +280,10 @@ unsafe impl<'a, P: Objective, Q: Objective, F: ProofFnOnce> Objective for proof_
 
 }
 
+impl<T: ?Sized> !Objective for super::cell::pcell::PointsTo<T> {}
+impl<T> !Objective for super::cell::pcell_maybe_uninit::PointsTo<T> {}
+impl<T> !Objective for super::raw_ptr::PointsTo<T> {}
+
 /// Represents a permission of type `T` which is safe for a thread to own, provided that this thread has
 /// seen a particular view.
 #[derive(Copy)]
