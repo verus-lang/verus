@@ -752,7 +752,6 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
 
     crate::rust_to_vir_adts::setup_type_invariants(&mut vir, &function_stubs)
         .map_err(|e| (vec![e], None))?;
-    crate::rust_to_vir_adts::fix_size_of_broadcast_lemma_visibility(&mut vir);
 
     let mut fun_warn_configs: HashMap<Fun, Option<WarningConfig>> = HashMap::new();
     for krate in imported {
