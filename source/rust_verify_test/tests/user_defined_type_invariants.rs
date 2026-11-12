@@ -2952,3 +2952,18 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
 }
+
+test_verify_one_file! {
+    // Regression test for #2898: a lifetime late-bound on the function but early-bound
+    // on the datatype used to panic rustc.
+    #[test] type_invariant_free_fn_lifetime_and_type_param_issue2898 verus_code! {
+        pub struct X<'a, T> {
+            r: &'a T,
+        }
+
+        #[verifier::type_invariant]
+        pub closed spec fn inv<'a, T>(x: X<'a, T>) -> bool {
+            true
+        }
+    } => Ok(())
+}
