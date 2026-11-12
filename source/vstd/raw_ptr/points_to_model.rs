@@ -620,8 +620,11 @@ impl<T> TypedValue<[T]> {
     ;
 }
 
-/// `pt_untyped` and `typed_value` are the parts of a well-formed `PointsToUnaligned<T>` for a pointer with view `ptr`.
-pub open spec fn pt_unaligned_parts_wf<T>(
+/// The conditions shared by the parts of every well-formed permission
+/// for a pointer with view `ptr`:
+/// `pt_untyped` is well-formed and has `ptr`'s address, provenance and `is_real`,
+/// and if `typed_value` is valid, the bytes decode to it.
+pub open spec fn pt_parts_wf_common<T: ?Sized>(
     ptr: PtrData<T>,
     pt_untyped: PointsToUntyped,
     typed_value: TypedValue<T>,
@@ -630,11 +633,20 @@ pub open spec fn pt_unaligned_parts_wf<T>(
     &&& pt_untyped.ptr()@.addr == ptr.addr
     &&& pt_untyped.ptr()@.provenance == ptr.provenance
     &&& pt_untyped.ptr()@.is_real == ptr.is_real
-    &&& pt_untyped.len() == size_of::<T>()
     &&& typed_value.is_valid() ==> abstract_bytes_decode(
         pt_untyped.bytes(),
         typed_value.value_ref(),
     )
+}
+
+/// `pt_untyped` and `typed_value` are the parts of a well-formed `PointsToUnaligned<T>` for a pointer with view `ptr`.
+pub open spec fn pt_unaligned_parts_wf<T>(
+    ptr: PtrData<T>,
+    pt_untyped: PointsToUntyped,
+    typed_value: TypedValue<T>,
+) -> bool {
+    &&& pt_parts_wf_common(ptr, pt_untyped, typed_value)
+    &&& pt_untyped.len() == size_of::<T>()
 }
 
 /// `pt_untyped` and `typed_value` are the parts of a well-formed `PointsTo<T>` for a pointer with view `ptr`.
@@ -653,16 +665,10 @@ pub open spec fn pt_parts_wf_slice<T>(
     pt_untyped: PointsToUntyped,
     typed_value: TypedValue<[T]>,
 ) -> bool {
-    &&& pt_untyped.wf()
-    &&& pt_untyped.ptr()@.addr == ptr.addr
-    &&& pt_untyped.ptr()@.provenance == ptr.provenance
-    &&& pt_untyped.ptr()@.is_real == ptr.is_real
+    &&& pt_parts_wf_common(ptr, pt_untyped, typed_value)
     &&& pt_untyped.len() == ptr.metadata * size_of::<T>()
     &&& ptr.addr as nat % align_of::<T>() == 0
-    &&& typed_value.is_valid() ==> {
-        &&& abstract_bytes_decode(pt_untyped.bytes(), typed_value.value_ref())
-        &&& typed_value.value_ref()@.len() == ptr.metadata
-    }
+    &&& typed_value.is_valid() ==> typed_value.value_ref()@.len() == ptr.metadata
 }
 
 } // verus!
