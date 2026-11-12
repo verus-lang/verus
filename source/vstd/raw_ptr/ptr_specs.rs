@@ -771,6 +771,7 @@ pub const fn cast_mut_ref_str_to_ptr(mut_ref: &mut str) -> ((ptr, perm): (
 /// (shown by having both the `Provenance` `orig_size` and `alloc_len` be the provided `size`).
 /// This is a stronger guarantee than `Allocator::allocate`, which may allocate a larger block of memory.
 #[cfg(feature = "std")]
+#[cfg(not(verus_verify_core))]
 #[verifier::external_body]
 pub fn allocate(size: usize, align: usize) -> ((ptr, perm): (*mut u8, Tracked<PointsToUntyped>))
     requires
@@ -822,6 +823,7 @@ pub fn allocate(size: usize, align: usize) -> ((ptr, perm): (*mut u8, Tracked<Po
 /// According to the `Allocator` documentation, it's possible to have `orig_size <= alloc_len`.
 /// Here, we restrict them to be the same.
 #[cfg(feature = "alloc")]
+#[cfg(not(verus_verify_core))]
 #[verifier::external_body]
 pub fn deallocate(ptr: *mut u8, size: usize, align: usize, Tracked(perm): Tracked<PointsToUntyped>)
     requires
