@@ -665,7 +665,7 @@ test_verify_one_file! {
 
         proof fn test_threeway_or(p: Path) {
             match p {
-                Path::Left(box q) | q | Path::Right(box q) => {
+                Path::Left(deref!(q)) | q | Path::Right(deref!(q)) => {
                     // If 'p' matches multiple, then it should be the first
                     if p.is_Left() {
                         assert(q == *p.get_Left_0());
@@ -682,7 +682,7 @@ test_verify_one_file! {
 
         proof fn test_threeway_or2(p: Path) {
             match p {
-                Path::Left(box q) | Path::Right(box q) | q => {
+                Path::Left(deref!(q)) | Path::Right(deref!(q)) | q => {
                     // If 'p' matches multiple, then it should be the first
                     if p.is_Left() {
                         assert(q == *p.get_Left_0());
@@ -701,7 +701,7 @@ test_verify_one_file! {
 
         proof fn test_threeway_or3(p: Path) {
             match p {
-                Path::Left(box q) | q | Path::Right(box q) => {
+                Path::Left(deref!(q)) | q | Path::Right(deref!(q)) => {
                     if p.is_Left() {
                         assert(p == q); // FAILS
                     }

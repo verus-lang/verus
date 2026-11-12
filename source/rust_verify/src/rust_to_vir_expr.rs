@@ -1024,7 +1024,15 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
             PatternX::Slice(Arc::new(patterns))
         }
         PatKind::Never => unsupported_err!(pat.span, "never patterns", pat),
-        PatKind::Deref(_) => unsupported_err!(pat.span, "deref patterns", pat),
+        PatKind::Deref(subpat) => {
+            // Rust 1.100 removed box patterns (`box p`), superseded by deref patterns.
+            // We support explicit deref patterns (`deref!(p)`) on `Box` only,
+            // which, like the old box patterns, are transparent in VIR.
+            if bctx.types.node_type(pat.hir_id).is_box() {
+                return pattern_to_vir(bctx, subpat);
+            }
+            unsupported_err!(pat.span, "deref patterns on types other than Box", pat)
+        }
         PatKind::Err(_) => unsupported_err!(pat.span, "patterns that failed to type-check", pat),
         PatKind::Missing => unsupported_err!(pat.span, "missing patterns in parameters", pat),
     };
@@ -2044,6 +2052,12 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         Adjust::NeverToAny => {
             let e = expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?
                 .consume(bctx, get_inner_ty());
+            if adjustment.target.is_never() {
+                // A never-to-any coercion from `!` to `!` is a no-op.
+                // (Since Rust 1.100, `core::convert::Infallible` is an alias for `!`,
+                // so this arises, e.g., when accessing fields of type `Infallible`.)
+                return Ok(ExprOrPlace::Expr(e));
+            }
             let x = ExprX::NeverToAny(e);
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ()?, x)))
         }
