@@ -4,7 +4,6 @@
 #![feature(deref_patterns)]
 #![feature(try_blocks)]
 #![feature(rustc_private)]
-#![feature(never_type)]
 // tidy-alphabetical-end
 
 extern crate rustc_abi;

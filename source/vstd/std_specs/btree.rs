@@ -19,7 +19,7 @@ use super::cmp::OrdSpec;
 pub use super::cmp::borrowed_key_ordering_matches;
 use super::iter::IteratorSpec;
 
-use alloc::alloc::Allocator;
+use alloc::alloc::AllocatorClone;
 use alloc::boxed::Box;
 use alloc::collections::btree_map;
 use alloc::collections::btree_map::{CursorMut, Keys, UnorderedKeyError, Values};
@@ -172,7 +172,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for btree_map::Iter<'a, K, V> {
     }
 }
 
-pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::iter ](
+pub assume_specification<'a, Key, Value, A: AllocatorClone>[ BTreeMap::<Key, Value, A>::iter ](
     m: &'a BTreeMap<Key, Value, A>,
 ) -> (iter: btree_map::Iter<'a, Key, Value>)
     ensures
@@ -212,7 +212,7 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
 #[verifier::accept_recursive_types(Key)]
 #[verifier::accept_recursive_types(Value)]
 #[verifier::reject_recursive_types(A)]
-pub struct ExBTreeMap<Key, Value, A: Allocator + Clone>(BTreeMap<Key, Value, A>);
+pub struct ExBTreeMap<Key, Value, A: AllocatorClone>(BTreeMap<Key, Value, A>);
 
 /// Verus declaration for Rust's mutable B-tree cursor type.
 #[verifier::external_type_specification]
@@ -342,7 +342,7 @@ pub trait BTreeMapAdditionalSpecFns<Key, Value>: View<V = Map<Key, Value>> {
     ;
 }
 
-impl<Key, Value, A: Allocator + Clone> BTreeMapAdditionalSpecFns<Key, Value> for BTreeMap<
+impl<Key, Value, A: AllocatorClone> BTreeMapAdditionalSpecFns<Key, Value> for BTreeMap<
     Key,
     Value,
     A,
@@ -353,13 +353,13 @@ impl<Key, Value, A: Allocator + Clone> BTreeMapAdditionalSpecFns<Key, Value> for
     }
 }
 
-impl<Key, Value, A: Allocator + Clone> View for BTreeMap<Key, Value, A> {
+impl<Key, Value, A: AllocatorClone> View for BTreeMap<Key, Value, A> {
     type V = Map<Key, Value>;
 
     uninterp spec fn view(&self) -> Map<Key, Value>;
 }
 
-impl<Key: DeepView, Value: DeepView, A: Allocator + Clone> DeepView for BTreeMap<Key, Value, A> {
+impl<Key: DeepView, Value: DeepView, A: AllocatorClone> DeepView for BTreeMap<Key, Value, A> {
     type V = Map<Key::V, Value::V>;
 
     open spec fn deep_view(&self) -> Map<Key::V, Value::V> {
@@ -373,7 +373,7 @@ impl<Key: DeepView, Value: DeepView, A: Allocator + Clone> DeepView for BTreeMap
 /// method is not supported. In most cases, it's easier to use one of the lemmas below instead
 /// of revealing this function directly.
 #[verifier::opaque]
-pub open spec fn btree_map_deep_view_impl<Key: DeepView, Value: DeepView, A: Allocator + Clone>(
+pub open spec fn btree_map_deep_view_impl<Key: DeepView, Value: DeepView, A: AllocatorClone>(
     m: BTreeMap<Key, Value, A>,
 ) -> Map<Key::V, Value::V> {
     Map::new(
@@ -453,7 +453,7 @@ pub broadcast proof fn lemma_btree_map_deepview_values<K: DeepView, V: DeepView>
     }
 }
 
-pub open spec fn btree_map_inv<Key: Ord, Value, A: Allocator + Clone>(
+pub open spec fn btree_map_inv<Key: Ord, Value, A: AllocatorClone>(
     m: &BTreeMap<Key, Value, A>,
 ) -> bool {
     forall|k1: Key, k2: Key|
@@ -464,11 +464,11 @@ pub open spec fn btree_map_inv<Key: Ord, Value, A: Allocator + Clone>(
         } ==> !(k1.cmp_spec(&k2) is Equal)
 }
 
-pub uninterp spec fn spec_btree_map_len<Key, Value, A: Allocator + Clone>(
+pub uninterp spec fn spec_btree_map_len<Key, Value, A: AllocatorClone>(
     m: &BTreeMap<Key, Value, A>,
 ) -> usize;
 
-pub broadcast axiom fn axiom_spec_btree_map_len<Key, Value, A: Allocator + Clone>(
+pub broadcast axiom fn axiom_spec_btree_map_len<Key, Value, A: AllocatorClone>(
     m: &BTreeMap<Key, Value, A>,
 )
     ensures
@@ -476,21 +476,21 @@ pub broadcast axiom fn axiom_spec_btree_map_len<Key, Value, A: Allocator + Clone
 ;
 
 #[verifier::when_used_as_spec(spec_btree_map_len)]
-pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::len ](
+pub assume_specification<Key, Value, A: AllocatorClone>[ BTreeMap::<Key, Value, A>::len ](
     m: &BTreeMap<Key, Value, A>,
 ) -> (len: usize)
     ensures
         len == spec_btree_map_len(m),
 ;
 
-pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::is_empty ](
+pub assume_specification<Key, Value, A: AllocatorClone>[ BTreeMap::<Key, Value, A>::is_empty ](
     m: &BTreeMap<Key, Value, A>,
 ) -> (res: bool)
     ensures
         res == m@.is_empty(),
 ;
 
-pub assume_specification<K: Clone, V: Clone, A: Allocator + Clone>[ <BTreeMap::<
+pub assume_specification<K: Clone, V: Clone, A: AllocatorClone>[ <BTreeMap::<
     K,
     V,
     A,
@@ -510,7 +510,7 @@ pub assume_specification<K, V>[ <BTreeMap<K, V> as core::default::Default>::defa
         m@ == Map::<K, V>::empty(),
 ;
 
-pub open spec fn btree_map_insert_ensures<Key: Ord, Value, A: Allocator + Clone>(
+pub open spec fn btree_map_insert_ensures<Key: Ord, Value, A: AllocatorClone>(
     old_m: &BTreeMap<Key, Value, A>,
     final_m: &BTreeMap<Key, Value, A>,
     k: Key,
@@ -536,7 +536,7 @@ pub open spec fn btree_map_insert_ensures<Key: Ord, Value, A: Allocator + Clone>
     }
 }
 
-pub assume_specification<Key: Ord, Value, A: Allocator + Clone>[ BTreeMap::<
+pub assume_specification<Key: Ord, Value, A: AllocatorClone>[ BTreeMap::<
     Key,
     Value,
     A,
@@ -548,7 +548,7 @@ pub assume_specification<Key: Ord, Value, A: Allocator + Clone>[ BTreeMap::<
 pub broadcast proof fn lemma_btree_map_insert_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(
     old_m: &BTreeMap<Key, Value, A>,
     final_m: &BTreeMap<Key, Value, A>,
@@ -572,7 +572,7 @@ pub broadcast proof fn lemma_btree_map_insert_ensures_if_obeys_cmp_concrete_eq<
 pub broadcast proof fn lemma_btree_map_insert_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
     Value: DeepView,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(
     old_m: &BTreeMap<Key, Value, A>,
     final_m: &BTreeMap<Key, Value, A>,
@@ -636,7 +636,7 @@ pub broadcast proof fn lemma_btree_map_insert_ensures_if_obeys_cmp_deep_eq<
 pub open spec fn btree_map_contains_key_ensures<
     Key: Borrow<Q> + Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
     Q: Ord + ?Sized,
 >(m: &BTreeMap<Key, Value, A>, k: &Q, result: bool) -> bool {
     ({
@@ -656,7 +656,7 @@ pub open spec fn btree_map_contains_key_ensures<
 pub assume_specification<
     Key: Borrow<Q> + Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
     Q: Ord + ?Sized,
 >[ BTreeMap::<Key, Value, A>::contains_key::<Q> ](m: &BTreeMap<Key, Value, A>, k: &Q) -> (result:
     bool)
@@ -669,7 +669,7 @@ pub assume_specification<
 pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(m: &BTreeMap<Key, Value, A>, k: &Key, result: bool)
     requires
         obeys_cmp::<Key>(),
@@ -687,7 +687,7 @@ pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_obeys_cmp_concret
 pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
     Value: DeepView,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(m: &BTreeMap<Key, Value, A>, k: &Key, result: bool)
     requires
         obeys_cmp::<Key>(),
@@ -726,7 +726,7 @@ pub broadcast proof fn lemma_btree_map_contains_key_ensures_if_obeys_cmp_deep_eq
 pub open spec fn btree_map_get_ensures<
     Key: Borrow<Q> + Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
     Q: Ord + ?Sized,
 >(m: &BTreeMap<Key, Value, A>, k: &Q, result: Option<&Value>) -> bool {
     ({
@@ -754,7 +754,7 @@ pub assume_specification<
     'a,
     Key: Borrow<Q> + Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
     Q: Ord + ?Sized,
 >[ BTreeMap::<Key, Value, A>::get::<Q> ](m: &'a BTreeMap<Key, Value, A>, k: &Q) -> (result: Option<
     &'a Value,
@@ -768,7 +768,7 @@ pub assume_specification<
 pub broadcast proof fn lemma_btree_map_get_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(m: &BTreeMap<Key, Value, A>, k: &Key, result: Option<&Value>)
     requires
         obeys_cmp::<Key>(),
@@ -789,7 +789,7 @@ pub broadcast proof fn lemma_btree_map_get_ensures_if_obeys_cmp_concrete_eq<
 pub broadcast proof fn lemma_btree_map_get_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
     Value: DeepView,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(m: &BTreeMap<Key, Value, A>, k: &Key, result: Option<&Value>)
     requires
         obeys_cmp::<Key>(),
@@ -842,7 +842,7 @@ pub broadcast proof fn lemma_btree_map_get_ensures_if_obeys_cmp_deep_eq<
 pub open spec fn btree_map_remove_ensures<
     Key: Borrow<Q> + Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
     Q: Ord + ?Sized,
 >(
     old_m: &BTreeMap<Key, Value, A>,
@@ -879,7 +879,7 @@ pub open spec fn btree_map_remove_ensures<
 pub assume_specification<
     Key: Borrow<Q> + Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
     Q: Ord + ?Sized,
 >[ BTreeMap::<Key, Value, A>::remove::<Q> ](m: &mut BTreeMap<Key, Value, A>, k: &Q) -> (result:
     Option<Value>)
@@ -892,7 +892,7 @@ pub assume_specification<
 pub broadcast proof fn lemma_btree_map_remove_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(
     old_m: &BTreeMap<Key, Value, A>,
     final_m: &BTreeMap<Key, Value, A>,
@@ -925,7 +925,7 @@ pub broadcast proof fn lemma_btree_map_remove_ensures_if_obeys_cmp_concrete_eq<
 pub broadcast proof fn lemma_btree_map_remove_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
     Value: DeepView,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(
     old_m: &BTreeMap<Key, Value, A>,
     final_m: &BTreeMap<Key, Value, A>,
@@ -1007,7 +1007,7 @@ pub broadcast proof fn lemma_btree_map_remove_ensures_if_obeys_cmp_deep_eq<
 pub open spec fn btree_map_get_mut_ensures<
     Key: Borrow<Q> + Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
     Q: Ord + ?Sized,
 >(
     old_m: &BTreeMap<Key, Value, A>,
@@ -1046,7 +1046,7 @@ pub assume_specification<
     'a,
     Key: Borrow<Q> + Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
     Q: Ord + ?Sized,
 >[ BTreeMap::<Key, Value, A>::get_mut::<Q> ](
     m: &'a mut BTreeMap<Key, Value, A>,
@@ -1069,7 +1069,7 @@ pub assume_specification<
 pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(
     old_m: &BTreeMap<Key, Value, A>,
     final_m: &BTreeMap<Key, Value, A>,
@@ -1102,7 +1102,7 @@ pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_obeys_cmp_concrete_eq<
 pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
     Value: DeepView,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(
     old_m: &BTreeMap<Key, Value, A>,
     final_m: &BTreeMap<Key, Value, A>,
@@ -1163,7 +1163,7 @@ pub broadcast proof fn lemma_btree_map_get_mut_ensures_if_obeys_cmp_deep_eq<
     }
 }
 
-pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::clear ](
+pub assume_specification<Key, Value, A: AllocatorClone>[ BTreeMap::<Key, Value, A>::clear ](
     m: &mut BTreeMap<Key, Value, A>,
 )
     ensures
@@ -1175,7 +1175,7 @@ pub assume_specification<
     'a,
     Key: Borrow<Q> + Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
     Q: Ord + ?Sized,
 >[ BTreeMap::<Key, Value, A>::lower_bound_mut::<Q> ](
     map: &'a mut BTreeMap<Key, Value, A>,
@@ -1201,7 +1201,7 @@ pub assume_specification<
     'a,
     Key: Borrow<Q> + Ord,
     Value,
-    A: Allocator + Clone,
+    A: AllocatorClone,
     Q: Ord + ?Sized,
 >[ BTreeMap::<Key, Value, A>::upper_bound_mut::<Q> ](
     map: &'a mut BTreeMap<Key, Value, A>,
@@ -1331,7 +1331,7 @@ pub assume_specification<'a, 'b, Key, Value, A>[ CursorMut::<'a, Key, Value, A>:
 ;
 
 /// Specification for [`CursorMut::insert_after`].
-pub assume_specification<'a, Key: Ord, Value, A: Allocator + Clone>[ CursorMut::<
+pub assume_specification<'a, Key: Ord, Value, A: AllocatorClone>[ CursorMut::<
     'a,
     Key,
     Value,
@@ -1362,7 +1362,7 @@ pub assume_specification<'a, Key: Ord, Value, A: Allocator + Clone>[ CursorMut::
 ;
 
 /// Specification for [`CursorMut::remove_next`].
-pub assume_specification<'a, Key: Ord, Value, A: Allocator + Clone>[ CursorMut::<
+pub assume_specification<'a, Key: Ord, Value, A: AllocatorClone>[ CursorMut::<
     'a,
     Key,
     Value,
@@ -1391,7 +1391,7 @@ pub assume_specification<'a, Key: Ord, Value, A: Allocator + Clone>[ CursorMut::
         },
 ;
 
-pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::keys ](
+pub assume_specification<'a, Key, Value, A: AllocatorClone>[ BTreeMap::<Key, Value, A>::keys ](
     m: &'a BTreeMap<Key, Value, A>,
 ) -> (keys: Keys<'a, Key, Value>)
     ensures
@@ -1406,7 +1406,7 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
         },
 ;
 
-pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::values ](
+pub assume_specification<'a, Key, Value, A: AllocatorClone>[ BTreeMap::<Key, Value, A>::values ](
     m: &'a BTreeMap<Key, Value, A>,
 ) -> (values: Values<'a, Key, Value>)
     ensures
@@ -1426,7 +1426,7 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
         },
 ;
 
-pub broadcast axiom fn axiom_btree_map_decreases<Key, Value, A: Allocator + Clone>(
+pub broadcast axiom fn axiom_btree_map_decreases<Key, Value, A: AllocatorClone>(
     m: BTreeMap<Key, Value, A>,
 )
     ensures
@@ -1479,15 +1479,15 @@ impl<'a, T> super::iter::IteratorSpecImpl for btree_set::Iter::<'a, T> {
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
 #[verifier::reject_recursive_types(A)]
-pub struct ExBTreeSet<Key, A: Allocator + Clone>(BTreeSet<Key, A>);
+pub struct ExBTreeSet<Key, A: AllocatorClone>(BTreeSet<Key, A>);
 
-impl<Key, A: Allocator + Clone> View for BTreeSet<Key, A> {
+impl<Key, A: AllocatorClone> View for BTreeSet<Key, A> {
     type V = Set<Key>;
 
     uninterp spec fn view(&self) -> Set<Key>;
 }
 
-impl<Key: DeepView, A: Allocator + Clone> DeepView for BTreeSet<Key, A> {
+impl<Key: DeepView, A: AllocatorClone> DeepView for BTreeSet<Key, A> {
     type V = Set<Key::V>;
 
     open spec fn deep_view(&self) -> Set<Key::V> {
@@ -1495,7 +1495,7 @@ impl<Key: DeepView, A: Allocator + Clone> DeepView for BTreeSet<Key, A> {
     }
 }
 
-pub open spec fn btree_set_inv<Key: Ord, A: Allocator + Clone>(m: &BTreeSet<Key, A>) -> bool {
+pub open spec fn btree_set_inv<Key: Ord, A: AllocatorClone>(m: &BTreeSet<Key, A>) -> bool {
     forall|k1: Key, k2: Key|
         {
             &&& #[trigger] m@.contains(k1)
@@ -1504,29 +1504,29 @@ pub open spec fn btree_set_inv<Key: Ord, A: Allocator + Clone>(m: &BTreeSet<Key,
         } ==> !(k1.cmp_spec(&k2) is Equal)
 }
 
-pub uninterp spec fn spec_btree_set_len<Key, A: Allocator + Clone>(m: &BTreeSet<Key, A>) -> usize;
+pub uninterp spec fn spec_btree_set_len<Key, A: AllocatorClone>(m: &BTreeSet<Key, A>) -> usize;
 
-pub broadcast axiom fn axiom_spec_btree_set_len<Key, A: Allocator + Clone>(m: &BTreeSet<Key, A>)
+pub broadcast axiom fn axiom_spec_btree_set_len<Key, A: AllocatorClone>(m: &BTreeSet<Key, A>)
     ensures
         key_obeys_cmp_spec::<Key>() ==> #[trigger] spec_btree_set_len(m) == m@.len(),
 ;
 
 #[verifier::when_used_as_spec(spec_btree_set_len)]
-pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::len ](
+pub assume_specification<Key, A: AllocatorClone>[ BTreeSet::<Key, A>::len ](
     m: &BTreeSet<Key, A>,
 ) -> (len: usize)
     ensures
         len == spec_btree_set_len(m),
 ;
 
-pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::is_empty ](
+pub assume_specification<Key, A: AllocatorClone>[ BTreeSet::<Key, A>::is_empty ](
     m: &BTreeSet<Key, A>,
 ) -> (res: bool)
     ensures
         res == m@.is_empty(),
 ;
 
-pub assume_specification<K: Clone, A: Allocator + Clone>[ <BTreeSet::<K, A> as Clone>::clone ](
+pub assume_specification<K: Clone, A: AllocatorClone>[ <BTreeSet::<K, A> as Clone>::clone ](
     this: &BTreeSet<K, A>,
 ) -> (other: BTreeSet<K, A>)
     ensures
@@ -1545,7 +1545,7 @@ pub assume_specification<T>[ <BTreeSet<T> as core::default::Default>::default ](
         m@ == Set::<T>::empty(),
 ;
 
-pub open spec fn btree_set_insert_ensures<Key: Ord, A: Allocator + Clone>(
+pub open spec fn btree_set_insert_ensures<Key: Ord, A: AllocatorClone>(
     old_m: &BTreeSet<Key, A>,
     final_m: &BTreeSet<Key, A>,
     k: Key,
@@ -1565,7 +1565,7 @@ pub open spec fn btree_set_insert_ensures<Key: Ord, A: Allocator + Clone>(
     }
 }
 
-pub assume_specification<Key: Ord, A: Allocator + Clone>[ BTreeSet::<Key, A>::insert ](
+pub assume_specification<Key: Ord, A: AllocatorClone>[ BTreeSet::<Key, A>::insert ](
     m: &mut BTreeSet<Key, A>,
     k: Key,
 ) -> (result: bool)
@@ -1575,7 +1575,7 @@ pub assume_specification<Key: Ord, A: Allocator + Clone>[ BTreeSet::<Key, A>::in
 
 pub broadcast proof fn lemma_btree_set_insert_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: Key, result: bool)
     requires
         obeys_cmp::<Key>(),
@@ -1597,7 +1597,7 @@ pub broadcast proof fn lemma_btree_set_insert_ensures_if_obeys_cmp_concrete_eq<
 
 pub broadcast proof fn lemma_btree_set_insert_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: Key, result: bool)
     requires
         obeys_cmp::<Key>(),
@@ -1634,7 +1634,7 @@ pub broadcast proof fn lemma_btree_set_insert_ensures_if_obeys_cmp_deep_eq<
 
 pub open spec fn btree_set_contains_ensures<
     Key: Borrow<Q> + Ord,
-    A: Allocator + Clone,
+    A: AllocatorClone,
     Q: Ord + ?Sized,
 >(m: &BTreeSet<Key, A>, k: &Q, result: bool) -> bool {
     ({
@@ -1651,7 +1651,7 @@ pub open spec fn btree_set_contains_ensures<
     }
 }
 
-pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?Sized>[ BTreeSet::<
+pub assume_specification<Key: Borrow<Q> + Ord, A: AllocatorClone, Q: Ord + ?Sized>[ BTreeSet::<
     Key,
     A,
 >::contains ](m: &BTreeSet<Key, A>, k: &Q) -> (result: bool)
@@ -1663,7 +1663,7 @@ pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?S
 
 pub broadcast proof fn lemma_btree_set_contains_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(m: &BTreeSet<Key, A>, k: &Key, result: bool)
     requires
         obeys_cmp::<Key>(),
@@ -1680,7 +1680,7 @@ pub broadcast proof fn lemma_btree_set_contains_ensures_if_obeys_cmp_concrete_eq
 
 pub broadcast proof fn lemma_btree_set_contains_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(m: &BTreeSet<Key, A>, k: &Key, result: bool)
     requires
         obeys_cmp::<Key>(),
@@ -1710,7 +1710,7 @@ pub broadcast proof fn lemma_btree_set_contains_ensures_if_obeys_cmp_deep_eq<
     }
 }
 
-pub open spec fn btree_set_get_ensures<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?Sized>(
+pub open spec fn btree_set_get_ensures<Key: Borrow<Q> + Ord, A: AllocatorClone, Q: Ord + ?Sized>(
     m: &BTreeSet<Key, A>,
     k: &Q,
     result: Option<&Key>,
@@ -1737,7 +1737,7 @@ pub open spec fn btree_set_get_ensures<Key: Borrow<Q> + Ord, A: Allocator + Clon
 pub assume_specification<
     'a,
     Key: Borrow<Q> + Ord,
-    A: Allocator + Clone,
+    A: AllocatorClone,
     Q: Ord + ?Sized,
 >[ BTreeSet::<Key, A>::get::<Q> ](m: &'a BTreeSet<Key, A>, k: &Q) -> (result: Option<&'a Key>)
     requires
@@ -1748,7 +1748,7 @@ pub assume_specification<
 
 pub broadcast proof fn lemma_btree_set_get_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(m: &BTreeSet<Key, A>, k: &Key, result: Option<&Key>)
     requires
         obeys_cmp::<Key>(),
@@ -1768,7 +1768,7 @@ pub broadcast proof fn lemma_btree_set_get_ensures_if_obeys_cmp_concrete_eq<
 
 pub broadcast proof fn lemma_btree_set_get_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(m: &BTreeSet<Key, A>, k: &Key, result: Option<&Key>)
     requires
         obeys_cmp::<Key>(),
@@ -1807,7 +1807,7 @@ pub broadcast proof fn lemma_btree_set_get_ensures_if_obeys_cmp_deep_eq<
 
 pub open spec fn btree_set_remove_ensures<
     Key: Borrow<Q> + Ord,
-    A: Allocator + Clone,
+    A: AllocatorClone,
     Q: Ord + ?Sized,
 >(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: &Q, result: bool) -> bool {
     ({
@@ -1834,7 +1834,7 @@ pub open spec fn btree_set_remove_ensures<
     }
 }
 
-pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?Sized>[ BTreeSet::<
+pub assume_specification<Key: Borrow<Q> + Ord, A: AllocatorClone, Q: Ord + ?Sized>[ BTreeSet::<
     Key,
     A,
 >::remove::<Q> ](m: &mut BTreeSet<Key, A>, k: &Q) -> (result: bool)
@@ -1846,7 +1846,7 @@ pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?S
 
 pub broadcast proof fn lemma_btree_set_remove_ensures_if_obeys_cmp_concrete_eq<
     Key: Ord,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: &Key, result: bool)
     requires
         obeys_cmp::<Key>(),
@@ -1870,7 +1870,7 @@ pub broadcast proof fn lemma_btree_set_remove_ensures_if_obeys_cmp_concrete_eq<
 
 pub broadcast proof fn lemma_btree_set_remove_ensures_if_obeys_cmp_deep_eq<
     Key: Ord + DeepView,
-    A: Allocator + Clone,
+    A: AllocatorClone,
 >(old_m: &BTreeSet<Key, A>, final_m: &BTreeSet<Key, A>, k: &Key, result: bool)
     requires
         obeys_cmp::<Key>(),
@@ -1923,14 +1923,14 @@ pub broadcast proof fn lemma_btree_set_remove_ensures_if_obeys_cmp_deep_eq<
     assert(final_m.deep_view() =~= old_m.deep_view().remove(k.deep_view()));
 }
 
-pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::clear ](
+pub assume_specification<Key, A: AllocatorClone>[ BTreeSet::<Key, A>::clear ](
     m: &mut BTreeSet<Key, A>,
 ) where A: Clone
     ensures
         final(m)@ == Set::<Key>::empty(),
 ;
 
-pub assume_specification<'a, Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::iter ](
+pub assume_specification<'a, Key, A: AllocatorClone>[ BTreeSet::<Key, A>::iter ](
     m: &'a BTreeSet<Key, A>,
 ) -> (r: btree_set::Iter<'a, Key>)
     ensures
@@ -1945,7 +1945,7 @@ pub assume_specification<'a, Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::ite
         },
 ;
 
-pub broadcast axiom fn axiom_btree_set_decreases<Key, A: Allocator + Clone>(m: BTreeSet<Key, A>)
+pub broadcast axiom fn axiom_btree_set_decreases<Key, A: AllocatorClone>(m: BTreeSet<Key, A>)
     ensures
         #[trigger] (decreases_to!(m => m@)),
 ;

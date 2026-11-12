@@ -781,12 +781,12 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         TyKind::FnDef(..) => true,
         TyKind::Str => true,
 
-        // HACK for now:
-        // See https://github.com/rust-lang/rust/issues/64715
-        // See https://github.com/rust-lang/rust/blob/master/library/core/src/convert/mod.rs
-        // The "impl<T> From<!> for T" causes a real conflict with "impl<T> From<T> for T",
-        // so don't auto-import ! for now.
-        TyKind::Never => false,
+        // Note: before Rust 1.100, we excluded `!` here because the reservation impl
+        // "impl<T> From<!> for T" (rust-lang/rust#64715) conflicts with "impl<T> From<T> for T".
+        // Rust 1.100 removed that reservation impl (along with `#[rustc_reservation_impl]`)
+        // and made `core::convert::Infallible` an alias for `!`, so impls mentioning `!`
+        // (e.g., `impl<T> Residual<T> for Option<!>`) are now needed.
+        TyKind::Never => true,
         TyKind::Alias(_, t) => match t.kind {
             AliasTyKind::Opaque { .. } | AliasTyKind::Free { .. } => false,
             AliasTyKind::Projection { def_id } | AliasTyKind::Inherent { def_id } => {
@@ -871,7 +871,12 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
                 polarity: rustc_middle::ty::ClausePolarity::Positive,
             }) => {
                 let trait_def_id = trait_ref.def_id;
-                if !external_info.trait_id_set.contains(&trait_def_id) {
+                // Outside of const contexts, every type implements `Destruct`,
+                // so we don't require it to be declared to Verus.
+                // (Since Rust 1.100, e.g., `impl Iterator for Range<A>` requires `A: [const] Destruct`)
+                if Some(trait_def_id) != tcx.lang_items().destruct_trait()
+                    && !external_info.trait_id_set.contains(&trait_def_id)
+                {
                     return false;
                 }
                 for arg in trait_ref.args.types() {

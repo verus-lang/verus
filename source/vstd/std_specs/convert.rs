@@ -118,7 +118,7 @@ pub assume_specification<T, U: TryFrom<T>>[ <T as TryInto<U>>::try_into ](a: T) 
 
 pub assume_specification<T, U: Into<T>>[ <T as TryFrom<U>>::try_from ](a: U) -> (ret: Result<
     T,
-    <T as TryFrom<U>>::Error,
+    !,
 >)
     ensures
         ret.is_ok(),

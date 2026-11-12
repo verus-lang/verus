@@ -11,10 +11,6 @@ verus! {
 #[verifier::reject_recursive_types_in_ground_variants(C)]
 pub struct ExControlFlow<B, C>(ControlFlow<B, C>);
 
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExInfallible(Infallible);
-
 #[verifier::external_trait_specification]
 pub trait ExResidual<O>: Sized {
     type ExternalTraitSpecificationFor: core::ops::Residual<O>;

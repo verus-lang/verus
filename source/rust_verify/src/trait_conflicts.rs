@@ -196,9 +196,6 @@ fn gen_generics(
     state: &mut State,
     typ_params: &Vec<Ident>,
     typ_bounds: &GenericBounds,
-    // `is_impl` is only required to suppress a hack in the `Clone` implementation for `Option`
-    // see documentation of `is_option_clone_destruct_bound`.
-    is_impl: Option<&vir::ast::TraitImpl>,
 ) -> (Vec<GenericParam>, Vec<GenericBound>) {
     let mut generic_params: Vec<GenericParam> = Vec::new();
     let mut generic_bounds: Vec<GenericBound> = Vec::new();
@@ -208,7 +205,7 @@ fn gen_generics(
         match &**b {
             GenericBoundX::Trait(TraitId::Path(path), typs) => {
                 let typ = gen_typ(state, &typs[0]);
-                if is_option_clone_destruct_bound(is_impl, path) {
+                if is_destruct_bound(path) {
                     continue;
                 }
                 let bound = if path == &tuple_trait_path {
@@ -257,41 +254,22 @@ fn gen_generics(
     (generic_params, generic_bounds)
 }
 
-// Used as a temporary workaround to suppress a Destruct bound on the `Clone`
-// implementation for `Option`. Since we don't properly support `const trait`s
-// yet, handling this properly here would be more complex. For now, we simply
-// ignore the Destruct bound.  `Option` that uses an extra `Destruct bound; see
-// https://github.com/rust-lang/rust/issues/144207 and
-// https://doc.rust-lang.org/1.91.0/src/core/option.rs.html#2187-2191
-fn is_option_clone_destruct_bound(
-    is_impl: Option<&vir::ast::TraitImpl>,
-    bound_path: &Path,
-) -> bool {
-    if let Some(trait_impl) = is_impl {
-        let args = &*trait_impl.x.trait_typ_args;
-        if args.len() == 1 {
-            // We shouldn't be hardcoding these here but since this
-            // is a temporary workaround, it's not worth
-            // complicating surrounding code by passing TyCtx
-            // to here.
-            let option_path = vir::path!(CrateId::Core => "option", "Option");
-            let clone_path = vir::path!(CrateId::Core => "clone", "Clone");
-            let destruct_path = vir::path!(CrateId::Core => "marker", "Destruct");
-            // The first type parameter passed to the trait is the implementing
-            // type:
-            match &*args[0] {
-                vir::ast::TypX::Datatype(vir::ast::Dt::Path(dt_path), _, _)
-                    if dt_path == &option_path
-                        && trait_impl.x.trait_path == clone_path
-                        && bound_path == &destruct_path =>
-                {
-                    return true;
-                }
-                _ => {}
-            }
-        }
-    }
-    false
+// We ignore `Destruct` bounds. Since we don't properly support `const trait`s
+// yet, handling these properly here would be more complex. Outside of const contexts,
+// every type implements `Destruct`, so dropping the bound only makes the generated
+// impls more general (which can only add, not hide, conflicts).
+// The standard library uses `[const] Destruct` bounds in a number of places, e.g.:
+// - the `Clone` implementation for `Option`; see
+//   https://github.com/rust-lang/rust/issues/144207 and
+//   https://doc.rust-lang.org/1.91.0/src/core/option.rs.html#2187-2191
+// - (since Rust 1.100) the `Iterator` implementation for `Range<A>`
+fn is_destruct_bound(bound_path: &Path) -> bool {
+    // We shouldn't be hardcoding this here but since this
+    // is a temporary workaround, it's not worth
+    // complicating surrounding code by passing TyCtx
+    // to here.
+    let destruct_path = vir::path!(CrateId::Core => "marker", "Destruct");
+    bound_path == &destruct_path
 }
 
 pub(crate) fn gen_check_trait_impl_conflicts(
@@ -308,7 +286,6 @@ pub(crate) fn gen_check_trait_impl_conflicts(
             state,
             &d.x.typ_params.iter().map(|(x, _)| x.clone()).collect(),
             &d.x.typ_bounds,
-            None,
         );
         let mut fields: Vec<Typ> = Vec::new();
         for p in generic_params.iter() {
@@ -344,10 +321,9 @@ pub(crate) fn gen_check_trait_impl_conflicts(
             state,
             &t.x.typ_params.iter().map(|(x, _)| x.clone()).collect(),
             &t.x.typ_bounds,
-            None,
         );
         let (a_params, mut a_bounds) =
-            gen_generics(state, &t.x.assoc_typs, &t.x.assoc_typs_bounds, None);
+            gen_generics(state, &t.x.assoc_typs, &t.x.assoc_typs_bounds);
         used_traits.insert(t.x.name.clone());
         for a in t.x.assoc_typs.iter() {
             used_assoc_typs.insert((t.x.name.clone(), a.clone()));
@@ -386,7 +362,7 @@ pub(crate) fn gen_check_trait_impl_conflicts(
         }
         let span = spans.from_air_span(&i.span, None);
         let (generic_params, generic_bounds) =
-            gen_generics(state, &*i.x.typ_params, &i.x.typ_bounds, Some(i));
+            gen_generics(state, &*i.x.typ_params, &i.x.typ_bounds);
         let self_typ = gen_typ(state, &i.x.trait_typ_args[0]);
         let trait_as_datatype = Box::new(TypX::Datatype(
             state.trait_name(&i.x.trait_path),
@@ -434,12 +410,11 @@ pub(crate) fn gen_check_trait_impl_conflicts(
             state,
             &t.x.typ_params.iter().map(|(x, _)| x.clone()).collect(),
             &t.x.typ_bounds,
-            None,
         );
         let t_args =
             generic_params.iter().map(|p| Box::new(TypX::TypParam(p.name.clone()))).collect();
         let (a_params, a_bounds) =
-            gen_generics(state, &t.x.assoc_typs, &t.x.assoc_typs_bounds, None);
+            gen_generics(state, &t.x.assoc_typs, &t.x.assoc_typs_bounds);
         let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)> = Vec::new();
         for x in &a_params {
             // TODO: test associated types once we support "dyn with more than one trait"
