@@ -790,6 +790,12 @@ pub(crate) fn pattern_to_vir<'tcx>(
                     vir_pat = bctx.spanned_typed_new(pat.span, &typ, x);
                 };
             }
+            PatAdjust::OverloadedDeref if adjust.source.is_box() => {
+                // Implicit deref pattern on `Box`
+                // (e.g., `Some(Path::Inwards)` matching an `Option<Box<Path>>`).
+                // Like explicit `deref!(p)` patterns on `Box` (see `PatKind::Deref` below),
+                // this is transparent in VIR.
+            }
             PatAdjust::OverloadedDeref => {
                 unsupported_err!(pat.span, "overloaded deref in pattern");
             }

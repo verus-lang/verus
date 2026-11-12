@@ -1722,3 +1722,18 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] range_iterator_impl_with_destruct_bound verus_code! {
+        // Since Rust 1.100, `impl Iterator for Range<A>` requires `A: [const] Destruct`
+        use vstd::prelude::*;
+
+        fn first<I: Iterator<Item = u8>>(mut i: I) -> Option<u8> {
+            i.next()
+        }
+
+        fn test() {
+            let x = first(0u8..3);
+        }
+    } => Ok(())
+}

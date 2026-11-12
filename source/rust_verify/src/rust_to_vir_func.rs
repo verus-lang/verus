@@ -4,10 +4,10 @@ use crate::context::{BodyCtxt, Context, ContextX, ErasureInfo, HeaderSetting};
 use crate::pre_header::PreHeader;
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir::State;
+use crate::rust_to_vir_base::{alias_const_def_id, mk_visibility, qpath_to_ident};
 use crate::rust_to_vir_base::{
     check_fn_opaque_ty, check_generics_bounds_no_polarity, local_to_var, no_body_param_to_var,
 };
-use crate::rust_to_vir_base::{mk_visibility, qpath_to_ident};
 use crate::rust_to_vir_expr::{
     add_param_decls, expr_to_vir_consume, param_pat_to_decl, param_pat_to_destructure,
     param_pat_to_mut_var,
@@ -774,10 +774,7 @@ fn array_len_eq<'tcx>(
     let eval = |len: rustc_middle::ty::Const<'tcx>| -> Option<u64> {
         let len = match len.kind() {
             ConstKind::Alias(IsRigid::No, alias) => {
-                let typing_env = TypingEnv::post_analysis(
-                    tcx,
-                    crate::rust_to_vir_base::alias_const_def_id(alias.kind),
-                );
+                let typing_env = TypingEnv::post_analysis(tcx, alias_const_def_id(alias.kind));
                 tcx.try_normalize_erasing_regions(
                     typing_env,
                     rustc_middle::ty::Unnormalized::new_wip(len),

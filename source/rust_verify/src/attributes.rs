@@ -1762,11 +1762,11 @@ fn attr_is_unsupported(kind: &AttributeKind) -> (Option<&'static str>, bool) {
         EiiDeclaration(..) => (Some("eii_declaration"), false),
         EiiImpl(..) => (Some("eii_impl"), false),
         Marker => (Some("marker"), false),
+        AlwaysGca => (Some("rustc_always_gca"), false),
 
         // safe
         | AllowInternalUnsafe(..)
         | AllowInternalUnstable(..)
-        | AlwaysGca
         | AutomaticallyDerived
         | CfgAttrTrace(..)
         | CfgTrace(..)

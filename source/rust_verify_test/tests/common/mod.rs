@@ -71,7 +71,7 @@ pub fn target_profile_dir() -> std::path::PathBuf {
     current_exe
         .ancestors()
         .find(|a| a.parent() == Some(target_dir.as_path()))
-        .expect("test binary should be inside the cargo target dir")
+        .expect("test binary should be inside the cargo target dir (setting a separate cargo `build-dir` is not supported)")
         .to_path_buf()
 }
 

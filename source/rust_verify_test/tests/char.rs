@@ -568,3 +568,26 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] char_ord verus_code! {
+        use vstd::prelude::*;
+        use core::cmp::Ordering;
+
+        fn test(a: char, b: char) {
+            let m = a.max(b);
+            assert(m >= a && m >= b && (m == a || m == b));
+            let n = a.min(b);
+            assert(n <= a && n <= b && (n == a || n == b));
+            let o = a.cmp(&b);
+            assert(o == Ordering::Less <==> a < b);
+            let c = 'x'.clamp('a', 'f');
+            assert(c == 'f');
+        }
+
+        fn test_fails(a: char, b: char) {
+            let m = a.max(b);
+            assert(m == a); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

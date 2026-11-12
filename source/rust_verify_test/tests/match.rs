@@ -1704,3 +1704,85 @@ test_verify_one_file! {
         "equality-testing this type in a pattern: f64",
     ])
 }
+
+test_verify_one_file! {
+    #[test] ghost_field_of_never_type verus_code! {
+        // Since Rust 1.100, `std::convert::Infallible` is an alias for `!`.
+        // A ghost field of type `!` must not allow us to prove false.
+        use vstd::prelude::*;
+
+        tracked enum Enum {
+            GhostNvr { ghost ghost_never: std::convert::Infallible },
+            Other,
+        }
+
+        proof fn test(tracked e: Enum)
+            ensures false
+        {
+            let tracked Enum::Other = e;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "never-to-any coercion is not allowed in spec mode")
+}
+
+test_verify_one_file! {
+    #[test] deref_patterns_box verus_code! {
+        use vstd::prelude::*;
+
+        enum Tree {
+            Leaf,
+            Node(Box<Tree>, Box<Tree>),
+        }
+
+        fn explicit_deref(t: Tree) -> (r: bool)
+            ensures r == (t matches Tree::Node(l, _) && *l == Tree::Leaf)
+        {
+            match t {
+                Tree::Node(deref!(Tree::Leaf), _) => true,
+                _ => false,
+            }
+        }
+
+        fn implicit_deref(t: Tree) -> (r: bool)
+            ensures r == (t matches Tree::Node(l, _) && *l == Tree::Leaf)
+        {
+            match t {
+                Tree::Node(Tree::Leaf, _) => true,
+                _ => false,
+            }
+        }
+
+        fn implicit_deref_fails(t: Tree) {
+            match t {
+                Tree::Node(Tree::Leaf, _) => {
+                    assert(false); // FAILS
+                }
+                _ => {}
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] explicit_deref_pattern_rc_unsupported verus_code! {
+        use std::rc::Rc;
+
+        fn test(r: Rc<u8>) {
+            match r {
+                deref!(_) => {}
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "deref patterns on types other than Box")
+}
+
+test_verify_one_file! {
+    #[test] implicit_deref_pattern_rc_unsupported verus_code! {
+        use std::rc::Rc;
+
+        fn test(r: Rc<Option<u8>>) {
+            match r {
+                Some(_) => {}
+                None => {}
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "overloaded deref in pattern")
+}

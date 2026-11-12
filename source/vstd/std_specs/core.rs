@@ -87,7 +87,7 @@ pub trait ExAllocator {
 
 #[cfg(not(verus_verify_core))]
 #[verifier::external_trait_specification]
-pub unsafe trait ExAllocatorClone: core::alloc::Allocator + Clone {
+pub trait ExAllocatorClone: core::alloc::Allocator + Clone {
     type ExternalTraitSpecificationFor: core::alloc::AllocatorClone;
 }
 

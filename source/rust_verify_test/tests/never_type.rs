@@ -102,3 +102,17 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error_msg(e, "never-to-any coercion is not allowed in spec mode")
 }
+
+test_verify_one_file! {
+    #[test] never_type_trait_impls verus_code! {
+        // Since Rust 1.100, std impls that mention `!` (e.g., `impl Clone for !`) are imported
+        use vstd::prelude::*;
+
+        fn needs_clone<T: Clone>(x: Option<T>) {}
+
+        fn test() {
+            needs_clone::<!>(None);
+            needs_clone::<std::convert::Infallible>(None);
+        }
+    } => Ok(())
+}
