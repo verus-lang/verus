@@ -18,10 +18,10 @@ extern crate rustc_hir_typeck;
 extern crate rustc_index;
 extern crate rustc_infer;
 extern crate rustc_lint;
+extern crate rustc_lint_defs;
 extern crate rustc_macros;
 extern crate rustc_middle;
 extern crate rustc_pattern_analysis;
-extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_trait_selection;
 

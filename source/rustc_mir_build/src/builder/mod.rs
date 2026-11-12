@@ -38,7 +38,6 @@ use rustc_middle::middle::region;
 use rustc_middle::mir::*;
 use rustc_middle::thir::{self, ExprId, LocalVarId, Param, ParamId, PatKind, Thir};
 use rustc_middle::ty::{self, ScalarInt, Ty, TyCtxt, TypeVisitableExt, TypingMode};
-use rustc_session::lint;
 use rustc_span::{Span, Symbol, bug, span_bug};
 
 use crate::builder::expr::as_place::PlaceBuilder;
@@ -985,7 +984,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 .unwrap_crate_local()
                 .lint_root;
             self.tcx.emit_node_span_lint(
-                lint::builtin::UNREACHABLE_CODE,
+                rustc_lint_defs::builtin::UNREACHABLE_CODE,
                 lint_root,
                 target_loc.span,
                 crate::diagnostics::UnreachableDueToUninhabited {
