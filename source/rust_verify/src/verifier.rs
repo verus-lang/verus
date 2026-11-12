@@ -62,7 +62,7 @@ trait Diagnostics: air::messages::Diagnostics {
 
 pub(crate) struct Reporter<'tcx> {
     spans: SpanContext,
-    compiler_diagnostics: &'tcx rustc_errors::DiagCtxt,
+    compiler_diagnostics: rustc_errors::DiagCtxtHandle<'tcx>,
     source_map: &'tcx rustc_span::source_map::SourceMap,
 }
 
@@ -70,7 +70,7 @@ impl<'tcx> Reporter<'tcx> {
     pub(crate) fn new(spans: &SpanContext, compiler: &'tcx Compiler) -> Self {
         Reporter {
             spans: spans.clone(),
-            compiler_diagnostics: &compiler.sess.dcx(),
+            compiler_diagnostics: compiler.sess.dcx(),
             source_map: compiler.sess.source_map(),
         }
     }
@@ -78,7 +78,7 @@ impl<'tcx> Reporter<'tcx> {
     pub(crate) fn new_from_tcx(spans: &SpanContext, tcx: TyCtxt<'tcx>) -> Self {
         Reporter {
             spans: spans.clone(),
-            compiler_diagnostics: &tcx.sess.dcx(),
+            compiler_diagnostics: tcx.sess.dcx(),
             source_map: tcx.sess.source_map(),
         }
     }
@@ -137,19 +137,17 @@ impl air::messages::Diagnostics for Reporter<'_> {
 
         match level {
             MessageLevel::Note => emit_with_diagnostic_details(
-                self.compiler_diagnostics.handle().struct_note(msg.note.clone()),
+                self.compiler_diagnostics.struct_note(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Warning => emit_with_diagnostic_details(
-                self.compiler_diagnostics.handle().struct_warn(msg.note.clone()),
+                self.compiler_diagnostics.struct_warn(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Error => emit_with_diagnostic_details(
-                self.compiler_diagnostics
-                    .handle()
-                    .struct_err(replacement_error_note.clone().unwrap_or_else(|| msg.note.clone())),
+                self.compiler_diagnostics.struct_err(replacement_error_note.clone().unwrap_or_else(|| msg.note.clone())),
                 multispan,
                 &msg.help,
             ),

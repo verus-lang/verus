@@ -25,6 +25,7 @@ use rustc_middle::ty::{
     ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind,
     TyCtxt, TyKind, TypingEnv, ValTreeKind, Value,
 };
+use rustc_middle::ty::consts::ConstExt;
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -773,7 +774,10 @@ fn array_len_eq<'tcx>(
     let eval = |len: rustc_middle::ty::Const<'tcx>| -> Option<u64> {
         let len = match len.kind() {
             ConstKind::Alias(IsRigid::No, alias) => {
-                let typing_env = TypingEnv::post_analysis(tcx, alias.kind.opt_def_id()?);
+                let typing_env = TypingEnv::post_analysis(
+                    tcx,
+                    crate::rust_to_vir_base::alias_const_def_id(alias.kind),
+                );
                 tcx.try_normalize_erasing_regions(
                     typing_env,
                     rustc_middle::ty::Unnormalized::new_wip(len),

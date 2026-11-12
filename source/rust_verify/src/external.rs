@@ -154,7 +154,7 @@ pub(crate) fn get_crate_items<'tcx>(ctxt: &ContextX<'tcx>) -> Result<CrateItems,
         in_impl: None,
     };
     let owner = ctxt.tcx.hir_owner_node(rustc_hir::CRATE_OWNER_ID);
-    visitor.visit_mod(root_module, owner.span(), rustc_hir::CRATE_HIR_ID);
+    visitor.visit_mod(root_module, owner.span(), rustc_span::def_id::CRATE_MOD_ID);
 
     if visitor.errors.len() > 0 {
         return Err(visitor.errors);

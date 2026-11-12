@@ -1150,7 +1150,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     // where-clause bound normalizes to a bare `?0`. Resolve
                     // what we can; if anything is still unresolved, fall
                     // through to the projection representation below.
-                    let norm_value = infcx.resolve_vars_if_possible(norm.value);
+                    let norm_value = infcx.deeply_resolve_ignoring_regions(norm.value);
                     let has_infer = norm_value.walk().into_iter().any(|arg| {
                         if let Some(t) = arg.as_type() {
                             matches!(t.kind(), TyKind::Infer(..))
@@ -1380,6 +1380,19 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
     .0)
 }
 
+/// The `DefId` of the item an alias constant refers to
+/// (replacement for `AliasConstKind::opt_def_id`, which was removed in rustc 1.100).
+pub(crate) fn alias_const_def_id<'tcx>(kind: rustc_middle::ty::AliasConstKind<'tcx>) -> DefId {
+    use rustc_middle::ty::AliasConstKind;
+    match kind {
+        AliasConstKind::Projection { def_id }
+        | AliasConstKind::InherentSelf { def_id }
+        | AliasConstKind::InherentImpl { def_id }
+        | AliasConstKind::Free { def_id }
+        | AliasConstKind::Anon { def_id } => def_id,
+    }
+}
+
 pub(crate) fn mid_ty_const_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
     span: Option<Span>,
@@ -1388,7 +1401,7 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     let normalized;
     let cnst = match cnst.kind() {
         ConstKind::Alias(IsRigid::No, alias) => {
-            let def_id = alias.kind.opt_def_id().expect("alias constants have a definition");
+            let def_id = alias_const_def_id(alias.kind);
             let typing_env = TypingEnv::post_analysis(tcx, def_id);
             normalized = tcx.normalize_erasing_regions(
                 typing_env,
