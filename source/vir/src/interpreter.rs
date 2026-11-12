@@ -1208,36 +1208,30 @@ fn eval_array_index(
  * Core interpreter *
  ********************/
 
-/// Symbolically execute the expression as far as we can,
-/// stopping when we hit a symbolic control-flow decision
-/// Values cross scopes when a call binds its arguments in the callee's environment and when
-/// the callee's result returns to the caller's. Evaluation turns every variable into its value
-/// or a hidden `FreeVar`, so a variable in such a value escaped evaluation: the other scope
-/// would take it to mean its own variable of that name (#3182, #3198). Fail rather than let
-/// it cross. Only `Var` counts: it is the one form the interpreter resolves in its environment.
-/// Triggers are skipped; they do not affect the meaning of an expression.
+/// Values crossing into another scope must not mention a variable of this one: the other scope
+/// would read it as its own variable of that name (#3182, #3198). Only `Var` nodes matter,
+/// since the interpreter resolves those in its environment.
 ///
-/// Expressions that contain no `Var` node at all are remembered in `state.closed`, so each
-/// unfolding only walks the parts it newly built. The memo is keyed by pointer, and a memoized
-/// expression has no `Var` node, so skipping it is correct in any scope.
+/// Subterms without any `Var` node are remembered in `state.closed` and skipped next time,
+/// so repeated checks only walk newly built terms.
 fn check_closed(state: &mut State, value: &Exp, what: impl Fn() -> String) -> Result<(), VirErr> {
     use crate::sst_visitor::{Visitor, VisitorScopeMap, Walk};
 
-    struct Checker<'a> {
+    struct FreeVarFinder<'a> {
         closed: &'a mut PtrSet<SpannedTyped<ExpX>>,
         scope_map: VisitorScopeMap,
-        // number of `Var` nodes visited, bound or not
+        // all `Var` nodes seen so far, bound or not
         var_nodes: u64,
         // the first variable not bound inside the value
         free: Option<UniqueIdent>,
     }
 
-    impl<'a> Visitor<Walk, (), VisitorScopeMap> for Checker<'a> {
+    impl<'a> Visitor<Walk, (), VisitorScopeMap> for FreeVarFinder<'a> {
         fn scoper(&mut self) -> Option<&mut VisitorScopeMap> {
             Some(&mut self.scope_map)
         }
 
-        // also covers the triggers of `WithTriggers`, which `visit_exp_rec` visits through this
+        // triggers do not change what an expression means
         fn visit_triggers(&mut self, _trigs: &Trigs) -> Result<(), ()> {
             Ok(())
         }
@@ -1261,14 +1255,14 @@ fn check_closed(state: &mut State, value: &Exp, what: impl Fn() -> String) -> Re
         }
     }
 
-    let mut checker = Checker {
+    let mut finder = FreeVarFinder {
         closed: &mut state.closed,
         scope_map: VisitorScopeMap::new(),
         var_nodes: 0,
         free: None,
     };
-    checker.visit_exp(value).unwrap();
-    match checker.free {
+    finder.visit_exp(value).unwrap();
+    match finder.free {
         None => Ok(()),
         Some(x) => Err(error(
             &value.span,
@@ -1285,6 +1279,8 @@ fn fname(fun: &Fun) -> String {
     crate::ast_util::fun_as_friendly_rust_name(fun)
 }
 
+/// Symbolically execute the expression as far as we can,
+/// stopping when we hit a symbolic control-flow decision
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
     state.iterations += 1;
     if state.iterations > ctx.max_iterations {
