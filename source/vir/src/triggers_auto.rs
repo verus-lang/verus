@@ -198,7 +198,7 @@ struct Ctxt {
     // The usize is used to sort the terms in the triggers for better stability
     pure_terms: IndexMap<Term, (Exp, usize)>,
     // all_terms, indexed by head App
-    all_terms_by_app: HashMap<App, HashMap<Term, Span>>,
+    all_terms_by_app: IndexMap<App, IndexMap<Term, Span>>,
     // pure_terms, indexed by trigger_vars
     pure_terms_by_var: HashMap<VarIdent, IndexMap<Term, Span>>,
     // best score for this term
@@ -545,7 +545,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ctxt.all_terms.insert(term.clone(), exp.span.clone());
         if let TermX::App(app, _) = &*term {
             if !ctxt.all_terms_by_app.contains_key(app) {
-                ctxt.all_terms_by_app.insert(app.clone(), HashMap::new());
+                ctxt.all_terms_by_app.insert(app.clone(), IndexMap::new());
             }
             ctxt.all_terms_by_app.get_mut(app).unwrap().insert(term.clone(), exp.span.clone());
         }
@@ -755,7 +755,7 @@ pub(crate) fn build_triggers(
         trigger_vars: vars.iter().cloned().collect(),
         all_terms: HashMap::new(),
         pure_terms: IndexMap::new(),
-        all_terms_by_app: HashMap::new(),
+        all_terms_by_app: IndexMap::new(),
         pure_terms_by_var: HashMap::new(),
         pure_best_scores: HashMap::new(),
         next_id: 0,
