@@ -8,11 +8,11 @@ use rustc_arena::DroplessArena;
 use rustc_hir as hir;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_middle::span_bug;
 use rustc_middle::ty::{
     self, CrateVariancesMap, GenericArgsRef, Ty, TyCtxt, TypeSuperVisitable, TypeVisitable,
     Unnormalized,
 };
+use rustc_span::span_bug;
 use tracing::{debug, instrument};
 
 /// Defines the `TermsContext` basically houses an arena where we can
@@ -194,7 +194,7 @@ fn variance_of_opaque(
         // which thus mentions `'a` and should thus accept hidden types that borrow 'a
         // instead of requiring an additional `+ 'a`.
         match clause.kind().skip_binder() {
-            ty::ClauseKind::Trait(ty::TraitPredicate {
+            ty::ClauseKind::Trait(ty::TraitClause {
                 trait_ref: ty::TraitRef { def_id: _, args, .. },
                 polarity: _,
             })
@@ -206,7 +206,7 @@ fn variance_of_opaque(
                     arg.visit_with(&mut collector);
                 }
             }
-            ty::ClauseKind::Projection(ty::ProjectionPredicate {
+            ty::ClauseKind::Projection(ty::ProjectionClause {
                 projection_term: ty::AliasTerm { args, .. },
                 term,
             }) => {

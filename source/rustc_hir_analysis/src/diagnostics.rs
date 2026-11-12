@@ -1,21 +1,27 @@
 //! Errors emitted by `rustc_hir_analysis`.
 
 use rustc_abi::ExternAbi;
-use rustc_data_structures::Limit;
 use rustc_errors::codes::*;
 use rustc_errors::{
-    Applicability, Diag, DiagCtxtHandle, DiagSymbolList, Diagnostic, EmissionGuarantee, Level,
-    MultiSpan, listify, msg,
+    Applicability, Diag, DiagCtxtHandle, DiagSymbolList, Diagnostic, Level, MultiSpan, listify, msg,
 };
 use rustc_macros::{Diagnostic, Subdiagnostic};
 use rustc_middle::ty::{self, Ty};
 use rustc_span::{Ident, Span, Symbol};
+use rustc_structures::Limit;
 pub(crate) mod wrong_number_of_generic_args;
 
 mod precise_captures;
 pub(crate) use precise_captures::*;
 
 pub(crate) mod remove_or_use_generic;
+
+#[derive(Diagnostic)]
+#[diag("complex const arguments must be placed inside of a `const` block")]
+pub(crate) struct ComplexConstArg {
+    #[primary_span]
+    pub span: Span,
+}
 
 #[derive(Diagnostic)]
 #[diag("ambiguous associated {$assoc_kind} `{$assoc_ident}` in bounds of `{$qself}`")]
@@ -461,9 +467,9 @@ pub(crate) struct MissingGenericParams {
 }
 
 // FIXME: This doesn't need to be a manual impl!
-impl<'a, G: EmissionGuarantee> Diagnostic<'a, G> for MissingGenericParams {
+impl<'a> Diagnostic<'a> for MissingGenericParams {
     #[track_caller]
-    fn into_diag(self, dcx: DiagCtxtHandle<'a>, level: Level) -> Diag<'a, G> {
+    fn into_diag(self, dcx: DiagCtxtHandle<'a>, level: Level) -> Diag<'a> {
         let mut err = Diag::new(
             dcx,
             level,
@@ -1074,17 +1080,10 @@ pub(crate) struct StaticSpecialize {
 }
 
 #[derive(Diagnostic)]
-pub(crate) enum DropImplPolarity {
-    #[diag("negative `Drop` impls are not supported")]
-    Negative {
-        #[primary_span]
-        span: Span,
-    },
-    #[diag("reservation `Drop` impls are not supported")]
-    Reservation {
-        #[primary_span]
-        span: Span,
-    },
+#[diag("negative `Drop` impls are not supported")]
+pub(crate) struct NegativeDropImplPolarity {
+    #[primary_span]
+    pub span: Span,
 }
 
 #[derive(Diagnostic)]
@@ -2070,8 +2069,8 @@ pub(crate) struct UncoveredTyParam<'tcx> {
     pub(crate) local_ty: Option<Ty<'tcx>>,
 }
 
-impl<G: EmissionGuarantee> Diagnostic<'_, G> for UncoveredTyParam<'_> {
-    fn into_diag(self, dcx: DiagCtxtHandle<'_>, level: Level) -> Diag<'_, G> {
+impl Diagnostic<'_> for UncoveredTyParam<'_> {
+    fn into_diag(self, dcx: DiagCtxtHandle<'_>, level: Level) -> Diag<'_> {
         let Self { param, local_ty } = self;
 
         let mut diag = Diag::new(dcx, level, "")
@@ -2143,4 +2142,13 @@ pub(crate) struct OnlyStructsCanBeViewedAdt<'tcx> {
     pub ty: Ty<'tcx>,
     pub article: &'static str,
     pub kind: &'static str,
+}
+
+#[derive(Diagnostic)]
+#[diag("the type of const parameters must not depend on other generic parameters", code = E0770)]
+pub(crate) struct ParamInTyOfConstParam<'tcx> {
+    #[primary_span]
+    #[label("the type `{$ty}` must not depend on other generic parameter")]
+    pub(crate) span: Span,
+    pub(crate) ty: Ty<'tcx>,
 }
