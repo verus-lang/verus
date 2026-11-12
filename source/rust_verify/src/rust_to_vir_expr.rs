@@ -2052,12 +2052,6 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         Adjust::NeverToAny => {
             let e = expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?
                 .consume(bctx, get_inner_ty());
-            if adjustment.target.is_never() {
-                // A never-to-any coercion from `!` to `!` is a no-op.
-                // (Since Rust 1.100, `core::convert::Infallible` is an alias for `!`,
-                // so this arises, e.g., when accessing fields of type `Infallible`.)
-                return Ok(ExprOrPlace::Expr(e));
-            }
             let x = ExprX::NeverToAny(e);
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ()?, x)))
         }
