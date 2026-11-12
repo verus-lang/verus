@@ -10,8 +10,7 @@ use tempfile::tempdir;
 use toml::{Table, Value};
 
 fn compute_test_dir(dir: &str) -> std::path::PathBuf {
-    let current_exe = std::env::current_exe().unwrap();
-    current_exe.parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap().join(dir)
+    target_profile_dir().parent().unwrap().parent().unwrap().join(dir)
 }
 
 fn parse_toml_file(path: &std::path::Path) -> Table {
