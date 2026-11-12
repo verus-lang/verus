@@ -355,7 +355,7 @@ test_verify_one_file! {
         }
 
         spec fn nested_fn(x: u8) -> int {
-            fn e() {
+            proof fn e() {
             }
             x + 1
         }
@@ -374,7 +374,7 @@ test_verify_one_file! {
             ensures
                 r == x + 1,
         {
-            fn e() {
+            proof fn e() {
             }
             x + 1
         }
@@ -407,7 +407,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Ok(())
+    } => Err(err) => assert_vir_error_msg(err, "exec fn items in ghost code")
 }
 
 test_verify_one_file! {

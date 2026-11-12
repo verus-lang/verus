@@ -363,7 +363,7 @@ test_verify_one_file! {
             }
             s.m()
         }
-    } => Err(err) => assert_vir_error_msg(err, "impl or static items in ghost code")
+    } => Err(err) => assert_vir_error_msg(err, "exec fn items in ghost code")
 }
 
 test_verify_one_file! {
@@ -374,7 +374,7 @@ test_verify_one_file! {
                 let c = || { impl S { fn m(&self) -> u8 { 1 } } };
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "impl or static items in ghost code")
+    } => Err(err) => assert_vir_error_msg(err, "exec fn items in ghost code")
 }
 
 test_verify_one_file! {
@@ -384,7 +384,7 @@ test_verify_one_file! {
             fn hidden() { impl S { fn m(&self) -> u8 { 1 } } }
             true
         }
-    } => Err(err) => assert_vir_error_msg(err, "impl or static items in ghost code")
+    } => Err(err) => assert_vir_error_msg(err, "exec fn items in ghost code")
 }
 
 test_verify_one_file! {

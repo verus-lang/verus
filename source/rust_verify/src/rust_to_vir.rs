@@ -546,7 +546,6 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
     let mut infos: Vec<FunctionOrConstInfo> = Vec::new();
 
     let tcx = ctxtx.tcx;
-    ctxtx.ghost_nested_fns = crate::rust_to_vir_expr::ghost_nested_fns(tcx);
 
     let mut external_info = ExternalInfo::new();
     // Sized is fundamental enough that we always want it even with no-vstd
