@@ -229,7 +229,7 @@ use rustc_middle::thir::{
     Arm, ArmId, Block, BlockSafety, Expr, ExprId, ExprKind, LocalVarId, LogicalOp, Pat, PatKind,
     Stmt, StmtId, StmtKind, Thir,
 };
-use rustc_middle::ty::{GenericArg, Region, RegionExt, RegionKind, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{GenericArg, Ty, TyCtxt, TyKind};
 use rustc_span::Span;
 use rustc_span::Symbol;
 
@@ -1331,7 +1331,7 @@ fn shadow_place_rec<'tcx>(
         | ExprKind::LogicalOp { .. }
         | ExprKind::Unary { .. }
         | ExprKind::Cast { .. }
-        | ExprKind::Use { .. }
+        | ExprKind::ValueExpr { .. }
         | ExprKind::NeverToAny { .. }
         | ExprKind::PointerCoercion { .. }
         | ExprKind::Loop { .. }
@@ -1493,7 +1493,7 @@ pub(crate) fn shadow_var_uses<'tcx>(
 
         let kind = ExprKind::Borrow { borrow_kind: BorrowKind::Shared, arg: e };
         let ref_ty = cx.tcx.mk_ty_from_kind(TyKind::Ref(
-            Region::new_from_kind(cx.tcx, RegionKind::ReErased),
+            cx.tcx.lifetimes.re_erased,
             ty,
             Mutability::Not,
         ));
@@ -1522,7 +1522,7 @@ pub(crate) fn shadow_var_use<'tcx>(
 
     let kind = ExprKind::Borrow { borrow_kind: BorrowKind::Shared, arg: e };
     let ref_ty = cx.tcx.mk_ty_from_kind(TyKind::Ref(
-        Region::new_from_kind(cx.tcx, RegionKind::ReErased),
+        cx.tcx.lifetimes.re_erased,
         ty,
         Mutability::Not,
     ));
@@ -1633,7 +1633,7 @@ fn shadow_apply_projection_inner<'tcx>(
         expr_id_from_kind(cx, projected_arg_kind, hir_expr.hir_id, hir_expr.span, p.ty);
     let borrow_kind = ExprKind::Borrow { borrow_kind, arg: projected_arg };
     let ref_ty = cx.tcx.mk_ty_from_kind(TyKind::Ref(
-        Region::new_from_kind(cx.tcx, RegionKind::ReErased),
+        cx.tcx.lifetimes.re_erased,
         p.ty,
         Mutability::Not,
     ));
@@ -1651,7 +1651,7 @@ pub(crate) fn shadow_use_stmt<'tcx>(
 
     let kind = ExprKind::Borrow { borrow_kind: BorrowKind::Shared, arg: shadow_expr };
     let ref_ty = cx.tcx.mk_ty_from_kind(TyKind::Ref(
-        Region::new_from_kind(cx.tcx, RegionKind::ReErased),
+        cx.tcx.lifetimes.re_erased,
         ty,
         Mutability::Not,
     ));
