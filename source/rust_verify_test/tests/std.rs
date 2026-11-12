@@ -8,6 +8,7 @@ test_verify_one_file! {
         use std::rc::Rc;
         use std::sync::Arc;
         use vstd::*;
+        use vstd::prelude::*;
 
         fn foo() {
             let x = Rc::new(5);
@@ -22,7 +23,189 @@ test_verify_one_file! {
             let y1 = y.clone();
             assert(*y1 == 5) by {}
         }
+
+        // Direct clone calls are still the identity, without unwinding.
+        fn clone_no_unwind(x: &Arc<u64>, y: &Rc<u64>) -> (r: (Arc<u64>, Rc<u64>))
+            ensures r.0 == x, r.1 == y,
+            no_unwind
+        {
+            (x.clone(), y.clone())
+        }
+
+        // Container clone specs relate elements with `cloned`, which uses the Rc and
+        // Arc clone specs.
+        fn clone_containers(o: Option<Rc<u64>>, v: Vec<Arc<u64>>) {
+            let o2 = o.clone();
+            assert(o2 == o);
+            let v2 = v.clone();
+            assert(v2@ =~= v@);
+        }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] smart_ptr_cmp verus_code! {
+        use std::rc::Rc;
+        use std::sync::Arc;
+        use core::cmp::Ordering;
+        use vstd::prelude::*;
+        use vstd::laws_cmp::{obeys_cmp, obeys_cmp_concrete_eq, obeys_cmp_deep_eq};
+        use vstd::laws_eq::{obeys_eq, obeys_concrete_eq, obeys_view_eq, obeys_deep_eq};
+        use vstd::std_specs::cmp::PartialEqSpec;
+
+        proof fn laws_concrete()
+            ensures
+                obeys_cmp::<Rc<Box<(u8, u64)>>>(),
+                obeys_eq::<Arc<bool>>(),
+        {}
+
+        proof fn laws_cmp_generic<T: Ord>()
+            requires
+                obeys_cmp::<T>(),
+            ensures
+                obeys_cmp::<Box<T>>(),
+                obeys_cmp::<Rc<T>>(),
+                obeys_cmp::<Arc<T>>(),
+        {}
+
+        proof fn laws_cmp_concrete_eq<T: Ord>()
+            requires
+                obeys_cmp_concrete_eq::<T>(),
+            ensures
+                obeys_cmp_concrete_eq::<Rc<T>>(),
+        {}
+
+        proof fn laws_cmp_deep_eq<T: Ord + DeepView>()
+            requires
+                obeys_cmp_deep_eq::<T>(),
+            ensures
+                obeys_cmp_deep_eq::<Rc<T>>(),
+        {}
+
+        proof fn laws_eq<T: PartialEq>()
+            requires
+                obeys_eq::<T>(),
+            ensures
+                obeys_eq::<Box<T>>(),
+        {}
+
+        proof fn laws_eq_reflexive<T: PartialEq>()
+            requires
+                obeys_eq::<T>(),
+                forall|x: T| #[trigger] x.eq_spec(&x),
+            ensures
+                obeys_eq::<Rc<T>>(),
+                obeys_eq::<Arc<T>>(),
+        {}
+
+        proof fn laws_concrete_eq<T: PartialEq>()
+            requires
+                obeys_concrete_eq::<T>(),
+            ensures
+                obeys_concrete_eq::<Rc<T>>(),
+        {}
+
+        proof fn laws_view_eq<T: PartialEq + View>()
+            requires
+                obeys_view_eq::<T>(),
+            ensures
+                obeys_view_eq::<Rc<T>>(),
+        {}
+
+        proof fn laws_deep_eq<T: PartialEq + DeepView>()
+            requires
+                obeys_deep_eq::<T>(),
+            ensures
+                obeys_deep_eq::<Rc<T>>(),
+        {}
+
+        fn compare_rc() {
+            let a = Rc::new(3u64);
+            let b = Rc::new(4u64);
+            let c = a.clone();
+            let r = a == c;
+            assert(r);
+            let r = a != b;
+            assert(r);
+            let r = a < b;
+            assert(r);
+            let r = a <= c;
+            assert(r);
+            let r = a > b;
+            assert(!r);
+            let r = b >= a;
+            assert(r);
+            let r = a.partial_cmp(&b);
+            assert(r == Some(Ordering::Less));
+            let r = b.cmp(&a);
+            assert(r == Ordering::Greater);
+        }
+
+        fn compare_arc_box() {
+            let a = Arc::new(3u64);
+            let b = Arc::new(3u64);
+            let r = a == b;
+            assert(r);
+            let c = Box::new(3u64);
+            let d = Box::new(4u64);
+            let r = c == d;
+            assert(!r);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] smart_ptr_eq_needs_reflexivity verus_code! {
+        use std::rc::Rc;
+        use std::sync::Arc;
+        use vstd::prelude::*;
+
+        // With `Never: Eq`, std's Rc::eq and Arc::eq return true for a shared allocation
+        // (see shared_ptr_eq_skips_irreflexive_eq), so the specs must not say it's false.
+        pub struct Never;
+        impl PartialEq for Never {
+            fn eq(&self, other: &Self) -> (r: bool)
+                ensures !r,
+            {
+                false
+            }
+        }
+        impl Eq for Never {}
+        impl vstd::std_specs::cmp::PartialEqSpecImpl for Never {
+            open spec fn obeys_eq_spec() -> bool { true }
+            open spec fn eq_spec(&self, other: &Never) -> bool { false }
+        }
+
+        fn rc_shared_allocation(a: Rc<Never>) {
+            let b = a.clone();
+            let r = a == b;
+            assert(!r); // FAILS
+        }
+
+        fn arc_shared_allocation(a: Arc<Never>) {
+            let b = a.clone();
+            let r = a == b;
+            assert(!r); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+#[test]
+fn shared_ptr_eq_skips_irreflexive_eq() {
+    struct Never;
+    impl PartialEq for Never {
+        fn eq(&self, _other: &Self) -> bool {
+            false
+        }
+    }
+    impl Eq for Never {}
+    let a = std::rc::Rc::new(Never);
+    assert!(a == a.clone());
+    let b = std::sync::Arc::new(Never);
+    assert!(b == b.clone());
+    // Box always calls T::eq.
+    let c = Box::new(Never);
+    assert!(!(c == c));
 }
 
 test_verify_one_file! {

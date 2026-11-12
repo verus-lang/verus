@@ -21,6 +21,37 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_result_clone verus_code! {
+        use vstd::prelude::*;
+
+        fn clone_primitives() {
+            let ok: Result<u64, u8> = Ok(7);
+            let c = ok.clone();
+            assert(c == ok);
+            let err: Result<u64, u8> = Err(3);
+            let c = err.clone();
+            assert(c == err);
+        }
+
+        pub struct X { pub i: u64 }
+        impl Clone for X {
+            fn clone(&self) -> (res: Self)
+                ensures res.i == 0,
+            {
+                X { i: 0 }
+            }
+        }
+
+        fn clone_custom() {
+            let r: Result<X, u8> = Ok(X { i: 5 });
+            let c = r.clone();
+            assert(c->Ok_0.i == 0 || c->Ok_0.i == 5);
+            assert(c->Ok_0.i == 5); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_result verus_code! {
         use vstd::prelude::*;
 
