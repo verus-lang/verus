@@ -15,7 +15,7 @@ use rustc_middle::ty::{
     TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode,
     ValTreeKind, Value, Visibility,
 };
-use rustc_middle::ty::{TraitPredicate, TypingEnv};
+use rustc_middle::ty::{TraitClause, TypingEnv};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::{Ident, kw};
@@ -276,7 +276,7 @@ fn instantiate_pred_clauses<'tcx>(
                 .skip_norm_wip();
             let is_self_trait_bound = *span == rustc_span::DUMMY_SP;
             if is_self_trait_bound {
-                if let ClauseKind::Trait(TraitPredicate { trait_ref, .. }) =
+                if let ClauseKind::Trait(TraitClause { trait_ref, .. }) =
                     clause.kind().skip_binder()
                 {
                     assert!(trait_ref.def_id == *def_id);
@@ -286,7 +286,7 @@ fn instantiate_pred_clauses<'tcx>(
                         _ => panic!("expected Self: Trait bound to have args[0] = Self"),
                     }
                 } else {
-                    panic!("expected Self: Trait bound to be TraitPredicate");
+                    panic!("expected Self: Trait bound to be TraitClause");
                 }
             }
             let clause_from = ClauseFrom {
@@ -412,14 +412,14 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                 }
                 Ok(rustc_middle::traits::ImplSource::Builtin(_, _)) => {
                     match inst_pred_kind {
-                        ClauseKind::Trait(TraitPredicate {
+                        ClauseKind::Trait(TraitClause {
                             trait_ref:
                                 rustc_middle::ty::TraitRef {
                                     def_id: trait_def_id,
                                     args: trait_args,
                                     ..
                                 },
-                            polarity: rustc_middle::ty::PredicatePolarity::Positive,
+                            polarity: rustc_middle::ty::ClausePolarity::Positive,
                         }) => {
                             if Some(trait_def_id) == tcx.lang_items().fn_trait()
                                 || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
@@ -478,9 +478,9 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                             use crate::rustc_type_ir::Upcast;
                                             use rustc_middle::ty::Binder;
                                             let polarity =
-                                                rustc_middle::ty::PredicatePolarity::Positive;
+                                                rustc_middle::ty::ClausePolarity::Positive;
                                             let clause =
-                                                Binder::dummy(ClauseKind::Trait(TraitPredicate {
+                                                Binder::dummy(ClauseKind::Trait(TraitClause {
                                                     trait_ref: rustc_middle::ty::TraitRef::new(
                                                         tcx,
                                                         trait_def_id,
@@ -869,9 +869,9 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
     for (predicate, _span) in predicates.clauses.iter() {
         match predicate.kind().skip_binder() {
             ClauseKind::RegionOutlives(_) | ClauseKind::TypeOutlives(_) => {}
-            ClauseKind::Trait(TraitPredicate {
+            ClauseKind::Trait(TraitClause {
                 trait_ref,
-                polarity: rustc_middle::ty::PredicatePolarity::Positive,
+                polarity: rustc_middle::ty::ClausePolarity::Positive,
             }) => {
                 let trait_def_id = trait_ref.def_id;
                 if !external_info.trait_id_set.contains(&trait_def_id) {
@@ -1791,9 +1791,9 @@ where
             ClauseKind::RegionOutlives(_) | ClauseKind::TypeOutlives(_) => {
                 // can ignore lifetime bounds
             }
-            ClauseKind::Trait(TraitPredicate {
+            ClauseKind::Trait(TraitClause {
                 trait_ref,
-                polarity: rustc_middle::ty::PredicatePolarity::Positive,
+                polarity: rustc_middle::ty::ClausePolarity::Positive,
             }) => {
                 let substs = trait_ref.args;
 
@@ -2399,9 +2399,9 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
 
             for i in 0..instantiated_bounds.len() {
                 match instantiated_bounds[i].kind().skip_binder() {
-                    ClauseKind::Trait(TraitPredicate {
+                    ClauseKind::Trait(TraitClause {
                         trait_ref,
-                        polarity: rustc_middle::ty::PredicatePolarity::Positive,
+                        polarity: rustc_middle::ty::ClausePolarity::Positive,
                     }) => {
                         let substs = trait_ref.args;
                         let trait_def_id = trait_ref.def_id;

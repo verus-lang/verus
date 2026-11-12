@@ -460,7 +460,7 @@ pub(crate) fn parse_attrs(
         match prefix {
             AttrPrefix::Verifier => match &attr {
                 AttrTree::Fun(_, name, None) if name == "spec" => v.push(Attr::Mode(Mode::Spec)),
-                AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
+                AttrTree::Fun(_, name, Some([AttrTree::Fun(_, arg, None)]))
                     if name == "spec" && arg == "checked" =>
                 {
                     v.push(Attr::Mode(Mode::Spec));
@@ -529,7 +529,7 @@ pub(crate) fn parse_attrs(
                 {
                     v.push(Attr::RejectRecursiveTypes(None))
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, ident, None)]))
                     if arg == "reject_recursive_types" =>
                 {
                     v.push(Attr::RejectRecursiveTypes(Some(ident.clone())))
@@ -539,7 +539,7 @@ pub(crate) fn parse_attrs(
                 {
                     v.push(Attr::RejectGroundRecursiveTypes(None))
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, ident, None)]))
                     if arg == "reject_recursive_types_in_ground_variants" =>
                 {
                     v.push(Attr::RejectGroundRecursiveTypes(Some(ident.clone())))
@@ -549,7 +549,7 @@ pub(crate) fn parse_attrs(
                 {
                     v.push(Attr::AcceptRecursiveTypes(None))
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, ident, None)]))
                     if arg == "accept_recursive_types" =>
                 {
                     v.push(Attr::AcceptRecursiveTypes(Some(ident.clone())))
@@ -569,7 +569,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "no_auto_trigger" => {
                     v.push(Attr::NoAutoTrigger)
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, ident, None)]))
                     if arg == "when_used_as_spec" =>
                 {
                     v.push(Attr::Autospec(ident.clone()))
@@ -587,17 +587,17 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "decreases_by" || arg == "recommends_by" => {
                     v.push(Attr::DecreasesBy)
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, name, None)]))
                     if arg == "returns" && name == "spec" =>
                 {
                     v.push(Attr::ReturnMode(Mode::Spec))
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, name, None)]))
                     if arg == "returns" && name == "proof" =>
                 {
                     v.push(Attr::ReturnMode(Mode::Proof))
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, name, None)]))
                     if arg == "returns" && name == "exec" =>
                 {
                     v.push(Attr::ReturnMode(Mode::Exec))
@@ -610,22 +610,22 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "loop_isolation" => {
                     v.push(Attr::LoopIsolation(true))
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, r, None)]))
                     if arg == "loop_isolation" && r == "true" =>
                 {
                     v.push(Attr::LoopIsolation(true))
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, r, None)]))
                     if arg == "loop_isolation" && r == "false" =>
                 {
                     v.push(Attr::LoopIsolation(false))
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, r, None)]))
                     if arg == "deprecated_postcondition_mut_ref_style" && r == "true" =>
                 {
                     v.push(Attr::MigratePostconditionsWithMutRefs(true))
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, r, None)]))
                     if arg == "deprecated_postcondition_mut_ref_style" && r == "false" =>
                 {
                     v.push(Attr::MigratePostconditionsWithMutRefs(false))
@@ -677,7 +677,7 @@ pub(crate) fn parse_attrs(
                     let number = get_rlimit_arg(*span, attrs)?;
                     v.push(Attr::RLimit(number));
                 }
-                AttrTree::Fun(span, arg, Some(box [AttrTree::Fun(_, s, None)]))
+                AttrTree::Fun(span, arg, Some([AttrTree::Fun(_, s, None)]))
                     if arg == "allow" =>
                 {
                     if let Some(allow) = WarningAllow::from_str(s) {
@@ -696,7 +696,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "external_type_specification" => {
                     v.push(Attr::ExternalTypeSpecification)
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, r, None)]))
                     if arg == "external_derive" =>
                 {
                     v.push(Attr::ExternalAutoDerives(Some(
@@ -709,7 +709,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "external_trait_specification" => v.push(
                     Attr::ExternalTraitSpecification("ExternalTraitSpecificationFor".to_string()),
                 ),
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, r, None)]))
                     if arg == "external_trait_specification" =>
                 {
                     v.push(Attr::ExternalTraitSpecification(r.clone()))
@@ -718,7 +718,7 @@ pub(crate) fn parse_attrs(
                     _,
                     arg,
                     Some(
-                        box [
+                        [
                             AttrTree::Fun(_, s, None),
                             AttrTree::Fun(_, via, None),
                             AttrTree::Fun(_, i, None),
@@ -727,7 +727,7 @@ pub(crate) fn parse_attrs(
                 ) if arg == "external_trait_extension" && via == "via" => {
                     v.push(Attr::ExternalTraitExtension(s.clone(), i.clone()))
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::PathSegments(segments)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::PathSegments(segments)]))
                     if arg == "external_trait_private_bound" =>
                 {
                     // The path must include the crate name,
@@ -758,12 +758,12 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "exec_allows_no_decreases_clause" => {
                     v.push(Attr::ExecAllowNoDecreasesClause);
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, r, None)]))
                     if arg == "assume" && r == "externals_available_without_declaration" =>
                 {
                     v.push(Attr::ExternalsAvailableWithoutDeclaration(true))
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, r, None)]))
                     if arg == "deny" && r == "externals_available_without_declaration" =>
                 {
                     v.push(Attr::ExternalsAvailableWithoutDeclaration(false))
@@ -784,7 +784,7 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, name, None) if name == "spec" => {
                         v.push(Attr::Mode(Mode::Spec))
                     }
-                    AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
+                    AttrTree::Fun(_, name, Some([AttrTree::Fun(_, arg, None)]))
                         if name == "spec" && arg == "checked" =>
                     {
                         v.push(Attr::Mode(Mode::Spec));
@@ -851,17 +851,17 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "uninterp" => {
                         v.push(Attr::Publish(AttrPublish::Uninterp))
                     }
-                    AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
+                    AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, name, None)]))
                         if arg == "returns" && name == "spec" =>
                     {
                         v.push(Attr::ReturnMode(Mode::Spec))
                     }
-                    AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
+                    AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, name, None)]))
                         if arg == "returns" && name == "proof" =>
                     {
                         v.push(Attr::ReturnMode(Mode::Proof))
                     }
-                    AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
+                    AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, name, None)]))
                         if arg == "returns" && name == "exec" =>
                     {
                         v.push(Attr::ReturnMode(Mode::Exec))
@@ -891,7 +891,7 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "auto_loop_ensures" => {
                         v.push(Attr::AutoLoopEnsures)
                     }
-                    AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
+                    AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, ident, None)]))
                         if arg == "prover" =>
                     {
                         match &**ident {

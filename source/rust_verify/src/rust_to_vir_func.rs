@@ -3971,7 +3971,7 @@ fn get_async_inner_return_ty<'tcx>(
         typing_env,
         ctxt.tcx.item_bounds(alias_def_id).instantiate(ctxt.tcx, al_ty.args),
     );
-    // We are looking for a ProjectionPredicate that <F as Future>::Output = X
+    // We are looking for a ProjectionClause that <F as Future>::Output = X
     // where F is the opaque type.
     let ty_list = instantiated_bounds
         .iter()
