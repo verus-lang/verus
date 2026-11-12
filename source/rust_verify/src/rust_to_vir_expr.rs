@@ -53,7 +53,7 @@ The file `rustc_mir_build/src/thir/cx/expr.rs` is particularly useful.
 */
 
 use crate::attributes::{
-    Attr, GhostBlockAttr, get_ghost_block_opt, get_proof_note_annotation, get_trigger,
+    Attr, GhostBlockAttr, get_ghost_block_opt, get_mode, get_proof_note_annotation, get_trigger,
     get_var_mode, parse_attrs, parse_attrs_opt,
 };
 use crate::context::{BodyCtxt, Context, HeaderSetting};
@@ -4616,6 +4616,22 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 match &item.kind {
                     ItemKind::Use(..) | ItemKind::Macro(..) => {
                         return Ok(vec![]);
+                    }
+                    // Ghost code is erased for compilation, but an impl there can still change
+                    // how the verified program resolves calls. Reject impl and static items.
+                    ItemKind::Impl(..) | ItemKind::Static(..) if bctx.in_ghost => {
+                        unsupported_err!(stmt.span, "impl or static items in ghost code", stmt)
+                    }
+                    // An exec fn is compiled, so it cannot appear in ghost code. Its body is
+                    // checked as exec code, so an impl or static inside it could change how
+                    // the verified program resolves calls.
+                    ItemKind::Fn { .. }
+                        if bctx.in_ghost
+                            && !vattrs.unerased_proxy
+                            && !vattrs.external_fn_specification
+                            && get_mode(Mode::Exec, attrs) == Mode::Exec =>
+                    {
+                        unsupported_err!(stmt.span, "exec fn items in ghost code", stmt)
                     }
                     ItemKind::Struct(..)
                     | ItemKind::Enum(..)

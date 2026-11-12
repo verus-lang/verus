@@ -355,28 +355,13 @@ test_verify_one_file! {
         }
 
         spec fn nested_fn(x: u8) -> int {
-            fn e() {
+            proof fn e() {
             }
             x + 1
         }
 
         spec fn nested_const(x: u8) -> int {
             const C: u8 = 0;
-            x + 1
-        }
-
-        spec fn nested_static(x: u8) -> int {
-            let before = x + 1;
-            static S: u8 = 0;
-            before + (x + 1)
-        }
-
-        spec fn nested_impl(x: u8) -> int {
-            struct Local;
-            impl Local {
-                fn e() {
-                }
-            }
             x + 1
         }
 
@@ -389,7 +374,7 @@ test_verify_one_file! {
             ensures
                 r == x + 1,
         {
-            fn e() {
+            proof fn e() {
             }
             x + 1
         }
@@ -397,8 +382,6 @@ test_verify_one_file! {
         proof fn test() {
             assert(nested_fn(255) == 256);
             assert(nested_const(255) == 256);
-            assert(nested_static(255) == 512);
-            assert(nested_impl(255) == 256);
             assert(nested_assume_specification(255) == 256);
         }
     } => Ok(())
@@ -424,5 +407,27 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Ok(())
+    } => Err(err) => assert_vir_error_msg(err, "exec fn items in ghost code")
+}
+
+test_verify_one_file! {
+    #[test] nested_impl_in_spec_fn_rejected verus_code! {
+        spec fn nested_impl(x: u8) -> int {
+            struct Local;
+            impl Local {
+                fn e() {
+                }
+            }
+            x + 1
+        }
+    } => Err(err) => assert_vir_error_msg(err, "impl or static items in ghost code")
+}
+
+test_verify_one_file! {
+    #[test] nested_static_in_spec_fn_rejected verus_code! {
+        spec fn nested_static(x: u8) -> int {
+            static S: u8 = 0;
+            x + 1
+        }
+    } => Err(err) => assert_vir_error_msg(err, "impl or static items in ghost code")
 }
