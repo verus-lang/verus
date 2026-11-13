@@ -11,11 +11,11 @@ use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKi
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
     AdtDef, AliasTyKind, BoundVarIndexKind, BoundVarReplacerDelegate, Clause, ClauseKind,
-    ConstKind, GenericArg, GenericArgKind, GenericParamDefKind, IsRigid, RegionExt, TermKind,
-    TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode,
-    ValTreeKind, Value, Visibility,
+    ConstKind, GenericArg, GenericArgKind, GenericParamDefKind, IsRigid, TermKind, TyCtxt, TyKind,
+    TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTreeKind, Value,
+    Visibility,
 };
-use rustc_middle::ty::{TraitPredicate, TypingEnv};
+use rustc_middle::ty::{TraitClause, TypingEnv};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::{Ident, kw};
@@ -211,10 +211,7 @@ where
         }
     }
 
-    fn fold_predicate(
-        &mut self,
-        p: rustc_middle::ty::Predicate<'tcx>,
-    ) -> rustc_middle::ty::Predicate<'tcx> {
+    fn fold_predicate<P: rustc_type_ir::PredicateProxy<TyCtxt<'tcx>>>(&mut self, p: P) -> P {
         if p.has_vars_bound_at_or_above(self.current_index) { p.super_fold_with(self) } else { p }
     }
 }
@@ -276,7 +273,7 @@ fn instantiate_pred_clauses<'tcx>(
                 .skip_norm_wip();
             let is_self_trait_bound = *span == rustc_span::DUMMY_SP;
             if is_self_trait_bound {
-                if let ClauseKind::Trait(TraitPredicate { trait_ref, .. }) =
+                if let ClauseKind::Trait(TraitClause { trait_ref, .. }) =
                     clause.kind().skip_binder()
                 {
                     assert!(trait_ref.def_id == *def_id);
@@ -286,7 +283,7 @@ fn instantiate_pred_clauses<'tcx>(
                         _ => panic!("expected Self: Trait bound to have args[0] = Self"),
                     }
                 } else {
-                    panic!("expected Self: Trait bound to be TraitPredicate");
+                    panic!("expected Self: Trait bound to be TraitClause");
                 }
             }
             let clause_from = ClauseFrom {
@@ -412,14 +409,14 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                 }
                 Ok(rustc_middle::traits::ImplSource::Builtin(_, _)) => {
                     match inst_pred_kind {
-                        ClauseKind::Trait(TraitPredicate {
+                        ClauseKind::Trait(TraitClause {
                             trait_ref:
                                 rustc_middle::ty::TraitRef {
                                     def_id: trait_def_id,
                                     args: trait_args,
                                     ..
                                 },
-                            polarity: rustc_middle::ty::PredicatePolarity::Positive,
+                            polarity: rustc_middle::ty::ClausePolarity::Positive,
                         }) => {
                             if Some(trait_def_id) == tcx.lang_items().fn_trait()
                                 || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
@@ -478,9 +475,9 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                             use crate::rustc_type_ir::Upcast;
                                             use rustc_middle::ty::Binder;
                                             let polarity =
-                                                rustc_middle::ty::PredicatePolarity::Positive;
+                                                rustc_middle::ty::ClausePolarity::Positive;
                                             let clause =
-                                                Binder::dummy(ClauseKind::Trait(TraitPredicate {
+                                                Binder::dummy(ClauseKind::Trait(TraitClause {
                                                     trait_ref: rustc_middle::ty::TraitRef::new(
                                                         tcx,
                                                         trait_def_id,
@@ -784,12 +781,12 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         TyKind::FnDef(..) => true,
         TyKind::Str => true,
 
-        // HACK for now:
-        // See https://github.com/rust-lang/rust/issues/64715
-        // See https://github.com/rust-lang/rust/blob/master/library/core/src/convert/mod.rs
-        // The "impl<T> From<!> for T" causes a real conflict with "impl<T> From<T> for T",
-        // so don't auto-import ! for now.
-        TyKind::Never => false,
+        // Note: before Rust 1.100, we excluded `!` here because the reservation impl
+        // "impl<T> From<!> for T" (rust-lang/rust#64715) conflicts with "impl<T> From<T> for T".
+        // Rust 1.100 removed that reservation impl (along with `#[rustc_reservation_impl]`)
+        // and made `core::convert::Infallible` an alias for `!`, so impls mentioning `!`
+        // (e.g., `impl<T> Residual<T> for Option<!>`) are now needed.
+        TyKind::Never => true,
         TyKind::Alias(_, t) => match t.kind {
             AliasTyKind::Opaque { .. } | AliasTyKind::Free { .. } => false,
             AliasTyKind::Projection { def_id } | AliasTyKind::Inherent { def_id } => {
@@ -869,12 +866,17 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
     for (predicate, _span) in predicates.clauses.iter() {
         match predicate.kind().skip_binder() {
             ClauseKind::RegionOutlives(_) | ClauseKind::TypeOutlives(_) => {}
-            ClauseKind::Trait(TraitPredicate {
+            ClauseKind::Trait(TraitClause {
                 trait_ref,
-                polarity: rustc_middle::ty::PredicatePolarity::Positive,
+                polarity: rustc_middle::ty::ClausePolarity::Positive,
             }) => {
                 let trait_def_id = trait_ref.def_id;
-                if !external_info.trait_id_set.contains(&trait_def_id) {
+                // Outside of const contexts, every type implements `Destruct`,
+                // so we don't require it to be declared to Verus.
+                // (Since Rust 1.100, e.g., `impl Iterator for Range<A>` requires `A: [const] Destruct`)
+                if Some(trait_def_id) != tcx.lang_items().destruct_trait()
+                    && !external_info.trait_id_set.contains(&trait_def_id)
+                {
                     return false;
                 }
                 for arg in trait_ref.args.types() {
@@ -1153,7 +1155,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     // where-clause bound normalizes to a bare `?0`. Resolve
                     // what we can; if anything is still unresolved, fall
                     // through to the projection representation below.
-                    let norm_value = infcx.resolve_vars_if_possible(norm.value);
+                    let norm_value = infcx.deeply_resolve_ignoring_regions(norm.value);
                     let has_infer = norm_value.walk().into_iter().any(|arg| {
                         if let Some(t) = arg.as_type() {
                             matches!(t.kind(), TyKind::Infer(..))
@@ -1383,6 +1385,19 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
     .0)
 }
 
+/// The `DefId` of the item an alias constant refers to
+/// (replacement for `AliasConstKind::opt_def_id`, which was removed in rustc 1.100).
+pub(crate) fn alias_const_def_id<'tcx>(kind: rustc_middle::ty::AliasConstKind<'tcx>) -> DefId {
+    use rustc_middle::ty::AliasConstKind;
+    match kind {
+        AliasConstKind::Projection { def_id }
+        | AliasConstKind::InherentSelf { def_id }
+        | AliasConstKind::InherentImpl { def_id }
+        | AliasConstKind::Free { def_id }
+        | AliasConstKind::Anon { def_id } => def_id,
+    }
+}
+
 pub(crate) fn mid_ty_const_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
     span: Option<Span>,
@@ -1391,7 +1406,7 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     let normalized;
     let cnst = match cnst.kind() {
         ConstKind::Alias(IsRigid::No, alias) => {
-            let def_id = alias.kind.opt_def_id().expect("alias constants have a definition");
+            let def_id = alias_const_def_id(alias.kind);
             let typing_env = TypingEnv::post_analysis(tcx, def_id);
             normalized = tcx.normalize_erasing_regions(
                 typing_env,
@@ -1791,9 +1806,9 @@ where
             ClauseKind::RegionOutlives(_) | ClauseKind::TypeOutlives(_) => {
                 // can ignore lifetime bounds
             }
-            ClauseKind::Trait(TraitPredicate {
+            ClauseKind::Trait(TraitClause {
                 trait_ref,
-                polarity: rustc_middle::ty::PredicatePolarity::Positive,
+                polarity: rustc_middle::ty::ClausePolarity::Positive,
             }) => {
                 let substs = trait_ref.args;
 
@@ -2399,9 +2414,9 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
 
             for i in 0..instantiated_bounds.len() {
                 match instantiated_bounds[i].kind().skip_binder() {
-                    ClauseKind::Trait(TraitPredicate {
+                    ClauseKind::Trait(TraitClause {
                         trait_ref,
-                        polarity: rustc_middle::ty::PredicatePolarity::Positive,
+                        polarity: rustc_middle::ty::ClausePolarity::Positive,
                     }) => {
                         let substs = trait_ref.args;
                         let trait_def_id = trait_ref.def_id;
@@ -2848,7 +2863,7 @@ pub(crate) fn hack_fix_no_lifetime_opaque_ty_issue2541<'tcx>(
     // params are used covariantly
     rustc_middle::ty::fold_regions(tcx, ty, |region, _debruijn| {
         if matches!(region.kind(), rustc_middle::ty::ReErased) {
-            rustc_middle::ty::Region::new_from_kind(tcx, rustc_middle::ty::ReStatic)
+            tcx.lifetimes.re_static
         } else {
             region
         }

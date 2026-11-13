@@ -351,7 +351,7 @@ test_verify_one_file! {
         {
             match n {
                 Nat::Zero => 0,
-                Nat::Succ(box m) => height(m),
+                Nat::Succ(deref!(m)) => height(m),
             }
         }
     } => Ok(())

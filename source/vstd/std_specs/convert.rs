@@ -116,10 +116,7 @@ pub assume_specification<T, U: TryFrom<T>>[ <T as TryInto<U>>::try_into ](a: T) 
         call_ensures(U::try_from, (a,), ret),
 ;
 
-pub assume_specification<T, U: Into<T>>[ <T as TryFrom<U>>::try_from ](a: U) -> (ret: Result<
-    T,
-    <T as TryFrom<U>>::Error,
->)
+pub assume_specification<T, U: Into<T>>[ <T as TryFrom<U>>::try_from ](a: U) -> (ret: Result<T, !>)
     ensures
         ret.is_ok(),
         call_ensures(U::into, (a,), ret.unwrap()),

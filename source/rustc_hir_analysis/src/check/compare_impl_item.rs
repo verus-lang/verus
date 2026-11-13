@@ -8,18 +8,17 @@ use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
 use rustc_errors::codes::*;
 use rustc_errors::{Applicability, ErrorGuaranteed, MultiSpan, pluralize, struct_span_code_err};
 use rustc_hir::def::{DefKind, Res};
-use rustc_hir::intravisit::VisitorExt;
+use rustc_hir::intravisit::Visitor;
 use rustc_hir::{self as hir, AmbigArg, GenericParamKind, ImplItemKind, intravisit};
 use rustc_infer::infer::{self, BoundRegionConversionTime, InferCtxt, TyCtxtInferExt};
 use rustc_infer::traits::{TraitErrors, util};
 use rustc_middle::ty::error::{ExpectedFound, TypeError};
 use rustc_middle::ty::{
-    self, BottomUpFolder, GenericArgs, GenericParamDefKind, Generics, RegionExt, Ty, TyCtxt,
-    TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitable, TypeVisitableExt, TypeVisitor,
-    TypingMode, Unnormalized, Upcast,
+    self, BottomUpFolder, GenericArgs, GenericParamDefKind, Generics, Ty, TyCtxt, TypeFoldable,
+    TypeFolder, TypeSuperFoldable, TypeVisitable, TypeVisitableExt, TypeVisitor, TypingMode,
+    Unnormalized, Upcast,
 };
-use rustc_middle::{bug, span_bug};
-use rustc_span::{BytePos, DUMMY_SP, Span};
+use rustc_span::{BytePos, DUMMY_SP, Span, bug, span_bug};
 use rustc_trait_selection::error_reporting::InferCtxtErrorExt;
 use rustc_trait_selection::infer::InferCtxtExt;
 use rustc_trait_selection::regions::InferCtxtRegionExt;
@@ -240,7 +239,7 @@ fn compare_method_clause_entailment<'tcx>(
 
     let hybrid_clauses = hybrid_clauses.into_iter().map(Unnormalized::skip_norm_wip);
     let normalize_cause = traits::ObligationCause::misc(impl_m_span, impl_m_def_id);
-    let param_env = ty::ParamEnv::new(tcx.mk_clauses_from_iter(hybrid_clauses));
+    let param_env = ty::ParamEnv::new(tcx, hybrid_clauses);
     // NOTE(-Zhigher-ranked-assumptions): The `hybrid_preds`
     // should be well-formed. However, using them may result in
     // region errors as we currently don't track placeholder
@@ -256,7 +255,7 @@ fn compare_method_clause_entailment<'tcx>(
     //
     // cc trait-system-refactor-initiative/issues/166.
     let param_env = traits::normalize_param_env_or_error(tcx, param_env, normalize_cause);
-    debug!(caller_bounds=?param_env.caller_bounds());
+    debug!(?param_env);
 
     let infcx = &tcx.infer_ctxt().build(TypingMode::non_body_analysis());
     let ocx = ObligationCtxt::new_with_diagnostics(infcx);
@@ -496,7 +495,7 @@ pub(super) fn collect_return_position_impl_trait_in_trait_tys<'tcx>(
         .into_iter()
         .chain(tcx.clauses_of(trait_m.def_id).instantiate_own(tcx, trait_to_impl_args))
         .map(|(clause, _)| clause.skip_norm_wip());
-    let param_env = ty::ParamEnv::new(tcx.mk_clauses_from_iter(hybrid_clauses));
+    let param_env = ty::ParamEnv::new(tcx, hybrid_clauses);
     let param_env = traits::normalize_param_env_or_error(
         tcx,
         param_env,
@@ -586,9 +585,9 @@ pub(super) fn collect_return_position_impl_trait_in_trait_tys<'tcx>(
         .iter()
         .map(|(_, &(ty, _))| {
             assert!(
-                infcx.resolve_vars_if_possible(ty) == ty && ty.is_ty_var(),
+                infcx.deeply_resolve_ignoring_regions(ty) == ty && ty.is_ty_var(),
                 "{ty:?} should not have been constrained via normalization",
-                ty = infcx.resolve_vars_if_possible(ty)
+                ty = infcx.deeply_resolve_ignoring_regions(ty)
             );
             idx += 1;
             (
@@ -641,7 +640,7 @@ pub(super) fn collect_return_position_impl_trait_in_trait_tys<'tcx>(
                 false,
                 None,
             );
-            return Err(diag.emit());
+            return Err(diag.emit_err());
         }
     }
 
@@ -710,7 +709,7 @@ pub(super) fn collect_return_position_impl_trait_in_trait_tys<'tcx>(
 
     let mut remapped_types = DefIdMap::default();
     for (def_id, (ty, args)) in collected_types {
-        match infcx.fully_resolve(ty) {
+        match infcx.deeply_resolve_via_region_graph(ty) {
             Ok(ty) => {
                 // `ty` contains free regions that we created earlier while liberating the
                 // trait fn signature. However, projection normalization expects `ty` to
@@ -953,7 +952,7 @@ impl<'tcx> ty::FallibleTypeFolder<TyCtxt<'tcx>> for RemapHiddenTyRegions<'tcx> {
                             "hidden type must only reference lifetimes captured by this impl trait",
                         )
                         .with_note(format!("hidden type inferred to be `{}`", self.ty))
-                        .emit()
+                        .emit_err()
                 }
                 None => {
                     // This code path is not reached in any tests, but may be
@@ -1069,12 +1068,12 @@ fn report_trait_method_mismatch<'tcx>(
                     };
                 };
             } else if let Some(trait_ty) = trait_sig.inputs().get(*i) {
-                diag.span_suggestion_verbose(
+                rustc_middle::ty::print::with_crate_prefix!(diag.span_suggestion_verbose(
                     impl_err_span,
                     "change the parameter type to match the trait",
                     trait_ty,
                     Applicability::MachineApplicable,
-                );
+                ));
             }
         }
         _ => {}
@@ -1094,7 +1093,7 @@ fn report_trait_method_mismatch<'tcx>(
         None,
     );
 
-    diag.emit()
+    diag.emit_err()
 }
 
 fn check_region_bounds_on_impl_item<'tcx>(
@@ -1137,7 +1136,7 @@ fn check_region_bounds_on_impl_item<'tcx>(
             bounds_span,
             where_span,
         })
-        .emit_unless_delay(delay);
+        .emit_err_unless_delay(delay);
 
     Err(reported)
 }
@@ -1298,7 +1297,7 @@ fn check_region_late_boundedness<'tcx>(
                 .inner
                 .borrow_mut()
                 .unwrap_region_constraints()
-                .opportunistic_resolve_var(tcx, vid)
+                .shallow_resolve_region_var(tcx, vid)
             && let ty::ReLateParam(ty::LateParamRegion {
                 kind: ty::LateParamRegionKind::Named(trait_param_def_id),
                 ..
@@ -1323,7 +1322,7 @@ fn check_region_late_boundedness<'tcx>(
                 .inner
                 .borrow_mut()
                 .unwrap_region_constraints()
-                .opportunistic_resolve_var(tcx, vid)
+                .shallow_resolve_region_var(tcx, vid)
             && let ty::ReLateParam(ty::LateParamRegion {
                 kind: ty::LateParamRegionKind::Named(impl_param_def_id),
                 ..
@@ -1438,7 +1437,7 @@ fn check_region_late_boundedness<'tcx>(
         }
     }
 
-    Some(diag.emit())
+    Some(diag.emit_err())
 }
 
 fn find_region_in_clauses<'tcx>(
@@ -1541,7 +1540,7 @@ fn compare_self_type<'tcx>(
             } else {
                 err.note_trait_signature(trait_m.name(), trait_m.signature(tcx));
             }
-            return Err(err.emit_unless_delay(delay));
+            return Err(err.emit_err_unless_delay(delay));
         }
 
         (true, false) => {
@@ -1562,7 +1561,7 @@ fn compare_self_type<'tcx>(
                 err.note_trait_signature(trait_m.name(), trait_m.signature(tcx));
             }
 
-            return Err(err.emit_unless_delay(delay));
+            return Err(err.emit_err_unless_delay(delay));
         }
     }
 
@@ -1722,8 +1721,8 @@ fn compare_number_of_generics<'tcx>(
                 err.span_label(*span, "`impl Trait` introduces an implicit type parameter");
             }
 
-            let reported = err.emit_unless_delay(delay);
-            err_occurred = Some(reported);
+            let guar = err.emit_err_unless_delay(delay);
+            err_occurred = Some(guar);
         }
     }
 
@@ -1904,7 +1903,7 @@ fn compare_number_of_method_arguments<'tcx>(
             }
         }
 
-        return Err(err.emit_unless_delay(delay));
+        return Err(err.emit_err_unless_delay(delay));
     }
 
     Ok(())
@@ -2031,7 +2030,7 @@ fn compare_synthetic_generics<'tcx>(
                     );
                 };
             }
-            error_found = Some(err.emit_unless_delay(delay));
+            error_found = Some(err.emit_err_unless_delay(delay));
         }
     }
     if let Some(reported) = error_found { Err(reported) } else { Ok(()) }
@@ -2126,15 +2125,15 @@ fn compare_generic_param_kinds<'tcx>(
             };
 
             let trait_header_span = tcx.def_ident_span(tcx.parent(trait_item.def_id)).unwrap();
-            err.span_label(trait_header_span, "");
+            err.span_context(trait_header_span);
             err.span_label(param_trait_span, make_param_message("expected", param_trait));
 
             let impl_header_span = tcx.def_span(tcx.parent(impl_item.def_id));
-            err.span_label(impl_header_span, "");
+            err.span_context(impl_header_span);
             err.span_label(param_impl_span, make_param_message("found", param_impl));
 
-            let reported = err.emit_unless_delay(delay);
-            return Err(reported);
+            let guar = err.emit_err_unless_delay(delay);
+            return Err(guar);
         }
     }
 
@@ -2147,40 +2146,53 @@ fn compare_impl_const<'tcx>(
     trait_const_item: ty::AssocItem,
     impl_trait_ref: ty::TraitRef<'tcx>,
 ) -> Result<(), ErrorGuaranteed> {
-    compare_type_const(tcx, impl_const_item, trait_const_item)?;
+    compare_const_directness(tcx, impl_const_item, trait_const_item)?;
     compare_number_of_generics(tcx, impl_const_item, trait_const_item, false)?;
     compare_generic_param_kinds(tcx, impl_const_item, trait_const_item, false)?;
     check_region_bounds_on_impl_item(tcx, impl_const_item, trait_const_item, false)?;
     compare_const_clause_entailment(tcx, impl_const_item, trait_const_item, impl_trait_ref)
 }
 
-fn compare_type_const<'tcx>(
+pub(super) fn compare_const_directness<'tcx>(
     tcx: TyCtxt<'tcx>,
     impl_const_item: ty::AssocItem,
     trait_const_item: ty::AssocItem,
 ) -> Result<(), ErrorGuaranteed> {
-    let impl_is_type_const = tcx.is_type_const(impl_const_item.def_id);
-    let trait_type_const_span = tcx.type_const_span(trait_const_item.def_id);
+    let trait_is_gca = tcx.is_always_gca(trait_const_item.def_id);
+    let impl_is_gca = tcx.const_of_item(impl_const_item.def_id).is_some();
 
-    if let Some(trait_type_const_span) = trait_type_const_span
-        && !impl_is_type_const
-    {
-        return Err(tcx
-            .dcx()
+    if trait_is_gca == impl_is_gca {
+        return Ok(());
+    }
+    // feature(gca_const_items) is allowed to impl non-GCA traits with a GCA const
+    if tcx.features().gca_const_items() && !trait_is_gca && impl_is_gca {
+        return Ok(());
+    }
+
+    let guar = if trait_is_gca {
+        tcx.dcx()
             .struct_span_err(
                 tcx.def_span(impl_const_item.def_id),
-                "implementation of a `type const` must also be marked as `type const`",
+                "implementation of a `#[rustc_always_gca]` must have a `gca!` RHS",
             )
             .with_span_note(
-                MultiSpan::from_spans(vec![
-                    tcx.def_span(trait_const_item.def_id),
-                    trait_type_const_span,
-                ]),
-                "trait declaration of const is marked as `type const`",
+                tcx.def_span(trait_const_item.def_id),
+                "trait declaration of const is marked as `#[rustc_always_gca]`",
             )
-            .emit());
-    }
-    Ok(())
+            .emit_err()
+    } else {
+        tcx.dcx()
+            .struct_span_err(
+                tcx.def_span(impl_const_item.def_id),
+                "implementation of a regular const cannot have a `gca!` RHS",
+            )
+            .with_span_note(
+                tcx.def_span(trait_const_item.def_id),
+                "trait declaration of const is not marked as `#[rustc_always_gca]`",
+            )
+            .emit_err()
+    };
+    Err(guar)
 }
 
 /// The equivalent of [compare_method_clause_entailment], but for associated constants
@@ -2232,7 +2244,7 @@ fn compare_const_clause_entailment<'tcx>(
     );
     let hybrid_clauses = hybrid_clauses.into_iter().map(Unnormalized::skip_norm_wip);
 
-    let param_env = ty::ParamEnv::new(tcx.mk_clauses_from_iter(hybrid_clauses));
+    let param_env = ty::ParamEnv::new(tcx, hybrid_clauses);
     let param_env = traits::normalize_param_env_or_error(
         tcx,
         param_env,
@@ -2293,7 +2305,7 @@ fn compare_const_clause_entailment<'tcx>(
             false,
             None,
         );
-        return Err(diag.emit());
+        return Err(diag.emit_err());
     };
 
     // Check that all obligations are satisfied by the implementation's
@@ -2382,9 +2394,9 @@ fn compare_type_clause_entailment<'tcx>(
     }
 
     let hybrid_clauses = hybrid_clauses.into_iter().map(Unnormalized::skip_norm_wip);
-    let param_env = ty::ParamEnv::new(tcx.mk_clauses_from_iter(hybrid_clauses));
+    let param_env = ty::ParamEnv::new(tcx, hybrid_clauses);
     let param_env = traits::normalize_param_env_or_error(tcx, param_env, normalize_cause);
-    debug!(caller_bounds=?param_env.caller_bounds());
+    debug!(?param_env);
 
     let infcx = tcx.infer_ctxt().build(TypingMode::non_body_analysis());
     let ocx = ObligationCtxt::new_with_diagnostics(&infcx);
@@ -2629,7 +2641,7 @@ fn param_env_with_gat_bounds<'tcx>(
 ) -> ty::ParamEnv<'tcx> {
     let param_env = tcx.param_env(impl_ty.def_id);
     let container_id = impl_ty.container_id(tcx);
-    let mut clauses = param_env.caller_bounds().to_vec();
+    let mut clauses = param_env.caller_bounds().collect::<Vec<_>>();
 
     // for RPITITs, we should install predicates that allow us to project all
     // of the RPITITs associated with the same body. This is because checking
@@ -2728,10 +2740,10 @@ fn param_env_with_gat_bounds<'tcx>(
             }
             _ => clauses.push(
                 ty::Binder::bind_with_vars(
-                    ty::ProjectionPredicate {
-                        projection_term: ty::AliasTerm::new_from_def_id(
+                    ty::ProjectionClause {
+                        projection_term: ty::AliasTerm::new(
                             tcx,
-                            trait_ty.def_id,
+                            ty::AliasTermKind::ProjectionTy { def_id: trait_ty.def_id },
                             rebased_args,
                         ),
                         term: normalize_impl_ty.into(),
@@ -2743,7 +2755,7 @@ fn param_env_with_gat_bounds<'tcx>(
         };
     }
 
-    ty::ParamEnv::new(tcx.mk_clauses(&clauses))
+    ty::ParamEnv::new(tcx, clauses)
 }
 
 /// Manually check here that `async fn foo()` wasn't matched against `fn foo()`,

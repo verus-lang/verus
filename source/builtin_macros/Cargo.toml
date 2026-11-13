@@ -4,7 +4,6 @@ version = "0.0.0-2026-11-08-0256"
 edition = "2018"
 license = "MIT"
 description = "Verus Builtin Macros: Various macros used by Verus"
-homepage = "https://github.com/verus-lang/verus"
 repository = "https://github.com/verus-lang/verus"
 readme = "../../README.md"
 keywords = ["verus", "verified-rust", "verification"]

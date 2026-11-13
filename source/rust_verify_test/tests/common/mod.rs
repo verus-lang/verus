@@ -54,6 +54,39 @@ pub struct TestErr {
     pub json_output: Option<serde_json::Value>, // captured when `--output-json` is used
 }
 
+/// The cargo profile directory (e.g., `target-verus/debug`) that contains the Verus build
+/// artifacts and the test binaries.
+///
+/// We can't simply walk up a fixed number of directories from the test binary, since cargo's
+/// build-dir layout changed in Rust 1.100: test binaries now live in
+/// `<target-dir>/<profile>/build/<package>/<hash>/out/` rather than `<target-dir>/<profile>/deps/`.
+/// Instead, we find the ancestor of the test binary that is a direct child of the target dir.
+pub fn target_profile_dir() -> std::path::PathBuf {
+    let target_dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .parent()
+        .expect("CARGO_TARGET_TMPDIR should have a parent");
+    let target_dir = target_dir.canonicalize().unwrap_or(target_dir.to_path_buf());
+    let current_exe = std::env::current_exe().unwrap();
+    let current_exe = current_exe.canonicalize().unwrap_or(current_exe);
+    current_exe
+        .ancestors()
+        .find(|a| a.parent() == Some(target_dir.as_path()))
+        .expect("test binary should be inside the cargo target dir (setting a separate cargo `build-dir` is not supported)")
+        .to_path_buf()
+}
+
+/// The directory with the Verus build artifacts (`target-verus/<profile>`).
+pub fn verus_target_profile_dir() -> std::path::PathBuf {
+    let profile_dir = target_profile_dir();
+    let profile = profile_dir.file_name().unwrap();
+    profile_dir
+        .ancestors()
+        .nth(2)
+        .expect("expected path to have at least two parents")
+        .join("target-verus")
+        .join(profile)
+}
+
 pub fn verify_files(
     name: &str,
     files: impl IntoIterator<Item = (String, String)>,
@@ -162,9 +195,7 @@ pub fn verify_files_vstd_all_diags(
 
     let files: Vec<(String, String)> = files.into_iter().collect();
 
-    let deps_dir = std::env::current_exe().unwrap();
-    let deps_dir = deps_dir.parent().unwrap();
-    let target_dir = deps_dir.parent().unwrap();
+    let target_dir = target_profile_dir();
 
     let (test_binary, test_name) = {
         let mut args = std::env::args();
@@ -313,18 +344,7 @@ pub fn run_verus(
     #[cfg(target_os = "windows")]
     let (pre, dl, exe) = ("", "dll", ".exe");
 
-    let current_exe = std::env::current_exe().unwrap();
-    let deps_path = current_exe.parent().unwrap();
-    let target_path = deps_path.parent().unwrap();
-    let profile = target_path.file_name().unwrap().to_str().unwrap();
-    let verus_target_path = target_path
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf()
-        .join("target-verus")
-        .join(profile);
+    let verus_target_path = verus_target_profile_dir();
 
     let verus_target_path_str = verus_target_path.to_str().unwrap();
 
@@ -556,16 +576,7 @@ pub fn run_verus_raw(args: &[&str], dir: &std::path::Path) -> std::process::Outp
     }
     let exe = if cfg!(target_os = "windows") { ".exe" } else { "" };
 
-    let current_exe = std::env::current_exe().unwrap();
-    let deps_path = current_exe.parent().unwrap();
-    let target_path = deps_path.parent().unwrap();
-    let profile = target_path.file_name().unwrap().to_str().unwrap();
-    let verus_target_path = target_path
-        .ancestors()
-        .nth(2)
-        .expect("expected path to have at least two parents")
-        .join("target-verus")
-        .join(profile);
+    let verus_target_path = verus_target_profile_dir();
     let bin = verus_target_path.join(format!("rust_verify{exe}"));
 
     let z3 = std::env::var("VERUS_Z3_PATH")
@@ -614,18 +625,7 @@ pub fn run_cargo_verus_with_target(
 
     // Compute the path to the cargo-verus executable,
     // following the pattern from run_verus
-    let current_exe = std::env::current_exe().unwrap();
-    let deps_path = current_exe.parent().unwrap();
-    let target_path = deps_path.parent().unwrap();
-    let profile = target_path.file_name().unwrap().to_str().unwrap();
-    let verus_target_path = target_path
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf()
-        .join("target-verus")
-        .join(profile);
+    let verus_target_path = verus_target_profile_dir();
     let bin = verus_target_path.join(format!("cargo-verus{exe}"));
 
     let mut child = std::process::Command::new(bin);
@@ -732,9 +732,8 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![allow(non_upper_case_globals)]
     #![allow(unused_comparisons)]
     #![allow(noop_method_call)]
-    #![feature(allocator_api)]
+    #![feature(allocator_ext)]
     #![feature(proc_macro_hygiene)]
-    #![feature(never_type)]
     #![feature(core_intrinsics)]
     #![feature(ptr_metadata)]
     #![feature(sized_hierarchy)]

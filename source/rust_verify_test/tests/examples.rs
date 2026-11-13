@@ -94,8 +94,7 @@ fn run_example_for_file(file_path: &str) {
     let relative_path = PathBuf::from(relative_path);
 
     // Create a temp directory under target/ for --out-dir output
-    let target_dir = std::env::current_exe().unwrap();
-    let target_dir = target_dir.parent().unwrap().parent().unwrap();
+    let target_dir = target_profile_dir();
     let example_out_dir = target_dir
         .join("test_inputs")
         .join(format!("example-{}", relative_path.file_stem().unwrap().to_str().unwrap()));

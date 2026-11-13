@@ -2,17 +2,17 @@ use core::ops::ControlFlow;
 
 use rustc_errors::{Applicability, StashKey, Suggestions};
 use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_hir::intravisit::VisitorExt;
+use rustc_hir::intravisit::Visitor;
 use rustc_hir::{self as hir, AmbigArg, HirId};
 use rustc_middle::ty::print::{with_forced_trimmed_paths, with_types_for_suggestion};
 use rustc_middle::ty::util::IntTypeExt;
 use rustc_middle::ty::{self, DefiningScopeKind, IsSuggestable, Ty, TyCtxt, TypeVisitableExt};
-use rustc_middle::{bug, span_bug};
-use rustc_span::{DUMMY_SP, Ident, Span};
+use rustc_span::{DUMMY_SP, Ident, Span, bug, span_bug};
 use tracing::instrument;
 
 use super::{HirPlaceholderCollector, ItemCtxt, bad_placeholder};
 use crate::check::wfcheck::check_static_item;
+use crate::diagnostics::ParamInTyOfConstParam;
 use crate::hir_ty_lowering::HirTyLowerer;
 
 mod opaque;
@@ -86,10 +86,14 @@ pub(super) fn type_of(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::EarlyBinder<'_
             TraitItemKind::Const(ty, rhs) => rhs
                 .and_then(|rhs| {
                     ty.is_suggestable_infer_ty().then(|| {
+                        let hir_body_id = match rhs {
+                            ConstItemRhs::Body(body) => Some(body.hir_id),
+                            ConstItemRhs::Direct(_) => None,
+                        };
                         infer_placeholder_type(
                             icx.lowerer(),
                             def_id,
-                            rhs.hir_id(),
+                            hir_body_id,
                             ty.span,
                             rhs.span(tcx),
                             item.ident,
@@ -108,10 +112,14 @@ pub(super) fn type_of(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::EarlyBinder<'_
             ImplItemKind::Fn(_, _) => new_bound_fn_def(item.hir_id(), def_id.to_def_id()),
             ImplItemKind::Const(ty, rhs) => {
                 if ty.is_suggestable_infer_ty() {
+                    let hir_body_id = match rhs {
+                        ConstItemRhs::Body(body) => Some(body.hir_id),
+                        ConstItemRhs::Direct(_) => None,
+                    };
                     infer_placeholder_type(
                         icx.lowerer(),
                         def_id,
-                        rhs.hir_id(),
+                        hir_body_id,
                         ty.span,
                         rhs.span(tcx),
                         item.ident,
@@ -136,7 +144,7 @@ pub(super) fn type_of(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::EarlyBinder<'_
                     infer_placeholder_type(
                         icx.lowerer(),
                         def_id,
-                        body_id.hir_id,
+                        Some(body_id.hir_id),
                         ty.span,
                         tcx.hir_body(body_id).value.span,
                         ident,
@@ -156,10 +164,14 @@ pub(super) fn type_of(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::EarlyBinder<'_
             }
             ItemKind::Const(ident, _, ty, rhs) => {
                 if ty.is_suggestable_infer_ty() {
+                    let hir_body_id = match rhs {
+                        ConstItemRhs::Body(body) => Some(body.hir_id),
+                        ConstItemRhs::Direct(_) => None,
+                    };
                     infer_placeholder_type(
                         icx.lowerer(),
                         def_id,
-                        rhs.hir_id(),
+                        hir_body_id,
                         ty.span,
                         rhs.span(tcx),
                         ident,
@@ -193,7 +205,8 @@ pub(super) fn type_of(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::EarlyBinder<'_
             | ItemKind::Mod(..)
             | ItemKind::ForeignMod { .. }
             | ItemKind::ExternCrate(..)
-            | ItemKind::Use(..) => {
+            | ItemKind::Use(..)
+            | ItemKind::TestBinderConstraints { .. } => {
                 span_bug!(item.span, "compute_type_of_item: unexpected item type: {:?}", item.kind);
             }
         },
@@ -239,8 +252,17 @@ pub(super) fn type_of(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::EarlyBinder<'_
         }
 
         Node::GenericParam(param) => match &param.kind {
-            GenericParamKind::Type { default: Some(ty), .. }
-            | GenericParamKind::Const { ty, .. } => icx.lower_ty(ty),
+            GenericParamKind::Type { default: Some(ty), .. } => icx.lower_ty(ty),
+            GenericParamKind::Const { ty, .. } => {
+                let lowered_ty = icx.lower_ty(ty);
+                if !tcx.features().generic_const_parameter_types() && lowered_ty.has_param() {
+                    let guar =
+                        tcx.dcx().emit_err(ParamInTyOfConstParam { span: ty.span, ty: lowered_ty });
+                    Ty::new_error(tcx, guar)
+                } else {
+                    lowered_ty
+                }
+            }
             x => bug!("unexpected non-type Node::GenericParam: {:?}", x),
         },
 
@@ -418,28 +440,28 @@ fn const_arg_anon_type_of<'tcx>(icx: &ItemCtxt<'tcx>, arg_hir_id: HirId, span: S
 fn infer_placeholder_type<'tcx>(
     cx: &dyn HirTyLowerer<'tcx>,
     def_id: LocalDefId,
-    hir_id: HirId,
+    hir_body_id: Option<HirId>,
     ty_span: Span,
     body_span: Span,
     item_ident: Ident,
     kind: &'static str,
 ) -> Ty<'tcx> {
     let tcx = cx.tcx();
-    // If the type is omitted on a `type const` we can't run
-    // type check on since that requires the const have a body
-    // which `type const`s don't.
-    let ty = if tcx.is_type_const(def_id.to_def_id()) {
-        if let Some(trait_item_def_id) = tcx.trait_item_of(def_id.to_def_id()) {
-            tcx.type_of(trait_item_def_id).instantiate_identity().skip_norm_wip()
-        } else {
-            Ty::new_error_with_message(
-                tcx,
-                ty_span,
-                "constant with `type const` requires an explicit type",
-            )
+    // If the type is omitted on const with `ConstItemRhs::Direct`, we can't run type check on it,
+    // since that requires the const have a body, i.e. `ConstItemRhs::Body`.
+    let ty = match hir_body_id {
+        Some(hir_id) => tcx.typeck(def_id).node_type(hir_id),
+        None => {
+            if let Some(trait_item_def_id) = tcx.trait_item_of(def_id.to_def_id()) {
+                tcx.type_of(trait_item_def_id).instantiate_identity().skip_norm_wip()
+            } else {
+                Ty::new_error_with_message(
+                    tcx,
+                    ty_span,
+                    "directly represented const requires an explicit type",
+                )
+            }
         }
-    } else {
-        tcx.typeck(def_id).node_type(hir_id)
     };
 
     // If this came from a free `const` or `static mut?` item,
@@ -519,7 +541,7 @@ fn infer_placeholder_type<'tcx>(
                 }
             }
 
-            diag.emit()
+            diag.emit_err()
         });
     Ty::new_error(tcx, guar)
 }
