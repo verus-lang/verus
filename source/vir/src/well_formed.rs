@@ -1771,13 +1771,13 @@ fn check_datatype(ctxt: &Ctxt, dt: &Datatype, emit: &mut EmitErrorState) -> Resu
                     Mode::Proof => ("Tracked", "tracked"),
                     Mode::Exec => unreachable!(),
                 };
-                return Err(error(
+                emit.diags.push(VirErrAs::Warning(error(
                     &dt.span,
-                    "field in an exec-mode datatype cannot have a mode qualifier",
+                    "field in an exec-mode datatype cannot have a mode qualifier; this will eventually be a hard error",
                 )
                 .help(format!("try using the `{wrapper:}` type to embed {mode:} data in an exec-mode struct"))
                 .help("if you meant for the datatype to be only used in ghost code, mark it `ghost struct` or `tracked struct`")
-                );
+                ));
             }
         }
     }

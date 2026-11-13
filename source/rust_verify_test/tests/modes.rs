@@ -2127,7 +2127,7 @@ test_verify_one_file! {
           struct X {
               ghost f: u64,
           }
-    } => Err(err) => assert_vir_error_msg(err, "field in an exec-mode datatype cannot have a mode qualifier")
+    } => Ok(err) => assert_vir_warning_msg(err, "field in an exec-mode datatype cannot have a mode qualifier")
 }
 
 test_verify_one_file! {
@@ -2135,5 +2135,5 @@ test_verify_one_file! {
           struct X {
               tracked f: u64,
           }
-    } => Err(err) => assert_vir_error_msg(err, "field in an exec-mode datatype cannot have a mode qualifier")
+    } => Ok(err) => assert_vir_warning_msg(err, "field in an exec-mode datatype cannot have a mode qualifier")
 }
