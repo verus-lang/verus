@@ -955,6 +955,15 @@ pub fn assert_fails(err: TestErr, count: usize) {
     }
 }
 
+pub fn assert_vir_warning_msg(err: TestErr, expected_msg: &str) {
+    assert_eq!(err.errors.len(), 0);
+    dbg!(&err.warnings);
+    assert_eq!(err.warnings.len(), 2);
+    assert!(err.warnings[0].code.is_none()); // thus likely a VIR error
+    assert!(err.warnings[0].message.contains(expected_msg));
+    assert!(err.warnings[1].message.contains("1 warning emitted"));
+}
+
 pub fn assert_vir_error_msg(err: TestErr, expected_msg: &str) {
     assert_eq!(err.errors.len(), 1);
     assert!(err.errors[0].code.is_none()); // thus likely a VIR error
