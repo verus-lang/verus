@@ -512,6 +512,7 @@ fn mk_spec_function_stub(
                 is_async: false,
                 impls_cannot_extend_spec: false,
                 is_drop: false,
+                create_open_invariant_credit: false,
             }),
         },
     )
