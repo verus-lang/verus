@@ -311,7 +311,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         trace!("load mir(instance={:?}, promoted={:?})", instance, promoted);
         let body = if let Some(promoted) = promoted {
             let def = instance.def_id();
-            &self.tcx.promoted_mir(def)[promoted]
+            // Verus: use the full-erasure MIR
+            &crate::verus::promoted_mir(self.tcx.tcx, def)[promoted]
         } else {
             M::load_mir(self, instance)
         };

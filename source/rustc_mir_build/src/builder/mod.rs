@@ -82,9 +82,9 @@ pub fn build_mir_inner_impl<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Body<'t
         Err(error_reported) => construct_error(tcx, def, error_reported),
         Ok((thir, expr)) => {
             let build_mir = |thir: &Thir<'tcx>| match thir.body_type {
-                thir::BodyTy::Fn(fn_sig) => construct_fn(tcx, def, thir, expr, fn_sig),
+                thir::BodyTy::Fn(fn_sig) => construct_fn(tcx, def, thir, expr, fn_sig, false),
                 thir::BodyTy::Const(ty) | thir::BodyTy::GlobalAsm(ty) => {
-                    construct_const(tcx, def, thir, expr, ty)
+                    construct_const(tcx, def, thir, expr, ty, false)
                 }
             };
 
@@ -479,6 +479,7 @@ fn construct_fn<'tcx>(
     thir: &Thir<'tcx>,
     expr: ExprId,
     fn_sig: ty::FnSig<'tcx>,
+    verus_full_erasure: bool,
 ) -> Body<'tcx> {
     let span = tcx.def_span(fn_def);
     let fn_id = tcx.local_def_id_to_hir_id(fn_def);
@@ -549,6 +550,7 @@ fn construct_fn<'tcx>(
         return_ty,
         return_ty_span,
         coroutine,
+        verus_full_erasure,
     );
 
     let call_site_scope =
@@ -594,6 +596,7 @@ fn construct_const<'a, 'tcx>(
     thir: &'a Thir<'tcx>,
     expr: ExprId,
     const_ty: Ty<'tcx>,
+    verus_full_erasure: bool,
 ) -> Body<'tcx> {
     let hir_id = tcx.local_def_id_to_hir_id(def);
 
@@ -628,8 +631,18 @@ fn construct_const<'a, 'tcx>(
     };
 
     let infcx = tcx.infer_ctxt().build(typing_mode);
-    let mut builder =
-        Builder::new(thir, infcx, def, hir_id, span, 0, const_ty, const_ty_span, None);
+    let mut builder = Builder::new(
+        thir,
+        infcx,
+        def,
+        hir_id,
+        span,
+        0,
+        const_ty,
+        const_ty_span,
+        None,
+        verus_full_erasure,
+    );
 
     let mut block = START_BLOCK;
     block = builder.expr_into_dest(Place::return_place(), block, expr).into_block();
@@ -783,6 +796,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         return_ty: Ty<'tcx>,
         return_span: Span,
         coroutine: Option<Box<CoroutineInfo<'tcx>>>,
+        verus_full_erasure: bool,
     ) -> Builder<'a, 'tcx> {
         let tcx = infcx.tcx;
         // Some functions always have overflow checks enabled,
@@ -827,7 +841,11 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             var_debug_info: vec![],
             lint_level_roots_cache: GrowableBitSet::new_empty(),
             coverage_info: coverageinfo::CoverageInfoBuilder::new_if_enabled(tcx, def),
-            verus_extra_thir: crate::verus::get_extra_thir(def),
+            verus_extra_thir: if verus_full_erasure {
+                None
+            } else {
+                crate::verus::get_extra_thir(def)
+            },
             verus_mir_builder_ctxt: crate::builder::verus_builder::VerusMirBuilderCtxt::new(),
         };
 
