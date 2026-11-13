@@ -485,3 +485,302 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "this function is not recursive (nor mutually recursive), so fuel cannot be set to more than 1")
 }
+
+test_verify_one_file! {
+    #[test] reveal_visible_inside_isolated_loop verus_code! {
+        #[verifier::opaque]
+        spec fn pred() -> bool { true }
+
+        spec fn open_pred() -> bool { true }
+
+        fn revealed_before_loop() {
+            reveal(pred);
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(pred());
+                i = i + 1;
+            }
+        }
+
+        fn open_spec_needs_no_reveal() {
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(open_pred());
+                i = i + 1;
+            }
+        }
+
+        fn hide_then_reveal() {
+            hide(open_pred);
+            reveal(open_pred);
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(open_pred());
+                i = i + 1;
+            }
+        }
+
+        fn reveal_in_boundary_and_before_nested() {
+            reveal(pred);
+            let mut i: u64 = 0;
+            #[verus::internal(loop_isolation_boundary)]
+            {
+                while i < 1
+                    invariant i <= 1,
+                    decreases 1 - i,
+                {
+                    let mut j: u64 = 0;
+                    while j < 1
+                        invariant j <= 1,
+                        decreases 1 - j,
+                    {
+                        assert(pred());
+                        j = j + 1;
+                    }
+                    i = i + 1;
+                }
+            }
+        }
+
+        fn reveal_inside_branch_loop(b: bool) {
+            if b {
+                reveal(pred);
+                let mut i: u64 = 0;
+                while i < 1
+                    invariant i <= 1,
+                    decreases 1 - i,
+                {
+                    assert(pred());
+                    i = i + 1;
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] reveal_with_fuel_bound_survives_loop verus_code! {
+        #[verifier::opaque]
+        spec fn down(i: nat) -> nat
+            decreases i,
+        {
+            if i == 0 {
+                0
+            } else {
+                1 + down((i - 1) as nat)
+            }
+        }
+
+        fn enough_fuel() {
+            reveal_with_fuel(down, 2);
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(down(1) == 1);
+                i = i + 1;
+            }
+        }
+
+        fn nested_gets_outer_and_inner_fuel() {
+            reveal_with_fuel(down, 2);
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                reveal_with_fuel(down, 3);
+                let mut j: u64 = 0;
+                while j < 1
+                    invariant j <= 1,
+                    decreases 1 - j,
+                {
+                    assert(down(2) == 2);
+                    j = j + 1;
+                }
+                i = i + 1;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] reveal_fuel_does_not_leak_or_deepen verus_code! {
+        #[verifier::opaque]
+        spec fn pred() -> bool { true }
+
+        spec fn open_pred() -> bool { true }
+
+        #[verifier::opaque]
+        spec fn down(i: nat) -> nat
+            decreases i,
+        {
+            if i == 0 {
+                0
+            } else {
+                1 + down((i - 1) as nat)
+            }
+        }
+
+        fn opaque_without_reveal() {
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(pred()); // FAILS
+                i = i + 1;
+            }
+        }
+
+        fn hide_suppresses_default_inside_loop() {
+            hide(open_pred);
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(open_pred()); // FAILS
+                i = i + 1;
+            }
+        }
+
+        fn reveal_after_loop() {
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(pred()); // FAILS
+                i = i + 1;
+            }
+            reveal(pred);
+        }
+
+        fn sibling_branch(b: bool) {
+            if b {
+                reveal(pred);
+                let mut i: u64 = 0;
+                while i < 1
+                    invariant i <= 1,
+                    decreases 1 - i,
+                {
+                    assert(pred());
+                    i = i + 1;
+                }
+            } else {
+                let mut i: u64 = 0;
+                while i < 1
+                    invariant i <= 1,
+                    decreases 1 - i,
+                {
+                    assert(pred()); // FAILS
+                    i = i + 1;
+                }
+            }
+        }
+
+        fn only_inside_completed_loop() {
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                reveal(pred);
+                assert(pred());
+                i = i + 1;
+            }
+            let mut j: u64 = 0;
+            while j < 1
+                invariant j <= 1,
+                decreases 1 - j,
+            {
+                assert(pred()); // FAILS
+                j = j + 1;
+            }
+        }
+
+        fn fuel_too_small() {
+            reveal_with_fuel(down, 1);
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(down(1) == 1); // FAILS
+                i = i + 1;
+            }
+        }
+
+        fn deeper_fuel_in_sibling_does_not_leak(b: bool) {
+            if b {
+                reveal_with_fuel(down, 3);
+                let mut i: u64 = 0;
+                while i < 1
+                    invariant i <= 1,
+                    decreases 1 - i,
+                {
+                    assert(down(2) == 2);
+                    i = i + 1;
+                }
+            } else {
+                reveal_with_fuel(down, 2);
+                let mut i: u64 = 0;
+                while i < 1
+                    invariant i <= 1,
+                    decreases 1 - i,
+                {
+                    assert(down(2) == 2); // FAILS
+                    i = i + 1;
+                }
+            }
+        }
+
+        fn deeper_fuel_inside_loop_does_not_escape() {
+            reveal_with_fuel(down, 2);
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                reveal_with_fuel(down, 3);
+                assert(down(2) == 2);
+                i = i + 1;
+            }
+            let mut j: u64 = 0;
+            while j < 1
+                invariant j <= 1,
+                decreases 1 - j,
+            {
+                assert(down(2) == 2); // FAILS
+                j = j + 1;
+            }
+        }
+
+        // An ordinary fact is still isolated when a reveal is in scope.
+        fn precondition_stays_isolated(x: u64)
+            requires x == 5,
+        {
+            reveal(pred);
+            let mut i: u64 = 0;
+            while i < 1
+                invariant i <= 1,
+                decreases 1 - i,
+            {
+                assert(pred());
+                assert(x == 5); // FAILS
+                i = i + 1;
+            }
+        }
+    } => Err(err) => assert_fails(err, 9)
+}
