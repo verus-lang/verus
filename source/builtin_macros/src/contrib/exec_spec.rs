@@ -1836,6 +1836,83 @@ fn get_guarded_range_quant_verified(
     })
 }
 
+/// The pieces of a loop that enumerates a quantified variable over the closed
+/// interval `lower ..= upper` given by a guard `<lower> <op> x <op> <upper>`.
+/// Shared by `exec_spec_verified!` and `exec_spec_unverified!`.
+///
+/// The loop has the shape
+/// ```ignore
+/// if #init_cond {
+///     let mut x = lower;
+///     loop {
+///         if #in_guard { ... }   // only values satisfying the original guard
+///         if #exit_cond { break; }
+///         #update
+///     }
+/// }
+/// ```
+/// We never compute `lower + 1` or `upper + 1` (or the `char` equivalents) to
+/// turn a strict or inclusive bound into a half-open range: such arithmetic
+/// overflows at the maximum of the quantified type (e.g. `0 <= x <= 255` with
+/// `x: u8`), and for `char` it may land in the surrogate gap. Instead, every
+/// value of the closed interval is visited, strict bounds are handled by
+/// `in_guard`, and the update is only executed when `x < upper`, so the
+/// successor of `x` always exists and is at most `upper`.
+struct ClosedRangeLoop {
+    /// `lower <= upper`: the loop is entered iff the closed interval is nonempty
+    init_cond: TokenStream2,
+    /// The original guard `lower <op> x <op> upper`, usable both in exec and in spec code
+    in_guard: TokenStream2,
+    /// `x == upper`: the last value of the closed interval has been visited
+    exit_cond: TokenStream2,
+    /// `x` := successor of `x` (only executed when `x < upper`)
+    update: TokenStream2,
+}
+
+fn compile_closed_range_loop(
+    expr: &Expr,
+    lower: &Ident,
+    upper: &Ident,
+    cur: &Ident,
+    bounds: &GuardedQuantifierBounds,
+    is_char: bool,
+    unverified: bool,
+) -> Result<ClosedRangeLoop, Error> {
+    let unsupported = || {
+        Error::new_spanned(
+            expr,
+            "Ill-formed quantified expression.\n".to_owned()
+                + if unverified {
+                    UNSUPPORTED_QUANTIFIER_ERROR_MSG
+                } else {
+                    UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG
+                },
+        )
+    };
+    let lower_check = match bounds.lower_op {
+        BinOp::Lt(..) => quote! { #lower < #cur },
+        BinOp::Le(..) => quote! { #lower <= #cur },
+        _ => return Err(unsupported()),
+    };
+    let upper_check = match bounds.upper_op {
+        BinOp::Lt(..) => quote! { #cur < #upper },
+        BinOp::Le(..) => quote! { #cur <= #upper },
+        _ => return Err(unsupported()),
+    };
+    let update = if is_char {
+        // The successor of '\u{D7FF}' is '\u{E000}' (skipping the surrogates)
+        quote! { #cur = char::from_u32(#cur as u32 + 1).unwrap_or('\u{E000}'); }
+    } else {
+        quote! { #cur += 1; }
+    };
+    Ok(ClosedRangeLoop {
+        init_cond: quote! { #lower <= #upper },
+        in_guard: quote! { ((#lower_check) && (#upper_check)) },
+        exit_cond: quote! { #cur == #upper },
+        update,
+    })
+}
+
 /// Compiles some forms of forall/exists quantifiers to loops.
 fn compile_guarded_quant_verified(
     ctx: &LocalCtx,
@@ -1859,18 +1936,22 @@ fn compile_guarded_quant_verified(
     let quant_type = &quant.quant_var.quant_type;
     let lower = &quant.quant_var.bounds.lower;
     let upper = &quant.quant_var.bounds.upper;
-    let lower_op = &quant.quant_var.bounds.lower_op;
-    let upper_op = &quant.quant_var.bounds.upper_op;
     let guard_op = &quant.guard_op;
     let body = &quant.body;
-    let mut compiled_lower = compile_expr(ctx, lower, VarMode::Owned, false)?;
-    if let BinOp::Lt(..) = lower_op {
-        compiled_lower = quote! { #compiled_lower + 1 };
-    };
-    let mut compiled_upper = compile_expr(ctx, upper, VarMode::Owned, false)?;
-    if let BinOp::Le(..) = upper_op {
-        compiled_upper = quote! { #compiled_upper + 1 };
-    };
+    let compiled_lower = compile_expr(ctx, lower, VarMode::Owned, false)?;
+    let compiled_upper = compile_expr(ctx, upper, VarMode::Owned, false)?;
+
+    let lower_ident = Ident::new("_lower", Span::call_site());
+    let upper_ident = Ident::new("_upper", Span::call_site());
+    let ClosedRangeLoop { init_cond, in_guard, exit_cond, update } = compile_closed_range_loop(
+        expr,
+        &lower_ident,
+        &upper_ident,
+        quant_var,
+        &quant.quant_var.bounds,
+        false,
+        false,
+    )?;
 
     let mut body_ctx = ctx.clone();
     body_ctx.add(quant_var.clone(), VarMode::Owned);
@@ -1898,35 +1979,11 @@ fn compile_guarded_quant_verified(
 
     // Some common pieces
     let expr_span = expr.span();
-    let bound_expr = match (lower_op, upper_op) {
-        (BinOp::Lt(..), BinOp::Lt(..))
-        | (BinOp::Le(..), BinOp::Lt(..))
-        | (BinOp::Lt(..), BinOp::Le(..))
-        | (BinOp::Le(..), BinOp::Le(..)) => quote! { _lower <= #quant_var < _upper },
-        (_, _) => {
-            return Err(Error::new_spanned(
-                expr,
-                "Ill-formed quantified expression.\n".to_owned()
-                    + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-            ));
-        }
-    };
-    //let inv_bound = quote_spanned! { expr_span => _lower <= #quant_var <= _upper };
-    let inv_bound = match (lower_op, upper_op) {
-        (BinOp::Lt(..), BinOp::Lt(..))
-        | (BinOp::Le(..), BinOp::Lt(..))
-        | (BinOp::Lt(..), BinOp::Le(..))
-        | (BinOp::Le(..), BinOp::Le(..)) => quote! { _lower <= #quant_var <= _upper },
-        (_, _) => {
-            return Err(Error::new_spanned(
-                expr,
-                "Ill-formed quantified expression.\n".to_owned()
-                    + UNTRUSTED_UNSUPPORTED_QUANTIFIER_ERROR_MSG,
-            ));
-        }
-    };
+    // The values satisfying the guard that have been visited so far,
+    // i.e., those strictly below the current value `_cur`
+    let visited_bound = quote! { #in_guard && #quant_var < _cur };
+    let inv_bound = quote_spanned! { expr_span => _lower <= #quant_var <= _upper };
     let decreases = quote_spanned! { expr_span => _upper - #quant_var };
-    let quant_var_update = quote! { #quant_var += 1; };
     let final_assert = quote_spanned! { expr_span => _res == { #(#local_view)* #op #expr } };
 
     // Generate a fresh trigger function
@@ -1936,11 +1993,11 @@ fn compile_guarded_quant_verified(
         (UnOp::Forall(..), BinOp::Imply(..)) => {
             // Generate some pieces separately so that we can attach spans to them
             let inv = quote_spanned! { expr_span => _res == {
-                let _upper = #quant_var;
+                let _cur = #quant_var;
                 #(#local_view)*
                 forall |#quant_var: #quant_type|
                     #![trigger #trigger_fn_name(#quant_var)]
-                    #(#quant_attrs)* !(#bound_expr) || (#body)
+                    #(#quant_attrs)* !(#visited_bound) || (#body)
             }};
             let assert_trigger = quote_spanned! { expr_span => { #(#local_view)* !(#body) } };
 
@@ -1951,18 +2008,21 @@ fn compile_guarded_quant_verified(
                     let mut _res = true;
                     let mut #quant_var = _lower;
 
-                    if _lower < _upper {
-                        while #quant_var < _upper
+                    if #init_cond {
+                        loop
                             invariant #inv_bound, #inv,
                             decreases #decreases,
                         {
-                            if !(#compiled_body) {
+                            if #in_guard && !(#compiled_body) {
                                 proof { let _ = #trigger_fn_name(#quant_var); }
                                 assert(#assert_trigger);
                                 _res = false;
                                 break;
                             }
-                            #quant_var_update
+                            if #exit_cond {
+                                break;
+                            }
+                            #update
                         }
                     }
                     proof { let _ = #trigger_fn_name(_lower); }
@@ -1974,12 +2034,12 @@ fn compile_guarded_quant_verified(
 
         (UnOp::Exists(..), BinOp::And(..)) => {
             let inv = quote_spanned! { expr_span => _res == {
-                let _upper = #quant_var;
+                let _cur = #quant_var;
                 #(#local_view)*
                 exists |#quant_var: #quant_type|
                     #![trigger #trigger_fn_name(#quant_var)]
                     #(#quant_attrs)*
-                    (_lower <= #quant_var < _upper) && (#body)
+                    (#visited_bound) && (#body)
             }};
             let assert_trigger = quote_spanned! { expr_span => { #(#local_view)* (#body) } };
 
@@ -1990,18 +2050,21 @@ fn compile_guarded_quant_verified(
                     let mut _res = false;
                     let mut #quant_var = _lower;
 
-                    if _lower < _upper {
-                        while #quant_var < _upper
+                    if #init_cond {
+                        loop
                             invariant #inv_bound, #inv,
                             decreases #decreases,
                         {
-                            if (#compiled_body) {
+                            if #in_guard && (#compiled_body) {
                                 proof { let _ = #trigger_fn_name(#quant_var); }
                                 assert(#assert_trigger);
                                 _res = true;
                                 break;
                             }
-                            #quant_var_update
+                            if #exit_cond {
+                                break;
+                            }
+                            #update
                         }
                     }
                     proof { let _ = #trigger_fn_name(_lower); }
@@ -2081,11 +2144,12 @@ fn get_guarded_range_quant_unverified(
     Ok(GuardedQuantifierUnverified { guard_op: guard_op.clone(), body: body.clone(), guarded_vars })
 }
 
-/// Compiles the initialization, update statement, initial condition, and while loop condition for a single variable
+/// Compiles the initialization and the closed-range loop pieces (see `ClosedRangeLoop`) for a single variable
 fn compile_single_quant_var(
     ctx: &LocalCtx,
+    expr: &Expr,
     var: &GuardedQuantifierVar,
-) -> Result<(TokenStream2, TokenStream2, TokenStream2, TokenStream2), Error> {
+) -> Result<(TokenStream2, ClosedRangeLoop), Error> {
     let quant_var = &var.quant_var;
     let quant_type = &var.quant_type;
     let is_char = match &**quant_type {
@@ -2096,22 +2160,8 @@ fn compile_single_quant_var(
         _ => false,
     };
 
-    let mut compiled_lower = compile_expr(ctx, &var.bounds.lower, VarMode::Owned, true)?;
-    if let BinOp::Lt(..) = var.bounds.lower_op {
-        compiled_lower = if is_char {
-            quote! { char::from_u32(#compiled_lower as u32 + 1).unwrap(); }
-        } else {
-            quote! { #compiled_lower + 1 }
-        };
-    };
-    let mut compiled_upper = compile_expr(ctx, &var.bounds.upper, VarMode::Owned, true)?;
-    if let BinOp::Le(..) = var.bounds.upper_op {
-        compiled_upper = if is_char {
-            quote! { char::from_u32(#compiled_upper as u32 + 1).unwrap(); }
-        } else {
-            quote! { #compiled_upper + 1 }
-        };
-    };
+    let compiled_lower = compile_expr(ctx, &var.bounds.lower, VarMode::Owned, true)?;
+    let compiled_upper = compile_expr(ctx, &var.bounds.upper, VarMode::Owned, true)?;
 
     let lower = Ident::new(&format!("_lower_{}", quant_var), quant_var.span());
     let upper = Ident::new(&format!("_upper_{}", quant_var), quant_var.span());
@@ -2123,21 +2173,10 @@ fn compile_single_quant_var(
         let mut #cur = #lower;
     };
 
-    let update = if is_char {
-        quote! { #cur = char::from_u32(#cur as u32 + 1).unwrap(); }
-    } else {
-        quote! { #cur += 1; }
-    };
+    let range_loop =
+        compile_closed_range_loop(expr, &lower, &upper, cur, &var.bounds, is_char, true)?;
 
-    let init_cond = quote! {
-        #lower < #upper
-    };
-
-    let while_cond = quote! {
-        #cur < #upper
-    };
-
-    Ok((init, update, init_cond, while_cond))
+    Ok((init, range_loop))
 }
 
 /// Compiles nested loops for the guarded variables, given the quantifier op (exists/forall), body expression, and guard operator (&&/==>)
@@ -2149,7 +2188,8 @@ fn compile_guarded_quant_loops_unverified(
     body: &Expr,
     guarded_vars: &Vec<GuardedQuantifierVar>,
 ) -> Result<TokenStream2, Error> {
-    let (init, update, init_cond, while_cond) = compile_single_quant_var(ctx, &guarded_vars[0])?;
+    let (init, ClosedRangeLoop { init_cond, in_guard, exit_cond, update }) =
+        compile_single_quant_var(ctx, expr, &guarded_vars[0])?;
 
     let mut body_ctx = ctx.clone();
     body_ctx.add(guarded_vars[0].quant_var.clone(), VarMode::Owned);
@@ -2212,9 +2252,13 @@ fn compile_guarded_quant_loops_unverified(
                 #init
 
                 if #init_cond {
-                    while #while_cond
-                    {
-                        #compiled_body
+                    loop {
+                        if #in_guard {
+                            #compiled_body
+                        }
+                        if #exit_cond {
+                            break;
+                        }
                         #update
                     }
                 }
@@ -2225,9 +2269,13 @@ fn compile_guarded_quant_loops_unverified(
                 #init
 
                 if #init_cond {
-                    while #while_cond
-                    {
-                        #compiled_body
+                    loop {
+                        if #in_guard {
+                            #compiled_body
+                        }
+                        if #exit_cond {
+                            break;
+                        }
                         #update
                     }
                 }
