@@ -1836,36 +1836,11 @@ fn get_guarded_range_quant_verified(
     })
 }
 
-/// The pieces of a loop that enumerates a quantified variable over the closed
-/// interval `lower ..= upper` given by a guard `<lower> <op> x <op> <upper>`.
-/// Shared by `exec_spec_verified!` and `exec_spec_unverified!`.
-///
-/// The loop has the shape
-/// ```ignore
-/// if #init_cond {
-///     let mut x = lower;
-///     loop {
-///         if #in_guard { ... }   // only values satisfying the original guard
-///         if #exit_cond { break; }
-///         #update
-///     }
-/// }
-/// ```
-/// We never compute `lower + 1` or `upper + 1` (or the `char` equivalents) to
-/// turn a strict or inclusive bound into a half-open range: such arithmetic
-/// overflows at the maximum of the quantified type (e.g. `0 <= x <= 255` with
-/// `x: u8`), and for `char` it may land in the surrogate gap. Instead, every
-/// value of the closed interval is visited, strict bounds are handled by
-/// `in_guard`, and the update is only executed when `x < upper`, so the
-/// successor of `x` always exists and is at most `upper`.
+/// Loop over `lower ..= upper` without computing `bound + 1`, which can overflow
 struct ClosedRangeLoop {
-    /// `lower <= upper`: the loop is entered iff the closed interval is nonempty
     init_cond: TokenStream2,
-    /// The original guard `lower <op> x <op> upper`, usable both in exec and in spec code
     in_guard: TokenStream2,
-    /// `x == upper`: the last value of the closed interval has been visited
     exit_cond: TokenStream2,
-    /// `x` := successor of `x` (only executed when `x < upper`)
     update: TokenStream2,
 }
 
@@ -1900,7 +1875,6 @@ fn compile_closed_range_loop(
         _ => return Err(unsupported()),
     };
     let update = if is_char {
-        // The successor of '\u{D7FF}' is '\u{E000}' (skipping the surrogates)
         quote! { #cur = char::from_u32(#cur as u32 + 1).unwrap_or('\u{E000}'); }
     } else {
         quote! { #cur += 1; }
@@ -1979,8 +1953,6 @@ fn compile_guarded_quant_verified(
 
     // Some common pieces
     let expr_span = expr.span();
-    // The values satisfying the guard that have been visited so far,
-    // i.e., those strictly below the current value `_cur`
     let visited_bound = quote! { #in_guard && #quant_var < _cur };
     let inv_bound = quote_spanned! { expr_span => _lower <= #quant_var <= _upper };
     let decreases = quote_spanned! { expr_span => _upper - #quant_var };
@@ -2144,7 +2116,7 @@ fn get_guarded_range_quant_unverified(
     Ok(GuardedQuantifierUnverified { guard_op: guard_op.clone(), body: body.clone(), guarded_vars })
 }
 
-/// Compiles the initialization and the closed-range loop pieces (see `ClosedRangeLoop`) for a single variable
+/// Compiles the initialization and the loop pieces for a single variable
 fn compile_single_quant_var(
     ctx: &LocalCtx,
     expr: &Expr,

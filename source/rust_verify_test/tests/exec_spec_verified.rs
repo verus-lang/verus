@@ -1784,9 +1784,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests quantifiers whose inclusive upper bound or strict lower bound is
-    /// not a constant. These must not require `bound + 1` to fit in the
-    /// quantified type.
+    /// Tests `<=` upper bounds and `<` lower bounds that are not constants.
     #[test] test_exec_spec_quant_variable_bounds IMPORTS.to_string() + verus_code_str! {
         exec_spec_verified! {
             spec fn small(x: u8) -> bool {
@@ -1849,8 +1847,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-/// Runs compiled quantifiers whose bounds are at the edge of the quantified type.
-/// The loop must enumerate exactly the values satisfying the guard.
+/// Tests quantifier bounds at the maximum of the quantified type.
 #[test]
 fn test_exec_spec_quant_bounds_overflow_runtime() {
     let source = code_str! {
@@ -1889,10 +1886,8 @@ fn test_exec_spec_quant_bounds_overflow_runtime() {
             assert!(exec_le_le(0, 255));
             assert!(exec_le_le(255, 255));
             assert!(!exec_le_le(255, 254));
-            // empty range: 255 < x <= 255
             assert!(exec_lt_le_all(255, 255));
             assert!(!exec_lt_le_all(254, 255));
-            // empty ranges must stay empty, nonempty ones nonempty
             assert!(!exec_lt_lt_any(255, 10));
             assert!(!exec_lt_lt_any(0, 1));
             assert!(!exec_lt_lt_any(254, 255));

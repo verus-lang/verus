@@ -490,9 +490,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-/// Runs compiled quantifiers whose bounds are at the edge of the quantified type.
-/// The loop bounds must not be computed as `upper + 1` / `lower + 1`, which would
-/// wrap around (or panic) and make the trusted `exec_*` disagree with its spec.
+/// Tests quantifier bounds at the maximum of the quantified type.
 #[test]
 fn test_exec_spec_unverified_quant_bounds_overflow_runtime() {
     let source = code_str! {
@@ -574,11 +572,8 @@ fn test_exec_spec_unverified_quant_bounds_overflow_runtime() {
             assert!(exec_count_le_le(255, 255));
             assert!(!exec_count_le_le(255, 254));
 
-            // empty range: 255 < x <= 255
             assert!(exec_all_lt_le(255, 255));
             assert!(!exec_all_lt_le(254, 255));
-
-            // empty ranges must stay empty, nonempty ones nonempty
             assert!(!exec_any_lt_lt(255, 10));
             assert!(!exec_any_lt_lt(0, 1));
             assert!(!exec_any_lt_lt(254, 255));
