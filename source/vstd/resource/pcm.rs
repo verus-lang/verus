@@ -61,7 +61,7 @@ impl<P: PCM> !Copy for Resource<P> {
 
 #[verifier::accept_recursive_types(P)]
 pub tracked struct CopyableResource<P: PCM> {
-    r: trusted::ra::CopyableResource<P>,
+    tracked r: trusted::ra::CopyableResource<P>,
 }
 
 impl<P: PCM> Copy for CopyableResource<P> {

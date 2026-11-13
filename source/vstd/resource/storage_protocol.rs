@@ -476,6 +476,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             &&& t1.union_prefer_right(s) =~= t2.union_prefer_right(s2)
         } by {
             let (p2, s2, t2) = choose|p2: P, s2: IMap<K, V>, t2: IMap<K, V>|
+                #![all_triggers]
                 {
                     &&& new_values0.contains((p2, s2))
                     &&& P::rel(P::op(p2, q), t2)
@@ -499,7 +500,6 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     /// Wrap this resource in a type that implements `Copy`,
     /// given that the resource is duplicable.
     pub proof fn into_copyable(tracked self, p: P) -> (tracked r: CopyableStorageResource<K, V, P>)
->>>>>>> 062941f07 (resource: prove PCM and storage protocol axioms from the trusted interfaces)
         requires
             P::op(P::op(self.value(), self.value()), p) == self.value(),
         ensures

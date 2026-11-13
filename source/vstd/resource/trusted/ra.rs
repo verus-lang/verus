@@ -432,7 +432,7 @@ impl<P: RA> Resource<P> {
     /// given that the resource is duplicable.
     ///
     /// Not yet proved in verus-belt.
-    pub axiom fn into_copyable(self, p: P) -> (r: CopyableResource<P>)
+    pub axiom fn into_copyable(tracked self, p: P) -> (tracked r: CopyableResource<P>)
         requires
             P::op(P::op(self.value(), self.value()), p) == self.value(),
         ensures
@@ -452,7 +452,7 @@ impl<P: RA> CopyableResource<P> {
     pub uninterp spec fn loc(self) -> Loc;
 
     /// Not yet proved in verus-belt.
-    pub axiom fn into_resource(self) -> (r: Resource<P>)
+    pub axiom fn into_resource(tracked self) -> (tracked r: Resource<P>)
         ensures
             r.loc() == self.loc(),
             r.value() == self.value(),
