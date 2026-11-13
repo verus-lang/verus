@@ -229,7 +229,12 @@ fn func_body_to_air(
     function: &FunctionSst,
     func_body_sst: &crate::sst::FuncSpecBodySst,
 ) -> Result<(), VirErr> {
-    let crate::sst::FuncSpecBodySst { decrease_when, termination_check, body_exp } = func_body_sst;
+    let crate::sst::FuncSpecBodySst {
+        decrease_when,
+        termination_check,
+        verify_termination_in_this_bucket,
+        body_exp,
+    } = func_body_sst;
     let pars = &function.x.pars;
     let mut typ_params = function.x.typ_params.clone();
     let mut typ_bounds = function.x.typ_bounds.clone();
@@ -285,7 +290,9 @@ fn func_body_to_air(
         def_reqs.push(expr);
     }
 
-    if let Some(termination_check) = termination_check {
+    if let Some(termination_check) =
+        termination_check.as_ref().filter(|_| *verify_termination_in_this_bucket)
+    {
         let termination_commands = crate::sst_to_air::body_stm_to_air(
             ctx,
             &function.span,

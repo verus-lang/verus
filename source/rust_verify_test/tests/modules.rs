@@ -406,3 +406,190 @@ test_verify_one_file! {
         pub uninterp open fn bar();
     } => Err(err) => assert_vir_error_msg(err, "expected `fn`")
 }
+// Cross-module recursive spec functions and decreases checks.
+// These tests exercise verification outcomes; SST structure needs separate validation.
+test_verify_one_file! {
+    #[test] cross_module_recursive_open_spec_visible verus_code! {
+        mod A {
+            use verus_builtin::{nat, SpecAdd, SpecSub};
+
+            pub open spec fn count(n: nat) -> nat
+                decreases n
+            {
+                if n == 0 { 0 } else { 1 + count((n - 1) as nat) }
+            }
+        }
+
+        mod B {
+            use crate::A::count;
+
+            proof fn check() {
+                assert(count(0) == 0);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] cross_module_recursive_closed_spec_hidden verus_code! {
+        mod A {
+            use verus_builtin::{nat, SpecAdd, SpecSub};
+
+            pub closed spec fn count(n: nat) -> nat
+                decreases n
+            {
+                if n == 0 { 0 } else { 1 + count((n - 1) as nat) }
+            }
+        }
+
+        mod B {
+            use crate::A::count;
+
+            proof fn check() {
+                assert(count(0) == 0); // FAILS: sibling cannot unfold a closed spec.
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] cross_module_recursive_invalid_decrease_rejected verus_code! {
+        mod A {
+            use verus_builtin::{nat, SpecAdd, SpecSub};
+
+            pub open spec fn count(n: nat) -> nat
+                decreases n
+            {
+                count(n) // FAILS: recursion does not decrease.
+            }
+        }
+
+        mod B {
+            use crate::A::count;
+
+            proof fn check() {
+                let _observed = count(0);
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+// A private decreases_by proof is checked in the defining module.
+test_verify_one_file! {
+    #[test] cross_module_recursive_decreases_by verus_code! {
+        mod A {
+            use verus_builtin::{nat, SpecAdd, SpecSub};
+            use verus_builtin::decreases_by;
+
+            pub open spec fn count(n: nat) -> nat
+                decreases n
+            {
+                decreases_by(check_count);
+                if n == 0 { 0 } else { 1 + count((n - 1) as nat) }
+            }
+
+            #[verifier(decreases_by)]
+            proof fn check_count(n: nat) {
+            }
+        }
+
+        mod B {
+            use crate::A::count;
+
+            proof fn check() {
+                assert(count(0) == 0);
+            }
+        }
+    } => Ok(())
+}
+
+// A recursive SCC spanning two modules must verify in both owning buckets.
+test_verify_one_file! {
+    #[test] cross_module_mutual_recursive_decrease verus_code! {
+        mod A {
+            use verus_builtin::{nat, SpecAdd, SpecSub};
+
+            pub open spec fn even(n: nat) -> nat
+                decreases n
+            {
+                if n == 0 { 0 } else { crate::B::odd((n - 1) as nat) }
+            }
+        }
+
+        mod B {
+            use verus_builtin::{nat, SpecAdd, SpecSub};
+
+            pub open spec fn odd(n: nat) -> nat
+                decreases n
+            {
+                if n == 0 { 0 } else { crate::A::even((n - 1) as nat) }
+            }
+        }
+
+        mod C {
+            use crate::A::even;
+
+            proof fn check() {
+                assert(even(0) == 0);
+            }
+        }
+    } => Ok(())
+}
+
+// Check the exported SST directly. Verification verdict tests alone pass on
+// unmodified Verus and do not establish the cross-bucket export contract.
+#[test]
+fn cross_module_recursive_sst_export_preserves_ownership() {
+    let temp = tempfile::tempdir().expect("temporary SST log directory");
+    let test_name = "cross_module_recursive_sst_export_preserves_ownership";
+    let log_dir = if let Some(root) = std::env::var_os("VERUS_TEST_LOG_DIR") {
+        let binary = std::env::current_exe()
+            .expect("test executable")
+            .file_name()
+            .expect("test binary name")
+            .to_string_lossy()
+            .into_owned();
+        let binary = match binary.rsplit_once('-') {
+            Some((stem, hash)) if hash.chars().all(|c| c.is_ascii_hexdigit()) => stem,
+            _ => binary.as_str(),
+        };
+        std::path::PathBuf::from(root).join(binary).join(test_name).join("log")
+    } else {
+        let dir = temp.path().join("log");
+        std::fs::create_dir(&dir).expect("create SST log directory");
+        THREAD_LOCAL_TEST_LOG_DIR.with(|slot| *slot.borrow_mut() = Some(dir.clone()));
+        dir
+    };
+
+    let source = verus_code! {
+        mod A {
+            use verus_builtin::{nat, SpecAdd, SpecSub};
+
+            pub open spec fn count(n: nat) -> nat
+                decreases n
+            {
+                if n == 0 { 0 } else { 1 + count((n - 1) as nat) }
+            }
+        }
+
+        mod B {
+            use crate::A::count;
+
+            proof fn check() {
+                assert(count(0) == 0);
+            }
+        }
+    };
+    let result = verify_one_file(test_name, source, &[]);
+    assert!(result.is_ok(), "native verification failed: {:?}", result);
+
+    for (bucket, owning) in [("A", true), ("B", false)] {
+        let file = log_dir.join(format!("t%{bucket}-sst.vir"));
+        let sst = std::fs::read_to_string(&file)
+            .unwrap_or_else(|e| panic!("missing SST at {}: {}", file.display(), e));
+        let implicit = ":kind (PostConditionKind DecreasesImplicitLemma)";
+        assert_eq!(sst.matches(implicit).count(), 1, "SST: {}", file.display());
+        let owner_flag = format!(":verify_termination_in_this_bucket {owning}");
+        assert!(sst.contains(&owner_flag), "incorrect owner provenance in {}", file.display());
+    }
+}

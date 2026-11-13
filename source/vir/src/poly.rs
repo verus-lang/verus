@@ -1354,7 +1354,12 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         } else {
             visit_exp_native(ctx, &mut state, &spec_body.body_exp)
         };
-        let spec_body = crate::sst::FuncSpecBodySst { decrease_when, termination_check, body_exp };
+        let spec_body = crate::sst::FuncSpecBodySst {
+            decrease_when,
+            termination_check,
+            verify_termination_in_this_bucket: spec_body.verify_termination_in_this_bucket,
+            body_exp,
+        };
         Some(spec_body)
     } else {
         None
