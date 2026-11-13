@@ -167,7 +167,7 @@ test_both! {
           open_atomic_invariant_in_proof!(credit => &i => inner => {
           });
         }
-    } => Err(err) => assert_vir_error_msg(err, "Cannot open invariant in Spec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot open invariant in spec mode")
 }
 
 test_both! {
@@ -1106,6 +1106,6 @@ test_verify_one_file! {
                 }
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use while in proof or spec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use loop in proof or spec mode")
     //} => Err(err) => assert_vir_error_msg(err, "creating an invariant credit in potentially-unbounded ghost code")
 }
