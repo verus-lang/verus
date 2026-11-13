@@ -489,3 +489,116 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+/// Tests quantifier bounds at the maximum of the quantified type.
+#[test]
+fn test_exec_spec_unverified_quant_bounds_overflow_runtime() {
+    let source = code_str! {
+        use vstd::prelude::*;
+        use vstd::contrib::exec_spec::*;
+
+        verus! {
+
+        exec_spec_unverified! {
+            spec fn is_seven(x: u8) -> bool {
+                x == 7
+            }
+
+            spec fn has_seven(n: u8) -> bool {
+                exists |x: u8| 0 <= x <= n && is_seven(x)
+            }
+
+            spec fn eq_u8(x: u8, y: u8) -> bool {
+                x == y
+            }
+
+            spec fn always(x: u8) -> bool {
+                true
+            }
+
+            spec fn count_le_le(lo: u8, hi: u8) -> bool {
+                exists |x: u8| lo <= x <= hi && eq_u8(x, hi)
+            }
+
+            spec fn all_lt_le(lo: u8, hi: u8) -> bool {
+                forall |x: u8| lo < x <= hi ==> !always(x)
+            }
+
+            spec fn any_lt_lt(lo: u8, hi: u8) -> bool {
+                exists |x: u8| lo < x < hi && always(x)
+            }
+
+            spec fn is_i8_max(x: i8) -> bool {
+                x == 127
+            }
+
+            spec fn any_i8_le_le(lo: i8, hi: i8) -> bool {
+                exists |x: i8| lo <= x <= hi && is_i8_max(x)
+            }
+
+            spec fn any_char_le_le(lo: char, hi: char) -> bool {
+                exists |c: char| #![trigger c as u32] lo <= c <= hi && c == hi
+            }
+
+            spec fn any_char_lt_le(lo: char, hi: char) -> bool {
+                exists |c: char| #![trigger c as u32] lo < c <= hi && true
+            }
+
+            spec fn not_x(c: char) -> bool {
+                c != 'x'
+            }
+
+            spec fn none_x_surrogates() -> bool {
+                forall |c: char| '\u{D000}' <= c < '\u{E000}' ==> not_x(c)
+            }
+
+            spec fn both_255(x: u8, y: u8) -> bool {
+                x == 255 && y == 255
+            }
+
+            spec fn any_pair(n: u8) -> bool {
+                exists |x: u8, y: u8| 0 <= x <= n && x <= y <= n && both_255(x, y)
+            }
+        }
+
+        } // verus!
+
+        fn main() {
+            assert!(exec_has_seven(255));
+            assert!(exec_has_seven(7));
+            assert!(!exec_has_seven(6));
+
+            assert!(exec_count_le_le(0, 255));
+            assert!(exec_count_le_le(255, 255));
+            assert!(!exec_count_le_le(255, 254));
+
+            assert!(exec_all_lt_le(255, 255));
+            assert!(!exec_all_lt_le(254, 255));
+            assert!(!exec_any_lt_lt(255, 10));
+            assert!(!exec_any_lt_lt(0, 1));
+            assert!(!exec_any_lt_lt(254, 255));
+            assert!(exec_any_lt_lt(253, 255));
+
+            assert!(exec_any_i8_le_le(-128, 127));
+            assert!(!exec_any_i8_le_le(-128, 126));
+
+            assert!(exec_any_char_le_le('\u{10FF00}', '\u{10FFFF}'));
+            assert!(exec_any_char_le_le('\u{D700}', '\u{E000}'));
+            assert!(!exec_any_char_lt_le('\u{10FFFF}', '\u{10FFFF}'));
+            assert!(exec_any_char_lt_le('\u{D7FF}', '\u{E000}'));
+            assert!(exec_none_x_surrogates());
+
+            assert!(exec_any_pair(255));
+            assert!(!exec_any_pair(254));
+        }
+    };
+    let tempdir = tempfile::tempdir().unwrap();
+    let entry_file = tempdir.path().join("quant_bounds.rs");
+    std::fs::write(&entry_file, format!("{FEATURE_PRELUDE}\n{USE_PRELUDE}\n{source}")).unwrap();
+    let output = run_verus_raw(&["--compile", entry_file.to_str().unwrap()], tempdir.path());
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let binary =
+        tempdir.path().join(if cfg!(windows) { "quant_bounds.exe" } else { "quant_bounds" });
+    let output = std::process::Command::new(binary).output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+}
