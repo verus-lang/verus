@@ -3,8 +3,8 @@ use super::super::slice::SliceIndexSpec;
 use super::core::IndexSpec;
 use super::iter::IteratorSpec;
 use super::range::{
-    ExRange, RangeBoundsSpec, slice_range_end, slice_range_start, slice_range_valid,
-    spec_range_inclusive_is_empty,
+    ExRange, RangeBoundsSpec, range_bounds_no_unwind, slice_range_end, slice_range_start,
+    slice_range_valid, spec_range_inclusive_is_empty,
 };
 
 use core::ops::{
@@ -675,6 +675,7 @@ pub assume_specification<T: Copy>[ <[T]>::copy_from_slice ](dst: &mut [T], src: 
         old(dst)@.len() == src@.len(),
     ensures
         final(dst)@ == src@,
+    no_unwind
 ;
 
 /// The sequence resulting from copying `old_slice[src_start..src_end]` to start
@@ -700,6 +701,7 @@ pub open spec fn copy_within_result<T>(
 }
 
 /// Copy the elements in range `src` within the slice to start at index `dest`.
+/// Bounds methods of a user-defined `RangeBounds` implementation may unwind.
 pub assume_specification<T: Copy, R: core::ops::RangeBounds<usize>>[ <[T]>::copy_within::<R> ](
     slice: &mut [T],
     src: R,
@@ -716,6 +718,7 @@ pub assume_specification<T: Copy, R: core::ops::RangeBounds<usize>>[ <[T]>::copy
             slice_range_end(&src, old(slice)@.len()),
             dest as int,
         ),
+    no_unwind when range_bounds_no_unwind::<R>()
 ;
 
 // The `chunks` method of a `[T]` returns an iterator of type `Chunks<'_, T>`,

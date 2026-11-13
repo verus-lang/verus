@@ -206,6 +206,14 @@ pub assume_specification[ <u32>::from_le_bytes ](bytes: [u8; 4]) -> u32
     no_unwind
 ;
 
+#[cfg(not(verus_verify_core))]
+pub assume_specification[ <u32>::to_le_bytes ](x: u32) -> (bytes: [u8; 4])
+    ensures
+        bytes@ == spec_u32_to_le_bytes(x),
+    opens_invariants none
+    no_unwind
+;
+
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
 pub exec fn u32_to_le_bytes(x: u32) -> (s: alloc::vec::Vec<u8>)
@@ -367,6 +375,14 @@ pub exec fn u64_from_le_bytes(s: &[u8]) -> (x: u64)
 pub assume_specification[ <u64>::from_le_bytes ](bytes: [u8; 8]) -> u64
     returns
         spec_u64_from_le_bytes(bytes@),
+    opens_invariants none
+    no_unwind
+;
+
+#[cfg(not(verus_verify_core))]
+pub assume_specification[ <u64>::to_le_bytes ](x: u64) -> (bytes: [u8; 8])
+    ensures
+        bytes@ == spec_u64_to_le_bytes(x),
     opens_invariants none
     no_unwind
 ;
