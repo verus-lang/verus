@@ -849,6 +849,7 @@ impl<'a> Builder<'a> {
             | ExprX::ProofInSpec(..)
             | ExprX::AirStmt(..)
             | ExprX::Old(..)
+            | ExprX::ProphecyDisallowed(..)
             | ExprX::Nondeterministic => Maybe::Some(bb),
 
             ExprX::AssertAssume { .. }

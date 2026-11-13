@@ -3867,6 +3867,7 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms, Maybe::Some(Value::Exp(exp1))))
         }
         ExprX::Old(e) => expr_to_stm_opt(ctx, state, e),
+        ExprX::ProphecyDisallowed(_, e) => expr_to_stm_opt(ctx, state, e),
         ExprX::MatchGuardFreeze(scrutinee, body) => {
             let (stms, e) = expr_to_stm_opt(ctx, state, body)?;
             let (stms0, scrutinee) = place_to_exp_pair(ctx, state, scrutinee)?;

@@ -755,6 +755,7 @@ fn output_invariant(
                 stream.extend(quote_spanned_vstd! { vstd, predicate.span() =>
                     #pred_struct_decl
                     impl<#type_params> #vstd::atomic_ghost::AtomicInvariantPredicate<#k_type, #v_type, #g_type> for #pred_self_ty #where_clause {
+                        #[verifier::prophetic]
                         #publish_kind spec fn atomic_inv(#tmp_k: #k_type, #tmp_v: #v_type, #tmp_g: #g_type) -> ::core::primitive::bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;
@@ -774,6 +775,7 @@ fn output_invariant(
                 stream.extend(quote_spanned_vstd! { vstd, predicate.span() =>
                     #pred_struct_decl
                     impl<#type_params> #vstd::invariant::InvariantPredicate<#k_type, #v_type> for #pred_self_ty #where_clause {
+                        #[verifier::prophetic]
                         #publish_kind spec fn inv(#tmp_k: #k_type, #tmp_v: #v_type) -> ::core::primitive::bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;
