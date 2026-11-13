@@ -856,6 +856,7 @@ fn synthesize_extension_impls(
             owning_module: ti.x.owning_module.clone(),
             auto_imported: ti.x.auto_imported,
             external_trait_blanket: false,
+            is_unsafe: false,
         };
         synthesized.push(ti.new_x(trait_implx));
     }
