@@ -580,7 +580,9 @@ impl<'tcx> Query<'tcx> {
         }
 
         let other_vir_crates = self.get_other_vir_crates()?;
-        vir::traits::set_krate_dyn_compatibility(&other_vir_crates, &mut cratex);
+        let merged_traits = self.get_merged_traits()?;
+        vir::traits::set_krate_dyn_compatibility(&other_vir_crates, &merged_traits, &mut cratex)
+            .map_err(|e| self.emit_error(e))?;
         let krate = Arc::new(cratex);
 
         let mut krate = vir::ast_sort::sort_krate(&krate);

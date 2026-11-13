@@ -2036,32 +2036,114 @@ fn get_dyn_compatibility(
     }
 }
 
-pub fn set_krate_dyn_compatibility(imported: &Vec<Krate>, krate: &mut crate::ast::KrateX) {
-    let mut tr_map: HashMap<Path, Trait> = HashMap::new();
-    for tr in &krate.traits {
-        tr_map.insert(tr.x.name.clone(), tr.clone());
-    }
+/// Compute dyn_compatible for each trait declared in krate.
+///
+/// A trait may be specified piecewise across several crates
+/// (via multiple external_trait_specification declarations).
+/// For such traits, dyn compatibility is computed on the merged trait,
+/// since a downstream specification can add methods/specs that make the trait
+/// no longer verus-dyn-compatible.
+/// If an upstream crate has already treated such a trait as verus-dyn-compatible
+/// (and so may have exported facts relying on dyn T: T),
+/// but the merged trait is not verus-dyn-compatible, the merge is rejected.
+pub fn set_krate_dyn_compatibility(
+    imported: &Vec<Krate>,
+    merged_traits: &MergedTraits,
+    krate: &mut crate::ast::KrateX,
+) -> Result<(), VirErr> {
+    use crate::ast::DynCompatible;
+    let tr_map: &HashMap<Path, Trait> = &merged_traits.trait_map;
     let mut fun_map: HashMap<Fun, Function> = HashMap::new();
-    for f in &krate.functions {
+    for f in imported.iter().flat_map(|k| k.functions.iter()).chain(krate.functions.iter()) {
         fun_map.insert(f.x.name.clone(), f.clone());
     }
     let mut unsized_blanketed_traits: HashSet<Path> = HashSet::new();
-    for ti in &krate.trait_impls {
+    for ti in merged_traits.trait_impls.iter() {
         if is_unsized_blanket_impl(ti) {
             unsized_blanketed_traits.insert(ti.x.trait_path.clone());
         }
     }
-    let mut dyn_map: HashMap<Path, Arc<crate::ast::DynCompatible>> = HashMap::new();
+    let local_traits: HashSet<Path> = krate.traits.iter().map(|t| t.x.name.clone()).collect();
+    // For each trait, the verdicts computed by the imported crates that declare it
+    let mut imported_verdicts: HashMap<Path, Vec<(Trait, Arc<DynCompatible>)>> = HashMap::new();
     for k in imported {
         for tr in &k.traits {
             let d = tr.x.dyn_compatible.as_ref().expect("imported dyn_compatible").clone();
-            dyn_map.insert(tr.x.name.clone(), d);
+            imported_verdicts.entry(tr.x.name.clone()).or_default().push((tr.clone(), d));
+        }
+    }
+    // Reuse an imported verdict only if the trait is declared by exactly one crate;
+    // otherwise, recompute the verdict on the merged trait.
+    let mut dyn_map: HashMap<Path, Arc<DynCompatible>> = HashMap::new();
+    for (path, verdicts) in imported_verdicts.iter() {
+        if verdicts.len() == 1 && !local_traits.contains(path) {
+            dyn_map.insert(path.clone(), verdicts[0].1.clone());
+        }
+    }
+    for tr in merged_traits.traits.iter() {
+        let path = &tr.x.name;
+        let Some(verdicts) = imported_verdicts.get(path) else { continue };
+        if verdicts.len() == 1 && !local_traits.contains(path) {
+            continue;
+        }
+        let d =
+            get_dyn_compatibility(tr_map, &unsized_blanketed_traits, &fun_map, &mut dyn_map, path);
+        if matches!(&*d, DynCompatible::Accept) {
+            continue;
+        }
+        if let Some((upstream, _)) =
+            verdicts.iter().find(|(_, v)| matches!(&**v, DynCompatible::Accept))
+        {
+            let reason = match &*d {
+                DynCompatible::Accept => unreachable!(),
+                DynCompatible::Reject { reason } => reason.clone(),
+                DynCompatible::RejectUnsizedBlanketImpl { .. } => {
+                    "it has an unsized blanket impl".to_string()
+                }
+            };
+            // The crate that declared a particular copy of the trait
+            // (via external_trait_specification, or the trait itself)
+            let spec_crate = |t: &Trait| match &t.x.proxy {
+                Some(proxy) => proxy.x.krate.to_string(),
+                None => t.x.name.krate.to_string(),
+            };
+            let name = path_as_friendly_rust_name(path);
+            let local = krate.traits.iter().find(|t| &t.x.name == path);
+            // Blame the first imported copy that is itself not dyn-compatible;
+            // otherwise blame the local copy;
+            // otherwise, the combination of the imported copies is to blame.
+            let culprit = verdicts.iter().find(|(_, v)| !matches!(&**v, DynCompatible::Accept));
+            let (span, culprit_desc) = match (culprit, local) {
+                (Some((t, _)), _) => (&t.span, format!("crate `{}`", spec_crate(t))),
+                (None, Some(t)) => (&t.span, format!("crate `{}`", spec_crate(t))),
+                (None, None) => {
+                    let mut crates: Vec<String> =
+                        verdicts.iter().map(|(t, _)| format!("`{}`", spec_crate(t))).collect();
+                    crates.dedup();
+                    (
+                        &tr.span,
+                        format!("the combined specifications from crates {}", crates.join(", ")),
+                    )
+                }
+            };
+            let upstream_crate = spec_crate(upstream);
+            return Err(crate::messages::error(
+                span,
+                format!(
+                    "{culprit_desc} makes trait `{name}` not Verus dyn-compatible ({reason}), \
+                    but crate `{upstream_crate}` already treats `{name}` as Verus dyn-compatible"
+                ),
+            )
+            .secondary_label(
+                &upstream.span,
+                format!("crate `{upstream_crate}` specifies `{name}` here"),
+            ));
         }
     }
     for tr in &mut krate.traits {
         assert!(tr.x.dyn_compatible.is_none());
         let d = get_dyn_compatibility(
-            &tr_map,
+            tr_map,
             &unsized_blanketed_traits,
             &fun_map,
             &mut dyn_map,
@@ -2069,4 +2151,5 @@ pub fn set_krate_dyn_compatibility(imported: &Vec<Krate>, krate: &mut crate::ast
         );
         Arc::make_mut(tr).x.dyn_compatible = Some(d);
     }
+    Ok(())
 }
