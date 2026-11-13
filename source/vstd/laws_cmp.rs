@@ -4,6 +4,10 @@
 use super::laws_eq::*;
 use super::prelude::*;
 use super::std_specs::cmp::{OrdSpec, PartialEqSpec, PartialOrdSpec};
+#[cfg(feature = "alloc")]
+use alloc::{boxed::Box, rc::Rc, sync::Arc};
+#[cfg(feature = "alloc")]
+use core::alloc::Allocator;
 use core::cmp::Ordering;
 
 verus! {
@@ -266,6 +270,66 @@ pub broadcast proof fn lemma_option_obeys_cmp_spec<T: Ord>()
     }
 }
 
+/// `obeys_cmp` makes `eq_spec` reflexive: `x.partial_cmp_spec(&x)` is
+/// `Some(x.cmp_spec(&x))`, and `Less` or `Greater` would contradict antisymmetry
+/// with `y = x`.
+proof fn lemma_obeys_cmp_eq_spec_reflexive<T: Ord>()
+    requires
+        obeys_cmp::<T>(),
+    ensures
+        forall|x: T| #[trigger] x.eq_spec(&x),
+{
+    reveal(obeys_cmp_ord);
+    reveal(obeys_partial_cmp_spec_properties);
+    assert forall|x: T| #[trigger] x.eq_spec(&x) by {
+        assert(x.partial_cmp_spec(&x) == Some(x.cmp_spec(&x)));
+    }
+}
+
+/* Box, Rc, Arc */
+
+#[cfg(feature = "alloc")]
+macro_rules! smart_ptr_laws_cmp {
+    ($modname:ident, $ptr:ident) => {
+        verus! {
+        mod $modname {
+            use super::*;
+
+            pub broadcast proof fn lemma_obeys_cmp_spec<T: Ord, A: Allocator>()
+                requires
+                    obeys_cmp::<T>(),
+                ensures
+                    #[trigger] obeys_cmp::<$ptr<T, A>>(),
+            {
+                broadcast use group_laws_eq;
+                // Rc and Arc's eq laws need reflexivity.
+                lemma_obeys_cmp_eq_spec_reflexive::<T>();
+                assert(obeys_eq::<$ptr<T, A>>());
+
+                assert(obeys_cmp_partial_ord::<$ptr<T, A>>() && obeys_cmp_ord::<$ptr<T, A>>()) by {
+                    reveal(obeys_cmp_partial_ord);
+                    reveal(obeys_cmp_ord);
+                }
+
+                assert(obeys_partial_cmp_spec_properties::<$ptr<T, A>>()) by {
+                    reveal(obeys_cmp_partial_ord);
+                    reveal(obeys_partial_cmp_spec_properties);
+                }
+            }
+        }
+        }
+    };
+}
+
+#[cfg(feature = "alloc")]
+smart_ptr_laws_cmp!(box_laws, Box);
+
+#[cfg(feature = "alloc")]
+smart_ptr_laws_cmp!(rc_laws, Rc);
+
+#[cfg(feature = "alloc")]
+smart_ptr_laws_cmp!(arc_laws, Arc);
+
 pub broadcast group group_laws_cmp {
     u8_laws::lemma_obeys_cmp_spec,
     i8_laws::lemma_obeys_cmp_spec,
@@ -293,6 +357,12 @@ pub broadcast group group_laws_cmp {
     tuple_10_laws::lemma_obeys_cmp_spec,
     tuple_11_laws::lemma_obeys_cmp_spec,
     tuple_12_laws::lemma_obeys_cmp_spec,
+    #[cfg(feature = "alloc")]
+    box_laws::lemma_obeys_cmp_spec,
+    #[cfg(feature = "alloc")]
+    rc_laws::lemma_obeys_cmp_spec,
+    #[cfg(feature = "alloc")]
+    arc_laws::lemma_obeys_cmp_spec,
 }
 
 } // verus!

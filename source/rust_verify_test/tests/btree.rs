@@ -1429,3 +1429,45 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_btree_map_shared_ptr_keys verus_code! {
+        use std::collections::BTreeMap;
+        use std::rc::Rc;
+        use std::sync::Arc;
+        use vstd::prelude::*;
+
+        // The `m@.contains_key(k)` asserts give the borrowed lookups a witness key.
+        fn rc_keys() {
+            let k3 = Rc::new(3u64);
+            let mut m = BTreeMap::<Rc<u64>, u8>::new();
+            m.insert(k3.clone(), 30);
+            assert(m@.contains_key(k3));
+            match m.get(&3u64) {
+                Some(v) => assert(*v == 30),
+                None => assert(false),
+            }
+            // A separately allocated Rc with an equal pointee is the same key.
+            let old = m.insert(Rc::new(3u64), 31);
+            assert(old == Some(30u8));
+        }
+
+        fn arc_keys() {
+            let mut m = BTreeMap::<Arc<u64>, u8>::new();
+            let k = Arc::new(1u64);
+            m.insert(k, 10);
+            assert(m@.contains_key(k));
+            let r = m.remove(&1u64);
+            assert(r == Some(10u8));
+        }
+
+        fn box_keys() {
+            let mut m = BTreeMap::<Box<u64>, u8>::new();
+            let k = Box::new(1u64);
+            m.insert(k, 10);
+            assert(m@.contains_key(k));
+            let b = m.contains_key(&1u64);
+            assert(b);
+        }
+    } => Ok(())
+}

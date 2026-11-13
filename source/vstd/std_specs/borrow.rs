@@ -7,8 +7,12 @@ use alloc::borrow::Cow;
 use alloc::borrow::ToOwned;
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
+#[cfg(feature = "alloc")]
+use alloc::rc::Rc;
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 use alloc::string::String;
+#[cfg(feature = "alloc")]
+use alloc::sync::Arc;
 #[cfg(feature = "alloc")]
 use core::alloc::Allocator;
 use core::borrow::Borrow;
@@ -142,6 +146,28 @@ impl<T: ?Sized> BorrowSpecImpl<T> for &T {
 
 #[cfg(feature = "alloc")]
 impl<T: ?Sized, A: Allocator> BorrowSpecImpl<T> for Box<T, A> {
+    open spec fn obeys_borrow_spec() -> bool {
+        true
+    }
+
+    open spec fn borrow_spec(&self) -> &T {
+        &**self
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<T: ?Sized, A: Allocator> BorrowSpecImpl<T> for Rc<T, A> {
+    open spec fn obeys_borrow_spec() -> bool {
+        true
+    }
+
+    open spec fn borrow_spec(&self) -> &T {
+        &**self
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<T: ?Sized, A: Allocator> BorrowSpecImpl<T> for Arc<T, A> {
     open spec fn obeys_borrow_spec() -> bool {
         true
     }
