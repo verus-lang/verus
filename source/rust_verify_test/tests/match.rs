@@ -780,6 +780,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] dot_dot_patterns verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Clone, Copy)]
         struct R { }
 

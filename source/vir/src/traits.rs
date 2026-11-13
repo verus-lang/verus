@@ -237,6 +237,8 @@ fn is_copy_trait(trait_path: &Path) -> bool {
 
 // We consider methods for external traits to be static.
 pub fn demote_external_traits(krate: &Krate, lookup: &DemoteTraitLookup) -> Result<Krate, VirErr> {
+    check_unsafe_trait_impls(krate, lookup)?;
+
     let DemoteTraitLookup { traits, funs, .. } = &lookup;
 
     let mut kratex = (**krate).clone();
@@ -300,6 +302,20 @@ pub fn demote_external_traits(krate: &Krate, lookup: &DemoteTraitLookup) -> Resu
         }
     }
     Ok(Arc::new(kratex))
+}
+
+fn check_unsafe_trait_impls(krate: &Krate, lookup: &DemoteTraitLookup) -> Result<(), VirErr> {
+    for trait_impl in krate.trait_impls.iter() {
+        if trait_impl.x.is_unsafe && !lookup.traits.contains(&trait_impl.x.trait_path) {
+            return Err(error(
+                &trait_impl.span,
+                format!("`unsafe impl` of trait `{:}` which is unknown to Verus (i.e., the trait is either declared outsdie the verus! macro or it is marked as `external`)", path_as_friendly_rust_name(&trait_impl.x.trait_path)),
+            )
+            .help("since the trait is unsafe, there may be obligations cannot check without a specification for the trait")
+            .help("you may be able to give Verus a spec for this trait using `external_trait_specification`"));
+        }
+    }
+    Ok(())
 }
 
 /// Walk all expressions in the function and demote all Calls to foreign trait functions
@@ -840,6 +856,7 @@ fn synthesize_extension_impls(
             owning_module: ti.x.owning_module.clone(),
             auto_imported: ti.x.auto_imported,
             external_trait_blanket: false,
+            is_unsafe: false,
         };
         synthesized.push(ti.new_x(trait_implx));
     }

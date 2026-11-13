@@ -15,6 +15,15 @@ pub trait ExCopy: Clone {
     type ExternalTraitSpecificationFor: core::marker::Copy;
 }
 
+// The safety obligation of `TrivialClone` (that `clone` is equivalent to a copy)
+// is special-cased internally by Verus:
+// for each `TrivialClone` impl, Verus adds `ensures ret == self`
+// to the corresponding `Clone::clone` implementation.
+#[verifier::external_trait_specification]
+pub unsafe trait ExTrivialClone: Clone {
+    type ExternalTraitSpecificationFor: core::clone::TrivialClone;
+}
+
 /*
 #[verifier::external_fn_specification]
 pub fn ex_clone_clone_from<T: Clone>(a: &mut T, b: &T)
