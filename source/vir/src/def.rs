@@ -1104,7 +1104,7 @@ pub fn fn_au_inner_mask() -> Fun {
 }
 
 pub fn fn_resolution_atomic_update() -> Fun {
-    fun!(CrateId::Vstd => "atomic", "Resolution", "atomic_update")
+    fun!(CrateId::Vstd => "atomic", "Resolution"; "atomic_update")
 }
 
 pub fn fn_pred_args() -> Fun {
