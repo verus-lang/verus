@@ -11,6 +11,9 @@ pub(crate) struct State {
     pub(crate) trait_decls: Vec<TraitDecl>,
     pub(crate) datatype_decls: Vec<DatatypeDecl>,
     pub(crate) trait_impls: Vec<TraitImpl>,
+    /// Traits the generated program declares. A bound on any other trait (one Verus has no
+    /// declaration for, e.g. a supertrait from an unverified dependency) is dropped.
+    pub(crate) known_traits: Option<std::collections::HashSet<Path>>,
 }
 
 impl State {
@@ -24,6 +27,7 @@ impl State {
             trait_decls: Vec::new(),
             datatype_decls: Vec::new(),
             trait_impls: Vec::new(),
+            known_traits: None,
         }
     }
 
