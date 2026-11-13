@@ -65,6 +65,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_async_function_ensures_called_from_other_module verus_code! {
+        mod m1 {
+            use vstd::prelude::*;
+            pub async fn foo() -> (ret: usize)
+                ensures
+                    ret == 1,
+            {
+                1
+            }
+        }
+        mod m2 {
+            use vstd::prelude::*;
+            fn bar() {
+                let future = crate::m1::foo();
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_basic_async_function_lifetime_fail verus_code! {
         use vstd::prelude::*;
         async fn foo(x :&usize) -> (ret: usize)
