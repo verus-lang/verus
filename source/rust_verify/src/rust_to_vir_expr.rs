@@ -4594,7 +4594,6 @@ pub(crate) fn stmt_to_vir<'tcx>(
                     // the verified program resolves calls.
                     ItemKind::Fn { .. }
                         if bctx.in_ghost
-                            && !vattrs.unerased_proxy
                             && !vattrs.external_fn_specification
                             && get_mode(Mode::Exec, attrs) == Mode::Exec =>
                     {

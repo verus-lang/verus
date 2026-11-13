@@ -6307,6 +6307,24 @@ pub(crate) fn is_encoded_const(attrs: &Vec<Attribute>) -> bool {
     })
 }
 
+pub(crate) fn is_external(attrs: &Vec<Attribute>) -> bool {
+    attrs.iter().any(|attr| {
+        // verifier::external
+        attr.path().segments.len() == 2
+            && attr.path().segments[0].ident == "verifier"
+            && attr.path().segments[1].ident == "external"
+        // verifier(external)
+        || attr.path().segments.len() == 1
+            && attr.path().segments[0].ident == "verifier"
+            && match &attr.meta {
+                verus_syn::Meta::List(list) => {
+                    matches!(list.tokens.to_string().as_str(), "external")
+                }
+                _ => false,
+           }
+    })
+}
+
 /// Constructs #[name(tokens)]
 macro_rules! declare_mk_rust_attr {
     ($name:ident, $s:ident) => {
