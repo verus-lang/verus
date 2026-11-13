@@ -304,6 +304,7 @@ fn handle_autospec<'tcx>(
                     exec_allows_no_decreases_clause: false,
                     tracked_swap: false,
                     tracked_take_option: false,
+                    create_open_invariant_credit: false,
                     is_async: false,
                     is_drop: false,
                 }),
@@ -1603,6 +1604,7 @@ fn make_attributes<'tcx>(
         },
         tracked_swap: vattrs.tracked_swap,
         tracked_take_option: vattrs.tracked_take_option,
+        create_open_invariant_credit: vattrs.create_open_invariant_credit,
         is_async: is_async,
         is_drop: is_drop,
     };
@@ -1626,6 +1628,9 @@ pub(crate) fn fixup_unerased_proxy_path(
 pub(crate) struct FunctionInfo<'tcx> {
     pub function: vir::ast::FunctionStub,
     pub function_for_autospec: Option<vir::ast::FunctionStub>,
+    /// Auxiliary spec function generated for some automatically-derived functions
+    /// (see automatic_derive.rs)
+    pub autoderive_aux_function: Option<vir::ast::FunctionStub>,
 
     pub pre_header: PreHeader,
     pub def_id: DefId,
@@ -1670,12 +1675,14 @@ pub(crate) enum FunctionOrConstInfo<'tcx> {
 
 impl<'tcx> FunctionOrConstInfo<'tcx> {
     pub(crate) fn iter_stubs<'a>(&'a self) -> impl Iterator<Item = &'a vir::ast::FunctionStub> {
-        let (f, opt_f) = match self {
-            FunctionOrConstInfo::Function(f) => (&f.function, f.function_for_autospec.as_ref()),
-            FunctionOrConstInfo::Const(f) => (&f.function, f.function_for_autospec.as_ref()),
-            FunctionOrConstInfo::ForeignFunction(f) => (&f.function_stub, None),
+        let (f, opt_f, opt_aux) = match self {
+            FunctionOrConstInfo::Function(f) => {
+                (&f.function, f.function_for_autospec.as_ref(), f.autoderive_aux_function.as_ref())
+            }
+            FunctionOrConstInfo::Const(f) => (&f.function, f.function_for_autospec.as_ref(), None),
+            FunctionOrConstInfo::ForeignFunction(f) => (&f.function_stub, None, None),
         };
-        std::iter::once(f).chain(opt_f.into_iter())
+        std::iter::once(f).chain(opt_f.into_iter()).chain(opt_aux.into_iter())
     }
 }
 
@@ -2346,6 +2353,13 @@ pub(crate) fn check_item_fn<'tcx>(
         func = fix_external_fn_specification_trait_method_decl_typs_stub(sig.span, func)?;
     }
 
+    let autoderive_aux_function = match (autoderive_action, &body_id) {
+        (Some(action), CheckItemFnEither::BodyId(_)) => {
+            crate::automatic_derive::make_aux_function_stub(ctxt, sig.span, action, &mut func, id)?
+        }
+        _ => None,
+    };
+
     let mut function = ctxt.spanned_new(sig.span, func);
 
     let autospec = handle_autospec(ctxt, sig.span, id, &vattrs, &function.x)?;
@@ -2358,10 +2372,14 @@ pub(crate) fn check_item_fn<'tcx>(
     if let Some(f) = &autospec.new_func {
         state.insert_fun_warn_config(ctxt, &f.x.name, id);
     }
+    if let Some(f) = &autoderive_aux_function {
+        state.insert_fun_warn_config(ctxt, &f.x.name, id);
+    }
 
     infos.push(FunctionOrConstInfo::Function(FunctionInfo {
         function,
         function_for_autospec: autospec.new_func,
+        autoderive_aux_function,
         pre_header,
 
         body_id: match body_id {
@@ -2411,6 +2429,7 @@ pub(crate) fn finish_function<'tcx>(
     let FunctionInfo {
         ref function,
         ref function_for_autospec,
+        ref autoderive_aux_function,
         ref pre_header,
         ref body_id,
         ref sig,
@@ -2649,14 +2668,18 @@ pub(crate) fn finish_function<'tcx>(
             };
 
             let bctx = bctx.as_ref().unwrap();
-            crate::automatic_derive::modify_derived_item(
+            let aux_function = crate::automatic_derive::modify_derived_item(
                 bctx,
                 def_id,
                 &inputs,
                 sig.span,
                 action,
                 &mut functionx,
+                autoderive_aux_function.as_ref(),
             )?;
+            if let Some(aux_function) = aux_function {
+                functions.push((aux_function, ErasureInfo::new()));
+            }
         }
     }
 

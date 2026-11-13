@@ -615,7 +615,7 @@ fn check_one_expr(
                 ));
             }
         }
-        ExprX::OpenInvariant(_inv, _binder, body, _atomicity) => {
+        ExprX::OpenInvariant(_credit, _inv, _binder, body, _atomicity) => {
             assert_no_early_exit_in_inv_block(&body.span, body)?;
         }
         ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
@@ -1764,6 +1764,21 @@ fn check_datatype(ctxt: &Ctxt, dt: &Datatype, emit: &mut EmitErrorState) -> Resu
         for field in variant.fields.iter() {
             let typ = &field.a.0;
             check_typ(ctxt, typ, &dt.span, emit)?;
+
+            if dt.x.mode == Mode::Exec && field.a.1 != Mode::Exec {
+                let (wrapper, mode) = match field.a.1 {
+                    Mode::Spec => ("Ghost", "ghost"),
+                    Mode::Proof => ("Tracked", "tracked"),
+                    Mode::Exec => unreachable!(),
+                };
+                emit.diags.push(VirErrAs::Warning(error(
+                    &dt.span,
+                    "field in an exec-mode datatype cannot have a mode qualifier; this will eventually be a hard error",
+                )
+                .help(format!("try using the `{wrapper:}` type to embed {mode:} data in an exec-mode struct"))
+                .help("if you meant for the datatype to be only used in ghost code, mark it `ghost struct` or `tracked struct`")
+                ));
+            }
         }
     }
 

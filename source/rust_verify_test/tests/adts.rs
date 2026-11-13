@@ -730,12 +730,12 @@ test_verify_one_file! {
 }
 
 const FIELD_UPDATE_MODES: &str = verus_code_str! {
-    struct S {
+    tracked struct S {
         ghost a: nat,
         b: i32,
     }
 
-    struct T {
+    tracked struct T {
         tracked s: S,
         c: bool,
     }

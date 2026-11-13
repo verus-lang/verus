@@ -125,6 +125,7 @@ pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
 pub const CLOSURE_RETURN_VALUE_NAME: &str = "closure_return%";
 
 pub const AUTOSPEC_FUNC_PREFIX: &str = "returns_clause_autospec%";
+pub const CLONE_FUNC_PREFIX: &str = "clone_clause_autoderived%";
 
 pub const FNDEF_TYPE: &str = "fndef";
 pub const FNDEF_SINGLETON: &str = "fndef_singleton";
@@ -140,6 +141,7 @@ pub const FUEL_BOOL_DEFAULT: &str = "fuel_bool_default";
 pub const FUEL_DEFAULTS: &str = "fuel_defaults";
 pub const RETURN_VALUE: &str = "return%";
 pub const RETURN_VALUE_ASYNC_FUTURE: &str = "return_async_future%";
+pub const OTHER_PARAM_VALUE: &str = "other%";
 pub const DEFAULT_ENSURES: &str = "default_ensures";
 pub const U_HI: &str = "uHi";
 pub const I_LO: &str = "iLo";
@@ -1274,4 +1276,12 @@ pub fn fn_fp_postcondition_name(op: UninterpretedFloatBinaryOp) -> Fun {
             crate::fun!(CrateId::Vstd => "std_specs", "cmp"; "ge_ensures")
         }
     }
+}
+
+pub fn clone_spec_fn_name(path: &Path) -> Fun {
+    let name = path.last_segment();
+    let Segment::Impl(d) = name else { panic!("clone_spec_fn_name") };
+    let name = Segment::V(Arc::new(CLONE_FUNC_PREFIX.to_string()), d);
+    let p = path.pop_segment().push_segment(name);
+    Arc::new(FunX { path: p })
 }

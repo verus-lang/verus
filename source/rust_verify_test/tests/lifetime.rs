@@ -1312,16 +1312,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_ghost_fields verus_code! {
-        struct X {
-            u: u64,
+    #[test] tracked_struct_ghost_fields verus_code! {
+        tracked struct X {
+            tracked u: u64,
         }
 
-        // REVIEW: consider requiring structs to be marked 'tracked' or 'ghost' to have
-        // tracked/ghost fields
-        // (note: the reason this test works is that, even though the struct is exec,
-        // it is used in a tracked-mode way)
-        struct S {
+        tracked struct S {
             ghost x: X,
             ghost y: X,
         }
@@ -1334,12 +1330,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_tracked_fields verus_code! {
-        struct X {
-            u: u64,
+    #[test] tracked_struct_tracked_fields verus_code! {
+        tracked struct X {
+            tracked u: u64,
         }
 
-        struct S {
+        tracked struct S {
             tracked x: X,
             tracked y: X,
         }
@@ -1352,17 +1348,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_ghost_fields_2 verus_code! {
-        struct Y {
-            u: u64,
+    #[test] tracked_struct_ghost_fields_2 verus_code! {
+        tracked struct Y {
+            tracked u: u64,
         }
 
-        struct X {
-            u: u64,
-            y: Y,
+        tracked struct X {
+            tracked u: u64,
+            tracked y: Y,
         }
 
-        struct S {
+        tracked struct S {
             ghost x: Y,
             ghost y: Y,
         }
@@ -1375,17 +1371,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_tracked_fields_2 verus_code! {
-        struct Y {
-            u: u64,
+    #[test] tracked_struct_tracked_fields_2 verus_code! {
+        tracked struct Y {
+            tracked u: u64,
         }
 
-        struct X {
-            u: u64,
-            y: Y,
+        tracked struct X {
+            tracked u: u64,
+            tracked y: Y,
         }
 
-        struct S {
+        tracked struct S {
             tracked x: Y,
             tracked y: Y,
         }
@@ -1401,17 +1397,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_ghost_fields_fn_style verus_code! {
-        struct Y {
-            u: u64,
+    #[test] tracked_struct_ghost_fields_fn_style verus_code! {
+        tracked struct Y {
+            tracked u: u64,
         }
 
-        struct X {
-            u: u64,
-            y: Y,
+        tracked struct X {
+            tracked u: u64,
+            tracked y: Y,
         }
 
-        struct S(ghost Y, ghost Y);
+        tracked struct S(ghost Y, ghost Y);
 
         proof fn test(tracked x: &X) {
             // this is ok, both uses of x are in ghost position
@@ -1421,20 +1417,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_tracked_fields_fn_style verus_code! {
-        struct Y {
-            u: u64,
+    #[test] tracked_struct_tracked_fields_fn_style verus_code! {
+        tracked struct Y {
+            tracked u: u64,
         }
 
-        struct X {
-            u: u64,
-            y: Y,
+        tracked struct X {
+            tracked u: u64,
+            tracked y: Y,
         }
 
-        struct S(tracked Y, tracked Y);
+        tracked struct S(tracked Y, tracked Y);
 
         proof fn test(tracked x: &X) {
-            // this is ok, both uses of x are in ghost position
             let tracked s = S(x.y, x.y);
         }
     } => Err(err) => assert_rust_error_msgs(err, &[

@@ -563,6 +563,7 @@ struct State {
     pub(crate) ret_mode: Option<Mode>,
     pub(crate) atomic_insts: Option<AtomicInstCollector>,
     pub(crate) loops: HashMap<Label, Loop>,
+    pub(crate) unbounded_ghost_context: Option<(UnboundedGhostContext, Span)>,
 }
 
 mod typing {
@@ -624,6 +625,28 @@ mod typing {
                 internal_undo: Some(Box::new(move |state| {
                     state.in_pure = in_pure;
                 })),
+            }
+        }
+
+        #[must_use]
+        pub(super) fn push_unbounded_ghost_context<'a>(
+            &'a mut self,
+            kind: UnboundedGhostContext,
+            span: &Span,
+        ) -> Typing<'a> {
+            if self.unbounded_ghost_context.is_none() {
+                self.internal_state.unbounded_ghost_context = Some((kind, span.clone()));
+                Typing {
+                    internal_state: self.internal_state,
+                    internal_undo: Some(Box::new(move |state| {
+                        state.unbounded_ghost_context = None;
+                    })),
+                }
+            } else {
+                Typing {
+                    internal_state: self.internal_state,
+                    internal_undo: Some(Box::new(move |_| {})),
+                }
             }
         }
 
@@ -901,6 +924,27 @@ impl AtomicInstCollector {
 
         Ok(())
     }
+}
+
+/// Describes a body of ghost code that could run an unbounded number of times
+/// in between executable statements.
+#[derive(Clone, Copy)]
+enum UnboundedGhostContext {
+    Closure,
+    AtomicallyLoop,
+    ProofFn,
+}
+
+fn err_create_credit(c: UnboundedGhostContext, span: &Span, expr_span: &Span) -> VirErr {
+    error(expr_span, format!("creating an invariant credit in potentially-unbounded ghost code"))
+        .secondary_label(
+            span,
+            match c {
+                UnboundedGhostContext::Closure => "in this proof closure",
+                UnboundedGhostContext::AtomicallyLoop => "in this `atomically` block with a loop",
+                UnboundedGhostContext::ProofFn => "in this non-exec-mode function",
+            },
+        )
 }
 
 fn add_pattern(
@@ -2071,6 +2115,11 @@ fn check_expr(
                 }
                 check_tracked_swap(ctxt, record, &expr, function.x.attrs.tracked_take_option)?;
             }
+            if function.x.attrs.create_open_invariant_credit {
+                if let Some((c, span)) = &typing.unbounded_ghost_context {
+                    return Err(err_create_credit(*c, span, &expr.span));
+                }
+            }
 
             if let Some(expr) = body {
                 let _ = check_expr(ctxt, record, typing, outer_mode, expect, expr, outer_proph)?;
@@ -2578,10 +2627,15 @@ fn check_expr(
                 }
             }
 
+            let mut body_typing = if is_proof {
+                typing.push_unbounded_ghost_context(UnboundedGhostContext::Closure, &expr.span)
+            } else {
+                typing
+            };
             let p = check_expr_has_mode(
                 ctxt,
                 record,
-                &mut typing,
+                &mut body_typing,
                 outer_mode,
                 body,
                 ret_mode,
@@ -3280,7 +3334,7 @@ fn check_expr(
             };
             Ok(mode)
         }
-        ExprX::OpenInvariant(inv, binder, body, atomicity) => {
+        ExprX::OpenInvariant(credit, inv, binder, body, atomicity) => {
             if outer_mode == Mode::Spec {
                 return Err(error(&expr.span, "cannot open invariant in spec mode"));
             }
@@ -3288,6 +3342,16 @@ fn check_expr(
             record.var_modes.insert(binder.name.clone(), Mode::Proof);
 
             let mut ghost_typing = typing.push_block_ghostness(Ghost::Ghost);
+            let (mode0, proph0) = check_expr(
+                ctxt,
+                record,
+                &mut ghost_typing,
+                outer_mode,
+                Expect(Mode::Proof),
+                credit,
+                outer_proph,
+            )?;
+            proph0.check(&expr.span, NoProphReason::OpenInvariantArg)?;
             let (mode1, proph1) = check_expr(
                 ctxt,
                 record,
@@ -3300,6 +3364,9 @@ fn check_expr(
             proph1.check(&expr.span, NoProphReason::OpenInvariantArg)?;
             drop(ghost_typing);
 
+            if mode0 != Mode::Proof {
+                return Err(error(&credit.span, "Credit must be Proof mode."));
+            }
             if mode1 != Mode::Proof {
                 return Err(error(&inv.span, "invariant must be proof mode"));
             }
@@ -3438,16 +3505,23 @@ fn check_expr(
 
             if let ExprX::Loop { body, invs, label, .. } = &e.x {
                 let mut typing = typing.push_loop(label.clone(), Loop { ghost_loop: true });
-                let mut typing = typing.push_block_ghostness(Ghost::Ghost);
-                check_expr_has_mode(
-                    ctxt,
-                    record,
-                    &mut typing,
-                    Mode::Proof,
-                    body,
-                    Mode::Proof,
-                    outer_proph,
-                )?;
+
+                {
+                    let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                    let mut typing = typing.push_unbounded_ghost_context(
+                        UnboundedGhostContext::AtomicallyLoop,
+                        &e.span,
+                    );
+                    check_expr_has_mode(
+                        ctxt,
+                        record,
+                        &mut typing,
+                        Mode::Proof,
+                        body,
+                        Mode::Proof,
+                        outer_proph,
+                    )?;
+                }
 
                 for inv in invs.iter() {
                     let mut typing = typing.push_block_ghostness(Ghost::Ghost);
@@ -4172,6 +4246,11 @@ fn check_function_inner(
         } else {
             body_typing
         };
+        let mut body_typing = if function.x.mode == Mode::Proof {
+            body_typing.push_unbounded_ghost_context(UnboundedGhostContext::ProofFn, &function.span)
+        } else {
+            body_typing
+        };
 
         assert!(record.infer_spec_for_implicit_reborrows.is_none());
         record.infer_spec_for_implicit_reborrows = Some(HashMap::new());
@@ -4338,6 +4417,7 @@ pub fn check_function(
         in_pure: false,
         in_assert_query: None,
         loops: HashMap::new(),
+        unbounded_ghost_context: None,
     };
     let mut typing = Typing::new(&mut state);
     let mut function = function.clone();
