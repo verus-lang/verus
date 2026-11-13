@@ -574,6 +574,15 @@ impl GlobalCtx {
                 func_call_graph.add_edge(source, module_reveal_node.clone());
             }
         }
+        // can_reach below needs these nodes in the preliminary graph
+        for f in &krate.functions {
+            for eq in f.x.return_opaque_type_eqs.iter() {
+                for impl_path in eq.impl_paths.iter() {
+                    func_call_graph.add_node(Node::TraitImpl(impl_path.clone()));
+                    func_call_graph.add_node(Node::TraitReqEns(impl_path.clone(), true));
+                }
+            }
+        }
 
         // First, create a preliminary call graph that may lack some Fun -> TraitImpl edges
         // Example:
@@ -626,8 +635,39 @@ impl GlobalCtx {
                 }
             }
         }
+        // The body of f may rely on the impls of its return types' hidden types,
+        // so add f --> TraitImpl, or f --> TraitReqEns if the TraitImpl depends on f
+        let mut opaque_return_edges: Vec<(Node, Node)> = Vec::new();
+        for f in &krate.functions {
+            let node_f = Node::Fun(f.x.name.clone());
+            for eq in f.x.return_opaque_type_eqs.iter() {
+                for impl_path in eq.impl_paths.iter() {
+                    let trait_impl = func_call_graph.replace(Node::TraitImpl(impl_path.clone()));
+                    let req_ens = Node::TraitReqEns(impl_path.clone(), true);
+                    if !preliminary_call_graph.can_reach(&trait_impl, &node_f, Some(&order)) {
+                        opaque_return_edges.push((node_f.clone(), trait_impl));
+                    } else if !preliminary_call_graph.can_reach(&req_ens, &node_f, Some(&order)) {
+                        opaque_return_edges.push((node_f.clone(), req_ens));
+                    }
+                }
+            }
+        }
         // Now make the final call graph with the extra edges
         let mut func_call_graph = func_call_graph.graph;
+        if !opaque_return_edges.is_empty() {
+            // Together with the other extra edges, some of these may still form a cycle;
+            // they are only needed for ordering, so drop them instead of reporting the cycle
+            let mut trial_graph = func_call_graph.clone();
+            for (src, dst) in opaque_return_edges.iter() {
+                trial_graph.add_edge(src.clone(), dst.clone());
+            }
+            trial_graph.compute_sccs();
+            for (src, dst) in opaque_return_edges.into_iter() {
+                if !trial_graph.in_same_scc(&src, &dst) {
+                    func_call_graph.add_edge(src, dst);
+                }
+            }
+        }
         func_call_graph.compute_sccs();
         let func_call_sccs = func_call_graph.sort_sccs();
 

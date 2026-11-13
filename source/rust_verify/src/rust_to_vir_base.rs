@@ -2269,7 +2269,7 @@ pub(crate) fn check_fn_opaque_ty<'tcx>(
     span: Span,
     assume_specification_def_id: Option<&DefId>,
     collect_hidden_type_eqs: bool,
-) -> Result<(HashMap<Path, Path>, Vec<(Typ, Typ)>), VirErr> {
+) -> Result<(HashMap<Path, Path>, Vec<vir::ast::ReturnOpaqueTypeEq>), VirErr> {
     let mut assume_specification_opaque_type_map = HashMap::new();
     let mut hidden_type_eqs = Vec::new();
     if !ctxt.tcx.def_kind(*fn_def_id).is_fn_like() {
@@ -2307,7 +2307,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
     is_assume_specification_ty: bool,
     assume_specification_opaque_type_map: &mut HashMap<Path, Path>,
     collect_hidden_type_eqs: bool,
-    hidden_type_eqs: &mut Vec<(Typ, Typ)>,
+    hidden_type_eqs: &mut Vec<vir::ast::ReturnOpaqueTypeEq>,
 ) -> Result<Option<OpaqueType>, VirErr> {
     let unmatch_err_msg = "`impl Trait` return type of `assume_specification` does not match the `impl Trait` return type of the original function";
     let unmatch_err = || crate::internal_err!(span, unmatch_err_msg);
@@ -2582,7 +2582,35 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                         def_path: opaque_type_path.clone(),
                         args: opaque_ty_vir.x.typ_params.clone(),
                     });
-                    hidden_type_eqs.push((opaque_typ, hidden_typ));
+                    // For each bound opaque: B, find the impls that hidden_ty uses for B
+                    use crate::rustc_type_ir::Upcast;
+                    let mut clauses = Vec::new();
+                    for bound in instantiated_bounds.iter() {
+                        let Some(tp) = bound.as_trait_clause() else { continue };
+                        match tp.skip_binder().self_ty().kind() {
+                            TyKind::Alias(_, self_al_ty)
+                                if self_al_ty.kind.try_to_opaque() == Some(alias_def_id) => {}
+                            _ => continue,
+                        }
+                        let tp = tp.map_bound(|tp| tp.with_replaced_self_ty(ctxt.tcx, hidden_ty));
+                        let clause: Clause<'tcx> = tp.upcast(ctxt.tcx);
+                        clauses.push((None, clause));
+                    }
+                    // Only used for call-graph ordering, so selection errors are ignored
+                    let impl_paths = get_impl_paths_for_clauses(
+                        ctxt.tcx,
+                        &ctxt.verus_items,
+                        *fn_def_id,
+                        clauses,
+                        None,
+                        span,
+                    )
+                    .unwrap_or_else(|_| Arc::new(vec![]));
+                    hidden_type_eqs.push(vir::ast::ReturnOpaqueTypeEq {
+                        opaque: opaque_typ,
+                        hidden: hidden_typ,
+                        impl_paths,
+                    });
                 }
             }
             if let Some(assume_specification_opaque_ty_vir) = &assume_specification_opaque_ty_vir {
