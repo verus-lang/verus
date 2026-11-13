@@ -1457,3 +1457,102 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "not all trait items implemented, missing: `req`")
 }
+
+test_verify_one_file! {
+    #[test] external_trait_impl_method_missing_from_spec verus_code! {
+        #[verifier::external]
+        pub trait Tr {
+            fn good(&self);
+            fn bad(&self);
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            fn good(&self);
+        }
+
+        #[verifier::external_body]
+        fn takes_trait<T: Tr>(t: &T) { t.bad() }
+
+        struct X { }
+
+        impl Tr for X {
+            fn good(&self) { }
+
+            fn bad(&self)
+                requires false
+            {
+            }
+        }
+
+        fn test() {
+            let x = X{};
+            takes_trait(&x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "no specification for trait method `bad` on trait `test_crate::Tr` supplied to Verus")
+}
+
+test_verify_one_file! {
+    #[test] external_trait_impl_method_missing_from_spec_assume_compatibility verus_code! {
+        #[verifier::external]
+        pub trait Tr {
+            fn good(&self);
+            fn bad(&self);
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            fn good(&self);
+        }
+
+        #[verifier::external_body]
+        fn takes_trait<T: Tr>(t: &T) { t.bad() }
+
+        struct X { }
+
+        impl Tr for X {
+            fn good(&self) { }
+
+            #[verifier::assume_compatibility_with_trait_spec]
+            fn bad(&self)
+                requires false
+            {
+            }
+        }
+
+        fn test() {
+            let x = X{};
+            takes_trait(&x);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] external_trait_impl_method_missing_from_spec_assume_compatibility_no_cheating ["--no-cheating"] => verus_code! {
+        #[verifier::external]
+        pub trait Tr {
+            fn good(&self);
+            fn bad(&self);
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            fn good(&self);
+        }
+
+        struct X { }
+
+        impl Tr for X {
+            fn good(&self) { }
+
+            #[verifier::assume_compatibility_with_trait_spec]
+            fn bad(&self) { }
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "`#[verifier::assume_compatibility_with_trait_spec]` not allowed with `--no-cheating`")
+}
