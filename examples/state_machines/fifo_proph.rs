@@ -753,9 +753,8 @@ impl<T> Producer<T> {
                 queue.buffer[self.tail].put(Tracked(&mut cell_perm), t);
                 // Store the updated tail to the shared `tail` atomic,
                 // while performing the `produce_end` transition.
-                let credit = create_open_invariant_credit();
                 atomic_with_ghost!(&queue.tail => store(next_tail as u64); ghost tail_token => {
-                    open_atomic_invariant_in_proof!(credit.get() => &queue.history => history => {
+                    open_atomic_invariant_in_proof!(create_open_invariant_credit() => &queue.history => history => {
                         queue.instance.borrow().produce_end(cell_perm,
                             cell_perm, &mut tail_token, self.producer.borrow_mut(), &mut history.0, self.producer_position.borrow_mut());
                         history.1.resolve_cons(cell_perm.value());
@@ -793,14 +792,13 @@ impl<T> Consumer<T> {
                 self.head + 1
             };
             let tracked cell_perm: Option<cell::PointsTo<T>>;
-            let credit = create_open_invariant_credit();
             let tail =
                 atomic_with_ghost!(&queue.tail => load();
                 returning tail;
                 ghost tail_token => {
                     cell_perm = if self.head as u64 != tail {
                         let tracked cp;
-                        open_atomic_invariant_in_proof!(credit.get() => &queue.history => history => {
+                        open_atomic_invariant_in_proof!(create_open_invariant_credit() => &queue.history => history => {
                             let tracked (_, Tracked(_cp)) = queue.instance.borrow().consume_start(&tail_token, self.consumer.borrow_mut(), &history.0, self.consumer_position.borrow_mut());
                             cp = _cp;
                         });
