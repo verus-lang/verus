@@ -333,6 +333,8 @@ pub struct OpenInvariantCredit;
 /// ```
 /// proof fn example() {
 ///     let tracked credit = create_open_invariant_credit();
+///                       // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///                       // error: creating an invariant credit in potentially-unbounded ghost code
 /// }
 /// ```
 #[cfg(verus_keep_ghost)]
