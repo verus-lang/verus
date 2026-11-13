@@ -2608,3 +2608,23 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] termination_impl_no_precondition_allowed verus_code! {
+        use vstd::prelude::*;
+
+        struct X { }
+
+        impl std::process::Termination for X {
+            fn report(self) -> std::process::ExitCode
+                requires false
+            {
+                loop{}
+            }
+        }
+
+        fn main() -> X {
+            X { }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `requires` clauses; these can only be inherited from the trait declaration")
+}
