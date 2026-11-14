@@ -1794,8 +1794,8 @@ test_verify_one_file! {
             }
 
             #[verifier::prophetic]
-            closed spec fn will_return_none(&self) -> bool {
-                false
+            closed spec fn produces(&self) -> Seq<bool> {
+                Seq::empty()
             }
 
             closed spec fn decrease(&self) -> Option<nat> {
