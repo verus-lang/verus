@@ -109,3 +109,58 @@ args = [
     "${@}",
 ]
 dependencies = ["build"]
+
+# The test tasks mirror the invocations used by CI (see `.github/workflows/ci.yml`).
+#
+# `cargo make` expands `${@}` in every task it runs, including dependencies, so a
+# test task's arguments would also be passed to `cargo build`. `capture-test-args`
+# sets them aside before `build` runs, and each test task restores them.
+
+[tasks.capture-test-args]
+private = true
+env = { CARGO_MAKE_TEST_ARGS = "${CARGO_MAKE_TASK_ARGS}", CARGO_MAKE_TASK_ARGS = "" }
+
+[tasks.test]
+dependencies = [
+    "capture-test-args",
+    "build",
+    "test-air",
+    "test-rust-verify",
+    "test-cargo-verus",
+    "test-line-count",
+]
+
+[tasks.test-air]
+command = "cargo"
+install_crate = "cargo-nextest"
+env = { CARGO_MAKE_TASK_ARGS = "${CARGO_MAKE_TEST_ARGS}" }
+args = ["nextest", "run", "--release", "-p", "air", "${@}"]
+dependencies = ["capture-test-args"]
+
+[tasks.test-rust-verify]
+command = "cargo"
+install_crate = "cargo-nextest"
+env = { CARGO_MAKE_TASK_ARGS = "${CARGO_MAKE_TEST_ARGS}" }
+args = ["nextest", "run", "--release", "-p", "rust_verify_test", "${@}"]
+dependencies = ["capture-test-args", "build"]
+
+[tasks.test-basic]
+command = "cargo"
+install_crate = "cargo-nextest"
+env = { CARGO_MAKE_TASK_ARGS = "${CARGO_MAKE_TEST_ARGS}" }
+args = ["nextest", "run", "--release", "-p", "rust_verify_test", "--test", "basic", "${@}"]
+dependencies = ["capture-test-args", "build"]
+
+[tasks.test-cargo-verus]
+command = "cargo"
+env = { CARGO_MAKE_TASK_ARGS = "${CARGO_MAKE_TEST_ARGS}" }
+args = ["test", "-p", "cargo-verus", "-p", "cargo-verus-toolchains", "${@}"]
+dependencies = ["capture-test-args"]
+
+[tasks.test-line-count]
+command = "cargo"
+install_crate = "cargo-nextest"
+cwd = "tools/line_count"
+env = { CARGO_MAKE_TASK_ARGS = "${CARGO_MAKE_TEST_ARGS}" }
+args = ["nextest", "run", "${@}"]
+dependencies = ["capture-test-args"]
