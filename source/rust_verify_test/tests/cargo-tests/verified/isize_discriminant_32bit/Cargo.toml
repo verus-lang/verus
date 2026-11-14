@@ -1,0 +1,15 @@
+[package]
+name = "isize_discriminant_32bit"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+verus_builtin = { path = "../../../../../builtin" }
+verus_builtin_macros = { path = "../../../../../builtin_macros" }
+
+[package.metadata.verus]
+verify = true
+no-vstd = true
+test_target = "thumbv7m-none-eabi"
+
+[workspace]
