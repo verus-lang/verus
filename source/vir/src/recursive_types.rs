@@ -172,6 +172,8 @@ pub(crate) enum TypNode {
 struct CheckPositiveGlobal {
     krate: Krate,
     datatypes: HashMap<Path, Datatype>,
+    // typ_params of each datatype, adjusted by effective_typ_params
+    typ_params: HashMap<Path, Vec<(Ident, AcceptRecursiveType)>>,
     type_graph: Graph<TypNode>,
     span_infos: Vec<Span>,
 }
@@ -270,7 +272,7 @@ fn check_positive_uses(
                     }
                 }
             }
-            let typ_params = &global.datatypes[path].x.typ_params;
+            let typ_params = &global.typ_params[path];
             for ((_, accept_rec), t) in typ_params.iter().zip(ts.iter()) {
                 let strictly_positive = *accept_rec != AcceptRecursiveType::Reject;
                 let t_polarity =
@@ -333,7 +335,15 @@ fn check_positive_uses(
                 )),
             }
         }
-        TypX::Projection { .. } | TypX::PointeeMetadata(_) => {
+        TypX::Projection { trait_typ_args, .. } => {
+            // The projection's value may mention its arguments in any position
+            // (e.g. through a blanket impl the type graph can't see), so they are non-positive
+            for t in trait_typ_args.iter() {
+                check_positive_uses(datatype, global, local, None, t)?;
+            }
+            Ok(())
+        }
+        TypX::PointeeMetadata(_) => {
             // Treat projection as AcceptRecursiveType::Reject,
             // and rely on type_graph to reject any cycles
             Ok(())
@@ -345,6 +355,65 @@ fn check_positive_uses(
         TypX::MutRef(t) => {
             check_positive_uses(datatype, global, local, polarity, t)?;
             Ok(())
+        }
+    }
+}
+
+/// A type parameter used under a projection in a field (e.g. `T::X`) may appear in any position
+/// once the projection is resolved, so it defaults to Reject instead of RejectInGround.
+/// So does a parameter passed to a parameter that was made Reject this way (to a fixpoint).
+/// An explicit Accept is left alone, and check_positive_uses rejects it.
+fn effective_typ_params(
+    datatypes: &HashMap<Path, Datatype>,
+) -> HashMap<Path, Vec<(Ident, AcceptRecursiveType)>> {
+    let mut typ_params: HashMap<Path, Vec<(Ident, AcceptRecursiveType)>> =
+        datatypes.iter().map(|(p, dt)| (p.clone(), (*dt.x.typ_params).clone())).collect();
+    fn collect_params(typ: &Typ, params: &mut HashSet<Ident>) {
+        let _ = crate::ast_visitor::typ_visitor_check(typ, &mut |t: &Typ| {
+            if let TypX::TypParam(x) = &**t {
+                params.insert(x.clone());
+            }
+            Ok::<(), ()>(())
+        });
+    }
+    loop {
+        let mut changed = false;
+        for (path, dt) in datatypes.iter() {
+            let mut rejected: HashSet<Ident> = HashSet::new();
+            for variant in dt.x.variants.iter() {
+                for field in variant.fields.iter() {
+                    let _ = crate::ast_visitor::typ_visitor_check(&field.a.0, &mut |t: &Typ| {
+                        match &**t {
+                            TypX::Projection { trait_typ_args, .. } => {
+                                trait_typ_args.iter().for_each(|a| collect_params(a, &mut rejected))
+                            }
+                            TypX::Datatype(Dt::Path(p), args, _) => {
+                                if let Some(tps) = typ_params.get(p) {
+                                    let declared = &datatypes[p].x.typ_params;
+                                    for (((_, acc), (_, decl)), a) in
+                                        tps.iter().zip(declared.iter()).zip(args.iter())
+                                    {
+                                        if *acc != *decl {
+                                            collect_params(a, &mut rejected);
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                        Ok::<(), ()>(())
+                    });
+                }
+            }
+            for (x, acc) in typ_params.get_mut(path).unwrap().iter_mut() {
+                if *acc == AcceptRecursiveType::RejectInGround && rejected.contains(x) {
+                    *acc = AcceptRecursiveType::Reject;
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            return typ_params;
         }
     }
 }
@@ -438,7 +507,9 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
         datatypes.insert(path.clone(), datatype.clone());
     }
 
-    let global = CheckPositiveGlobal { krate: krate.clone(), datatypes, type_graph, span_infos };
+    let typ_params = effective_typ_params(&datatypes);
+    let global =
+        CheckPositiveGlobal { krate: krate.clone(), datatypes, typ_params, type_graph, span_infos };
 
     for function in &krate.functions {
         if let FunctionKind::TraitMethodDecl { .. } = function.x.kind {
@@ -461,7 +532,7 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
             panic!("check_recursive_types only expects Dt::Path");
         };
         let mut tparams: HashMap<Ident, AcceptRecursiveType> = HashMap::new();
-        for (name, accept_rec) in datatype.x.typ_params.iter() {
+        for (name, accept_rec) in global.typ_params[path].iter() {
             tparams.insert(name.clone(), *accept_rec);
         }
         let local =

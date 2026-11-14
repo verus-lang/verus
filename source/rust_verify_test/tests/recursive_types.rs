@@ -442,3 +442,45 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3179
+    #[test] projection_blanket_impl_negative verus_code! {
+        pub trait Tr { type X; }
+        impl<A> Tr for A { type X = spec_fn(A) -> bool; }
+        pub struct W<T: Tr>(T::X);
+        pub enum D { C(W<D>), B }
+    } => Err(err) => assert_vir_error_msg(err, "Type test_crate::D recursively uses type test_crate::D in a non-positive position")
+}
+
+test_verify_one_file! {
+    #[test] projection_blanket_impl_through_wrapper verus_code! {
+        pub trait Tr { type X; }
+        impl<A> Tr for A { type X = spec_fn(A) -> bool; }
+        pub struct W<T: Tr>(T::X);
+        pub struct V<T: Tr>(W<T>);
+        pub enum D { C(V<D>), B }
+    } => Err(err) => assert_vir_error_msg(err, "Type test_crate::D recursively uses type test_crate::D in a non-positive position")
+}
+
+test_verify_one_file! {
+    #[test] projection_accept_recursive_types verus_code! {
+        use vstd::prelude::*;
+        pub trait Tr { type X; }
+        impl<A> Tr for A { type X = Box<A>; }
+        #[verifier::accept_recursive_types(T)]
+        pub struct W<T: Tr>((T::X,));
+        pub struct S { w: W<S> }
+    } => Err(err) => assert_vir_error_msg(err, "Type parameter T of test_crate::W must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
+}
+
+test_verify_one_file! {
+    #[test] projection_non_recursive_ok verus_code! {
+        use vstd::prelude::*;
+        pub trait Tr { type X; }
+        impl<A> Tr for A { type X = spec_fn(A) -> bool; }
+        pub struct W<T: Tr>(T::X);
+        pub struct V<T: Tr>(W<T>);
+        pub enum D { C(V<u8>), B(Box<D>) }
+    } => Ok(())
+}
