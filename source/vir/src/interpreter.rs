@@ -129,6 +129,8 @@ struct State {
     enable_cache: bool,
     /// Cache of expressions we have already simplified
     simplified: PtrSet<SpannedTyped<ExpX>>,
+    /// Expressions known to contain no `Var` node (see `check_closed`)
+    closed: PtrSet<SpannedTyped<ExpX>>,
     enable_simplified_cache: bool,
 
     /// Performance profiling data
@@ -1206,52 +1208,61 @@ fn eval_array_index(
  * Core interpreter *
  ********************/
 
-/// Symbolically execute the expression as far as we can,
-/// stopping when we hit a symbolic control-flow decision
-/// The variables `exp` mentions that are not bound inside it. Only `Var` counts: it is the
-/// one form the interpreter resolves in its environment, so the one that changes meaning
-/// when it ends up in another scope. Triggers are skipped; they do not affect the meaning of
-/// an expression, and the interpreter does not evaluate them.
-fn mentioned_vars(exp: &Exp) -> Vec<UniqueIdent> {
+/// Values crossing into another scope must not mention a variable of this one: the other scope
+/// would read it as its own variable of that name (#3182, #3198). Only `Var` nodes matter,
+/// since the interpreter resolves those in its environment.
+///
+/// Subterms without any `Var` node are remembered in `state.closed` and skipped next time,
+/// so repeated checks only walk newly built terms.
+fn check_closed(state: &mut State, value: &Exp, what: impl Fn() -> String) -> Result<(), VirErr> {
     use crate::sst_visitor::{Visitor, VisitorScopeMap, Walk};
 
-    struct Collector {
+    struct FreeVarFinder<'a> {
+        closed: &'a mut PtrSet<SpannedTyped<ExpX>>,
         scope_map: VisitorScopeMap,
-        vars: Vec<UniqueIdent>,
+        // all `Var` nodes seen so far, bound or not
+        var_nodes: u64,
+        // the first variable not bound inside the value
+        free: Option<UniqueIdent>,
     }
 
-    impl Visitor<Walk, (), VisitorScopeMap> for Collector {
+    impl<'a> Visitor<Walk, (), VisitorScopeMap> for FreeVarFinder<'a> {
         fn scoper(&mut self) -> Option<&mut VisitorScopeMap> {
             Some(&mut self.scope_map)
         }
 
-        // also covers the triggers of `WithTriggers`, which `visit_exp_rec` visits through this
+        // triggers do not change what an expression means
         fn visit_triggers(&mut self, _trigs: &Trigs) -> Result<(), ()> {
             Ok(())
         }
 
         fn visit_exp(&mut self, exp: &Exp) -> Result<(), ()> {
+            if self.closed.contains(exp) {
+                return Ok(());
+            }
+            let before = self.var_nodes;
             if let ExpX::Var(x) = &exp.x {
-                if !self.scope_map.contains_key(x) {
-                    self.vars.push(x.clone());
+                self.var_nodes += 1;
+                if self.free.is_none() && !self.scope_map.contains_key(x) {
+                    self.free = Some(x.clone());
                 }
             }
-            self.visit_exp_rec(exp)
+            self.visit_exp_rec(exp)?;
+            if self.var_nodes == before {
+                self.closed.insert(exp);
+            }
+            Ok(())
         }
     }
 
-    let mut collector = Collector { scope_map: VisitorScopeMap::new(), vars: Vec::new() };
-    collector.visit_exp(exp).unwrap();
-    collector.vars
-}
-
-/// Values cross scopes when a call binds its arguments in the callee's environment and when
-/// the callee's result returns to the caller's. Evaluation turns every variable into its value
-/// or a hidden `FreeVar`, so a variable in such a value escaped evaluation: the other scope
-/// would take it to mean its own variable of that name (#3182, #3198). Fail rather than let
-/// it cross.
-fn check_closed(value: &Exp, what: impl Fn() -> String) -> Result<(), VirErr> {
-    match mentioned_vars(value).first() {
+    let mut finder = FreeVarFinder {
+        closed: &mut state.closed,
+        scope_map: VisitorScopeMap::new(),
+        var_nodes: 0,
+        free: None,
+    };
+    finder.visit_exp(value).unwrap();
+    match finder.free {
         None => Ok(()),
         Some(x) => Err(error(
             &value.span,
@@ -1268,6 +1279,8 @@ fn fname(fun: &Fun) -> String {
     crate::ast_util::fun_as_friendly_rust_name(fun)
 }
 
+/// Symbolically execute the expression as far as we can,
+/// stopping when we hit a symbolic control-flow decision
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
     state.iterations += 1;
     if state.iterations > ctx.max_iterations {
@@ -1278,11 +1291,15 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     }
     state.check_time_warning(ctx);
 
-    state.log(format!(
-        "{}Evaluating {:}",
-        "\t".repeat(state.depth),
-        exp.x.to_user_string(&ctx.global)
-    ));
+    // Only render expressions when logging: they can grow large, and rendering isn't counted
+    // towards the interpreter's limits
+    if state.log.is_some() {
+        state.log(format!(
+            "{}Evaluating {:}",
+            "\t".repeat(state.depth),
+            exp.x.to_user_string(&ctx.global)
+        ));
+    }
     // No catch-all "return `exp` unchanged": an unevaluated `exp` may mention variables of the
     // current environment, which mean something else once the result leaves this scope
     // (#3198). Each arm that returns `exp` as is says why that is safe.
@@ -1866,7 +1883,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 let spec_axioms = func.x.axioms.spec_axioms.as_ref().unwrap();
                                 state.cache_misses += 1;
                                 for a in new_args.iter() {
-                                    check_closed(a, || {
+                                    check_closed(state, a, || {
                                         format!("an argument of `{}`", fname(reduced_fun))
                                     })?;
                                 }
@@ -1910,7 +1927,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 };
                                 state.env = prev_env;
                                 let result = result.and_then(|r| {
-                                    check_closed(&r, || {
+                                    check_closed(state, &r, || {
                                         format!("the result of `{}`", fname(reduced_fun))
                                     })
                                     .map(|_| r)
@@ -1967,7 +1984,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             });
                             env.push_scope(true);
                             for (formal, actual) in bnds.iter().zip(new_args.iter()) {
-                                check_closed(actual, || "an argument of a closure".to_string())?;
+                                check_closed(state, actual, || {
+                                    "an argument of a closure".to_string()
+                                })?;
                                 let formal_id = formal.name.clone();
                                 env.insert(formal_id, actual.clone()).unwrap();
                             }
@@ -1975,7 +1994,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             let e = eval_expr_internal(ctx, state, body);
                             state.env = prev_env;
                             let e = e?;
-                            check_closed(&e, || "the result of a closure".to_string())?;
+                            check_closed(state, &e, || "the result of a closure".to_string())?;
                             Ok(e)
                         }
                         _ => panic!(
@@ -2128,7 +2147,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     };
     let res = r?;
     state.depth -= 1;
-    state.log(format!("{}=> {:}", "\t".repeat(state.depth), res.x.to_user_string(&ctx.global)));
+    if state.log.is_some() {
+        state.log(format!("{}=> {:}", "\t".repeat(state.depth), res.x.to_user_string(&ctx.global)));
+    }
     if state.enable_simplified_cache {
         state.simplified.insert(&res);
     }
@@ -2270,6 +2291,7 @@ fn eval_expr_launch(
         cache_hits: 0,
         cache_misses: 0,
         simplified: PtrSet::new(),
+        closed: PtrSet::new(),
         enable_simplified_cache: false,
         ptr_hits: 0,
         ptr_misses: 0,
