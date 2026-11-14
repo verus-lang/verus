@@ -1040,6 +1040,8 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_one_fails(err)
+}
+
 // Regression test for issue #2947: for-loops over `.copied()`/`.cloned()` iterators used to
 // fail to verify even a trivial `invariant true`, because VIR's trigger generation for
 // `Copied<I>`/`Cloned<I>`'s associated `Item` type couldn't resolve it back to a concrete
