@@ -300,6 +300,30 @@ pub broadcast proof fn axiom_box_integer_type_obeys_hash_table_key_model<Key: In
     admit();
 }
 
+/// A pair obeys the key model when both components do: `==`, `Hash` and `Clone`
+/// are derived componentwise for tuples.
+pub broadcast proof fn axiom_tuple2_obeys_hash_table_key_model<A, B>()
+    requires
+        obeys_key_model::<A>(),
+        obeys_key_model::<B>(),
+    ensures
+        #[trigger] obeys_key_model::<(A, B)>(),
+{
+    admit();
+}
+
+/// `axiom_tuple2_obeys_hash_table_key_model` for triples.
+pub broadcast proof fn axiom_tuple3_obeys_hash_table_key_model<A, B, C>()
+    requires
+        obeys_key_model::<A>(),
+        obeys_key_model::<B>(),
+        obeys_key_model::<C>(),
+    ensures
+        #[trigger] obeys_key_model::<(A, B, C)>(),
+{
+    admit();
+}
+
 // Our model for the external trait `BuildHasher` is that for any two
 // `Hasher`s it builds, if they're both given the same write sequence
 // then their states will match and they'll produce the same digest
@@ -1583,6 +1607,91 @@ pub assume_specification<
         hash_set_contains_ensures(m, k, result),
 ;
 
+// Cloning a `HashSet` clones each key, and under the key model `clone` is the
+// identity, so the copy is the same set.
+pub assume_specification<T: Clone, S: Clone, A: Allocator + Clone>[ <HashSet<
+    T,
+    S,
+    A,
+> as Clone>::clone ](this: &HashSet<T, S, A>) -> (other: HashSet<T, S, A>)
+    ensures
+        obeys_key_model::<T>() ==> other@ == this@,
+;
+
+/// `a == b` holds exactly when each set has an `eq_spec`-equal element for every
+/// element of the other.
+pub open spec fn hash_set_eq_ensures<Key: Eq + Hash, S: BuildHasher, A: Allocator>(
+    a: &HashSet<Key, S, A>,
+    b: &HashSet<Key, S, A>,
+    result: bool,
+) -> bool {
+    ({
+        &&& obeys_key_model::<Key>()
+        &&& builds_valid_hashers::<S>()
+        &&& hash_set_inv(a)
+        &&& hash_set_inv(b)
+    }) ==> {
+        result == {
+            &&& forall|k1: Key| #[trigger]
+                a@.contains(k1) ==> exists|k2: Key| #[trigger] b@.contains(k2) && k1.eq_spec(&k2)
+            &&& forall|k2: Key| #[trigger]
+                b@.contains(k2) ==> exists|k1: Key| #[trigger] a@.contains(k1) && k2.eq_spec(&k1)
+        }
+    }
+}
+
+pub assume_specification<T: Eq + Hash, S: BuildHasher, A: Allocator>[ <HashSet<
+    T,
+    S,
+    A,
+> as PartialEq>::eq ](a: &HashSet<T, S, A>, b: &HashSet<T, S, A>) -> (result: bool)
+    ensures
+        hash_set_eq_ensures(a, b, result),
+;
+
+pub broadcast proof fn lemma_hash_set_eq_ensures_if_obeys_concrete_eq<
+    Key: Eq + Hash,
+    S: BuildHasher,
+    A: Allocator,
+>(a: &HashSet<Key, S, A>, b: &HashSet<Key, S, A>, result: bool)
+    requires
+        obeys_key_model::<Key>(),
+        builds_valid_hashers::<S>(),
+        obeys_concrete_eq::<Key>(),
+        hash_set_inv(a),
+        hash_set_inv(b),
+        #[trigger] hash_set_eq_ensures(a, b, result),
+    ensures
+        result == (a@ == b@),
+{
+    broadcast use super::super::set::axiom_set_ext_equal;
+
+    reveal(obeys_concrete_eq);
+    if result {
+        assert forall|k: Key| a@.contains(k) == b@.contains(k) by {
+            if a@.contains(k) {
+                let k2 = choose|k2: Key| #[trigger] b@.contains(k2) && k.eq_spec(&k2);
+                assert(k == k2);
+            }
+            if b@.contains(k) {
+                let k1 = choose|k1: Key| #[trigger] a@.contains(k1) && k.eq_spec(&k1);
+                assert(k == k1);
+            }
+        }
+        assert(a@ =~= b@);
+    }
+    if a@ == b@ {
+        assert forall|k1: Key| #[trigger] a@.contains(k1) implies exists|k2: Key| #[trigger]
+            b@.contains(k2) && k1.eq_spec(&k2) by {
+            assert(k1.eq_spec(&k1));
+        }
+        assert forall|k2: Key| #[trigger] b@.contains(k2) implies exists|k1: Key| #[trigger]
+            a@.contains(k1) && k2.eq_spec(&k1) by {
+            assert(k2.eq_spec(&k2));
+        }
+    }
+}
+
 pub broadcast proof fn lemma_hash_set_contains_ensures_if_obeys_concrete_eq<
     Key: Eq + Hash,
     S: BuildHasher,
@@ -2294,6 +2403,7 @@ pub broadcast group group_hash_axioms {
     lemma_hash_map_contains_key_ensures_if_obeys_deep_eq,
     lemma_hash_map_get_ensures_if_obeys_concrete_eq,
     lemma_hash_map_get_ensures_if_obeys_deep_eq,
+    lemma_hash_set_eq_ensures_if_obeys_concrete_eq,
     lemma_hash_map_remove_ensures_if_obeys_concrete_eq,
     lemma_hash_map_remove_ensures_if_obeys_deep_eq,
     lemma_hash_map_entry_ensures_if_obeys_concrete_eq,
@@ -2327,6 +2437,8 @@ pub broadcast group group_hash_axioms {
     axiom_isize_obeys_hash_table_key_model,
     axiom_box_bool_obeys_hash_table_key_model,
     axiom_box_integer_type_obeys_hash_table_key_model,
+    axiom_tuple2_obeys_hash_table_key_model,
+    axiom_tuple3_obeys_hash_table_key_model,
     axiom_random_state_builds_valid_hashers,
     axiom_spec_hash_map_len,
     axiom_spec_hash_set_len,
