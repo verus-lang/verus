@@ -2548,6 +2548,26 @@ test_verify_one_file! {
             assert(x == 0x0807_0605_0403_0201u64); // FAILS
         }
 
+        fn test_to_le_bytes(x: u32, y: u64) -> (ret: ([u8; 4], [u8; 8]))
+            ensures
+                ret.0@ == spec_u32_to_le_bytes(x),
+                ret.1@ == spec_u64_to_le_bytes(y),
+            no_unwind
+        {
+            let bx = x.to_le_bytes();
+            let by = y.to_le_bytes();
+            proof {
+                lemma_auto_spec_u32_to_from_le_bytes();
+                lemma_auto_spec_u64_to_from_le_bytes();
+                assert(spec_u32_to_le_bytes(x).len() == 4);
+            }
+            let x2 = u32::from_le_bytes(bx);
+            let y2 = u64::from_le_bytes(by);
+            assert(x2 == x);
+            assert(y2 == y);
+            (bx, by)
+        }
+
         fn test_no_unwind(bv: [u8; 1], bw: [u8; 2], bx: [u8; 4], by: [u8; 8])
             no_unwind
         {
