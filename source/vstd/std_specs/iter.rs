@@ -1316,8 +1316,8 @@ impl<'a, I, T: 'a> IteratorSpecImpl for Copied<I>
     }
 
     #[verifier::prophetic]
-    closed spec fn will_return_none(&self) -> bool {
-        copied_iter(*self).will_return_none()
+    closed spec fn produces(&self) -> Seq<bool> {
+        copied_iter(*self).produces()
     }
 
     closed spec fn decrease(&self) -> Option<nat> {
@@ -1376,8 +1376,8 @@ impl<'a, I, T: 'a> IteratorSpecImpl for Cloned<I>
     }
 
     #[verifier::prophetic]
-    closed spec fn will_return_none(&self) -> bool {
-        cloned_iter(*self).will_return_none()
+    closed spec fn produces(&self) -> Seq<bool> {
+        cloned_iter(*self).produces()
     }
 
     closed spec fn decrease(&self) -> Option<nat> {
@@ -1410,7 +1410,7 @@ pub broadcast axiom fn cloned_postcondition<'a, T, I>(i: I, r: Cloned<I>)
         IteratorSpec::remaining(&r).len() == i.remaining().len(),
         forall |k| #![auto] 0 <= k < i.remaining().len() ==>
             cloned::<T>(*i.remaining()[k], IteratorSpec::remaining(&r)[k]),
-        IteratorSpec::will_return_none(&r) == i.will_return_none(),
+        IteratorSpec::produces(&r) == i.produces(),
         IteratorSpec::decrease(&r) == i.decrease(),
 ;
 
@@ -1437,7 +1437,7 @@ pub broadcast axiom fn copied_postcondition<'a, T, I>(i: I, r: Copied<I>)
         IteratorSpec::remaining(&r).len() == i.remaining().len(),
         forall |k| #![auto] 0 <= k < i.remaining().len() ==>
             IteratorSpec::remaining(&r)[k] == *i.remaining()[k],
-        IteratorSpec::will_return_none(&r) == i.will_return_none(),
+        IteratorSpec::produces(&r) == i.produces(),
         IteratorSpec::decrease(&r) == i.decrease(),
 ;
 
