@@ -677,6 +677,37 @@ macro_rules! pointer_specs {
                 opens_invariants none
                 no_unwind;
 
+            // --- pointer arithmetic: byte-wrapping family (always safe to call; no precondition) ---
+
+            /// Specification for `wrapping_byte_add`: the address advances by
+            /// `count` bytes with wrap-around (mod 2^usize::BITS); provenance and
+            /// metadata are unchanged.
+            #[verifier::inline]
+            pub open spec fn spec_wrapping_byte_add<T: ::core::marker::PointeeSized>(p: *$mu T, count: usize) -> *$mu T {
+                $ptr_from_data(PtrData::<T> { addr: (p@.addr + count) as usize, .. p@ })
+            }
+
+            #[verifier::when_used_as_spec(spec_wrapping_byte_add)]
+            #[cfg(verus_keep_ghost)]
+            pub assume_specification<T: ::core::marker::PointeeSized>[<*$mu T>::wrapping_byte_add](p: *$mu T, count: usize) -> (q: *$mu T)
+                ensures q == spec_wrapping_byte_add(p, count)
+                opens_invariants none
+                no_unwind;
+
+            /// Specification for `wrapping_byte_sub`: the address retreats by
+            /// `count` bytes with wrap-around; provenance and metadata unchanged.
+            #[verifier::inline]
+            pub open spec fn spec_wrapping_byte_sub<T: ::core::marker::PointeeSized>(p: *$mu T, count: usize) -> *$mu T {
+                $ptr_from_data(PtrData::<T> { addr: (p@.addr - count) as usize, .. p@ })
+            }
+
+            #[verifier::when_used_as_spec(spec_wrapping_byte_sub)]
+            #[cfg(verus_keep_ghost)]
+            pub assume_specification<T: ::core::marker::PointeeSized>[<*$mu T>::wrapping_byte_sub](p: *$mu T, count: usize) -> (q: *$mu T)
+                ensures q == spec_wrapping_byte_sub(p, count)
+                opens_invariants none
+                no_unwind;
+
             }
         }
     };
