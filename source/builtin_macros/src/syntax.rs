@@ -4284,7 +4284,7 @@ impl Visitor {
         //
         // Stated bare, not as `==>`/`==` against the snapshot: that's equally provable but
         // empirically doesn't help Z3 re-derive `wf()`'s own conditional guarantees.
-        let obeys_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
+        let obeys_inv: Expr = Expr::Verbatim(quote_spanned!(expr.span() =>
             #x_iter_name.obeys_laws()
         ));
         let some_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
