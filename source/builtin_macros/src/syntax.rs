@@ -4285,7 +4285,7 @@ impl Visitor {
         // Stated bare, not as `==>`/`==` against the snapshot: that's equally provable but
         // empirically doesn't help Z3 re-derive `wf()`'s own conditional guarantees.
         let obeys_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
-            #vstd::std_specs::iter::IteratorSpec::obeys_prophetic_iter_laws(&#x_iter_name.iter)
+            #x_iter_name.obeys_laws()
         ));
         let some_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#decrease_is_some_msg)]

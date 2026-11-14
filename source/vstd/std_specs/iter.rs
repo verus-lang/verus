@@ -1292,6 +1292,14 @@ impl <I: Iterator> VerusForLoopWrapper<I> {
         &&& self.iter.produces() == self.snapshot@.produces().skip(self.index())
     }
 
+    /// The iterator's prophetic-laws flag, as a method so that generated loop code can
+    /// call it as `x.obeys_laws()`: a non-iterator then gets one missing-bound error,
+    /// not a second "is not an iterator" error at the `verus!` block.
+    #[verifier::prophetic]
+    pub open spec fn obeys_laws(self) -> bool {
+        self.iter.obeys_prophetic_iter_laws()
+    }
+
     /// These properties are needed for the client code to verify
     #[verifier::prophetic]
     pub open spec fn wf(self) -> bool {
