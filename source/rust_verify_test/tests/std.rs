@@ -770,6 +770,44 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] clone_from_override verus_code! {
+        use vstd::prelude::*;
+
+        pub struct X {
+            pub u: u64
+        }
+
+        impl Clone for X {
+            fn clone(&self) -> (s: Self)
+                ensures s.u == self.u
+            {
+                X { u: self.u }
+            }
+
+            fn clone_from(&mut self, source: &Self) {
+                *self = source.clone();
+            }
+        }
+
+        pub struct Y {
+            pub u: u64
+        }
+
+        impl Clone for Y {
+            fn clone(&self) -> (s: Self)
+                ensures s.u == self.u
+            {
+                Y { u: self.u }
+            }
+
+            fn clone_from(&mut self, source: &Self) { // FAILS
+                self.u = 7;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "postcondition not satisfied")
+}
+
+test_verify_one_file! {
     #[test] manually_drop verus_code! {
         use vstd::prelude::*;
         use std::mem::ManuallyDrop;
