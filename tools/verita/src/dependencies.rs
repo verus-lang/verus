@@ -125,20 +125,37 @@ fn relax_dep_item(dep: &mut toml_edit::Item, local_ver: &str) -> bool {
     false
 }
 
-/// In the `Cargo.toml` at `path`, rewrite any exact-version pins (`=X.Y.Z`)
-/// on crates in `local_versions` that don't match the local version. This
-/// allows Cargo's `[patch]` entries to take effect: Cargo only applies a patch
-/// when the patch version satisfies the dependency's version constraint.
+fn update_dep_item(dep: &mut toml_edit::Item, crate_path: &Path, local_ver: Option<&str>) -> bool {
+    let mut changed = false;
+    if let Some(path) = dep
+        .as_table_like_mut()
+        .and_then(|table| table.get_mut("path"))
+        .and_then(|item| item.as_value_mut())
+    {
+        let path_str = crate_path.to_string_lossy().replace('\\', "/");
+        if path.as_str() != Some(path_str.as_str()) {
+            let decor = path.decor().clone();
+            *path = toml_edit::Value::from(path_str);
+            *path.decor_mut() = decor;
+            changed = true;
+        }
+    }
+    if let Some(local_ver) = local_ver {
+        changed |= relax_dep_item(dep, local_ver);
+    }
+    changed
+}
+
+/// Redirect existing Verus dependency paths to the local checkout and rewrite
+/// mismatched exact-version pins so Cargo's `[patch]` entries can take effect.
 ///
 /// Uses `toml_edit` so that the rest of the file is left byte-for-byte
 /// identical (key order, comments, blank lines, etc.).
-fn relax_exact_version_pins(
+fn update_verus_dependencies(
     path: &Path,
+    patches: &[(String, PathBuf)],
     local_versions: &HashMap<String, String>,
 ) -> anyhow::Result<()> {
-    if local_versions.is_empty() {
-        return Ok(());
-    }
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => return Ok(()),
@@ -151,9 +168,13 @@ fn relax_exact_version_pins(
 
     for section in &["dependencies", "dev-dependencies", "build-dependencies"] {
         if let Some(deps) = doc.get_mut(section).and_then(|d| d.as_table_mut()) {
-            for (crate_name, local_ver) in local_versions {
+            for (crate_name, crate_path) in patches {
                 if let Some(dep) = deps.get_mut(crate_name.as_str()) {
-                    changed |= relax_dep_item(dep, local_ver);
+                    changed |= update_dep_item(
+                        dep,
+                        crate_path,
+                        local_versions.get(crate_name).map(String::as_str),
+                    );
                 }
             }
         }
@@ -170,16 +191,23 @@ fn relax_exact_version_pins(
             .and_then(|w| w.get_mut("dependencies"))
             .and_then(|d| d.as_table_mut())
         {
-            for (crate_name, local_ver) in local_versions {
+            for (crate_name, crate_path) in patches {
                 if let Some(dep) = wdeps.get_mut(crate_name.as_str()) {
-                    changed |= relax_dep_item(dep, local_ver);
+                    changed |= update_dep_item(
+                        dep,
+                        crate_path,
+                        local_versions.get(crate_name).map(String::as_str),
+                    );
                 }
             }
         }
     }
 
     if changed {
-        debug!("Updated exact version pins in {}", path.display());
+        debug!(
+            "Updated Verus dependency paths and version pins in {}",
+            path.display()
+        );
         std::fs::write(path, doc.to_string())
             .map_err(|e| anyhow!("cannot write {}: {}", path.display(), e))?;
     }
@@ -190,8 +218,8 @@ fn relax_exact_version_pins(
 /// to the workspace root `Cargo.toml` so those crates resolve to the local Verus
 /// repo rather than whatever version/source the project specified.
 ///
-/// Two patch sources are written – `crates-io` and the Verus git URL – so the
-/// override works regardless of how the project declared its dependency.
+/// Two patch sources are written – `crates-io` and the Verus git URL – and
+/// existing path dependencies are redirected to the local Verus repo.
 ///
 /// Uses `toml_edit` so that the rest of the file is left byte-for-byte
 /// identical (key order, comments, blank lines, etc.).
@@ -272,24 +300,235 @@ pub fn inject_verus_patches(
     std::fs::write(&workspace_cargo_toml, doc.to_string())
         .map_err(|e| anyhow!("cannot write {}: {}", workspace_cargo_toml.display(), e))?;
 
-    // Relax exact-version pins on the patched crates so Cargo actually uses the
-    // patches. Cargo only applies a [patch] when its version satisfies the
-    // dependency's constraint; an exact pin like `=0.0.0-old` won't match a
-    // local crate at a newer version, causing the patch to be silently ignored.
+    // Path dependencies need direct updates: registry/git patches do not
+    // replace their source, and Cargo still tries to load the original path.
     let local_versions: HashMap<String, String> = patches
         .iter()
         .filter_map(|(name, path)| get_local_version(path).map(|v| (name.clone(), v)))
         .collect();
 
-    if !local_versions.is_empty() {
-        // Process the workspace root and, if different, the target crate's Cargo.toml.
-        let target_cargo_toml = target_dir.join("Cargo.toml");
-        for path in [&workspace_cargo_toml, &target_cargo_toml] {
-            if let Err(e) = relax_exact_version_pins(path, &local_versions) {
-                warn!("Failed to relax version pins in {}: {}", path.display(), e);
-            }
+    // Process the workspace root and, if different, the target crate's Cargo.toml.
+    let target_cargo_toml = target_dir.join("Cargo.toml");
+    for path in [&workspace_cargo_toml, &target_cargo_toml] {
+        if let Err(e) = update_verus_dependencies(path, &patches, &local_versions) {
+            warn!(
+                "Failed to update Verus dependencies in {}: {}",
+                path.display(),
+                e
+            );
         }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::process::Command;
+    use tempdir::TempDir;
+
+    fn write_crate(path: &Path, name: &str, extra: &str) {
+        fs::create_dir_all(path.join("src")).unwrap();
+        fs::write(path.join("src/lib.rs"), "").unwrap();
+        fs::write(
+            path.join("Cargo.toml"),
+            format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n{extra}"),
+        )
+        .unwrap();
+    }
+
+    fn setup_verus(root: &Path) -> PathBuf {
+        let verus = root.join("verus");
+        for (dir, name) in [
+            ("vstd", "vstd"),
+            ("builtin", "verus_builtin"),
+            ("builtin_macros", "verus_builtin_macros"),
+        ] {
+            write_crate(&verus.join("source").join(dir), name, "");
+        }
+        verus
+    }
+
+    fn assert_local_dependencies(project: &Path, verus: &Path) {
+        let output = Command::new(env!("CARGO"))
+            .args([
+                "metadata",
+                "--offline",
+                "--all-features",
+                "--format-version",
+                "1",
+            ])
+            .current_dir(project)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let metadata: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        for name in ["vstd", "verus_builtin", "verus_builtin_macros"] {
+            let package = metadata["packages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|package| package["name"] == name)
+                .unwrap();
+            assert!(Path::new(package["manifest_path"].as_str().unwrap()).starts_with(verus));
+        }
+    }
+
+    #[test]
+    fn redirects_inline_path_dependencies() {
+        let temp = TempDir::new("verita-path-dependencies").unwrap();
+        let verus = setup_verus(temp.path());
+        let project = temp.path().join("project");
+        write_crate(&project.join("helper"), "helper", "");
+        write_crate(
+            &project,
+            "project",
+            r#"
+[dependencies]
+vstd = { path = "../../missing/verus/source/vstd", version = "=0.0.0", default-features = false } # keep
+verus_builtin = { path = "../../missing/verus/source/builtin" }
+verus_builtin_macros = { path = "../../missing/verus/source/builtin_macros", optional = true }
+helper = { path = "helper" } # unrelated
+"#,
+        );
+
+        inject_verus_patches(
+            &project,
+            &project,
+            &verus,
+            "https://github.com/verus-lang/verus",
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(project.join("Cargo.toml")).unwrap();
+        let manifest: toml::Value = toml::from_str(&content).unwrap();
+        assert_eq!(
+            manifest["dependencies"]["vstd"]["version"].as_str(),
+            Some("=0.1.0")
+        );
+        assert_eq!(
+            manifest["dependencies"]["vstd"]["default-features"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            manifest["dependencies"]["verus_builtin_macros"]["optional"].as_bool(),
+            Some(true)
+        );
+        assert!(content.contains("} # keep"));
+        assert!(content.contains("helper = { path = \"helper\" } # unrelated"));
+        assert_local_dependencies(&project, &verus);
+
+        inject_verus_patches(
+            &project,
+            &project,
+            &verus,
+            "https://github.com/verus-lang/verus",
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read_to_string(project.join("Cargo.toml")).unwrap(),
+            content
+        );
+    }
+
+    #[test]
+    fn redirects_workspace_and_regular_table_path_dependencies() {
+        let temp = TempDir::new("verita-workspace-paths").unwrap();
+        let verus = setup_verus(temp.path());
+        let project = temp.path().join("project");
+        let target = project.join("member");
+        write_crate(
+            &target,
+            "member",
+            r#"
+[dependencies]
+vstd.workspace = true
+
+[dev-dependencies.verus_builtin]
+path = "../../../missing/verus/source/builtin" # keep
+version = "=0.0.0"
+
+[build-dependencies.verus_builtin_macros]
+path = "../../../missing/verus/source/builtin_macros"
+"#,
+        );
+        fs::write(
+            project.join("Cargo.toml"),
+            r#"[workspace]
+members = ["member"]
+
+[workspace.dependencies]
+vstd = { path = "../../missing/verus/source/vstd" }
+"#,
+        )
+        .unwrap();
+
+        inject_verus_patches(
+            &target,
+            &project,
+            &verus,
+            "https://github.com/verus-lang/verus",
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(target.join("Cargo.toml")).unwrap();
+        let manifest: toml::Value = toml::from_str(&content).unwrap();
+        assert_eq!(
+            manifest["dependencies"]["vstd"]["workspace"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            manifest["dev-dependencies"]["verus_builtin"]["version"].as_str(),
+            Some("=0.1.0")
+        );
+        assert!(content.contains(" # keep"));
+        assert_local_dependencies(&target, &verus);
+    }
+
+    #[test]
+    fn preserves_registry_and_git_dependency_overrides() {
+        let temp = TempDir::new("verita-version-pins").unwrap();
+        let verus = setup_verus(temp.path());
+        let project = temp.path().join("project");
+        write_crate(
+            &project,
+            "project",
+            r#"
+[dependencies]
+vstd = "=0.0.0"
+verus_builtin = { git = "https://github.com/verus-lang/verus", version = "=0.0.0" }
+verus_builtin_macros = { version = "0.1", default-features = false }
+"#,
+        );
+
+        inject_verus_patches(
+            &project,
+            &project,
+            &verus,
+            "https://github.com/verus-lang/verus",
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(project.join("Cargo.toml")).unwrap();
+        let manifest: toml::Value = toml::from_str(&content).unwrap();
+        assert_eq!(manifest["dependencies"]["vstd"].as_str(), Some("=0.1.0"));
+        assert_eq!(
+            manifest["dependencies"]["verus_builtin"]["version"].as_str(),
+            Some("=0.1.0")
+        );
+        assert_eq!(
+            manifest["dependencies"]["verus_builtin_macros"]["version"].as_str(),
+            Some("0.1")
+        );
+        assert!(manifest["dependencies"]["verus_builtin_macros"]
+            .get("path")
+            .is_none());
+        assert_local_dependencies(&project, &verus);
+    }
 }
