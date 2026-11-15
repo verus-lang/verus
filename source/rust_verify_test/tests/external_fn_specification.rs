@@ -1712,9 +1712,5 @@ test_verify_one_file! {
             let y: u8 = if C { 1 } else { 2 };
             g(y)
         }
-    } => Ok(err) => {
-        assert_eq!(err.errors.len(), 0);
-        assert_eq!(err.warnings.len(), 2);
-        assert!(err.warnings[0].message.contains("`#[verifier(verifier::verify)]` is deprecated"));
-    }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }

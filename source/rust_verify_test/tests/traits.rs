@@ -4680,7 +4680,7 @@ test_verify_one_file! {
         impl T for bool {
             const C: u8 = Q;
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -4694,6 +4694,19 @@ test_verify_one_file! {
             const C: u8 = Q;
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const5 verus_code! {
+        spec const Q: bool = true;
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8;
+        }
+        impl T for bool {
+            const C: u8 = if Q { 3 } else { 4 };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -4757,7 +4770,7 @@ test_verify_one_file! {
             // implicitly dual exec-spec mode:
             const C: u8 = Q;
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
