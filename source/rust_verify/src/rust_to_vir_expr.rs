@@ -53,7 +53,7 @@ The file `rustc_mir_build/src/thir/cx/expr.rs` is particularly useful.
 */
 
 use crate::attributes::{
-    Attr, GhostBlockAttr, get_ghost_block_opt, get_proof_note_annotation, get_trigger,
+    Attr, GhostBlockAttr, get_ghost_block_opt, get_mode, get_proof_note_annotation, get_trigger,
     get_var_mode, parse_attrs, parse_attrs_opt,
 };
 use crate::context::{BodyCtxt, Context, HeaderSetting};
@@ -68,8 +68,8 @@ use crate::rust_to_vir_base::{
 use crate::rust_to_vir_ctor::{resolve_braces_ctor, resolve_ctor};
 use crate::util::{err_span, slice_vec_map_result, vec_map_result};
 use crate::verus_items::{
-    self, CompilableOprItem, DummyCaptureItem, InvariantItem, OpenAtomicUpdateItem,
-    OpenInvariantBlockItem, RustItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem, VstdItem,
+    self, CompilableOprItem, DummyCaptureItem, OpenAtomicUpdateItem, OpenInvariantBlockItem,
+    RustItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem,
 };
 use crate::{internal_err_unless, unsupported_err, unsupported_err_unless};
 use air::ast::Binder;
@@ -1392,10 +1392,13 @@ pub(crate) fn check_proof_with_callee<'tcx>(
         ));
     };
     // `f` and `_VERUS_VERIFIED_f` are generated from the same item,
-    // with the same parent and the same identifier span
+    // with the same parent and the same identifier span.
+    // (Ignore the spans' parent field, which, in incremental compilation,
+    // is set to the item that contains the span, i.e. to `f` or `_VERUS_VERIFIED_f` itself.)
+    let ident_span = |id| tcx.def_ident_span(id).map(|s| s.with_parent(None));
     if tcx.item_name(compiled_id).as_str() != compiled_name
         || tcx.opt_parent(compiled_id) != tcx.opt_parent(ver_id)
-        || tcx.def_ident_span(compiled_id) != tcx.def_ident_span(ver_id)
+        || ident_span(compiled_id) != ident_span(ver_id)
     {
         return err(format!(
             "in the compiled program, `{compiled_name}` here resolves to `{}`, not to `{expected}` (declared with `#[verus_spec(with ...)]`)",
@@ -1462,44 +1465,17 @@ fn malformed_inv_block_err<'tcx, X>(expr: &Expr<'tcx>) -> Result<X, VirErr> {
     )
 }
 
-pub(crate) fn is_spend_open_invariant_credit_call(
-    verus_items: &verus_items::VerusItems,
-    spend_stmt: &Stmt,
-) -> bool {
-    match spend_stmt.kind {
-        StmtKind::Semi(Expr {
-            kind:
-                ExprKind::Call(
-                    Expr {
-                        kind:
-                            ExprKind::Path(QPath::Resolved(
-                                None,
-                                rustc_hir::Path { res: Res::Def(_, fun_id), .. },
-                            )),
-                        ..
-                    },
-                    [Expr { .. }],
-                ),
-            ..
-        }) => match verus_items.id_to_name.get(&fun_id) {
-            Some(&VerusItem::Vstd(
-                VstdItem::Invariant(InvariantItem::SpendOpenInvariantCredit),
-                _,
-            )) => true,
-            Some(&VerusItem::Vstd(
-                VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditInProof),
-                _,
-            )) => true,
-            _ => false,
-        },
-        _ => false,
-    }
-}
-
 pub(crate) fn invariant_block_open<'a>(
     verus_items: &verus_items::VerusItems,
     open_stmt: &'a Stmt,
-) -> Option<(HirId, HirId, &'a rustc_hir::Pat<'a>, &'a rustc_hir::Expr<'a>, InvAtomicity)> {
+) -> Option<(
+    HirId,
+    HirId,
+    &'a rustc_hir::Pat<'a>,
+    &'a rustc_hir::Expr<'a>,
+    &'a rustc_hir::Expr<'a>,
+    InvAtomicity,
+)> {
     match open_stmt.kind {
         StmtKind::Let(LetStmt {
             pat:
@@ -1548,7 +1524,7 @@ pub(crate) fn invariant_block_open<'a>(
                                     )),
                                 ..
                             },
-                            [arg],
+                            [credit_arg, inv_arg],
                         ),
                     ..
                 }),
@@ -1568,7 +1544,7 @@ pub(crate) fn invariant_block_open<'a>(
                 }
             };
 
-            Some((*guard_hir, *inner_hir, inner_pat, arg, atomicity))
+            Some((*guard_hir, *inner_hir, inner_pat, credit_arg, inv_arg, atomicity))
         }
         _ => {
             dbg!(&open_stmt);
@@ -1644,20 +1620,15 @@ fn invariant_block_to_vir<'tcx>(
         _ => panic!("invariant_block_to_vir called with non-Body expression"),
     };
 
-    if body.stmts.len() != 4 || body.expr.is_some() {
+    if body.stmts.len() != 3 || body.expr.is_some() {
         return malformed_inv_block_err(expr);
     }
 
-    let spend_stmt = &body.stmts[0];
-    let open_stmt = &body.stmts[1];
-    let mid_stmt = &body.stmts[2];
-    let close_stmt = &body.stmts[3];
+    let open_stmt = &body.stmts[0];
+    let mid_stmt = &body.stmts[1];
+    let close_stmt = &body.stmts[2];
 
-    if !is_spend_open_invariant_credit_call(&bctx.ctxt.verus_items, spend_stmt) {
-        return malformed_inv_block_err(expr);
-    }
-
-    let (guard_hir, inner_hir, inner_pat, inv_arg, atomicity) = {
+    let (guard_hir, inner_hir, inner_pat, credit_arg, inv_arg, atomicity) = {
         if let Some(block_open) = invariant_block_open(&bctx.ctxt.verus_items, open_stmt) {
             block_open
         } else {
@@ -1715,7 +1686,8 @@ fn invariant_block_to_vir<'tcx>(
         );
     }
 
-    let vir_arg = expr_to_vir_consume(bctx, &inv_arg)?;
+    let vir_credit_arg = expr_to_vir_consume(bctx, &credit_arg)?;
+    let vir_inv_arg = expr_to_vir_consume(bctx, &inv_arg)?;
 
     let name = pat_to_var(inner_pat)?;
     let inner_ty = typ_of_node_unadjusted(bctx, inner_pat.span, &inner_hir)?;
@@ -1724,14 +1696,12 @@ fn invariant_block_to_vir<'tcx>(
     let mid_exp = bctx.spanned_typed_new(
         mid_stmt.span,
         &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
-        ExprX::OpenInvariant(vir_arg, vir_binder, vir_body, atomicity),
+        ExprX::OpenInvariant(vir_credit_arg, vir_inv_arg, vir_binder, vir_body, atomicity),
     );
-    let spend_stmt_vir = stmt_to_vir(&bctx, spend_stmt)
-        .expect("could not convert spend_open_invariant_credit call to vir");
     Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
         expr.span,
         &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
-        ExprX::Block(Arc::new(spend_stmt_vir), Some(mid_exp)),
+        ExprX::Block(Arc::new(vec![]), Some(mid_exp)),
     )))
 }
 
@@ -4613,6 +4583,21 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 match &item.kind {
                     ItemKind::Use(..) | ItemKind::Macro(..) => {
                         return Ok(vec![]);
+                    }
+                    // Ghost code is erased for compilation, but an impl there can still change
+                    // how the verified program resolves calls. Reject impl and static items.
+                    ItemKind::Impl(..) | ItemKind::Static(..) if bctx.in_ghost => {
+                        unsupported_err!(stmt.span, "impl or static items in ghost code", stmt)
+                    }
+                    // An exec fn is compiled, so it cannot appear in ghost code. Its body is
+                    // checked as exec code, so an impl or static inside it could change how
+                    // the verified program resolves calls.
+                    ItemKind::Fn { .. }
+                        if bctx.in_ghost
+                            && !vattrs.external_fn_specification
+                            && get_mode(Mode::Exec, attrs) == Mode::Exec =>
+                    {
+                        unsupported_err!(stmt.span, "exec fn items in ghost code", stmt)
                     }
                     ItemKind::Struct(..)
                     | ItemKind::Enum(..)

@@ -381,6 +381,10 @@ pub fn run_verus(
             verus_args.push("--no-cheating".to_string());
         } else if *option == "--output-json" {
             verus_args.push("--output-json".to_string());
+        } else if *option == "--incremental" {
+            // mimic cargo's default for dev builds
+            verus_args.push("-C".to_string());
+            verus_args.push(format!("incremental={}", test_dir.join("incremental").display()));
         } else if *option == "vstd" {
             // ignore
         } else if *option == "-V allow-inline-air" {
@@ -737,6 +741,7 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![feature(btree_cursors)]
     #![feature(const_destruct)]
     #![feature(print_internals)]
+    #![feature(iter_advance_by)]
     #![feature(maybe_uninit_array_assume_init)]
 };
 
@@ -948,6 +953,15 @@ pub fn assert_fails(err: TestErr, count: usize) {
                 .is_some()
         );
     }
+}
+
+pub fn assert_vir_warning_msg(err: TestErr, expected_msg: &str) {
+    assert_eq!(err.errors.len(), 0);
+    dbg!(&err.warnings);
+    assert_eq!(err.warnings.len(), 2);
+    assert!(err.warnings[0].code.is_none()); // thus likely a VIR error
+    assert!(err.warnings[0].message.contains(expected_msg));
+    assert!(err.warnings[1].message.contains("1 warning emitted"));
 }
 
 pub fn assert_vir_error_msg(err: TestErr, expected_msg: &str) {

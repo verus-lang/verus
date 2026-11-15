@@ -686,6 +686,21 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::clone` which is ignored")
 }
 
+test_verify_one_file_with_options! {
+    #[test] external_derive_attr_stacked ["--no-external-by-default"] => verus_code! {
+        #[derive(Clone, PartialEq, Copy)]
+        #[verifier::external_derive(Clone)]
+        #[verifier::external_derive(PartialEq)]
+        struct X {
+            u: u64,
+        }
+
+        fn test(x: X) {
+            let a = x.clone();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::clone` which is ignored")
+}
+
 test_verify_one_file! {
     #[test] vec_index_nounwind verus_code! {
         use vstd::*;
@@ -2451,6 +2466,286 @@ test_verify_one_file! {
         fn invariant<T>(nn: NonNull<T>) {
             broadcast use vstd::std_specs::ptr::axiom_nonnull_addr_nonzero;
             assert(nn.as_ptr()@.addr != 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] from_le_bytes verus_code! {
+        use vstd::prelude::*;
+        use vstd::bytes::*;
+
+        fn test_u8(b: [u8; 1]) {
+            let x = u8::from_le_bytes(b);
+            assert(x == b[0]);
+            let y = u8::from_le_bytes([0x2a]);
+            assert(y == 0x2a);
+        }
+
+        fn test_u16(b: [u8; 2]) {
+            let x = u16::from_le_bytes(b);
+            assert(x == spec_u16_from_le_bytes(b@));
+            let y = u16_from_le_bytes(b.as_slice());
+            assert(x == y);
+        }
+
+        fn test_u32(b: [u8; 4]) {
+            let x = u32::from_le_bytes(b);
+            assert(x == spec_u32_from_le_bytes(b@));
+            let y = u32_from_le_bytes(b.as_slice());
+            assert(x == y);
+        }
+
+        fn test_u64(b: [u8; 8]) {
+            let x = u64::from_le_bytes(b);
+            assert(x == spec_u64_from_le_bytes(b@));
+            let y = u64_from_le_bytes(b.as_slice());
+            assert(x == y);
+        }
+
+        fn test_round_trip(w: u16, x: u32, y: u64, bw: [u8; 2], bx: [u8; 4], by: [u8; 8])
+            requires
+                bw@ == spec_u16_to_le_bytes(w),
+                bx@ == spec_u32_to_le_bytes(x),
+                by@ == spec_u64_to_le_bytes(y),
+        {
+            proof {
+                lemma_auto_spec_u16_to_from_le_bytes();
+                lemma_auto_spec_u32_to_from_le_bytes();
+                lemma_auto_spec_u64_to_from_le_bytes();
+                // triggers of the u16 and u32 lemmas
+                assert(spec_u16_to_le_bytes(w).len() == 2);
+                assert(spec_u32_to_le_bytes(x).len() == 4);
+            }
+            let w2 = u16::from_le_bytes(bw);
+            let x2 = u32::from_le_bytes(bx);
+            let y2 = u64::from_le_bytes(by);
+            assert(w2 == w);
+            assert(x2 == x);
+            assert(y2 == y);
+        }
+
+        fn test_value() {
+            let b: [u8; 8] = [0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01];
+            let x = u64::from_le_bytes(b);
+            proof {
+                let v: u64 = 0x0102_0304_0506_0708;
+                assert({
+                    &&& (v & 0xff) as u8 == 0x08
+                    &&& ((v >> 8) & 0xff) as u8 == 0x07
+                    &&& ((v >> 16) & 0xff) as u8 == 0x06
+                    &&& ((v >> 24) & 0xff) as u8 == 0x05
+                    &&& ((v >> 32) & 0xff) as u8 == 0x04
+                    &&& ((v >> 40) & 0xff) as u8 == 0x03
+                    &&& ((v >> 48) & 0xff) as u8 == 0x02
+                    &&& ((v >> 56) & 0xff) as u8 == 0x01
+                }) by (bit_vector) requires v == 0x0102_0304_0506_0708u64;
+                spec_u64_to_le_bytes_to_open(v);
+                assert(spec_u64_to_le_bytes(v) =~= b@);
+                lemma_auto_spec_u64_to_from_le_bytes();
+            }
+            assert(x == 0x0102_0304_0506_0708u64);
+            assert(x == 0x0807_0605_0403_0201u64); // FAILS
+        }
+
+        fn test_no_unwind(bv: [u8; 1], bw: [u8; 2], bx: [u8; 4], by: [u8; 8])
+            no_unwind
+        {
+            let _ = u8::from_le_bytes(bv);
+            let _ = u16::from_le_bytes(bw);
+            let _ = u32::from_le_bytes(bx);
+            let _ = u64::from_le_bytes(by);
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] reverse_bits verus_code! {
+        use vstd::prelude::*;
+
+        fn test_spec_and_involution(a: u8, b: u16, c: u32, d: u64) {
+            let ra = a.reverse_bits();
+            let rb = b.reverse_bits();
+            let rc = c.reverse_bits();
+            let rd = d.reverse_bits();
+            assert(ra == a.reverse_bits());
+            assert(ra.reverse_bits() == a);
+            assert(rb.reverse_bits() == b);
+            assert(rc.reverse_bits() == c);
+            assert(rd.reverse_bits() == d);
+        }
+
+        fn test_bits(x: u32) {
+            let r = x.reverse_bits();
+            assert((r >> 31u32) & 1u32 == (x >> sub(31u32, 31u32)) & 1u32);
+            assert((r >> 0u32) & 1u32 == (x >> sub(31u32, 0u32)) & 1u32);
+            assert((x >> sub(31u32, 31u32)) & 1u32 == x & 1u32) by (bit_vector);
+            assert((r >> 31u32) & 1u32 == x & 1u32);
+        }
+
+        fn test_value() {
+            let r = 6u8.reverse_bits();
+            assert(r == 0x60u8) by (bit_vector)
+                requires
+                    (r >> 0u8) & 1u8 == (6u8 >> 7u8) & 1u8,
+                    (r >> 1u8) & 1u8 == (6u8 >> 6u8) & 1u8,
+                    (r >> 2u8) & 1u8 == (6u8 >> 5u8) & 1u8,
+                    (r >> 3u8) & 1u8 == (6u8 >> 4u8) & 1u8,
+                    (r >> 4u8) & 1u8 == (6u8 >> 3u8) & 1u8,
+                    (r >> 5u8) & 1u8 == (6u8 >> 2u8) & 1u8,
+                    (r >> 6u8) & 1u8 == (6u8 >> 1u8) & 1u8,
+                    (r >> 7u8) & 1u8 == (6u8 >> 0u8) & 1u8,
+            ;
+        }
+
+        fn test_no_unwind(a: u8, b: u16, c: u32, d: u64)
+            no_unwind
+        {
+            let _ = a.reverse_bits();
+            let _ = b.reverse_bits();
+            let _ = c.reverse_bits();
+            let _ = d.reverse_bits();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] termination_impl_no_precondition_allowed verus_code! {
+        use vstd::prelude::*;
+
+        struct X { }
+
+        impl std::process::Termination for X {
+            fn report(self) -> std::process::ExitCode
+                requires false
+            {
+                loop{}
+            }
+        }
+
+        fn main() -> X {
+            X { }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `requires` clauses; these can only be inherited from the trait declaration")
+}
+
+test_verify_one_file! {
+    #[test] autoderive_clone_structs_enums verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Clone)]
+        pub struct Single {
+        }
+
+        fn test1() {
+            let x = Single { };
+            let y = x.clone();
+            assert(y == Single { });
+        }
+
+        #[derive(Clone)]
+        pub struct X {
+            pub a: u64
+        }
+
+        fn test2() {
+            let x = X { a: 20 };
+            let y = x.clone();
+            assert(y.a == 20);
+        }
+
+        #[derive(Clone)]
+        pub struct X2 {
+            pub x: X,
+        }
+
+        fn test3() {
+            let x2 = X2 { x: X { a: 20 } };
+            let y = x2.clone();
+            assert(y.x.a == 20);
+        }
+
+        #[derive(Clone)]
+        pub enum Option<A> {
+            Some(A),
+            None,
+        }
+
+        fn test4() {
+            let x = Option::<u64>::None;
+            let y = x.clone();
+            assert(y == Option::<u64>::None);
+        }
+
+        fn test5() {
+            let x = Option::Some(X2 { x: X { a: 5 } });
+            let y = x.clone();
+            assert(y == Option::Some(X2 { x: X { a: 5 } }));
+        }
+
+        pub trait Tr {
+            type R: Clone;
+        }
+
+        #[derive(Clone)]
+        pub enum ComplexOption<A: Tr> {
+            Some(A::R),
+            None,
+        }
+
+        #[derive(Clone)]
+        pub struct Z;
+
+        impl Tr for Z {
+            type R = X2;
+        }
+
+        fn test6() {
+            let x = ComplexOption::<Z>::Some(X2 { x: X { a: 5 } });
+            let y = x.clone();
+            assert(y == ComplexOption::<Z>::Some(X2 { x: X { a: 5 } }));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] autoderive_clone_with_visibility verus_code! {
+        #[derive(Clone)]
+        pub struct X {
+            pub a: u64
+        }
+
+        #[derive(Clone)]
+        pub struct X2 {
+            pub x: X,
+        }
+
+        mod inner_mod {
+            use vstd::prelude::*;
+            use super::X2;
+            use super::X;
+
+            #[derive(Clone)]
+            pub(crate) struct Foo {
+                pub j: u64,
+                x: X2,
+            }
+
+            fn test_from_inside() {
+                let foo = Foo { j: 1, x: X2 { x: X { a: 2 } } };
+                let foo2 = foo.clone();
+                assert(foo2 == Foo { j: 1, x: X2 { x: X { a: 2 } } });
+            }
+
+            pub(crate) fn new() -> Foo {
+                Foo { j: 1, x: X2 { x: X { a: 2 } } }
+            }
+        }
+        use inner_mod::Foo;
+
+        fn test_from_outside() {
+            let foo = inner_mod::new();
+            let foo2 = foo.clone();
         }
     } => Ok(())
 }

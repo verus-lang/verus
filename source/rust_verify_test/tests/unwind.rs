@@ -3,6 +3,157 @@
 mod common;
 use common::*;
 
+test_verify_one_file! {
+    #[test] standard_try_operations_no_unwind verus_code! {
+        use vstd::prelude::*;
+        use core::convert::Infallible;
+        use core::ops::{ControlFlow, FromResidual, Try};
+
+        fn option_branch<T>(value: Option<T>) -> ControlFlow<Option<Infallible>, T>
+            no_unwind
+        {
+            value.branch()
+        }
+
+        fn result_branch<T, E>(value: Result<T, E>) -> ControlFlow<Result<Infallible, E>, T>
+            no_unwind
+        {
+            value.branch()
+        }
+
+        fn control_flow_branch<B, C>(value: ControlFlow<B, C>) ->
+            ControlFlow<ControlFlow<B, Infallible>, C>
+            no_unwind
+        {
+            value.branch()
+        }
+
+        fn option_from_residual<T>(residual: Option<Infallible>) -> Option<T>
+            no_unwind
+        {
+            Option::from_residual(residual)
+        }
+
+        fn control_flow_from_residual<B, C>(residual: ControlFlow<B, Infallible>) ->
+            ControlFlow<B, C>
+            no_unwind
+        {
+            ControlFlow::from_residual(residual)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] generic_try_operations_conditional_unwind verus_code! {
+        use vstd::prelude::*;
+        use core::ops::{ControlFlow, FromResidual, Try};
+        use vstd::std_specs::control_flow::{FromResidualSpec, TrySpec};
+
+        fn branch<T: Try>(value: T) -> ControlFlow<T::Residual, T::Output>
+            no_unwind when !value.may_unwind()
+        {
+            value.branch()
+        }
+
+        fn from_residual<T: FromResidual<R>, R>(residual: R) -> T
+            no_unwind when !<T as FromResidualSpec<R>>::may_unwind(&residual)
+        {
+            T::from_residual(residual)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] custom_try_operations_check_conditional_unwind verus_code! {
+        use vstd::prelude::*;
+        use core::convert::Infallible;
+        use core::ops::{ControlFlow, FromResidual, Try};
+        use vstd::std_specs::control_flow::{FromResidualSpecImpl, TrySpecImpl};
+
+        pub struct MyTry {
+            pub value: u32,
+            pub may_panic: bool,
+        }
+
+        // The default contract permits unwinding.
+        fn maybe_panic() {}
+
+        impl TrySpecImpl for MyTry {
+            open spec fn may_unwind(&self) -> bool { self.may_panic }
+            open spec fn branch_model_is_valid() -> bool { true }
+            open spec fn branch_model(self) -> ControlFlow<Option<Infallible>, u32> {
+                ControlFlow::Continue(self.value)
+            }
+        }
+
+        impl FromResidualSpecImpl<Option<Infallible>> for MyTry {
+            open spec fn may_unwind(residual: &Option<Infallible>) -> bool { false }
+        }
+
+        impl FromResidual<Option<Infallible>> for MyTry {
+            fn from_residual(residual: Option<Infallible>) -> Self {
+                maybe_panic(); // FAILS: this implementation promised not to unwind.
+                MyTry { value: 0, may_panic: false }
+            }
+        }
+
+        impl Try for MyTry {
+            type Output = u32;
+            type Residual = Option<Infallible>;
+
+            fn from_output(value: u32) -> Self {
+                MyTry { value, may_panic: false }
+            }
+
+            fn branch(self) -> ControlFlow<Option<Infallible>, u32> {
+                if self.may_panic {
+                    maybe_panic();
+                }
+                ControlFlow::Continue(self.value)
+            }
+        }
+
+        fn safe(value: u32) -> ControlFlow<Option<Infallible>, u32>
+            no_unwind
+        {
+            MyTry { value, may_panic: false }.branch()
+        }
+
+        fn unguarded(value: MyTry) -> ControlFlow<Option<Infallible>, u32>
+            no_unwind
+        {
+            value.branch() // FAILS: this value may permit unwinding.
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] try_operations_do_not_assume_no_unwind verus_code! {
+        use vstd::prelude::*;
+        use core::convert::Infallible;
+        use core::ops::{ControlFlow, FromResidual, Try};
+
+        fn branch<T: Try>(value: T) -> ControlFlow<T::Residual, T::Output>
+            no_unwind
+        {
+            value.branch() // FAILS: the implementation's flag is unknown.
+        }
+
+        fn from_residual<T: FromResidual<R>, R>(residual: R) -> T
+            no_unwind
+        {
+            T::from_residual(residual) // FAILS: the implementation's flag is unknown.
+        }
+
+        fn result_from_residual<T, E, F: From<E>>(residual: Result<Infallible, E>) ->
+            Result<T, F>
+            no_unwind
+        {
+            Result::from_residual(residual) // FAILS: error conversion may unwind.
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
 test_verify_one_file_with_options! {
     #[test] basic ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
