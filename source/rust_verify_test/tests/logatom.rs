@@ -987,3 +987,53 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] atomic_call_on_regular_function
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        tracked struct Token;
+        tracked struct Pred;
+
+        impl UpdatePredicate<Token, Commit<Token>> for Pred {}
+
+        type AU = AtomicUpdate<Token, Commit<Token>, Pred>;
+
+        fn function(_au: Tracked<AU>) {}
+
+        fn caller() {
+            function() atomically |update| {
+                update(Token);
+            };
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "invalid atomic function call")
+}
+
+test_verify_one_file! {
+    #[test] regular_call_on_atomic_function
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        tracked struct Token;
+
+        type AU = AtomicUpdate<Token, Commit<Token>, Pred>;
+
+        fn function()
+            atomically (au) {
+                type Pred,
+                (x: Token) -> (y: Commit<Token>),
+            },
+        {
+            try_open_atomic_update!(au, token => {
+                Tracked(Commit(token))
+            });
+        }
+
+        fn caller(au: Tracked<AU>) {
+            function(au);
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "invalid call to logically atomic function")
+}

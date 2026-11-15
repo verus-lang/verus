@@ -1015,6 +1015,30 @@ fn expr_get_call(
                     return Ok(None);
                 }
 
+                let func_is_atomic = function.x.atomic_update.is_some();
+                let call_is_atomic = args.last().is_some_and(|expr| {
+                    // atomically block was replaced by init dummy
+                    matches!(expr.x, ExprX::AtomicUpdateInitDummy)
+                });
+
+                match (func_is_atomic, call_is_atomic) {
+                    (true, false) => {
+                        return Err(error_with_label(
+                            &expr.span,
+                            "invalid call to logically atomic function",
+                            "expected atomic function call here",
+                        ));
+                    }
+                    (false, true) => {
+                        return Err(error_with_label(
+                            &expr.span,
+                            "invalid atomic function call",
+                            "unexpected atomic function call here",
+                        ));
+                    }
+                    _ => {}
+                }
+
                 let (stms, all_obligations, exps, body) = get_call_args(
                     ctx,
                     state,
