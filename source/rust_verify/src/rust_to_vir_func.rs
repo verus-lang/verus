@@ -276,7 +276,6 @@ fn handle_autospec<'tcx>(
                 outer_ret: spec_ret_param,
                 item_kind: ItemKind::Function,
                 attrs: Arc::new(FunctionAttrsX {
-                    uses_ghost_blocks: vattrs.verus_macro,
                     inline: false,
                     broadcast_forall: false,
                     broadcast_forall_only: false,
@@ -1551,7 +1550,6 @@ fn make_attributes<'tcx>(
     ctxt: &Context<'tcx>,
     def_id: DefId,
     vattrs: &crate::attributes::VerifierAttrs,
-    uses_ghost_blocks: bool,
     print_zero_args: bool,
     print_as_method: bool,
     safety: Safety,
@@ -1567,7 +1565,6 @@ fn make_attributes<'tcx>(
         );
     }
     let fattrs = FunctionAttrsX {
-        uses_ghost_blocks,
         inline: vattrs.inline,
         no_auto_trigger: vattrs.no_auto_trigger,
         broadcast_forall: vattrs.broadcast_forall,
@@ -2220,7 +2217,6 @@ pub(crate) fn check_item_fn<'tcx>(
         ctxt,
         id,
         &vattrs,
-        vattrs.verus_macro && !matches!(sig.sig, FnOrConstSigEnum::ConstVar(..)),
         n_params == 0,
         has_self_param,
         safety,
@@ -3424,7 +3420,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         ctxt,
         id,
         &vattrs,
-        vattrs.verus_macro,
         false,
         false,
         Safety::Safe,

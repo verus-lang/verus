@@ -1576,8 +1576,6 @@ pub struct AutoExtEqual {
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Default, Clone)]
 pub struct FunctionAttrsX {
-    /// Erasure and lifetime checking based on ghost blocks
-    pub uses_ghost_blocks: bool,
     /// Inline spec function for SMT
     pub inline: bool,
     /// Create a global axiom saying forall params, require ==> ensure
