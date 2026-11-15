@@ -1066,7 +1066,7 @@ pub fn try_open_atomic_update_end<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
 macro_rules! open_atomic_update {
     ($($tail:tt)*) => {
         {
-            let _ = ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
+            let _ = $crate::vstd::prelude::verus_exec_open_au_macro_exprs!(
                 $crate::atomic::try_open_atomic_update_internal!(
                     $($tail)*, @EXEC, au_commit_wrap_exec
                 )
@@ -1079,7 +1079,7 @@ macro_rules! open_atomic_update {
 macro_rules! open_atomic_update_in_proof {
     ($($tail:tt)*) => {
         {
-            let _ = ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
+            let _ = $crate::vstd::prelude::verus_ghost_open_au_macro_exprs!(
                 $crate::atomic::try_open_atomic_update_internal!(
                     $($tail)*, @PROOF, au_commit_wrap_proof
                 )
@@ -1093,7 +1093,7 @@ macro_rules! peek_atomic_update {
     ($($tail:tt)*) => {
         {
             #[verifier::exec]
-            let err_au = ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
+            let err_au = $crate::vstd::prelude::verus_exec_open_au_macro_exprs!(
                 $crate::atomic::try_open_atomic_update_internal!(
                     $($tail)*, @EXEC, au_abort_wrap_exec
                 )
@@ -1104,7 +1104,7 @@ macro_rules! peek_atomic_update {
                 _ => $crate::atomic::au_abort_unwrap_exec(err_au),
 
                 #[cfg(not(verus_keep_ghost_body))]
-                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+                _ => $crate::vstd::prelude::Tracked::assume_new_fallback(|| ::core::unreachable!()),
             }
         }
     };
@@ -1115,7 +1115,7 @@ macro_rules! peek_atomic_update_in_proof {
     ($($tail:tt)*) => {
         {
             #[verifier::proof]
-            let err_au = ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
+            let err_au = $crate::vstd::prelude::verus_ghost_open_au_macro_exprs!(
                 $crate::atomic::try_open_atomic_update_internal!(
                     $($tail)*, @PROOF, au_abort_wrap_proof
                 )
@@ -1126,7 +1126,7 @@ macro_rules! peek_atomic_update_in_proof {
                 _ => $crate::atomic::au_abort_unwrap_proof(err_au),
 
                 #[cfg(not(verus_keep_ghost_body))]
-                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+                _ => $crate::vstd::prelude::Tracked::assume_new_fallback(|| ::core::unreachable!()),
             }
         }
     };
@@ -1135,7 +1135,7 @@ macro_rules! peek_atomic_update_in_proof {
 #[macro_export]
 macro_rules! try_open_atomic_update {
     ($($tail:tt)*) => {
-        ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
+        $crate::vstd::prelude::verus_exec_open_au_macro_exprs!(
             $crate::atomic::try_open_atomic_update_internal!($($tail)*)
         )
     };
@@ -1144,7 +1144,7 @@ macro_rules! try_open_atomic_update {
 #[macro_export]
 macro_rules! try_open_atomic_update_in_proof {
     ($($tail:tt)*) => {
-        ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
+        $crate::vstd::prelude::verus_ghost_open_au_macro_exprs!(
             $crate::atomic::try_open_atomic_update_internal!($($tail)*)
         )
     };
@@ -1162,7 +1162,7 @@ macro_rules! try_open_atomic_update_internal {
                 _ => $crate::atomic::$wrap_fn(v),
 
                 #[cfg(not(verus_keep_ghost_body))]
-                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+                _ => $crate::vstd::prelude::Tracked::assume_new_fallback(|| ::core::unreachable!()),
             }
         })
     };
@@ -1177,7 +1177,7 @@ macro_rules! try_open_atomic_update_internal {
                 _ => $crate::atomic::$wrap_fn(v),
 
                 #[cfg(not(verus_keep_ghost_body))]
-                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+                _ => $crate::vstd::prelude::Tracked::assume_new_fallback(|| ::core::unreachable!()),
             }
         })
     };
@@ -1195,7 +1195,7 @@ macro_rules! try_open_atomic_update_internal {
                 res => $crate::atomic::try_open_atomic_update_end(guard, res),
 
                 #[cfg(not(verus_keep_ghost_body))]
-                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+                _ => $crate::vstd::prelude::Tracked::assume_new_fallback(|| ::core::unreachable!()),
             }
         }
     };
