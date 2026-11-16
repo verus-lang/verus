@@ -453,7 +453,7 @@ test_verify_one_file! {
             let r = [0u8; core::mem::size_of_val(&N)];
             consumes_opaque(f1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {

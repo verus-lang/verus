@@ -92,6 +92,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
         trace!(?hir_expr.hir_id, ?hir_expr.span);
 
+        let verus_ghost = crate::verus::ghost_enter_expr(self, hir_expr);
         let mut expr = self.make_mirror_unadjusted(hir_expr);
 
         trace!(?expr.ty);
@@ -147,7 +148,9 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
         // OK, all done!
         let expr_id = self.thir.exprs.push(expr);
-        crate::verus_expr::scope_post(self, expr_id)
+        let expr_id = crate::verus_expr::scope_post(self, expr_id);
+        crate::verus::ghost_exit(self, verus_ghost);
+        expr_id
     }
 
     #[instrument(level = "trace", skip(self, expr, span))]

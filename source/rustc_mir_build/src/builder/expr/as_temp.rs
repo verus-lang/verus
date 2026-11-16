@@ -126,7 +126,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
         block = this.expr_into_dest(temp_place, block, expr_id).into_block();
 
-        if let Some(temp_lifetime) = temp_lifetime.temp_lifetime {
+        if let Some(temp_lifetime) = temp_lifetime.temp_lifetime
+            && !crate::builder::verus_builder::skip_temp_drop(this, expr_id)
+        {
             this.schedule_drop_value(expr_span, temp_lifetime, temp);
         }
 

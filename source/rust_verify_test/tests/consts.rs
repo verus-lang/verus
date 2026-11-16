@@ -721,7 +721,7 @@ test_verify_one_file! {
             let a = [0u8; core::mem::size_of_val(&N)];
             a.len()
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -730,7 +730,7 @@ test_verify_one_file! {
         spec const N: usize = 5;
         struct S<const K: usize> { a: [u8; K] }
         fn f() { let s = S::<{ core::mem::size_of_val(&N) }> { a: [0; 8] }; }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -738,7 +738,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         spec const N: usize = 5;
         struct S<const K: usize = { core::mem::size_of_val(&N) }> { a: [u8; K] }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -747,7 +747,7 @@ test_verify_one_file! {
         spec const N: usize = 5;
         #[repr(usize)]
         enum E { A = core::mem::size_of_val(&N) }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -755,7 +755,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         const proof fn p() {}
         fn f() { let a = [0u8; { p(); 8 }]; }
-    } => Err(err) => assert_rust_error_msg(err, "cannot call non-const function")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::p` with mode proof")
 }
 
 test_verify_one_file! {
@@ -769,7 +769,7 @@ test_verify_one_file! {
             let a = [0u8; S::N];
             a.len()
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -797,7 +797,7 @@ test_verify_one_file! {
             let a = [0u8; core::mem::size_of_val(&N)];
             a.len()
         };
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 // Rust's const evaluator checks arithmetic in anonymous constants; Verus does not verify it.
@@ -823,5 +823,5 @@ test_verify_one_file! {
         fn make() -> [u8; core::mem::size_of_val(&N)] {
             Default::default()
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }

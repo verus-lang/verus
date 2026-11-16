@@ -477,7 +477,6 @@ fn mk_spec_function_stub(
             decreases_len: 0,
             item_kind: ItemKind::Function,
             attrs: Arc::new(FunctionAttrsX {
-                uses_ghost_blocks: true,
                 inline: false,
                 broadcast_forall: false,
                 broadcast_forall_only: false,
