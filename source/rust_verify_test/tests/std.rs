@@ -608,14 +608,15 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file! {
-    #[test] tuple_clone_not_supported verus_code! {
+    // the compiler-provided `Clone` of a tuple of `Copy` types is a copy
+    #[test] tuple_clone verus_code! {
         use vstd::*;
 
         fn stuff(a: (u8, u8)) {
             let b = a.clone();
-            assert(a == b); // FAILS
+            assert(a == b);
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support this built-in instance")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -2748,4 +2749,21 @@ test_verify_one_file! {
             let foo2 = foo.clone();
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    // compiler-provided `Clone` at a `Copy` type (unit, tuples, closures) is a copy
+    #[test] test_builtin_clone_of_copy_types verus_code! {
+        use vstd::prelude::*;
+        #[derive(Clone)] struct P { _priv: (), n: u32 }
+        #[derive(Clone)] struct E(());
+        fn t(x: (u32, bool)) -> (r: (u32, bool)) ensures r == x { x.clone() }
+        fn u() { let p = P { _priv: (), n: 3 }; let q = p.clone(); }
+        fn c() -> u32 { let f = |x: u32| x; let g = f.clone(); g(1) }
+        fn wrong(x: (u32, bool)) -> (r: (u32, bool))
+            ensures r.0 == 0, // FAILS
+        {
+            x.clone()
+        }
+    } => Err(err) => assert_one_fails(err)
 }
