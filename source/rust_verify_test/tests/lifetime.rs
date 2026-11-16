@@ -2052,3 +2052,43 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] exec_var_drop_requires_borrow_live ["--no-erasure-check"] => verus_code! {
+        use vstd::prelude::*;
+        struct X { }
+        struct W<'a> { r: &'a X }
+        impl<'a> Drop for W<'a> {
+            #[verifier::external_body]
+            fn drop(&mut self) opens_invariants none no_unwind { }
+        }
+        fn test() {
+            let w;
+            {
+                let x = X { };
+                w = W { r: &x };
+            }
+            // `w` is dropped here, which requires the borrow of `x` to still be live
+        }
+    } => Err(err) => assert_rust_error_msg(err, "`x` does not live long enough")
+}
+
+test_verify_one_file! {
+    #[test] tracked_var_not_dropped verus_code! {
+        use vstd::prelude::*;
+        tracked struct X { }
+        tracked struct W<'a> { tracked r: &'a X }
+        impl<'a> Drop for W<'a> {
+            #[verifier::external_body]
+            fn drop(&mut self) opens_invariants none no_unwind { }
+        }
+        fn test() {
+            let tracked w;
+            proof {
+                let tracked x = X { };
+                w = W { r: &x };
+            }
+            // Ghost code never runs drop, so this is fine
+        }
+    } => Ok(())
+}
