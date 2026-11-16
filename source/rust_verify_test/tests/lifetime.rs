@@ -444,7 +444,7 @@ test_verify_one_file! {
         }
 
         fn bar<'a, F: Fn(u32) -> bool>(f: F, v: u32, foo: Foo<'a, u32>) -> Ghost<bool> {
-            Ghost(call_requires(f, (v,)))
+            Ghost(v == 0)
         }
     } => Ok(())
 }

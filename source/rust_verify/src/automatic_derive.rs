@@ -499,7 +499,8 @@ fn mk_spec_function_stub(
                 rlimit: None,
                 print_zero_args: false,
                 print_as_method: false,
-                prophecy_dependent: false,
+                // the body uses strictly_cloned, which is prophetic
+                prophecy_dependent: true,
                 size_of_broadcast_proof: false,
                 is_type_invariant_fn: false,
                 is_external_body: false,

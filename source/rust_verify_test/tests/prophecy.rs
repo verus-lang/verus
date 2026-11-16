@@ -217,7 +217,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] calls_requires_ensures PROPH.to_string() + verus_code_str! {
+    #[test] calls_requires_is_prophetic PROPH.to_string() + verus_code_str! {
         fn freq(tracked t: Prophecy<bool>)
             requires t.value() == false,
         { }
@@ -230,12 +230,16 @@ test_verify_one_file! {
             let b = call_requires(freq, (t,));
             t.resolve(b);
 
-            assert(false); // FAILS
+            assert(false);
         }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for argument to proof-mode function with tracked parameters")
+}
 
-        fn fens(tracked t: Prophecy<bool>)
-            ensures t.value() == false,
-        { assume(false); }
+test_verify_one_file! {
+    #[test] calls_ensures_is_prophetic PROPH.to_string() + verus_code_str! {
+        fn freq(tracked t: Prophecy<bool>)
+            requires t.value() == false,
+        { }
 
         proof fn test_ens(tracked t: Prophecy<bool>)
             requires t.may_resolve(),
@@ -245,9 +249,13 @@ test_verify_one_file! {
             let b = call_ensures(freq, (t,), ());
             t.resolve(b);
 
-            assert(false); // FAILS
+            assert(false);
         }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for argument to proof-mode function with tracked parameters")
+}
 
+test_verify_one_file! {
+    #[test] calls_requires_closure_is_prophetic PROPH.to_string() + verus_code_str! {
         fn test_req_closure(Tracked(t): Tracked<Prophecy<bool>>)
             requires t.may_resolve(),
         {
@@ -261,10 +269,14 @@ test_verify_one_file! {
                 let b = call_requires(clos, (t,));
                 t.resolve(b);
 
-                assert(false); // FAILS
+                assert(false);
             }
         }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for argument to proof-mode function with tracked parameters")
+}
 
+test_verify_one_file! {
+    #[test] calls_ensures_closure_is_prophetic PROPH.to_string() + verus_code_str! {
         fn test_ens_closure(tracked t: Prophecy<bool>)
             requires t.may_resolve(),
         {
@@ -278,10 +290,10 @@ test_verify_one_file! {
                 let b = call_ensures(clos, (t,), ());
                 t.resolve(b);
 
-                assert(false); // FAILS
+                assert(false);
             }
         }
-    } => Err(err) => assert_fails(err, 4)
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for argument to proof-mode function with tracked parameters")
 }
 
 test_verify_one_file! {
