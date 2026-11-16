@@ -186,7 +186,17 @@ fn check_item<'tcx>(
             no_erasure_needed.push(def_id);
             return Ok(());
         }
-        if vattrs.structural_const_wrapper {
+        // An anonymous `const _: T = { ... };` cannot be referred to, so only the items declared in its
+        // block matter. verus! marks a hand-written one `structural_const_wrapper`; one that another
+        // macro produces (serde's derives, a `macro_rules!`) carries no Verus attribute, and its block
+        // of item statements is not a pure expression ("expected pure mathematical expression"). Both
+        // are ignored the same way: the items inside are visited, and verified, rejected or external,
+        // as at module level.
+        let anonymous_const = matches!(
+            item.kind,
+            ItemKind::Const(ident, ..) if ident.name == rustc_span::symbol::kw::Underscore
+        );
+        if vattrs.structural_const_wrapper || anonymous_const {
             no_erasure_needed.push(def_id);
             return Ok(());
         }
