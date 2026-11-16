@@ -813,7 +813,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         for_guard: ForGuard,
     ) {
         let local_id = self.var_local_id(var, for_guard);
-        if let Some(region_scope) = self.region_scope_tree.var_scope(var.0.local_id) {
+        if let Some(region_scope) = self.region_scope_tree.var_scope(var.0.local_id)
+            && !crate::builder::verus_builder::skip_var_drop(self, var)
+        {
             self.schedule_drop_value(span, region_scope, local_id);
         }
     }

@@ -22,6 +22,8 @@ pub struct PreHeader {
     pub default_ensures: bool,
     pub open_visibility_qualifier: Option<Visibility>,
     pub unwrap_parameters: Vec<UnwrapParameter>,
+    /// HirIds of the inner binders of `unwrap_parameters` (same order)
+    pub unwrap_parameter_binders: Vec<rustc_hir::HirId>,
     pub ensure_id: Option<VarIdent>,
 }
 
@@ -32,6 +34,7 @@ pub(crate) fn empty_preheader<'tcx>() -> PreHeader {
         decreases_len: 0,
         open_visibility_qualifier: None,
         unwrap_parameters: vec![],
+        unwrap_parameter_binders: vec![],
         ensure_id: None,
         default_ensures: false,
     }
@@ -65,9 +68,10 @@ fn walk_expr<'tcx>(
                     crate::attributes::parse_attrs_opt(ctxt.tcx.hir_attrs(stmt.hir_id), None);
                 if let [Attr::UnwrapParameter] = attrs[..] {
                     if let Some(stmt2) = iter.next() {
-                        let u =
+                        let (u, binder) =
                             unwrap_param_extract_idents(ctxt.tcx, vir_params, hir_params, stmt2)?;
                         pre_header.unwrap_parameters.push(u);
+                        pre_header.unwrap_parameter_binders.push(binder);
                     } else {
                         internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
                     }
@@ -95,7 +99,7 @@ fn unwrap_param_extract_idents<'tcx>(
     vir_params: &[vir::ast::Param],
     hir_params: &[rustc_hir::Param<'tcx>],
     stmt: &Stmt,
-) -> Result<UnwrapParameter, VirErr> {
+) -> Result<(UnwrapParameter, rustc_hir::HirId), VirErr> {
     let StmtKind::Semi(e) = stmt.kind else {
         internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
@@ -150,7 +154,7 @@ fn unwrap_param_extract_idents<'tcx>(
         }
     };
 
-    Ok(UnwrapParameter { mode, outer_name: rhs_name, inner_name: lhs_name })
+    Ok((UnwrapParameter { mode, outer_name: rhs_name, inner_name: lhs_name }, lhs_pat.hir_id))
 }
 
 fn is_header_verus_item(verus_item: &VerusItem) -> bool {
@@ -342,6 +346,7 @@ pub(crate) fn sanity_check_preheader(
         default_ensures,
         open_visibility_qualifier,
         unwrap_parameters,
+        unwrap_parameter_binders: _,
         ensure_id,
     } = pre_header;
 
