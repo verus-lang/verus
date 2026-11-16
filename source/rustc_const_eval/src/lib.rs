@@ -1,8 +1,8 @@
 // tidy-alphabetical-start
+#![cfg_attr(bootstrap, feature(never_type))]
 #![feature(array_try_map)]
 #![feature(decl_macro)]
 #![feature(deref_patterns)]
-#![feature(never_type)]
 #![feature(slice_ptr_get)]
 #![feature(trait_alias)]
 #![feature(unqualified_local_imports)]
@@ -53,8 +53,9 @@ use crate::verus::{MirPass, PassPolicy};
 
 use std::sync::atomic::AtomicBool;
 
+use rustc_middle::ty;
 use rustc_middle::util::Providers;
-use rustc_middle::{bug, ty};
+use rustc_span::bug;
 
 /// Const eval always happens in post analysis mode in order to be able to use the hidden types of
 /// opaque types. This is needed for trivial things like `size_of`, but also for using associated
