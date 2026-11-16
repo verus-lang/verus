@@ -38,10 +38,11 @@
 //!   invariant block relies on its callers, which are only checked where they rely on it being
 //!   `no_unwind`. They are listed with `VERUS_CHECK_DROPS_VERBOSE=1`.
 //!
-//! The MIR this pass reads is that of the compiled program: the pass builds it in the "full
-//! erasure" mode that const evaluation uses, in which all ghost code is erased, and runs
-//! drop elaboration on it. (The MIR Verus builds for lifetime checking still contains the
-//! tracked values, and drops them; those drops do not happen in the compiled program.)
+//! The MIR this pass reads is the one Verus builds for lifetime checking. It has no drops of
+//! tracked or ghost variables or ghost temporaries (#3512), which the compiled program does not
+//! have either. It still drops the shadow copies time-travel prevention makes of exec variables
+//! (`(Verus spec x)`, spec values that the compiled program does not have); the pass skips
+//! those drops. The remaining drops are the compiled program's.
 //!
 //! Invariant blocks are found in the MIR itself: a block starts at a call to
 //! `open_atomic_invariant_begin` or `open_local_invariant_begin` and ends at the matching call
@@ -265,9 +266,24 @@ pub(crate) fn check_drops<'tcx>(
             }
             _ => continue,
         };
-        let body = rustc_const_eval_verus::verus::full_erasure_mir_drops_elaborated(tcx, local);
+        let body = tcx.mir_drops_elaborated_and_const_checked(local);
+        let body = body.borrow();
         let typing_env = body.typing_env(tcx);
         let open = open_invariants(tcx, &body, verus_items);
+        // The shadow copies that time-travel prevention makes of exec variables, named
+        // `(Verus spec x)` (see rustc_mir_build's verus_time_travel_prevention.rs), are spec
+        // values: they do not exist in the compiled program, but the MIR still drops them.
+        let shadows: HashSet<rustc_middle::mir::Local> = body
+            .var_debug_info
+            .iter()
+            .filter(|v| v.name.as_str().starts_with("(Verus spec "))
+            .filter_map(|v| match &v.value {
+                rustc_middle::mir::VarDebugInfoContents::Place(p) if p.projection.is_empty() => {
+                    Some(p.local)
+                }
+                _ => None,
+            })
+            .collect();
         for (bb, data) in body.basic_blocks.iter_enumerated() {
             if data.is_cleanup {
                 continue; // already unwinding
@@ -300,10 +316,13 @@ pub(crate) fn check_drops<'tcx>(
             // each with the callee it is passed to, if it is a type argument of a callee
             let mut dropped: Vec<(Ty<'tcx>, Option<DefId>)> = vec![];
             match &term.kind {
-                TerminatorKind::Drop { place, .. } => dropped.push((place.ty(&body, tcx).ty, None)),
+                TerminatorKind::Drop { place, .. } if shadows.contains(&place.local) => {}
+                TerminatorKind::Drop { place, .. } => {
+                    dropped.push((place.ty(&*body, tcx).ty, None))
+                }
                 TerminatorKind::Call { func, args, .. }
                 | TerminatorKind::TailCall { func, args, .. } => {
-                    let callee = match func.ty(&body, tcx).kind() {
+                    let callee = match func.ty(&*body, tcx).kind() {
                         TyKind::FnDef(d, fargs) => {
                             // a trait method call names the trait's method: resolve it to the
                             // impl that runs, which may be one Verus checks
@@ -325,7 +344,7 @@ pub(crate) fn check_drops<'tcx>(
                         // the callee may drop the arguments moved into it
                         for a in args.iter() {
                             if let Operand::Move(p) = &a.node {
-                                dropped.push((p.ty(&body, tcx).ty, None));
+                                dropped.push((p.ty(&*body, tcx).ty, None));
                             }
                         }
                     } else if let (Some((d, fargs)), Some((callee_no_unwind, callee_atomic))) =

@@ -209,24 +209,6 @@ fn build_mir_for_ctfe<'tcx>(
     (entry.body.unwrap(), entry.promoted)
 }
 
-/// The MIR of `def` as it is compiled (with all ghost code erased, see `FullErasureCtxt`),
-/// after drop elaboration: the result of `mir_drops_elaborated_and_const_checked` for the
-/// compiled program. Its `Drop` terminators are the drops the compiled program runs, unlike
-/// those of the MIR Verus builds for lifetime checking, which also drops tracked values.
-/// This does not use (or fill) the query system or the cache above.
-/// The full erasure context must be set.
-pub fn full_erasure_mir_drops_elaborated<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Body<'tcx> {
-    let mut body = rustc_mir_build_verus::builder::verus_builder::build_mir_full_erasure(tcx, def);
-    // mir_promoted (the promoted fragments run no drops)
-    RequiredConstsVisitor::compute_required_consts(&mut body);
-    let promote_pass = PromoteTemps::default();
-    promote_pass.run_pass(tcx, &mut body);
-    body.phase = MirPhase::Analysis(AnalysisPhase::Initial);
-    // mir_drops_elaborated_and_const_checked
-    rustc_mir_transform::run_analysis_to_runtime_passes(tcx, &mut body);
-    body
-}
-
 // Copied from rustc_mir_transform/src/lib.rs
 fn remap_mir_for_const_eval_select<'tcx>(
     tcx: TyCtxt<'tcx>,
