@@ -193,3 +193,11 @@ test_verify_one_file_with_options! {
 
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_structural_dyn verus_code! {
+        trait Tr: Structural {}
+
+        fn test(d: &dyn Tr) {}
+    } => Err(err) => assert_vir_error_msg(err, "dyn types cannot be `Structural`")
+}

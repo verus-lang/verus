@@ -1311,6 +1311,12 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             match preds[0].skip_binder() {
                 ExistentialPredicate::Trait(trait_ref) => {
                     let trait_did = trait_ref.def_id;
+                    let structural = VerusItem::Marker(verus_items::MarkerItem::Structural);
+                    if rustc_type_ir::elaborate::supertrait_def_ids(tcx, trait_did)
+                        .any(|d| verus_items.id_to_name.get(&d) == Some(&structural))
+                    {
+                        return err_span(span, "dyn types cannot be `Structural`");
+                    }
                     let args = trait_ref.args;
                     let trait_path =
                         def_id_to_vir_path(tcx, verus_items, trait_did, None::<&mut HashMap<_, _>>);
