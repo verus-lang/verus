@@ -440,6 +440,8 @@ test_verify_one_file! {
 
         unsafe impl TrivialClone for X { }
 
+        impl Copy for X { }
+
         impl Clone for X {
             fn clone(&self) -> Self {
                 X { u: self.u }
@@ -461,6 +463,8 @@ test_verify_one_file! {
         struct X { u: u64 }
 
         unsafe impl TrivialClone for X { }
+
+        impl Copy for X { }
 
         impl Clone for X {
             fn clone(&self) -> Self { // FAILS
@@ -484,6 +488,8 @@ test_verify_one_file! {
         }
 
         unsafe impl TrivialClone for X { }
+
+        impl Copy for X { }
     } => Err(err) => assert_one_fails(err)
 }
 
@@ -494,7 +500,9 @@ test_verify_one_file! {
 
         struct X<T> { t: T }
 
-        unsafe impl<T: TrivialClone> TrivialClone for X<T> { }
+        unsafe impl<T: TrivialClone + Copy> TrivialClone for X<T> { }
+
+        impl<T: Copy> Copy for X<T> { }
 
         impl<T: Clone> Clone for X<T> {
             fn clone(&self) -> Self { // FAILS
@@ -526,6 +534,8 @@ test_verify_one_file! {
         struct X { u: u64 }
 
         unsafe impl TrivialClone for X { }
+
+        impl Copy for X { }
 
         #[verifier::external]
         impl Clone for X {

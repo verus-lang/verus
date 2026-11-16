@@ -296,6 +296,12 @@ fn get_clone_impl_for_trivial_clone<'tcx>(
     let trivial_clone_ref = tcx.impl_trait_ref(trivial_clone_impl_id).instantiate_identity();
     let typing_env = TypingEnv::non_body_analysis(tcx, trivial_clone_impl_id);
     let trivial_clone_ref = tcx.normalize_erasing_regions(typing_env, trivial_clone_ref);
+    if !tcx.type_is_copy_modulo_regions(typing_env, trivial_clone_ref.self_ty()) {
+        return err_span(
+            span,
+            "Verus does not currently support implementing TrivialClone on non-Copy types",
+        );
+    }
     let clone_ref = rustc_middle::ty::TraitRef::new(tcx, clone_trait_id, trivial_clone_ref.args);
     match tcx.codegen_select_candidate(typing_env.as_query_input(clone_ref)) {
         Ok(rustc_middle::traits::ImplSource::UserDefined(u)) => Ok(u.impl_def_id),

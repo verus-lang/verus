@@ -12,6 +12,8 @@ test_verify_one_file! {
 
         unsafe impl TrivialClone for X { }
 
+        impl Copy for X { }
+
         impl Clone for X {
             fn clone(&self) -> Self {
                 X { u: self.u }
@@ -34,6 +36,8 @@ test_verify_one_file! {
 
         unsafe impl TrivialClone for X { }
 
+        impl Copy for X { }
+
         impl Clone for X {
             fn clone(&self) -> Self { // FAILS
                 X { u: 20 }
@@ -49,7 +53,9 @@ test_verify_one_file! {
 
         struct X<T> { t: T }
 
-        unsafe impl<T: TrivialClone> TrivialClone for X<T> { }
+        unsafe impl<T: TrivialClone + Copy> TrivialClone for X<T> { }
+
+        impl<T: Copy> Copy for X<T> { }
 
         impl<T: Clone> Clone for X<T> {
             fn clone(&self) -> Self { // FAILS
@@ -94,6 +100,8 @@ test_verify_one_file! {
 
         unsafe impl TrivialClone for X { }
 
+        impl Copy for X { }
+
         #[verifier::external]
         impl Clone for X {
             fn clone(&self) -> Self {
@@ -101,4 +109,40 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "the `Clone` impl corresponding to this `TrivialClone` impl is not known to Verus")
+}
+
+test_verify_one_file! {
+    #[test] trivial_clone_non_copy verus_code! {
+        use vstd::prelude::*;
+        use std::clone::TrivialClone;
+
+        struct X { u: u64 }
+
+        unsafe impl TrivialClone for X { }
+
+        impl Clone for X {
+            fn clone(&self) -> Self {
+                X { u: self.u }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support implementing TrivialClone on non-Copy types")
+}
+
+test_verify_one_file! {
+    #[test] trivial_clone_generic_non_copy verus_code! {
+        use vstd::prelude::*;
+        use std::clone::TrivialClone;
+
+        struct X<T> { t: T }
+
+        unsafe impl<T: TrivialClone> TrivialClone for X<T> { }
+
+        impl<T: Copy> Copy for X<T> { }
+
+        impl<T: Clone> Clone for X<T> {
+            fn clone(&self) -> Self {
+                X { t: self.t.clone() }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support implementing TrivialClone on non-Copy types")
 }
