@@ -2440,13 +2440,6 @@ pub(crate) fn finish_function<'tcx>(
             let mut header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
             add_param_decls(&bctx, sig.span, &mut header, &mut vir_body, param_decls)?;
-            for (unwrap, binder) in
-                pre_header.unwrap_parameters.iter().zip(pre_header.unwrap_parameter_binders.iter())
-            {
-                if unwrap.mode != Mode::Exec {
-                    bctx.erasure_info.borrow_mut().ghost_param_binders.push(*binder);
-                }
-            }
             (Some(vir_body), header, Some(body.value.hir_id), Some(bctx))
         }
         CheckItemFnEither::ParamNames(_params) => {
