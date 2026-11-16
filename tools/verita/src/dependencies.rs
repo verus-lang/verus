@@ -212,7 +212,13 @@ fn expand_workspace_paths(
     if let Some(patterns) = patterns.and_then(|p| p.as_array()) {
         let root = glob::Pattern::escape(&workspace_root.to_string_lossy().replace('\\', "/"));
         for pattern in patterns.iter().filter_map(|p| p.as_str()) {
-            for path in glob::glob(&format!("{root}/{}", pattern.replace('\\', "/")))? {
+            let normalized = pattern.replace('\\', "/");
+            let full_pattern = if Path::new(pattern).is_absolute() {
+                normalized
+            } else {
+                format!("{root}/{normalized}")
+            };
+            for path in glob::glob(&full_pattern)? {
                 let path = path?;
                 if path.is_dir() {
                     paths.push(dunce::canonicalize(path)?);
@@ -964,6 +970,41 @@ exclude = ["members/excluded"]
         .unwrap();
 
         assert_eq!(fs::read_to_string(&excluded).unwrap(), excluded_content);
+        assert_local_dependencies(&target, &verus);
+    }
+
+    #[test]
+    fn discovers_absolute_workspace_members() {
+        let temp = TempDir::new("verita-absolute-members").unwrap();
+        let verus = setup_verus(temp.path());
+        let project = dunce::canonicalize(temp.path()).unwrap().join("project");
+        let target = project.join("a");
+        write_crate(&target, "a", "");
+        write_crate(
+            &project.join("b"),
+            "b",
+            r#"
+[dependencies]
+vstd = { path = "../../missing/vstd" }
+verus_builtin = { path = "../../missing/builtin" }
+verus_builtin_macros = { path = "../../missing/builtin_macros" }
+"#,
+        );
+        let absolute_member = project.join("b").to_string_lossy().replace('\\', "/");
+        fs::write(
+            project.join("Cargo.toml"),
+            format!("[workspace]\nmembers = [\"a\", \"{absolute_member}\"]\n"),
+        )
+        .unwrap();
+
+        inject_verus_patches(
+            &target,
+            &project,
+            &verus,
+            "https://github.com/verus-lang/verus",
+        )
+        .unwrap();
+
         assert_local_dependencies(&target, &verus);
     }
 
