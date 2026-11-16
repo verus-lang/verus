@@ -105,3 +105,75 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_vir_error_msg(err, "`#[verifier::assume_termination]` not allowed with `--no-cheating`")
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_no_cheating_external_type_specification_ok ["--no-cheating"] => verus_code! {
+        #[verifier::external]
+        struct SomeStruct { t: u64 }
+
+        #[verifier::external_type_specification]
+        struct ExSomeStruct(SomeStruct);
+
+        fn test() {
+            let ss = SomeStruct { t: 5 };
+            assert(ss.t == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_no_cheating_external_type_specification_external_body ["--no-cheating"] => verus_code! {
+        #[verifier::external]
+        struct SomeStruct { t: u64 }
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        struct ExSomeStruct(SomeStruct);
+    } => Err(err) => assert_vir_error_msg(err, "`external_type_specification` cannot be used with `external_body` when --no-cheating is enabled")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_no_cheating_external_type_specification_drop ["--no-cheating"] => verus_code! {
+        #[verifier::external]
+        struct SomeStruct { t: u64 }
+
+        #[verifier::external]
+        impl Drop for SomeStruct {
+            fn drop(&mut self) { }
+        }
+
+        #[verifier::external_type_specification]
+        struct ExSomeStruct(SomeStruct);
+    } => Err(err) => assert_vir_error_msg(err, "`external_type_specification` cannot be used for a type with a `Drop` impl when --no-cheating is enabled")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_no_cheating_external_type_specification_drop_enum ["--no-cheating"] => verus_code! {
+        #[verifier::external]
+        enum SomeEnum { A, B }
+
+        #[verifier::external]
+        impl Drop for SomeEnum {
+            fn drop(&mut self) { }
+        }
+
+        #[verifier::external_type_specification]
+        struct ExSomeEnum(SomeEnum);
+    } => Err(err) => assert_vir_error_msg(err, "`external_type_specification` cannot be used for a type with a `Drop` impl when --no-cheating is enabled")
+}
+
+test_verify_one_file! {
+    #[test] test_external_type_specification_drop_and_external_body_without_no_cheating verus_code! {
+        #[verifier::external]
+        struct SomeStruct { t: u64 }
+
+        #[verifier::external]
+        impl Drop for SomeStruct {
+            fn drop(&mut self) { }
+        }
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        struct ExSomeStruct(SomeStruct);
+    } => Ok(())
+}
