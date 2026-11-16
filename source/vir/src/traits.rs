@@ -309,7 +309,7 @@ fn check_unsafe_trait_impls(krate: &Krate, lookup: &DemoteTraitLookup) -> Result
         if trait_impl.x.is_unsafe && !lookup.traits.contains(&trait_impl.x.trait_path) {
             return Err(error(
                 &trait_impl.span,
-                format!("`unsafe impl` of trait `{:}` which is unknown to Verus (i.e., the trait is either declared outsdie the verus! macro or it is marked as `external`)", path_as_friendly_rust_name(&trait_impl.x.trait_path)),
+                format!("`unsafe impl` of trait `{:}` which is unknown to Verus (i.e., the trait is either declared outside the verus! macro or it is marked as `external`)", path_as_friendly_rust_name(&trait_impl.x.trait_path)),
             )
             .help("since the trait is unsafe, there may be obligations cannot check without a specification for the trait")
             .help("you may be able to give Verus a spec for this trait using `external_trait_specification`"));
