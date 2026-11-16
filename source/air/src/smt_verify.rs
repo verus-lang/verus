@@ -409,7 +409,8 @@ pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, Validit
     context.smt_log.log_get_info("all-statistics");
     let smt_data = context.smt_log.take_pipe_data();
     let smt_output = context.get_smt_process().send_commands(smt_data);
-    let statistics = crate::parser::parse_sexpression(&smt_output);
+    let statistics = crate::parser::parse_sexpression(&smt_output)
+        .map_err(|e| ValidityResult::UnexpectedOutput(e))?;
     let stats_map = statistics
         .as_list()
         .unwrap()
@@ -533,8 +534,12 @@ fn smt_get_model(
         return ValidityResult::Invalid(None, None, None);
     };
 
-    let model =
-        crate::parser::Parser::new(context.message_interface.clone()).lines_to_model(&smt_output);
+    let model = match crate::parser::Parser::new(context.message_interface.clone())
+        .lines_to_model(&smt_output)
+    {
+        Ok(model) => model,
+        Err(e) => return ValidityResult::UnexpectedOutput(e),
+    };
     let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
     for def in model.iter() {
         model_defs.insert(def.name.clone(), def.clone());
