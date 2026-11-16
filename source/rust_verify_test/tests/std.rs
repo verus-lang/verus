@@ -2749,3 +2749,67 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] slice_sorts verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::OrdSpec;
+        use std::cmp::Ordering;
+        fn sorted(v: &mut Vec<u8>)
+            requires old(v)@.len() == 2,
+            ensures final(v)@[0] <= final(v)@[1], final(v)@.to_multiset() == old(v)@.to_multiset(),
+        {
+            v.sort();
+        }
+        fn sorted_unstable(v: &mut [u8])
+            requires old(v)@.len() == 2,
+            ensures final(v)@[0] <= final(v)@[1],
+        {
+            v.sort_unstable();
+        }
+        fn by(v: &mut Vec<u8>) ensures final(v)@.len() == old(v)@.len() {
+            v.sort_by(|a: &u8, b: &u8| -> (o: Ordering) ensures o == (*a).cmp_spec(b) { a.cmp(b) });
+        }
+        fn by_key(v: &mut Vec<(u8, u8)>) ensures final(v)@.len() == old(v)@.len() {
+            v.sort_by_key(|p: &(u8, u8)| -> (k: u8) ensures k == p.0 { p.0 });
+        }
+        fn by_not_sorted(v: &mut Vec<u8>) requires old(v)@.len() == 2 {
+            // only the comparator's order is known, not `<=`
+            v.sort_by(|a: &u8, b: &u8| -> (o: Ordering) ensures o == (*b).cmp_spec(a) { b.cmp(a) });
+            assert(v@[0] <= v@[1]); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // std's sorts may panic if the order is not total (Rust >= 1.81): the comparator must be
+    // a total order on the elements, so an unannotated comparator is rejected
+    #[test] sort_by_requires_total_order verus_code! {
+        use vstd::prelude::*;
+        fn unannotated(v: &mut Vec<u8>) {
+            v.sort_by(|a: &u8, b: &u8| a.cmp(b)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // the key function must be deterministic (std calls it more than once per element)
+    #[test] sort_by_key_requires_deterministic_key verus_code! {
+        use vstd::prelude::*;
+        fn unannotated(v: &mut Vec<(u8, u8)>) {
+            v.sort_by_key(|p: &(u8, u8)| p.0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // a type whose `Ord` is not known to be lawful cannot be sorted with `sort`
+    #[test] sort_requires_lawful_ord verus_code! {
+        use vstd::prelude::*;
+        #[derive(PartialEq, Eq, PartialOrd, Ord)]
+        struct K(u8);
+        fn f(v: &mut Vec<K>) {
+            v.sort(); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
