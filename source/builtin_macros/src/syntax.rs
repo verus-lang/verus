@@ -3916,7 +3916,7 @@ impl Visitor {
         };
 
         attrs.push(parse_quote_spanned!(span =>
-            #[verifier::atomic_call]
+            #[verus::internal(logatom_function_call)]
         ));
 
         // handle loop invariants
