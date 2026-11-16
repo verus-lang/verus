@@ -829,7 +829,7 @@ pub open spec fn key_fn_deterministic_on<T, K, F: FnMut(&T) -> K>(f: F, s: Seq<T
 pub assume_specification<T: Ord>[ <[T]>::sort ](s: &mut [T])
     requires
         // std may panic if `Ord` is not a total order (Rust >= 1.81)
-        crate::laws_cmp::obeys_cmp::<T>(),
+        super::super::laws_cmp::obeys_cmp::<T>(),
     ensures
         final(s)@.len() == old(s)@.len(),
         final(s)@.to_multiset() == old(s)@.to_multiset(),
@@ -839,7 +839,7 @@ pub assume_specification<T: Ord>[ <[T]>::sort ](s: &mut [T])
 pub assume_specification<T: Ord>[ <[T]>::sort_unstable ](s: &mut [T])
     requires
         // std may panic if `Ord` is not a total order (Rust >= 1.81)
-        crate::laws_cmp::obeys_cmp::<T>(),
+        super::super::laws_cmp::obeys_cmp::<T>(),
     ensures
         final(s)@.len() == old(s)@.len(),
         final(s)@.to_multiset() == old(s)@.to_multiset(),
@@ -875,7 +875,7 @@ pub assume_specification<T, K: Ord, F: FnMut(&T) -> K>[ <[T]>::sort_by_key::<K, 
     requires
         forall |i: int| 0 <= i < old(s)@.len() ==> call_requires(f, (#[trigger] &old(s)@[i],)),
         // std may panic if the keys' `Ord` is not a total order, or if `f` is not deterministic
-        crate::laws_cmp::obeys_cmp::<K>(),
+        super::super::laws_cmp::obeys_cmp::<K>(),
         key_fn_deterministic_on(f, old(s)@),
     ensures
         final(s)@.len() == old(s)@.len(),
@@ -886,7 +886,7 @@ pub assume_specification<T, K: Ord, F: FnMut(&T) -> K>[ <[T]>::sort_unstable_by_
     requires
         forall |i: int| 0 <= i < old(s)@.len() ==> call_requires(f, (#[trigger] &old(s)@[i],)),
         // std may panic if the keys' `Ord` is not a total order, or if `f` is not deterministic
-        crate::laws_cmp::obeys_cmp::<K>(),
+        super::super::laws_cmp::obeys_cmp::<K>(),
         key_fn_deterministic_on(f, old(s)@),
     ensures
         final(s)@.len() == old(s)@.len(),
