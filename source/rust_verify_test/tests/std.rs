@@ -3097,3 +3097,74 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    // a generic `no_unwind` function may drop a value of its type parameter; where a caller
+    // relies on it being `no_unwind`, the type it is called with is checked
+    #[test] check_drops_type_argument_of_no_unwind_callee [] => code! {
+        use vstd::prelude::*;
+        // a type whose `Drop` impl Verus does not check
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        fn consume<T>(x: T) no_unwind { }
+        fn ok(x: u8) no_unwind { consume(x); }
+        fn f(d: PanickingDrop) no_unwind { consume(d); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "this calls `consume` with a type whose values it may drop, `PanickingDrop`, whose `Drop` impl is not verified, in a `no_unwind` function")
+}
+
+test_verify_one_file_with_options! {
+    // the type argument is not checked where Verus does not rely on the callee being no_unwind
+    #[test] check_drops_type_argument_may_unwind_caller [] => code! {
+        use vstd::prelude::*;
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) { panic!("unverified Drop panicked"); }
+        }
+        verus! {
+        #[verifier::external_type_specification]
+        struct ExPanickingDrop(PanickingDrop);
+        fn consume<T>(x: T) no_unwind { }
+        fn f(d: PanickingDrop) { consume(d); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    // the drop glue of a `dyn` type is not known: it may run any `Drop` impl
+    #[test] check_drops_dyn [] => code! {
+        use vstd::prelude::*;
+        verus! {
+        trait T { }
+        fn f(x: Box<dyn T>) no_unwind { }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "this may drop a `dyn T` in a `no_unwind` function, whose drop glue is not known here")
+}
+
+test_verify_one_file_with_options! {
+    // tracked values do not exist in the compiled program, so they are not dropped there
+    #[test] check_drops_tracked_values_not_dropped [] => code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        verus! {
+        struct P;
+        impl<G> InvariantPredicate<int, G> for P { open spec fn inv(k: int, g: G) -> bool { true } }
+        fn f<G>(Tracked(inv): Tracked<&AtomicInvariant<int, G, P>>, Tracked(g): Tracked<G>) no_unwind {
+            open_atomic_invariant!(inv => x => {
+                proof {
+                    let tracked y = x;
+                    x = y;
+                }
+            });
+            proof {
+                let tracked h = g;
+            }
+        }
+        }
+    } => Ok(())
+}

@@ -14,8 +14,9 @@
 //!
 //! rustc's MIR after drop elaboration has one `Drop` terminator for each drop that can run,
 //! and this pass checks those on non-cleanup paths. Arguments moved into a callee that Verus
-//! does not check count as dropped too, since the callee may drop them (std's `unwrap_or`
-//! drops its unused default); a callee Verus checks is checked for its own drops.
+//! knows nothing about (e.g. called through a function pointer) count as dropped too, since
+//! the callee may drop them; a callee Verus checks is checked for its own drops, and Verus
+//! relies on the specification of one it does not check (as for its other effects).
 //!
 //! For each dropped value, the pass walks its drop glue for the `Drop` impls it can run:
 //!
@@ -27,13 +28,20 @@
 //!   doesn't know (an unverified impl, or the impl of a type given an
 //!   `external_type_specification`) may unwind. Impls of other crates (std's, a dependency's)
 //!   are trusted not to unwind, as before; they are listed with `VERUS_CHECK_DROPS_VERBOSE=1`;
-//! - drop glue the pass cannot see (that of a type parameter, a `dyn` type, an unnormalized
-//!   projection, or a coroutine) is not checked; such drops are listed with
-//!   `VERUS_CHECK_DROPS_VERBOSE=1`. This is a known gap: `fn f<T>(x: T) no_unwind {}` passes,
-//!   though `f` may be called with a `T` whose `Drop` impl unwinds. It cannot simply be
-//!   rejected here: the MIR this pass reads is the one Verus builds for lifetime checking,
-//!   which still contains the tracked (ghost) values, and drops of those (often of a type
-//!   parameter, as in vstd's `atomic_with_ghost!`) do not happen in the compiled program.
+//! - drop glue the pass cannot see is reported (that of a `dyn` type, an unnormalized
+//!   projection, or a coroutine: it may run any `Drop` impl), except that of a type
+//!   parameter. Rejecting every drop of a type parameter's value would reject much of vstd
+//!   (`PCell::write` drops the old value). Instead, where Verus relies on a callee being
+//!   `no_unwind`, the types it is called with are checked for `Drop` impls that may unwind
+//!   (the callee may drop values of them). This leaves gaps: drops of type parameters' values
+//!   are not checked for atomicity, and a function that drops such a value inside its own
+//!   invariant block relies on its callers, which are only checked where they rely on it being
+//!   `no_unwind`. They are listed with `VERUS_CHECK_DROPS_VERBOSE=1`.
+//!
+//! The MIR this pass reads is that of the compiled program: the pass builds it in the "full
+//! erasure" mode that const evaluation uses, in which all ghost code is erased, and runs
+//! drop elaboration on it. (The MIR Verus builds for lifetime checking still contains the
+//! tracked values, and drops them; those drops do not happen in the compiled program.)
 //!
 //! Invariant blocks are found in the MIR itself: a block starts at a call to
 //! `open_atomic_invariant_begin` or `open_local_invariant_begin` and ends at the matching call
@@ -202,18 +210,17 @@ pub(crate) fn check_drops<'tcx>(
     verbose: bool,
 ) -> Vec<DropFinding> {
     // the verified exec functions that need checking: whether each is no_unwind and atomic,
-    // and whether it (or a closure in it) has an invariant block. The MIR of other functions
-    // is not built here: building it may evaluate constants that only Verus's own pipeline
-    // can evaluate.
+    // and whether it (or a closure in it) has an invariant block. Only their MIR is built.
     let mut verified: HashMap<vir::ast::Path, (bool, bool, bool)> = HashMap::new();
-    // the functions Verus knows (verified or external_body)
-    let mut known: HashSet<vir::ast::Path> = HashSet::new();
+    // the functions Verus knows (verified, external_body or with an assumed specification,
+    // of any crate), and whether each is no_unwind and atomic
+    let mut known: HashMap<vir::ast::Path, (bool, bool)> = HashMap::new();
     for f in krate.functions.iter() {
-        known.insert(f.x.name.path.clone());
+        let no_unwind = matches!(f.x.unwind_spec, Some(UnwindSpec::NoUnwind));
+        known.insert(f.x.name.path.clone(), (no_unwind, f.x.attrs.atomic));
         if f.x.mode != vir::ast::Mode::Exec || f.x.attrs.is_external_body || f.x.body.is_none() {
             continue;
         }
-        let no_unwind = matches!(f.x.unwind_spec, Some(UnwindSpec::NoUnwind));
         let has_block = std::cell::Cell::new(false);
         let _ = vir::ast_visitor::map_expr_visitor(f.x.body.as_ref().unwrap(), &|e| {
             if let vir::ast::ExprX::OpenInvariant(..) = &e.x {
@@ -258,8 +265,7 @@ pub(crate) fn check_drops<'tcx>(
             }
             _ => continue,
         };
-        let body = tcx.mir_drops_elaborated_and_const_checked(local);
-        let body = body.borrow();
+        let body = rustc_const_eval_verus::verus::full_erasure_mir_drops_elaborated(tcx, local);
         let typing_env = body.typing_env(tcx);
         let open = open_invariants(tcx, &body, verus_items);
         for (bb, data) in body.basic_blocks.iter_enumerated() {
@@ -291,29 +297,49 @@ pub(crate) fn check_drops<'tcx>(
 
             // the values this block's terminator may drop
             let term = data.terminator();
-            let mut dropped: Vec<Ty<'tcx>> = vec![];
+            // each with the callee it is passed to, if it is a type argument of a callee
+            let mut dropped: Vec<(Ty<'tcx>, Option<DefId>)> = vec![];
             match &term.kind {
-                TerminatorKind::Drop { place, .. } => dropped.push(place.ty(&*body, tcx).ty),
+                TerminatorKind::Drop { place, .. } => dropped.push((place.ty(&body, tcx).ty, None)),
                 TerminatorKind::Call { func, args, .. }
                 | TerminatorKind::TailCall { func, args, .. } => {
-                    let callee = match func.ty(&*body, tcx).kind() {
+                    let callee = match func.ty(&body, tcx).kind() {
                         TyKind::FnDef(d, fargs) => {
                             // a trait method call names the trait's method: resolve it to the
                             // impl that runs, which may be one Verus checks
                             let resolved = fargs.no_bound_vars().and_then(|fargs| {
                                 Instance::try_resolve(tcx, typing_env, *d, fargs).ok().flatten()
                             });
-                            Some(resolved.map_or(*d, |instance| instance.def_id()))
+                            Some(
+                                resolved
+                                    .map_or((*d, fargs.skip_binder()), |i| (i.def_id(), i.args)),
+                            )
                         }
                         _ => None, // a call through a function pointer or closure value
                     };
-                    let checked = callee.is_some_and(|d| {
+                    let spec = callee.and_then(|(d, _)| known.get(&def_id_to_vir_path(d)));
+                    let checked = callee.is_some_and(|(d, _)| {
                         verified_local_fn(d) || verus_items.id_to_name.contains_key(&d)
-                    });
+                    }) || spec.is_some();
                     if !checked {
+                        // the callee may drop the arguments moved into it
                         for a in args.iter() {
                             if let Operand::Move(p) = &a.node {
-                                dropped.push(p.ty(&*body, tcx).ty);
+                                dropped.push((p.ty(&body, tcx).ty, None));
+                            }
+                        }
+                    } else if let (Some((d, fargs)), Some((callee_no_unwind, callee_atomic))) =
+                        (callee, spec)
+                    {
+                        // The callee's drops of values of its type parameters are not checked
+                        // in the callee (see `DropGlue::Unknown` below). Where Verus relies on
+                        // the callee being `no_unwind` or atomic, check that the types it is
+                        // called with have no `Drop` impl that may unwind.
+                        if need_no_unwind && (*callee_no_unwind || *callee_atomic) {
+                            // (a value of an unsized type, such as the `Self` of a method call
+                            // on a `dyn` reference, cannot be passed or held by value)
+                            for t in fargs.types().filter(|t| t.is_sized(tcx, typing_env)) {
+                                dropped.push((t, Some(d)));
                             }
                         }
                     }
@@ -333,34 +359,58 @@ pub(crate) fn check_drops<'tcx>(
                 | TerminatorKind::InlineAsm { .. } => {}
             }
 
-            for ty in dropped {
+            for (ty, via) in dropped {
                 let mut glue = vec![];
                 drop_glue_of(tcx, typing_env, ty, &mut HashSet::new(), &mut glue);
+                let what = |dty: Ty<'tcx>| match via {
+                    None => format!("this may drop a `{dty}`"),
+                    Some(d) => format!(
+                        "this calls `{}` with a type whose values it may drop, `{dty}`",
+                        tcx.def_path_str(d)
+                    ),
+                };
                 for g in glue {
                     let problem = match g {
                         DropGlue::Impl(dty, drop_fn) => {
-                            if need_atomic {
+                            if need_atomic && via.is_none() {
                                 // whatever the impl does, running it is a step of its own
                                 format!(
-                                    "this may drop a `{dty}` in {context}, but running its `Drop` \
-                                     impl is not one atomic step (move the value out)"
+                                    "{} in {context}, but running its `Drop` impl is not one \
+                                     atomic step (move the value out)",
+                                    what(dty)
                                 )
                             } else if !drop_fn.is_local() {
                                 trusted.insert(format!("{dty}"));
                                 continue;
-                            } else if !known.contains(&def_id_to_vir_path(drop_fn)) {
+                            } else if !known.contains_key(&def_id_to_vir_path(drop_fn)) {
                                 format!(
-                                    "this may drop a `{dty}`, whose `Drop` impl is not verified, \
-                                     in {context}; the impl may unwind or open invariants \
-                                     (verify the `Drop` impl, or move the value out)"
+                                    "{}, whose `Drop` impl is not verified, in {context}; the \
+                                     impl may unwind or open invariants (verify the `Drop` impl, \
+                                     or move the value out)",
+                                    what(dty)
                                 )
                             } else {
                                 continue;
                             }
                         }
-                        DropGlue::Unknown(uty) => {
+                        DropGlue::Unknown(uty) if matches!(uty.kind(), TyKind::Param(_)) => {
+                            // The drop glue of a type parameter is not checked here: rejecting
+                            // every such drop would reject much of vstd (`PCell::write` drops
+                            // the old value), and the types a function is called with are only
+                            // partly checked, at its call sites (above)
                             unchecked.insert(format!("{uty}"));
                             continue;
+                        }
+                        DropGlue::Unknown(uty) => {
+                            // a type parameter, `dyn` type or opaque type may have any `Drop` impl
+                            format!(
+                                "{} in {context}, whose drop glue is not known here: it may run \
+                                 a `Drop` impl that unwinds{atomic} (move the value out, or drop \
+                                 it outside)",
+                                what(uty),
+                                atomic =
+                                    if need_atomic { " or is not one atomic step" } else { "" }
+                            )
                         }
                     };
                     findings.push(DropFinding { span: term.source_info.span, msg: problem });
