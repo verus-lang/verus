@@ -1856,6 +1856,7 @@ test_verify_one_file_with_options! {
             for (k, v) in iter: m.iter()
                 invariant
                     iter.seq().unref().to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
+                    hash_map_wf(&m),
             {
                 // OBSERVE: triggers the extensionality in the invariant
                 assert(m@.kv_pairs().contains((*k, *v)));
@@ -2052,16 +2053,20 @@ test_verify_one_file! {
         use std::collections::{HashMap, HashSet};
         use vstd::prelude::*;
         fn param(m: &HashMap<u64, u8>, k: u64) -> (r: bool)
+            requires vstd::std_specs::hash::hash_map_wf(m),
             ensures r == m@.contains_key(k),
         {
             m.contains_key(&k)
         }
         fn param_set(s: &HashSet<u32>, k: u32) -> (r: bool)
+            requires vstd::std_specs::hash::hash_set_wf(s),
             ensures r == s@.contains(k),
         {
             s.contains(&k)
         }
-        fn test(m: &HashMap<u64, u8>) {
+        fn test(m: &HashMap<u64, u8>)
+            requires vstd::std_specs::hash::hash_map_wf(m),
+        {
             let c = m.clone();
             assert(c@ == m@);
             let b = c.contains_key(&3);

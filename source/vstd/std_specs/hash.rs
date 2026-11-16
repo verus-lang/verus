@@ -719,6 +719,7 @@ pub assume_specification<K: Clone, V: Clone, S: Clone, A: Allocator + Clone>[ <H
                 #![trigger other@.dom().contains(key)]
                 other@.dom().contains(key) ==> cloned(this@[key], #[trigger] other@[key])
         },
+        obeys_clone_eq::<K>() && hash_map_wf(this) ==> hash_map_wf(&other),
 ;
 
 pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: HashMap<
@@ -768,24 +769,17 @@ pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ H
 ;
 
 /// Whether each of the map's entries is stored where its key's hash says, so that the map's
-/// view describes what its operations do. Every map built by the specified operations is well
-/// formed. The one way to get a malformed map in safe code is to clone one whose key type's
-/// `Clone` changes the key (see [`obeys_clone_eq`]): the copy keeps each changed key in the
-/// original's bucket.
+/// view describes what its operations do. The specified operations build well-formed maps,
+/// and keep a map well formed. Safe code can build malformed maps, though: for example by
+/// cloning a map whose key type's `Clone` changes the key (see [`obeys_clone_eq`]; the copy
+/// keeps each changed key in the original's bucket). So a map from unverified code is not
+/// known to be well formed.
 ///
 /// This depends on the map value, not only its view: a malformed copy can have the same view
 /// as the well-formed original.
 pub uninterp spec fn hash_map_wf<Key, Value, S, A: Allocator>(
     m: &HashMap<Key, Value, S, A>,
 ) -> bool;
-
-/// If keys clone to equal values, no map can be malformed.
-pub broadcast axiom fn axiom_hash_map_wf_if_obeys_clone_eq<Key: Clone, Value, S, A: Allocator>(
-    m: &HashMap<Key, Value, S, A>,
-)
-    ensures
-        obeys_clone_eq::<Key>() ==> #[trigger] hash_map_wf(m),
-;
 
 pub open spec fn hash_map_inv<Key: Eq + Hash, Value, S, A: Allocator>(
     m: &HashMap<Key, Value, S, A>,
@@ -836,6 +830,7 @@ pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ H
     A,
 >::insert ](m: &mut HashMap<Key, Value, S, A>, k: Key, v: Value) -> (result: Option<Value>)
     ensures
+        hash_map_wf(old(m)) ==> hash_map_wf(final(m)),
         hash_map_insert_ensures(old(m), final(m), k, v, result),
 ;
 
@@ -1194,6 +1189,7 @@ pub assume_specification<
     requires
         borrowed_key_hashing_matches::<Key, Q>(),
     ensures
+        hash_map_wf(old(m)) ==> hash_map_wf(final(m)),
         hash_map_remove_ensures(old(m), final(m), k, result),
 ;
 
@@ -1486,14 +1482,6 @@ pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet:
 /// Verified code can still get a malformed set by cloning one through a generic `T: Clone`.
 pub uninterp spec fn hash_set_wf<Key, S, A: Allocator>(m: &HashSet<Key, S, A>) -> bool;
 
-/// If elements clone to equal values, no set can be malformed.
-pub broadcast axiom fn axiom_hash_set_wf_if_obeys_clone_eq<Key: Clone, S, A: Allocator>(
-    m: &HashSet<Key, S, A>,
-)
-    ensures
-        obeys_clone_eq::<Key>() ==> #[trigger] hash_set_wf(m),
-;
-
 pub open spec fn hash_set_inv<Key: Eq + Hash, S, A: Allocator>(m: &HashSet<Key, S, A>) -> bool {
     &&& hash_set_wf(m)
     &&& forall|k1: Key, k2: Key|
@@ -1534,6 +1522,7 @@ pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet:
     A,
 >::insert ](m: &mut HashSet<Key, S, A>, k: Key) -> (result: bool)
     ensures
+        hash_set_wf(old(m)) ==> hash_set_wf(final(m)),
         hash_set_insert_ensures(old(m), final(m), k, result),
 ;
 
@@ -1812,6 +1801,7 @@ pub assume_specification<
     requires
         borrowed_key_hashing_matches::<Key, Q>(),
     ensures
+        hash_set_wf(old(m)) ==> hash_set_wf(final(m)),
         hash_set_remove_ensures(old(m), final(m), k, result),
 ;
 
@@ -2082,6 +2072,7 @@ pub assume_specification<'a, Key: Hash + Eq, Value, S: BuildHasher, A: Allocator
     A,
 >::entry ](m: &'a mut HashMap<Key, Value, S, A>, key: Key) -> (entry: Entry<'a, Key, Value, A>)
     ensures
+        hash_map_wf(old(m)) ==> hash_map_wf(final(m)),
         hash_map_entry_ensures(old(m), final(m), key, entry),
 ;
 
@@ -2342,8 +2333,6 @@ pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::insert_en
 ;
 
 pub broadcast group group_hash_axioms {
-    axiom_hash_map_wf_if_obeys_clone_eq,
-    axiom_hash_set_wf_if_obeys_clone_eq,
     lemma_hash_map_insert_ensures_if_obeys_concrete_eq,
     lemma_hash_map_insert_ensures_if_obeys_deep_eq,
     lemma_hash_map_contains_key_ensures_if_obeys_concrete_eq,

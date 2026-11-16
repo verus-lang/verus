@@ -1363,6 +1363,7 @@ test_verify_one_file_with_options! {
             for (k, v) in iter: m.iter()
                 invariant
                     m@.kv_pairs() == set![(3u32, 4i8), (6u32, -8i8)],
+                    btree_map_wf(&m),
             {
                 // OBSERVE: triggers the extensionality in the invariant
                 assert(m@.kv_pairs().contains((*k, *v)));
@@ -1502,13 +1503,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // keys that clone to equal values: every map is well formed, and clone copies the view
+    // keys that clone to equal values: clone copies the view (and well-formedness)
     #[test] test_btree_clone_faithful_keys verus_code! {
         use std::collections::{BTreeMap, BTreeSet};
         use vstd::prelude::*;
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
         pub struct P { pub x: u8 }
         fn param(m: &BTreeMap<u64, u8>, k: u64) -> (r: bool)
+            requires vstd::std_specs::btree::btree_map_wf(m),
             ensures r == m@.contains_key(k),
         {
             m.contains_key(&k)
@@ -1525,4 +1527,26 @@ test_verify_one_file! {
             assert(f@ == e@);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    // A set from unverified code need not be well formed: e.g. `get_or_insert_with` with a
+    // `Borrow` whose order disagrees with the key's `Ord` puts elements out of order (review of
+    // #3494). So a set parameter's iteration order is known only if the set is well formed.
+    #[test] test_btree_set_param_iter_needs_wf verus_code! {
+        use std::collections::BTreeSet;
+        use vstd::prelude::*;
+        use vstd::std_specs::btree::*;
+        use vstd::std_specs::iter::IteratorSpec;
+        fn known(s: &BTreeSet<u64>)
+            requires btree_set_wf(s),
+        {
+            let it = s.iter();
+            assert(it.remaining().unref().to_set() =~= s@);
+        }
+        fn not_known(s: &BTreeSet<u64>) {
+            let it = s.iter();
+            assert(it.remaining().unref().to_set() =~= s@); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
