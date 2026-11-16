@@ -866,3 +866,52 @@ test_verify_one_file! {
     //} => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
     } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it has mode `exec`")
 }
+
+test_verify_one_file! {
+    #[test] proof_block_prophetic_condition_ok PROPH.to_string() + verus_code_str! {
+        fn test(Tracked(t): Tracked<Prophecy<bool>>) {
+            proof {
+                if t.value() {
+                    assert(t.value());
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] proof_block_prophetic_condition_tracked_call_fail PROPH.to_string() + verus_code_str! {
+        fn test(Tracked(t): Tracked<Prophecy<bool>>, Tracked(u): Tracked<Prophecy<bool>>)
+            requires u.may_resolve(),
+        {
+            let tracked mut u = u;
+            proof {
+                if t.value() {
+                    u.resolve(true);
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "call to proof-mode function with tracked parameters cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file! {
+    #[test] proof_block_prophetic_condition_assign_fail PROPH.to_string() + verus_code_str! {
+        fn test(Tracked(t): Tracked<Prophecy<bool>>) {
+            let ghost mut x: bool = false;
+            proof {
+                if t.value() {
+                    x = true;
+                }
+            }
+            let ghost y: bool = x;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assignment to non-prophetic location cannot occur in prophecy-conditional context")
+}
+
+test_verify_one_file! {
+    #[test] ghost_wrapper_non_unit_prophetic_fail PROPH.to_string() + verus_code_str! {
+        fn test(Tracked(t): Tracked<Prophecy<bool>>) -> Ghost<bool> {
+            Ghost(t.value())
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for `Ghost` wrapper")
+}
